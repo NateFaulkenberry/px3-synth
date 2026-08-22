@@ -34,6 +34,12 @@ public:
 
     void setEnvelope(const EnvelopeSettings& settings);
     void setSubtractiveSettings(const SubtractiveSettings& settings);
+    void setPerformanceModulation(float pitchBendNormalized,
+                                  float modWheelNormalized,
+                                  float pitchBendRangeSemitones,
+                                  float vibratoPhaseRadians,
+                                  float vibratoRateHz,
+                                  float vibratoMaxDepthSemitones);
 
 private:
     void updateAngleDelta();
@@ -49,6 +55,16 @@ private:
 
     double currentAngle { 0.0 };
     double angleDelta { 0.0 };
+    double baseFrequencyHz { 0.0 };
     double currentFrequencyHz { 0.0 };
     float level { 0.0f };
+
+    float targetPitchBendNorm { 0.0f };
+    float currentPitchBendNorm { 0.0f };
+    float targetModWheelNorm { 0.0f };
+    float currentModWheelNorm { 0.0f };
+    float pitchBendRangeSemitones { 2.0f };
+    float sharedVibratoPhaseRadians { 0.0f };
+    float vibratoRateHz { 5.0f };
+    float vibratoMaxDepthSemitones { 1.0f };
 };

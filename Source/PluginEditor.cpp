@@ -185,6 +185,33 @@ void SynthProjectAudioProcessorEditor::configureKnob(KnobBinding& binding,
     addAndMakeVisible(label);
 }
 
+void SynthProjectAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
+                                                           KnobLabel& label,
+                                                           const juce::String& labelText,
+                                                           juce::AudioParameterFloat& parameter)
+{
+    slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    const auto& range = parameter.getNormalisableRange();
+    slider.setRange(range.start, range.end);
+    slider.setValue(parameter.get());
+    slider.onValueChange = [&slider, &parameter]()
+    {
+        parameter.setValueNotifyingHost(parameter.convertTo0to1(static_cast<float>(slider.getValue())));
+    };
+
+    slider.setLookAndFeel(&knobLookAndFeel);
+
+    label.setText(labelText, juce::dontSendNotification);
+    label.setJustificationType(juce::Justification::centred);
+    label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    label.setFont(juce::FontOptions(11.5f));
+    label.setInterceptsMouseClicks(false, false);
+
+    addAndMakeVisible(slider);
+    addAndMakeVisible(label);
+}
+
 SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectAudioProcessor& p)
     : AudioProcessorEditor(&p),
       audioProcessor(p)
@@ -193,9 +220,23 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     logoFrame = juce::ImageFileFormat::loadFrom(BinaryData::px3_gif, BinaryData::px3_gifSize);
 
     setResizable(true, true);
-    setResizeLimits(980, 540, 1900, 900);
+    setResizeLimits(980, 600, 1900, 980);
 
+    addAndMakeVisible(performanceControls);
     addAndMakeVisible(pianoKeyboard);
+
+    performanceControls.onPitchBendChanged = [this](float normalized)
+    {
+        audioProcessor.setPitchBendNormalizedFromUI(normalized);
+    };
+    performanceControls.onPitchBendGestureEnded = [this]()
+    {
+        audioProcessor.setPitchBendNormalizedFromUI(0.0f);
+    };
+    performanceControls.onModWheelChanged = [this](float normalized)
+    {
+        audioProcessor.setModWheelNormalizedFromUI(normalized);
+    };
 
     knobBindings = {
         KnobBinding { &oscSineKnob, &oscSineLabel, nullptr },
@@ -221,6 +262,56 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     configureKnob(knobBindings[8], "Release", audioProcessor.getReleaseParam());
     configureKnob(knobBindings[9], "Gain", audioProcessor.getMasterGainParam());
 
+    configureEffectKnob(robWarmthKnob, robWarmthLabel, "WARMTH", audioProcessor.getRobAmountParam());
+    configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "TEXTURE", audioProcessor.getIsaacAmountParam());
+    configureEffectKnob(reverbKnob, reverbLabel, "INTENSITY", audioProcessor.getReverbAmountParam());
+
+    auto& granularSyncParam = audioProcessor.getGranularSyncDivisionParam();
+    const auto choiceCount = granularSyncParam.choices.size();
+    for (int i = 0; i < choiceCount; ++i)
+    {
+        granularSyncBox.addItem(granularSyncParam.choices[i], i + 1);
+    }
+    granularSyncBox.setSelectedItemIndex(granularSyncParam.getIndex(), juce::dontSendNotification);
+    granularSyncBox.onChange = [this, &granularSyncParam]()
+    {
+        const auto idx = juce::jmax(0, granularSyncBox.getSelectedItemIndex());
+        granularSyncParam.setValueNotifyingHost(granularSyncParam.convertTo0to1(static_cast<float>(idx)));
+    };
+    granularSyncBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    granularSyncBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    granularSyncBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    granularSyncLabel.setText("SYNC", juce::dontSendNotification);
+    granularSyncLabel.setJustificationType(juce::Justification::centred);
+    granularSyncLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    granularSyncLabel.setFont(juce::FontOptions(11.5f));
+    granularSyncLabel.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(granularSyncBox);
+    addAndMakeVisible(granularSyncLabel);
+
+    auto& reverbAlgoParam = audioProcessor.getReverbAlgorithmParam();
+    const auto reverbChoiceCount = reverbAlgoParam.choices.size();
+    for (int i = 0; i < reverbChoiceCount; ++i)
+    {
+        reverbTypeBox.addItem(reverbAlgoParam.choices[i], i + 1);
+    }
+    reverbTypeBox.setSelectedItemIndex(reverbAlgoParam.getIndex(), juce::dontSendNotification);
+    reverbTypeBox.onChange = [this, &reverbAlgoParam]()
+    {
+        const auto idx = juce::jmax(0, reverbTypeBox.getSelectedItemIndex());
+        reverbAlgoParam.setValueNotifyingHost(reverbAlgoParam.convertTo0to1(static_cast<float>(idx)));
+    };
+    reverbTypeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    reverbTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    reverbTypeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    reverbTypeLabel.setText("ALGO", juce::dontSendNotification);
+    reverbTypeLabel.setJustificationType(juce::Justification::centred);
+    reverbTypeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    reverbTypeLabel.setFont(juce::FontOptions(11.5f));
+    reverbTypeLabel.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(reverbTypeBox);
+    addAndMakeVisible(reverbTypeLabel);
+
     midiStatusLabel.setText("MIDI In: waiting for note...", juce::dontSendNotification);
     midiStatusLabel.setJustificationType(juce::Justification::centred);
     midiStatusLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(236, 172, 88));
@@ -239,6 +330,10 @@ SynthProjectAudioProcessorEditor::~SynthProjectAudioProcessorEditor()
     {
         binding.slider->setLookAndFeel(nullptr);
     }
+
+    robWarmthKnob.setLookAndFeel(nullptr);
+    isaacTextureKnob.setLookAndFeel(nullptr);
+    reverbKnob.setLookAndFeel(nullptr);
 }
 
 void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
@@ -264,11 +359,18 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
 
     if (logoFrame.isValid())
     {
-        const auto logoSize = static_cast<float>(juce::jlimit(80, 120, logoPanelArea.getHeight() - 46));
-        const auto logoArea = juce::Rectangle<float>(static_cast<float>(logoPanelArea.getX() + 18),
-                                 static_cast<float>(logoPanelArea.getY() + 14),
-                                 logoSize,
-                                 logoSize);
+                const auto subtitleHeight = 18.0f;
+                const auto subtitleGap = 6.0f;
+                const auto logoSize = static_cast<float>(juce::jlimit(80, 120, logoPanelArea.getHeight() - 46));
+                const auto contentHeight = logoSize + subtitleGap + subtitleHeight;
+                const auto contentTop = static_cast<float>(logoPanelArea.getY())
+                                                                + (static_cast<float>(logoPanelArea.getHeight()) - contentHeight) * 0.5f;
+
+                const auto logoArea = juce::Rectangle<float>(static_cast<float>(logoPanelArea.getX()),
+                                                                                                         contentTop,
+                                                                                                         static_cast<float>(logoPanelArea.getWidth()),
+                                                                                                         logoSize)
+                                                                    .withSizeKeepingCentre(logoSize, logoSize);
         const auto wobble = anyKeyDown ? std::sin(logoWobblePhase) * 0.075f : 0.0f;
         auto transform = juce::AffineTransform::scale(logoArea.getWidth() / static_cast<float>(logoFrame.getWidth()),
                                                       logoArea.getHeight() / static_cast<float>(logoFrame.getHeight()))
@@ -276,13 +378,70 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
         transform = transform.rotated(static_cast<float>(wobble), logoArea.getCentreX(), logoArea.getCentreY());
         g.drawImageTransformed(logoFrame, transform);
 
-          g.setColour(juce::Colour::fromRGB(232, 232, 232));
-          g.setFont(juce::FontOptions(14.0f));
-          const auto subtitleArea = juce::Rectangle<int>(logoPanelArea.getX() + 10,
-                                         static_cast<int>(std::round(logoArea.getBottom())) + 6,
-                                         logoPanelArea.getWidth() - 20,
-                                         18);
-          g.drawText("Subtractive Synth", subtitleArea, juce::Justification::centred);
+                g.setColour(juce::Colour::fromRGB(232, 232, 232));
+                g.setFont(juce::FontOptions(14.0f));
+                const auto subtitleArea = juce::Rectangle<int>(logoPanelArea.getX() + 10,
+                                                                                                             static_cast<int>(std::round(logoArea.getBottom() + subtitleGap)),
+                                                                                                             logoPanelArea.getWidth() - 20,
+                                                                                                             static_cast<int>(subtitleHeight));
+                g.drawText("Subtractive Synth", subtitleArea, juce::Justification::centred);
+    }
+
+        g.setColour(juce::Colour::fromRGBA(104, 194, 255, 35));
+        g.fillRoundedRectangle(robSectionArea.toFloat(), 10.0f);
+        g.setColour(juce::Colour::fromRGBA(104, 194, 255, 180));
+        g.drawRoundedRectangle(robSectionArea.toFloat(), 10.0f, 1.0f);
+
+        g.setColour(juce::Colour::fromRGBA(255, 198, 110, 35));
+        g.fillRoundedRectangle(isaacSectionArea.toFloat(), 10.0f);
+        g.setColour(juce::Colour::fromRGBA(255, 198, 110, 180));
+        g.drawRoundedRectangle(isaacSectionArea.toFloat(), 10.0f, 1.0f);
+
+        g.setColour(juce::Colour::fromRGBA(128, 208, 255, 30));
+        g.fillRoundedRectangle(reverbSectionArea.toFloat(), 10.0f);
+        g.setColour(juce::Colour::fromRGBA(128, 208, 255, 150));
+        g.drawRoundedRectangle(reverbSectionArea.toFloat(), 10.0f, 1.0f);
+
+        g.setColour(juce::Colour::fromRGB(240, 245, 255));
+        g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+        g.drawText("HARMONIC DRIVE", robSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
+
+        g.setColour(juce::Colour::fromRGB(250, 244, 224));
+        g.drawText("GRANULAR DELAY", isaacSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
+
+        g.setColour(juce::Colour::fromRGB(224, 245, 255));
+        g.drawText("REVERB", reverbSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
+
+        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 18));
+        g.fillRoundedRectangle(topSpareSectionArea.toFloat(), 10.0f);
+        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 65));
+        g.drawRoundedRectangle(topSpareSectionArea.toFloat(), 10.0f, 1.0f);
+        g.setColour(juce::Colour::fromRGBA(232, 232, 232, 116));
+        g.drawText("OPEN SLOT", topSpareSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
+
+    if (performanceControlsArea.getWidth() > 0 && pianoKeyboard.getBounds().getWidth() > 0)
+    {
+        auto performanceStrip = performanceControlsArea.getUnion(pianoKeyboard.getBounds()).toFloat();
+        juce::ColourGradient stripGradient(juce::Colour::fromRGBA(56, 88, 118, 72),
+                                           performanceStrip.getX(),
+                                           performanceStrip.getY(),
+                                           juce::Colour::fromRGBA(35, 38, 42, 96),
+                                           performanceStrip.getRight(),
+                                           performanceStrip.getBottom(),
+                                           false);
+        g.setGradientFill(stripGradient);
+        g.fillRoundedRectangle(performanceStrip, 12.0f);
+
+        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 50));
+        g.drawRoundedRectangle(performanceStrip, 12.0f, 1.0f);
+
+        const auto dividerX = static_cast<float>(performanceControlsArea.getRight() + 3);
+        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 38));
+        g.drawLine(dividerX,
+                   performanceStrip.getY() + 8.0f,
+                   dividerX,
+                   performanceStrip.getBottom() - 8.0f,
+                   1.0f);
     }
 
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 26));
@@ -319,9 +478,10 @@ void SynthProjectAudioProcessorEditor::resized()
 {
     auto bounds = getLocalBounds().reduced(16);
 
-    const auto headerHeight = juce::jlimit(130, 200, getHeight() / 4);
+    const auto headerHeight = juce::jlimit(170, 260, getHeight() / 3);
     const auto controlsHeight = juce::jlimit(170, 260, getHeight() / 3);
     const auto statusHeight = 36;
+    const auto sectionGap = 10;
 
     headerArea = bounds.removeFromTop(headerHeight);
     logoPanelArea = { headerArea.getX() + 4, headerArea.getY() + 4, 160, headerArea.getHeight() - 8 };
@@ -329,19 +489,71 @@ void SynthProjectAudioProcessorEditor::resized()
                               headerArea.getY(),
                               juce::jmax(0, headerArea.getRight() - (logoPanelArea.getRight() + 12)),
                               headerArea.getHeight() };
-    bounds.removeFromTop(10);
+
+    auto topArea = headerPlaceholderArea.reduced(4, 4);
+    const auto topGap = 8;
+    const auto sectionWidth = juce::jmax(108, (topArea.getWidth() - (topGap * 3)) / 4);
+    robSectionArea = topArea.removeFromLeft(sectionWidth);
+    topArea.removeFromLeft(topGap);
+    isaacSectionArea = topArea.removeFromLeft(sectionWidth);
+    topArea.removeFromLeft(topGap);
+    reverbSectionArea = topArea.removeFromLeft(sectionWidth);
+    topArea.removeFromLeft(topGap);
+    topSpareSectionArea = topArea;
+
+    {
+        auto robInner = robSectionArea.reduced(10, 8);
+        robInner.removeFromTop(24);
+        auto labelArea = robInner.removeFromBottom(22);
+        const auto knobSize = juce::jmin(88, juce::jmin(robInner.getWidth(), robInner.getHeight()));
+        robWarmthKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(robInner.getCentre()));
+        robWarmthLabel.setBounds(labelArea);
+    }
+
+    {
+        auto isaacInner = isaacSectionArea.reduced(10, 8);
+        isaacInner.removeFromTop(24);
+        auto bottomArea = isaacInner.removeFromBottom(46);
+        auto labelArea = bottomArea.removeFromTop(22);
+        granularSyncLabel.setBounds(bottomArea.removeFromLeft(56));
+        granularSyncBox.setBounds(bottomArea.reduced(2, 1));
+
+        const auto knobSize = juce::jmin(82, juce::jmin(isaacInner.getWidth(), isaacInner.getHeight()));
+        isaacTextureKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(isaacInner.getCentre()));
+        isaacTextureLabel.setBounds(labelArea);
+    }
+
+    {
+        auto reverbInner = reverbSectionArea.reduced(10, 8);
+        reverbInner.removeFromTop(24);
+        auto bottomArea = reverbInner.removeFromBottom(46);
+        auto labelArea = bottomArea.removeFromTop(22);
+        reverbTypeLabel.setBounds(bottomArea.removeFromLeft(56));
+        reverbTypeBox.setBounds(bottomArea.reduced(2, 1));
+
+        const auto knobSize = juce::jmin(82, juce::jmin(reverbInner.getWidth(), reverbInner.getHeight()));
+        reverbKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(reverbInner.getCentre()));
+        reverbLabel.setBounds(labelArea);
+    }
+
+    bounds.removeFromTop(sectionGap);
 
     controlsArea = bounds.removeFromTop(controlsHeight);
-    bounds.removeFromTop(10);
-    bounds.removeFromBottom(10);
+    bounds.removeFromTop(sectionGap);
     midiStatusArea = bounds.removeFromBottom(statusHeight);
-    bounds.removeFromBottom(10);
-    pianoKeyboard.setBounds(bounds);
+    bounds.removeFromBottom(sectionGap);
+
+    auto keyboardRow = bounds.reduced(4, 0);
+    const auto perfWidth = juce::jlimit(112, 190, keyboardRow.getWidth() / 8);
+    performanceControlsArea = keyboardRow.removeFromLeft(perfWidth);
+
+    performanceControls.setBounds(performanceControlsArea);
+    pianoKeyboard.setBounds(keyboardRow);
     midiStatusLabel.setBounds(midiStatusArea.withTrimmedLeft(180).withTrimmedRight(180));
 
     const auto groupGap = 24;
     auto groupsSpan = controlsArea.reduced(8, 8);
-    groupsSpan.removeFromTop(30);
+    groupsSpan.removeFromTop(20);
 
     const auto usableWidth = groupsSpan.getWidth() - (groupGap * 3);
     const auto usableWidthD = static_cast<double>(usableWidth);
@@ -440,6 +652,11 @@ void SynthProjectAudioProcessorEditor::timerCallback()
     }
 
     refreshAnyKeyDownState();
+
+    performanceControls.setControllerState(audioProcessor.copyPitchBendNormalized(),
+                                           audioProcessor.copyModWheelNormalized(),
+                                           audioProcessor.copyPitchBendActivity(),
+                                           audioProcessor.copyModWheelActivity());
 
     if (anyKeyDown)
     {

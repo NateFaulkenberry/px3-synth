@@ -5,6 +5,7 @@
 #include <array>
 #include <vector>
 
+#include "PerformanceControls.h"
 #include "PianoKeyboard.h"
 #include "PluginProcessor.h"
 
@@ -47,6 +48,10 @@ private:
     };
 
     void configureKnob(KnobBinding& binding, const juce::String& labelText, juce::AudioParameterFloat& parameter);
+    void configureEffectKnob(juce::Slider& slider,
+                             KnobLabel& label,
+                             const juce::String& labelText,
+                             juce::AudioParameterFloat& parameter);
     void refreshAnyKeyDownState();
     void layoutKnobGroup(const juce::Rectangle<int>& groupArea,
                          int startIndex,
@@ -57,6 +62,7 @@ private:
 
     SynthProjectAudioProcessor& audioProcessor;
     KnobLookAndFeel knobLookAndFeel;
+    PerformanceControls performanceControls;
     PianoKeyboard pianoKeyboard;
     SynthProjectAudioProcessor::MidiStatus midiStatus;
 
@@ -69,7 +75,12 @@ private:
     juce::Rectangle<int> controlsArea;
     juce::Rectangle<int> logoPanelArea;
     juce::Rectangle<int> headerPlaceholderArea;
+    juce::Rectangle<int> robSectionArea;
+    juce::Rectangle<int> isaacSectionArea;
+    juce::Rectangle<int> reverbSectionArea;
+    juce::Rectangle<int> topSpareSectionArea;
     juce::Rectangle<int> midiStatusArea;
+    juce::Rectangle<int> performanceControlsArea;
     std::array<juce::Rectangle<int>, 4> knobGroupAreas {};
 
     juce::Slider oscSineKnob;
@@ -94,6 +105,17 @@ private:
     KnobLabel releaseLabel;
     KnobLabel gainLabel;
     KnobLabel midiStatusLabel;
+
+    juce::Slider robWarmthKnob;
+    KnobLabel robWarmthLabel;
+    juce::Slider isaacTextureKnob;
+    KnobLabel isaacTextureLabel;
+    juce::ComboBox granularSyncBox;
+    KnobLabel granularSyncLabel;
+    juce::Slider reverbKnob;
+    KnobLabel reverbLabel;
+    juce::ComboBox reverbTypeBox;
+    KnobLabel reverbTypeLabel;
 
     std::array<KnobBinding, 10> knobBindings {};
 };

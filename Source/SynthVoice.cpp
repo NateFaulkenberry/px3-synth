@@ -11,7 +11,8 @@ bool SynthVoice::canPlaySound(juce::SynthesiserSound* sound)
 
 void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::SynthesiserSound*, int)
 {
-    currentFrequencyHz = juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber);
+    baseFrequencyHz = juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber);
+    currentFrequencyHz = baseFrequencyHz;
     level = velocity;
     currentAngle = 0.0;
     updateAngleDelta();
@@ -35,12 +36,19 @@ void SynthVoice::stopNote(float, bool allowTailOff)
     }
 }
 
-void SynthVoice::pitchWheelMoved(int)
+void SynthVoice::pitchWheelMoved(int newPitchWheelValue)
 {
+    // MIDI pitch bend uses 14-bit values with 8192 as center.
+    const auto normalized = (static_cast<float>(newPitchWheelValue) - 8192.0f) / 8192.0f;
+    targetPitchBendNorm = juce::jlimit(-1.0f, 1.0f, normalized);
 }
 
-void SynthVoice::controllerMoved(int, int)
+void SynthVoice::controllerMoved(int controllerNumber, int newControllerValue)
 {
+    if (controllerNumber == 1)
+    {
+        targetModWheelNorm = juce::jlimit(0.0f, 1.0f, static_cast<float>(newControllerValue) / 127.0f);
+    }
 }
 
 void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
@@ -57,9 +65,23 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         return;
     }
 
+    const auto sampleRate = juce::jmax(1.0, getSampleRate());
+    const auto vibratoPhaseInc = juce::MathConstants<double>::twoPi * static_cast<double>(vibratoRateHz) / sampleRate;
+
     for (int sample = 0; sample < numSamples; ++sample)
     {
-        // Basic subtractive source: sine + saw + square from one phase accumulator.
+        // Light smoothing avoids pitch stepping while keeping wheel response immediate.
+        currentPitchBendNorm += (targetPitchBendNorm - currentPitchBendNorm) * 0.06f;
+        currentModWheelNorm += (targetModWheelNorm - currentModWheelNorm) * 0.045f;
+
+        const auto bendSemitones = static_cast<double>(currentPitchBendNorm * pitchBendRangeSemitones);
+        const auto lfo = std::sin(static_cast<double>(sharedVibratoPhaseRadians) + vibratoPhaseInc * static_cast<double>(sample));
+        const auto vibratoSemitones = static_cast<double>(currentModWheelNorm * vibratoMaxDepthSemitones) * lfo;
+        const auto pitchRatio = std::pow(2.0, (bendSemitones + vibratoSemitones) / 12.0);
+
+        currentFrequencyHz = baseFrequencyHz * pitchRatio;
+        angleDelta = juce::MathConstants<double>::twoPi * currentFrequencyHz / sampleRate;
+
         const auto sine = static_cast<float>(std::sin(currentAngle));
         const auto saw = static_cast<float>((currentAngle / juce::MathConstants<double>::pi) - 1.0);
         const auto square = currentAngle < juce::MathConstants<double>::pi ? 1.0f : -1.0f;
@@ -112,6 +134,21 @@ void SynthVoice::setSubtractiveSettings(const SubtractiveSettings& settings)
 {
     subtractiveSettings = settings;
     updateFilter();
+}
+
+void SynthVoice::setPerformanceModulation(float pitchBendNormalized,
+                                          float modWheelNormalized,
+                                          float newPitchBendRangeSemitones,
+                                          float vibratoPhaseRadians,
+                                          float newVibratoRateHz,
+                                          float newVibratoMaxDepthSemitones)
+{
+    targetPitchBendNorm = juce::jlimit(-1.0f, 1.0f, pitchBendNormalized);
+    targetModWheelNorm = juce::jlimit(0.0f, 1.0f, modWheelNormalized);
+    pitchBendRangeSemitones = juce::jlimit(1.0f, 24.0f, newPitchBendRangeSemitones);
+    sharedVibratoPhaseRadians = vibratoPhaseRadians;
+    vibratoRateHz = juce::jlimit(0.1f, 20.0f, newVibratoRateHz);
+    vibratoMaxDepthSemitones = juce::jlimit(0.0f, 12.0f, newVibratoMaxDepthSemitones);
 }
 
 void SynthVoice::updateAngleDelta()
