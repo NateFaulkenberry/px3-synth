@@ -1,0 +1,11 @@
+{
+    "cmake.generator": "Ninja",
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.configureOnOpen": false,
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+    "chat.tools.terminal.autoApprove": {
+        "cmake": true,
+        "./scripts/run-standalone.sh": true
+    }
+}

@@ -1,0 +1,44 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMake: Configure (Ninja)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "-B",
+                "build",
+                "-G",
+                "Ninja"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: Build",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "build"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "dependsOn": "CMake: Configure (Ninja)"
+        },
+        {
+            "label": "Run Standalone",
+            "type": "shell",
+            "command": "./scripts/run-standalone.sh",
+            "args": [
+            ],
+            "dependsOn": "CMake: Build",
+            "problemMatcher": []
+        }
+    ]
+}
