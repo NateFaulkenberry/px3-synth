@@ -2,6 +2,10 @@
 
 #include <JuceHeader.h>
 
+#include "ImageWavetable.h"
+
+#include <memory>
+
 struct EnvelopeSettings
 {
     float attackSeconds { 0.005f };
@@ -18,6 +22,7 @@ struct SubtractiveSettings
     float filterCutoffHz { 10000.0f };
     float filterResonanceQ { 0.8f };
     float masterGain { 0.6f };
+    float imageMix { 0.35f };
 };
 
 class SynthVoice final : public juce::SynthesiserVoice
@@ -40,6 +45,7 @@ public:
                                   float vibratoPhaseRadians,
                                   float vibratoRateHz,
                                   float vibratoMaxDepthSemitones);
+    void setImageWavetable(std::shared_ptr<const ImageWavetable> table, float wavetablePosition);
 
 private:
     void updateAngleDelta();
@@ -67,4 +73,8 @@ private:
     float sharedVibratoPhaseRadians { 0.0f };
     float vibratoRateHz { 5.0f };
     float vibratoMaxDepthSemitones { 1.0f };
+
+    std::shared_ptr<const ImageWavetable> imageWavetable;
+    float targetImagePosition { 0.0f };
+    float currentImagePosition { 0.0f };
 };

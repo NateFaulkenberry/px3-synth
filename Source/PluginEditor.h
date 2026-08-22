@@ -5,6 +5,7 @@
 #include <array>
 #include <vector>
 
+#include "ImageEnginePanel.h"
 #include "PerformanceControls.h"
 #include "PianoKeyboard.h"
 #include "PluginProcessor.h"
@@ -62,6 +63,7 @@ private:
 
     SynthProjectAudioProcessor& audioProcessor;
     KnobLookAndFeel knobLookAndFeel;
+    ImageEnginePanel imageEnginePanel;
     PerformanceControls performanceControls;
     PianoKeyboard pianoKeyboard;
     SynthProjectAudioProcessor::MidiStatus midiStatus;
@@ -108,6 +110,8 @@ private:
 
     juce::Slider robWarmthKnob;
     KnobLabel robWarmthLabel;
+    juce::ComboBox robTypeBox;
+    KnobLabel robTypeLabel;
     juce::Slider isaacTextureKnob;
     KnobLabel isaacTextureLabel;
     juce::ComboBox granularSyncBox;

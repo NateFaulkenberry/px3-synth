@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include <functional>
+#include <vector>
 
 class PerformanceControls final : public juce::Component,
                                   private juce::Timer
@@ -40,8 +41,36 @@ private:
         juce::Rectangle<float> track;
     };
 
+    struct CatSpark
+    {
+        juce::Point<float> position;
+        juce::Point<float> velocity;
+        float lifetimeSeconds { 0.0f };
+        float maxLifetimeSeconds { 0.0f };
+        float scale { 1.0f };
+        float rotation { 0.0f };
+        float spin { 0.0f };
+    };
+
+    struct UnicornSpark
+    {
+        juce::Point<float> position;
+        juce::Point<float> velocity;
+        float lifetimeSeconds { 0.0f };
+        float maxLifetimeSeconds { 0.0f };
+        float scale { 1.0f };
+        float facing { 1.0f };
+        float rotation { 0.0f };
+        float spin { 0.0f };
+    };
+
     void timerCallback() override;
     void updateFromMousePosition(juce::Point<float> position);
+    void spawnCatsFromModWheel(float movementAmount);
+    void spawnUnicornsFromPitchWheel(float movementAmount, float direction);
+    static juce::Path createCatPath(float scale);
+    static juce::Path createUnicornPath(float scale, float facing);
+    static juce::Path createUnicornHornPath(float scale, float facing);
 
     WheelVisual getPitchVisual() const;
     WheelVisual getModVisual() const;
@@ -58,6 +87,11 @@ private:
     float visualMod { 0.0f };
     float visualPitchGlow { 0.0f };
     float visualModGlow { 0.0f };
+    float previousTargetPitch { 0.0f };
+    float previousTargetMod { 0.0f };
 
     ActiveControl activeControl { ActiveControl::none };
+    std::vector<CatSpark> catSparks;
+    std::vector<UnicornSpark> unicornSparks;
+    juce::Random rng;
 };

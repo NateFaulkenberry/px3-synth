@@ -214,7 +214,8 @@ void SynthProjectAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
 
 SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectAudioProcessor& p)
     : AudioProcessorEditor(&p),
-      audioProcessor(p)
+    audioProcessor(p),
+    imageEnginePanel(p)
 {
     backgroundImage = juce::ImageFileFormat::loadFrom(BinaryData::pp_png, BinaryData::pp_pngSize);
     logoFrame = juce::ImageFileFormat::loadFrom(BinaryData::px3_gif, BinaryData::px3_gifSize);
@@ -222,6 +223,7 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     setResizable(true, true);
     setResizeLimits(980, 600, 1900, 980);
 
+    addAndMakeVisible(imageEnginePanel);
     addAndMakeVisible(performanceControls);
     addAndMakeVisible(pianoKeyboard);
 
@@ -265,6 +267,29 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     configureEffectKnob(robWarmthKnob, robWarmthLabel, "WARMTH", audioProcessor.getRobAmountParam());
     configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "TEXTURE", audioProcessor.getIsaacAmountParam());
     configureEffectKnob(reverbKnob, reverbLabel, "INTENSITY", audioProcessor.getReverbAmountParam());
+
+    auto& robModeParam = audioProcessor.getRobModeParam();
+    const auto robChoiceCount = robModeParam.choices.size();
+    for (int i = 0; i < robChoiceCount; ++i)
+    {
+        robTypeBox.addItem(robModeParam.choices[i], i + 1);
+    }
+    robTypeBox.setSelectedItemIndex(robModeParam.getIndex(), juce::dontSendNotification);
+    robTypeBox.onChange = [this, &robModeParam]()
+    {
+        const auto idx = juce::jmax(0, robTypeBox.getSelectedItemIndex());
+        robModeParam.setValueNotifyingHost(robModeParam.convertTo0to1(static_cast<float>(idx)));
+    };
+    robTypeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    robTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    robTypeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    robTypeLabel.setText("TYPE", juce::dontSendNotification);
+    robTypeLabel.setJustificationType(juce::Justification::centred);
+    robTypeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    robTypeLabel.setFont(juce::FontOptions(11.5f));
+    robTypeLabel.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(robTypeBox);
+    addAndMakeVisible(robTypeLabel);
 
     auto& granularSyncParam = audioProcessor.getGranularSyncDivisionParam();
     const auto choiceCount = granularSyncParam.choices.size();
@@ -416,8 +441,6 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
         g.fillRoundedRectangle(topSpareSectionArea.toFloat(), 10.0f);
         g.setColour(juce::Colour::fromRGBA(255, 255, 255, 65));
         g.drawRoundedRectangle(topSpareSectionArea.toFloat(), 10.0f, 1.0f);
-        g.setColour(juce::Colour::fromRGBA(232, 232, 232, 116));
-        g.drawText("OPEN SLOT", topSpareSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
 
     if (performanceControlsArea.getWidth() > 0 && pianoKeyboard.getBounds().getWidth() > 0)
     {
@@ -504,8 +527,12 @@ void SynthProjectAudioProcessorEditor::resized()
     {
         auto robInner = robSectionArea.reduced(10, 8);
         robInner.removeFromTop(24);
-        auto labelArea = robInner.removeFromBottom(22);
-        const auto knobSize = juce::jmin(88, juce::jmin(robInner.getWidth(), robInner.getHeight()));
+        auto bottomArea = robInner.removeFromBottom(46);
+        auto labelArea = bottomArea.removeFromTop(22);
+        robTypeLabel.setBounds(bottomArea.removeFromLeft(56));
+        robTypeBox.setBounds(bottomArea.reduced(2, 1));
+
+        const auto knobSize = juce::jmin(82, juce::jmin(robInner.getWidth(), robInner.getHeight()));
         robWarmthKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(robInner.getCentre()));
         robWarmthLabel.setBounds(labelArea);
     }
@@ -535,6 +562,8 @@ void SynthProjectAudioProcessorEditor::resized()
         reverbKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(reverbInner.getCentre()));
         reverbLabel.setBounds(labelArea);
     }
+
+    imageEnginePanel.setBounds(topSpareSectionArea.reduced(2));
 
     bounds.removeFromTop(sectionGap);
 

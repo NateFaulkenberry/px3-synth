@@ -3,6 +3,7 @@
 #include "PluginEditor.h"
 
 #include <cmath>
+#include <memory>
 
 namespace
 {
@@ -16,6 +17,54 @@ float divisionBeatsForIndex(int index)
     const auto clamped = juce::jlimit(0, static_cast<int>(kBeatDivisions.size()) - 1, index);
     return kBeatDivisions[static_cast<std::size_t>(clamped)];
 }
+
+class ImageLoadJob final : public juce::ThreadPoolJob
+{
+public:
+    ImageLoadJob(SynthProjectAudioProcessor& ownerIn, juce::File fileIn, int serialIn)
+        : juce::ThreadPoolJob("PX3 Image Load"), owner(ownerIn), file(std::move(fileIn)), serial(serialIn)
+    {
+    }
+
+    JobStatus runJob() override
+    {
+        if (!file.existsAsFile())
+        {
+            owner.notifyImageLoadError();
+            return jobHasFinished;
+        }
+
+        auto input = std::unique_ptr<juce::InputStream>(file.createInputStream());
+        if (input == nullptr)
+        {
+            owner.notifyImageLoadError();
+            return jobHasFinished;
+        }
+
+        auto image = juce::ImageFileFormat::loadFrom(*input);
+        if (!image.isValid() || image.getWidth() <= 0 || image.getHeight() <= 0)
+        {
+            owner.notifyImageLoadError();
+            return jobHasFinished;
+        }
+
+        auto wavetable = owner.buildImageWavetableFromImage(image);
+        if (wavetable == nullptr)
+        {
+            owner.notifyImageLoadError();
+            return jobHasFinished;
+        }
+
+        owner.completeImageLoad(serial, std::move(wavetable), image, file.getFullPathName());
+
+        return jobHasFinished;
+    }
+
+private:
+    SynthProjectAudioProcessor& owner;
+    juce::File file;
+    int serial { 0 };
+};
 
 inline float clamp01(float v)
 {
@@ -49,6 +98,10 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     masterGainParam = new juce::AudioParameterFloat("masterGain", "Master Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
 
     robAmountParam = new juce::AudioParameterFloat("robAmount", "Harmonic Drive", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    robModeParam = new juce::AudioParameterChoice("robMode",
+                                                   "Harmonic Drive Mode",
+                                                   juce::StringArray { "Default Drive", "Tape Saturation", "Tube Warmth", "Distortion Pedal" },
+                                                   0);
     isaacAmountParam = new juce::AudioParameterFloat("isaacAmount", "Granular Delay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     granularSyncDivisionParam = new juce::AudioParameterChoice("granularSyncDivision",
                                                                 "Granular Sync",
@@ -59,6 +112,18 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
                                                            "Reverb Algorithm",
                                                            juce::StringArray { "Hall", "Plate", "Room", "Cavern", "Moon" },
                                                            0);
+    imagePositionParam = new juce::AudioParameterFloat("imagePosition", "Image Position", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    imageAnimateParam = new juce::AudioParameterFloat("imageAnimate", "Image Animate", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    imageRateParam = new juce::AudioParameterFloat("imageRate", "Image Rate", juce::NormalisableRange<float>(0.01f, 4.0f, 0.001f, 0.32f), 0.2f);
+    imageAnimModeParam = new juce::AudioParameterChoice("imageAnimMode", "Image Animation Mode", juce::StringArray { "Forward", "Reverse", "Ping Pong" }, 2);
+    imageAnimSyncParam = new juce::AudioParameterChoice("imageAnimSync",
+                                                         "Image Animation Sync",
+                                                         juce::StringArray { "Free", "1 Bar", "1/2", "1/4", "1/8", "1/16" },
+                                                         0);
+    imageTargetParam = new juce::AudioParameterChoice("imageTarget",
+                                                       "Image Target",
+                                                       juce::StringArray { "Harmonic Drive", "Granular Delay", "Reverb" },
+                                                       0);
     pitchBendRangeParam = new juce::AudioParameterInt("pitchBendRange",
                                                        "Pitch Bend Range",
                                                        1,
@@ -76,10 +141,17 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(releaseParam);
     addParameter(masterGainParam);
     addParameter(robAmountParam);
+    addParameter(robModeParam);
     addParameter(isaacAmountParam);
     addParameter(granularSyncDivisionParam);
     addParameter(reverbAmountParam);
     addParameter(reverbAlgorithmParam);
+    addParameter(imagePositionParam);
+    addParameter(imageAnimateParam);
+    addParameter(imageRateParam);
+    addParameter(imageAnimModeParam);
+    addParameter(imageAnimSyncParam);
+    addParameter(imageTargetParam);
     addParameter(pitchBendRangeParam);
 
     const auto initialEnvelope = currentEnvelopeSettings();
@@ -95,6 +167,12 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
 
     synth.addSound(new SynthSound());
     clearAllActiveNotes();
+
+    auto initialTable = createDefaultImageWavetable();
+    if (initialTable != nullptr)
+    {
+        installImageWavetable(std::move(initialTable), juce::Image());
+    }
 }
 
 SynthProjectAudioProcessor::~SynthProjectAudioProcessor() = default;
@@ -198,6 +276,8 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
 
     const auto envelope = currentEnvelopeSettings();
     const auto subtractive = currentSubtractiveSettings();
+    const auto currentImagePosition = updateImageAnimationPosition(buffer.getNumSamples());
+    const auto wavetableForBlock = std::atomic_load(&activeImageWavetable);
 
     for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
     {
@@ -211,17 +291,58 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
                                             vibratoPhaseRadians,
                                             vibratoRateHz,
                                             vibratoMaxDepthSemitones);
+            voice->setImageWavetable(wavetableForBlock, currentImagePosition);
         }
     }
 
     synth.renderNextBlock(buffer, midiMessages, 0, buffer.getNumSamples());
     updateTransportState();
 
-    const auto robAmount = clamp01(robAmountParam->get());
-    const auto isaacAmount = clamp01(isaacAmountParam->get());
+    const auto robAmountBase = clamp01(robAmountParam->get());
+    const auto robModeIndex = robModeParam->getIndex();
+    const auto isaacAmountBase = clamp01(isaacAmountParam->get());
     const auto syncDivisionIndex = granularSyncDivisionParam->getIndex();
-    const auto reverbAmount = clamp01(reverbAmountParam->get());
+    const auto reverbAmountBase = clamp01(reverbAmountParam->get());
     const auto reverbAlgorithmIndex = reverbAlgorithmParam->getIndex();
+    const auto imageTargetIndex = imageTargetParam->getIndex();
+
+    const auto imageControlRaw = computeImageTargetControlSignal(currentImagePosition, buffer.getNumSamples());
+    const auto controlSmoothingSec = 0.06f;
+    const auto controlBlend = 1.0f - std::exp(-static_cast<float>(buffer.getNumSamples())
+                                              / (static_cast<float>(juce::jmax(1.0, currentSampleRateHz)) * controlSmoothingSec));
+    imageTargetControlSmoothed += (imageControlRaw - imageTargetControlSmoothed) * controlBlend;
+
+    const auto imageScale = lerp(0.45f, 1.25f, imageTargetControlSmoothed);
+
+    float driveScaleTarget = 1.0f;
+    float granularScaleTarget = 1.0f;
+    float reverbScaleTarget = 1.0f;
+
+    switch (juce::jlimit(0, 2, imageTargetIndex))
+    {
+        case 0:
+            driveScaleTarget = imageScale;
+            break;
+        case 1:
+            granularScaleTarget = imageScale;
+            break;
+        case 2:
+            reverbScaleTarget = imageScale;
+            break;
+        default:
+            break;
+    }
+
+    const auto routeSmoothingSec = 0.09f;
+    const auto routeBlend = 1.0f - std::exp(-static_cast<float>(buffer.getNumSamples())
+                                            / (static_cast<float>(juce::jmax(1.0, currentSampleRateHz)) * routeSmoothingSec));
+    imageDriveScaleSmoothed += (driveScaleTarget - imageDriveScaleSmoothed) * routeBlend;
+    imageGranularScaleSmoothed += (granularScaleTarget - imageGranularScaleSmoothed) * routeBlend;
+    imageReverbScaleSmoothed += (reverbScaleTarget - imageReverbScaleSmoothed) * routeBlend;
+
+    const auto robAmount = clamp01(robAmountBase * imageDriveScaleSmoothed);
+    const auto isaacAmount = clamp01(isaacAmountBase * imageGranularScaleSmoothed);
+    const auto reverbAmount = clamp01(reverbAmountBase * imageReverbScaleSmoothed);
 
     if (reverbAmount > 0.0001f)
     {
@@ -280,23 +401,58 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     pitchBendActivity.store(pitchBendActivity.load(std::memory_order_relaxed) * activityDecay, std::memory_order_relaxed);
     modWheelActivity.store(modWheelActivity.load(std::memory_order_relaxed) * activityDecay, std::memory_order_relaxed);
 
+    double reverbPreEnergy = 0.0;
+    double reverbPostEnergy = 0.0;
+
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
         auto inL = buffer.getSample(0, sample);
         auto inR = (buffer.getNumChannels() > 1) ? buffer.getSample(1, sample) : inL;
 
-        inL = processRobSample(inL, 0, robAmount);
-        inR = processRobSample(inR, 1, robAmount);
+        inL = processRobSample(inL, 0, robAmount, robModeIndex);
+        inR = processRobSample(inR, 1, robAmount, robModeIndex);
 
         float outL = inL;
         float outR = inR;
         processIsaacGranularSample(inL, inR, isaacAmount, syncDivisionIndex, outL, outR);
+
+        const auto reverbInL = outL;
+        const auto reverbInR = outR;
         processReverbSampleFrame(outL, outR, reverbAmount, reverbAlgorithmIndex, outL, outR);
+
+        reverbPreEnergy += 0.5 * (static_cast<double>(reverbInL) * static_cast<double>(reverbInL)
+                      + static_cast<double>(reverbInR) * static_cast<double>(reverbInR));
+        reverbPostEnergy += 0.5 * (static_cast<double>(outL) * static_cast<double>(outL)
+                       + static_cast<double>(outR) * static_cast<double>(outR));
 
         buffer.setSample(0, sample, outL);
         if (buffer.getNumChannels() > 1)
         {
             buffer.setSample(1, sample, outR);
+        }
+    }
+
+    if (reverbAmount > 0.0001f && buffer.getNumSamples() > 0)
+    {
+        const auto invN = 1.0 / static_cast<double>(buffer.getNumSamples());
+        const auto preRms = static_cast<float>(std::sqrt(juce::jmax(1.0e-12, reverbPreEnergy * invN)));
+        const auto postRms = static_cast<float>(std::sqrt(juce::jmax(1.0e-12, reverbPostEnergy * invN)));
+        const auto rawComp = juce::jlimit(0.72f, 1.45f, preRms / juce::jmax(1.0e-5f, postRms));
+
+        const auto compBlend = smoothstep(reverbAmount);
+        const auto targetComp = 1.0f + (rawComp - 1.0f) * compBlend;
+        reverbOutputCompGain += 0.12f * (targetComp - reverbOutputCompGain);
+    }
+    else
+    {
+        reverbOutputCompGain += 0.08f * (1.0f - reverbOutputCompGain);
+    }
+
+    if (std::abs(reverbOutputCompGain - 1.0f) > 0.001f)
+    {
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        {
+            buffer.applyGain(channel, 0, buffer.getNumSamples(), reverbOutputCompGain);
         }
     }
 }
@@ -485,10 +641,17 @@ juce::AudioParameterFloat& SynthProjectAudioProcessor::getSustainParam() const {
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getReleaseParam() const { return *releaseParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getMasterGainParam() const { return *masterGainParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getRobAmountParam() const { return *robAmountParam; }
+juce::AudioParameterChoice& SynthProjectAudioProcessor::getRobModeParam() const { return *robModeParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getIsaacAmountParam() const { return *isaacAmountParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getGranularSyncDivisionParam() const { return *granularSyncDivisionParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getReverbAmountParam() const { return *reverbAmountParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getReverbAlgorithmParam() const { return *reverbAlgorithmParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getImagePositionParam() const { return *imagePositionParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getImageAnimateParam() const { return *imageAnimateParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getImageRateParam() const { return *imageRateParam; }
+juce::AudioParameterChoice& SynthProjectAudioProcessor::getImageAnimModeParam() const { return *imageAnimModeParam; }
+juce::AudioParameterChoice& SynthProjectAudioProcessor::getImageAnimSyncParam() const { return *imageAnimSyncParam; }
+juce::AudioParameterChoice& SynthProjectAudioProcessor::getImageTargetParam() const { return *imageTargetParam; }
 juce::AudioParameterInt& SynthProjectAudioProcessor::getPitchBendRangeParam() const { return *pitchBendRangeParam; }
 
 float SynthProjectAudioProcessor::copyPitchBendNormalized() const
@@ -533,12 +696,127 @@ void SynthProjectAudioProcessor::setModWheelNormalizedFromUI(float normalized)
     modWheelNormalized.store(value, std::memory_order_relaxed);
 }
 
+void SynthProjectAudioProcessor::requestImageLoadAsync(const juce::File& imageFile)
+{
+    if (!imageFile.existsAsFile())
+    {
+        imageLoadErrorFlag.store(true, std::memory_order_relaxed);
+        return;
+    }
+
+    imageLoadErrorFlag.store(false, std::memory_order_relaxed);
+    imageLoadedFromDisk.store(false, std::memory_order_relaxed);
+
+    const auto serial = imageLoadRequestSerial.fetch_add(1, std::memory_order_relaxed) + 1;
+    imageLoadThreadPool.removeAllJobs(true, 500);
+    imageLoadThreadPool.addJob(new ImageLoadJob(*this, imageFile, serial), true);
+}
+
+std::shared_ptr<ImageWavetable> SynthProjectAudioProcessor::buildImageWavetableFromImage(const juce::Image& sourceImage) const
+{
+    return createImageWavetableFromImage(sourceImage);
+}
+
+int SynthProjectAudioProcessor::getImageLoadRequestSerial() const
+{
+    return imageLoadRequestSerial.load(std::memory_order_relaxed);
+}
+
+void SynthProjectAudioProcessor::notifyImageLoadError()
+{
+    imageLoadErrorFlag.store(true, std::memory_order_relaxed);
+}
+
+void SynthProjectAudioProcessor::completeImageLoad(int serial,
+                                                   std::shared_ptr<ImageWavetable> wavetable,
+                                                   const juce::Image& preview,
+                                                   const juce::String& sourcePath)
+{
+    if (serial != imageLoadRequestSerial.load(std::memory_order_relaxed) || wavetable == nullptr)
+    {
+        return;
+    }
+
+    installImageWavetable(std::move(wavetable), preview);
+    imageLoadedFromDisk.store(true, std::memory_order_relaxed);
+
+    const std::scoped_lock<std::mutex> lock(imageStateMutex);
+    lastLoadedImagePath = sourcePath;
+}
+
+bool SynthProjectAudioProcessor::copyImagePreview(juce::Image& imageOut) const
+{
+    const std::scoped_lock<std::mutex> lock(imagePreviewMutex);
+    if (!imagePreview.isValid())
+    {
+        imageOut = {};
+        return false;
+    }
+
+    imageOut = imagePreview.createCopy();
+    return imageOut.isValid();
+}
+
+bool SynthProjectAudioProcessor::hasLoadedImage() const
+{
+    return imageLoadedFromDisk.load(std::memory_order_relaxed);
+}
+
+bool SynthProjectAudioProcessor::consumeImageLoadErrorFlag()
+{
+    return imageLoadErrorFlag.exchange(false, std::memory_order_relaxed);
+}
+
+float SynthProjectAudioProcessor::copyCurrentImagePosition() const
+{
+    return currentImagePositionNorm.load(std::memory_order_relaxed);
+}
+
+std::vector<float> SynthProjectAudioProcessor::copyCurrentImageWaveformPreview(int sampleCount) const
+{
+    const auto clampedCount = juce::jlimit(64, 2048, sampleCount);
+    std::vector<float> waveform(static_cast<std::size_t>(clampedCount), 0.0f);
+
+    auto table = std::atomic_load(&activeImageWavetable);
+    if (table == nullptr || table->frames <= 0 || table->samplesPerFrame <= 1)
+    {
+        return waveform;
+    }
+
+    const auto pos = juce::jlimit(0.0f, 1.0f, currentImagePositionNorm.load(std::memory_order_relaxed));
+    const auto framePos = pos * static_cast<float>(table->frames - 1);
+    const auto f0 = static_cast<int>(framePos);
+    const auto fracF = framePos - static_cast<float>(f0);
+
+    for (int i = 0; i < clampedCount; ++i)
+    {
+        const auto phase = static_cast<float>(i) / static_cast<float>(clampedCount);
+        const auto samplePos = phase * static_cast<float>(table->samplesPerFrame);
+        const auto s0 = static_cast<int>(samplePos);
+        const auto fracX = samplePos - static_cast<float>(s0);
+
+        const auto readFrame = [table, s0, fracX](int frame)
+        {
+            const auto a = table->getSample(0, frame, s0);
+            const auto b = table->getSample(0, frame, s0 + 1);
+            return a + (b - a) * fracX;
+        };
+
+        const auto wa = readFrame(f0);
+        const auto wb = readFrame((f0 + 1) % table->frames);
+        waveform[static_cast<std::size_t>(i)] = wa + (wb - wa) * fracF;
+    }
+
+    return waveform;
+}
+
 SubtractiveSettings SynthProjectAudioProcessor::currentSubtractiveSettings() const
 {
     SubtractiveSettings settings;
     settings.sineMix = oscSineParam->get();
     settings.sawMix = oscSawParam->get();
     settings.squareMix = oscSquareParam->get();
+    settings.imageMix = 0.35f;
     settings.filterCutoffHz = filterCutoffParam->get();
     settings.filterResonanceQ = filterResonanceParam->get();
     settings.masterGain = masterGainParam->get();
@@ -582,6 +860,7 @@ void SynthProjectAudioProcessor::prepareReverbEngine(double sampleRate)
     juce::ignoreUnused(sampleRate);
 
     reverb.reset();
+    reverbOutputCompGain = 1.0f;
 
     moonBufferSize = juce::jmax(1, static_cast<int>(std::ceil(currentSampleRateHz * kMaxMoonDelaySeconds)));
     moonWritePos = 0;
@@ -590,6 +869,257 @@ void SynthProjectAudioProcessor::prepareReverbEngine(double sampleRate)
     for (auto& channelBuffer : moonDelayBuffer)
     {
         channelBuffer.assign(static_cast<std::size_t>(moonBufferSize), 0.0f);
+    }
+}
+
+float SynthProjectAudioProcessor::imageSyncBeatsForIndex(int index) const
+{
+    static constexpr std::array<float, 6> beatDivisions { 0.0f, 4.0f, 2.0f, 1.0f, 0.5f, 0.25f };
+    const auto clamped = juce::jlimit(0, static_cast<int>(beatDivisions.size()) - 1, index);
+    return beatDivisions[static_cast<std::size_t>(clamped)];
+}
+
+float SynthProjectAudioProcessor::updateImageAnimationPosition(int samplesThisBlock)
+{
+    const auto basePos = juce::jlimit(0.0f, 1.0f, imagePositionParam->get());
+    const auto animAmount = juce::jlimit(0.0f, 1.0f, imageAnimateParam->get());
+
+    if (animAmount <= 0.0001f)
+    {
+        currentImagePositionNorm.store(basePos, std::memory_order_relaxed);
+        return basePos;
+    }
+
+    const auto sec = static_cast<float>(samplesThisBlock) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz));
+    auto rateHz = juce::jlimit(0.01f, 4.0f, imageRateParam->get());
+    const auto syncIndex = imageAnimSyncParam->getIndex();
+    if (syncIndex > 0)
+    {
+        const auto beats = imageSyncBeatsForIndex(syncIndex);
+        if (beats > 0.0f)
+        {
+            const auto cycleSec = static_cast<float>((60.0 / juce::jmax(20.0, currentBpm)) * beats);
+            rateHz = 1.0f / juce::jmax(0.05f, cycleSec);
+        }
+    }
+
+    const auto mode = imageAnimModeParam->getIndex();
+    const auto delta = rateHz * sec;
+
+    if (mode == 0)
+    {
+        imageAnimPhase += delta;
+        while (imageAnimPhase > 1.0f)
+        {
+            imageAnimPhase -= 1.0f;
+        }
+    }
+    else if (mode == 1)
+    {
+        imageAnimPhase -= delta;
+        while (imageAnimPhase < 0.0f)
+        {
+            imageAnimPhase += 1.0f;
+        }
+    }
+    else
+    {
+        imageAnimPhase += delta * static_cast<float>(imageAnimDirection);
+        if (imageAnimPhase >= 1.0f)
+        {
+            imageAnimPhase = 1.0f;
+            imageAnimDirection = -1;
+        }
+        else if (imageAnimPhase <= 0.0f)
+        {
+            imageAnimPhase = 0.0f;
+            imageAnimDirection = 1;
+        }
+    }
+
+    const auto sweep = animAmount * 0.5f;
+    const auto animated = juce::jlimit(0.0f, 1.0f, basePos + (imageAnimPhase - 0.5f) * (2.0f * sweep));
+    currentImagePositionNorm.store(animated, std::memory_order_relaxed);
+    return animated;
+}
+
+float SynthProjectAudioProcessor::computeImageTargetControlSignal(float imagePositionNorm, int samplesThisBlock)
+{
+    auto table = std::atomic_load(&activeImageWavetable);
+    if (table == nullptr || table->frames <= 0 || table->samplesPerFrame <= 1)
+    {
+        return 0.5f;
+    }
+
+    const auto clampedPos = juce::jlimit(0.0f, 1.0f, imagePositionNorm);
+    const auto framePos = clampedPos * static_cast<float>(table->frames - 1);
+    const auto f0 = static_cast<int>(framePos);
+    const auto fracF = framePos - static_cast<float>(f0);
+    const auto f1 = (f0 + 1) % table->frames;
+
+    const auto sec = static_cast<float>(samplesThisBlock) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz));
+    const auto scanRateHz = lerp(0.35f, 6.0f, juce::jlimit(0.0f, 1.0f, imageRateParam->get() * 0.25f));
+    imageTargetScanPhase += sec * scanRateHz;
+    while (imageTargetScanPhase >= 1.0f)
+    {
+        imageTargetScanPhase -= 1.0f;
+    }
+
+    const auto samplePos = imageTargetScanPhase * static_cast<float>(table->samplesPerFrame);
+    const auto s0 = static_cast<int>(samplePos);
+    const auto fracX = samplePos - static_cast<float>(s0);
+
+    const auto readFrame = [table, s0, fracX](int frame)
+    {
+        const auto a = table->getSample(0, frame, s0);
+        const auto b = table->getSample(0, frame, s0 + 1);
+        return a + (b - a) * fracX;
+    };
+
+    const auto wa = readFrame(f0);
+    const auto wb = readFrame(f1);
+    const auto sample = wa + (wb - wa) * fracF;
+
+    return clamp01(0.5f + 0.5f * sample);
+}
+
+std::shared_ptr<ImageWavetable> SynthProjectAudioProcessor::createDefaultImageWavetable() const
+{
+    auto table = std::make_shared<ImageWavetable>();
+    table->frames = 128;
+    table->samplesPerFrame = 2048;
+    table->mipLevels = 6;
+    table->data.resize(static_cast<std::size_t>(table->frames * table->samplesPerFrame * table->mipLevels), 0.0f);
+
+    for (int frame = 0; frame < table->frames; ++frame)
+    {
+        const auto morph = static_cast<float>(frame) / static_cast<float>(table->frames - 1);
+        for (int i = 0; i < table->samplesPerFrame; ++i)
+        {
+            const auto phase = static_cast<float>(i) / static_cast<float>(table->samplesPerFrame);
+            const auto sine = std::sin(phase * juce::MathConstants<float>::twoPi);
+            const auto saw = phase * 2.0f - 1.0f;
+            const auto val = (1.0f - morph) * sine + morph * saw;
+            const auto idx = static_cast<std::size_t>(frame * table->samplesPerFrame + i);
+            table->data[idx] = val * 0.82f;
+        }
+    }
+
+    for (int mip = 1; mip < table->mipLevels; ++mip)
+    {
+        for (int frame = 0; frame < table->frames; ++frame)
+        {
+            const auto prevBase = static_cast<std::size_t>(((mip - 1) * table->frames + frame) * table->samplesPerFrame);
+            const auto curBase = static_cast<std::size_t>((mip * table->frames + frame) * table->samplesPerFrame);
+
+            for (int i = 0; i < table->samplesPerFrame; ++i)
+            {
+                const auto a = table->data[prevBase + static_cast<std::size_t>((i - 1 + table->samplesPerFrame) % table->samplesPerFrame)];
+                const auto b = table->data[prevBase + static_cast<std::size_t>(i)];
+                const auto c = table->data[prevBase + static_cast<std::size_t>((i + 1) % table->samplesPerFrame)];
+                table->data[curBase + static_cast<std::size_t>(i)] = (a + 2.0f * b + c) * 0.25f;
+            }
+        }
+    }
+
+    return table;
+}
+
+std::shared_ptr<ImageWavetable> SynthProjectAudioProcessor::createImageWavetableFromImage(const juce::Image& sourceImage) const
+{
+    if (!sourceImage.isValid() || sourceImage.getWidth() <= 0 || sourceImage.getHeight() <= 0)
+    {
+        return nullptr;
+    }
+
+    auto table = std::make_shared<ImageWavetable>();
+    table->frames = 128;
+    table->samplesPerFrame = 2048;
+    table->mipLevels = 6;
+    table->data.resize(static_cast<std::size_t>(table->frames * table->samplesPerFrame * table->mipLevels), 0.0f);
+
+    juce::Image analysisImage(juce::Image::ARGB, table->samplesPerFrame, table->frames, true);
+    {
+        juce::Graphics g(analysisImage);
+        g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
+        g.drawImage(sourceImage,
+                    juce::Rectangle<float>(0.0f,
+                                           0.0f,
+                                           static_cast<float>(table->samplesPerFrame),
+                                           static_cast<float>(table->frames)));
+    }
+
+    constexpr float normalizationBlend = 0.68f;
+    for (int frame = 0; frame < table->frames; ++frame)
+    {
+        auto base = static_cast<std::size_t>(frame * table->samplesPerFrame);
+        float mean = 0.0f;
+
+        for (int i = 0; i < table->samplesPerFrame; ++i)
+        {
+            const auto c = analysisImage.getPixelAt(i, frame);
+            const auto lum = c.getPerceivedBrightness();
+            const auto amp = lum * 2.0f - 1.0f;
+            table->data[base + static_cast<std::size_t>(i)] = amp;
+            mean += amp;
+        }
+
+        mean /= static_cast<float>(table->samplesPerFrame);
+
+        float peak = 0.0001f;
+        for (int i = 0; i < table->samplesPerFrame; ++i)
+        {
+            auto v = table->data[base + static_cast<std::size_t>(i)] - mean;
+            const auto left = table->data[base + static_cast<std::size_t>((i - 1 + table->samplesPerFrame) % table->samplesPerFrame)] - mean;
+            const auto right = table->data[base + static_cast<std::size_t>((i + 1) % table->samplesPerFrame)] - mean;
+            v = v * 0.70f + (left + right) * 0.15f;
+            table->data[base + static_cast<std::size_t>(i)] = v;
+            peak = juce::jmax(peak, std::abs(v));
+        }
+
+        const auto hardNorm = 0.85f / peak;
+        const auto gain = 1.0f + (hardNorm - 1.0f) * normalizationBlend;
+
+        for (int i = 0; i < table->samplesPerFrame; ++i)
+        {
+            table->data[base + static_cast<std::size_t>(i)]
+                = juce::jlimit(-0.95f, 0.95f, table->data[base + static_cast<std::size_t>(i)] * gain);
+        }
+    }
+
+    for (int mip = 1; mip < table->mipLevels; ++mip)
+    {
+        for (int frame = 0; frame < table->frames; ++frame)
+        {
+            const auto prevBase = static_cast<std::size_t>(((mip - 1) * table->frames + frame) * table->samplesPerFrame);
+            const auto curBase = static_cast<std::size_t>((mip * table->frames + frame) * table->samplesPerFrame);
+
+            for (int i = 0; i < table->samplesPerFrame; ++i)
+            {
+                const auto a = table->data[prevBase + static_cast<std::size_t>((i - 1 + table->samplesPerFrame) % table->samplesPerFrame)];
+                const auto b = table->data[prevBase + static_cast<std::size_t>(i)];
+                const auto c = table->data[prevBase + static_cast<std::size_t>((i + 1) % table->samplesPerFrame)];
+                table->data[curBase + static_cast<std::size_t>(i)] = (a + 2.0f * b + c) * 0.25f;
+            }
+        }
+    }
+
+    return table;
+}
+
+void SynthProjectAudioProcessor::installImageWavetable(std::shared_ptr<ImageWavetable> newTable, const juce::Image& sourcePreview)
+{
+    if (newTable == nullptr)
+    {
+        return;
+    }
+
+    std::atomic_store(&activeImageWavetable, std::static_pointer_cast<const ImageWavetable>(newTable));
+
+    if (sourcePreview.isValid())
+    {
+        std::scoped_lock<std::mutex> lock(imagePreviewMutex);
+        imagePreview = sourcePreview.createCopy();
     }
 }
 
@@ -619,35 +1149,91 @@ void SynthProjectAudioProcessor::updateTransportState()
     }
 }
 
-float SynthProjectAudioProcessor::processRobSample(float x, int channel, float robAmount)
+float SynthProjectAudioProcessor::processRobSample(float x, int channel, float robAmount, int modeIndex)
 {
     if (robAmount <= 0.0001f)
     {
         return x;
     }
 
+    const auto mode = juce::jlimit(0, 3, modeIndex);
     const auto warm = smoothstep(robAmount);
+    auto& dcState = robDcState[static_cast<std::size_t>(channel)];
+    auto& toneState = robToneState[static_cast<std::size_t>(channel)];
+    static constexpr std::array<float, 4> kModeTargetTrim { 1.00f, 1.07f, 1.02f, 0.86f };
+    const auto trim = 1.0f + (kModeTargetTrim[static_cast<std::size_t>(mode)] - 1.0f) * warm;
 
-    robDcState[static_cast<std::size_t>(channel)] += 0.0045f * (x - robDcState[static_cast<std::size_t>(channel)]);
-    const auto hp = x - robDcState[static_cast<std::size_t>(channel)] * (0.70f * warm);
+    if (mode == 0)
+    {
+        dcState += 0.0045f * (x - dcState);
+        const auto hp = x - dcState * (0.70f * warm);
 
-    const auto drive = 1.0f + warm * 6.8f;
-    const auto pre = hp * drive;
-    const auto asym = pre + (0.18f * warm) * pre * pre;
+        const auto drive = 1.0f + warm * 6.8f;
+        const auto pre = hp * drive;
+        const auto asym = pre + (0.18f * warm) * pre * pre;
 
-    const auto satA = std::tanh(asym * 0.85f);
-    const auto satB = asym / (1.0f + std::abs(asym));
-    auto colored = satA * (0.62f + 0.20f * warm) + satB * (0.38f - 0.12f * warm);
+        const auto satA = std::tanh(asym * 0.85f);
+        const auto satB = asym / (1.0f + std::abs(asym));
+        auto colored = satA * (0.62f + 0.20f * warm) + satB * (0.38f - 0.12f * warm);
 
-    robToneState[static_cast<std::size_t>(channel)] += 0.09f * (colored - robToneState[static_cast<std::size_t>(channel)]);
-    colored = 0.72f * colored + 0.28f * robToneState[static_cast<std::size_t>(channel)];
+        toneState += 0.09f * (colored - toneState);
+        colored = 0.72f * colored + 0.28f * toneState;
 
-    const auto wetMix = 0.12f + 0.78f * warm;
-    const auto parallel = juce::jmap(warm, x, colored);
-    const auto mixed = x * (1.0f - wetMix * 0.72f) + parallel * wetMix;
+        const auto wetMix = 0.12f + 0.78f * warm;
+        const auto parallel = juce::jmap(warm, x, colored);
+        const auto mixed = x * (1.0f - wetMix * 0.72f) + parallel * wetMix;
 
-    const auto levelComp = 1.0f / (1.0f + 0.58f * warm);
-    return mixed * levelComp;
+        const auto levelComp = 1.0f / (1.0f + 0.58f * warm);
+        return mixed * levelComp * trim;
+    }
+
+    if (mode == 1)
+    {
+        // Tape: softer saturation, mild compression, and slightly darkened top end.
+        dcState += 0.0038f * (x - dcState);
+        const auto hp = x - dcState * (0.64f * warm);
+        const auto drive = 1.0f + 3.6f * warm;
+        const auto compressed = std::tanh(hp * drive) * (0.85f + 0.10f * warm);
+
+        toneState += (0.035f + 0.020f * warm) * (compressed - toneState);
+        const auto dark = compressed * (0.58f + 0.10f * warm) + toneState * (0.42f - 0.10f * warm);
+        const auto wowPhase = static_cast<float>(currentTimelineSeconds * 0.9 + static_cast<double>(channel) * 0.7);
+        const auto wow = dark + std::sin(wowPhase) * (0.0018f + 0.0035f * warm);
+
+        const auto mix = 0.18f + 0.66f * warm;
+        const auto out = x + (wow - x) * mix;
+        return out * (1.0f / (1.0f + 0.34f * warm)) * trim;
+    }
+
+    if (mode == 2)
+    {
+        // Tube: asymmetry and even-harmonic emphasis with gentler clipping.
+        dcState += 0.0042f * (x - dcState);
+        const auto hp = x - dcState * (0.55f * warm);
+        const auto drive = 1.0f + 5.2f * warm;
+        const auto pre = hp * drive;
+        const auto asym = pre + (0.30f * warm + 0.04f) * pre * pre;
+        const auto sat = std::tanh(asym * (0.70f + 0.24f * warm));
+
+        toneState += (0.060f + 0.050f * warm) * (sat - toneState);
+        const auto body = 0.64f * sat + 0.36f * toneState;
+        const auto mix = 0.16f + 0.74f * warm;
+        const auto out = x * (1.0f - mix * 0.62f) + body * mix;
+        return out * (1.0f / (1.0f + 0.40f * warm)) * trim;
+    }
+
+    // Distortion pedal: aggressive clipping with tighter low-end and bright bite.
+    dcState += 0.0065f * (x - dcState);
+    const auto hp = x - dcState * (0.86f * warm);
+    const auto pre = hp * (1.0f + 18.0f * warm);
+    const auto clipped = juce::jlimit(-0.88f, 0.88f, pre);
+    const auto shaped = std::tanh(clipped * (1.5f + 0.8f * warm));
+
+    toneState += (0.18f + 0.10f * warm) * (shaped - toneState);
+    const auto bite = shaped + (shaped - toneState) * (0.18f + 0.34f * warm);
+    const auto mix = 0.26f + 0.70f * warm;
+    const auto out = x * (1.0f - mix * 0.50f) + bite * mix;
+    return out * (1.0f / (1.0f + 0.66f * warm)) * trim;
 }
 
 float SynthProjectAudioProcessor::readDelaySample(int channel, float readPos) const
@@ -924,6 +1510,11 @@ void SynthProjectAudioProcessor::getStateInformation(juce::MemoryBlock& destData
         }
     }
 
+    {
+        const std::scoped_lock<std::mutex> lock(imageStateMutex);
+        state.setProperty("imagePath", lastLoadedImagePath, nullptr);
+    }
+
     if (auto xml = state.createXml())
     {
         copyXmlToBinary(*xml, destData);
@@ -954,6 +1545,24 @@ void SynthProjectAudioProcessor::setStateInformation(const void* data, int sizeI
             {
                 const auto value = static_cast<float>(state[withID->paramID]);
                 parameter->setValueNotifyingHost(value);
+            }
+        }
+    }
+
+    if (state.hasProperty("imagePath"))
+    {
+        const auto path = state["imagePath"].toString();
+        {
+            const std::scoped_lock<std::mutex> lock(imageStateMutex);
+            lastLoadedImagePath = path;
+        }
+
+        if (path.isNotEmpty())
+        {
+            const juce::File file(path);
+            if (file.existsAsFile())
+            {
+                requestImageLoadAsync(file);
             }
         }
     }

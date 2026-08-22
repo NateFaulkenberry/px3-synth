@@ -44,6 +44,7 @@ juce_add_binary_data(PX3Assets
 
 target_sources(SynthProject
     PRIVATE
+        Source/ImageEnginePanel.cpp
         Source/PerformanceControls.cpp
         Source/PianoKeyboard.cpp
         Source/PluginEditor.cpp

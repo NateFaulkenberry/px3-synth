@@ -8,6 +8,8 @@
 
 #include <array>
 #include <atomic>
+#include <memory>
+#include <mutex>
 #include <vector>
 
 class SynthProjectAudioProcessor final : public juce::AudioProcessor
@@ -65,10 +67,17 @@ public:
     juce::AudioParameterFloat& getMasterGainParam() const;
 
     juce::AudioParameterFloat& getRobAmountParam() const;
+    juce::AudioParameterChoice& getRobModeParam() const;
     juce::AudioParameterFloat& getIsaacAmountParam() const;
     juce::AudioParameterChoice& getGranularSyncDivisionParam() const;
     juce::AudioParameterFloat& getReverbAmountParam() const;
     juce::AudioParameterChoice& getReverbAlgorithmParam() const;
+    juce::AudioParameterFloat& getImagePositionParam() const;
+    juce::AudioParameterFloat& getImageAnimateParam() const;
+    juce::AudioParameterFloat& getImageRateParam() const;
+    juce::AudioParameterChoice& getImageAnimModeParam() const;
+    juce::AudioParameterChoice& getImageAnimSyncParam() const;
+    juce::AudioParameterChoice& getImageTargetParam() const;
     juce::AudioParameterInt& getPitchBendRangeParam() const;
 
     float copyPitchBendNormalized() const;
@@ -78,6 +87,17 @@ public:
 
     void setPitchBendNormalizedFromUI(float normalized);
     void setModWheelNormalizedFromUI(float normalized);
+
+    void requestImageLoadAsync(const juce::File& imageFile);
+    std::shared_ptr<ImageWavetable> buildImageWavetableFromImage(const juce::Image& sourceImage) const;
+    int getImageLoadRequestSerial() const;
+    void notifyImageLoadError();
+    void completeImageLoad(int serial, std::shared_ptr<ImageWavetable> wavetable, const juce::Image& preview, const juce::String& sourcePath);
+    bool copyImagePreview(juce::Image& imageOut) const;
+    bool hasLoadedImage() const;
+    bool consumeImageLoadErrorFlag();
+    float copyCurrentImagePosition() const;
+    std::vector<float> copyCurrentImageWaveformPreview(int sampleCount) const;
 
 private:
     struct Grain
@@ -102,8 +122,14 @@ private:
 
     void prepareIsaacEngine(double sampleRate);
     void prepareReverbEngine(double sampleRate);
+    std::shared_ptr<ImageWavetable> createDefaultImageWavetable() const;
+    std::shared_ptr<ImageWavetable> createImageWavetableFromImage(const juce::Image& sourceImage) const;
+    void installImageWavetable(std::shared_ptr<ImageWavetable> newTable, const juce::Image& sourcePreview);
+    float updateImageAnimationPosition(int samplesThisBlock);
+    float computeImageTargetControlSignal(float imagePositionNorm, int samplesThisBlock);
+    float imageSyncBeatsForIndex(int index) const;
     void updateTransportState();
-    float processRobSample(float x, int channel, float robAmount);
+    float processRobSample(float x, int channel, float robAmount, int modeIndex);
     void processIsaacGranularSample(float inL,
                                     float inR,
                                     float amount,
@@ -128,10 +154,17 @@ private:
     juce::AudioParameterFloat* releaseParam { nullptr };
     juce::AudioParameterFloat* masterGainParam { nullptr };
     juce::AudioParameterFloat* robAmountParam { nullptr };
+    juce::AudioParameterChoice* robModeParam { nullptr };
     juce::AudioParameterFloat* isaacAmountParam { nullptr };
     juce::AudioParameterChoice* granularSyncDivisionParam { nullptr };
     juce::AudioParameterFloat* reverbAmountParam { nullptr };
     juce::AudioParameterChoice* reverbAlgorithmParam { nullptr };
+    juce::AudioParameterFloat* imagePositionParam { nullptr };
+    juce::AudioParameterFloat* imageAnimateParam { nullptr };
+    juce::AudioParameterFloat* imageRateParam { nullptr };
+    juce::AudioParameterChoice* imageAnimModeParam { nullptr };
+    juce::AudioParameterChoice* imageAnimSyncParam { nullptr };
+    juce::AudioParameterChoice* imageTargetParam { nullptr };
     juce::AudioParameterInt* pitchBendRangeParam { nullptr };
 
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteCounts {};
@@ -144,8 +177,16 @@ private:
     std::atomic<float> modWheelNormalized { 0.0f };
     std::atomic<float> pitchBendActivity { 0.0f };
     std::atomic<float> modWheelActivity { 0.0f };
+    std::atomic<float> currentImagePositionNorm { 0.0f };
 
     float vibratoPhaseRadians { 0.0f };
+    float imageAnimPhase { 0.0f };
+    float imageTargetScanPhase { 0.0f };
+    float imageTargetControlSmoothed { 0.5f };
+    float imageDriveScaleSmoothed { 1.0f };
+    float imageGranularScaleSmoothed { 1.0f };
+    float imageReverbScaleSmoothed { 1.0f };
+    int imageAnimDirection { 1 };
 
     std::array<float, 2> robDcState { { 0.0f, 0.0f } };
     std::array<float, 2> robToneState { { 0.0f, 0.0f } };
@@ -164,6 +205,17 @@ private:
     int moonBufferSize { 1 };
     int moonWritePos { 0 };
     float moonPhase { 0.0f };
+    float reverbOutputCompGain { 1.0f };
+
+    std::shared_ptr<const ImageWavetable> activeImageWavetable;
+    std::atomic<int> imageLoadRequestSerial { 0 };
+    std::atomic<bool> imageLoadErrorFlag { false };
+    std::atomic<bool> imageLoadedFromDisk { false };
+    juce::ThreadPool imageLoadThreadPool { 1 };
+    mutable std::mutex imagePreviewMutex;
+    mutable std::mutex imageStateMutex;
+    juce::Image imagePreview;
+    juce::String lastLoadedImagePath;
 
     double currentSampleRateHz { 44100.0 };
     double currentBpm { 120.0 };

@@ -86,12 +86,47 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         const auto saw = static_cast<float>((currentAngle / juce::MathConstants<double>::pi) - 1.0);
         const auto square = currentAngle < juce::MathConstants<double>::pi ? 1.0f : -1.0f;
 
-        const auto mixTotal = subtractiveSettings.sineMix + subtractiveSettings.sawMix + subtractiveSettings.squareMix;
+        currentImagePosition += (targetImagePosition - currentImagePosition) * 0.025f;
+        float imageSample = 0.0f;
+
+        if (imageWavetable != nullptr && imageWavetable->frames > 1 && imageWavetable->samplesPerFrame > 8)
+        {
+            const auto phaseNorm = static_cast<float>(currentAngle / juce::MathConstants<double>::twoPi);
+            const auto wrappedPhase = phaseNorm - std::floor(phaseNorm);
+            const auto samplePos = wrappedPhase * static_cast<float>(imageWavetable->samplesPerFrame);
+            const auto i0 = static_cast<int>(samplePos);
+            const auto fracX = samplePos - static_cast<float>(i0);
+
+            const auto framePos = juce::jlimit(0.0f,
+                                               1.0f,
+                                               currentImagePosition) * static_cast<float>(imageWavetable->frames - 1);
+            const auto f0 = static_cast<int>(framePos);
+            const auto fracF = framePos - static_cast<float>(f0);
+
+            const auto nyquist = static_cast<float>(sampleRate * 0.5);
+            const auto normFreq = static_cast<float>(currentFrequencyHz) / juce::jmax(1.0f, nyquist);
+            const auto mipEstimate = std::log2(1.0f + normFreq * 28.0f);
+            const auto mip = juce::jlimit(0, imageWavetable->mipLevels - 1, static_cast<int>(mipEstimate));
+
+            const auto readFrame = [this, mip, i0, fracX](int frame)
+            {
+                const auto s0 = imageWavetable->getSample(mip, frame, i0);
+                const auto s1 = imageWavetable->getSample(mip, frame, i0 + 1);
+                return s0 + (s1 - s0) * fracX;
+            };
+
+            const auto a = readFrame(f0);
+            const auto b = readFrame((f0 + 1) % imageWavetable->frames);
+            imageSample = a + (b - a) * fracF;
+        }
+
+        const auto mixTotal = subtractiveSettings.sineMix + subtractiveSettings.sawMix + subtractiveSettings.squareMix + subtractiveSettings.imageMix;
         const auto normalizer = mixTotal > 0.0001f ? (1.0f / mixTotal) : 0.0f;
 
         const auto sourceSample = (sine * subtractiveSettings.sineMix
                                    + saw * subtractiveSettings.sawMix
-                                   + square * subtractiveSettings.squareMix)
+                                   + square * subtractiveSettings.squareMix
+                                   + imageSample * subtractiveSettings.imageMix)
                                   * normalizer;
 
         const auto env = adsr.getNextSample();
@@ -149,6 +184,12 @@ void SynthVoice::setPerformanceModulation(float pitchBendNormalized,
     sharedVibratoPhaseRadians = vibratoPhaseRadians;
     vibratoRateHz = juce::jlimit(0.1f, 20.0f, newVibratoRateHz);
     vibratoMaxDepthSemitones = juce::jlimit(0.0f, 12.0f, newVibratoMaxDepthSemitones);
+}
+
+void SynthVoice::setImageWavetable(std::shared_ptr<const ImageWavetable> table, float wavetablePosition)
+{
+    imageWavetable = std::move(table);
+    targetImagePosition = juce::jlimit(0.0f, 1.0f, wavetablePosition);
 }
 
 void SynthVoice::updateAngleDelta()
