@@ -9,7 +9,7 @@ namespace
 {
 constexpr double kMaxIsaacDelaySeconds = 4.0;
 constexpr double kMaxMoonDelaySeconds = 0.35;
-constexpr int kCurrentStateVersion = 2;
+constexpr int kCurrentStateVersion = 3;
 
 const juce::Identifier kStateTypeId("PX3_STATE");
 const juce::Identifier kStateVersionId("stateVersion");
@@ -17,6 +17,9 @@ const juce::Identifier kModuleOrderId("MODULE_ORDER");
 const juce::Identifier kModuleEntryId("MODULE");
 const juce::Identifier kModuleIdProperty("id");
 const juce::Identifier kModuleOrderRevisionId("moduleOrderRevision");
+const juce::Identifier kLfoStateId("LFO");
+const juce::Identifier kLfoFrequencyId("frequency");
+const juce::Identifier kLfoAssignmentId("assignment");
 std::atomic<uint32_t> kInstanceCounter { 0u };
 
 juce::String moduleIdForStage(int stage);
@@ -379,6 +382,10 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
                                                        1,
                                                        24,
                                                        2);
+    lfoFrequencyParam = new juce::AudioParameterFloat("lfoFrequency",
+                                                       "LFO Frequency",
+                                                       juce::NormalisableRange<float>(0.01f, 20.0f, 0.0001f, 0.30f),
+                                                       1.0f);
 
     addParameter(oscSineParam);
     addParameter(oscSawParam);
@@ -438,6 +445,9 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(audioAnimSyncParam);
     addParameter(audioTargetParam);
     addParameter(pitchBendRangeParam);
+    addParameter(lfoFrequencyParam);
+
+    buildLfoAssignableTargets();
 
     const auto initialEnvelope = currentEnvelopeSettings();
     const auto initialSubtractive = currentSubtractiveSettings();
@@ -553,6 +563,77 @@ bool SynthProjectAudioProcessor::isBusesLayoutSupported(const BusesLayout& layou
            || layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
 }
 
+float SynthProjectAudioProcessor::currentLfoSignalForBlock(int numSamples)
+{
+    const auto frequencyHz = juce::jlimit(0.01f, 20.0f, lfoFrequencyParam->get());
+    const auto startPhase = lfoPhaseRadians;
+    const auto samples = juce::jmax(1, numSamples);
+    const auto halfBlockAdvance = juce::MathConstants<float>::twoPi * frequencyHz
+                                  * (static_cast<float>(samples) * 0.5f / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));
+    const auto signal = std::sin(startPhase + halfBlockAdvance);
+
+    const auto fullAdvance = juce::MathConstants<float>::twoPi * frequencyHz
+                             * (static_cast<float>(samples) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));
+    lfoPhaseRadians += fullAdvance;
+    while (lfoPhaseRadians >= juce::MathConstants<float>::twoPi)
+    {
+        lfoPhaseRadians -= juce::MathConstants<float>::twoPi;
+    }
+
+    lfoPhaseForDebug.store(lfoPhaseRadians, std::memory_order_relaxed);
+    lfoCurrentValue.store(signal, std::memory_order_relaxed);
+    return signal;
+}
+
+float SynthProjectAudioProcessor::applyLfoToNormalizedValue(juce::RangedAudioParameter* parameter,
+                                                             float baseNormalized,
+                                                             float lfoSignal,
+                                                             float* outBaseNormalized,
+                                                             float* outEffectiveNormalized) const
+{
+    const auto base = clamp01(baseNormalized);
+    auto effective = base;
+
+    if (parameter == nullptr)
+    {
+        if (outBaseNormalized != nullptr)
+        {
+            *outBaseNormalized = base;
+        }
+        if (outEffectiveNormalized != nullptr)
+        {
+            *outEffectiveNormalized = effective;
+        }
+        return effective;
+    }
+
+    const auto assignment = juce::jlimit(0,
+                                         juce::jmax(0, static_cast<int>(lfoAssignableTargets.size()) - 1),
+                                         lfoAssignmentIndex.load(std::memory_order_relaxed));
+
+    if (assignment > 0 && assignment < static_cast<int>(lfoAssignableTargets.size()))
+    {
+        const auto& target = lfoAssignableTargets[static_cast<std::size_t>(assignment)];
+        const auto sameId = target.parameterId.equalsIgnoreCase(parameter->getParameterID());
+        const auto samePointer = (target.parameter == parameter);
+        if (sameId || samePointer)
+        {
+            effective = clamp01(base + target.normalizedDepth * lfoSignal);
+        }
+    }
+
+    if (outBaseNormalized != nullptr)
+    {
+        *outBaseNormalized = base;
+    }
+    if (outEffectiveNormalized != nullptr)
+    {
+        *outEffectiveNormalized = effective;
+    }
+
+    return effective;
+}
+
 void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -579,6 +660,30 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     const auto bendRange = static_cast<float>(pitchBendRangeParam->get());
     constexpr float vibratoRateHz = 5.0f;
     constexpr float vibratoMaxDepthSemitones = 1.0f;
+
+    const auto blockLfoSignal = currentLfoSignalForBlock(buffer.getNumSamples());
+    const auto lfoAssignedIndex = getLfoAssignmentIndex();
+    if (lfoAssignedIndex > 0 && lfoAssignedIndex < static_cast<int>(lfoAssignableTargets.size()))
+    {
+        const auto& target = lfoAssignableTargets[static_cast<std::size_t>(lfoAssignedIndex)];
+        if (target.parameter != nullptr)
+        {
+            float baseNorm = 0.0f;
+            float effectiveNorm = 0.0f;
+            juce::ignoreUnused(applyLfoToNormalizedValue(target.parameter,
+                                                         target.parameter->getValue(),
+                                                         blockLfoSignal,
+                                                         &baseNorm,
+                                                         &effectiveNorm));
+            lfoDebugBaseNormalized.store(baseNorm, std::memory_order_relaxed);
+            lfoDebugEffectiveNormalized.store(effectiveNorm, std::memory_order_relaxed);
+        }
+    }
+    else
+    {
+        lfoDebugBaseNormalized.store(0.0f, std::memory_order_relaxed);
+        lfoDebugEffectiveNormalized.store(0.0f, std::memory_order_relaxed);
+    }
 
     const auto envelope = currentEnvelopeSettings();
     const auto subtractive = currentSubtractiveSettings();
@@ -621,17 +726,27 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     synth.renderNextBlock(buffer, midiMessages, 0, buffer.getNumSamples());
     updateTransportState();
 
-    const auto robAmountBase = clamp01(robAmountParam->get());
+    const auto robAmountBase = applyLfoToNormalizedValue(robAmountParam,
+                                                          static_cast<juce::RangedAudioParameter*>(robAmountParam)->getValue(),
+                                                          blockLfoSignal);
     const auto robEnabled = robEnabledParam->get();
     const auto robModeIndex = robModeParam->getIndex();
-    const auto isaacAmountBase = clamp01(isaacAmountParam->get());
+    const auto isaacAmountBase = applyLfoToNormalizedValue(isaacAmountParam,
+                                                            static_cast<juce::RangedAudioParameter*>(isaacAmountParam)->getValue(),
+                                                            blockLfoSignal);
     const auto syncDivisionIndex = granularSyncDivisionParam->getIndex();
     const auto granularModeIndex = granularModeParam->getIndex();
     const auto delayAlgorithmIndex = delayAlgorithmParam->getIndex();
     const auto delayEnabled = delayEnabledParam->get();
-    const auto delayTimeControl = clamp01(delayTimeParam->get());
-    const auto delayFeedbackControl = clamp01(delayFeedbackParam->get());
-    const auto reverbAmountBase = clamp01(reverbAmountParam->get());
+    const auto delayTimeControl = applyLfoToNormalizedValue(delayTimeParam,
+                                                            static_cast<juce::RangedAudioParameter*>(delayTimeParam)->getValue(),
+                                                            blockLfoSignal);
+    const auto delayFeedbackControl = applyLfoToNormalizedValue(delayFeedbackParam,
+                                                                static_cast<juce::RangedAudioParameter*>(delayFeedbackParam)->getValue(),
+                                                                blockLfoSignal);
+    const auto reverbAmountBase = applyLfoToNormalizedValue(reverbAmountParam,
+                                                            static_cast<juce::RangedAudioParameter*>(reverbAmountParam)->getValue(),
+                                                            blockLfoSignal);
     const auto reverbEnabled = reverbEnabledParam->get();
     const auto fxOrder = getFxProcessingOrder();
 
@@ -657,16 +772,24 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
 
     const auto imageControlRaw = computeImageTargetControlSignal(currentImagePosition, buffer.getNumSamples());
     auto audioControlRaw = juce::jlimit(0.0f, 1.0f, currentAudioPosition);
-    const auto audioTexture = juce::jlimit(0.0f, 1.0f, audioTextureParam->get());
-    const auto audioGrain = juce::jlimit(0.0f, 1.0f, audioGrainParam->get());
-    const auto audioAnimate = juce::jlimit(0.0f, 1.0f, audioAnimateParam->get());
-    const auto imageAnimate = juce::jlimit(0.0f, 1.0f, imageAnimateParam->get());
+    const auto audioTexture = applyLfoToNormalizedValue(audioTextureParam,
+                                                        static_cast<juce::RangedAudioParameter*>(audioTextureParam)->getValue(),
+                                                        blockLfoSignal);
+    const auto audioGrain = applyLfoToNormalizedValue(audioGrainParam,
+                                                      static_cast<juce::RangedAudioParameter*>(audioGrainParam)->getValue(),
+                                                      blockLfoSignal);
+    const auto audioAnimate = applyLfoToNormalizedValue(audioAnimateParam,
+                                                        static_cast<juce::RangedAudioParameter*>(audioAnimateParam)->getValue(),
+                                                        blockLfoSignal);
+    const auto imageAnimate = applyLfoToNormalizedValue(imageAnimateParam,
+                                                        static_cast<juce::RangedAudioParameter*>(imageAnimateParam)->getValue(),
+                                                        blockLfoSignal);
     if (audioSourceForBlock != nullptr && !audioSourceForBlock->waveformPreview.empty())
     {
         const auto& preview = audioSourceForBlock->waveformPreview;
         const auto previewPos = juce::jlimit(0.0f,
                                              1.0f,
-                                             currentAudioPosition + (juce::jlimit(0.0f, 1.0f, audioTextureParam->get()) - 0.5f) * 0.10f);
+                                             currentAudioPosition + (audioTexture - 0.5f) * 0.10f);
         const auto sampleIndex = juce::jlimit(0,
                                               static_cast<int>(preview.size()) - 1,
                                               static_cast<int>(std::lround(previewPos * static_cast<float>(preview.size() - 1))));
@@ -1107,6 +1230,137 @@ juce::AudioParameterChoice& SynthProjectAudioProcessor::getAudioAnimModeParam() 
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getAudioAnimSyncParam() const { return *audioAnimSyncParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getAudioTargetParam() const { return *audioTargetParam; }
 juce::AudioParameterInt& SynthProjectAudioProcessor::getPitchBendRangeParam() const { return *pitchBendRangeParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getLfoFrequencyParam() const { return *lfoFrequencyParam; }
+
+const juce::StringArray& SynthProjectAudioProcessor::getLfoAssignmentDisplayNames() const
+{
+    return lfoAssignmentDisplayNames;
+}
+
+int SynthProjectAudioProcessor::getLfoAssignmentIndex() const
+{
+    return juce::jlimit(0,
+                        juce::jmax(0, static_cast<int>(lfoAssignableTargets.size()) - 1),
+                        lfoAssignmentIndex.load(std::memory_order_relaxed));
+}
+
+juce::String SynthProjectAudioProcessor::getLfoAssignmentParameterId() const
+{
+    const auto index = getLfoAssignmentIndex();
+    if (index <= 0 || index >= static_cast<int>(lfoAssignableTargets.size()))
+    {
+        return "none";
+    }
+
+    return lfoAssignableTargets[static_cast<std::size_t>(index)].parameterId;
+}
+
+bool SynthProjectAudioProcessor::setLfoAssignmentIndex(int index, bool notifyHost)
+{
+    if (lfoAssignableTargets.empty())
+    {
+        lfoAssignmentIndex.store(0, std::memory_order_relaxed);
+        return false;
+    }
+
+    const auto clamped = juce::jlimit(0,
+                                      static_cast<int>(lfoAssignableTargets.size()) - 1,
+                                      index);
+    lfoAssignmentIndex.store(clamped, std::memory_order_relaxed);
+
+    if (notifyHost)
+    {
+        updateHostDisplay();
+        updateHostDisplay(juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged(true));
+    }
+
+    debugLogEvent("LFO",
+                  "ASSIGNMENT_CHANGED",
+                  "index=" + juce::String(clamped)
+                      + " id=" + getLfoAssignmentParameterId());
+    return true;
+}
+
+bool SynthProjectAudioProcessor::setLfoAssignmentByParameterId(const juce::String& parameterId, bool notifyHost)
+{
+    if (parameterId.isEmpty() || parameterId.equalsIgnoreCase("none"))
+    {
+        return setLfoAssignmentIndex(0, notifyHost);
+    }
+
+    for (int i = 0; i < static_cast<int>(lfoAssignableTargets.size()); ++i)
+    {
+        if (lfoAssignableTargets[static_cast<std::size_t>(i)].parameterId.equalsIgnoreCase(parameterId))
+        {
+            return setLfoAssignmentIndex(i, notifyHost);
+        }
+    }
+
+    return false;
+}
+
+void SynthProjectAudioProcessor::buildLfoAssignableTargets()
+{
+    lfoAssignableTargets.clear();
+    lfoAssignmentDisplayNames.clear();
+
+    lfoAssignableTargets.push_back({ "none", "None", nullptr, 0.0f });
+    lfoAssignmentDisplayNames.add("None");
+
+    const auto shouldExclude = [](const juce::String& id)
+    {
+        return id.equalsIgnoreCase("lfoFrequency")
+               || id.equalsIgnoreCase("pitchBendRange");
+    };
+
+    for (auto* parameter : getParameters())
+    {
+        auto* floatParam = dynamic_cast<juce::AudioParameterFloat*>(parameter);
+        if (floatParam == nullptr)
+        {
+            continue;
+        }
+
+        const auto id = floatParam->getParameterID();
+        if (shouldExclude(id))
+        {
+            continue;
+        }
+
+        lfoAssignableTargets.push_back({ id,
+                                         floatParam->getName(64),
+                                         floatParam,
+                                         lfoDepthForParameterId(id) });
+
+        lfoAssignmentDisplayNames.add(floatParam->getName(64));
+    }
+
+    lfoAssignmentIndex.store(0, std::memory_order_relaxed);
+}
+
+float SynthProjectAudioProcessor::lfoDepthForParameterId(const juce::String& parameterId) const
+{
+    if (parameterId.equalsIgnoreCase("masterGain"))
+    {
+        return 0.30f;
+    }
+
+    if (parameterId.equalsIgnoreCase("filterResonance")
+        || parameterId.equalsIgnoreCase("delayFeedback")
+        || parameterId.equalsIgnoreCase("reverbAmount"))
+    {
+        return 0.12f;
+    }
+
+    if (parameterId.equalsIgnoreCase("filterCutoff")
+        || parameterId.equalsIgnoreCase("delayTime")
+        || parameterId.equalsIgnoreCase("reverbDecay"))
+    {
+        return 0.22f;
+    }
+
+    return 0.10f;
+}
 
 std::array<int, 3> SynthProjectAudioProcessor::getFxProcessingOrder() const
 {
@@ -1347,10 +1601,33 @@ bool SynthProjectAudioProcessor::debugRoundTripCurrentState(juce::String& report
         }
     }
 
-    const auto pass = (debugDescribeOrder(currentOrder) == debugDescribeOrder(decodedOrder));
+    auto serializedLfoFrequency = lfoFrequencyParam->get();
+    auto serializedLfoAssignment = juce::String("none");
+    if (const auto lfoState = state.getChildWithName(kLfoStateId); lfoState.isValid())
+    {
+        if (lfoState.hasProperty(kLfoFrequencyId))
+        {
+            serializedLfoFrequency = juce::jlimit(0.01f, 20.0f, static_cast<float>(lfoState[kLfoFrequencyId]));
+        }
+        if (lfoState.hasProperty(kLfoAssignmentId))
+        {
+            serializedLfoAssignment = lfoState[kLfoAssignmentId].toString();
+        }
+    }
+
+    const auto frequencyMatches = std::abs(serializedLfoFrequency - lfoFrequencyParam->get()) <= 0.0005f;
+    const auto assignmentMatches = serializedLfoAssignment.equalsIgnoreCase(getLfoAssignmentParameterId());
+
+    const auto pass = (debugDescribeOrder(currentOrder) == debugDescribeOrder(decodedOrder))
+                   && frequencyMatches
+                   && assignmentMatches;
     report = "TEST_STATE_ROUND_TRIP\n"
              "before=" + debugDescribeOrder(currentOrder) + "\n"
              "serialized=" + debugDescribeOrder(decodedOrder) + "\n"
+             "lfoFrequencyCurrent=" + juce::String(lfoFrequencyParam->get(), 4) + "\n"
+             "lfoFrequencySerialized=" + juce::String(serializedLfoFrequency, 4) + "\n"
+             "lfoAssignmentCurrent=" + getLfoAssignmentParameterId() + "\n"
+             "lfoAssignmentSerialized=" + serializedLfoAssignment + "\n"
              "size=" + juce::String(static_cast<int>(block.getSize())) + "\n"
              "result=" + juce::String(pass ? "PASS" : "FAIL");
 
@@ -1371,6 +1648,39 @@ uint32_t SynthProjectAudioProcessor::debugGetModuleOrderHash() const
 juce::String SynthProjectAudioProcessor::debugDescribeOrder(const std::array<int, 3>& order) const
 {
     return formatOrderString(order);
+}
+
+float SynthProjectAudioProcessor::debugGetLfoPhase() const
+{
+    const auto wrapped = std::fmod(lfoPhaseForDebug.load(std::memory_order_relaxed), juce::MathConstants<float>::twoPi);
+    return wrapped < 0.0f ? wrapped + juce::MathConstants<float>::twoPi : wrapped;
+}
+
+float SynthProjectAudioProcessor::debugGetLfoCurrentValue() const
+{
+    return lfoCurrentValue.load(std::memory_order_relaxed);
+}
+
+float SynthProjectAudioProcessor::debugGetLfoBaseNormalized() const
+{
+    return lfoDebugBaseNormalized.load(std::memory_order_relaxed);
+}
+
+float SynthProjectAudioProcessor::debugGetLfoEffectiveNormalized() const
+{
+    return lfoDebugEffectiveNormalized.load(std::memory_order_relaxed);
+}
+
+juce::String SynthProjectAudioProcessor::debugGetLfoAssignmentName() const
+{
+    const auto index = getLfoAssignmentIndex();
+    if (index <= 0 || index >= static_cast<int>(lfoAssignableTargets.size()))
+    {
+        return "None";
+    }
+
+    return lfoAssignableTargets[static_cast<std::size_t>(index)].displayName
+        + " [" + lfoAssignableTargets[static_cast<std::size_t>(index)].parameterId + "]";
 }
 
 float SynthProjectAudioProcessor::copyPitchBendNormalized() const
@@ -1716,31 +2026,54 @@ bool SynthProjectAudioProcessor::hasLoadedAudio() const
 
 SubtractiveSettings SynthProjectAudioProcessor::currentSubtractiveSettings() const
 {
+    const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
     SubtractiveSettings settings;
-    settings.sineMix = oscSineParam->get();
-    settings.sawMix = oscSawParam->get();
-    settings.squareMix = oscSquareParam->get();
+    settings.sineMix = oscSineParam->convertFrom0to1(applyLfoToNormalizedValue(oscSineParam,
+                                                                                static_cast<juce::RangedAudioParameter*>(oscSineParam)->getValue(),
+                                                                                lfoSignal));
+    settings.sawMix = oscSawParam->convertFrom0to1(applyLfoToNormalizedValue(oscSawParam,
+                                                                              static_cast<juce::RangedAudioParameter*>(oscSawParam)->getValue(),
+                                                                              lfoSignal));
+    settings.squareMix = oscSquareParam->convertFrom0to1(applyLfoToNormalizedValue(oscSquareParam,
+                                                                                    static_cast<juce::RangedAudioParameter*>(oscSquareParam)->getValue(),
+                                                                                    lfoSignal));
     settings.imageMix = 0.35f;
-    settings.filterCutoffHz = filterCutoffParam->get();
-    settings.filterResonanceQ = filterResonanceParam->get();
-        settings.filterTypeIndex = filterTypeParam->getIndex();
-    settings.masterGain = masterGainParam->get();
+    settings.filterCutoffHz = filterCutoffParam->convertFrom0to1(applyLfoToNormalizedValue(filterCutoffParam,
+                                                                                            static_cast<juce::RangedAudioParameter*>(filterCutoffParam)->getValue(),
+                                                                                            lfoSignal));
+    settings.filterResonanceQ = filterResonanceParam->convertFrom0to1(applyLfoToNormalizedValue(filterResonanceParam,
+                                                                                                 static_cast<juce::RangedAudioParameter*>(filterResonanceParam)->getValue(),
+                                                                                                 lfoSignal));
+    settings.filterTypeIndex = filterTypeParam->getIndex();
+    settings.masterGain = masterGainParam->convertFrom0to1(applyLfoToNormalizedValue(masterGainParam,
+                                                                                      static_cast<juce::RangedAudioParameter*>(masterGainParam)->getValue(),
+                                                                                      lfoSignal));
     return settings;
 }
 
 OscillatorSettings SynthProjectAudioProcessor::currentOscillatorSettings() const
 {
+    const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
     OscillatorSettings settings;
     settings.modeIndex = oscModeParam->getIndex();
-    settings.macroA = clamp01(oscMacroAParam->get());
-    settings.macroB = clamp01(oscMacroBParam->get());
-    settings.macroC = clamp01(oscMacroCParam->get());
+    settings.macroA = clamp01(oscMacroAParam->convertFrom0to1(applyLfoToNormalizedValue(oscMacroAParam,
+                                                                                          static_cast<juce::RangedAudioParameter*>(oscMacroAParam)->getValue(),
+                                                                                          lfoSignal)));
+    settings.macroB = clamp01(oscMacroBParam->convertFrom0to1(applyLfoToNormalizedValue(oscMacroBParam,
+                                                                                          static_cast<juce::RangedAudioParameter*>(oscMacroBParam)->getValue(),
+                                                                                          lfoSignal)));
+    settings.macroC = clamp01(oscMacroCParam->convertFrom0to1(applyLfoToNormalizedValue(oscMacroCParam,
+                                                                                          static_cast<juce::RangedAudioParameter*>(oscMacroCParam)->getValue(),
+                                                                                          lfoSignal)));
     settings.vowelIndex = oscVowelParam->getIndex();
     for (std::size_t i = 0; i < settings.harmonics.size(); ++i)
     {
         if (oscHarmonicParams[i] != nullptr)
         {
-            settings.harmonics[i] = clamp01(oscHarmonicParams[i]->get());
+            settings.harmonics[i] = clamp01(oscHarmonicParams[i]->convertFrom0to1(
+                applyLfoToNormalizedValue(oscHarmonicParams[i],
+                                          static_cast<juce::RangedAudioParameter*>(oscHarmonicParams[i])->getValue(),
+                                          lfoSignal)));
         }
     }
     return settings;
@@ -1748,11 +2081,20 @@ OscillatorSettings SynthProjectAudioProcessor::currentOscillatorSettings() const
 
 EnvelopeSettings SynthProjectAudioProcessor::currentEnvelopeSettings() const
 {
+    const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
     EnvelopeSettings settings;
-    settings.attackSeconds = attackParam->get();
-    settings.decaySeconds = decayParam->get();
-    settings.sustainLevel = sustainParam->get();
-    settings.releaseSeconds = releaseParam->get();
+    settings.attackSeconds = attackParam->convertFrom0to1(applyLfoToNormalizedValue(attackParam,
+                                                                                      static_cast<juce::RangedAudioParameter*>(attackParam)->getValue(),
+                                                                                      lfoSignal));
+    settings.decaySeconds = decayParam->convertFrom0to1(applyLfoToNormalizedValue(decayParam,
+                                                                                    static_cast<juce::RangedAudioParameter*>(decayParam)->getValue(),
+                                                                                    lfoSignal));
+    settings.sustainLevel = sustainParam->convertFrom0to1(applyLfoToNormalizedValue(sustainParam,
+                                                                                      static_cast<juce::RangedAudioParameter*>(sustainParam)->getValue(),
+                                                                                      lfoSignal));
+    settings.releaseSeconds = releaseParam->convertFrom0to1(applyLfoToNormalizedValue(releaseParam,
+                                                                                        static_cast<juce::RangedAudioParameter*>(releaseParam)->getValue(),
+                                                                                        lfoSignal));
     return settings;
 }
 
@@ -1863,8 +2205,13 @@ float SynthProjectAudioProcessor::audioSyncBeatsForIndex(int index) const
 
 float SynthProjectAudioProcessor::updateImageAnimationPosition(int samplesThisBlock)
 {
-    const auto basePos = juce::jlimit(0.0f, 1.0f, imagePositionParam->get());
-    const auto animAmount = juce::jlimit(0.0f, 1.0f, imageAnimateParam->get());
+    const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
+    const auto basePos = applyLfoToNormalizedValue(imagePositionParam,
+                                                   static_cast<juce::RangedAudioParameter*>(imagePositionParam)->getValue(),
+                                                   lfoSignal);
+    const auto animAmount = applyLfoToNormalizedValue(imageAnimateParam,
+                                                      static_cast<juce::RangedAudioParameter*>(imageAnimateParam)->getValue(),
+                                                      lfoSignal);
 
     if (animAmount <= 0.0001f)
     {
@@ -1873,7 +2220,9 @@ float SynthProjectAudioProcessor::updateImageAnimationPosition(int samplesThisBl
     }
 
     const auto sec = static_cast<float>(samplesThisBlock) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz));
-    auto rateHz = juce::jlimit(0.01f, 4.0f, imageRateParam->get());
+    auto rateHz = imageRateParam->convertFrom0to1(applyLfoToNormalizedValue(imageRateParam,
+                                                                            static_cast<juce::RangedAudioParameter*>(imageRateParam)->getValue(),
+                                                                            lfoSignal));
     const auto syncIndex = imageAnimSyncParam->getIndex();
     if (syncIndex > 0)
     {
@@ -1927,8 +2276,13 @@ float SynthProjectAudioProcessor::updateImageAnimationPosition(int samplesThisBl
 
 float SynthProjectAudioProcessor::updateAudioAnimationPosition(int samplesThisBlock)
 {
-    const auto basePos = juce::jlimit(0.0f, 1.0f, audioPositionParam->get());
-    const auto animAmount = juce::jlimit(0.0f, 1.0f, audioAnimateParam->get());
+    const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
+    const auto basePos = applyLfoToNormalizedValue(audioPositionParam,
+                                                   static_cast<juce::RangedAudioParameter*>(audioPositionParam)->getValue(),
+                                                   lfoSignal);
+    const auto animAmount = applyLfoToNormalizedValue(audioAnimateParam,
+                                                      static_cast<juce::RangedAudioParameter*>(audioAnimateParam)->getValue(),
+                                                      lfoSignal);
 
     if (animAmount <= 0.0001f)
     {
@@ -1937,7 +2291,9 @@ float SynthProjectAudioProcessor::updateAudioAnimationPosition(int samplesThisBl
     }
 
     const auto sec = static_cast<float>(samplesThisBlock) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz));
-    auto rateHz = juce::jlimit(0.01f, 4.0f, audioRateParam->get());
+    auto rateHz = audioRateParam->convertFrom0to1(applyLfoToNormalizedValue(audioRateParam,
+                                                                            static_cast<juce::RangedAudioParameter*>(audioRateParam)->getValue(),
+                                                                            lfoSignal));
     const auto syncIndex = audioAnimSyncParam->getIndex();
     if (syncIndex > 0)
     {
@@ -2004,7 +2360,11 @@ float SynthProjectAudioProcessor::computeImageTargetControlSignal(float imagePos
     const auto f1 = (f0 + 1) % table->frames;
 
     const auto sec = static_cast<float>(samplesThisBlock) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz));
-    const auto scanRateHz = lerp(0.35f, 6.0f, juce::jlimit(0.0f, 1.0f, imageRateParam->get() * 0.25f));
+    const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
+    const auto imageRateNorm = applyLfoToNormalizedValue(imageRateParam,
+                                                         static_cast<juce::RangedAudioParameter*>(imageRateParam)->getValue(),
+                                                         lfoSignal);
+    const auto scanRateHz = lerp(0.35f, 6.0f, juce::jlimit(0.0f, 1.0f, imageRateNorm * 0.25f));
     imageTargetScanPhase += sec * scanRateHz;
     while (imageTargetScanPhase >= 1.0f)
     {
@@ -3036,17 +3396,54 @@ void SynthProjectAudioProcessor::processReverbSampleFrame(float inL,
         return;
     }
 
+    const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
     const auto mode = juce::jlimit(0, 3, algorithmIndex);
     const auto mix = smoothstep(amount);
-    const auto size = juce::jlimit(0.0f, 1.0f, reverbSizeParam != nullptr ? reverbSizeParam->get() : 0.52f);
-    const auto decayControl = juce::jlimit(0.0f, 1.0f, reverbDecayParam != nullptr ? reverbDecayParam->get() : 0.48f);
-    const auto damping = juce::jlimit(0.0f, 1.0f, reverbDampingParam != nullptr ? reverbDampingParam->get() : 0.46f);
-    const auto preDelay = juce::jlimit(0.0f, 1.0f, reverbPreDelayParam != nullptr ? reverbPreDelayParam->get() : 0.08f);
-    const auto modDepth = juce::jlimit(0.0f, 1.0f, reverbModDepthParam != nullptr ? reverbModDepthParam->get() : 0.24f);
-    const auto modRate = juce::jlimit(0.0f, 1.0f, reverbModRateParam != nullptr ? reverbModRateParam->get() : 0.18f);
-    const auto width = juce::jlimit(0.0f, 1.0f, reverbWidthParam != nullptr ? reverbWidthParam->get() : 0.86f);
-    const auto cloudFeedback = juce::jlimit(0.0f, 1.0f, reverbCloudFeedbackParam != nullptr ? reverbCloudFeedbackParam->get() : 0.62f);
-    const auto cloudDiffusion = juce::jlimit(0.0f, 1.0f, reverbCloudDiffusionParam != nullptr ? reverbCloudDiffusionParam->get() : 0.54f);
+    const auto size = reverbSizeParam != nullptr
+                          ? applyLfoToNormalizedValue(reverbSizeParam,
+                                                      static_cast<juce::RangedAudioParameter*>(reverbSizeParam)->getValue(),
+                                                      lfoSignal)
+                          : 0.52f;
+    const auto decayControl = reverbDecayParam != nullptr
+                                  ? applyLfoToNormalizedValue(reverbDecayParam,
+                                                              static_cast<juce::RangedAudioParameter*>(reverbDecayParam)->getValue(),
+                                                              lfoSignal)
+                                  : 0.48f;
+    const auto damping = reverbDampingParam != nullptr
+                             ? applyLfoToNormalizedValue(reverbDampingParam,
+                                                         static_cast<juce::RangedAudioParameter*>(reverbDampingParam)->getValue(),
+                                                         lfoSignal)
+                             : 0.46f;
+    const auto preDelay = reverbPreDelayParam != nullptr
+                              ? applyLfoToNormalizedValue(reverbPreDelayParam,
+                                                          static_cast<juce::RangedAudioParameter*>(reverbPreDelayParam)->getValue(),
+                                                          lfoSignal)
+                              : 0.08f;
+    const auto modDepth = reverbModDepthParam != nullptr
+                              ? applyLfoToNormalizedValue(reverbModDepthParam,
+                                                          static_cast<juce::RangedAudioParameter*>(reverbModDepthParam)->getValue(),
+                                                          lfoSignal)
+                              : 0.24f;
+    const auto modRate = reverbModRateParam != nullptr
+                             ? applyLfoToNormalizedValue(reverbModRateParam,
+                                                         static_cast<juce::RangedAudioParameter*>(reverbModRateParam)->getValue(),
+                                                         lfoSignal)
+                             : 0.18f;
+    const auto width = reverbWidthParam != nullptr
+                           ? applyLfoToNormalizedValue(reverbWidthParam,
+                                                       static_cast<juce::RangedAudioParameter*>(reverbWidthParam)->getValue(),
+                                                       lfoSignal)
+                           : 0.86f;
+    const auto cloudFeedback = reverbCloudFeedbackParam != nullptr
+                                   ? applyLfoToNormalizedValue(reverbCloudFeedbackParam,
+                                                               static_cast<juce::RangedAudioParameter*>(reverbCloudFeedbackParam)->getValue(),
+                                                               lfoSignal)
+                                   : 0.62f;
+    const auto cloudDiffusion = reverbCloudDiffusionParam != nullptr
+                                    ? applyLfoToNormalizedValue(reverbCloudDiffusionParam,
+                                                                static_cast<juce::RangedAudioParameter*>(reverbCloudDiffusionParam)->getValue(),
+                                                                lfoSignal)
+                                    : 0.54f;
 
     const auto predelaySamples = 1.0f + preDelay * static_cast<float>(currentSampleRateHz) * 0.30f;
     const auto inPredelayedL = processReverbDelay(reverbPreDelayLines[0], inL, predelaySamples);
@@ -3316,6 +3713,11 @@ juce::ValueTree SynthProjectAudioProcessor::createParameterStateTree() const
                       static_cast<int64_t>(fxOrderRevision.load(std::memory_order_relaxed)),
                       nullptr);
 
+    juce::ValueTree lfoState(kLfoStateId);
+    lfoState.setProperty(kLfoFrequencyId, lfoFrequencyParam->get(), nullptr);
+    lfoState.setProperty(kLfoAssignmentId, getLfoAssignmentParameterId(), nullptr);
+    state.addChild(lfoState, -1, nullptr);
+
     return state;
 }
 
@@ -3441,6 +3843,20 @@ bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& 
     {
         const auto revision = juce::jmax<int64_t>(0, static_cast<int64_t>(state[kModuleOrderRevisionId]));
         fxOrderRevision.store(static_cast<uint32_t>(revision), std::memory_order_relaxed);
+    }
+
+    if (const auto lfoState = state.getChildWithName(kLfoStateId); lfoState.isValid())
+    {
+        if (lfoState.hasProperty(kLfoFrequencyId))
+        {
+            const auto frequency = juce::jlimit(0.01f, 20.0f, static_cast<float>(lfoState[kLfoFrequencyId]));
+            lfoFrequencyParam->setValueNotifyingHost(lfoFrequencyParam->convertTo0to1(frequency));
+        }
+
+        if (lfoState.hasProperty(kLfoAssignmentId))
+        {
+            setLfoAssignmentByParameterId(lfoState[kLfoAssignmentId].toString(), false);
+        }
     }
 
     if (state.hasProperty("imagePath"))

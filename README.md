@@ -11,6 +11,7 @@ For preset system format and storage details, see `docs/PRESETS.md`.
 - 20 oscillator modes (classic + experimental + PX3).
 - Three macro knobs whose meaning changes by oscillator mode.
 - Filter, amp envelope, and master gain section.
+- One global LFO modulation source with assignable destination.
 - Source Engine system:
   - Image Engine (image->wavetable + animation + modulation routing).
   - Audio Engine (granular source playback + animation).
@@ -201,6 +202,27 @@ Controls:
 
 This is per voice ADSR and directly shapes oscillator loudness before FX.
 
+## LFO Section
+
+Controls:
+
+- Freq: global LFO frequency (Hz).
+- Assign: one destination selected from supported float parameters.
+
+Behavior:
+
+- ONE LFO means a single shared modulation signal is generated per processing block.
+- The selected destination receives normalized modulation:
+  - effective = clamp(base + (depth * lfoSignal))
+- UI knobs/sliders still represent and automate base values only.
+- DSP reads effective values for sound generation; host-visible parameter values are never written by LFO.
+
+Current limits:
+
+- One destination at a time (single assignment).
+- One global depth setting in processor code (no per-target depth UI yet).
+- Block-rate LFO evaluation (intentionally lightweight; no sample-rate modulation path yet).
+
 ## OUTPUT Section
 
 Controls:
@@ -375,11 +397,20 @@ Keyboard:
 Saved in plugin state:
 
 - All parameter values.
+- LFO assignment target selection.
 - FX processing order.
 - Last loaded image path.
 - Last loaded audio path.
 
 On restore, if those files still exist, the plugin asynchronously reloads them.
+
+## Automation Vs Modulation
+
+- Automation controls base parameter values (what host lanes and UI show).
+- Modulation is an internal DSP-time offset from the ONE LFO.
+- Effective DSP value is computed from base + modulation and clamped to parameter range.
+- The plugin does not push effective values back to host automation lanes.
+- This keeps automation deterministic and prevents host writeback noise while still allowing animated sound.
 
 ## Internal Function Map (Developer Guide)
 
@@ -392,10 +423,20 @@ This section describes the major internal functions and what each one controls.
 - `processBlock`
   - Merges MIDI + virtual keyboard MIDI.
   - Updates note state for UI.
+  - Computes ONE LFO signal for the block and applies effective-value modulation at read points.
   - Updates animation positions (image/audio).
   - Updates all synth voices with oscillator/filter/envelope/performance/source settings.
   - Renders synth voices.
   - Processes FX in current drag-ordered chain.
+
+### Modulation Core
+
+- `buildLfoAssignableTargets`
+  - Builds the assignable destination list from supported float parameters.
+- `currentLfoSignalForBlock`
+  - Generates the current block LFO signal and tracks debug phase/value state.
+- `applyLfoToNormalizedValue`
+  - Applies normalized base + depth * signal and clamps to [0, 1].
 
 ### Voice + Synthesis
 

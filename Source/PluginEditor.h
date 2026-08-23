@@ -84,6 +84,8 @@ private:
     void refreshOscillatorModeUI();
     void refreshGranularModeUI();
     void refreshFxBypassUI();
+    void refreshLfoAssignmentUI();
+    void refreshLfoFrequencyLabel();
     void updateFxSectionTargets(const juce::Rectangle<int>& topArea, int topGap);
     void layoutFxSectionsFromCurrentAreas();
     void animateFxSections();
@@ -158,6 +160,7 @@ private:
     void refreshDebugParameterInspector();
     void refreshDebugParameterControls();
     void refreshDebugEventLog();
+    void refreshDebugLfoState();
     void debugCaptureSnapshot(const juce::String& reason);
     void debugCompareWithSnapshot();
     void debugForceSerializationTest();
@@ -204,7 +207,7 @@ private:
     juce::Rectangle<int> topSpareSectionArea;
     juce::Rectangle<int> midiStatusArea;
     juce::Rectangle<int> performanceControlsArea;
-    std::array<juce::Rectangle<int>, 4> knobGroupAreas {};
+    std::array<juce::Rectangle<int>, 5> knobGroupAreas {};
     std::array<juce::Rectangle<int>, 3> fxSectionSlots {};
     std::array<juce::Rectangle<float>, 3> fxSectionCurrentAreas {};
     std::array<juce::Rectangle<float>, 3> fxSectionTargetAreas {};
@@ -231,6 +234,8 @@ private:
     juce::Slider sustainKnob;
     juce::Slider releaseKnob;
     juce::Slider gainKnob;
+    juce::Slider lfoFrequencyKnob;
+    juce::ComboBox lfoAssignBox;
 
     KnobLabel oscSineLabel;
     KnobLabel oscSawLabel;
@@ -243,6 +248,9 @@ private:
     KnobLabel sustainLabel;
     KnobLabel releaseLabel;
     KnobLabel gainLabel;
+    KnobLabel lfoFrequencyLabel;
+    juce::Label lfoFrequencyValueLabel;
+    KnobLabel lfoAssignLabel;
     KnobLabel midiStatusLabel;
 
     juce::Slider robWarmthKnob;
@@ -305,9 +313,10 @@ private:
     std::vector<std::unique_ptr<juce::ComboBoxParameterAttachment>> comboBoxAttachments;
     std::vector<std::unique_ptr<juce::ButtonParameterAttachment>> buttonAttachments;
 
-    std::array<KnobBinding, 10> knobBindings {};
+    std::array<KnobBinding, 11> knobBindings {};
     int lastOscModeIndex { -1 };
     int lastGranularModeIndex { -1 };
+    int lastLfoAssignmentIndex { -1 };
 
     juce::TextButton debugToggleButton;
     juce::Component debugPanel;
@@ -337,6 +346,8 @@ private:
     juce::Label debugBackendControlLabel;
     juce::Label debugEventLogLabel;
     juce::Label debugSnapshotLabel;
+    juce::Label debugLfoLabel;
+    juce::Label debugLfoAssignLabel;
     juce::TextEditor debugInstanceText;
     juce::TextEditor debugModuleOrderText;
     juce::TextEditor debugValueTreeText;
@@ -344,6 +355,8 @@ private:
     juce::TextEditor debugParameterInspectorText;
     juce::TextEditor debugEventLogText;
     juce::TextEditor debugSnapshotText;
+    juce::TextEditor debugLfoText;
+    juce::ComboBox debugLfoAssignBox;
     juce::Viewport debugParamViewport;
     juce::Component debugParamContent;
     std::vector<std::unique_ptr<DebugParamControl>> debugParamControls;
@@ -352,6 +365,7 @@ private:
     int debugRefreshTickCounter { 0 };
     bool debugPanelVisible { false };
     bool debugParamControlsInitialized { false };
+    bool debugLfoAssignSuppressCallbacks { false };
     bool debugHasSnapshot { false };
     juce::String debugEditorCreatedTime;
     DebugSnapshot debugLastSnapshot;

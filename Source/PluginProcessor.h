@@ -8,6 +8,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -102,6 +103,12 @@ public:
     juce::AudioParameterChoice& getAudioAnimSyncParam() const;
     juce::AudioParameterChoice& getAudioTargetParam() const;
     juce::AudioParameterInt& getPitchBendRangeParam() const;
+    juce::AudioParameterFloat& getLfoFrequencyParam() const;
+    const juce::StringArray& getLfoAssignmentDisplayNames() const;
+    int getLfoAssignmentIndex() const;
+    juce::String getLfoAssignmentParameterId() const;
+    bool setLfoAssignmentIndex(int index, bool notifyHost = true);
+    bool setLfoAssignmentByParameterId(const juce::String& parameterId, bool notifyHost = true);
     std::array<int, 3> getFxProcessingOrder() const;
     void setFxProcessingOrder(const std::array<int, 3>& order);
     void setFxProcessingOrderWithReason(const std::array<int, 3>& order,
@@ -128,6 +135,11 @@ public:
     uint32_t debugGetModuleOrderGeneration() const;
     uint32_t debugGetModuleOrderHash() const;
     juce::String debugDescribeOrder(const std::array<int, 3>& order) const;
+    float debugGetLfoPhase() const;
+    float debugGetLfoCurrentValue() const;
+    float debugGetLfoBaseNormalized() const;
+    float debugGetLfoEffectiveNormalized() const;
+    juce::String debugGetLfoAssignmentName() const;
 
     float copyPitchBendNormalized() const;
     float copyModWheelNormalized() const;
@@ -252,6 +264,14 @@ private:
     void writeReverbLine(ReverbDelayLine& line, float sample);
     float processReverbAllpass(ReverbDelayLine& line, float in, float delaySamples, float gain);
     float processReverbDelay(ReverbDelayLine& line, float in, float delaySamples);
+    void buildLfoAssignableTargets();
+    float lfoDepthForParameterId(const juce::String& parameterId) const;
+    float applyLfoToNormalizedValue(juce::RangedAudioParameter* parameter,
+                                    float baseNormalized,
+                                    float lfoSignal,
+                                    float* outBaseNormalized = nullptr,
+                                    float* outEffectiveNormalized = nullptr) const;
+    float currentLfoSignalForBlock(int numSamples);
 
     juce::Synthesiser synth;
 
@@ -310,6 +330,19 @@ private:
     juce::AudioParameterChoice* audioAnimSyncParam { nullptr };
     juce::AudioParameterChoice* audioTargetParam { nullptr };
     juce::AudioParameterInt* pitchBendRangeParam { nullptr };
+    juce::AudioParameterFloat* lfoFrequencyParam { nullptr };
+
+    struct LfoAssignableTarget
+    {
+        juce::String parameterId;
+        juce::String displayName;
+        juce::RangedAudioParameter* parameter { nullptr };
+        float normalizedDepth { 0.10f };
+    };
+
+    std::vector<LfoAssignableTarget> lfoAssignableTargets;
+    juce::StringArray lfoAssignmentDisplayNames;
+    std::atomic<int> lfoAssignmentIndex { 0 };
 
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteCounts {};
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteVelocities {};
@@ -327,6 +360,11 @@ private:
     std::atomic<float> currentAudioPositionNorm { 0.0f };
 
     float vibratoPhaseRadians { 0.0f };
+    float lfoPhaseRadians { 0.0f };
+    std::atomic<float> lfoPhaseForDebug { 0.0f };
+    std::atomic<float> lfoCurrentValue { 0.0f };
+    std::atomic<float> lfoDebugBaseNormalized { 0.0f };
+    std::atomic<float> lfoDebugEffectiveNormalized { 0.0f };
     float imageAnimPhase { 0.0f };
     float audioAnimPhase { 0.0f };
     float imageTargetScanPhase { 0.0f };

@@ -10,15 +10,16 @@
 
 namespace
 {
-const std::array<const char*, 4> kGroupNames { "OSC", "FILTER", "AMP ENV", "OUTPUT" };
-const std::array<juce::Colour, 4> kGroupAccents {
+const std::array<const char*, 5> kGroupNames { "OSC", "FILTER", "AMP ENV", "LFO", "OUTPUT" };
+const std::array<juce::Colour, 5> kGroupAccents {
     juce::Colour::fromRGB(74, 153, 255),   // OSC: blue
     juce::Colour::fromRGB(255, 88, 88),    // FILTER: red
     juce::Colour::fromRGB(73, 222, 121),   // AMP ENV: green
+    juce::Colour::fromRGB(186, 112, 255),  // LFO: purple
     juce::Colour::fromRGB(255, 216, 74)    // OUTPUT: yellow
 };
 
-constexpr int kFxSectionRob = 0;
+constexpr int kFxSectionDrive = 0;
 constexpr int kFxSectionDelay = 1;
 constexpr int kFxSectionReverb = 2;
 
@@ -30,7 +31,7 @@ juce::String moduleIdFromSectionId(int sectionId)
             return "delay";
         case kFxSectionReverb:
             return "reverb";
-        case kFxSectionRob:
+        case kFxSectionDrive:
         default:
             return "harmonicDrive";
     }
@@ -48,7 +49,7 @@ int sectionIdFromModuleId(const juce::String& moduleId)
     }
     if (moduleId.equalsIgnoreCase("harmonicDrive"))
     {
-        return kFxSectionRob;
+        return kFxSectionDrive;
     }
     return -1;
 }
@@ -402,8 +403,9 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     setupLabel(debugSerializedLabel, "D. SERIALIZATION EVENTS");
     setupLabel(debugParameterLabel, "E. PARAMETER STATE");
     setupLabel(debugBackendControlLabel, "F. BACKEND PARAMETER CONTROLS");
-    setupLabel(debugSnapshotLabel, "G. STATE TESTING");
-    setupLabel(debugEventLogLabel, "H. EVENT LOG");
+    setupLabel(debugLfoLabel, "G. LFO DEBUG");
+    setupLabel(debugSnapshotLabel, "H. STATE TESTING");
+    setupLabel(debugEventLogLabel, "I. EVENT LOG");
 
     setupEditor(debugInstanceText);
     setupEditor(debugModuleOrderText);
@@ -412,6 +414,33 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     setupEditor(debugParameterInspectorText);
     setupEditor(debugEventLogText);
     setupEditor(debugSnapshotText);
+    setupEditor(debugLfoText);
+
+    debugLfoAssignLabel.setText("LFO Assignment", juce::dontSendNotification);
+    debugLfoAssignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(236, 236, 236));
+    debugLfoAssignLabel.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    debugLfoAssignLabel.setJustificationType(juce::Justification::centredLeft);
+
+    debugLfoAssignBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 220));
+    debugLfoAssignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    debugLfoAssignBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 110));
+
+    const auto& lfoAssignments = audioProcessor.getLfoAssignmentDisplayNames();
+    for (int i = 0; i < lfoAssignments.size(); ++i)
+    {
+        debugLfoAssignBox.addItem(lfoAssignments[i], i + 1);
+    }
+    debugLfoAssignBox.onChange = [this]()
+    {
+        if (debugLfoAssignSuppressCallbacks)
+        {
+            return;
+        }
+
+        const auto selected = juce::jmax(0, debugLfoAssignBox.getSelectedId() - 1);
+        audioProcessor.setLfoAssignmentIndex(selected);
+        refreshDebugLfoState();
+    };
 
     debugParamViewport.setViewedComponent(&debugParamContent, false);
     debugParamViewport.setScrollBarsShown(true, false);
@@ -445,6 +474,7 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     addToPanel(debugSerializedLabel);
     addToPanel(debugParameterLabel);
     addToPanel(debugBackendControlLabel);
+    addToPanel(debugLfoLabel);
     addToPanel(debugSnapshotLabel);
     addToPanel(debugEventLogLabel);
     addToPanel(debugInstanceText);
@@ -454,6 +484,9 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     addToPanel(debugParameterInspectorText);
     addToPanel(debugEventLogText);
     addToPanel(debugSnapshotText);
+    addToPanel(debugLfoText);
+    addToPanel(debugLfoAssignLabel);
+    addToPanel(debugLfoAssignBox);
     addToPanel(debugParamViewport);
 
     debugValueTreeText.setText("Manual refresh disabled for live mode. Click 'REFRESH XML + SERIALIZED STATE'.", juce::dontSendNotification);
@@ -507,19 +540,19 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
 
     debugResetOrderButton.onClick = [this]()
     {
-        debugApplyModuleOrder({ { kFxSectionRob, kFxSectionDelay, kFxSectionReverb } }, "DEBUG_RESET_ORDER");
+        debugApplyModuleOrder({ { kFxSectionDrive, kFxSectionDelay, kFxSectionReverb } }, "DEBUG_RESET_ORDER");
     };
     debugOrderAButton.onClick = [this]()
     {
-        debugApplyModuleOrder({ { kFxSectionDelay, kFxSectionReverb, kFxSectionRob } }, "DEBUG_ORDER_DELAY_REVERB_DRIVE");
+        debugApplyModuleOrder({ { kFxSectionDelay, kFxSectionReverb, kFxSectionDrive } }, "DEBUG_ORDER_DELAY_REVERB_DRIVE");
     };
     debugOrderBButton.onClick = [this]()
     {
-        debugApplyModuleOrder({ { kFxSectionReverb, kFxSectionRob, kFxSectionDelay } }, "DEBUG_ORDER_REVERB_DRIVE_DELAY");
+        debugApplyModuleOrder({ { kFxSectionReverb, kFxSectionDrive, kFxSectionDelay } }, "DEBUG_ORDER_REVERB_DRIVE_DELAY");
     };
     debugOrderCButton.onClick = [this]()
     {
-        debugApplyModuleOrder({ { kFxSectionRob, kFxSectionDelay, kFxSectionReverb } }, "DEBUG_ORDER_DRIVE_DELAY_REVERB");
+        debugApplyModuleOrder({ { kFxSectionDrive, kFxSectionDelay, kFxSectionReverb } }, "DEBUG_ORDER_DRIVE_DELAY_REVERB");
     };
     debugInvalidOrderButton.onClick = [this]()
     {
@@ -693,8 +726,17 @@ void SynthProjectAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<in
     };
 
     sectionRight(debugParameterLabel, debugParameterInspectorText, 150);
-    sectionRight(debugBackendControlLabel, debugParamViewport, 190);
-    sectionRight(debugSnapshotLabel, debugSnapshotText, 110);
+    sectionRight(debugBackendControlLabel, debugParamViewport, 170);
+
+    debugLfoLabel.setBounds(right.removeFromTop(18));
+    debugLfoText.setBounds(right.removeFromTop(92));
+    right.removeFromTop(4);
+    auto lfoAssignRow = right.removeFromTop(24);
+    debugLfoAssignLabel.setBounds(lfoAssignRow.removeFromLeft(130));
+    debugLfoAssignBox.setBounds(lfoAssignRow.reduced(1, 0));
+    right.removeFromTop(4);
+
+    sectionRight(debugSnapshotLabel, debugSnapshotText, 96);
     sectionRight(debugEventLogLabel, debugEventLogText, juce::jmax(120, right.getHeight() - 24));
 
     auto content = debugParamViewport.getLocalBounds().reduced(4);
@@ -728,6 +770,7 @@ void SynthProjectAudioProcessorEditor::refreshDebugPanel(bool includeHeavySectio
     }
     refreshDebugParameterInspector();
     refreshDebugParameterControls();
+    refreshDebugLfoState();
     refreshDebugEventLog();
     debugInstanceText.setText(buildInstanceInfoText(), juce::dontSendNotification);
 }
@@ -870,6 +913,34 @@ void SynthProjectAudioProcessorEditor::refreshDebugParameterControls()
 void SynthProjectAudioProcessorEditor::refreshDebugEventLog()
 {
     debugEventLogText.setText(audioProcessor.debugGetEventLogText(), juce::dontSendNotification);
+}
+
+void SynthProjectAudioProcessorEditor::refreshDebugLfoState()
+{
+    const auto assignmentIndex = audioProcessor.getLfoAssignmentIndex();
+    debugLfoAssignSuppressCallbacks = true;
+    debugLfoAssignBox.setSelectedId(assignmentIndex + 1, juce::dontSendNotification);
+    debugLfoAssignSuppressCallbacks = false;
+
+    const auto frequencyHz = audioProcessor.getLfoFrequencyParam().get();
+    const auto phase = audioProcessor.debugGetLfoPhase();
+    const auto lfoValue = audioProcessor.debugGetLfoCurrentValue();
+    const auto baseNorm = audioProcessor.debugGetLfoBaseNormalized();
+    const auto effectiveNorm = audioProcessor.debugGetLfoEffectiveNormalized();
+    const auto assignmentId = audioProcessor.getLfoAssignmentParameterId();
+    const auto assignmentName = audioProcessor.debugGetLfoAssignmentName();
+
+    juce::String text;
+    text << "Frequency: " << juce::String(frequencyHz, 4) << " Hz\n"
+         << "Assignment: " << assignmentName << "\n"
+         << "Assignment ID: " << assignmentId << "\n"
+         << "Phase: " << juce::String(phase, 5) << "\n"
+         << "LFO Value: " << juce::String(lfoValue, 5) << "\n"
+         << "Base (norm): " << juce::String(baseNorm, 5) << "\n"
+         << "Effective (norm): " << juce::String(effectiveNorm, 5) << "\n"
+         << "Delta: " << juce::String(effectiveNorm - baseNorm, 5);
+
+    debugLfoText.setText(text, juce::dontSendNotification);
 }
 
 void SynthProjectAudioProcessorEditor::debugCaptureSnapshot(const juce::String& reason)
@@ -1283,6 +1354,7 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
         KnobBinding { &decayKnob, &decayLabel, nullptr },
         KnobBinding { &sustainKnob, &sustainLabel, nullptr },
         KnobBinding { &releaseKnob, &releaseLabel, nullptr },
+        KnobBinding { &lfoFrequencyKnob, &lfoFrequencyLabel, nullptr },
         KnobBinding { &gainKnob, &gainLabel, nullptr }
     };
 
@@ -1295,7 +1367,45 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     configureKnob(knobBindings[6], "Decay", audioProcessor.getDecayParam());
     configureKnob(knobBindings[7], "Sustain", audioProcessor.getSustainParam());
     configureKnob(knobBindings[8], "Release", audioProcessor.getReleaseParam());
-    configureKnob(knobBindings[9], "Gain", audioProcessor.getMasterGainParam());
+    configureKnob(knobBindings[9], "Freq", audioProcessor.getLfoFrequencyParam());
+    configureKnob(knobBindings[10], "Gain", audioProcessor.getMasterGainParam());
+
+    lfoFrequencyValueLabel.setJustificationType(juce::Justification::centred);
+    lfoFrequencyValueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(218, 218, 228));
+    lfoFrequencyValueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+    lfoFrequencyValueLabel.setFont(juce::FontOptions(11.0f));
+    lfoFrequencyValueLabel.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(lfoFrequencyValueLabel);
+
+    lfoFrequencyKnob.onValueChange = [this]()
+    {
+        refreshLfoFrequencyLabel();
+    };
+    refreshLfoFrequencyLabel();
+
+    lfoAssignLabel.setText("Assign", juce::dontSendNotification);
+    lfoAssignLabel.setJustificationType(juce::Justification::centred);
+    lfoAssignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    lfoAssignLabel.setFont(juce::FontOptions(11.5f));
+    lfoAssignLabel.setInterceptsMouseClicks(false, false);
+    lfoAssignBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    lfoAssignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    lfoAssignBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+
+    const auto& lfoAssignments = audioProcessor.getLfoAssignmentDisplayNames();
+    for (int i = 0; i < lfoAssignments.size(); ++i)
+    {
+        lfoAssignBox.addItem(lfoAssignments[i], i + 1);
+    }
+
+    lfoAssignBox.onChange = [this]()
+    {
+        const auto selected = juce::jmax(0, lfoAssignBox.getSelectedId() - 1);
+        audioProcessor.setLfoAssignmentIndex(selected);
+    };
+
+    addAndMakeVisible(lfoAssignLabel);
+    addAndMakeVisible(lfoAssignBox);
 
     // OSC macro labels can become long in some modes; use a slightly smaller font.
     oscSineLabel.setFont(juce::FontOptions(11.0f));
@@ -1738,6 +1848,7 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
 
     refreshOscillatorModeUI();
     refreshGranularModeUI();
+    refreshLfoAssignmentUI();
     refreshFxBypassUI();
     debugEditorCreatedTime = audioProcessor.debugNowTimestamp();
 #if PX3_DEBUG_PANEL
@@ -1918,10 +2029,11 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
                static_cast<float>(controlsArea.getY()),
                1.0f);
 
-    g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
-
     for (std::size_t i = 0; i < knobGroupAreas.size(); ++i)
     {
+        const auto headerFontSize = (i == 0) ? 14.0f : 15.0f;
+        g.setFont(juce::FontOptions(headerFontSize, juce::Font::bold));
+
         const auto panel = knobGroupAreas[i].reduced(2);
         const auto accent = kGroupAccents[i];
         const auto panelFloat = panel.toFloat();
@@ -2301,16 +2413,17 @@ void SynthProjectAudioProcessorEditor::resized()
     pianoKeyboard.setBounds(keyboardRow);
     // midiStatusLabel.setBounds(midiStatusArea.withTrimmedLeft(180).withTrimmedRight(180));
 
-    const auto groupGap = 24;
+    const auto groupGap = 20;
     auto groupsSpan = controlsArea.reduced(8, 8);
     groupsSpan.removeFromTop(20);
 
-    const auto usableWidth = groupsSpan.getWidth() - (groupGap * 3);
+    const auto usableWidth = groupsSpan.getWidth() - (groupGap * 4);
     const auto usableWidthD = static_cast<double>(usableWidth);
-    const auto oscWidth = static_cast<int>(std::lround(usableWidthD * 0.30));
-    const auto filterWidth = static_cast<int>(std::lround(usableWidthD * 0.20));
-    const auto envWidth = static_cast<int>(std::lround(usableWidthD * 0.40));
-    const auto outWidth = usableWidth - oscWidth - filterWidth - envWidth;
+    const auto oscWidth = static_cast<int>(std::lround(usableWidthD * 0.27));
+    const auto filterWidth = static_cast<int>(std::lround(usableWidthD * 0.18));
+    const auto envWidth = static_cast<int>(std::lround(usableWidthD * 0.28));
+    const auto lfoWidth = static_cast<int>(std::lround(usableWidthD * 0.14));
+    const auto outWidth = usableWidth - oscWidth - filterWidth - envWidth - lfoWidth;
 
     auto x = groupsSpan.getX();
     knobGroupAreas[0] = { x, groupsSpan.getY(), oscWidth, groupsSpan.getHeight() };
@@ -2319,12 +2432,15 @@ void SynthProjectAudioProcessorEditor::resized()
     x += filterWidth + groupGap;
     knobGroupAreas[2] = { x, groupsSpan.getY(), envWidth, groupsSpan.getHeight() };
     x += envWidth + groupGap;
-    knobGroupAreas[3] = { x, groupsSpan.getY(), outWidth, groupsSpan.getHeight() };
+    knobGroupAreas[3] = { x, groupsSpan.getY(), lfoWidth, groupsSpan.getHeight() };
+    x += lfoWidth + groupGap;
+    knobGroupAreas[4] = { x, groupsSpan.getY(), outWidth, groupsSpan.getHeight() };
 
     layoutKnobGroup(knobGroupAreas[0], 0, 3, kGroupAccents[0]);
     layoutKnobGroup(knobGroupAreas[1], 3, 2, kGroupAccents[1]);
     layoutKnobGroup(knobGroupAreas[2], 5, 4, kGroupAccents[2]);
     layoutKnobGroup(knobGroupAreas[3], 9, 1, kGroupAccents[3]);
+    layoutKnobGroup(knobGroupAreas[4], 10, 1, kGroupAccents[4]);
 
     {
         auto oscArea = knobGroupAreas[0].reduced(12, 8);
@@ -2349,6 +2465,23 @@ void SynthProjectAudioProcessorEditor::resized()
                                               filterArea.getWidth(),
                                               18);
         filterTypeBox.setBounds(row.reduced(1, 0));
+    }
+
+    {
+        auto lfoArea = knobGroupAreas[3].reduced(10, 8);
+        const auto assignRow = juce::Rectangle<int>(lfoArea.getX(),
+                                                    lfoArea.getBottom() - 22,
+                                                    lfoArea.getWidth(),
+                                                    18);
+        auto row = assignRow;
+        auto labelArea = row.removeFromLeft(52);
+        lfoAssignLabel.setBounds(labelArea);
+        lfoAssignBox.setBounds(row.reduced(1, 0));
+
+        const auto readoutY = juce::jlimit(lfoArea.getY(),
+                                           assignRow.getY() - 16,
+                                           lfoFrequencyKnob.getBottom() + 4);
+        lfoFrequencyValueLabel.setBounds(lfoArea.getX(), readoutY, lfoArea.getWidth(), 14);
     }
 
     const auto browserWidth = juce::jlimit(520, 760, getWidth() - 120);
@@ -2512,7 +2645,7 @@ void SynthProjectAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
         {
             switch (pressedFxSection)
             {
-                case kFxSectionRob:
+                case kFxSectionDrive:
                 {
                     auto& p = audioProcessor.getRobEnabledParam();
                     p.beginChangeGesture();
@@ -2584,7 +2717,7 @@ void SynthProjectAudioProcessorEditor::updateFxSectionTargets(const juce::Rectan
 
 void SynthProjectAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
 {
-    robSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionRob)].toNearestInt();
+    robSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionDrive)].toNearestInt();
     isaacSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionDelay)].toNearestInt();
     reverbSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionReverb)].toNearestInt();
 
@@ -3466,7 +3599,9 @@ void SynthProjectAudioProcessorEditor::layoutKnobGroup(const juce::Rectangle<int
     const auto maxKnobByHeight = juce::jmax(56, area.getHeight() - labelHeight - 8);
     const auto maxKnobByWidth = (area.getWidth() - (knobCount - 1) * minGap) / knobCount;
     const auto baseKnobSize = juce::jlimit(56, 110, juce::jmin(maxKnobByWidth, maxKnobByHeight));
-    const auto knobSize = juce::jmax(48, static_cast<int>(std::lround(static_cast<double>(baseKnobSize) * 0.85)));
+    const auto sizeScale = (startIndex == 5) ? 0.72 : 0.85;
+    const auto knobSize = juce::jmax((startIndex == 5) ? 42 : 48,
+                                     static_cast<int>(std::lround(static_cast<double>(baseKnobSize) * sizeScale)));
 
     const auto totalKnobWidth = knobSize * knobCount;
     const auto dynamicGap = knobCount > 1
@@ -3544,6 +3679,24 @@ void SynthProjectAudioProcessorEditor::refreshGranularModeUI()
     repaint(isaacSectionArea);
 }
 
+void SynthProjectAudioProcessorEditor::refreshLfoAssignmentUI()
+{
+    const auto assignmentIndex = audioProcessor.getLfoAssignmentIndex();
+    if (assignmentIndex == lastLfoAssignmentIndex)
+    {
+        return;
+    }
+
+    lastLfoAssignmentIndex = assignmentIndex;
+    lfoAssignBox.setSelectedId(assignmentIndex + 1, juce::dontSendNotification);
+}
+
+void SynthProjectAudioProcessorEditor::refreshLfoFrequencyLabel()
+{
+    const auto hz = juce::jlimit(0.01f, 20.0f, audioProcessor.getLfoFrequencyParam().get());
+    lfoFrequencyValueLabel.setText(juce::String(hz, 2) + " Hz", juce::dontSendNotification);
+}
+
 void SynthProjectAudioProcessorEditor::refreshFxBypassUI()
 {
     const auto robEnabled = audioProcessor.getRobEnabledParam().get();
@@ -3612,6 +3765,8 @@ void SynthProjectAudioProcessorEditor::timerCallback()
     animateFxSections();
     refreshOscillatorModeUI();
     refreshGranularModeUI();
+    refreshLfoAssignmentUI();
+    refreshLfoFrequencyLabel();
     refreshFxBypassUI();
 
     if (debugPanelVisible)
