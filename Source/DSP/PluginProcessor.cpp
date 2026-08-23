@@ -25,6 +25,15 @@ const juce::Identifier kVibeBypassId("bypass");
 const juce::Identifier kVibeSeedId("seed");
 std::atomic<uint32_t> kInstanceCounter { 0u };
 
+const juce::StringArray kVibeTypeChoices {
+    "Warm",
+    "Hot",
+    "Cool",
+    "Vintage",
+    "Clean",
+    "LoFi"
+};
+
 juce::String moduleIdForStage(int stage);
 
 juce::String nowTimestamp()
@@ -312,6 +321,10 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
 
     robAmountParam = new juce::AudioParameterFloat("robAmount", "Vibe", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     robEnabledParam = new juce::AudioParameterBool("robEnabled", "Vibe Enabled", true);
+    vibeTypeParam = new juce::AudioParameterChoice("vibeType",
+                                                    "Vibe Type",
+                                                    kVibeTypeChoices,
+                                                    0);
     isaacAmountParam = new juce::AudioParameterFloat("isaacAmount", "Granular Delay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     granularSyncDivisionParam = new juce::AudioParameterChoice("granularSyncDivision",
                                                                 "Granular Sync",
@@ -408,6 +421,7 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(masterGainParam);
     addParameter(robAmountParam);
     addParameter(robEnabledParam);
+    addParameter(vibeTypeParam);
     addParameter(isaacAmountParam);
     addParameter(granularSyncDivisionParam);
     addParameter(granularModeParam);
@@ -463,6 +477,7 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
 
     synth.addSound(new SynthSound());
     clearAllActiveNotes();
+    applyVibeTypeProfile(vibeTypeParam->getIndex());
 
     auto initialTable = createDefaultImageWavetable();
     if (initialTable != nullptr)
@@ -539,6 +554,7 @@ void SynthProjectAudioProcessor::prepareToPlay(double sampleRate, int samplesPer
     delayFeedbackControlSmoothed = clamp01(delayFeedbackParam->get());
     vibeEngine.prepare(sampleRate, synth.getNumVoices(), vibeSeed.load(std::memory_order_relaxed));
     vibeLastAppliedSeed.store(vibeSeed.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    applyVibeTypeProfile(vibeTypeParam->getIndex());
 
     const auto envelope = currentEnvelopeSettings();
     const auto subtractive = currentSubtractiveSettings();
@@ -592,6 +608,64 @@ float SynthProjectAudioProcessor::currentLfoSignalForBlock(int numSamples)
     lfoPhaseForDebug.store(lfoPhaseRadians, std::memory_order_relaxed);
     lfoCurrentValue.store(signal, std::memory_order_relaxed);
     return signal;
+}
+
+int SynthProjectAudioProcessor::sanitizeVibeTypeIndex(int typeIndex) const
+{
+    return juce::jlimit(0, juce::jmax(0, vibeTypeParam->choices.size() - 1), typeIndex);
+}
+
+void SynthProjectAudioProcessor::applyVibeTypeProfile(int typeIndex)
+{
+    const auto clamped = sanitizeVibeTypeIndex(typeIndex);
+    if (clamped == vibeTypeLastApplied.load(std::memory_order_relaxed))
+    {
+        return;
+    }
+
+    struct Profile
+    {
+        float oscillatorDrift;
+        float voiceVariation;
+        float filterVariation;
+        float saturation;
+        float noise;
+        float psuMovement;
+        float vcaNonlinearity;
+        float waveformAsymmetry;
+        float temperatureDrift;
+        float correlatedChaos;
+    };
+
+    static const std::array<Profile, 6> profiles {
+        {
+            // Warm: balanced analog movement and harmonic softening.
+            { 0.55f, 0.55f, 0.45f, 0.40f, 0.25f, 0.38f, 0.42f, 0.32f, 0.40f, 0.50f },
+            // Hot: stronger drive/nonlinearity with faster-feeling motion.
+            { 0.62f, 0.66f, 0.56f, 0.74f, 0.36f, 0.60f, 0.78f, 0.68f, 0.48f, 0.72f },
+            // Cool: cleaner, lower saturation/noise with restrained instability.
+            { 0.35f, 0.34f, 0.30f, 0.18f, 0.08f, 0.22f, 0.18f, 0.14f, 0.24f, 0.20f },
+            // Vintage: larger drift/PSU movement and added noise.
+            { 0.74f, 0.72f, 0.52f, 0.48f, 0.52f, 0.72f, 0.44f, 0.40f, 0.76f, 0.64f },
+            // Clean: minimal imperfections with slight organic motion.
+            { 0.16f, 0.14f, 0.12f, 0.08f, 0.03f, 0.10f, 0.08f, 0.06f, 0.10f, 0.08f },
+            // LoFi: noisy, unstable and asymmetrical by design.
+            { 0.68f, 0.82f, 0.62f, 0.56f, 0.84f, 0.70f, 0.52f, 0.74f, 0.58f, 0.78f }
+        }
+    };
+
+    const auto& p = profiles[static_cast<std::size_t>(clamped)];
+    vibeTuneOscDrift.store(p.oscillatorDrift, std::memory_order_relaxed);
+    vibeTuneVoiceVar.store(p.voiceVariation, std::memory_order_relaxed);
+    vibeTuneFilterVar.store(p.filterVariation, std::memory_order_relaxed);
+    vibeTuneSaturation.store(p.saturation, std::memory_order_relaxed);
+    vibeTuneNoise.store(p.noise, std::memory_order_relaxed);
+    vibeTunePsu.store(p.psuMovement, std::memory_order_relaxed);
+    vibeTuneVca.store(p.vcaNonlinearity, std::memory_order_relaxed);
+    vibeTuneAsym.store(p.waveformAsymmetry, std::memory_order_relaxed);
+    vibeTuneTemp.store(p.temperatureDrift, std::memory_order_relaxed);
+    vibeTuneChaos.store(p.correlatedChaos, std::memory_order_relaxed);
+    vibeTypeLastApplied.store(clamped, std::memory_order_relaxed);
 }
 
 void SynthProjectAudioProcessor::updateVibeStateForBlock(int numSamples, float lfoSignal)
@@ -783,6 +857,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     constexpr float vibratoRateHz = 5.0f;
     constexpr float vibratoMaxDepthSemitones = 1.0f;
 
+    applyVibeTypeProfile(vibeTypeParam->getIndex());
     const auto blockLfoSignal = currentLfoSignalForBlock(buffer.getNumSamples());
     const auto lfoAssignedIndex = getLfoAssignmentIndex();
     if (lfoAssignedIndex > 0 && lfoAssignedIndex < static_cast<int>(lfoAssignableTargets.size()))
@@ -1338,6 +1413,7 @@ juce::AudioParameterFloat& SynthProjectAudioProcessor::getReleaseParam() const {
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getMasterGainParam() const { return *masterGainParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getRobAmountParam() const { return *robAmountParam; }
 juce::AudioParameterBool& SynthProjectAudioProcessor::getRobEnabledParam() const { return *robEnabledParam; }
+juce::AudioParameterChoice& SynthProjectAudioProcessor::getVibeTypeParam() const { return *vibeTypeParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getIsaacAmountParam() const { return *isaacAmountParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getGranularSyncDivisionParam() const { return *granularSyncDivisionParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getGranularModeParam() const { return *granularModeParam; }
@@ -4000,6 +4076,8 @@ bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& 
             debugSetVibeSeed(static_cast<uint32_t>(juce::jmax<int64_t>(1, static_cast<int64_t>(vibeState[kVibeSeedId]))));
         }
     }
+
+    applyVibeTypeProfile(vibeTypeParam->getIndex());
 
     if (state.hasProperty("imagePath"))
     {

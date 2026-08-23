@@ -276,8 +276,10 @@ private:
     KnobLabel midiStatusLabel;
     std::unique_ptr<EnvelopeGraphComponent> envelopeGraph;
 
-    juce::Slider robWarmthKnob;
-    KnobLabel robWarmthLabel;
+    juce::Slider vibeAmountKnob;
+    KnobLabel vibeAmountLabel;
+    juce::ComboBox vibeTypeBox;
+    KnobLabel vibeTypeLabel;
     juce::Slider isaacTextureKnob;
     KnobLabel isaacTextureLabel;
     juce::ComboBox delayAlgoBox;

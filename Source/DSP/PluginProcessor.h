@@ -97,6 +97,7 @@ public:
 
     juce::AudioParameterFloat& getRobAmountParam() const;
     juce::AudioParameterBool& getRobEnabledParam() const;
+    juce::AudioParameterChoice& getVibeTypeParam() const;
     juce::AudioParameterFloat& getIsaacAmountParam() const;
     juce::AudioParameterChoice& getGranularSyncDivisionParam() const;
     juce::AudioParameterChoice& getGranularModeParam() const;
@@ -253,6 +254,8 @@ private:
     float updateImageAnimationPosition(int samplesThisBlock);
     float computeImageTargetControlSignal(float imagePositionNorm, int samplesThisBlock);
     float updateAudioAnimationPosition(int samplesThisBlock);
+    void applyVibeTypeProfile(int typeIndex);
+    int sanitizeVibeTypeIndex(int typeIndex) const;
     float audioSyncBeatsForIndex(int index) const;
     float imageSyncBeatsForIndex(int index) const;
     void updateTransportState();
@@ -323,6 +326,7 @@ private:
     juce::AudioParameterFloat* masterGainParam { nullptr };
     juce::AudioParameterFloat* robAmountParam { nullptr };
     juce::AudioParameterBool* robEnabledParam { nullptr };
+    juce::AudioParameterChoice* vibeTypeParam { nullptr };
     juce::AudioParameterFloat* isaacAmountParam { nullptr };
     juce::AudioParameterChoice* granularSyncDivisionParam { nullptr };
     juce::AudioParameterChoice* granularModeParam { nullptr };
@@ -423,6 +427,7 @@ private:
     std::atomic<float> vibeTuneAsym { kVibeDefaultWaveformAsymmetry };
     std::atomic<float> vibeTuneTemp { kVibeDefaultTemperatureDrift };
     std::atomic<float> vibeTuneChaos { kVibeDefaultCorrelatedChaos };
+    std::atomic<int> vibeTypeLastApplied { -1 };
     float imageAnimPhase { 0.0f };
     float audioAnimPhase { 0.0f };
     float imageTargetScanPhase { 0.0f };
