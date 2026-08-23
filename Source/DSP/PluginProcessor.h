@@ -400,19 +400,29 @@ private:
      * drift) are generated once and distributed across multiple DSP points.
      */
     VibeEngine vibeEngine;
-    std::atomic<int> vibeBypassFlag { 0 };
+    static constexpr float kVibeDefaultOscillatorDrift = 0.55f;
+    static constexpr float kVibeDefaultVoiceVariation = 0.55f;
+    static constexpr float kVibeDefaultFilterVariation = 0.45f;
+    static constexpr float kVibeDefaultSaturation = 0.40f;
+    static constexpr float kVibeDefaultNoise = 0.25f;
+    static constexpr float kVibeDefaultPsuMovement = 0.38f;
+    static constexpr float kVibeDefaultVcaNonlinearity = 0.42f;
+    static constexpr float kVibeDefaultWaveformAsymmetry = 0.32f;
+    static constexpr float kVibeDefaultTemperatureDrift = 0.40f;
+    static constexpr float kVibeDefaultCorrelatedChaos = 0.50f;
+
     std::atomic<uint32_t> vibeSeed { 1337u };
     std::atomic<uint32_t> vibeLastAppliedSeed { 1337u };
-    std::atomic<float> vibeTuneOscDrift { 0.55f };
-    std::atomic<float> vibeTuneVoiceVar { 0.55f };
-    std::atomic<float> vibeTuneFilterVar { 0.45f };
-    std::atomic<float> vibeTuneSaturation { 0.40f };
-    std::atomic<float> vibeTuneNoise { 0.25f };
-    std::atomic<float> vibeTunePsu { 0.38f };
-    std::atomic<float> vibeTuneVca { 0.42f };
-    std::atomic<float> vibeTuneAsym { 0.32f };
-    std::atomic<float> vibeTuneTemp { 0.40f };
-    std::atomic<float> vibeTuneChaos { 0.50f };
+    std::atomic<float> vibeTuneOscDrift { kVibeDefaultOscillatorDrift };
+    std::atomic<float> vibeTuneVoiceVar { kVibeDefaultVoiceVariation };
+    std::atomic<float> vibeTuneFilterVar { kVibeDefaultFilterVariation };
+    std::atomic<float> vibeTuneSaturation { kVibeDefaultSaturation };
+    std::atomic<float> vibeTuneNoise { kVibeDefaultNoise };
+    std::atomic<float> vibeTunePsu { kVibeDefaultPsuMovement };
+    std::atomic<float> vibeTuneVca { kVibeDefaultVcaNonlinearity };
+    std::atomic<float> vibeTuneAsym { kVibeDefaultWaveformAsymmetry };
+    std::atomic<float> vibeTuneTemp { kVibeDefaultTemperatureDrift };
+    std::atomic<float> vibeTuneChaos { kVibeDefaultCorrelatedChaos };
     float imageAnimPhase { 0.0f };
     float audioAnimPhase { 0.0f };
     float imageTargetScanPhase { 0.0f };

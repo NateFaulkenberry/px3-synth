@@ -292,7 +292,7 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     const auto initialTuning = audioProcessor.debugGetVibeTuning();
     const std::array<VibeControlSpec, 12> specs {
         {
-            { "Global Amount [robAmount]", "globalAmount", 0.0, 1.0, 0.0001, audioProcessor.getRobAmountParam().get() },
+            { "Global Amount", "globalAmount", 0.0, 1.0, 0.0001, audioProcessor.getRobAmountParam().get() },
             { "Bypass", "bypass", 0.0, 1.0, 1.0, audioProcessor.debugGetVibeBypass() ? 1.0 : 0.0 },
             { "Seed", "seed", 1.0, 65535.0, 1.0, static_cast<double>(audioProcessor.debugGetVibeSeed()) },
             { "Oscillator Drift", "oscillatorDrift", 0.0, 1.0, 0.0001, initialTuning.oscillatorDrift },
@@ -339,7 +339,10 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
             }
             else if (ptr->key == "bypass")
             {
-                audioProcessor.debugSetVibeBypass(requested >= 0.5f);
+                auto& p = audioProcessor.getRobEnabledParam();
+                p.beginChangeGesture();
+                p.setValueNotifyingHost(requested >= 0.5f ? 0.0f : 1.0f);
+                p.endChangeGesture();
             }
             else if (ptr->key == "seed")
             {

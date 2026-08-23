@@ -23,7 +23,6 @@ const juce::Identifier kLfoAssignmentId("assignment");
 const juce::Identifier kVibeStateId("VIBE");
 const juce::Identifier kVibeBypassId("bypass");
 const juce::Identifier kVibeSeedId("seed");
-const juce::Identifier kVibeTuningId("tuning");
 std::atomic<uint32_t> kInstanceCounter { 0u };
 
 juce::String moduleIdForStage(int stage);
@@ -617,7 +616,7 @@ void SynthProjectAudioProcessor::updateVibeStateForBlock(int numSamples, float l
     t.correlatedChaos = juce::jlimit(0.0f, 1.0f, vibeTuneChaos.load(std::memory_order_relaxed));
 
     vibeEngine.setTuning(t);
-    vibeEngine.setBypass(vibeBypassFlag.load(std::memory_order_relaxed) != 0);
+    vibeEngine.setBypass(debugGetVibeBypass());
     const auto globalAmount = applyLfoToNormalizedValue(robAmountParam,
                                                          static_cast<juce::RangedAudioParameter*>(robAmountParam)->getValue(),
                                                          lfoSignal);
@@ -637,7 +636,7 @@ float SynthProjectAudioProcessor::debugGetVibeEffectiveAmount() const
 
 bool SynthProjectAudioProcessor::debugGetVibeBypass() const
 {
-    return vibeBypassFlag.load(std::memory_order_relaxed) != 0;
+    return !robEnabledParam->get();
 }
 
 uint32_t SynthProjectAudioProcessor::debugGetVibeSeed() const
@@ -663,7 +662,8 @@ VibeTuning SynthProjectAudioProcessor::debugGetVibeTuning() const
 
 void SynthProjectAudioProcessor::debugSetVibeBypass(bool shouldBypass)
 {
-    vibeBypassFlag.store(shouldBypass ? 1 : 0, std::memory_order_relaxed);
+    const auto enabledValue = shouldBypass ? 0.0f : 1.0f;
+    robEnabledParam->setValueNotifyingHost(enabledValue);
 }
 
 void SynthProjectAudioProcessor::debugSetVibeSeed(uint32_t seed)
@@ -813,7 +813,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     updateVibeStateForBlock(buffer.getNumSamples(), blockLfoSignal);
     const auto vibeShared = vibeEngine.getSharedState();
     const auto vibeTuning = debugGetVibeTuning();
-    const auto vibeBypass = !robEnabled || debugGetVibeBypass();
+    const auto vibeBypass = debugGetVibeBypass();
     const auto vibeAmount = vibeBypass ? 0.0f : vibeEngine.getEffectiveAmount();
     const auto currentImagePosition = updateImageAnimationPosition(buffer.getNumSamples());
     const auto currentAudioPosition = updateAudioAnimationPosition(buffer.getNumSamples());
@@ -3841,20 +3841,6 @@ juce::ValueTree SynthProjectAudioProcessor::createParameterStateTree() const
     juce::ValueTree vibeState(kVibeStateId);
     vibeState.setProperty(kVibeBypassId, debugGetVibeBypass(), nullptr);
     vibeState.setProperty(kVibeSeedId, static_cast<int64_t>(debugGetVibeSeed()), nullptr);
-
-    const auto vibe = debugGetVibeTuning();
-    juce::ValueTree vibeTuning(kVibeTuningId);
-    vibeTuning.setProperty("oscillatorDrift", vibe.oscillatorDrift, nullptr);
-    vibeTuning.setProperty("voiceVariation", vibe.voiceVariation, nullptr);
-    vibeTuning.setProperty("filterVariation", vibe.filterVariation, nullptr);
-    vibeTuning.setProperty("saturation", vibe.saturation, nullptr);
-    vibeTuning.setProperty("noise", vibe.noise, nullptr);
-    vibeTuning.setProperty("psuMovement", vibe.psuMovement, nullptr);
-    vibeTuning.setProperty("vcaNonlinearity", vibe.vcaNonlinearity, nullptr);
-    vibeTuning.setProperty("waveformAsymmetry", vibe.waveformAsymmetry, nullptr);
-    vibeTuning.setProperty("temperatureDrift", vibe.temperatureDrift, nullptr);
-    vibeTuning.setProperty("correlatedChaos", vibe.correlatedChaos, nullptr);
-    vibeState.addChild(vibeTuning, -1, nullptr);
     state.addChild(vibeState, -1, nullptr);
 
     return state;
@@ -4012,27 +3998,6 @@ bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& 
         if (vibeState.hasProperty(kVibeSeedId))
         {
             debugSetVibeSeed(static_cast<uint32_t>(juce::jmax<int64_t>(1, static_cast<int64_t>(vibeState[kVibeSeedId]))));
-        }
-
-        if (const auto tune = vibeState.getChildWithName(kVibeTuningId); tune.isValid())
-        {
-            const auto applyTune = [this, &tune](const char* id)
-            {
-                if (tune.hasProperty(id))
-                {
-                    debugSetVibeTuningValue(id, static_cast<float>(tune[id]));
-                }
-            };
-            applyTune("oscillatorDrift");
-            applyTune("voiceVariation");
-            applyTune("filterVariation");
-            applyTune("saturation");
-            applyTune("noise");
-            applyTune("psuMovement");
-            applyTune("vcaNonlinearity");
-            applyTune("waveformAsymmetry");
-            applyTune("temperatureDrift");
-            applyTune("correlatedChaos");
         }
     }
 

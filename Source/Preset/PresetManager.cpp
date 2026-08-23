@@ -620,7 +620,6 @@ bool PresetManager::createInitPresetIfMissing(juce::String& error)
     state.addChild(lfoState, -1, nullptr);
 
     const juce::Identifier vibeStateId("VIBE");
-    const juce::Identifier vibeTuningId("tuning");
     if (auto existingVibe = state.getChildWithName(vibeStateId); existingVibe.isValid())
     {
         state.removeChild(existingVibe, nullptr);
@@ -628,18 +627,6 @@ bool PresetManager::createInitPresetIfMissing(juce::String& error)
     juce::ValueTree vibeState(vibeStateId);
     vibeState.setProperty("bypass", false, nullptr);
     vibeState.setProperty("seed", 1337, nullptr);
-    juce::ValueTree tuning(vibeTuningId);
-    tuning.setProperty("oscillatorDrift", 0.550000011920929f, nullptr);
-    tuning.setProperty("voiceVariation", 0.550000011920929f, nullptr);
-    tuning.setProperty("filterVariation", 0.449999988079071f, nullptr);
-    tuning.setProperty("saturation", 0.4000000059604645f, nullptr);
-    tuning.setProperty("noise", 0.25f, nullptr);
-    tuning.setProperty("psuMovement", 0.3799999952316284f, nullptr);
-    tuning.setProperty("vcaNonlinearity", 0.4199999868869781f, nullptr);
-    tuning.setProperty("waveformAsymmetry", 0.3199999928474426f, nullptr);
-    tuning.setProperty("temperatureDrift", 0.4000000059604645f, nullptr);
-    tuning.setProperty("correlatedChaos", 0.5f, nullptr);
-    vibeState.addChild(tuning, -1, nullptr);
     state.addChild(vibeState, -1, nullptr);
 
     if (!writePresetFile(initFile, tree, error))
