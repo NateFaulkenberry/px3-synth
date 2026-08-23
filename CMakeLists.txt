@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(PX3_COPY_PLUGIN_AFTER_BUILD "Copy plugin formats into local plugin folders after building" ON)
+option(PX3_DEBUG_PANEL "Enable in-plugin debug panel UI" OFF)
 
 include(FetchContent)
 
@@ -67,6 +68,7 @@ target_compile_definitions(SynthProject
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
+    PX3_DEBUG_PANEL=$<IF:$<BOOL:${PX3_DEBUG_PANEL}>,1,0>
 )
 
 target_link_libraries(SynthProject

@@ -104,6 +104,30 @@ public:
     juce::AudioParameterInt& getPitchBendRangeParam() const;
     std::array<int, 3> getFxProcessingOrder() const;
     void setFxProcessingOrder(const std::array<int, 3>& order);
+    void setFxProcessingOrderWithReason(const std::array<int, 3>& order,
+                                        const juce::String& source,
+                                        const juce::String& reason,
+                                        int fromIndex = -1,
+                                        int toIndex = -1);
+
+    juce::String debugGetInstanceId() const;
+    juce::String debugGetProcessorCreatedTime() const;
+    juce::String debugNowTimestamp() const;
+    void debugNotifyEditorCreated(void* editorPtr);
+    void debugNotifyEditorDestroyed(void* editorPtr);
+    void debugLogEvent(const juce::String& source,
+                       const juce::String& event,
+                       const juce::String& details = {});
+    void debugClearEventLog();
+    juce::String debugGetEventLogText() const;
+    int debugGetLastSerializedStateSize() const;
+    juce::String debugGetLastSerializedStateXml() const;
+    juce::MemoryBlock debugGetLastSerializedStateCopy() const;
+    bool debugRestoreLastSerializedState(juce::String& report);
+    bool debugRoundTripCurrentState(juce::String& report);
+    uint32_t debugGetModuleOrderGeneration() const;
+    uint32_t debugGetModuleOrderHash() const;
+    juce::String debugDescribeOrder(const std::array<int, 3>& order) const;
 
     float copyPitchBendNormalized() const;
     float copyModWheelNormalized() const;
@@ -350,6 +374,12 @@ private:
     float reverbOutputCompGain { 1.0f };
     std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
     std::atomic<uint32_t> fxOrderRevision { 0u };
+    juce::String debugInstanceId;
+    juce::String debugProcessorCreatedTime;
+    mutable std::mutex debugStateMutex;
+    juce::StringArray debugEventLogLines;
+    juce::MemoryBlock debugLastSerializedState;
+    juce::String debugLastSerializedStateXml;
 
     std::shared_ptr<const ImageWavetable> activeImageWavetable;
     std::shared_ptr<const AudioSourceData> activeAudioSource;

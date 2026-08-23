@@ -38,6 +38,37 @@ cmake --build build
 
 JUCE is fetched automatically through CMake FetchContent.
 
+## Debug Mode
+
+The in-plugin DEBUG panel is controlled at build time and is OFF by default.
+
+- Default behavior: no debug button is rendered in the UI.
+- Enable for release packaging:
+
+```bash
+./scripts/build-release.sh --debug true
+```
+
+- Disable explicitly for release packaging:
+
+```bash
+./scripts/build-release.sh --debug false
+```
+
+- Enable/disable when launching standalone (script reconfigures/rebuilds first):
+
+```bash
+./scripts/run-standalone.sh --debug true
+./scripts/run-standalone.sh --debug false
+```
+
+- If building manually with CMake:
+
+```bash
+cmake -B build -G Ninja -DPX3_DEBUG_PANEL=ON
+cmake --build build
+```
+
 ## Signal Flow (High Level)
 
 ```text

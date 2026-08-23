@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include <array>
+#include <map>
 #include <vector>
 
 #include "PerformanceControls.h"
@@ -89,7 +90,10 @@ private:
     int indexForFxSection(int sectionId) const;
     int fxSectionAtPoint(juce::Point<int> point) const;
     void moveFxSectionToSlot(int sectionId, int slotIndex);
-    void commitFxOrderToProcessor();
+    void commitFxOrderToProcessor(const juce::String& source = "USER",
+                                  const juce::String& reason = "UI_COMMIT",
+                                  int fromIndex = -1,
+                                  int toIndex = -1);
     void rebuildPresetFilteredList();
     void refreshPresetNameDisplay();
     void applyPresetRecord(const PresetManager::PresetRecord& record);
@@ -115,6 +119,61 @@ private:
                          const juce::Colour& sectionAccent);
     static juce::String noteNameForMidi(int midiNote);
     void timerCallback() override;
+
+    static juce::String fxModuleIdFromSection(int sectionId);
+    static int fxSectionFromModuleId(const juce::String& moduleId);
+
+    struct DebugSnapshot
+    {
+        juce::String timestamp;
+        std::array<int, 3> processorOrder { { 0, 1, 2 } };
+        std::array<int, 3> uiOrder { { 0, 1, 2 } };
+        juce::String stateXml;
+        juce::String serializedXml;
+        int serializedBytes { 0 };
+        uint32_t generation { 0 };
+        uint32_t hash { 0 };
+        std::map<juce::String, float> normalizedValues;
+    };
+
+    struct DebugParamControl
+    {
+        juce::Label label;
+        juce::Slider slider;
+        juce::Label readback;
+        juce::RangedAudioParameter* parameter { nullptr };
+        float lastRequested { 0.0f };
+        bool suppressCallbacks { false };
+    };
+
+    void setupDebugPanel();
+    void openDebugWindow();
+    void closeDebugWindow();
+    void toggleDebugWindow();
+    void layoutDebugPanel(const juce::Rectangle<int>& bounds);
+    void refreshDebugPanel(bool includeHeavySections = false);
+    void refreshDebugModuleState();
+    void refreshDebugValueTree();
+    void refreshDebugSerializedState();
+    void refreshDebugParameterInspector();
+    void refreshDebugParameterControls();
+    void refreshDebugEventLog();
+    void debugCaptureSnapshot(const juce::String& reason);
+    void debugCompareWithSnapshot();
+    void debugForceSerializationTest();
+    void debugWriteDeterministicTestValues();
+    void debugRandomizeParameters();
+    void debugResetParameters();
+    void debugApplyModuleOrder(const std::array<int, 3>& order,
+                               const juce::String& reason,
+                               int fromIndex = -1,
+                               int toIndex = -1);
+    std::array<juce::String, 3> readModuleOrderFromStateTree(const juce::ValueTree& state) const;
+    juce::String describeUiOrder() const;
+    juce::String describeProcessorOrder() const;
+    juce::String describeStateTreeOrder() const;
+    juce::String buildParameterInspectorText() const;
+    juce::String buildInstanceInfoText() const;
 
     SynthProjectAudioProcessor& audioProcessor;
     KnobLookAndFeel knobLookAndFeel;
@@ -249,4 +308,51 @@ private:
     std::array<KnobBinding, 10> knobBindings {};
     int lastOscModeIndex { -1 };
     int lastGranularModeIndex { -1 };
+
+    juce::TextButton debugToggleButton;
+    juce::Component debugPanel;
+    juce::Label debugPanelTitle;
+    juce::TextButton debugPanelCloseButton;
+    juce::TextButton debugClearLogButton;
+    juce::TextButton debugCopyLogButton;
+    juce::TextButton debugSerializeButton;
+    juce::TextButton debugRoundTripButton;
+    juce::TextButton debugForceSerializeTestButton;
+    juce::TextButton debugRestoreLastSerializedButton;
+    juce::TextButton debugSnapshotButton;
+    juce::TextButton debugCompareSnapshotButton;
+    juce::TextButton debugResetOrderButton;
+    juce::TextButton debugOrderAButton;
+    juce::TextButton debugOrderBButton;
+    juce::TextButton debugOrderCButton;
+    juce::TextButton debugInvalidOrderButton;
+    juce::TextButton debugRandomizeParamsButton;
+    juce::TextButton debugResetParamsButton;
+    juce::TextButton debugWriteTestValuesButton;
+    juce::Label debugInstanceLabel;
+    juce::Label debugModuleOrderLabel;
+    juce::Label debugValueTreeLabel;
+    juce::Label debugSerializedLabel;
+    juce::Label debugParameterLabel;
+    juce::Label debugBackendControlLabel;
+    juce::Label debugEventLogLabel;
+    juce::Label debugSnapshotLabel;
+    juce::TextEditor debugInstanceText;
+    juce::TextEditor debugModuleOrderText;
+    juce::TextEditor debugValueTreeText;
+    juce::TextEditor debugSerializedText;
+    juce::TextEditor debugParameterInspectorText;
+    juce::TextEditor debugEventLogText;
+    juce::TextEditor debugSnapshotText;
+    juce::Viewport debugParamViewport;
+    juce::Component debugParamContent;
+    std::vector<std::unique_ptr<DebugParamControl>> debugParamControls;
+    std::unique_ptr<juce::DocumentWindow> debugWindow;
+    juce::Rectangle<int> debugWindowBounds { 100, 80, 1240, 780 };
+    int debugRefreshTickCounter { 0 };
+    bool debugPanelVisible { false };
+    bool debugParamControlsInitialized { false };
+    bool debugHasSnapshot { false };
+    juce::String debugEditorCreatedTime;
+    DebugSnapshot debugLastSnapshot;
 };

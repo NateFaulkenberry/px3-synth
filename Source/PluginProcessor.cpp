@@ -2,6 +2,7 @@
 
 #include "PluginEditor.h"
 #include <cmath>
+#include <cstring>
 #include <memory>
 
 namespace
@@ -16,6 +17,26 @@ const juce::Identifier kModuleOrderId("MODULE_ORDER");
 const juce::Identifier kModuleEntryId("MODULE");
 const juce::Identifier kModuleIdProperty("id");
 const juce::Identifier kModuleOrderRevisionId("moduleOrderRevision");
+std::atomic<uint32_t> kInstanceCounter { 0u };
+
+juce::String moduleIdForStage(int stage);
+
+juce::String nowTimestamp()
+{
+    const auto now = juce::Time::getCurrentTime();
+    const auto ms = static_cast<int>(juce::Time::getMillisecondCounter() % 1000u);
+    return now.formatted("%H:%M:%S") + "." + juce::String(ms).paddedLeft('0', 3);
+}
+
+juce::String formatOrderString(const std::array<int, 3>& order)
+{
+    juce::StringArray items;
+    for (const auto stage : order)
+    {
+        items.add(moduleIdForStage(stage));
+    }
+    return items.joinIntoString(",");
+}
 
 const std::array<juce::String, 3> kFxModuleIds { juce::String("harmonicDrive"),
                                                   juce::String("delay"),
@@ -243,6 +264,10 @@ inline float smoothstep(float x)
 SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
+    const auto instanceNumber = kInstanceCounter.fetch_add(1u, std::memory_order_relaxed) + 1u;
+    debugInstanceId = "PX3-INSTANCE-" + juce::String(static_cast<int>(instanceNumber)).paddedLeft('0', 2);
+    debugProcessorCreatedTime = nowTimestamp();
+
     fxProcessingOrderPacked.store(packFxOrder({ { 0, 1, 2 } }), std::memory_order_relaxed);
     fxOrderRevision.store(0u, std::memory_order_relaxed);
 
@@ -435,9 +460,16 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     {
         installImageWavetable(std::move(initialTable), juce::Image());
     }
+
+    debugLogEvent("LIFECYCLE", "PROCESSOR_CREATED",
+                  "id=" + debugInstanceId + " order=" + debugDescribeOrder(getFxProcessingOrder()));
 }
 
-SynthProjectAudioProcessor::~SynthProjectAudioProcessor() = default;
+SynthProjectAudioProcessor::~SynthProjectAudioProcessor()
+{
+    debugLogEvent("LIFECYCLE", "PROCESSOR_DESTROYED",
+                  "id=" + debugInstanceId + " order=" + debugDescribeOrder(getFxProcessingOrder()));
+}
 
 const juce::String SynthProjectAudioProcessor::getName() const
 {
@@ -1108,6 +1140,15 @@ std::array<int, 3> SynthProjectAudioProcessor::getFxProcessingOrder() const
 
 void SynthProjectAudioProcessor::setFxProcessingOrder(const std::array<int, 3>& order)
 {
+    setFxProcessingOrderWithReason(order, "UNKNOWN", "UNSPECIFIED", -1, -1);
+}
+
+void SynthProjectAudioProcessor::setFxProcessingOrderWithReason(const std::array<int, 3>& order,
+                                                                const juce::String& source,
+                                                                const juce::String& reason,
+                                                                int fromIndex,
+                                                                int toIndex)
+{
     std::array<int, 3> sanitized { { 0, 1, 2 } };
     std::array<bool, 3> seen { { false, false, false } };
 
@@ -1137,13 +1178,199 @@ void SynthProjectAudioProcessor::setFxProcessingOrder(const std::array<int, 3>& 
         return;
     }
 
+    const auto beforeOrder = getFxProcessingOrder();
+    const auto oldRevision = fxOrderRevision.load(std::memory_order_relaxed);
     fxProcessingOrderPacked.store(packed, std::memory_order_relaxed);
-    fxOrderRevision.fetch_add(1u, std::memory_order_relaxed);
+    const auto newRevision = fxOrderRevision.fetch_add(1u, std::memory_order_relaxed) + 1u;
+    const auto afterOrder = getFxProcessingOrder();
+
+    debugLogEvent(source,
+                  "MODULE_ORDER_CHANGED",
+                  "reason=" + reason
+                      + " fromIndex=" + juce::String(fromIndex)
+                      + " toIndex=" + juce::String(toIndex)
+                      + " oldOrder=" + debugDescribeOrder(beforeOrder)
+                      + " newOrder=" + debugDescribeOrder(afterOrder)
+                      + " oldHash=" + juce::String(static_cast<int64_t>(previous))
+                      + " newHash=" + juce::String(static_cast<int64_t>(packed))
+                      + " gen=" + juce::String(static_cast<int64_t>(oldRevision))
+                      + "->" + juce::String(static_cast<int64_t>(newRevision)));
 
     // Notify host that non-automatable plugin state changed.
     updateHostDisplay();
     updateHostDisplay(juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged(true));
     updateHostDisplay(juce::AudioProcessor::ChangeDetails().withProgramChanged(true));
+}
+
+juce::String SynthProjectAudioProcessor::debugGetInstanceId() const
+{
+    return debugInstanceId;
+}
+
+juce::String SynthProjectAudioProcessor::debugGetProcessorCreatedTime() const
+{
+    return debugProcessorCreatedTime;
+}
+
+juce::String SynthProjectAudioProcessor::debugNowTimestamp() const
+{
+    return nowTimestamp();
+}
+
+void SynthProjectAudioProcessor::debugNotifyEditorCreated(void* editorPtr)
+{
+    debugLogEvent("LIFECYCLE",
+                  "EDITOR_CREATED",
+                  "editor=" + juce::String::toHexString(reinterpret_cast<juce::int64>(editorPtr))
+                      + " order=" + debugDescribeOrder(getFxProcessingOrder()));
+}
+
+void SynthProjectAudioProcessor::debugNotifyEditorDestroyed(void* editorPtr)
+{
+    debugLogEvent("LIFECYCLE",
+                  "EDITOR_DESTROYED",
+                  "editor=" + juce::String::toHexString(reinterpret_cast<juce::int64>(editorPtr))
+                      + " order=" + debugDescribeOrder(getFxProcessingOrder()));
+}
+
+void SynthProjectAudioProcessor::debugLogEvent(const juce::String& source,
+                                               const juce::String& event,
+                                               const juce::String& details)
+{
+    const auto line = "[" + nowTimestamp() + "] SOURCE=" + source + " EVENT=" + event
+                      + (details.isNotEmpty() ? " " + details : juce::String());
+
+    const std::scoped_lock<std::mutex> lock(debugStateMutex);
+    debugEventLogLines.add(line);
+    constexpr int maxLines = 600;
+    if (debugEventLogLines.size() > maxLines)
+    {
+        debugEventLogLines.removeRange(0, debugEventLogLines.size() - maxLines);
+    }
+}
+
+void SynthProjectAudioProcessor::debugClearEventLog()
+{
+    const std::scoped_lock<std::mutex> lock(debugStateMutex);
+    debugEventLogLines.clear();
+}
+
+juce::String SynthProjectAudioProcessor::debugGetEventLogText() const
+{
+    const std::scoped_lock<std::mutex> lock(debugStateMutex);
+    return debugEventLogLines.joinIntoString("\n");
+}
+
+int SynthProjectAudioProcessor::debugGetLastSerializedStateSize() const
+{
+    const std::scoped_lock<std::mutex> lock(debugStateMutex);
+    return static_cast<int>(debugLastSerializedState.getSize());
+}
+
+juce::String SynthProjectAudioProcessor::debugGetLastSerializedStateXml() const
+{
+    const std::scoped_lock<std::mutex> lock(debugStateMutex);
+    return debugLastSerializedStateXml;
+}
+
+juce::MemoryBlock SynthProjectAudioProcessor::debugGetLastSerializedStateCopy() const
+{
+    const std::scoped_lock<std::mutex> lock(debugStateMutex);
+    return debugLastSerializedState;
+}
+
+bool SynthProjectAudioProcessor::debugRestoreLastSerializedState(juce::String& report)
+{
+    const auto snapshot = debugGetLastSerializedStateCopy();
+    if (snapshot.getSize() == 0)
+    {
+        report = "No serialized state captured yet.";
+        return false;
+    }
+
+    const auto before = getFxProcessingOrder();
+    setStateInformation(snapshot.getData(), static_cast<int>(snapshot.getSize()));
+    const auto after = getFxProcessingOrder();
+
+    report = "RESTORE_LAST_SERIALIZED_STATE\n"
+             "size=" + juce::String(static_cast<int>(snapshot.getSize())) + "\n"
+             "before=" + debugDescribeOrder(before) + "\n"
+             "after=" + debugDescribeOrder(after);
+    debugLogEvent("DEBUG_PANEL", "RESTORE_LAST_SERIALIZED_STATE", report.replaceCharacters("\n", " | "));
+    return true;
+}
+
+bool SynthProjectAudioProcessor::debugRoundTripCurrentState(juce::String& report)
+{
+    juce::MemoryBlock block;
+    getStateInformation(block);
+    if (block.getSize() == 0)
+    {
+        report = "Round trip failed: empty serialized block.";
+        return false;
+    }
+
+    const auto xml = getXmlFromBinary(block.getData(), static_cast<int>(block.getSize()));
+    if (xml == nullptr)
+    {
+        report = "Round trip failed: cannot decode XML from state block.";
+        return false;
+    }
+
+    const auto state = juce::ValueTree::fromXml(*xml);
+    if (!state.isValid())
+    {
+        report = "Round trip failed: invalid ValueTree decoded.";
+        return false;
+    }
+
+    const auto currentOrder = getFxProcessingOrder();
+    std::array<int, 3> decodedOrder { { 0, 1, 2 } };
+    if (const auto moduleOrder = state.getChildWithName(kModuleOrderId); moduleOrder.isValid())
+    {
+        std::array<bool, 3> seen { { false, false, false } };
+        int write = 0;
+        for (int i = 0; i < moduleOrder.getNumChildren() && write < 3; ++i)
+        {
+            const auto node = moduleOrder.getChild(i);
+            if (!node.isValid() || !node.hasProperty(kModuleIdProperty))
+            {
+                continue;
+            }
+
+            const auto stage = stageForModuleId(node.getProperty(kModuleIdProperty).toString());
+            if (stage >= 0 && !seen[static_cast<std::size_t>(stage)])
+            {
+                decodedOrder[static_cast<std::size_t>(write++)] = stage;
+                seen[static_cast<std::size_t>(stage)] = true;
+            }
+        }
+    }
+
+    const auto pass = (debugDescribeOrder(currentOrder) == debugDescribeOrder(decodedOrder));
+    report = "TEST_STATE_ROUND_TRIP\n"
+             "before=" + debugDescribeOrder(currentOrder) + "\n"
+             "serialized=" + debugDescribeOrder(decodedOrder) + "\n"
+             "size=" + juce::String(static_cast<int>(block.getSize())) + "\n"
+             "result=" + juce::String(pass ? "PASS" : "FAIL");
+
+    debugLogEvent("DEBUG_PANEL", "TEST_STATE_ROUND_TRIP", report.replaceCharacters("\n", " | "));
+    return pass;
+}
+
+uint32_t SynthProjectAudioProcessor::debugGetModuleOrderGeneration() const
+{
+    return fxOrderRevision.load(std::memory_order_relaxed);
+}
+
+uint32_t SynthProjectAudioProcessor::debugGetModuleOrderHash() const
+{
+    return fxProcessingOrderPacked.load(std::memory_order_relaxed);
+}
+
+juce::String SynthProjectAudioProcessor::debugDescribeOrder(const std::array<int, 3>& order) const
+{
+    return formatOrderString(order);
 }
 
 float SynthProjectAudioProcessor::copyPitchBendNormalized() const
@@ -2984,25 +3211,46 @@ bool SynthProjectAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* SynthProjectAudioProcessor::createEditor()
 {
+    debugLogEvent("LIFECYCLE", "CREATE_EDITOR", "order=" + debugDescribeOrder(getFxProcessingOrder()));
     return new SynthProjectAudioProcessorEditor(*this);
 }
 
 void SynthProjectAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = createParameterStateTree();
+    const auto order = getFxProcessingOrder();
 
     if (auto xml = state.createXml())
     {
         copyXmlToBinary(*xml, destData);
+
+        {
+            const std::scoped_lock<std::mutex> lock(debugStateMutex);
+            debugLastSerializedState = destData;
+            debugLastSerializedStateXml = xml->toString();
+        }
+
+        debugLogEvent("HOST",
+                      "GET_STATE_INFORMATION",
+                      "order=" + debugDescribeOrder(order)
+                          + " stateVersion=" + juce::String(static_cast<int>(state.getProperty(kStateVersionId, 0)))
+                          + " size=" + juce::String(static_cast<int>(destData.getSize())));
     }
 }
 
 void SynthProjectAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
+    const auto before = getFxProcessingOrder();
+    debugLogEvent("HOST",
+                  "SET_STATE_INFORMATION_BEGIN",
+                  "incomingSize=" + juce::String(sizeInBytes)
+                      + " before=" + debugDescribeOrder(before));
+
     const auto xml = getXmlFromBinary(data, sizeInBytes);
 
     if (xml == nullptr)
     {
+        debugLogEvent("HOST", "SET_STATE_INFORMATION_INVALID", "xml=null");
         return;
     }
 
@@ -3010,11 +3258,30 @@ void SynthProjectAudioProcessor::setStateInformation(const void* data, int sizeI
 
     if (!state.isValid())
     {
+        debugLogEvent("HOST", "SET_STATE_INFORMATION_INVALID", "state=invalid");
         return;
+    }
+
+    {
+        const std::scoped_lock<std::mutex> lock(debugStateMutex);
+        debugLastSerializedState.setSize(static_cast<size_t>(juce::jmax(0, sizeInBytes)));
+        if (sizeInBytes > 0)
+        {
+            std::memcpy(debugLastSerializedState.getData(), data, static_cast<size_t>(sizeInBytes));
+        }
+        debugLastSerializedStateXml = xml->toString();
     }
 
     juce::String ignoredError;
     applyParameterStateTree(state, &ignoredError);
+
+    const auto after = getFxProcessingOrder();
+    debugLogEvent("HOST",
+                  "SET_STATE_INFORMATION_END",
+                  "incomingSize=" + juce::String(sizeInBytes)
+                      + " before=" + debugDescribeOrder(before)
+                      + " after=" + debugDescribeOrder(after)
+                      + (ignoredError.isNotEmpty() ? " error=" + ignoredError : juce::String()));
 }
 
 juce::ValueTree SynthProjectAudioProcessor::createParameterStateTree() const
@@ -3078,6 +3345,7 @@ bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& 
 
     std::array<int, 3> fxOrderFromState { { 0, 1, 2 } };
     auto hasModuleOrder = false;
+    auto moduleOrderSource = juce::String("none");
 
     if (const auto moduleOrder = state.getChildWithName(kModuleOrderId); moduleOrder.isValid())
     {
@@ -3109,6 +3377,7 @@ bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& 
         if (write > 0)
         {
             hasModuleOrder = true;
+            moduleOrderSource = "MODULE_ORDER";
             for (int stage = 0; stage < 3 && write < 3; ++stage)
             {
                 if (!seen[static_cast<std::size_t>(stage)])
@@ -3149,17 +3418,24 @@ bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& 
         {
             hasModuleOrder = true;
             fxOrderFromState = legacyOrder;
+            moduleOrderSource = "legacy";
         }
     }
 
     if (hasModuleOrder)
     {
-        setFxProcessingOrder(fxOrderFromState);
+        setFxProcessingOrderWithReason(fxOrderFromState, "HOST", "STATE_RESTORE", -1, -1);
     }
     else
     {
-        setFxProcessingOrder({ { 0, 1, 2 } });
+        setFxProcessingOrderWithReason({ { 0, 1, 2 } }, "HOST", "STATE_RESTORE_DEFAULT", -1, -1);
     }
+
+    debugLogEvent("HOST",
+                  "APPLY_STATE_TREE",
+                  "moduleOrderSource=" + moduleOrderSource
+                      + " restoredOrder=" + debugDescribeOrder(getFxProcessingOrder())
+                      + " stateVersion=" + juce::String(static_cast<int>(state.getProperty(kStateVersionId, 0))));
 
     if (state.hasProperty(kModuleOrderRevisionId))
     {

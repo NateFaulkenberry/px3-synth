@@ -10,15 +10,17 @@ CMAKE_FILE="${REPO_ROOT}/CMakeLists.txt"
 
 SIGN_MODE=false
 SIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
+DEBUG_PANEL=false
 
 usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/build-release.sh [--sign] [--sign-identity "Developer ID Application: ..."]
+  ./scripts/build-release.sh [--sign] [--sign-identity "Developer ID Application: ..."] [--debug true|false]
 
 Options:
   --sign                 Sign release artifacts using codesign.
   --sign-identity ID     Explicit signing identity. Overrides CODESIGN_IDENTITY.
+  --debug BOOL           Enable in-plugin debug panel UI when BOOL is true. Default: false.
   -h, --help             Show this help.
 
 Environment:
@@ -160,6 +162,21 @@ while [[ $# -gt 0 ]]; do
       SIGN_IDENTITY="$2"
       shift 2
       ;;
+    --debug)
+      [[ $# -ge 2 ]] || die "--debug requires true or false"
+      case "$2" in
+        [Tt][Rr][Uu][Ee]|1|[Oo][Nn]|[Yy][Ee][Ss])
+          DEBUG_PANEL=true
+          ;;
+        [Ff][Aa][Ll][Ss][Ee]|0|[Oo][Ff][Ff]|[Nn][Oo])
+          DEBUG_PANEL=false
+          ;;
+        *)
+          die "Invalid --debug value: $2 (expected true|false)"
+          ;;
+      esac
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -196,6 +213,7 @@ echo "Version: ${PROJECT_VERSION}"
 echo "Platform: macOS"
 echo "Architecture: Apple Silicon (arm64)"
 echo "Configuration: Release"
+echo "Debug Panel: ${DEBUG_PANEL}"
 echo "Bundle ID: ${BUNDLE_ID}"
 echo
 
@@ -221,7 +239,8 @@ mkdir -p "${BUILD_DIR}"
 cmake -S "${REPO_ROOT}" -B "${BUILD_DIR}" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_OSX_ARCHITECTURES=arm64 \
-  -DPX3_COPY_PLUGIN_AFTER_BUILD=OFF
+  -DPX3_COPY_PLUGIN_AFTER_BUILD=OFF \
+  -DPX3_DEBUG_PANEL=$( [[ "${DEBUG_PANEL}" == true ]] && echo ON || echo OFF )
 
 CACHE_FILE="${BUILD_DIR}/CMakeCache.txt"
 [[ -f "${CACHE_FILE}" ]] || die "CMake cache not generated"
