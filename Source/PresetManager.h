@@ -10,6 +10,7 @@ class PresetManager
 {
 public:
     static constexpr int currentPresetFormatVersion = 1;
+    static constexpr const char* presetFileExtension = ".px3preset";
 
     struct PresetMetadata
     {
@@ -62,6 +63,13 @@ public:
 
     bool exportPreset(const PresetRecord& preset, const juce::File& destinationFile, juce::String& error) const;
     bool importPreset(const juce::File& sourceFile, juce::String& error, PresetRecord* outImported = nullptr);
+
+    bool dumpCurrentStateToPresetFile(const juce::File& destinationFile,
+                                      const PresetMetadata& metadata,
+                                      bool overwrite,
+                                      bool validateRoundTrip,
+                                      juce::String& error,
+                                      int* outSerializedBytes = nullptr);
 
     bool createInitPresetIfMissing(juce::String& error);
 

@@ -70,6 +70,34 @@ cmake -B build -G Ninja -DPX3_DEBUG_PANEL=ON
 cmake --build build
 ```
 
+## Developer Preset Dumping
+
+When DEBUG mode is enabled, the detached P(X3) DEBUG CONSOLE includes a `PRESET / STATE TOOLS` block with:
+
+- `Preset Name` (optional suggested preset/file name)
+- `DUMP PRESET`
+
+`DUMP PRESET` behavior:
+
+- Opens a native OS save dialog (developer chooses folder + filename).
+- Uses the same preset extension and format as normal presets: `.px3preset`.
+- Appends `.px3preset` automatically if omitted.
+- Uses the same underlying preset serialization path as normal user presets (same state tree and serializer).
+- Performs validation of the serialized preset structure before writing.
+- Reports success/failure in the debug console and logs detailed events in the debug event log.
+
+This is intended for developer workflows such as:
+
+- collecting presets from beta testers
+- QA snapshot capture
+- regression/state-restore testing
+- promoting dumped presets into the factory preset library later
+
+Important:
+
+- Dumped presets are production-compatible P(X3) presets, not a debug-only format.
+- Runtime/debug UI state is not embedded unless it already belongs to normal preset state.
+
 ## Signal Flow (High Level)
 
 ```text

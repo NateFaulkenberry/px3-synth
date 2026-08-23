@@ -168,6 +168,7 @@ private:
     void debugCaptureSnapshot(const juce::String& reason);
     void debugCompareWithSnapshot();
     void debugForceSerializationTest();
+    void debugDumpPresetToFile();
     void debugWriteDeterministicTestValues();
     void debugRandomizeParameters();
     void debugResetParameters();
@@ -354,6 +355,8 @@ private:
     juce::Label debugLfoLabel;
     juce::Label debugLfoAssignLabel;
     juce::Label debugEnvelopeLabel;
+    juce::Label debugPresetToolsLabel;
+    juce::Label debugDumpPresetNameLabel;
     juce::TextEditor debugInstanceText;
     juce::TextEditor debugModuleOrderText;
     juce::TextEditor debugValueTreeText;
@@ -363,7 +366,9 @@ private:
     juce::TextEditor debugSnapshotText;
     juce::TextEditor debugLfoText;
     juce::TextEditor debugEnvelopeText;
+    juce::TextEditor debugDumpPresetNameEditor;
     juce::ComboBox debugLfoAssignBox;
+    juce::TextButton debugDumpPresetButton;
     juce::Viewport debugParamViewport;
     juce::Component debugParamContent;
     std::vector<std::unique_ptr<DebugParamControl>> debugParamControls;

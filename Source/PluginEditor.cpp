@@ -881,6 +881,7 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     setupButton(debugRandomizeParamsButton, "RANDOMIZE PARAMETERS");
     setupButton(debugResetParamsButton, "RESET PARAMETERS");
     setupButton(debugWriteTestValuesButton, "WRITE TEST VALUES");
+    setupButton(debugDumpPresetButton, "DUMP PRESET");
 
     setupLabel(debugInstanceLabel, "A. PLUGIN INSTANCE INFO");
     setupLabel(debugModuleOrderLabel, "B. MODULE ORDER STATE");
@@ -890,8 +891,9 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     setupLabel(debugBackendControlLabel, "F. BACKEND PARAMETER CONTROLS");
     setupLabel(debugLfoLabel, "G. LFO DEBUG");
     setupLabel(debugEnvelopeLabel, "H. AMP ENVELOPE DEBUG");
-    setupLabel(debugSnapshotLabel, "I. STATE TESTING");
-    setupLabel(debugEventLogLabel, "J. EVENT LOG");
+    setupLabel(debugPresetToolsLabel, "I. PRESET / STATE TOOLS");
+    setupLabel(debugSnapshotLabel, "J. STATE TESTING");
+    setupLabel(debugEventLogLabel, "K. EVENT LOG");
 
     setupEditor(debugInstanceText);
     setupEditor(debugModuleOrderText);
@@ -902,6 +904,20 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     setupEditor(debugSnapshotText);
     setupEditor(debugLfoText);
     setupEditor(debugEnvelopeText);
+
+    debugDumpPresetNameLabel.setText("Preset Name", juce::dontSendNotification);
+    debugDumpPresetNameLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(236, 236, 236));
+    debugDumpPresetNameLabel.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    debugDumpPresetNameLabel.setJustificationType(juce::Justification::centredLeft);
+
+    debugDumpPresetNameEditor.setMultiLine(false);
+    debugDumpPresetNameEditor.setReturnKeyStartsNewLine(false);
+    debugDumpPresetNameEditor.setReadOnly(false);
+    debugDumpPresetNameEditor.setTextToShowWhenEmpty("Optional: suggested file/preset name", juce::Colour::fromRGBA(220, 220, 220, 130));
+    debugDumpPresetNameEditor.setColour(juce::TextEditor::backgroundColourId, juce::Colour::fromRGBA(14, 14, 14, 220));
+    debugDumpPresetNameEditor.setColour(juce::TextEditor::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    debugDumpPresetNameEditor.setColour(juce::TextEditor::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 100));
+    debugDumpPresetNameEditor.setFont(juce::FontOptions(11.0f));
 
     debugLfoAssignLabel.setText("LFO Assignment", juce::dontSendNotification);
     debugLfoAssignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(236, 236, 236));
@@ -963,6 +979,8 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     addToPanel(debugBackendControlLabel);
     addToPanel(debugLfoLabel);
     addToPanel(debugEnvelopeLabel);
+    addToPanel(debugPresetToolsLabel);
+    addToPanel(debugDumpPresetNameLabel);
     addToPanel(debugSnapshotLabel);
     addToPanel(debugEventLogLabel);
     addToPanel(debugInstanceText);
@@ -974,8 +992,10 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     addToPanel(debugSnapshotText);
     addToPanel(debugLfoText);
     addToPanel(debugEnvelopeText);
+    addToPanel(debugDumpPresetNameEditor);
     addToPanel(debugLfoAssignLabel);
     addToPanel(debugLfoAssignBox);
+    addToPanel(debugDumpPresetButton);
     addToPanel(debugParamViewport);
 
     debugValueTreeText.setText("Manual refresh disabled for live mode. Click 'REFRESH XML + SERIALIZED STATE'.", juce::dontSendNotification);
@@ -1014,6 +1034,7 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     };
 
     debugForceSerializeTestButton.onClick = [this]() { debugForceSerializationTest(); };
+    debugDumpPresetButton.onClick = [this]() { debugDumpPresetToFile(); };
     debugRestoreLastSerializedButton.onClick = [this]()
     {
         juce::String report;
@@ -1214,11 +1235,11 @@ void SynthProjectAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<in
         right.removeFromTop(4);
     };
 
-    sectionRight(debugParameterLabel, debugParameterInspectorText, 136);
-    sectionRight(debugBackendControlLabel, debugParamViewport, 154);
+    sectionRight(debugParameterLabel, debugParameterInspectorText, 120);
+    sectionRight(debugBackendControlLabel, debugParamViewport, 140);
 
     debugLfoLabel.setBounds(right.removeFromTop(18));
-    debugLfoText.setBounds(right.removeFromTop(80));
+    debugLfoText.setBounds(right.removeFromTop(66));
     right.removeFromTop(4);
     auto lfoAssignRow = right.removeFromTop(24);
     debugLfoAssignLabel.setBounds(lfoAssignRow.removeFromLeft(130));
@@ -1226,10 +1247,18 @@ void SynthProjectAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<in
     right.removeFromTop(4);
 
     debugEnvelopeLabel.setBounds(right.removeFromTop(18));
-    debugEnvelopeText.setBounds(right.removeFromTop(82));
+    debugEnvelopeText.setBounds(right.removeFromTop(68));
     right.removeFromTop(4);
 
-    sectionRight(debugSnapshotLabel, debugSnapshotText, 88);
+    debugPresetToolsLabel.setBounds(right.removeFromTop(18));
+    auto presetNameRow = right.removeFromTop(24);
+    debugDumpPresetNameLabel.setBounds(presetNameRow.removeFromLeft(96));
+    debugDumpPresetNameEditor.setBounds(presetNameRow.reduced(1, 0));
+    right.removeFromTop(4);
+    debugDumpPresetButton.setBounds(right.removeFromTop(24));
+    right.removeFromTop(4);
+
+    sectionRight(debugSnapshotLabel, debugSnapshotText, 80);
     sectionRight(debugEventLogLabel, debugEventLogText, juce::jmax(120, right.getHeight() - 24));
 
     auto content = debugParamViewport.getLocalBounds().reduced(4);
@@ -1564,6 +1593,93 @@ void SynthProjectAudioProcessorEditor::debugForceSerializationTest()
     report << "RESULT: " << (pass ? "PASS" : "FAIL");
     debugSnapshotText.setText(report, juce::dontSendNotification);
     audioProcessor.debugLogEvent("DEBUG_PANEL", "FORCE_SERIALIZATION_TEST", report.replaceCharacters("\n", " | "));
+}
+
+void SynthProjectAudioProcessorEditor::debugDumpPresetToFile()
+{
+    auto suggestedName = debugDumpPresetNameEditor.getText().trim();
+    if (suggestedName.isEmpty())
+    {
+        suggestedName = hasCurrentPreset ? currentPreset.metadata.name.trim() : juce::String();
+    }
+    if (suggestedName.isEmpty())
+    {
+        suggestedName = "PX3_Preset_" + juce::Time::getCurrentTime().formatted("%Y-%m-%d");
+    }
+
+    auto defaultFile = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+                           .getChildFile(suggestedName)
+                           .withFileExtension(PresetManager::presetFileExtension);
+
+    audioProcessor.debugLogEvent("DEBUG_PANEL", "DUMP_PRESET_STARTED", "suggestedName=" + suggestedName);
+
+    auto chooser = std::make_shared<juce::FileChooser>("Dump P(X3) preset",
+                                                        defaultFile,
+                                                        "*" + juce::String(PresetManager::presetFileExtension));
+
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode
+                             | juce::FileBrowserComponent::canSelectFiles
+                             | juce::FileBrowserComponent::warnAboutOverwriting,
+                         [this, chooser](const juce::FileChooser& fc)
+                         {
+                             auto destination = fc.getResult();
+                             if (destination == juce::File())
+                             {
+                                 audioProcessor.debugLogEvent("DEBUG_PANEL", "DUMP_PRESET_CANCELLED");
+                                 return;
+                             }
+
+                             if (!destination.hasFileExtension(PresetManager::presetFileExtension))
+                             {
+                                 destination = destination.withFileExtension(PresetManager::presetFileExtension);
+                             }
+
+                             PresetManager::PresetMetadata metadata;
+                             metadata.name = debugDumpPresetNameEditor.getText().trim();
+                             if (metadata.name.isEmpty())
+                             {
+                                 metadata.name = destination.getFileNameWithoutExtension();
+                             }
+                             metadata.category = hasCurrentPreset ? currentPreset.metadata.category : juce::String("USER_DUMP");
+                             metadata.author = hasCurrentPreset ? currentPreset.metadata.author : juce::String();
+                             metadata.description = hasCurrentPreset ? currentPreset.metadata.description : juce::String();
+
+                             const auto overwrite = destination.existsAsFile();
+                             juce::String error;
+                             int serializedBytes = 0;
+                             if (!presetManager.dumpCurrentStateToPresetFile(destination,
+                                                                            metadata,
+                                                                            overwrite,
+                                                                            true,
+                                                                            error,
+                                                                            &serializedBytes))
+                             {
+                                 audioProcessor.debugLogEvent("DEBUG_PANEL", "DUMP_PRESET_FAILED", error);
+                                 debugSnapshotText.setText("PRESET DUMP FAILED\n\nCould not write file.\n\n"
+                                                               "Error:\n"
+                                                               + error,
+                                                           juce::dontSendNotification);
+                                 refreshDebugEventLog();
+                                 return;
+                             }
+
+                             audioProcessor.debugLogEvent("DEBUG_PANEL",
+                                                         "DUMP_PRESET_SERIALIZED",
+                                                         "size=" + juce::String(serializedBytes) + " bytes");
+                             audioProcessor.debugLogEvent("DEBUG_PANEL", "DUMP_PRESET_VALIDATED");
+                             audioProcessor.debugLogEvent("DEBUG_PANEL",
+                                                         "DUMP_PRESET_WRITTEN",
+                                                         "path=" + destination.getFullPathName());
+
+                             const auto sizeLabel = juce::File::descriptionOfSizeInBytes(destination.getSize());
+                             debugSnapshotText.setText("PRESET DUMP SUCCESSFUL\n\n"
+                                                           "File:\n"
+                                                           + destination.getFullPathName()
+                                                           + "\n\nSize:\n"
+                                                           + sizeLabel,
+                                                       juce::dontSendNotification);
+                             refreshDebugEventLog();
+                         });
 }
 
 void SynthProjectAudioProcessorEditor::debugWriteDeterministicTestValues()

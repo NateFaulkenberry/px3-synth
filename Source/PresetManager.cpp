@@ -1,6 +1,7 @@
 #include "PresetManager.h"
 
 #include <algorithm>
+#include <limits>
 
 namespace
 {
@@ -28,7 +29,7 @@ const juce::Identifier kPluginStateId("PX3_STATE");
 const juce::Identifier kAssetsId("ASSETS");
 const juce::Identifier kAssetId("ASSET");
 
-const juce::String kPresetExtension(".px3preset");
+const juce::String kPresetExtension(PresetManager::presetFileExtension);
 }
 
 PresetManager::PresetManager(SynthProjectAudioProcessor& processorIn)
@@ -390,6 +391,98 @@ bool PresetManager::importPreset(const juce::File& sourceFile, juce::String& err
         {
             *outImported = *found;
         }
+    }
+
+    return true;
+}
+
+bool PresetManager::dumpCurrentStateToPresetFile(const juce::File& destinationFile,
+                                                 const PresetMetadata& metadata,
+                                                 bool overwrite,
+                                                 bool validateRoundTrip,
+                                                 juce::String& error,
+                                                 int* outSerializedBytes)
+{
+    auto destination = destinationFile;
+    if (!destination.hasFileExtension(kPresetExtension))
+    {
+        destination = destination.withFileExtension(kPresetExtension);
+    }
+
+    auto parentDir = destination.getParentDirectory();
+    if (!parentDir.exists() && !parentDir.createDirectory())
+    {
+        error = "Unable to create destination directory.";
+        return false;
+    }
+
+    if (destination.existsAsFile() && !overwrite)
+    {
+        error = "Preset file already exists.";
+        return false;
+    }
+
+    auto normalizedMetadata = metadata;
+    if (normalizedMetadata.name.trim().isEmpty())
+    {
+        normalizedMetadata.name = destination.getFileNameWithoutExtension();
+    }
+
+    auto tree = buildPresetTreeFromCurrentState(normalizedMetadata, false, error);
+    if (!tree.isValid())
+    {
+        return false;
+    }
+
+    int serializedBytes = 0;
+    if (validateRoundTrip)
+    {
+        auto xml = tree.createXml();
+        if (xml == nullptr)
+        {
+            error = "Failed to serialize preset for validation.";
+            return false;
+        }
+
+        const auto xmlText = xml->toString();
+        serializedBytes = static_cast<int>(juce::jmin(static_cast<size_t>(std::numeric_limits<int>::max()),
+                                  xmlText.getNumBytesAsUTF8()));
+
+        std::unique_ptr<juce::XmlElement> parsed(juce::XmlDocument::parse(xmlText));
+        if (parsed == nullptr)
+        {
+            error = "Preset validation failed: XML parse error.";
+            return false;
+        }
+
+        auto parsedTree = juce::ValueTree::fromXml(*parsed);
+        if (!parsedTree.isValid() || parsedTree.getType() != kPresetRootId)
+        {
+            error = "Preset validation failed: missing PX3_PRESET root.";
+            return false;
+        }
+
+        auto migrated = migratePresetTreeIfNeeded(parsedTree, error);
+        if (!migrated.isValid())
+        {
+            return false;
+        }
+
+        if (!migrated.getChildWithName(kPluginStateId).isValid())
+        {
+            error = "Preset validation failed: missing plugin state block.";
+            return false;
+        }
+    }
+
+    if (!writePresetFile(destination, tree, error))
+    {
+        return false;
+    }
+
+    if (outSerializedBytes != nullptr)
+    {
+        *outSerializedBytes = serializedBytes > 0 ? serializedBytes : static_cast<int>(destination.getSize());
     }
 
     return true;
