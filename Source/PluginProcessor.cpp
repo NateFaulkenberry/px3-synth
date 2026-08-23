@@ -256,7 +256,7 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
                                                          0);
     imageTargetParam = new juce::AudioParameterChoice("imageTarget",
                                                        "Image Target",
-                                                       juce::StringArray { "Harmonic Drive", "Granular Delay", "Reverb" },
+                                                       juce::StringArray { "Harmonic Drive", "Delay", "Reverb" },
                                                        0);
     audioPositionParam = new juce::AudioParameterFloat("audioPosition", "Audio Position", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     audioGrainParam = new juce::AudioParameterFloat("audioGrain", "Audio Grain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
@@ -271,6 +271,10 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
                                                          "Audio Animation Sync",
                                                          juce::StringArray { "Free", "1 Bar", "1/2", "1/4", "1/8", "1/16" },
                                                          0);
+    audioTargetParam = new juce::AudioParameterChoice("audioTarget",
+                                                       "Audio Target",
+                                                       juce::StringArray { "Harmonic Drive", "Delay", "Reverb" },
+                                                       1);
     pitchBendRangeParam = new juce::AudioParameterInt("pitchBendRange",
                                                        "Pitch Bend Range",
                                                        1,
@@ -323,6 +327,7 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(audioRateParam);
     addParameter(audioAnimModeParam);
     addParameter(audioAnimSyncParam);
+    addParameter(audioTargetParam);
     addParameter(pitchBendRangeParam);
 
     const auto initialEnvelope = currentEnvelopeSettings();
@@ -525,14 +530,63 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     }
     const auto reverbAlgorithmIndex = reverbAlgorithmParam->getIndex();
     const auto imageTargetIndex = imageTargetParam->getIndex();
+    const auto audioTargetIndex = audioTargetParam->getIndex();
 
     const auto imageControlRaw = computeImageTargetControlSignal(currentImagePosition, buffer.getNumSamples());
+    auto audioControlRaw = juce::jlimit(0.0f, 1.0f, currentAudioPosition);
+    const auto audioTexture = juce::jlimit(0.0f, 1.0f, audioTextureParam->get());
+    const auto audioGrain = juce::jlimit(0.0f, 1.0f, audioGrainParam->get());
+    const auto audioAnimate = juce::jlimit(0.0f, 1.0f, audioAnimateParam->get());
+    const auto imageAnimate = juce::jlimit(0.0f, 1.0f, imageAnimateParam->get());
+    if (audioSourceForBlock != nullptr && !audioSourceForBlock->waveformPreview.empty())
+    {
+        const auto& preview = audioSourceForBlock->waveformPreview;
+        const auto previewPos = juce::jlimit(0.0f,
+                                             1.0f,
+                                             currentAudioPosition + (juce::jlimit(0.0f, 1.0f, audioTextureParam->get()) - 0.5f) * 0.10f);
+        const auto sampleIndex = juce::jlimit(0,
+                                              static_cast<int>(preview.size()) - 1,
+                                              static_cast<int>(std::lround(previewPos * static_cast<float>(preview.size() - 1))));
+        audioControlRaw = juce::jlimit(0.0f, 1.0f, preview[static_cast<std::size_t>(sampleIndex)]);
+    }
+
     const auto controlSmoothingSec = 0.06f;
     const auto controlBlend = 1.0f - std::exp(-static_cast<float>(buffer.getNumSamples())
                                               / (static_cast<float>(juce::jmax(1.0, currentSampleRateHz)) * controlSmoothingSec));
     imageTargetControlSmoothed += (imageControlRaw - imageTargetControlSmoothed) * controlBlend;
 
-    const auto imageScale = lerp(0.45f, 1.25f, imageTargetControlSmoothed);
+    // Add stepped/chopped modulation to create stronger granular-like throwing into assigned targets.
+    const auto imageQuantSteps = 5 + static_cast<int>(std::lround(imageAnimate * 20.0f));
+    const auto imageQuantized = std::floor(imageTargetControlSmoothed * static_cast<float>(imageQuantSteps - 1))
+                              / static_cast<float>(juce::jmax(1, imageQuantSteps - 1));
+    const auto imageBitMix = juce::jlimit(0.0f, 0.94f, 0.32f + imageAnimate * 0.62f);
+    const auto imagePulseHz = 3.0f + imageAnimate * 18.0f;
+    const auto imagePulse = 0.5f + 0.5f * std::sin(static_cast<float>(currentTimelineSeconds * static_cast<double>(imagePulseHz))
+                                                   * juce::MathConstants<float>::twoPi);
+    const auto imageBurst = imagePulse > 0.80f ? 1.0f : 0.0f;
+    const auto imageGrainyControl = juce::jlimit(0.0f,
+                                                 1.0f,
+                                                 lerp(imageTargetControlSmoothed, imageQuantized, imageBitMix)
+                                                     * (0.62f + 0.60f * imagePulse)
+                                                     + imageBurst * (0.12f + 0.18f * imageAnimate));
+
+    const auto audioQuantSteps = 4 + static_cast<int>(std::lround(audioGrain * 22.0f));
+    const auto audioQuantized = std::floor(audioControlRaw * static_cast<float>(audioQuantSteps - 1))
+                              / static_cast<float>(juce::jmax(1, audioQuantSteps - 1));
+    const auto chopperHz = 5.6f + audioTexture * 19.0f + audioAnimate * 7.0f;
+    const auto chopperPhase = static_cast<float>(currentTimelineSeconds * static_cast<double>(chopperHz))
+                            + audioControlRaw * 13.0f;
+    const auto chopper = 0.5f + 0.5f * std::sin(chopperPhase * juce::MathConstants<float>::twoPi);
+    const auto chopperShaped = std::pow(chopper, 4.6f - 3.2f * audioGrain);
+    const auto audioBurstPhase = static_cast<float>(currentTimelineSeconds * static_cast<double>(2.5f + audioTexture * 8.0f));
+    const auto audioBurst = (std::sin(audioBurstPhase * juce::MathConstants<float>::twoPi + audioControlRaw * 9.0f) > 0.83f) ? 1.0f : 0.0f;
+    const auto audioControlSmoothed = juce::jlimit(0.0f,
+                                                   1.0f,
+                                                   audioQuantized * (0.38f + 0.96f * chopperShaped)
+                                                       + audioBurst * (0.20f + 0.30f * audioAnimate));
+
+    const auto imageScale = lerp(0.06f, 2.58f, imageGrainyControl);
+    const auto audioScale = lerp(0.04f, 2.82f, audioControlSmoothed);
 
     float driveScaleTarget = 1.0f;
     float granularScaleTarget = 1.0f;
@@ -546,7 +600,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
                 driveScaleTarget = imageScale;
                 break;
             case 1:
-                granularScaleTarget = imageScale;
+                granularScaleTarget = imageScale * (1.0f + 0.38f * imageBurst);
                 break;
             case 2:
                 reverbScaleTarget = imageScale;
@@ -556,7 +610,29 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
         }
     }
 
-    const auto routeSmoothingSec = 0.09f;
+    if (sourceMode == ExternalSourceMode::audio)
+    {
+        switch (juce::jlimit(0, 2, audioTargetIndex))
+        {
+            case 0:
+                driveScaleTarget *= audioScale;
+                break;
+            case 1:
+                granularScaleTarget *= audioScale * (1.08f + 0.66f * audioBurst);
+                break;
+            case 2:
+                reverbScaleTarget *= audioScale;
+                break;
+            default:
+                break;
+        }
+    }
+
+    driveScaleTarget = juce::jlimit(0.04f, 2.95f, driveScaleTarget);
+    granularScaleTarget = juce::jlimit(0.04f, 3.05f, granularScaleTarget);
+    reverbScaleTarget = juce::jlimit(0.04f, 2.72f, reverbScaleTarget);
+
+    const auto routeSmoothingSec = 0.024f;
     const auto routeBlend = 1.0f - std::exp(-static_cast<float>(buffer.getNumSamples())
                                             / (static_cast<float>(juce::jmax(1.0, currentSampleRateHz)) * routeSmoothingSec));
     imageDriveScaleSmoothed += (driveScaleTarget - imageDriveScaleSmoothed) * routeBlend;
@@ -949,6 +1025,7 @@ juce::AudioParameterFloat& SynthProjectAudioProcessor::getAudioAnimateParam() co
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getAudioRateParam() const { return *audioRateParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getAudioAnimModeParam() const { return *audioAnimModeParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getAudioAnimSyncParam() const { return *audioAnimSyncParam; }
+juce::AudioParameterChoice& SynthProjectAudioProcessor::getAudioTargetParam() const { return *audioTargetParam; }
 juce::AudioParameterInt& SynthProjectAudioProcessor::getPitchBendRangeParam() const { return *pitchBendRangeParam; }
 
 std::array<int, 3> SynthProjectAudioProcessor::getFxProcessingOrder() const
@@ -1289,6 +1366,10 @@ void SynthProjectAudioProcessor::resetAudioEngine()
     if (audioAnimSyncParam != nullptr)
     {
         audioAnimSyncParam->setValueNotifyingHost(audioAnimSyncParam->convertTo0to1(0.0f));
+    }
+    if (audioTargetParam != nullptr)
+    {
+        audioTargetParam->setValueNotifyingHost(audioTargetParam->convertTo0to1(1.0f));
     }
 
     std::atomic_store(&activeAudioSource, std::shared_ptr<const AudioSourceData>());

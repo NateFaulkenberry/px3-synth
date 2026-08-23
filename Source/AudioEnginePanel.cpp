@@ -42,6 +42,7 @@ AudioEnginePanel::AudioEnginePanel(SynthProjectAudioProcessor& processorIn)
     auto& rateParam = processor.getAudioRateParam();
     auto& modeParam = processor.getAudioAnimModeParam();
     auto& syncParam = processor.getAudioAnimSyncParam();
+    auto& targetParam = processor.getAudioTargetParam();
 
     modeBox.addItem("Forward", 1);
     modeBox.addItem("Reverse", 2);
@@ -55,12 +56,22 @@ AudioEnginePanel::AudioEnginePanel(SynthProjectAudioProcessor& processorIn)
     }
     syncBox.setSelectedItemIndex(syncParam.getIndex(), juce::dontSendNotification);
 
+    const auto targetChoices = targetParam.choices.size();
+    for (int i = 0; i < targetChoices; ++i)
+    {
+        targetBox.addItem(targetParam.choices[i], i + 1);
+    }
+    targetBox.setSelectedItemIndex(targetParam.getIndex(), juce::dontSendNotification);
+
     modeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     modeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     modeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
     syncBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     syncBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     syncBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    targetBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    targetBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    targetBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
 
     configureMiniLabel(positionLabel, "POS");
     configureMiniLabel(grainLabel, "GRAIN");
@@ -69,6 +80,7 @@ AudioEnginePanel::AudioEnginePanel(SynthProjectAudioProcessor& processorIn)
     configureMiniLabel(rateLabel, "RATE");
     configureMiniLabel(modeLabel, "MODE");
     configureMiniLabel(syncLabel, "SYNC");
+    configureMiniLabel(targetLabel, "TARGET");
 
     offButton.onClick = [this]() { processor.disableAudioEngine(); };
     resetButton.onClick = [this]() { processor.resetAudioEngine(); };
@@ -82,6 +94,7 @@ AudioEnginePanel::AudioEnginePanel(SynthProjectAudioProcessor& processorIn)
     addAndMakeVisible(rateSlider);
     addAndMakeVisible(modeBox);
     addAndMakeVisible(syncBox);
+    addAndMakeVisible(targetBox);
     addAndMakeVisible(positionLabel);
     addAndMakeVisible(grainLabel);
     addAndMakeVisible(textureLabel);
@@ -89,6 +102,7 @@ AudioEnginePanel::AudioEnginePanel(SynthProjectAudioProcessor& processorIn)
     addAndMakeVisible(rateLabel);
     addAndMakeVisible(modeLabel);
     addAndMakeVisible(syncLabel);
+    addAndMakeVisible(targetLabel);
     addAndMakeVisible(offButton);
     addAndMakeVisible(resetButton);
 
@@ -99,6 +113,7 @@ AudioEnginePanel::AudioEnginePanel(SynthProjectAudioProcessor& processorIn)
     attachSlider(rateParam, rateSlider);
     attachComboBox(modeParam, modeBox);
     attachComboBox(syncParam, syncBox);
+    attachComboBox(targetParam, targetBox);
 
     processor.copyCurrentAudioWaveformPreview(waveform);
 
@@ -295,11 +310,16 @@ void AudioEnginePanel::resized()
     area.removeFromTop(2);
     auto row7 = area.removeFromTop(16);
     syncLabel.setBounds(row7.removeFromLeft(38));
-    syncBox.setBounds(row7.removeFromLeft(juce::jmax(60, row7.getWidth() - 98)));
-    row7.removeFromLeft(4);
-    offButton.setBounds(row7.removeFromLeft(42));
-    row7.removeFromLeft(4);
-    resetButton.setBounds(row7.removeFromLeft(52));
+    syncBox.setBounds(row7);
+
+    area.removeFromTop(2);
+    auto row8 = area.removeFromTop(16);
+    targetLabel.setBounds(row8.removeFromLeft(38));
+    targetBox.setBounds(row8.removeFromLeft(juce::jmax(76, row8.getWidth() - 102)));
+    row8.removeFromLeft(4);
+    offButton.setBounds(row8.removeFromLeft(42));
+    row8.removeFromLeft(4);
+    resetButton.setBounds(row8.removeFromLeft(52));
 }
 
 void AudioEnginePanel::timerCallback()

@@ -99,6 +99,7 @@ public:
     juce::AudioParameterFloat& getAudioRateParam() const;
     juce::AudioParameterChoice& getAudioAnimModeParam() const;
     juce::AudioParameterChoice& getAudioAnimSyncParam() const;
+    juce::AudioParameterChoice& getAudioTargetParam() const;
     juce::AudioParameterInt& getPitchBendRangeParam() const;
     std::array<int, 3> getFxProcessingOrder() const;
     void setFxProcessingOrder(const std::array<int, 3>& order);
@@ -238,6 +239,7 @@ private:
     juce::AudioParameterFloat* audioRateParam { nullptr };
     juce::AudioParameterChoice* audioAnimModeParam { nullptr };
     juce::AudioParameterChoice* audioAnimSyncParam { nullptr };
+    juce::AudioParameterChoice* audioTargetParam { nullptr };
     juce::AudioParameterInt* pitchBendRangeParam { nullptr };
 
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteCounts {};

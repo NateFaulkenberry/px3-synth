@@ -40,6 +40,7 @@ private:
     juce::Slider rateSlider;
     juce::ComboBox modeBox;
     juce::ComboBox syncBox;
+    juce::ComboBox targetBox;
 
     juce::Label positionLabel;
     juce::Label grainLabel;
@@ -48,6 +49,7 @@ private:
     juce::Label rateLabel;
     juce::Label modeLabel;
     juce::Label syncLabel;
+    juce::Label targetLabel;
     juce::TextButton offButton { "OFF" };
     juce::TextButton resetButton { "RESET" };
 
