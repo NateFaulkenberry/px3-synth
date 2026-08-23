@@ -19,6 +19,9 @@ public:
 
     void paint(juce::Graphics&) override;
     void resized() override;
+    void mouseDown(const juce::MouseEvent& event) override;
+    void mouseDrag(const juce::MouseEvent& event) override;
+    void mouseUp(const juce::MouseEvent& event) override;
 
 private:
     class KnobLookAndFeel final : public juce::LookAndFeel_V4
@@ -56,6 +59,13 @@ private:
     void refreshAnyKeyDownState();
     void refreshOscillatorModeUI();
     void refreshFxBypassUI();
+    void updateFxSectionTargets(const juce::Rectangle<int>& topArea, int topGap);
+    void layoutFxSectionsFromCurrentAreas();
+    void animateFxSections();
+    int indexForFxSection(int sectionId) const;
+    int fxSectionAtPoint(juce::Point<int> point) const;
+    void moveFxSectionToSlot(int sectionId, int slotIndex);
+    void commitFxOrderToProcessor();
     void layoutKnobGroup(const juce::Rectangle<int>& groupArea,
                          int startIndex,
                          int knobCount,
@@ -88,6 +98,16 @@ private:
     juce::Rectangle<int> midiStatusArea;
     juce::Rectangle<int> performanceControlsArea;
     std::array<juce::Rectangle<int>, 4> knobGroupAreas {};
+    std::array<juce::Rectangle<int>, 3> fxSectionSlots {};
+    std::array<juce::Rectangle<float>, 3> fxSectionCurrentAreas {};
+    std::array<juce::Rectangle<float>, 3> fxSectionTargetAreas {};
+    std::array<int, 3> fxSectionOrder { { 0, 1, 2 } };
+    bool fxSectionsInitialized { false };
+    int draggingFxSection { -1 };
+    float draggingSectionOffsetX { 0.0f };
+    int pressedFxSection { -1 };
+    juce::Point<int> fxDragStartPoint;
+    bool fxDragHasMoved { false };
 
     juce::Slider oscSineKnob;
     juce::Slider oscSawKnob;

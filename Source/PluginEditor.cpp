@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace
 {
@@ -14,6 +15,10 @@ const std::array<juce::Colour, 4> kGroupAccents {
     juce::Colour::fromRGB(73, 222, 121),   // AMP ENV: green
     juce::Colour::fromRGB(255, 216, 74)    // OUTPUT: yellow
 };
+
+constexpr int kFxSectionRob = 0;
+constexpr int kFxSectionDelay = 1;
+constexpr int kFxSectionReverb = 2;
 }
 
 void SynthProjectAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
@@ -563,6 +568,9 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
 
     setSize(1320, 700);
 
+    fxSectionOrder = audioProcessor.getFxProcessingOrder();
+    commitFxOrderToProcessor();
+
     refreshOscillatorModeUI();
     refreshFxBypassUI();
 
@@ -979,80 +987,8 @@ void SynthProjectAudioProcessorEditor::resized()
 
     auto topArea = headerPlaceholderArea.reduced(4, 4);
     const auto topGap = 8;
-    const auto sectionWidth = juce::jmax(108, (topArea.getWidth() - (topGap * 3)) / 4);
-    robSectionArea = topArea.removeFromLeft(sectionWidth);
-    topArea.removeFromLeft(topGap);
-    isaacSectionArea = topArea.removeFromLeft(sectionWidth);
-    topArea.removeFromLeft(topGap);
-    reverbSectionArea = topArea.removeFromLeft(sectionWidth);
-    topArea.removeFromLeft(topGap);
-    topSpareSectionArea = topArea;
-
-    {
-        auto robInner = robSectionArea.reduced(10, 8);
-        robBypassButton.setBounds(robSectionArea.getX() + 8, robSectionArea.getY() + 5, 22, 18);
-        robInner.removeFromTop(24);
-        auto bottomArea = robInner.removeFromBottom(46);
-        auto labelArea = bottomArea.removeFromTop(22);
-        robTypeLabel.setBounds(bottomArea.removeFromLeft(56));
-        robTypeBox.setBounds(bottomArea.reduced(2, 1));
-
-        const auto knobSize = juce::jmin(82, juce::jmin(robInner.getWidth(), robInner.getHeight()));
-        robWarmthKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(robInner.getCentre()));
-        robWarmthLabel.setBounds(labelArea);
-    }
-
-    {
-        auto isaacInner = isaacSectionArea.reduced(10, 8);
-        delayBypassButton.setBounds(isaacSectionArea.getX() + 8, isaacSectionArea.getY() + 5, 22, 18);
-        isaacInner.removeFromTop(24);
-        auto delayControlsArea = isaacInner.removeFromBottom(96);
-
-        auto rowAlgo = delayControlsArea.removeFromBottom(22);
-        auto rowSync = delayControlsArea.removeFromBottom(22);
-        delayControlsArea.removeFromBottom(2);
-        auto miniArea = delayControlsArea;
-
-        auto leftMini = miniArea.removeFromLeft(miniArea.getWidth() / 2).reduced(2, 0);
-        auto rightMini = miniArea.reduced(2, 0);
-
-        auto leftLabel = leftMini.removeFromBottom(16);
-        auto rightLabel = rightMini.removeFromBottom(16);
-
-        const auto miniKnobSize = juce::jlimit(30,
-                                               44,
-                                               juce::jmin(leftMini.getWidth(), juce::jmin(leftMini.getHeight(), rightMini.getHeight())));
-        delayTimeKnob.setBounds(juce::Rectangle<int>(miniKnobSize, miniKnobSize).withCentre(leftMini.getCentre()));
-        delayFeedbackKnob.setBounds(juce::Rectangle<int>(miniKnobSize, miniKnobSize).withCentre(rightMini.getCentre()));
-        delayTimeLabel.setBounds(leftLabel);
-        delayFeedbackLabel.setBounds(rightLabel);
-
-        auto algoLabelArea = rowAlgo.removeFromLeft(56);
-        delayAlgoLabel.setBounds(algoLabelArea);
-        delayAlgoBox.setBounds(rowAlgo.reduced(2, 1));
-
-        auto syncLabelArea = rowSync.removeFromLeft(56);
-        granularSyncLabel.setBounds(syncLabelArea);
-        granularSyncBox.setBounds(rowSync.reduced(2, 1));
-
-        const auto knobSize = juce::jmin(80, juce::jmin(isaacInner.getWidth(), isaacInner.getHeight()));
-        isaacTextureKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(isaacInner.getCentre()));
-        isaacTextureLabel.setBounds(juce::Rectangle<int>(isaacInner.getX(), isaacInner.getBottom() - 18, isaacInner.getWidth(), 16));
-    }
-
-    {
-        auto reverbInner = reverbSectionArea.reduced(10, 8);
-        reverbBypassButton.setBounds(reverbSectionArea.getX() + 8, reverbSectionArea.getY() + 5, 22, 18);
-        reverbInner.removeFromTop(24);
-        auto bottomArea = reverbInner.removeFromBottom(46);
-        auto labelArea = bottomArea.removeFromTop(22);
-        reverbTypeLabel.setBounds(bottomArea.removeFromLeft(56));
-        reverbTypeBox.setBounds(bottomArea.reduced(2, 1));
-
-        const auto knobSize = juce::jmin(82, juce::jmin(reverbInner.getWidth(), reverbInner.getHeight()));
-        reverbKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(reverbInner.getCentre()));
-        reverbLabel.setBounds(labelArea);
-    }
+    updateFxSectionTargets(topArea, topGap);
+    layoutFxSectionsFromCurrentAreas();
 
     sourceEnginePanel.setBounds(topSpareSectionArea.reduced(2));
 
@@ -1120,6 +1056,335 @@ void SynthProjectAudioProcessorEditor::resized()
                                               18);
         filterTypeBox.setBounds(row.reduced(1, 0));
     }
+}
+
+void SynthProjectAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
+{
+    const auto point = event.getPosition();
+    const auto sectionId = fxSectionAtPoint(point);
+    if (sectionId < 0)
+    {
+        return;
+    }
+
+    draggingFxSection = sectionId;
+    pressedFxSection = sectionId;
+    fxDragStartPoint = point;
+    fxDragHasMoved = false;
+    draggingSectionOffsetX = static_cast<float>(point.x) - fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)].getX();
+}
+
+void SynthProjectAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
+{
+    if (draggingFxSection < 0)
+    {
+        return;
+    }
+
+    const auto point = event.getPosition();
+    if (!fxDragHasMoved)
+    {
+        if (point.getDistanceFrom(fxDragStartPoint) < 4)
+        {
+            return;
+        }
+        fxDragHasMoved = true;
+    }
+
+    auto area = fxSectionCurrentAreas[static_cast<std::size_t>(draggingFxSection)];
+    const auto minX = static_cast<float>(fxSectionSlots[0].getX());
+    const auto maxX = static_cast<float>(fxSectionSlots[2].getRight() - fxSectionSlots[2].getWidth());
+    auto newX = static_cast<float>(point.x) - draggingSectionOffsetX;
+    newX = juce::jlimit(minX, maxX, newX);
+    area.setX(newX);
+    area.setY(fxSectionTargetAreas[static_cast<std::size_t>(draggingFxSection)].getY());
+    fxSectionCurrentAreas[static_cast<std::size_t>(draggingFxSection)] = area;
+
+    const auto centerX = area.getCentreX();
+    int targetSlot = 0;
+    float bestDistance = std::numeric_limits<float>::max();
+    for (int slot = 0; slot < 3; ++slot)
+    {
+        const auto slotCenterX = static_cast<float>(fxSectionSlots[static_cast<std::size_t>(slot)].getCentreX());
+        const auto distance = std::abs(centerX - slotCenterX);
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            targetSlot = slot;
+        }
+    }
+
+    moveFxSectionToSlot(draggingFxSection, targetSlot);
+    layoutFxSectionsFromCurrentAreas();
+    repaint(headerPlaceholderArea);
+}
+
+void SynthProjectAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
+{
+    if (draggingFxSection < 0)
+    {
+        return;
+    }
+
+    const auto releasePoint = event.getPosition();
+    const auto isHeaderClick = !fxDragHasMoved && pressedFxSection >= 0;
+    if (isHeaderClick)
+    {
+        const auto sectionBounds = fxSectionCurrentAreas[static_cast<std::size_t>(pressedFxSection)].toNearestInt();
+        const auto headerBounds = sectionBounds.withHeight(24);
+        if (headerBounds.contains(releasePoint))
+        {
+            switch (pressedFxSection)
+            {
+                case kFxSectionRob:
+                {
+                    auto& p = audioProcessor.getRobEnabledParam();
+                    p.setValueNotifyingHost(p.convertTo0to1(!p.get()));
+                    break;
+                }
+                case kFxSectionDelay:
+                {
+                    auto& p = audioProcessor.getDelayEnabledParam();
+                    p.setValueNotifyingHost(p.convertTo0to1(!p.get()));
+                    break;
+                }
+                case kFxSectionReverb:
+                {
+                    auto& p = audioProcessor.getReverbEnabledParam();
+                    p.setValueNotifyingHost(p.convertTo0to1(!p.get()));
+                    break;
+                }
+                default:
+                    break;
+            }
+            refreshFxBypassUI();
+        }
+    }
+
+    fxSectionCurrentAreas[static_cast<std::size_t>(draggingFxSection)] =
+        fxSectionTargetAreas[static_cast<std::size_t>(draggingFxSection)];
+    draggingFxSection = -1;
+    pressedFxSection = -1;
+    fxDragHasMoved = false;
+    commitFxOrderToProcessor();
+    layoutFxSectionsFromCurrentAreas();
+    repaint(headerPlaceholderArea);
+}
+
+void SynthProjectAudioProcessorEditor::updateFxSectionTargets(const juce::Rectangle<int>& topArea, int topGap)
+{
+    auto layoutArea = topArea;
+    const auto sectionWidth = juce::jmax(108, (layoutArea.getWidth() - (topGap * 3)) / 4);
+
+    for (int i = 0; i < 3; ++i)
+    {
+        fxSectionSlots[static_cast<std::size_t>(i)] = layoutArea.removeFromLeft(sectionWidth);
+        layoutArea.removeFromLeft(topGap);
+    }
+    topSpareSectionArea = layoutArea;
+
+    for (int stage = 0; stage < 3; ++stage)
+    {
+        const auto slotIndex = indexForFxSection(stage);
+        if (slotIndex >= 0)
+        {
+            fxSectionTargetAreas[static_cast<std::size_t>(stage)] =
+                fxSectionSlots[static_cast<std::size_t>(slotIndex)].toFloat();
+        }
+    }
+
+    if (!fxSectionsInitialized)
+    {
+        fxSectionCurrentAreas = fxSectionTargetAreas;
+        fxSectionsInitialized = true;
+    }
+}
+
+void SynthProjectAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
+{
+    robSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionRob)].toNearestInt();
+    isaacSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionDelay)].toNearestInt();
+    reverbSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionReverb)].toNearestInt();
+
+    {
+        auto robInner = robSectionArea.reduced(10, 8);
+        robBypassButton.setBounds(robSectionArea.getX() + 8, robSectionArea.getY() + 5, 22, 18);
+        robInner.removeFromTop(24);
+        auto bottomArea = robInner.removeFromBottom(46);
+        auto labelArea = bottomArea.removeFromTop(22);
+        robTypeLabel.setBounds(bottomArea.removeFromLeft(56));
+        robTypeBox.setBounds(bottomArea.reduced(2, 1));
+
+        const auto knobSize = juce::jmin(82, juce::jmin(robInner.getWidth(), robInner.getHeight()));
+        robWarmthKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(robInner.getCentre()));
+        robWarmthLabel.setBounds(labelArea);
+    }
+
+    {
+        auto isaacInner = isaacSectionArea.reduced(10, 8);
+        delayBypassButton.setBounds(isaacSectionArea.getX() + 8, isaacSectionArea.getY() + 5, 22, 18);
+        isaacInner.removeFromTop(24);
+        auto delayControlsArea = isaacInner.removeFromBottom(96);
+
+        auto rowAlgo = delayControlsArea.removeFromBottom(22);
+        auto rowSync = delayControlsArea.removeFromBottom(22);
+        delayControlsArea.removeFromBottom(2);
+        auto miniArea = delayControlsArea;
+
+        auto leftMini = miniArea.removeFromLeft(miniArea.getWidth() / 2).reduced(2, 0);
+        auto rightMini = miniArea.reduced(2, 0);
+
+        auto leftLabel = leftMini.removeFromBottom(16);
+        auto rightLabel = rightMini.removeFromBottom(16);
+
+        const auto miniKnobSize = juce::jlimit(30,
+                                               44,
+                                               juce::jmin(leftMini.getWidth(), juce::jmin(leftMini.getHeight(), rightMini.getHeight())));
+        delayTimeKnob.setBounds(juce::Rectangle<int>(miniKnobSize, miniKnobSize).withCentre(leftMini.getCentre()));
+        delayFeedbackKnob.setBounds(juce::Rectangle<int>(miniKnobSize, miniKnobSize).withCentre(rightMini.getCentre()));
+        delayTimeLabel.setBounds(leftLabel);
+        delayFeedbackLabel.setBounds(rightLabel);
+
+        auto algoLabelArea = rowAlgo.removeFromLeft(56);
+        delayAlgoLabel.setBounds(algoLabelArea);
+        delayAlgoBox.setBounds(rowAlgo.reduced(2, 1));
+
+        auto syncLabelArea = rowSync.removeFromLeft(56);
+        granularSyncLabel.setBounds(syncLabelArea);
+        granularSyncBox.setBounds(rowSync.reduced(2, 1));
+
+        const auto knobSize = juce::jmin(80, juce::jmin(isaacInner.getWidth(), isaacInner.getHeight()));
+        isaacTextureKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(isaacInner.getCentre()));
+        isaacTextureLabel.setBounds(juce::Rectangle<int>(isaacInner.getX(), isaacInner.getBottom() - 18, isaacInner.getWidth(), 16));
+    }
+
+    {
+        auto reverbInner = reverbSectionArea.reduced(10, 8);
+        reverbBypassButton.setBounds(reverbSectionArea.getX() + 8, reverbSectionArea.getY() + 5, 22, 18);
+        reverbInner.removeFromTop(24);
+        auto bottomArea = reverbInner.removeFromBottom(46);
+        auto labelArea = bottomArea.removeFromTop(22);
+        reverbTypeLabel.setBounds(bottomArea.removeFromLeft(56));
+        reverbTypeBox.setBounds(bottomArea.reduced(2, 1));
+
+        const auto knobSize = juce::jmin(82, juce::jmin(reverbInner.getWidth(), reverbInner.getHeight()));
+        reverbKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(reverbInner.getCentre()));
+        reverbLabel.setBounds(labelArea);
+    }
+}
+
+void SynthProjectAudioProcessorEditor::animateFxSections()
+{
+    if (!fxSectionsInitialized)
+    {
+        return;
+    }
+
+    bool changed = false;
+    for (int sectionId = 0; sectionId < 3; ++sectionId)
+    {
+        if (sectionId == draggingFxSection)
+        {
+            continue;
+        }
+
+        auto current = fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)];
+        const auto target = fxSectionTargetAreas[static_cast<std::size_t>(sectionId)];
+        current = current.transformedBy(juce::AffineTransform::translation((target.getX() - current.getX()) * 0.30f,
+                                                                            (target.getY() - current.getY()) * 0.30f));
+        current.setSize(target.getWidth(), target.getHeight());
+
+        const auto dx = std::abs(current.getX() - target.getX());
+        const auto dy = std::abs(current.getY() - target.getY());
+        if (dx < 0.45f && dy < 0.45f)
+        {
+            current = target;
+        }
+
+        if (current != fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)])
+        {
+            fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)] = current;
+            changed = true;
+        }
+    }
+
+    if (changed)
+    {
+        layoutFxSectionsFromCurrentAreas();
+        repaint(headerPlaceholderArea);
+    }
+}
+
+int SynthProjectAudioProcessorEditor::indexForFxSection(int sectionId) const
+{
+    for (int i = 0; i < 3; ++i)
+    {
+        if (fxSectionOrder[static_cast<std::size_t>(i)] == sectionId)
+        {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+int SynthProjectAudioProcessorEditor::fxSectionAtPoint(juce::Point<int> point) const
+{
+    for (int sectionId = 0; sectionId < 3; ++sectionId)
+    {
+        if (fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)].toNearestInt().contains(point))
+        {
+            return sectionId;
+        }
+    }
+
+    return -1;
+}
+
+void SynthProjectAudioProcessorEditor::moveFxSectionToSlot(int sectionId, int slotIndex)
+{
+    const auto fromIndex = indexForFxSection(sectionId);
+    const auto toIndex = juce::jlimit(0, 2, slotIndex);
+    if (fromIndex < 0 || fromIndex == toIndex)
+    {
+        return;
+    }
+
+    auto reordered = fxSectionOrder;
+    const auto section = reordered[static_cast<std::size_t>(fromIndex)];
+
+    if (fromIndex < toIndex)
+    {
+        for (int i = fromIndex; i < toIndex; ++i)
+        {
+            reordered[static_cast<std::size_t>(i)] = reordered[static_cast<std::size_t>(i + 1)];
+        }
+    }
+    else
+    {
+        for (int i = fromIndex; i > toIndex; --i)
+        {
+            reordered[static_cast<std::size_t>(i)] = reordered[static_cast<std::size_t>(i - 1)];
+        }
+    }
+
+    reordered[static_cast<std::size_t>(toIndex)] = section;
+    fxSectionOrder = reordered;
+
+    for (int stage = 0; stage < 3; ++stage)
+    {
+        const auto slot = indexForFxSection(stage);
+        if (slot >= 0)
+        {
+            fxSectionTargetAreas[static_cast<std::size_t>(stage)] =
+                fxSectionSlots[static_cast<std::size_t>(slot)].toFloat();
+        }
+    }
+}
+
+void SynthProjectAudioProcessorEditor::commitFxOrderToProcessor()
+{
+    audioProcessor.setFxProcessingOrder(fxSectionOrder);
 }
 
 void SynthProjectAudioProcessorEditor::refreshOscillatorModeUI()
@@ -1438,51 +1703,39 @@ void SynthProjectAudioProcessorEditor::refreshFxBypassUI()
     const auto robEnabled = audioProcessor.getRobEnabledParam().get();
     const auto delayEnabled = audioProcessor.getDelayEnabledParam().get();
     const auto reverbEnabled = audioProcessor.getReverbEnabledParam().get();
-    const auto delayAccentEnabled = juce::Colour::fromRGB(255, 198, 110);
-    const auto delayAccentBypassed = juce::Colour::fromRGB(176, 176, 176);
-    const auto setBypassVisual = [](juce::Component& component, bool enabled)
-    {
-        component.setEnabled(true);
-        component.setAlpha(enabled ? 1.0f : 0.72f);
-    };
 
     robBypassButton.setToggleState(robEnabled, juce::dontSendNotification);
     delayBypassButton.setToggleState(delayEnabled, juce::dontSendNotification);
     reverbBypassButton.setToggleState(reverbEnabled, juce::dontSendNotification);
 
-    setBypassVisual(robWarmthKnob, robEnabled);
-    setBypassVisual(robWarmthLabel, robEnabled);
-    setBypassVisual(robTypeBox, robEnabled);
-    setBypassVisual(robTypeLabel, robEnabled);
+    robWarmthKnob.setEnabled(robEnabled);
+    robWarmthLabel.setEnabled(robEnabled);
+    robTypeBox.setEnabled(robEnabled);
+    robTypeLabel.setEnabled(robEnabled);
     robWarmthKnob.getProperties().set("psychedelicBypassGray", !robEnabled);
 
-    setBypassVisual(isaacTextureKnob, delayEnabled);
-    setBypassVisual(isaacTextureLabel, delayEnabled);
-    setBypassVisual(delayAlgoBox, delayEnabled);
-    setBypassVisual(delayAlgoLabel, delayEnabled);
-    setBypassVisual(delayTimeKnob, delayEnabled);
-    setBypassVisual(delayTimeLabel, delayEnabled);
-    setBypassVisual(delayFeedbackKnob, delayEnabled);
-    setBypassVisual(delayFeedbackLabel, delayEnabled);
-    setBypassVisual(granularSyncBox, delayEnabled);
-    setBypassVisual(granularSyncLabel, delayEnabled);
+    isaacTextureKnob.setEnabled(delayEnabled);
+    isaacTextureLabel.setEnabled(delayEnabled);
+    delayAlgoBox.setEnabled(delayEnabled);
+    delayAlgoLabel.setEnabled(delayEnabled);
+    delayTimeKnob.setEnabled(delayEnabled);
+    delayTimeLabel.setEnabled(delayEnabled);
+    delayFeedbackKnob.setEnabled(delayEnabled);
+    delayFeedbackLabel.setEnabled(delayEnabled);
+    granularSyncBox.setEnabled(delayEnabled);
+    granularSyncLabel.setEnabled(delayEnabled);
     isaacTextureKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
-    delayTimeKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
-    delayFeedbackKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
-    delayTimeKnob.setColour(juce::Slider::rotarySliderFillColourId,
-                            delayEnabled ? delayAccentEnabled : delayAccentBypassed);
-    delayFeedbackKnob.setColour(juce::Slider::rotarySliderFillColourId,
-                                delayEnabled ? delayAccentEnabled : delayAccentBypassed);
 
-    setBypassVisual(reverbKnob, reverbEnabled);
-    setBypassVisual(reverbLabel, reverbEnabled);
-    setBypassVisual(reverbTypeBox, reverbEnabled);
-    setBypassVisual(reverbTypeLabel, reverbEnabled);
+    reverbKnob.setEnabled(reverbEnabled);
+    reverbLabel.setEnabled(reverbEnabled);
+    reverbTypeBox.setEnabled(reverbEnabled);
+    reverbTypeLabel.setEnabled(reverbEnabled);
     reverbKnob.getProperties().set("psychedelicBypassGray", !reverbEnabled);
 }
 
 void SynthProjectAudioProcessorEditor::timerCallback()
 {
+    animateFxSections();
     refreshOscillatorModeUI();
     refreshFxBypassUI();
 

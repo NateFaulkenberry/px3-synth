@@ -180,6 +180,11 @@ inline float smoothstep(float x)
 SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
+    for (int i = 0; i < 3; ++i)
+    {
+        fxProcessingOrder[static_cast<std::size_t>(i)].store(i, std::memory_order_relaxed);
+    }
+
     oscSineParam = new juce::AudioParameterFloat("oscSine", "Osc Sine", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
     oscSawParam = new juce::AudioParameterFloat("oscSaw", "Osc Saw", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     oscSquareParam = new juce::AudioParameterFloat("oscSquare", "Osc Square", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
@@ -506,6 +511,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     const auto delayFeedbackControl = clamp01(delayFeedbackParam->get());
     const auto reverbAmountBase = clamp01(reverbAmountParam->get());
     const auto reverbEnabled = reverbEnabledParam->get();
+    const auto fxOrder = getFxProcessingOrder();
 
     if (delayAlgorithmIndex != lastDelayAlgorithmIndex)
     {
@@ -623,46 +629,63 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
-        auto inL = buffer.getSample(0, sample);
-        auto inR = (buffer.getNumChannels() > 1) ? buffer.getSample(1, sample) : inL;
+        auto stageL = buffer.getSample(0, sample);
+        auto stageR = (buffer.getNumChannels() > 1) ? buffer.getSample(1, sample) : stageL;
 
-        if (robEnabled)
+        for (const auto stage : fxOrder)
         {
-            inL = processRobSample(inL, 0, robAmount, robModeIndex);
-            inR = processRobSample(inR, 1, robAmount, robModeIndex);
+            switch (stage)
+            {
+                case 0: // Harmonic Drive
+                    if (robEnabled)
+                    {
+                        stageL = processRobSample(stageL, 0, robAmount, robModeIndex);
+                        stageR = processRobSample(stageR, 1, robAmount, robModeIndex);
+                    }
+                    break;
+
+                case 1: // Delay
+                    if (delayEnabled)
+                    {
+                        float delayedL = stageL;
+                        float delayedR = stageR;
+                        processDelayAlgorithmSample(stageL,
+                                                    stageR,
+                                                    isaacAmount,
+                                                    delayAlgorithmIndex,
+                                                    delayTimeControl,
+                                                    delayFeedbackControl,
+                                                    syncDivisionIndex,
+                                                    delayedL,
+                                                    delayedR);
+                        stageL = delayedL;
+                        stageR = delayedR;
+                    }
+                    break;
+
+                case 2: // Reverb
+                    if (reverbEnabled)
+                    {
+                        const auto reverbInL = stageL;
+                        const auto reverbInR = stageR;
+                        processReverbSampleFrame(stageL, stageR, reverbAmount, reverbAlgorithmIndex, stageL, stageR);
+
+                        reverbPreEnergy += 0.5 * (static_cast<double>(reverbInL) * static_cast<double>(reverbInL)
+                                                  + static_cast<double>(reverbInR) * static_cast<double>(reverbInR));
+                        reverbPostEnergy += 0.5 * (static_cast<double>(stageL) * static_cast<double>(stageL)
+                                                   + static_cast<double>(stageR) * static_cast<double>(stageR));
+                    }
+                    break;
+
+                default:
+                    break;
+            }
         }
 
-        float outL = inL;
-        float outR = inR;
-        if (delayEnabled)
-        {
-            processDelayAlgorithmSample(inL,
-                            inR,
-                            isaacAmount,
-                            delayAlgorithmIndex,
-                            delayTimeControl,
-                            delayFeedbackControl,
-                            syncDivisionIndex,
-                            outL,
-                            outR);
-        }
-
-        const auto reverbInL = outL;
-        const auto reverbInR = outR;
-        if (reverbEnabled)
-        {
-            processReverbSampleFrame(outL, outR, reverbAmount, reverbAlgorithmIndex, outL, outR);
-        }
-
-        reverbPreEnergy += 0.5 * (static_cast<double>(reverbInL) * static_cast<double>(reverbInL)
-                      + static_cast<double>(reverbInR) * static_cast<double>(reverbInR));
-        reverbPostEnergy += 0.5 * (static_cast<double>(outL) * static_cast<double>(outL)
-                       + static_cast<double>(outR) * static_cast<double>(outR));
-
-        buffer.setSample(0, sample, outL);
+        buffer.setSample(0, sample, stageL);
         if (buffer.getNumChannels() > 1)
         {
-            buffer.setSample(1, sample, outR);
+            buffer.setSample(1, sample, stageR);
         }
     }
 
@@ -927,6 +950,66 @@ juce::AudioParameterFloat& SynthProjectAudioProcessor::getAudioRateParam() const
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getAudioAnimModeParam() const { return *audioAnimModeParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getAudioAnimSyncParam() const { return *audioAnimSyncParam; }
 juce::AudioParameterInt& SynthProjectAudioProcessor::getPitchBendRangeParam() const { return *pitchBendRangeParam; }
+
+std::array<int, 3> SynthProjectAudioProcessor::getFxProcessingOrder() const
+{
+    std::array<int, 3> sanitized { { 0, 1, 2 } };
+    std::array<bool, 3> seen { { false, false, false } };
+
+    int write = 0;
+    for (int i = 0; i < 3; ++i)
+    {
+        const auto stage = juce::jlimit(0,
+                                        2,
+                                        fxProcessingOrder[static_cast<std::size_t>(i)].load(std::memory_order_relaxed));
+        if (!seen[static_cast<std::size_t>(stage)])
+        {
+            sanitized[static_cast<std::size_t>(write++)] = stage;
+            seen[static_cast<std::size_t>(stage)] = true;
+        }
+    }
+
+    for (int stage = 0; stage < 3; ++stage)
+    {
+        if (!seen[static_cast<std::size_t>(stage)] && write < 3)
+        {
+            sanitized[static_cast<std::size_t>(write++)] = stage;
+        }
+    }
+
+    return sanitized;
+}
+
+void SynthProjectAudioProcessor::setFxProcessingOrder(const std::array<int, 3>& order)
+{
+    std::array<int, 3> sanitized { { 0, 1, 2 } };
+    std::array<bool, 3> seen { { false, false, false } };
+
+    int write = 0;
+    for (const auto stageIn : order)
+    {
+        const auto stage = juce::jlimit(0, 2, stageIn);
+        if (!seen[static_cast<std::size_t>(stage)] && write < 3)
+        {
+            sanitized[static_cast<std::size_t>(write++)] = stage;
+            seen[static_cast<std::size_t>(stage)] = true;
+        }
+    }
+
+    for (int stage = 0; stage < 3 && write < 3; ++stage)
+    {
+        if (!seen[static_cast<std::size_t>(stage)])
+        {
+            sanitized[static_cast<std::size_t>(write++)] = stage;
+        }
+    }
+
+    for (int i = 0; i < 3; ++i)
+    {
+        fxProcessingOrder[static_cast<std::size_t>(i)].store(sanitized[static_cast<std::size_t>(i)],
+                                                             std::memory_order_relaxed);
+    }
+}
 
 float SynthProjectAudioProcessor::copyPitchBendNormalized() const
 {
@@ -2207,6 +2290,14 @@ void SynthProjectAudioProcessor::getStateInformation(juce::MemoryBlock& destData
         state.setProperty("audioPath", lastLoadedAudioPath, nullptr);
     }
 
+    const auto fxOrder = getFxProcessingOrder();
+    for (int i = 0; i < 3; ++i)
+    {
+        state.setProperty(juce::String("fxOrder") + juce::String(i),
+                          fxOrder[static_cast<std::size_t>(i)],
+                          nullptr);
+    }
+
     if (auto xml = state.createXml())
     {
         copyXmlToBinary(*xml, destData);
@@ -2239,6 +2330,22 @@ void SynthProjectAudioProcessor::setStateInformation(const void* data, int sizeI
                 parameter->setValueNotifyingHost(value);
             }
         }
+    }
+
+    std::array<int, 3> fxOrderFromState { { 0, 1, 2 } };
+    bool hasFxOrderState = false;
+    for (int i = 0; i < 3; ++i)
+    {
+        const auto propertyName = juce::String("fxOrder") + juce::String(i);
+        if (state.hasProperty(propertyName))
+        {
+            hasFxOrderState = true;
+            fxOrderFromState[static_cast<std::size_t>(i)] = static_cast<int>(state[propertyName]);
+        }
+    }
+    if (hasFxOrderState)
+    {
+        setFxProcessingOrder(fxOrderFromState);
     }
 
     if (state.hasProperty("imagePath"))

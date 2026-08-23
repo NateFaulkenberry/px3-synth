@@ -100,6 +100,8 @@ public:
     juce::AudioParameterChoice& getAudioAnimModeParam() const;
     juce::AudioParameterChoice& getAudioAnimSyncParam() const;
     juce::AudioParameterInt& getPitchBendRangeParam() const;
+    std::array<int, 3> getFxProcessingOrder() const;
+    void setFxProcessingOrder(const std::array<int, 3>& order);
 
     float copyPitchBendNormalized() const;
     float copyModWheelNormalized() const;
@@ -281,6 +283,7 @@ private:
     int moonWritePos { 0 };
     float moonPhase { 0.0f };
     float reverbOutputCompGain { 1.0f };
+    std::array<std::atomic<int>, 3> fxProcessingOrder {};
 
     std::shared_ptr<const ImageWavetable> activeImageWavetable;
     std::shared_ptr<const AudioSourceData> activeAudioSource;
