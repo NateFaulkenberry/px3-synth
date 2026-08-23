@@ -286,9 +286,6 @@ private:
     juce::AudioParameterChoice* audioAnimSyncParam { nullptr };
     juce::AudioParameterChoice* audioTargetParam { nullptr };
     juce::AudioParameterInt* pitchBendRangeParam { nullptr };
-    juce::AudioParameterInt* fxOrderSlot0Param { nullptr };
-    juce::AudioParameterInt* fxOrderSlot1Param { nullptr };
-    juce::AudioParameterInt* fxOrderSlot2Param { nullptr };
 
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteCounts {};
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteVelocities {};
@@ -351,8 +348,8 @@ private:
     int moonWritePos { 0 };
     float moonPhase { 0.0f };
     float reverbOutputCompGain { 1.0f };
-    std::array<std::atomic<int>, 3> fxProcessingOrder {};
-    bool updatingFxOrderParams { false };
+    std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
+    std::atomic<uint32_t> fxOrderRevision { 0u };
 
     std::shared_ptr<const ImageWavetable> activeImageWavetable;
     std::shared_ptr<const AudioSourceData> activeAudioSource;

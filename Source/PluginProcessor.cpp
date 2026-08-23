@@ -8,6 +8,69 @@ namespace
 {
 constexpr double kMaxIsaacDelaySeconds = 4.0;
 constexpr double kMaxMoonDelaySeconds = 0.35;
+constexpr int kCurrentStateVersion = 2;
+
+const juce::Identifier kStateTypeId("PX3_STATE");
+const juce::Identifier kStateVersionId("stateVersion");
+const juce::Identifier kModuleOrderId("MODULE_ORDER");
+const juce::Identifier kModuleEntryId("MODULE");
+const juce::Identifier kModuleIdProperty("id");
+const juce::Identifier kModuleOrderRevisionId("moduleOrderRevision");
+
+const std::array<juce::String, 3> kFxModuleIds { juce::String("harmonicDrive"),
+                                                  juce::String("delay"),
+                                                  juce::String("reverb") };
+
+juce::String moduleIdForStage(int stage)
+{
+    const auto clamped = juce::jlimit(0, 2, stage);
+    return kFxModuleIds[static_cast<std::size_t>(clamped)];
+}
+
+int stageForModuleId(const juce::String& moduleId)
+{
+    for (int stage = 0; stage < 3; ++stage)
+    {
+        if (moduleId.equalsIgnoreCase(kFxModuleIds[static_cast<std::size_t>(stage)]))
+        {
+            return stage;
+        }
+    }
+
+    return -1;
+}
+
+int decodeLegacyStageValue(const juce::var& value)
+{
+    if (value.isDouble() || value.isInt() || value.isInt64() || value.isBool())
+    {
+        const auto asDouble = static_cast<double>(value);
+        if (asDouble >= 0.0 && asDouble <= 1.0)
+        {
+            return juce::jlimit(0, 2, static_cast<int>(std::lround(asDouble * 2.0)));
+        }
+
+        return juce::jlimit(0, 2, static_cast<int>(std::lround(asDouble)));
+    }
+
+    return juce::jlimit(0, 2, static_cast<int>(std::lround(value.toString().getDoubleValue())));
+}
+
+uint32_t packFxOrder(const std::array<int, 3>& order)
+{
+    return (static_cast<uint32_t>(order[0] & 0x3)
+            | (static_cast<uint32_t>(order[1] & 0x3) << 2)
+            | (static_cast<uint32_t>(order[2] & 0x3) << 4));
+}
+
+std::array<int, 3> unpackFxOrder(uint32_t packed)
+{
+    return {
+        { static_cast<int>(packed & 0x3u),
+          static_cast<int>((packed >> 2) & 0x3u),
+          static_cast<int>((packed >> 4) & 0x3u) }
+    };
+}
 
 float divisionBeatsForIndex(int index)
 {
@@ -180,10 +243,8 @@ inline float smoothstep(float x)
 SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
-    for (int i = 0; i < 3; ++i)
-    {
-        fxProcessingOrder[static_cast<std::size_t>(i)].store(i, std::memory_order_relaxed);
-    }
+    fxProcessingOrderPacked.store(packFxOrder({ { 0, 1, 2 } }), std::memory_order_relaxed);
+    fxOrderRevision.store(0u, std::memory_order_relaxed);
 
     oscSineParam = new juce::AudioParameterFloat("oscSine", "Osc Sine", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
     oscSawParam = new juce::AudioParameterFloat("oscSaw", "Osc Saw", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
@@ -293,9 +354,6 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
                                                        1,
                                                        24,
                                                        2);
-    fxOrderSlot0Param = new juce::AudioParameterInt("fxOrderSlot0", "FX Order Slot 0", 0, 2, 0);
-    fxOrderSlot1Param = new juce::AudioParameterInt("fxOrderSlot1", "FX Order Slot 1", 0, 2, 1);
-    fxOrderSlot2Param = new juce::AudioParameterInt("fxOrderSlot2", "FX Order Slot 2", 0, 2, 2);
 
     addParameter(oscSineParam);
     addParameter(oscSawParam);
@@ -355,9 +413,6 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(audioAnimSyncParam);
     addParameter(audioTargetParam);
     addParameter(pitchBendRangeParam);
-    addParameter(fxOrderSlot0Param);
-    addParameter(fxOrderSlot1Param);
-    addParameter(fxOrderSlot2Param);
 
     const auto initialEnvelope = currentEnvelopeSettings();
     const auto initialSubtractive = currentSubtractiveSettings();
@@ -1023,34 +1078,8 @@ juce::AudioParameterInt& SynthProjectAudioProcessor::getPitchBendRangeParam() co
 
 std::array<int, 3> SynthProjectAudioProcessor::getFxProcessingOrder() const
 {
-    if (fxOrderSlot0Param != nullptr && fxOrderSlot1Param != nullptr && fxOrderSlot2Param != nullptr)
-    {
-        const std::array<int, 3> fromParams {
-            { fxOrderSlot0Param->get(), fxOrderSlot1Param->get(), fxOrderSlot2Param->get() }
-        };
-
-        std::array<int, 3> sanitizedFromParams { { 0, 1, 2 } };
-        std::array<bool, 3> seenFromParams { { false, false, false } };
-        int writeParam = 0;
-        for (const auto stageIn : fromParams)
-        {
-            const auto stage = juce::jlimit(0, 2, stageIn);
-            if (!seenFromParams[static_cast<std::size_t>(stage)] && writeParam < 3)
-            {
-                sanitizedFromParams[static_cast<std::size_t>(writeParam++)] = stage;
-                seenFromParams[static_cast<std::size_t>(stage)] = true;
-            }
-        }
-        for (int stage = 0; stage < 3 && writeParam < 3; ++stage)
-        {
-            if (!seenFromParams[static_cast<std::size_t>(stage)])
-            {
-                sanitizedFromParams[static_cast<std::size_t>(writeParam++)] = stage;
-            }
-        }
-
-        return sanitizedFromParams;
-    }
+    const auto packed = fxProcessingOrderPacked.load(std::memory_order_relaxed);
+    const auto raw = unpackFxOrder(packed);
 
     std::array<int, 3> sanitized { { 0, 1, 2 } };
     std::array<bool, 3> seen { { false, false, false } };
@@ -1058,9 +1087,7 @@ std::array<int, 3> SynthProjectAudioProcessor::getFxProcessingOrder() const
     int write = 0;
     for (int i = 0; i < 3; ++i)
     {
-        const auto stage = juce::jlimit(0,
-                                        2,
-                                        fxProcessingOrder[static_cast<std::size_t>(i)].load(std::memory_order_relaxed));
+        const auto stage = juce::jlimit(0, 2, raw[static_cast<std::size_t>(i)]);
         if (!seen[static_cast<std::size_t>(stage)])
         {
             sanitized[static_cast<std::size_t>(write++)] = stage;
@@ -1103,63 +1130,20 @@ void SynthProjectAudioProcessor::setFxProcessingOrder(const std::array<int, 3>& 
         }
     }
 
-    for (int i = 0; i < 3; ++i)
+    const auto packed = packFxOrder(sanitized);
+    const auto previous = fxProcessingOrderPacked.load(std::memory_order_relaxed);
+    if (packed == previous)
     {
-        fxProcessingOrder[static_cast<std::size_t>(i)].store(sanitized[static_cast<std::size_t>(i)],
-                                                             std::memory_order_relaxed);
+        return;
     }
 
-    if (!updatingFxOrderParams
-        && fxOrderSlot0Param != nullptr
-        && fxOrderSlot1Param != nullptr
-        && fxOrderSlot2Param != nullptr)
-    {
-        updatingFxOrderParams = true;
+    fxProcessingOrderPacked.store(packed, std::memory_order_relaxed);
+    fxOrderRevision.fetch_add(1u, std::memory_order_relaxed);
 
-        const auto setSlotIfChanged = [this](juce::AudioParameterInt* param, int value)
-        {
-            if (param == nullptr || param->get() == value)
-            {
-                return;
-            }
-
-            const auto normalized = param->convertTo0to1(static_cast<float>(value));
-
-            int paramIndex = -1;
-            const auto& params = getParameters();
-            for (std::size_t i = 0; i < params.size(); ++i)
-            {
-                if (params[i] == param)
-                {
-                    paramIndex = static_cast<int>(i);
-                    break;
-                }
-            }
-
-            if (paramIndex >= 0)
-            {
-                beginParameterChangeGesture(paramIndex);
-                setParameterNotifyingHost(paramIndex, normalized);
-                endParameterChangeGesture(paramIndex);
-            }
-            else
-            {
-                param->beginChangeGesture();
-                param->setValueNotifyingHost(normalized);
-                param->endChangeGesture();
-            }
-        };
-
-        setSlotIfChanged(fxOrderSlot0Param, sanitized[0]);
-        setSlotIfChanged(fxOrderSlot1Param, sanitized[1]);
-        setSlotIfChanged(fxOrderSlot2Param, sanitized[2]);
-
-        updatingFxOrderParams = false;
-    }
-
-    // Explicitly notify host display/state tracking after order updates.
-    // Some hosts are conservative about marking dirty for non-audio UI actions.
+    // Notify host that non-automatable plugin state changed.
     updateHostDisplay();
+    updateHostDisplay(juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged(true));
+    updateHostDisplay(juce::AudioProcessor::ChangeDetails().withProgramChanged(true));
 }
 
 float SynthProjectAudioProcessor::copyPitchBendNormalized() const
@@ -3035,7 +3019,8 @@ void SynthProjectAudioProcessor::setStateInformation(const void* data, int sizeI
 
 juce::ValueTree SynthProjectAudioProcessor::createParameterStateTree() const
 {
-    juce::ValueTree state("PX3_STATE");
+    juce::ValueTree state(kStateTypeId);
+    state.setProperty(kStateVersionId, kCurrentStateVersion, nullptr);
 
     for (auto* parameter : getParameters())
     {
@@ -3052,19 +3037,24 @@ juce::ValueTree SynthProjectAudioProcessor::createParameterStateTree() const
     }
 
     const auto fxOrder = getFxProcessingOrder();
-    for (int i = 0; i < 3; ++i)
+    juce::ValueTree moduleOrder(kModuleOrderId);
+    for (const auto stage : fxOrder)
     {
-        state.setProperty(juce::String("fxOrder") + juce::String(i),
-                          fxOrder[static_cast<std::size_t>(i)],
-                          nullptr);
+        juce::ValueTree module(kModuleEntryId);
+        module.setProperty(kModuleIdProperty, moduleIdForStage(stage), nullptr);
+        moduleOrder.addChild(module, -1, nullptr);
     }
+    state.addChild(moduleOrder, -1, nullptr);
+    state.setProperty(kModuleOrderRevisionId,
+                      static_cast<int64_t>(fxOrderRevision.load(std::memory_order_relaxed)),
+                      nullptr);
 
     return state;
 }
 
 bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& state, juce::String* error)
 {
-    if (!state.isValid() || state.getType().toString() != "PX3_STATE")
+    if (!state.isValid() || state.getType() != kStateTypeId)
     {
         if (error != nullptr)
         {
@@ -3087,24 +3077,94 @@ bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& 
     }
 
     std::array<int, 3> fxOrderFromState { { 0, 1, 2 } };
-    bool hasFxOrderState = false;
-    for (int i = 0; i < 3; ++i)
+    auto hasModuleOrder = false;
+
+    if (const auto moduleOrder = state.getChildWithName(kModuleOrderId); moduleOrder.isValid())
     {
-        const auto propertyName = juce::String("fxOrder") + juce::String(i);
-        if (state.hasProperty(propertyName))
+        std::array<bool, 3> seen { { false, false, false } };
+        int write = 0;
+
+        for (int i = 0; i < moduleOrder.getNumChildren() && write < 3; ++i)
         {
-            hasFxOrderState = true;
-            fxOrderFromState[static_cast<std::size_t>(i)] = static_cast<int>(state[propertyName]);
+            const auto moduleNode = moduleOrder.getChild(i);
+            if (!moduleNode.isValid() || moduleNode.getType() != kModuleEntryId || !moduleNode.hasProperty(kModuleIdProperty))
+            {
+                continue;
+            }
+
+            const auto moduleId = moduleNode.getProperty(kModuleIdProperty).toString();
+            const auto stage = stageForModuleId(moduleId);
+            if (stage < 0)
+            {
+                continue;
+            }
+
+            if (!seen[static_cast<std::size_t>(stage)])
+            {
+                fxOrderFromState[static_cast<std::size_t>(write++)] = stage;
+                seen[static_cast<std::size_t>(stage)] = true;
+            }
+        }
+
+        if (write > 0)
+        {
+            hasModuleOrder = true;
+            for (int stage = 0; stage < 3 && write < 3; ++stage)
+            {
+                if (!seen[static_cast<std::size_t>(stage)])
+                {
+                    fxOrderFromState[static_cast<std::size_t>(write++)] = stage;
+                }
+            }
         }
     }
-    if (hasFxOrderState)
+
+    if (!hasModuleOrder)
+    {
+        // Backward compatibility: old states serialized order as flat integer properties.
+        std::array<int, 3> legacyOrder { { 0, 1, 2 } };
+        auto hasLegacyOrder = false;
+        for (int i = 0; i < 3; ++i)
+        {
+            const auto propertyName = juce::String("fxOrder") + juce::String(i);
+            if (state.hasProperty(propertyName))
+            {
+                hasLegacyOrder = true;
+                legacyOrder[static_cast<std::size_t>(i)] = decodeLegacyStageValue(state[propertyName]);
+            }
+        }
+
+        // Older builds also exposed hidden slot parameters; parse if present.
+        if (!hasLegacyOrder && state.hasProperty("fxOrderSlot0") && state.hasProperty("fxOrderSlot1") && state.hasProperty("fxOrderSlot2"))
+        {
+            hasLegacyOrder = true;
+            legacyOrder = {
+                { decodeLegacyStageValue(state["fxOrderSlot0"]),
+                  decodeLegacyStageValue(state["fxOrderSlot1"]),
+                  decodeLegacyStageValue(state["fxOrderSlot2"]) }
+            };
+        }
+
+        if (hasLegacyOrder)
+        {
+            hasModuleOrder = true;
+            fxOrderFromState = legacyOrder;
+        }
+    }
+
+    if (hasModuleOrder)
     {
         setFxProcessingOrder(fxOrderFromState);
     }
-    else if (fxOrderSlot0Param != nullptr && fxOrderSlot1Param != nullptr && fxOrderSlot2Param != nullptr)
+    else
     {
-        // Backward-compatible path: newer hosts/presets can restore from parameter slots.
-        setFxProcessingOrder({ { fxOrderSlot0Param->get(), fxOrderSlot1Param->get(), fxOrderSlot2Param->get() } });
+        setFxProcessingOrder({ { 0, 1, 2 } });
+    }
+
+    if (state.hasProperty(kModuleOrderRevisionId))
+    {
+        const auto revision = juce::jmax<int64_t>(0, static_cast<int64_t>(state[kModuleOrderRevisionId]));
+        fxOrderRevision.store(static_cast<uint32_t>(revision), std::memory_order_relaxed);
     }
 
     if (state.hasProperty("imagePath"))
