@@ -187,16 +187,14 @@ bool PresetManager::saveUserPreset(const PresetMetadata& metadata,
         return false;
     }
 
-    const auto category = normalizeCategory(metadata.category).isEmpty() ? juce::String("UNCATEGORIZED")
-                                                                          : normalizeCategory(metadata.category);
-    auto categoryDir = getUserPresetRootDir().getChildFile(category);
-    if (!categoryDir.exists() && !categoryDir.createDirectory())
+    auto userDir = getUserPresetRootDir();
+    if (!userDir.exists() && !userDir.createDirectory())
     {
-        error = "Unable to create user preset category directory.";
+        error = "Unable to create user preset directory.";
         return false;
     }
 
-    auto targetFile = categoryDir.getChildFile(sanitizeFileName(metadata.name) + kPresetExtension);
+    auto targetFile = userDir.getChildFile(sanitizeFileName(metadata.name) + kPresetExtension);
     if (targetFile.existsAsFile() && !overwrite)
     {
         error = "A preset with this name already exists.";
@@ -357,13 +355,10 @@ bool PresetManager::importPreset(const juce::File& sourceFile, juce::String& err
         return false;
     }
 
-    const auto category = normalizeCategory(importedMeta.metadata.category).isEmpty() ? juce::String("UNCATEGORIZED")
-                                                                                        : normalizeCategory(importedMeta.metadata.category);
-
-    auto categoryDir = getUserPresetRootDir().getChildFile(category);
-    if (!categoryDir.exists() && !categoryDir.createDirectory())
+    auto userDir = getUserPresetRootDir();
+    if (!userDir.exists() && !userDir.createDirectory())
     {
-        error = "Unable to create user preset category directory.";
+        error = "Unable to create user preset directory.";
         return false;
     }
 
@@ -375,11 +370,11 @@ bool PresetManager::importPreset(const juce::File& sourceFile, juce::String& err
         baseName = "Imported Preset";
     }
 
-    auto target = categoryDir.getChildFile(baseName + kPresetExtension);
+    auto target = userDir.getChildFile(baseName + kPresetExtension);
     int suffix = 2;
     while (target.existsAsFile())
     {
-        target = categoryDir.getChildFile(baseName + " " + juce::String(suffix++) + kPresetExtension);
+        target = userDir.getChildFile(baseName + " " + juce::String(suffix++) + kPresetExtension);
     }
 
     if (!writePresetFile(target, presetTree, error))
@@ -531,11 +526,49 @@ bool PresetManager::ensureDirectoryLayout(juce::String& error) const
     for (const auto* cat : kDefaultCategories)
     {
         const auto factoryCat = getFactoryPresetRootDir().getChildFile(cat);
-        const auto userCat = getUserPresetRootDir().getChildFile(cat);
-        if ((!factoryCat.exists() && !factoryCat.createDirectory())
-            || (!userCat.exists() && !userCat.createDirectory()))
+        if (!factoryCat.exists() && !factoryCat.createDirectory())
         {
-            error = "Failed to create preset category directories.";
+            error = "Failed to create factory preset category directories.";
+            return false;
+        }
+    }
+
+    // Migrate legacy user category folders into a single flat User directory.
+    const auto userRoot = getUserPresetRootDir();
+    const auto userPresetFiles = userRoot.findChildFiles(juce::File::findFiles, true, "*" + kPresetExtension);
+    for (const auto& file : userPresetFiles)
+    {
+        if (file.getParentDirectory() == userRoot)
+        {
+            continue;
+        }
+
+        auto baseName = sanitizeFileName(file.getFileNameWithoutExtension());
+        if (baseName.isEmpty())
+        {
+            baseName = "Imported Preset";
+        }
+
+        auto target = userRoot.getChildFile(baseName + kPresetExtension);
+        int suffix = 2;
+        while (target.existsAsFile())
+        {
+            target = userRoot.getChildFile(baseName + " " + juce::String(suffix++) + kPresetExtension);
+        }
+
+        if (!file.moveFileTo(target))
+        {
+            error = "Failed to migrate user preset into flat directory: " + file.getFullPathName();
+            return false;
+        }
+    }
+
+    const auto userSubdirs = userRoot.findChildFiles(juce::File::findDirectories, false);
+    for (const auto& dir : userSubdirs)
+    {
+        if (!dir.deleteRecursively())
+        {
+            error = "Failed to remove legacy user preset directory: " + dir.getFullPathName();
             return false;
         }
     }
@@ -573,7 +606,23 @@ bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
         { "Image Sweep", "IMAGE ENGINE", "P(X3)", "Wavetable image scan style preset.",
           { { "oscMode", 8.0f / 19.0f }, { "sourceEngine", 0.0f }, { "imagePosition", 0.25f }, { "imageAnimate", 0.50f }, { "imageRate", 0.55f }, { "imageTarget", 1.0f / 2.0f } } },
         { "Broken Radio", "AUDIO ENGINE", "P(X3)", "Audio engine granular texture demo.",
-          { { "sourceEngine", 1.0f }, { "audioPosition", 0.52f }, { "audioGrain", 0.62f }, { "audioTexture", 0.70f }, { "audioAnimate", 0.35f }, { "audioRate", 0.4f }, { "delayEnabled", 1.0f }, { "isaacAmount", 0.44f } } }
+                    { { "sourceEngine", 1.0f }, { "audioPosition", 0.52f }, { "audioGrain", 0.62f }, { "audioTexture", 0.70f }, { "audioAnimate", 0.35f }, { "audioRate", 0.4f }, { "delayEnabled", 1.0f }, { "isaacAmount", 0.44f } } },
+
+                // Extra randomized-style factory starters for shipping variety.
+                { "Dustline Runner", "BASS", "P(X3)", "Tight low bass with controlled grit.",
+                    { { "oscMode", 2.0f / 19.0f }, { "oscMacroA", 0.18f }, { "oscMacroB", 0.71f }, { "filterCutoff", 0.24f }, { "filterResonance", 0.29f }, { "ampAttack", 0.01f }, { "ampDecay", 0.22f }, { "ampSustain", 0.78f }, { "ampRelease", 0.27f }, { "robEnabled", 1.0f }, { "robAmount", 0.47f }, { "masterGain", 0.66f } } },
+                { "Arc Light Mono", "LEADS", "P(X3)", "Focused mono lead with short ambience.",
+                    { { "oscMode", 12.0f / 19.0f }, { "oscMacroA", 0.69f }, { "oscMacroB", 0.26f }, { "oscMacroC", 0.52f }, { "filterCutoff", 0.66f }, { "filterResonance", 0.42f }, { "ampAttack", 0.02f }, { "ampDecay", 0.19f }, { "ampSustain", 0.48f }, { "ampRelease", 0.21f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.18f } } },
+                { "Moonglass Bloom", "PADS", "P(X3)", "Wide evolving pad with slow movement.",
+                    { { "oscMode", 6.0f / 19.0f }, { "oscMacroA", 0.41f }, { "oscMacroB", 0.84f }, { "oscMacroC", 0.37f }, { "filterCutoff", 0.58f }, { "filterResonance", 0.24f }, { "ampAttack", 0.54f }, { "ampDecay", 0.46f }, { "ampSustain", 0.72f }, { "ampRelease", 0.78f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.56f }, { "delayEnabled", 1.0f }, { "isaacAmount", 0.21f } } },
+                { "Pixel Harp", "PLUCKS", "P(X3)", "Snappy digital pluck with timed echoes.",
+                    { { "oscMode", 15.0f / 19.0f }, { "oscMacroA", 0.77f }, { "oscMacroB", 0.33f }, { "filterCutoff", 0.74f }, { "filterResonance", 0.45f }, { "ampAttack", 0.0f }, { "ampDecay", 0.14f }, { "ampSustain", 0.12f }, { "ampRelease", 0.17f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 4.0f / 6.0f }, { "isaacAmount", 0.39f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.11f } } },
+                { "Volt Garden", "EXPERIMENTAL", "P(X3)", "Animated hybrid patch with shifting harmonics.",
+                    { { "oscMode", 18.0f / 19.0f }, { "oscMacroA", 0.74f }, { "oscMacroB", 0.62f }, { "oscMacroC", 0.81f }, { "filterCutoff", 0.63f }, { "filterResonance", 0.58f }, { "robEnabled", 1.0f }, { "robAmount", 0.52f }, { "delayEnabled", 1.0f }, { "isaacAmount", 0.48f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.31f } } },
+                { "Raster Drift", "IMAGE ENGINE", "P(X3)", "Image source morph texture with moderate ambience.",
+                    { { "sourceEngine", 0.0f }, { "oscMode", 8.0f / 19.0f }, { "imagePosition", 0.63f }, { "imageAnimate", 0.42f }, { "imageRate", 0.27f }, { "imageTarget", 2.0f / 2.0f }, { "filterCutoff", 0.57f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.24f } } },
+                { "Tape Phantom", "AUDIO ENGINE", "P(X3)", "Granular audio texture with diffused tail.",
+                    { { "sourceEngine", 1.0f }, { "audioPosition", 0.34f }, { "audioGrain", 0.76f }, { "audioTexture", 0.58f }, { "audioAnimate", 0.49f }, { "audioRate", 0.22f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 1.0f / 6.0f }, { "isaacAmount", 0.36f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.29f } } }
     };
 
     auto baseState = processor.createParameterStateTree();
@@ -683,12 +732,12 @@ bool PresetManager::writePresetFile(const juce::File& file,
         return false;
     }
 
-    auto temp = file.getNonexistentSibling(true);
+    juce::TemporaryFile temp(file);
     if (auto xml = presetTree.createXml())
     {
-        if (!xml->writeTo(temp))
+        if (!xml->writeTo(temp.getFile()))
         {
-            error = "Failed to write preset file: " + temp.getFullPathName();
+            error = "Failed to write preset file: " + temp.getFile().getFullPathName();
             return false;
         }
     }
@@ -698,16 +747,9 @@ bool PresetManager::writePresetFile(const juce::File& file,
         return false;
     }
 
-    if (file.existsAsFile() && !file.deleteFile())
+    if (!temp.overwriteTargetFileWithTemporary())
     {
-        temp.deleteFile();
-        error = "Failed to overwrite preset file.";
-        return false;
-    }
-
-    if (!temp.moveFileTo(file))
-    {
-        temp.deleteFile();
+        temp.getFile().deleteFile();
         error = "Failed to finalize preset write.";
         return false;
     }
