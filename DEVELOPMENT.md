@@ -31,41 +31,38 @@ Key architectural rule:
 
 Main code lives in Source/
 
-- `PluginProcessor.*`: processor lifecycle, parameters, DSP orchestration, state serialization
-- `SynthVoice.*` / `SynthSound.*`: per-voice synthesis and sound model
-- `PluginEditor.*`: main UI, attachments, debug console, ADSR graph
-- `PresetManager.*`: `.px3preset` read/write/import/export and metadata
-- `ImageEnginePanel.*` / `AudioEnginePanel.*` / `SourceEnginePanel.*`: source engine UI and control surfaces
-- `PerformanceControls.*`, `PianoKeyboard.*`: virtual performance and key input widgets
-- `PX3Version.h`: centralized runtime version helpers
+- `Source/DSP/`: processor lifecycle, parameter definitions, voice/sound DSP (`PluginProcessor.*`, `SynthVoice.*`, `SynthSound.*`)
+- `Source/UI/`: editor surface + UI components (`PluginEditor.*`, `ImageEnginePanel.*`, `AudioEnginePanel.*`, `SourceEnginePanel.*`, `PerformanceControls.*`, `PianoKeyboard.*`)
+- `Source/Preset/`: preset read/write/import/export and metadata (`PresetManager.*`)
+- `Source/Core/`: shared lightweight data/types (`AudioSourceData.h`, `ImageWavetable.h`, `PX3Version.h`)
 
 ## Where Do I Look?
 
 Want to change oscillator synthesis behavior?
-- `Source/SynthVoice.cpp`
+- `Source/DSP/SynthVoice.cpp`
 
 Want to change envelope/filter defaults/ranges?
-- parameter definitions in `Source/PluginProcessor.cpp`
-- envelope/filter usage in `Source/SynthVoice.cpp`
+- parameter definitions in `Source/DSP/PluginProcessor.cpp`
+- envelope/filter usage in `Source/DSP/SynthVoice.cpp`
 
 Want to change LFO behavior?
-- `currentLfoSignalForBlock()` and `applyLfoToNormalizedValue()` in `Source/PluginProcessor.cpp`
+- `currentLfoSignalForBlock()` and `applyLfoToNormalizedValue()` in `Source/DSP/PluginProcessor.cpp`
 
 Want to change ADSR graph UI?
-- `EnvelopeGraphComponent` in `Source/PluginEditor.cpp`
+- `EnvelopeGraphComponent` in `Source/UI/PluginEditor.cpp`
 
 Want to change module ordering behavior?
-- UI drag/commit in `Source/PluginEditor.cpp`
-- canonical order storage/serialization in `Source/PluginProcessor.cpp`
+- UI drag/commit in `Source/UI/PluginEditor.cpp`
+- canonical order storage/serialization in `Source/DSP/PluginProcessor.cpp`
 
 Want to change preset/state serialization?
-- processor state tree in `Source/PluginProcessor.cpp`
-- preset file format in `Source/PresetManager.cpp`
+- processor state tree in `Source/DSP/PluginProcessor.cpp`
+- preset file format in `Source/Preset/PresetManager.cpp`
 - format details in `docs/PRESETS.md`
 
 Want to change debug console behavior?
-- setup/layout/actions in `Source/PluginEditor.cpp`
-- debug event/state helpers in `Source/PluginProcessor.cpp`
+- setup/layout/actions in `Source/UI/PluginEditor.cpp`
+- debug event/state helpers in `Source/DSP/PluginProcessor.cpp`
 
 Want to change plugin version?
 - edit `PX3_VERSION` in `CMakeLists.txt`

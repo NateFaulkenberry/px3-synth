@@ -54,21 +54,26 @@ juce_add_binary_data(PX3Assets
 
 target_sources(SynthProject
     PRIVATE
-    Source/AudioEnginePanel.cpp
-        Source/ImageEnginePanel.cpp
-        Source/PerformanceControls.cpp
-        Source/PianoKeyboard.cpp
-        Source/PresetManager.cpp
-        Source/PluginEditor.cpp
-        Source/PluginProcessor.cpp
-    Source/SourceEnginePanel.cpp
-        Source/SynthSound.cpp
-        Source/SynthVoice.cpp
+        Source/UI/AudioEnginePanel.cpp
+        Source/UI/ImageEnginePanel.cpp
+        Source/UI/PerformanceControls.cpp
+        Source/UI/PianoKeyboard.cpp
+        Source/UI/PluginEditor.cpp
+        Source/UI/PluginEditorDebug.cpp
+        Source/UI/SourceEnginePanel.cpp
+        Source/DSP/PluginProcessor.cpp
+        Source/DSP/SynthSound.cpp
+        Source/DSP/SynthVoice.cpp
+        Source/Preset/PresetManager.cpp
 )
 
 target_include_directories(SynthProject
     PRIVATE
         Source
+        Source/UI
+        Source/DSP
+        Source/Preset
+        Source/Core
 )
 
 target_compile_definitions(SynthProject
