@@ -319,13 +319,13 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     releaseParam = new juce::AudioParameterFloat("ampRelease", "Amp Release", juce::NormalisableRange<float>(0.010f, 5.0f, 0.001f, 0.45f), 0.100f);
     masterGainParam = new juce::AudioParameterFloat("masterGain", "Master Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
 
-    robAmountParam = new juce::AudioParameterFloat("robAmount", "Vibe", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    robEnabledParam = new juce::AudioParameterBool("robEnabled", "Vibe Enabled", true);
+    vibeAmountParam = new juce::AudioParameterFloat("vibeAmount", "Vibe", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    vibeEnabledParam = new juce::AudioParameterBool("vibeEnabled", "Vibe Enabled", true);
     vibeTypeParam = new juce::AudioParameterChoice("vibeType",
                                                     "Vibe Type",
                                                     kVibeTypeChoices,
                                                     0);
-    isaacAmountParam = new juce::AudioParameterFloat("isaacAmount", "Granular Delay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    delayAmountParam = new juce::AudioParameterFloat("delayAmount", "Delay Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     granularSyncDivisionParam = new juce::AudioParameterChoice("granularSyncDivision",
                                                                 "Granular Sync",
                                                                 juce::StringArray { "Free", "1 Bar", "1/2", "1/4", "1/8", "1/8T", "1/16", "1/16T" },
@@ -419,10 +419,10 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(sustainParam);
     addParameter(releaseParam);
     addParameter(masterGainParam);
-    addParameter(robAmountParam);
-    addParameter(robEnabledParam);
+    addParameter(vibeAmountParam);
+    addParameter(vibeEnabledParam);
     addParameter(vibeTypeParam);
-    addParameter(isaacAmountParam);
+    addParameter(delayAmountParam);
     addParameter(granularSyncDivisionParam);
     addParameter(granularModeParam);
     addParameter(delayAlgorithmParam);
@@ -549,7 +549,7 @@ void SynthProjectAudioProcessor::prepareToPlay(double sampleRate, int samplesPer
     const auto sr = static_cast<float>(juce::jmax(1.0, sampleRate));
     constexpr float delayControlTauSec = 0.008f;
     delayControlSmoothingCoeff = 1.0f - std::exp(-1.0f / (sr * delayControlTauSec));
-    delayAmountSmoothed = clamp01(isaacAmountParam->get());
+    delayAmountSmoothed = clamp01(delayAmountParam->get());
     delayTimeControlSmoothed = clamp01(delayTimeParam->get());
     delayFeedbackControlSmoothed = clamp01(delayFeedbackParam->get());
     vibeEngine.prepare(sampleRate, synth.getNumVoices(), vibeSeed.load(std::memory_order_relaxed));
@@ -691,8 +691,8 @@ void SynthProjectAudioProcessor::updateVibeStateForBlock(int numSamples, float l
 
     vibeEngine.setTuning(t);
     vibeEngine.setBypass(debugGetVibeBypass());
-    const auto globalAmount = applyLfoToNormalizedValue(robAmountParam,
-                                                         static_cast<juce::RangedAudioParameter*>(robAmountParam)->getValue(),
+    const auto globalAmount = applyLfoToNormalizedValue(vibeAmountParam,
+                                                         static_cast<juce::RangedAudioParameter*>(vibeAmountParam)->getValue(),
                                                          lfoSignal);
     vibeEngine.setGlobalAmount(juce::jlimit(0.0f, 1.0f, globalAmount));
     vibeEngine.advance(numSamples);
@@ -700,7 +700,7 @@ void SynthProjectAudioProcessor::updateVibeStateForBlock(int numSamples, float l
 
 float SynthProjectAudioProcessor::debugGetVibeGlobalAmount() const
 {
-    return juce::jlimit(0.0f, 1.0f, robAmountParam->get());
+    return juce::jlimit(0.0f, 1.0f, vibeAmountParam->get());
 }
 
 float SynthProjectAudioProcessor::debugGetVibeEffectiveAmount() const
@@ -710,7 +710,7 @@ float SynthProjectAudioProcessor::debugGetVibeEffectiveAmount() const
 
 bool SynthProjectAudioProcessor::debugGetVibeBypass() const
 {
-    return !robEnabledParam->get();
+    return !vibeEnabledParam->get();
 }
 
 uint32_t SynthProjectAudioProcessor::debugGetVibeSeed() const
@@ -737,7 +737,7 @@ VibeTuning SynthProjectAudioProcessor::debugGetVibeTuning() const
 void SynthProjectAudioProcessor::debugSetVibeBypass(bool shouldBypass)
 {
     const auto enabledValue = shouldBypass ? 0.0f : 1.0f;
-    robEnabledParam->setValueNotifyingHost(enabledValue);
+    vibeEnabledParam->setValueNotifyingHost(enabledValue);
 }
 
 void SynthProjectAudioProcessor::debugSetVibeSeed(uint32_t seed)
@@ -853,7 +853,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     const auto pitchBend = juce::jlimit(-1.0f, 1.0f, pitchBendNormalized.load(std::memory_order_relaxed));
     const auto modWheel = juce::jlimit(0.0f, 1.0f, modWheelNormalized.load(std::memory_order_relaxed));
     const auto bendRange = static_cast<float>(pitchBendRangeParam->get());
-    const auto robEnabled = robEnabledParam->get();
+    const auto vibeEnabled = vibeEnabledParam->get();
     constexpr float vibratoRateHz = 5.0f;
     constexpr float vibratoMaxDepthSemitones = 1.0f;
 
@@ -942,11 +942,11 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     synth.renderNextBlock(buffer, midiMessages, 0, buffer.getNumSamples());
     updateTransportState();
 
-    const auto robAmountBase = applyLfoToNormalizedValue(robAmountParam,
-                                                          static_cast<juce::RangedAudioParameter*>(robAmountParam)->getValue(),
+    const auto vibeAmountBase = applyLfoToNormalizedValue(vibeAmountParam,
+                                                          static_cast<juce::RangedAudioParameter*>(vibeAmountParam)->getValue(),
                                                           blockLfoSignal);
-    const auto isaacAmountBase = applyLfoToNormalizedValue(isaacAmountParam,
-                                                            static_cast<juce::RangedAudioParameter*>(isaacAmountParam)->getValue(),
+    const auto delayAmountBase = applyLfoToNormalizedValue(delayAmountParam,
+                                                            static_cast<juce::RangedAudioParameter*>(delayAmountParam)->getValue(),
                                                             blockLfoSignal);
     const auto syncDivisionIndex = granularSyncDivisionParam->getIndex();
     const auto granularModeIndex = granularModeParam->getIndex();
@@ -1099,8 +1099,8 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     imageGranularScaleSmoothed += (granularScaleTarget - imageGranularScaleSmoothed) * routeBlend;
     imageReverbScaleSmoothed += (reverbScaleTarget - imageReverbScaleSmoothed) * routeBlend;
 
-    const auto robAmount = clamp01(robAmountBase * imageDriveScaleSmoothed);
-    const auto isaacAmount = clamp01(isaacAmountBase * imageGranularScaleSmoothed);
+    const auto vibeAmountRouted = clamp01(vibeAmountBase * imageDriveScaleSmoothed);
+    const auto delayAmount = clamp01(delayAmountBase * imageGranularScaleSmoothed);
     const auto reverbAmount = clamp01(reverbAmountBase * imageReverbScaleSmoothed);
 
     const auto blockPhaseAdvance = juce::MathConstants<float>::twoPi * vibratoRateHz
@@ -1129,7 +1129,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
             switch (stage)
             {
                 case 0: // VIBE (distributed in voice stage)
-                    juce::ignoreUnused(robEnabled, robAmount);
+                    juce::ignoreUnused(vibeEnabled, vibeAmountRouted);
                     break;
 
                 case 1: // Delay
@@ -1139,7 +1139,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
                         float delayedR = stageR;
                         processDelayAlgorithmSample(stageL,
                                                     stageR,
-                                                    isaacAmount,
+                                                    delayAmount,
                                                     delayAlgorithmIndex,
                                                     delayTimeControl,
                                                     delayFeedbackControl,
@@ -1411,10 +1411,10 @@ juce::AudioParameterFloat& SynthProjectAudioProcessor::getDecayParam() const { r
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getSustainParam() const { return *sustainParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getReleaseParam() const { return *releaseParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getMasterGainParam() const { return *masterGainParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getRobAmountParam() const { return *robAmountParam; }
-juce::AudioParameterBool& SynthProjectAudioProcessor::getRobEnabledParam() const { return *robEnabledParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getVibeAmountParam() const { return *vibeAmountParam; }
+juce::AudioParameterBool& SynthProjectAudioProcessor::getVibeEnabledParam() const { return *vibeEnabledParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getVibeTypeParam() const { return *vibeTypeParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getIsaacAmountParam() const { return *isaacAmountParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getDelayAmountParam() const { return *delayAmountParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getGranularSyncDivisionParam() const { return *granularSyncDivisionParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getGranularModeParam() const { return *granularModeParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getDelayAlgorithmParam() const { return *delayAlgorithmParam; }

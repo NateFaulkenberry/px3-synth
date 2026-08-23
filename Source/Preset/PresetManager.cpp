@@ -542,10 +542,10 @@ bool PresetManager::createInitPresetIfMissing(juce::String& error)
     state.setProperty("ampSustain", 0.278243213891983f, nullptr);
     state.setProperty("ampRelease", 0.0f, nullptr);
     state.setProperty("masterGain", 0.4870468974113464f, nullptr);
-    state.setProperty("robAmount", 0.7861562371253967f, nullptr);
-    state.setProperty("robEnabled", 1.0f, nullptr);
+    state.setProperty("vibeAmount", 0.7861562371253967f, nullptr);
+    state.setProperty("vibeEnabled", 1.0f, nullptr);
     state.setProperty("vibeType", 0.6000000238418579f, nullptr);
-    state.setProperty("isaacAmount", 0.7113437652587891f, nullptr);
+    state.setProperty("delayAmount", 0.7113437652587891f, nullptr);
     state.setProperty("granularSyncDivision", 0.0f, nullptr);
     state.setProperty("granularMode", 0.3333333432674408f, nullptr);
     state.setProperty("delayAlgorithm", 0.3333333432674408f, nullptr);
@@ -809,35 +809,35 @@ bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
 
     const std::vector<Def> defs {
         { "Neon Machine", "LEADS", "P(X3)", "Bright PX3 lead with motion.",
-          { { "oscMode", 19.0f / 19.0f }, { "oscMacroA", 0.62f }, { "oscMacroB", 0.55f }, { "oscMacroC", 0.58f }, { "filterCutoff", 0.82f }, { "filterResonance", 0.36f }, { "robAmount", 0.35f }, { "robEnabled", 1.0f }, { "reverbAmount", 0.20f }, { "reverbEnabled", 1.0f } } },
+          { { "oscMode", 19.0f / 19.0f }, { "oscMacroA", 0.62f }, { "oscMacroB", 0.55f }, { "oscMacroC", 0.58f }, { "filterCutoff", 0.82f }, { "filterResonance", 0.36f }, { "vibeAmount", 0.35f }, { "vibeEnabled", 1.0f }, { "reverbAmount", 0.20f }, { "reverbEnabled", 1.0f } } },
         { "Sub Pressure", "BASS", "P(X3)", "Low-end focused bass with light drive.",
-                    { { "oscMode", 1.0f / 19.0f }, { "oscMacroA", 0.0f }, { "filterCutoff", 0.28f }, { "filterResonance", 0.15f }, { "robAmount", 0.42f }, { "robEnabled", 1.0f }, { "ampAttack", 0.01f }, { "ampDecay", 0.24f }, { "ampSustain", 0.75f } } },
+                    { { "oscMode", 1.0f / 19.0f }, { "oscMacroA", 0.0f }, { "filterCutoff", 0.28f }, { "filterResonance", 0.15f }, { "vibeAmount", 0.42f }, { "vibeEnabled", 1.0f }, { "ampAttack", 0.01f }, { "ampDecay", 0.24f }, { "ampSustain", 0.75f } } },
         { "Soft Orbit", "PADS", "P(X3)", "Slow evolving supersaw pad.",
                     { { "oscMode", 6.0f / 19.0f }, { "oscMacroA", 0.38f }, { "oscMacroB", 0.72f }, { "ampAttack", 0.40f }, { "ampRelease", 0.65f }, { "reverbAmount", 0.44f }, { "reverbEnabled", 1.0f } } },
         { "Glass Pluck", "PLUCKS", "P(X3)", "Fast attack pluck with ping-pong delay.",
-                    { { "oscMode", 11.0f / 19.0f }, { "oscMacroA", 0.42f }, { "oscMacroB", 0.44f }, { "ampAttack", 0.0f }, { "ampDecay", 0.16f }, { "ampSustain", 0.10f }, { "ampRelease", 0.18f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 3.0f / 6.0f }, { "isaacAmount", 0.30f } } },
+                    { { "oscMode", 11.0f / 19.0f }, { "oscMacroA", 0.42f }, { "oscMacroB", 0.44f }, { "ampAttack", 0.0f }, { "ampDecay", 0.16f }, { "ampSustain", 0.10f }, { "ampRelease", 0.18f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 3.0f / 6.0f }, { "delayAmount", 0.30f } } },
         { "Chaos Reactor", "EXPERIMENTAL", "P(X3)", "Aggressive ROB chaos texture.",
-          { { "oscMode", 17.0f / 19.0f }, { "oscMacroA", 0.82f }, { "oscMacroB", 0.74f }, { "oscMacroC", 0.93f }, { "robAmount", 0.68f }, { "robEnabled", 1.0f }, { "delayEnabled", 1.0f }, { "isaacAmount", 0.35f } } },
+          { { "oscMode", 17.0f / 19.0f }, { "oscMacroA", 0.82f }, { "oscMacroB", 0.74f }, { "oscMacroC", 0.93f }, { "vibeAmount", 0.68f }, { "vibeEnabled", 1.0f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.35f } } },
         { "Image Sweep", "IMAGE ENGINE", "P(X3)", "Wavetable image scan style preset.",
           { { "oscMode", 8.0f / 19.0f }, { "sourceEngine", 0.0f }, { "imagePosition", 0.25f }, { "imageAnimate", 0.50f }, { "imageRate", 0.55f }, { "imageTarget", 1.0f / 2.0f } } },
         { "Broken Radio", "AUDIO ENGINE", "P(X3)", "Audio engine granular texture demo.",
-                    { { "sourceEngine", 1.0f }, { "audioPosition", 0.52f }, { "audioGrain", 0.62f }, { "audioTexture", 0.70f }, { "audioAnimate", 0.35f }, { "audioRate", 0.4f }, { "delayEnabled", 1.0f }, { "isaacAmount", 0.44f } } },
+                    { { "sourceEngine", 1.0f }, { "audioPosition", 0.52f }, { "audioGrain", 0.62f }, { "audioTexture", 0.70f }, { "audioAnimate", 0.35f }, { "audioRate", 0.4f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.44f } } },
 
                 // Extra randomized-style factory starters for shipping variety.
                 { "Dustline Runner", "BASS", "P(X3)", "Tight low bass with controlled grit.",
-                    { { "oscMode", 2.0f / 19.0f }, { "oscMacroA", 0.18f }, { "oscMacroB", 0.71f }, { "filterCutoff", 0.24f }, { "filterResonance", 0.29f }, { "ampAttack", 0.01f }, { "ampDecay", 0.22f }, { "ampSustain", 0.78f }, { "ampRelease", 0.27f }, { "robEnabled", 1.0f }, { "robAmount", 0.47f }, { "masterGain", 0.66f } } },
+                    { { "oscMode", 2.0f / 19.0f }, { "oscMacroA", 0.18f }, { "oscMacroB", 0.71f }, { "filterCutoff", 0.24f }, { "filterResonance", 0.29f }, { "ampAttack", 0.01f }, { "ampDecay", 0.22f }, { "ampSustain", 0.78f }, { "ampRelease", 0.27f }, { "vibeEnabled", 1.0f }, { "vibeAmount", 0.47f }, { "masterGain", 0.66f } } },
                 { "Arc Light Mono", "LEADS", "P(X3)", "Focused mono lead with short ambience.",
                     { { "oscMode", 12.0f / 19.0f }, { "oscMacroA", 0.69f }, { "oscMacroB", 0.26f }, { "oscMacroC", 0.52f }, { "filterCutoff", 0.66f }, { "filterResonance", 0.42f }, { "ampAttack", 0.02f }, { "ampDecay", 0.19f }, { "ampSustain", 0.48f }, { "ampRelease", 0.21f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.18f } } },
                 { "Moonglass Bloom", "PADS", "P(X3)", "Wide evolving pad with slow movement.",
-                    { { "oscMode", 6.0f / 19.0f }, { "oscMacroA", 0.41f }, { "oscMacroB", 0.84f }, { "oscMacroC", 0.37f }, { "filterCutoff", 0.58f }, { "filterResonance", 0.24f }, { "ampAttack", 0.54f }, { "ampDecay", 0.46f }, { "ampSustain", 0.72f }, { "ampRelease", 0.78f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.56f }, { "delayEnabled", 1.0f }, { "isaacAmount", 0.21f } } },
+                    { { "oscMode", 6.0f / 19.0f }, { "oscMacroA", 0.41f }, { "oscMacroB", 0.84f }, { "oscMacroC", 0.37f }, { "filterCutoff", 0.58f }, { "filterResonance", 0.24f }, { "ampAttack", 0.54f }, { "ampDecay", 0.46f }, { "ampSustain", 0.72f }, { "ampRelease", 0.78f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.56f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.21f } } },
                 { "Pixel Harp", "PLUCKS", "P(X3)", "Snappy digital pluck with timed echoes.",
-                    { { "oscMode", 15.0f / 19.0f }, { "oscMacroA", 0.77f }, { "oscMacroB", 0.33f }, { "filterCutoff", 0.74f }, { "filterResonance", 0.45f }, { "ampAttack", 0.0f }, { "ampDecay", 0.14f }, { "ampSustain", 0.12f }, { "ampRelease", 0.17f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 4.0f / 6.0f }, { "isaacAmount", 0.39f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.11f } } },
+                    { { "oscMode", 15.0f / 19.0f }, { "oscMacroA", 0.77f }, { "oscMacroB", 0.33f }, { "filterCutoff", 0.74f }, { "filterResonance", 0.45f }, { "ampAttack", 0.0f }, { "ampDecay", 0.14f }, { "ampSustain", 0.12f }, { "ampRelease", 0.17f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 4.0f / 6.0f }, { "delayAmount", 0.39f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.11f } } },
                 { "Volt Garden", "EXPERIMENTAL", "P(X3)", "Animated hybrid patch with shifting harmonics.",
-                    { { "oscMode", 18.0f / 19.0f }, { "oscMacroA", 0.74f }, { "oscMacroB", 0.62f }, { "oscMacroC", 0.81f }, { "filterCutoff", 0.63f }, { "filterResonance", 0.58f }, { "robEnabled", 1.0f }, { "robAmount", 0.52f }, { "delayEnabled", 1.0f }, { "isaacAmount", 0.48f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.31f } } },
+                    { { "oscMode", 18.0f / 19.0f }, { "oscMacroA", 0.74f }, { "oscMacroB", 0.62f }, { "oscMacroC", 0.81f }, { "filterCutoff", 0.63f }, { "filterResonance", 0.58f }, { "vibeEnabled", 1.0f }, { "vibeAmount", 0.52f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.48f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.31f } } },
                 { "Raster Drift", "IMAGE ENGINE", "P(X3)", "Image source morph texture with moderate ambience.",
                     { { "sourceEngine", 0.0f }, { "oscMode", 8.0f / 19.0f }, { "imagePosition", 0.63f }, { "imageAnimate", 0.42f }, { "imageRate", 0.27f }, { "imageTarget", 2.0f / 2.0f }, { "filterCutoff", 0.57f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.24f } } },
                 { "Tape Phantom", "AUDIO ENGINE", "P(X3)", "Granular audio texture with diffused tail.",
-                    { { "sourceEngine", 1.0f }, { "audioPosition", 0.34f }, { "audioGrain", 0.76f }, { "audioTexture", 0.58f }, { "audioAnimate", 0.49f }, { "audioRate", 0.22f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 1.0f / 6.0f }, { "isaacAmount", 0.36f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.29f } } }
+                    { { "sourceEngine", 1.0f }, { "audioPosition", 0.34f }, { "audioGrain", 0.76f }, { "audioTexture", 0.58f }, { "audioAnimate", 0.49f }, { "audioRate", 0.22f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 1.0f / 6.0f }, { "delayAmount", 0.36f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.29f } } }
     };
 
     auto baseState = processor.createParameterStateTree();

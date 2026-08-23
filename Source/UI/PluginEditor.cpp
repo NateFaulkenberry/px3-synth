@@ -986,8 +986,8 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     oscSawLabel.setFont(juce::FontOptions(11.0f));
     oscSquareLabel.setFont(juce::FontOptions(11.0f));
 
-    configureEffectKnob(vibeAmountKnob, vibeAmountLabel, "AMOUNT", audioProcessor.getRobAmountParam());
-    configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "", audioProcessor.getIsaacAmountParam());
+    configureEffectKnob(vibeAmountKnob, vibeAmountLabel, "AMOUNT", audioProcessor.getVibeAmountParam());
+    configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "", audioProcessor.getDelayAmountParam());
     configureEffectKnob(delayTimeKnob, delayTimeLabel, "TIME", audioProcessor.getDelayTimeParam());
     configureEffectKnob(delayFeedbackKnob, delayFeedbackLabel, "FEEDBACK", audioProcessor.getDelayFeedbackParam());
     configureEffectKnob(reverbKnob, reverbLabel, "INTENSITY", audioProcessor.getReverbAmountParam());
@@ -1183,8 +1183,8 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
         attachSlider(*binding.parameter, *binding.slider);
     }
 
-    attachSlider(audioProcessor.getRobAmountParam(), vibeAmountKnob);
-    attachSlider(audioProcessor.getIsaacAmountParam(), isaacTextureKnob);
+    attachSlider(audioProcessor.getVibeAmountParam(), vibeAmountKnob);
+    attachSlider(audioProcessor.getDelayAmountParam(), isaacTextureKnob);
     attachSlider(audioProcessor.getDelayTimeParam(), delayTimeKnob);
     attachSlider(audioProcessor.getDelayFeedbackParam(), delayFeedbackKnob);
     attachSlider(audioProcessor.getReverbAmountParam(), reverbKnob);
@@ -1198,7 +1198,7 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     attachComboBox(audioProcessor.getReverbAlgorithmParam(), reverbTypeBox);
     attachComboBox(audioProcessor.getVibeTypeParam(), vibeTypeBox);
 
-    attachButton(audioProcessor.getRobEnabledParam(), robBypassButton);
+    attachButton(audioProcessor.getVibeEnabledParam(), robBypassButton);
     attachButton(audioProcessor.getDelayEnabledParam(), delayBypassButton);
     attachButton(audioProcessor.getReverbEnabledParam(), reverbBypassButton);
 
@@ -1528,14 +1528,14 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
                 g.drawText("Synth v" + px3::version::string(), subtitleArea, juce::Justification::centred);
     }
 
-        const auto robEnabled = audioProcessor.getRobEnabledParam().get();
+        const auto vibeEnabled = audioProcessor.getVibeEnabledParam().get();
         const auto delayEnabled = audioProcessor.getDelayEnabledParam().get();
         const auto reverbEnabled = audioProcessor.getReverbEnabledParam().get();
 
-        g.setColour(robEnabled ? juce::Colour::fromRGBA(104, 194, 255, 35)
+        g.setColour(vibeEnabled ? juce::Colour::fromRGBA(104, 194, 255, 35)
                        : juce::Colour::fromRGBA(120, 120, 120, 30));
         g.fillRoundedRectangle(robSectionArea.toFloat(), 10.0f);
-        g.setColour(robEnabled ? juce::Colour::fromRGBA(104, 194, 255, 180)
+        g.setColour(vibeEnabled ? juce::Colour::fromRGBA(104, 194, 255, 180)
                        : juce::Colour::fromRGBA(150, 150, 150, 130));
         g.drawRoundedRectangle(robSectionArea.toFloat(), 10.0f, 1.0f);
 
@@ -1553,7 +1553,7 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
                       : juce::Colour::fromRGBA(150, 150, 150, 130));
         g.drawRoundedRectangle(reverbSectionArea.toFloat(), 10.0f, 1.0f);
 
-        g.setColour(robEnabled ? juce::Colour::fromRGB(240, 245, 255)
+        g.setColour(vibeEnabled ? juce::Colour::fromRGB(240, 245, 255)
                        : juce::Colour::fromRGB(170, 170, 170));
         g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
         g.drawText("VIBE", robSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
@@ -2240,7 +2240,7 @@ void SynthProjectAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
             {
                 case kFxSectionDrive:
                 {
-                    auto& p = audioProcessor.getRobEnabledParam();
+                    auto& p = audioProcessor.getVibeEnabledParam();
                     p.beginChangeGesture();
                     p.setValueNotifyingHost(p.convertTo0to1(!p.get()));
                     p.endChangeGesture();
@@ -3300,21 +3300,21 @@ void SynthProjectAudioProcessorEditor::refreshEnvelopeGraphUI()
 
 void SynthProjectAudioProcessorEditor::refreshFxBypassUI()
 {
-    const auto robEnabled = audioProcessor.getRobEnabledParam().get();
+    const auto vibeEnabled = audioProcessor.getVibeEnabledParam().get();
     const auto delayEnabled = audioProcessor.getDelayEnabledParam().get();
     const auto delayIsGranular = audioProcessor.getDelayAlgorithmParam().getIndex() == 0;
     const auto granularModeSelectable = delayEnabled && delayIsGranular;
     const auto reverbEnabled = audioProcessor.getReverbEnabledParam().get();
 
-    robBypassButton.setToggleState(robEnabled, juce::dontSendNotification);
+    robBypassButton.setToggleState(vibeEnabled, juce::dontSendNotification);
     delayBypassButton.setToggleState(delayEnabled, juce::dontSendNotification);
     reverbBypassButton.setToggleState(reverbEnabled, juce::dontSendNotification);
 
-    vibeAmountKnob.setEnabled(robEnabled);
-    vibeAmountLabel.setEnabled(robEnabled);
-    vibeTypeBox.setEnabled(robEnabled);
-    vibeTypeLabel.setEnabled(robEnabled);
-    vibeAmountKnob.getProperties().set("psychedelicBypassGray", !robEnabled);
+    vibeAmountKnob.setEnabled(vibeEnabled);
+    vibeAmountLabel.setEnabled(vibeEnabled);
+    vibeTypeBox.setEnabled(vibeEnabled);
+    vibeTypeLabel.setEnabled(vibeEnabled);
+    vibeAmountKnob.getProperties().set("psychedelicBypassGray", !vibeEnabled);
 
     isaacTextureKnob.setEnabled(delayEnabled);
     isaacTextureLabel.setEnabled(delayEnabled);

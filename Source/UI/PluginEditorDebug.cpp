@@ -292,7 +292,7 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     const auto initialTuning = audioProcessor.debugGetVibeTuning();
     const std::array<VibeControlSpec, 12> specs {
         {
-            { "Global Amount", "globalAmount", 0.0, 1.0, 0.0001, audioProcessor.getRobAmountParam().get() },
+            { "Global Amount", "globalAmount", 0.0, 1.0, 0.0001, audioProcessor.getVibeAmountParam().get() },
             { "Bypass", "bypass", 0.0, 1.0, 1.0, audioProcessor.debugGetVibeBypass() ? 1.0 : 0.0 },
             { "Seed", "seed", 1.0, 65535.0, 1.0, static_cast<double>(audioProcessor.debugGetVibeSeed()) },
             { "Oscillator Drift", "oscillatorDrift", 0.0, 1.0, 0.0001, initialTuning.oscillatorDrift },
@@ -332,14 +332,14 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
 
             if (ptr->key == "globalAmount")
             {
-                auto& p = audioProcessor.getRobAmountParam();
+                auto& p = audioProcessor.getVibeAmountParam();
                 p.beginChangeGesture();
                 p.setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, requested));
                 p.endChangeGesture();
             }
             else if (ptr->key == "bypass")
             {
-                auto& p = audioProcessor.getRobEnabledParam();
+                auto& p = audioProcessor.getVibeEnabledParam();
                 p.beginChangeGesture();
                 p.setValueNotifyingHost(requested >= 0.5f ? 0.0f : 1.0f);
                 p.endChangeGesture();
@@ -883,8 +883,8 @@ void SynthProjectAudioProcessorEditor::debugForceSerializationTest()
 
     const auto hasDelayTime = xmlText.containsIgnoreCase("delayTime");
     const auto hasReverbAmount = xmlText.containsIgnoreCase("reverbAmount");
-    const auto hasRobAmount = xmlText.containsIgnoreCase("robAmount");
-    const auto pass = hasModuleOrder && hasDelayTime && hasReverbAmount && hasRobAmount;
+    const auto hasVibeAmount = xmlText.containsIgnoreCase("vibeAmount");
+    const auto pass = hasModuleOrder && hasDelayTime && hasReverbAmount && hasVibeAmount;
 
     juce::String report;
     report << "FORCE STATE SERIALIZATION TEST\n";
@@ -892,7 +892,7 @@ void SynthProjectAudioProcessorEditor::debugForceSerializationTest()
     report << "MODULE_ORDER present: " << (hasModuleOrder ? "YES" : "NO") << "\n";
     report << "delayTime present: " << (hasDelayTime ? "YES" : "NO") << "\n";
     report << "reverbAmount present: " << (hasReverbAmount ? "YES" : "NO") << "\n";
-    report << "robAmount present: " << (hasRobAmount ? "YES" : "NO") << "\n";
+    report << "vibeAmount present: " << (hasVibeAmount ? "YES" : "NO") << "\n";
     report << "RESULT: " << (pass ? "PASS" : "FAIL");
     debugSnapshotText.setText(report, juce::dontSendNotification);
     audioProcessor.debugLogEvent("DEBUG_PANEL", "FORCE_SERIALIZATION_TEST", report.replaceCharacters("\n", " | "));

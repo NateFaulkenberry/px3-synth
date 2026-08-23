@@ -95,10 +95,10 @@ public:
     juce::AudioParameterFloat& getReleaseParam() const;
     juce::AudioParameterFloat& getMasterGainParam() const;
 
-    juce::AudioParameterFloat& getRobAmountParam() const;
-    juce::AudioParameterBool& getRobEnabledParam() const;
+    juce::AudioParameterFloat& getVibeAmountParam() const;
+    juce::AudioParameterBool& getVibeEnabledParam() const;
     juce::AudioParameterChoice& getVibeTypeParam() const;
-    juce::AudioParameterFloat& getIsaacAmountParam() const;
+    juce::AudioParameterFloat& getDelayAmountParam() const;
     juce::AudioParameterChoice& getGranularSyncDivisionParam() const;
     juce::AudioParameterChoice& getGranularModeParam() const;
     juce::AudioParameterChoice& getDelayAlgorithmParam() const;
@@ -324,10 +324,10 @@ private:
     juce::AudioParameterFloat* sustainParam { nullptr };
     juce::AudioParameterFloat* releaseParam { nullptr };
     juce::AudioParameterFloat* masterGainParam { nullptr };
-    juce::AudioParameterFloat* robAmountParam { nullptr };
-    juce::AudioParameterBool* robEnabledParam { nullptr };
+    juce::AudioParameterFloat* vibeAmountParam { nullptr };
+    juce::AudioParameterBool* vibeEnabledParam { nullptr };
     juce::AudioParameterChoice* vibeTypeParam { nullptr };
-    juce::AudioParameterFloat* isaacAmountParam { nullptr };
+    juce::AudioParameterFloat* delayAmountParam { nullptr };
     juce::AudioParameterChoice* granularSyncDivisionParam { nullptr };
     juce::AudioParameterChoice* granularModeParam { nullptr };
     juce::AudioParameterChoice* delayAlgorithmParam { nullptr };
