@@ -5,6 +5,7 @@
 #include "AudioSourceData.h"
 #include "ImageWavetable.h"
 
+#include <array>
 #include <memory>
 
 struct EnvelopeSettings
@@ -25,6 +26,16 @@ struct SubtractiveSettings
     int filterTypeIndex { 0 };
     float masterGain { 0.6f };
     float imageMix { 0.35f };
+};
+
+struct OscillatorSettings
+{
+    int modeIndex { 0 };
+    float macroA { 0.5f };
+    float macroB { 0.5f };
+    float macroC { 0.5f };
+    int vowelIndex { 0 };
+    std::array<float, 8> harmonics { { 1.0f, 0.7f, 0.45f, 0.3f, 0.2f, 0.14f, 0.1f, 0.07f } };
 };
 
 enum class ExternalSourceMode
@@ -56,6 +67,7 @@ public:
 
     void setEnvelope(const EnvelopeSettings& settings);
     void setSubtractiveSettings(const SubtractiveSettings& settings);
+    void setOscillatorSettings(const OscillatorSettings& settings);
     void setPerformanceModulation(float pitchBendNormalized,
                                   float modWheelNormalized,
                                   float pitchBendRangeSemitones,
@@ -83,12 +95,32 @@ private:
 
     void updateAngleDelta();
     void updateFilter();
+    float renderOscillatorSample(double sampleRate,
+                                 float pitchRatio,
+                                 float modWheelNorm,
+                                 float imageSample,
+                                 float granularSample);
+    float nextDeterministicNoise();
+    float renderPinkNoise(float white);
+    float renderSuperSaw(double sampleRate);
+    float renderPwm();
+    float renderAdditive(bool dynamic);
+    float renderFm(double sampleRate);
+    float renderHardSync(double sampleRate);
+    float renderKarplus();
+    float renderOrgan();
+    float renderDigital(double sampleRate);
+    float renderPhysical(double sampleRate);
+    float renderRobOsc(double sampleRate);
+    float renderPx3(double sampleRate, float externalSample);
+    float readHarmonicSumFromSettings(float rolloffBias, float oddEvenBias, float inharmonicity);
     void spawnAudioGrain(float pitchRatio, float textureNorm, float grainNorm);
     float renderAudioGranularSample(float pitchRatio, float textureNorm, float grainNorm);
     float readAudioSample(int channel, float position) const;
 
     EnvelopeSettings envelopeSettings;
     SubtractiveSettings subtractiveSettings;
+    OscillatorSettings oscillatorSettings;
 
     juce::ADSR adsr;
     juce::ADSR::Parameters adsrParameters;
@@ -122,4 +154,32 @@ private:
     int audioSpawnCounter { 0 };
     float audioPanPhase { 0.0f };
     int currentMidiNote { 60 };
+
+    std::array<double, 7> superSawAngles { { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 } };
+    std::array<float, 7> superSawDetunes { { -0.22f, -0.14f, -0.07f, 0.0f, 0.07f, 0.14f, 0.22f } };
+    std::array<float, 7> superSawDrift { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
+
+    std::array<float, 7> pinkState { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
+    uint32_t noiseSeed { 0x13579BDFu };
+    float noiseColorState { 0.0f };
+    float pinkColorState { 0.0f };
+
+    double fmModAngle { 0.0 };
+    double syncMasterAngle { 0.0 };
+    double syncSlaveAngle { 0.0 };
+
+    static constexpr int karplusBufferSize = 32768;
+    std::array<float, karplusBufferSize> karplusBuffer {};
+    int karplusWriteIndex { 0 };
+    int karplusDelaySamples { 220 };
+    float karplusLastSample { 0.0f };
+
+    int digitalHoldCounter { 0 };
+    int digitalHoldSamples { 1 };
+    float digitalHeldSample { 0.0f };
+
+    std::array<double, 4> physicalPhase { { 0.0, 0.0, 0.0, 0.0 } };
+    std::array<float, 4> physicalState { { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+    int noteAgeSamples { 0 };
 };

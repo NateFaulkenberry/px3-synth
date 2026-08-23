@@ -152,6 +152,66 @@ void PianoKeyboard::paint(juce::Graphics& g)
     }
 }
 
+void PianoKeyboard::mouseDown(const juce::MouseEvent& event)
+{
+    const auto note = midiNoteAt(event.position);
+    if (note < firstMidiNote || note > lastMidiNote)
+    {
+        return;
+    }
+
+    heldMidiNote = note;
+    if (onNoteOn)
+    {
+        onNoteOn(note, clickVelocityNorm);
+    }
+}
+
+void PianoKeyboard::mouseDrag(const juce::MouseEvent& event)
+{
+    const auto note = midiNoteAt(event.position);
+    if (note == heldMidiNote)
+    {
+        return;
+    }
+
+    if (heldMidiNote >= firstMidiNote && heldMidiNote <= lastMidiNote && onNoteOff)
+    {
+        onNoteOff(heldMidiNote);
+    }
+
+    heldMidiNote = -1;
+
+    if (note >= firstMidiNote && note <= lastMidiNote)
+    {
+        heldMidiNote = note;
+        if (onNoteOn)
+        {
+            onNoteOn(note, clickVelocityNorm);
+        }
+    }
+}
+
+void PianoKeyboard::mouseUp(const juce::MouseEvent&)
+{
+    if (heldMidiNote >= firstMidiNote && heldMidiNote <= lastMidiNote && onNoteOff)
+    {
+        onNoteOff(heldMidiNote);
+    }
+
+    heldMidiNote = -1;
+}
+
+void PianoKeyboard::mouseExit(const juce::MouseEvent&)
+{
+    if (heldMidiNote >= firstMidiNote && heldMidiNote <= lastMidiNote && onNoteOff)
+    {
+        onNoteOff(heldMidiNote);
+    }
+
+    heldMidiNote = -1;
+}
+
 void PianoKeyboard::timerCallback()
 {
     constexpr float dt = 1.0f / 60.0f;
@@ -288,6 +348,48 @@ bool PianoKeyboard::getKeyBoundsForNote(int midiNote, juce::Rectangle<float>& bo
     }
 
     return true;
+}
+
+int PianoKeyboard::midiNoteAt(juce::Point<float> position) const
+{
+    const auto area = getLocalBounds().toFloat().reduced(8.0f);
+    if (!area.contains(position))
+    {
+        return -1;
+    }
+
+    // Prioritize black keys since they sit visually above white keys.
+    for (int midiNote = firstMidiNote; midiNote <= lastMidiNote; ++midiNote)
+    {
+        if (!isBlackKey(midiNote))
+        {
+            continue;
+        }
+
+        juce::Rectangle<float> bounds;
+        bool isBlack = false;
+        if (getKeyBoundsForNote(midiNote, bounds, isBlack) && bounds.contains(position))
+        {
+            return midiNote;
+        }
+    }
+
+    for (int midiNote = firstMidiNote; midiNote <= lastMidiNote; ++midiNote)
+    {
+        if (isBlackKey(midiNote))
+        {
+            continue;
+        }
+
+        juce::Rectangle<float> bounds;
+        bool isBlack = false;
+        if (getKeyBoundsForNote(midiNote, bounds, isBlack) && bounds.contains(position))
+        {
+            return midiNote;
+        }
+    }
+
+    return -1;
 }
 
 bool PianoKeyboard::isBlackKey(int midiNote)

@@ -54,6 +54,7 @@ private:
                              const juce::String& labelText,
                              juce::AudioParameterFloat& parameter);
     void refreshAnyKeyDownState();
+    void refreshOscillatorModeUI();
     void layoutKnobGroup(const juce::Rectangle<int>& groupArea,
                          int startIndex,
                          int knobCount,
@@ -63,6 +64,7 @@ private:
 
     SynthProjectAudioProcessor& audioProcessor;
     KnobLookAndFeel knobLookAndFeel;
+    juce::TooltipWindow tooltipWindow;
     SourceEnginePanel sourceEnginePanel;
     PerformanceControls performanceControls;
     PianoKeyboard pianoKeyboard;
@@ -72,6 +74,7 @@ private:
     juce::Image logoFrame;
     bool anyKeyDown { false };
     float logoWobblePhase { 0.0f };
+    float oscVizPhase { 0.0f };
 
     juce::Rectangle<int> headerArea;
     juce::Rectangle<int> controlsArea;
@@ -88,6 +91,10 @@ private:
     juce::Slider oscSineKnob;
     juce::Slider oscSawKnob;
     juce::Slider oscSquareKnob;
+    juce::ComboBox oscModeBox;
+    KnobLabel oscModeLabel;
+    juce::ComboBox oscVowelBox;
+    KnobLabel oscVowelLabel;
     juce::Slider cutoffKnob;
     juce::Slider resonanceKnob;
     juce::ComboBox filterTypeBox;
@@ -130,4 +137,5 @@ private:
     KnobLabel reverbTypeLabel;
 
     std::array<KnobBinding, 10> knobBindings {};
+    int lastOscModeIndex { -1 };
 };

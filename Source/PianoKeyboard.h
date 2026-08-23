@@ -4,6 +4,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <array>
+#include <functional>
 #include <vector>
 
 class PianoKeyboard final : public juce::Component,
@@ -17,10 +18,17 @@ public:
 
     PianoKeyboard();
 
+    std::function<void(int midiNote, float velocityNorm)> onNoteOn;
+    std::function<void(int midiNote)> onNoteOff;
+
     void setActiveNotes(const std::array<bool, totalKeys>& noteStates,
                         const std::array<float, totalKeys>& velocities);
 
     void paint(juce::Graphics& g) override;
+    void mouseDown(const juce::MouseEvent& event) override;
+    void mouseDrag(const juce::MouseEvent& event) override;
+    void mouseUp(const juce::MouseEvent& event) override;
+    void mouseExit(const juce::MouseEvent& event) override;
 
 private:
     struct KeyGeometry
@@ -45,6 +53,7 @@ private:
     void timerCallback() override;
     void spawnLightningBurst(int midiNote, bool isBlackKey, float velocityNorm);
     bool getKeyBoundsForNote(int midiNote, juce::Rectangle<float>& bounds, bool& isBlack) const;
+    int midiNoteAt(juce::Point<float> position) const;
 
     static bool isBlackKey(int midiNote);
     static int whiteKeyIndex(int midiNote);
@@ -56,4 +65,6 @@ private:
     std::vector<Spark> sparks;
     juce::Random rng;
     float vibrationPhase { 0.0f };
+    int heldMidiNote { -1 };
+    float clickVelocityNorm { 0.65f };
 };

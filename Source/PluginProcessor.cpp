@@ -1,7 +1,6 @@
 #include "PluginProcessor.h"
 
 #include "PluginEditor.h"
-
 #include <cmath>
 #include <memory>
 
@@ -184,6 +183,24 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     oscSineParam = new juce::AudioParameterFloat("oscSine", "Osc Sine", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
     oscSawParam = new juce::AudioParameterFloat("oscSaw", "Osc Saw", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     oscSquareParam = new juce::AudioParameterFloat("oscSquare", "Osc Square", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    oscModeParam = new juce::AudioParameterChoice("oscMode",
+                                                   "Oscillator Mode",
+                                                   juce::StringArray { "SINE", "SAW", "SQUARE", "TRIANGLE", "NOISE", "PINK NOISE", "SUPER SAW", "PWM", "WAVETABLE", "ADDITIVE", "FORMANT", "FM", "HARD SYNC", "KARPLUS", "ORGAN", "DIGITAL", "PHYSICAL", "ROB", "ISAAC", "PX3" },
+                                                   0);
+    oscMacroAParam = new juce::AudioParameterFloat("oscMacroA", "Osc Macro A", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    oscMacroBParam = new juce::AudioParameterFloat("oscMacroB", "Osc Macro B", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    oscMacroCParam = new juce::AudioParameterFloat("oscMacroC", "Osc Macro C", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    oscVowelParam = new juce::AudioParameterChoice("oscVowel", "Osc Vowel", juce::StringArray { "A", "E", "I", "O", "U" }, 0);
+    oscHarmonicParams = { {
+        new juce::AudioParameterFloat("oscH1", "Osc Harmonic 1", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f),
+        new juce::AudioParameterFloat("oscH2", "Osc Harmonic 2", juce::NormalisableRange<float>(0.0f, 1.0f), 0.7f),
+        new juce::AudioParameterFloat("oscH3", "Osc Harmonic 3", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f),
+        new juce::AudioParameterFloat("oscH4", "Osc Harmonic 4", juce::NormalisableRange<float>(0.0f, 1.0f), 0.3f),
+        new juce::AudioParameterFloat("oscH5", "Osc Harmonic 5", juce::NormalisableRange<float>(0.0f, 1.0f), 0.2f),
+        new juce::AudioParameterFloat("oscH6", "Osc Harmonic 6", juce::NormalisableRange<float>(0.0f, 1.0f), 0.14f),
+        new juce::AudioParameterFloat("oscH7", "Osc Harmonic 7", juce::NormalisableRange<float>(0.0f, 1.0f), 0.1f),
+        new juce::AudioParameterFloat("oscH8", "Osc Harmonic 8", juce::NormalisableRange<float>(0.0f, 1.0f), 0.07f)
+    } };
     filterCutoffParam = new juce::AudioParameterFloat("filterCutoff", "Filter Cutoff", juce::NormalisableRange<float>(80.0f, 18000.0f, 1.0f, 0.35f), 12000.0f);
     filterResonanceParam = new juce::AudioParameterFloat("filterResonance", "Filter Resonance", juce::NormalisableRange<float>(0.25f, 2.2f), 0.8f);
      filterTypeParam = new juce::AudioParameterChoice("filterType",
@@ -255,6 +272,15 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(oscSineParam);
     addParameter(oscSawParam);
     addParameter(oscSquareParam);
+    addParameter(oscModeParam);
+    addParameter(oscMacroAParam);
+    addParameter(oscMacroBParam);
+    addParameter(oscMacroCParam);
+    addParameter(oscVowelParam);
+    for (auto* harmonicParam : oscHarmonicParams)
+    {
+        addParameter(harmonicParam);
+    }
     addParameter(filterCutoffParam);
     addParameter(filterResonanceParam);
     addParameter(filterTypeParam);
@@ -290,12 +316,14 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
 
     const auto initialEnvelope = currentEnvelopeSettings();
     const auto initialSubtractive = currentSubtractiveSettings();
+    const auto initialOscillator = currentOscillatorSettings();
 
     for (int voice = 0; voice < 16; ++voice)
     {
         auto* synthVoice = new SynthVoice();
         synthVoice->setEnvelope(initialEnvelope);
         synthVoice->setSubtractiveSettings(initialSubtractive);
+        synthVoice->setOscillatorSettings(initialOscillator);
         synth.addVoice(synthVoice);
     }
 
@@ -365,6 +393,7 @@ void SynthProjectAudioProcessor::prepareToPlay(double sampleRate, int samplesPer
 
     const auto envelope = currentEnvelopeSettings();
     const auto subtractive = currentSubtractiveSettings();
+    const auto oscillator = currentOscillatorSettings();
 
     for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
     {
@@ -372,6 +401,7 @@ void SynthProjectAudioProcessor::prepareToPlay(double sampleRate, int samplesPer
         {
             voice->setEnvelope(envelope);
             voice->setSubtractiveSettings(subtractive);
+            voice->setOscillatorSettings(oscillator);
         }
     }
 
@@ -400,6 +430,16 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
         buffer.clear(channel, 0, buffer.getNumSamples());
     }
 
+    juce::MidiBuffer combinedMidi;
+    combinedMidi.addEvents(midiMessages, 0, buffer.getNumSamples(), 0);
+
+    {
+        const juce::ScopedLock lock(virtualMidiLock);
+        combinedMidi.addEvents(virtualMidiMessages, 0, -1, 0);
+        virtualMidiMessages.clear();
+    }
+
+    midiMessages.swapWith(combinedMidi);
     updateActiveNotesFromMidi(midiMessages);
 
     const auto pitchBend = juce::jlimit(-1.0f, 1.0f, pitchBendNormalized.load(std::memory_order_relaxed));
@@ -410,6 +450,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
 
     const auto envelope = currentEnvelopeSettings();
     const auto subtractive = currentSubtractiveSettings();
+    const auto oscillator = currentOscillatorSettings();
     const auto currentImagePosition = updateImageAnimationPosition(buffer.getNumSamples());
     const auto currentAudioPosition = updateAudioAnimationPosition(buffer.getNumSamples());
     const auto wavetableForBlock = std::atomic_load(&activeImageWavetable);
@@ -429,6 +470,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
         {
             voice->setEnvelope(envelope);
             voice->setSubtractiveSettings(subtractive);
+            voice->setOscillatorSettings(oscillator);
             voice->setPerformanceModulation(pitchBend,
                                             modWheel,
                                             bendRange,
@@ -764,6 +806,21 @@ void SynthProjectAudioProcessor::decrementNoteCount(std::size_t index)
     }
 }
 
+void SynthProjectAudioProcessor::queueVirtualKeyboardNoteOn(int midiNote, float velocityNorm)
+{
+    const auto boundedNote = juce::jlimit(PianoKeyboard::firstMidiNote, PianoKeyboard::lastMidiNote, midiNote);
+    const auto boundedVelocity = juce::jlimit(0.0f, 1.0f, velocityNorm);
+    const juce::ScopedLock lock(virtualMidiLock);
+    virtualMidiMessages.addEvent(juce::MidiMessage::noteOn(1, boundedNote, boundedVelocity), 0);
+}
+
+void SynthProjectAudioProcessor::queueVirtualKeyboardNoteOff(int midiNote)
+{
+    const auto boundedNote = juce::jlimit(PianoKeyboard::firstMidiNote, PianoKeyboard::lastMidiNote, midiNote);
+    const juce::ScopedLock lock(virtualMidiLock);
+    virtualMidiMessages.addEvent(juce::MidiMessage::noteOff(1, boundedNote), 0);
+}
+
 std::array<bool, PianoKeyboard::totalKeys> SynthProjectAudioProcessor::copyActiveNoteStates() const
 {
     std::array<bool, PianoKeyboard::totalKeys> states {};
@@ -801,6 +858,16 @@ SynthProjectAudioProcessor::MidiStatus SynthProjectAudioProcessor::copyMidiStatu
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscSineParam() const { return *oscSineParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscSawParam() const { return *oscSawParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscSquareParam() const { return *oscSquareParam; }
+juce::AudioParameterChoice& SynthProjectAudioProcessor::getOscillatorModeParam() const { return *oscModeParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscMacroAParam() const { return *oscMacroAParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscMacroBParam() const { return *oscMacroBParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscMacroCParam() const { return *oscMacroCParam; }
+juce::AudioParameterChoice& SynthProjectAudioProcessor::getOscVowelParam() const { return *oscVowelParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscHarmonicParam(int harmonicIndex) const
+{
+    const auto idx = juce::jlimit(0, 7, harmonicIndex);
+    return *oscHarmonicParams[static_cast<std::size_t>(idx)];
+}
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getFilterCutoffParam() const { return *filterCutoffParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getFilterResonanceParam() const { return *filterResonanceParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getFilterTypeParam() const { return *filterTypeParam; }
@@ -1063,6 +1130,24 @@ SubtractiveSettings SynthProjectAudioProcessor::currentSubtractiveSettings() con
     settings.filterResonanceQ = filterResonanceParam->get();
         settings.filterTypeIndex = filterTypeParam->getIndex();
     settings.masterGain = masterGainParam->get();
+    return settings;
+}
+
+OscillatorSettings SynthProjectAudioProcessor::currentOscillatorSettings() const
+{
+    OscillatorSettings settings;
+    settings.modeIndex = oscModeParam->getIndex();
+    settings.macroA = clamp01(oscMacroAParam->get());
+    settings.macroB = clamp01(oscMacroBParam->get());
+    settings.macroC = clamp01(oscMacroCParam->get());
+    settings.vowelIndex = oscVowelParam->getIndex();
+    for (std::size_t i = 0; i < settings.harmonics.size(); ++i)
+    {
+        if (oscHarmonicParams[i] != nullptr)
+        {
+            settings.harmonics[i] = clamp01(oscHarmonicParams[i]->get());
+        }
+    }
     return settings;
 }
 

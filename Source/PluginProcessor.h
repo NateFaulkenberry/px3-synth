@@ -58,6 +58,12 @@ public:
     juce::AudioParameterFloat& getOscSineParam() const;
     juce::AudioParameterFloat& getOscSawParam() const;
     juce::AudioParameterFloat& getOscSquareParam() const;
+    juce::AudioParameterChoice& getOscillatorModeParam() const;
+    juce::AudioParameterFloat& getOscMacroAParam() const;
+    juce::AudioParameterFloat& getOscMacroBParam() const;
+    juce::AudioParameterFloat& getOscMacroCParam() const;
+    juce::AudioParameterChoice& getOscVowelParam() const;
+    juce::AudioParameterFloat& getOscHarmonicParam(int harmonicIndex) const;
     juce::AudioParameterFloat& getFilterCutoffParam() const;
     juce::AudioParameterFloat& getFilterResonanceParam() const;
     juce::AudioParameterChoice& getFilterTypeParam() const;
@@ -96,6 +102,9 @@ public:
     float copyModWheelNormalized() const;
     float copyPitchBendActivity() const;
     float copyModWheelActivity() const;
+
+    void queueVirtualKeyboardNoteOn(int midiNote, float velocityNorm);
+    void queueVirtualKeyboardNoteOff(int midiNote);
 
     void setPitchBendNormalizedFromUI(float normalized);
     void setModWheelNormalizedFromUI(float normalized);
@@ -137,6 +146,7 @@ private:
     void incrementNoteCount(std::size_t index);
     void decrementNoteCount(std::size_t index);
     SubtractiveSettings currentSubtractiveSettings() const;
+    OscillatorSettings currentOscillatorSettings() const;
     EnvelopeSettings currentEnvelopeSettings() const;
 
     void prepareIsaacEngine(double sampleRate);
@@ -176,6 +186,12 @@ private:
     juce::AudioParameterFloat* oscSineParam { nullptr };
     juce::AudioParameterFloat* oscSawParam { nullptr };
     juce::AudioParameterFloat* oscSquareParam { nullptr };
+    juce::AudioParameterChoice* oscModeParam { nullptr };
+    juce::AudioParameterFloat* oscMacroAParam { nullptr };
+    juce::AudioParameterFloat* oscMacroBParam { nullptr };
+    juce::AudioParameterFloat* oscMacroCParam { nullptr };
+    juce::AudioParameterChoice* oscVowelParam { nullptr };
+    std::array<juce::AudioParameterFloat*, 8> oscHarmonicParams { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } };
     juce::AudioParameterFloat* filterCutoffParam { nullptr };
     juce::AudioParameterFloat* filterResonanceParam { nullptr };
     juce::AudioParameterChoice* filterTypeParam { nullptr };
@@ -214,6 +230,8 @@ private:
     std::atomic<int> lastMidiNote { -1 };
     std::atomic<int> lastMidiVelocity { 0 };
     std::atomic<int> lastMidiNoteOn { 0 };
+    juce::CriticalSection virtualMidiLock;
+    juce::MidiBuffer virtualMidiMessages;
 
     std::atomic<float> pitchBendNormalized { 0.0f };
     std::atomic<float> modWheelNormalized { 0.0f };
