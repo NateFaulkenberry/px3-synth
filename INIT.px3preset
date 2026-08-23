@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<PX3_PRESET presetVersion="1" pluginVersion="0.1.0" name="INIT" category="USER_DUMP"
+            author="" description="" isFactory="0">
+  <PX3_STATE stateVersion="4" oscSine="1.0" oscSaw="0.0" oscSquare="0.0" oscMode="0.0"
+             oscMacroA="0.5" oscMacroB="0.5" oscMacroC="0.5" oscVowel="0.0"
+             oscH1="1.0" oscH2="0.699999988079071" oscH3="0.449999988079071"
+             oscH4="0.300000011920929" oscH5="0.2000000029802322" oscH6="0.1400000005960464"
+             oscH7="0.1000000014901161" oscH8="0.07000000029802322" filterCutoff="0.5224611759185791"
+             filterResonance="0.282051295042038" filterType="0.0" ampAttack="0.5603691935539246"
+             ampDecay="0.3086085021495819" ampSustain="0.278243213891983"
+             ampRelease="0.0" masterGain="0.4870468974113464" robAmount="0.8171562552452087"
+             robEnabled="1.0" isaacAmount="1.0" granularSyncDivision="0.0"
+             granularMode="0.3333333432674408" delayAlgorithm="0.3333333432674408"
+             delayEnabled="1.0" delayTime="0.3743749856948853" delayFeedback="1.0"
+             reverbAmount="0.1919843852519989" reverbEnabled="1.0" reverbAlgorithm="1.0"
+             reverbSize="0.5199999809265137" reverbDecay="0.4799999892711639"
+             reverbDamping="0.4600000083446503" reverbPreDelay="0.07999999821186066"
+             reverbModDepth="0.239999994635582" reverbModRate="0.1800000071525574"
+             reverbWidth="0.8600000143051147" reverbCloudFeedback="0.6200000047683716"
+             reverbCloudDiffusion="0.5400000214576721" sourceEngine="0.0"
+             imagePosition="0.5" imageAnimate="0.0" imageRate="0.3774764239788055"
+             imageAnimMode="1.0" imageAnimSync="0.0" imageTarget="0.0" audioPosition="0.5"
+             audioGrain="0.449999988079071" audioTexture="0.3499999940395355"
+             audioAnimate="0.0" audioRate="0.3897614181041718" audioAnimMode="1.0"
+             audioAnimSync="0.0" audioTarget="0.5" pitchBendRange="0.04347826167941093"
+             lfoFrequency="0.3851140737533569" imagePath="" audioPath="" moduleOrderRevision="2">
+    <MODULE_ORDER>
+      <MODULE id="harmonicDrive"/>
+      <MODULE id="delay"/>
+      <MODULE id="reverb"/>
+    </MODULE_ORDER>
+    <LFO frequency="0.8406999707221985" assignment="filterCutoff"/>
+    <VIBE bypass="0" seed="1337">
+      <tuning oscillatorDrift="0.550000011920929" voiceVariation="0.550000011920929"
+              filterVariation="0.449999988079071" saturation="0.4000000059604645"
+              noise="0.25" psuMovement="0.3799999952316284" vcaNonlinearity="0.4199999868869781"
+              waveformAsymmetry="0.3199999928474426" temperatureDrift="0.4000000059604645"
+              correlatedChaos="0.5"/>
+    </VIBE>
+  </PX3_STATE>
+  <ASSETS/>
+</PX3_PRESET>

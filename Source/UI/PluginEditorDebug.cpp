@@ -80,9 +80,9 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     setupButton(debugSnapshotButton, "SNAPSHOT CURRENT STATE");
     setupButton(debugCompareSnapshotButton, "COMPARE WITH SNAPSHOT");
     setupButton(debugResetOrderButton, "RESET ORDER");
-    setupButton(debugOrderAButton, "DELAY -> REVERB -> HARMONIC DRIVE");
-    setupButton(debugOrderBButton, "REVERB -> HARMONIC DRIVE -> DELAY");
-    setupButton(debugOrderCButton, "HARMONIC DRIVE -> DELAY -> REVERB");
+    setupButton(debugOrderAButton, "DELAY -> REVERB -> VIBE");
+    setupButton(debugOrderBButton, "REVERB -> VIBE -> DELAY");
+    setupButton(debugOrderCButton, "VIBE -> DELAY -> REVERB");
     setupButton(debugInvalidOrderButton, "TEST INVALID MODULE ORDER");
     setupButton(debugRandomizeParamsButton, "RANDOMIZE PARAMETERS");
     setupButton(debugResetParamsButton, "RESET PARAMETERS");
@@ -92,9 +92,9 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     setupLabel(debugInstanceLabel, "A. PLUGIN INSTANCE INFO");
     setupLabel(debugModuleOrderLabel, "B. MODULE ORDER STATE");
     setupLabel(debugValueTreeLabel, "C. VALUETREE STATE");
-    setupLabel(debugBackendControlLabel, "D. BACKEND PARAMETER CONTROLS");
+    setupLabel(debugBackendControlLabel, "D. SERIALIZATION EVENTS");
     setupLabel(debugParameterLabel, "E. PARAMETER STATE");
-    setupLabel(debugSerializedLabel, "F. SERIALIZATION EVENTS");
+    setupLabel(debugSerializedLabel, "F. VIBE / ANALOG IMPERFECTIONS");
     setupLabel(debugLfoLabel, "G. LFO DEBUG");
     setupLabel(debugEnvelopeLabel, "H. AMP ENVELOPE DEBUG");
     setupLabel(debugPresetToolsLabel, "I. PRESET / STATE TOOLS");
@@ -279,46 +279,108 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     debugResetParamsButton.onClick = [this]() { debugResetParameters(); };
     debugWriteTestValuesButton.onClick = [this]() { debugWriteDeterministicTestValues(); };
 
-    const auto& params = audioProcessor.getParameters();
-    for (auto* parameter : params)
+    struct VibeControlSpec
     {
-        auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter);
-        if (ranged == nullptr)
-        {
-            continue;
-        }
+        const char* title;
+        const char* key;
+        double min;
+        double max;
+        double step;
+        double initial;
+    };
 
+    const auto initialTuning = audioProcessor.debugGetVibeTuning();
+    const std::array<VibeControlSpec, 12> specs {
+        {
+            { "Global Amount [robAmount]", "globalAmount", 0.0, 1.0, 0.0001, audioProcessor.getRobAmountParam().get() },
+            { "Bypass", "bypass", 0.0, 1.0, 1.0, audioProcessor.debugGetVibeBypass() ? 1.0 : 0.0 },
+            { "Seed", "seed", 1.0, 65535.0, 1.0, static_cast<double>(audioProcessor.debugGetVibeSeed()) },
+            { "Oscillator Drift", "oscillatorDrift", 0.0, 1.0, 0.0001, initialTuning.oscillatorDrift },
+            { "Voice Variation", "voiceVariation", 0.0, 1.0, 0.0001, initialTuning.voiceVariation },
+            { "Filter Variation", "filterVariation", 0.0, 1.0, 0.0001, initialTuning.filterVariation },
+            { "Saturation", "saturation", 0.0, 1.0, 0.0001, initialTuning.saturation },
+            { "Noise", "noise", 0.0, 1.0, 0.0001, initialTuning.noise },
+            { "PSU Movement", "psuMovement", 0.0, 1.0, 0.0001, initialTuning.psuMovement },
+            { "VCA Nonlinearity", "vcaNonlinearity", 0.0, 1.0, 0.0001, initialTuning.vcaNonlinearity },
+            { "Waveform Asymmetry", "waveformAsymmetry", 0.0, 1.0, 0.0001, initialTuning.waveformAsymmetry },
+            { "Temperature Drift", "temperatureDrift", 0.0, 1.0, 0.0001, initialTuning.temperatureDrift }
+        }
+    };
+
+    for (const auto& spec : specs)
+    {
         auto control = std::make_unique<DebugParamControl>();
-        control->parameter = ranged;
-        control->label.setText(ranged->getName(128) + " [" + ranged->getParameterID() + "]", juce::dontSendNotification);
+        control->key = spec.key;
+        control->label.setText(spec.title, juce::dontSendNotification);
         control->label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(230, 230, 230));
         control->label.setFont(juce::FontOptions(11.0f));
 
-        control->slider.setRange(0.0, 1.0, 0.0001);
+        control->slider.setRange(spec.min, spec.max, spec.step);
         control->slider.setSliderStyle(juce::Slider::LinearHorizontal);
         control->slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 78, 18);
         control->slider.setScrollWheelEnabled(false);
-        control->slider.setValue(ranged->getValue(), juce::dontSendNotification);
-        control->slider.onDragStart = [ranged]() { ranged->beginChangeGesture(); };
-        control->slider.onDragEnd = [ranged]() { ranged->endChangeGesture(); };
-        control->slider.onValueChange = [ptr = control.get()]
+        control->slider.setValue(spec.initial, juce::dontSendNotification);
+        control->slider.onValueChange = [this, ptr = control.get()]
         {
-            if (ptr->suppressCallbacks || ptr->parameter == nullptr)
+            if (ptr->suppressCallbacks)
             {
                 return;
             }
 
             const auto requested = static_cast<float>(ptr->slider.getValue());
             ptr->lastRequested = requested;
-            ptr->parameter->setValueNotifyingHost(requested);
-            const auto actualNorm = ptr->parameter->getValue();
-            const auto actualValue = ptr->parameter->convertFrom0to1(actualNorm);
-            ptr->readback.setText("Requested: " + juce::String(requested, 5)
-                                  + " | ActualNorm: " + juce::String(actualNorm, 5)
-                                  + " | Actual: " + juce::String(actualValue, 5),
-                                  juce::dontSendNotification);
+
+            if (ptr->key == "globalAmount")
+            {
+                auto& p = audioProcessor.getRobAmountParam();
+                p.beginChangeGesture();
+                p.setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, requested));
+                p.endChangeGesture();
+            }
+            else if (ptr->key == "bypass")
+            {
+                audioProcessor.debugSetVibeBypass(requested >= 0.5f);
+            }
+            else if (ptr->key == "seed")
+            {
+                audioProcessor.debugSetVibeSeed(static_cast<uint32_t>(juce::jmax(1, static_cast<int>(std::lround(requested)))));
+            }
+            else
+            {
+                audioProcessor.debugSetVibeTuningValue(ptr->key, requested);
+            }
         };
 
+        control->readback.setColour(juce::Label::textColourId, juce::Colour::fromRGB(184, 235, 184));
+        control->readback.setFont(juce::FontOptions(10.0f));
+
+        debugParamContent.addAndMakeVisible(control->label);
+        debugParamContent.addAndMakeVisible(control->slider);
+        debugParamContent.addAndMakeVisible(control->readback);
+        debugParamControls.push_back(std::move(control));
+    }
+
+    {
+        auto control = std::make_unique<DebugParamControl>();
+        control->key = "correlatedChaos";
+        control->label.setText("Correlated Chaos", juce::dontSendNotification);
+        control->label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(230, 230, 230));
+        control->label.setFont(juce::FontOptions(11.0f));
+        control->slider.setRange(0.0, 1.0, 0.0001);
+        control->slider.setSliderStyle(juce::Slider::LinearHorizontal);
+        control->slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 78, 18);
+        control->slider.setScrollWheelEnabled(false);
+        control->slider.setValue(initialTuning.correlatedChaos, juce::dontSendNotification);
+        control->slider.onValueChange = [this, ptr = control.get()]
+        {
+            if (ptr->suppressCallbacks)
+            {
+                return;
+            }
+            const auto requested = static_cast<float>(ptr->slider.getValue());
+            ptr->lastRequested = requested;
+            audioProcessor.debugSetVibeTuningValue(ptr->key, requested);
+        };
         control->readback.setColour(juce::Label::textColourId, juce::Colour::fromRGB(184, 235, 184));
         control->readback.setFont(juce::FontOptions(10.0f));
 
@@ -438,9 +500,7 @@ void SynthProjectAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<in
     section(debugInstanceLabel, debugInstanceText, 78);
     section(debugModuleOrderLabel, debugModuleOrderText, 120);
     section(debugValueTreeLabel, debugValueTreeText, 80);
-    // Keep backend controls in the largest slot so the long parameter list has
-    // practical scrolling room during deep debugging sessions.
-    section(debugBackendControlLabel, debugParamViewport, juce::jmax(120, left.getHeight() - 24));
+    section(debugBackendControlLabel, debugSerializedText, juce::jmax(120, left.getHeight() - 24));
 
     auto sectionRight = [&right](juce::Label& label, juce::Component& component, int height)
     {
@@ -450,7 +510,7 @@ void SynthProjectAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<in
     };
 
     sectionRight(debugParameterLabel, debugParameterInspectorText, 120);
-    sectionRight(debugSerializedLabel, debugSerializedText, 140);
+    sectionRight(debugSerializedLabel, debugParamViewport, 196);
 
     debugLfoLabel.setBounds(right.removeFromTop(18));
     debugLfoText.setBounds(right.removeFromTop(66));
@@ -642,19 +702,33 @@ void SynthProjectAudioProcessorEditor::refreshDebugParameterControls()
 
     for (auto& control : debugParamControls)
     {
-        if (control->parameter == nullptr)
+        float actualValue = 0.0f;
+        juce::String extra;
+
+        if (control->key == "globalAmount")
         {
-            continue;
+            actualValue = audioProcessor.debugGetVibeGlobalAmount();
+            extra = " | Effective: " + juce::String(audioProcessor.debugGetVibeEffectiveAmount(), 5);
+        }
+        else if (control->key == "bypass")
+        {
+            actualValue = audioProcessor.debugGetVibeBypass() ? 1.0f : 0.0f;
+        }
+        else if (control->key == "seed")
+        {
+            actualValue = static_cast<float>(audioProcessor.debugGetVibeSeed());
+        }
+        else
+        {
+            actualValue = audioProcessor.debugGetVibeTuningValue(control->key);
         }
 
-        const auto norm = control->parameter->getValue();
-        const auto actual = control->parameter->convertFrom0to1(norm);
         control->suppressCallbacks = true;
-        control->slider.setValue(norm, juce::dontSendNotification);
+        control->slider.setValue(actualValue, juce::dontSendNotification);
         control->suppressCallbacks = false;
         control->readback.setText("Requested: " + juce::String(control->lastRequested, 5)
-                                  + " | ActualNorm: " + juce::String(norm, 5)
-                                  + " | Actual: " + juce::String(actual, 5),
+                                  + " | Actual: " + juce::String(actualValue, 5)
+                                  + extra,
                                   juce::dontSendNotification);
     }
 }
@@ -912,22 +986,19 @@ void SynthProjectAudioProcessorEditor::debugWriteDeterministicTestValues()
 {
     for (auto& control : debugParamControls)
     {
-        if (control->parameter == nullptr)
-        {
-            continue;
-        }
-
-        const auto id = control->parameter->getParameterID();
-        float normalized = control->parameter->getDefaultValue();
-        if (id == "delayTime") normalized = 0.37f;
-        else if (id == "delayFeedback") normalized = 0.61f;
-        else if (id == "reverbAmount") normalized = 0.42f;
-        else if (id == "robAmount") normalized = 0.77f;
-        else if (id == "reverbDecay") normalized = 0.53f;
-
-        control->parameter->beginChangeGesture();
-        control->parameter->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, normalized));
-        control->parameter->endChangeGesture();
+        if (control->key == "globalAmount") control->slider.setValue(0.77, juce::sendNotificationSync);
+        else if (control->key == "bypass") control->slider.setValue(0.0, juce::sendNotificationSync);
+        else if (control->key == "seed") control->slider.setValue(4242.0, juce::sendNotificationSync);
+        else if (control->key == "oscillatorDrift") control->slider.setValue(0.68, juce::sendNotificationSync);
+        else if (control->key == "voiceVariation") control->slider.setValue(0.74, juce::sendNotificationSync);
+        else if (control->key == "filterVariation") control->slider.setValue(0.52, juce::sendNotificationSync);
+        else if (control->key == "saturation") control->slider.setValue(0.61, juce::sendNotificationSync);
+        else if (control->key == "noise") control->slider.setValue(0.33, juce::sendNotificationSync);
+        else if (control->key == "psuMovement") control->slider.setValue(0.57, juce::sendNotificationSync);
+        else if (control->key == "vcaNonlinearity") control->slider.setValue(0.49, juce::sendNotificationSync);
+        else if (control->key == "waveformAsymmetry") control->slider.setValue(0.44, juce::sendNotificationSync);
+        else if (control->key == "temperatureDrift") control->slider.setValue(0.59, juce::sendNotificationSync);
+        else if (control->key == "correlatedChaos") control->slider.setValue(0.72, juce::sendNotificationSync);
     }
 
     audioProcessor.debugLogEvent("DEBUG_PANEL", "WRITE_TEST_VALUES", "deterministic values applied");
@@ -938,18 +1009,22 @@ void SynthProjectAudioProcessorEditor::debugRandomizeParameters()
 {
     std::mt19937 rng(static_cast<uint32_t>(juce::Time::getMillisecondCounter()));
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    std::uniform_int_distribution<int> seedDist(1, 65535);
 
     for (auto& control : debugParamControls)
     {
-        if (control->parameter == nullptr)
+        if (control->key == "seed")
         {
-            continue;
+            control->slider.setValue(static_cast<double>(seedDist(rng)), juce::sendNotificationSync);
         }
-
-        const auto v = dist(rng);
-        control->parameter->beginChangeGesture();
-        control->parameter->setValueNotifyingHost(v);
-        control->parameter->endChangeGesture();
+        else if (control->key == "bypass")
+        {
+            control->slider.setValue(dist(rng) > 0.5f ? 1.0 : 0.0, juce::sendNotificationSync);
+        }
+        else
+        {
+            control->slider.setValue(static_cast<double>(dist(rng)), juce::sendNotificationSync);
+        }
     }
 
     audioProcessor.debugLogEvent("DEBUG_PANEL", "RANDOMIZE_PARAMETERS", "all ranged parameters randomized");
@@ -960,14 +1035,19 @@ void SynthProjectAudioProcessorEditor::debugResetParameters()
 {
     for (auto& control : debugParamControls)
     {
-        if (control->parameter == nullptr)
-        {
-            continue;
-        }
-
-        control->parameter->beginChangeGesture();
-        control->parameter->setValueNotifyingHost(control->parameter->getDefaultValue());
-        control->parameter->endChangeGesture();
+        if (control->key == "globalAmount") control->slider.setValue(0.0, juce::sendNotificationSync);
+        else if (control->key == "bypass") control->slider.setValue(0.0, juce::sendNotificationSync);
+        else if (control->key == "seed") control->slider.setValue(1337.0, juce::sendNotificationSync);
+        else if (control->key == "oscillatorDrift") control->slider.setValue(0.55, juce::sendNotificationSync);
+        else if (control->key == "voiceVariation") control->slider.setValue(0.55, juce::sendNotificationSync);
+        else if (control->key == "filterVariation") control->slider.setValue(0.45, juce::sendNotificationSync);
+        else if (control->key == "saturation") control->slider.setValue(0.40, juce::sendNotificationSync);
+        else if (control->key == "noise") control->slider.setValue(0.25, juce::sendNotificationSync);
+        else if (control->key == "psuMovement") control->slider.setValue(0.38, juce::sendNotificationSync);
+        else if (control->key == "vcaNonlinearity") control->slider.setValue(0.42, juce::sendNotificationSync);
+        else if (control->key == "waveformAsymmetry") control->slider.setValue(0.32, juce::sendNotificationSync);
+        else if (control->key == "temperatureDrift") control->slider.setValue(0.40, juce::sendNotificationSync);
+        else if (control->key == "correlatedChaos") control->slider.setValue(0.50, juce::sendNotificationSync);
     }
 
     audioProcessor.debugLogEvent("DEBUG_PANEL", "RESET_PARAMETERS", "all ranged parameters reset to defaults");

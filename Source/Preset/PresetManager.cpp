@@ -508,6 +508,140 @@ bool PresetManager::createInitPresetIfMissing(juce::String& error)
         return false;
     }
 
+    auto state = tree.getChildWithName(kPluginStateId);
+    if (!state.isValid())
+    {
+        error = "Failed to build INIT preset: missing plugin state node.";
+        return false;
+    }
+
+    // Canonical INIT payload captured from /INIT.px3preset in the repository.
+    // These normalized values define the shipped first-run factory INIT state.
+    state.setProperty("stateVersion", 4, nullptr);
+    state.setProperty("oscSine", 1.0f, nullptr);
+    state.setProperty("oscSaw", 0.0f, nullptr);
+    state.setProperty("oscSquare", 0.0f, nullptr);
+    state.setProperty("oscMode", 0.0f, nullptr);
+    state.setProperty("oscMacroA", 0.5f, nullptr);
+    state.setProperty("oscMacroB", 0.5f, nullptr);
+    state.setProperty("oscMacroC", 0.5f, nullptr);
+    state.setProperty("oscVowel", 0.0f, nullptr);
+    state.setProperty("oscH1", 1.0f, nullptr);
+    state.setProperty("oscH2", 0.699999988079071f, nullptr);
+    state.setProperty("oscH3", 0.449999988079071f, nullptr);
+    state.setProperty("oscH4", 0.300000011920929f, nullptr);
+    state.setProperty("oscH5", 0.2000000029802322f, nullptr);
+    state.setProperty("oscH6", 0.1400000005960464f, nullptr);
+    state.setProperty("oscH7", 0.1000000014901161f, nullptr);
+    state.setProperty("oscH8", 0.07000000029802322f, nullptr);
+    state.setProperty("filterCutoff", 0.5224611759185791f, nullptr);
+    state.setProperty("filterResonance", 0.282051295042038f, nullptr);
+    state.setProperty("filterType", 0.0f, nullptr);
+    state.setProperty("ampAttack", 0.5603691935539246f, nullptr);
+    state.setProperty("ampDecay", 0.3086085021495819f, nullptr);
+    state.setProperty("ampSustain", 0.278243213891983f, nullptr);
+    state.setProperty("ampRelease", 0.0f, nullptr);
+    state.setProperty("masterGain", 0.4870468974113464f, nullptr);
+    state.setProperty("robAmount", 0.8171562552452087f, nullptr);
+    state.setProperty("robEnabled", 1.0f, nullptr);
+    state.setProperty("isaacAmount", 1.0f, nullptr);
+    state.setProperty("granularSyncDivision", 0.0f, nullptr);
+    state.setProperty("granularMode", 0.3333333432674408f, nullptr);
+    state.setProperty("delayAlgorithm", 0.3333333432674408f, nullptr);
+    state.setProperty("delayEnabled", 1.0f, nullptr);
+    state.setProperty("delayTime", 0.3743749856948853f, nullptr);
+    state.setProperty("delayFeedback", 1.0f, nullptr);
+    state.setProperty("reverbAmount", 0.1919843852519989f, nullptr);
+    state.setProperty("reverbEnabled", 1.0f, nullptr);
+    state.setProperty("reverbAlgorithm", 1.0f, nullptr);
+    state.setProperty("reverbSize", 0.5199999809265137f, nullptr);
+    state.setProperty("reverbDecay", 0.4799999892711639f, nullptr);
+    state.setProperty("reverbDamping", 0.4600000083446503f, nullptr);
+    state.setProperty("reverbPreDelay", 0.07999999821186066f, nullptr);
+    state.setProperty("reverbModDepth", 0.239999994635582f, nullptr);
+    state.setProperty("reverbModRate", 0.1800000071525574f, nullptr);
+    state.setProperty("reverbWidth", 0.8600000143051147f, nullptr);
+    state.setProperty("reverbCloudFeedback", 0.6200000047683716f, nullptr);
+    state.setProperty("reverbCloudDiffusion", 0.5400000214576721f, nullptr);
+    state.setProperty("sourceEngine", 0.0f, nullptr);
+    state.setProperty("imagePosition", 0.5f, nullptr);
+    state.setProperty("imageAnimate", 0.0f, nullptr);
+    state.setProperty("imageRate", 0.3774764239788055f, nullptr);
+    state.setProperty("imageAnimMode", 1.0f, nullptr);
+    state.setProperty("imageAnimSync", 0.0f, nullptr);
+    state.setProperty("imageTarget", 0.0f, nullptr);
+    state.setProperty("audioPosition", 0.5f, nullptr);
+    state.setProperty("audioGrain", 0.449999988079071f, nullptr);
+    state.setProperty("audioTexture", 0.3499999940395355f, nullptr);
+    state.setProperty("audioAnimate", 0.0f, nullptr);
+    state.setProperty("audioRate", 0.3897614181041718f, nullptr);
+    state.setProperty("audioAnimMode", 1.0f, nullptr);
+    state.setProperty("audioAnimSync", 0.0f, nullptr);
+    state.setProperty("audioTarget", 0.5f, nullptr);
+    state.setProperty("pitchBendRange", 0.04347826167941093f, nullptr);
+    state.setProperty("lfoFrequency", 0.3851140737533569f, nullptr);
+    state.setProperty("imagePath", "", nullptr);
+    state.setProperty("audioPath", "", nullptr);
+    state.setProperty("moduleOrderRevision", 2, nullptr);
+
+    const juce::Identifier moduleOrderId("MODULE_ORDER");
+    const juce::Identifier moduleEntryId("MODULE");
+    const juce::Identifier moduleIdProperty("id");
+    if (auto existingOrder = state.getChildWithName(moduleOrderId); existingOrder.isValid())
+    {
+        state.removeChild(existingOrder, nullptr);
+    }
+    juce::ValueTree moduleOrder(moduleOrderId);
+    {
+        juce::ValueTree module(moduleEntryId);
+        module.setProperty(moduleIdProperty, "harmonicDrive", nullptr);
+        moduleOrder.addChild(module, -1, nullptr);
+    }
+    {
+        juce::ValueTree module(moduleEntryId);
+        module.setProperty(moduleIdProperty, "delay", nullptr);
+        moduleOrder.addChild(module, -1, nullptr);
+    }
+    {
+        juce::ValueTree module(moduleEntryId);
+        module.setProperty(moduleIdProperty, "reverb", nullptr);
+        moduleOrder.addChild(module, -1, nullptr);
+    }
+    state.addChild(moduleOrder, -1, nullptr);
+
+    const juce::Identifier lfoStateId("LFO");
+    if (auto existingLfo = state.getChildWithName(lfoStateId); existingLfo.isValid())
+    {
+        state.removeChild(existingLfo, nullptr);
+    }
+    juce::ValueTree lfoState(lfoStateId);
+    lfoState.setProperty("frequency", 0.8406999707221985f, nullptr);
+    lfoState.setProperty("assignment", "filterCutoff", nullptr);
+    state.addChild(lfoState, -1, nullptr);
+
+    const juce::Identifier vibeStateId("VIBE");
+    const juce::Identifier vibeTuningId("tuning");
+    if (auto existingVibe = state.getChildWithName(vibeStateId); existingVibe.isValid())
+    {
+        state.removeChild(existingVibe, nullptr);
+    }
+    juce::ValueTree vibeState(vibeStateId);
+    vibeState.setProperty("bypass", false, nullptr);
+    vibeState.setProperty("seed", 1337, nullptr);
+    juce::ValueTree tuning(vibeTuningId);
+    tuning.setProperty("oscillatorDrift", 0.550000011920929f, nullptr);
+    tuning.setProperty("voiceVariation", 0.550000011920929f, nullptr);
+    tuning.setProperty("filterVariation", 0.449999988079071f, nullptr);
+    tuning.setProperty("saturation", 0.4000000059604645f, nullptr);
+    tuning.setProperty("noise", 0.25f, nullptr);
+    tuning.setProperty("psuMovement", 0.3799999952316284f, nullptr);
+    tuning.setProperty("vcaNonlinearity", 0.4199999868869781f, nullptr);
+    tuning.setProperty("waveformAsymmetry", 0.3199999928474426f, nullptr);
+    tuning.setProperty("temperatureDrift", 0.4000000059604645f, nullptr);
+    tuning.setProperty("correlatedChaos", 0.5f, nullptr);
+    vibeState.addChild(tuning, -1, nullptr);
+    state.addChild(vibeState, -1, nullptr);
+
     if (!writePresetFile(initFile, tree, error))
     {
         return false;

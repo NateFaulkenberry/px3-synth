@@ -72,6 +72,38 @@ struct AudioGranularSettings
     int rootMidiNote { 60 };
 };
 
+struct VibeSharedState
+{
+    float oscillatorDrift { 0.0f };
+    float psu { 0.0f };
+    float temperature { 0.0f };
+    float chaos { 0.0f };
+};
+
+struct VibeVoiceVariation
+{
+    float pitchCents { 0.0f };
+    float cutoffOffset { 0.0f };
+    float resonanceOffset { 0.0f };
+    float gainOffset { 0.0f };
+    float asymmetryBias { 0.0f };
+    float saturationBias { 0.0f };
+};
+
+struct VibeTuning
+{
+    float oscillatorDrift { 0.55f };
+    float voiceVariation { 0.55f };
+    float filterVariation { 0.45f };
+    float saturation { 0.40f };
+    float noise { 0.25f };
+    float psuMovement { 0.38f };
+    float vcaNonlinearity { 0.42f };
+    float waveformAsymmetry { 0.32f };
+    float temperatureDrift { 0.40f };
+    float correlatedChaos { 0.50f };
+};
+
 class SynthVoice final : public juce::SynthesiserVoice
 {
 public:
@@ -97,6 +129,12 @@ public:
     void setAudioGranularSource(std::shared_ptr<const AudioSourceData> data,
                                 const AudioGranularSettings& settings);
     void setExternalSourceMode(ExternalSourceMode mode);
+    void setVoiceIndex(int index);
+    void setVibeState(float globalAmount,
+                      bool bypass,
+                      const VibeSharedState& sharedState,
+                      const VibeVoiceVariation& variation,
+                      const VibeTuning& tuningState);
 
 private:
     // Runtime grain state used only inside a single voice instance.
@@ -115,6 +153,7 @@ private:
 
     void updateAngleDelta();
     void updateFilter();
+    void setFilterResponse(float cutoffHz, float resonanceQ, int filterTypeIndex);
     float renderOscillatorSample(double sampleRate,
                                  float pitchRatio,
                                  float modWheelNorm,
@@ -151,6 +190,12 @@ private:
     // Reused for multiple filter modes; stage2 enables pseudo 24 dB responses.
     juce::dsp::IIR::Filter<float> lowPassFilter;
     juce::dsp::IIR::Filter<float> lowPassFilterStage2;
+    float targetFilterCutoffHz { 10000.0f };
+    float targetFilterResonanceQ { 0.8f };
+    float currentFilterCutoffHz { 10000.0f };
+    float currentFilterResonanceQ { 0.8f };
+    int activeFilterTypeIndex { 0 };
+    int filterUpdateCounter { 0 };
 
     double currentAngle { 0.0 };
     double angleDelta { 0.0 };
@@ -207,4 +252,11 @@ private:
     std::array<float, 4> physicalState { { 0.0f, 0.0f, 0.0f, 0.0f } };
 
     int noteAgeSamples { 0 };
+    int voiceIndex { 0 };
+
+    float vibeGlobalAmount { 0.0f };
+    bool vibeBypass { false };
+    VibeSharedState vibeShared;
+    VibeVoiceVariation vibeVariation;
+    VibeTuning vibeTuning;
 };

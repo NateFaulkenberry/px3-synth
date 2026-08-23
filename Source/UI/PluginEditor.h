@@ -159,6 +159,7 @@ private:
 
     struct DebugParamControl
     {
+        juce::String key;
         juce::Label label;
         juce::Slider slider;
         juce::Label readback;
@@ -277,8 +278,6 @@ private:
 
     juce::Slider robWarmthKnob;
     KnobLabel robWarmthLabel;
-    juce::ComboBox robTypeBox;
-    KnobLabel robTypeLabel;
     juce::Slider isaacTextureKnob;
     KnobLabel isaacTextureLabel;
     juce::ComboBox delayAlgoBox;

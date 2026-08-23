@@ -1,6 +1,6 @@
 # P(X3) Synth
 
-P(X3) is a polyphonic JUCE synthesizer with a multi-mode oscillator, source engines (image/audio), and reorderable FX (Harmonic Drive, Delay, Reverb). This README is a full operating guide for new users and a function-level map for developers.
+P(X3) is a polyphonic JUCE synthesizer with a multi-mode oscillator, source engines (image/audio), and reorderable FX (VIBE, Delay, Reverb). This README is a full operating guide for new users and a function-level map for developers.
 
 Current version: v0.1.0
 
@@ -135,7 +135,7 @@ Important:
 ```text
 MIDI/Virtual Keyboard
   -> Synth Voices (oscillator mode + macros + envelope + filter)
-  -> FX Chain (user-order: Harmonic Drive / Delay / Reverb)
+  -> FX Chain (user-order: VIBE / Delay / Reverb)
   -> Master Output
 ```
 
@@ -331,7 +331,7 @@ Controls:
 - RATE: animation rate (or rate basis when sync mode active).
 - MODE: Forward / Reverse / PingPong.
 - TARGET: where Image Engine control signal modulates:
-  - Harmonic Drive
+  - VIBE
   - Delay
   - Reverb
 - OFF: disables Image routing (switches source mode away from Image when allowed).
@@ -366,7 +366,7 @@ Controls:
 
 You have three FX blocks:
 
-- HARMONIC DRIVE
+- VIBE
 - DELAY
 - REVERB
 
@@ -382,21 +382,17 @@ Header behavior:
 - Clicking section header toggles its bypass.
 - Dragging header reorders blocks; order is committed to DSP and saved in state.
 
-### Harmonic Drive
+### VIBE
 
 Controls:
 
 - WARMTH knob: effect amount.
-- TYPE dropdown:
-  - Default Drive
-  - Tape Saturation
-  - Tube Warmth
-  - Distortion Pedal
 
 What it does:
 
-- Nonlinear saturation and tone shaping variant per mode.
-- Uses amount-dependent parallel blending and output compensation trims.
+- Global analog-imperfection amount control distributed through per-voice behavior.
+- Adds correlated drift, subtle saturation, asymmetry, filter movement, PSU/temperature motion, and noise.
+- VIBE is an original texture system, not a hardware emulation claim.
 
 ### Delay
 
@@ -546,8 +542,6 @@ Notable mode helpers:
 
 ### FX + Ordering
 
-- `processRobSample`
-  - Harmonic Drive saturation model per selected type.
 - `processDelayAlgorithmSample`
   - Delay algorithm switch and per-sample processing.
 - `processIsaacGranularSample` / `spawnIsaacGrain`

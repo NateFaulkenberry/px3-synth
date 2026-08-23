@@ -5,6 +5,7 @@
 #include "PianoKeyboard.h"
 #include "SynthSound.h"
 #include "SynthVoice.h"
+#include "VibeEngine.h"
 
 #include <array>
 #include <atomic>
@@ -96,7 +97,6 @@ public:
 
     juce::AudioParameterFloat& getRobAmountParam() const;
     juce::AudioParameterBool& getRobEnabledParam() const;
-    juce::AudioParameterChoice& getRobModeParam() const;
     juce::AudioParameterFloat& getIsaacAmountParam() const;
     juce::AudioParameterChoice& getGranularSyncDivisionParam() const;
     juce::AudioParameterChoice& getGranularModeParam() const;
@@ -160,6 +160,15 @@ public:
     float debugGetLfoBaseNormalized() const;
     float debugGetLfoEffectiveNormalized() const;
     juce::String debugGetLfoAssignmentName() const;
+    float debugGetVibeGlobalAmount() const;
+    float debugGetVibeEffectiveAmount() const;
+    bool debugGetVibeBypass() const;
+    uint32_t debugGetVibeSeed() const;
+    VibeTuning debugGetVibeTuning() const;
+    void debugSetVibeBypass(bool shouldBypass);
+    void debugSetVibeSeed(uint32_t seed);
+    void debugSetVibeTuningValue(const juce::String& key, float value);
+    float debugGetVibeTuningValue(const juce::String& key) const;
 
     float copyPitchBendNormalized() const;
     float copyModWheelNormalized() const;
@@ -247,7 +256,6 @@ private:
     float audioSyncBeatsForIndex(int index) const;
     float imageSyncBeatsForIndex(int index) const;
     void updateTransportState();
-    float processRobSample(float x, int channel, float robAmount, int modeIndex);
     void processIsaacGranularSample(float inL,
                                     float inR,
                                     float amount,
@@ -292,6 +300,7 @@ private:
                                     float* outBaseNormalized = nullptr,
                                     float* outEffectiveNormalized = nullptr) const;
     float currentLfoSignalForBlock(int numSamples);
+    void updateVibeStateForBlock(int numSamples, float lfoSignal);
 
     juce::Synthesiser synth;
 
@@ -314,7 +323,6 @@ private:
     juce::AudioParameterFloat* masterGainParam { nullptr };
     juce::AudioParameterFloat* robAmountParam { nullptr };
     juce::AudioParameterBool* robEnabledParam { nullptr };
-    juce::AudioParameterChoice* robModeParam { nullptr };
     juce::AudioParameterFloat* isaacAmountParam { nullptr };
     juce::AudioParameterChoice* granularSyncDivisionParam { nullptr };
     juce::AudioParameterChoice* granularModeParam { nullptr };
@@ -385,6 +393,26 @@ private:
     std::atomic<float> lfoCurrentValue { 0.0f };
     std::atomic<float> lfoDebugBaseNormalized { 0.0f };
     std::atomic<float> lfoDebugEffectiveNormalized { 0.0f };
+
+    /*
+     * VIBE is a correlated imperfection system. It is intentionally not a
+     * single post-distortion. Shared slow processes (PSU, temperature, chaos,
+     * drift) are generated once and distributed across multiple DSP points.
+     */
+    VibeEngine vibeEngine;
+    std::atomic<int> vibeBypassFlag { 0 };
+    std::atomic<uint32_t> vibeSeed { 1337u };
+    std::atomic<uint32_t> vibeLastAppliedSeed { 1337u };
+    std::atomic<float> vibeTuneOscDrift { 0.55f };
+    std::atomic<float> vibeTuneVoiceVar { 0.55f };
+    std::atomic<float> vibeTuneFilterVar { 0.45f };
+    std::atomic<float> vibeTuneSaturation { 0.40f };
+    std::atomic<float> vibeTuneNoise { 0.25f };
+    std::atomic<float> vibeTunePsu { 0.38f };
+    std::atomic<float> vibeTuneVca { 0.42f };
+    std::atomic<float> vibeTuneAsym { 0.32f };
+    std::atomic<float> vibeTuneTemp { 0.40f };
+    std::atomic<float> vibeTuneChaos { 0.50f };
     float imageAnimPhase { 0.0f };
     float audioAnimPhase { 0.0f };
     float imageTargetScanPhase { 0.0f };
@@ -394,9 +422,6 @@ private:
     float imageReverbScaleSmoothed { 1.0f };
     int imageAnimDirection { 1 };
     int audioAnimDirection { 1 };
-
-    std::array<float, 2> robDcState { { 0.0f, 0.0f } };
-    std::array<float, 2> robToneState { { 0.0f, 0.0f } };
 
     std::array<std::vector<float>, 2> isaacDelayBuffer;
     std::array<float, 2> isaacFeedbackFilter { { 0.0f, 0.0f } };
@@ -423,6 +448,10 @@ private:
     int isaacRhythmicSamplesUntilNext { 0 };
     bool isaacRhythmicSwingToggle { false };
     float isaacPanPhase { 0.0f };
+    float delayAmountSmoothed { 0.0f };
+    float delayTimeControlSmoothed { 0.5f };
+    float delayFeedbackControlSmoothed { 0.35f };
+    float delayControlSmoothingCoeff { 0.0f };
     float delayModPhase { 0.0f };
     int lastDelayAlgorithmIndex { -1 };
     int lastGranularModeIndex { -1 };

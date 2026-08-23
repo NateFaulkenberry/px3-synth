@@ -9,7 +9,7 @@ namespace
 {
 constexpr double kMaxIsaacDelaySeconds = 4.0;
 constexpr double kMaxMoonDelaySeconds = 0.35;
-constexpr int kCurrentStateVersion = 3;
+constexpr int kCurrentStateVersion = 4;
 
 const juce::Identifier kStateTypeId("PX3_STATE");
 const juce::Identifier kStateVersionId("stateVersion");
@@ -20,6 +20,10 @@ const juce::Identifier kModuleOrderRevisionId("moduleOrderRevision");
 const juce::Identifier kLfoStateId("LFO");
 const juce::Identifier kLfoFrequencyId("frequency");
 const juce::Identifier kLfoAssignmentId("assignment");
+const juce::Identifier kVibeStateId("VIBE");
+const juce::Identifier kVibeBypassId("bypass");
+const juce::Identifier kVibeSeedId("seed");
+const juce::Identifier kVibeTuningId("tuning");
 std::atomic<uint32_t> kInstanceCounter { 0u };
 
 juce::String moduleIdForStage(int stage);
@@ -307,12 +311,8 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     releaseParam = new juce::AudioParameterFloat("ampRelease", "Amp Release", juce::NormalisableRange<float>(0.010f, 5.0f, 0.001f, 0.45f), 0.100f);
     masterGainParam = new juce::AudioParameterFloat("masterGain", "Master Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
 
-    robAmountParam = new juce::AudioParameterFloat("robAmount", "Harmonic Drive", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    robEnabledParam = new juce::AudioParameterBool("robEnabled", "Harmonic Drive Enabled", true);
-    robModeParam = new juce::AudioParameterChoice("robMode",
-                                                   "Harmonic Drive Mode",
-                                                   juce::StringArray { "Default Drive", "Tape Saturation", "Tube Warmth", "Distortion Pedal" },
-                                                   0);
+    robAmountParam = new juce::AudioParameterFloat("robAmount", "Vibe", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    robEnabledParam = new juce::AudioParameterBool("robEnabled", "Vibe Enabled", true);
     isaacAmountParam = new juce::AudioParameterFloat("isaacAmount", "Granular Delay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     granularSyncDivisionParam = new juce::AudioParameterChoice("granularSyncDivision",
                                                                 "Granular Sync",
@@ -358,7 +358,7 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
                                                          0);
     imageTargetParam = new juce::AudioParameterChoice("imageTarget",
                                                        "Image Target",
-                                                       juce::StringArray { "Harmonic Drive", "Delay", "Reverb" },
+                                                       juce::StringArray { "Vibe", "Delay", "Reverb" },
                                                        0);
     audioPositionParam = new juce::AudioParameterFloat("audioPosition", "Audio Position", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     audioGrainParam = new juce::AudioParameterFloat("audioGrain", "Audio Grain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
@@ -375,7 +375,7 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
                                                          0);
     audioTargetParam = new juce::AudioParameterChoice("audioTarget",
                                                        "Audio Target",
-                                                       juce::StringArray { "Harmonic Drive", "Delay", "Reverb" },
+                                                       juce::StringArray { "Vibe", "Delay", "Reverb" },
                                                        1);
     pitchBendRangeParam = new juce::AudioParameterInt("pitchBendRange",
                                                        "Pitch Bend Range",
@@ -409,7 +409,6 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(masterGainParam);
     addParameter(robAmountParam);
     addParameter(robEnabledParam);
-    addParameter(robModeParam);
     addParameter(isaacAmountParam);
     addParameter(granularSyncDivisionParam);
     addParameter(granularModeParam);
@@ -456,6 +455,7 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     for (int voice = 0; voice < 16; ++voice)
     {
         auto* synthVoice = new SynthVoice();
+        synthVoice->setVoiceIndex(voice);
         synthVoice->setEnvelope(initialEnvelope);
         synthVoice->setSubtractiveSettings(initialSubtractive);
         synthVoice->setOscillatorSettings(initialOscillator);
@@ -532,6 +532,14 @@ void SynthProjectAudioProcessor::changeProgramName(int, const juce::String&)
 void SynthProjectAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     synth.setCurrentPlaybackSampleRate(sampleRate);
+    const auto sr = static_cast<float>(juce::jmax(1.0, sampleRate));
+    constexpr float delayControlTauSec = 0.008f;
+    delayControlSmoothingCoeff = 1.0f - std::exp(-1.0f / (sr * delayControlTauSec));
+    delayAmountSmoothed = clamp01(isaacAmountParam->get());
+    delayTimeControlSmoothed = clamp01(delayTimeParam->get());
+    delayFeedbackControlSmoothed = clamp01(delayFeedbackParam->get());
+    vibeEngine.prepare(sampleRate, synth.getNumVoices(), vibeSeed.load(std::memory_order_relaxed));
+    vibeLastAppliedSeed.store(vibeSeed.load(std::memory_order_relaxed), std::memory_order_relaxed);
 
     const auto envelope = currentEnvelopeSettings();
     const auto subtractive = currentSubtractiveSettings();
@@ -585,6 +593,112 @@ float SynthProjectAudioProcessor::currentLfoSignalForBlock(int numSamples)
     lfoPhaseForDebug.store(lfoPhaseRadians, std::memory_order_relaxed);
     lfoCurrentValue.store(signal, std::memory_order_relaxed);
     return signal;
+}
+
+void SynthProjectAudioProcessor::updateVibeStateForBlock(int numSamples, float lfoSignal)
+{
+    const auto seed = vibeSeed.load(std::memory_order_relaxed);
+    if (seed != vibeLastAppliedSeed.load(std::memory_order_relaxed))
+    {
+        vibeEngine.setSeed(seed);
+        vibeLastAppliedSeed.store(seed, std::memory_order_relaxed);
+    }
+
+    VibeEngine::Tuning t;
+    t.oscillatorDrift = juce::jlimit(0.0f, 1.0f, vibeTuneOscDrift.load(std::memory_order_relaxed));
+    t.voiceVariation = juce::jlimit(0.0f, 1.0f, vibeTuneVoiceVar.load(std::memory_order_relaxed));
+    t.filterVariation = juce::jlimit(0.0f, 1.0f, vibeTuneFilterVar.load(std::memory_order_relaxed));
+    t.saturation = juce::jlimit(0.0f, 1.0f, vibeTuneSaturation.load(std::memory_order_relaxed));
+    t.noise = juce::jlimit(0.0f, 1.0f, vibeTuneNoise.load(std::memory_order_relaxed));
+    t.psuMovement = juce::jlimit(0.0f, 1.0f, vibeTunePsu.load(std::memory_order_relaxed));
+    t.vcaNonlinearity = juce::jlimit(0.0f, 1.0f, vibeTuneVca.load(std::memory_order_relaxed));
+    t.waveformAsymmetry = juce::jlimit(0.0f, 1.0f, vibeTuneAsym.load(std::memory_order_relaxed));
+    t.temperatureDrift = juce::jlimit(0.0f, 1.0f, vibeTuneTemp.load(std::memory_order_relaxed));
+    t.correlatedChaos = juce::jlimit(0.0f, 1.0f, vibeTuneChaos.load(std::memory_order_relaxed));
+
+    vibeEngine.setTuning(t);
+    vibeEngine.setBypass(vibeBypassFlag.load(std::memory_order_relaxed) != 0);
+    const auto globalAmount = applyLfoToNormalizedValue(robAmountParam,
+                                                         static_cast<juce::RangedAudioParameter*>(robAmountParam)->getValue(),
+                                                         lfoSignal);
+    vibeEngine.setGlobalAmount(juce::jlimit(0.0f, 1.0f, globalAmount));
+    vibeEngine.advance(numSamples);
+}
+
+float SynthProjectAudioProcessor::debugGetVibeGlobalAmount() const
+{
+    return juce::jlimit(0.0f, 1.0f, robAmountParam->get());
+}
+
+float SynthProjectAudioProcessor::debugGetVibeEffectiveAmount() const
+{
+    return juce::jlimit(0.0f, 1.0f, vibeEngine.getEffectiveAmount());
+}
+
+bool SynthProjectAudioProcessor::debugGetVibeBypass() const
+{
+    return vibeBypassFlag.load(std::memory_order_relaxed) != 0;
+}
+
+uint32_t SynthProjectAudioProcessor::debugGetVibeSeed() const
+{
+    return vibeSeed.load(std::memory_order_relaxed);
+}
+
+VibeTuning SynthProjectAudioProcessor::debugGetVibeTuning() const
+{
+    VibeTuning t;
+    t.oscillatorDrift = juce::jlimit(0.0f, 1.0f, vibeTuneOscDrift.load(std::memory_order_relaxed));
+    t.voiceVariation = juce::jlimit(0.0f, 1.0f, vibeTuneVoiceVar.load(std::memory_order_relaxed));
+    t.filterVariation = juce::jlimit(0.0f, 1.0f, vibeTuneFilterVar.load(std::memory_order_relaxed));
+    t.saturation = juce::jlimit(0.0f, 1.0f, vibeTuneSaturation.load(std::memory_order_relaxed));
+    t.noise = juce::jlimit(0.0f, 1.0f, vibeTuneNoise.load(std::memory_order_relaxed));
+    t.psuMovement = juce::jlimit(0.0f, 1.0f, vibeTunePsu.load(std::memory_order_relaxed));
+    t.vcaNonlinearity = juce::jlimit(0.0f, 1.0f, vibeTuneVca.load(std::memory_order_relaxed));
+    t.waveformAsymmetry = juce::jlimit(0.0f, 1.0f, vibeTuneAsym.load(std::memory_order_relaxed));
+    t.temperatureDrift = juce::jlimit(0.0f, 1.0f, vibeTuneTemp.load(std::memory_order_relaxed));
+    t.correlatedChaos = juce::jlimit(0.0f, 1.0f, vibeTuneChaos.load(std::memory_order_relaxed));
+    return t;
+}
+
+void SynthProjectAudioProcessor::debugSetVibeBypass(bool shouldBypass)
+{
+    vibeBypassFlag.store(shouldBypass ? 1 : 0, std::memory_order_relaxed);
+}
+
+void SynthProjectAudioProcessor::debugSetVibeSeed(uint32_t seed)
+{
+    vibeSeed.store(seed == 0u ? 1u : seed, std::memory_order_relaxed);
+}
+
+void SynthProjectAudioProcessor::debugSetVibeTuningValue(const juce::String& key, float value)
+{
+    const auto v = juce::jlimit(0.0f, 1.0f, value);
+    if (key.equalsIgnoreCase("oscillatorDrift")) vibeTuneOscDrift.store(v, std::memory_order_relaxed);
+    else if (key.equalsIgnoreCase("voiceVariation")) vibeTuneVoiceVar.store(v, std::memory_order_relaxed);
+    else if (key.equalsIgnoreCase("filterVariation")) vibeTuneFilterVar.store(v, std::memory_order_relaxed);
+    else if (key.equalsIgnoreCase("saturation")) vibeTuneSaturation.store(v, std::memory_order_relaxed);
+    else if (key.equalsIgnoreCase("noise")) vibeTuneNoise.store(v, std::memory_order_relaxed);
+    else if (key.equalsIgnoreCase("psuMovement")) vibeTunePsu.store(v, std::memory_order_relaxed);
+    else if (key.equalsIgnoreCase("vcaNonlinearity")) vibeTuneVca.store(v, std::memory_order_relaxed);
+    else if (key.equalsIgnoreCase("waveformAsymmetry")) vibeTuneAsym.store(v, std::memory_order_relaxed);
+    else if (key.equalsIgnoreCase("temperatureDrift")) vibeTuneTemp.store(v, std::memory_order_relaxed);
+    else if (key.equalsIgnoreCase("correlatedChaos")) vibeTuneChaos.store(v, std::memory_order_relaxed);
+}
+
+float SynthProjectAudioProcessor::debugGetVibeTuningValue(const juce::String& key) const
+{
+    if (key.equalsIgnoreCase("oscillatorDrift")) return vibeTuneOscDrift.load(std::memory_order_relaxed);
+    if (key.equalsIgnoreCase("voiceVariation")) return vibeTuneVoiceVar.load(std::memory_order_relaxed);
+    if (key.equalsIgnoreCase("filterVariation")) return vibeTuneFilterVar.load(std::memory_order_relaxed);
+    if (key.equalsIgnoreCase("saturation")) return vibeTuneSaturation.load(std::memory_order_relaxed);
+    if (key.equalsIgnoreCase("noise")) return vibeTuneNoise.load(std::memory_order_relaxed);
+    if (key.equalsIgnoreCase("psuMovement")) return vibeTunePsu.load(std::memory_order_relaxed);
+    if (key.equalsIgnoreCase("vcaNonlinearity")) return vibeTuneVca.load(std::memory_order_relaxed);
+    if (key.equalsIgnoreCase("waveformAsymmetry")) return vibeTuneAsym.load(std::memory_order_relaxed);
+    if (key.equalsIgnoreCase("temperatureDrift")) return vibeTuneTemp.load(std::memory_order_relaxed);
+    if (key.equalsIgnoreCase("correlatedChaos")) return vibeTuneChaos.load(std::memory_order_relaxed);
+    return 0.0f;
 }
 
 float SynthProjectAudioProcessor::applyLfoToNormalizedValue(juce::RangedAudioParameter* parameter,
@@ -665,6 +779,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     const auto pitchBend = juce::jlimit(-1.0f, 1.0f, pitchBendNormalized.load(std::memory_order_relaxed));
     const auto modWheel = juce::jlimit(0.0f, 1.0f, modWheelNormalized.load(std::memory_order_relaxed));
     const auto bendRange = static_cast<float>(pitchBendRangeParam->get());
+    const auto robEnabled = robEnabledParam->get();
     constexpr float vibratoRateHz = 5.0f;
     constexpr float vibratoMaxDepthSemitones = 1.0f;
 
@@ -695,6 +810,11 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     const auto envelope = currentEnvelopeSettings();
     const auto subtractive = currentSubtractiveSettings();
     const auto oscillator = currentOscillatorSettings();
+    updateVibeStateForBlock(buffer.getNumSamples(), blockLfoSignal);
+    const auto vibeShared = vibeEngine.getSharedState();
+    const auto vibeTuning = debugGetVibeTuning();
+    const auto vibeBypass = !robEnabled || debugGetVibeBypass();
+    const auto vibeAmount = vibeBypass ? 0.0f : vibeEngine.getEffectiveAmount();
     const auto currentImagePosition = updateImageAnimationPosition(buffer.getNumSamples());
     const auto currentAudioPosition = updateAudioAnimationPosition(buffer.getNumSamples());
     const auto wavetableForBlock = std::atomic_load(&activeImageWavetable);
@@ -724,6 +844,20 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
                                             vibratoPhaseRadians,
                                             vibratoRateHz,
                                             vibratoMaxDepthSemitones);
+            const auto vv = vibeEngine.getVoiceVariation(voiceIndex);
+            VibeVoiceVariation voiceVariation;
+            voiceVariation.pitchCents = vv.pitchCents;
+            voiceVariation.cutoffOffset = vv.cutoffOffset;
+            voiceVariation.resonanceOffset = vv.resonanceOffset;
+            voiceVariation.gainOffset = vv.gainOffset;
+            voiceVariation.asymmetryBias = vv.asymmetryBias;
+            voiceVariation.saturationBias = vv.saturationBias;
+            VibeSharedState voiceShared;
+            voiceShared.oscillatorDrift = vibeShared.oscillatorDrift;
+            voiceShared.psu = vibeShared.psu;
+            voiceShared.temperature = vibeShared.temperature;
+            voiceShared.chaos = vibeShared.chaos;
+            voice->setVibeState(vibeAmount, vibeBypass, voiceShared, voiceVariation, vibeTuning);
             voice->setExternalSourceMode(sourceMode);
             voice->setImageWavetable(wavetableForBlock, currentImagePosition);
             voice->setAudioGranularSource(audioSourceForBlock, granularSettings);
@@ -736,8 +870,6 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     const auto robAmountBase = applyLfoToNormalizedValue(robAmountParam,
                                                           static_cast<juce::RangedAudioParameter*>(robAmountParam)->getValue(),
                                                           blockLfoSignal);
-    const auto robEnabled = robEnabledParam->get();
-    const auto robModeIndex = robModeParam->getIndex();
     const auto isaacAmountBase = applyLfoToNormalizedValue(isaacAmountParam,
                                                             static_cast<juce::RangedAudioParameter*>(isaacAmountParam)->getValue(),
                                                             blockLfoSignal);
@@ -921,12 +1053,8 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
         {
             switch (stage)
             {
-                case 0: // Harmonic Drive
-                    if (robEnabled)
-                    {
-                        stageL = processRobSample(stageL, 0, robAmount, robModeIndex);
-                        stageR = processRobSample(stageR, 1, robAmount, robModeIndex);
-                    }
+                case 0: // VIBE (distributed in voice stage)
+                    juce::ignoreUnused(robEnabled, robAmount);
                     break;
 
                 case 1: // Delay
@@ -1210,7 +1338,6 @@ juce::AudioParameterFloat& SynthProjectAudioProcessor::getReleaseParam() const {
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getMasterGainParam() const { return *masterGainParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getRobAmountParam() const { return *robAmountParam; }
 juce::AudioParameterBool& SynthProjectAudioProcessor::getRobEnabledParam() const { return *robEnabledParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getRobModeParam() const { return *robModeParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getIsaacAmountParam() const { return *isaacAmountParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getGranularSyncDivisionParam() const { return *granularSyncDivisionParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getGranularModeParam() const { return *granularModeParam; }
@@ -2602,93 +2729,6 @@ void SynthProjectAudioProcessor::updateTransportState()
     }
 }
 
-float SynthProjectAudioProcessor::processRobSample(float x, int channel, float robAmount, int modeIndex)
-{
-    if (robAmount <= 0.0001f)
-    {
-        return x;
-    }
-
-    const auto mode = juce::jlimit(0, 3, modeIndex);
-    const auto warm = smoothstep(robAmount);
-    auto& dcState = robDcState[static_cast<std::size_t>(channel)];
-    auto& toneState = robToneState[static_cast<std::size_t>(channel)];
-    static constexpr std::array<float, 4> kModeTargetTrim { 1.00f, 1.07f, 1.02f, 0.86f };
-    const auto trim = 1.0f + (kModeTargetTrim[static_cast<std::size_t>(mode)] - 1.0f) * warm;
-
-    if (mode == 0)
-    {
-        dcState += 0.0045f * (x - dcState);
-        const auto hp = x - dcState * (0.70f * warm);
-
-        const auto drive = 1.0f + warm * 6.8f;
-        const auto pre = hp * drive;
-        const auto asym = pre + (0.18f * warm) * pre * pre;
-
-        const auto satA = std::tanh(asym * 0.85f);
-        const auto satB = asym / (1.0f + std::abs(asym));
-        auto colored = satA * (0.62f + 0.20f * warm) + satB * (0.38f - 0.12f * warm);
-
-        toneState += 0.09f * (colored - toneState);
-        colored = 0.72f * colored + 0.28f * toneState;
-
-        const auto wetMix = 0.12f + 0.78f * warm;
-        const auto parallel = juce::jmap(warm, x, colored);
-        const auto mixed = x * (1.0f - wetMix * 0.72f) + parallel * wetMix;
-
-        const auto levelComp = 1.0f / (1.0f + 0.58f * warm);
-        return mixed * levelComp * trim;
-    }
-
-    if (mode == 1)
-    {
-        // Tape: softer saturation, mild compression, and slightly darkened top end.
-        dcState += 0.0038f * (x - dcState);
-        const auto hp = x - dcState * (0.64f * warm);
-        const auto drive = 1.0f + 3.6f * warm;
-        const auto compressed = std::tanh(hp * drive) * (0.85f + 0.10f * warm);
-
-        toneState += (0.035f + 0.020f * warm) * (compressed - toneState);
-        const auto dark = compressed * (0.58f + 0.10f * warm) + toneState * (0.42f - 0.10f * warm);
-        const auto wowPhase = static_cast<float>(currentTimelineSeconds * 0.9 + static_cast<double>(channel) * 0.7);
-        const auto wow = dark + std::sin(wowPhase) * (0.0018f + 0.0035f * warm);
-
-        const auto mix = 0.18f + 0.66f * warm;
-        const auto out = x + (wow - x) * mix;
-        return out * (1.0f / (1.0f + 0.34f * warm)) * trim;
-    }
-
-    if (mode == 2)
-    {
-        // Tube: asymmetry and even-harmonic emphasis with gentler clipping.
-        dcState += 0.0042f * (x - dcState);
-        const auto hp = x - dcState * (0.55f * warm);
-        const auto drive = 1.0f + 5.2f * warm;
-        const auto pre = hp * drive;
-        const auto asym = pre + (0.30f * warm + 0.04f) * pre * pre;
-        const auto sat = std::tanh(asym * (0.70f + 0.24f * warm));
-
-        toneState += (0.060f + 0.050f * warm) * (sat - toneState);
-        const auto body = 0.64f * sat + 0.36f * toneState;
-        const auto mix = 0.16f + 0.74f * warm;
-        const auto out = x * (1.0f - mix * 0.62f) + body * mix;
-        return out * (1.0f / (1.0f + 0.40f * warm)) * trim;
-    }
-
-    // Distortion pedal: aggressive clipping with tighter low-end and bright bite.
-    dcState += 0.0065f * (x - dcState);
-    const auto hp = x - dcState * (0.86f * warm);
-    const auto pre = hp * (1.0f + 18.0f * warm);
-    const auto clipped = juce::jlimit(-0.88f, 0.88f, pre);
-    const auto shaped = std::tanh(clipped * (1.5f + 0.8f * warm));
-
-    toneState += (0.18f + 0.10f * warm) * (shaped - toneState);
-    const auto bite = shaped + (shaped - toneState) * (0.18f + 0.34f * warm);
-    const auto mix = 0.26f + 0.70f * warm;
-    const auto out = x * (1.0f - mix * 0.50f) + bite * mix;
-    return out * (1.0f / (1.0f + 0.66f * warm)) * trim;
-}
-
 float SynthProjectAudioProcessor::readDelaySample(int channel, float readPos) const
 {
     const auto& buffer = isaacDelayBuffer[static_cast<std::size_t>(channel)];
@@ -3220,6 +3260,15 @@ void SynthProjectAudioProcessor::processDelayAlgorithmSample(float inL,
                                                              float& outL,
                                                              float& outR)
 {
+    const auto coeff = juce::jlimit(0.0001f, 1.0f, delayControlSmoothingCoeff);
+    delayAmountSmoothed += coeff * (clamp01(amount) - delayAmountSmoothed);
+    delayTimeControlSmoothed += coeff * (clamp01(timeControl) - delayTimeControlSmoothed);
+    delayFeedbackControlSmoothed += coeff * (clamp01(feedbackControl) - delayFeedbackControlSmoothed);
+
+    const auto amountSmooth = clamp01(delayAmountSmoothed);
+    const auto timeControlSmooth = clamp01(delayTimeControlSmoothed);
+    const auto feedbackControlSmooth = clamp01(delayFeedbackControlSmoothed);
+
     // All delay algorithms share one circular memory line for coherence across
     // mode changes; each algorithm then colors/modulates reads differently.
     const auto algo = juce::jlimit(0, 6, algorithmIndex);
@@ -3228,9 +3277,9 @@ void SynthProjectAudioProcessor::processDelayAlgorithmSample(float inL,
     {
         processIsaacGranularSample(inL,
                                    inR,
-                                   amount,
-                                   timeControl,
-                                   feedbackControl,
+                                   amountSmooth,
+                                   timeControlSmooth,
+                                   feedbackControlSmooth,
                                    syncDivisionIndex,
                                    outL,
                                    outR);
@@ -3244,22 +3293,22 @@ void SynthProjectAudioProcessor::processDelayAlgorithmSample(float inL,
         return;
     }
 
-    const auto a = smoothstep(amount);
+    const auto a = smoothstep(amountSmooth);
     const auto secPerBeat = static_cast<float>(60.0 / currentBpm);
-    float baseDelaySec = lerp(0.04f, 1.25f, timeControl);
+    float baseDelaySec = lerp(0.04f, 1.25f, timeControlSmooth);
     const auto syncBeats = divisionBeatsForIndex(syncDivisionIndex);
     if (syncDivisionIndex > 0 && syncBeats > 0.0f)
     {
         baseDelaySec = secPerBeat * syncBeats;
     }
 
-    auto feedback = juce::jlimit(0.0f, 0.95f, lerp(0.05f, 0.92f, feedbackControl));
+    auto feedback = juce::jlimit(0.0f, 0.95f, lerp(0.05f, 0.92f, feedbackControlSmooth));
     if (algo == 2) // BBD can get unstable quickly; keep a stricter cap
     {
         feedback = juce::jmin(feedback, 0.82f);
     }
 
-    delayModPhase += juce::MathConstants<float>::twoPi * (0.18f + 0.65f * timeControl)
+    delayModPhase += juce::MathConstants<float>::twoPi * (0.18f + 0.65f * timeControlSmooth)
                      / static_cast<float>(juce::jmax(1.0, currentSampleRateHz));
     while (delayModPhase >= juce::MathConstants<float>::twoPi)
     {
@@ -3273,7 +3322,7 @@ void SynthProjectAudioProcessor::processDelayAlgorithmSample(float inL,
     {
         delaySamplesL = juce::jlimit(20.0f,
                                      static_cast<float>(isaacBufferSize - 2),
-                                     lerp(0.02f, 0.55f, timeControl) * static_cast<float>(currentSampleRateHz));
+                                     lerp(0.02f, 0.55f, timeControlSmooth) * static_cast<float>(currentSampleRateHz));
         delaySamplesR = delaySamplesL;
     }
     else if (algo == 4) // Stereo delay
@@ -3789,6 +3838,25 @@ juce::ValueTree SynthProjectAudioProcessor::createParameterStateTree() const
     lfoState.setProperty(kLfoAssignmentId, getLfoAssignmentParameterId(), nullptr);
     state.addChild(lfoState, -1, nullptr);
 
+    juce::ValueTree vibeState(kVibeStateId);
+    vibeState.setProperty(kVibeBypassId, debugGetVibeBypass(), nullptr);
+    vibeState.setProperty(kVibeSeedId, static_cast<int64_t>(debugGetVibeSeed()), nullptr);
+
+    const auto vibe = debugGetVibeTuning();
+    juce::ValueTree vibeTuning(kVibeTuningId);
+    vibeTuning.setProperty("oscillatorDrift", vibe.oscillatorDrift, nullptr);
+    vibeTuning.setProperty("voiceVariation", vibe.voiceVariation, nullptr);
+    vibeTuning.setProperty("filterVariation", vibe.filterVariation, nullptr);
+    vibeTuning.setProperty("saturation", vibe.saturation, nullptr);
+    vibeTuning.setProperty("noise", vibe.noise, nullptr);
+    vibeTuning.setProperty("psuMovement", vibe.psuMovement, nullptr);
+    vibeTuning.setProperty("vcaNonlinearity", vibe.vcaNonlinearity, nullptr);
+    vibeTuning.setProperty("waveformAsymmetry", vibe.waveformAsymmetry, nullptr);
+    vibeTuning.setProperty("temperatureDrift", vibe.temperatureDrift, nullptr);
+    vibeTuning.setProperty("correlatedChaos", vibe.correlatedChaos, nullptr);
+    vibeState.addChild(vibeTuning, -1, nullptr);
+    state.addChild(vibeState, -1, nullptr);
+
     return state;
 }
 
@@ -3931,6 +3999,40 @@ bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& 
         if (lfoState.hasProperty(kLfoAssignmentId))
         {
             setLfoAssignmentByParameterId(lfoState[kLfoAssignmentId].toString(), false);
+        }
+    }
+
+    if (const auto vibeState = state.getChildWithName(kVibeStateId); vibeState.isValid())
+    {
+        if (vibeState.hasProperty(kVibeBypassId))
+        {
+            debugSetVibeBypass(static_cast<bool>(vibeState[kVibeBypassId]));
+        }
+
+        if (vibeState.hasProperty(kVibeSeedId))
+        {
+            debugSetVibeSeed(static_cast<uint32_t>(juce::jmax<int64_t>(1, static_cast<int64_t>(vibeState[kVibeSeedId]))));
+        }
+
+        if (const auto tune = vibeState.getChildWithName(kVibeTuningId); tune.isValid())
+        {
+            const auto applyTune = [this, &tune](const char* id)
+            {
+                if (tune.hasProperty(id))
+                {
+                    debugSetVibeTuningValue(id, static_cast<float>(tune[id]));
+                }
+            };
+            applyTune("oscillatorDrift");
+            applyTune("voiceVariation");
+            applyTune("filterVariation");
+            applyTune("saturation");
+            applyTune("noise");
+            applyTune("psuMovement");
+            applyTune("vcaNonlinearity");
+            applyTune("waveformAsymmetry");
+            applyTune("temperatureDrift");
+            applyTune("correlatedChaos");
         }
     }
 

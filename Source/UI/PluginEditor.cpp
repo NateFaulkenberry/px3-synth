@@ -999,24 +999,6 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     isaacTextureKnob.getProperties().set("psychedelicFx", true);
     reverbKnob.getProperties().set("psychedelicFx", true);
 
-    auto& robModeParam = audioProcessor.getRobModeParam();
-    const auto robChoiceCount = robModeParam.choices.size();
-    for (int i = 0; i < robChoiceCount; ++i)
-    {
-        robTypeBox.addItem(robModeParam.choices[i], i + 1);
-    }
-    robTypeBox.setSelectedItemIndex(robModeParam.getIndex(), juce::dontSendNotification);
-    robTypeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
-    robTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    robTypeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
-    robTypeLabel.setText("TYPE", juce::dontSendNotification);
-    robTypeLabel.setJustificationType(juce::Justification::centred);
-    robTypeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    robTypeLabel.setFont(juce::FontOptions(11.5f));
-    robTypeLabel.setInterceptsMouseClicks(false, false);
-    addAndMakeVisible(robTypeBox);
-    addAndMakeVisible(robTypeLabel);
-
     auto& filterTypeParam = audioProcessor.getFilterTypeParam();
     const auto filterChoiceCount = filterTypeParam.choices.size();
     for (int i = 0; i < filterChoiceCount; ++i)
@@ -1190,7 +1172,6 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     attachSlider(audioProcessor.getDelayFeedbackParam(), delayFeedbackKnob);
     attachSlider(audioProcessor.getReverbAmountParam(), reverbKnob);
 
-    attachComboBox(audioProcessor.getRobModeParam(), robTypeBox);
     attachComboBox(audioProcessor.getFilterTypeParam(), filterTypeBox);
     attachComboBox(audioProcessor.getOscillatorModeParam(), oscModeBox);
     attachComboBox(audioProcessor.getOscVowelParam(), oscVowelBox);
@@ -1557,7 +1538,7 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
         g.setColour(robEnabled ? juce::Colour::fromRGB(240, 245, 255)
                        : juce::Colour::fromRGB(170, 170, 170));
         g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
-        g.drawText("HARMONIC DRIVE", robSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
+        g.drawText("VIBE", robSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
 
         g.setColour(delayEnabled ? juce::Colour::fromRGB(250, 244, 224)
                      : juce::Colour::fromRGB(170, 170, 170));
@@ -2320,13 +2301,9 @@ void SynthProjectAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
         robBypassButton.setBounds(robSectionArea.getX() + 8, robSectionArea.getY() + 5, 22, 18);
         robInner.removeFromTop(24);
         auto bottomArea = robInner.removeFromBottom(46);
-        auto labelArea = bottomArea.removeFromTop(22);
-        robTypeLabel.setBounds(bottomArea.removeFromLeft(56));
-        robTypeBox.setBounds(bottomArea.reduced(2, 1));
-
         const auto knobSize = juce::jmin(82, juce::jmin(robInner.getWidth(), robInner.getHeight()));
         robWarmthKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(robInner.getCentre()));
-        robWarmthLabel.setBounds(labelArea);
+        robWarmthLabel.setBounds(bottomArea.removeFromTop(22));
     }
 
     {
@@ -3313,8 +3290,6 @@ void SynthProjectAudioProcessorEditor::refreshFxBypassUI()
 
     robWarmthKnob.setEnabled(robEnabled);
     robWarmthLabel.setEnabled(robEnabled);
-    robTypeBox.setEnabled(robEnabled);
-    robTypeLabel.setEnabled(robEnabled);
     robWarmthKnob.getProperties().set("psychedelicBypassGray", !robEnabled);
 
     isaacTextureKnob.setEnabled(delayEnabled);

@@ -168,15 +168,72 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     const auto sampleRate = juce::jmax(1.0, getSampleRate());
     const auto vibratoPhaseInc = juce::MathConstants<double>::twoPi * static_cast<double>(vibratoRateHz) / sampleRate;
 
+    const auto vibe = vibeBypass ? 0.0f : std::pow(juce::jlimit(0.0f, 1.0f, vibeGlobalAmount), 1.35f);
+    const auto vibeActive = vibe > 0.0001f;
+
+    auto targetCutoffHz = subtractiveSettings.filterCutoffHz;
+    auto targetResonanceQ = subtractiveSettings.filterResonanceQ;
+
+    if (vibeActive)
+    {
+        const auto temperatureCutoff = vibeShared.temperature * vibeTuning.temperatureDrift * 0.18f;
+        const auto psuCutoff = vibeShared.psu * vibeTuning.psuMovement * 0.10f;
+        const auto voiceCutoff = vibeVariation.cutoffOffset * vibeTuning.voiceVariation;
+        const auto chaosCutoff = vibeShared.chaos * vibeTuning.correlatedChaos * 0.12f;
+        const auto cutoffMul = 1.0f + (temperatureCutoff + psuCutoff + voiceCutoff + chaosCutoff) * vibe;
+
+        const auto resoDelta = (vibeVariation.resonanceOffset * vibeTuning.voiceVariation
+                                + vibeShared.chaos * vibeTuning.filterVariation * 0.06f) * vibe;
+
+        targetCutoffHz *= cutoffMul;
+        targetResonanceQ *= (1.0f + resoDelta);
+    }
+
+    targetFilterCutoffHz = juce::jlimit(20.0f, 20000.0f, targetCutoffHz);
+    targetFilterResonanceQ = juce::jlimit(0.20f, 10.0f, targetResonanceQ);
+
+    if (activeFilterTypeIndex != subtractiveSettings.filterTypeIndex)
+    {
+        activeFilterTypeIndex = subtractiveSettings.filterTypeIndex;
+        currentFilterCutoffHz = targetFilterCutoffHz;
+        currentFilterResonanceQ = targetFilterResonanceQ;
+        setFilterResponse(currentFilterCutoffHz,
+                          currentFilterResonanceQ,
+                          activeFilterTypeIndex);
+        filterUpdateCounter = 0;
+    }
+
+    constexpr float filterTauSec = 0.005f;
+    const auto filterCoeff = 1.0f - std::exp(-1.0f / static_cast<float>(sampleRate * filterTauSec));
+
     for (int sample = 0; sample < numSamples; ++sample)
     {
-        // Light smoothing avoids pitch stepping while keeping wheel response immediate.
+        currentFilterCutoffHz += (targetFilterCutoffHz - currentFilterCutoffHz) * filterCoeff;
+        currentFilterResonanceQ += (targetFilterResonanceQ - currentFilterResonanceQ) * filterCoeff;
+        if ((filterUpdateCounter++ & 0x07) == 0)
+        {
+            setFilterResponse(currentFilterCutoffHz,
+                              currentFilterResonanceQ,
+                              activeFilterTypeIndex);
+        }
+
         currentPitchBendNorm += (targetPitchBendNorm - currentPitchBendNorm) * 0.06f;
         currentModWheelNorm += (targetModWheelNorm - currentModWheelNorm) * 0.045f;
 
-        const auto bendSemitones = static_cast<double>(currentPitchBendNorm * pitchBendRangeSemitones);
+        auto bendSemitones = static_cast<double>(currentPitchBendNorm * pitchBendRangeSemitones);
         const auto lfo = std::sin(static_cast<double>(sharedVibratoPhaseRadians) + vibratoPhaseInc * static_cast<double>(sample));
         const auto vibratoSemitones = static_cast<double>(currentModWheelNorm * vibratoMaxDepthSemitones) * lfo;
+
+        if (vibeActive)
+        {
+            const auto driftCents = (vibeShared.oscillatorDrift * vibeTuning.oscillatorDrift * 14.0f
+                                     + vibeShared.psu * vibeTuning.psuMovement * 5.0f
+                                     + vibeShared.temperature * vibeTuning.temperatureDrift * 7.0f
+                                     + vibeShared.chaos * vibeTuning.correlatedChaos * 4.0f
+                                     + vibeVariation.pitchCents * vibeTuning.voiceVariation) * vibe;
+            bendSemitones += static_cast<double>(juce::jlimit(-60.0f, 60.0f, driftCents) * 0.01f);
+        }
+
         const auto pitchRatio = std::pow(2.0, (bendSemitones + vibratoSemitones) / 12.0);
 
         currentFrequencyHz = baseFrequencyHz * pitchRatio;
@@ -187,9 +244,6 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
         if (imageWavetable != nullptr && imageWavetable->frames > 1 && imageWavetable->samplesPerFrame > 8)
         {
-            // Two-dimensional interpolation:
-            // phase interpolation inside a frame + frame interpolation across
-            // position. Mip selection reduces aliasing as oscillator frequency rises.
             const auto phaseNorm = static_cast<float>(currentAngle / juce::MathConstants<double>::twoPi);
             const auto wrappedPhase = phaseNorm - std::floor(phaseNorm);
             const auto samplePos = wrappedPhase * static_cast<float>(imageWavetable->samplesPerFrame);
@@ -222,8 +276,6 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         float granularSample = 0.0f;
         if (externalSourceMode == ExternalSourceMode::audio && audioGranularSettings.enabled)
         {
-            // Granular path pitch-tracks to the played note relative to a
-            // configurable root note, so audio source behaves instrument-like.
             const auto rootHz = juce::MidiMessage::getMidiNoteInHertz(audioGranularSettings.rootMidiNote);
             const auto granularPitchRatio = static_cast<float>(currentFrequencyHz / juce::jmax(1.0, static_cast<double>(rootHz)));
             granularSample = renderAudioGranularSample(granularPitchRatio,
@@ -239,23 +291,54 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                                                    imageSample,
                                                    granularSample);
 
-        // External source is blended post-oscillator as a timbral layer.
         sourceSample += externalSample * subtractiveSettings.imageMix * 0.42f;
         sourceSample = softClip(sourceSample * 0.92f);
 
+        if (vibeActive)
+        {
+            const auto asym = (vibeTuning.waveformAsymmetry * (0.35f + 0.65f * vibeVariation.asymmetryBias)) * vibe;
+            const auto sat = (vibeTuning.saturation * (0.45f + 0.55f * vibeVariation.saturationBias)) * vibe;
+            const auto chaos = vibeShared.chaos * vibeTuning.correlatedChaos * 0.08f * vibe;
+
+            const auto asymShaped = sourceSample
+                                    + asym * sourceSample * sourceSample * (sourceSample >= 0.0f ? 0.9f : -0.7f)
+                                    + chaos;
+            sourceSample = std::tanh(asymShaped * (1.0f + sat * 1.9f)) * (1.0f / (1.0f + sat * 0.55f));
+
+            const auto noiseAmount = vibeTuning.noise * vibe * (0.55f + 0.45f * std::abs(vibeShared.psu));
+            sourceSample += nextDeterministicNoise() * (0.0018f + 0.0062f * noiseAmount);
+        }
+
         const auto env = adsr.getNextSample();
-        const auto voicedSample = sourceSample * level * env * subtractiveSettings.masterGain;
+        auto voiceGain = level * env * subtractiveSettings.masterGain;
+
+        if (vibeActive)
+        {
+            const auto gainVariation = (vibeVariation.gainOffset * vibeTuning.voiceVariation
+                                        + vibeShared.psu * vibeTuning.psuMovement * 0.05f
+                                        + vibeShared.temperature * vibeTuning.temperatureDrift * 0.04f) * vibe;
+            voiceGain *= (1.0f + gainVariation);
+            voiceGain = juce::jlimit(0.0f, 2.0f, voiceGain);
+        }
+
+        auto voicedSample = sourceSample * voiceGain;
+        if (vibeActive)
+        {
+            const auto vcaAmount = (vibeTuning.vcaNonlinearity * vibe
+                                    + vibeShared.chaos * vibeTuning.correlatedChaos * 0.06f * vibe);
+            voicedSample = std::tanh(voicedSample * (1.0f + vcaAmount * 1.7f))
+                          * (1.0f / (1.0f + vcaAmount * 0.46f));
+        }
+
         auto currentSample = lowPassFilter.processSample(voicedSample);
 
         const auto mode = static_cast<FilterMode>(juce::jlimit(0, 6, subtractiveSettings.filterTypeIndex));
         if (mode == FilterMode::lp24 || mode == FilterMode::hp24)
         {
-            // Cascading the second stage approximates steeper 24 dB slopes.
             currentSample = lowPassFilterStage2.processSample(currentSample);
         }
         else if (mode == FilterMode::notch)
         {
-            // Notch response via subtracting a resonant band-pass component from the dry sample.
             currentSample = voicedSample - currentSample * 0.92f;
         }
 
@@ -296,7 +379,17 @@ void SynthVoice::setEnvelope(const EnvelopeSettings& settings)
 void SynthVoice::setSubtractiveSettings(const SubtractiveSettings& settings)
 {
     subtractiveSettings = settings;
-    updateFilter();
+
+    targetFilterCutoffHz = juce::jlimit(20.0f, 20000.0f, subtractiveSettings.filterCutoffHz);
+    targetFilterResonanceQ = juce::jlimit(0.20f, 10.0f, subtractiveSettings.filterResonanceQ);
+
+    if (!adsr.isActive())
+    {
+        currentFilterCutoffHz = targetFilterCutoffHz;
+        currentFilterResonanceQ = targetFilterResonanceQ;
+        activeFilterTypeIndex = subtractiveSettings.filterTypeIndex;
+        updateFilter();
+    }
 }
 
 void SynthVoice::setOscillatorSettings(const OscillatorSettings& settings)
@@ -362,6 +455,24 @@ void SynthVoice::setExternalSourceMode(ExternalSourceMode mode)
         grain = AudioGrain {};
     }
     audioSpawnCounter = 0;
+}
+
+void SynthVoice::setVoiceIndex(int index)
+{
+    voiceIndex = juce::jmax(0, index);
+}
+
+void SynthVoice::setVibeState(float globalAmount,
+                              bool bypass,
+                              const VibeSharedState& sharedState,
+                              const VibeVoiceVariation& variation,
+                              const VibeTuning& tuningState)
+{
+    vibeGlobalAmount = juce::jlimit(0.0f, 1.0f, globalAmount);
+    vibeBypass = bypass;
+    vibeShared = sharedState;
+    vibeVariation = variation;
+    vibeTuning = tuningState;
 }
 
 float SynthVoice::nextDeterministicNoise()
@@ -1106,6 +1217,16 @@ void SynthVoice::updateAngleDelta()
 
 void SynthVoice::updateFilter()
 {
+    currentFilterCutoffHz = juce::jlimit(20.0f, 20000.0f, targetFilterCutoffHz);
+    currentFilterResonanceQ = juce::jlimit(0.20f, 10.0f, targetFilterResonanceQ);
+    activeFilterTypeIndex = subtractiveSettings.filterTypeIndex;
+    setFilterResponse(currentFilterCutoffHz,
+                      currentFilterResonanceQ,
+                      activeFilterTypeIndex);
+}
+
+void SynthVoice::setFilterResponse(float cutoffHz, float resonanceQ, int filterTypeIndex)
+{
     const auto sampleRate = getSampleRate();
 
     if (sampleRate <= 0.0)
@@ -1113,9 +1234,9 @@ void SynthVoice::updateFilter()
         return;
     }
 
-    const auto mode = static_cast<FilterMode>(juce::jlimit(0, 6, subtractiveSettings.filterTypeIndex));
-    const auto cutoff = juce::jlimit(20.0f, 20000.0f, subtractiveSettings.filterCutoffHz);
-    const auto q = juce::jlimit(0.20f, 10.0f, subtractiveSettings.filterResonanceQ);
+    const auto mode = static_cast<FilterMode>(juce::jlimit(0, 6, filterTypeIndex));
+    const auto cutoff = juce::jlimit(20.0f, 20000.0f, cutoffHz);
+    const auto q = juce::jlimit(0.20f, 10.0f, resonanceQ);
 
     switch (mode)
     {

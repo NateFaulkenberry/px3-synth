@@ -10,7 +10,7 @@ High-level runtime flow:
 
 1. MIDI input (host + virtual keyboard)
 2. Synth voice rendering (oscillator mode + macros + envelope + filter)
-3. FX chain (Harmonic Drive, Delay, Reverb) in processor-owned module order
+3. FX chain (VIBE, Delay, Reverb) in processor-owned module order
 4. Output buffer
 
 State flow:

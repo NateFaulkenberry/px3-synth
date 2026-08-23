@@ -63,6 +63,7 @@ target_sources(SynthProject
         Source/UI/SourceEnginePanel.cpp
         Source/DSP/PluginProcessor.cpp
         Source/DSP/SynthSound.cpp
+        Source/DSP/VibeEngine.cpp
         Source/DSP/SynthVoice.cpp
         Source/Preset/PresetManager.cpp
 )
