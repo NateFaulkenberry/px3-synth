@@ -193,14 +193,29 @@ Behavior notes:
 
 ## AMP ENV Section
 
-Controls:
+UI:
 
-- Attack (0.001s to 3.0s)
-- Decay (0.005s to 4.0s)
-- Sustain (0.0 to 1.0)
-- Release (0.010s to 5.0s)
+- AMP ENV now uses a single interactive ADSR graph in place of four separate knobs.
+- Drag handles to edit stages:
+  - Attack handle sets attack time.
+  - Decay/Sustain handle sets decay time and sustain level together.
+  - Release handle sets release time.
+- Double-click a handle to reset that stage to its default parameter value.
 
-This is per voice ADSR and directly shapes oscillator loudness before FX.
+Parameter mapping (unchanged source of truth):
+
+- Attack: 0.001s to 3.0s
+- Decay: 0.005s to 4.0s
+- Sustain: 0.0 to 1.0
+- Release: 0.010s to 5.0s
+
+Architecture guarantee:
+
+- The graph is a view/controller for existing plugin parameters only.
+- DSP, host automation, presets, and state serialization continue using the same ADSR parameters.
+- No parallel ADSR state was introduced in the editor.
+
+This envelope remains per voice and shapes oscillator loudness before FX.
 
 ## LFO Section
 
@@ -397,6 +412,7 @@ Keyboard:
 Saved in plugin state:
 
 - All parameter values.
+- Includes ADSR (attack/decay/sustain/release) values used by the AMP ENV graph.
 - LFO assignment target selection.
 - FX processing order.
 - Last loaded image path.
@@ -407,6 +423,7 @@ On restore, if those files still exist, the plugin asynchronously reloads them.
 ## Automation Vs Modulation
 
 - Automation controls base parameter values (what host lanes and UI show).
+- The AMP ENV graph writes those same base ADSR parameters; automation and graph edits stay in sync.
 - Modulation is an internal DSP-time offset from the ONE LFO.
 - Effective DSP value is computed from base + modulation and clamped to parameter range.
 - The plugin does not push effective values back to host automation lanes.

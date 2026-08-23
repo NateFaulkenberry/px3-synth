@@ -28,6 +28,8 @@ public:
     void mouseUp(const juce::MouseEvent& event) override;
 
 private:
+    class EnvelopeGraphComponent;
+
     class KnobLookAndFeel final : public juce::LookAndFeel_V4
     {
     public:
@@ -86,6 +88,7 @@ private:
     void refreshFxBypassUI();
     void refreshLfoAssignmentUI();
     void refreshLfoFrequencyLabel();
+    void refreshEnvelopeGraphUI();
     void updateFxSectionTargets(const juce::Rectangle<int>& topArea, int topGap);
     void layoutFxSectionsFromCurrentAreas();
     void animateFxSections();
@@ -161,6 +164,7 @@ private:
     void refreshDebugParameterControls();
     void refreshDebugEventLog();
     void refreshDebugLfoState();
+    void refreshDebugEnvelopeState();
     void debugCaptureSnapshot(const juce::String& reason);
     void debugCompareWithSnapshot();
     void debugForceSerializationTest();
@@ -252,6 +256,7 @@ private:
     juce::Label lfoFrequencyValueLabel;
     KnobLabel lfoAssignLabel;
     KnobLabel midiStatusLabel;
+    std::unique_ptr<EnvelopeGraphComponent> envelopeGraph;
 
     juce::Slider robWarmthKnob;
     KnobLabel robWarmthLabel;
@@ -348,6 +353,7 @@ private:
     juce::Label debugSnapshotLabel;
     juce::Label debugLfoLabel;
     juce::Label debugLfoAssignLabel;
+    juce::Label debugEnvelopeLabel;
     juce::TextEditor debugInstanceText;
     juce::TextEditor debugModuleOrderText;
     juce::TextEditor debugValueTreeText;
@@ -356,6 +362,7 @@ private:
     juce::TextEditor debugEventLogText;
     juce::TextEditor debugSnapshotText;
     juce::TextEditor debugLfoText;
+    juce::TextEditor debugEnvelopeText;
     juce::ComboBox debugLfoAssignBox;
     juce::Viewport debugParamViewport;
     juce::Component debugParamContent;

@@ -1618,9 +1618,27 @@ bool SynthProjectAudioProcessor::debugRoundTripCurrentState(juce::String& report
     const auto frequencyMatches = std::abs(serializedLfoFrequency - lfoFrequencyParam->get()) <= 0.0005f;
     const auto assignmentMatches = serializedLfoAssignment.equalsIgnoreCase(getLfoAssignmentParameterId());
 
+    auto serializedAttack = attackParam->get();
+    auto serializedDecay = decayParam->get();
+    auto serializedSustain = sustainParam->get();
+    auto serializedRelease = releaseParam->get();
+    if (state.hasProperty("ampAttack")) serializedAttack = static_cast<float>(state["ampAttack"]);
+    if (state.hasProperty("ampDecay")) serializedDecay = static_cast<float>(state["ampDecay"]);
+    if (state.hasProperty("ampSustain")) serializedSustain = static_cast<float>(state["ampSustain"]);
+    if (state.hasProperty("ampRelease")) serializedRelease = static_cast<float>(state["ampRelease"]);
+
+    const auto attackMatches = std::abs(serializedAttack - attackParam->get()) <= 0.0005f;
+    const auto decayMatches = std::abs(serializedDecay - decayParam->get()) <= 0.0005f;
+    const auto sustainMatches = std::abs(serializedSustain - sustainParam->get()) <= 0.0005f;
+    const auto releaseMatches = std::abs(serializedRelease - releaseParam->get()) <= 0.0005f;
+
     const auto pass = (debugDescribeOrder(currentOrder) == debugDescribeOrder(decodedOrder))
                    && frequencyMatches
-                   && assignmentMatches;
+                   && assignmentMatches
+                   && attackMatches
+                   && decayMatches
+                   && sustainMatches
+                   && releaseMatches;
     report = "TEST_STATE_ROUND_TRIP\n"
              "before=" + debugDescribeOrder(currentOrder) + "\n"
              "serialized=" + debugDescribeOrder(decodedOrder) + "\n"
@@ -1628,6 +1646,14 @@ bool SynthProjectAudioProcessor::debugRoundTripCurrentState(juce::String& report
              "lfoFrequencySerialized=" + juce::String(serializedLfoFrequency, 4) + "\n"
              "lfoAssignmentCurrent=" + getLfoAssignmentParameterId() + "\n"
              "lfoAssignmentSerialized=" + serializedLfoAssignment + "\n"
+             "attackCurrent=" + juce::String(attackParam->get(), 6) + "\n"
+             "attackSerialized=" + juce::String(serializedAttack, 6) + "\n"
+             "decayCurrent=" + juce::String(decayParam->get(), 6) + "\n"
+             "decaySerialized=" + juce::String(serializedDecay, 6) + "\n"
+             "sustainCurrent=" + juce::String(sustainParam->get(), 6) + "\n"
+             "sustainSerialized=" + juce::String(serializedSustain, 6) + "\n"
+             "releaseCurrent=" + juce::String(releaseParam->get(), 6) + "\n"
+             "releaseSerialized=" + juce::String(serializedRelease, 6) + "\n"
              "size=" + juce::String(static_cast<int>(block.getSize())) + "\n"
              "result=" + juce::String(pass ? "PASS" : "FAIL");
 
