@@ -45,12 +45,24 @@ require_cmd() {
 }
 
 require_cmd find
-require_cmd ls
 
-mapfile -t AU_CANDIDATES < <(find "${REPO_ROOT}/build/release" -type d -name "*.component" 2>/dev/null)
-[[ ${#AU_CANDIDATES[@]} -gt 0 ]] || die "No Release AU bundle found under build/release. Run ./scripts/build-release.sh first."
+find_newest_bundle() {
+  local search_root="$1"
+  local extension="$2"
+  local newest=""
+  local candidate=""
 
-AU_BUNDLE="$(ls -td "${AU_CANDIDATES[@]}" | head -n1)"
+  while IFS= read -r -d '' candidate; do
+    if [[ -z "${newest}" || "${candidate}" -nt "${newest}" ]]; then
+      newest="${candidate}"
+    fi
+  done < <(find "${search_root}" -type d -name "*.${extension}" -print0 2>/dev/null)
+
+  printf '%s\n' "${newest}"
+}
+
+AU_BUNDLE="$(find_newest_bundle "${REPO_ROOT}/build/release" "component")"
+[[ -n "${AU_BUNDLE}" ]] || die "No Release AU bundle found under build/release. Run ./scripts/build-release.sh first."
 AU_NAME="$(basename "${AU_BUNDLE}")"
 
 LOCAL_AU_DIR="${HOME}/Library/Audio/Plug-Ins/Components"
@@ -65,9 +77,8 @@ echo "  Source:      ${AU_BUNDLE}"
 echo "  Destination: ${LOCAL_AU_PATH}"
 
 if [[ "${INSTALL_VST3}" == true ]]; then
-  mapfile -t VST3_CANDIDATES < <(find "${REPO_ROOT}/build/release" -type d -name "*.vst3" 2>/dev/null)
-  if [[ ${#VST3_CANDIDATES[@]} -gt 0 ]]; then
-    VST3_BUNDLE="$(ls -td "${VST3_CANDIDATES[@]}" | head -n1)"
+  VST3_BUNDLE="$(find_newest_bundle "${REPO_ROOT}/build/release" "vst3")"
+  if [[ -n "${VST3_BUNDLE}" ]]; then
     VST3_NAME="$(basename "${VST3_BUNDLE}")"
 
     LOCAL_VST3_DIR="${HOME}/Library/Audio/Plug-Ins/VST3"

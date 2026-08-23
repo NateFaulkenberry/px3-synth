@@ -43,42 +43,10 @@ AudioEnginePanel::AudioEnginePanel(SynthProjectAudioProcessor& processorIn)
     auto& modeParam = processor.getAudioAnimModeParam();
     auto& syncParam = processor.getAudioAnimSyncParam();
 
-    positionSlider.setValue(positionParam.get(), juce::dontSendNotification);
-    grainSlider.setValue(grainParam.get(), juce::dontSendNotification);
-    textureSlider.setValue(textureParam.get(), juce::dontSendNotification);
-    animateSlider.setValue(animateParam.get(), juce::dontSendNotification);
-    rateSlider.setValue(rateParam.get(), juce::dontSendNotification);
-
-    positionSlider.onValueChange = [&positionParam, this]()
-    {
-        positionParam.setValueNotifyingHost(positionParam.convertTo0to1(static_cast<float>(positionSlider.getValue())));
-    };
-    grainSlider.onValueChange = [&grainParam, this]()
-    {
-        grainParam.setValueNotifyingHost(grainParam.convertTo0to1(static_cast<float>(grainSlider.getValue())));
-    };
-    textureSlider.onValueChange = [&textureParam, this]()
-    {
-        textureParam.setValueNotifyingHost(textureParam.convertTo0to1(static_cast<float>(textureSlider.getValue())));
-    };
-    animateSlider.onValueChange = [&animateParam, this]()
-    {
-        animateParam.setValueNotifyingHost(animateParam.convertTo0to1(static_cast<float>(animateSlider.getValue())));
-    };
-    rateSlider.onValueChange = [&rateParam, this]()
-    {
-        rateParam.setValueNotifyingHost(rateParam.convertTo0to1(static_cast<float>(rateSlider.getValue())));
-    };
-
     modeBox.addItem("Forward", 1);
     modeBox.addItem("Reverse", 2);
     modeBox.addItem("PingPong", 3);
     modeBox.setSelectedItemIndex(modeParam.getIndex(), juce::dontSendNotification);
-    modeBox.onChange = [&modeParam, this]()
-    {
-        const auto idx = juce::jmax(0, modeBox.getSelectedItemIndex());
-        modeParam.setValueNotifyingHost(modeParam.convertTo0to1(static_cast<float>(idx)));
-    };
 
     const auto syncChoices = syncParam.choices.size();
     for (int i = 0; i < syncChoices; ++i)
@@ -86,11 +54,6 @@ AudioEnginePanel::AudioEnginePanel(SynthProjectAudioProcessor& processorIn)
         syncBox.addItem(syncParam.choices[i], i + 1);
     }
     syncBox.setSelectedItemIndex(syncParam.getIndex(), juce::dontSendNotification);
-    syncBox.onChange = [&syncParam, this]()
-    {
-        const auto idx = juce::jmax(0, syncBox.getSelectedItemIndex());
-        syncParam.setValueNotifyingHost(syncParam.convertTo0to1(static_cast<float>(idx)));
-    };
 
     modeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     modeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
@@ -129,9 +92,27 @@ AudioEnginePanel::AudioEnginePanel(SynthProjectAudioProcessor& processorIn)
     addAndMakeVisible(offButton);
     addAndMakeVisible(resetButton);
 
+    attachSlider(positionParam, positionSlider);
+    attachSlider(grainParam, grainSlider);
+    attachSlider(textureParam, textureSlider);
+    attachSlider(animateParam, animateSlider);
+    attachSlider(rateParam, rateSlider);
+    attachComboBox(modeParam, modeBox);
+    attachComboBox(syncParam, syncBox);
+
     processor.copyCurrentAudioWaveformPreview(waveform);
 
     startTimerHz(30);
+}
+
+void AudioEnginePanel::attachSlider(juce::RangedAudioParameter& parameter, juce::Slider& slider)
+{
+    sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(parameter, slider, nullptr));
+}
+
+void AudioEnginePanel::attachComboBox(juce::RangedAudioParameter& parameter, juce::ComboBox& comboBox)
+{
+    comboBoxAttachments.push_back(std::make_unique<juce::ComboBoxParameterAttachment>(parameter, comboBox, nullptr));
 }
 
 bool AudioEnginePanel::isInterestedInFileDrag(const juce::StringArray& files)

@@ -37,32 +37,10 @@ ImageEnginePanel::ImageEnginePanel(SynthProjectAudioProcessor& processorIn)
     auto& modeParam = processor.getImageAnimModeParam();
     auto& targetParam = processor.getImageTargetParam();
 
-    positionSlider.setValue(positionParam.get(), juce::dontSendNotification);
-    animateSlider.setValue(animateParam.get(), juce::dontSendNotification);
-    rateSlider.setValue(rateParam.get(), juce::dontSendNotification);
-
-    positionSlider.onValueChange = [&positionParam, this]()
-    {
-        positionParam.setValueNotifyingHost(positionParam.convertTo0to1(static_cast<float>(positionSlider.getValue())));
-    };
-    animateSlider.onValueChange = [&animateParam, this]()
-    {
-        animateParam.setValueNotifyingHost(animateParam.convertTo0to1(static_cast<float>(animateSlider.getValue())));
-    };
-    rateSlider.onValueChange = [&rateParam, this]()
-    {
-        rateParam.setValueNotifyingHost(rateParam.convertTo0to1(static_cast<float>(rateSlider.getValue())));
-    };
-
     modeBox.addItem("Forward", 1);
     modeBox.addItem("Reverse", 2);
     modeBox.addItem("PingPong", 3);
     modeBox.setSelectedItemIndex(modeParam.getIndex(), juce::dontSendNotification);
-    modeBox.onChange = [&modeParam, this]()
-    {
-        const auto idx = juce::jmax(0, modeBox.getSelectedItemIndex());
-        modeParam.setValueNotifyingHost(modeParam.convertTo0to1(static_cast<float>(idx)));
-    };
 
     const auto targetChoiceCount = targetParam.choices.size();
     for (int i = 0; i < targetChoiceCount; ++i)
@@ -70,11 +48,6 @@ ImageEnginePanel::ImageEnginePanel(SynthProjectAudioProcessor& processorIn)
         targetBox.addItem(targetParam.choices[i], i + 1);
     }
     targetBox.setSelectedItemIndex(targetParam.getIndex(), juce::dontSendNotification);
-    targetBox.onChange = [&targetParam, this]()
-    {
-        const auto idx = juce::jmax(0, targetBox.getSelectedItemIndex());
-        targetParam.setValueNotifyingHost(targetParam.convertTo0to1(static_cast<float>(idx)));
-    };
 
     modeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     modeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
@@ -107,10 +80,26 @@ ImageEnginePanel::ImageEnginePanel(SynthProjectAudioProcessor& processorIn)
     addAndMakeVisible(offButton);
     addAndMakeVisible(resetButton);
 
+    attachSlider(positionParam, positionSlider);
+    attachSlider(animateParam, animateSlider);
+    attachSlider(rateParam, rateSlider);
+    attachComboBox(modeParam, modeBox);
+    attachComboBox(targetParam, targetBox);
+
     waveform = processor.copyCurrentImageWaveformPreview(320);
     processor.copyImagePreview(previewImage);
 
     startTimerHz(30);
+}
+
+void ImageEnginePanel::attachSlider(juce::RangedAudioParameter& parameter, juce::Slider& slider)
+{
+    sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(parameter, slider, nullptr));
+}
+
+void ImageEnginePanel::attachComboBox(juce::RangedAudioParameter& parameter, juce::ComboBox& comboBox)
+{
+    comboBoxAttachments.push_back(std::make_unique<juce::ComboBoxParameterAttachment>(parameter, comboBox, nullptr));
 }
 
 bool ImageEnginePanel::isInterestedInFileDrag(const juce::StringArray& files)

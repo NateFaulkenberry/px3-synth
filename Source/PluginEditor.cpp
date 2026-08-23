@@ -230,12 +230,7 @@ void SynthProjectAudioProcessorEditor::configureKnob(KnobBinding& binding,
     knob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     const auto& range = parameter.getNormalisableRange();
     knob.setRange(range.start, range.end);
-    knob.setValue(parameter.get());
     knob.setLookAndFeel(&knobLookAndFeel);
-    knob.onValueChange = [&parameter, &knob]()
-    {
-        parameter.setValueNotifyingHost(parameter.convertTo0to1(static_cast<float>(knob.getValue())));
-    };
 
     label.setText(labelText, juce::dontSendNotification);
     label.setJustificationType(juce::Justification::centred);
@@ -257,11 +252,6 @@ void SynthProjectAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
     slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     const auto& range = parameter.getNormalisableRange();
     slider.setRange(range.start, range.end);
-    slider.setValue(parameter.get());
-    slider.onValueChange = [&slider, &parameter]()
-    {
-        parameter.setValueNotifyingHost(parameter.convertTo0to1(static_cast<float>(slider.getValue())));
-    };
 
     slider.setLookAndFeel(&knobLookAndFeel);
 
@@ -273,6 +263,21 @@ void SynthProjectAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
 
     addAndMakeVisible(slider);
     addAndMakeVisible(label);
+}
+
+void SynthProjectAudioProcessorEditor::attachSlider(juce::RangedAudioParameter& parameter, juce::Slider& slider)
+{
+    sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(parameter, slider, nullptr));
+}
+
+void SynthProjectAudioProcessorEditor::attachComboBox(juce::RangedAudioParameter& parameter, juce::ComboBox& comboBox)
+{
+    comboBoxAttachments.push_back(std::make_unique<juce::ComboBoxParameterAttachment>(parameter, comboBox, nullptr));
+}
+
+void SynthProjectAudioProcessorEditor::attachButton(juce::RangedAudioParameter& parameter, juce::Button& button)
+{
+    buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(parameter, button, nullptr));
 }
 
 SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectAudioProcessor& p)
@@ -388,11 +393,6 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
         robTypeBox.addItem(robModeParam.choices[i], i + 1);
     }
     robTypeBox.setSelectedItemIndex(robModeParam.getIndex(), juce::dontSendNotification);
-    robTypeBox.onChange = [this, &robModeParam]()
-    {
-        const auto idx = juce::jmax(0, robTypeBox.getSelectedItemIndex());
-        robModeParam.setValueNotifyingHost(robModeParam.convertTo0to1(static_cast<float>(idx)));
-    };
     robTypeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     robTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     robTypeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
@@ -411,10 +411,8 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
         filterTypeBox.addItem(filterTypeParam.choices[i], i + 1);
     }
     filterTypeBox.setSelectedItemIndex(filterTypeParam.getIndex(), juce::dontSendNotification);
-    filterTypeBox.onChange = [this, &filterTypeParam]()
+    filterTypeBox.onChange = [this]()
     {
-        const auto idx = juce::jmax(0, filterTypeBox.getSelectedItemIndex());
-        filterTypeParam.setValueNotifyingHost(filterTypeParam.convertTo0to1(static_cast<float>(idx)));
         repaint();
     };
     filterTypeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
@@ -429,10 +427,8 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
         oscModeBox.addItem(oscModeParam.choices[i], i + 1);
     }
     oscModeBox.setSelectedItemIndex(oscModeParam.getIndex(), juce::dontSendNotification);
-    oscModeBox.onChange = [this, &oscModeParam]()
+    oscModeBox.onChange = [this]()
     {
-        const auto idx = juce::jmax(0, oscModeBox.getSelectedItemIndex());
-        oscModeParam.setValueNotifyingHost(oscModeParam.convertTo0to1(static_cast<float>(idx)));
         refreshOscillatorModeUI();
     };
     oscModeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
@@ -453,11 +449,6 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
         oscVowelBox.addItem(oscVowelParam.choices[i], i + 1);
     }
     oscVowelBox.setSelectedItemIndex(oscVowelParam.getIndex(), juce::dontSendNotification);
-    oscVowelBox.onChange = [this, &oscVowelParam]()
-    {
-        const auto idx = juce::jmax(0, oscVowelBox.getSelectedItemIndex());
-        oscVowelParam.setValueNotifyingHost(oscVowelParam.convertTo0to1(static_cast<float>(idx)));
-    };
     oscVowelBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     oscVowelBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     oscVowelBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
@@ -469,12 +460,15 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     addAndMakeVisible(oscVowelBox);
     addAndMakeVisible(oscVowelLabel);
 
-    auto& oscMacroAParam = audioProcessor.getOscMacroAParam();
     auto& imagePositionParam = audioProcessor.getImagePositionParam();
-    oscSineKnob.onValueChange = [this, &oscMacroAParam, &imagePositionParam]()
+    oscSineKnob.onValueChange = [this, &imagePositionParam]()
     {
+        if (!oscSineKnob.isMouseButtonDown())
+        {
+            return;
+        }
+
         const auto macroA = static_cast<float>(oscSineKnob.getValue());
-        oscMacroAParam.setValueNotifyingHost(oscMacroAParam.convertTo0to1(macroA));
 
         // In WAVETABLE mode, the POSITION knob should visibly drive Image Engine position.
         if (audioProcessor.getOscillatorModeParam().getIndex() == 8)
@@ -490,11 +484,6 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
         delayAlgoBox.addItem(delayAlgoParam.choices[i], i + 1);
     }
     delayAlgoBox.setSelectedItemIndex(delayAlgoParam.getIndex(), juce::dontSendNotification);
-    delayAlgoBox.onChange = [this, &delayAlgoParam]()
-    {
-        const auto idx = juce::jmax(0, delayAlgoBox.getSelectedItemIndex());
-        delayAlgoParam.setValueNotifyingHost(delayAlgoParam.convertTo0to1(static_cast<float>(idx)));
-    };
     delayAlgoBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     delayAlgoBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     delayAlgoBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
@@ -513,11 +502,6 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
         granularSyncBox.addItem(granularSyncParam.choices[i], i + 1);
     }
     granularSyncBox.setSelectedItemIndex(granularSyncParam.getIndex(), juce::dontSendNotification);
-    granularSyncBox.onChange = [this, &granularSyncParam]()
-    {
-        const auto idx = juce::jmax(0, granularSyncBox.getSelectedItemIndex());
-        granularSyncParam.setValueNotifyingHost(granularSyncParam.convertTo0to1(static_cast<float>(idx)));
-    };
     granularSyncBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     granularSyncBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     granularSyncBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
@@ -536,11 +520,6 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
         reverbTypeBox.addItem(reverbAlgoParam.choices[i], i + 1);
     }
     reverbTypeBox.setSelectedItemIndex(reverbAlgoParam.getIndex(), juce::dontSendNotification);
-    reverbTypeBox.onChange = [this, &reverbAlgoParam]()
-    {
-        const auto idx = juce::jmax(0, reverbTypeBox.getSelectedItemIndex());
-        reverbAlgoParam.setValueNotifyingHost(reverbAlgoParam.convertTo0to1(static_cast<float>(idx)));
-    };
     reverbTypeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     reverbTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     reverbTypeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
@@ -565,28 +544,32 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     configureBypassButton(delayBypassButton);
     configureBypassButton(reverbBypassButton);
 
-    robBypassButton.onClick = [this]()
-    {
-        auto& p = audioProcessor.getRobEnabledParam();
-        const auto isEnabled = robBypassButton.getToggleState();
-        p.setValueNotifyingHost(p.convertTo0to1(isEnabled));
-    };
-    delayBypassButton.onClick = [this]()
-    {
-        auto& p = audioProcessor.getDelayEnabledParam();
-        const auto isEnabled = delayBypassButton.getToggleState();
-        p.setValueNotifyingHost(p.convertTo0to1(isEnabled));
-    };
-    reverbBypassButton.onClick = [this]()
-    {
-        auto& p = audioProcessor.getReverbEnabledParam();
-        const auto isEnabled = reverbBypassButton.getToggleState();
-        p.setValueNotifyingHost(p.convertTo0to1(isEnabled));
-    };
-
     addAndMakeVisible(robBypassButton);
     addAndMakeVisible(delayBypassButton);
     addAndMakeVisible(reverbBypassButton);
+
+    for (auto& binding : knobBindings)
+    {
+        attachSlider(*binding.parameter, *binding.slider);
+    }
+
+    attachSlider(audioProcessor.getRobAmountParam(), robWarmthKnob);
+    attachSlider(audioProcessor.getIsaacAmountParam(), isaacTextureKnob);
+    attachSlider(audioProcessor.getDelayTimeParam(), delayTimeKnob);
+    attachSlider(audioProcessor.getDelayFeedbackParam(), delayFeedbackKnob);
+    attachSlider(audioProcessor.getReverbAmountParam(), reverbKnob);
+
+    attachComboBox(audioProcessor.getRobModeParam(), robTypeBox);
+    attachComboBox(audioProcessor.getFilterTypeParam(), filterTypeBox);
+    attachComboBox(audioProcessor.getOscillatorModeParam(), oscModeBox);
+    attachComboBox(audioProcessor.getOscVowelParam(), oscVowelBox);
+    attachComboBox(audioProcessor.getDelayAlgorithmParam(), delayAlgoBox);
+    attachComboBox(audioProcessor.getGranularSyncDivisionParam(), granularSyncBox);
+    attachComboBox(audioProcessor.getReverbAlgorithmParam(), reverbTypeBox);
+
+    attachButton(audioProcessor.getRobEnabledParam(), robBypassButton);
+    attachButton(audioProcessor.getDelayEnabledParam(), delayBypassButton);
+    attachButton(audioProcessor.getReverbEnabledParam(), reverbBypassButton);
 
     // MIDI status bar is temporarily disabled.
     // midiStatusLabel.setText("MIDI In: waiting for note...", juce::dontSendNotification);
@@ -906,7 +889,7 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
                                                                                                              static_cast<int>(std::round(logoArea.getBottom() + subtitleGap)),
                                                                                                              logoPanelArea.getWidth() - 20,
                                                                                                              static_cast<int>(subtitleHeight));
-                g.drawText("Synth v1.0.0", subtitleArea, juce::Justification::centred);
+                g.drawText("Synth v0.1.0", subtitleArea, juce::Justification::centred);
     }
 
         const auto robEnabled = audioProcessor.getRobEnabledParam().get();
@@ -1555,19 +1538,25 @@ void SynthProjectAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
                 case kFxSectionRob:
                 {
                     auto& p = audioProcessor.getRobEnabledParam();
+                    p.beginChangeGesture();
                     p.setValueNotifyingHost(p.convertTo0to1(!p.get()));
+                    p.endChangeGesture();
                     break;
                 }
                 case kFxSectionDelay:
                 {
                     auto& p = audioProcessor.getDelayEnabledParam();
+                    p.beginChangeGesture();
                     p.setValueNotifyingHost(p.convertTo0to1(!p.get()));
+                    p.endChangeGesture();
                     break;
                 }
                 case kFxSectionReverb:
                 {
                     auto& p = audioProcessor.getReverbEnabledParam();
+                    p.beginChangeGesture();
                     p.setValueNotifyingHost(p.convertTo0to1(!p.get()));
+                    p.endChangeGesture();
                     break;
                 }
                 default:

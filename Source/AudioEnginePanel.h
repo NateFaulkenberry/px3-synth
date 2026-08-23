@@ -26,6 +26,8 @@ public:
 private:
     void timerCallback() override;
     void requestLoadFile(const juce::File& file);
+    void attachSlider(juce::RangedAudioParameter& parameter, juce::Slider& slider);
+    void attachComboBox(juce::RangedAudioParameter& parameter, juce::ComboBox& comboBox);
     static bool isSupportedAudioFile(const juce::File& file);
 
     SynthProjectAudioProcessor& processor;
@@ -56,4 +58,6 @@ private:
     int errorFlashTicks { 0 };
 
     std::unique_ptr<juce::FileChooser> fileChooser;
+    std::vector<std::unique_ptr<juce::SliderParameterAttachment>> sliderAttachments;
+    std::vector<std::unique_ptr<juce::ComboBoxParameterAttachment>> comboBoxAttachments;
 };

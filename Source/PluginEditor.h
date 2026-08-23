@@ -76,6 +76,9 @@ private:
                              KnobLabel& label,
                              const juce::String& labelText,
                              juce::AudioParameterFloat& parameter);
+    void attachSlider(juce::RangedAudioParameter& parameter, juce::Slider& slider);
+    void attachComboBox(juce::RangedAudioParameter& parameter, juce::ComboBox& comboBox);
+    void attachButton(juce::RangedAudioParameter& parameter, juce::Button& button);
     void refreshAnyKeyDownState();
     void refreshOscillatorModeUI();
     void refreshFxBypassUI();
@@ -235,6 +238,10 @@ private:
     bool presetBrowserDragging { false };
     juce::Point<int> presetBrowserDragOffset;
     juce::Image presetBrowserBackdropSnapshot;
+
+    std::vector<std::unique_ptr<juce::SliderParameterAttachment>> sliderAttachments;
+    std::vector<std::unique_ptr<juce::ComboBoxParameterAttachment>> comboBoxAttachments;
+    std::vector<std::unique_ptr<juce::ButtonParameterAttachment>> buttonAttachments;
 
     std::array<KnobBinding, 10> knobBindings {};
     int lastOscModeIndex { -1 };

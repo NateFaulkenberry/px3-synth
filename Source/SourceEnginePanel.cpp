@@ -35,7 +35,9 @@ SourceEnginePanel::SourceEnginePanel(SynthProjectAudioProcessor& processorIn)
         }
 
         audioButton.setToggleState(false, juce::dontSendNotification);
+        sourceParam.beginChangeGesture();
         sourceParam.setValueNotifyingHost(sourceParam.convertTo0to1(0.0f));
+        sourceParam.endChangeGesture();
         refreshVisibilityFromParam();
     };
 
@@ -48,7 +50,9 @@ SourceEnginePanel::SourceEnginePanel(SynthProjectAudioProcessor& processorIn)
         }
 
         imageButton.setToggleState(false, juce::dontSendNotification);
+        sourceParam.beginChangeGesture();
         sourceParam.setValueNotifyingHost(sourceParam.convertTo0to1(1.0f));
+        sourceParam.endChangeGesture();
         refreshVisibilityFromParam();
     };
 
