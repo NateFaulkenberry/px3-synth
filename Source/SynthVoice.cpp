@@ -4,6 +4,25 @@
 
 #include <cmath>
 
+namespace
+{
+inline float clamp01(float v)
+{
+    return juce::jlimit(0.0f, 1.0f, v);
+}
+
+enum class FilterMode
+{
+    lp12 = 0,
+    lp24,
+    hp12,
+    hp24,
+    bp,
+    notch,
+    allPass
+};
+}
+
 bool SynthVoice::canPlaySound(juce::SynthesiserSound* sound)
 {
     return dynamic_cast<SynthSound*>(sound) != nullptr;
@@ -11,6 +30,7 @@ bool SynthVoice::canPlaySound(juce::SynthesiserSound* sound)
 
 void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::SynthesiserSound*, int)
 {
+    currentMidiNote = midiNoteNumber;
     baseFrequencyHz = juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber);
     currentFrequencyHz = baseFrequencyHz;
     level = velocity;
@@ -18,8 +38,15 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     updateAngleDelta();
     updateFilter();
     lowPassFilter.reset();
+    lowPassFilterStage2.reset();
 
     adsr.noteOn();
+
+    for (auto& grain : audioGrains)
+    {
+        grain = AudioGrain {};
+    }
+    audioSpawnCounter = 0;
 }
 
 void SynthVoice::stopNote(float, bool allowTailOff)
@@ -120,18 +147,41 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             imageSample = a + (b - a) * fracF;
         }
 
+        float granularSample = 0.0f;
+        if (externalSourceMode == ExternalSourceMode::audio && audioGranularSettings.enabled)
+        {
+            const auto rootHz = juce::MidiMessage::getMidiNoteInHertz(audioGranularSettings.rootMidiNote);
+            const auto granularPitchRatio = static_cast<float>(currentFrequencyHz / juce::jmax(1.0, static_cast<double>(rootHz)));
+            granularSample = renderAudioGranularSample(granularPitchRatio,
+                                                       audioGranularSettings.texture,
+                                                       audioGranularSettings.grainSize);
+        }
+
+        const auto externalSample = externalSourceMode == ExternalSourceMode::audio ? granularSample : imageSample;
+
         const auto mixTotal = subtractiveSettings.sineMix + subtractiveSettings.sawMix + subtractiveSettings.squareMix + subtractiveSettings.imageMix;
         const auto normalizer = mixTotal > 0.0001f ? (1.0f / mixTotal) : 0.0f;
 
         const auto sourceSample = (sine * subtractiveSettings.sineMix
                                    + saw * subtractiveSettings.sawMix
                                    + square * subtractiveSettings.squareMix
-                                   + imageSample * subtractiveSettings.imageMix)
+                                   + externalSample * subtractiveSettings.imageMix)
                                   * normalizer;
 
         const auto env = adsr.getNextSample();
         const auto voicedSample = sourceSample * level * env * subtractiveSettings.masterGain;
-        const auto currentSample = lowPassFilter.processSample(voicedSample);
+        auto currentSample = lowPassFilter.processSample(voicedSample);
+
+        const auto mode = static_cast<FilterMode>(juce::jlimit(0, 6, subtractiveSettings.filterTypeIndex));
+        if (mode == FilterMode::lp24 || mode == FilterMode::hp24)
+        {
+            currentSample = lowPassFilterStage2.processSample(currentSample);
+        }
+        else if (mode == FilterMode::notch)
+        {
+            // Notch response via subtracting a resonant band-pass component from the dry sample.
+            currentSample = voicedSample - currentSample * 0.92f;
+        }
 
         for (int channel = 0; channel < outputBuffer.getNumChannels(); ++channel)
         {
@@ -192,6 +242,206 @@ void SynthVoice::setImageWavetable(std::shared_ptr<const ImageWavetable> table, 
     targetImagePosition = juce::jlimit(0.0f, 1.0f, wavetablePosition);
 }
 
+void SynthVoice::setAudioGranularSource(std::shared_ptr<const AudioSourceData> data,
+                                        const AudioGranularSettings& settings)
+{
+    audioSourceData = std::move(data);
+    audioGranularSettings = settings;
+    audioGranularSettings.position = clamp01(audioGranularSettings.position);
+    audioGranularSettings.grainSize = clamp01(audioGranularSettings.grainSize);
+    audioGranularSettings.texture = clamp01(audioGranularSettings.texture);
+    audioGranularSettings.rootMidiNote = juce::jlimit(0, 127, audioGranularSettings.rootMidiNote);
+}
+
+void SynthVoice::setExternalSourceMode(ExternalSourceMode mode)
+{
+    if (externalSourceMode == mode)
+    {
+        return;
+    }
+
+    externalSourceMode = mode;
+    for (auto& grain : audioGrains)
+    {
+        grain = AudioGrain {};
+    }
+    audioSpawnCounter = 0;
+}
+
+void SynthVoice::spawnAudioGrain(float pitchRatio, float textureNorm, float grainNorm)
+{
+    if (audioSourceData == nullptr || audioSourceData->numSamples < 8)
+    {
+        return;
+    }
+
+    const auto sampleRate = static_cast<float>(juce::jmax(1.0, getSampleRate()));
+    const auto grainMs = juce::jmap(grainNorm, 18.0f, 240.0f);
+    const auto duration = juce::jmax(18, static_cast<int>(std::round(grainMs * 0.001f * sampleRate)));
+
+    const auto sourceLen = static_cast<float>(audioSourceData->numSamples);
+    const auto center = audioGranularSettings.position * sourceLen;
+    const auto regionWidth = juce::jlimit(16.0f,
+                                          sourceLen,
+                                          sourceLen * juce::jmap(textureNorm, 0.015f, 0.22f));
+    const auto jitter = (juce::Random::getSystemRandom().nextFloat() * 2.0f - 1.0f) * 0.5f * regionWidth;
+    auto startPos = center + jitter;
+
+    while (startPos < 0.0f)
+    {
+        startPos += sourceLen;
+    }
+    while (startPos >= sourceLen)
+    {
+        startPos -= sourceLen;
+    }
+
+    const std::array<int, 7> intervals { -12, -7, -5, 0, 5, 7, 12 };
+    const auto variationChance = juce::jmap(textureNorm, 0.03f, 0.42f);
+    int interval = 0;
+    if (juce::Random::getSystemRandom().nextFloat() < variationChance)
+    {
+        const auto idx = juce::Random::getSystemRandom().nextInt(static_cast<int>(intervals.size()));
+        interval = intervals[static_cast<std::size_t>(idx)];
+    }
+
+    const auto intervalRatio = std::pow(2.0f, static_cast<float>(interval) / 12.0f);
+    const auto fileRate = static_cast<float>(juce::jmax(2000.0, audioSourceData->sampleRate));
+    const auto rateToHost = fileRate / sampleRate;
+
+    audioPanPhase += juce::jmap(textureNorm, 0.10f, 0.34f);
+    if (audioPanPhase > juce::MathConstants<float>::twoPi)
+    {
+        audioPanPhase -= juce::MathConstants<float>::twoPi;
+    }
+
+    const auto panSpread = juce::jmap(textureNorm, 0.06f, 0.94f);
+    const auto pan = 0.5f + std::sin(audioPanPhase) * 0.5f * panSpread;
+
+    for (auto& grain : audioGrains)
+    {
+        if (grain.active)
+        {
+            continue;
+        }
+
+        grain.active = true;
+        grain.sourcePos = startPos;
+        grain.increment = juce::jlimit(0.03f, 9.0f, pitchRatio * intervalRatio * rateToHost);
+        grain.ageSamples = 0;
+        grain.durationSamples = duration;
+        grain.gain = juce::jmap(textureNorm, 0.18f, 0.42f);
+        grain.pan = pan;
+        return;
+    }
+}
+
+float SynthVoice::renderAudioGranularSample(float pitchRatio, float textureNorm, float grainNorm)
+{
+    if (audioSourceData == nullptr || audioSourceData->numSamples < 8)
+    {
+        return 0.0f;
+    }
+
+    const auto sampleRate = static_cast<float>(juce::jmax(1.0, getSampleRate()));
+    const auto grainMs = juce::jmap(grainNorm, 18.0f, 240.0f);
+    const auto grainSamples = juce::jmax(18, static_cast<int>(std::round(grainMs * 0.001f * sampleRate)));
+    const auto overlap = juce::jmap(textureNorm, 1.4f, 6.4f);
+    const auto spawnInterval = juce::jmax(1, static_cast<int>(std::round(static_cast<float>(grainSamples) / overlap)));
+
+    if (++audioSpawnCounter >= spawnInterval)
+    {
+        audioSpawnCounter = 0;
+        spawnAudioGrain(pitchRatio, textureNorm, grainNorm);
+    }
+
+    float sumL = 0.0f;
+    float sumR = 0.0f;
+    int activeCount = 0;
+
+    for (auto& grain : audioGrains)
+    {
+        if (!grain.active)
+        {
+            continue;
+        }
+
+        const auto age = static_cast<float>(grain.ageSamples);
+        const auto len = static_cast<float>(juce::jmax(1, grain.durationSamples));
+        const auto phase = age / len;
+
+        if (phase >= 1.0f)
+        {
+            grain.active = false;
+            continue;
+        }
+
+        const auto window = 0.5f - 0.5f * std::cos(phase * juce::MathConstants<float>::twoPi);
+        const auto g = grain.gain * window;
+
+        const auto left = readAudioSample(0, grain.sourcePos);
+        const auto right = audioSourceData->numChannels > 1 ? readAudioSample(1, grain.sourcePos) : left;
+
+        const auto pan = clamp01(grain.pan);
+        const auto panAngle = pan * juce::MathConstants<float>::halfPi;
+        const auto panL = std::cos(panAngle);
+        const auto panR = std::sin(panAngle);
+
+        sumL += left * g * panL;
+        sumR += right * g * panR;
+
+        grain.sourcePos += grain.increment;
+        const auto srcLen = static_cast<float>(audioSourceData->numSamples);
+        while (grain.sourcePos < 0.0f)
+        {
+            grain.sourcePos += srcLen;
+        }
+        while (grain.sourcePos >= srcLen)
+        {
+            grain.sourcePos -= srcLen;
+        }
+
+        ++grain.ageSamples;
+        ++activeCount;
+    }
+
+    if (activeCount <= 0)
+    {
+        return 0.0f;
+    }
+
+    const auto norm = 1.0f / std::sqrt(static_cast<float>(activeCount));
+    return 0.5f * (sumL + sumR) * norm;
+}
+
+float SynthVoice::readAudioSample(int channel, float position) const
+{
+    if (audioSourceData == nullptr || audioSourceData->numSamples <= 1)
+    {
+        return 0.0f;
+    }
+
+    const auto srcLen = static_cast<float>(audioSourceData->numSamples);
+    auto p = position;
+    while (p < 0.0f)
+    {
+        p += srcLen;
+    }
+    while (p >= srcLen)
+    {
+        p -= srcLen;
+    }
+
+    const auto i0 = static_cast<int>(p);
+    const auto i1 = (i0 + 1) % audioSourceData->numSamples;
+    const auto frac = p - static_cast<float>(i0);
+
+    const auto ch = juce::jlimit(0, juce::jmax(0, audioSourceData->numChannels - 1), channel);
+    const auto s0 = audioSourceData->samples.getSample(ch, i0);
+    const auto s1 = audioSourceData->samples.getSample(ch, i1);
+    return s0 + (s1 - s0) * frac;
+}
+
 void SynthVoice::updateAngleDelta()
 {
     const auto sampleRate = getSampleRate();
@@ -215,7 +465,46 @@ void SynthVoice::updateFilter()
         return;
     }
 
-    lowPassFilter.coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(static_cast<double>(sampleRate),
-                                                                                   subtractiveSettings.filterCutoffHz,
-                                                                                   subtractiveSettings.filterResonanceQ);
+    const auto mode = static_cast<FilterMode>(juce::jlimit(0, 6, subtractiveSettings.filterTypeIndex));
+    const auto cutoff = juce::jlimit(20.0f, 20000.0f, subtractiveSettings.filterCutoffHz);
+    const auto q = juce::jlimit(0.20f, 10.0f, subtractiveSettings.filterResonanceQ);
+
+    switch (mode)
+    {
+        case FilterMode::lp12:
+        case FilterMode::lp24:
+            lowPassFilter.coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(static_cast<double>(sampleRate),
+                                                                                           cutoff,
+                                                                                           q);
+            lowPassFilterStage2.coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(static_cast<double>(sampleRate),
+                                                                                                 cutoff,
+                                                                                                 q);
+            break;
+        case FilterMode::hp12:
+        case FilterMode::hp24:
+            lowPassFilter.coefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(static_cast<double>(sampleRate),
+                                                                                            cutoff,
+                                                                                            q);
+            lowPassFilterStage2.coefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(static_cast<double>(sampleRate),
+                                                                                                  cutoff,
+                                                                                                  q);
+            break;
+        case FilterMode::bp:
+            lowPassFilter.coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass(static_cast<double>(sampleRate),
+                                                                                            cutoff,
+                                                                                            q);
+            break;
+        case FilterMode::notch:
+            lowPassFilter.coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass(static_cast<double>(sampleRate),
+                                                                                            cutoff,
+                                                                                            q);
+            break;
+        case FilterMode::allPass:
+            lowPassFilter.coefficients = juce::dsp::IIR::Coefficients<float>::makeAllPass(static_cast<double>(sampleRate),
+                                                                                           cutoff,
+                                                                                           q);
+            break;
+        default:
+            break;
+    }
 }

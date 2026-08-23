@@ -60,6 +60,7 @@ public:
     juce::AudioParameterFloat& getOscSquareParam() const;
     juce::AudioParameterFloat& getFilterCutoffParam() const;
     juce::AudioParameterFloat& getFilterResonanceParam() const;
+    juce::AudioParameterChoice& getFilterTypeParam() const;
     juce::AudioParameterFloat& getAttackParam() const;
     juce::AudioParameterFloat& getDecayParam() const;
     juce::AudioParameterFloat& getSustainParam() const;
@@ -72,12 +73,20 @@ public:
     juce::AudioParameterChoice& getGranularSyncDivisionParam() const;
     juce::AudioParameterFloat& getReverbAmountParam() const;
     juce::AudioParameterChoice& getReverbAlgorithmParam() const;
+    juce::AudioParameterChoice& getSourceEngineParam() const;
     juce::AudioParameterFloat& getImagePositionParam() const;
     juce::AudioParameterFloat& getImageAnimateParam() const;
     juce::AudioParameterFloat& getImageRateParam() const;
     juce::AudioParameterChoice& getImageAnimModeParam() const;
     juce::AudioParameterChoice& getImageAnimSyncParam() const;
     juce::AudioParameterChoice& getImageTargetParam() const;
+    juce::AudioParameterFloat& getAudioPositionParam() const;
+    juce::AudioParameterFloat& getAudioGrainParam() const;
+    juce::AudioParameterFloat& getAudioTextureParam() const;
+    juce::AudioParameterFloat& getAudioAnimateParam() const;
+    juce::AudioParameterFloat& getAudioRateParam() const;
+    juce::AudioParameterChoice& getAudioAnimModeParam() const;
+    juce::AudioParameterChoice& getAudioAnimSyncParam() const;
     juce::AudioParameterInt& getPitchBendRangeParam() const;
 
     float copyPitchBendNormalized() const;
@@ -98,6 +107,13 @@ public:
     bool consumeImageLoadErrorFlag();
     float copyCurrentImagePosition() const;
     std::vector<float> copyCurrentImageWaveformPreview(int sampleCount) const;
+    void requestAudioLoadAsync(const juce::File& audioFile);
+    void notifyAudioLoadError();
+    void completeAudioLoad(int serial, std::shared_ptr<AudioSourceData> source, const juce::String& sourcePath);
+    bool consumeAudioLoadErrorFlag();
+    bool copyCurrentAudioWaveformPreview(std::vector<float>& waveformOut) const;
+    float copyCurrentAudioPosition() const;
+    bool hasLoadedAudio() const;
 
 private:
     struct Grain
@@ -127,6 +143,8 @@ private:
     void installImageWavetable(std::shared_ptr<ImageWavetable> newTable, const juce::Image& sourcePreview);
     float updateImageAnimationPosition(int samplesThisBlock);
     float computeImageTargetControlSignal(float imagePositionNorm, int samplesThisBlock);
+    float updateAudioAnimationPosition(int samplesThisBlock);
+    float audioSyncBeatsForIndex(int index) const;
     float imageSyncBeatsForIndex(int index) const;
     void updateTransportState();
     float processRobSample(float x, int channel, float robAmount, int modeIndex);
@@ -148,6 +166,7 @@ private:
     juce::AudioParameterFloat* oscSquareParam { nullptr };
     juce::AudioParameterFloat* filterCutoffParam { nullptr };
     juce::AudioParameterFloat* filterResonanceParam { nullptr };
+    juce::AudioParameterChoice* filterTypeParam { nullptr };
     juce::AudioParameterFloat* attackParam { nullptr };
     juce::AudioParameterFloat* decayParam { nullptr };
     juce::AudioParameterFloat* sustainParam { nullptr };
@@ -159,12 +178,20 @@ private:
     juce::AudioParameterChoice* granularSyncDivisionParam { nullptr };
     juce::AudioParameterFloat* reverbAmountParam { nullptr };
     juce::AudioParameterChoice* reverbAlgorithmParam { nullptr };
+    juce::AudioParameterChoice* sourceEngineParam { nullptr };
     juce::AudioParameterFloat* imagePositionParam { nullptr };
     juce::AudioParameterFloat* imageAnimateParam { nullptr };
     juce::AudioParameterFloat* imageRateParam { nullptr };
     juce::AudioParameterChoice* imageAnimModeParam { nullptr };
     juce::AudioParameterChoice* imageAnimSyncParam { nullptr };
     juce::AudioParameterChoice* imageTargetParam { nullptr };
+    juce::AudioParameterFloat* audioPositionParam { nullptr };
+    juce::AudioParameterFloat* audioGrainParam { nullptr };
+    juce::AudioParameterFloat* audioTextureParam { nullptr };
+    juce::AudioParameterFloat* audioAnimateParam { nullptr };
+    juce::AudioParameterFloat* audioRateParam { nullptr };
+    juce::AudioParameterChoice* audioAnimModeParam { nullptr };
+    juce::AudioParameterChoice* audioAnimSyncParam { nullptr };
     juce::AudioParameterInt* pitchBendRangeParam { nullptr };
 
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteCounts {};
@@ -178,15 +205,18 @@ private:
     std::atomic<float> pitchBendActivity { 0.0f };
     std::atomic<float> modWheelActivity { 0.0f };
     std::atomic<float> currentImagePositionNorm { 0.0f };
+    std::atomic<float> currentAudioPositionNorm { 0.0f };
 
     float vibratoPhaseRadians { 0.0f };
     float imageAnimPhase { 0.0f };
+    float audioAnimPhase { 0.0f };
     float imageTargetScanPhase { 0.0f };
     float imageTargetControlSmoothed { 0.5f };
     float imageDriveScaleSmoothed { 1.0f };
     float imageGranularScaleSmoothed { 1.0f };
     float imageReverbScaleSmoothed { 1.0f };
     int imageAnimDirection { 1 };
+    int audioAnimDirection { 1 };
 
     std::array<float, 2> robDcState { { 0.0f, 0.0f } };
     std::array<float, 2> robToneState { { 0.0f, 0.0f } };
@@ -208,14 +238,21 @@ private:
     float reverbOutputCompGain { 1.0f };
 
     std::shared_ptr<const ImageWavetable> activeImageWavetable;
+    std::shared_ptr<const AudioSourceData> activeAudioSource;
     std::atomic<int> imageLoadRequestSerial { 0 };
     std::atomic<bool> imageLoadErrorFlag { false };
     std::atomic<bool> imageLoadedFromDisk { false };
+    std::atomic<int> audioLoadRequestSerial { 0 };
+    std::atomic<bool> audioLoadErrorFlag { false };
+    std::atomic<bool> audioLoadedFromDisk { false };
+    juce::ThreadPool audioLoadThreadPool { 1 };
     juce::ThreadPool imageLoadThreadPool { 1 };
     mutable std::mutex imagePreviewMutex;
     mutable std::mutex imageStateMutex;
     juce::Image imagePreview;
     juce::String lastLoadedImagePath;
+    std::vector<float> audioWaveformPreview;
+    juce::String lastLoadedAudioPath;
 
     double currentSampleRateHz { 44100.0 };
     double currentBpm { 120.0 };

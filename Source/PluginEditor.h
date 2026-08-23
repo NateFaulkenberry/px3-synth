@@ -5,10 +5,10 @@
 #include <array>
 #include <vector>
 
-#include "ImageEnginePanel.h"
 #include "PerformanceControls.h"
 #include "PianoKeyboard.h"
 #include "PluginProcessor.h"
+#include "SourceEnginePanel.h"
 
 class SynthProjectAudioProcessorEditor final : public juce::AudioProcessorEditor,
                                               private juce::Timer
@@ -63,7 +63,7 @@ private:
 
     SynthProjectAudioProcessor& audioProcessor;
     KnobLookAndFeel knobLookAndFeel;
-    ImageEnginePanel imageEnginePanel;
+    SourceEnginePanel sourceEnginePanel;
     PerformanceControls performanceControls;
     PianoKeyboard pianoKeyboard;
     SynthProjectAudioProcessor::MidiStatus midiStatus;
@@ -90,6 +90,7 @@ private:
     juce::Slider oscSquareKnob;
     juce::Slider cutoffKnob;
     juce::Slider resonanceKnob;
+    juce::ComboBox filterTypeBox;
     juce::Slider attackKnob;
     juce::Slider decayKnob;
     juce::Slider sustainKnob;
@@ -101,6 +102,7 @@ private:
     KnobLabel oscSquareLabel;
     KnobLabel cutoffLabel;
     KnobLabel resonanceLabel;
+    KnobLabel filterTypeLabel;
     KnobLabel attackLabel;
     KnobLabel decayLabel;
     KnobLabel sustainLabel;

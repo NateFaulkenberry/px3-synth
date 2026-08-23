@@ -215,7 +215,7 @@ void SynthProjectAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
 SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectAudioProcessor& p)
     : AudioProcessorEditor(&p),
     audioProcessor(p),
-    imageEnginePanel(p)
+    sourceEnginePanel(p)
 {
     backgroundImage = juce::ImageFileFormat::loadFrom(BinaryData::pp_png, BinaryData::pp_pngSize);
     logoFrame = juce::ImageFileFormat::loadFrom(BinaryData::px3_gif, BinaryData::px3_gifSize);
@@ -223,7 +223,7 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     setResizable(true, true);
     setResizeLimits(980, 600, 1900, 980);
 
-    addAndMakeVisible(imageEnginePanel);
+    addAndMakeVisible(sourceEnginePanel);
     addAndMakeVisible(performanceControls);
     addAndMakeVisible(pianoKeyboard);
 
@@ -290,6 +290,24 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     robTypeLabel.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(robTypeBox);
     addAndMakeVisible(robTypeLabel);
+
+    auto& filterTypeParam = audioProcessor.getFilterTypeParam();
+    const auto filterChoiceCount = filterTypeParam.choices.size();
+    for (int i = 0; i < filterChoiceCount; ++i)
+    {
+        filterTypeBox.addItem(filterTypeParam.choices[i], i + 1);
+    }
+    filterTypeBox.setSelectedItemIndex(filterTypeParam.getIndex(), juce::dontSendNotification);
+    filterTypeBox.onChange = [this, &filterTypeParam]()
+    {
+        const auto idx = juce::jmax(0, filterTypeBox.getSelectedItemIndex());
+        filterTypeParam.setValueNotifyingHost(filterTypeParam.convertTo0to1(static_cast<float>(idx)));
+        repaint();
+    };
+    filterTypeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    filterTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    filterTypeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    addAndMakeVisible(filterTypeBox);
 
     auto& granularSyncParam = audioProcessor.getGranularSyncDivisionParam();
     const auto choiceCount = granularSyncParam.choices.size();
@@ -494,6 +512,87 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
         const auto labelArea = panel.withHeight(24);
         g.setColour(accent.brighter(0.35f));
         g.drawText(kGroupNames[i], labelArea, juce::Justification::centred);
+
+        if (i == 1)
+        {
+            const auto idx = juce::jlimit(0, 6, filterTypeBox.getSelectedItemIndex());
+
+            auto graphLabelArea = labelArea;
+            auto graphRect = graphLabelArea.removeFromRight(54).reduced(2, 3).toFloat();
+            g.setColour(juce::Colour::fromRGBA(20, 20, 20, 140));
+            g.fillRoundedRectangle(graphRect, 4.0f);
+            g.setColour(juce::Colour::fromRGBA(255, 255, 255, 70));
+            g.drawRoundedRectangle(graphRect, 4.0f, 1.0f);
+
+            const auto left = graphRect.getX() + 4.0f;
+            const auto right = graphRect.getRight() - 4.0f;
+            const auto top = graphRect.getY() + 4.0f;
+            const auto bottom = graphRect.getBottom() - 4.0f;
+            const auto midY = (top + bottom) * 0.5f;
+
+            g.setColour(juce::Colour::fromRGBA(255, 255, 255, 36));
+            g.drawLine(left, midY, right, midY, 1.0f);
+
+            juce::Path response;
+            response.startNewSubPath(left, bottom);
+
+            const auto width = juce::jmax(1.0f, right - left);
+            for (int s = 1; s <= 40; ++s)
+            {
+                const auto t = static_cast<float>(s) / 40.0f;
+                const auto x = left + t * width;
+                float yNorm = 0.5f;
+
+                switch (idx)
+                {
+                    case 0: // LP12
+                        yNorm = 1.0f - std::pow(t, 1.35f);
+                        break;
+                    case 1: // LP24
+                        yNorm = 1.0f - std::pow(t, 2.35f);
+                        break;
+                    case 2: // HP12
+                        yNorm = std::pow(t, 1.35f);
+                        break;
+                    case 3: // HP24
+                        yNorm = std::pow(t, 2.35f);
+                        break;
+                    case 4: // BandPass
+                    {
+                        const auto d = std::abs(t - 0.5f) * 2.0f;
+                        yNorm = juce::jmax(0.0f, 1.0f - d * d);
+                        break;
+                    }
+                    case 5: // Notch
+                    {
+                        const auto d = std::abs(t - 0.5f) * 2.0f;
+                        yNorm = 0.12f + 0.88f * juce::jlimit(0.0f, 1.0f, d * d);
+                        break;
+                    }
+                    case 6: // AllPass
+                        yNorm = 0.55f;
+                        break;
+                    default:
+                        break;
+                }
+
+                const auto y = bottom - juce::jlimit(0.0f, 1.0f, yNorm) * (bottom - top);
+                response.lineTo(x, y);
+            }
+
+            g.setColour(juce::Colour::fromRGB(124, 206, 255));
+            g.strokePath(response, juce::PathStrokeType(1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+            if (idx == 4)
+            {
+                const auto barW = width / 7.0f;
+                const auto centerX = (left + right) * 0.5f;
+                g.setColour(juce::Colour::fromRGBA(124, 206, 255, 95));
+                g.fillRect(centerX - barW * 1.6f, bottom - (bottom - top) * 0.40f, barW, (bottom - top) * 0.40f);
+                g.fillRect(centerX - barW * 0.5f, bottom - (bottom - top) * 0.78f, barW, (bottom - top) * 0.78f);
+                g.fillRect(centerX + barW * 0.6f, bottom - (bottom - top) * 0.48f, barW, (bottom - top) * 0.48f);
+            }
+        }
     }
 }
 
@@ -563,7 +662,7 @@ void SynthProjectAudioProcessorEditor::resized()
         reverbLabel.setBounds(labelArea);
     }
 
-    imageEnginePanel.setBounds(topSpareSectionArea.reduced(2));
+    sourceEnginePanel.setBounds(topSpareSectionArea.reduced(2));
 
     bounds.removeFromTop(sectionGap);
 
@@ -604,6 +703,15 @@ void SynthProjectAudioProcessorEditor::resized()
     layoutKnobGroup(knobGroupAreas[1], 3, 2, kGroupAccents[1]);
     layoutKnobGroup(knobGroupAreas[2], 5, 4, kGroupAccents[2]);
     layoutKnobGroup(knobGroupAreas[3], 9, 1, kGroupAccents[3]);
+
+    {
+        auto filterArea = knobGroupAreas[1].reduced(12, 8);
+        const auto row = juce::Rectangle<int>(filterArea.getX(),
+                                              filterArea.getBottom() - 22,
+                                              filterArea.getWidth(),
+                                              18);
+        filterTypeBox.setBounds(row.reduced(1, 0));
+    }
 }
 
 void SynthProjectAudioProcessorEditor::layoutKnobGroup(const juce::Rectangle<int>& groupArea,

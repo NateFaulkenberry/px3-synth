@@ -66,6 +66,101 @@ private:
     int serial { 0 };
 };
 
+class AudioLoadJob final : public juce::ThreadPoolJob
+{
+public:
+    AudioLoadJob(SynthProjectAudioProcessor& ownerIn, juce::File fileIn, int serialIn)
+        : juce::ThreadPoolJob("PX3 Audio Load"), owner(ownerIn), file(std::move(fileIn)), serial(serialIn)
+    {
+    }
+
+    JobStatus runJob() override
+    {
+        if (!file.existsAsFile())
+        {
+            owner.notifyAudioLoadError();
+            return jobHasFinished;
+        }
+
+        juce::AudioFormatManager formatManager;
+        formatManager.registerBasicFormats();
+
+        std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
+        if (reader == nullptr)
+        {
+            owner.notifyAudioLoadError();
+            return jobHasFinished;
+        }
+
+        const auto lengthInSamples = static_cast<int64_t>(reader->lengthInSamples);
+        if (lengthInSamples <= 0)
+        {
+            owner.notifyAudioLoadError();
+            return jobHasFinished;
+        }
+
+        constexpr int64_t maxSamples = static_cast<int64_t>(44100 * 240);
+        const auto boundedLength = juce::jmin(lengthInSamples, maxSamples);
+        const auto numChannels = juce::jlimit(1, 2, static_cast<int>(reader->numChannels));
+
+        auto data = std::make_shared<AudioSourceData>();
+        data->samples.setSize(numChannels, static_cast<int>(boundedLength));
+
+        if (!reader->read(&data->samples, 0, static_cast<int>(boundedLength), 0, true, numChannels > 1))
+        {
+            owner.notifyAudioLoadError();
+            return jobHasFinished;
+        }
+
+        data->sampleRate = reader->sampleRate > 1.0 ? reader->sampleRate : 44100.0;
+        data->numChannels = numChannels;
+        data->numSamples = static_cast<int>(boundedLength);
+
+        float peak = 0.0f;
+        for (int ch = 0; ch < data->numChannels; ++ch)
+        {
+            const auto* ptr = data->samples.getReadPointer(ch);
+            for (int i = 0; i < data->numSamples; ++i)
+            {
+                peak = juce::jmax(peak, std::abs(ptr[i]));
+            }
+        }
+        data->peak = juce::jmax(0.0001f, peak);
+
+        constexpr int previewPoints = 320;
+        data->waveformPreview.assign(previewPoints, 0.0f);
+        const auto hop = juce::jmax(1, data->numSamples / previewPoints);
+        for (int i = 0; i < previewPoints; ++i)
+        {
+            const auto start = i * hop;
+            const auto end = juce::jmin(data->numSamples, start + hop);
+            float acc = 0.0f;
+            int count = 0;
+            for (int s = start; s < end; ++s)
+            {
+                float mono = 0.0f;
+                for (int ch = 0; ch < data->numChannels; ++ch)
+                {
+                    mono += data->samples.getSample(ch, s);
+                }
+                mono /= static_cast<float>(data->numChannels);
+                acc += std::abs(mono);
+                ++count;
+            }
+
+            data->waveformPreview[static_cast<std::size_t>(i)] = count > 0 ? acc / static_cast<float>(count) : 0.0f;
+        }
+
+        owner.completeAudioLoad(serial, std::move(data), file.getFullPathName());
+        return jobHasFinished;
+    }
+
+private:
+    SynthProjectAudioProcessor& owner;
+    juce::File file;
+    int serial { 0 };
+};
+
 inline float clamp01(float v)
 {
     return juce::jlimit(0.0f, 1.0f, v);
@@ -91,6 +186,10 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     oscSquareParam = new juce::AudioParameterFloat("oscSquare", "Osc Square", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     filterCutoffParam = new juce::AudioParameterFloat("filterCutoff", "Filter Cutoff", juce::NormalisableRange<float>(80.0f, 18000.0f, 1.0f, 0.35f), 12000.0f);
     filterResonanceParam = new juce::AudioParameterFloat("filterResonance", "Filter Resonance", juce::NormalisableRange<float>(0.25f, 2.2f), 0.8f);
+     filterTypeParam = new juce::AudioParameterChoice("filterType",
+                                                                        "Filter Type",
+                                                                        juce::StringArray { "LP12", "LP24", "HP12", "HP24", "BandPass", "Notch", "AllPass" },
+                                                                        0);
     attackParam = new juce::AudioParameterFloat("ampAttack", "Amp Attack", juce::NormalisableRange<float>(0.001f, 3.0f, 0.001f, 0.45f), 0.005f);
     decayParam = new juce::AudioParameterFloat("ampDecay", "Amp Decay", juce::NormalisableRange<float>(0.005f, 4.0f, 0.001f, 0.45f), 0.050f);
     sustainParam = new juce::AudioParameterFloat("ampSustain", "Amp Sustain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f);
@@ -112,6 +211,10 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
                                                            "Reverb Algorithm",
                                                            juce::StringArray { "Hall", "Plate", "Room", "Cavern", "Moon" },
                                                            0);
+    sourceEngineParam = new juce::AudioParameterChoice("sourceEngine",
+                                                        "Source Engine",
+                                                        juce::StringArray { "Image", "Audio" },
+                                                        0);
     imagePositionParam = new juce::AudioParameterFloat("imagePosition", "Image Position", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     imageAnimateParam = new juce::AudioParameterFloat("imageAnimate", "Image Animate", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     imageRateParam = new juce::AudioParameterFloat("imageRate", "Image Rate", juce::NormalisableRange<float>(0.01f, 4.0f, 0.001f, 0.32f), 0.2f);
@@ -124,6 +227,19 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
                                                        "Image Target",
                                                        juce::StringArray { "Harmonic Drive", "Granular Delay", "Reverb" },
                                                        0);
+    audioPositionParam = new juce::AudioParameterFloat("audioPosition", "Audio Position", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    audioGrainParam = new juce::AudioParameterFloat("audioGrain", "Audio Grain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
+    audioTextureParam = new juce::AudioParameterFloat("audioTexture", "Audio Texture", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
+    audioAnimateParam = new juce::AudioParameterFloat("audioAnimate", "Audio Animate", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    audioRateParam = new juce::AudioParameterFloat("audioRate", "Audio Rate", juce::NormalisableRange<float>(0.01f, 4.0f, 0.001f, 0.32f), 0.22f);
+    audioAnimModeParam = new juce::AudioParameterChoice("audioAnimMode",
+                                                         "Audio Animation Mode",
+                                                         juce::StringArray { "Forward", "Reverse", "Ping Pong" },
+                                                         2);
+    audioAnimSyncParam = new juce::AudioParameterChoice("audioAnimSync",
+                                                         "Audio Animation Sync",
+                                                         juce::StringArray { "Free", "1 Bar", "1/2", "1/4", "1/8", "1/16" },
+                                                         0);
     pitchBendRangeParam = new juce::AudioParameterInt("pitchBendRange",
                                                        "Pitch Bend Range",
                                                        1,
@@ -135,6 +251,7 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(oscSquareParam);
     addParameter(filterCutoffParam);
     addParameter(filterResonanceParam);
+    addParameter(filterTypeParam);
     addParameter(attackParam);
     addParameter(decayParam);
     addParameter(sustainParam);
@@ -146,12 +263,20 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(granularSyncDivisionParam);
     addParameter(reverbAmountParam);
     addParameter(reverbAlgorithmParam);
+    addParameter(sourceEngineParam);
     addParameter(imagePositionParam);
     addParameter(imageAnimateParam);
     addParameter(imageRateParam);
     addParameter(imageAnimModeParam);
     addParameter(imageAnimSyncParam);
     addParameter(imageTargetParam);
+    addParameter(audioPositionParam);
+    addParameter(audioGrainParam);
+    addParameter(audioTextureParam);
+    addParameter(audioAnimateParam);
+    addParameter(audioRateParam);
+    addParameter(audioAnimModeParam);
+    addParameter(audioAnimSyncParam);
     addParameter(pitchBendRangeParam);
 
     const auto initialEnvelope = currentEnvelopeSettings();
@@ -277,7 +402,17 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     const auto envelope = currentEnvelopeSettings();
     const auto subtractive = currentSubtractiveSettings();
     const auto currentImagePosition = updateImageAnimationPosition(buffer.getNumSamples());
+    const auto currentAudioPosition = updateAudioAnimationPosition(buffer.getNumSamples());
     const auto wavetableForBlock = std::atomic_load(&activeImageWavetable);
+    const auto audioSourceForBlock = std::atomic_load(&activeAudioSource);
+    const auto sourceMode = sourceEngineParam->getIndex() == 1 ? ExternalSourceMode::audio : ExternalSourceMode::image;
+
+    AudioGranularSettings granularSettings;
+    granularSettings.enabled = sourceMode == ExternalSourceMode::audio;
+    granularSettings.position = currentAudioPosition;
+    granularSettings.grainSize = juce::jlimit(0.0f, 1.0f, audioGrainParam->get());
+    granularSettings.texture = juce::jlimit(0.0f, 1.0f, audioTextureParam->get());
+    granularSettings.rootMidiNote = 60;
 
     for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
     {
@@ -291,7 +426,9 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
                                             vibratoPhaseRadians,
                                             vibratoRateHz,
                                             vibratoMaxDepthSemitones);
+            voice->setExternalSourceMode(sourceMode);
             voice->setImageWavetable(wavetableForBlock, currentImagePosition);
+            voice->setAudioGranularSource(audioSourceForBlock, granularSettings);
         }
     }
 
@@ -635,6 +772,7 @@ juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscSawParam() const { 
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscSquareParam() const { return *oscSquareParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getFilterCutoffParam() const { return *filterCutoffParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getFilterResonanceParam() const { return *filterResonanceParam; }
+juce::AudioParameterChoice& SynthProjectAudioProcessor::getFilterTypeParam() const { return *filterTypeParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getAttackParam() const { return *attackParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getDecayParam() const { return *decayParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getSustainParam() const { return *sustainParam; }
@@ -646,12 +784,20 @@ juce::AudioParameterFloat& SynthProjectAudioProcessor::getIsaacAmountParam() con
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getGranularSyncDivisionParam() const { return *granularSyncDivisionParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getReverbAmountParam() const { return *reverbAmountParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getReverbAlgorithmParam() const { return *reverbAlgorithmParam; }
+juce::AudioParameterChoice& SynthProjectAudioProcessor::getSourceEngineParam() const { return *sourceEngineParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getImagePositionParam() const { return *imagePositionParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getImageAnimateParam() const { return *imageAnimateParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getImageRateParam() const { return *imageRateParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getImageAnimModeParam() const { return *imageAnimModeParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getImageAnimSyncParam() const { return *imageAnimSyncParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getImageTargetParam() const { return *imageTargetParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getAudioPositionParam() const { return *audioPositionParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getAudioGrainParam() const { return *audioGrainParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getAudioTextureParam() const { return *audioTextureParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getAudioAnimateParam() const { return *audioAnimateParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getAudioRateParam() const { return *audioRateParam; }
+juce::AudioParameterChoice& SynthProjectAudioProcessor::getAudioAnimModeParam() const { return *audioAnimModeParam; }
+juce::AudioParameterChoice& SynthProjectAudioProcessor::getAudioAnimSyncParam() const { return *audioAnimSyncParam; }
 juce::AudioParameterInt& SynthProjectAudioProcessor::getPitchBendRangeParam() const { return *pitchBendRangeParam; }
 
 float SynthProjectAudioProcessor::copyPitchBendNormalized() const
@@ -810,6 +956,68 @@ std::vector<float> SynthProjectAudioProcessor::copyCurrentImageWaveformPreview(i
     return waveform;
 }
 
+void SynthProjectAudioProcessor::requestAudioLoadAsync(const juce::File& audioFile)
+{
+    if (!audioFile.existsAsFile())
+    {
+        audioLoadErrorFlag.store(true, std::memory_order_relaxed);
+        return;
+    }
+
+    audioLoadErrorFlag.store(false, std::memory_order_relaxed);
+    audioLoadedFromDisk.store(false, std::memory_order_relaxed);
+
+    const auto serial = audioLoadRequestSerial.fetch_add(1, std::memory_order_relaxed) + 1;
+    audioLoadThreadPool.removeAllJobs(true, 500);
+    audioLoadThreadPool.addJob(new AudioLoadJob(*this, audioFile, serial), true);
+}
+
+void SynthProjectAudioProcessor::notifyAudioLoadError()
+{
+    audioLoadErrorFlag.store(true, std::memory_order_relaxed);
+}
+
+void SynthProjectAudioProcessor::completeAudioLoad(int serial,
+                                                   std::shared_ptr<AudioSourceData> source,
+                                                   const juce::String& sourcePath)
+{
+    if (serial != audioLoadRequestSerial.load(std::memory_order_relaxed) || source == nullptr)
+    {
+        return;
+    }
+
+    std::atomic_store(&activeAudioSource, std::static_pointer_cast<const AudioSourceData>(source));
+    audioLoadedFromDisk.store(true, std::memory_order_relaxed);
+
+    {
+        const std::scoped_lock<std::mutex> lock(imageStateMutex);
+        lastLoadedAudioPath = sourcePath;
+        audioWaveformPreview = source->waveformPreview;
+    }
+}
+
+bool SynthProjectAudioProcessor::consumeAudioLoadErrorFlag()
+{
+    return audioLoadErrorFlag.exchange(false, std::memory_order_relaxed);
+}
+
+bool SynthProjectAudioProcessor::copyCurrentAudioWaveformPreview(std::vector<float>& waveformOut) const
+{
+    const std::scoped_lock<std::mutex> lock(imageStateMutex);
+    waveformOut = audioWaveformPreview;
+    return !waveformOut.empty();
+}
+
+float SynthProjectAudioProcessor::copyCurrentAudioPosition() const
+{
+    return currentAudioPositionNorm.load(std::memory_order_relaxed);
+}
+
+bool SynthProjectAudioProcessor::hasLoadedAudio() const
+{
+    return audioLoadedFromDisk.load(std::memory_order_relaxed);
+}
+
 SubtractiveSettings SynthProjectAudioProcessor::currentSubtractiveSettings() const
 {
     SubtractiveSettings settings;
@@ -819,6 +1027,7 @@ SubtractiveSettings SynthProjectAudioProcessor::currentSubtractiveSettings() con
     settings.imageMix = 0.35f;
     settings.filterCutoffHz = filterCutoffParam->get();
     settings.filterResonanceQ = filterResonanceParam->get();
+        settings.filterTypeIndex = filterTypeParam->getIndex();
     settings.masterGain = masterGainParam->get();
     return settings;
 }
@@ -873,6 +1082,13 @@ void SynthProjectAudioProcessor::prepareReverbEngine(double sampleRate)
 }
 
 float SynthProjectAudioProcessor::imageSyncBeatsForIndex(int index) const
+{
+    static constexpr std::array<float, 6> beatDivisions { 0.0f, 4.0f, 2.0f, 1.0f, 0.5f, 0.25f };
+    const auto clamped = juce::jlimit(0, static_cast<int>(beatDivisions.size()) - 1, index);
+    return beatDivisions[static_cast<std::size_t>(clamped)];
+}
+
+float SynthProjectAudioProcessor::audioSyncBeatsForIndex(int index) const
 {
     static constexpr std::array<float, 6> beatDivisions { 0.0f, 4.0f, 2.0f, 1.0f, 0.5f, 0.25f };
     const auto clamped = juce::jlimit(0, static_cast<int>(beatDivisions.size()) - 1, index);
@@ -940,6 +1156,70 @@ float SynthProjectAudioProcessor::updateImageAnimationPosition(int samplesThisBl
     const auto sweep = animAmount * 0.5f;
     const auto animated = juce::jlimit(0.0f, 1.0f, basePos + (imageAnimPhase - 0.5f) * (2.0f * sweep));
     currentImagePositionNorm.store(animated, std::memory_order_relaxed);
+    return animated;
+}
+
+float SynthProjectAudioProcessor::updateAudioAnimationPosition(int samplesThisBlock)
+{
+    const auto basePos = juce::jlimit(0.0f, 1.0f, audioPositionParam->get());
+    const auto animAmount = juce::jlimit(0.0f, 1.0f, audioAnimateParam->get());
+
+    if (animAmount <= 0.0001f)
+    {
+        currentAudioPositionNorm.store(basePos, std::memory_order_relaxed);
+        return basePos;
+    }
+
+    const auto sec = static_cast<float>(samplesThisBlock) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz));
+    auto rateHz = juce::jlimit(0.01f, 4.0f, audioRateParam->get());
+    const auto syncIndex = audioAnimSyncParam->getIndex();
+    if (syncIndex > 0)
+    {
+        const auto beats = audioSyncBeatsForIndex(syncIndex);
+        if (beats > 0.0f)
+        {
+            const auto cycleSec = static_cast<float>((60.0 / juce::jmax(20.0, currentBpm)) * beats);
+            rateHz = 1.0f / juce::jmax(0.05f, cycleSec);
+        }
+    }
+
+    const auto mode = audioAnimModeParam->getIndex();
+    const auto delta = rateHz * sec;
+
+    if (mode == 0)
+    {
+        audioAnimPhase += delta;
+        while (audioAnimPhase > 1.0f)
+        {
+            audioAnimPhase -= 1.0f;
+        }
+    }
+    else if (mode == 1)
+    {
+        audioAnimPhase -= delta;
+        while (audioAnimPhase < 0.0f)
+        {
+            audioAnimPhase += 1.0f;
+        }
+    }
+    else
+    {
+        audioAnimPhase += delta * static_cast<float>(audioAnimDirection);
+        if (audioAnimPhase >= 1.0f)
+        {
+            audioAnimPhase = 1.0f;
+            audioAnimDirection = -1;
+        }
+        else if (audioAnimPhase <= 0.0f)
+        {
+            audioAnimPhase = 0.0f;
+            audioAnimDirection = 1;
+        }
+    }
+
+    const auto sweep = animAmount * 0.5f;
+    const auto animated = juce::jlimit(0.0f, 1.0f, basePos + (audioAnimPhase - 0.5f) * (2.0f * sweep));
+    currentAudioPositionNorm.store(animated, std::memory_order_relaxed);
     return animated;
 }
 
@@ -1513,6 +1793,7 @@ void SynthProjectAudioProcessor::getStateInformation(juce::MemoryBlock& destData
     {
         const std::scoped_lock<std::mutex> lock(imageStateMutex);
         state.setProperty("imagePath", lastLoadedImagePath, nullptr);
+        state.setProperty("audioPath", lastLoadedAudioPath, nullptr);
     }
 
     if (auto xml = state.createXml())
@@ -1563,6 +1844,24 @@ void SynthProjectAudioProcessor::setStateInformation(const void* data, int sizeI
             if (file.existsAsFile())
             {
                 requestImageLoadAsync(file);
+            }
+        }
+    }
+
+    if (state.hasProperty("audioPath"))
+    {
+        const auto path = state["audioPath"].toString();
+        {
+            const std::scoped_lock<std::mutex> lock(imageStateMutex);
+            lastLoadedAudioPath = path;
+        }
+
+        if (path.isNotEmpty())
+        {
+            const juce::File file(path);
+            if (file.existsAsFile())
+            {
+                requestAudioLoadAsync(file);
             }
         }
     }
