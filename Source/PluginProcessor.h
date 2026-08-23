@@ -71,6 +71,9 @@ public:
     juce::AudioParameterChoice& getRobModeParam() const;
     juce::AudioParameterFloat& getIsaacAmountParam() const;
     juce::AudioParameterChoice& getGranularSyncDivisionParam() const;
+    juce::AudioParameterChoice& getDelayAlgorithmParam() const;
+    juce::AudioParameterFloat& getDelayTimeParam() const;
+    juce::AudioParameterFloat& getDelayFeedbackParam() const;
     juce::AudioParameterFloat& getReverbAmountParam() const;
     juce::AudioParameterChoice& getReverbAlgorithmParam() const;
     juce::AudioParameterChoice& getSourceEngineParam() const;
@@ -154,6 +157,15 @@ private:
                                     int syncDivisionIndex,
                                     float& outL,
                                     float& outR);
+    void processDelayAlgorithmSample(float inL,
+                                     float inR,
+                                     float amount,
+                                     int algorithmIndex,
+                                     float timeControl,
+                                     float feedbackControl,
+                                     int syncDivisionIndex,
+                                     float& outL,
+                                     float& outR);
     void spawnIsaacGrain(float amount, int syncDivisionIndex);
     float readDelaySample(int channel, float readPos) const;
     void processReverbSampleFrame(float inL, float inR, float amount, int algorithmIndex, float& outL, float& outR);
@@ -176,6 +188,9 @@ private:
     juce::AudioParameterChoice* robModeParam { nullptr };
     juce::AudioParameterFloat* isaacAmountParam { nullptr };
     juce::AudioParameterChoice* granularSyncDivisionParam { nullptr };
+    juce::AudioParameterChoice* delayAlgorithmParam { nullptr };
+    juce::AudioParameterFloat* delayTimeParam { nullptr };
+    juce::AudioParameterFloat* delayFeedbackParam { nullptr };
     juce::AudioParameterFloat* reverbAmountParam { nullptr };
     juce::AudioParameterChoice* reverbAlgorithmParam { nullptr };
     juce::AudioParameterChoice* sourceEngineParam { nullptr };
@@ -232,6 +247,8 @@ private:
     int isaacWritePos { 0 };
     int isaacSpawnCounter { 0 };
     float isaacPanPhase { 0.0f };
+    float delayModPhase { 0.0f };
+    int lastDelayAlgorithmIndex { -1 };
     int moonBufferSize { 1 };
     int moonWritePos { 0 };
     float moonPhase { 0.0f };

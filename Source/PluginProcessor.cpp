@@ -206,6 +206,12 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
                                                                 "Granular Sync",
                                                                 juce::StringArray { "Free", "1 Bar", "1/2", "1/4", "1/8", "1/8T", "1/16", "1/16T" },
                                                                 0);
+    delayAlgorithmParam = new juce::AudioParameterChoice("delayAlgorithm",
+                                                          "Delay Algorithm",
+                                                          juce::StringArray { "Granular", "Tape", "Analog/BBD", "Ping-Pong", "Stereo", "Modulated", "Diffusion" },
+                                                          0);
+    delayTimeParam = new juce::AudioParameterFloat("delayTime", "Delay Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
+    delayFeedbackParam = new juce::AudioParameterFloat("delayFeedback", "Delay Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.38f);
     reverbAmountParam = new juce::AudioParameterFloat("reverbAmount", "Reverb", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     reverbAlgorithmParam = new juce::AudioParameterChoice("reverbAlgorithm",
                                                            "Reverb Algorithm",
@@ -261,6 +267,9 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(robModeParam);
     addParameter(isaacAmountParam);
     addParameter(granularSyncDivisionParam);
+    addParameter(delayAlgorithmParam);
+    addParameter(delayTimeParam);
+    addParameter(delayFeedbackParam);
     addParameter(reverbAmountParam);
     addParameter(reverbAlgorithmParam);
     addParameter(sourceEngineParam);
@@ -439,7 +448,21 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     const auto robModeIndex = robModeParam->getIndex();
     const auto isaacAmountBase = clamp01(isaacAmountParam->get());
     const auto syncDivisionIndex = granularSyncDivisionParam->getIndex();
+    const auto delayAlgorithmIndex = delayAlgorithmParam->getIndex();
+    const auto delayTimeControl = clamp01(delayTimeParam->get());
+    const auto delayFeedbackControl = clamp01(delayFeedbackParam->get());
     const auto reverbAmountBase = clamp01(reverbAmountParam->get());
+
+    if (delayAlgorithmIndex != lastDelayAlgorithmIndex)
+    {
+        lastDelayAlgorithmIndex = delayAlgorithmIndex;
+        isaacSpawnCounter = 0;
+        isaacFeedbackFilter = { { 0.0f, 0.0f } };
+        for (auto& grain : isaacGrains)
+        {
+            grain.active = false;
+        }
+    }
     const auto reverbAlgorithmIndex = reverbAlgorithmParam->getIndex();
     const auto imageTargetIndex = imageTargetParam->getIndex();
 
@@ -551,7 +574,15 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
 
         float outL = inL;
         float outR = inR;
-        processIsaacGranularSample(inL, inR, isaacAmount, syncDivisionIndex, outL, outR);
+        processDelayAlgorithmSample(inL,
+                        inR,
+                        isaacAmount,
+                        delayAlgorithmIndex,
+                        delayTimeControl,
+                        delayFeedbackControl,
+                        syncDivisionIndex,
+                        outL,
+                        outR);
 
         const auto reverbInL = outL;
         const auto reverbInR = outR;
@@ -782,6 +813,9 @@ juce::AudioParameterFloat& SynthProjectAudioProcessor::getRobAmountParam() const
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getRobModeParam() const { return *robModeParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getIsaacAmountParam() const { return *isaacAmountParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getGranularSyncDivisionParam() const { return *granularSyncDivisionParam; }
+juce::AudioParameterChoice& SynthProjectAudioProcessor::getDelayAlgorithmParam() const { return *delayAlgorithmParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getDelayTimeParam() const { return *delayTimeParam; }
+juce::AudioParameterFloat& SynthProjectAudioProcessor::getDelayFeedbackParam() const { return *delayFeedbackParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getReverbAmountParam() const { return *reverbAmountParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getReverbAlgorithmParam() const { return *reverbAlgorithmParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getSourceEngineParam() const { return *sourceEngineParam; }
@@ -1061,6 +1095,8 @@ void SynthProjectAudioProcessor::prepareIsaacEngine(double sampleRate)
     isaacWritePos = 0;
     isaacSpawnCounter = 0;
     isaacPanPhase = 0.0f;
+    delayModPhase = 0.0f;
+    lastDelayAlgorithmIndex = -1;
     isaacFeedbackFilter = { { 0.0f, 0.0f } };
 }
 
@@ -1689,6 +1725,150 @@ void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
 
     const auto wetMix = lerp(0.08f, 0.92f, std::pow(macro, 1.02f));
     const auto dryMix = lerp(0.95f, 0.12f, macro);
+
+    outL = inL * dryMix + wetL * wetMix;
+    outR = inR * dryMix + wetR * wetMix;
+}
+
+void SynthProjectAudioProcessor::processDelayAlgorithmSample(float inL,
+                                                             float inR,
+                                                             float amount,
+                                                             int algorithmIndex,
+                                                             float timeControl,
+                                                             float feedbackControl,
+                                                             int syncDivisionIndex,
+                                                             float& outL,
+                                                             float& outR)
+{
+    const auto algo = juce::jlimit(0, 6, algorithmIndex);
+
+    if (algo == 0)
+    {
+        processIsaacGranularSample(inL, inR, amount, syncDivisionIndex, outL, outR);
+        return;
+    }
+
+    if (isaacBufferSize <= 1)
+    {
+        outL = inL;
+        outR = inR;
+        return;
+    }
+
+    const auto a = smoothstep(amount);
+    const auto secPerBeat = static_cast<float>(60.0 / currentBpm);
+    float baseDelaySec = lerp(0.04f, 1.25f, timeControl);
+    const auto syncBeats = divisionBeatsForIndex(syncDivisionIndex);
+    if (syncDivisionIndex > 0 && syncBeats > 0.0f)
+    {
+        baseDelaySec = secPerBeat * syncBeats;
+    }
+
+    auto feedback = juce::jlimit(0.0f, 0.95f, lerp(0.05f, 0.92f, feedbackControl));
+    if (algo == 2) // BBD can get unstable quickly; keep a stricter cap
+    {
+        feedback = juce::jmin(feedback, 0.82f);
+    }
+
+    delayModPhase += juce::MathConstants<float>::twoPi * (0.18f + 0.65f * timeControl)
+                     / static_cast<float>(juce::jmax(1.0, currentSampleRateHz));
+    while (delayModPhase >= juce::MathConstants<float>::twoPi)
+    {
+        delayModPhase -= juce::MathConstants<float>::twoPi;
+    }
+
+    auto delaySamplesL = baseDelaySec * static_cast<float>(currentSampleRateHz);
+    auto delaySamplesR = delaySamplesL;
+
+    if (algo == 2) // Analog/BBD
+    {
+        delaySamplesL = juce::jlimit(20.0f,
+                                     static_cast<float>(isaacBufferSize - 2),
+                                     lerp(0.02f, 0.55f, timeControl) * static_cast<float>(currentSampleRateHz));
+        delaySamplesR = delaySamplesL;
+    }
+    else if (algo == 4) // Stereo delay
+    {
+        delaySamplesL *= 0.82f;
+        delaySamplesR *= 1.28f;
+    }
+    else if (algo == 5) // Modulated delay
+    {
+        const auto modDepthSamples = (6.0f + 26.0f * a);
+        const auto modA = std::sin(delayModPhase);
+        const auto modB = std::sin(delayModPhase * 1.31f + 1.2f);
+        delaySamplesL += modDepthSamples * modA;
+        delaySamplesR += modDepthSamples * modB;
+    }
+
+    delaySamplesL = juce::jlimit(10.0f, static_cast<float>(isaacBufferSize - 2), delaySamplesL);
+    delaySamplesR = juce::jlimit(10.0f, static_cast<float>(isaacBufferSize - 2), delaySamplesR);
+
+    const auto readPosL = static_cast<float>(isaacWritePos) - delaySamplesL;
+    const auto readPosR = static_cast<float>(isaacWritePos) - delaySamplesR;
+
+    auto wetL = readDelaySample(0, readPosL);
+    auto wetR = readDelaySample(1, readPosR);
+
+    if (algo == 1) // Tape
+    {
+        const auto wow = std::sin(delayModPhase * 0.7f) * (0.003f + 0.007f * a);
+        wetL = std::tanh((wetL + wow) * (0.95f + 0.35f * a));
+        wetR = std::tanh((wetR - wow) * (0.95f + 0.35f * a));
+        isaacFeedbackFilter[0] += 0.05f * (wetL - isaacFeedbackFilter[0]);
+        isaacFeedbackFilter[1] += 0.05f * (wetR - isaacFeedbackFilter[1]);
+        wetL = wetL * 0.62f + isaacFeedbackFilter[0] * 0.38f;
+        wetR = wetR * 0.62f + isaacFeedbackFilter[1] * 0.38f;
+    }
+    else if (algo == 2) // Analog/BBD
+    {
+        isaacFeedbackFilter[0] += 0.03f * (wetL - isaacFeedbackFilter[0]);
+        isaacFeedbackFilter[1] += 0.03f * (wetR - isaacFeedbackFilter[1]);
+        wetL = wetL * 0.52f + isaacFeedbackFilter[0] * 0.48f;
+        wetR = wetR * 0.52f + isaacFeedbackFilter[1] * 0.48f;
+    }
+    else if (algo == 3) // Ping-Pong
+    {
+        wetL = readDelaySample(1, readPosL);
+        wetR = readDelaySample(0, readPosR);
+    }
+    else if (algo == 6) // Diffusion
+    {
+        const auto tapA = readDelaySample(0, readPosL - delaySamplesL * 0.23f);
+        const auto tapB = readDelaySample(1, readPosR - delaySamplesR * 0.17f);
+        const auto tapC = readDelaySample(0, readPosL - delaySamplesL * 0.37f);
+        const auto tapD = readDelaySample(1, readPosR - delaySamplesR * 0.31f);
+        wetL = 0.50f * wetL + 0.24f * tapA + 0.18f * tapB + 0.08f * tapD;
+        wetR = 0.50f * wetR + 0.24f * tapB + 0.18f * tapC + 0.08f * tapA;
+    }
+
+    float writeL = inL;
+    float writeR = inR;
+
+    if (algo == 3) // Ping-Pong cross feedback
+    {
+        writeL += wetR * feedback;
+        writeR += wetL * feedback;
+    }
+    else
+    {
+        writeL += wetL * feedback;
+        writeR += wetR * feedback;
+    }
+
+    if (algo == 1 || algo == 2)
+    {
+        const auto sat = algo == 1 ? 0.85f : 1.05f;
+        writeL = std::tanh(writeL * sat);
+        writeR = std::tanh(writeR * sat);
+    }
+
+    isaacDelayBuffer[0][static_cast<std::size_t>(isaacWritePos)] = writeL;
+    isaacDelayBuffer[1][static_cast<std::size_t>(isaacWritePos)] = writeR;
+    isaacWritePos = (isaacWritePos + 1) % isaacBufferSize;
+
+    const auto wetMix = lerp(0.06f, 0.86f, std::pow(a, 0.95f));
+    const auto dryMix = 1.0f - wetMix * 0.88f;
 
     outL = inL * dryMix + wetL * wetMix;
     outR = inR * dryMix + wetR * wetMix;

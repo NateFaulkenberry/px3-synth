@@ -116,6 +116,12 @@ private:
     KnobLabel robTypeLabel;
     juce::Slider isaacTextureKnob;
     KnobLabel isaacTextureLabel;
+    juce::ComboBox delayAlgoBox;
+    KnobLabel delayAlgoLabel;
+    juce::Slider delayTimeKnob;
+    KnobLabel delayTimeLabel;
+    juce::Slider delayFeedbackKnob;
+    KnobLabel delayFeedbackLabel;
     juce::ComboBox granularSyncBox;
     KnobLabel granularSyncLabel;
     juce::Slider reverbKnob;

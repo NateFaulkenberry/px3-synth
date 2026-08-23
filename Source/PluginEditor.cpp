@@ -40,6 +40,9 @@ void SynthProjectAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::G
                             ? slider.findColour(juce::Slider::rotarySliderFillColourId)
                             : juce::Colour::fromRGB(234, 166, 76);
 
+    const auto psychedelicEnabled = static_cast<bool>(slider.getProperties()["psychedelicFx"]);
+    const auto psychedelicAmount = juce::jlimit(0.0f, 1.0f, sliderPos);
+
     // Drop shadow for more tactile depth.
     g.setColour(juce::Colour::fromRGBA(0, 0, 0, 110));
     g.fillEllipse(bounds.translated(0.0f, 3.0f));
@@ -102,6 +105,46 @@ void SynthProjectAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::G
     g.setColour(juce::Colour::fromRGB(14, 14, 14));
     g.drawEllipse(bounds.expanded(0.6f), 0.9f);
 
+    if (psychedelicEnabled && psychedelicAmount > 0.001f)
+    {
+        const auto t = static_cast<float>(juce::Time::getMillisecondCounterHiRes() * 0.0012);
+        const auto glow = std::pow(psychedelicAmount, 0.8f);
+        const auto borderRadius = radius + 1.8f;
+
+        // Compact 3px rainbow border with a faint outer glow that brightens as the knob increases.
+        for (int seg = 0; seg < 24; ++seg)
+        {
+            const auto segNorm = static_cast<float>(seg) / 24.0f;
+            const auto hue = std::fmod(segNorm + t * 0.12f, 1.0f);
+            const auto start = segNorm * juce::MathConstants<float>::twoPi;
+            const auto span = juce::MathConstants<float>::twoPi / 24.0f * 0.88f;
+
+            juce::Path arc;
+            arc.addCentredArc(center.x,
+                              center.y,
+                              borderRadius,
+                              borderRadius,
+                              0.0f,
+                              start,
+                              start + span,
+                              true);
+
+            const auto glowAlpha = juce::jlimit(0.0f, 0.65f, 0.06f + glow * 0.34f);
+            g.setColour(juce::Colour::fromHSV(hue, 0.90f, 1.0f, glowAlpha));
+            g.strokePath(arc,
+                         juce::PathStrokeType(5.4f,
+                                              juce::PathStrokeType::curved,
+                                              juce::PathStrokeType::rounded));
+
+            const auto borderAlpha = juce::jlimit(0.0f, 0.95f, 0.25f + glow * 0.62f);
+            g.setColour(juce::Colour::fromHSV(hue, 0.98f, 1.0f, borderAlpha));
+            g.strokePath(arc,
+                         juce::PathStrokeType(3.0f,
+                                              juce::PathStrokeType::curved,
+                                              juce::PathStrokeType::rounded));
+        }
+    }
+
     juce::Path ring;
     ring.addCentredArc(center.x,
                        center.y,
@@ -125,6 +168,11 @@ void SynthProjectAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::G
 
 void SynthProjectAudioProcessorEditor::KnobLabel::paint(juce::Graphics& g)
 {
+    if (getText().isEmpty())
+    {
+        return;
+    }
+
     auto area = getLocalBounds().toFloat().reduced(2.0f, 1.0f);
 
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 54));
@@ -265,8 +313,14 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     configureKnob(knobBindings[9], "Gain", audioProcessor.getMasterGainParam());
 
     configureEffectKnob(robWarmthKnob, robWarmthLabel, "WARMTH", audioProcessor.getRobAmountParam());
-    configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "TEXTURE", audioProcessor.getIsaacAmountParam());
+    configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "", audioProcessor.getIsaacAmountParam());
+    configureEffectKnob(delayTimeKnob, delayTimeLabel, "TIME", audioProcessor.getDelayTimeParam());
+    configureEffectKnob(delayFeedbackKnob, delayFeedbackLabel, "FEEDBACK", audioProcessor.getDelayFeedbackParam());
     configureEffectKnob(reverbKnob, reverbLabel, "INTENSITY", audioProcessor.getReverbAmountParam());
+
+    robWarmthKnob.getProperties().set("psychedelicFx", true);
+    isaacTextureKnob.getProperties().set("psychedelicFx", true);
+    reverbKnob.getProperties().set("psychedelicFx", true);
 
     auto& robModeParam = audioProcessor.getRobModeParam();
     const auto robChoiceCount = robModeParam.choices.size();
@@ -308,6 +362,29 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     filterTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     filterTypeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
     addAndMakeVisible(filterTypeBox);
+
+    auto& delayAlgoParam = audioProcessor.getDelayAlgorithmParam();
+    const auto delayAlgoChoiceCount = delayAlgoParam.choices.size();
+    for (int i = 0; i < delayAlgoChoiceCount; ++i)
+    {
+        delayAlgoBox.addItem(delayAlgoParam.choices[i], i + 1);
+    }
+    delayAlgoBox.setSelectedItemIndex(delayAlgoParam.getIndex(), juce::dontSendNotification);
+    delayAlgoBox.onChange = [this, &delayAlgoParam]()
+    {
+        const auto idx = juce::jmax(0, delayAlgoBox.getSelectedItemIndex());
+        delayAlgoParam.setValueNotifyingHost(delayAlgoParam.convertTo0to1(static_cast<float>(idx)));
+    };
+    delayAlgoBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    delayAlgoBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    delayAlgoBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    delayAlgoLabel.setText("ALGO", juce::dontSendNotification);
+    delayAlgoLabel.setJustificationType(juce::Justification::centred);
+    delayAlgoLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    delayAlgoLabel.setFont(juce::FontOptions(11.5f));
+    delayAlgoLabel.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(delayAlgoBox);
+    addAndMakeVisible(delayAlgoLabel);
 
     auto& granularSyncParam = audioProcessor.getGranularSyncDivisionParam();
     const auto choiceCount = granularSyncParam.choices.size();
@@ -376,6 +453,8 @@ SynthProjectAudioProcessorEditor::~SynthProjectAudioProcessorEditor()
 
     robWarmthKnob.setLookAndFeel(nullptr);
     isaacTextureKnob.setLookAndFeel(nullptr);
+    delayTimeKnob.setLookAndFeel(nullptr);
+    delayFeedbackKnob.setLookAndFeel(nullptr);
     reverbKnob.setLookAndFeel(nullptr);
 }
 
@@ -450,7 +529,7 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
         g.drawText("HARMONIC DRIVE", robSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
 
         g.setColour(juce::Colour::fromRGB(250, 244, 224));
-        g.drawText("GRANULAR DELAY", isaacSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
+        g.drawText("DELAY", isaacSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
 
         g.setColour(juce::Colour::fromRGB(224, 245, 255));
         g.drawText("REVERB", reverbSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
@@ -639,14 +718,38 @@ void SynthProjectAudioProcessorEditor::resized()
     {
         auto isaacInner = isaacSectionArea.reduced(10, 8);
         isaacInner.removeFromTop(24);
-        auto bottomArea = isaacInner.removeFromBottom(46);
-        auto labelArea = bottomArea.removeFromTop(22);
-        granularSyncLabel.setBounds(bottomArea.removeFromLeft(56));
-        granularSyncBox.setBounds(bottomArea.reduced(2, 1));
+        auto delayControlsArea = isaacInner.removeFromBottom(96);
 
-        const auto knobSize = juce::jmin(82, juce::jmin(isaacInner.getWidth(), isaacInner.getHeight()));
+        auto rowAlgo = delayControlsArea.removeFromBottom(22);
+        auto rowSync = delayControlsArea.removeFromBottom(22);
+        delayControlsArea.removeFromBottom(2);
+        auto miniArea = delayControlsArea;
+
+        auto leftMini = miniArea.removeFromLeft(miniArea.getWidth() / 2).reduced(2, 0);
+        auto rightMini = miniArea.reduced(2, 0);
+
+        auto leftLabel = leftMini.removeFromBottom(16);
+        auto rightLabel = rightMini.removeFromBottom(16);
+
+        const auto miniKnobSize = juce::jlimit(30,
+                                               44,
+                                               juce::jmin(leftMini.getWidth(), juce::jmin(leftMini.getHeight(), rightMini.getHeight())));
+        delayTimeKnob.setBounds(juce::Rectangle<int>(miniKnobSize, miniKnobSize).withCentre(leftMini.getCentre()));
+        delayFeedbackKnob.setBounds(juce::Rectangle<int>(miniKnobSize, miniKnobSize).withCentre(rightMini.getCentre()));
+        delayTimeLabel.setBounds(leftLabel);
+        delayFeedbackLabel.setBounds(rightLabel);
+
+        auto algoLabelArea = rowAlgo.removeFromLeft(56);
+        delayAlgoLabel.setBounds(algoLabelArea);
+        delayAlgoBox.setBounds(rowAlgo.reduced(2, 1));
+
+        auto syncLabelArea = rowSync.removeFromLeft(56);
+        granularSyncLabel.setBounds(syncLabelArea);
+        granularSyncBox.setBounds(rowSync.reduced(2, 1));
+
+        const auto knobSize = juce::jmin(80, juce::jmin(isaacInner.getWidth(), isaacInner.getHeight()));
         isaacTextureKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(isaacInner.getCentre()));
-        isaacTextureLabel.setBounds(labelArea);
+        isaacTextureLabel.setBounds(juce::Rectangle<int>(isaacInner.getX(), isaacInner.getBottom() - 18, isaacInner.getWidth(), 16));
     }
 
     {
