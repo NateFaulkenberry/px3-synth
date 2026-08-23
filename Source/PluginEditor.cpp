@@ -284,6 +284,34 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     backgroundImage = juce::ImageFileFormat::loadFrom(BinaryData::pp_png, BinaryData::pp_pngSize);
     logoFrame = juce::ImageFileFormat::loadFrom(BinaryData::px3_gif, BinaryData::px3_gifSize);
 
+    if (logoFrame.isValid())
+    {
+        const auto w = logoFrame.getWidth();
+        const auto h = logoFrame.getHeight();
+        logoGlitchMaskR = juce::Image(juce::Image::ARGB, w, h, true);
+        logoGlitchMaskG = juce::Image(juce::Image::ARGB, w, h, true);
+        logoGlitchMaskB = juce::Image(juce::Image::ARGB, w, h, true);
+
+        for (int y = 0; y < h; ++y)
+        {
+            for (int x = 0; x < w; ++x)
+            {
+                const auto px = logoFrame.getPixelAt(x, y);
+                const auto brightness = px.getPerceivedBrightness();
+                const auto whiteWeight = juce::jlimit(0.0f, 1.0f, (brightness - 0.72f) / 0.28f) * px.getFloatAlpha();
+                if (whiteWeight <= 0.001f)
+                {
+                    continue;
+                }
+
+                const auto a = static_cast<juce::uint8>(std::round(whiteWeight * 255.0f));
+                logoGlitchMaskR.setPixelAt(x, y, juce::Colour::fromRGBA(255, 76, 76, a));
+                logoGlitchMaskG.setPixelAt(x, y, juce::Colour::fromRGBA(92, 255, 120, a));
+                logoGlitchMaskB.setPixelAt(x, y, juce::Colour::fromRGBA(86, 140, 255, a));
+            }
+        }
+    }
+
     setResizable(true, true);
     setResizeLimits(980, 600, 1900, 980);
 
@@ -626,12 +654,39 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
                                                                                                          static_cast<float>(logoPanelArea.getWidth()),
                                                                                                          logoSize)
                                                                     .withSizeKeepingCentre(logoSize, logoSize);
-        const auto wobble = anyKeyDown ? std::sin(logoWobblePhase) * 0.075f : 0.0f;
+        const auto vibration = juce::jlimit(0.0f, 1.0f, logoVibrationIntensity);
+        const auto shakePx = vibration * 3.2f;
+        const auto shakeX = std::sin(logoVibrationPhase * 5.7f) * shakePx;
+        const auto shakeY = std::cos(logoVibrationPhase * 7.9f + 0.8f) * (shakePx * 0.85f);
         auto transform = juce::AffineTransform::scale(logoArea.getWidth() / static_cast<float>(logoFrame.getWidth()),
                                                       logoArea.getHeight() / static_cast<float>(logoFrame.getHeight()))
                              .translated(logoArea.getX(), logoArea.getY());
-        transform = transform.rotated(static_cast<float>(wobble), logoArea.getCentreX(), logoArea.getCentreY());
+        transform = transform.translated(shakeX, shakeY);
         g.drawImageTransformed(logoFrame, transform);
+
+        if (logoVibrationIntensity > 0.01f
+            && logoGlitchMaskR.isValid()
+            && logoGlitchMaskG.isValid()
+            && logoGlitchMaskB.isValid())
+        {
+            const auto glitchStrength = juce::jlimit(0.0f, 1.0f, logoVibrationIntensity);
+            const auto split = 0.6f + glitchStrength * 3.0f;
+            const auto phase = logoVibrationPhase;
+            const auto offsetX = std::sin(phase * 8.7f) * split;
+            const auto offsetY = std::cos(phase * 6.3f + 0.5f) * (split * 0.32f);
+            const auto alpha = 0.17f + glitchStrength * 0.40f;
+
+            g.setOpacity(alpha);
+            g.drawImageTransformed(logoGlitchMaskR,
+                                   transform.translated(-offsetX * 0.95f, -offsetY * 0.45f));
+            g.setOpacity(alpha * 0.72f);
+            g.drawImageTransformed(logoGlitchMaskG,
+                                   transform.translated(offsetX * 0.22f, offsetY * 0.20f));
+            g.setOpacity(alpha);
+            g.drawImageTransformed(logoGlitchMaskB,
+                                   transform.translated(offsetX, offsetY * 0.45f));
+            g.setOpacity(1.0f);
+        }
 
                 g.setColour(juce::Colour::fromRGB(232, 232, 232));
                 g.setFont(juce::FontOptions(14.0f));
@@ -1753,6 +1808,11 @@ void SynthProjectAudioProcessorEditor::timerCallback()
         || latestStatus.noteOn != midiStatus.noteOn)
     {
         midiStatus = latestStatus;
+        if (midiStatus.noteOn)
+        {
+            const auto velNorm = juce::jlimit(0.0f, 1.0f, static_cast<float>(midiStatus.velocity) / 127.0f);
+            logoVibrationIntensity = juce::jmax(logoVibrationIntensity, velNorm);
+        }
         const auto stateText = midiStatus.noteOn ? "Note On" : "Note Off";
         const auto statusText = midiStatus.noteNumber >= 0
                                     ? juce::String("MIDI In: ") + stateText
@@ -1771,14 +1831,17 @@ void SynthProjectAudioProcessorEditor::timerCallback()
                                            audioProcessor.copyPitchBendActivity(),
                                            audioProcessor.copyModWheelActivity());
 
-    if (anyKeyDown)
+    if (logoVibrationIntensity > 0.001f || anyKeyDown)
     {
-        logoWobblePhase += 0.12f;
+        logoVibrationPhase += 0.38f;
 
-        if (logoWobblePhase > juce::MathConstants<float>::twoPi)
+        if (logoVibrationPhase > juce::MathConstants<float>::twoPi)
         {
-            logoWobblePhase -= juce::MathConstants<float>::twoPi;
+            logoVibrationPhase -= juce::MathConstants<float>::twoPi;
         }
+
+        const auto decay = anyKeyDown ? 0.968f : 0.928f;
+        logoVibrationIntensity *= decay;
 
         repaint();
     }

@@ -83,8 +83,12 @@ private:
 
     juce::Image backgroundImage;
     juce::Image logoFrame;
+    juce::Image logoGlitchMaskR;
+    juce::Image logoGlitchMaskG;
+    juce::Image logoGlitchMaskB;
     bool anyKeyDown { false };
-    float logoWobblePhase { 0.0f };
+    float logoVibrationPhase { 0.0f };
+    float logoVibrationIntensity { 0.0f };
     float oscVizPhase { 0.0f };
 
     juce::Rectangle<int> headerArea;

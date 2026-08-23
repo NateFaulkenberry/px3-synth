@@ -582,18 +582,55 @@ float SynthVoice::renderPhysical(double sampleRate)
 
 float SynthVoice::renderRobOsc(double sampleRate)
 {
-    const auto transCurve = std::pow(oscillatorSettings.macroA, 1.2f);
-    const auto bodyCurve = std::pow(oscillatorSettings.macroB, 1.15f);
-    const auto chaosCurve = std::pow(oscillatorSettings.macroC, 1.05f);
-    const auto transient = std::exp(-static_cast<float>(noteAgeSamples) * (0.006f + transCurve * 0.014f));
-    const auto bodyFreq = currentFrequencyHz * (1.0 + bodyCurve * 1.6);
-    const auto bodyPhase = currentAngle * (1.0 + chaosCurve * 0.65);
-    const auto body = std::sin(bodyPhase) * 0.62f + std::sin(bodyPhase * 2.12) * 0.24f;
-    const auto smack = nextDeterministicNoise() * transient * (0.42f + 0.38f * transCurve);
-    const auto chaos = std::sin(bodyPhase * (4.0 + chaosCurve * 6.0)) * (0.05f + chaosCurve * 0.18f);
+    const auto transCurve = std::pow(oscillatorSettings.macroA, 0.55f);
+    const auto bodyCurve = std::pow(oscillatorSettings.macroB, 0.72f);
+    const auto chaosCurve = std::pow(oscillatorSettings.macroC, 0.80f);
+    const auto transientDecay = juce::jmap(transCurve, 0.085f, 0.012f);
+    const auto transient = std::exp(-static_cast<float>(noteAgeSamples) * transientDecay);
+    const auto bodyPhase = currentAngle * (1.0 + chaosCurve * 1.05 + bodyCurve * 0.45)
+                           + std::sin(currentAngle * (3.5 + chaosCurve * 10.0)) * (0.02 + chaosCurve * 0.38);
 
-    juce::ignoreUnused(bodyFreq, sampleRate);
-    return softClip(static_cast<float>((body + smack + chaos) * 1.12f));
+    const auto bodyFund = std::sin(bodyPhase);
+    const auto bodySub = std::sin(bodyPhase * 0.5) * (0.12f + bodyCurve * 0.42f);
+    const auto bodySecond = std::sin(bodyPhase * (1.34 + bodyCurve * 1.10)) * (0.08f + bodyCurve * 0.34f);
+    const auto bodyThird = std::sin(bodyPhase * (2.00 + bodyCurve * 2.05)) * (0.03f + bodyCurve * 0.22f);
+    auto body = bodyFund * (0.42f + bodyCurve * 0.52f) + bodySub + bodySecond + bodyThird;
+    body = std::tanh(body * (1.12f + bodyCurve * 2.40f));
+
+    // TRANS now drives a dedicated transient exciter so the knob has obvious sonic impact.
+    const auto clickTone = std::sin(bodyPhase * (9.0f + transCurve * 46.0f));
+    const auto clickNoise = nextDeterministicNoise();
+    const auto clickMix = juce::jmap(transCurve, 0.25f, 0.80f);
+    const auto clickCore = clickTone * (1.0f - clickMix) + clickNoise * clickMix;
+    const auto transientGain = juce::jmap(transCurve, 0.04f, 2.30f);
+    const auto smack = clickCore * transient * transientGain;
+
+    // Add a very short attack impulse whose duration and intensity are TRANS-dependent.
+    const auto attackSamples = juce::jlimit(10,
+                                            96,
+                                            static_cast<int>(10 + transCurve * 86.0f));
+    float onsetEnv = 0.0f;
+    if (noteAgeSamples < attackSamples)
+    {
+        onsetEnv = 1.0f - static_cast<float>(noteAgeSamples) / static_cast<float>(attackSamples);
+        onsetEnv = onsetEnv * onsetEnv;
+    }
+    const auto onset = nextDeterministicNoise() * onsetEnv * juce::jmap(transCurve, 0.0f, 1.25f);
+
+    // Keep TRANS audible after attack: add continuous edge/saturation movement.
+    const auto edgeShaper = std::tanh(body * (1.0f + transCurve * 3.8f));
+    const auto edgeCarrier = std::sin(bodyPhase * (5.0f + transCurve * 22.0f + chaosCurve * 24.0f));
+    const auto edge = (edgeShaper - body) * (0.08f + transCurve * 0.60f)
+                      + edgeCarrier * (0.01f + transCurve * 0.22f);
+
+    const auto chaosRate = 6.0 + chaosCurve * 32.0;
+    const auto chaosWarp = std::sin(bodyPhase * (3.0 + chaosCurve * 9.0) + std::sin(currentAngle * (11.0 + chaosCurve * 27.0)));
+    const auto chaosNoise = nextDeterministicNoise() * (0.02f + chaosCurve * 0.22f);
+    const auto chaos = std::sin(bodyPhase * chaosRate + chaosWarp * (0.6f + chaosCurve * 2.4f)) * (0.05f + chaosCurve * 0.34f)
+                       + chaosNoise;
+
+    juce::ignoreUnused(sampleRate);
+    return softClip(static_cast<float>((body + smack + onset + edge + chaos) * 0.86f));
 }
 
 float SynthVoice::renderPx3(double sampleRate, float externalSample)
