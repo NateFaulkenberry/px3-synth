@@ -732,6 +732,8 @@ void SynthProjectAudioProcessorEditor::KnobLabel::paint(juce::Graphics& g)
         return;
     }
 
+    const auto compactLabel = static_cast<bool>(getProperties().getWithDefault("compactLabel", false));
+    const auto horizontalPadding = compactLabel ? 4.0f : 8.0f;
     auto area = getLocalBounds().toFloat().reduced(2.0f, 1.0f);
 
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 54));
@@ -743,7 +745,7 @@ void SynthProjectAudioProcessorEditor::KnobLabel::paint(juce::Graphics& g)
     g.setColour(findColour(juce::Label::textColourId));
     g.setFont(getFont());
     g.drawText(getText(),
-               area.reduced(8.0f, 0.0f).toNearestInt(),
+               area.reduced(horizontalPadding, 0.0f).toNearestInt(),
                juce::Justification::centred,
                true);
 }
@@ -990,10 +992,19 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "", audioProcessor.getDelayAmountParam());
     configureEffectKnob(delayTimeKnob, delayTimeLabel, "TIME", audioProcessor.getDelayTimeParam());
     configureEffectKnob(delayFeedbackKnob, delayFeedbackLabel, "FEEDBACK", audioProcessor.getDelayFeedbackParam());
-    configureEffectKnob(reverbKnob, reverbLabel, "INTENSITY", audioProcessor.getReverbAmountParam());
+    configureEffectKnob(reverbKnob, reverbLabel, "", audioProcessor.getReverbAmountParam());
 
-    // Keep the large delay knob unlabeled per UX request.
-    isaacTextureLabel.setVisible(false);
+    // isaacTextureLabel.setText("INTENSITY", juce::dontSendNotification);
+    // isaacTextureLabel.setVisible(true);
+
+    // Compact labels and tooltips keep delay controls readable in narrow layouts.
+    isaacTextureLabel.getProperties().set("compactLabel", true);
+    delayTimeLabel.getProperties().set("compactLabel", true);
+    delayFeedbackLabel.getProperties().set("compactLabel", true);
+    // isaacTextureLabel.setTooltip("INTENSITY");
+    // isaacTextureKnob.setTooltip("INTENSITY");
+    delayFeedbackLabel.setTooltip("FEEDBACK");
+    delayFeedbackKnob.setTooltip("FEEDBACK");
 
     vibeAmountKnob.getProperties().set("psychedelicFx", true);
     isaacTextureKnob.getProperties().set("psychedelicFx", true);
@@ -2356,8 +2367,8 @@ void SynthProjectAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
         delayFeedbackKnob.setBounds(rightKnobBounds);
 
         constexpr int miniLabelHeight = 16;
-        const auto leftLabelWidth = juce::jmin(leftMini.getWidth(), miniKnobSize + 14);
-        const auto rightLabelWidth = juce::jmin(rightMini.getWidth(), miniKnobSize + 14);
+        const auto leftLabelWidth = leftMini.getWidth();
+        const auto rightLabelWidth = rightMini.getWidth();
         delayTimeLabel.setBounds(juce::Rectangle<int>(leftLabelWidth, miniLabelHeight)
                          .withCentre({ leftKnobBounds.getCentreX(), leftLabel.getCentreY() }));
         delayFeedbackLabel.setBounds(juce::Rectangle<int>(rightLabelWidth, miniLabelHeight)
@@ -3268,6 +3279,14 @@ void SynthProjectAudioProcessorEditor::refreshGranularModeUI()
         default:
             break;
     }
+
+    // isaacTextureLabel.setText("INTENSITY", juce::dontSendNotification);
+    // isaacTextureLabel.setTooltip("INTENSITY");
+    // isaacTextureKnob.setTooltip("INTENSITY");
+    delayFeedbackLabel.setTooltip("FEEDBACK");
+    delayFeedbackKnob.setTooltip("FEEDBACK");
+    delayTimeLabel.setTooltip(delayTimeLabel.getText());
+    delayTimeKnob.setTooltip(delayTimeLabel.getText());
 
     repaint(isaacSectionArea);
 }

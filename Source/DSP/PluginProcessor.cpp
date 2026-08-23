@@ -548,10 +548,13 @@ void SynthProjectAudioProcessor::prepareToPlay(double sampleRate, int samplesPer
     synth.setCurrentPlaybackSampleRate(sampleRate);
     const auto sr = static_cast<float>(juce::jmax(1.0, sampleRate));
     constexpr float delayControlTauSec = 0.008f;
+    constexpr float reverbAmountTauSec = 0.020f;
     delayControlSmoothingCoeff = 1.0f - std::exp(-1.0f / (sr * delayControlTauSec));
+    reverbAmountSmoothingCoeff = 1.0f - std::exp(-1.0f / (sr * reverbAmountTauSec));
     delayAmountSmoothed = clamp01(delayAmountParam->get());
     delayTimeControlSmoothed = clamp01(delayTimeParam->get());
     delayFeedbackControlSmoothed = clamp01(delayFeedbackParam->get());
+    reverbAmountSmoothed = reverbEnabledParam->get() ? clamp01(reverbAmountParam->get()) : 0.0f;
     vibeEngine.prepare(sampleRate, synth.getNumVoices(), vibeSeed.load(std::memory_order_relaxed));
     vibeLastAppliedSeed.store(vibeSeed.load(std::memory_order_relaxed), std::memory_order_relaxed);
     applyVibeTypeProfile(vibeTypeParam->getIndex());
@@ -974,6 +977,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
         isaacRhythmicSamplesUntilNext = 0;
         isaacRhythmicSwingToggle = false;
         isaacFeedbackFilter = { { 0.0f, 0.0f } };
+        isaacShimmerSmooth = { { 0.0f, 0.0f } };
         clearGranularDiffusionState();
         for (auto& grain : isaacGrains)
         {
@@ -1121,6 +1125,11 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
+        const auto reverbAmountTarget = reverbEnabled ? reverbAmount : 0.0f;
+        const auto reverbSmoothCoeff = juce::jlimit(0.0001f, 1.0f, reverbAmountSmoothingCoeff);
+        reverbAmountSmoothed += reverbSmoothCoeff * (reverbAmountTarget - reverbAmountSmoothed);
+        const auto reverbAmountForSample = clamp01(reverbAmountSmoothed);
+
         auto stageL = buffer.getSample(0, sample);
         auto stageR = (buffer.getNumChannels() > 1) ? buffer.getSample(1, sample) : stageL;
 
@@ -1152,11 +1161,11 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
                     break;
 
                 case 2: // Reverb
-                    if (reverbEnabled)
+                    if (reverbAmountForSample > 0.0001f)
                     {
                         const auto reverbInL = stageL;
                         const auto reverbInR = stageR;
-                        processReverbSampleFrame(stageL, stageR, reverbAmount, reverbAlgorithmIndex, stageL, stageR);
+                        processReverbSampleFrame(stageL, stageR, reverbAmountForSample, reverbAlgorithmIndex, stageL, stageR);
 
                         reverbPreEnergy += 0.5 * (static_cast<double>(reverbInL) * static_cast<double>(reverbInL)
                                                   + static_cast<double>(reverbInR) * static_cast<double>(reverbInR));
@@ -1177,20 +1186,20 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
         }
     }
 
-    if (reverbEnabled && reverbAmount > 0.0001f && buffer.getNumSamples() > 0)
+    if (reverbAmountSmoothed > 0.0001f && buffer.getNumSamples() > 0)
     {
         const auto invN = 1.0 / static_cast<double>(buffer.getNumSamples());
         const auto preRms = static_cast<float>(std::sqrt(juce::jmax(1.0e-12, reverbPreEnergy * invN)));
         const auto postRms = static_cast<float>(std::sqrt(juce::jmax(1.0e-12, reverbPostEnergy * invN)));
         const auto rawComp = juce::jlimit(0.72f, 1.45f, preRms / juce::jmax(1.0e-5f, postRms));
 
-        const auto compBlend = smoothstep(reverbAmount);
+        const auto compBlend = smoothstep(clamp01(reverbAmountSmoothed));
         const auto targetComp = 1.0f + (rawComp - 1.0f) * compBlend;
-        reverbOutputCompGain += 0.12f * (targetComp - reverbOutputCompGain);
+        reverbOutputCompGain += 0.03f * (targetComp - reverbOutputCompGain);
     }
     else
     {
-        reverbOutputCompGain += 0.08f * (1.0f - reverbOutputCompGain);
+        reverbOutputCompGain += 0.02f * (1.0f - reverbOutputCompGain);
     }
 
     if (std::abs(reverbOutputCompGain - 1.0f) > 0.001f)
@@ -2387,6 +2396,7 @@ void SynthProjectAudioProcessor::prepareIsaacEngine(double sampleRate)
     lastDelayAlgorithmIndex = -1;
     lastGranularModeIndex = -1;
     isaacFeedbackFilter = { { 0.0f, 0.0f } };
+    isaacShimmerSmooth = { { 0.0f, 0.0f } };
 }
 
 void SynthProjectAudioProcessor::prepareReverbEngine(double sampleRate)
@@ -2395,6 +2405,11 @@ void SynthProjectAudioProcessor::prepareReverbEngine(double sampleRate)
 
     reverb.reset();
     reverbOutputCompGain = 1.0f;
+    reverbInputDcX1 = { { 0.0f, 0.0f } };
+    reverbInputDcY1 = { { 0.0f, 0.0f } };
+    reverbWetDcX1 = { { 0.0f, 0.0f } };
+    reverbWetDcY1 = { { 0.0f, 0.0f } };
+    reverbWetSlewState = { { 0.0f, 0.0f } };
 
     moonBufferSize = juce::jmax(1, static_cast<int>(std::ceil(currentSampleRateHz * kMaxMoonDelaySeconds)));
     moonWritePos = 0;
@@ -3264,7 +3279,7 @@ void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
     }
     else if (mode == GranularMode::shimmer)
     {
-        feedback = juce::jlimit(0.0f, 0.92f, 0.36f + 0.56f * feedbackControl);
+        feedback = juce::jlimit(0.0f, 0.88f, 0.34f + 0.50f * feedbackControl);
         diffusion = juce::jlimit(0.0f, 1.0f, 0.28f + 0.58f * a);
         stereo = juce::jlimit(0.0f, 1.0f, 0.24f + 0.56f * a);
         dampCoeff = lerp(0.11f, 0.03f, a);
@@ -3289,6 +3304,14 @@ void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
         const auto shimmerTone = 1.0f + 0.32f * a;
         wetL = std::tanh((wetL * 0.76f + isaacFeedbackFilter[0] * 0.24f) * shimmerTone);
         wetR = std::tanh((wetR * 0.76f + isaacFeedbackFilter[1] * 0.24f) * shimmerTone);
+
+        // Shimmer can jump in level as new pitched grains spawn; smooth those
+        // transients to reduce crackle/pops while keeping the bright character.
+        const auto shimmerSmoothCoeff = lerp(0.26f, 0.12f, a);
+        isaacShimmerSmooth[0] += shimmerSmoothCoeff * (wetL - isaacShimmerSmooth[0]);
+        isaacShimmerSmooth[1] += shimmerSmoothCoeff * (wetR - isaacShimmerSmooth[1]);
+        wetL = isaacShimmerSmooth[0];
+        wetR = isaacShimmerSmooth[1];
     }
     else
     {
@@ -3322,8 +3345,17 @@ void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
         dryMix = lerp(0.96f, 0.22f, a);
     }
 
-    outL = sanitizeAudioSample(dryL * dryMix + wetL * wetMix);
-    outR = sanitizeAudioSample(dryR * dryMix + wetR * wetMix);
+    auto outLeft = sanitizeAudioSample(dryL * dryMix + wetL * wetMix);
+    auto outRight = sanitizeAudioSample(dryR * dryMix + wetR * wetMix);
+
+    if (mode == GranularMode::shimmer)
+    {
+        outLeft = std::tanh(outLeft * 0.94f);
+        outRight = std::tanh(outRight * 0.94f);
+    }
+
+    outL = outLeft;
+    outR = outRight;
 }
 
 void SynthProjectAudioProcessor::processDelayAlgorithmSample(float inL,
@@ -3579,6 +3611,8 @@ void SynthProjectAudioProcessor::processReverbSampleFrame(float inL,
     // Parameters are base values with optional LFO modulation applied at read time.
     if (amount <= 0.0001f)
     {
+        reverbWetSlewState[0] += 0.04f * (0.0f - reverbWetSlewState[0]);
+        reverbWetSlewState[1] += 0.04f * (0.0f - reverbWetSlewState[1]);
         outL = inL;
         outR = inR;
         return;
@@ -3633,10 +3667,20 @@ void SynthProjectAudioProcessor::processReverbSampleFrame(float inL,
                                                                 lfoSignal)
                                     : 0.54f;
 
+    // Remove ultra-low/DC bias before feeding the reverb network.
+    const auto hpCoeff = std::exp(-2.0f * juce::MathConstants<float>::pi * 28.0f
+                                  / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));
+    const auto inputHpL = inL - reverbInputDcX1[0] + hpCoeff * reverbInputDcY1[0];
+    const auto inputHpR = inR - reverbInputDcX1[1] + hpCoeff * reverbInputDcY1[1];
+    reverbInputDcX1[0] = inL;
+    reverbInputDcX1[1] = inR;
+    reverbInputDcY1[0] = inputHpL;
+    reverbInputDcY1[1] = inputHpR;
+
     // Predelay separates dry transient from wet onset, improving clarity.
     const auto predelaySamples = 1.0f + preDelay * static_cast<float>(currentSampleRateHz) * 0.30f;
-    const auto inPredelayedL = processReverbDelay(reverbPreDelayLines[0], inL, predelaySamples);
-    const auto inPredelayedR = processReverbDelay(reverbPreDelayLines[1], inR, predelaySamples);
+    const auto inPredelayedL = processReverbDelay(reverbPreDelayLines[0], inputHpL, predelaySamples);
+    const auto inPredelayedR = processReverbDelay(reverbPreDelayLines[1], inputHpR, predelaySamples);
 
     float wetL = 0.0f;
     float wetR = 0.0f;
@@ -3784,6 +3828,43 @@ void SynthProjectAudioProcessor::processReverbSampleFrame(float inL,
     const auto widthAmt = lerp(0.35f, 1.35f, width);
     wetL = mid + side * widthAmt;
     wetR = mid - side * widthAmt;
+
+    // Remove accumulated DC/ultra-low bias from wet output.
+    const auto wetHpL = wetL - reverbWetDcX1[0] + hpCoeff * reverbWetDcY1[0];
+    const auto wetHpR = wetR - reverbWetDcX1[1] + hpCoeff * reverbWetDcY1[1];
+    reverbWetDcX1[0] = wetL;
+    reverbWetDcX1[1] = wetR;
+    reverbWetDcY1[0] = wetHpL;
+    reverbWetDcY1[1] = wetHpR;
+    wetL = wetHpL;
+    wetR = wetHpR;
+
+    // High reverb mixes can create sharp composite peaks; apply gentle
+    // peak control and soft saturation to reduce crackle/pop artifacts.
+    if (mix > 0.30f)
+    {
+        const auto wetPeak = juce::jmax(std::abs(wetL), std::abs(wetR));
+        if (wetPeak > 1.35f)
+        {
+            const auto scale = 1.35f / wetPeak;
+            wetL *= scale;
+            wetR *= scale;
+        }
+
+        const auto satAmount = juce::jlimit(0.0f, 0.42f, (mix - 0.30f) * 0.70f);
+        const auto satDrive = 1.0f + satAmount;
+        wetL = std::tanh(wetL * satDrive);
+        wetR = std::tanh(wetR * satDrive);
+    }
+
+    // Slew-limit discontinuities to suppress residual clicks.
+    const auto maxWetDelta = lerp(0.45f, 0.16f, mix);
+    const auto deltaL = juce::jlimit(-maxWetDelta, maxWetDelta, wetL - reverbWetSlewState[0]);
+    const auto deltaR = juce::jlimit(-maxWetDelta, maxWetDelta, wetR - reverbWetSlewState[1]);
+    reverbWetSlewState[0] += deltaL;
+    reverbWetSlewState[1] += deltaR;
+    wetL = reverbWetSlewState[0];
+    wetR = reverbWetSlewState[1];
 
     const auto dryGain = 1.0f - mix * 0.88f;
     outL = sanitizeAudioSample(inL * dryGain + wetL * mix);

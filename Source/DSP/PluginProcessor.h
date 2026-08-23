@@ -440,6 +440,7 @@ private:
 
     std::array<std::vector<float>, 2> isaacDelayBuffer;
     std::array<float, 2> isaacFeedbackFilter { { 0.0f, 0.0f } };
+    std::array<float, 2> isaacShimmerSmooth { { 0.0f, 0.0f } };
     std::array<std::vector<float>, 2> isaacDiffusionLineA;
     std::array<std::vector<float>, 2> isaacDiffusionLineB;
     std::array<int, 2> isaacDiffusionIndexA { { 0, 0 } };
@@ -455,6 +456,11 @@ private:
     std::array<float, 2> plateTankState { { 0.0f, 0.0f } };
     std::array<float, 8> hallReadCache { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
     std::array<float, 8> cloudReadCache { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
+    std::array<float, 2> reverbInputDcX1 { { 0.0f, 0.0f } };
+    std::array<float, 2> reverbInputDcY1 { { 0.0f, 0.0f } };
+    std::array<float, 2> reverbWetDcX1 { { 0.0f, 0.0f } };
+    std::array<float, 2> reverbWetDcY1 { { 0.0f, 0.0f } };
+    std::array<float, 2> reverbWetSlewState { { 0.0f, 0.0f } };
 
     int isaacBufferSize { 1 };
     int isaacWritePos { 0 };
@@ -467,6 +473,8 @@ private:
     float delayTimeControlSmoothed { 0.5f };
     float delayFeedbackControlSmoothed { 0.35f };
     float delayControlSmoothingCoeff { 0.0f };
+    float reverbAmountSmoothed { 0.0f };
+    float reverbAmountSmoothingCoeff { 0.0f };
     float delayModPhase { 0.0f };
     int lastDelayAlgorithmIndex { -1 };
     int lastGranularModeIndex { -1 };
