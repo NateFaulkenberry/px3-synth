@@ -46,6 +46,8 @@ private:
     juce::Label rateLabel;
     juce::Label modeLabel;
     juce::Label syncLabel;
+    juce::TextButton offButton { "OFF" };
+    juce::TextButton resetButton { "RESET" };
 
     std::vector<float> waveform;
     float currentPosition { 0.0f };

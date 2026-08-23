@@ -55,6 +55,7 @@ private:
                              juce::AudioParameterFloat& parameter);
     void refreshAnyKeyDownState();
     void refreshOscillatorModeUI();
+    void refreshFxBypassUI();
     void layoutKnobGroup(const juce::Rectangle<int>& groupArea,
                          int startIndex,
                          int knobCount,
@@ -135,6 +136,9 @@ private:
     KnobLabel reverbLabel;
     juce::ComboBox reverbTypeBox;
     KnobLabel reverbTypeLabel;
+    juce::ToggleButton robBypassButton;
+    juce::ToggleButton delayBypassButton;
+    juce::ToggleButton reverbBypassButton;
 
     std::array<KnobBinding, 10> knobBindings {};
     int lastOscModeIndex { -1 };

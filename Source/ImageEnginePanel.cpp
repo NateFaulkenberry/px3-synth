@@ -89,6 +89,11 @@ ImageEnginePanel::ImageEnginePanel(SynthProjectAudioProcessor& processorIn)
     configureMiniLabel(modeLabel, "MODE");
     configureMiniLabel(targetLabel, "TARGET");
 
+    offButton.onClick = [this]() { processor.disableImageEngine(); };
+    resetButton.onClick = [this]() { processor.resetImageEngine(); };
+    offButton.setTooltip("Disable Image Engine routing");
+    resetButton.setTooltip("Reset Image Engine parameters and loaded image");
+
     addAndMakeVisible(positionSlider);
     addAndMakeVisible(animateSlider);
     addAndMakeVisible(rateSlider);
@@ -99,6 +104,8 @@ ImageEnginePanel::ImageEnginePanel(SynthProjectAudioProcessor& processorIn)
     addAndMakeVisible(rateLabel);
     addAndMakeVisible(modeLabel);
     addAndMakeVisible(targetLabel);
+    addAndMakeVisible(offButton);
+    addAndMakeVisible(resetButton);
 
     waveform = processor.copyCurrentImageWaveformPreview(320);
     processor.copyImagePreview(previewImage);
@@ -286,7 +293,11 @@ void ImageEnginePanel::resized()
     area.removeFromTop(2);
     auto row5 = area.removeFromTop(16);
     targetLabel.setBounds(row5.removeFromLeft(50));
-    targetBox.setBounds(row5);
+    targetBox.setBounds(row5.removeFromLeft(juce::jmax(60, row5.getWidth() - 98)));
+    row5.removeFromLeft(4);
+    offButton.setBounds(row5.removeFromLeft(42));
+    row5.removeFromLeft(4);
+    resetButton.setBounds(row5.removeFromLeft(52));
 }
 
 void ImageEnginePanel::timerCallback()
@@ -294,6 +305,13 @@ void ImageEnginePanel::timerCallback()
     waveform = processor.copyCurrentImageWaveformPreview(320);
     currentPosition = processor.copyCurrentImagePosition();
     processor.copyImagePreview(previewImage);
+
+    const auto wavetableModeActive = processor.getOscillatorModeParam().getIndex() == 8;
+    targetBox.setEnabled(!wavetableModeActive);
+    targetLabel.setEnabled(!wavetableModeActive);
+    targetBox.setTooltip(wavetableModeActive
+                             ? "When OSC mode is WAVETABLE, Image Engine is reserved for oscillator only."
+                             : "");
 
     if (processor.consumeImageLoadErrorFlag())
     {

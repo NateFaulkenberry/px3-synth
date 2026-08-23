@@ -74,13 +74,16 @@ public:
     juce::AudioParameterFloat& getMasterGainParam() const;
 
     juce::AudioParameterFloat& getRobAmountParam() const;
+    juce::AudioParameterBool& getRobEnabledParam() const;
     juce::AudioParameterChoice& getRobModeParam() const;
     juce::AudioParameterFloat& getIsaacAmountParam() const;
     juce::AudioParameterChoice& getGranularSyncDivisionParam() const;
     juce::AudioParameterChoice& getDelayAlgorithmParam() const;
+    juce::AudioParameterBool& getDelayEnabledParam() const;
     juce::AudioParameterFloat& getDelayTimeParam() const;
     juce::AudioParameterFloat& getDelayFeedbackParam() const;
     juce::AudioParameterFloat& getReverbAmountParam() const;
+    juce::AudioParameterBool& getReverbEnabledParam() const;
     juce::AudioParameterChoice& getReverbAlgorithmParam() const;
     juce::AudioParameterChoice& getSourceEngineParam() const;
     juce::AudioParameterFloat& getImagePositionParam() const;
@@ -110,6 +113,8 @@ public:
     void setModWheelNormalizedFromUI(float normalized);
 
     void requestImageLoadAsync(const juce::File& imageFile);
+    void disableImageEngine();
+    void resetImageEngine();
     std::shared_ptr<ImageWavetable> buildImageWavetableFromImage(const juce::Image& sourceImage) const;
     int getImageLoadRequestSerial() const;
     void notifyImageLoadError();
@@ -120,6 +125,8 @@ public:
     float copyCurrentImagePosition() const;
     std::vector<float> copyCurrentImageWaveformPreview(int sampleCount) const;
     void requestAudioLoadAsync(const juce::File& audioFile);
+    void disableAudioEngine();
+    void resetAudioEngine();
     void notifyAudioLoadError();
     void completeAudioLoad(int serial, std::shared_ptr<AudioSourceData> source, const juce::String& sourcePath);
     bool consumeAudioLoadErrorFlag();
@@ -201,13 +208,16 @@ private:
     juce::AudioParameterFloat* releaseParam { nullptr };
     juce::AudioParameterFloat* masterGainParam { nullptr };
     juce::AudioParameterFloat* robAmountParam { nullptr };
+    juce::AudioParameterBool* robEnabledParam { nullptr };
     juce::AudioParameterChoice* robModeParam { nullptr };
     juce::AudioParameterFloat* isaacAmountParam { nullptr };
     juce::AudioParameterChoice* granularSyncDivisionParam { nullptr };
     juce::AudioParameterChoice* delayAlgorithmParam { nullptr };
+    juce::AudioParameterBool* delayEnabledParam { nullptr };
     juce::AudioParameterFloat* delayTimeParam { nullptr };
     juce::AudioParameterFloat* delayFeedbackParam { nullptr };
     juce::AudioParameterFloat* reverbAmountParam { nullptr };
+    juce::AudioParameterBool* reverbEnabledParam { nullptr };
     juce::AudioParameterChoice* reverbAlgorithmParam { nullptr };
     juce::AudioParameterChoice* sourceEngineParam { nullptr };
     juce::AudioParameterFloat* imagePositionParam { nullptr };

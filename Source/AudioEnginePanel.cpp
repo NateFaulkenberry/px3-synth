@@ -107,6 +107,11 @@ AudioEnginePanel::AudioEnginePanel(SynthProjectAudioProcessor& processorIn)
     configureMiniLabel(modeLabel, "MODE");
     configureMiniLabel(syncLabel, "SYNC");
 
+    offButton.onClick = [this]() { processor.disableAudioEngine(); };
+    resetButton.onClick = [this]() { processor.resetAudioEngine(); };
+    offButton.setTooltip("Disable Audio Engine routing");
+    resetButton.setTooltip("Reset Audio Engine parameters and loaded audio");
+
     addAndMakeVisible(positionSlider);
     addAndMakeVisible(grainSlider);
     addAndMakeVisible(textureSlider);
@@ -121,6 +126,8 @@ AudioEnginePanel::AudioEnginePanel(SynthProjectAudioProcessor& processorIn)
     addAndMakeVisible(rateLabel);
     addAndMakeVisible(modeLabel);
     addAndMakeVisible(syncLabel);
+    addAndMakeVisible(offButton);
+    addAndMakeVisible(resetButton);
 
     processor.copyCurrentAudioWaveformPreview(waveform);
 
@@ -307,7 +314,11 @@ void AudioEnginePanel::resized()
     area.removeFromTop(2);
     auto row7 = area.removeFromTop(16);
     syncLabel.setBounds(row7.removeFromLeft(38));
-    syncBox.setBounds(row7);
+    syncBox.setBounds(row7.removeFromLeft(juce::jmax(60, row7.getWidth() - 98)));
+    row7.removeFromLeft(4);
+    offButton.setBounds(row7.removeFromLeft(42));
+    row7.removeFromLeft(4);
+    resetButton.setBounds(row7.removeFromLeft(52));
 }
 
 void AudioEnginePanel::timerCallback()

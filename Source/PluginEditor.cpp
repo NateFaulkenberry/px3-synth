@@ -41,7 +41,12 @@ void SynthProjectAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::G
                             : juce::Colour::fromRGB(234, 166, 76);
 
     const auto psychedelicEnabled = static_cast<bool>(slider.getProperties()["psychedelicFx"]);
+    const auto psychedelicGrayscale = static_cast<bool>(slider.getProperties()["psychedelicBypassGray"]);
     const auto psychedelicAmount = juce::jlimit(0.0f, 1.0f, sliderPos);
+    const auto accentGrayValue = juce::jlimit(0.0f, 1.0f, accent.getPerceivedBrightness());
+    const auto accentForHighlight = psychedelicGrayscale
+                                        ? juce::Colour::fromFloatRGBA(accentGrayValue, accentGrayValue, accentGrayValue, 1.0f)
+                                        : accent;
 
     // Drop shadow for more tactile depth.
     g.setColour(juce::Colour::fromRGBA(0, 0, 0, 110));
@@ -89,10 +94,10 @@ void SynthProjectAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::G
     g.restoreState();
 
     // Top highlight to reinforce 3D curvature.
-    juce::ColourGradient highlight(accent.withAlpha(0.42f),
+    juce::ColourGradient highlight(accentForHighlight.withAlpha(0.42f),
                                    center.x,
                                    bounds.getY(),
-                                   accent.withAlpha(0.0f),
+                                   accentForHighlight.withAlpha(0.0f),
                                    center.x,
                                    center.y,
                                    false);
@@ -116,6 +121,7 @@ void SynthProjectAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::G
         {
             const auto segNorm = static_cast<float>(seg) / 24.0f;
             const auto hue = std::fmod(segNorm + t * 0.12f, 1.0f);
+            const auto grayValue = juce::jmap(segNorm, 0.62f, 0.94f);
             const auto start = segNorm * juce::MathConstants<float>::twoPi;
             const auto span = juce::MathConstants<float>::twoPi / 24.0f * 0.88f;
 
@@ -130,14 +136,18 @@ void SynthProjectAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::G
                               true);
 
             const auto glowAlpha = juce::jlimit(0.0f, 0.65f, 0.06f + glow * 0.34f);
-            g.setColour(juce::Colour::fromHSV(hue, 0.90f, 1.0f, glowAlpha));
+            g.setColour(psychedelicGrayscale
+                            ? juce::Colour::fromFloatRGBA(grayValue, grayValue, grayValue, glowAlpha)
+                            : juce::Colour::fromHSV(hue, 0.90f, 1.0f, glowAlpha));
             g.strokePath(arc,
                          juce::PathStrokeType(5.4f,
                                               juce::PathStrokeType::curved,
                                               juce::PathStrokeType::rounded));
 
             const auto borderAlpha = juce::jlimit(0.0f, 0.95f, 0.25f + glow * 0.62f);
-            g.setColour(juce::Colour::fromHSV(hue, 0.98f, 1.0f, borderAlpha));
+            g.setColour(psychedelicGrayscale
+                            ? juce::Colour::fromFloatRGBA(grayValue, grayValue, grayValue, borderAlpha)
+                            : juce::Colour::fromHSV(hue, 0.98f, 1.0f, borderAlpha));
             g.strokePath(arc,
                          juce::PathStrokeType(3.0f,
                                               juce::PathStrokeType::curved,
@@ -154,7 +164,7 @@ void SynthProjectAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::G
                        rotaryStartAngle,
                        angle,
                        true);
-    g.setColour(accent);
+    g.setColour(accentForHighlight);
     g.strokePath(ring, juce::PathStrokeType(3.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
     juce::Path pointer;
@@ -425,6 +435,20 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     addAndMakeVisible(oscVowelBox);
     addAndMakeVisible(oscVowelLabel);
 
+    auto& oscMacroAParam = audioProcessor.getOscMacroAParam();
+    auto& imagePositionParam = audioProcessor.getImagePositionParam();
+    oscSineKnob.onValueChange = [this, &oscMacroAParam, &imagePositionParam]()
+    {
+        const auto macroA = static_cast<float>(oscSineKnob.getValue());
+        oscMacroAParam.setValueNotifyingHost(oscMacroAParam.convertTo0to1(macroA));
+
+        // In WAVETABLE mode, the POSITION knob should visibly drive Image Engine position.
+        if (audioProcessor.getOscillatorModeParam().getIndex() == 8)
+        {
+            imagePositionParam.setValueNotifyingHost(imagePositionParam.convertTo0to1(macroA));
+        }
+    };
+
     auto& delayAlgoParam = audioProcessor.getDelayAlgorithmParam();
     const auto delayAlgoChoiceCount = delayAlgoParam.choices.size();
     for (int i = 0; i < delayAlgoChoiceCount; ++i)
@@ -494,6 +518,42 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     addAndMakeVisible(reverbTypeBox);
     addAndMakeVisible(reverbTypeLabel);
 
+    const auto configureBypassButton = [](juce::ToggleButton& button)
+    {
+        button.setButtonText("");
+        button.setTooltip("Bypass");
+        button.setClickingTogglesState(true);
+        button.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
+        button.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
+    };
+
+    configureBypassButton(robBypassButton);
+    configureBypassButton(delayBypassButton);
+    configureBypassButton(reverbBypassButton);
+
+    robBypassButton.onClick = [this]()
+    {
+        auto& p = audioProcessor.getRobEnabledParam();
+        const auto isEnabled = robBypassButton.getToggleState();
+        p.setValueNotifyingHost(p.convertTo0to1(isEnabled));
+    };
+    delayBypassButton.onClick = [this]()
+    {
+        auto& p = audioProcessor.getDelayEnabledParam();
+        const auto isEnabled = delayBypassButton.getToggleState();
+        p.setValueNotifyingHost(p.convertTo0to1(isEnabled));
+    };
+    reverbBypassButton.onClick = [this]()
+    {
+        auto& p = audioProcessor.getReverbEnabledParam();
+        const auto isEnabled = reverbBypassButton.getToggleState();
+        p.setValueNotifyingHost(p.convertTo0to1(isEnabled));
+    };
+
+    addAndMakeVisible(robBypassButton);
+    addAndMakeVisible(delayBypassButton);
+    addAndMakeVisible(reverbBypassButton);
+
     midiStatusLabel.setText("MIDI In: waiting for note...", juce::dontSendNotification);
     midiStatusLabel.setJustificationType(juce::Justification::centred);
     midiStatusLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(236, 172, 88));
@@ -504,6 +564,7 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     setSize(1320, 700);
 
     refreshOscillatorModeUI();
+    refreshFxBypassUI();
 
     startTimerHz(30);
 }
@@ -570,32 +631,45 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
                                                                                                              static_cast<int>(std::round(logoArea.getBottom() + subtitleGap)),
                                                                                                              logoPanelArea.getWidth() - 20,
                                                                                                              static_cast<int>(subtitleHeight));
-                g.drawText("Subtractive Synth", subtitleArea, juce::Justification::centred);
+                g.drawText("Synth v1.0.0", subtitleArea, juce::Justification::centred);
     }
 
-        g.setColour(juce::Colour::fromRGBA(104, 194, 255, 35));
+        const auto robEnabled = audioProcessor.getRobEnabledParam().get();
+        const auto delayEnabled = audioProcessor.getDelayEnabledParam().get();
+        const auto reverbEnabled = audioProcessor.getReverbEnabledParam().get();
+
+        g.setColour(robEnabled ? juce::Colour::fromRGBA(104, 194, 255, 35)
+                       : juce::Colour::fromRGBA(120, 120, 120, 30));
         g.fillRoundedRectangle(robSectionArea.toFloat(), 10.0f);
-        g.setColour(juce::Colour::fromRGBA(104, 194, 255, 180));
+        g.setColour(robEnabled ? juce::Colour::fromRGBA(104, 194, 255, 180)
+                       : juce::Colour::fromRGBA(150, 150, 150, 130));
         g.drawRoundedRectangle(robSectionArea.toFloat(), 10.0f, 1.0f);
 
-        g.setColour(juce::Colour::fromRGBA(255, 198, 110, 35));
+        g.setColour(delayEnabled ? juce::Colour::fromRGBA(255, 198, 110, 35)
+                     : juce::Colour::fromRGBA(120, 120, 120, 30));
         g.fillRoundedRectangle(isaacSectionArea.toFloat(), 10.0f);
-        g.setColour(juce::Colour::fromRGBA(255, 198, 110, 180));
+        g.setColour(delayEnabled ? juce::Colour::fromRGBA(255, 198, 110, 180)
+                     : juce::Colour::fromRGBA(150, 150, 150, 130));
         g.drawRoundedRectangle(isaacSectionArea.toFloat(), 10.0f, 1.0f);
 
-        g.setColour(juce::Colour::fromRGBA(128, 208, 255, 30));
+        g.setColour(reverbEnabled ? juce::Colour::fromRGBA(128, 208, 255, 30)
+                      : juce::Colour::fromRGBA(120, 120, 120, 30));
         g.fillRoundedRectangle(reverbSectionArea.toFloat(), 10.0f);
-        g.setColour(juce::Colour::fromRGBA(128, 208, 255, 150));
+        g.setColour(reverbEnabled ? juce::Colour::fromRGBA(128, 208, 255, 150)
+                      : juce::Colour::fromRGBA(150, 150, 150, 130));
         g.drawRoundedRectangle(reverbSectionArea.toFloat(), 10.0f, 1.0f);
 
-        g.setColour(juce::Colour::fromRGB(240, 245, 255));
+        g.setColour(robEnabled ? juce::Colour::fromRGB(240, 245, 255)
+                       : juce::Colour::fromRGB(170, 170, 170));
         g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
         g.drawText("HARMONIC DRIVE", robSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
 
-        g.setColour(juce::Colour::fromRGB(250, 244, 224));
+        g.setColour(delayEnabled ? juce::Colour::fromRGB(250, 244, 224)
+                     : juce::Colour::fromRGB(170, 170, 170));
         g.drawText("DELAY", isaacSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
 
-        g.setColour(juce::Colour::fromRGB(224, 245, 255));
+        g.setColour(reverbEnabled ? juce::Colour::fromRGB(224, 245, 255)
+                      : juce::Colour::fromRGB(170, 170, 170));
         g.drawText("REVERB", reverbSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
 
         g.setColour(juce::Colour::fromRGBA(255, 255, 255, 18));
@@ -916,6 +990,7 @@ void SynthProjectAudioProcessorEditor::resized()
 
     {
         auto robInner = robSectionArea.reduced(10, 8);
+        robBypassButton.setBounds(robSectionArea.getX() + 8, robSectionArea.getY() + 5, 22, 18);
         robInner.removeFromTop(24);
         auto bottomArea = robInner.removeFromBottom(46);
         auto labelArea = bottomArea.removeFromTop(22);
@@ -929,6 +1004,7 @@ void SynthProjectAudioProcessorEditor::resized()
 
     {
         auto isaacInner = isaacSectionArea.reduced(10, 8);
+        delayBypassButton.setBounds(isaacSectionArea.getX() + 8, isaacSectionArea.getY() + 5, 22, 18);
         isaacInner.removeFromTop(24);
         auto delayControlsArea = isaacInner.removeFromBottom(96);
 
@@ -966,6 +1042,7 @@ void SynthProjectAudioProcessorEditor::resized()
 
     {
         auto reverbInner = reverbSectionArea.reduced(10, 8);
+        reverbBypassButton.setBounds(reverbSectionArea.getX() + 8, reverbSectionArea.getY() + 5, 22, 18);
         reverbInner.removeFromTop(24);
         auto bottomArea = reverbInner.removeFromBottom(46);
         auto labelArea = bottomArea.removeFromTop(22);
@@ -1356,9 +1433,53 @@ void SynthProjectAudioProcessorEditor::refreshAnyKeyDownState()
     pianoKeyboard.setActiveNotes(noteStates, noteVelocities);
 }
 
+void SynthProjectAudioProcessorEditor::refreshFxBypassUI()
+{
+    const auto robEnabled = audioProcessor.getRobEnabledParam().get();
+    const auto delayEnabled = audioProcessor.getDelayEnabledParam().get();
+    const auto reverbEnabled = audioProcessor.getReverbEnabledParam().get();
+    const auto delayAccentEnabled = juce::Colour::fromRGB(255, 198, 110);
+    const auto delayAccentBypassed = juce::Colour::fromRGB(176, 176, 176);
+
+    robBypassButton.setToggleState(robEnabled, juce::dontSendNotification);
+    delayBypassButton.setToggleState(delayEnabled, juce::dontSendNotification);
+    reverbBypassButton.setToggleState(reverbEnabled, juce::dontSendNotification);
+
+    robWarmthKnob.setEnabled(robEnabled);
+    robWarmthLabel.setEnabled(robEnabled);
+    robTypeBox.setEnabled(robEnabled);
+    robTypeLabel.setEnabled(robEnabled);
+    robWarmthKnob.getProperties().set("psychedelicBypassGray", !robEnabled);
+
+    isaacTextureKnob.setEnabled(delayEnabled);
+    isaacTextureLabel.setEnabled(delayEnabled);
+    delayAlgoBox.setEnabled(delayEnabled);
+    delayAlgoLabel.setEnabled(delayEnabled);
+    delayTimeKnob.setEnabled(delayEnabled);
+    delayTimeLabel.setEnabled(delayEnabled);
+    delayFeedbackKnob.setEnabled(delayEnabled);
+    delayFeedbackLabel.setEnabled(delayEnabled);
+    granularSyncBox.setEnabled(delayEnabled);
+    granularSyncLabel.setEnabled(delayEnabled);
+    isaacTextureKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
+    delayTimeKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
+    delayFeedbackKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
+    delayTimeKnob.setColour(juce::Slider::rotarySliderFillColourId,
+                            delayEnabled ? delayAccentEnabled : delayAccentBypassed);
+    delayFeedbackKnob.setColour(juce::Slider::rotarySliderFillColourId,
+                                delayEnabled ? delayAccentEnabled : delayAccentBypassed);
+
+    reverbKnob.setEnabled(reverbEnabled);
+    reverbLabel.setEnabled(reverbEnabled);
+    reverbTypeBox.setEnabled(reverbEnabled);
+    reverbTypeLabel.setEnabled(reverbEnabled);
+    reverbKnob.getProperties().set("psychedelicBypassGray", !reverbEnabled);
+}
+
 void SynthProjectAudioProcessorEditor::timerCallback()
 {
     refreshOscillatorModeUI();
+    refreshFxBypassUI();
 
     oscVizPhase += 0.09f;
     if (oscVizPhase > juce::MathConstants<float>::twoPi)

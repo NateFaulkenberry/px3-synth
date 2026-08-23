@@ -93,11 +93,23 @@ void SourceEnginePanel::timerCallback()
 
 void SourceEnginePanel::refreshVisibilityFromParam()
 {
-    const auto sourceIndex = processor.getSourceEngineParam().getIndex();
+    auto& sourceParam = processor.getSourceEngineParam();
+    const auto wavetableModeActive = processor.getOscillatorModeParam().getIndex() == 8;
+
+    if (wavetableModeActive && sourceParam.getIndex() != 0)
+    {
+        sourceParam.setValueNotifyingHost(sourceParam.convertTo0to1(0.0f));
+    }
+
+    const auto sourceIndex = sourceParam.getIndex();
     const auto imageMode = sourceIndex == 0;
 
     imageButton.setToggleState(imageMode, juce::dontSendNotification);
     audioButton.setToggleState(!imageMode, juce::dontSendNotification);
+    audioButton.setEnabled(!wavetableModeActive);
+    audioButton.setTooltip(wavetableModeActive
+                               ? "Audio source is disabled while OSC mode is WAVETABLE."
+                               : "");
 
     imagePanel.setVisible(imageMode);
     audioPanel.setVisible(!imageMode);

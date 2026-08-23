@@ -214,6 +214,7 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     masterGainParam = new juce::AudioParameterFloat("masterGain", "Master Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
 
     robAmountParam = new juce::AudioParameterFloat("robAmount", "Harmonic Drive", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    robEnabledParam = new juce::AudioParameterBool("robEnabled", "Harmonic Drive Enabled", true);
     robModeParam = new juce::AudioParameterChoice("robMode",
                                                    "Harmonic Drive Mode",
                                                    juce::StringArray { "Default Drive", "Tape Saturation", "Tube Warmth", "Distortion Pedal" },
@@ -227,9 +228,11 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
                                                           "Delay Algorithm",
                                                           juce::StringArray { "Granular", "Tape", "Analog/BBD", "Ping-Pong", "Stereo", "Modulated", "Diffusion" },
                                                           0);
+    delayEnabledParam = new juce::AudioParameterBool("delayEnabled", "Delay Enabled", true);
     delayTimeParam = new juce::AudioParameterFloat("delayTime", "Delay Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
     delayFeedbackParam = new juce::AudioParameterFloat("delayFeedback", "Delay Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.38f);
     reverbAmountParam = new juce::AudioParameterFloat("reverbAmount", "Reverb", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    reverbEnabledParam = new juce::AudioParameterBool("reverbEnabled", "Reverb Enabled", true);
     reverbAlgorithmParam = new juce::AudioParameterChoice("reverbAlgorithm",
                                                            "Reverb Algorithm",
                                                            juce::StringArray { "Hall", "Plate", "Room", "Cavern", "Moon" },
@@ -290,13 +293,16 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(releaseParam);
     addParameter(masterGainParam);
     addParameter(robAmountParam);
+    addParameter(robEnabledParam);
     addParameter(robModeParam);
     addParameter(isaacAmountParam);
     addParameter(granularSyncDivisionParam);
     addParameter(delayAlgorithmParam);
+    addParameter(delayEnabledParam);
     addParameter(delayTimeParam);
     addParameter(delayFeedbackParam);
     addParameter(reverbAmountParam);
+    addParameter(reverbEnabledParam);
     addParameter(reverbAlgorithmParam);
     addParameter(sourceEngineParam);
     addParameter(imagePositionParam);
@@ -455,7 +461,10 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     const auto currentAudioPosition = updateAudioAnimationPosition(buffer.getNumSamples());
     const auto wavetableForBlock = std::atomic_load(&activeImageWavetable);
     const auto audioSourceForBlock = std::atomic_load(&activeAudioSource);
-    const auto sourceMode = sourceEngineParam->getIndex() == 1 ? ExternalSourceMode::audio : ExternalSourceMode::image;
+    const auto requestedSourceMode = sourceEngineParam->getIndex() == 1 ? ExternalSourceMode::audio : ExternalSourceMode::image;
+    const auto wavetableModeActive = oscillator.modeIndex == 8;
+    // WAVETABLE mode reserves the image engine for oscillator generation only.
+    const auto sourceMode = wavetableModeActive ? ExternalSourceMode::image : requestedSourceMode;
 
     AudioGranularSettings granularSettings;
     granularSettings.enabled = sourceMode == ExternalSourceMode::audio;
@@ -487,13 +496,16 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     updateTransportState();
 
     const auto robAmountBase = clamp01(robAmountParam->get());
+    const auto robEnabled = robEnabledParam->get();
     const auto robModeIndex = robModeParam->getIndex();
     const auto isaacAmountBase = clamp01(isaacAmountParam->get());
     const auto syncDivisionIndex = granularSyncDivisionParam->getIndex();
     const auto delayAlgorithmIndex = delayAlgorithmParam->getIndex();
+    const auto delayEnabled = delayEnabledParam->get();
     const auto delayTimeControl = clamp01(delayTimeParam->get());
     const auto delayFeedbackControl = clamp01(delayFeedbackParam->get());
     const auto reverbAmountBase = clamp01(reverbAmountParam->get());
+    const auto reverbEnabled = reverbEnabledParam->get();
 
     if (delayAlgorithmIndex != lastDelayAlgorithmIndex)
     {
@@ -520,19 +532,22 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     float granularScaleTarget = 1.0f;
     float reverbScaleTarget = 1.0f;
 
-    switch (juce::jlimit(0, 2, imageTargetIndex))
+    if (!wavetableModeActive)
     {
-        case 0:
-            driveScaleTarget = imageScale;
-            break;
-        case 1:
-            granularScaleTarget = imageScale;
-            break;
-        case 2:
-            reverbScaleTarget = imageScale;
-            break;
-        default:
-            break;
+        switch (juce::jlimit(0, 2, imageTargetIndex))
+        {
+            case 0:
+                driveScaleTarget = imageScale;
+                break;
+            case 1:
+                granularScaleTarget = imageScale;
+                break;
+            case 2:
+                reverbScaleTarget = imageScale;
+                break;
+            default:
+                break;
+        }
     }
 
     const auto routeSmoothingSec = 0.09f;
@@ -546,7 +561,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     const auto isaacAmount = clamp01(isaacAmountBase * imageGranularScaleSmoothed);
     const auto reverbAmount = clamp01(reverbAmountBase * imageReverbScaleSmoothed);
 
-    if (reverbAmount > 0.0001f)
+    if (reverbEnabled && reverbAmount > 0.0001f)
     {
         const auto a = smoothstep(reverbAmount);
         juce::Reverb::Parameters p;
@@ -611,24 +626,33 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
         auto inL = buffer.getSample(0, sample);
         auto inR = (buffer.getNumChannels() > 1) ? buffer.getSample(1, sample) : inL;
 
-        inL = processRobSample(inL, 0, robAmount, robModeIndex);
-        inR = processRobSample(inR, 1, robAmount, robModeIndex);
+        if (robEnabled)
+        {
+            inL = processRobSample(inL, 0, robAmount, robModeIndex);
+            inR = processRobSample(inR, 1, robAmount, robModeIndex);
+        }
 
         float outL = inL;
         float outR = inR;
-        processDelayAlgorithmSample(inL,
-                        inR,
-                        isaacAmount,
-                        delayAlgorithmIndex,
-                        delayTimeControl,
-                        delayFeedbackControl,
-                        syncDivisionIndex,
-                        outL,
-                        outR);
+        if (delayEnabled)
+        {
+            processDelayAlgorithmSample(inL,
+                            inR,
+                            isaacAmount,
+                            delayAlgorithmIndex,
+                            delayTimeControl,
+                            delayFeedbackControl,
+                            syncDivisionIndex,
+                            outL,
+                            outR);
+        }
 
         const auto reverbInL = outL;
         const auto reverbInR = outR;
-        processReverbSampleFrame(outL, outR, reverbAmount, reverbAlgorithmIndex, outL, outR);
+        if (reverbEnabled)
+        {
+            processReverbSampleFrame(outL, outR, reverbAmount, reverbAlgorithmIndex, outL, outR);
+        }
 
         reverbPreEnergy += 0.5 * (static_cast<double>(reverbInL) * static_cast<double>(reverbInL)
                       + static_cast<double>(reverbInR) * static_cast<double>(reverbInR));
@@ -642,7 +666,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
         }
     }
 
-    if (reverbAmount > 0.0001f && buffer.getNumSamples() > 0)
+    if (reverbEnabled && reverbAmount > 0.0001f && buffer.getNumSamples() > 0)
     {
         const auto invN = 1.0 / static_cast<double>(buffer.getNumSamples());
         const auto preRms = static_cast<float>(std::sqrt(juce::jmax(1.0e-12, reverbPreEnergy * invN)));
@@ -877,13 +901,16 @@ juce::AudioParameterFloat& SynthProjectAudioProcessor::getSustainParam() const {
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getReleaseParam() const { return *releaseParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getMasterGainParam() const { return *masterGainParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getRobAmountParam() const { return *robAmountParam; }
+juce::AudioParameterBool& SynthProjectAudioProcessor::getRobEnabledParam() const { return *robEnabledParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getRobModeParam() const { return *robModeParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getIsaacAmountParam() const { return *isaacAmountParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getGranularSyncDivisionParam() const { return *granularSyncDivisionParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getDelayAlgorithmParam() const { return *delayAlgorithmParam; }
+juce::AudioParameterBool& SynthProjectAudioProcessor::getDelayEnabledParam() const { return *delayEnabledParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getDelayTimeParam() const { return *delayTimeParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getDelayFeedbackParam() const { return *delayFeedbackParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getReverbAmountParam() const { return *reverbAmountParam; }
+juce::AudioParameterBool& SynthProjectAudioProcessor::getReverbEnabledParam() const { return *reverbEnabledParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getReverbAlgorithmParam() const { return *reverbAlgorithmParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getSourceEngineParam() const { return *sourceEngineParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getImagePositionParam() const { return *imagePositionParam; }
@@ -957,6 +984,70 @@ void SynthProjectAudioProcessor::requestImageLoadAsync(const juce::File& imageFi
     const auto serial = imageLoadRequestSerial.fetch_add(1, std::memory_order_relaxed) + 1;
     imageLoadThreadPool.removeAllJobs(true, 500);
     imageLoadThreadPool.addJob(new ImageLoadJob(*this, imageFile, serial), true);
+}
+
+void SynthProjectAudioProcessor::disableImageEngine()
+{
+    // In WAVETABLE mode, image is reserved for oscillator generation and cannot be disabled.
+    if (oscModeParam != nullptr && oscModeParam->getIndex() == 8)
+    {
+        return;
+    }
+
+    if (sourceEngineParam != nullptr)
+    {
+        sourceEngineParam->setValueNotifyingHost(sourceEngineParam->convertTo0to1(1.0f));
+    }
+
+    if (imageAnimateParam != nullptr)
+    {
+        imageAnimateParam->setValueNotifyingHost(imageAnimateParam->convertTo0to1(0.0f));
+    }
+}
+
+void SynthProjectAudioProcessor::resetImageEngine()
+{
+    if (imagePositionParam != nullptr)
+    {
+        imagePositionParam->setValueNotifyingHost(imagePositionParam->convertTo0to1(0.5f));
+    }
+    if (imageAnimateParam != nullptr)
+    {
+        imageAnimateParam->setValueNotifyingHost(imageAnimateParam->convertTo0to1(0.0f));
+    }
+    if (imageRateParam != nullptr)
+    {
+        imageRateParam->setValueNotifyingHost(imageRateParam->convertTo0to1(0.2f));
+    }
+    if (imageAnimModeParam != nullptr)
+    {
+        imageAnimModeParam->setValueNotifyingHost(imageAnimModeParam->convertTo0to1(2.0f));
+    }
+    if (imageAnimSyncParam != nullptr)
+    {
+        imageAnimSyncParam->setValueNotifyingHost(imageAnimSyncParam->convertTo0to1(0.0f));
+    }
+    if (imageTargetParam != nullptr)
+    {
+        imageTargetParam->setValueNotifyingHost(imageTargetParam->convertTo0to1(0.0f));
+    }
+
+    if (auto defaultTable = createDefaultImageWavetable())
+    {
+        installImageWavetable(std::move(defaultTable), juce::Image());
+    }
+
+    imageLoadedFromDisk.store(false, std::memory_order_relaxed);
+    imageLoadErrorFlag.store(false, std::memory_order_relaxed);
+
+    {
+        const std::scoped_lock<std::mutex> lock(imagePreviewMutex);
+        imagePreview = {};
+    }
+    {
+        const std::scoped_lock<std::mutex> lock(imageStateMutex);
+        lastLoadedImagePath.clear();
+    }
 }
 
 std::shared_ptr<ImageWavetable> SynthProjectAudioProcessor::buildImageWavetableFromImage(const juce::Image& sourceImage) const
@@ -1071,6 +1162,61 @@ void SynthProjectAudioProcessor::requestAudioLoadAsync(const juce::File& audioFi
     const auto serial = audioLoadRequestSerial.fetch_add(1, std::memory_order_relaxed) + 1;
     audioLoadThreadPool.removeAllJobs(true, 500);
     audioLoadThreadPool.addJob(new AudioLoadJob(*this, audioFile, serial), true);
+}
+
+void SynthProjectAudioProcessor::disableAudioEngine()
+{
+    if (sourceEngineParam != nullptr)
+    {
+        sourceEngineParam->setValueNotifyingHost(sourceEngineParam->convertTo0to1(0.0f));
+    }
+
+    if (audioAnimateParam != nullptr)
+    {
+        audioAnimateParam->setValueNotifyingHost(audioAnimateParam->convertTo0to1(0.0f));
+    }
+}
+
+void SynthProjectAudioProcessor::resetAudioEngine()
+{
+    if (audioPositionParam != nullptr)
+    {
+        audioPositionParam->setValueNotifyingHost(audioPositionParam->convertTo0to1(0.5f));
+    }
+    if (audioGrainParam != nullptr)
+    {
+        audioGrainParam->setValueNotifyingHost(audioGrainParam->convertTo0to1(0.45f));
+    }
+    if (audioTextureParam != nullptr)
+    {
+        audioTextureParam->setValueNotifyingHost(audioTextureParam->convertTo0to1(0.35f));
+    }
+    if (audioAnimateParam != nullptr)
+    {
+        audioAnimateParam->setValueNotifyingHost(audioAnimateParam->convertTo0to1(0.0f));
+    }
+    if (audioRateParam != nullptr)
+    {
+        audioRateParam->setValueNotifyingHost(audioRateParam->convertTo0to1(0.22f));
+    }
+    if (audioAnimModeParam != nullptr)
+    {
+        audioAnimModeParam->setValueNotifyingHost(audioAnimModeParam->convertTo0to1(2.0f));
+    }
+    if (audioAnimSyncParam != nullptr)
+    {
+        audioAnimSyncParam->setValueNotifyingHost(audioAnimSyncParam->convertTo0to1(0.0f));
+    }
+
+    std::atomic_store(&activeAudioSource, std::shared_ptr<const AudioSourceData>());
+    audioLoadedFromDisk.store(false, std::memory_order_relaxed);
+    audioLoadErrorFlag.store(false, std::memory_order_relaxed);
+
+    {
+        const std::scoped_lock<std::mutex> lock(imageStateMutex);
+        audioWaveformPreview.clear();
+        lastLoadedAudioPath.clear();
+    }
 }
 
 void SynthProjectAudioProcessor::notifyAudioLoadError()
