@@ -59,6 +59,8 @@ bool SynthVoice::canPlaySound(juce::SynthesiserSound* sound)
 
 void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::SynthesiserSound*, int)
 {
+    // Voice start initializes all phase/noise/filter state deterministically so
+    // repeated notes begin from musically stable conditions.
     currentMidiNote = midiNoteNumber;
     baseFrequencyHz = juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber);
     currentFrequencyHz = baseFrequencyHz;
@@ -150,6 +152,7 @@ void SynthVoice::controllerMoved(int controllerNumber, int newControllerValue)
 
 void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
 {
+    // Keep fast exits cheap; this runs on the real-time audio thread.
     if (angleDelta == 0.0)
     {
         return;
@@ -184,6 +187,9 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
         if (imageWavetable != nullptr && imageWavetable->frames > 1 && imageWavetable->samplesPerFrame > 8)
         {
+            // Two-dimensional interpolation:
+            // phase interpolation inside a frame + frame interpolation across
+            // position. Mip selection reduces aliasing as oscillator frequency rises.
             const auto phaseNorm = static_cast<float>(currentAngle / juce::MathConstants<double>::twoPi);
             const auto wrappedPhase = phaseNorm - std::floor(phaseNorm);
             const auto samplePos = wrappedPhase * static_cast<float>(imageWavetable->samplesPerFrame);
@@ -216,6 +222,8 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         float granularSample = 0.0f;
         if (externalSourceMode == ExternalSourceMode::audio && audioGranularSettings.enabled)
         {
+            // Granular path pitch-tracks to the played note relative to a
+            // configurable root note, so audio source behaves instrument-like.
             const auto rootHz = juce::MidiMessage::getMidiNoteInHertz(audioGranularSettings.rootMidiNote);
             const auto granularPitchRatio = static_cast<float>(currentFrequencyHz / juce::jmax(1.0, static_cast<double>(rootHz)));
             granularSample = renderAudioGranularSample(granularPitchRatio,
@@ -231,6 +239,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                                                    imageSample,
                                                    granularSample);
 
+        // External source is blended post-oscillator as a timbral layer.
         sourceSample += externalSample * subtractiveSettings.imageMix * 0.42f;
         sourceSample = softClip(sourceSample * 0.92f);
 
@@ -241,6 +250,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         const auto mode = static_cast<FilterMode>(juce::jlimit(0, 6, subtractiveSettings.filterTypeIndex));
         if (mode == FilterMode::lp24 || mode == FilterMode::hp24)
         {
+            // Cascading the second stage approximates steeper 24 dB slopes.
             currentSample = lowPassFilterStage2.processSample(currentSample);
         }
         else if (mode == FilterMode::notch)
@@ -310,6 +320,8 @@ void SynthVoice::setPerformanceModulation(float pitchBendNormalized,
                                           float newVibratoRateHz,
                                           float newVibratoMaxDepthSemitones)
 {
+    // Inputs arrive from processor-level shared performance state. Values are
+    // clamped here so render path can assume valid ranges.
     targetPitchBendNorm = juce::jlimit(-1.0f, 1.0f, pitchBendNormalized);
     targetModWheelNorm = juce::jlimit(0.0f, 1.0f, modWheelNormalized);
     pitchBendRangeSemitones = juce::jlimit(1.0f, 24.0f, newPitchBendRangeSemitones);
@@ -327,6 +339,8 @@ void SynthVoice::setImageWavetable(std::shared_ptr<const ImageWavetable> table, 
 void SynthVoice::setAudioGranularSource(std::shared_ptr<const AudioSourceData> data,
                                         const AudioGranularSettings& settings)
 {
+    // Shared_ptr handoff keeps ownership explicit: loader/processor publish a
+    // stable immutable buffer; voices only hold read references.
     audioSourceData = std::move(data);
     audioGranularSettings = settings;
     audioGranularSettings.position = clamp01(audioGranularSettings.position);

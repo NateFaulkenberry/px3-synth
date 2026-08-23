@@ -1,6 +1,7 @@
 #include "PluginEditor.h"
 
 #include "BinaryData.h"
+#include "PX3Version.h"
 
 #include <algorithm>
 #include <cmath>
@@ -76,6 +77,9 @@ public:
 };
 }
 
+// Interactive ADSR editor that writes directly to existing processor parameters.
+// It intentionally does not own independent envelope state so automation,
+// presets, and DAW restore all remain canonical.
 class SynthProjectAudioProcessorEditor::EnvelopeGraphComponent final : public juce::Component
 {
 public:
@@ -832,6 +836,8 @@ void SynthProjectAudioProcessorEditor::attachButton(juce::RangedAudioParameter& 
 
 void SynthProjectAudioProcessorEditor::setupDebugPanel()
 {
+    // The debug console is intentionally detached from the main editor surface
+    // so frequent diagnostic refreshes do not clutter or stall normal UI work.
     debugToggleButton.setButtonText("DEBUG");
     debugToggleButton.onClick = [this]() { toggleDebugWindow(); };
     addAndMakeVisible(debugToggleButton);
@@ -886,9 +892,9 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     setupLabel(debugInstanceLabel, "A. PLUGIN INSTANCE INFO");
     setupLabel(debugModuleOrderLabel, "B. MODULE ORDER STATE");
     setupLabel(debugValueTreeLabel, "C. VALUETREE STATE");
-    setupLabel(debugSerializedLabel, "D. SERIALIZATION EVENTS");
+    setupLabel(debugBackendControlLabel, "D. BACKEND PARAMETER CONTROLS");
     setupLabel(debugParameterLabel, "E. PARAMETER STATE");
-    setupLabel(debugBackendControlLabel, "F. BACKEND PARAMETER CONTROLS");
+    setupLabel(debugSerializedLabel, "F. SERIALIZATION EVENTS");
     setupLabel(debugLfoLabel, "G. LFO DEBUG");
     setupLabel(debugEnvelopeLabel, "H. AMP ENVELOPE DEBUG");
     setupLabel(debugPresetToolsLabel, "I. PRESET / STATE TOOLS");
@@ -1091,6 +1097,7 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
         control->slider.setRange(0.0, 1.0, 0.0001);
         control->slider.setSliderStyle(juce::Slider::LinearHorizontal);
         control->slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 78, 18);
+        control->slider.setScrollWheelEnabled(false);
         control->slider.setValue(ranged->getValue(), juce::dontSendNotification);
         control->slider.onDragStart = [ranged]() { ranged->beginChangeGesture(); };
         control->slider.onDragEnd = [ranged]() { ranged->endChangeGesture(); };
@@ -1149,7 +1156,9 @@ void SynthProjectAudioProcessorEditor::openDebugWindow()
 
     debugPanelVisible = true;
     debugRefreshTickCounter = 0;
+    debugLastPanelLayoutBounds = {};
     layoutDebugPanel(debugPanel.getLocalBounds());
+    debugLastPanelLayoutBounds = debugPanel.getLocalBounds();
     refreshDebugPanel(false);
 }
 
@@ -1165,6 +1174,7 @@ void SynthProjectAudioProcessorEditor::closeDebugWindow()
 
     debugPanelVisible = false;
     debugRefreshTickCounter = 0;
+    debugLastPanelLayoutBounds = {};
     repaint();
 }
 
@@ -1181,6 +1191,8 @@ void SynthProjectAudioProcessorEditor::toggleDebugWindow()
 
 void SynthProjectAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& bounds)
 {
+    const auto previousViewPos = debugParamViewport.getViewPosition();
+
     debugPanel.setBounds(bounds);
     auto area = debugPanel.getLocalBounds().reduced(10);
 
@@ -1216,17 +1228,19 @@ void SynthProjectAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<in
     auto left = area.removeFromLeft(area.getWidth() / 2);
     auto right = area;
 
-    auto section = [&left](juce::Label& label, juce::TextEditor& editor, int height)
+    auto section = [&left](juce::Label& label, juce::Component& component, int height)
     {
         label.setBounds(left.removeFromTop(18));
-        editor.setBounds(left.removeFromTop(height));
+        component.setBounds(left.removeFromTop(height));
         left.removeFromTop(4);
     };
 
     section(debugInstanceLabel, debugInstanceText, 78);
     section(debugModuleOrderLabel, debugModuleOrderText, 120);
-    section(debugValueTreeLabel, debugValueTreeText, 170);
-    section(debugSerializedLabel, debugSerializedText, juce::jmax(120, left.getHeight() - 24));
+    section(debugValueTreeLabel, debugValueTreeText, 80);
+    // Keep backend controls in the largest slot so the long parameter list has
+    // practical scrolling room during deep debugging sessions.
+    section(debugBackendControlLabel, debugParamViewport, juce::jmax(120, left.getHeight() - 24));
 
     auto sectionRight = [&right](juce::Label& label, juce::Component& component, int height)
     {
@@ -1236,7 +1250,7 @@ void SynthProjectAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<in
     };
 
     sectionRight(debugParameterLabel, debugParameterInspectorText, 120);
-    sectionRight(debugBackendControlLabel, debugParamViewport, 140);
+    sectionRight(debugSerializedLabel, debugSerializedText, 140);
 
     debugLfoLabel.setBounds(right.removeFromTop(18));
     debugLfoText.setBounds(right.removeFromTop(66));
@@ -1262,6 +1276,8 @@ void SynthProjectAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<in
     sectionRight(debugEventLogLabel, debugEventLogText, juce::jmax(120, right.getHeight() - 24));
 
     auto content = debugParamViewport.getLocalBounds().reduced(4);
+    
+    content.removeFromRight(12);
     int y = 0;
     for (auto& control : debugParamControls)
     {
@@ -1273,6 +1289,7 @@ void SynthProjectAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<in
         y += 18;
     }
     debugParamContent.setBounds(0, 0, content.getWidth(), juce::jmax(content.getHeight(), y));
+    debugParamViewport.setViewPosition(previousViewPos);
 }
 
 void SynthProjectAudioProcessorEditor::refreshDebugPanel(bool includeHeavySections)
@@ -1282,11 +1299,20 @@ void SynthProjectAudioProcessorEditor::refreshDebugPanel(bool includeHeavySectio
         return;
     }
 
-    layoutDebugPanel(debugPanel.getLocalBounds());
+    const auto currentBounds = debugPanel.getLocalBounds();
+    if (currentBounds != debugLastPanelLayoutBounds)
+    {
+        // Re-layout only when the detached debug window actually changes size.
+        // This avoids fighting the viewport scroll position during timer updates.
+        layoutDebugPanel(currentBounds);
+        debugLastPanelLayoutBounds = currentBounds;
+    }
 
     refreshDebugModuleState();
     if (includeHeavySections)
     {
+        // XML/serialized panes are intentionally on-demand to avoid high
+        // allocation churn during normal timer-driven updates.
         refreshDebugValueTree();
         refreshDebugSerializedState();
     }
@@ -1894,6 +1920,8 @@ juce::String SynthProjectAudioProcessorEditor::buildInstanceInfoText() const
 #endif
 
     juce::String text;
+    text << "P(X3)\n";
+    text << "Version: " << px3::version::string() << "\n";
     text << "ID: " << audioProcessor.debugGetInstanceId() << "\n";
     text << "Processor Created: " << audioProcessor.debugGetProcessorCreatedTime() << "\n";
     text << "Editor Created: " << debugEditorCreatedTime << "\n";
@@ -2600,7 +2628,7 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
                                                                                                              static_cast<int>(std::round(logoArea.getBottom() + subtitleGap)),
                                                                                                              logoPanelArea.getWidth() - 20,
                                                                                                              static_cast<int>(subtitleHeight));
-                g.drawText("Synth v0.1.0", subtitleArea, juce::Justification::centred);
+                g.drawText("Synth v" + px3::version::string(), subtitleArea, juce::Justification::centred);
     }
 
         const auto robEnabled = audioProcessor.getRobEnabledParam().get();
@@ -2850,6 +2878,9 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
 
         if (i == 1)
         {
+            // This mini-response graph is intentionally illustrative (not an
+            // exact transfer-function plot). It helps developers and testers
+            // confirm filter mode selection at a glance without opening debug.
             const auto idx = juce::jlimit(0, 6, filterTypeBox.getSelectedItemIndex());
 
             const auto cutoffBounds = cutoffKnob.getBounds().toFloat();
@@ -2956,6 +2987,9 @@ void SynthProjectAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
         return;
     }
 
+    // The preset browser is drawn as a modal-like sheet over the main UI.
+    // We retain context by blurring/dimming the rest of the editor instead of
+    // switching to a separate window.
     const auto panelBounds = presetBrowserPanel.getBounds().toFloat();
     const auto panelHole = panelBounds.expanded(1.0f);
 
@@ -2995,6 +3029,11 @@ void SynthProjectAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
 
 void SynthProjectAudioProcessorEditor::resized()
 {
+    // Layout policy:
+    // - Header prioritizes logo/preset bar/fx cards for quick performance edits.
+    // - Mid section hosts core synth controls.
+    // - Bottom section reserves reliable space for performance strip + keyboard.
+    // This balancing intentionally avoids dramatic jumps while resizing.
     auto bounds = getLocalBounds().reduced(16);
 
     const auto headerHeight = juce::jlimit(210, 320, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.40)));
@@ -3062,6 +3101,8 @@ void SynthProjectAudioProcessorEditor::resized()
     pianoKeyboard.setBounds(keyboardRow);
     // midiStatusLabel.setBounds(midiStatusArea.withTrimmedLeft(180).withTrimmedRight(180));
 
+    // Knob-group widths are weighted ratios rather than equal columns because
+    // OSC and AMP ENV carry more controls than LFO/OUTPUT.
     const auto groupGap = 20;
     auto groupsSpan = controlsArea.reduced(8, 8);
     groupsSpan.removeFromTop(20);
@@ -4403,6 +4444,8 @@ void SynthProjectAudioProcessorEditor::refreshFxBypassUI()
 
 void SynthProjectAudioProcessorEditor::timerCallback()
 {
+    // Timer drives non-audio UI synchronization only. DSP state is never
+    // computed here; this keeps audio-thread responsibilities isolated.
     if (draggingFxSection < 0)
     {
         const auto processorOrder = audioProcessor.getFxProcessingOrder();
@@ -4435,6 +4478,8 @@ void SynthProjectAudioProcessorEditor::timerCallback()
 
     if (debugPanelVisible)
     {
+        // Throttle detached debug refresh to keep developer diagnostics useful
+        // without making the main UI feel sluggish.
         if ((debugRefreshTickCounter++ % 4) == 0)
         {
             refreshDebugPanel(false);

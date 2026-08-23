@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(SynthProject VERSION 0.1.0 LANGUAGES C CXX)
+# Single source of truth for plugin/project SemVer.
+set(PX3_VERSION "0.1.0")
+
+if (NOT PX3_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "PX3_VERSION must use SemVer MAJOR.MINOR.PATCH (example: 0.1.0).")
+endif()
+
+project(SynthProject VERSION ${PX3_VERSION} LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

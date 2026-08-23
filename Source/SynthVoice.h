@@ -8,6 +8,13 @@
 #include <array>
 #include <memory>
 
+/**
+ * ADSR envelope parameters applied per voice.
+ *
+ * These values are base settings from processor parameters. The processor may
+ * apply modulation before sending them to voices, but voices treat received
+ * values as final per-block control inputs.
+ */
 struct EnvelopeSettings
 {
     float attackSeconds { 0.005f };
@@ -28,6 +35,12 @@ struct SubtractiveSettings
     float imageMix { 0.35f };
 };
 
+/**
+ * Oscillator mode and macro controls shared by all active voices.
+ *
+ * Mode-specific rendering functions interpret macroA/B/C differently, so these
+ * are intentionally normalized control lanes rather than mode-specific structs.
+ */
 struct OscillatorSettings
 {
     int modeIndex { 0 };
@@ -44,6 +57,12 @@ enum class ExternalSourceMode
     audio = 1
 };
 
+/**
+ * Granular playback control values for the external audio source path.
+ *
+ * Values are normalized to keep automation/state/preset data compact and
+ * stable across UI redesigns.
+ */
 struct AudioGranularSettings
 {
     bool enabled { false };
@@ -80,6 +99,7 @@ public:
     void setExternalSourceMode(ExternalSourceMode mode);
 
 private:
+    // Runtime grain state used only inside a single voice instance.
     struct AudioGrain
     {
         bool active { false };
@@ -118,13 +138,17 @@ private:
     float renderAudioGranularSample(float pitchRatio, float textureNorm, float grainNorm);
     float readAudioSample(int channel, float position) const;
 
+    // Cached control settings for this voice. The processor refreshes these
+    // every block so render code can run branch-light in the inner loop.
     EnvelopeSettings envelopeSettings;
     SubtractiveSettings subtractiveSettings;
     OscillatorSettings oscillatorSettings;
 
+    // JUCE ADSR keeps per-voice envelope phase/level state.
     juce::ADSR adsr;
     juce::ADSR::Parameters adsrParameters;
 
+    // Reused for multiple filter modes; stage2 enables pseudo 24 dB responses.
     juce::dsp::IIR::Filter<float> lowPassFilter;
     juce::dsp::IIR::Filter<float> lowPassFilterStage2;
 
@@ -143,6 +167,7 @@ private:
     float vibratoRateHz { 5.0f };
     float vibratoMaxDepthSemitones { 1.0f };
 
+    // Shared immutable source tables. Ownership is external; voice only reads.
     std::shared_ptr<const ImageWavetable> imageWavetable;
     float targetImagePosition { 0.0f };
     float currentImagePosition { 0.0f };

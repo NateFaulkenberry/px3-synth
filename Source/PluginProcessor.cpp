@@ -565,6 +565,8 @@ bool SynthProjectAudioProcessor::isBusesLayoutSupported(const BusesLayout& layou
 
 float SynthProjectAudioProcessor::currentLfoSignalForBlock(int numSamples)
 {
+    // ONE LFO architecture: evaluate once per block (lightweight) and use the
+    // midpoint phase so block-rate modulation feels stable during automation.
     const auto frequencyHz = juce::jlimit(0.01f, 20.0f, lfoFrequencyParam->get());
     const auto startPhase = lfoPhaseRadians;
     const auto samples = juce::jmax(1, numSamples);
@@ -591,6 +593,9 @@ float SynthProjectAudioProcessor::applyLfoToNormalizedValue(juce::RangedAudioPar
                                                              float* outBaseNormalized,
                                                              float* outEffectiveNormalized) const
 {
+    // `base` is the host-visible parameter value (automation/presets/state).
+    // `effective` is the transient DSP value after modulation. We never write
+    // `effective` back into parameters so DAW automation lanes stay deterministic.
     const auto base = clamp01(baseNormalized);
     auto effective = base;
 
@@ -647,6 +652,8 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     combinedMidi.addEvents(midiMessages, 0, buffer.getNumSamples(), 0);
 
     {
+        // Virtual keyboard events are produced on the message thread. Lock scope
+        // is kept minimal so the audio thread only copies and clears queued MIDI.
         const juce::ScopedLock lock(virtualMidiLock);
         combinedMidi.addEvents(virtualMidiMessages, 0, -1, 0);
         virtualMidiMessages.clear();
@@ -1301,6 +1308,9 @@ bool SynthProjectAudioProcessor::setLfoAssignmentByParameterId(const juce::Strin
 
 void SynthProjectAudioProcessor::buildLfoAssignableTargets()
 {
+    // This list is the authoritative mapping between UI assignment index and
+    // processor parameter targets. It is built from existing float parameters
+    // so new automatable controls become assignable without custom plumbing.
     lfoAssignableTargets.clear();
     lfoAssignmentDisplayNames.clear();
 
@@ -1309,6 +1319,8 @@ void SynthProjectAudioProcessor::buildLfoAssignableTargets()
 
     const auto shouldExclude = [](const juce::String& id)
     {
+        // Exclude controls that define modulation behavior itself, rather than
+        // being destinations of modulation.
         return id.equalsIgnoreCase("lfoFrequency")
                || id.equalsIgnoreCase("pitchBendRange");
     };
@@ -1340,6 +1352,8 @@ void SynthProjectAudioProcessor::buildLfoAssignableTargets()
 
 float SynthProjectAudioProcessor::lfoDepthForParameterId(const juce::String& parameterId) const
 {
+    // Depths are intentionally conservative by default to avoid abrupt jumps on
+    // sensitive controls. Specific musical targets get tuned overrides.
     if (parameterId.equalsIgnoreCase("masterGain"))
     {
         return 0.30f;
@@ -1364,6 +1378,8 @@ float SynthProjectAudioProcessor::lfoDepthForParameterId(const juce::String& par
 
 std::array<int, 3> SynthProjectAudioProcessor::getFxProcessingOrder() const
 {
+    // Stored order is packed atomically; sanitize on read so malformed legacy or
+    // duplicate values always recover to a valid permutation.
     const auto packed = fxProcessingOrderPacked.load(std::memory_order_relaxed);
     const auto raw = unpackFxOrder(packed);
 
@@ -1403,6 +1419,9 @@ void SynthProjectAudioProcessor::setFxProcessingOrderWithReason(const std::array
                                                                 int fromIndex,
                                                                 int toIndex)
 {
+    // Authoritative module order lives in the processor (not UI). UI drag-drop
+    // requests are sanitized and committed here so DSP, state save, and debug
+    // diagnostics all observe the same canonical order.
     std::array<int, 3> sanitized { { 0, 1, 2 } };
     std::array<bool, 3> seen { { false, false, false } };
 
@@ -1450,7 +1469,9 @@ void SynthProjectAudioProcessor::setFxProcessingOrderWithReason(const std::array
                       + " gen=" + juce::String(static_cast<int64_t>(oldRevision))
                       + "->" + juce::String(static_cast<int64_t>(newRevision)));
 
-    // Notify host that non-automatable plugin state changed.
+    // Module order is part of plugin state but not an automatable parameter.
+    // Explicit host notifications ensure project dirty-state and save prompts
+    // stay accurate after UI drag reorder operations.
     updateHostDisplay();
     updateHostDisplay(juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged(true));
     updateHostDisplay(juce::AudioProcessor::ChangeDetails().withProgramChanged(true));
@@ -2977,6 +2998,11 @@ void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
                                                             float& outL,
                                                             float& outR)
 {
+    // Granular delay summary:
+    // - Input is written into a circular delay buffer.
+    // - Short grains are spawned from delayed positions (mode-dependent).
+    // - Grain output is diffused/filtered/saturated, then mixed with dry signal.
+    // This all runs sample-by-sample in the audio thread, so no allocations.
     if (isaacBufferSize <= 1)
     {
         outL = inL;
@@ -3005,6 +3031,8 @@ void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
 
     if (mode == GranularMode::rhythmic)
     {
+        // Rhythmic mode uses a step-trigger pattern with optional swing to
+        // produce tempo-locked, repeatable phrase-like textures.
         if (isaacRhythmicSamplesUntilNext <= 0)
         {
             const std::array<std::array<int, 16>, 3> triggerPatterns { {
@@ -3056,6 +3084,8 @@ void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
     }
     else
     {
+        // Non-rhythmic modes use density-based spawning intervals; sync mode
+        // still quantizes intervals to beat subdivisions when requested.
         auto spawnEverySec = lerp(0.085f, 0.028f, macro) * secPerBeat * 2.0f;
         if (mode == GranularMode::cloud)
         {
@@ -3131,6 +3161,8 @@ void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
         dampCoeff = lerp(0.18f, 0.07f, a);
     }
 
+    // Diffusion broadens grain clouds and decorrelates channels, helping avoid
+    // narrow comb-like artifacts at higher feedback values.
     processGranularDiffusion(wetL, wetR, diffusion, stereo);
 
     isaacFeedbackFilter[0] += dampCoeff * (wetL - isaacFeedbackFilter[0]);
@@ -3188,6 +3220,8 @@ void SynthProjectAudioProcessor::processDelayAlgorithmSample(float inL,
                                                              float& outL,
                                                              float& outR)
 {
+    // All delay algorithms share one circular memory line for coherence across
+    // mode changes; each algorithm then colors/modulates reads differently.
     const auto algo = juce::jlimit(0, 6, algorithmIndex);
 
     if (algo == 0)
@@ -3415,6 +3449,9 @@ void SynthProjectAudioProcessor::processReverbSampleFrame(float inL,
                                                           float& outL,
                                                           float& outR)
 {
+    // Reverb modes intentionally mix classic algorithm families:
+    // room (JUCE reverb), plate-style tank, and hall-style multi-line network.
+    // Parameters are base values with optional LFO modulation applied at read time.
     if (amount <= 0.0001f)
     {
         outL = inL;
@@ -3471,6 +3508,7 @@ void SynthProjectAudioProcessor::processReverbSampleFrame(float inL,
                                                                 lfoSignal)
                                     : 0.54f;
 
+    // Predelay separates dry transient from wet onset, improving clarity.
     const auto predelaySamples = 1.0f + preDelay * static_cast<float>(currentSampleRateHz) * 0.30f;
     const auto inPredelayedL = processReverbDelay(reverbPreDelayLines[0], inL, predelaySamples);
     const auto inPredelayedR = processReverbDelay(reverbPreDelayLines[1], inR, predelaySamples);
@@ -3640,6 +3678,7 @@ juce::AudioProcessorEditor* SynthProjectAudioProcessor::createEditor()
 
 void SynthProjectAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
+    // DAW save path: capture current authoritative state tree -> XML payload.
     auto state = createParameterStateTree();
     const auto order = getFxProcessingOrder();
 
@@ -3663,6 +3702,7 @@ void SynthProjectAudioProcessor::getStateInformation(juce::MemoryBlock& destData
 
 void SynthProjectAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
+    // DAW restore path: payload -> ValueTree -> parameter/state apply.
     const auto before = getFxProcessingOrder();
     debugLogEvent("HOST",
                   "SET_STATE_INFORMATION_BEGIN",
@@ -3709,6 +3749,8 @@ void SynthProjectAudioProcessor::setStateInformation(const void* data, int sizeI
 
 juce::ValueTree SynthProjectAudioProcessor::createParameterStateTree() const
 {
+    // This tree is the canonical persisted state used by DAW projects and
+    // preset files. Keep fields backward-compatible when extending it.
     juce::ValueTree state(kStateTypeId);
     state.setProperty(kStateVersionId, kCurrentStateVersion, nullptr);
 
@@ -3726,6 +3768,8 @@ juce::ValueTree SynthProjectAudioProcessor::createParameterStateTree() const
         state.setProperty("audioPath", lastLoadedAudioPath, nullptr);
     }
 
+    // Module order is not represented by audio parameters; serialize it here as
+    // explicit MODULE_ORDER entries so UI drag order and DSP chain stay stable.
     const auto fxOrder = getFxProcessingOrder();
     juce::ValueTree moduleOrder(kModuleOrderId);
     for (const auto stage : fxOrder)
@@ -3739,6 +3783,7 @@ juce::ValueTree SynthProjectAudioProcessor::createParameterStateTree() const
                       static_cast<int64_t>(fxOrderRevision.load(std::memory_order_relaxed)),
                       nullptr);
 
+    // Keep LFO settings in a dedicated node for backward-compatible evolution.
     juce::ValueTree lfoState(kLfoStateId);
     lfoState.setProperty(kLfoFrequencyId, lfoFrequencyParam->get(), nullptr);
     lfoState.setProperty(kLfoAssignmentId, getLfoAssignmentParameterId(), nullptr);
@@ -3758,6 +3803,8 @@ bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& 
         return false;
     }
 
+    // Restore all known parameter base values first. These are host-automatable
+    // and remain the source of truth for both UI and DSP readers.
     for (auto* parameter : getParameters())
     {
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
@@ -3850,6 +3897,8 @@ bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& 
         }
     }
 
+    // Then restore processing chain order. This is processor-owned state and is
+    // intentionally separate from AudioParameter IDs.
     if (hasModuleOrder)
     {
         setFxProcessingOrderWithReason(fxOrderFromState, "HOST", "STATE_RESTORE", -1, -1);

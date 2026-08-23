@@ -771,6 +771,8 @@ bool PresetManager::readPresetFile(const juce::File& file,
                                    PresetRecord* outRecord,
                                    juce::String& error) const
 {
+    // Parsing and migration are centralized here so all load paths (browser,
+    // import, debug dump validation) enforce the same compatibility rules.
     if (!file.existsAsFile())
     {
         error = "Preset file not found: " + file.getFullPathName();
@@ -825,6 +827,8 @@ bool PresetManager::writePresetFile(const juce::File& file,
         return false;
     }
 
+    // Atomic-style write: serialize to a temporary file first, then swap. This
+    // reduces risk of half-written presets when failures occur.
     juce::TemporaryFile temp(file);
     if (auto xml = presetTree.createXml())
     {
@@ -854,6 +858,8 @@ juce::ValueTree PresetManager::buildPresetTreeFromCurrentState(const PresetMetad
                                                                bool asFactory,
                                                                juce::String& error) const
 {
+    // Capture canonical processor state; preset files intentionally do not own
+    // a separate parameter model.
     auto pluginState = processor.createParameterStateTree();
     if (!pluginState.isValid())
     {
@@ -893,6 +899,8 @@ bool PresetManager::applyPresetTree(const juce::ValueTree& presetTree, juce::Str
         return false;
     }
 
+    // Materialize a mutable copy so embedded asset path rewrite does not alter
+    // the original parsed tree.
     auto stateCopy = state.createCopy();
     auto assets = presetTree.getChildWithName(kAssetsId);
 
@@ -907,6 +915,8 @@ bool PresetManager::applyPresetTree(const juce::ValueTree& presetTree, juce::Str
 juce::ValueTree PresetManager::migratePresetTreeIfNeeded(const juce::ValueTree& presetTree,
                                                          juce::String& error) const
 {
+    // Migration keeps older presets loadable while preserving strict rejection
+    // of unknown future schema versions.
     auto migrated = presetTree.createCopy();
 
     const auto version = static_cast<int>(migrated.getProperty("presetVersion", 1));
@@ -947,6 +957,8 @@ void PresetManager::collectAssetsForState(juce::ValueTree& pluginState,
                                                                const juce::String& type,
                                                                const juce::File& cacheDir)
     {
+        // Embed path-backed media into preset payload so presets are portable.
+        // If no media is loaded, this quietly does nothing.
         if (!pluginState.hasProperty(key))
         {
             return;
@@ -981,6 +993,8 @@ void PresetManager::collectAssetsForState(juce::ValueTree& pluginState,
         asset.setProperty("embedded", true, nullptr);
         asset.setProperty("data", data.toBase64Encoding(), nullptr);
 
+        // Cache by content hash so repeated saves of identical assets reuse the
+        // same on-disk blob.
         const auto hashName = asset.getProperty("hash").toString() + source.getFileExtension();
         const auto cached = cacheDir.getChildFile(hashName);
         if (!cached.existsAsFile())
@@ -988,6 +1002,8 @@ void PresetManager::collectAssetsForState(juce::ValueTree& pluginState,
             cached.replaceWithData(data.getData(), data.getSize());
         }
 
+        // State points at local cached file path so restore can succeed even if
+        // the original source path is no longer available.
         pluginState.setProperty(key, cached.getFullPathName(), nullptr);
         assetsNode.addChild(asset, -1, nullptr);
     };
@@ -1043,6 +1059,7 @@ bool PresetManager::materializeEmbeddedAssets(juce::ValueTree& pluginState,
         const auto ext = juce::File(fileName).getFileExtension();
         const auto type = asset.getProperty("type").toString().toLowerCase();
         auto dir = type == "audio" ? getAudioAssetsDir() : getImageAssetsDir();
+        // Materialization is idempotent: existing cache files are reused.
         const auto outFile = dir.getChildFile((hash.isNotEmpty() ? hash : juce::String::toHexString(juce::Random::getSystemRandom().nextInt64())) + ext);
 
         if (!outFile.existsAsFile())
@@ -1054,6 +1071,7 @@ bool PresetManager::materializeEmbeddedAssets(juce::ValueTree& pluginState,
             }
         }
 
+        // Rewrite state path to materialized local copy before apply.
         pluginState.setProperty(key, outFile.getFullPathName(), nullptr);
     }
 

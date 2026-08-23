@@ -4,6 +4,10 @@ P(X3) macOS builds target Apple Silicon (`arm64`) only.
 
 Intel Macs (`x86_64`) are not supported.
 
+Project version source of truth:
+
+- `PX3_VERSION` in `CMakeLists.txt` (SemVer: `MAJOR.MINOR.PATCH`).
+
 ## Development Build
 
 From repository root:
@@ -94,11 +98,28 @@ If `--sign` is used and no valid identity is available, the script fails with a 
 Release build outputs are generated under:
 
 - `build/release/` (intermediate build tree)
-- `dist/PX3-<version>-macOS/`
+- `dist/PX3-v<version>-macOS/`
   - `AU/*.component`
   - `VST3/*.vst3`
   - `Standalone/*.app` (when Standalone format is enabled)
-- `dist/P(X3)-<version>-macOS-arm64.zip`
+- `dist/P(X3)-v<version>-macOS-arm64.zip`
+
+## Release Tag Workflow
+
+Suggested release flow:
+
+1. Update `PX3_VERSION` in `CMakeLists.txt`
+2. Build/test locally
+3. Commit
+4. Tag the release:
+
+```bash
+git tag -a v0.1.0 -m "P(X3) v0.1.0"
+git push
+git push origin v0.1.0
+```
+
+5. Create a GitHub Release from tag `v0.1.0`
 
 ## Notes
 

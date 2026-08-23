@@ -6,6 +6,15 @@
 
 #include <vector>
 
+/**
+ * Preset file management for P(X3).
+ *
+ * This layer intentionally reuses the processor's state representation
+ * (`PX3_STATE`) instead of maintaining a second independent model.
+ *
+ * Result: DAW project restore and .px3preset files round-trip through the same
+ * parameter/state architecture, which keeps automation and compatibility stable.
+ */
 class PresetManager
 {
 public:

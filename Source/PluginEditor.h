@@ -12,6 +12,22 @@
 #include "PluginProcessor.h"
 #include "SourceEnginePanel.h"
 
+/**
+ * Main JUCE editor for P(X3).
+ *
+ * This class owns UI presentation and user interaction only. It never becomes
+ * the authoritative source of synth state; parameters and state live in the
+ * processor and are mirrored here through parameter attachments and periodic
+ * UI refresh.
+ *
+ * Simplified flow:
+ *
+ *   User/Host Automation -> AudioParameters (processor) -> UI attachments
+ *   UI gesture -> AudioParameters (processor) -> DSP reads in processBlock
+ *
+ * The debug console is intentionally hosted here because it is a developer UI
+ * surface, but it queries/acts on processor-owned state.
+ */
 class SynthProjectAudioProcessorEditor final : public juce::AudioProcessorEditor,
                                               private juce::Timer,
                                               private juce::ListBoxModel
@@ -374,6 +390,7 @@ private:
     std::vector<std::unique_ptr<DebugParamControl>> debugParamControls;
     std::unique_ptr<juce::DocumentWindow> debugWindow;
     juce::Rectangle<int> debugWindowBounds { 100, 80, 1240, 780 };
+    juce::Rectangle<int> debugLastPanelLayoutBounds;
     int debugRefreshTickCounter { 0 };
     bool debugPanelVisible { false };
     bool debugParamControlsInitialized { false };

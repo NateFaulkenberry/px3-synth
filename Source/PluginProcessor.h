@@ -13,6 +13,26 @@
 #include <mutex>
 #include <vector>
 
+/**
+ * P(X3) main audio processor.
+ *
+ * The processor is the DAW-facing core of the plugin. It owns:
+ * - AudioParameters (automation/state source of truth)
+ * - Voice rendering and DSP effect processing
+ * - State serialization/deserialization for DAW project restore
+ * - Cross-thread handoff data used by the UI/debug console
+ *
+ * Data flow (simplified):
+ *
+ *   MIDI + virtual keyboard
+ *        -> synth voice render (osc/filter/amp env)
+ *        -> FX chain in user-defined module order
+ *        -> output buffer
+ *
+ * Important architecture rule:
+ * parameter/base values are persisted/automated; transient DSP-effective
+ * values may include modulation (LFO etc.) and are computed at read points.
+ */
 class SynthProjectAudioProcessor final : public juce::AudioProcessor
 {
 public:

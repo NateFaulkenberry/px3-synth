@@ -56,6 +56,20 @@ extract_cmake_value() {
   printf '%s' "$value"
 }
 
+extract_px3_version() {
+  local line
+  line="$(grep -E '^[[:space:]]*set\([[:space:]]*PX3_VERSION[[:space:]]+"?[0-9]+\.[0-9]+\.[0-9]+"?[[:space:]]*\)' "${CMAKE_FILE}" | head -n1 || true)"
+  [[ -n "$line" ]] || return 1
+
+  line="${line#*PX3_VERSION}"
+  line="$(trim "$line")"
+  line="${line%)}"
+  line="$(trim "$line")"
+  line="${line%\"}"
+  line="${line#\"}"
+  printf '%s' "$line"
+}
+
 cache_value() {
   local key="$1"
   local file="$2"
@@ -189,8 +203,9 @@ done
 
 [[ -f "${CMAKE_FILE}" ]] || die "CMakeLists.txt not found at repository root"
 
-PROJECT_VERSION="$(grep -E '^project\(' "${CMAKE_FILE}" | sed -E 's/.*VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/' | head -n1 || true)"
-[[ -n "${PROJECT_VERSION}" ]] || die "Could not determine project version from CMakeLists.txt"
+PROJECT_VERSION="$(extract_px3_version || true)"
+[[ -n "${PROJECT_VERSION}" ]] || die "Could not determine PX3_VERSION from CMakeLists.txt"
+[[ "${PROJECT_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "PX3_VERSION is not valid SemVer (expected MAJOR.MINOR.PATCH)"
 
 PRODUCT_NAME="$(extract_cmake_value "PRODUCT_NAME" || true)"
 [[ -n "${PRODUCT_NAME}" ]] || PRODUCT_NAME="PX3 Synth"
@@ -308,8 +323,8 @@ else
 fi
 
 echo "[6/6] Creating distribution"
-DIST_DIR="${DIST_ROOT}/PX3-${PROJECT_VERSION}-macOS"
-ZIP_PATH="${DIST_ROOT}/P(X3)-${PROJECT_VERSION}-macOS-arm64.zip"
+DIST_DIR="${DIST_ROOT}/PX3-v${PROJECT_VERSION}-macOS"
+ZIP_PATH="${DIST_ROOT}/P(X3)-v${PROJECT_VERSION}-macOS-arm64.zip"
 
 rm -rf "${DIST_DIR}"
 mkdir -p "${DIST_DIR}/AU" "${DIST_DIR}/VST3"
