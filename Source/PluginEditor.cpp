@@ -589,7 +589,7 @@ void SynthProjectAudioProcessorEditor::openDebugWindow()
         window->setUsingNativeTitleBar(true);
         window->setResizable(true, true);
         window->setResizeLimits(920, 620, 2800, 2000);
-        window->setAlwaysOnTop(false);
+        window->setAlwaysOnTop(true);
         window->onCloseRequested = [this]() { closeDebugWindow(); };
         window->setContentNonOwned(&debugPanel, false);
         debugWindow = std::move(window);
@@ -1115,9 +1115,10 @@ juce::String SynthProjectAudioProcessorEditor::buildParameterInspectorText() con
 {
     juce::String text;
     const auto& params = audioProcessor.getParameters();
-    for (std::size_t i = 0; i < params.size(); ++i)
+    int paramIndex = 0;
+    for (auto* parameter : params)
     {
-        auto* parameter = params[i];
+        const auto currentIndex = paramIndex++;
         auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter);
         if (ranged == nullptr)
         {
@@ -1156,7 +1157,7 @@ juce::String SynthProjectAudioProcessorEditor::buildParameterInspectorText() con
         const auto norm = ranged->getValue();
         const auto real = ranged->convertFrom0to1(norm);
 
-        text << "Index: " << juce::String(static_cast<int>(i))
+        text << "Index: " << juce::String(currentIndex)
              << " | ID: " << ranged->getParameterID()
              << " | Name: " << ranged->getName(128)
              << "\n"
@@ -1710,9 +1711,9 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
         }
     };
 
-    setSize(1320, 700);
-
+    // Seed visual slot layout with the processor order before the first setSize/resized pass.
     fxSectionOrder = audioProcessor.getFxProcessingOrder();
+    setSize(1320, 700);
 
     juce::String presetInitError;
     if (!presetManager.initialise(presetInitError))
