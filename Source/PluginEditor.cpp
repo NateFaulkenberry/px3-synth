@@ -1309,7 +1309,7 @@ void SynthProjectAudioProcessorEditor::resized()
     const auto sectionGap = 10;
 
     headerArea = bounds.removeFromTop(headerHeight);
-    logoPanelArea = { headerArea.getX() + 4, headerArea.getY() + 4, 160, headerArea.getHeight() - 8 };
+    logoPanelArea = { headerArea.getX() + 4, headerArea.getY() + 4, 160, 160 };
     headerPlaceholderArea = { logoPanelArea.getRight() + 12,
                               headerArea.getY(),
                               juce::jmax(0, headerArea.getRight() - (logoPanelArea.getRight() + 12)),
