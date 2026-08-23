@@ -534,27 +534,27 @@ bool PresetManager::createInitPresetIfMissing(juce::String& error)
     state.setProperty("oscH6", 0.1400000005960464f, nullptr);
     state.setProperty("oscH7", 0.1000000014901161f, nullptr);
     state.setProperty("oscH8", 0.07000000029802322f, nullptr);
-    state.setProperty("filterCutoff", 0.4037925601005554f, nullptr);
+    state.setProperty("filterCutoff", 0.2481092661619186f, nullptr);
     state.setProperty("filterResonance", 0.282051295042038f, nullptr);
     state.setProperty("filterType", 0.0f, nullptr);
-    state.setProperty("ampAttack", 0.5603691935539246f, nullptr);
-    state.setProperty("ampDecay", 0.3086085021495819f, nullptr);
-    state.setProperty("ampSustain", 0.278243213891983f, nullptr);
-    state.setProperty("ampRelease", 0.0f, nullptr);
-    state.setProperty("masterGain", 0.4870468974113464f, nullptr);
-    state.setProperty("vibeAmount", 0.7861562371253967f, nullptr);
+    state.setProperty("ampAttack", 0.044675063341856f, nullptr);
+    state.setProperty("ampDecay", 0.1328198909759521f, nullptr);
+    state.setProperty("ampSustain", 0.800000011920929f, nullptr);
+    state.setProperty("ampRelease", 0.09388426691293716f, nullptr);
+    state.setProperty("masterGain", 0.6000000238418579f, nullptr);
+    state.setProperty("vibeAmount", 0.6022812128067017f, nullptr);
     state.setProperty("vibeEnabled", 1.0f, nullptr);
     state.setProperty("vibeType", 0.6000000238418579f, nullptr);
-    state.setProperty("delayAmount", 0.7113437652587891f, nullptr);
+    state.setProperty("delayAmount", 0.3621250092983246f, nullptr);
     state.setProperty("granularSyncDivision", 0.0f, nullptr);
     state.setProperty("granularMode", 0.3333333432674408f, nullptr);
     state.setProperty("delayAlgorithm", 0.3333333432674408f, nullptr);
     state.setProperty("delayEnabled", 1.0f, nullptr);
-    state.setProperty("delayTime", 0.3743749856948853f, nullptr);
-    state.setProperty("delayFeedback", 1.0f, nullptr);
-    state.setProperty("reverbAmount", 0.1919843852519989f, nullptr);
+    state.setProperty("delayTime", 0.3499999940395355f, nullptr);
+    state.setProperty("delayFeedback", 0.3799999952316284f, nullptr);
+    state.setProperty("reverbAmount", 0.4072031378746033f, nullptr);
     state.setProperty("reverbEnabled", 1.0f, nullptr);
-    state.setProperty("reverbAlgorithm", 1.0f, nullptr);
+    state.setProperty("reverbAlgorithm", 0.0f, nullptr);
     state.setProperty("reverbSize", 0.5199999809265137f, nullptr);
     state.setProperty("reverbDecay", 0.4799999892711639f, nullptr);
     state.setProperty("reverbDamping", 0.4600000083446503f, nullptr);
@@ -921,6 +921,13 @@ bool PresetManager::readPresetFile(const juce::File& file,
         return false;
     }
 
+    const auto isFactoryFile = file.isAChildOf(getFactoryPresetRootDir());
+    if (isFactoryFile && !migrated.isEquivalentTo(tree))
+    {
+        juce::String ignoredWriteError;
+        writePresetFile(file, migrated, ignoredWriteError);
+    }
+
     auto state = migrated.getChildWithName(kPluginStateId);
     if (!state.isValid())
     {
@@ -932,8 +939,7 @@ bool PresetManager::readPresetFile(const juce::File& file,
 
     if (outRecord != nullptr)
     {
-        const auto isFactory = file.isAChildOf(getFactoryPresetRootDir());
-        *outRecord = makeRecordFromTree(file, isFactory, migrated);
+        *outRecord = makeRecordFromTree(file, isFactoryFile, migrated);
     }
 
     return true;
@@ -1068,6 +1074,83 @@ juce::ValueTree PresetManager::migratePresetTreeIfNeeded(const juce::ValueTree& 
     {
         migrated.addChild(juce::ValueTree(kAssetsId), -1, nullptr);
     }
+
+    auto state = migrated.getChildWithName(kPluginStateId);
+    if (state.isValid())
+    {
+        // Remap removed parameter IDs from legacy factory/user presets.
+        static constexpr std::array<std::pair<const char*, const char*>, 3> legacyParamMap { {
+            { "robAmount", "vibeAmount" },
+            { "robEnabled", "vibeEnabled" },
+            { "isaacAmount", "delayAmount" }
+        } };
+
+        for (const auto& [legacyId, currentId] : legacyParamMap)
+        {
+            const juce::Identifier legacyKey(legacyId);
+            const juce::Identifier currentKey(currentId);
+            if (!state.hasProperty(currentKey) && state.hasProperty(legacyKey))
+            {
+                state.setProperty(currentKey, state.getProperty(legacyKey), nullptr);
+            }
+
+            if (state.hasProperty(legacyKey))
+            {
+                state.removeProperty(legacyKey, nullptr);
+            }
+        }
+
+        // Fill missing parameters/children from the current processor defaults
+        // so older presets remain complete as new parameters are introduced.
+        const auto defaultState = processor.createParameterStateTree();
+        if (defaultState.isValid())
+        {
+            for (int i = 0; i < defaultState.getNumProperties(); ++i)
+            {
+                const auto propertyName = defaultState.getPropertyName(i);
+                if (!state.hasProperty(propertyName))
+                {
+                    state.setProperty(propertyName, defaultState.getProperty(propertyName), nullptr);
+                }
+            }
+
+            if (defaultState.hasProperty("stateVersion"))
+            {
+                state.setProperty("stateVersion", defaultState.getProperty("stateVersion"), nullptr);
+            }
+
+            const auto ensureChildState = [&state, &defaultState](const juce::Identifier& childId)
+            {
+                const auto defaultChild = defaultState.getChildWithName(childId);
+                if (!defaultChild.isValid())
+                {
+                    return;
+                }
+
+                auto targetChild = state.getChildWithName(childId);
+                if (!targetChild.isValid())
+                {
+                    state.addChild(defaultChild.createCopy(), -1, nullptr);
+                    return;
+                }
+
+                for (int i = 0; i < defaultChild.getNumProperties(); ++i)
+                {
+                    const auto propertyName = defaultChild.getPropertyName(i);
+                    if (!targetChild.hasProperty(propertyName))
+                    {
+                        targetChild.setProperty(propertyName, defaultChild.getProperty(propertyName), nullptr);
+                    }
+                }
+            };
+
+            ensureChildState(juce::Identifier("MODULE_ORDER"));
+            ensureChildState(juce::Identifier("LFO"));
+            ensureChildState(juce::Identifier("VIBE"));
+        }
+    }
+
+    migrated.setProperty("presetVersion", currentPresetFormatVersion, nullptr);
 
     return migrated;
 }

@@ -2151,6 +2151,14 @@ void SynthProjectAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
     }
 
     const auto point = event.getPosition();
+    logoClickArmed = false;
+    if (logoPanelArea.contains(point))
+    {
+        logoClickArmed = true;
+        logoMouseDownPoint = point;
+        return;
+    }
+
     const auto sectionId = fxSectionAtPoint(point);
     if (sectionId < 0)
     {
@@ -2178,6 +2186,15 @@ void SynthProjectAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
             newTopLeft.y = juce::jlimit(margin, juce::jmax(margin, maxY), newTopLeft.y);
             presetBrowserPanel.setTopLeftPosition(newTopLeft);
             repaint();
+        }
+        return;
+    }
+
+    if (logoClickArmed)
+    {
+        if (event.getPosition().getDistanceFrom(logoMouseDownPoint) >= 4)
+        {
+            logoClickArmed = false;
         }
         return;
     }
@@ -2231,6 +2248,17 @@ void SynthProjectAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
     {
         juce::ignoreUnused(event);
         presetBrowserDragging = false;
+        logoClickArmed = false;
+        return;
+    }
+
+    if (logoClickArmed)
+    {
+        logoClickArmed = false;
+        if (logoPanelArea.contains(event.getPosition()))
+        {
+            juce::URL("https://px3px3.com").launchInDefaultBrowser();
+        }
         return;
     }
 

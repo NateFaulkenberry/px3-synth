@@ -16,6 +16,9 @@ Installs the most recent Release AU build into:
 
 By default, also installs VST3 into:
   ~/Library/Audio/Plug-Ins/VST3/
+
+Also clears previously installed factory presets from:
+  ~/Library/Application Support/P(X3)/Presets/Factory/
 EOF
 }
 
@@ -46,6 +49,9 @@ require_cmd() {
 
 require_cmd find
 
+LOCAL_PRESET_ROOT="${HOME}/Library/Application Support/P(X3)/Presets"
+LOCAL_FACTORY_PRESET_DIR="${LOCAL_PRESET_ROOT}/Factory"
+
 find_newest_bundle() {
   local search_root="$1"
   local extension="$2"
@@ -67,6 +73,12 @@ AU_NAME="$(basename "${AU_BUNDLE}")"
 
 LOCAL_AU_DIR="${HOME}/Library/Audio/Plug-Ins/Components"
 LOCAL_AU_PATH="${LOCAL_AU_DIR}/${AU_NAME}"
+
+if [[ -d "${LOCAL_FACTORY_PRESET_DIR}" ]]; then
+  rm -rf "${LOCAL_FACTORY_PRESET_DIR}"
+  echo "Removed installed factory presets:"
+  echo "  ${LOCAL_FACTORY_PRESET_DIR}"
+fi
 
 mkdir -p "${LOCAL_AU_DIR}"
 rm -rf "${LOCAL_AU_PATH}"

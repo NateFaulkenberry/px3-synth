@@ -237,6 +237,8 @@ private:
     bool fxSectionsInitialized { false };
     int draggingFxSection { -1 };
     float draggingSectionOffsetX { 0.0f };
+    bool logoClickArmed { false };
+    juce::Point<int> logoMouseDownPoint;
     int pressedFxSection { -1 };
     juce::Point<int> fxDragStartPoint;
     bool fxDragHasMoved { false };
