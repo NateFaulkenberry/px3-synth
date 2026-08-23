@@ -1440,27 +1440,32 @@ void SynthProjectAudioProcessorEditor::refreshFxBypassUI()
     const auto reverbEnabled = audioProcessor.getReverbEnabledParam().get();
     const auto delayAccentEnabled = juce::Colour::fromRGB(255, 198, 110);
     const auto delayAccentBypassed = juce::Colour::fromRGB(176, 176, 176);
+    const auto setBypassVisual = [](juce::Component& component, bool enabled)
+    {
+        component.setEnabled(true);
+        component.setAlpha(enabled ? 1.0f : 0.72f);
+    };
 
     robBypassButton.setToggleState(robEnabled, juce::dontSendNotification);
     delayBypassButton.setToggleState(delayEnabled, juce::dontSendNotification);
     reverbBypassButton.setToggleState(reverbEnabled, juce::dontSendNotification);
 
-    robWarmthKnob.setEnabled(robEnabled);
-    robWarmthLabel.setEnabled(robEnabled);
-    robTypeBox.setEnabled(robEnabled);
-    robTypeLabel.setEnabled(robEnabled);
+    setBypassVisual(robWarmthKnob, robEnabled);
+    setBypassVisual(robWarmthLabel, robEnabled);
+    setBypassVisual(robTypeBox, robEnabled);
+    setBypassVisual(robTypeLabel, robEnabled);
     robWarmthKnob.getProperties().set("psychedelicBypassGray", !robEnabled);
 
-    isaacTextureKnob.setEnabled(delayEnabled);
-    isaacTextureLabel.setEnabled(delayEnabled);
-    delayAlgoBox.setEnabled(delayEnabled);
-    delayAlgoLabel.setEnabled(delayEnabled);
-    delayTimeKnob.setEnabled(delayEnabled);
-    delayTimeLabel.setEnabled(delayEnabled);
-    delayFeedbackKnob.setEnabled(delayEnabled);
-    delayFeedbackLabel.setEnabled(delayEnabled);
-    granularSyncBox.setEnabled(delayEnabled);
-    granularSyncLabel.setEnabled(delayEnabled);
+    setBypassVisual(isaacTextureKnob, delayEnabled);
+    setBypassVisual(isaacTextureLabel, delayEnabled);
+    setBypassVisual(delayAlgoBox, delayEnabled);
+    setBypassVisual(delayAlgoLabel, delayEnabled);
+    setBypassVisual(delayTimeKnob, delayEnabled);
+    setBypassVisual(delayTimeLabel, delayEnabled);
+    setBypassVisual(delayFeedbackKnob, delayEnabled);
+    setBypassVisual(delayFeedbackLabel, delayEnabled);
+    setBypassVisual(granularSyncBox, delayEnabled);
+    setBypassVisual(granularSyncLabel, delayEnabled);
     isaacTextureKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
     delayTimeKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
     delayFeedbackKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
@@ -1469,10 +1474,10 @@ void SynthProjectAudioProcessorEditor::refreshFxBypassUI()
     delayFeedbackKnob.setColour(juce::Slider::rotarySliderFillColourId,
                                 delayEnabled ? delayAccentEnabled : delayAccentBypassed);
 
-    reverbKnob.setEnabled(reverbEnabled);
-    reverbLabel.setEnabled(reverbEnabled);
-    reverbTypeBox.setEnabled(reverbEnabled);
-    reverbTypeLabel.setEnabled(reverbEnabled);
+    setBypassVisual(reverbKnob, reverbEnabled);
+    setBypassVisual(reverbLabel, reverbEnabled);
+    setBypassVisual(reverbTypeBox, reverbEnabled);
+    setBypassVisual(reverbTypeLabel, reverbEnabled);
     reverbKnob.getProperties().set("psychedelicBypassGray", !reverbEnabled);
 }
 
