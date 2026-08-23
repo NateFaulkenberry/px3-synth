@@ -1826,6 +1826,9 @@ void SynthProjectAudioProcessorEditor::moveFxSectionToSlot(int sectionId, int sl
     reordered[static_cast<std::size_t>(toIndex)] = section;
     fxSectionOrder = reordered;
 
+    // Persist order immediately as slots change so host/project state always tracks UI order.
+    commitFxOrderToProcessor();
+
     for (int stage = 0; stage < 3; ++stage)
     {
         const auto slot = indexForFxSection(stage);

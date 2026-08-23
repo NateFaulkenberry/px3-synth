@@ -1107,8 +1107,6 @@ std::array<int, 3> SynthProjectAudioProcessor::getFxProcessingOrder() const
 
 void SynthProjectAudioProcessor::setFxProcessingOrder(const std::array<int, 3>& order)
 {
-    const auto previous = getFxProcessingOrder();
-
     std::array<int, 3> sanitized { { 0, 1, 2 } };
     std::array<bool, 3> seen { { false, false, false } };
 
@@ -1144,16 +1142,38 @@ void SynthProjectAudioProcessor::setFxProcessingOrder(const std::array<int, 3>& 
     {
         updatingFxOrderParams = true;
 
-        const auto setSlotIfChanged = [](juce::AudioParameterInt* param, int value)
+        const auto setSlotIfChanged = [this](juce::AudioParameterInt* param, int value)
         {
             if (param == nullptr || param->get() == value)
             {
                 return;
             }
 
-            param->beginChangeGesture();
-            param->setValueNotifyingHost(param->convertTo0to1(static_cast<float>(value)));
-            param->endChangeGesture();
+            const auto normalized = param->convertTo0to1(static_cast<float>(value));
+
+            int paramIndex = -1;
+            const auto& params = getParameters();
+            for (std::size_t i = 0; i < params.size(); ++i)
+            {
+                if (params[i] == param)
+                {
+                    paramIndex = static_cast<int>(i);
+                    break;
+                }
+            }
+
+            if (paramIndex >= 0)
+            {
+                beginParameterChangeGesture(paramIndex);
+                setParameterNotifyingHost(paramIndex, normalized);
+                endParameterChangeGesture(paramIndex);
+            }
+            else
+            {
+                param->beginChangeGesture();
+                param->setValueNotifyingHost(normalized);
+                param->endChangeGesture();
+            }
         };
 
         setSlotIfChanged(fxOrderSlot0Param, sanitized[0]);
@@ -1163,11 +1183,9 @@ void SynthProjectAudioProcessor::setFxProcessingOrder(const std::array<int, 3>& 
         updatingFxOrderParams = false;
     }
 
-    if (sanitized != previous)
-    {
-        // FX order is non-parameter state, so explicitly notify host to persist updated state.
-        updateHostDisplay();
-    }
+    // Explicitly notify host display/state tracking after order updates.
+    // Some hosts are conservative about marking dirty for non-audio UI actions.
+    updateHostDisplay();
 }
 
 float SynthProjectAudioProcessor::copyPitchBendNormalized() const
