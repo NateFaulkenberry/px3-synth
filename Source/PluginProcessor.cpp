@@ -2389,9 +2389,9 @@ juce::ValueTree SynthProjectAudioProcessor::createParameterStateTree() const
 
     for (auto* parameter : getParameters())
     {
-        if (const auto* withID = dynamic_cast<juce::AudioProcessorParameterWithID*>(parameter))
+        if (const auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
         {
-            state.setProperty(withID->paramID, parameter->getValue(), nullptr);
+            state.setProperty(ranged->getParameterID(), ranged->getValue(), nullptr);
         }
     }
 
@@ -2425,12 +2425,13 @@ bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& 
 
     for (auto* parameter : getParameters())
     {
-        if (const auto* withID = dynamic_cast<juce::AudioProcessorParameterWithID*>(parameter))
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
         {
-            if (state.hasProperty(withID->paramID))
+            const auto paramID = ranged->getParameterID();
+            if (state.hasProperty(paramID))
             {
-                const auto value = static_cast<float>(state[withID->paramID]);
-                parameter->setValueNotifyingHost(value);
+                const auto value = static_cast<float>(state[paramID]);
+                ranged->setValueNotifyingHost(value);
             }
         }
     }

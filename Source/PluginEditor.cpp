@@ -785,14 +785,9 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     }
 
     rebuildPresetFilteredList();
-    for (const auto& record : presetFiltered)
-    {
-        if (record.metadata.name.equalsIgnoreCase("INIT"))
-        {
-            applyPresetRecord(record);
-            break;
-        }
-    }
+    // Do not auto-load INIT here: the host may have just restored plugin state.
+    // Auto-loading a preset in the editor constructor would overwrite that state.
+    refreshPresetNameDisplay();
 
     refreshOscillatorModeUI();
     refreshFxBypassUI();

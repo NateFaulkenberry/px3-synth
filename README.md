@@ -204,7 +204,7 @@ Controls:
 - MODE: Forward / Reverse / PingPong.
 - TARGET: where Image Engine control signal modulates:
   - Harmonic Drive
-  - Granular Delay
+  - Delay
   - Reverb
 - OFF: disables Image routing (switches source mode away from Image when allowed).
 - RESET: restores default image engine params and default internal wavetable.
