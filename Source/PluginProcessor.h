@@ -154,6 +154,14 @@ private:
         float pan { 0.5f };
     };
 
+    struct ReverbDelayLine
+    {
+        std::vector<float> buffer;
+        int writePos { 0 };
+        float lpState { 0.0f };
+        float modPhase { 0.0f };
+    };
+
     enum class GranularMode
     {
         classic = 0,
@@ -215,6 +223,11 @@ private:
     float readDelaySample(int channel, float readPos) const;
     void processReverbSampleFrame(float inL, float inR, float amount, int algorithmIndex, float& outL, float& outR);
     float readMoonDelaySample(int channel, float readPos) const;
+    void resizeReverbLine(ReverbDelayLine& line, int size);
+    float readReverbLine(const ReverbDelayLine& line, float delaySamples) const;
+    void writeReverbLine(ReverbDelayLine& line, float sample);
+    float processReverbAllpass(ReverbDelayLine& line, float in, float delaySamples, float gain);
+    float processReverbDelay(ReverbDelayLine& line, float in, float delaySamples);
 
     juce::Synthesiser synth;
 
@@ -248,6 +261,15 @@ private:
     juce::AudioParameterFloat* reverbAmountParam { nullptr };
     juce::AudioParameterBool* reverbEnabledParam { nullptr };
     juce::AudioParameterChoice* reverbAlgorithmParam { nullptr };
+    juce::AudioParameterFloat* reverbSizeParam { nullptr };
+    juce::AudioParameterFloat* reverbDecayParam { nullptr };
+    juce::AudioParameterFloat* reverbDampingParam { nullptr };
+    juce::AudioParameterFloat* reverbPreDelayParam { nullptr };
+    juce::AudioParameterFloat* reverbModDepthParam { nullptr };
+    juce::AudioParameterFloat* reverbModRateParam { nullptr };
+    juce::AudioParameterFloat* reverbWidthParam { nullptr };
+    juce::AudioParameterFloat* reverbCloudFeedbackParam { nullptr };
+    juce::AudioParameterFloat* reverbCloudDiffusionParam { nullptr };
     juce::AudioParameterChoice* sourceEngineParam { nullptr };
     juce::AudioParameterFloat* imagePositionParam { nullptr };
     juce::AudioParameterFloat* imageAnimateParam { nullptr };
@@ -307,6 +329,13 @@ private:
 
     juce::Reverb reverb;
     std::array<std::vector<float>, 2> moonDelayBuffer;
+    std::array<ReverbDelayLine, 2> reverbPreDelayLines;
+    std::array<ReverbDelayLine, 6> plateLines;
+    std::array<ReverbDelayLine, 8> hallLines;
+    std::array<ReverbDelayLine, 8> cloudLines;
+    std::array<float, 2> plateTankState { { 0.0f, 0.0f } };
+    std::array<float, 8> hallReadCache { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
+    std::array<float, 8> cloudReadCache { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
 
     int isaacBufferSize { 1 };
     int isaacWritePos { 0 };

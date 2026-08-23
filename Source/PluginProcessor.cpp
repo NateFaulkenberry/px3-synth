@@ -243,9 +243,18 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     reverbAmountParam = new juce::AudioParameterFloat("reverbAmount", "Reverb", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     reverbEnabledParam = new juce::AudioParameterBool("reverbEnabled", "Reverb Enabled", true);
     reverbAlgorithmParam = new juce::AudioParameterChoice("reverbAlgorithm",
-                                                           "Reverb Algorithm",
-                                                           juce::StringArray { "Hall", "Plate", "Room", "Cavern", "Moon" },
+                                                           "Reverb Mode",
+                                                           juce::StringArray { "ROOM", "PLATE", "HALL", "CLOUD" },
                                                            0);
+    reverbSizeParam = new juce::AudioParameterFloat("reverbSize", "Reverb Size", juce::NormalisableRange<float>(0.0f, 1.0f), 0.52f);
+    reverbDecayParam = new juce::AudioParameterFloat("reverbDecay", "Reverb Decay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.48f);
+    reverbDampingParam = new juce::AudioParameterFloat("reverbDamping", "Reverb Damping", juce::NormalisableRange<float>(0.0f, 1.0f), 0.46f);
+    reverbPreDelayParam = new juce::AudioParameterFloat("reverbPreDelay", "Reverb PreDelay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.08f);
+    reverbModDepthParam = new juce::AudioParameterFloat("reverbModDepth", "Reverb Mod Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.24f);
+    reverbModRateParam = new juce::AudioParameterFloat("reverbModRate", "Reverb Mod Rate", juce::NormalisableRange<float>(0.0f, 1.0f), 0.18f);
+    reverbWidthParam = new juce::AudioParameterFloat("reverbWidth", "Reverb Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.86f);
+    reverbCloudFeedbackParam = new juce::AudioParameterFloat("reverbCloudFeedback", "Reverb Cloud Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.62f);
+    reverbCloudDiffusionParam = new juce::AudioParameterFloat("reverbCloudDiffusion", "Reverb Cloud Diffusion", juce::NormalisableRange<float>(0.0f, 1.0f), 0.54f);
     sourceEngineParam = new juce::AudioParameterChoice("sourceEngine",
                                                         "Source Engine",
                                                         juce::StringArray { "Image", "Audio" },
@@ -321,6 +330,15 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(reverbAmountParam);
     addParameter(reverbEnabledParam);
     addParameter(reverbAlgorithmParam);
+    addParameter(reverbSizeParam);
+    addParameter(reverbDecayParam);
+    addParameter(reverbDampingParam);
+    addParameter(reverbPreDelayParam);
+    addParameter(reverbModDepthParam);
+    addParameter(reverbModRateParam);
+    addParameter(reverbWidthParam);
+    addParameter(reverbCloudFeedbackParam);
+    addParameter(reverbCloudDiffusionParam);
     addParameter(sourceEngineParam);
     addParameter(imagePositionParam);
     addParameter(imageAnimateParam);
@@ -660,50 +678,6 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     const auto robAmount = clamp01(robAmountBase * imageDriveScaleSmoothed);
     const auto isaacAmount = clamp01(isaacAmountBase * imageGranularScaleSmoothed);
     const auto reverbAmount = clamp01(reverbAmountBase * imageReverbScaleSmoothed);
-
-    if (reverbEnabled && reverbAmount > 0.0001f)
-    {
-        const auto a = smoothstep(reverbAmount);
-        juce::Reverb::Parameters p;
-        p.freezeMode = 0.0f;
-        p.width = 0.86f;
-        p.damping = 0.44f;
-
-        switch (juce::jlimit(0, 4, reverbAlgorithmIndex))
-        {
-            case 0: // Hall
-                p.roomSize = 0.72f;
-                p.damping = 0.38f;
-                p.width = 0.92f;
-                break;
-            case 1: // Plate
-                p.roomSize = 0.58f;
-                p.damping = 0.52f;
-                p.width = 0.88f;
-                break;
-            case 2: // Room
-                p.roomSize = 0.40f;
-                p.damping = 0.62f;
-                p.width = 0.76f;
-                break;
-            case 3: // Cavern
-                p.roomSize = 0.94f;
-                p.damping = 0.22f;
-                p.width = 1.0f;
-                break;
-            case 4: // Moon
-                p.roomSize = 0.83f;
-                p.damping = 0.28f;
-                p.width = 1.0f;
-                break;
-            default:
-                break;
-        }
-
-        p.wetLevel = lerp(0.02f, 0.80f, std::pow(a, 1.25f));
-        p.dryLevel = lerp(1.0f, 0.18f, std::pow(a, 1.05f));
-        reverb.setParameters(p);
-    }
 
     const auto blockPhaseAdvance = juce::MathConstants<float>::twoPi * vibratoRateHz
                                    * (static_cast<float>(buffer.getNumSamples()) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));
@@ -1627,6 +1601,39 @@ void SynthProjectAudioProcessor::prepareReverbEngine(double sampleRate)
     {
         channelBuffer.assign(static_cast<std::size_t>(moonBufferSize), 0.0f);
     }
+
+    const auto maxPreDelaySamples = juce::jmax(8, static_cast<int>(std::round(currentSampleRateHz * 0.30)));
+    for (auto& line : reverbPreDelayLines)
+    {
+        resizeReverbLine(line, maxPreDelaySamples);
+    }
+
+    static constexpr std::array<float, 6> plateDelaySeconds { { 0.0113f, 0.0089f, 0.0721f, 0.0887f, 0.0317f, 0.0439f } };
+    for (std::size_t i = 0; i < plateLines.size(); ++i)
+    {
+        resizeReverbLine(plateLines[i], juce::jmax(16, static_cast<int>(std::round(currentSampleRateHz * plateDelaySeconds[i] * 1.8f))));
+        plateLines[i].modPhase = static_cast<float>(i) * 0.67f;
+        plateLines[i].lpState = 0.0f;
+    }
+    plateTankState = { { 0.0f, 0.0f } };
+
+    static constexpr std::array<float, 8> hallDelaySeconds { { 0.030f, 0.037f, 0.041f, 0.047f, 0.053f, 0.059f, 0.067f, 0.079f } };
+    for (std::size_t i = 0; i < hallLines.size(); ++i)
+    {
+        resizeReverbLine(hallLines[i], juce::jmax(32, static_cast<int>(std::round(currentSampleRateHz * hallDelaySeconds[i] * 2.2f))));
+        hallLines[i].modPhase = static_cast<float>(i) * 0.53f;
+        hallLines[i].lpState = 0.0f;
+    }
+    hallReadCache.fill(0.0f);
+
+    static constexpr std::array<float, 8> cloudDelaySeconds { { 0.049f, 0.061f, 0.073f, 0.089f, 0.104f, 0.127f, 0.013f, 0.017f } };
+    for (std::size_t i = 0; i < cloudLines.size(); ++i)
+    {
+        resizeReverbLine(cloudLines[i], juce::jmax(32, static_cast<int>(std::round(currentSampleRateHz * cloudDelaySeconds[i] * 2.6f))));
+        cloudLines[i].modPhase = static_cast<float>(i) * 0.91f;
+        cloudLines[i].lpState = 0.0f;
+    }
+    cloudReadCache.fill(0.0f);
 }
 
 float SynthProjectAudioProcessor::imageSyncBeatsForIndex(int index) const
@@ -2746,6 +2753,64 @@ float SynthProjectAudioProcessor::readMoonDelaySample(int channel, float readPos
            + (buffer[static_cast<std::size_t>(i1)] - buffer[static_cast<std::size_t>(i0)]) * frac;
 }
 
+void SynthProjectAudioProcessor::resizeReverbLine(ReverbDelayLine& line, int size)
+{
+    line.buffer.assign(static_cast<std::size_t>(juce::jmax(2, size)), 0.0f);
+    line.writePos = 0;
+    line.lpState = 0.0f;
+}
+
+float SynthProjectAudioProcessor::readReverbLine(const ReverbDelayLine& line, float delaySamples) const
+{
+    if (line.buffer.empty())
+    {
+        return 0.0f;
+    }
+
+    const auto size = static_cast<int>(line.buffer.size());
+    auto readPos = static_cast<float>(line.writePos) - delaySamples;
+    while (readPos < 0.0f)
+    {
+        readPos += static_cast<float>(size);
+    }
+    while (readPos >= static_cast<float>(size))
+    {
+        readPos -= static_cast<float>(size);
+    }
+
+    const auto i0 = static_cast<int>(readPos);
+    const auto i1 = (i0 + 1) % size;
+    const auto frac = readPos - static_cast<float>(i0);
+    return line.buffer[static_cast<std::size_t>(i0)]
+           + (line.buffer[static_cast<std::size_t>(i1)] - line.buffer[static_cast<std::size_t>(i0)]) * frac;
+}
+
+void SynthProjectAudioProcessor::writeReverbLine(ReverbDelayLine& line, float sample)
+{
+    if (line.buffer.empty())
+    {
+        return;
+    }
+
+    line.buffer[static_cast<std::size_t>(line.writePos)] = sample;
+    line.writePos = (line.writePos + 1) % static_cast<int>(line.buffer.size());
+}
+
+float SynthProjectAudioProcessor::processReverbAllpass(ReverbDelayLine& line, float in, float delaySamples, float gain)
+{
+    const auto delayed = readReverbLine(line, delaySamples);
+    const auto v = in - gain * delayed;
+    writeReverbLine(line, v);
+    return delayed + gain * v;
+}
+
+float SynthProjectAudioProcessor::processReverbDelay(ReverbDelayLine& line, float in, float delaySamples)
+{
+    const auto delayed = readReverbLine(line, delaySamples);
+    writeReverbLine(line, in);
+    return delayed;
+}
+
 void SynthProjectAudioProcessor::processReverbSampleFrame(float inL,
                                                           float inR,
                                                           float amount,
@@ -2760,43 +2825,172 @@ void SynthProjectAudioProcessor::processReverbSampleFrame(float inL,
         return;
     }
 
-    const auto a = smoothstep(amount);
+    const auto mode = juce::jlimit(0, 3, algorithmIndex);
+    const auto mix = smoothstep(amount);
+    const auto size = juce::jlimit(0.0f, 1.0f, reverbSizeParam != nullptr ? reverbSizeParam->get() : 0.52f);
+    const auto decayControl = juce::jlimit(0.0f, 1.0f, reverbDecayParam != nullptr ? reverbDecayParam->get() : 0.48f);
+    const auto damping = juce::jlimit(0.0f, 1.0f, reverbDampingParam != nullptr ? reverbDampingParam->get() : 0.46f);
+    const auto preDelay = juce::jlimit(0.0f, 1.0f, reverbPreDelayParam != nullptr ? reverbPreDelayParam->get() : 0.08f);
+    const auto modDepth = juce::jlimit(0.0f, 1.0f, reverbModDepthParam != nullptr ? reverbModDepthParam->get() : 0.24f);
+    const auto modRate = juce::jlimit(0.0f, 1.0f, reverbModRateParam != nullptr ? reverbModRateParam->get() : 0.18f);
+    const auto width = juce::jlimit(0.0f, 1.0f, reverbWidthParam != nullptr ? reverbWidthParam->get() : 0.86f);
+    const auto cloudFeedback = juce::jlimit(0.0f, 1.0f, reverbCloudFeedbackParam != nullptr ? reverbCloudFeedbackParam->get() : 0.62f);
+    const auto cloudDiffusion = juce::jlimit(0.0f, 1.0f, reverbCloudDiffusionParam != nullptr ? reverbCloudDiffusionParam->get() : 0.54f);
 
-    float wetL = inL;
-    float wetR = inR;
-    reverb.processStereo(&wetL, &wetR, 1);
+    const auto predelaySamples = 1.0f + preDelay * static_cast<float>(currentSampleRateHz) * 0.30f;
+    const auto inPredelayedL = processReverbDelay(reverbPreDelayLines[0], inL, predelaySamples);
+    const auto inPredelayedR = processReverbDelay(reverbPreDelayLines[1], inR, predelaySamples);
 
-    if (algorithmIndex == 4 && moonBufferSize > 2)
+    float wetL = 0.0f;
+    float wetR = 0.0f;
+
+    if (mode == 0)
     {
-        const auto baseSamples = static_cast<float>(currentSampleRateHz * (0.055 + 0.120 * a));
-        moonPhase += 0.0017f + 0.0024f * a;
-        if (moonPhase > juce::MathConstants<float>::twoPi)
+        juce::Reverb::Parameters p;
+        p.freezeMode = 0.0f;
+        p.roomSize = lerp(0.30f, 0.68f, size);
+        p.damping = lerp(0.75f, 0.30f, damping);
+        p.width = lerp(0.35f, 1.0f, width);
+        p.wetLevel = 1.0f;
+        p.dryLevel = 0.0f;
+        reverb.setParameters(p);
+
+        wetL = inPredelayedL;
+        wetR = inPredelayedR;
+        reverb.processStereo(&wetL, &wetR, 1);
+    }
+    else if (mode == 1)
+    {
+        const auto monoIn = 0.5f * (inPredelayedL + inPredelayedR);
+        auto x = processReverbAllpass(plateLines[0], monoIn, lerp(160.0f, 520.0f, size), 0.72f);
+        x = processReverbAllpass(plateLines[1], x, lerp(130.0f, 420.0f, size), 0.68f);
+
+        const auto decay = juce::jlimit(0.0f, 0.95f, lerp(0.40f, 0.92f, decayControl));
+        const auto dampCoeff = lerp(0.35f, 0.02f, damping);
+        const auto modHz = lerp(0.08f, 1.4f, modRate);
+        const auto modSamples = 2.0f + 14.0f * modDepth;
+
+        const auto step = juce::MathConstants<float>::twoPi * modHz / static_cast<float>(juce::jmax(1.0, currentSampleRateHz));
+        plateLines[4].modPhase += step;
+        plateLines[5].modPhase += step * 1.13f;
+        if (plateLines[4].modPhase > juce::MathConstants<float>::twoPi) plateLines[4].modPhase -= juce::MathConstants<float>::twoPi;
+        if (plateLines[5].modPhase > juce::MathConstants<float>::twoPi) plateLines[5].modPhase -= juce::MathConstants<float>::twoPi;
+
+        const auto tankInA = x + plateTankState[1] * decay;
+        const auto tankInB = x + plateTankState[0] * decay;
+
+        auto a = processReverbAllpass(plateLines[4], tankInA, lerp(380.0f, 980.0f, size) + std::sin(plateLines[4].modPhase) * modSamples, 0.62f);
+        a = processReverbDelay(plateLines[2], a, lerp(1800.0f, 3900.0f, size));
+        plateLines[2].lpState += dampCoeff * (a - plateLines[2].lpState);
+        plateTankState[0] = plateLines[2].lpState;
+
+        auto b = processReverbAllpass(plateLines[5], tankInB, lerp(420.0f, 1120.0f, size) + std::sin(plateLines[5].modPhase) * modSamples, 0.60f);
+        b = processReverbDelay(plateLines[3], b, lerp(2100.0f, 4300.0f, size));
+        plateLines[3].lpState += dampCoeff * (b - plateLines[3].lpState);
+        plateTankState[1] = plateLines[3].lpState;
+
+        wetL = 0.66f * plateTankState[0] + 0.34f * readReverbLine(plateLines[3], lerp(970.0f, 1740.0f, size));
+        wetR = 0.66f * plateTankState[1] + 0.34f * readReverbLine(plateLines[2], lerp(1030.0f, 1830.0f, size));
+    }
+    else if (mode == 2)
+    {
+        const auto monoIn = 0.5f * (inPredelayedL + inPredelayedR);
+        const auto decay = juce::jlimit(0.0f, 0.96f, lerp(0.45f, 0.95f, decayControl));
+        const auto dampCoeff = lerp(0.28f, 0.015f, damping);
+        const auto modHz = lerp(0.05f, 0.80f, modRate);
+        const auto modSamples = 1.0f + 8.0f * modDepth;
+        const auto modStep = juce::MathConstants<float>::twoPi * modHz / static_cast<float>(juce::jmax(1.0, currentSampleRateHz));
+
+        float sum = 0.0f;
+        for (auto& line : hallLines)
         {
-            moonPhase -= juce::MathConstants<float>::twoPi;
+            line.modPhase += modStep;
+            if (line.modPhase > juce::MathConstants<float>::twoPi)
+            {
+                line.modPhase -= juce::MathConstants<float>::twoPi;
+            }
         }
 
-        const auto detuneA = std::sin(moonPhase) * (0.8f + 4.6f * a);
-        const auto detuneB = std::sin(moonPhase * 0.79f + 1.4f) * (0.6f + 3.8f * a);
+        for (int i = 0; i < 8; ++i)
+        {
+            const auto baseDelay = lerp(1200.0f + static_cast<float>(i) * 260.0f,
+                                        5200.0f + static_cast<float>(i) * 540.0f,
+                                        size);
+            const auto mod = std::sin(hallLines[static_cast<std::size_t>(i)].modPhase + static_cast<float>(i) * 0.47f) * modSamples;
+            const auto read = readReverbLine(hallLines[static_cast<std::size_t>(i)], baseDelay + mod);
+            hallLines[static_cast<std::size_t>(i)].lpState += dampCoeff * (read - hallLines[static_cast<std::size_t>(i)].lpState);
+            hallReadCache[static_cast<std::size_t>(i)] = hallLines[static_cast<std::size_t>(i)].lpState;
+            sum += hallReadCache[static_cast<std::size_t>(i)];
+        }
 
-        const auto readAL = static_cast<float>(moonWritePos) - (baseSamples + detuneA);
-        const auto readAR = static_cast<float>(moonWritePos) - (baseSamples * 0.92f - detuneB);
-        const auto readBL = static_cast<float>(moonWritePos) - (baseSamples * 1.37f - detuneB * 0.8f);
-        const auto readBR = static_cast<float>(moonWritePos) - (baseSamples * 1.18f + detuneA * 0.6f);
+        const auto householder = 2.0f / 8.0f;
+        for (int i = 0; i < 8; ++i)
+        {
+            const auto fb = (-hallReadCache[static_cast<std::size_t>(i)] + householder * sum) * decay;
+            const auto inputInject = monoIn * (0.24f + 0.06f * static_cast<float>((i & 1) != 0));
+            writeReverbLine(hallLines[static_cast<std::size_t>(i)], sanitizeAudioSample(inputInject + fb));
+        }
 
-        const auto reflL = 0.62f * readMoonDelaySample(0, readAL) + 0.38f * readMoonDelaySample(1, readBL);
-        const auto reflR = 0.62f * readMoonDelaySample(1, readAR) + 0.38f * readMoonDelaySample(0, readBR);
+        wetL = hallReadCache[0] * 0.27f + hallReadCache[2] * 0.23f + hallReadCache[5] * 0.20f + hallReadCache[7] * 0.18f;
+        wetR = hallReadCache[1] * 0.27f + hallReadCache[3] * 0.23f + hallReadCache[4] * 0.20f + hallReadCache[6] * 0.18f;
+    }
+    else
+    {
+        const auto monoIn = 0.5f * (inPredelayedL + inPredelayedR);
+        const auto decay = juce::jlimit(0.0f, 0.985f, lerp(0.55f, 0.985f, decayControl));
+        const auto fb = juce::jlimit(0.0f, 0.985f, lerp(0.45f, 0.985f, cloudFeedback));
+        const auto dampCoeff = lerp(0.22f, 0.010f, damping);
+        const auto modHz = lerp(0.03f, 0.65f, modRate);
+        const auto modSamples = 2.0f + 18.0f * modDepth;
+        const auto modStep = juce::MathConstants<float>::twoPi * modHz / static_cast<float>(juce::jmax(1.0, currentSampleRateHz));
 
-        const auto moonMix = 0.20f + 0.60f * a;
-        wetL = wetL * (1.0f - moonMix) + reflL * moonMix;
-        wetR = wetR * (1.0f - moonMix) + reflR * moonMix;
+        for (int i = 0; i < 6; ++i)
+        {
+            auto& line = cloudLines[static_cast<std::size_t>(i)];
+            line.modPhase += modStep * (1.0f + 0.11f * static_cast<float>(i));
+            if (line.modPhase > juce::MathConstants<float>::twoPi)
+            {
+                line.modPhase -= juce::MathConstants<float>::twoPi;
+            }
 
-        moonDelayBuffer[0][static_cast<std::size_t>(moonWritePos)] = std::tanh(inL + wetL * (0.28f + 0.26f * a));
-        moonDelayBuffer[1][static_cast<std::size_t>(moonWritePos)] = std::tanh(inR + wetR * (0.28f + 0.26f * a));
-        moonWritePos = (moonWritePos + 1) % moonBufferSize;
+            const auto baseDelay = lerp(1800.0f + static_cast<float>(i) * 410.0f,
+                                        9200.0f + static_cast<float>(i) * 960.0f,
+                                        size);
+            const auto mod = std::sin(line.modPhase + static_cast<float>(i) * 0.73f) * modSamples;
+            const auto delayed = readReverbLine(line, baseDelay + mod);
+            line.lpState += dampCoeff * (delayed - line.lpState);
+            cloudReadCache[static_cast<std::size_t>(i)] = line.lpState;
+        }
+
+        for (int i = 0; i < 6; ++i)
+        {
+            const auto a = cloudReadCache[static_cast<std::size_t>((i + 1) % 6)];
+            const auto b = cloudReadCache[static_cast<std::size_t>((i + 3) % 6)];
+            const auto write = monoIn * 0.20f + (a * 0.58f + b * 0.42f) * fb * decay;
+            writeReverbLine(cloudLines[static_cast<std::size_t>(i)], sanitizeAudioSample(write));
+        }
+
+        auto sumL = cloudReadCache[0] * 0.35f + cloudReadCache[2] * 0.28f + cloudReadCache[4] * 0.24f;
+        auto sumR = cloudReadCache[1] * 0.35f + cloudReadCache[3] * 0.28f + cloudReadCache[5] * 0.24f;
+
+        const auto diffAmt = juce::jlimit(0.0f, 1.0f, cloudDiffusion);
+        sumL = processReverbAllpass(cloudLines[6], sumL, lerp(120.0f, 520.0f, diffAmt), 0.70f);
+        sumR = processReverbAllpass(cloudLines[7], sumR, lerp(150.0f, 610.0f, diffAmt), 0.68f);
+
+        wetL = sumL;
+        wetR = sumR;
     }
 
-    outL = wetL;
-    outR = wetR;
+    // Width/decorrelation stage shared by all modes.
+    const auto mid = 0.5f * (wetL + wetR);
+    const auto side = 0.5f * (wetL - wetR);
+    const auto widthAmt = lerp(0.35f, 1.35f, width);
+    wetL = mid + side * widthAmt;
+    wetR = mid - side * widthAmt;
+
+    const auto dryGain = 1.0f - mix * 0.88f;
+    outL = sanitizeAudioSample(inL * dryGain + wetL * mix);
+    outR = sanitizeAudioSample(inR * dryGain + wetR * mix);
 }
 
 bool SynthProjectAudioProcessor::hasEditor() const
