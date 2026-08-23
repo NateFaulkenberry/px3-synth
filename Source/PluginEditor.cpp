@@ -382,6 +382,9 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     configureEffectKnob(delayFeedbackKnob, delayFeedbackLabel, "FEEDBACK", audioProcessor.getDelayFeedbackParam());
     configureEffectKnob(reverbKnob, reverbLabel, "INTENSITY", audioProcessor.getReverbAmountParam());
 
+    // Keep the large delay knob unlabeled per UX request.
+    isaacTextureLabel.setVisible(false);
+
     robWarmthKnob.getProperties().set("psychedelicFx", true);
     isaacTextureKnob.getProperties().set("psychedelicFx", true);
     reverbKnob.getProperties().set("psychedelicFx", true);
@@ -513,6 +516,24 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     addAndMakeVisible(granularSyncBox);
     addAndMakeVisible(granularSyncLabel);
 
+    auto& granularModeParam = audioProcessor.getGranularModeParam();
+    const auto modeChoiceCount = granularModeParam.choices.size();
+    for (int i = 0; i < modeChoiceCount; ++i)
+    {
+        granularModeBox.addItem(granularModeParam.choices[i], i + 1);
+    }
+    granularModeBox.setSelectedItemIndex(granularModeParam.getIndex(), juce::dontSendNotification);
+    granularModeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    granularModeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    granularModeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    granularModeLabel.setText("MODE", juce::dontSendNotification);
+    granularModeLabel.setJustificationType(juce::Justification::centred);
+    granularModeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    granularModeLabel.setFont(juce::FontOptions(11.5f));
+    granularModeLabel.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(granularModeBox);
+    addAndMakeVisible(granularModeLabel);
+
     auto& reverbAlgoParam = audioProcessor.getReverbAlgorithmParam();
     const auto reverbChoiceCount = reverbAlgoParam.choices.size();
     for (int i = 0; i < reverbChoiceCount; ++i)
@@ -565,6 +586,7 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     attachComboBox(audioProcessor.getOscVowelParam(), oscVowelBox);
     attachComboBox(audioProcessor.getDelayAlgorithmParam(), delayAlgoBox);
     attachComboBox(audioProcessor.getGranularSyncDivisionParam(), granularSyncBox);
+    attachComboBox(audioProcessor.getGranularModeParam(), granularModeBox);
     attachComboBox(audioProcessor.getReverbAlgorithmParam(), reverbTypeBox);
 
     attachButton(audioProcessor.getRobEnabledParam(), robBypassButton);
@@ -766,7 +788,6 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     setSize(1320, 700);
 
     fxSectionOrder = audioProcessor.getFxProcessingOrder();
-    commitFxOrderToProcessor();
 
     juce::String presetInitError;
     if (!presetManager.initialise(presetInitError))
@@ -790,6 +811,7 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     refreshPresetNameDisplay();
 
     refreshOscillatorModeUI();
+    refreshGranularModeUI();
     refreshFxBypassUI();
 
     startTimerHz(30);
@@ -1643,8 +1665,10 @@ void SynthProjectAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
         auto isaacInner = isaacSectionArea.reduced(10, 8);
         delayBypassButton.setBounds(isaacSectionArea.getX() + 8, isaacSectionArea.getY() + 5, 22, 18);
         isaacInner.removeFromTop(24);
-        auto delayControlsArea = isaacInner.removeFromBottom(96);
+        auto delayControlsArea = isaacInner.removeFromBottom(120);
 
+        auto rowMode = delayControlsArea.removeFromBottom(22);
+        delayControlsArea.removeFromBottom(2);
         auto rowAlgo = delayControlsArea.removeFromBottom(22);
         auto rowSync = delayControlsArea.removeFromBottom(22);
         delayControlsArea.removeFromBottom(2);
@@ -1659,10 +1683,18 @@ void SynthProjectAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
         const auto miniKnobSize = juce::jlimit(30,
                                                44,
                                                juce::jmin(leftMini.getWidth(), juce::jmin(leftMini.getHeight(), rightMini.getHeight())));
-        delayTimeKnob.setBounds(juce::Rectangle<int>(miniKnobSize, miniKnobSize).withCentre(leftMini.getCentre()));
-        delayFeedbackKnob.setBounds(juce::Rectangle<int>(miniKnobSize, miniKnobSize).withCentre(rightMini.getCentre()));
-        delayTimeLabel.setBounds(leftLabel);
-        delayFeedbackLabel.setBounds(rightLabel);
+        const auto leftKnobBounds = juce::Rectangle<int>(miniKnobSize, miniKnobSize).withCentre(leftMini.getCentre());
+        const auto rightKnobBounds = juce::Rectangle<int>(miniKnobSize, miniKnobSize).withCentre(rightMini.getCentre());
+        delayTimeKnob.setBounds(leftKnobBounds);
+        delayFeedbackKnob.setBounds(rightKnobBounds);
+
+        constexpr int miniLabelHeight = 16;
+        const auto leftLabelWidth = juce::jmin(leftMini.getWidth(), miniKnobSize + 14);
+        const auto rightLabelWidth = juce::jmin(rightMini.getWidth(), miniKnobSize + 14);
+        delayTimeLabel.setBounds(juce::Rectangle<int>(leftLabelWidth, miniLabelHeight)
+                         .withCentre({ leftKnobBounds.getCentreX(), leftLabel.getCentreY() }));
+        delayFeedbackLabel.setBounds(juce::Rectangle<int>(rightLabelWidth, miniLabelHeight)
+                         .withCentre({ rightKnobBounds.getCentreX(), rightLabel.getCentreY() }));
 
         auto algoLabelArea = rowAlgo.removeFromLeft(56);
         delayAlgoLabel.setBounds(algoLabelArea);
@@ -1671,6 +1703,10 @@ void SynthProjectAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
         auto syncLabelArea = rowSync.removeFromLeft(56);
         granularSyncLabel.setBounds(syncLabelArea);
         granularSyncBox.setBounds(rowSync.reduced(2, 1));
+
+        auto modeLabelArea = rowMode.removeFromLeft(56);
+        granularModeLabel.setBounds(modeLabelArea);
+        granularModeBox.setBounds(rowMode.reduced(2, 1));
 
         const auto knobSize = juce::jmin(80, juce::jmin(isaacInner.getWidth(), isaacInner.getHeight()));
         isaacTextureKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(isaacInner.getCentre()));
@@ -2517,10 +2553,56 @@ void SynthProjectAudioProcessorEditor::refreshAnyKeyDownState()
     pianoKeyboard.setActiveNotes(noteStates, noteVelocities);
 }
 
+void SynthProjectAudioProcessorEditor::refreshGranularModeUI()
+{
+    const auto modeIndex = audioProcessor.getGranularModeParam().getIndex();
+    if (granularModeBox.getSelectedItemIndex() != modeIndex)
+    {
+        granularModeBox.setSelectedItemIndex(modeIndex, juce::dontSendNotification);
+    }
+
+    if (modeIndex == lastGranularModeIndex)
+    {
+        return;
+    }
+
+    lastGranularModeIndex = modeIndex;
+
+    switch (juce::jlimit(0, 3, modeIndex))
+    {
+        case 0: // CLASSIC
+            delayTimeLabel.setText("TIME", juce::dontSendNotification);
+            delayFeedbackLabel.setText("FEEDBACK", juce::dontSendNotification);
+            granularSyncLabel.setText("SYNC", juce::dontSendNotification);
+            break;
+        case 1: // CLOUD
+            delayTimeLabel.setText("SIZE", juce::dontSendNotification);
+            delayFeedbackLabel.setText("DIFFUSE", juce::dontSendNotification);
+            granularSyncLabel.setText("RATE", juce::dontSendNotification);
+            break;
+        case 2: // SHIMMER
+            delayTimeLabel.setText("INTERVAL", juce::dontSendNotification);
+            delayFeedbackLabel.setText("FEEDBACK", juce::dontSendNotification);
+            granularSyncLabel.setText("RATE", juce::dontSendNotification);
+            break;
+        case 3: // RHYTHMIC
+            delayTimeLabel.setText("SIZE", juce::dontSendNotification);
+            delayFeedbackLabel.setText("SWING/FB", juce::dontSendNotification);
+            granularSyncLabel.setText("RATE", juce::dontSendNotification);
+            break;
+        default:
+            break;
+    }
+
+    repaint(isaacSectionArea);
+}
+
 void SynthProjectAudioProcessorEditor::refreshFxBypassUI()
 {
     const auto robEnabled = audioProcessor.getRobEnabledParam().get();
     const auto delayEnabled = audioProcessor.getDelayEnabledParam().get();
+    const auto delayIsGranular = audioProcessor.getDelayAlgorithmParam().getIndex() == 0;
+    const auto granularModeSelectable = delayEnabled && delayIsGranular;
     const auto reverbEnabled = audioProcessor.getReverbEnabledParam().get();
 
     robBypassButton.setToggleState(robEnabled, juce::dontSendNotification);
@@ -2543,7 +2625,11 @@ void SynthProjectAudioProcessorEditor::refreshFxBypassUI()
     delayFeedbackLabel.setEnabled(delayEnabled);
     granularSyncBox.setEnabled(delayEnabled);
     granularSyncLabel.setEnabled(delayEnabled);
+    granularModeBox.setEnabled(granularModeSelectable);
+    granularModeLabel.setEnabled(granularModeSelectable);
     isaacTextureKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
+    delayTimeKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
+    delayFeedbackKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
 
     reverbKnob.setEnabled(reverbEnabled);
     reverbLabel.setEnabled(reverbEnabled);
@@ -2554,8 +2640,31 @@ void SynthProjectAudioProcessorEditor::refreshFxBypassUI()
 
 void SynthProjectAudioProcessorEditor::timerCallback()
 {
+    if (draggingFxSection < 0)
+    {
+        const auto processorOrder = audioProcessor.getFxProcessingOrder();
+        if (processorOrder != fxSectionOrder)
+        {
+            fxSectionOrder = processorOrder;
+            for (int stage = 0; stage < 3; ++stage)
+            {
+                const auto slot = indexForFxSection(stage);
+                if (slot >= 0)
+                {
+                    fxSectionTargetAreas[static_cast<std::size_t>(stage)] =
+                        fxSectionSlots[static_cast<std::size_t>(slot)].toFloat();
+                    fxSectionCurrentAreas[static_cast<std::size_t>(stage)] =
+                        fxSectionTargetAreas[static_cast<std::size_t>(stage)];
+                }
+            }
+            layoutFxSectionsFromCurrentAreas();
+            repaint(headerPlaceholderArea);
+        }
+    }
+
     animateFxSections();
     refreshOscillatorModeUI();
+    refreshGranularModeUI();
     refreshFxBypassUI();
 
     oscVizPhase += 0.09f;

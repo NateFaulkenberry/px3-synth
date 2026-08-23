@@ -229,6 +229,10 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
                                                                 "Granular Sync",
                                                                 juce::StringArray { "Free", "1 Bar", "1/2", "1/4", "1/8", "1/8T", "1/16", "1/16T" },
                                                                 0);
+    granularModeParam = new juce::AudioParameterChoice("granularMode",
+                                                        "Granular Mode",
+                                                        juce::StringArray { "CLASSIC", "CLOUD", "SHIMMER", "RHYTHMIC" },
+                                                        0);
     delayAlgorithmParam = new juce::AudioParameterChoice("delayAlgorithm",
                                                           "Delay Algorithm",
                                                           juce::StringArray { "Granular", "Tape", "Analog/BBD", "Ping-Pong", "Stereo", "Modulated", "Diffusion" },
@@ -280,6 +284,9 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
                                                        1,
                                                        24,
                                                        2);
+    fxOrderSlot0Param = new juce::AudioParameterInt("fxOrderSlot0", "FX Order Slot 0", 0, 2, 0);
+    fxOrderSlot1Param = new juce::AudioParameterInt("fxOrderSlot1", "FX Order Slot 1", 0, 2, 1);
+    fxOrderSlot2Param = new juce::AudioParameterInt("fxOrderSlot2", "FX Order Slot 2", 0, 2, 2);
 
     addParameter(oscSineParam);
     addParameter(oscSawParam);
@@ -306,6 +313,7 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(robModeParam);
     addParameter(isaacAmountParam);
     addParameter(granularSyncDivisionParam);
+    addParameter(granularModeParam);
     addParameter(delayAlgorithmParam);
     addParameter(delayEnabledParam);
     addParameter(delayTimeParam);
@@ -329,6 +337,9 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
     addParameter(audioAnimSyncParam);
     addParameter(audioTargetParam);
     addParameter(pitchBendRangeParam);
+    addParameter(fxOrderSlot0Param);
+    addParameter(fxOrderSlot1Param);
+    addParameter(fxOrderSlot2Param);
 
     const auto initialEnvelope = currentEnvelopeSettings();
     const auto initialSubtractive = currentSubtractiveSettings();
@@ -510,6 +521,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     const auto robModeIndex = robModeParam->getIndex();
     const auto isaacAmountBase = clamp01(isaacAmountParam->get());
     const auto syncDivisionIndex = granularSyncDivisionParam->getIndex();
+    const auto granularModeIndex = granularModeParam->getIndex();
     const auto delayAlgorithmIndex = delayAlgorithmParam->getIndex();
     const auto delayEnabled = delayEnabledParam->get();
     const auto delayTimeControl = clamp01(delayTimeParam->get());
@@ -518,11 +530,17 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     const auto reverbEnabled = reverbEnabledParam->get();
     const auto fxOrder = getFxProcessingOrder();
 
-    if (delayAlgorithmIndex != lastDelayAlgorithmIndex)
+    if (delayAlgorithmIndex != lastDelayAlgorithmIndex
+        || granularModeIndex != lastGranularModeIndex)
     {
         lastDelayAlgorithmIndex = delayAlgorithmIndex;
+        lastGranularModeIndex = granularModeIndex;
         isaacSpawnCounter = 0;
+        isaacRhythmicStepIndex = 0;
+        isaacRhythmicSamplesUntilNext = 0;
+        isaacRhythmicSwingToggle = false;
         isaacFeedbackFilter = { { 0.0f, 0.0f } };
+        clearGranularDiffusionState();
         for (auto& grain : isaacGrains)
         {
             grain.active = false;
@@ -1004,6 +1022,7 @@ juce::AudioParameterBool& SynthProjectAudioProcessor::getRobEnabledParam() const
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getRobModeParam() const { return *robModeParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getIsaacAmountParam() const { return *isaacAmountParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getGranularSyncDivisionParam() const { return *granularSyncDivisionParam; }
+juce::AudioParameterChoice& SynthProjectAudioProcessor::getGranularModeParam() const { return *granularModeParam; }
 juce::AudioParameterChoice& SynthProjectAudioProcessor::getDelayAlgorithmParam() const { return *delayAlgorithmParam; }
 juce::AudioParameterBool& SynthProjectAudioProcessor::getDelayEnabledParam() const { return *delayEnabledParam; }
 juce::AudioParameterFloat& SynthProjectAudioProcessor::getDelayTimeParam() const { return *delayTimeParam; }
@@ -1030,6 +1049,35 @@ juce::AudioParameterInt& SynthProjectAudioProcessor::getPitchBendRangeParam() co
 
 std::array<int, 3> SynthProjectAudioProcessor::getFxProcessingOrder() const
 {
+    if (fxOrderSlot0Param != nullptr && fxOrderSlot1Param != nullptr && fxOrderSlot2Param != nullptr)
+    {
+        const std::array<int, 3> fromParams {
+            { fxOrderSlot0Param->get(), fxOrderSlot1Param->get(), fxOrderSlot2Param->get() }
+        };
+
+        std::array<int, 3> sanitizedFromParams { { 0, 1, 2 } };
+        std::array<bool, 3> seenFromParams { { false, false, false } };
+        int writeParam = 0;
+        for (const auto stageIn : fromParams)
+        {
+            const auto stage = juce::jlimit(0, 2, stageIn);
+            if (!seenFromParams[static_cast<std::size_t>(stage)] && writeParam < 3)
+            {
+                sanitizedFromParams[static_cast<std::size_t>(writeParam++)] = stage;
+                seenFromParams[static_cast<std::size_t>(stage)] = true;
+            }
+        }
+        for (int stage = 0; stage < 3 && writeParam < 3; ++stage)
+        {
+            if (!seenFromParams[static_cast<std::size_t>(stage)])
+            {
+                sanitizedFromParams[static_cast<std::size_t>(writeParam++)] = stage;
+            }
+        }
+
+        return sanitizedFromParams;
+    }
+
     std::array<int, 3> sanitized { { 0, 1, 2 } };
     std::array<bool, 3> seen { { false, false, false } };
 
@@ -1059,6 +1107,8 @@ std::array<int, 3> SynthProjectAudioProcessor::getFxProcessingOrder() const
 
 void SynthProjectAudioProcessor::setFxProcessingOrder(const std::array<int, 3>& order)
 {
+    const auto previous = getFxProcessingOrder();
+
     std::array<int, 3> sanitized { { 0, 1, 2 } };
     std::array<bool, 3> seen { { false, false, false } };
 
@@ -1085,6 +1135,38 @@ void SynthProjectAudioProcessor::setFxProcessingOrder(const std::array<int, 3>& 
     {
         fxProcessingOrder[static_cast<std::size_t>(i)].store(sanitized[static_cast<std::size_t>(i)],
                                                              std::memory_order_relaxed);
+    }
+
+    if (!updatingFxOrderParams
+        && fxOrderSlot0Param != nullptr
+        && fxOrderSlot1Param != nullptr
+        && fxOrderSlot2Param != nullptr)
+    {
+        updatingFxOrderParams = true;
+
+        const auto setSlotIfChanged = [](juce::AudioParameterInt* param, int value)
+        {
+            if (param == nullptr || param->get() == value)
+            {
+                return;
+            }
+
+            param->beginChangeGesture();
+            param->setValueNotifyingHost(param->convertTo0to1(static_cast<float>(value)));
+            param->endChangeGesture();
+        };
+
+        setSlotIfChanged(fxOrderSlot0Param, sanitized[0]);
+        setSlotIfChanged(fxOrderSlot1Param, sanitized[1]);
+        setSlotIfChanged(fxOrderSlot2Param, sanitized[2]);
+
+        updatingFxOrderParams = false;
+    }
+
+    if (sanitized != previous)
+    {
+        // FX order is non-parameter state, so explicitly notify host to persist updated state.
+        updateHostDisplay();
     }
 }
 
@@ -1487,11 +1569,28 @@ void SynthProjectAudioProcessor::prepareIsaacEngine(double sampleRate)
         grain = Grain {};
     }
 
+    const auto diffSizeA = juce::jmax(8, static_cast<int>(std::round(currentSampleRateHz * 0.0097)));
+    const auto diffSizeB = juce::jmax(8, static_cast<int>(std::round(currentSampleRateHz * 0.0153)));
+    for (auto& line : isaacDiffusionLineA)
+    {
+        line.assign(static_cast<std::size_t>(diffSizeA), 0.0f);
+    }
+    for (auto& line : isaacDiffusionLineB)
+    {
+        line.assign(static_cast<std::size_t>(diffSizeB), 0.0f);
+    }
+    isaacDiffusionIndexA = { { 0, 0 } };
+    isaacDiffusionIndexB = { { 0, 0 } };
+
     isaacWritePos = 0;
     isaacSpawnCounter = 0;
+    isaacRhythmicStepIndex = 0;
+    isaacRhythmicSamplesUntilNext = 0;
+    isaacRhythmicSwingToggle = false;
     isaacPanPhase = 0.0f;
     delayModPhase = 0.0f;
     lastDelayAlgorithmIndex = -1;
+    lastGranularModeIndex = -1;
     isaacFeedbackFilter = { { 0.0f, 0.0f } };
 }
 
@@ -1950,117 +2049,104 @@ float SynthProjectAudioProcessor::processRobSample(float x, int channel, float r
 float SynthProjectAudioProcessor::readDelaySample(int channel, float readPos) const
 {
     const auto& buffer = isaacDelayBuffer[static_cast<std::size_t>(channel)];
-    const auto rp = readPos >= 0.0f ? readPos : readPos + static_cast<float>(isaacBufferSize);
+    auto rp = readPos;
+    while (rp < 0.0f)
+    {
+        rp += static_cast<float>(isaacBufferSize);
+    }
+    while (rp >= static_cast<float>(isaacBufferSize))
+    {
+        rp -= static_cast<float>(isaacBufferSize);
+    }
+
     const auto i0 = static_cast<int>(rp) % isaacBufferSize;
     const auto i1 = (i0 + 1) % isaacBufferSize;
     const auto frac = rp - static_cast<float>(i0);
     return buffer[static_cast<std::size_t>(i0)] + (buffer[static_cast<std::size_t>(i1)] - buffer[static_cast<std::size_t>(i0)]) * frac;
 }
 
-void SynthProjectAudioProcessor::spawnIsaacGrain(float amount, int syncDivisionIndex)
+float SynthProjectAudioProcessor::sanitizeAudioSample(float x) const
 {
-    for (auto& grain : isaacGrains)
+    if (!std::isfinite(x))
     {
-        if (grain.active)
-        {
-            continue;
-        }
-
-        grain.active = true;
-
-        const auto a = smoothstep(amount);
-        const auto macro = std::pow(a, 0.62f);
-        const auto grainMs = lerp(35.0f, 170.0f, a);
-        grain.lengthSamples = juce::jmax(24, static_cast<int>(std::round(grainMs * 0.001f * static_cast<float>(currentSampleRateHz))));
-        grain.ageSamples = 0;
-
-        const std::array<int, 7> intervals { -12, -7, -5, 0, 5, 7, 12 };
-        const auto chooseWide = juce::Random::getSystemRandom().nextFloat() < (0.22f + 0.70f * macro);
-        const auto idx = chooseWide ? juce::Random::getSystemRandom().nextInt(static_cast<int>(intervals.size())) : 3;
-        const auto semitone = static_cast<float>(intervals[static_cast<std::size_t>(idx)]);
-        const auto micro = (juce::Random::getSystemRandom().nextFloat() - 0.5f) * (0.16f + 0.26f * macro);
-        grain.increment = std::pow(2.0f, (semitone + micro) / 12.0f);
-
-        const auto secPerBeat = static_cast<float>(60.0 / currentBpm);
-        auto beatDelay = lerp(0.125f, 0.75f, macro);
-        const auto syncBeats = divisionBeatsForIndex(syncDivisionIndex);
-        const auto syncEnabled = syncDivisionIndex > 0 && syncBeats > 0.0f;
-        if (syncEnabled)
-        {
-            beatDelay = syncBeats;
-        }
-        const auto baseDelaySamples = beatDelay * secPerBeat * static_cast<float>(currentSampleRateHz);
-        const auto jitterWidth = syncEnabled ? (0.01f + 0.05f * macro) : (0.06f + 0.22f * macro);
-        const auto jitter = (juce::Random::getSystemRandom().nextFloat() - 0.5f) * jitterWidth * baseDelaySamples;
-
-        auto readPos = static_cast<float>(isaacWritePos) - (baseDelaySamples + jitter);
-        while (readPos < 0.0f)
-        {
-            readPos += static_cast<float>(isaacBufferSize);
-        }
-        while (readPos >= static_cast<float>(isaacBufferSize))
-        {
-            readPos -= static_cast<float>(isaacBufferSize);
-        }
-        grain.readPos = readPos;
-
-        isaacPanPhase += lerp(0.13f, 0.36f, macro);
-        if (isaacPanPhase > juce::MathConstants<float>::twoPi)
-        {
-            isaacPanPhase -= juce::MathConstants<float>::twoPi;
-        }
-
-        const auto panSpread = lerp(0.14f, 0.88f, macro);
-        grain.pan = 0.5f + std::sin(isaacPanPhase) * 0.5f * panSpread;
-        grain.gain = lerp(0.11f, 0.30f, macro);
-        return;
+        return 0.0f;
     }
+
+    return juce::jlimit(-4.0f, 4.0f, x);
 }
 
-void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
-                                                            float inR,
-                                                            float amount,
-                                                            int syncDivisionIndex,
-                                                            float& outL,
-                                                            float& outR)
+void SynthProjectAudioProcessor::clearGranularDiffusionState()
 {
-    if (isaacBufferSize <= 1)
+    for (auto& line : isaacDiffusionLineA)
     {
-        outL = inL;
-        outR = inR;
+        std::fill(line.begin(), line.end(), 0.0f);
+    }
+    for (auto& line : isaacDiffusionLineB)
+    {
+        std::fill(line.begin(), line.end(), 0.0f);
+    }
+    isaacDiffusionIndexA = { { 0, 0 } };
+    isaacDiffusionIndexB = { { 0, 0 } };
+}
+
+float SynthProjectAudioProcessor::processAllpassSample(float x,
+                                                       std::vector<float>& line,
+                                                       int& index,
+                                                       float feedback) const
+{
+    if (line.empty())
+    {
+        return x;
+    }
+
+    auto& d = line[static_cast<std::size_t>(index)];
+    const auto g = juce::jlimit(0.0f, 0.82f, feedback);
+    const auto y = -g * x + d;
+    d = x + g * y;
+
+    ++index;
+    if (index >= static_cast<int>(line.size()))
+    {
+        index = 0;
+    }
+
+    return y;
+}
+
+void SynthProjectAudioProcessor::processGranularDiffusion(float& wetL,
+                                                          float& wetR,
+                                                          float diffusionAmount,
+                                                          float stereoAmount)
+{
+    const auto d = juce::jlimit(0.0f, 1.0f, diffusionAmount);
+    if (d <= 0.0001f)
+    {
         return;
     }
 
-    if (amount <= 0.0001f)
-    {
-        isaacDelayBuffer[0][static_cast<std::size_t>(isaacWritePos)] = inL;
-        isaacDelayBuffer[1][static_cast<std::size_t>(isaacWritePos)] = inR;
-        isaacWritePos = (isaacWritePos + 1) % isaacBufferSize;
-        outL = inL;
-        outR = inR;
-        return;
-    }
+    const auto gA = lerp(0.38f, 0.74f, d);
+    const auto gB = lerp(0.32f, 0.68f, d);
 
-    const auto a = smoothstep(amount);
-    const auto macro = std::pow(a, 0.62f);
-    const auto secPerBeat = static_cast<float>(60.0 / currentBpm);
-    auto spawnEverySec = lerp(0.085f, 0.028f, macro) * secPerBeat * 2.0f;
-    const auto syncBeats = divisionBeatsForIndex(syncDivisionIndex);
-    if (syncDivisionIndex > 0 && syncBeats > 0.0f)
-    {
-        // In sync mode, lock spawn cadence to a musical fraction of the selected division.
-        spawnEverySec = juce::jmax(0.010f, secPerBeat * syncBeats * lerp(0.38f, 0.25f, macro));
-    }
-    const auto spawnEverySamples = juce::jmax(12, static_cast<int>(std::round(spawnEverySec * static_cast<float>(currentSampleRateHz))));
+    auto dl = processAllpassSample(wetL, isaacDiffusionLineA[0], isaacDiffusionIndexA[0], gA);
+    dl = processAllpassSample(dl, isaacDiffusionLineB[0], isaacDiffusionIndexB[0], gB);
 
-    if (++isaacSpawnCounter >= spawnEverySamples)
-    {
-        isaacSpawnCounter = 0;
-        spawnIsaacGrain(a, syncDivisionIndex);
-    }
+    auto dr = processAllpassSample(wetR, isaacDiffusionLineA[1], isaacDiffusionIndexA[1], gA);
+    dr = processAllpassSample(dr, isaacDiffusionLineB[1], isaacDiffusionIndexB[1], gB);
 
-    float wetL = 0.0f;
-    float wetR = 0.0f;
+    const auto width = juce::jlimit(0.0f, 1.0f, stereoAmount);
+    const auto cross = 0.08f + 0.28f * d;
+    const auto widenedL = dl * (1.0f - cross) + dr * cross;
+    const auto widenedR = dr * (1.0f - cross) + dl * cross;
+    wetL = lerp(wetL, widenedL, d * (0.50f + 0.40f * width));
+    wetR = lerp(wetR, widenedR, d * (0.50f + 0.40f * width));
+}
+
+void SynthProjectAudioProcessor::renderActiveGranularGrains(float& wetL, float& wetR)
+{
+    wetL = 0.0f;
+    wetR = 0.0f;
+
+    constexpr float twoPi = juce::MathConstants<float>::twoPi;
 
     for (auto& grain : isaacGrains)
     {
@@ -2079,7 +2165,7 @@ void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
             continue;
         }
 
-        const auto window = 0.5f - 0.5f * std::cos(phase * juce::MathConstants<float>::twoPi);
+        const auto window = 0.5f - 0.5f * std::cos(phase * twoPi);
         const auto g = grain.gain * window;
 
         const auto left = readDelaySample(0, grain.readPos);
@@ -2094,7 +2180,11 @@ void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
         wetL += mono * g * gainL;
         wetR += mono * g * gainR;
 
-        grain.readPos += grain.increment;
+        grain.readPos += grain.reverse ? -std::abs(grain.increment) : std::abs(grain.increment);
+        while (grain.readPos < 0.0f)
+        {
+            grain.readPos += static_cast<float>(isaacBufferSize);
+        }
         while (grain.readPos >= static_cast<float>(isaacBufferSize))
         {
             grain.readPos -= static_cast<float>(isaacBufferSize);
@@ -2102,27 +2192,368 @@ void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
 
         ++grain.ageSamples;
     }
+}
 
-    const auto dampCoeff = lerp(0.19f, 0.06f, macro);
+void SynthProjectAudioProcessor::spawnIsaacGrain(float amount,
+                                                 float timeControl,
+                                                 float feedbackControl,
+                                                 int syncDivisionIndex,
+                                                 GranularMode mode,
+                                                 int rhythmicStep)
+{
+    for (auto& grain : isaacGrains)
+    {
+        if (grain.active)
+        {
+            continue;
+        }
+
+        auto& random = juce::Random::getSystemRandom();
+        grain.active = true;
+        grain.reverse = false;
+
+        const auto a = smoothstep(amount);
+        const auto macro = std::pow(a, 0.62f);
+        const auto sizeCtrl = juce::jlimit(0.0f, 1.0f, timeControl);
+        const auto feedbackCtrl = juce::jlimit(0.0f, 1.0f, feedbackControl);
+
+        float grainMs = lerp(35.0f, 170.0f, a);
+        float semitone = 0.0f;
+        float pitchMicro = 0.0f;
+        float reverseChance = 0.0f;
+        float panSpread = lerp(0.14f, 0.88f, macro);
+        float baseDelayBeats = lerp(0.125f, 0.75f, macro);
+        float jitterWidth = 0.06f + 0.22f * macro;
+        float gain = lerp(0.11f, 0.30f, macro);
+
+        if (mode == GranularMode::classic)
+        {
+            const std::array<int, 7> intervals { -12, -7, -5, 0, 5, 7, 12 };
+            const auto chooseWide = random.nextFloat() < (0.22f + 0.70f * macro);
+            const auto idx = chooseWide ? random.nextInt(static_cast<int>(intervals.size())) : 3;
+            semitone = static_cast<float>(intervals[static_cast<std::size_t>(idx)]);
+            pitchMicro = (random.nextFloat() - 0.5f) * (0.16f + 0.26f * macro);
+            reverseChance = 0.0f;
+        }
+        else if (mode == GranularMode::cloud)
+        {
+            const std::array<int, 9> intervals { 0, 0, 0, 7, -7, 12, -12, 5, -5 };
+            semitone = static_cast<float>(intervals[static_cast<std::size_t>(random.nextInt(static_cast<int>(intervals.size())))]);
+            pitchMicro = (random.nextFloat() - 0.5f) * (0.10f + 0.20f * macro);
+            grainMs = lerp(45.0f, 260.0f, sizeCtrl);
+            panSpread = lerp(0.35f, 0.98f, a);
+            reverseChance = 0.08f + 0.52f * feedbackCtrl;
+            baseDelayBeats = lerp(0.18f, 0.95f, sizeCtrl);
+            jitterWidth = 0.03f + 0.14f * a;
+            gain = lerp(0.08f, 0.22f, macro);
+        }
+        else if (mode == GranularMode::shimmer)
+        {
+            const std::array<int, 5> shimmerIntervals { 12, 7, 5, 19, 24 };
+            const auto idx = juce::jlimit(0,
+                                          static_cast<int>(shimmerIntervals.size()) - 1,
+                                          static_cast<int>(std::round(sizeCtrl * static_cast<float>(shimmerIntervals.size() - 1))));
+            semitone = static_cast<float>(shimmerIntervals[static_cast<std::size_t>(idx)]);
+            pitchMicro = (random.nextFloat() - 0.5f) * 0.10f;
+            grainMs = lerp(70.0f, 230.0f, sizeCtrl);
+            panSpread = lerp(0.24f, 0.80f, a);
+            reverseChance = 0.04f + 0.20f * feedbackCtrl;
+            baseDelayBeats = lerp(0.25f, 1.0f, sizeCtrl);
+            jitterWidth = 0.01f + 0.06f * a;
+            gain = lerp(0.10f, 0.24f, macro);
+        }
+        else
+        {
+            static constexpr std::array<std::array<int, 8>, 3> pitchPatterns { {
+                { 0, 7, 12, 7, 0, 7, 12, 7 },
+                { 0, 12, 0, 7, 0, 12, 0, 7 },
+                { 0, -12, 12, 0, 0, -12, 12, 0 }
+            } };
+            const auto patternIndex = juce::jlimit(0, 2, static_cast<int>(std::floor(sizeCtrl * 2.99f)));
+            semitone = static_cast<float>(pitchPatterns[static_cast<std::size_t>(patternIndex)][static_cast<std::size_t>(rhythmicStep & 7)]);
+            pitchMicro = 0.0f;
+            grainMs = lerp(22.0f, 110.0f, sizeCtrl);
+            panSpread = lerp(0.30f, 0.92f, a);
+            reverseChance = juce::jlimit(0.0f, 0.9f, feedbackCtrl);
+            baseDelayBeats = juce::jmax(0.0625f, divisionBeatsForIndex(syncDivisionIndex));
+            jitterWidth = 0.0f;
+            gain = lerp(0.10f, 0.26f, macro);
+        }
+
+        grain.lengthSamples = juce::jmax(24,
+                                         static_cast<int>(std::round(grainMs * 0.001f * static_cast<float>(currentSampleRateHz))));
+        grain.ageSamples = 0;
+        grain.reverse = random.nextFloat() < reverseChance;
+
+        const auto ratio = std::pow(2.0f, (semitone + pitchMicro) / 12.0f);
+        grain.increment = juce::jlimit(0.25f, 4.0f, std::abs(ratio));
+
+        const auto secPerBeat = static_cast<float>(60.0 / juce::jmax(20.0, currentBpm));
+        const auto syncBeats = divisionBeatsForIndex(syncDivisionIndex);
+        const auto syncEnabled = syncDivisionIndex > 0 && syncBeats > 0.0f;
+        if (syncEnabled)
+        {
+            baseDelayBeats = syncBeats;
+            if (mode == GranularMode::rhythmic)
+            {
+                jitterWidth = 0.0f;
+            }
+            else
+            {
+                jitterWidth = juce::jmin(jitterWidth, 0.07f);
+            }
+        }
+
+        const auto baseDelaySamples = baseDelayBeats * secPerBeat * static_cast<float>(currentSampleRateHz);
+        const auto jitter = (random.nextFloat() - 0.5f) * jitterWidth * baseDelaySamples;
+        auto readPos = static_cast<float>(isaacWritePos) - (baseDelaySamples + jitter);
+        while (readPos < 0.0f)
+        {
+            readPos += static_cast<float>(isaacBufferSize);
+        }
+        while (readPos >= static_cast<float>(isaacBufferSize))
+        {
+            readPos -= static_cast<float>(isaacBufferSize);
+        }
+
+        if (grain.reverse)
+        {
+            readPos += static_cast<float>(grain.lengthSamples) * grain.increment;
+            while (readPos >= static_cast<float>(isaacBufferSize))
+            {
+                readPos -= static_cast<float>(isaacBufferSize);
+            }
+        }
+        grain.readPos = readPos;
+
+        isaacPanPhase += lerp(0.13f, 0.36f, macro);
+        if (isaacPanPhase > juce::MathConstants<float>::twoPi)
+        {
+            isaacPanPhase -= juce::MathConstants<float>::twoPi;
+        }
+
+        if (mode == GranularMode::rhythmic)
+        {
+            const auto alt = ((rhythmicStep & 1) == 0) ? -1.0f : 1.0f;
+            grain.pan = 0.5f + alt * 0.5f * panSpread * 0.82f;
+        }
+        else
+        {
+            grain.pan = 0.5f + std::sin(isaacPanPhase) * 0.5f * panSpread;
+        }
+        grain.gain = gain;
+        return;
+    }
+}
+
+void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
+                                                            float inR,
+                                                            float amount,
+                                                            float timeControl,
+                                                            float feedbackControl,
+                                                            int syncDivisionIndex,
+                                                            float& outL,
+                                                            float& outR)
+{
+    if (isaacBufferSize <= 1)
+    {
+        outL = inL;
+        outR = inR;
+        return;
+    }
+
+    const auto dryL = sanitizeAudioSample(inL);
+    const auto dryR = sanitizeAudioSample(inR);
+
+    if (amount <= 0.0001f)
+    {
+        isaacDelayBuffer[0][static_cast<std::size_t>(isaacWritePos)] = dryL;
+        isaacDelayBuffer[1][static_cast<std::size_t>(isaacWritePos)] = dryR;
+        isaacWritePos = (isaacWritePos + 1) % isaacBufferSize;
+        outL = dryL;
+        outR = dryR;
+        return;
+    }
+
+    const auto mode = static_cast<GranularMode>(juce::jlimit(0, 3, granularModeParam->getIndex()));
+    const auto a = smoothstep(amount);
+    const auto macro = std::pow(a, 0.62f);
+    const auto secPerBeat = static_cast<float>(60.0 / juce::jmax(20.0, currentBpm));
+    const auto syncBeats = divisionBeatsForIndex(syncDivisionIndex);
+
+    if (mode == GranularMode::rhythmic)
+    {
+        if (isaacRhythmicSamplesUntilNext <= 0)
+        {
+            const std::array<std::array<int, 16>, 3> triggerPatterns { {
+                { 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0 },
+                { 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 0 },
+                { 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1 }
+            } };
+
+            const auto patternIndex = juce::jlimit(0, 2, static_cast<int>(std::floor(timeControl * 2.99f)));
+            const auto step = isaacRhythmicStepIndex & 15;
+            const auto shouldTrigger = triggerPatterns[static_cast<std::size_t>(patternIndex)][static_cast<std::size_t>(step)] != 0;
+            const auto densityChance = juce::jlimit(0.0f, 1.0f, lerp(0.15f, 0.98f, a));
+
+            if (shouldTrigger || juce::Random::getSystemRandom().nextFloat() < densityChance * 0.22f)
+            {
+                const auto layers = 1 + (juce::Random::getSystemRandom().nextFloat() < densityChance * 0.26f ? 1 : 0);
+                for (int i = 0; i < layers; ++i)
+                {
+                    spawnIsaacGrain(amount,
+                                    timeControl,
+                                    feedbackControl,
+                                    syncDivisionIndex,
+                                    mode,
+                                    step + i);
+                }
+            }
+
+            const auto baseBeats = syncDivisionIndex > 0 && syncBeats > 0.0f
+                                       ? syncBeats
+                                       : lerp(1.0f, 0.125f, juce::jlimit(0.0f, 1.0f, timeControl));
+            const auto swingAmount = juce::jlimit(0.0f, 0.48f, feedbackControl * 0.42f);
+            auto stepBeats = baseBeats;
+            if (isaacRhythmicSwingToggle)
+            {
+                stepBeats *= (1.0f + swingAmount);
+            }
+            else
+            {
+                stepBeats *= (1.0f - swingAmount);
+            }
+            isaacRhythmicSwingToggle = !isaacRhythmicSwingToggle;
+            isaacRhythmicStepIndex = (isaacRhythmicStepIndex + 1) & 15;
+            isaacRhythmicSamplesUntilNext = juce::jmax(8,
+                                                       static_cast<int>(std::round(stepBeats * secPerBeat
+                                                                                   * static_cast<float>(currentSampleRateHz))));
+        }
+
+        --isaacRhythmicSamplesUntilNext;
+    }
+    else
+    {
+        auto spawnEverySec = lerp(0.085f, 0.028f, macro) * secPerBeat * 2.0f;
+        if (mode == GranularMode::cloud)
+        {
+            spawnEverySec = lerp(0.040f, 0.009f, a) * lerp(1.08f, 0.72f, juce::jlimit(0.0f, 1.0f, timeControl));
+        }
+        else if (mode == GranularMode::shimmer)
+        {
+            spawnEverySec = lerp(0.072f, 0.016f, a);
+        }
+
+        if (syncDivisionIndex > 0 && syncBeats > 0.0f)
+        {
+            auto syncMul = lerp(0.38f, 0.25f, macro);
+            if (mode == GranularMode::cloud)
+            {
+                syncMul = lerp(0.22f, 0.14f, a);
+            }
+            else if (mode == GranularMode::shimmer)
+            {
+                syncMul = lerp(0.44f, 0.28f, a);
+            }
+            spawnEverySec = juce::jmax(0.008f, secPerBeat * syncBeats * syncMul);
+        }
+
+        const auto spawnEverySamples = juce::jmax(8,
+                                                   static_cast<int>(std::round(spawnEverySec * static_cast<float>(currentSampleRateHz))));
+        if (++isaacSpawnCounter >= spawnEverySamples)
+        {
+            isaacSpawnCounter = 0;
+            const auto layerCount = mode == GranularMode::cloud
+                                        ? 1 + (juce::Random::getSystemRandom().nextFloat() < a * 0.62f ? 1 : 0)
+                                        : 1;
+            for (int i = 0; i < layerCount; ++i)
+            {
+                spawnIsaacGrain(amount,
+                                timeControl,
+                                feedbackControl,
+                                syncDivisionIndex,
+                                mode,
+                                0);
+            }
+        }
+    }
+
+    float wetL = 0.0f;
+    float wetR = 0.0f;
+    renderActiveGranularGrains(wetL, wetR);
+
+    float feedback = lerp(0.16f, 0.74f, macro);
+    float diffusion = 0.0f;
+    float stereo = 0.5f;
+    float dampCoeff = lerp(0.19f, 0.06f, macro);
+
+    if (mode == GranularMode::cloud)
+    {
+        feedback = juce::jlimit(0.0f, 0.86f, 0.20f + 0.66f * feedbackControl);
+        diffusion = juce::jlimit(0.0f, 1.0f, 0.22f + 0.72f * feedbackControl);
+        stereo = juce::jlimit(0.0f, 1.0f, 0.35f + 0.60f * timeControl);
+        dampCoeff = lerp(0.14f, 0.04f, a);
+    }
+    else if (mode == GranularMode::shimmer)
+    {
+        feedback = juce::jlimit(0.0f, 0.92f, 0.36f + 0.56f * feedbackControl);
+        diffusion = juce::jlimit(0.0f, 1.0f, 0.28f + 0.58f * a);
+        stereo = juce::jlimit(0.0f, 1.0f, 0.24f + 0.56f * a);
+        dampCoeff = lerp(0.11f, 0.03f, a);
+    }
+    else if (mode == GranularMode::rhythmic)
+    {
+        feedback = juce::jlimit(0.0f, 0.80f, 0.10f + 0.70f * feedbackControl);
+        diffusion = juce::jlimit(0.0f, 0.40f, 0.05f + 0.35f * a);
+        stereo = juce::jlimit(0.0f, 1.0f, 0.35f + 0.54f * a);
+        dampCoeff = lerp(0.18f, 0.07f, a);
+    }
+
+    processGranularDiffusion(wetL, wetR, diffusion, stereo);
+
     isaacFeedbackFilter[0] += dampCoeff * (wetL - isaacFeedbackFilter[0]);
     isaacFeedbackFilter[1] += dampCoeff * (wetR - isaacFeedbackFilter[1]);
 
-    wetL = std::tanh((wetL * 0.82f + isaacFeedbackFilter[0] * 0.18f) * (1.0f + 0.25f * macro));
-    wetR = std::tanh((wetR * 0.82f + isaacFeedbackFilter[1] * 0.18f) * (1.0f + 0.25f * macro));
+    if (mode == GranularMode::shimmer)
+    {
+        const auto shimmerTone = 1.0f + 0.32f * a;
+        wetL = std::tanh((wetL * 0.76f + isaacFeedbackFilter[0] * 0.24f) * shimmerTone);
+        wetR = std::tanh((wetR * 0.76f + isaacFeedbackFilter[1] * 0.24f) * shimmerTone);
+    }
+    else
+    {
+        wetL = std::tanh((wetL * 0.82f + isaacFeedbackFilter[0] * 0.18f) * (1.0f + 0.25f * macro));
+        wetR = std::tanh((wetR * 0.82f + isaacFeedbackFilter[1] * 0.18f) * (1.0f + 0.25f * macro));
+    }
 
-    const auto feedback = lerp(0.16f, 0.74f, macro);
-    const auto writeL = inL + wetL * feedback;
-    const auto writeR = inR + wetR * feedback;
+    const auto writeL = sanitizeAudioSample(dryL + wetL * feedback);
+    const auto writeR = sanitizeAudioSample(dryR + wetR * feedback);
 
     isaacDelayBuffer[0][static_cast<std::size_t>(isaacWritePos)] = writeL;
     isaacDelayBuffer[1][static_cast<std::size_t>(isaacWritePos)] = writeR;
     isaacWritePos = (isaacWritePos + 1) % isaacBufferSize;
 
-    const auto wetMix = lerp(0.08f, 0.92f, std::pow(macro, 1.02f));
-    const auto dryMix = lerp(0.95f, 0.12f, macro);
+    auto wetMix = lerp(0.08f, 0.92f, std::pow(macro, 1.02f));
+    auto dryMix = lerp(0.95f, 0.12f, macro);
 
-    outL = inL * dryMix + wetL * wetMix;
-    outR = inR * dryMix + wetR * wetMix;
+    if (mode == GranularMode::cloud)
+    {
+        wetMix = lerp(0.14f, 0.97f, a);
+        dryMix = lerp(0.90f, 0.08f, a);
+    }
+    else if (mode == GranularMode::shimmer)
+    {
+        wetMix = lerp(0.16f, 0.94f, a);
+        dryMix = lerp(0.92f, 0.10f, a);
+    }
+    else if (mode == GranularMode::rhythmic)
+    {
+        wetMix = lerp(0.10f, 0.90f, a);
+        dryMix = lerp(0.96f, 0.22f, a);
+    }
+
+    outL = sanitizeAudioSample(dryL * dryMix + wetL * wetMix);
+    outR = sanitizeAudioSample(dryR * dryMix + wetR * wetMix);
 }
 
 void SynthProjectAudioProcessor::processDelayAlgorithmSample(float inL,
@@ -2139,7 +2570,14 @@ void SynthProjectAudioProcessor::processDelayAlgorithmSample(float inL,
 
     if (algo == 0)
     {
-        processIsaacGranularSample(inL, inR, amount, syncDivisionIndex, outL, outR);
+        processIsaacGranularSample(inL,
+                                   inR,
+                                   amount,
+                                   timeControl,
+                                   feedbackControl,
+                                   syncDivisionIndex,
+                                   outL,
+                                   outR);
         return;
     }
 
@@ -2450,6 +2888,11 @@ bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& 
     if (hasFxOrderState)
     {
         setFxProcessingOrder(fxOrderFromState);
+    }
+    else if (fxOrderSlot0Param != nullptr && fxOrderSlot1Param != nullptr && fxOrderSlot2Param != nullptr)
+    {
+        // Backward-compatible path: newer hosts/presets can restore from parameter slots.
+        setFxProcessingOrder({ { fxOrderSlot0Param->get(), fxOrderSlot1Param->get(), fxOrderSlot2Param->get() } });
     }
 
     if (state.hasProperty("imagePath"))

@@ -81,6 +81,7 @@ private:
     void attachButton(juce::RangedAudioParameter& parameter, juce::Button& button);
     void refreshAnyKeyDownState();
     void refreshOscillatorModeUI();
+    void refreshGranularModeUI();
     void refreshFxBypassUI();
     void updateFxSectionTargets(const juce::Rectangle<int>& topArea, int topGap);
     void layoutFxSectionsFromCurrentAreas();
@@ -193,6 +194,8 @@ private:
     KnobLabel isaacTextureLabel;
     juce::ComboBox delayAlgoBox;
     KnobLabel delayAlgoLabel;
+    juce::ComboBox granularModeBox;
+    KnobLabel granularModeLabel;
     juce::Slider delayTimeKnob;
     KnobLabel delayTimeLabel;
     juce::Slider delayFeedbackKnob;
@@ -245,4 +248,5 @@ private:
 
     std::array<KnobBinding, 10> knobBindings {};
     int lastOscModeIndex { -1 };
+    int lastGranularModeIndex { -1 };
 };

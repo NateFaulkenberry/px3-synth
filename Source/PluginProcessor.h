@@ -78,6 +78,7 @@ public:
     juce::AudioParameterChoice& getRobModeParam() const;
     juce::AudioParameterFloat& getIsaacAmountParam() const;
     juce::AudioParameterChoice& getGranularSyncDivisionParam() const;
+    juce::AudioParameterChoice& getGranularModeParam() const;
     juce::AudioParameterChoice& getDelayAlgorithmParam() const;
     juce::AudioParameterBool& getDelayEnabledParam() const;
     juce::AudioParameterFloat& getDelayTimeParam() const;
@@ -144,6 +145,7 @@ private:
     struct Grain
     {
         bool active { false };
+        bool reverse { false };
         float readPos { 0.0f };
         float increment { 1.0f };
         int ageSamples { 0 };
@@ -152,7 +154,15 @@ private:
         float pan { 0.5f };
     };
 
-    static constexpr int maxGrains = 24;
+    enum class GranularMode
+    {
+        classic = 0,
+        cloud,
+        shimmer,
+        rhythmic
+    };
+
+    static constexpr int maxGrains = 48;
 
     void updateActiveNotesFromMidi(const juce::MidiBuffer& midiMessages);
     void clearAllActiveNotes();
@@ -177,6 +187,8 @@ private:
     void processIsaacGranularSample(float inL,
                                     float inR,
                                     float amount,
+                                    float timeControl,
+                                    float feedbackControl,
                                     int syncDivisionIndex,
                                     float& outL,
                                     float& outR);
@@ -189,7 +201,17 @@ private:
                                      int syncDivisionIndex,
                                      float& outL,
                                      float& outR);
-    void spawnIsaacGrain(float amount, int syncDivisionIndex);
+    void spawnIsaacGrain(float amount,
+                        float timeControl,
+                        float feedbackControl,
+                        int syncDivisionIndex,
+                        GranularMode mode,
+                        int rhythmicStep);
+    void clearGranularDiffusionState();
+    void renderActiveGranularGrains(float& wetL, float& wetR);
+    void processGranularDiffusion(float& wetL, float& wetR, float diffusionAmount, float stereoAmount);
+    float processAllpassSample(float x, std::vector<float>& line, int& index, float feedback) const;
+    float sanitizeAudioSample(float x) const;
     float readDelaySample(int channel, float readPos) const;
     void processReverbSampleFrame(float inL, float inR, float amount, int algorithmIndex, float& outL, float& outR);
     float readMoonDelaySample(int channel, float readPos) const;
@@ -218,6 +240,7 @@ private:
     juce::AudioParameterChoice* robModeParam { nullptr };
     juce::AudioParameterFloat* isaacAmountParam { nullptr };
     juce::AudioParameterChoice* granularSyncDivisionParam { nullptr };
+    juce::AudioParameterChoice* granularModeParam { nullptr };
     juce::AudioParameterChoice* delayAlgorithmParam { nullptr };
     juce::AudioParameterBool* delayEnabledParam { nullptr };
     juce::AudioParameterFloat* delayTimeParam { nullptr };
@@ -241,6 +264,9 @@ private:
     juce::AudioParameterChoice* audioAnimSyncParam { nullptr };
     juce::AudioParameterChoice* audioTargetParam { nullptr };
     juce::AudioParameterInt* pitchBendRangeParam { nullptr };
+    juce::AudioParameterInt* fxOrderSlot0Param { nullptr };
+    juce::AudioParameterInt* fxOrderSlot1Param { nullptr };
+    juce::AudioParameterInt* fxOrderSlot2Param { nullptr };
 
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteCounts {};
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteVelocities {};
@@ -273,6 +299,10 @@ private:
 
     std::array<std::vector<float>, 2> isaacDelayBuffer;
     std::array<float, 2> isaacFeedbackFilter { { 0.0f, 0.0f } };
+    std::array<std::vector<float>, 2> isaacDiffusionLineA;
+    std::array<std::vector<float>, 2> isaacDiffusionLineB;
+    std::array<int, 2> isaacDiffusionIndexA { { 0, 0 } };
+    std::array<int, 2> isaacDiffusionIndexB { { 0, 0 } };
     std::array<Grain, maxGrains> isaacGrains {};
 
     juce::Reverb reverb;
@@ -281,14 +311,19 @@ private:
     int isaacBufferSize { 1 };
     int isaacWritePos { 0 };
     int isaacSpawnCounter { 0 };
+    int isaacRhythmicStepIndex { 0 };
+    int isaacRhythmicSamplesUntilNext { 0 };
+    bool isaacRhythmicSwingToggle { false };
     float isaacPanPhase { 0.0f };
     float delayModPhase { 0.0f };
     int lastDelayAlgorithmIndex { -1 };
+    int lastGranularModeIndex { -1 };
     int moonBufferSize { 1 };
     int moonWritePos { 0 };
     float moonPhase { 0.0f };
     float reverbOutputCompGain { 1.0f };
     std::array<std::atomic<int>, 3> fxProcessingOrder {};
+    bool updatingFxOrderParams { false };
 
     std::shared_ptr<const ImageWavetable> activeImageWavetable;
     std::shared_ptr<const AudioSourceData> activeAudioSource;
