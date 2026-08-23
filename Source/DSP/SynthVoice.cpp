@@ -168,22 +168,25 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     const auto sampleRate = juce::jmax(1.0, getSampleRate());
     const auto vibratoPhaseInc = juce::MathConstants<double>::twoPi * static_cast<double>(vibratoRateHz) / sampleRate;
 
-    const auto vibe = vibeBypass ? 0.0f : std::pow(juce::jlimit(0.0f, 1.0f, vibeGlobalAmount), 1.35f);
-    const auto vibeActive = vibe > 0.0001f;
+    const auto vibeBase = vibeBypass ? 0.0f : std::pow(juce::jlimit(0.0f, 1.0f, vibeGlobalAmount), 1.35f);
+    // Global amount is a macro depth control. Keep low values subtle, but let
+    // the top of the range drive aggressively audible analog character.
+    const auto vibeDepth = juce::jlimit(0.0f, 3.50f, vibeBase * (0.30f + 3.10f * vibeBase));
+    const auto vibeActive = vibeDepth > 0.0001f;
 
     auto targetCutoffHz = subtractiveSettings.filterCutoffHz;
     auto targetResonanceQ = subtractiveSettings.filterResonanceQ;
 
     if (vibeActive)
     {
-        const auto temperatureCutoff = vibeShared.temperature * vibeTuning.temperatureDrift * 0.18f;
-        const auto psuCutoff = vibeShared.psu * vibeTuning.psuMovement * 0.10f;
+        const auto temperatureCutoff = vibeShared.temperature * vibeTuning.temperatureDrift * 0.34f;
+        const auto psuCutoff = vibeShared.psu * vibeTuning.psuMovement * 0.22f;
         const auto voiceCutoff = vibeVariation.cutoffOffset * vibeTuning.voiceVariation;
-        const auto chaosCutoff = vibeShared.chaos * vibeTuning.correlatedChaos * 0.12f;
-        const auto cutoffMul = 1.0f + (temperatureCutoff + psuCutoff + voiceCutoff + chaosCutoff) * vibe;
+        const auto chaosCutoff = vibeShared.chaos * vibeTuning.correlatedChaos * 0.28f;
+        const auto cutoffMul = 1.0f + (temperatureCutoff + psuCutoff + voiceCutoff + chaosCutoff) * vibeDepth;
 
         const auto resoDelta = (vibeVariation.resonanceOffset * vibeTuning.voiceVariation
-                                + vibeShared.chaos * vibeTuning.filterVariation * 0.06f) * vibe;
+                    + vibeShared.chaos * vibeTuning.filterVariation * 0.16f) * vibeDepth;
 
         targetCutoffHz *= cutoffMul;
         targetResonanceQ *= (1.0f + resoDelta);
@@ -226,11 +229,11 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
         if (vibeActive)
         {
-            const auto driftCents = (vibeShared.oscillatorDrift * vibeTuning.oscillatorDrift * 14.0f
-                                     + vibeShared.psu * vibeTuning.psuMovement * 5.0f
-                                     + vibeShared.temperature * vibeTuning.temperatureDrift * 7.0f
-                                     + vibeShared.chaos * vibeTuning.correlatedChaos * 4.0f
-                                     + vibeVariation.pitchCents * vibeTuning.voiceVariation) * vibe;
+            const auto driftCents = (vibeShared.oscillatorDrift * vibeTuning.oscillatorDrift * 32.0f
+                                     + vibeShared.psu * vibeTuning.psuMovement * 13.0f
+                                     + vibeShared.temperature * vibeTuning.temperatureDrift * 18.0f
+                                     + vibeShared.chaos * vibeTuning.correlatedChaos * 12.0f
+                                     + vibeVariation.pitchCents * vibeTuning.voiceVariation) * vibeDepth;
             bendSemitones += static_cast<double>(juce::jlimit(-60.0f, 60.0f, driftCents) * 0.01f);
         }
 
@@ -296,17 +299,17 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
         if (vibeActive)
         {
-            const auto asym = (vibeTuning.waveformAsymmetry * (0.35f + 0.65f * vibeVariation.asymmetryBias)) * vibe;
-            const auto sat = (vibeTuning.saturation * (0.45f + 0.55f * vibeVariation.saturationBias)) * vibe;
-            const auto chaos = vibeShared.chaos * vibeTuning.correlatedChaos * 0.08f * vibe;
+            const auto asym = (vibeTuning.waveformAsymmetry * (0.35f + 0.65f * vibeVariation.asymmetryBias)) * vibeDepth;
+            const auto sat = (vibeTuning.saturation * (0.45f + 0.55f * vibeVariation.saturationBias)) * vibeDepth;
+            const auto chaos = vibeShared.chaos * vibeTuning.correlatedChaos * 0.18f * vibeDepth;
 
             const auto asymShaped = sourceSample
                                     + asym * sourceSample * sourceSample * (sourceSample >= 0.0f ? 0.9f : -0.7f)
                                     + chaos;
-            sourceSample = std::tanh(asymShaped * (1.0f + sat * 1.9f)) * (1.0f / (1.0f + sat * 0.55f));
+            sourceSample = std::tanh(asymShaped * (1.0f + sat * 3.4f)) * (1.0f / (1.0f + sat * 0.90f));
 
-            const auto noiseAmount = vibeTuning.noise * vibe * (0.55f + 0.45f * std::abs(vibeShared.psu));
-            sourceSample += nextDeterministicNoise() * (0.0018f + 0.0062f * noiseAmount);
+            const auto noiseAmount = vibeTuning.noise * vibeDepth * (0.55f + 0.45f * std::abs(vibeShared.psu));
+            sourceSample += nextDeterministicNoise() * (0.0035f + 0.0165f * noiseAmount);
         }
 
         const auto env = adsr.getNextSample();
@@ -315,8 +318,8 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         if (vibeActive)
         {
             const auto gainVariation = (vibeVariation.gainOffset * vibeTuning.voiceVariation
-                                        + vibeShared.psu * vibeTuning.psuMovement * 0.05f
-                                        + vibeShared.temperature * vibeTuning.temperatureDrift * 0.04f) * vibe;
+                                        + vibeShared.psu * vibeTuning.psuMovement * 0.12f
+                                        + vibeShared.temperature * vibeTuning.temperatureDrift * 0.10f) * vibeDepth;
             voiceGain *= (1.0f + gainVariation);
             voiceGain = juce::jlimit(0.0f, 2.0f, voiceGain);
         }
@@ -324,10 +327,10 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         auto voicedSample = sourceSample * voiceGain;
         if (vibeActive)
         {
-            const auto vcaAmount = (vibeTuning.vcaNonlinearity * vibe
-                                    + vibeShared.chaos * vibeTuning.correlatedChaos * 0.06f * vibe);
-            voicedSample = std::tanh(voicedSample * (1.0f + vcaAmount * 1.7f))
-                          * (1.0f / (1.0f + vcaAmount * 0.46f));
+            const auto vcaAmount = (vibeTuning.vcaNonlinearity * vibeDepth
+                                    + vibeShared.chaos * vibeTuning.correlatedChaos * 0.16f * vibeDepth);
+            voicedSample = std::tanh(voicedSample * (1.0f + vcaAmount * 3.2f))
+                          * (1.0f / (1.0f + vcaAmount * 0.95f));
         }
 
         auto currentSample = lowPassFilter.processSample(voicedSample);

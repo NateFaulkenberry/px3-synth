@@ -534,7 +534,7 @@ bool PresetManager::createInitPresetIfMissing(juce::String& error)
     state.setProperty("oscH6", 0.1400000005960464f, nullptr);
     state.setProperty("oscH7", 0.1000000014901161f, nullptr);
     state.setProperty("oscH8", 0.07000000029802322f, nullptr);
-    state.setProperty("filterCutoff", 0.5224611759185791f, nullptr);
+    state.setProperty("filterCutoff", 0.4037925601005554f, nullptr);
     state.setProperty("filterResonance", 0.282051295042038f, nullptr);
     state.setProperty("filterType", 0.0f, nullptr);
     state.setProperty("ampAttack", 0.5603691935539246f, nullptr);
@@ -542,9 +542,10 @@ bool PresetManager::createInitPresetIfMissing(juce::String& error)
     state.setProperty("ampSustain", 0.278243213891983f, nullptr);
     state.setProperty("ampRelease", 0.0f, nullptr);
     state.setProperty("masterGain", 0.4870468974113464f, nullptr);
-    state.setProperty("robAmount", 0.8171562552452087f, nullptr);
+    state.setProperty("robAmount", 0.7861562371253967f, nullptr);
     state.setProperty("robEnabled", 1.0f, nullptr);
-    state.setProperty("isaacAmount", 1.0f, nullptr);
+    state.setProperty("vibeType", 0.6000000238418579f, nullptr);
+    state.setProperty("isaacAmount", 0.7113437652587891f, nullptr);
     state.setProperty("granularSyncDivision", 0.0f, nullptr);
     state.setProperty("granularMode", 0.3333333432674408f, nullptr);
     state.setProperty("delayAlgorithm", 0.3333333432674408f, nullptr);
