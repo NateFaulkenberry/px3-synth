@@ -279,7 +279,8 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     : AudioProcessorEditor(&p),
     audioProcessor(p),
     tooltipWindow(this, 450),
-    sourceEnginePanel(p)
+    sourceEnginePanel(p),
+    presetManager(p)
 {
     backgroundImage = juce::ImageFileFormat::loadFrom(BinaryData::pp_png, BinaryData::pp_pngSize);
     logoFrame = juce::ImageFileFormat::loadFrom(BinaryData::px3_gif, BinaryData::px3_gifSize);
@@ -594,10 +595,219 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     midiStatusLabel.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(midiStatusLabel);
 
+    const auto setupPresetButton = [](juce::TextButton& button)
+    {
+        button.setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGBA(40, 40, 40, 210));
+        button.setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(232, 232, 232));
+        button.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGBA(68, 124, 180, 220));
+    };
+
+    setupPresetButton(presetPrevButton);
+    setupPresetButton(presetNameButton);
+    setupPresetButton(presetNextButton);
+    setupPresetButton(presetSaveButton);
+    setupPresetButton(presetSaveAsButton);
+    setupPresetButton(presetDeleteButton);
+    setupPresetButton(presetImportButton);
+    setupPresetButton(presetExportButton);
+
+    presetPrevButton.setButtonText("<");
+    presetNameButton.setButtonText("INIT");
+    presetNextButton.setButtonText(">");
+    presetSaveButton.setButtonText("SAVE");
+    presetSaveAsButton.setButtonText("SAVE AS");
+    presetDeleteButton.setButtonText("DEL");
+    presetImportButton.setButtonText("IMPORT");
+    presetExportButton.setButtonText("EXPORT");
+
+    presetFavoriteButton.setButtonText("★");
+    presetFavoriteButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(230, 230, 230));
+    presetFavoriteButton.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(250, 210, 70));
+
+    presetPrevButton.onClick = [this]()
+    {
+        if (presetFiltered.empty())
+        {
+            return;
+        }
+
+        if (!hasCurrentPreset)
+        {
+            applyPresetRecord(presetFiltered.front());
+            return;
+        }
+
+        int currentIndex = 0;
+        for (int i = 0; i < static_cast<int>(presetFiltered.size()); ++i)
+        {
+            if (presetFiltered[static_cast<std::size_t>(i)].file == currentPreset.file)
+            {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        const auto next = (currentIndex - 1 + static_cast<int>(presetFiltered.size())) % static_cast<int>(presetFiltered.size());
+        applyPresetRecord(presetFiltered[static_cast<std::size_t>(next)]);
+    };
+
+    presetNextButton.onClick = [this]()
+    {
+        if (presetFiltered.empty())
+        {
+            return;
+        }
+
+        if (!hasCurrentPreset)
+        {
+            applyPresetRecord(presetFiltered.front());
+            return;
+        }
+
+        int currentIndex = 0;
+        for (int i = 0; i < static_cast<int>(presetFiltered.size()); ++i)
+        {
+            if (presetFiltered[static_cast<std::size_t>(i)].file == currentPreset.file)
+            {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        const auto next = (currentIndex + 1) % static_cast<int>(presetFiltered.size());
+        applyPresetRecord(presetFiltered[static_cast<std::size_t>(next)]);
+    };
+
+    presetNameButton.onClick = [this]() { openPresetBrowser(); };
+    presetSaveButton.onClick = [this]() { savePreset(false); };
+    presetSaveAsButton.onClick = [this]() { savePreset(true); };
+    presetDeleteButton.onClick = [this]() { deleteCurrentPreset(); };
+    presetImportButton.onClick = [this]() { importPreset(); };
+    presetExportButton.onClick = [this]() { exportCurrentPreset(); };
+    presetFavoriteButton.onClick = [this]()
+    {
+        if (!hasCurrentPreset)
+        {
+            presetFavoriteButton.setToggleState(false, juce::dontSendNotification);
+            return;
+        }
+
+        juce::String error;
+        if (!presetManager.setFavorite(currentPreset, presetFavoriteButton.getToggleState(), error))
+        {
+            showPresetError("Favorite Failed", error);
+            presetFavoriteButton.setToggleState(currentPreset.isFavorite, juce::dontSendNotification);
+            return;
+        }
+
+        presetManager.refreshIndex();
+        rebuildPresetFilteredList();
+        if (const auto* found = presetManager.findByFile(currentPreset.file))
+        {
+            currentPreset = *found;
+            refreshPresetNameDisplay();
+        }
+    };
+
+    addAndMakeVisible(presetPrevButton);
+    addAndMakeVisible(presetNameButton);
+    addAndMakeVisible(presetNextButton);
+    addAndMakeVisible(presetFavoriteButton);
+    addAndMakeVisible(presetSaveButton);
+    addAndMakeVisible(presetSaveAsButton);
+    addAndMakeVisible(presetDeleteButton);
+    addAndMakeVisible(presetImportButton);
+    addAndMakeVisible(presetExportButton);
+
+    presetBrowserPanel.setInterceptsMouseClicks(false, true);
+    addAndMakeVisible(presetBrowserPanel);
+    presetBrowserPanel.setVisible(false);
+
+    presetBrowserTitle.setText("P(X3) PRESETS", juce::dontSendNotification);
+    presetBrowserTitle.setJustificationType(juce::Justification::centredLeft);
+    presetBrowserTitle.setColour(juce::Label::textColourId, juce::Colour::fromRGB(236, 236, 236));
+    presetBrowserTitle.setFont(juce::FontOptions(15.0f, juce::Font::bold));
+    presetBrowserTitle.setInterceptsMouseClicks(false, false);
+
+    presetScopeBox.addItem("All", 1);
+    presetScopeBox.addItem("Factory", 2);
+    presetScopeBox.addItem("User", 3);
+    presetScopeBox.addItem("Favorites", 4);
+    presetScopeBox.setSelectedId(1, juce::dontSendNotification);
+
+    presetCategoryBox.addItem("All", 1);
+    presetCategoryBox.setSelectedId(1, juce::dontSendNotification);
+
+    presetSearchEditor.setTextToShowWhenEmpty("Search name/category/author/description", juce::Colour::fromRGBA(220, 220, 220, 120));
+    presetSearchEditor.setColour(juce::TextEditor::backgroundColourId, juce::Colour::fromRGBA(24, 24, 24, 210));
+    presetSearchEditor.setColour(juce::TextEditor::textColourId, juce::Colour::fromRGB(235, 235, 235));
+
+    presetListBox.setModel(this);
+    presetListBox.setRowHeight(24);
+    presetListBox.setColour(juce::ListBox::backgroundColourId, juce::Colour::fromRGBA(20, 20, 20, 200));
+
+    presetBrowserLoadButton.setButtonText("LOAD");
+    presetBrowserCloseButton.setButtonText("CLOSE");
+    setupPresetButton(presetBrowserLoadButton);
+    setupPresetButton(presetBrowserCloseButton);
+
+    presetBrowserDetails.setJustificationType(juce::Justification::topLeft);
+    presetBrowserDetails.setColour(juce::Label::textColourId, juce::Colour::fromRGB(208, 208, 208));
+    presetBrowserDetails.setFont(juce::FontOptions(12.0f));
+
+    presetBrowserPanel.addAndMakeVisible(presetBrowserTitle);
+    presetBrowserPanel.addAndMakeVisible(presetScopeBox);
+    presetBrowserPanel.addAndMakeVisible(presetCategoryBox);
+    presetBrowserPanel.addAndMakeVisible(presetSearchEditor);
+    presetBrowserPanel.addAndMakeVisible(presetListBox);
+    presetBrowserPanel.addAndMakeVisible(presetBrowserLoadButton);
+    presetBrowserPanel.addAndMakeVisible(presetBrowserCloseButton);
+    presetBrowserPanel.addAndMakeVisible(presetBrowserDetails);
+
+    presetScopeBox.onChange = [this]() { rebuildPresetFilteredList(); };
+    presetCategoryBox.onChange = [this]() { rebuildPresetFilteredList(); };
+    presetSearchEditor.onTextChange = [this]() { rebuildPresetFilteredList(); };
+    presetBrowserCloseButton.onClick = [this]() { closePresetBrowser(); };
+    presetBrowserLoadButton.onClick = [this]()
+    {
+        const auto row = presetListBox.getSelectedRow();
+        if (row >= 0 && row < static_cast<int>(presetFiltered.size()))
+        {
+            applyPresetRecord(presetFiltered[static_cast<std::size_t>(row)]);
+            closePresetBrowser();
+        }
+    };
+
     setSize(1320, 700);
 
     fxSectionOrder = audioProcessor.getFxProcessingOrder();
     commitFxOrderToProcessor();
+
+    juce::String presetInitError;
+    if (!presetManager.initialise(presetInitError))
+    {
+        showPresetError("Preset Init Failed", presetInitError);
+    }
+
+    auto categories = presetManager.getAllCategories();
+    int catId = 2;
+    for (const auto& category : categories)
+    {
+        if (!category.equalsIgnoreCase("ALL"))
+        {
+            presetCategoryBox.addItem(category, catId++);
+        }
+    }
+
+    rebuildPresetFilteredList();
+    for (const auto& record : presetFiltered)
+    {
+        if (record.metadata.name.equalsIgnoreCase("INIT"))
+        {
+            applyPresetRecord(record);
+            break;
+        }
+    }
 
     refreshOscillatorModeUI();
     refreshFxBypassUI();
@@ -1022,6 +1232,51 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
             }
         }
     }
+
+}
+
+void SynthProjectAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
+{
+    if (!presetBrowserVisible)
+    {
+        return;
+    }
+
+    const auto panelBounds = presetBrowserPanel.getBounds().toFloat();
+    const auto panelHole = panelBounds.expanded(1.0f);
+
+    juce::Path outsidePanelMask;
+    outsidePanelMask.setUsingNonZeroWinding(false);
+    outsidePanelMask.addRectangle(getLocalBounds().toFloat());
+    outsidePanelMask.addRoundedRectangle(panelHole, 10.0f);
+
+    if (presetBrowserBackdropSnapshot.isValid())
+    {
+        g.saveState();
+        g.reduceClipRegion(outsidePanelMask);
+
+        // Multi-offset snapshot blend gives an inexpensive full-UI blur effect.
+        g.setOpacity(0.075f);
+        for (int dy = -6; dy <= 6; dy += 2)
+        {
+            for (int dx = -6; dx <= 6; dx += 2)
+            {
+                if (dx == 0 && dy == 0)
+                {
+                    continue;
+                }
+                g.drawImageAt(presetBrowserBackdropSnapshot, dx, dy, false);
+            }
+        }
+
+        g.setOpacity(0.14f);
+        g.drawImageAt(presetBrowserBackdropSnapshot, 0, 0, false);
+        g.setOpacity(1.0f);
+        g.restoreState();
+    }
+
+    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 180));
+    g.fillPath(outsidePanelMask);
 }
 
 void SynthProjectAudioProcessorEditor::resized()
@@ -1041,9 +1296,32 @@ void SynthProjectAudioProcessorEditor::resized()
                               headerArea.getHeight() };
 
     auto topArea = headerPlaceholderArea.reduced(4, 4);
+    auto presetRow = topArea.removeFromTop(30);
+    topArea.removeFromTop(6);
     const auto topGap = 8;
     updateFxSectionTargets(topArea, topGap);
     layoutFxSectionsFromCurrentAreas();
+
+    presetBarArea = presetRow;
+
+    auto presetLayout = presetRow;
+    presetPrevButton.setBounds(presetLayout.removeFromLeft(26));
+    presetLayout.removeFromLeft(4);
+    presetNextButton.setBounds(presetLayout.removeFromRight(26));
+    presetLayout.removeFromRight(4);
+    presetExportButton.setBounds(presetLayout.removeFromRight(74));
+    presetLayout.removeFromRight(4);
+    presetImportButton.setBounds(presetLayout.removeFromRight(74));
+    presetLayout.removeFromRight(4);
+    presetDeleteButton.setBounds(presetLayout.removeFromRight(52));
+    presetLayout.removeFromRight(4);
+    presetSaveAsButton.setBounds(presetLayout.removeFromRight(84));
+    presetLayout.removeFromRight(4);
+    presetSaveButton.setBounds(presetLayout.removeFromRight(64));
+    presetLayout.removeFromRight(6);
+    presetFavoriteButton.setBounds(presetLayout.removeFromRight(28));
+    presetLayout.removeFromRight(8);
+    presetNameButton.setBounds(presetLayout);
 
     sourceEnginePanel.setBounds(topSpareSectionArea.reduced(2));
 
@@ -1111,10 +1389,68 @@ void SynthProjectAudioProcessorEditor::resized()
                                               18);
         filterTypeBox.setBounds(row.reduced(1, 0));
     }
+
+    const auto browserWidth = juce::jlimit(520, 760, getWidth() - 120);
+    const auto browserHeight = juce::jlimit(360, 520, getHeight() - 120);
+    auto browserX = (getWidth() - browserWidth) / 2;
+    auto browserY = (getHeight() - browserHeight) / 2;
+
+    if (presetBrowserPanel.getWidth() > 0 && presetBrowserPanel.getHeight() > 0)
+    {
+        browserX = presetBrowserPanel.getX();
+        browserY = presetBrowserPanel.getY();
+    }
+
+    browserX = juce::jlimit(8, juce::jmax(8, getWidth() - browserWidth - 8), browserX);
+    browserY = juce::jlimit(8, juce::jmax(8, getHeight() - browserHeight - 8), browserY);
+    presetBrowserPanel.setBounds(browserX, browserY, browserWidth, browserHeight);
+
+    auto browserArea = presetBrowserPanel.getLocalBounds().reduced(10);
+    presetBrowserTitle.setBounds(browserArea.removeFromTop(24));
+    browserArea.removeFromTop(6);
+
+    auto filterRow = browserArea.removeFromTop(26);
+    presetScopeBox.setBounds(filterRow.removeFromLeft(120));
+    filterRow.removeFromLeft(6);
+    presetCategoryBox.setBounds(filterRow.removeFromLeft(170));
+    filterRow.removeFromLeft(6);
+    presetSearchEditor.setBounds(filterRow);
+
+    browserArea.removeFromTop(6);
+    auto footer = browserArea.removeFromBottom(74);
+    presetListBox.setBounds(browserArea.removeFromLeft(browserArea.getWidth() * 2 / 3));
+    browserArea.removeFromLeft(8);
+    presetBrowserDetails.setBounds(browserArea);
+
+    auto footerRight = footer.removeFromRight(190);
+    presetBrowserLoadButton.setBounds(footerRight.removeFromLeft(90));
+    footerRight.removeFromLeft(10);
+    presetBrowserCloseButton.setBounds(footerRight.removeFromLeft(90));
 }
 
 void SynthProjectAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 {
+    if (presetBrowserVisible)
+    {
+        const auto mousePos = event.getPosition();
+        if (!presetBrowserPanel.getBounds().contains(mousePos))
+        {
+            closePresetBrowser();
+        }
+
+        if (presetBrowserPanel.getBounds().contains(mousePos))
+        {
+            const auto local = mousePos - presetBrowserPanel.getPosition();
+            if (juce::Rectangle<int>(0, 0, presetBrowserPanel.getWidth(), 30).contains(local))
+            {
+                presetBrowserDragging = true;
+                presetBrowserDragOffset = local;
+            }
+            presetBrowserPanel.toFront(false);
+        }
+        return;
+    }
+
     const auto point = event.getPosition();
     const auto sectionId = fxSectionAtPoint(point);
     if (sectionId < 0)
@@ -1131,6 +1467,22 @@ void SynthProjectAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 
 void SynthProjectAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
 {
+    if (presetBrowserVisible)
+    {
+        if (presetBrowserDragging)
+        {
+            auto newTopLeft = event.getPosition() - presetBrowserDragOffset;
+            const auto margin = 8;
+            const auto maxX = getWidth() - presetBrowserPanel.getWidth() - margin;
+            const auto maxY = getHeight() - presetBrowserPanel.getHeight() - margin;
+            newTopLeft.x = juce::jlimit(margin, juce::jmax(margin, maxX), newTopLeft.x);
+            newTopLeft.y = juce::jlimit(margin, juce::jmax(margin, maxY), newTopLeft.y);
+            presetBrowserPanel.setTopLeftPosition(newTopLeft);
+            repaint();
+        }
+        return;
+    }
+
     if (draggingFxSection < 0)
     {
         return;
@@ -1176,6 +1528,13 @@ void SynthProjectAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
 
 void SynthProjectAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
 {
+    if (presetBrowserVisible)
+    {
+        juce::ignoreUnused(event);
+        presetBrowserDragging = false;
+        return;
+    }
+
     if (draggingFxSection < 0)
     {
         return;
@@ -1440,6 +1799,406 @@ void SynthProjectAudioProcessorEditor::moveFxSectionToSlot(int sectionId, int sl
 void SynthProjectAudioProcessorEditor::commitFxOrderToProcessor()
 {
     audioProcessor.setFxProcessingOrder(fxSectionOrder);
+}
+
+void SynthProjectAudioProcessorEditor::rebuildPresetFilteredList()
+{
+    PresetManager::Query query;
+
+    switch (presetScopeBox.getSelectedId())
+    {
+        case 2:
+            query.includeFactory = true;
+            query.includeUser = false;
+            break;
+        case 3:
+            query.includeFactory = false;
+            query.includeUser = true;
+            break;
+        case 4:
+            query.favoritesOnly = true;
+            break;
+        default:
+            break;
+    }
+
+    query.category = presetCategoryBox.getText();
+    query.searchText = presetSearchEditor.getText();
+
+    presetFiltered = presetManager.queryPresets(query);
+    presetListBox.updateContent();
+    presetListBox.repaint();
+
+    if (hasCurrentPreset)
+    {
+        int row = -1;
+        for (int i = 0; i < static_cast<int>(presetFiltered.size()); ++i)
+        {
+            if (presetFiltered[static_cast<std::size_t>(i)].file == currentPreset.file)
+            {
+                row = i;
+                break;
+            }
+        }
+
+        if (row >= 0)
+        {
+            presetListBox.selectRow(row);
+        }
+    }
+
+    if (presetFiltered.empty())
+    {
+        presetBrowserDetails.setText("No presets match this filter.", juce::dontSendNotification);
+    }
+}
+
+void SynthProjectAudioProcessorEditor::refreshPresetNameDisplay()
+{
+    juce::String name = hasCurrentPreset ? currentPreset.metadata.name : juce::String("INIT");
+    if (currentPresetDirty)
+    {
+        name << "*";
+    }
+
+    presetNameButton.setButtonText(name);
+    presetFavoriteButton.setToggleState(hasCurrentPreset && currentPreset.isFavorite, juce::dontSendNotification);
+}
+
+void SynthProjectAudioProcessorEditor::applyPresetRecord(const PresetManager::PresetRecord& record)
+{
+    juce::String error;
+    if (!presetManager.loadPreset(record, error))
+    {
+        showPresetError("Preset Load Failed", error);
+        return;
+    }
+
+    hasCurrentPreset = true;
+    currentPreset = record;
+    loadedStateHash = computeCurrentStateHash();
+    currentPresetDirty = false;
+    refreshPresetNameDisplay();
+    repaint();
+}
+
+void SynthProjectAudioProcessorEditor::openPresetBrowser()
+{
+    presetBrowserBackdropSnapshot = createComponentSnapshot(getLocalBounds());
+    presetBrowserVisible = true;
+    presetBrowserDragging = false;
+    presetBrowserPanel.setVisible(true);
+    presetBrowserPanel.setAlwaysOnTop(true);
+    presetBrowserPanel.toFront(true);
+    rebuildPresetFilteredList();
+    repaint();
+}
+
+void SynthProjectAudioProcessorEditor::closePresetBrowser()
+{
+    presetBrowserVisible = false;
+    presetBrowserDragging = false;
+    presetBrowserPanel.setAlwaysOnTop(false);
+    presetBrowserPanel.setVisible(false);
+    presetBrowserBackdropSnapshot = {};
+    repaint();
+}
+
+void SynthProjectAudioProcessorEditor::showPresetError(const juce::String& title, const juce::String& message)
+{
+    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                                           title,
+                                           message,
+                                           "OK",
+                                           this);
+}
+
+void SynthProjectAudioProcessorEditor::savePreset(bool saveAs)
+{
+    if (!saveAs && hasCurrentPreset && !currentPreset.isFactory)
+    {
+        PresetManager::PresetMetadata metadata = currentPreset.metadata;
+        juce::String error;
+        juce::File outFile;
+        if (!presetManager.saveUserPreset(metadata, true, error, &outFile))
+        {
+            showPresetError("Save Failed", error);
+            return;
+        }
+
+        presetManager.refreshIndex();
+        rebuildPresetFilteredList();
+        if (const auto* record = presetManager.findByFile(outFile))
+        {
+            currentPreset = *record;
+            hasCurrentPreset = true;
+            loadedStateHash = computeCurrentStateHash();
+            currentPresetDirty = false;
+            refreshPresetNameDisplay();
+        }
+        return;
+    }
+
+    auto initialCategory = hasCurrentPreset ? currentPreset.metadata.category : juce::String("LEADS");
+    if (initialCategory.trim().isEmpty())
+    {
+        initialCategory = "LEADS";
+    }
+
+    auto defaultDir = presetManager.getUserPresetRootDir().getChildFile(initialCategory.toUpperCase());
+    if (!defaultDir.exists())
+    {
+        defaultDir.createDirectory();
+    }
+
+    auto defaultName = hasCurrentPreset ? currentPreset.metadata.name : juce::String("New Preset");
+    auto chooser = std::make_shared<juce::FileChooser>("Save P(X3) preset",
+                                                        defaultDir.getChildFile(defaultName + ".px3preset"),
+                                                        "*.px3preset");
+
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
+                         [this, chooser](const juce::FileChooser& fc)
+                         {
+                             auto destination = fc.getResult();
+                             if (destination == juce::File())
+                             {
+                                 return;
+                             }
+
+                             if (!destination.hasFileExtension(".px3preset"))
+                             {
+                                 destination = destination.withFileExtension(".px3preset");
+                             }
+
+                             PresetManager::PresetMetadata metadata;
+                             metadata.name = destination.getFileNameWithoutExtension();
+                             metadata.category = destination.getParentDirectory().getFileName();
+                             metadata.author = hasCurrentPreset ? currentPreset.metadata.author : juce::String();
+                             metadata.description = hasCurrentPreset ? currentPreset.metadata.description : juce::String();
+
+                             bool overwrite = destination.existsAsFile();
+                             if (overwrite)
+                             {
+                                 const auto proceed = juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::WarningIcon,
+                                                                                            "Overwrite Preset?",
+                                                                                            "A preset with this name already exists. Overwrite it?",
+                                                                                            "Overwrite",
+                                                                                            "Cancel",
+                                                                                            this,
+                                                                                            nullptr);
+                                 if (!proceed)
+                                 {
+                                     return;
+                                 }
+                             }
+
+                             juce::String error;
+                             juce::File outFile;
+                             if (!presetManager.saveUserPreset(metadata, overwrite, error, &outFile))
+                             {
+                                 showPresetError("Save Failed", error);
+                                 return;
+                             }
+
+                             presetManager.refreshIndex();
+                             rebuildPresetFilteredList();
+                             if (const auto* record = presetManager.findByFile(outFile))
+                             {
+                                 currentPreset = *record;
+                                 hasCurrentPreset = true;
+                                 loadedStateHash = computeCurrentStateHash();
+                                 currentPresetDirty = false;
+                                 refreshPresetNameDisplay();
+                             }
+                         });
+}
+
+void SynthProjectAudioProcessorEditor::deleteCurrentPreset()
+{
+    if (!hasCurrentPreset)
+    {
+        return;
+    }
+
+    if (currentPreset.isFactory || currentPreset.metadata.name.equalsIgnoreCase("INIT"))
+    {
+        showPresetError("Delete Not Allowed", "Factory and INIT presets cannot be deleted.");
+        return;
+    }
+
+    auto ok = juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::WarningIcon,
+                                                  "Delete Preset",
+                                                  "Delete \"" + currentPreset.metadata.name + "\"?",
+                                                  "Delete",
+                                                  "Cancel",
+                                                  this,
+                                                  nullptr);
+    if (!ok)
+    {
+        return;
+    }
+
+    juce::String error;
+    if (!presetManager.deleteUserPreset(currentPreset, error))
+    {
+        showPresetError("Delete Failed", error);
+        return;
+    }
+
+    hasCurrentPreset = false;
+    currentPresetDirty = false;
+    loadedStateHash.clear();
+    presetManager.refreshIndex();
+    rebuildPresetFilteredList();
+    refreshPresetNameDisplay();
+}
+
+void SynthProjectAudioProcessorEditor::importPreset()
+{
+    auto chooser = std::make_shared<juce::FileChooser>("Import P(X3) preset",
+                                                        juce::File(),
+                                                        "*.px3preset");
+    chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                         [this, chooser](const juce::FileChooser& fc)
+                         {
+                             const auto file = fc.getResult();
+                             if (!file.existsAsFile())
+                             {
+                                 return;
+                             }
+
+                             PresetManager::PresetRecord imported;
+                             juce::String error;
+                             if (!presetManager.importPreset(file, error, &imported))
+                             {
+                                 showPresetError("Import Failed", error);
+                                 return;
+                             }
+
+                             rebuildPresetFilteredList();
+                             applyPresetRecord(imported);
+                         });
+}
+
+void SynthProjectAudioProcessorEditor::exportCurrentPreset()
+{
+    if (!hasCurrentPreset)
+    {
+        return;
+    }
+
+    auto chooser = std::make_shared<juce::FileChooser>("Export P(X3) preset",
+                                                        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+                                                            .getChildFile(currentPreset.metadata.name + ".px3preset"),
+                                                        "*.px3preset");
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
+                         [this, chooser](const juce::FileChooser& fc)
+                         {
+                             auto destination = fc.getResult();
+                             if (destination == juce::File())
+                             {
+                                 return;
+                             }
+
+                             if (!destination.hasFileExtension(".px3preset"))
+                             {
+                                 destination = destination.withFileExtension(".px3preset");
+                             }
+
+                             juce::String error;
+                             if (!presetManager.exportPreset(currentPreset, destination, error))
+                             {
+                                 showPresetError("Export Failed", error);
+                             }
+                         });
+}
+
+juce::String SynthProjectAudioProcessorEditor::computeCurrentStateHash() const
+{
+    auto state = audioProcessor.createParameterStateTree();
+    auto xml = state.createXml();
+    if (xml == nullptr)
+    {
+        return {};
+    }
+
+    const auto text = xml->toString();
+    return juce::String::toHexString(static_cast<juce::int64>(text.hashCode64()));
+}
+
+void SynthProjectAudioProcessorEditor::updatePresetDirtyState()
+{
+    if (!hasCurrentPreset)
+    {
+        return;
+    }
+
+    const auto currentHash = computeCurrentStateHash();
+    const auto dirty = loadedStateHash.isNotEmpty() && currentHash != loadedStateHash;
+    if (dirty != currentPresetDirty)
+    {
+        currentPresetDirty = dirty;
+        refreshPresetNameDisplay();
+    }
+}
+
+int SynthProjectAudioProcessorEditor::getNumRows()
+{
+    return static_cast<int>(presetFiltered.size());
+}
+
+void SynthProjectAudioProcessorEditor::paintListBoxItem(int rowNumber,
+                                                        juce::Graphics& g,
+                                                        int width,
+                                                        int height,
+                                                        bool rowIsSelected)
+{
+    g.fillAll(rowIsSelected ? juce::Colour::fromRGBA(76, 120, 184, 170)
+                            : juce::Colour::fromRGBA(0, 0, 0, 0));
+
+    if (rowNumber < 0 || rowNumber >= static_cast<int>(presetFiltered.size()))
+    {
+        return;
+    }
+
+    const auto& item = presetFiltered[static_cast<std::size_t>(rowNumber)];
+    const auto favoritePrefix = item.isFavorite ? juce::String("★ ") : juce::String();
+    const auto sourcePrefix = item.isFactory ? juce::String("[F] ") : juce::String("[U] ");
+
+    g.setColour(juce::Colour::fromRGB(234, 234, 234));
+    g.setFont(juce::FontOptions(12.5f));
+    g.drawText(favoritePrefix + sourcePrefix + item.metadata.name,
+               6,
+               0,
+               width - 8,
+               height,
+               juce::Justification::centredLeft,
+               true);
+}
+
+void SynthProjectAudioProcessorEditor::selectedRowsChanged(int lastRowSelected)
+{
+    if (lastRowSelected < 0 || lastRowSelected >= static_cast<int>(presetFiltered.size()))
+    {
+        presetBrowserDetails.setText("", juce::dontSendNotification);
+        return;
+    }
+
+    const auto& preset = presetFiltered[static_cast<std::size_t>(lastRowSelected)];
+    juce::String details;
+    details << "Name: " << preset.metadata.name << "\n";
+    details << "Category: " << preset.metadata.category << "\n";
+    details << "Source: " << (preset.isFactory ? "Factory" : "User") << "\n";
+    if (preset.metadata.author.isNotEmpty())
+    {
+        details << "Author: " << preset.metadata.author << "\n";
+    }
+    if (preset.metadata.description.isNotEmpty())
+    {
+        details << "\n" << preset.metadata.description;
+    }
+
+    presetBrowserDetails.setText(details, juce::dontSendNotification);
 }
 
 void SynthProjectAudioProcessorEditor::refreshOscillatorModeUI()
@@ -1830,6 +2589,18 @@ void SynthProjectAudioProcessorEditor::timerCallback()
                                            audioProcessor.copyModWheelNormalized(),
                                            audioProcessor.copyPitchBendActivity(),
                                            audioProcessor.copyModWheelActivity());
+
+    if (++dirtyUpdateCounter >= 5)
+    {
+        dirtyUpdateCounter = 0;
+        updatePresetDirtyState();
+    }
+
+    if (presetBrowserVisible)
+    {
+        presetBrowserPanel.setAlwaysOnTop(true);
+        presetBrowserPanel.toFront(false);
+    }
 
     if (logoVibrationIntensity > 0.001f || anyKeyDown)
     {

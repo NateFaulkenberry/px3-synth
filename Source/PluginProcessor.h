@@ -136,6 +136,9 @@ public:
     float copyCurrentAudioPosition() const;
     bool hasLoadedAudio() const;
 
+    juce::ValueTree createParameterStateTree() const;
+    bool applyParameterStateTree(const juce::ValueTree& state, juce::String* error = nullptr);
+
 private:
     struct Grain
     {

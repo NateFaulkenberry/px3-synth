@@ -50,6 +50,7 @@ target_sources(SynthProject
         Source/ImageEnginePanel.cpp
         Source/PerformanceControls.cpp
         Source/PianoKeyboard.cpp
+        Source/PresetManager.cpp
         Source/PluginEditor.cpp
         Source/PluginProcessor.cpp
     Source/SourceEnginePanel.cpp

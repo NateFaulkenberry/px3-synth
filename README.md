@@ -3,6 +3,7 @@
 P(X3) is a polyphonic JUCE synthesizer with a multi-mode oscillator, source engines (image/audio), and reorderable FX (Harmonic Drive, Delay, Reverb). This README is a full operating guide for new users and a function-level map for developers.
 
 For dedicated build/install/release workflow documentation, see `docs/BUILDING.md`.
+For preset system format and storage details, see `docs/PRESETS.md`.
 
 ## What You Get
 

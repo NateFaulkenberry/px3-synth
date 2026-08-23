@@ -2274,6 +2274,36 @@ juce::AudioProcessorEditor* SynthProjectAudioProcessor::createEditor()
 
 void SynthProjectAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
+    auto state = createParameterStateTree();
+
+    if (auto xml = state.createXml())
+    {
+        copyXmlToBinary(*xml, destData);
+    }
+}
+
+void SynthProjectAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+{
+    const auto xml = getXmlFromBinary(data, sizeInBytes);
+
+    if (xml == nullptr)
+    {
+        return;
+    }
+
+    const auto state = juce::ValueTree::fromXml(*xml);
+
+    if (!state.isValid())
+    {
+        return;
+    }
+
+    juce::String ignoredError;
+    applyParameterStateTree(state, &ignoredError);
+}
+
+juce::ValueTree SynthProjectAudioProcessor::createParameterStateTree() const
+{
     juce::ValueTree state("PX3_STATE");
 
     for (auto* parameter : getParameters())
@@ -2298,26 +2328,18 @@ void SynthProjectAudioProcessor::getStateInformation(juce::MemoryBlock& destData
                           nullptr);
     }
 
-    if (auto xml = state.createXml())
-    {
-        copyXmlToBinary(*xml, destData);
-    }
+    return state;
 }
 
-void SynthProjectAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& state, juce::String* error)
 {
-    const auto xml = getXmlFromBinary(data, sizeInBytes);
-
-    if (xml == nullptr)
+    if (!state.isValid() || state.getType().toString() != "PX3_STATE")
     {
-        return;
-    }
-
-    const auto state = juce::ValueTree::fromXml(*xml);
-
-    if (!state.isValid())
-    {
-        return;
+        if (error != nullptr)
+        {
+            *error = "State tree is invalid or has unexpected type.";
+        }
+        return false;
     }
 
     for (auto* parameter : getParameters())
@@ -2383,6 +2405,13 @@ void SynthProjectAudioProcessor::setStateInformation(const void* data, int sizeI
             }
         }
     }
+
+    if (error != nullptr)
+    {
+        error->clear();
+    }
+
+    return true;
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

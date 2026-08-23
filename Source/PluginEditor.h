@@ -7,17 +7,20 @@
 
 #include "PerformanceControls.h"
 #include "PianoKeyboard.h"
+#include "PresetManager.h"
 #include "PluginProcessor.h"
 #include "SourceEnginePanel.h"
 
 class SynthProjectAudioProcessorEditor final : public juce::AudioProcessorEditor,
-                                              private juce::Timer
+                                              private juce::Timer,
+                                              private juce::ListBoxModel
 {
 public:
     explicit SynthProjectAudioProcessorEditor(SynthProjectAudioProcessor&);
     ~SynthProjectAudioProcessorEditor() override;
 
     void paint(juce::Graphics&) override;
+    void paintOverChildren(juce::Graphics&) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
@@ -44,6 +47,23 @@ private:
         void paint(juce::Graphics& g) override;
     };
 
+    class PresetBrowserPanelComponent final : public juce::Component
+    {
+    public:
+        void paint(juce::Graphics& g) override
+        {
+            const auto panel = getLocalBounds().toFloat();
+            g.setColour(juce::Colour::fromRGBA(24, 24, 24, 246));
+            g.fillRoundedRectangle(panel, 10.0f);
+
+            g.setColour(juce::Colour::fromRGBA(255, 255, 255, 18));
+            g.fillRoundedRectangle(panel.withTrimmedBottom(panel.getHeight() * 0.58f), 10.0f);
+
+            g.setColour(juce::Colour::fromRGBA(138, 188, 255, 180));
+            g.drawRoundedRectangle(panel, 10.0f, 1.0f);
+        }
+    };
+
     struct KnobBinding
     {
         juce::Slider* slider { nullptr };
@@ -66,6 +86,25 @@ private:
     int fxSectionAtPoint(juce::Point<int> point) const;
     void moveFxSectionToSlot(int sectionId, int slotIndex);
     void commitFxOrderToProcessor();
+    void rebuildPresetFilteredList();
+    void refreshPresetNameDisplay();
+    void applyPresetRecord(const PresetManager::PresetRecord& record);
+    void openPresetBrowser();
+    void closePresetBrowser();
+    void showPresetError(const juce::String& title, const juce::String& message);
+    void savePreset(bool saveAs);
+    void deleteCurrentPreset();
+    void importPreset();
+    void exportCurrentPreset();
+    void updatePresetDirtyState();
+    juce::String computeCurrentStateHash() const;
+    int getNumRows() override;
+    void paintListBoxItem(int rowNumber,
+                          juce::Graphics& g,
+                          int width,
+                          int height,
+                          bool rowIsSelected) override;
+    void selectedRowsChanged(int lastRowSelected) override;
     void layoutKnobGroup(const juce::Rectangle<int>& groupArea,
                          int startIndex,
                          int knobCount,
@@ -95,6 +134,7 @@ private:
     juce::Rectangle<int> controlsArea;
     juce::Rectangle<int> logoPanelArea;
     juce::Rectangle<int> headerPlaceholderArea;
+    juce::Rectangle<int> presetBarArea;
     juce::Rectangle<int> robSectionArea;
     juce::Rectangle<int> isaacSectionArea;
     juce::Rectangle<int> reverbSectionArea;
@@ -163,6 +203,38 @@ private:
     juce::ToggleButton robBypassButton;
     juce::ToggleButton delayBypassButton;
     juce::ToggleButton reverbBypassButton;
+
+    PresetManager presetManager;
+    std::vector<PresetManager::PresetRecord> presetFiltered;
+    PresetManager::PresetRecord currentPreset;
+    bool hasCurrentPreset { false };
+    bool currentPresetDirty { false };
+    juce::String loadedStateHash;
+    int dirtyUpdateCounter { 0 };
+
+    juce::TextButton presetPrevButton;
+    juce::TextButton presetNameButton;
+    juce::TextButton presetNextButton;
+    juce::ToggleButton presetFavoriteButton;
+    juce::TextButton presetSaveButton;
+    juce::TextButton presetSaveAsButton;
+    juce::TextButton presetDeleteButton;
+    juce::TextButton presetImportButton;
+    juce::TextButton presetExportButton;
+
+    PresetBrowserPanelComponent presetBrowserPanel;
+    juce::Label presetBrowserTitle;
+    juce::TextEditor presetSearchEditor;
+    juce::ComboBox presetScopeBox;
+    juce::ComboBox presetCategoryBox;
+    juce::ListBox presetListBox;
+    juce::TextButton presetBrowserLoadButton;
+    juce::TextButton presetBrowserCloseButton;
+    juce::Label presetBrowserDetails;
+    bool presetBrowserVisible { false };
+    bool presetBrowserDragging { false };
+    juce::Point<int> presetBrowserDragOffset;
+    juce::Image presetBrowserBackdropSnapshot;
 
     std::array<KnobBinding, 10> knobBindings {};
     int lastOscModeIndex { -1 };
