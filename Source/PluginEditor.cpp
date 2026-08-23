@@ -588,12 +588,13 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     addAndMakeVisible(delayBypassButton);
     addAndMakeVisible(reverbBypassButton);
 
-    midiStatusLabel.setText("MIDI In: waiting for note...", juce::dontSendNotification);
-    midiStatusLabel.setJustificationType(juce::Justification::centred);
-    midiStatusLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(236, 172, 88));
-    midiStatusLabel.setFont(juce::FontOptions(14.0f));
-    midiStatusLabel.setInterceptsMouseClicks(false, false);
-    addAndMakeVisible(midiStatusLabel);
+    // MIDI status bar is temporarily disabled.
+    // midiStatusLabel.setText("MIDI In: waiting for note...", juce::dontSendNotification);
+    // midiStatusLabel.setJustificationType(juce::Justification::centred);
+    // midiStatusLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(236, 172, 88));
+    // midiStatusLabel.setFont(juce::FontOptions(14.0f));
+    // midiStatusLabel.setInterceptsMouseClicks(false, false);
+    // addAndMakeVisible(midiStatusLabel);
 
     const auto setupPresetButton = [](juce::TextButton& button)
     {
@@ -623,6 +624,7 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     presetFavoriteButton.setButtonText("★");
     presetFavoriteButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(230, 230, 230));
     presetFavoriteButton.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(250, 210, 70));
+    presetFavoriteButton.setTooltip("Add to Favorites");
 
     presetPrevButton.onClick = [this]()
     {
@@ -1285,7 +1287,7 @@ void SynthProjectAudioProcessorEditor::resized()
 
     const auto headerHeight = juce::jlimit(170, 260, getHeight() / 3);
     const auto controlsHeight = juce::jlimit(170, 260, getHeight() / 3);
-    const auto statusHeight = 36;
+    // const auto statusHeight = 36;
     const auto sectionGap = 10;
 
     headerArea = bounds.removeFromTop(headerHeight);
@@ -1307,8 +1309,6 @@ void SynthProjectAudioProcessorEditor::resized()
     auto presetLayout = presetRow;
     presetPrevButton.setBounds(presetLayout.removeFromLeft(26));
     presetLayout.removeFromLeft(4);
-    presetNextButton.setBounds(presetLayout.removeFromRight(26));
-    presetLayout.removeFromRight(4);
     presetExportButton.setBounds(presetLayout.removeFromRight(74));
     presetLayout.removeFromRight(4);
     presetImportButton.setBounds(presetLayout.removeFromRight(74));
@@ -1318,8 +1318,10 @@ void SynthProjectAudioProcessorEditor::resized()
     presetSaveAsButton.setBounds(presetLayout.removeFromRight(84));
     presetLayout.removeFromRight(4);
     presetSaveButton.setBounds(presetLayout.removeFromRight(64));
-    presetLayout.removeFromRight(6);
+    presetLayout.removeFromRight(4);
     presetFavoriteButton.setBounds(presetLayout.removeFromRight(28));
+    presetLayout.removeFromRight(4);
+    presetNextButton.setBounds(presetLayout.removeFromRight(26));
     presetLayout.removeFromRight(8);
     presetNameButton.setBounds(presetLayout);
 
@@ -1328,9 +1330,9 @@ void SynthProjectAudioProcessorEditor::resized()
     bounds.removeFromTop(sectionGap);
 
     controlsArea = bounds.removeFromTop(controlsHeight);
-    bounds.removeFromTop(sectionGap);
-    midiStatusArea = bounds.removeFromBottom(statusHeight);
-    bounds.removeFromBottom(sectionGap);
+    // bounds.removeFromTop(sectionGap);
+    // midiStatusArea = bounds.removeFromBottom(statusHeight);
+    // bounds.removeFromBottom(sectionGap);
 
     auto keyboardRow = bounds.reduced(4, 0);
     const auto perfWidth = juce::jlimit(112, 190, keyboardRow.getWidth() / 8);
@@ -1338,7 +1340,7 @@ void SynthProjectAudioProcessorEditor::resized()
 
     performanceControls.setBounds(performanceControlsArea);
     pianoKeyboard.setBounds(keyboardRow);
-    midiStatusLabel.setBounds(midiStatusArea.withTrimmedLeft(180).withTrimmedRight(180));
+    // midiStatusLabel.setBounds(midiStatusArea.withTrimmedLeft(180).withTrimmedRight(180));
 
     const auto groupGap = 24;
     auto groupsSpan = controlsArea.reduced(8, 8);
@@ -2560,8 +2562,8 @@ void SynthProjectAudioProcessorEditor::timerCallback()
     }
     repaint(knobGroupAreas[0].expanded(4));
 
+    // MIDI status bar is temporarily disabled.
     const auto latestStatus = audioProcessor.copyMidiStatus();
-
     if (latestStatus.noteNumber != midiStatus.noteNumber
         || latestStatus.velocity != midiStatus.velocity
         || latestStatus.noteOn != midiStatus.noteOn)
@@ -2572,15 +2574,6 @@ void SynthProjectAudioProcessorEditor::timerCallback()
             const auto velNorm = juce::jlimit(0.0f, 1.0f, static_cast<float>(midiStatus.velocity) / 127.0f);
             logoVibrationIntensity = juce::jmax(logoVibrationIntensity, velNorm);
         }
-        const auto stateText = midiStatus.noteOn ? "Note On" : "Note Off";
-        const auto statusText = midiStatus.noteNumber >= 0
-                                    ? juce::String("MIDI In: ") + stateText
-                                          + "  Note " + noteNameForMidi(midiStatus.noteNumber)
-                                          + " (" + juce::String(midiStatus.noteNumber) + ")"
-                                          + "  Velocity " + juce::String(midiStatus.velocity)
-                                    : juce::String("MIDI In: waiting for note...");
-        midiStatusLabel.setText(statusText, juce::dontSendNotification);
-        repaint();
     }
 
     refreshAnyKeyDownState();
