@@ -1140,8 +1140,25 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
         {
             const auto idx = juce::jlimit(0, 6, filterTypeBox.getSelectedItemIndex());
 
-            auto graphLabelArea = labelArea;
-            auto graphRect = graphLabelArea.removeFromRight(54).reduced(2, 3).toFloat();
+            const auto cutoffBounds = cutoffKnob.getBounds().toFloat();
+            const auto resonanceBounds = resonanceKnob.getBounds().toFloat();
+            const auto dropdownBounds = filterTypeBox.getBounds().toFloat();
+
+            const auto knobBottom = juce::jmax(cutoffBounds.getBottom(), resonanceBounds.getBottom());
+            const auto knobCenterX = (cutoffBounds.getCentreX() + resonanceBounds.getCentreX()) * 0.5f;
+            const auto graphWidth = juce::jmin(56.0f, panelFloat.getWidth() - 20.0f);
+            const auto graphHeight = 22.0f;
+
+            const auto minY = knobBottom + 6.0f;
+            const auto maxY = dropdownBounds.getY() - graphHeight - 4.0f;
+            const auto graphY = (maxY >= minY)
+                                    ? juce::jlimit(minY, maxY, minY + (maxY - minY) * 0.4f)
+                                    : minY;
+            const auto liftedGraphY = juce::jmax(panelFloat.getY() + 30.0f, graphY - 15.0f);
+            const auto graphX = juce::jlimit(panelFloat.getX() + 8.0f,
+                                             panelFloat.getRight() - graphWidth - 8.0f,
+                                             knobCenterX - graphWidth * 0.5f);
+            auto graphRect = juce::Rectangle<float>(graphX, liftedGraphY, graphWidth, graphHeight);
             g.setColour(juce::Colour::fromRGBA(20, 20, 20, 140));
             g.fillRoundedRectangle(graphRect, 4.0f);
             g.setColour(juce::Colour::fromRGBA(255, 255, 255, 70));
@@ -1268,8 +1285,9 @@ void SynthProjectAudioProcessorEditor::resized()
 {
     auto bounds = getLocalBounds().reduced(16);
 
-    const auto headerHeight = juce::jlimit(170, 260, getHeight() / 3);
-    const auto controlsHeight = juce::jlimit(170, 260, getHeight() / 3);
+    const auto headerHeight = juce::jlimit(210, 320, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.40)));
+    const auto controlsHeight = juce::jlimit(150, 270, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.34)));
+    const auto keyboardHeight = juce::jlimit(106, 144, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.15)));
     // const auto statusHeight = 36;
     const auto sectionGap = 10;
 
@@ -1280,9 +1298,9 @@ void SynthProjectAudioProcessorEditor::resized()
                               juce::jmax(0, headerArea.getRight() - (logoPanelArea.getRight() + 12)),
                               headerArea.getHeight() };
 
-    auto topArea = headerPlaceholderArea.reduced(4, 4);
-    auto presetRow = topArea.removeFromTop(30);
-    topArea.removeFromTop(6);
+    auto topArea = headerPlaceholderArea.reduced(4, 2);
+    auto presetRow = topArea.removeFromTop(28);
+    topArea.removeFromTop(4);
     const auto topGap = 8;
     updateFxSectionTargets(topArea, topGap);
     layoutFxSectionsFromCurrentAreas();
@@ -1308,11 +1326,12 @@ void SynthProjectAudioProcessorEditor::resized()
     presetLayout.removeFromRight(8);
     presetNameButton.setBounds(presetLayout);
 
-    sourceEnginePanel.setBounds(topSpareSectionArea.reduced(2));
+    sourceEnginePanel.setBounds(topSpareSectionArea.reduced(1));
 
     bounds.removeFromTop(sectionGap);
 
-    controlsArea = bounds.removeFromTop(controlsHeight);
+    const auto desiredControlsHeight = juce::jmax(controlsHeight, bounds.getHeight() - keyboardHeight);
+    controlsArea = bounds.removeFromTop(juce::jlimit(0, bounds.getHeight(), desiredControlsHeight));
     // bounds.removeFromTop(sectionGap);
     // midiStatusArea = bounds.removeFromBottom(statusHeight);
     // bounds.removeFromBottom(sectionGap);
