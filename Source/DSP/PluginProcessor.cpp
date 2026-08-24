@@ -8,7 +8,6 @@
 namespace
 {
 constexpr double kMaxIsaacDelaySeconds = 4.0;
-constexpr double kMaxMoonDelaySeconds = 0.35;
 constexpr int kCurrentStateVersion = 4;
 
 const juce::Identifier kStateTypeId("PX3_STATE");
@@ -2411,15 +2410,6 @@ void PX3SynthAudioProcessor::prepareReverbEngine(double sampleRate)
     reverbWetDcY1 = { { 0.0f, 0.0f } };
     reverbWetSlewState = { { 0.0f, 0.0f } };
 
-    moonBufferSize = juce::jmax(1, static_cast<int>(std::ceil(currentSampleRateHz * kMaxMoonDelaySeconds)));
-    moonWritePos = 0;
-    moonPhase = 0.0f;
-
-    for (auto& channelBuffer : moonDelayBuffer)
-    {
-        channelBuffer.assign(static_cast<std::size_t>(moonBufferSize), 0.0f);
-    }
-
     const auto maxPreDelaySamples = juce::jmax(8, static_cast<int>(std::round(currentSampleRateHz * 0.30)));
     for (auto& line : reverbPreDelayLines)
     {
@@ -3518,27 +3508,6 @@ void PX3SynthAudioProcessor::processDelayAlgorithmSample(float inL,
 
     outL = inL * dryMix + wetL * wetMix;
     outR = inR * dryMix + wetR * wetMix;
-}
-
-float PX3SynthAudioProcessor::readMoonDelaySample(int channel, float readPos) const
-{
-    const auto& buffer = moonDelayBuffer[static_cast<std::size_t>(channel)];
-    auto rp = readPos;
-
-    while (rp < 0.0f)
-    {
-        rp += static_cast<float>(moonBufferSize);
-    }
-    while (rp >= static_cast<float>(moonBufferSize))
-    {
-        rp -= static_cast<float>(moonBufferSize);
-    }
-
-    const auto i0 = static_cast<int>(rp) % moonBufferSize;
-    const auto i1 = (i0 + 1) % moonBufferSize;
-    const auto frac = rp - static_cast<float>(i0);
-    return buffer[static_cast<std::size_t>(i0)]
-           + (buffer[static_cast<std::size_t>(i1)] - buffer[static_cast<std::size_t>(i0)]) * frac;
 }
 
 void PX3SynthAudioProcessor::resizeReverbLine(ReverbDelayLine& line, int size)

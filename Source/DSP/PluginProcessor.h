@@ -289,7 +289,6 @@ private:
     float sanitizeAudioSample(float x) const;
     float readDelaySample(int channel, float readPos) const;
     void processReverbSampleFrame(float inL, float inR, float amount, int algorithmIndex, float& outL, float& outR);
-    float readMoonDelaySample(int channel, float readPos) const;
     void resizeReverbLine(ReverbDelayLine& line, int size);
     float readReverbLine(const ReverbDelayLine& line, float delaySamples) const;
     void writeReverbLine(ReverbDelayLine& line, float sample);
@@ -448,7 +447,6 @@ private:
     std::array<Grain, maxGrains> isaacGrains {};
 
     juce::Reverb reverb;
-    std::array<std::vector<float>, 2> moonDelayBuffer;
     std::array<ReverbDelayLine, 2> reverbPreDelayLines;
     std::array<ReverbDelayLine, 6> plateLines;
     std::array<ReverbDelayLine, 8> hallLines;
@@ -478,9 +476,6 @@ private:
     float delayModPhase { 0.0f };
     int lastDelayAlgorithmIndex { -1 };
     int lastGranularModeIndex { -1 };
-    int moonBufferSize { 1 };
-    int moonWritePos { 0 };
-    float moonPhase { 0.0f };
     float reverbOutputCompGain { 1.0f };
     std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
     std::atomic<uint32_t> fxOrderRevision { 0u };

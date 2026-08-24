@@ -545,7 +545,7 @@ Notable mode helpers:
 - `processIsaacGranularSample` / `spawnIsaacGrain`
   - Granular-delay grain lifecycle.
 - `processReverbSampleFrame`
-  - Reverb frame processing, including Moon reflections.
+  - Reverb frame processing.
 - `getFxProcessingOrder` / `setFxProcessingOrder`
   - Sanitized user order storage and retrieval.
 
