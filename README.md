@@ -63,7 +63,7 @@ Create a GitHub Release from that tag to publish release notes and artifacts.
 
 ```bash
 git clone <your-repo-url>
-cd synth-plug
+cd px3-synth
 cmake -B build -G Ninja
 cmake --build build
 ./scripts/run-standalone.sh
