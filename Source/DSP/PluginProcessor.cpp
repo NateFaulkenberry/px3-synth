@@ -256,14 +256,12 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     lfoGenerator.setSettings(currentLfoSettings());
     const auto sr = static_cast<float>(juce::jmax(1.0, sampleRate));
     constexpr float delayControlTauSec = 0.008f;
-    constexpr float reverbAmountTauSec = 0.020f;
     delayControlSmoothingCoeff = 1.0f - std::exp(-1.0f / (sr * delayControlTauSec));
-    reverbAmountSmoothingCoeff = 1.0f - std::exp(-1.0f / (sr * reverbAmountTauSec));
     delayAmountSmoothed = clamp01(delayAmountParam->get());
     delayTimeControlSmoothed = clamp01(delayTimeParam->get());
     delayFeedbackControlSmoothed = clamp01(delayFeedbackParam->get());
-    reverbAmountSmoothed = reverbEnabledParam->get() ? clamp01(reverbAmountParam->get()) : 0.0f;
     vibeComponent.prepare(sampleRate, synth.getNumVoices(), vibeComponent.getSeed());
+    reverbComponent.prepare(sampleRate);
 
     const auto envelope = currentEnvelopeSettings();
     const auto filter = currentFilterSettings();
@@ -282,9 +280,6 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
             voice->setOscillatorSettings(oscillator);
         }
     }
-
-    prepareReverbEngine(sampleRate);
-
     juce::ignoreUnused(samplesPerBlock);
 }
 
@@ -409,10 +404,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     const auto delayFeedbackControl = applyLfoToNormalizedValue(delayFeedbackParam,
                                                                 static_cast<juce::RangedAudioParameter*>(delayFeedbackParam)->getValue(),
                                                                 blockLfoSignal);
-    const auto reverbAmountBase = applyLfoToNormalizedValue(reverbAmountParam,
-                                                            static_cast<juce::RangedAudioParameter*>(reverbAmountParam)->getValue(),
-                                                            blockLfoSignal);
-    const auto reverbEnabled = reverbEnabledParam->get();
+    reverbComponent.updateForBlock(currentReverbSettings(), buffer.getNumSamples());
     const auto fxOrder = getFxProcessingOrder();
 
     if (delayAlgorithmIndex != lastDelayAlgorithmIndex
@@ -432,9 +424,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             grain.active = false;
         }
     }
-    const auto reverbAlgorithmIndex = reverbAlgorithmParam->getIndex();
     const auto delayAmount = clamp01(delayAmountBase);
-    const auto reverbAmount = clamp01(reverbAmountBase);
 
     const auto blockPhaseAdvance = juce::MathConstants<float>::twoPi * vibratoRateHz
                                    * (static_cast<float>(buffer.getNumSamples()) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));
@@ -449,16 +439,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     pitchBendActivity.store(pitchBendActivity.load(std::memory_order_relaxed) * activityDecay, std::memory_order_relaxed);
     modWheelActivity.store(modWheelActivity.load(std::memory_order_relaxed) * activityDecay, std::memory_order_relaxed);
 
-    double reverbPreEnergy = 0.0;
-    double reverbPostEnergy = 0.0;
-
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
-        const auto reverbAmountTarget = reverbEnabled ? reverbAmount : 0.0f;
-        const auto reverbSmoothCoeff = juce::jlimit(0.0001f, 1.0f, reverbAmountSmoothingCoeff);
-        reverbAmountSmoothed += reverbSmoothCoeff * (reverbAmountTarget - reverbAmountSmoothed);
-        const auto reverbAmountForSample = clamp01(reverbAmountSmoothed);
-
         auto stageL = buffer.getSample(0, sample);
         auto stageR = (buffer.getNumChannels() > 1) ? buffer.getSample(1, sample) : stageL;
 
@@ -489,17 +471,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                     break;
 
                 case 2: // Reverb
-                    if (reverbAmountForSample > 0.0001f)
-                    {
-                        const auto reverbInL = stageL;
-                        const auto reverbInR = stageR;
-                        processReverbSampleFrame(stageL, stageR, reverbAmountForSample, reverbAlgorithmIndex, stageL, stageR);
-
-                        reverbPreEnergy += 0.5 * (static_cast<double>(reverbInL) * static_cast<double>(reverbInL)
-                                                  + static_cast<double>(reverbInR) * static_cast<double>(reverbInR));
-                        reverbPostEnergy += 0.5 * (static_cast<double>(stageL) * static_cast<double>(stageL)
-                                                   + static_cast<double>(stageR) * static_cast<double>(stageR));
-                    }
+                    reverbComponent.processSampleFrame(stageL, stageR, stageL, stageR);
                     break;
 
                 default:
@@ -513,30 +485,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             buffer.setSample(1, sample, stageR);
         }
     }
-
-    if (reverbAmountSmoothed > 0.0001f && buffer.getNumSamples() > 0)
-    {
-        const auto invN = 1.0 / static_cast<double>(buffer.getNumSamples());
-        const auto preRms = static_cast<float>(std::sqrt(juce::jmax(1.0e-12, reverbPreEnergy * invN)));
-        const auto postRms = static_cast<float>(std::sqrt(juce::jmax(1.0e-12, reverbPostEnergy * invN)));
-        const auto rawComp = juce::jlimit(0.72f, 1.45f, preRms / juce::jmax(1.0e-5f, postRms));
-
-        const auto compBlend = smoothstep(clamp01(reverbAmountSmoothed));
-        const auto targetComp = 1.0f + (rawComp - 1.0f) * compBlend;
-        reverbOutputCompGain += 0.03f * (targetComp - reverbOutputCompGain);
-    }
-    else
-    {
-        reverbOutputCompGain += 0.02f * (1.0f - reverbOutputCompGain);
-    }
-
-    if (std::abs(reverbOutputCompGain - 1.0f) > 0.001f)
-    {
-        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
-        {
-            buffer.applyGain(channel, 0, buffer.getNumSamples(), reverbOutputCompGain);
-        }
-    }
+    reverbComponent.applyPostBlockCompensation(buffer);
 }
 
 bool PX3SynthAudioProcessor::hasEditor() const

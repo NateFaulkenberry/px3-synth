@@ -118,6 +118,45 @@ VibeSettings PX3SynthAudioProcessor::currentVibeSettings() const
     return settings;
 }
 
+ReverbSettings PX3SynthAudioProcessor::currentReverbSettings() const
+{
+    const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
+    ReverbSettings settings;
+    settings.enabled = reverbEnabledParam != nullptr && reverbEnabledParam->get();
+    settings.algorithmIndex = reverbAlgorithmParam != nullptr ? reverbAlgorithmParam->getIndex() : 0;
+    settings.amount = reverbAmountParam->convertFrom0to1(applyLfoToNormalizedValue(reverbAmountParam,
+                                                                                    static_cast<juce::RangedAudioParameter*>(reverbAmountParam)->getValue(),
+                                                                                    lfoSignal));
+    settings.size = reverbSizeParam->convertFrom0to1(applyLfoToNormalizedValue(reverbSizeParam,
+                                                                                static_cast<juce::RangedAudioParameter*>(reverbSizeParam)->getValue(),
+                                                                                lfoSignal));
+    settings.decay = reverbDecayParam->convertFrom0to1(applyLfoToNormalizedValue(reverbDecayParam,
+                                                                                  static_cast<juce::RangedAudioParameter*>(reverbDecayParam)->getValue(),
+                                                                                  lfoSignal));
+    settings.damping = reverbDampingParam->convertFrom0to1(applyLfoToNormalizedValue(reverbDampingParam,
+                                                                                      static_cast<juce::RangedAudioParameter*>(reverbDampingParam)->getValue(),
+                                                                                      lfoSignal));
+    settings.preDelay = reverbPreDelayParam->convertFrom0to1(applyLfoToNormalizedValue(reverbPreDelayParam,
+                                                                                        static_cast<juce::RangedAudioParameter*>(reverbPreDelayParam)->getValue(),
+                                                                                        lfoSignal));
+    settings.modDepth = reverbModDepthParam->convertFrom0to1(applyLfoToNormalizedValue(reverbModDepthParam,
+                                                                                        static_cast<juce::RangedAudioParameter*>(reverbModDepthParam)->getValue(),
+                                                                                        lfoSignal));
+    settings.modRate = reverbModRateParam->convertFrom0to1(applyLfoToNormalizedValue(reverbModRateParam,
+                                                                                      static_cast<juce::RangedAudioParameter*>(reverbModRateParam)->getValue(),
+                                                                                      lfoSignal));
+    settings.width = reverbWidthParam->convertFrom0to1(applyLfoToNormalizedValue(reverbWidthParam,
+                                                                                  static_cast<juce::RangedAudioParameter*>(reverbWidthParam)->getValue(),
+                                                                                  lfoSignal));
+    settings.cloudFeedback = reverbCloudFeedbackParam->convertFrom0to1(applyLfoToNormalizedValue(reverbCloudFeedbackParam,
+                                                                                                  static_cast<juce::RangedAudioParameter*>(reverbCloudFeedbackParam)->getValue(),
+                                                                                                  lfoSignal));
+    settings.cloudDiffusion = reverbCloudDiffusionParam->convertFrom0to1(applyLfoToNormalizedValue(reverbCloudDiffusionParam,
+                                                                                                    static_cast<juce::RangedAudioParameter*>(reverbCloudDiffusionParam)->getValue(),
+                                                                                                    lfoSignal));
+    return settings;
+}
+
 void PX3SynthAudioProcessor::updateTransportState()
 {
     currentBpm = 120.0;

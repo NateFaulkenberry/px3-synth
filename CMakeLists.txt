@@ -59,6 +59,7 @@ target_sources(PX3Synth
         Source/UI/EnvelopeComponent.cpp
         Source/UI/FilterResponseComponent.cpp
         Source/UI/LfoComponent.cpp
+        Source/UI/ReverbUiComponent.cpp
         Source/UI/SubOscComponent.cpp
         Source/UI/VibeUiComponent.cpp
         Source/UI/OscillatorDisplayComponent.cpp
@@ -66,6 +67,7 @@ target_sources(PX3Synth
         Source/UI/PluginEditorDebug.cpp
         Source/DSP/EnvelopeGenerator.cpp
         Source/DSP/LfoGenerator.cpp
+        Source/DSP/ReverbComponent.cpp
         Source/DSP/SubOscillator.cpp
         Source/DSP/VibeComponent.cpp
         Source/DSP/PluginProcessor.cpp

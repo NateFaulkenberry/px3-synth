@@ -766,8 +766,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     reverbTypeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     reverbTypeLabel.setFont(juce::FontOptions(11.5f));
     reverbTypeLabel.setInterceptsMouseClicks(false, false);
-    addAndMakeVisible(reverbTypeBox);
-    addAndMakeVisible(reverbTypeLabel);
 
     const auto configureBypassButton = [](juce::ToggleButton& button)
     {
@@ -788,10 +786,16 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                                         vibeTypeBox,
                                                         vibeTypeLabel,
                                                         juce::Colour::fromRGB(236, 182, 92));
+    reverbUiComponent = std::make_unique<ReverbUiComponent>(reverbBypassButton,
+                                                            reverbKnob,
+                                                            reverbLabel,
+                                                            reverbTypeBox,
+                                                            reverbTypeLabel,
+                                                            juce::Colour::fromRGB(128, 208, 255));
     fxPanel.addAndMakeVisible(*vibeUiComponent);
+    fxPanel.addAndMakeVisible(*reverbUiComponent);
 
     fxPanel.addAndMakeVisible(delayBypassButton);
-    fxPanel.addAndMakeVisible(reverbBypassButton);
 
     fltPanel.addAndMakeVisible(cutoffKnob);
     fltPanel.addAndMakeVisible(cutoffLabel);
@@ -811,10 +815,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     fxPanel.addAndMakeVisible(delayFeedbackLabel);
     fxPanel.addAndMakeVisible(granularSyncBox);
     fxPanel.addAndMakeVisible(granularSyncLabel);
-    fxPanel.addAndMakeVisible(reverbKnob);
-    fxPanel.addAndMakeVisible(reverbLabel);
-    fxPanel.addAndMakeVisible(reverbTypeBox);
-    fxPanel.addAndMakeVisible(reverbTypeLabel);
 
     for (auto& binding : knobBindings)
     {
@@ -1719,17 +1719,10 @@ void PX3SynthAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
     }
 
     {
-        auto reverbInner = reverbSectionArea.reduced(10, 8);
-        reverbBypassButton.setBounds(reverbSectionArea.getX() + 8, reverbSectionArea.getY() + 5, 22, 18);
-        reverbInner.removeFromTop(24);
-        auto bottomArea = reverbInner.removeFromBottom(46);
-        auto labelArea = bottomArea.removeFromTop(22);
-        reverbTypeLabel.setBounds(bottomArea.removeFromLeft(56));
-        reverbTypeBox.setBounds(bottomArea.reduced(2, 1));
-
-        const auto knobSize = juce::jmin(82, juce::jmin(reverbInner.getWidth(), reverbInner.getHeight()));
-        reverbKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(reverbInner.getCentre()));
-        reverbLabel.setBounds(labelArea);
+        if (reverbUiComponent != nullptr)
+        {
+            reverbUiComponent->setBounds(reverbSectionArea);
+        }
     }
 }
 
@@ -2642,11 +2635,10 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
     delayTimeKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
     delayFeedbackKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
 
-    reverbKnob.setEnabled(reverbEnabled);
-    reverbLabel.setEnabled(reverbEnabled);
-    reverbTypeBox.setEnabled(reverbEnabled);
-    reverbTypeLabel.setEnabled(reverbEnabled);
-    reverbKnob.getProperties().set("psychedelicBypassGray", !reverbEnabled);
+    if (reverbUiComponent != nullptr)
+    {
+        reverbUiComponent->setActive(reverbEnabled);
+    }
 }
 
 void PX3SynthAudioProcessorEditor::timerCallback()

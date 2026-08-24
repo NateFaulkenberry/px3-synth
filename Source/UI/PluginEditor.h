@@ -13,6 +13,7 @@
 #include "EnvelopeComponent.h"
 #include "FilterResponseComponent.h"
 #include "LfoComponent.h"
+#include "ReverbUiComponent.h"
 #include "SubOscComponent.h"
 #include "VibeUiComponent.h"
 #include "OscillatorDisplayComponent.h"
@@ -339,6 +340,7 @@ private:
     SectionPanelComponent mixPanel;
     std::unique_ptr<OscillatorDisplayComponent> oscillatorDisplayComponent;
     std::unique_ptr<LfoComponent> lfoComponent;
+    std::unique_ptr<ReverbUiComponent> reverbUiComponent;
     std::unique_ptr<SubOscComponent> subOscComponent;
     std::unique_ptr<VibeUiComponent> vibeUiComponent;
     std::unique_ptr<EnvelopeComponent> envelopeGraph;

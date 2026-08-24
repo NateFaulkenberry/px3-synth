@@ -4,6 +4,7 @@
 
 #include "LfoGenerator.h"
 #include "PianoKeyboard.h"
+#include "ReverbComponent.h"
 #include "SubOscTypes.h"
 #include "SynthSound.h"
 #include "SynthVoice.h"
@@ -198,14 +199,6 @@ private:
         float pan { 0.5f };
     };
 
-    struct ReverbDelayLine
-    {
-        std::vector<float> buffer;
-        int writePos { 0 };
-        float lpState { 0.0f };
-        float modPhase { 0.0f };
-    };
-
     enum class GranularMode
     {
         classic = 0,
@@ -227,8 +220,8 @@ private:
     EnvelopeSettings currentEnvelopeSettings() const;
     LfoSettings currentLfoSettings() const;
     VibeSettings currentVibeSettings() const;
+    ReverbSettings currentReverbSettings() const;
 
-    void prepareReverbEngine(double sampleRate);
     void updateTransportState();
     void processIsaacGranularSample(float inL,
                                     float inR,
@@ -259,12 +252,6 @@ private:
     float processAllpassSample(float x, std::vector<float>& line, int& index, float feedback) const;
     float sanitizeAudioSample(float x) const;
     float readDelaySample(int channel, float readPos) const;
-    void processReverbSampleFrame(float inL, float inR, float amount, int algorithmIndex, float& outL, float& outR);
-    void resizeReverbLine(ReverbDelayLine& line, int size);
-    float readReverbLine(const ReverbDelayLine& line, float delaySamples) const;
-    void writeReverbLine(ReverbDelayLine& line, float sample);
-    float processReverbAllpass(ReverbDelayLine& line, float in, float delaySamples, float gain);
-    float processReverbDelay(ReverbDelayLine& line, float in, float delaySamples);
     void buildLfoAssignableTargets();
     float lfoDepthForParameterId(const juce::String& parameterId) const;
     float applyLfoToNormalizedValue(juce::RangedAudioParameter* parameter,
@@ -362,6 +349,7 @@ private:
      * drift) are generated once and distributed across multiple DSP points.
      */
     VibeComponent vibeComponent;
+    ReverbComponent reverbComponent;
 
     std::array<std::vector<float>, 2> isaacDelayBuffer;
     std::array<float, 2> isaacFeedbackFilter { { 0.0f, 0.0f } };
@@ -371,20 +359,6 @@ private:
     std::array<int, 2> isaacDiffusionIndexA { { 0, 0 } };
     std::array<int, 2> isaacDiffusionIndexB { { 0, 0 } };
     std::array<Grain, maxGrains> isaacGrains {};
-
-    juce::Reverb reverb;
-    std::array<ReverbDelayLine, 2> reverbPreDelayLines;
-    std::array<ReverbDelayLine, 6> plateLines;
-    std::array<ReverbDelayLine, 8> hallLines;
-    std::array<ReverbDelayLine, 8> cloudLines;
-    std::array<float, 2> plateTankState { { 0.0f, 0.0f } };
-    std::array<float, 8> hallReadCache { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
-    std::array<float, 8> cloudReadCache { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
-    std::array<float, 2> reverbInputDcX1 { { 0.0f, 0.0f } };
-    std::array<float, 2> reverbInputDcY1 { { 0.0f, 0.0f } };
-    std::array<float, 2> reverbWetDcX1 { { 0.0f, 0.0f } };
-    std::array<float, 2> reverbWetDcY1 { { 0.0f, 0.0f } };
-    std::array<float, 2> reverbWetSlewState { { 0.0f, 0.0f } };
 
     int isaacBufferSize { 1 };
     int isaacWritePos { 0 };
@@ -397,12 +371,9 @@ private:
     float delayTimeControlSmoothed { 0.5f };
     float delayFeedbackControlSmoothed { 0.35f };
     float delayControlSmoothingCoeff { 0.0f };
-    float reverbAmountSmoothed { 0.0f };
-    float reverbAmountSmoothingCoeff { 0.0f };
     float delayModPhase { 0.0f };
     int lastDelayAlgorithmIndex { -1 };
     int lastGranularModeIndex { -1 };
-    float reverbOutputCompGain { 1.0f };
     std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
     std::atomic<uint32_t> fxOrderRevision { 0u };
     juce::String debugInstanceId;
