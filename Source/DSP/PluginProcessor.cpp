@@ -91,39 +91,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     reverbWidthParam = new juce::AudioParameterFloat("reverbWidth", "Reverb Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.86f);
     reverbCloudFeedbackParam = new juce::AudioParameterFloat("reverbCloudFeedback", "Reverb Cloud Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.62f);
     reverbCloudDiffusionParam = new juce::AudioParameterFloat("reverbCloudDiffusion", "Reverb Cloud Diffusion", juce::NormalisableRange<float>(0.0f, 1.0f), 0.54f);
-    sourceEngineParam = new juce::AudioParameterChoice("sourceEngine",
-                                                        "Source Engine",
-                                                        juce::StringArray { "Image", "Audio" },
-                                                        0);
-    imagePositionParam = new juce::AudioParameterFloat("imagePosition", "Image Position", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    imageAnimateParam = new juce::AudioParameterFloat("imageAnimate", "Image Animate", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    imageRateParam = new juce::AudioParameterFloat("imageRate", "Image Rate", juce::NormalisableRange<float>(0.01f, 4.0f, 0.001f, 0.32f), 0.2f);
-    imageAnimModeParam = new juce::AudioParameterChoice("imageAnimMode", "Image Animation Mode", juce::StringArray { "Forward", "Reverse", "Ping Pong" }, 2);
-    imageAnimSyncParam = new juce::AudioParameterChoice("imageAnimSync",
-                                                         "Image Animation Sync",
-                                                         juce::StringArray { "Free", "1 Bar", "1/2", "1/4", "1/8", "1/16" },
-                                                         0);
-    imageTargetParam = new juce::AudioParameterChoice("imageTarget",
-                                                       "Image Target",
-                                                       juce::StringArray { "Vibe", "Delay", "Reverb" },
-                                                       0);
-    audioPositionParam = new juce::AudioParameterFloat("audioPosition", "Audio Position", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    audioGrainParam = new juce::AudioParameterFloat("audioGrain", "Audio Grain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
-    audioTextureParam = new juce::AudioParameterFloat("audioTexture", "Audio Texture", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
-    audioAnimateParam = new juce::AudioParameterFloat("audioAnimate", "Audio Animate", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    audioRateParam = new juce::AudioParameterFloat("audioRate", "Audio Rate", juce::NormalisableRange<float>(0.01f, 4.0f, 0.001f, 0.32f), 0.22f);
-    audioAnimModeParam = new juce::AudioParameterChoice("audioAnimMode",
-                                                         "Audio Animation Mode",
-                                                         juce::StringArray { "Forward", "Reverse", "Ping Pong" },
-                                                         2);
-    audioAnimSyncParam = new juce::AudioParameterChoice("audioAnimSync",
-                                                         "Audio Animation Sync",
-                                                         juce::StringArray { "Free", "1 Bar", "1/2", "1/4", "1/8", "1/16" },
-                                                         0);
-    audioTargetParam = new juce::AudioParameterChoice("audioTarget",
-                                                       "Audio Target",
-                                                       juce::StringArray { "Vibe", "Delay", "Reverb" },
-                                                       1);
     pitchBendRangeParam = new juce::AudioParameterInt("pitchBendRange",
                                                        "Pitch Bend Range",
                                                        1,
@@ -176,21 +143,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(reverbWidthParam);
     addParameter(reverbCloudFeedbackParam);
     addParameter(reverbCloudDiffusionParam);
-    addParameter(sourceEngineParam);
-    addParameter(imagePositionParam);
-    addParameter(imageAnimateParam);
-    addParameter(imageRateParam);
-    addParameter(imageAnimModeParam);
-    addParameter(imageAnimSyncParam);
-    addParameter(imageTargetParam);
-    addParameter(audioPositionParam);
-    addParameter(audioGrainParam);
-    addParameter(audioTextureParam);
-    addParameter(audioAnimateParam);
-    addParameter(audioRateParam);
-    addParameter(audioAnimModeParam);
-    addParameter(audioAnimSyncParam);
-    addParameter(audioTargetParam);
     addParameter(pitchBendRangeParam);
     addParameter(lfoFrequencyParam);
 
@@ -213,12 +165,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     synth.addSound(new SynthSound());
     clearAllActiveNotes();
     applyVibeTypeProfile(vibeTypeParam->getIndex());
-
-    auto initialTable = createDefaultImageWavetable();
-    if (initialTable != nullptr)
-    {
-        installImageWavetable(std::move(initialTable), juce::Image());
-    }
 
     debugLogEvent("LIFECYCLE", "PROCESSOR_CREATED",
                   "id=" + debugInstanceId + " order=" + debugDescribeOrder(getFxProcessingOrder()));
@@ -498,22 +444,6 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     const auto vibeTuning = debugGetVibeTuning();
     const auto vibeBypass = debugGetVibeBypass();
     const auto vibeAmount = vibeBypass ? 0.0f : vibeEngine.getEffectiveAmount();
-    const auto currentImagePosition = updateImageAnimationPosition(buffer.getNumSamples());
-    const auto currentAudioPosition = updateAudioAnimationPosition(buffer.getNumSamples());
-    const auto wavetableForBlock = std::atomic_load(&activeImageWavetable);
-    const auto audioSourceForBlock = std::atomic_load(&activeAudioSource);
-    const auto requestedSourceMode = sourceEngineParam->getIndex() == 1 ? ExternalSourceMode::audio : ExternalSourceMode::image;
-    const auto wavetableModeActive = oscillator.modeIndex == 8;
-    // WAVETABLE mode reserves the image engine for oscillator generation only.
-    const auto sourceMode = wavetableModeActive ? ExternalSourceMode::image : requestedSourceMode;
-
-    AudioGranularSettings granularSettings;
-    granularSettings.enabled = sourceMode == ExternalSourceMode::audio;
-    granularSettings.position = currentAudioPosition;
-    granularSettings.grainSize = juce::jlimit(0.0f, 1.0f, audioGrainParam->get());
-    granularSettings.texture = juce::jlimit(0.0f, 1.0f, audioTextureParam->get());
-    granularSettings.rootMidiNote = 60;
-
     for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
     {
         if (auto* voice = dynamic_cast<SynthVoice*>(synth.getVoice(voiceIndex)))
@@ -541,9 +471,6 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             voiceShared.temperature = vibeShared.temperature;
             voiceShared.chaos = vibeShared.chaos;
             voice->setVibeState(vibeAmount, vibeBypass, voiceShared, voiceVariation, vibeTuning);
-            voice->setExternalSourceMode(sourceMode);
-            voice->setImageWavetable(wavetableForBlock, currentImagePosition);
-            voice->setAudioGranularSource(audioSourceForBlock, granularSettings);
         }
     }
 
@@ -590,127 +517,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
     }
     const auto reverbAlgorithmIndex = reverbAlgorithmParam->getIndex();
-    const auto imageTargetIndex = imageTargetParam->getIndex();
-    const auto audioTargetIndex = audioTargetParam->getIndex();
-
-    const auto imageControlRaw = computeImageTargetControlSignal(currentImagePosition, buffer.getNumSamples());
-    auto audioControlRaw = juce::jlimit(0.0f, 1.0f, currentAudioPosition);
-    const auto audioTexture = applyLfoToNormalizedValue(audioTextureParam,
-                                                        static_cast<juce::RangedAudioParameter*>(audioTextureParam)->getValue(),
-                                                        blockLfoSignal);
-    const auto audioGrain = applyLfoToNormalizedValue(audioGrainParam,
-                                                      static_cast<juce::RangedAudioParameter*>(audioGrainParam)->getValue(),
-                                                      blockLfoSignal);
-    const auto audioAnimate = applyLfoToNormalizedValue(audioAnimateParam,
-                                                        static_cast<juce::RangedAudioParameter*>(audioAnimateParam)->getValue(),
-                                                        blockLfoSignal);
-    const auto imageAnimate = applyLfoToNormalizedValue(imageAnimateParam,
-                                                        static_cast<juce::RangedAudioParameter*>(imageAnimateParam)->getValue(),
-                                                        blockLfoSignal);
-    if (audioSourceForBlock != nullptr && !audioSourceForBlock->waveformPreview.empty())
-    {
-        const auto& preview = audioSourceForBlock->waveformPreview;
-        const auto previewPos = juce::jlimit(0.0f,
-                                             1.0f,
-                                             currentAudioPosition + (audioTexture - 0.5f) * 0.10f);
-        const auto sampleIndex = juce::jlimit(0,
-                                              static_cast<int>(preview.size()) - 1,
-                                              static_cast<int>(std::lround(previewPos * static_cast<float>(preview.size() - 1))));
-        audioControlRaw = juce::jlimit(0.0f, 1.0f, preview[static_cast<std::size_t>(sampleIndex)]);
-    }
-
-    const auto controlSmoothingSec = 0.06f;
-    const auto controlBlend = 1.0f - std::exp(-static_cast<float>(buffer.getNumSamples())
-                                              / (static_cast<float>(juce::jmax(1.0, currentSampleRateHz)) * controlSmoothingSec));
-    imageTargetControlSmoothed += (imageControlRaw - imageTargetControlSmoothed) * controlBlend;
-
-    // Add stepped/chopped modulation to create stronger granular-like throwing into assigned targets.
-    const auto imageQuantSteps = 5 + static_cast<int>(std::lround(imageAnimate * 20.0f));
-    const auto imageQuantized = std::floor(imageTargetControlSmoothed * static_cast<float>(imageQuantSteps - 1))
-                              / static_cast<float>(juce::jmax(1, imageQuantSteps - 1));
-    const auto imageBitMix = juce::jlimit(0.0f, 0.94f, 0.32f + imageAnimate * 0.62f);
-    const auto imagePulseHz = 3.0f + imageAnimate * 18.0f;
-    const auto imagePulse = 0.5f + 0.5f * std::sin(static_cast<float>(currentTimelineSeconds * static_cast<double>(imagePulseHz))
-                                                   * juce::MathConstants<float>::twoPi);
-    const auto imageBurst = imagePulse > 0.80f ? 1.0f : 0.0f;
-    const auto imageGrainyControl = juce::jlimit(0.0f,
-                                                 1.0f,
-                                                 lerp(imageTargetControlSmoothed, imageQuantized, imageBitMix)
-                                                     * (0.62f + 0.60f * imagePulse)
-                                                     + imageBurst * (0.12f + 0.18f * imageAnimate));
-
-    const auto audioQuantSteps = 4 + static_cast<int>(std::lround(audioGrain * 22.0f));
-    const auto audioQuantized = std::floor(audioControlRaw * static_cast<float>(audioQuantSteps - 1))
-                              / static_cast<float>(juce::jmax(1, audioQuantSteps - 1));
-    const auto chopperHz = 5.6f + audioTexture * 19.0f + audioAnimate * 7.0f;
-    const auto chopperPhase = static_cast<float>(currentTimelineSeconds * static_cast<double>(chopperHz))
-                            + audioControlRaw * 13.0f;
-    const auto chopper = 0.5f + 0.5f * std::sin(chopperPhase * juce::MathConstants<float>::twoPi);
-    const auto chopperShaped = std::pow(chopper, 4.6f - 3.2f * audioGrain);
-    const auto audioBurstPhase = static_cast<float>(currentTimelineSeconds * static_cast<double>(2.5f + audioTexture * 8.0f));
-    const auto audioBurst = (std::sin(audioBurstPhase * juce::MathConstants<float>::twoPi + audioControlRaw * 9.0f) > 0.83f) ? 1.0f : 0.0f;
-    const auto audioControlSmoothed = juce::jlimit(0.0f,
-                                                   1.0f,
-                                                   audioQuantized * (0.38f + 0.96f * chopperShaped)
-                                                       + audioBurst * (0.20f + 0.30f * audioAnimate));
-
-    const auto imageScale = lerp(0.06f, 2.58f, imageGrainyControl);
-    const auto audioScale = lerp(0.04f, 2.82f, audioControlSmoothed);
-
-    float driveScaleTarget = 1.0f;
-    float granularScaleTarget = 1.0f;
-    float reverbScaleTarget = 1.0f;
-
-    if (!wavetableModeActive)
-    {
-        switch (juce::jlimit(0, 2, imageTargetIndex))
-        {
-            case 0:
-                driveScaleTarget = imageScale;
-                break;
-            case 1:
-                granularScaleTarget = imageScale * (1.0f + 0.38f * imageBurst);
-                break;
-            case 2:
-                reverbScaleTarget = imageScale;
-                break;
-            default:
-                break;
-        }
-    }
-
-    if (sourceMode == ExternalSourceMode::audio)
-    {
-        switch (juce::jlimit(0, 2, audioTargetIndex))
-        {
-            case 0:
-                driveScaleTarget *= audioScale;
-                break;
-            case 1:
-                granularScaleTarget *= audioScale * (1.08f + 0.66f * audioBurst);
-                break;
-            case 2:
-                reverbScaleTarget *= audioScale;
-                break;
-            default:
-                break;
-        }
-    }
-
-    driveScaleTarget = juce::jlimit(0.04f, 2.95f, driveScaleTarget);
-    granularScaleTarget = juce::jlimit(0.04f, 3.05f, granularScaleTarget);
-    reverbScaleTarget = juce::jlimit(0.04f, 2.72f, reverbScaleTarget);
-
-    const auto routeSmoothingSec = 0.024f;
-    const auto routeBlend = 1.0f - std::exp(-static_cast<float>(buffer.getNumSamples())
-                                            / (static_cast<float>(juce::jmax(1.0, currentSampleRateHz)) * routeSmoothingSec));
-    imageDriveScaleSmoothed += (driveScaleTarget - imageDriveScaleSmoothed) * routeBlend;
-    imageGranularScaleSmoothed += (granularScaleTarget - imageGranularScaleSmoothed) * routeBlend;
-    imageReverbScaleSmoothed += (reverbScaleTarget - imageReverbScaleSmoothed) * routeBlend;
-
-    const auto vibeAmountRouted = clamp01(vibeAmountBase * imageDriveScaleSmoothed);
-    const auto delayAmount = clamp01(delayAmountBase * imageGranularScaleSmoothed);
-    const auto reverbAmount = clamp01(reverbAmountBase * imageReverbScaleSmoothed);
+    const auto vibeAmountRouted = clamp01(vibeAmountBase);
+    const auto delayAmount = clamp01(delayAmountBase);
+    const auto reverbAmount = clamp01(reverbAmountBase);
 
     const auto blockPhaseAdvance = juce::MathConstants<float>::twoPi * vibratoRateHz
                                    * (static_cast<float>(buffer.getNumSamples()) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));

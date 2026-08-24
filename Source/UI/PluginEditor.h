@@ -10,7 +10,6 @@
 #include "PianoKeyboard.h"
 #include "PresetManager.h"
 #include "PluginProcessor.h"
-#include "SourceEnginePanel.h"
 
 /**
  * Main JUCE editor for P(X3).
@@ -203,7 +202,6 @@ private:
     PX3SynthAudioProcessor& audioProcessor;
     KnobLookAndFeel knobLookAndFeel;
     juce::TooltipWindow tooltipWindow;
-    SourceEnginePanel sourceEnginePanel;
     PerformanceControls performanceControls;
     PianoKeyboard pianoKeyboard;
     PX3SynthAudioProcessor::MidiStatus midiStatus;

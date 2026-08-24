@@ -96,12 +96,6 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
         }
     }
 
-    {
-        const std::scoped_lock<std::mutex> lock(imageStateMutex);
-        state.setProperty("imagePath", lastLoadedImagePath, nullptr);
-        state.setProperty("audioPath", lastLoadedAudioPath, nullptr);
-    }
-
     // Module order is not represented by audio parameters; serialize it here as
     // explicit MODULE_ORDER entries so UI drag order and DSP chain stay stable.
     const auto fxOrder = getFxProcessingOrder();
@@ -253,42 +247,6 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
     }
 
     applyVibeTypeProfile(vibeTypeParam->getIndex());
-
-    if (state.hasProperty("imagePath"))
-    {
-        const auto path = state["imagePath"].toString();
-        {
-            const std::scoped_lock<std::mutex> lock(imageStateMutex);
-            lastLoadedImagePath = path;
-        }
-
-        if (path.isNotEmpty())
-        {
-            const juce::File file(path);
-            if (file.existsAsFile())
-            {
-                requestImageLoadAsync(file);
-            }
-        }
-    }
-
-    if (state.hasProperty("audioPath"))
-    {
-        const auto path = state["audioPath"].toString();
-        {
-            const std::scoped_lock<std::mutex> lock(imageStateMutex);
-            lastLoadedAudioPath = path;
-        }
-
-        if (path.isNotEmpty())
-        {
-            const juce::File file(path);
-            if (file.existsAsFile())
-            {
-                requestAudioLoadAsync(file);
-            }
-        }
-    }
 
     if (error != nullptr)
     {

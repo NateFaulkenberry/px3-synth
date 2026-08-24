@@ -357,7 +357,7 @@ float OscillatorUnit::renderRobOsc(double sampleRate, const RenderContext& conte
     return softClip(static_cast<float>((body + smack + onset + edge + chaos) * 0.86f));
 }
 
-float OscillatorUnit::renderPx3(double sampleRate, float externalSample, const RenderContext& context)
+float OscillatorUnit::renderPx3(double sampleRate, const RenderContext& context)
 {
     const auto morph = std::pow(oscillatorSettings.macroA, 1.1f);
     const auto character = std::pow(oscillatorSettings.macroB, 1.2f);
@@ -366,7 +366,7 @@ float OscillatorUnit::renderPx3(double sampleRate, float externalSample, const R
     const auto fmPart = renderFm(sampleRate, context);
     const auto additivePart = renderAdditive(context, true);
     const auto foldedSaw = softClip(static_cast<float>((context.currentAngle / juce::MathConstants<double>::pi) - 1.0) * (1.0f + 4.8f * character));
-    const auto ext = externalSample * (0.22f + movement * 0.38f);
+    const auto ext = 0.0f;
 
     const auto blendA = fmPart * (1.0f - morph) + additivePart * morph;
     const auto blendB = foldedSaw * (0.45f + 0.45f * character) + ext;
@@ -384,7 +384,7 @@ float OscillatorUnit::renderSample(double sampleRate, const RenderContext& conte
     const auto saw = phase * 2.0f - 1.0f;
     const auto square = phase < 0.5f ? 1.0f : -1.0f;
     const auto triangle = 1.0f - 4.0f * std::abs(phase - 0.5f);
-    const auto external = context.externalSourceMode == ExternalSourceMode::audio ? context.granularSample : context.imageSample;
+    const auto external = 0.0f;
 
     float sample = 0.0f;
 
@@ -432,7 +432,7 @@ float OscillatorUnit::renderSample(double sampleRate, const RenderContext& conte
         {
             const auto pos = std::pow(oscillatorSettings.macroA, 1.1f);
             const auto warp = std::sin(context.currentAngle * (1.0 + pos * 6.0));
-            sample = external * (0.30f + pos * 1.15f) + static_cast<float>(warp) * (0.35f - pos * 0.20f);
+            sample = static_cast<float>(warp) * (0.35f - pos * 0.20f);
             break;
         }
         case px3::OscillatorMode::additive:
@@ -495,7 +495,7 @@ float OscillatorUnit::renderSample(double sampleRate, const RenderContext& conte
             sample = renderAdditive(context, true);
             break;
         case px3::OscillatorMode::px3:
-            sample = renderPx3(sampleRate, external, context);
+            sample = renderPx3(sampleRate, context);
             break;
         default:
             break;

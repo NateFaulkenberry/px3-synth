@@ -840,7 +840,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     : AudioProcessorEditor(&p),
     audioProcessor(p),
     tooltipWindow(this, 450),
-    sourceEnginePanel(p),
     presetManager(p)
 {
     backgroundImage = juce::ImageFileFormat::loadFrom(BinaryData::pp_png, BinaryData::pp_pngSize);
@@ -877,7 +876,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     setResizable(true, true);
     setResizeLimits(980, 600, 1900, 980);
 
-    addAndMakeVisible(sourceEnginePanel);
     addAndMakeVisible(performanceControls);
     addAndMakeVisible(pianoKeyboard);
 
@@ -1082,23 +1080,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     oscVowelLabel.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(oscVowelBox);
     addAndMakeVisible(oscVowelLabel);
-
-    auto& imagePositionParam = audioProcessor.getImagePositionParam();
-    oscSineKnob.onValueChange = [this, &imagePositionParam]()
-    {
-        if (!oscSineKnob.isMouseButtonDown())
-        {
-            return;
-        }
-
-        const auto macroA = static_cast<float>(oscSineKnob.getValue());
-
-        // In WAVETABLE mode, the POSITION knob should visibly drive Image Engine position.
-        if (audioProcessor.getOscillatorModeParam().getIndex() == 8)
-        {
-            imagePositionParam.setValueNotifyingHost(imagePositionParam.convertTo0to1(macroA));
-        }
-    };
 
     auto& delayAlgoParam = audioProcessor.getDelayAlgorithmParam();
     const auto delayAlgoChoiceCount = delayAlgoParam.choices.size();
@@ -1990,8 +1971,6 @@ void PX3SynthAudioProcessorEditor::resized()
     presetNextButton.setBounds(presetLayout.removeFromRight(26));
     presetLayout.removeFromRight(8);
     presetNameButton.setBounds(presetLayout);
-
-    sourceEnginePanel.setBounds(topSpareSectionArea.reduced(1));
 
     bounds.removeFromTop(sectionGap);
 

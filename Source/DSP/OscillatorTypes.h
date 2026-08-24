@@ -33,9 +33,3 @@ struct OscillatorLayerSetting
     float coarseSemitones { 0.0f };
     float fineCents { 0.0f };
 };
-
-enum class ExternalSourceMode
-{
-    image = 0,
-    audio = 1
-};

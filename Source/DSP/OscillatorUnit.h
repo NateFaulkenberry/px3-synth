@@ -17,9 +17,6 @@ public:
         float pitchRatio { 1.0f };
         float modWheelNorm { 0.0f };
         float pwmModWheelNorm { 0.0f };
-        float imageSample { 0.0f };
-        float granularSample { 0.0f };
-        ExternalSourceMode externalSourceMode { ExternalSourceMode::image };
     };
 
     void setSettings(const OscillatorSettings& settings);
@@ -39,7 +36,7 @@ private:
     float renderDigital(double sampleRate, const RenderContext& context);
     float renderPhysical(double sampleRate, const RenderContext& context);
     float renderRobOsc(double sampleRate, const RenderContext& context);
-    float renderPx3(double sampleRate, float externalSample, const RenderContext& context);
+    float renderPx3(double sampleRate, const RenderContext& context);
     float readHarmonicSumFromSettings(double currentAngle,
                                       float rolloffBias,
                                       float oddEvenBias,

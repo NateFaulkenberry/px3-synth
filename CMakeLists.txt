@@ -54,13 +54,10 @@ juce_add_binary_data(PX3Assets
 
 target_sources(PX3Synth
     PRIVATE
-        Source/UI/AudioEnginePanel.cpp
-        Source/UI/ImageEnginePanel.cpp
         Source/UI/PerformanceControls.cpp
         Source/UI/PianoKeyboard.cpp
         Source/UI/PluginEditor.cpp
         Source/UI/PluginEditorDebug.cpp
-        Source/UI/SourceEnginePanel.cpp
         Source/DSP/PluginProcessor.cpp
         Source/DSP/PluginProcessorParameters.cpp
         Source/DSP/PluginProcessorMidi.cpp

@@ -9,25 +9,20 @@ constexpr auto presetRootName = "Presets";
 constexpr auto factoryRootName = "Factory";
 constexpr auto userRootName = "User";
 constexpr auto assetsRootName = "Assets";
-constexpr auto imageAssetsName = "Images";
-constexpr auto audioAssetsName = "Audio";
 constexpr auto settingsRootName = "Settings";
 constexpr auto favoritesFileName = "favorites.xml";
 
-const std::array<const char*, 7> kDefaultCategories {
+const std::array<const char*, 5> kDefaultCategories {
     "BASS",
     "LEADS",
     "PADS",
     "PLUCKS",
-    "EXPERIMENTAL",
-    "IMAGE ENGINE",
-    "AUDIO ENGINE"
+    "EXPERIMENTAL"
 };
 
 const juce::Identifier kPresetRootId("PX3_PRESET");
 const juce::Identifier kPluginStateId("PX3_STATE");
 const juce::Identifier kAssetsId("ASSETS");
-const juce::Identifier kAssetId("ASSET");
 
 const juce::String kPresetExtension(PresetManager::presetFileExtension);
 }
@@ -564,25 +559,8 @@ bool PresetManager::createInitPresetIfMissing(juce::String& error)
     state.setProperty("reverbWidth", 0.8600000143051147f, nullptr);
     state.setProperty("reverbCloudFeedback", 0.6200000047683716f, nullptr);
     state.setProperty("reverbCloudDiffusion", 0.5400000214576721f, nullptr);
-    state.setProperty("sourceEngine", 0.0f, nullptr);
-    state.setProperty("imagePosition", 0.5f, nullptr);
-    state.setProperty("imageAnimate", 0.0f, nullptr);
-    state.setProperty("imageRate", 0.3774764239788055f, nullptr);
-    state.setProperty("imageAnimMode", 1.0f, nullptr);
-    state.setProperty("imageAnimSync", 0.0f, nullptr);
-    state.setProperty("imageTarget", 0.0f, nullptr);
-    state.setProperty("audioPosition", 0.5f, nullptr);
-    state.setProperty("audioGrain", 0.449999988079071f, nullptr);
-    state.setProperty("audioTexture", 0.3499999940395355f, nullptr);
-    state.setProperty("audioAnimate", 0.0f, nullptr);
-    state.setProperty("audioRate", 0.3897614181041718f, nullptr);
-    state.setProperty("audioAnimMode", 1.0f, nullptr);
-    state.setProperty("audioAnimSync", 0.0f, nullptr);
-    state.setProperty("audioTarget", 0.5f, nullptr);
     state.setProperty("pitchBendRange", 0.04347826167941093f, nullptr);
     state.setProperty("lfoFrequency", 0.3851140737533569f, nullptr);
-    state.setProperty("imagePath", "", nullptr);
-    state.setProperty("audioPath", "", nullptr);
     state.setProperty("moduleOrderRevision", 2, nullptr);
 
     const juce::Identifier moduleOrderId("MODULE_ORDER");
@@ -661,8 +639,6 @@ juce::File PresetManager::getPresetRootDir() const { return getRootDir().getChil
 juce::File PresetManager::getFactoryPresetRootDir() const { return getPresetRootDir().getChildFile(factoryRootName); }
 juce::File PresetManager::getUserPresetRootDir() const { return getPresetRootDir().getChildFile(userRootName); }
 juce::File PresetManager::getAssetsRootDir() const { return getRootDir().getChildFile(assetsRootName); }
-juce::File PresetManager::getImageAssetsDir() const { return getAssetsRootDir().getChildFile(imageAssetsName); }
-juce::File PresetManager::getAudioAssetsDir() const { return getAssetsRootDir().getChildFile(audioAssetsName); }
 juce::File PresetManager::getSettingsDir() const { return getRootDir().getChildFile(settingsRootName); }
 
 juce::String PresetManager::sanitizeFileName(const juce::String& input)
@@ -720,12 +696,10 @@ juce::String PresetManager::computeFileHash(const juce::File& file)
 
 bool PresetManager::ensureDirectoryLayout(juce::String& error) const
 {
-    const std::array<juce::File, 6> required {
+    const std::array<juce::File, 4> required {
         getRootDir(),
         getFactoryPresetRootDir(),
         getUserPresetRootDir(),
-        getImageAssetsDir(),
-        getAudioAssetsDir(),
         getSettingsDir()
     };
 
@@ -818,10 +792,10 @@ bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
                     { { "oscMode", 11.0f / 19.0f }, { "oscMacroA", 0.42f }, { "oscMacroB", 0.44f }, { "ampAttack", 0.0f }, { "ampDecay", 0.16f }, { "ampSustain", 0.10f }, { "ampRelease", 0.18f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 3.0f / 6.0f }, { "delayAmount", 0.30f } } },
         { "Chaos Reactor", "EXPERIMENTAL", "P(X3)", "Aggressive ROB chaos texture.",
           { { "oscMode", 17.0f / 19.0f }, { "oscMacroA", 0.82f }, { "oscMacroB", 0.74f }, { "oscMacroC", 0.93f }, { "vibeAmount", 0.68f }, { "vibeEnabled", 1.0f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.35f } } },
-        { "Image Sweep", "IMAGE ENGINE", "P(X3)", "Wavetable image scan style preset.",
-          { { "oscMode", 8.0f / 19.0f }, { "sourceEngine", 0.0f }, { "imagePosition", 0.25f }, { "imageAnimate", 0.50f }, { "imageRate", 0.55f }, { "imageTarget", 1.0f / 2.0f } } },
-        { "Broken Radio", "AUDIO ENGINE", "P(X3)", "Audio engine granular texture demo.",
-                    { { "sourceEngine", 1.0f }, { "audioPosition", 0.52f }, { "audioGrain", 0.62f }, { "audioTexture", 0.70f }, { "audioAnimate", 0.35f }, { "audioRate", 0.4f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.44f } } },
+                { "Image Sweep", "EXPERIMENTAL", "P(X3)", "Wavetable sweep style patch.",
+                    { { "oscMode", 8.0f / 19.0f }, { "oscMacroA", 0.25f }, { "oscMacroB", 0.50f }, { "oscMacroC", 0.55f }, { "reverbAmount", 0.22f }, { "reverbEnabled", 1.0f } } },
+                { "Broken Radio", "EXPERIMENTAL", "P(X3)", "Lo-fi digital texture demo.",
+                                        { { "oscMode", 15.0f / 19.0f }, { "oscMacroA", 0.52f }, { "oscMacroB", 0.62f }, { "oscMacroC", 0.70f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.44f } } },
 
                 // Extra randomized-style factory starters for shipping variety.
                 { "Dustline Runner", "BASS", "P(X3)", "Tight low bass with controlled grit.",
@@ -834,10 +808,10 @@ bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
                     { { "oscMode", 15.0f / 19.0f }, { "oscMacroA", 0.77f }, { "oscMacroB", 0.33f }, { "filterCutoff", 0.74f }, { "filterResonance", 0.45f }, { "ampAttack", 0.0f }, { "ampDecay", 0.14f }, { "ampSustain", 0.12f }, { "ampRelease", 0.17f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 4.0f / 6.0f }, { "delayAmount", 0.39f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.11f } } },
                 { "Volt Garden", "EXPERIMENTAL", "P(X3)", "Animated hybrid patch with shifting harmonics.",
                     { { "oscMode", 18.0f / 19.0f }, { "oscMacroA", 0.74f }, { "oscMacroB", 0.62f }, { "oscMacroC", 0.81f }, { "filterCutoff", 0.63f }, { "filterResonance", 0.58f }, { "vibeEnabled", 1.0f }, { "vibeAmount", 0.52f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.48f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.31f } } },
-                { "Raster Drift", "IMAGE ENGINE", "P(X3)", "Image source morph texture with moderate ambience.",
-                    { { "sourceEngine", 0.0f }, { "oscMode", 8.0f / 19.0f }, { "imagePosition", 0.63f }, { "imageAnimate", 0.42f }, { "imageRate", 0.27f }, { "imageTarget", 2.0f / 2.0f }, { "filterCutoff", 0.57f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.24f } } },
-                { "Tape Phantom", "AUDIO ENGINE", "P(X3)", "Granular audio texture with diffused tail.",
-                    { { "sourceEngine", 1.0f }, { "audioPosition", 0.34f }, { "audioGrain", 0.76f }, { "audioTexture", 0.58f }, { "audioAnimate", 0.49f }, { "audioRate", 0.22f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 1.0f / 6.0f }, { "delayAmount", 0.36f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.29f } } }
+                { "Raster Drift", "EXPERIMENTAL", "P(X3)", "Modulated texture with moderate ambience.",
+                    { { "oscMode", 8.0f / 19.0f }, { "oscMacroA", 0.63f }, { "oscMacroB", 0.42f }, { "filterCutoff", 0.57f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.24f } } },
+                { "Tape Phantom", "EXPERIMENTAL", "P(X3)", "Lo-fi texture with diffused tail.",
+                    { { "oscMode", 15.0f / 19.0f }, { "oscMacroA", 0.34f }, { "oscMacroB", 0.76f }, { "oscMacroC", 0.58f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 1.0f / 6.0f }, { "delayAmount", 0.36f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.29f } } }
     };
 
     auto baseState = processor.createParameterStateTree();
@@ -1158,128 +1132,14 @@ juce::ValueTree PresetManager::migratePresetTreeIfNeeded(const juce::ValueTree& 
 void PresetManager::collectAssetsForState(juce::ValueTree& pluginState,
                                           juce::ValueTree& assetsNode) const
 {
-    const auto collectOne = [&pluginState, &assetsNode](const juce::String& key,
-                                                               const juce::String& type,
-                                                               const juce::File& cacheDir)
-    {
-        // Embed path-backed media into preset payload so presets are portable.
-        // If no media is loaded, this quietly does nothing.
-        if (!pluginState.hasProperty(key))
-        {
-            return;
-        }
-
-        const auto sourcePath = pluginState.getProperty(key).toString();
-        if (sourcePath.trim().isEmpty())
-        {
-            return;
-        }
-
-        juce::File source(sourcePath);
-        if (!source.existsAsFile())
-        {
-            return;
-        }
-
-        juce::MemoryBlock data;
-        if (!source.loadFileAsData(data))
-        {
-            return;
-        }
-
-        auto asset = juce::ValueTree(kAssetId);
-        asset.setProperty("type", type, nullptr);
-        asset.setProperty("parameterKey", key, nullptr);
-        asset.setProperty("originalPath", sourcePath, nullptr);
-        asset.setProperty("fileName", source.getFileName(), nullptr);
-        juce::int64 hashSeed = static_cast<juce::int64>(source.hashCode64());
-        hashSeed ^= static_cast<juce::int64>(data.getSize() * 2654435761ULL);
-        asset.setProperty("hash", juce::String::toHexString(hashSeed), nullptr);
-        asset.setProperty("embedded", true, nullptr);
-        asset.setProperty("data", data.toBase64Encoding(), nullptr);
-
-        // Cache by content hash so repeated saves of identical assets reuse the
-        // same on-disk blob.
-        const auto hashName = asset.getProperty("hash").toString() + source.getFileExtension();
-        const auto cached = cacheDir.getChildFile(hashName);
-        if (!cached.existsAsFile())
-        {
-            cached.replaceWithData(data.getData(), data.getSize());
-        }
-
-        // State points at local cached file path so restore can succeed even if
-        // the original source path is no longer available.
-        pluginState.setProperty(key, cached.getFullPathName(), nullptr);
-        assetsNode.addChild(asset, -1, nullptr);
-    };
-
-    collectOne("imagePath", "image", getImageAssetsDir());
-    collectOne("audioPath", "audio", getAudioAssetsDir());
+    juce::ignoreUnused(pluginState, assetsNode);
 }
 
 bool PresetManager::materializeEmbeddedAssets(juce::ValueTree& pluginState,
                                               const juce::ValueTree& assetsNode,
                                               juce::String& error) const
 {
-    if (!assetsNode.isValid())
-    {
-        return true;
-    }
-
-    for (int i = 0; i < assetsNode.getNumChildren(); ++i)
-    {
-        auto asset = assetsNode.getChild(i);
-        if (asset.getType() != kAssetId)
-        {
-            continue;
-        }
-
-        const auto key = asset.getProperty("parameterKey").toString();
-        if (key.isEmpty())
-        {
-            continue;
-        }
-
-        const auto embedded = static_cast<bool>(asset.getProperty("embedded", false));
-        if (!embedded)
-        {
-            continue;
-        }
-
-        const auto base64 = asset.getProperty("data").toString();
-        if (base64.isEmpty())
-        {
-            continue;
-        }
-
-        juce::MemoryBlock data;
-        if (!data.fromBase64Encoding(base64))
-        {
-            error = "Failed to decode embedded asset data for key: " + key;
-            return false;
-        }
-
-        const auto hash = asset.getProperty("hash").toString();
-        const auto fileName = asset.getProperty("fileName").toString();
-        const auto ext = juce::File(fileName).getFileExtension();
-        const auto type = asset.getProperty("type").toString().toLowerCase();
-        auto dir = type == "audio" ? getAudioAssetsDir() : getImageAssetsDir();
-        // Materialization is idempotent: existing cache files are reused.
-        const auto outFile = dir.getChildFile((hash.isNotEmpty() ? hash : juce::String::toHexString(juce::Random::getSystemRandom().nextInt64())) + ext);
-
-        if (!outFile.existsAsFile())
-        {
-            if (!outFile.replaceWithData(data.getData(), data.getSize()))
-            {
-                error = "Failed to materialize embedded asset: " + outFile.getFullPathName();
-                return false;
-            }
-        }
-
-        // Rewrite state path to materialized local copy before apply.
-        pluginState.setProperty(key, outFile.getFullPathName(), nullptr);
-    }
-
+    juce::ignoreUnused(pluginState, assetsNode, error);
     return true;
 }
 

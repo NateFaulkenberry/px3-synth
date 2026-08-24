@@ -89,22 +89,9 @@ public:
     juce::File getFactoryPresetRootDir() const;
     juce::File getUserPresetRootDir() const;
     juce::File getAssetsRootDir() const;
-    juce::File getImageAssetsDir() const;
-    juce::File getAudioAssetsDir() const;
     juce::File getSettingsDir() const;
 
 private:
-    struct AssetReference
-    {
-        juce::String type;
-        juce::String parameterKey;
-        juce::String originalPath;
-        juce::String fileName;
-        juce::String hash;
-        bool embedded { false };
-        juce::String base64Data;
-    };
-
     PX3SynthAudioProcessor& processor;
 
     std::vector<PresetRecord> indexedPresets;
