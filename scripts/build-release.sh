@@ -10,6 +10,7 @@ CMAKE_FILE="${REPO_ROOT}/CMakeLists.txt"
 
 SIGN_MODE=false
 SIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
+INSTALLER_SIGN_IDENTITY="${DEVELOPER_ID_INSTALLER:-}"
 DEBUG_PANEL=false
 
 usage() {
@@ -25,6 +26,7 @@ Options:
 
 Environment:
   CODESIGN_IDENTITY      Optional signing identity used with --sign.
+  DEVELOPER_ID_INSTALLER Optional installer signing identity for productbuild.
 EOF
 }
 
@@ -91,6 +93,12 @@ find_bundle() {
   found="$(find "${BUILD_DIR}" -type d -name "*.${ext}" | sort | head -n1 || true)"
   [[ -n "$found" ]] || return 1
   printf '%s' "$found"
+}
+
+pkg_payload_has() {
+  local pkg_path="$1"
+  local needle="$2"
+  pkgutil --payload-files "$pkg_path" | grep -F "$needle" >/dev/null 2>&1
 }
 
 arch_check() {
@@ -232,12 +240,15 @@ echo "Debug Panel: ${DEBUG_PANEL}"
 echo "Bundle ID: ${BUNDLE_ID}"
 echo
 
-echo "[1/6] Checking environment"
+echo "[1/7] Checking environment"
 require_cmd cmake
 require_cmd xcodebuild
 require_cmd file
 require_cmd lipo
 require_cmd zip
+require_cmd pkgbuild
+require_cmd productbuild
+require_cmd pkgutil
 require_cmd grep
 require_cmd find
 require_cmd sed
@@ -247,7 +258,7 @@ if [[ "${SIGN_MODE}" == true ]]; then
   require_cmd security
 fi
 
-echo "[2/6] Configuring CMake"
+echo "[2/7] Configuring CMake"
 rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
 
@@ -275,14 +286,18 @@ else
   echo "  CMAKE_OSX_DEPLOYMENT_TARGET=(not explicitly set; toolchain default)"
 fi
 
-echo "[3/6] Building Release"
+echo "[3/7] Building Release"
 cmake --build "${BUILD_DIR}" --config Release --parallel
 
-echo "[4/6] Locating plugins"
+echo "[4/7] Locating plugins"
 AU_BUNDLE="$(find_bundle component || true)"
 VST3_BUNDLE="$(find_bundle vst3 || true)"
-[[ -n "${AU_BUNDLE}" ]] || die "AU plugin was not produced."
-[[ -n "${VST3_BUNDLE}" ]] || die "VST3 plugin was not produced."
+if [[ -z "${AU_BUNDLE}" ]]; then
+  die "P(X3) AU plugin was not found under: ${BUILD_DIR}"
+fi
+if [[ -z "${VST3_BUNDLE}" ]]; then
+  die "P(X3) VST3 plugin was not found under: ${BUILD_DIR}"
+fi
 
 APP_BUNDLE=""
 if [[ "${HAS_STANDALONE}" == true ]]; then
@@ -296,7 +311,7 @@ if [[ -n "${APP_BUNDLE}" ]]; then
   echo "  APP:  ${APP_BUNDLE}"
 fi
 
-echo "[5/6] Validating bundles and architecture"
+echo "[5/7] Validating bundles and architecture"
 verify_bundle "${AU_BUNDLE}" "AU"
 verify_bundle "${VST3_BUNDLE}" "VST3"
 if [[ -n "${APP_BUNDLE}" ]]; then
@@ -322,14 +337,42 @@ else
   echo "  Tip: use --sign with CODESIGN_IDENTITY or --sign-identity."
 fi
 
-echo "[6/6] Creating distribution"
+echo "[6/7] Creating distribution and packaging"
 DIST_DIR="${DIST_ROOT}/PX3-v${PROJECT_VERSION}-macOS"
 ZIP_PATH="${DIST_ROOT}/P(X3)-v${PROJECT_VERSION}-macOS-arm64.zip"
+PKG_PATH="${DIST_ROOT}/PX3-v${PROJECT_VERSION}.pkg"
+PKG_WORK_DIR="${BUILD_DIR}/installer"
+PKG_COMPONENTS_DIR="${PKG_WORK_DIR}/packages"
+PKG_ROOT_AU="${PKG_WORK_DIR}/root-au"
+PKG_ROOT_VST3="${PKG_WORK_DIR}/root-vst3"
+PKG_EXPANDED_DIR="${PKG_WORK_DIR}/expanded-product"
 
+AU_NAME="$(basename "${AU_BUNDLE}")"
+VST3_NAME="$(basename "${VST3_BUNDLE}")"
+
+AU_COMPONENT_PKG="${PKG_COMPONENTS_DIR}/PX3-AU-v${PROJECT_VERSION}.pkg"
+VST3_COMPONENT_PKG="${PKG_COMPONENTS_DIR}/PX3-VST3-v${PROJECT_VERSION}.pkg"
+
+AU_INSTALL_DIR="Library/Audio/Plug-Ins/Components"
+VST3_INSTALL_DIR="Library/Audio/Plug-Ins/VST3"
+
+PACKAGE_ID_BASE="${BUNDLE_ID}"
+if [[ "${PACKAGE_ID_BASE}" == "(unknown)" || -z "${PACKAGE_ID_BASE}" ]]; then
+  PACKAGE_ID_BASE="com.px3.px3synth"
+fi
+AU_PACKAGE_ID="${PACKAGE_ID_BASE}.au"
+VST3_PACKAGE_ID="${PACKAGE_ID_BASE}.vst3"
+
+rm -rf "${PKG_WORK_DIR}"
 rm -rf "${DIST_DIR}"
 mkdir -p "${DIST_DIR}/AU" "${DIST_DIR}/VST3"
+mkdir -p "${PKG_COMPONENTS_DIR}"
+mkdir -p "${PKG_ROOT_AU}/${AU_INSTALL_DIR}"
+mkdir -p "${PKG_ROOT_VST3}/${VST3_INSTALL_DIR}"
 cp -R "${AU_BUNDLE}" "${DIST_DIR}/AU/"
 cp -R "${VST3_BUNDLE}" "${DIST_DIR}/VST3/"
+cp -R "${AU_BUNDLE}" "${PKG_ROOT_AU}/${AU_INSTALL_DIR}/"
+cp -R "${VST3_BUNDLE}" "${PKG_ROOT_VST3}/${VST3_INSTALL_DIR}/"
 
 if [[ -n "${APP_BUNDLE}" ]]; then
   mkdir -p "${DIST_DIR}/Standalone"
@@ -337,10 +380,76 @@ if [[ -n "${APP_BUNDLE}" ]]; then
 fi
 
 rm -f "${ZIP_PATH}"
+rm -f "${PKG_PATH}"
 (
   cd "${DIST_ROOT}"
   zip -qry "$(basename "${ZIP_PATH}")" "$(basename "${DIST_DIR}")"
 )
+
+# pkgbuild creates individual component packages.
+# Each component package contains one plugin format and encodes the target
+# install location for that format.
+pkgbuild \
+  --root "${PKG_ROOT_AU}" \
+  --identifier "${AU_PACKAGE_ID}" \
+  --version "${PROJECT_VERSION}" \
+  "${AU_COMPONENT_PKG}"
+
+pkgbuild \
+  --root "${PKG_ROOT_VST3}" \
+  --identifier "${VST3_PACKAGE_ID}" \
+  --version "${PROJECT_VERSION}" \
+  "${VST3_COMPONENT_PKG}"
+
+# productbuild combines the two component packages into the single installer
+# file users run. AU and VST3 stay separate components because they install to
+# different macOS plugin directories.
+PRODUCTBUILD_ARGS=(
+  --package "${AU_COMPONENT_PKG}"
+  --package "${VST3_COMPONENT_PKG}"
+)
+
+PKG_SIGN_STATE="unsigned"
+if [[ -n "${INSTALLER_SIGN_IDENTITY}" ]]; then
+  PRODUCTBUILD_ARGS+=(--sign "${INSTALLER_SIGN_IDENTITY}")
+  PKG_SIGN_STATE="signed"
+fi
+PRODUCTBUILD_ARGS+=("${PKG_PATH}")
+
+productbuild "${PRODUCTBUILD_ARGS[@]}"
+
+[[ -f "${AU_COMPONENT_PKG}" ]] || die "AU component package not created: ${AU_COMPONENT_PKG}"
+[[ -f "${VST3_COMPONENT_PKG}" ]] || die "VST3 component package not created: ${VST3_COMPONENT_PKG}"
+[[ -f "${PKG_PATH}" ]] || die "Final installer package not created: ${PKG_PATH}"
+[[ -s "${PKG_PATH}" ]] || die "Final installer package is empty: ${PKG_PATH}"
+
+rm -rf "${PKG_EXPANDED_DIR}"
+pkgutil --expand "${PKG_PATH}" "${PKG_EXPANDED_DIR}" >/dev/null 2>&1 \
+  || die "pkgutil could not inspect installer via expand: ${PKG_PATH}"
+
+[[ -f "${PKG_EXPANDED_DIR}/Distribution" ]] \
+  || die "Expanded installer is missing Distribution file: ${PKG_EXPANDED_DIR}/Distribution"
+
+grep -F "$(basename "${AU_COMPONENT_PKG}")" "${PKG_EXPANDED_DIR}/Distribution" >/dev/null 2>&1 \
+  || die "Final installer does not reference AU component package"
+
+grep -F "$(basename "${VST3_COMPONENT_PKG}")" "${PKG_EXPANDED_DIR}/Distribution" >/dev/null 2>&1 \
+  || die "Final installer does not reference VST3 component package"
+
+pkg_payload_has "${AU_COMPONENT_PKG}" "${AU_INSTALL_DIR}/${AU_NAME}/Contents/Info.plist" \
+  || die "AU component package payload validation failed: missing ${AU_INSTALL_DIR}/${AU_NAME}/Contents/Info.plist"
+
+pkg_payload_has "${VST3_COMPONENT_PKG}" "${VST3_INSTALL_DIR}/${VST3_NAME}/Contents/Info.plist" \
+  || die "VST3 component package payload validation failed: missing ${VST3_INSTALL_DIR}/${VST3_NAME}/Contents/Info.plist"
+
+if ! pkgutil --check-signature "${PKG_PATH}" >/dev/null 2>&1; then
+  echo "  Warning: pkgutil signature check reported unsigned installer (acceptable for local dev)."
+fi
+
+echo "[7/7] Packaging validation"
+echo "  AU package:    ${AU_COMPONENT_PKG}"
+echo "  VST3 package:  ${VST3_COMPONENT_PKG}"
+echo "  Installer:     ${PKG_PATH} (${PKG_SIGN_STATE})"
 
 echo
 
@@ -351,6 +460,7 @@ echo
 echo "Version: ${PROJECT_VERSION}"
 echo "Architecture: arm64"
 echo "Signing: ${SIGNED_STATE}"
+echo "Installer Signing: ${PKG_SIGN_STATE}"
 echo
 echo "AU:"
 echo "  ${DIST_DIR}/AU/$(basename "${AU_BUNDLE}")"
@@ -366,3 +476,6 @@ fi
 echo ""
 echo "ZIP:"
 echo "  ${ZIP_PATH}"
+echo ""
+echo "PKG:"
+echo "  ${PKG_PATH}"

@@ -71,6 +71,32 @@ cmake --build build
 
 JUCE is fetched automatically through CMake FetchContent.
 
+## Building a Release Installer
+
+Run:
+
+```bash
+./scripts/build-release.sh
+```
+
+This command builds the release plugin formats and also creates a native macOS installer package.
+
+The installer currently includes:
+
+- Audio Unit (AU)
+- VST3
+
+Example output artifact:
+
+- dist/PX3-v0.1.0.pkg
+
+Installer plugin destinations:
+
+- /Library/Audio/Plug-Ins/Components/
+- /Library/Audio/Plug-Ins/VST3/
+
+The installer flow is intentionally simple in this phase. Developer ID installer signing and notarization can be added later in the release pipeline.
+
 ## Debug Mode
 
 The in-plugin DEBUG panel is controlled at build time and is OFF by default.
