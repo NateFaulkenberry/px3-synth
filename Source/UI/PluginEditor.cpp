@@ -11,7 +11,6 @@
 
 namespace
 {
-const std::array<const char*, 4> kGroupNames { "OSC", "FILTER", "AMP ENV", "LFO" };
 const std::array<juce::Colour, 4> kGroupAccents {
     juce::Colour::fromRGB(74, 153, 255),   // OSC: blue
     juce::Colour::fromRGB(255, 88, 88),    // FILTER: red
@@ -387,6 +386,17 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     setResizable(true, true);
     setResizeLimits(980, 600, 1900, 980);
 
+    oscPanel.setHeader("OSC", kGroupAccents[0]);
+    envPanel.setHeader("ENV", kGroupAccents[2]);
+    fltPanel.setHeader("FLT", kGroupAccents[1]);
+    fxPanel.setHeader("FX", juce::Colour::fromRGB(120, 186, 255));
+    mixPanel.setHeader("MIX", juce::Colour::fromRGB(212, 212, 212));
+    addAndMakeVisible(oscPanel);
+    addAndMakeVisible(envPanel);
+    addAndMakeVisible(fltPanel);
+    addAndMakeVisible(fxPanel);
+    addAndMakeVisible(mixPanel);
+
     addAndMakeVisible(performanceControls);
     addAndMakeVisible(pianoKeyboard);
 
@@ -453,20 +463,20 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                                                audioProcessor.getSustainParam(),
                                                                audioProcessor.getReleaseParam(),
                                                                kGroupAccents[2]);
-    addAndMakeVisible(*envelopeGraph);
+    envPanel.addAndMakeVisible(*envelopeGraph);
 
     filterResponseComponent = std::make_unique<FilterResponseComponent>(audioProcessor.getFilterCutoffParam(),
                                                                         audioProcessor.getFilterResonanceParam(),
                                                                         audioProcessor.getFilterTypeParam(),
                                                                         kGroupAccents[1]);
-    addAndMakeVisible(*filterResponseComponent);
+    fltPanel.addAndMakeVisible(*filterResponseComponent);
 
     lfoFrequencyValueLabel.setJustificationType(juce::Justification::centred);
     lfoFrequencyValueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(218, 218, 228));
     lfoFrequencyValueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
     lfoFrequencyValueLabel.setFont(juce::FontOptions(11.0f));
     lfoFrequencyValueLabel.setInterceptsMouseClicks(false, false);
-    addAndMakeVisible(lfoFrequencyValueLabel);
+    oscPanel.addAndMakeVisible(lfoFrequencyValueLabel);
 
     lfoFrequencyKnob.onValueChange = [this]()
     {
@@ -495,8 +505,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         audioProcessor.setLfoAssignmentIndex(selected);
     };
 
-    addAndMakeVisible(lfoAssignLabel);
-    addAndMakeVisible(lfoAssignBox);
+    oscPanel.addAndMakeVisible(lfoAssignLabel);
+    oscPanel.addAndMakeVisible(lfoAssignBox);
 
     // OSC macro labels can become long in some modes; use a slightly smaller font.
     oscSineLabel.setFont(juce::FontOptions(11.0f));
@@ -609,7 +619,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                                                                oscVowelBox,
                                                                                oscVowelLabel,
                                                                                kGroupAccents[0]);
-    addAndMakeVisible(*oscillatorDisplayComponent);
+    oscPanel.addAndMakeVisible(*oscillatorDisplayComponent);
 
     auto& delayAlgoParam = audioProcessor.getDelayAlgorithmParam();
     const auto delayAlgoChoiceCount = delayAlgoParam.choices.size();
@@ -696,9 +706,39 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureBypassButton(delayBypassButton);
     configureBypassButton(reverbBypassButton);
 
-    addAndMakeVisible(robBypassButton);
-    addAndMakeVisible(delayBypassButton);
-    addAndMakeVisible(reverbBypassButton);
+    fxPanel.addAndMakeVisible(robBypassButton);
+    fxPanel.addAndMakeVisible(delayBypassButton);
+    fxPanel.addAndMakeVisible(reverbBypassButton);
+
+    fltPanel.addAndMakeVisible(cutoffKnob);
+    fltPanel.addAndMakeVisible(cutoffLabel);
+    fltPanel.addAndMakeVisible(resonanceKnob);
+    fltPanel.addAndMakeVisible(resonanceLabel);
+    fltPanel.addAndMakeVisible(filterTypeBox);
+
+    oscPanel.addAndMakeVisible(lfoFrequencyKnob);
+    oscPanel.addAndMakeVisible(lfoFrequencyLabel);
+
+    fxPanel.addAndMakeVisible(vibeAmountKnob);
+    fxPanel.addAndMakeVisible(vibeAmountLabel);
+    fxPanel.addAndMakeVisible(vibeTypeBox);
+    fxPanel.addAndMakeVisible(vibeTypeLabel);
+    fxPanel.addAndMakeVisible(isaacTextureKnob);
+    fxPanel.addAndMakeVisible(isaacTextureLabel);
+    fxPanel.addAndMakeVisible(delayAlgoBox);
+    fxPanel.addAndMakeVisible(delayAlgoLabel);
+    fxPanel.addAndMakeVisible(granularModeBox);
+    fxPanel.addAndMakeVisible(granularModeLabel);
+    fxPanel.addAndMakeVisible(delayTimeKnob);
+    fxPanel.addAndMakeVisible(delayTimeLabel);
+    fxPanel.addAndMakeVisible(delayFeedbackKnob);
+    fxPanel.addAndMakeVisible(delayFeedbackLabel);
+    fxPanel.addAndMakeVisible(granularSyncBox);
+    fxPanel.addAndMakeVisible(granularSyncLabel);
+    fxPanel.addAndMakeVisible(reverbKnob);
+    fxPanel.addAndMakeVisible(reverbLabel);
+    fxPanel.addAndMakeVisible(reverbTypeBox);
+    fxPanel.addAndMakeVisible(reverbTypeLabel);
 
     for (auto& binding : knobBindings)
     {
@@ -1034,43 +1074,50 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
                 g.drawText("Synth v" + px3::version::string(), subtitleArea, juce::Justification::centred);
     }
 
+    if (isPanelVisible(3))
+    {
+        const auto fxOffset = fxPanel.getPosition();
+        const auto robArea = robSectionArea.translated(fxOffset.x, fxOffset.y);
+        const auto delayArea = isaacSectionArea.translated(fxOffset.x, fxOffset.y);
+        const auto revArea = reverbSectionArea.translated(fxOffset.x, fxOffset.y);
         const auto vibeEnabled = audioProcessor.getVibeEnabledParam().get();
         const auto delayEnabled = audioProcessor.getDelayEnabledParam().get();
         const auto reverbEnabled = audioProcessor.getReverbEnabledParam().get();
 
         g.setColour(vibeEnabled ? juce::Colour::fromRGBA(104, 194, 255, 35)
                        : juce::Colour::fromRGBA(120, 120, 120, 30));
-        g.fillRoundedRectangle(robSectionArea.toFloat(), 10.0f);
+        g.fillRoundedRectangle(robArea.toFloat(), 10.0f);
         g.setColour(vibeEnabled ? juce::Colour::fromRGBA(104, 194, 255, 180)
                        : juce::Colour::fromRGBA(150, 150, 150, 130));
-        g.drawRoundedRectangle(robSectionArea.toFloat(), 10.0f, 1.0f);
+        g.drawRoundedRectangle(robArea.toFloat(), 10.0f, 1.0f);
 
         g.setColour(delayEnabled ? juce::Colour::fromRGBA(255, 198, 110, 35)
                      : juce::Colour::fromRGBA(120, 120, 120, 30));
-        g.fillRoundedRectangle(isaacSectionArea.toFloat(), 10.0f);
+        g.fillRoundedRectangle(delayArea.toFloat(), 10.0f);
         g.setColour(delayEnabled ? juce::Colour::fromRGBA(255, 198, 110, 180)
                      : juce::Colour::fromRGBA(150, 150, 150, 130));
-        g.drawRoundedRectangle(isaacSectionArea.toFloat(), 10.0f, 1.0f);
+        g.drawRoundedRectangle(delayArea.toFloat(), 10.0f, 1.0f);
 
         g.setColour(reverbEnabled ? juce::Colour::fromRGBA(128, 208, 255, 30)
                       : juce::Colour::fromRGBA(120, 120, 120, 30));
-        g.fillRoundedRectangle(reverbSectionArea.toFloat(), 10.0f);
+        g.fillRoundedRectangle(revArea.toFloat(), 10.0f);
         g.setColour(reverbEnabled ? juce::Colour::fromRGBA(128, 208, 255, 150)
                       : juce::Colour::fromRGBA(150, 150, 150, 130));
-        g.drawRoundedRectangle(reverbSectionArea.toFloat(), 10.0f, 1.0f);
+        g.drawRoundedRectangle(revArea.toFloat(), 10.0f, 1.0f);
 
         g.setColour(vibeEnabled ? juce::Colour::fromRGB(240, 245, 255)
                        : juce::Colour::fromRGB(170, 170, 170));
         g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
-        g.drawText("VIBE", robSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
+        g.drawText("VIBE", robArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
 
         g.setColour(delayEnabled ? juce::Colour::fromRGB(250, 244, 224)
                      : juce::Colour::fromRGB(170, 170, 170));
-        g.drawText("DELAY", isaacSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
+        g.drawText("DELAY", delayArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
 
         g.setColour(reverbEnabled ? juce::Colour::fromRGB(224, 245, 255)
                       : juce::Colour::fromRGB(170, 170, 170));
-        g.drawText("REVERB", reverbSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
+        g.drawText("REVERB", revArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
+    }
 
     if (performanceControlsArea.getWidth() > 0 && pianoKeyboard.getBounds().getWidth() > 0)
     {
@@ -1103,30 +1150,6 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
                static_cast<float>(controlsArea.getRight()),
                static_cast<float>(controlsArea.getY()),
                1.0f);
-
-    for (std::size_t i = 0; i < knobGroupAreas.size(); ++i)
-    {
-        const auto headerFontSize = (i == 0) ? 14.0f : 15.0f;
-        g.setFont(juce::FontOptions(headerFontSize, juce::Font::bold));
-
-        const auto panel = knobGroupAreas[i].reduced(2);
-        const auto accent = kGroupAccents[i];
-        const auto panelFloat = panel.toFloat();
-
-        g.setColour(accent.withAlpha(0.16f));
-        g.fillRoundedRectangle(panelFloat, 10.0f);
-
-        g.setColour(accent.withAlpha(0.10f));
-        g.fillRoundedRectangle(panel.withTrimmedBottom(panel.getHeight() / 2).toFloat(), 10.0f);
-
-        g.setColour(accent.withAlpha(0.78f));
-        g.drawRoundedRectangle(panelFloat, 10.0f, 1.0f);
-
-        const auto labelArea = panel.withHeight(24);
-        g.setColour(accent.brighter(0.35f));
-        g.drawText(kGroupNames[i], labelArea, juce::Justification::centred);
-
-    }
 
 }
 
@@ -1230,10 +1253,6 @@ void PX3SynthAudioProcessorEditor::resized()
                            .withCentre({ gainArea.getCentreX(), gainArea.getY() + gainKnobSize / 2 + 4 }));
     gainLabel.setBounds(gainArea.getX(), gainArea.getBottom() - 16, gainArea.getWidth(), 14);
 
-    const auto topGap = 8;
-    updateFxSectionTargets(headerPlaceholderArea, topGap);
-    layoutFxSectionsFromCurrentAreas();
-
     auto presetLayout = presetBarArea;
     presetPrevButton.setBounds(presetLayout.removeFromLeft(26));
     presetLayout.removeFromLeft(4);
@@ -1259,80 +1278,18 @@ void PX3SynthAudioProcessorEditor::resized()
     pianoKeyboard.setBounds(keyboardRow);
     // midiStatusLabel.setBounds(midiStatusArea.withTrimmedLeft(180).withTrimmedRight(180));
 
-    // Knob-group widths are weighted ratios rather than equal columns because
-    // OSC and AMP ENV carry more controls than LFO/OUTPUT.
-    const auto groupGap = 20;
-    auto groupsSpan = controlsArea.reduced(8, 8);
-    groupsSpan.removeFromTop(20);
+    panelViewportArea = controlsArea.reduced(8, 8);
+    oscPanel.setBounds(panelViewportArea);
+    envPanel.setBounds(panelViewportArea);
+    fltPanel.setBounds(panelViewportArea);
+    fxPanel.setBounds(panelViewportArea);
+    mixPanel.setBounds(panelViewportArea);
 
-    const auto usableWidth = groupsSpan.getWidth() - (groupGap * 3);
-    const auto usableWidthD = static_cast<double>(usableWidth);
-    const auto oscWidth = static_cast<int>(std::lround(usableWidthD * 0.33));
-    const auto filterWidth = static_cast<int>(std::lround(usableWidthD * 0.21));
-    const auto envWidth = static_cast<int>(std::lround(usableWidthD * 0.29));
-    const auto lfoWidth = usableWidth - oscWidth - filterWidth - envWidth;
-
-    auto x = groupsSpan.getX();
-    knobGroupAreas[0] = { x, groupsSpan.getY(), oscWidth, groupsSpan.getHeight() };
-    x += oscWidth + groupGap;
-    knobGroupAreas[1] = { x, groupsSpan.getY(), filterWidth, groupsSpan.getHeight() };
-    x += filterWidth + groupGap;
-    knobGroupAreas[2] = { x, groupsSpan.getY(), envWidth, groupsSpan.getHeight() };
-    x += envWidth + groupGap;
-    knobGroupAreas[3] = { x, groupsSpan.getY(), lfoWidth, groupsSpan.getHeight() };
-
-    layoutKnobGroup(knobGroupAreas[1], 3, 2, kGroupAccents[1]);
-    layoutKnobGroup(knobGroupAreas[3], 9, 1, kGroupAccents[3]);
-
-    if (oscillatorDisplayComponent != nullptr)
-    {
-        auto oscArea = knobGroupAreas[0].reduced(10, 8);
-        oscArea.removeFromTop(30);
-        oscillatorDisplayComponent->setBounds(oscArea);
-    }
-
-    if (envelopeGraph != nullptr)
-    {
-        auto envArea = knobGroupAreas[2].reduced(10, 8);
-        envArea.removeFromTop(30);
-        envelopeGraph->setBounds(envArea);
-    }
-
-    {
-        auto filterArea = knobGroupAreas[1].reduced(12, 8);
-        auto responseArea = filterArea;
-        responseArea.removeFromTop(30);
-        const auto row = juce::Rectangle<int>(filterArea.getX(),
-                                              filterArea.getBottom() - 22,
-                                              filterArea.getWidth(),
-                                              18);
-        filterTypeBox.setBounds(row.reduced(1, 0));
-
-        if (filterResponseComponent != nullptr)
-        {
-            const auto maxBottom = row.getY() - 4;
-            auto graphArea = responseArea.withBottom(juce::jmax(responseArea.getY(), maxBottom));
-            graphArea = graphArea.withTrimmedLeft(4).withTrimmedRight(4);
-            filterResponseComponent->setBounds(graphArea);
-        }
-    }
-
-    {
-        auto lfoArea = knobGroupAreas[3].reduced(10, 8);
-        const auto assignRow = juce::Rectangle<int>(lfoArea.getX(),
-                                                    lfoArea.getBottom() - 22,
-                                                    lfoArea.getWidth(),
-                                                    18);
-        auto row = assignRow;
-        auto labelArea = row.removeFromLeft(52);
-        lfoAssignLabel.setBounds(labelArea);
-        lfoAssignBox.setBounds(row.reduced(1, 0));
-
-        const auto readoutY = juce::jlimit(lfoArea.getY(),
-                                           assignRow.getY() - 16,
-                                           lfoFrequencyKnob.getBottom() + 4);
-        lfoFrequencyValueLabel.setBounds(lfoArea.getX(), readoutY, lfoArea.getWidth(), 14);
-    }
+    layoutOscPanel();
+    layoutEnvelopePanel();
+    layoutFilterPanel();
+    layoutFxPanel();
+    layoutMixPanel();
 
     const auto browserWidth = juce::jlimit(520, 760, getWidth() - 120);
     const auto browserHeight = juce::jlimit(360, 520, getHeight() - 120);
@@ -1405,6 +1362,11 @@ void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
         return;
     }
 
+    if (!isPanelVisible(3))
+    {
+        return;
+    }
+
     const auto sectionId = fxSectionAtPoint(point);
     if (sectionId < 0)
     {
@@ -1415,7 +1377,8 @@ void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
     pressedFxSection = sectionId;
     fxDragStartPoint = point;
     fxDragHasMoved = false;
-    draggingSectionOffsetX = static_cast<float>(point.x) - fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)].getX();
+    const auto localPoint = point - fxPanel.getPosition();
+    draggingSectionOffsetX = static_cast<float>(localPoint.x) - fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)].getX();
 }
 
 void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
@@ -1450,7 +1413,13 @@ void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
         return;
     }
 
+    if (!isPanelVisible(3))
+    {
+        return;
+    }
+
     const auto point = event.getPosition();
+    const auto localPoint = point - fxPanel.getPosition();
     if (!fxDragHasMoved)
     {
         if (point.getDistanceFrom(fxDragStartPoint) < 4)
@@ -1463,7 +1432,7 @@ void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
     auto area = fxSectionCurrentAreas[static_cast<std::size_t>(draggingFxSection)];
     const auto minX = static_cast<float>(fxSectionSlots[0].getX());
     const auto maxX = static_cast<float>(fxSectionSlots[2].getRight() - fxSectionSlots[2].getWidth());
-    auto newX = static_cast<float>(point.x) - draggingSectionOffsetX;
+    auto newX = static_cast<float>(localPoint.x) - draggingSectionOffsetX;
     newX = juce::jlimit(minX, maxX, newX);
     area.setX(newX);
     area.setY(fxSectionTargetAreas[static_cast<std::size_t>(draggingFxSection)].getY());
@@ -1485,7 +1454,7 @@ void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
 
     moveFxSectionToSlot(draggingFxSection, targetSlot);
     layoutFxSectionsFromCurrentAreas();
-    repaint(headerPlaceholderArea);
+    repaint(fxPanel.getBounds());
 }
 
 void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
@@ -1513,7 +1482,15 @@ void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
         return;
     }
 
-    const auto releasePoint = event.getPosition();
+    if (!isPanelVisible(3))
+    {
+        draggingFxSection = -1;
+        pressedFxSection = -1;
+        fxDragHasMoved = false;
+        return;
+    }
+
+    const auto releasePoint = event.getPosition() - fxPanel.getPosition();
     const auto isHeaderClick = !fxDragHasMoved && pressedFxSection >= 0;
     if (isHeaderClick)
     {
@@ -1561,7 +1538,7 @@ void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
     fxDragHasMoved = false;
     commitFxOrderToProcessor("USER", "USER_DRAG_END", -1, -1);
     layoutFxSectionsFromCurrentAreas();
-    repaint(headerPlaceholderArea);
+    repaint(fxPanel.getBounds());
 }
 
 void PX3SynthAudioProcessorEditor::updateFxSectionTargets(const juce::Rectangle<int>& topArea, int topGap)
@@ -1718,7 +1695,7 @@ void PX3SynthAudioProcessorEditor::animateFxSections()
     if (changed)
     {
         layoutFxSectionsFromCurrentAreas();
-        repaint(headerPlaceholderArea);
+        repaint(fxPanel.getBounds());
     }
 }
 
@@ -1737,9 +1714,15 @@ int PX3SynthAudioProcessorEditor::indexForFxSection(int sectionId) const
 
 int PX3SynthAudioProcessorEditor::fxSectionAtPoint(juce::Point<int> point) const
 {
+    if (!isPanelVisible(3))
+    {
+        return -1;
+    }
+
+    const auto localPoint = point - fxPanel.getPosition();
     for (int sectionId = 0; sectionId < 3; ++sectionId)
     {
-        if (fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)].toNearestInt().contains(point))
+        if (fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)].toNearestInt().contains(localPoint))
         {
             return sectionId;
         }
@@ -2177,6 +2160,28 @@ void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex
         topMenuSectionButtons[static_cast<std::size_t>(i)]->setToggleState(i == clamped, juce::dontSendNotification);
     }
 
+    updatePanelVisibility();
+
+    if (clamped == 0)
+    {
+        refreshOscillatorModeUI();
+        refreshLfoAssignmentUI();
+        refreshLfoFrequencyLabel();
+    }
+    else if (clamped == 1)
+    {
+        refreshEnvelopeGraphUI();
+    }
+    else if (clamped == 2)
+    {
+        refreshFilterResponseUI();
+    }
+    else if (clamped == 3)
+    {
+        refreshGranularModeUI();
+        refreshFxBypassUI();
+    }
+
     if (pushToProcessor)
     {
         audioProcessor.setTopMenuViewIndex(clamped, true);
@@ -2300,230 +2305,6 @@ void PX3SynthAudioProcessorEditor::refreshOscillatorModeUI()
     }
 }
 
-void PX3SynthAudioProcessorEditor::layoutKnobGroup(const juce::Rectangle<int>& groupArea,
-                                                        int startIndex,
-                                                        int knobCount,
-                                                        const juce::Colour& sectionAccent)
-{
-    if (knobCount <= 0)
-    {
-        return;
-    }
-
-    const auto labelHeight = 22;
-    const auto minGap = 8;
-
-    if (startIndex == 0)
-    {
-        auto oscArea = groupArea.reduced(10, 8);
-        oscArea.removeFromTop(30);
-
-        oscArea.removeFromLeft(oscArea.getWidth() / 2);
-        auto oscRight = oscArea.reduced(2, 0);
-        oscRight.removeFromBottom(52);
-
-        std::vector<int> visibleIndices;
-        for (int i = 0; i < knobCount; ++i)
-        {
-            auto& binding = knobBindings[static_cast<std::size_t>(startIndex + i)];
-            if (binding.slider != nullptr && binding.slider->isVisible())
-            {
-                visibleIndices.push_back(i);
-            }
-        }
-
-        if (visibleIndices.empty())
-        {
-            return;
-        }
-
-        const auto visibleCount = static_cast<int>(visibleIndices.size());
-        const auto totalGap = juce::jmax(0, visibleCount - 1) * minGap;
-        const auto rowHeight = juce::jmax(62, (oscRight.getHeight() - totalGap) / visibleCount);
-        const auto maxKnobByHeight = juce::jmax(44, rowHeight - labelHeight - 8);
-        const auto maxKnobByWidth = juce::jmax(40, oscRight.getWidth() - 12);
-        const auto knobSize = juce::jlimit(44, 78, juce::jmin(maxKnobByWidth, maxKnobByHeight));
-        auto rowY = oscRight.getY();
-
-        const auto setTextSizedLabel = [&oscRight](juce::Label* label, const juce::Rectangle<int>& rowBounds, int knobCenterX)
-        {
-            if (label == nullptr)
-            {
-                return;
-            }
-
-            const auto approxTextWidth = static_cast<int>(label->getText().length()) * 8 + 16;
-            const auto textWidth = juce::jlimit(42,
-                                                oscRight.getWidth() - 6,
-                                                approxTextWidth);
-            const auto left = juce::jlimit(rowBounds.getX(),
-                                           rowBounds.getRight() - textWidth,
-                                           knobCenterX - textWidth / 2);
-            label->setBounds(left, rowBounds.getY(), textWidth, 18);
-        };
-
-        if (visibleCount == 3)
-        {
-            const auto smallKnobSize = juce::jlimit(38, 62, knobSize - 8);
-            constexpr int threeKnobCenterGap = 12;
-            constexpr int threeKnobVerticalGap = 6;
-            auto work = oscRight;
-
-            auto topRow = work.removeFromTop(work.getHeight() / 2 + 4);
-            work.removeFromTop(threeKnobVerticalGap);
-            auto bottomRow = work.reduced(0, 0);
-
-            {
-                const auto i = visibleIndices[0];
-                auto& binding = knobBindings[static_cast<std::size_t>(startIndex + i)];
-                if (binding.slider != nullptr && binding.label != nullptr)
-                {
-                    binding.slider->setColour(juce::Slider::rotarySliderFillColourId, sectionAccent);
-
-                    auto row = topRow.reduced(2, 1);
-                    auto labelRow = row.removeFromTop(labelHeight);
-                    row.removeFromTop(8);
-
-                    const auto knobBounds = juce::Rectangle<int>(smallKnobSize, smallKnobSize).withCentre(row.getCentre());
-                    setTextSizedLabel(binding.label, labelRow, knobBounds.getCentreX());
-                    binding.slider->setBounds(knobBounds);
-                }
-            }
-
-            {
-                auto leftCell = bottomRow.removeFromLeft((bottomRow.getWidth() - threeKnobCenterGap) / 2).reduced(1, 1);
-                bottomRow.removeFromLeft(threeKnobCenterGap);
-                auto rightCell = bottomRow.reduced(1, 1);
-                const std::array<juce::Rectangle<int>, 2> cells { leftCell, rightCell };
-
-                for (int idx = 0; idx < 2; ++idx)
-                {
-                    const auto vi = visibleIndices[static_cast<std::size_t>(idx + 1)];
-                    auto& binding = knobBindings[static_cast<std::size_t>(startIndex + vi)];
-                    if (binding.slider == nullptr || binding.label == nullptr)
-                    {
-                        continue;
-                    }
-
-                    binding.slider->setColour(juce::Slider::rotarySliderFillColourId, sectionAccent);
-
-                    auto row = cells[static_cast<std::size_t>(idx)];
-                    auto labelRow = row.removeFromTop(labelHeight);
-                    row.removeFromTop(8);
-
-                    const auto cellKnobSize = juce::jlimit(36,
-                                                           smallKnobSize,
-                                                           juce::jmin(row.getWidth() - 2, row.getHeight() - 2));
-                    const auto knobBounds = juce::Rectangle<int>(cellKnobSize, cellKnobSize).withCentre(row.getCentre());
-                    setTextSizedLabel(binding.label, labelRow, knobBounds.getCentreX());
-                    binding.slider->setBounds(knobBounds);
-                }
-            }
-
-            return;
-        }
-
-        if (visibleCount == 2)
-        {
-            constexpr int twoKnobHorizontalGap = 34;
-            auto row = oscRight.reduced(0, 4);
-            const auto labelRow = row.removeFromTop(labelHeight);
-            row.removeFromTop(8);
-
-            const auto pairWidth = juce::jmax(2, row.getWidth() - twoKnobHorizontalGap);
-            const auto cellWidth = juce::jmax(1, pairWidth / 2);
-            const auto rowLeft = row.getX() + (row.getWidth() - (cellWidth * 2 + twoKnobHorizontalGap)) / 2;
-
-            auto leftCell = juce::Rectangle<int>(rowLeft, row.getY(), cellWidth, row.getHeight()).reduced(2, 0);
-            auto rightCell = juce::Rectangle<int>(rowLeft + cellWidth + twoKnobHorizontalGap,
-                                                  row.getY(),
-                                                  cellWidth,
-                                                  row.getHeight()).reduced(2, 0);
-            const std::array<juce::Rectangle<int>, 2> cells { leftCell, rightCell };
-
-            const auto maxByWidth = juce::jmax(36, cellWidth - 4);
-            const auto maxByHeight = juce::jmax(36, row.getHeight() - 2);
-            const auto cellKnobSize = juce::jlimit(38, 72, juce::jmin(maxByWidth, maxByHeight));
-
-            for (int idx = 0; idx < 2; ++idx)
-            {
-                const auto vi = visibleIndices[static_cast<std::size_t>(idx)];
-                auto& binding = knobBindings[static_cast<std::size_t>(startIndex + vi)];
-                if (binding.slider == nullptr || binding.label == nullptr)
-                {
-                    continue;
-                }
-
-                binding.slider->setColour(juce::Slider::rotarySliderFillColourId, sectionAccent);
-
-                const auto knobBounds = juce::Rectangle<int>(cellKnobSize, cellKnobSize)
-                                            .withCentre(cells[static_cast<std::size_t>(idx)].getCentre());
-                setTextSizedLabel(binding.label, labelRow, knobBounds.getCentreX());
-                binding.slider->setBounds(knobBounds);
-            }
-
-            return;
-        }
-
-        for (int visibleIdx = 0; visibleIdx < visibleCount; ++visibleIdx)
-        {
-            const auto i = visibleIndices[static_cast<std::size_t>(visibleIdx)];
-            auto& binding = knobBindings[static_cast<std::size_t>(startIndex + i)];
-            if (binding.slider == nullptr || binding.label == nullptr)
-            {
-                continue;
-            }
-
-            binding.slider->setColour(juce::Slider::rotarySliderFillColourId, sectionAccent);
-
-            auto rowBounds = juce::Rectangle<int>(oscRight.getX(), rowY, oscRight.getWidth(), rowHeight);
-            auto labelBounds = rowBounds.removeFromTop(labelHeight);
-            rowBounds.removeFromTop(6);
-            const auto knobBounds = juce::Rectangle<int>(knobSize, knobSize).withCentre(rowBounds.getCentre());
-
-            setTextSizedLabel(binding.label, labelBounds, knobBounds.getCentreX());
-            binding.slider->setBounds(knobBounds);
-
-            rowY += rowHeight + minGap;
-        }
-
-        return;
-    }
-
-    auto area = groupArea.reduced(10, 8);
-    area.removeFromTop(30);
-
-    const auto knobTop = area.getY() + labelHeight + 10;
-    const auto maxKnobByHeight = juce::jmax(56, area.getHeight() - labelHeight - 8);
-    const auto maxKnobByWidth = (area.getWidth() - (knobCount - 1) * minGap) / knobCount;
-    const auto baseKnobSize = juce::jlimit(56, 110, juce::jmin(maxKnobByWidth, maxKnobByHeight));
-    const auto sizeScale = (startIndex == 5) ? 0.72 : 0.85;
-    const auto knobSize = juce::jmax((startIndex == 5) ? 42 : 48,
-                                     static_cast<int>(std::lround(static_cast<double>(baseKnobSize) * sizeScale)));
-
-    const auto totalKnobWidth = knobSize * knobCount;
-    const auto dynamicGap = knobCount > 1
-                                ? juce::jmax(minGap, (area.getWidth() - totalKnobWidth) / (knobCount - 1))
-                                : 0;
-    const auto rowWidth = totalKnobWidth + (knobCount - 1) * dynamicGap;
-    auto x = area.getX() + (area.getWidth() - rowWidth) / 2;
-
-    for (int i = 0; i < knobCount; ++i)
-    {
-        auto& binding = knobBindings[static_cast<std::size_t>(startIndex + i)];
-
-        if (binding.slider == nullptr || binding.label == nullptr)
-        {
-            continue;
-        }
-
-        binding.slider->setColour(juce::Slider::rotarySliderFillColourId, sectionAccent);
-        binding.label->setBounds(x, area.getY(), knobSize, labelHeight);
-        binding.slider->setBounds(x, knobTop, knobSize, knobSize);
-        x += knobSize + dynamicGap;
-    }
-}
-
 void PX3SynthAudioProcessorEditor::refreshAnyKeyDownState()
 {
     const auto noteStates = audioProcessor.copyActiveNoteStates();
@@ -2619,6 +2400,119 @@ void PX3SynthAudioProcessorEditor::refreshFilterResponseUI()
     }
 }
 
+bool PX3SynthAudioProcessorEditor::isPanelVisible(int sectionIndex) const
+{
+    return selectedTopMenuSection == juce::jlimit(0, 4, sectionIndex);
+}
+
+void PX3SynthAudioProcessorEditor::updatePanelVisibility()
+{
+    oscPanel.setVisible(isPanelVisible(0));
+    envPanel.setVisible(isPanelVisible(1));
+    fltPanel.setVisible(isPanelVisible(2));
+    fxPanel.setVisible(isPanelVisible(3));
+    mixPanel.setVisible(isPanelVisible(4));
+}
+
+void PX3SynthAudioProcessorEditor::layoutOscPanel()
+{
+    auto panelArea = oscPanel.getLocalBounds().reduced(12, 10);
+    panelArea.removeFromTop(26);
+
+    auto oscArea = panelArea.removeFromLeft(static_cast<int>(std::lround(static_cast<double>(panelArea.getWidth()) * 0.62)));
+    panelArea.removeFromLeft(12);
+    auto lfoArea = panelArea;
+
+    if (oscillatorDisplayComponent != nullptr)
+    {
+        oscillatorDisplayComponent->setBounds(oscArea.reduced(4, 2));
+    }
+
+    auto lfoInner = lfoArea.reduced(10, 6);
+    const auto assignRow = juce::Rectangle<int>(lfoInner.getX(),
+                                                lfoInner.getBottom() - 22,
+                                                lfoInner.getWidth(),
+                                                18);
+    auto row = assignRow;
+    auto labelArea = row.removeFromLeft(52);
+    lfoAssignLabel.setBounds(labelArea);
+    lfoAssignBox.setBounds(row.reduced(1, 0));
+
+    const auto knobTop = lfoInner.getY() + 24;
+    const auto knobBottomLimit = assignRow.getY() - 26;
+    const auto knobSize = juce::jlimit(50, 104, juce::jmin(lfoInner.getWidth() - 20, knobBottomLimit - knobTop));
+    auto knobBounds = juce::Rectangle<int>(knobSize, knobSize).withCentre({ lfoInner.getCentreX(), knobTop + knobSize / 2 });
+    if (knobBounds.getBottom() > knobBottomLimit)
+    {
+        knobBounds.setY(knobBottomLimit - knobBounds.getHeight());
+    }
+
+    lfoFrequencyLabel.setBounds(juce::Rectangle<int>(lfoInner.getX(), knobBounds.getY() - 20, lfoInner.getWidth(), 18));
+    lfoFrequencyKnob.setBounds(knobBounds);
+
+    const auto readoutY = juce::jlimit(lfoInner.getY(),
+                                       assignRow.getY() - 16,
+                                       lfoFrequencyKnob.getBottom() + 4);
+    lfoFrequencyValueLabel.setBounds(lfoInner.getX(), readoutY, lfoInner.getWidth(), 14);
+}
+
+void PX3SynthAudioProcessorEditor::layoutFilterPanel()
+{
+    auto panelArea = fltPanel.getLocalBounds().reduced(12, 10);
+    panelArea.removeFromTop(26);
+
+    auto filterArea = panelArea.reduced(4, 0);
+    const auto row = juce::Rectangle<int>(filterArea.getX(),
+                                          filterArea.getBottom() - 22,
+                                          filterArea.getWidth(),
+                                          18);
+    filterTypeBox.setBounds(row.reduced(1, 0));
+
+    auto responseArea = filterArea.withBottom(juce::jmax(filterArea.getY(), row.getY() - 6));
+    auto knobBand = responseArea.removeFromTop(120);
+    const auto knobSize = juce::jlimit(56, 110, juce::jmin((knobBand.getWidth() - 24) / 2, knobBand.getHeight() - 24));
+
+    auto leftKnob = juce::Rectangle<int>(knobSize, knobSize)
+                        .withCentre({ knobBand.getX() + knobBand.getWidth() / 4, knobBand.getCentreY() + 8 });
+    auto rightKnob = juce::Rectangle<int>(knobSize, knobSize)
+                         .withCentre({ knobBand.getX() + (knobBand.getWidth() * 3) / 4, knobBand.getCentreY() + 8 });
+
+    cutoffLabel.setBounds(juce::Rectangle<int>(leftKnob.getX(), leftKnob.getY() - 20, leftKnob.getWidth(), 18));
+    cutoffKnob.setBounds(leftKnob);
+    resonanceLabel.setBounds(juce::Rectangle<int>(rightKnob.getX(), rightKnob.getY() - 20, rightKnob.getWidth(), 18));
+    resonanceKnob.setBounds(rightKnob);
+
+    if (filterResponseComponent != nullptr)
+    {
+        filterResponseComponent->setBounds(responseArea.withTrimmedLeft(8).withTrimmedRight(8).reduced(0, 4));
+    }
+}
+
+void PX3SynthAudioProcessorEditor::layoutEnvelopePanel()
+{
+    if (envelopeGraph == nullptr)
+    {
+        return;
+    }
+
+    auto panelArea = envPanel.getLocalBounds().reduced(12, 10);
+    panelArea.removeFromTop(26);
+    envelopeGraph->setBounds(panelArea.reduced(4, 2));
+}
+
+void PX3SynthAudioProcessorEditor::layoutFxPanel()
+{
+    auto panelArea = fxPanel.getLocalBounds().reduced(12, 10);
+    panelArea.removeFromTop(26);
+    updateFxSectionTargets(panelArea, 12);
+    layoutFxSectionsFromCurrentAreas();
+}
+
+void PX3SynthAudioProcessorEditor::layoutMixPanel()
+{
+    // MIX currently uses top-bar master gain; panel reserved for future routing.
+}
+
 void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
 {
     const auto vibeEnabled = audioProcessor.getVibeEnabledParam().get();
@@ -2664,7 +2558,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
 {
     // Timer drives non-audio UI synchronization only. DSP state is never
     // computed here; this keeps audio-thread responsibilities isolated.
-    if (draggingFxSection < 0)
+    if (isPanelVisible(3) && draggingFxSection < 0)
     {
         const auto processorOrder = audioProcessor.getFxProcessingOrder();
         if (processorOrder != fxSectionOrder)
@@ -2682,18 +2576,32 @@ void PX3SynthAudioProcessorEditor::timerCallback()
                 }
             }
             layoutFxSectionsFromCurrentAreas();
-            repaint(headerPlaceholderArea);
+            repaint(fxPanel.getBounds());
         }
     }
 
-    animateFxSections();
-    refreshOscillatorModeUI();
-    refreshGranularModeUI();
-    refreshLfoAssignmentUI();
-    refreshLfoFrequencyLabel();
-    refreshEnvelopeGraphUI();
-    refreshFilterResponseUI();
-    refreshFxBypassUI();
+    if (isPanelVisible(3))
+    {
+        animateFxSections();
+        refreshGranularModeUI();
+        refreshFxBypassUI();
+    }
+
+    if (isPanelVisible(0))
+    {
+        refreshOscillatorModeUI();
+        refreshLfoAssignmentUI();
+        refreshLfoFrequencyLabel();
+    }
+    else if (isPanelVisible(1))
+    {
+        refreshEnvelopeGraphUI();
+    }
+    else if (isPanelVisible(2))
+    {
+        refreshFilterResponseUI();
+    }
+
     refreshTopMenuSelectionFromProcessor();
 
     if (debugPanelVisible)
@@ -2710,7 +2618,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         debugRefreshTickCounter = 0;
     }
 
-    if (oscillatorDisplayComponent != nullptr)
+    if (isPanelVisible(0) && oscillatorDisplayComponent != nullptr)
     {
         oscillatorDisplayComponent->advanceAnimation(0.09f);
     }

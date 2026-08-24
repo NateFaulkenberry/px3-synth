@@ -177,10 +177,6 @@ private:
                           int height,
                           bool rowIsSelected) override;
     void selectedRowsChanged(int lastRowSelected) override;
-    void layoutKnobGroup(const juce::Rectangle<int>& groupArea,
-                         int startIndex,
-                         int knobCount,
-                         const juce::Colour& sectionAccent);
     static juce::String noteNameForMidi(int midiNote);
     void timerCallback() override;
 
@@ -275,7 +271,6 @@ private:
     juce::Rectangle<int> topSpareSectionArea;
     juce::Rectangle<int> midiStatusArea;
     juce::Rectangle<int> performanceControlsArea;
-    std::array<juce::Rectangle<int>, 4> knobGroupAreas {};
     std::array<juce::Rectangle<int>, 3> fxSectionSlots {};
     std::array<juce::Rectangle<float>, 3> fxSectionCurrentAreas {};
     std::array<juce::Rectangle<float>, 3> fxSectionTargetAreas {};
