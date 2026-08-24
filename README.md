@@ -427,17 +427,18 @@ Controls:
 
 - INTENSITY knob: reverb amount.
 - ALGO dropdown:
-  - Hall
-  - Plate
-  - Room
-  - Cavern
-  - Moon
+  - ROOM
+  - PLATE
+  - HALL
+  - CLOUD
 
 What it does:
 
-- Core reverb parameters adjust per algorithm.
-- Moon adds extra modulated reflection layer for spacious/otherworldly tail.
-- Output compensation helps keep perceived loudness stable across wetness.
+- ROOM: compact early-reflection style space with tighter decay behavior.
+- PLATE: denser plate-style diffusion with a brighter, smoother tail.
+- HALL: larger multi-line hall network with wider, longer ambience.
+- CLOUD: expansive modulated diffusion mode with cloud feedback/diffusion shaping.
+- Shared post-processing across modes includes stereo width shaping, wet DC filtering, gentle peak control/saturation at high wet levels, and output compensation to keep loudness more stable as INTENSITY rises.
 
 ## Performance + Keyboard
 
