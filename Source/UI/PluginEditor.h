@@ -12,6 +12,7 @@
 #include "PluginProcessor.h"
 #include "GenericEnvelopeComponent.h"
 #include "FilterResponseComponent.h"
+#include "GenericLfoComponent.h"
 #include "OscillatorDisplayComponent.h"
 
 /**
@@ -136,6 +137,7 @@ private:
     void refreshFxBypassUI();
     void refreshLfoAssignmentUI();
     void refreshLfoFrequencyLabel();
+    void refreshLfoUI();
     void refreshEnvelopeGraphUI();
     void refreshFilterResponseUI();
     void updatePanelVisibility();
@@ -300,6 +302,7 @@ private:
     juce::Slider releaseKnob;
     juce::Slider gainKnob;
     juce::Slider lfoFrequencyKnob;
+    juce::ComboBox lfoWaveformBox;
     juce::ComboBox lfoAssignBox;
 
     KnobLabel oscSineLabel;
@@ -314,6 +317,7 @@ private:
     KnobLabel releaseLabel;
     KnobLabel gainLabel;
     KnobLabel lfoFrequencyLabel;
+    KnobLabel lfoWaveformLabel;
     juce::Label lfoFrequencyValueLabel;
     KnobLabel lfoAssignLabel;
     KnobLabel midiStatusLabel;
@@ -323,6 +327,7 @@ private:
     SectionPanelComponent fxPanel;
     SectionPanelComponent mixPanel;
     std::unique_ptr<OscillatorDisplayComponent> oscillatorDisplayComponent;
+    std::unique_ptr<GenericLfoComponent> lfoComponent;
     std::unique_ptr<GenericEnvelopeComponent> envelopeGraph;
     std::unique_ptr<FilterResponseComponent> filterResponseComponent;
 

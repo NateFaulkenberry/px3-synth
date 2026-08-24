@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginProcessorInternals.h"
 #include "FilterMode.h"
+#include "LfoMode.h"
 #include "OscillatorMode.h"
 
 #include "PluginEditor.h"
@@ -101,6 +102,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                        "LFO Frequency",
                                                        juce::NormalisableRange<float>(0.01f, 20.0f, 0.0001f, 0.30f),
                                                        1.0f);
+    lfoWaveformParam = new juce::AudioParameterChoice("lfoWaveform",
+                                                       "LFO Waveform",
+                                                       px3::lfoWaveformChoices(),
+                                                       0);
 
     addParameter(oscSineParam);
     addParameter(oscSawParam);
@@ -146,6 +151,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(reverbCloudDiffusionParam);
     addParameter(pitchBendRangeParam);
     addParameter(lfoFrequencyParam);
+    addParameter(lfoWaveformParam);
 
     buildLfoAssignableTargets();
 
@@ -230,6 +236,8 @@ void PX3SynthAudioProcessor::changeProgramName(int, const juce::String&)
 void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     synth.setCurrentPlaybackSampleRate(sampleRate);
+    lfoGenerator.prepare(sampleRate);
+    lfoGenerator.setSettings(currentLfoSettings());
     const auto sr = static_cast<float>(juce::jmax(1.0, sampleRate));
     constexpr float delayControlTauSec = 0.008f;
     constexpr float reverbAmountTauSec = 0.020f;
@@ -276,24 +284,12 @@ bool PX3SynthAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) 
 
 float PX3SynthAudioProcessor::currentLfoSignalForBlock(int numSamples)
 {
-    // ONE LFO architecture: evaluate once per block (lightweight) and use the
-    // midpoint phase so block-rate modulation feels stable during automation.
-    const auto frequencyHz = juce::jlimit(0.01f, 20.0f, lfoFrequencyParam->get());
-    const auto startPhase = lfoPhaseRadians;
-    const auto samples = juce::jmax(1, numSamples);
-    const auto halfBlockAdvance = juce::MathConstants<float>::twoPi * frequencyHz
-                                  * (static_cast<float>(samples) * 0.5f / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));
-    const auto signal = std::sin(startPhase + halfBlockAdvance);
+    // Keep one global LFO instance evaluated once per block. The generator is
+    // generic and destination-agnostic; routing is handled elsewhere.
+    lfoGenerator.setSettings(currentLfoSettings());
+    const auto signal = lfoGenerator.getMidpointSignalAndAdvance(numSamples);
 
-    const auto fullAdvance = juce::MathConstants<float>::twoPi * frequencyHz
-                             * (static_cast<float>(samples) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));
-    lfoPhaseRadians += fullAdvance;
-    while (lfoPhaseRadians >= juce::MathConstants<float>::twoPi)
-    {
-        lfoPhaseRadians -= juce::MathConstants<float>::twoPi;
-    }
-
-    lfoPhaseForDebug.store(lfoPhaseRadians, std::memory_order_relaxed);
+    lfoPhaseForDebug.store(lfoGenerator.getPhaseRadians(), std::memory_order_relaxed);
     lfoCurrentValue.store(signal, std::memory_order_relaxed);
     return signal;
 }

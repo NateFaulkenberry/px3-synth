@@ -98,6 +98,7 @@ juce::AudioParameterBool& PX3SynthAudioProcessor::getReverbEnabledParam() const 
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getReverbAlgorithmParam() const { return *reverbAlgorithmParam; }
 juce::AudioParameterInt& PX3SynthAudioProcessor::getPitchBendRangeParam() const { return *pitchBendRangeParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getLfoFrequencyParam() const { return *lfoFrequencyParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getLfoWaveformParam() const { return *lfoWaveformParam; }
 
 int PX3SynthAudioProcessor::getTopMenuViewIndex() const
 {
@@ -198,6 +199,7 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
         // Exclude controls that define modulation behavior itself, rather than
         // being destinations of modulation.
         return id.equalsIgnoreCase("lfoFrequency")
+               || id.equalsIgnoreCase("lfoWaveform")
                || id.equalsIgnoreCase("pitchBendRange");
     };
 

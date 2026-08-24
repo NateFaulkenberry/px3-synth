@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 
+#include "LfoGenerator.h"
 #include "PianoKeyboard.h"
 #include "SynthSound.h"
 #include "SynthVoice.h"
@@ -116,6 +117,7 @@ public:
     juce::AudioParameterChoice& getReverbAlgorithmParam() const;
     juce::AudioParameterInt& getPitchBendRangeParam() const;
     juce::AudioParameterFloat& getLfoFrequencyParam() const;
+    juce::AudioParameterChoice& getLfoWaveformParam() const;
     const juce::StringArray& getLfoAssignmentDisplayNames() const;
     int getLfoAssignmentIndex() const;
     juce::String getLfoAssignmentParameterId() const;
@@ -217,6 +219,7 @@ private:
     FilterSettings currentFilterSettings() const;
     OscillatorSettings currentOscillatorSettings() const;
     EnvelopeSettings currentEnvelopeSettings() const;
+    LfoSettings currentLfoSettings() const;
 
     void prepareReverbEngine(double sampleRate);
     void applyVibeTypeProfile(int typeIndex);
@@ -310,6 +313,7 @@ private:
     juce::AudioParameterFloat* reverbCloudDiffusionParam { nullptr };
     juce::AudioParameterInt* pitchBendRangeParam { nullptr };
     juce::AudioParameterFloat* lfoFrequencyParam { nullptr };
+    juce::AudioParameterChoice* lfoWaveformParam { nullptr };
 
     struct LfoAssignableTarget
     {
@@ -338,7 +342,7 @@ private:
     std::atomic<int> topMenuViewIndex { 0 };
 
     float vibratoPhaseRadians { 0.0f };
-    float lfoPhaseRadians { 0.0f };
+    LfoGenerator lfoGenerator;
     std::atomic<float> lfoPhaseForDebug { 0.0f };
     std::atomic<float> lfoCurrentValue { 0.0f };
     std::atomic<float> lfoDebugBaseNormalized { 0.0f };

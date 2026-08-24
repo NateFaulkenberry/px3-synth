@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginProcessorInternals.h"
+#include "LfoMode.h"
 
 // File role: plugin state serialization/restoration and ValueTree mapping.
 // Preserve IDs and schema compatibility here; avoid mixing runtime DSP updates
@@ -114,6 +115,7 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
     // Keep LFO settings in a dedicated node for backward-compatible evolution.
     juce::ValueTree lfoState(kLfoStateId);
     lfoState.setProperty(kLfoFrequencyId, lfoFrequencyParam->get(), nullptr);
+    lfoState.setProperty(kLfoWaveformId, lfoWaveformParam->getIndex(), nullptr);
     lfoState.setProperty(kLfoAssignmentId, getLfoAssignmentParameterId(), nullptr);
     state.addChild(lfoState, -1, nullptr);
 
@@ -227,6 +229,12 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         {
             const auto frequency = juce::jlimit(0.01f, 20.0f, static_cast<float>(lfoState[kLfoFrequencyId]));
             lfoFrequencyParam->setValueNotifyingHost(lfoFrequencyParam->convertTo0to1(frequency));
+        }
+
+        if (lfoState.hasProperty(kLfoWaveformId) && lfoWaveformParam != nullptr)
+        {
+            const auto waveform = px3::clampLfoWaveformIndex(static_cast<int>(lfoState[kLfoWaveformId]));
+            lfoWaveformParam->setValueNotifyingHost(lfoWaveformParam->convertTo0to1(static_cast<float>(waveform)));
         }
 
         if (lfoState.hasProperty(kLfoAssignmentId))

@@ -84,6 +84,14 @@ EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings() const
     return settings;
 }
 
+LfoSettings PX3SynthAudioProcessor::currentLfoSettings() const
+{
+    LfoSettings settings;
+    settings.frequencyHz = juce::jlimit(0.01f, 20.0f, lfoFrequencyParam->get());
+    settings.waveformIndex = lfoWaveformParam != nullptr ? lfoWaveformParam->getIndex() : 0;
+    return settings;
+}
+
 void PX3SynthAudioProcessor::updateTransportState()
 {
     currentBpm = 120.0;

@@ -476,13 +476,26 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     lfoFrequencyValueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
     lfoFrequencyValueLabel.setFont(juce::FontOptions(11.0f));
     lfoFrequencyValueLabel.setInterceptsMouseClicks(false, false);
-    oscPanel.addAndMakeVisible(lfoFrequencyValueLabel);
 
     lfoFrequencyKnob.onValueChange = [this]()
     {
         refreshLfoFrequencyLabel();
     };
-    refreshLfoFrequencyLabel();
+
+    auto& lfoWaveformParam = audioProcessor.getLfoWaveformParam();
+    for (int i = 0; i < lfoWaveformParam.choices.size(); ++i)
+    {
+        lfoWaveformBox.addItem(lfoWaveformParam.choices[i], i + 1);
+    }
+    lfoWaveformBox.setSelectedItemIndex(lfoWaveformParam.getIndex(), juce::dontSendNotification);
+    lfoWaveformBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    lfoWaveformBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    lfoWaveformBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    lfoWaveformLabel.setText("WAVE", juce::dontSendNotification);
+    lfoWaveformLabel.setJustificationType(juce::Justification::centredLeft);
+    lfoWaveformLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    lfoWaveformLabel.setFont(juce::FontOptions(11.5f));
+    lfoWaveformLabel.setInterceptsMouseClicks(false, false);
 
     lfoAssignLabel.setText("Assign", juce::dontSendNotification);
     lfoAssignLabel.setJustificationType(juce::Justification::centred);
@@ -507,6 +520,14 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     oscPanel.addAndMakeVisible(lfoAssignLabel);
     oscPanel.addAndMakeVisible(lfoAssignBox);
+
+    lfoComponent = std::make_unique<GenericLfoComponent>(lfoFrequencyKnob,
+                                                         lfoFrequencyLabel,
+                                                         lfoFrequencyValueLabel,
+                                                         lfoWaveformBox,
+                                                         lfoWaveformLabel,
+                                                         kGroupAccents[3]);
+    oscPanel.addAndMakeVisible(*lfoComponent);
 
     // OSC macro labels can become long in some modes; use a slightly smaller font.
     oscSineLabel.setFont(juce::FontOptions(11.0f));
@@ -716,9 +737,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     fltPanel.addAndMakeVisible(resonanceLabel);
     fltPanel.addAndMakeVisible(filterTypeBox);
 
-    oscPanel.addAndMakeVisible(lfoFrequencyKnob);
-    oscPanel.addAndMakeVisible(lfoFrequencyLabel);
-
     fxPanel.addAndMakeVisible(vibeAmountKnob);
     fxPanel.addAndMakeVisible(vibeAmountLabel);
     fxPanel.addAndMakeVisible(vibeTypeBox);
@@ -754,6 +772,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachComboBox(audioProcessor.getFilterTypeParam(), filterTypeBox);
     attachComboBox(audioProcessor.getOscillatorModeParam(), oscModeBox);
     attachComboBox(audioProcessor.getOscVowelParam(), oscVowelBox);
+    attachComboBox(audioProcessor.getLfoWaveformParam(), lfoWaveformBox);
     attachComboBox(audioProcessor.getDelayAlgorithmParam(), delayAlgoBox);
     attachComboBox(audioProcessor.getGranularSyncDivisionParam(), granularSyncBox);
     attachComboBox(audioProcessor.getGranularModeParam(), granularModeBox);
@@ -951,6 +970,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     refreshOscillatorModeUI();
     refreshGranularModeUI();
     refreshLfoAssignmentUI();
+    refreshLfoUI();
     refreshEnvelopeGraphUI();
     refreshFilterResponseUI();
     refreshFxBypassUI();
@@ -2166,7 +2186,7 @@ void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex
     {
         refreshOscillatorModeUI();
         refreshLfoAssignmentUI();
-        refreshLfoFrequencyLabel();
+        refreshLfoUI();
     }
     else if (clamped == 1)
     {
@@ -2384,6 +2404,17 @@ void PX3SynthAudioProcessorEditor::refreshLfoFrequencyLabel()
     lfoFrequencyValueLabel.setText(juce::String(hz, 2) + " Hz", juce::dontSendNotification);
 }
 
+void PX3SynthAudioProcessorEditor::refreshLfoUI()
+{
+    refreshLfoFrequencyLabel();
+
+    if (lfoComponent != nullptr)
+    {
+        lfoComponent->refreshFromParameters(audioProcessor.getLfoFrequencyParam().get(),
+                                            audioProcessor.getLfoWaveformParam().getIndex());
+    }
+}
+
 void PX3SynthAudioProcessorEditor::refreshEnvelopeGraphUI()
 {
     if (envelopeGraph != nullptr)
@@ -2419,7 +2450,7 @@ void PX3SynthAudioProcessorEditor::layoutOscPanel()
     auto panelArea = oscPanel.getLocalBounds().reduced(12, 10);
     panelArea.removeFromTop(26);
 
-    auto oscArea = panelArea.removeFromLeft(static_cast<int>(std::lround(static_cast<double>(panelArea.getWidth()) * 0.62)));
+    auto oscArea = panelArea.removeFromLeft(static_cast<int>(std::lround(static_cast<double>(panelArea.getWidth()) * 0.58)));
     panelArea.removeFromLeft(12);
     auto lfoArea = panelArea;
 
@@ -2429,31 +2460,16 @@ void PX3SynthAudioProcessorEditor::layoutOscPanel()
     }
 
     auto lfoInner = lfoArea.reduced(10, 6);
-    const auto assignRow = juce::Rectangle<int>(lfoInner.getX(),
-                                                lfoInner.getBottom() - 22,
-                                                lfoInner.getWidth(),
-                                                18);
-    auto row = assignRow;
-    auto labelArea = row.removeFromLeft(52);
+    const auto assignRow = lfoInner.removeFromBottom(22);
+    auto assign = assignRow;
+    auto labelArea = assign.removeFromLeft(52);
     lfoAssignLabel.setBounds(labelArea);
-    lfoAssignBox.setBounds(row.reduced(1, 0));
+    lfoAssignBox.setBounds(assign.reduced(1, 0));
 
-    const auto knobTop = lfoInner.getY() + 24;
-    const auto knobBottomLimit = assignRow.getY() - 26;
-    const auto knobSize = juce::jlimit(50, 104, juce::jmin(lfoInner.getWidth() - 20, knobBottomLimit - knobTop));
-    auto knobBounds = juce::Rectangle<int>(knobSize, knobSize).withCentre({ lfoInner.getCentreX(), knobTop + knobSize / 2 });
-    if (knobBounds.getBottom() > knobBottomLimit)
+    if (lfoComponent != nullptr)
     {
-        knobBounds.setY(knobBottomLimit - knobBounds.getHeight());
+        lfoComponent->setBounds(lfoInner.reduced(2, 2));
     }
-
-    lfoFrequencyLabel.setBounds(juce::Rectangle<int>(lfoInner.getX(), knobBounds.getY() - 20, lfoInner.getWidth(), 18));
-    lfoFrequencyKnob.setBounds(knobBounds);
-
-    const auto readoutY = juce::jlimit(lfoInner.getY(),
-                                       assignRow.getY() - 16,
-                                       lfoFrequencyKnob.getBottom() + 4);
-    lfoFrequencyValueLabel.setBounds(lfoInner.getX(), readoutY, lfoInner.getWidth(), 14);
 }
 
 void PX3SynthAudioProcessorEditor::layoutFilterPanel()
@@ -2591,7 +2607,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     {
         refreshOscillatorModeUI();
         refreshLfoAssignmentUI();
-        refreshLfoFrequencyLabel();
+        refreshLfoUI();
     }
     else if (isPanelVisible(1))
     {
@@ -2621,6 +2637,11 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     if (isPanelVisible(0) && oscillatorDisplayComponent != nullptr)
     {
         oscillatorDisplayComponent->advanceAnimation(0.09f);
+    }
+
+    if (isPanelVisible(0) && lfoComponent != nullptr)
+    {
+        lfoComponent->advanceAnimation(0.07f);
     }
 
     // MIDI status bar is temporarily disabled.

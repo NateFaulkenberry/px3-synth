@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginProcessorInternals.h"
+#include "LfoMode.h"
 
 // File role: debug instrumentation, snapshots, and diagnostic helpers.
 // Keep optional/debug-only introspection here so production audio path code
@@ -233,12 +234,17 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     }
 
     auto serializedLfoFrequency = lfoFrequencyParam->get();
+    auto serializedLfoWaveform = lfoWaveformParam->getIndex();
     auto serializedLfoAssignment = juce::String("none");
     if (const auto lfoState = state.getChildWithName(kLfoStateId); lfoState.isValid())
     {
         if (lfoState.hasProperty(kLfoFrequencyId))
         {
             serializedLfoFrequency = juce::jlimit(0.01f, 20.0f, static_cast<float>(lfoState[kLfoFrequencyId]));
+        }
+        if (lfoState.hasProperty(kLfoWaveformId))
+        {
+            serializedLfoWaveform = px3::clampLfoWaveformIndex(static_cast<int>(lfoState[kLfoWaveformId]));
         }
         if (lfoState.hasProperty(kLfoAssignmentId))
         {
@@ -247,6 +253,7 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     }
 
     const auto frequencyMatches = std::abs(serializedLfoFrequency - lfoFrequencyParam->get()) <= 0.0005f;
+    const auto waveformMatches = serializedLfoWaveform == lfoWaveformParam->getIndex();
     const auto assignmentMatches = serializedLfoAssignment.equalsIgnoreCase(getLfoAssignmentParameterId());
 
     auto serializedAttack = attackParam->get();
@@ -265,6 +272,7 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
 
     const auto pass = (debugDescribeOrder(currentOrder) == debugDescribeOrder(decodedOrder))
                    && frequencyMatches
+                   && waveformMatches
                    && assignmentMatches
                    && attackMatches
                    && decayMatches
@@ -275,6 +283,8 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
              "serialized=" + debugDescribeOrder(decodedOrder) + "\n"
              "lfoFrequencyCurrent=" + juce::String(lfoFrequencyParam->get(), 4) + "\n"
              "lfoFrequencySerialized=" + juce::String(serializedLfoFrequency, 4) + "\n"
+             "lfoWaveformCurrent=" + juce::String(lfoWaveformParam->getIndex()) + "\n"
+             "lfoWaveformSerialized=" + juce::String(serializedLfoWaveform) + "\n"
              "lfoAssignmentCurrent=" + getLfoAssignmentParameterId() + "\n"
              "lfoAssignmentSerialized=" + serializedLfoAssignment + "\n"
              "attackCurrent=" + juce::String(attackParam->get(), 6) + "\n"

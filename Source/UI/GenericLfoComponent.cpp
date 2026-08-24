@@ -1,0 +1,157 @@
+#include "GenericLfoComponent.h"
+
+#include "LfoMode.h"
+
+#include <cmath>
+
+GenericLfoComponent::GenericLfoComponent(juce::Slider& rateKnobIn,
+                                         juce::Label& rateLabelIn,
+                                         juce::Label& rateValueLabelIn,
+                                         juce::ComboBox& waveformBoxIn,
+                                         juce::Label& waveformLabelIn,
+                                         juce::Colour accentIn)
+    : rateKnob(rateKnobIn),
+      rateLabel(rateLabelIn),
+      rateValueLabel(rateValueLabelIn),
+      waveformBox(waveformBoxIn),
+      waveformLabel(waveformLabelIn),
+      accent(accentIn)
+{
+    addAndMakeVisible(rateKnob);
+    addAndMakeVisible(rateLabel);
+    addAndMakeVisible(rateValueLabel);
+    addAndMakeVisible(waveformBox);
+    addAndMakeVisible(waveformLabel);
+}
+
+void GenericLfoComponent::setAccentColour(juce::Colour accentIn)
+{
+    accent = accentIn;
+    repaint();
+}
+
+void GenericLfoComponent::refreshFromParameters(float rateHz, int waveformIndex)
+{
+    rateValueLabel.setText(juce::String(juce::jlimit(0.01f, 20.0f, rateHz), 2) + " Hz", juce::dontSendNotification);
+
+    const auto clamped = px3::clampLfoWaveformIndex(waveformIndex);
+    currentWaveformIndex = clamped;
+    if (waveformBox.getSelectedItemIndex() != clamped)
+    {
+        waveformBox.setSelectedItemIndex(clamped, juce::dontSendNotification);
+    }
+}
+
+void GenericLfoComponent::advanceAnimation(float deltaPhase)
+{
+    visualPhase += deltaPhase;
+    if (visualPhase >= juce::MathConstants<float>::twoPi)
+    {
+        visualPhase -= juce::MathConstants<float>::twoPi;
+    }
+
+    repaint();
+}
+
+void GenericLfoComponent::resized()
+{
+    auto area = getLocalBounds().reduced(8, 6);
+
+    auto top = area.removeFromTop(26);
+    waveformLabel.setBounds(top.removeFromLeft(78));
+    waveformBox.setBounds(top.reduced(1, 0));
+
+    area.removeFromTop(6);
+    auto bottom = area.removeFromBottom(22);
+    auto valueArea = bottom.removeFromRight(90);
+    rateValueLabel.setBounds(valueArea);
+    rateLabel.setBounds(bottom);
+
+    area.removeFromBottom(4);
+    const auto knobSize = juce::jlimit(52, 110, juce::jmin(area.getWidth() - 16, area.getHeight()));
+    rateKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(area.getCentre()));
+}
+
+void GenericLfoComponent::paint(juce::Graphics& g)
+{
+    auto graph = getLocalBounds().toFloat().reduced(10.0f, 10.0f);
+    graph.removeFromTop(36.0f);
+    graph.removeFromBottom(30.0f);
+
+    if (graph.getWidth() < 40.0f || graph.getHeight() < 20.0f)
+    {
+        return;
+    }
+
+    g.setColour(juce::Colour::fromRGBA(14, 14, 18, 170));
+    g.fillRoundedRectangle(graph, 7.0f);
+    g.setColour(accent.withAlpha(0.32f));
+    g.drawRoundedRectangle(graph, 7.0f, 1.0f);
+
+    const auto left = graph.getX() + 6.0f;
+    const auto right = graph.getRight() - 6.0f;
+    const auto top = graph.getY() + 5.0f;
+    const auto bottom = graph.getBottom() - 5.0f;
+    const auto mid = (top + bottom) * 0.5f;
+
+    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 24));
+    g.drawLine(left, mid, right, mid, 0.9f);
+    for (int gx = 1; gx < 6; ++gx)
+    {
+        const auto x = left + (right - left) * (static_cast<float>(gx) / 6.0f);
+        g.drawLine(x, top, x, bottom, 0.7f);
+    }
+
+    juce::Path wave;
+    const auto width = juce::jmax(1.0f, right - left);
+    const auto height = juce::jmax(1.0f, bottom - top);
+    for (int s = 0; s <= 72; ++s)
+    {
+        const auto t = static_cast<float>(s) / 72.0f;
+        const auto phaseNorm = std::fmod(t + visualPhase / juce::MathConstants<float>::twoPi, 1.0f);
+        const auto y = waveformSample(phaseNorm, currentWaveformIndex);
+        const auto xPos = left + t * width;
+        const auto yPos = mid - juce::jlimit(-1.0f, 1.0f, y) * (height * 0.40f);
+
+        if (s == 0)
+        {
+            wave.startNewSubPath(xPos, yPos);
+        }
+        else
+        {
+            wave.lineTo(xPos, yPos);
+        }
+    }
+
+    g.setColour(accent.withAlpha(0.70f));
+    g.strokePath(wave,
+                 juce::PathStrokeType(2.6f,
+                                      juce::PathStrokeType::curved,
+                                      juce::PathStrokeType::rounded));
+    g.setColour(juce::Colour::fromRGB(232, 240, 255));
+    g.strokePath(wave,
+                 juce::PathStrokeType(1.2f,
+                                      juce::PathStrokeType::curved,
+                                      juce::PathStrokeType::rounded));
+}
+
+float GenericLfoComponent::waveformSample(float phaseNorm, int waveformIndex)
+{
+    const auto p = phaseNorm - std::floor(phaseNorm);
+
+    switch (px3::clampLfoWaveformIndex(waveformIndex))
+    {
+        case 0:
+            return std::sin(p * juce::MathConstants<float>::twoPi);
+        case 1:
+            return 1.0f - 4.0f * std::abs(p - 0.5f);
+        case 2:
+            return p * 2.0f - 1.0f;
+        case 3:
+            return p < 0.5f ? 1.0f : -1.0f;
+        default:
+            break;
+    }
+
+    return std::sin(p * juce::MathConstants<float>::twoPi);
+}
