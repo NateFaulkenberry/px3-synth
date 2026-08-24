@@ -299,8 +299,6 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         setTopMenuViewIndex(0, false);
     }
 
-    applyVibeTypeProfile(vibeTypeParam->getIndex());
-
     if (error != nullptr)
     {
         error->clear();

@@ -19,33 +19,22 @@ float PX3SynthAudioProcessor::debugGetVibeGlobalAmount() const
 
 float PX3SynthAudioProcessor::debugGetVibeEffectiveAmount() const
 {
-    return juce::jlimit(0.0f, 1.0f, vibeEngine.getEffectiveAmount());
+    return juce::jlimit(0.0f, 1.0f, vibeComponent.getEffectiveAmount());
 }
 
 bool PX3SynthAudioProcessor::debugGetVibeBypass() const
 {
-    return !vibeEnabledParam->get();
+    return vibeComponent.isBypassed();
 }
 
 uint32_t PX3SynthAudioProcessor::debugGetVibeSeed() const
 {
-    return vibeSeed.load(std::memory_order_relaxed);
+    return vibeComponent.getSeed();
 }
 
 VibeTuning PX3SynthAudioProcessor::debugGetVibeTuning() const
 {
-    VibeTuning t;
-    t.oscillatorDrift = juce::jlimit(0.0f, 1.0f, vibeTuneOscDrift.load(std::memory_order_relaxed));
-    t.voiceVariation = juce::jlimit(0.0f, 1.0f, vibeTuneVoiceVar.load(std::memory_order_relaxed));
-    t.filterVariation = juce::jlimit(0.0f, 1.0f, vibeTuneFilterVar.load(std::memory_order_relaxed));
-    t.saturation = juce::jlimit(0.0f, 1.0f, vibeTuneSaturation.load(std::memory_order_relaxed));
-    t.noise = juce::jlimit(0.0f, 1.0f, vibeTuneNoise.load(std::memory_order_relaxed));
-    t.psuMovement = juce::jlimit(0.0f, 1.0f, vibeTunePsu.load(std::memory_order_relaxed));
-    t.vcaNonlinearity = juce::jlimit(0.0f, 1.0f, vibeTuneVca.load(std::memory_order_relaxed));
-    t.waveformAsymmetry = juce::jlimit(0.0f, 1.0f, vibeTuneAsym.load(std::memory_order_relaxed));
-    t.temperatureDrift = juce::jlimit(0.0f, 1.0f, vibeTuneTemp.load(std::memory_order_relaxed));
-    t.correlatedChaos = juce::jlimit(0.0f, 1.0f, vibeTuneChaos.load(std::memory_order_relaxed));
-    return t;
+    return vibeComponent.getTuning();
 }
 
 void PX3SynthAudioProcessor::debugSetVibeBypass(bool shouldBypass)
@@ -56,37 +45,17 @@ void PX3SynthAudioProcessor::debugSetVibeBypass(bool shouldBypass)
 
 void PX3SynthAudioProcessor::debugSetVibeSeed(uint32_t seed)
 {
-    vibeSeed.store(seed == 0u ? 1u : seed, std::memory_order_relaxed);
+    vibeComponent.setSeed(seed);
 }
 
 void PX3SynthAudioProcessor::debugSetVibeTuningValue(const juce::String& key, float value)
 {
-    const auto v = juce::jlimit(0.0f, 1.0f, value);
-    if (key.equalsIgnoreCase("oscillatorDrift")) vibeTuneOscDrift.store(v, std::memory_order_relaxed);
-    else if (key.equalsIgnoreCase("voiceVariation")) vibeTuneVoiceVar.store(v, std::memory_order_relaxed);
-    else if (key.equalsIgnoreCase("filterVariation")) vibeTuneFilterVar.store(v, std::memory_order_relaxed);
-    else if (key.equalsIgnoreCase("saturation")) vibeTuneSaturation.store(v, std::memory_order_relaxed);
-    else if (key.equalsIgnoreCase("noise")) vibeTuneNoise.store(v, std::memory_order_relaxed);
-    else if (key.equalsIgnoreCase("psuMovement")) vibeTunePsu.store(v, std::memory_order_relaxed);
-    else if (key.equalsIgnoreCase("vcaNonlinearity")) vibeTuneVca.store(v, std::memory_order_relaxed);
-    else if (key.equalsIgnoreCase("waveformAsymmetry")) vibeTuneAsym.store(v, std::memory_order_relaxed);
-    else if (key.equalsIgnoreCase("temperatureDrift")) vibeTuneTemp.store(v, std::memory_order_relaxed);
-    else if (key.equalsIgnoreCase("correlatedChaos")) vibeTuneChaos.store(v, std::memory_order_relaxed);
+    vibeComponent.setTuningValue(key, value);
 }
 
 float PX3SynthAudioProcessor::debugGetVibeTuningValue(const juce::String& key) const
 {
-    if (key.equalsIgnoreCase("oscillatorDrift")) return vibeTuneOscDrift.load(std::memory_order_relaxed);
-    if (key.equalsIgnoreCase("voiceVariation")) return vibeTuneVoiceVar.load(std::memory_order_relaxed);
-    if (key.equalsIgnoreCase("filterVariation")) return vibeTuneFilterVar.load(std::memory_order_relaxed);
-    if (key.equalsIgnoreCase("saturation")) return vibeTuneSaturation.load(std::memory_order_relaxed);
-    if (key.equalsIgnoreCase("noise")) return vibeTuneNoise.load(std::memory_order_relaxed);
-    if (key.equalsIgnoreCase("psuMovement")) return vibeTunePsu.load(std::memory_order_relaxed);
-    if (key.equalsIgnoreCase("vcaNonlinearity")) return vibeTuneVca.load(std::memory_order_relaxed);
-    if (key.equalsIgnoreCase("waveformAsymmetry")) return vibeTuneAsym.load(std::memory_order_relaxed);
-    if (key.equalsIgnoreCase("temperatureDrift")) return vibeTuneTemp.load(std::memory_order_relaxed);
-    if (key.equalsIgnoreCase("correlatedChaos")) return vibeTuneChaos.load(std::memory_order_relaxed);
-    return 0.0f;
+    return vibeComponent.getTuningValue(key);
 }
 
 juce::String PX3SynthAudioProcessor::debugGetInstanceId() const

@@ -60,12 +60,14 @@ target_sources(PX3Synth
         Source/UI/FilterResponseComponent.cpp
         Source/UI/LfoComponent.cpp
         Source/UI/SubOscComponent.cpp
+        Source/UI/VibeUiComponent.cpp
         Source/UI/OscillatorDisplayComponent.cpp
         Source/UI/PluginEditor.cpp
         Source/UI/PluginEditorDebug.cpp
         Source/DSP/EnvelopeGenerator.cpp
         Source/DSP/LfoGenerator.cpp
         Source/DSP/SubOscillator.cpp
+        Source/DSP/VibeComponent.cpp
         Source/DSP/PluginProcessor.cpp
         Source/DSP/PluginProcessorParameters.cpp
         Source/DSP/PluginProcessorMidi.cpp

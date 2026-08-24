@@ -190,7 +190,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
 
     synth.addSound(new SynthSound());
     clearAllActiveNotes();
-    applyVibeTypeProfile(vibeTypeParam->getIndex());
 
     debugLogEvent("LIFECYCLE", "PROCESSOR_CREATED",
                   "id=" + debugInstanceId + " order=" + debugDescribeOrder(getFxProcessingOrder()));
@@ -264,9 +263,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     delayTimeControlSmoothed = clamp01(delayTimeParam->get());
     delayFeedbackControlSmoothed = clamp01(delayFeedbackParam->get());
     reverbAmountSmoothed = reverbEnabledParam->get() ? clamp01(reverbAmountParam->get()) : 0.0f;
-    vibeEngine.prepare(sampleRate, synth.getNumVoices(), vibeSeed.load(std::memory_order_relaxed));
-    vibeLastAppliedSeed.store(vibeSeed.load(std::memory_order_relaxed), std::memory_order_relaxed);
-    applyVibeTypeProfile(vibeTypeParam->getIndex());
+    vibeComponent.prepare(sampleRate, synth.getNumVoices(), vibeComponent.getSeed());
 
     const auto envelope = currentEnvelopeSettings();
     const auto filter = currentFilterSettings();
@@ -313,94 +310,6 @@ float PX3SynthAudioProcessor::currentLfoSignalForBlock(int numSamples)
     return signal;
 }
 
-int PX3SynthAudioProcessor::sanitizeVibeTypeIndex(int typeIndex) const
-{
-    return juce::jlimit(0, juce::jmax(0, vibeTypeParam->choices.size() - 1), typeIndex);
-}
-
-void PX3SynthAudioProcessor::applyVibeTypeProfile(int typeIndex)
-{
-    const auto clamped = sanitizeVibeTypeIndex(typeIndex);
-    if (clamped == vibeTypeLastApplied.load(std::memory_order_relaxed))
-    {
-        return;
-    }
-
-    struct Profile
-    {
-        float oscillatorDrift;
-        float voiceVariation;
-        float filterVariation;
-        float saturation;
-        float noise;
-        float psuMovement;
-        float vcaNonlinearity;
-        float waveformAsymmetry;
-        float temperatureDrift;
-        float correlatedChaos;
-    };
-
-    static const std::array<Profile, 6> profiles {
-        {
-            // Warm: balanced analog movement and harmonic softening.
-            { 0.55f, 0.55f, 0.45f, 0.40f, 0.25f, 0.38f, 0.42f, 0.32f, 0.40f, 0.50f },
-            // Hot: stronger drive/nonlinearity with faster-feeling motion.
-            { 0.62f, 0.66f, 0.56f, 0.74f, 0.36f, 0.60f, 0.78f, 0.68f, 0.48f, 0.72f },
-            // Cool: cleaner, lower saturation/noise with restrained instability.
-            { 0.35f, 0.34f, 0.30f, 0.18f, 0.08f, 0.22f, 0.18f, 0.14f, 0.24f, 0.20f },
-            // Vintage: larger drift/PSU movement and added noise.
-            { 0.74f, 0.72f, 0.52f, 0.48f, 0.52f, 0.72f, 0.44f, 0.40f, 0.76f, 0.64f },
-            // Clean: minimal imperfections with slight organic motion.
-            { 0.16f, 0.14f, 0.12f, 0.08f, 0.03f, 0.10f, 0.08f, 0.06f, 0.10f, 0.08f },
-            // LoFi: noisy, unstable and asymmetrical by design.
-            { 0.68f, 0.82f, 0.62f, 0.56f, 0.84f, 0.70f, 0.52f, 0.74f, 0.58f, 0.78f }
-        }
-    };
-
-    const auto& p = profiles[static_cast<std::size_t>(clamped)];
-    vibeTuneOscDrift.store(p.oscillatorDrift, std::memory_order_relaxed);
-    vibeTuneVoiceVar.store(p.voiceVariation, std::memory_order_relaxed);
-    vibeTuneFilterVar.store(p.filterVariation, std::memory_order_relaxed);
-    vibeTuneSaturation.store(p.saturation, std::memory_order_relaxed);
-    vibeTuneNoise.store(p.noise, std::memory_order_relaxed);
-    vibeTunePsu.store(p.psuMovement, std::memory_order_relaxed);
-    vibeTuneVca.store(p.vcaNonlinearity, std::memory_order_relaxed);
-    vibeTuneAsym.store(p.waveformAsymmetry, std::memory_order_relaxed);
-    vibeTuneTemp.store(p.temperatureDrift, std::memory_order_relaxed);
-    vibeTuneChaos.store(p.correlatedChaos, std::memory_order_relaxed);
-    vibeTypeLastApplied.store(clamped, std::memory_order_relaxed);
-}
-
-void PX3SynthAudioProcessor::updateVibeStateForBlock(int numSamples, float lfoSignal)
-{
-    const auto seed = vibeSeed.load(std::memory_order_relaxed);
-    if (seed != vibeLastAppliedSeed.load(std::memory_order_relaxed))
-    {
-        vibeEngine.setSeed(seed);
-        vibeLastAppliedSeed.store(seed, std::memory_order_relaxed);
-    }
-
-    VibeEngine::Tuning t;
-    t.oscillatorDrift = juce::jlimit(0.0f, 1.0f, vibeTuneOscDrift.load(std::memory_order_relaxed));
-    t.voiceVariation = juce::jlimit(0.0f, 1.0f, vibeTuneVoiceVar.load(std::memory_order_relaxed));
-    t.filterVariation = juce::jlimit(0.0f, 1.0f, vibeTuneFilterVar.load(std::memory_order_relaxed));
-    t.saturation = juce::jlimit(0.0f, 1.0f, vibeTuneSaturation.load(std::memory_order_relaxed));
-    t.noise = juce::jlimit(0.0f, 1.0f, vibeTuneNoise.load(std::memory_order_relaxed));
-    t.psuMovement = juce::jlimit(0.0f, 1.0f, vibeTunePsu.load(std::memory_order_relaxed));
-    t.vcaNonlinearity = juce::jlimit(0.0f, 1.0f, vibeTuneVca.load(std::memory_order_relaxed));
-    t.waveformAsymmetry = juce::jlimit(0.0f, 1.0f, vibeTuneAsym.load(std::memory_order_relaxed));
-    t.temperatureDrift = juce::jlimit(0.0f, 1.0f, vibeTuneTemp.load(std::memory_order_relaxed));
-    t.correlatedChaos = juce::jlimit(0.0f, 1.0f, vibeTuneChaos.load(std::memory_order_relaxed));
-
-    vibeEngine.setTuning(t);
-    vibeEngine.setBypass(debugGetVibeBypass());
-    const auto globalAmount = applyLfoToNormalizedValue(vibeAmountParam,
-                                                         static_cast<juce::RangedAudioParameter*>(vibeAmountParam)->getValue(),
-                                                         lfoSignal);
-    vibeEngine.setGlobalAmount(juce::jlimit(0.0f, 1.0f, globalAmount));
-    vibeEngine.advance(numSamples);
-}
-
 void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -427,11 +336,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     const auto pitchBend = juce::jlimit(-1.0f, 1.0f, pitchBendNormalized.load(std::memory_order_relaxed));
     const auto modWheel = juce::jlimit(0.0f, 1.0f, modWheelNormalized.load(std::memory_order_relaxed));
     const auto bendRange = static_cast<float>(pitchBendRangeParam->get());
-    const auto vibeEnabled = vibeEnabledParam->get();
     constexpr float vibratoRateHz = 5.0f;
     constexpr float vibratoMaxDepthSemitones = 1.0f;
 
-    applyVibeTypeProfile(vibeTypeParam->getIndex());
     const auto blockLfoSignal = currentLfoSignalForBlock(buffer.getNumSamples());
     const auto lfoAssignedIndex = getLfoAssignmentIndex();
     if (lfoAssignedIndex > 0 && lfoAssignedIndex < static_cast<int>(lfoAssignableTargets.size()))
@@ -461,11 +368,11 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     const auto subtractive = currentSubtractiveSettings();
     const auto subOsc = currentSubOscillatorSettings();
     const auto oscillator = currentOscillatorSettings();
-    updateVibeStateForBlock(buffer.getNumSamples(), blockLfoSignal);
-    const auto vibeShared = vibeEngine.getSharedState();
-    const auto vibeTuning = debugGetVibeTuning();
-    const auto vibeBypass = debugGetVibeBypass();
-    const auto vibeAmount = vibeBypass ? 0.0f : vibeEngine.getEffectiveAmount();
+    vibeComponent.updateForBlock(currentVibeSettings(), buffer.getNumSamples());
+    const auto vibeShared = vibeComponent.getSharedState();
+    const auto vibeTuning = vibeComponent.getTuning();
+    const auto vibeBypass = vibeComponent.isBypassed();
+    const auto vibeAmount = vibeBypass ? 0.0f : vibeComponent.getEffectiveAmount();
     for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
     {
         if (auto* voice = dynamic_cast<SynthVoice*>(synth.getVoice(voiceIndex)))
@@ -481,29 +388,14 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                                             vibratoPhaseRadians,
                                             vibratoRateHz,
                                             vibratoMaxDepthSemitones);
-            const auto vv = vibeEngine.getVoiceVariation(voiceIndex);
-            VibeVoiceVariation voiceVariation;
-            voiceVariation.pitchCents = vv.pitchCents;
-            voiceVariation.cutoffOffset = vv.cutoffOffset;
-            voiceVariation.resonanceOffset = vv.resonanceOffset;
-            voiceVariation.gainOffset = vv.gainOffset;
-            voiceVariation.asymmetryBias = vv.asymmetryBias;
-            voiceVariation.saturationBias = vv.saturationBias;
-            VibeSharedState voiceShared;
-            voiceShared.oscillatorDrift = vibeShared.oscillatorDrift;
-            voiceShared.psu = vibeShared.psu;
-            voiceShared.temperature = vibeShared.temperature;
-            voiceShared.chaos = vibeShared.chaos;
-            voice->setVibeState(vibeAmount, vibeBypass, voiceShared, voiceVariation, vibeTuning);
+            const auto voiceVariation = vibeComponent.getVoiceVariation(voiceIndex);
+            voice->setVibeState(vibeAmount, vibeBypass, vibeShared, voiceVariation, vibeTuning);
         }
     }
 
     synth.renderNextBlock(buffer, midiMessages, 0, buffer.getNumSamples());
     updateTransportState();
 
-    const auto vibeAmountBase = applyLfoToNormalizedValue(vibeAmountParam,
-                                                          static_cast<juce::RangedAudioParameter*>(vibeAmountParam)->getValue(),
-                                                          blockLfoSignal);
     const auto delayAmountBase = applyLfoToNormalizedValue(delayAmountParam,
                                                             static_cast<juce::RangedAudioParameter*>(delayAmountParam)->getValue(),
                                                             blockLfoSignal);
@@ -541,7 +433,6 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
     }
     const auto reverbAlgorithmIndex = reverbAlgorithmParam->getIndex();
-    const auto vibeAmountRouted = clamp01(vibeAmountBase);
     const auto delayAmount = clamp01(delayAmountBase);
     const auto reverbAmount = clamp01(reverbAmountBase);
 
@@ -576,7 +467,6 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             switch (stage)
             {
                 case 0: // VIBE (distributed in voice stage)
-                    juce::ignoreUnused(vibeEnabled, vibeAmountRouted);
                     break;
 
                 case 1: // Delay

@@ -14,6 +14,7 @@
 #include "FilterResponseComponent.h"
 #include "LfoComponent.h"
 #include "SubOscComponent.h"
+#include "VibeUiComponent.h"
 #include "OscillatorDisplayComponent.h"
 
 /**
@@ -339,6 +340,7 @@ private:
     std::unique_ptr<OscillatorDisplayComponent> oscillatorDisplayComponent;
     std::unique_ptr<LfoComponent> lfoComponent;
     std::unique_ptr<SubOscComponent> subOscComponent;
+    std::unique_ptr<VibeUiComponent> vibeUiComponent;
     std::unique_ptr<EnvelopeComponent> envelopeGraph;
     std::unique_ptr<FilterResponseComponent> filterResponseComponent;
 

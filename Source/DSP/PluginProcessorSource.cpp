@@ -106,6 +106,18 @@ LfoSettings PX3SynthAudioProcessor::currentLfoSettings() const
     return settings;
 }
 
+VibeSettings PX3SynthAudioProcessor::currentVibeSettings() const
+{
+    const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
+    VibeSettings settings;
+    settings.enabled = vibeEnabledParam != nullptr && vibeEnabledParam->get();
+    settings.globalAmount = vibeAmountParam->convertFrom0to1(applyLfoToNormalizedValue(vibeAmountParam,
+                                                                                        static_cast<juce::RangedAudioParameter*>(vibeAmountParam)->getValue(),
+                                                                                        lfoSignal));
+    settings.typeIndex = vibeTypeParam != nullptr ? vibeTypeParam->getIndex() : 0;
+    return settings;
+}
+
 void PX3SynthAudioProcessor::updateTransportState()
 {
     currentBpm = 120.0;

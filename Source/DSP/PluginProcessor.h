@@ -7,7 +7,7 @@
 #include "SubOscTypes.h"
 #include "SynthSound.h"
 #include "SynthVoice.h"
-#include "VibeEngine.h"
+#include "VibeComponent.h"
 
 #include <array>
 #include <atomic>
@@ -226,10 +226,9 @@ private:
     OscillatorSettings currentOscillatorSettings() const;
     EnvelopeSettings currentEnvelopeSettings() const;
     LfoSettings currentLfoSettings() const;
+    VibeSettings currentVibeSettings() const;
 
     void prepareReverbEngine(double sampleRate);
-    void applyVibeTypeProfile(int typeIndex);
-    int sanitizeVibeTypeIndex(int typeIndex) const;
     void updateTransportState();
     void processIsaacGranularSample(float inL,
                                     float inR,
@@ -274,7 +273,6 @@ private:
                                     float* outBaseNormalized = nullptr,
                                     float* outEffectiveNormalized = nullptr) const;
     float currentLfoSignalForBlock(int numSamples);
-    void updateVibeStateForBlock(int numSamples, float lfoSignal);
 
     juce::Synthesiser synth;
 
@@ -363,31 +361,7 @@ private:
      * single post-distortion. Shared slow processes (PSU, temperature, chaos,
      * drift) are generated once and distributed across multiple DSP points.
      */
-    VibeEngine vibeEngine;
-    static constexpr float kVibeDefaultOscillatorDrift = 0.55f;
-    static constexpr float kVibeDefaultVoiceVariation = 0.55f;
-    static constexpr float kVibeDefaultFilterVariation = 0.45f;
-    static constexpr float kVibeDefaultSaturation = 0.40f;
-    static constexpr float kVibeDefaultNoise = 0.25f;
-    static constexpr float kVibeDefaultPsuMovement = 0.38f;
-    static constexpr float kVibeDefaultVcaNonlinearity = 0.42f;
-    static constexpr float kVibeDefaultWaveformAsymmetry = 0.32f;
-    static constexpr float kVibeDefaultTemperatureDrift = 0.40f;
-    static constexpr float kVibeDefaultCorrelatedChaos = 0.50f;
-
-    std::atomic<uint32_t> vibeSeed { 1337u };
-    std::atomic<uint32_t> vibeLastAppliedSeed { 1337u };
-    std::atomic<float> vibeTuneOscDrift { kVibeDefaultOscillatorDrift };
-    std::atomic<float> vibeTuneVoiceVar { kVibeDefaultVoiceVariation };
-    std::atomic<float> vibeTuneFilterVar { kVibeDefaultFilterVariation };
-    std::atomic<float> vibeTuneSaturation { kVibeDefaultSaturation };
-    std::atomic<float> vibeTuneNoise { kVibeDefaultNoise };
-    std::atomic<float> vibeTunePsu { kVibeDefaultPsuMovement };
-    std::atomic<float> vibeTuneVca { kVibeDefaultVcaNonlinearity };
-    std::atomic<float> vibeTuneAsym { kVibeDefaultWaveformAsymmetry };
-    std::atomic<float> vibeTuneTemp { kVibeDefaultTemperatureDrift };
-    std::atomic<float> vibeTuneChaos { kVibeDefaultCorrelatedChaos };
-    std::atomic<int> vibeTypeLastApplied { -1 };
+    VibeComponent vibeComponent;
 
     std::array<std::vector<float>, 2> isaacDelayBuffer;
     std::array<float, 2> isaacFeedbackFilter { { 0.0f, 0.0f } };
