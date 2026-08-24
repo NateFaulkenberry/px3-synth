@@ -4,10 +4,10 @@
 
 // Reusable LFO UI section that visualizes and lays out controls while
 // remaining independent from modulation destinations.
-class GenericLfoComponent final : public juce::Component
+class LfoComponent final : public juce::Component
 {
 public:
-    GenericLfoComponent(juce::Slider& rateKnobIn,
+    LfoComponent(juce::Slider& rateKnobIn,
                         juce::Label& rateLabelIn,
                         juce::Label& rateValueLabelIn,
                         juce::ComboBox& waveformBoxIn,

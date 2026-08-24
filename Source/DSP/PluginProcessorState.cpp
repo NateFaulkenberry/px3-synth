@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginProcessorInternals.h"
 #include "LfoMode.h"
+#include "SubOscMode.h"
 
 // File role: plugin state serialization/restoration and ValueTree mapping.
 // Preserve IDs and schema compatibility here; avoid mixing runtime DSP updates
@@ -118,6 +119,13 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
     lfoState.setProperty(kLfoWaveformId, lfoWaveformParam->getIndex(), nullptr);
     lfoState.setProperty(kLfoAssignmentId, getLfoAssignmentParameterId(), nullptr);
     state.addChild(lfoState, -1, nullptr);
+
+    juce::ValueTree subOscState(kSubOscStateId);
+    subOscState.setProperty(kSubOscEnabledId, subOscEnabledParam->get(), nullptr);
+    subOscState.setProperty(kSubOscLevelId, subOscLevelParam->get(), nullptr);
+    subOscState.setProperty(kSubOscOctaveId, subOscOctaveParam->getIndex(), nullptr);
+    subOscState.setProperty(kSubOscWaveformId, subOscWaveformParam->getIndex(), nullptr);
+    state.addChild(subOscState, -1, nullptr);
 
     juce::ValueTree vibeState(kVibeStateId);
     vibeState.setProperty(kVibeBypassId, debugGetVibeBypass(), nullptr);
@@ -253,6 +261,32 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         if (vibeState.hasProperty(kVibeSeedId))
         {
             debugSetVibeSeed(static_cast<uint32_t>(juce::jmax<int64_t>(1, static_cast<int64_t>(vibeState[kVibeSeedId]))));
+        }
+    }
+
+    if (const auto subOscState = state.getChildWithName(kSubOscStateId); subOscState.isValid())
+    {
+        if (subOscState.hasProperty(kSubOscEnabledId) && subOscEnabledParam != nullptr)
+        {
+            subOscEnabledParam->setValueNotifyingHost(static_cast<bool>(subOscState[kSubOscEnabledId]) ? 1.0f : 0.0f);
+        }
+
+        if (subOscState.hasProperty(kSubOscLevelId) && subOscLevelParam != nullptr)
+        {
+            const auto level = juce::jlimit(0.0f, 1.0f, static_cast<float>(subOscState[kSubOscLevelId]));
+            subOscLevelParam->setValueNotifyingHost(subOscLevelParam->convertTo0to1(level));
+        }
+
+        if (subOscState.hasProperty(kSubOscOctaveId) && subOscOctaveParam != nullptr)
+        {
+            const auto octave = px3::clampSubOscOctaveIndex(static_cast<int>(subOscState[kSubOscOctaveId]));
+            subOscOctaveParam->setValueNotifyingHost(subOscOctaveParam->convertTo0to1(static_cast<float>(octave)));
+        }
+
+        if (subOscState.hasProperty(kSubOscWaveformId) && subOscWaveformParam != nullptr)
+        {
+            const auto waveform = px3::clampSubOscWaveformIndex(static_cast<int>(subOscState[kSubOscWaveformId]));
+            subOscWaveformParam->setValueNotifyingHost(subOscWaveformParam->convertTo0to1(static_cast<float>(waveform)));
         }
     }
 

@@ -10,9 +10,10 @@
 #include "PianoKeyboard.h"
 #include "PresetManager.h"
 #include "PluginProcessor.h"
-#include "GenericEnvelopeComponent.h"
+#include "EnvelopeComponent.h"
 #include "FilterResponseComponent.h"
-#include "GenericLfoComponent.h"
+#include "LfoComponent.h"
+#include "SubOscComponent.h"
 #include "OscillatorDisplayComponent.h"
 
 /**
@@ -138,6 +139,7 @@ private:
     void refreshLfoAssignmentUI();
     void refreshLfoFrequencyLabel();
     void refreshLfoUI();
+    void refreshSubOscUI();
     void refreshEnvelopeGraphUI();
     void refreshFilterResponseUI();
     void updatePanelVisibility();
@@ -302,8 +304,12 @@ private:
     juce::Slider releaseKnob;
     juce::Slider gainKnob;
     juce::Slider lfoFrequencyKnob;
+    juce::Slider subOscLevelKnob;
     juce::ComboBox lfoWaveformBox;
+    juce::ComboBox subOscOctaveBox;
+    juce::ComboBox subOscWaveformBox;
     juce::ComboBox lfoAssignBox;
+    juce::ToggleButton subOscEnabledButton;
 
     KnobLabel oscSineLabel;
     KnobLabel oscSawLabel;
@@ -318,6 +324,10 @@ private:
     KnobLabel gainLabel;
     KnobLabel lfoFrequencyLabel;
     KnobLabel lfoWaveformLabel;
+    KnobLabel subOscLevelLabel;
+    KnobLabel subOscOctaveLabel;
+    KnobLabel subOscWaveformLabel;
+    KnobLabel subOscEnabledLabel;
     juce::Label lfoFrequencyValueLabel;
     KnobLabel lfoAssignLabel;
     KnobLabel midiStatusLabel;
@@ -327,8 +337,9 @@ private:
     SectionPanelComponent fxPanel;
     SectionPanelComponent mixPanel;
     std::unique_ptr<OscillatorDisplayComponent> oscillatorDisplayComponent;
-    std::unique_ptr<GenericLfoComponent> lfoComponent;
-    std::unique_ptr<GenericEnvelopeComponent> envelopeGraph;
+    std::unique_ptr<LfoComponent> lfoComponent;
+    std::unique_ptr<SubOscComponent> subOscComponent;
+    std::unique_ptr<EnvelopeComponent> envelopeGraph;
     std::unique_ptr<FilterResponseComponent> filterResponseComponent;
 
     juce::Slider vibeAmountKnob;

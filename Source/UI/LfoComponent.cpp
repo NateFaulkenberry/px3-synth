@@ -1,10 +1,10 @@
-#include "GenericLfoComponent.h"
+#include "LfoComponent.h"
 
 #include "LfoMode.h"
 
 #include <cmath>
 
-GenericLfoComponent::GenericLfoComponent(juce::Slider& rateKnobIn,
+LfoComponent::LfoComponent(juce::Slider& rateKnobIn,
                                          juce::Label& rateLabelIn,
                                          juce::Label& rateValueLabelIn,
                                          juce::ComboBox& waveformBoxIn,
@@ -24,13 +24,13 @@ GenericLfoComponent::GenericLfoComponent(juce::Slider& rateKnobIn,
     addAndMakeVisible(waveformLabel);
 }
 
-void GenericLfoComponent::setAccentColour(juce::Colour accentIn)
+void LfoComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
     repaint();
 }
 
-void GenericLfoComponent::refreshFromParameters(float rateHz, int waveformIndex)
+void LfoComponent::refreshFromParameters(float rateHz, int waveformIndex)
 {
     rateValueLabel.setText(juce::String(juce::jlimit(0.01f, 20.0f, rateHz), 2) + " Hz", juce::dontSendNotification);
 
@@ -42,7 +42,7 @@ void GenericLfoComponent::refreshFromParameters(float rateHz, int waveformIndex)
     }
 }
 
-void GenericLfoComponent::advanceAnimation(float deltaPhase)
+void LfoComponent::advanceAnimation(float deltaPhase)
 {
     visualPhase += deltaPhase;
     if (visualPhase >= juce::MathConstants<float>::twoPi)
@@ -53,7 +53,7 @@ void GenericLfoComponent::advanceAnimation(float deltaPhase)
     repaint();
 }
 
-void GenericLfoComponent::resized()
+void LfoComponent::resized()
 {
     auto area = getLocalBounds().reduced(8, 6);
 
@@ -72,7 +72,7 @@ void GenericLfoComponent::resized()
     rateKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(area.getCentre()));
 }
 
-void GenericLfoComponent::paint(juce::Graphics& g)
+void LfoComponent::paint(juce::Graphics& g)
 {
     auto graph = getLocalBounds().toFloat().reduced(10.0f, 10.0f);
     graph.removeFromTop(36.0f);
@@ -135,7 +135,7 @@ void GenericLfoComponent::paint(juce::Graphics& g)
                                       juce::PathStrokeType::rounded));
 }
 
-float GenericLfoComponent::waveformSample(float phaseNorm, int waveformIndex)
+float LfoComponent::waveformSample(float phaseNorm, int waveformIndex)
 {
     const auto p = phaseNorm - std::floor(phaseNorm);
 

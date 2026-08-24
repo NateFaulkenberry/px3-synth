@@ -458,7 +458,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     sustainLabel.setVisible(false);
     releaseLabel.setVisible(false);
 
-    envelopeGraph = std::make_unique<GenericEnvelopeComponent>(audioProcessor.getAttackParam(),
+    envelopeGraph = std::make_unique<EnvelopeComponent>(audioProcessor.getAttackParam(),
                                                                audioProcessor.getDecayParam(),
                                                                audioProcessor.getSustainParam(),
                                                                audioProcessor.getReleaseParam(),
@@ -521,13 +521,70 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     oscPanel.addAndMakeVisible(lfoAssignLabel);
     oscPanel.addAndMakeVisible(lfoAssignBox);
 
-    lfoComponent = std::make_unique<GenericLfoComponent>(lfoFrequencyKnob,
+    lfoComponent = std::make_unique<LfoComponent>(lfoFrequencyKnob,
                                                          lfoFrequencyLabel,
                                                          lfoFrequencyValueLabel,
                                                          lfoWaveformBox,
                                                          lfoWaveformLabel,
                                                          kGroupAccents[3]);
     oscPanel.addAndMakeVisible(*lfoComponent);
+
+    configureEffectKnob(subOscLevelKnob,
+                        subOscLevelLabel,
+                        "LEVEL",
+                        audioProcessor.getSubOscLevelParam());
+
+    auto& subOscOctaveParam = audioProcessor.getSubOscOctaveParam();
+    for (int i = 0; i < subOscOctaveParam.choices.size(); ++i)
+    {
+        subOscOctaveBox.addItem(subOscOctaveParam.choices[i], i + 1);
+    }
+    subOscOctaveBox.setSelectedItemIndex(subOscOctaveParam.getIndex(), juce::dontSendNotification);
+    subOscOctaveBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    subOscOctaveBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    subOscOctaveBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    subOscOctaveLabel.setText("OCT", juce::dontSendNotification);
+    subOscOctaveLabel.setJustificationType(juce::Justification::centredLeft);
+    subOscOctaveLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    subOscOctaveLabel.setFont(juce::FontOptions(11.5f));
+    subOscOctaveLabel.setInterceptsMouseClicks(false, false);
+
+    auto& subOscWaveformParam = audioProcessor.getSubOscWaveformParam();
+    for (int i = 0; i < subOscWaveformParam.choices.size(); ++i)
+    {
+        subOscWaveformBox.addItem(subOscWaveformParam.choices[i], i + 1);
+    }
+    subOscWaveformBox.setSelectedItemIndex(subOscWaveformParam.getIndex(), juce::dontSendNotification);
+    subOscWaveformBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    subOscWaveformBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    subOscWaveformBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    subOscWaveformLabel.setText("WAVE", juce::dontSendNotification);
+    subOscWaveformLabel.setJustificationType(juce::Justification::centredLeft);
+    subOscWaveformLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    subOscWaveformLabel.setFont(juce::FontOptions(11.5f));
+    subOscWaveformLabel.setInterceptsMouseClicks(false, false);
+
+    subOscEnabledLabel.setText("ON", juce::dontSendNotification);
+    subOscEnabledLabel.setJustificationType(juce::Justification::centredLeft);
+    subOscEnabledLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    subOscEnabledLabel.setFont(juce::FontOptions(11.5f));
+    subOscEnabledLabel.setInterceptsMouseClicks(false, false);
+
+    subOscEnabledButton.setButtonText("");
+    subOscEnabledButton.setClickingTogglesState(true);
+    subOscEnabledButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
+    subOscEnabledButton.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
+
+    subOscComponent = std::make_unique<SubOscComponent>(subOscEnabledButton,
+                                                               subOscEnabledLabel,
+                                                               subOscLevelKnob,
+                                                               subOscLevelLabel,
+                                                               subOscOctaveBox,
+                                                               subOscOctaveLabel,
+                                                               subOscWaveformBox,
+                                                               subOscWaveformLabel,
+                                                               juce::Colour::fromRGB(212, 212, 212));
+    mixPanel.addAndMakeVisible(*subOscComponent);
 
     // OSC macro labels can become long in some modes; use a slightly smaller font.
     oscSineLabel.setFont(juce::FontOptions(11.0f));
@@ -768,11 +825,14 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachSlider(audioProcessor.getDelayTimeParam(), delayTimeKnob);
     attachSlider(audioProcessor.getDelayFeedbackParam(), delayFeedbackKnob);
     attachSlider(audioProcessor.getReverbAmountParam(), reverbKnob);
+    attachSlider(audioProcessor.getSubOscLevelParam(), subOscLevelKnob);
 
     attachComboBox(audioProcessor.getFilterTypeParam(), filterTypeBox);
     attachComboBox(audioProcessor.getOscillatorModeParam(), oscModeBox);
     attachComboBox(audioProcessor.getOscVowelParam(), oscVowelBox);
     attachComboBox(audioProcessor.getLfoWaveformParam(), lfoWaveformBox);
+    attachComboBox(audioProcessor.getSubOscOctaveParam(), subOscOctaveBox);
+    attachComboBox(audioProcessor.getSubOscWaveformParam(), subOscWaveformBox);
     attachComboBox(audioProcessor.getDelayAlgorithmParam(), delayAlgoBox);
     attachComboBox(audioProcessor.getGranularSyncDivisionParam(), granularSyncBox);
     attachComboBox(audioProcessor.getGranularModeParam(), granularModeBox);
@@ -782,6 +842,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachButton(audioProcessor.getVibeEnabledParam(), robBypassButton);
     attachButton(audioProcessor.getDelayEnabledParam(), delayBypassButton);
     attachButton(audioProcessor.getReverbEnabledParam(), reverbBypassButton);
+    attachButton(audioProcessor.getSubOscEnabledParam(), subOscEnabledButton);
 
     // MIDI status bar is temporarily disabled.
     // midiStatusLabel.setText("MIDI In: waiting for note...", juce::dontSendNotification);
@@ -971,6 +1032,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     refreshGranularModeUI();
     refreshLfoAssignmentUI();
     refreshLfoUI();
+    refreshSubOscUI();
     refreshEnvelopeGraphUI();
     refreshFilterResponseUI();
     refreshFxBypassUI();
@@ -2201,6 +2263,10 @@ void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex
         refreshGranularModeUI();
         refreshFxBypassUI();
     }
+    else if (clamped == 4)
+    {
+        refreshSubOscUI();
+    }
 
     if (pushToProcessor)
     {
@@ -2415,6 +2481,16 @@ void PX3SynthAudioProcessorEditor::refreshLfoUI()
     }
 }
 
+void PX3SynthAudioProcessorEditor::refreshSubOscUI()
+{
+    if (subOscComponent != nullptr)
+    {
+        subOscComponent->refreshFromParameters(audioProcessor.getSubOscEnabledParam().get(),
+                                               audioProcessor.getSubOscOctaveParam().getIndex(),
+                                               audioProcessor.getSubOscWaveformParam().getIndex());
+    }
+}
+
 void PX3SynthAudioProcessorEditor::refreshEnvelopeGraphUI()
 {
     if (envelopeGraph != nullptr)
@@ -2526,7 +2602,17 @@ void PX3SynthAudioProcessorEditor::layoutFxPanel()
 
 void PX3SynthAudioProcessorEditor::layoutMixPanel()
 {
-    // MIX currently uses top-bar master gain; panel reserved for future routing.
+    if (subOscComponent == nullptr)
+    {
+        return;
+    }
+
+    auto panelArea = mixPanel.getLocalBounds().reduced(12, 10);
+    panelArea.removeFromTop(26);
+    const auto componentWidth = juce::jmin(panelArea.getWidth() - 8, 320);
+    const auto componentHeight = juce::jmin(panelArea.getHeight() - 6, 260);
+    subOscComponent->setBounds(juce::Rectangle<int>(componentWidth, componentHeight)
+                                   .withCentre(panelArea.getCentre()));
 }
 
 void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
@@ -2617,6 +2703,10 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     {
         refreshFilterResponseUI();
     }
+    else if (isPanelVisible(4))
+    {
+        refreshSubOscUI();
+    }
 
     refreshTopMenuSelectionFromProcessor();
 
@@ -2642,6 +2732,11 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     if (isPanelVisible(0) && lfoComponent != nullptr)
     {
         lfoComponent->advanceAnimation(0.07f);
+    }
+
+    if (isPanelVisible(4) && subOscComponent != nullptr)
+    {
+        subOscComponent->advanceAnimation(0.05f);
     }
 
     // MIDI status bar is temporarily disabled.

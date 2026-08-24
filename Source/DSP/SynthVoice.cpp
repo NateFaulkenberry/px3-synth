@@ -30,6 +30,9 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     const auto sampleRate = juce::jmax(1.0, getSampleRate());
     voiceFilter.prepare(sampleRate);
     voiceFilter.setCurrentSettingsImmediate(filterSettings);
+    subOscillator.prepare(sampleRate);
+    subOscillator.setSettings(subOscillatorSettings);
+    subOscillator.resetForNote();
 
     ampEnvelope.noteOn();
     noteAgeSamples = 0;
@@ -144,7 +147,8 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         oscillatorContext.pwmModWheelNorm = targetModWheelNorm;
 
         auto sourceSample = oscillatorUnit.renderSample(sampleRate, oscillatorContext);
-        sourceSample = softClip(sourceSample * 0.92f);
+        const auto subSample = subOscillator.renderSample(currentFrequencyHz);
+        sourceSample = softClip(sourceSample * 0.92f + subSample);
 
         if (vibeActive)
         {
@@ -226,6 +230,12 @@ void SynthVoice::setFilterSettings(const FilterSettings& settings)
 void SynthVoice::setSubtractiveSettings(const SubtractiveSettings& settings)
 {
     subtractiveSettings = settings;
+}
+
+void SynthVoice::setSubOscillatorSettings(const SubOscSettings& settings)
+{
+    subOscillatorSettings = settings;
+    subOscillator.setSettings(subOscillatorSettings);
 }
 
 void SynthVoice::setOscillatorSettings(const OscillatorSettings& settings)

@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginProcessorInternals.h"
 #include "OscillatorMode.h"
+#include "SubOscMode.h"
 
 using namespace px3::processor_internal;
 
@@ -20,6 +21,19 @@ SubtractiveSettings PX3SynthAudioProcessor::currentSubtractiveSettings() const
     settings.masterGain = masterGainParam->convertFrom0to1(applyLfoToNormalizedValue(masterGainParam,
                                                                                       static_cast<juce::RangedAudioParameter*>(masterGainParam)->getValue(),
                                                                                       lfoSignal));
+    return settings;
+}
+
+SubOscSettings PX3SynthAudioProcessor::currentSubOscillatorSettings() const
+{
+    const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
+    SubOscSettings settings;
+    settings.enabled = subOscEnabledParam != nullptr && subOscEnabledParam->get();
+    settings.level = subOscLevelParam->convertFrom0to1(applyLfoToNormalizedValue(subOscLevelParam,
+                                                                                  static_cast<juce::RangedAudioParameter*>(subOscLevelParam)->getValue(),
+                                                                                  lfoSignal));
+    settings.octaveIndex = px3::clampSubOscOctaveIndex(subOscOctaveParam != nullptr ? subOscOctaveParam->getIndex() : 1);
+    settings.waveformIndex = px3::clampSubOscWaveformIndex(subOscWaveformParam != nullptr ? subOscWaveformParam->getIndex() : 1);
     return settings;
 }
 

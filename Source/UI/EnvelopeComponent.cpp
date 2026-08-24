@@ -1,8 +1,8 @@
-#include "GenericEnvelopeComponent.h"
+#include "EnvelopeComponent.h"
 
 #include <cmath>
 
-GenericEnvelopeComponent::GenericEnvelopeComponent(juce::AudioParameterFloat& attackIn,
+EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
                                                    juce::AudioParameterFloat& decayIn,
                                                    juce::AudioParameterFloat& sustainIn,
                                                    juce::AudioParameterFloat& releaseIn,
@@ -13,13 +13,13 @@ GenericEnvelopeComponent::GenericEnvelopeComponent(juce::AudioParameterFloat& at
     refreshFromParameters();
 }
 
-void GenericEnvelopeComponent::setAccentColour(juce::Colour accentIn)
+void EnvelopeComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
     repaint();
 }
 
-void GenericEnvelopeComponent::refreshFromParameters()
+void EnvelopeComponent::refreshFromParameters()
 {
     const auto a = attack.get();
     const auto d = decay.get();
@@ -39,7 +39,7 @@ void GenericEnvelopeComponent::refreshFromParameters()
     }
 }
 
-void GenericEnvelopeComponent::paint(juce::Graphics& g)
+void EnvelopeComponent::paint(juce::Graphics& g)
 {
     const auto area = getLocalBounds().toFloat().reduced(4.0f);
     if (area.isEmpty())
@@ -115,13 +115,13 @@ void GenericEnvelopeComponent::paint(juce::Graphics& g)
     }
 }
 
-void GenericEnvelopeComponent::mouseMove(const juce::MouseEvent& event)
+void EnvelopeComponent::mouseMove(const juce::MouseEvent& event)
 {
     hoverHandle = pickHandle(event.position, computeGeometry());
     repaint();
 }
 
-void GenericEnvelopeComponent::mouseExit(const juce::MouseEvent&)
+void EnvelopeComponent::mouseExit(const juce::MouseEvent&)
 {
     if (dragHandle == DragHandle::none)
     {
@@ -130,7 +130,7 @@ void GenericEnvelopeComponent::mouseExit(const juce::MouseEvent&)
     }
 }
 
-void GenericEnvelopeComponent::mouseDown(const juce::MouseEvent& event)
+void EnvelopeComponent::mouseDown(const juce::MouseEvent& event)
 {
     const auto geom = computeGeometry();
     dragHandle = pickHandle(event.position, geom);
@@ -157,7 +157,7 @@ void GenericEnvelopeComponent::mouseDown(const juce::MouseEvent& event)
     applyDragPosition(event.position, geom);
 }
 
-void GenericEnvelopeComponent::mouseDrag(const juce::MouseEvent& event)
+void EnvelopeComponent::mouseDrag(const juce::MouseEvent& event)
 {
     if (dragHandle == DragHandle::none)
     {
@@ -167,7 +167,7 @@ void GenericEnvelopeComponent::mouseDrag(const juce::MouseEvent& event)
     applyDragPosition(event.position, computeGeometry());
 }
 
-void GenericEnvelopeComponent::mouseUp(const juce::MouseEvent&)
+void EnvelopeComponent::mouseUp(const juce::MouseEvent&)
 {
     if (dragHandle == DragHandle::attack)
     {
@@ -187,7 +187,7 @@ void GenericEnvelopeComponent::mouseUp(const juce::MouseEvent&)
     repaint();
 }
 
-void GenericEnvelopeComponent::mouseDoubleClick(const juce::MouseEvent& event)
+void EnvelopeComponent::mouseDoubleClick(const juce::MouseEvent& event)
 {
     const auto handle = pickHandle(event.position, computeGeometry());
     if (handle == DragHandle::none)
@@ -220,12 +220,12 @@ void GenericEnvelopeComponent::mouseDoubleClick(const juce::MouseEvent& event)
     refreshFromParameters();
 }
 
-float GenericEnvelopeComponent::clamp01(float v)
+float EnvelopeComponent::clamp01(float v)
 {
     return juce::jlimit(0.0f, 1.0f, v);
 }
 
-float GenericEnvelopeComponent::timeToVisualNorm(float seconds, float minValue, float maxValue)
+float EnvelopeComponent::timeToVisualNorm(float seconds, float minValue, float maxValue)
 {
     const auto clamped = juce::jlimit(minValue, maxValue, seconds);
     const auto denom = std::log(juce::jmax(minValue * 1.001f, maxValue) / minValue);
@@ -236,13 +236,13 @@ float GenericEnvelopeComponent::timeToVisualNorm(float seconds, float minValue, 
     return clamp01(std::log(clamped / minValue) / denom);
 }
 
-float GenericEnvelopeComponent::visualNormToTime(float norm, float minValue, float maxValue)
+float EnvelopeComponent::visualNormToTime(float norm, float minValue, float maxValue)
 {
     const auto clampedNorm = clamp01(norm);
     return minValue * std::pow(maxValue / minValue, clampedNorm);
 }
 
-GenericEnvelopeComponent::Geometry GenericEnvelopeComponent::computeGeometry() const
+EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
 {
     Geometry geom;
     const auto area = getLocalBounds().toFloat().reduced(10.0f, 8.0f);
@@ -284,14 +284,14 @@ GenericEnvelopeComponent::Geometry GenericEnvelopeComponent::computeGeometry() c
     return geom;
 }
 
-float GenericEnvelopeComponent::distSq(juce::Point<float> a, juce::Point<float> b)
+float EnvelopeComponent::distSq(juce::Point<float> a, juce::Point<float> b)
 {
     const auto dx = a.getX() - b.getX();
     const auto dy = a.getY() - b.getY();
     return dx * dx + dy * dy;
 }
 
-GenericEnvelopeComponent::DragHandle GenericEnvelopeComponent::pickHandle(juce::Point<float> p,
+EnvelopeComponent::DragHandle EnvelopeComponent::pickHandle(juce::Point<float> p,
                                                                           const Geometry& geom) const
 {
     constexpr float hitRadius = 13.0f;
@@ -322,7 +322,7 @@ GenericEnvelopeComponent::DragHandle GenericEnvelopeComponent::pickHandle(juce::
     return best;
 }
 
-juce::Point<float> GenericEnvelopeComponent::handlePositionFor(DragHandle handle,
+juce::Point<float> EnvelopeComponent::handlePositionFor(DragHandle handle,
                                                                 const Geometry& geom) const
 {
     if (handle == DragHandle::attack)
@@ -340,7 +340,7 @@ juce::Point<float> GenericEnvelopeComponent::handlePositionFor(DragHandle handle
     return geom.start;
 }
 
-void GenericEnvelopeComponent::drawHandleMarker(juce::Graphics& g,
+void EnvelopeComponent::drawHandleMarker(juce::Graphics& g,
                                                 juce::Point<float> center,
                                                 DragHandle handle) const
 {
@@ -352,7 +352,7 @@ void GenericEnvelopeComponent::drawHandleMarker(juce::Graphics& g,
     g.drawEllipse(center.getX() - radius, center.getY() - radius, radius * 2.0f, radius * 2.0f, 1.2f);
 }
 
-void GenericEnvelopeComponent::drawHandleLabel(juce::Graphics& g,
+void EnvelopeComponent::drawHandleLabel(juce::Graphics& g,
                                                 juce::Point<float> center,
                                                 DragHandle handle,
                                                 const juce::String& id) const
@@ -372,7 +372,7 @@ void GenericEnvelopeComponent::drawHandleLabel(juce::Graphics& g,
                juce::Justification::centred);
 }
 
-juce::String GenericEnvelopeComponent::valueTextForHandle(DragHandle handle) const
+juce::String EnvelopeComponent::valueTextForHandle(DragHandle handle) const
 {
     if (handle == DragHandle::attack)
     {
@@ -400,7 +400,7 @@ juce::String GenericEnvelopeComponent::valueTextForHandle(DragHandle handle) con
     return {};
 }
 
-void GenericEnvelopeComponent::setParameterFromActualValue(juce::AudioParameterFloat& parameter,
+void EnvelopeComponent::setParameterFromActualValue(juce::AudioParameterFloat& parameter,
                                                             float value)
 {
     const auto range = parameter.getNormalisableRange();
@@ -408,7 +408,7 @@ void GenericEnvelopeComponent::setParameterFromActualValue(juce::AudioParameterF
     parameter.setValueNotifyingHost(parameter.convertTo0to1(clamped));
 }
 
-void GenericEnvelopeComponent::applyDragPosition(juce::Point<float> mousePos,
+void EnvelopeComponent::applyDragPosition(juce::Point<float> mousePos,
                                                  const Geometry& geom)
 {
     if (dragHandle == DragHandle::none)

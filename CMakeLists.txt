@@ -56,14 +56,16 @@ target_sources(PX3Synth
     PRIVATE
         Source/UI/PerformanceControls.cpp
         Source/UI/PianoKeyboard.cpp
-        Source/UI/GenericEnvelopeComponent.cpp
+        Source/UI/EnvelopeComponent.cpp
         Source/UI/FilterResponseComponent.cpp
-        Source/UI/GenericLfoComponent.cpp
+        Source/UI/LfoComponent.cpp
+        Source/UI/SubOscComponent.cpp
         Source/UI/OscillatorDisplayComponent.cpp
         Source/UI/PluginEditor.cpp
         Source/UI/PluginEditorDebug.cpp
         Source/DSP/EnvelopeGenerator.cpp
         Source/DSP/LfoGenerator.cpp
+        Source/DSP/SubOscillator.cpp
         Source/DSP/PluginProcessor.cpp
         Source/DSP/PluginProcessorParameters.cpp
         Source/DSP/PluginProcessorMidi.cpp

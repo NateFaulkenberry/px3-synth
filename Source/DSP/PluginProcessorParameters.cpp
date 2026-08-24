@@ -75,6 +75,10 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscHarmonicParam(int harmo
     const auto idx = juce::jlimit(0, 7, harmonicIndex);
     return *oscHarmonicParams[static_cast<std::size_t>(idx)];
 }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getSubOscEnabledParam() const { return *subOscEnabledParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSubOscLevelParam() const { return *subOscLevelParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getSubOscOctaveParam() const { return *subOscOctaveParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getSubOscWaveformParam() const { return *subOscWaveformParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterCutoffParam() const { return *filterCutoffParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterResonanceParam() const { return *filterResonanceParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getFilterTypeParam() const { return *filterTypeParam; }

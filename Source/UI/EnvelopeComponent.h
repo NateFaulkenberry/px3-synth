@@ -3,10 +3,10 @@
 #include <JuceHeader.h>
 
 // Reusable interactive ADSR graph that binds directly to provided parameters.
-class GenericEnvelopeComponent final : public juce::Component
+class EnvelopeComponent final : public juce::Component
 {
 public:
-    GenericEnvelopeComponent(juce::AudioParameterFloat& attackIn,
+    EnvelopeComponent(juce::AudioParameterFloat& attackIn,
                              juce::AudioParameterFloat& decayIn,
                              juce::AudioParameterFloat& sustainIn,
                              juce::AudioParameterFloat& releaseIn,

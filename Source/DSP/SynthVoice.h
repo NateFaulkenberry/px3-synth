@@ -7,6 +7,8 @@
 #include "FilterTypes.h"
 #include "OscillatorTypes.h"
 #include "OscillatorUnit.h"
+#include "SubOscillator.h"
+#include "SubOscTypes.h"
 #include "VoiceFilter.h"
 
 #include <array>
@@ -66,6 +68,7 @@ public:
     void setEnvelope(const EnvelopeSettings& settings);
     void setFilterSettings(const FilterSettings& settings);
     void setSubtractiveSettings(const SubtractiveSettings& settings);
+    void setSubOscillatorSettings(const SubOscSettings& settings);
     void setOscillatorSettings(const OscillatorSettings& settings);
     void setPerformanceModulation(float pitchBendNormalized,
                                   float modWheelNormalized,
@@ -88,6 +91,7 @@ private:
     EnvelopeSettings envelopeSettings;
     FilterSettings filterSettings;
     SubtractiveSettings subtractiveSettings;
+    SubOscSettings subOscillatorSettings;
     OscillatorSettings oscillatorSettings;
 
     EnvelopeGenerator ampEnvelope;
@@ -110,6 +114,7 @@ private:
     int currentMidiNote { 60 };
 
     OscillatorUnit oscillatorUnit;
+    SubOscillator subOscillator;
 
     int noteAgeSamples { 0 };
     int voiceIndex { 0 };

@@ -4,6 +4,7 @@
 
 #include "LfoGenerator.h"
 #include "PianoKeyboard.h"
+#include "SubOscTypes.h"
 #include "SynthSound.h"
 #include "SynthVoice.h"
 #include "VibeEngine.h"
@@ -93,6 +94,10 @@ public:
     juce::AudioParameterFloat& getOscMacroCParam() const;
     juce::AudioParameterChoice& getOscVowelParam() const;
     juce::AudioParameterFloat& getOscHarmonicParam(int harmonicIndex) const;
+    juce::AudioParameterBool& getSubOscEnabledParam() const;
+    juce::AudioParameterFloat& getSubOscLevelParam() const;
+    juce::AudioParameterChoice& getSubOscOctaveParam() const;
+    juce::AudioParameterChoice& getSubOscWaveformParam() const;
     juce::AudioParameterFloat& getFilterCutoffParam() const;
     juce::AudioParameterFloat& getFilterResonanceParam() const;
     juce::AudioParameterChoice& getFilterTypeParam() const;
@@ -216,6 +221,7 @@ private:
     void incrementNoteCount(std::size_t index);
     void decrementNoteCount(std::size_t index);
     SubtractiveSettings currentSubtractiveSettings() const;
+    SubOscSettings currentSubOscillatorSettings() const;
     FilterSettings currentFilterSettings() const;
     OscillatorSettings currentOscillatorSettings() const;
     EnvelopeSettings currentEnvelopeSettings() const;
@@ -281,6 +287,10 @@ private:
     juce::AudioParameterFloat* oscMacroCParam { nullptr };
     juce::AudioParameterChoice* oscVowelParam { nullptr };
     std::array<juce::AudioParameterFloat*, 8> oscHarmonicParams { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } };
+    juce::AudioParameterBool* subOscEnabledParam { nullptr };
+    juce::AudioParameterFloat* subOscLevelParam { nullptr };
+    juce::AudioParameterChoice* subOscOctaveParam { nullptr };
+    juce::AudioParameterChoice* subOscWaveformParam { nullptr };
     juce::AudioParameterFloat* filterCutoffParam { nullptr };
     juce::AudioParameterFloat* filterResonanceParam { nullptr };
     juce::AudioParameterChoice* filterTypeParam { nullptr };
