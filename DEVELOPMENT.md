@@ -4,35 +4,6 @@ Current release line: v0.1.0
 
 This guide is for maintainers. It focuses on architecture, state flow, debugging, versioning, and release workflow.
 
-## Versioning
-
-P(X3) uses Semantic Versioning (`MAJOR.MINOR.PATCH`).
-
-- MAJOR: breaking compatibility changes.
-- MINOR: backward-compatible features.
-- PATCH: backward-compatible fixes/maintenance.
-
-Single source of truth:
-
-- `PX3_VERSION` in `CMakeLists.txt`.
-
-The UI version label, plugin metadata version, and release script all derive from this version path.
-
-## Git Release Tags
-
-Recommended release tag format:
-
-- `v0.1.0`
-
-Example:
-
-```bash
-git tag -a v0.1.0 -m "P(X3) v0.1.0"
-git push origin v0.1.0
-```
-
-Create a GitHub Release from that tag to publish release notes and artifacts.
-
 ## Architecture Map
 
 High-level runtime flow:
