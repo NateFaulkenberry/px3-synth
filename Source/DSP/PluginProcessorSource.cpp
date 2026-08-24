@@ -118,6 +118,27 @@ VibeSettings PX3SynthAudioProcessor::currentVibeSettings() const
     return settings;
 }
 
+DelaySettings PX3SynthAudioProcessor::currentDelaySettings() const
+{
+    const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
+    DelaySettings settings;
+    settings.enabled = delayEnabledParam != nullptr && delayEnabledParam->get();
+    settings.algorithmIndex = delayAlgorithmParam != nullptr ? delayAlgorithmParam->getIndex() : 0;
+    settings.granularModeIndex = granularModeParam != nullptr ? granularModeParam->getIndex() : 0;
+    settings.syncDivisionIndex = granularSyncDivisionParam != nullptr ? granularSyncDivisionParam->getIndex() : 0;
+    settings.amount = delayAmountParam->convertFrom0to1(applyLfoToNormalizedValue(delayAmountParam,
+                                                                                   static_cast<juce::RangedAudioParameter*>(delayAmountParam)->getValue(),
+                                                                                   lfoSignal));
+    settings.timeControl = delayTimeParam->convertFrom0to1(applyLfoToNormalizedValue(delayTimeParam,
+                                                                                      static_cast<juce::RangedAudioParameter*>(delayTimeParam)->getValue(),
+                                                                                      lfoSignal));
+    settings.feedbackControl = delayFeedbackParam->convertFrom0to1(applyLfoToNormalizedValue(delayFeedbackParam,
+                                                                                              static_cast<juce::RangedAudioParameter*>(delayFeedbackParam)->getValue(),
+                                                                                              lfoSignal));
+    settings.bpm = currentBpm;
+    return settings;
+}
+
 ReverbSettings PX3SynthAudioProcessor::currentReverbSettings() const
 {
     const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);

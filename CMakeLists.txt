@@ -56,6 +56,7 @@ target_sources(PX3Synth
     PRIVATE
         Source/UI/PerformanceControls.cpp
         Source/UI/PianoKeyboard.cpp
+        Source/UI/DelayUiComponent.cpp
         Source/UI/EnvelopeComponent.cpp
         Source/UI/FilterResponseComponent.cpp
         Source/UI/LfoComponent.cpp
@@ -66,6 +67,7 @@ target_sources(PX3Synth
         Source/UI/PluginEditor.cpp
         Source/UI/PluginEditorDebug.cpp
         Source/DSP/EnvelopeGenerator.cpp
+        Source/DSP/DelayComponent.cpp
         Source/DSP/LfoGenerator.cpp
         Source/DSP/ReverbComponent.cpp
         Source/DSP/SubOscillator.cpp

@@ -254,13 +254,8 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     synth.setCurrentPlaybackSampleRate(sampleRate);
     lfoGenerator.prepare(sampleRate);
     lfoGenerator.setSettings(currentLfoSettings());
-    const auto sr = static_cast<float>(juce::jmax(1.0, sampleRate));
-    constexpr float delayControlTauSec = 0.008f;
-    delayControlSmoothingCoeff = 1.0f - std::exp(-1.0f / (sr * delayControlTauSec));
-    delayAmountSmoothed = clamp01(delayAmountParam->get());
-    delayTimeControlSmoothed = clamp01(delayTimeParam->get());
-    delayFeedbackControlSmoothed = clamp01(delayFeedbackParam->get());
     vibeComponent.prepare(sampleRate, synth.getNumVoices(), vibeComponent.getSeed());
+    delayComponent.prepare(sampleRate);
     reverbComponent.prepare(sampleRate);
 
     const auto envelope = currentEnvelopeSettings();
@@ -391,40 +386,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     synth.renderNextBlock(buffer, midiMessages, 0, buffer.getNumSamples());
     updateTransportState();
 
-    const auto delayAmountBase = applyLfoToNormalizedValue(delayAmountParam,
-                                                            static_cast<juce::RangedAudioParameter*>(delayAmountParam)->getValue(),
-                                                            blockLfoSignal);
-    const auto syncDivisionIndex = granularSyncDivisionParam->getIndex();
-    const auto granularModeIndex = granularModeParam->getIndex();
-    const auto delayAlgorithmIndex = delayAlgorithmParam->getIndex();
-    const auto delayEnabled = delayEnabledParam->get();
-    const auto delayTimeControl = applyLfoToNormalizedValue(delayTimeParam,
-                                                            static_cast<juce::RangedAudioParameter*>(delayTimeParam)->getValue(),
-                                                            blockLfoSignal);
-    const auto delayFeedbackControl = applyLfoToNormalizedValue(delayFeedbackParam,
-                                                                static_cast<juce::RangedAudioParameter*>(delayFeedbackParam)->getValue(),
-                                                                blockLfoSignal);
+    delayComponent.updateForBlock(currentDelaySettings());
     reverbComponent.updateForBlock(currentReverbSettings(), buffer.getNumSamples());
     const auto fxOrder = getFxProcessingOrder();
-
-    if (delayAlgorithmIndex != lastDelayAlgorithmIndex
-        || granularModeIndex != lastGranularModeIndex)
-    {
-        lastDelayAlgorithmIndex = delayAlgorithmIndex;
-        lastGranularModeIndex = granularModeIndex;
-        isaacSpawnCounter = 0;
-        isaacRhythmicStepIndex = 0;
-        isaacRhythmicSamplesUntilNext = 0;
-        isaacRhythmicSwingToggle = false;
-        isaacFeedbackFilter = { { 0.0f, 0.0f } };
-        isaacShimmerSmooth = { { 0.0f, 0.0f } };
-        clearGranularDiffusionState();
-        for (auto& grain : isaacGrains)
-        {
-            grain.active = false;
-        }
-    }
-    const auto delayAmount = clamp01(delayAmountBase);
 
     const auto blockPhaseAdvance = juce::MathConstants<float>::twoPi * vibratoRateHz
                                    * (static_cast<float>(buffer.getNumSamples()) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));
@@ -452,22 +416,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                     break;
 
                 case 1: // Delay
-                    if (delayEnabled)
-                    {
-                        float delayedL = stageL;
-                        float delayedR = stageR;
-                        processDelayAlgorithmSample(stageL,
-                                                    stageR,
-                                                    delayAmount,
-                                                    delayAlgorithmIndex,
-                                                    delayTimeControl,
-                                                    delayFeedbackControl,
-                                                    syncDivisionIndex,
-                                                    delayedL,
-                                                    delayedR);
-                        stageL = delayedL;
-                        stageR = delayedR;
-                    }
+                    delayComponent.processSampleFrame(stageL, stageR, stageL, stageR);
                     break;
 
                 case 2: // Reverb

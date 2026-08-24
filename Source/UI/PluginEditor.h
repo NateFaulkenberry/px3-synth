@@ -10,6 +10,7 @@
 #include "PianoKeyboard.h"
 #include "PresetManager.h"
 #include "PluginProcessor.h"
+#include "DelayUiComponent.h"
 #include "EnvelopeComponent.h"
 #include "FilterResponseComponent.h"
 #include "LfoComponent.h"
@@ -339,6 +340,7 @@ private:
     SectionPanelComponent fxPanel;
     SectionPanelComponent mixPanel;
     std::unique_ptr<OscillatorDisplayComponent> oscillatorDisplayComponent;
+    std::unique_ptr<DelayUiComponent> delayUiComponent;
     std::unique_ptr<LfoComponent> lfoComponent;
     std::unique_ptr<ReverbUiComponent> reverbUiComponent;
     std::unique_ptr<SubOscComponent> subOscComponent;

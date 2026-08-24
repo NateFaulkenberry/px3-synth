@@ -712,8 +712,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     delayAlgoLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     delayAlgoLabel.setFont(juce::FontOptions(11.5f));
     delayAlgoLabel.setInterceptsMouseClicks(false, false);
-    addAndMakeVisible(delayAlgoBox);
-    addAndMakeVisible(delayAlgoLabel);
 
     auto& granularSyncParam = audioProcessor.getGranularSyncDivisionParam();
     const auto choiceCount = granularSyncParam.choices.size();
@@ -730,8 +728,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     granularSyncLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     granularSyncLabel.setFont(juce::FontOptions(11.5f));
     granularSyncLabel.setInterceptsMouseClicks(false, false);
-    addAndMakeVisible(granularSyncBox);
-    addAndMakeVisible(granularSyncLabel);
 
     auto& granularModeParam = audioProcessor.getGranularModeParam();
     const auto modeChoiceCount = granularModeParam.choices.size();
@@ -748,8 +744,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     granularModeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     granularModeLabel.setFont(juce::FontOptions(11.5f));
     granularModeLabel.setInterceptsMouseClicks(false, false);
-    addAndMakeVisible(granularModeBox);
-    addAndMakeVisible(granularModeLabel);
 
     auto& reverbAlgoParam = audioProcessor.getReverbAlgorithmParam();
     const auto reverbChoiceCount = reverbAlgoParam.choices.size();
@@ -786,6 +780,20 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                                         vibeTypeBox,
                                                         vibeTypeLabel,
                                                         juce::Colour::fromRGB(236, 182, 92));
+    delayUiComponent = std::make_unique<DelayUiComponent>(delayBypassButton,
+                                                          isaacTextureKnob,
+                                                          isaacTextureLabel,
+                                                          delayAlgoBox,
+                                                          delayAlgoLabel,
+                                                          granularSyncBox,
+                                                          granularSyncLabel,
+                                                          granularModeBox,
+                                                          granularModeLabel,
+                                                          delayTimeKnob,
+                                                          delayTimeLabel,
+                                                          delayFeedbackKnob,
+                                                          delayFeedbackLabel,
+                                                          juce::Colour::fromRGB(132, 210, 255));
     reverbUiComponent = std::make_unique<ReverbUiComponent>(reverbBypassButton,
                                                             reverbKnob,
                                                             reverbLabel,
@@ -793,28 +801,14 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                                             reverbTypeLabel,
                                                             juce::Colour::fromRGB(128, 208, 255));
     fxPanel.addAndMakeVisible(*vibeUiComponent);
+    fxPanel.addAndMakeVisible(*delayUiComponent);
     fxPanel.addAndMakeVisible(*reverbUiComponent);
-
-    fxPanel.addAndMakeVisible(delayBypassButton);
 
     fltPanel.addAndMakeVisible(cutoffKnob);
     fltPanel.addAndMakeVisible(cutoffLabel);
     fltPanel.addAndMakeVisible(resonanceKnob);
     fltPanel.addAndMakeVisible(resonanceLabel);
     fltPanel.addAndMakeVisible(filterTypeBox);
-
-    fxPanel.addAndMakeVisible(isaacTextureKnob);
-    fxPanel.addAndMakeVisible(isaacTextureLabel);
-    fxPanel.addAndMakeVisible(delayAlgoBox);
-    fxPanel.addAndMakeVisible(delayAlgoLabel);
-    fxPanel.addAndMakeVisible(granularModeBox);
-    fxPanel.addAndMakeVisible(granularModeLabel);
-    fxPanel.addAndMakeVisible(delayTimeKnob);
-    fxPanel.addAndMakeVisible(delayTimeLabel);
-    fxPanel.addAndMakeVisible(delayFeedbackKnob);
-    fxPanel.addAndMakeVisible(delayFeedbackLabel);
-    fxPanel.addAndMakeVisible(granularSyncBox);
-    fxPanel.addAndMakeVisible(granularSyncLabel);
 
     for (auto& binding : knobBindings)
     {
@@ -1667,55 +1661,10 @@ void PX3SynthAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
     }
 
     {
-        auto isaacInner = isaacSectionArea.reduced(10, 8);
-        delayBypassButton.setBounds(isaacSectionArea.getX() + 8, isaacSectionArea.getY() + 5, 22, 18);
-        isaacInner.removeFromTop(24);
-        auto delayControlsArea = isaacInner.removeFromBottom(120);
-
-        auto rowMode = delayControlsArea.removeFromBottom(22);
-        delayControlsArea.removeFromBottom(2);
-        auto rowAlgo = delayControlsArea.removeFromBottom(22);
-        auto rowSync = delayControlsArea.removeFromBottom(22);
-        delayControlsArea.removeFromBottom(2);
-        auto miniArea = delayControlsArea;
-
-        auto leftMini = miniArea.removeFromLeft(miniArea.getWidth() / 2).reduced(2, 0);
-        auto rightMini = miniArea.reduced(2, 0);
-
-        auto leftLabel = leftMini.removeFromBottom(16);
-        auto rightLabel = rightMini.removeFromBottom(16);
-
-        const auto miniKnobSize = juce::jlimit(30,
-                                               44,
-                                               juce::jmin(leftMini.getWidth(), juce::jmin(leftMini.getHeight(), rightMini.getHeight())));
-        const auto leftKnobBounds = juce::Rectangle<int>(miniKnobSize, miniKnobSize).withCentre(leftMini.getCentre());
-        const auto rightKnobBounds = juce::Rectangle<int>(miniKnobSize, miniKnobSize).withCentre(rightMini.getCentre());
-        delayTimeKnob.setBounds(leftKnobBounds);
-        delayFeedbackKnob.setBounds(rightKnobBounds);
-
-        constexpr int miniLabelHeight = 16;
-        const auto leftLabelWidth = leftMini.getWidth();
-        const auto rightLabelWidth = rightMini.getWidth();
-        delayTimeLabel.setBounds(juce::Rectangle<int>(leftLabelWidth, miniLabelHeight)
-                         .withCentre({ leftKnobBounds.getCentreX(), leftLabel.getCentreY() }));
-        delayFeedbackLabel.setBounds(juce::Rectangle<int>(rightLabelWidth, miniLabelHeight)
-                         .withCentre({ rightKnobBounds.getCentreX(), rightLabel.getCentreY() }));
-
-        auto algoLabelArea = rowAlgo.removeFromLeft(56);
-        delayAlgoLabel.setBounds(algoLabelArea);
-        delayAlgoBox.setBounds(rowAlgo.reduced(2, 1));
-
-        auto syncLabelArea = rowSync.removeFromLeft(56);
-        granularSyncLabel.setBounds(syncLabelArea);
-        granularSyncBox.setBounds(rowSync.reduced(2, 1));
-
-        auto modeLabelArea = rowMode.removeFromLeft(56);
-        granularModeLabel.setBounds(modeLabelArea);
-        granularModeBox.setBounds(rowMode.reduced(2, 1));
-
-        const auto knobSize = juce::jmin(80, juce::jmin(isaacInner.getWidth(), isaacInner.getHeight()));
-        isaacTextureKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(isaacInner.getCentre()));
-        isaacTextureLabel.setBounds(juce::Rectangle<int>(isaacInner.getX(), isaacInner.getBottom() - 18, isaacInner.getWidth(), 16));
+        if (delayUiComponent != nullptr)
+        {
+            delayUiComponent->setBounds(isaacSectionArea);
+        }
     }
 
     {
@@ -2619,21 +2568,10 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
         vibeUiComponent->setActive(vibeEnabled);
     }
 
-    isaacTextureKnob.setEnabled(delayEnabled);
-    isaacTextureLabel.setEnabled(delayEnabled);
-    delayAlgoBox.setEnabled(delayEnabled);
-    delayAlgoLabel.setEnabled(delayEnabled);
-    delayTimeKnob.setEnabled(delayEnabled);
-    delayTimeLabel.setEnabled(delayEnabled);
-    delayFeedbackKnob.setEnabled(delayEnabled);
-    delayFeedbackLabel.setEnabled(delayEnabled);
-    granularSyncBox.setEnabled(delayEnabled);
-    granularSyncLabel.setEnabled(delayEnabled);
-    granularModeBox.setEnabled(granularModeSelectable);
-    granularModeLabel.setEnabled(granularModeSelectable);
-    isaacTextureKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
-    delayTimeKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
-    delayFeedbackKnob.getProperties().set("psychedelicBypassGray", !delayEnabled);
+    if (delayUiComponent != nullptr)
+    {
+        delayUiComponent->setActive(delayEnabled, granularModeSelectable);
+    }
 
     if (reverbUiComponent != nullptr)
     {

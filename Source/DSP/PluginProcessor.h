@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 
+#include "DelayComponent.h"
 #include "LfoGenerator.h"
 #include "PianoKeyboard.h"
 #include "ReverbComponent.h"
@@ -187,28 +188,6 @@ public:
     bool applyParameterStateTree(const juce::ValueTree& state, juce::String* error = nullptr);
 
 private:
-    struct Grain
-    {
-        bool active { false };
-        bool reverse { false };
-        float readPos { 0.0f };
-        float increment { 1.0f };
-        int ageSamples { 0 };
-        int lengthSamples { 1 };
-        float gain { 0.0f };
-        float pan { 0.5f };
-    };
-
-    enum class GranularMode
-    {
-        classic = 0,
-        cloud,
-        shimmer,
-        rhythmic
-    };
-
-    static constexpr int maxGrains = 48;
-
     void updateActiveNotesFromMidi(const juce::MidiBuffer& midiMessages);
     void clearAllActiveNotes();
     void incrementNoteCount(std::size_t index);
@@ -220,38 +199,10 @@ private:
     EnvelopeSettings currentEnvelopeSettings() const;
     LfoSettings currentLfoSettings() const;
     VibeSettings currentVibeSettings() const;
+    DelaySettings currentDelaySettings() const;
     ReverbSettings currentReverbSettings() const;
 
     void updateTransportState();
-    void processIsaacGranularSample(float inL,
-                                    float inR,
-                                    float amount,
-                                    float timeControl,
-                                    float feedbackControl,
-                                    int syncDivisionIndex,
-                                    float& outL,
-                                    float& outR);
-    void processDelayAlgorithmSample(float inL,
-                                     float inR,
-                                     float amount,
-                                     int algorithmIndex,
-                                     float timeControl,
-                                     float feedbackControl,
-                                     int syncDivisionIndex,
-                                     float& outL,
-                                     float& outR);
-    void spawnIsaacGrain(float amount,
-                        float timeControl,
-                        float feedbackControl,
-                        int syncDivisionIndex,
-                        GranularMode mode,
-                        int rhythmicStep);
-    void clearGranularDiffusionState();
-    void renderActiveGranularGrains(float& wetL, float& wetR);
-    void processGranularDiffusion(float& wetL, float& wetR, float diffusionAmount, float stereoAmount);
-    float processAllpassSample(float x, std::vector<float>& line, int& index, float feedback) const;
-    float sanitizeAudioSample(float x) const;
-    float readDelaySample(int channel, float readPos) const;
     void buildLfoAssignableTargets();
     float lfoDepthForParameterId(const juce::String& parameterId) const;
     float applyLfoToNormalizedValue(juce::RangedAudioParameter* parameter,
@@ -349,31 +300,8 @@ private:
      * drift) are generated once and distributed across multiple DSP points.
      */
     VibeComponent vibeComponent;
+    DelayComponent delayComponent;
     ReverbComponent reverbComponent;
-
-    std::array<std::vector<float>, 2> isaacDelayBuffer;
-    std::array<float, 2> isaacFeedbackFilter { { 0.0f, 0.0f } };
-    std::array<float, 2> isaacShimmerSmooth { { 0.0f, 0.0f } };
-    std::array<std::vector<float>, 2> isaacDiffusionLineA;
-    std::array<std::vector<float>, 2> isaacDiffusionLineB;
-    std::array<int, 2> isaacDiffusionIndexA { { 0, 0 } };
-    std::array<int, 2> isaacDiffusionIndexB { { 0, 0 } };
-    std::array<Grain, maxGrains> isaacGrains {};
-
-    int isaacBufferSize { 1 };
-    int isaacWritePos { 0 };
-    int isaacSpawnCounter { 0 };
-    int isaacRhythmicStepIndex { 0 };
-    int isaacRhythmicSamplesUntilNext { 0 };
-    bool isaacRhythmicSwingToggle { false };
-    float isaacPanPhase { 0.0f };
-    float delayAmountSmoothed { 0.0f };
-    float delayTimeControlSmoothed { 0.5f };
-    float delayFeedbackControlSmoothed { 0.35f };
-    float delayControlSmoothingCoeff { 0.0f };
-    float delayModPhase { 0.0f };
-    int lastDelayAlgorithmIndex { -1 };
-    int lastGranularModeIndex { -1 };
     std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
     std::atomic<uint32_t> fxOrderRevision { 0u };
     juce::String debugInstanceId;
