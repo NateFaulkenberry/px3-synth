@@ -217,35 +217,6 @@ bool PresetManager::saveUserPreset(const PresetMetadata& metadata,
     return true;
 }
 
-bool PresetManager::deleteUserPreset(const PresetRecord& preset, juce::String& error)
-{
-    if (preset.isFactory)
-    {
-        error = "Factory presets cannot be deleted.";
-        return false;
-    }
-
-    if (!preset.file.existsAsFile())
-    {
-        error = "Preset file does not exist.";
-        return false;
-    }
-
-    if (!preset.file.deleteFile())
-    {
-        error = "Unable to delete preset file.";
-        return false;
-    }
-
-    const auto id = canonicalPresetId(getPresetRootDir(), preset.file);
-    favoriteIds.removeString(id, true);
-    juce::String saveError;
-    saveFavorites(saveError);
-
-    rebuildIndex();
-    return true;
-}
-
 bool PresetManager::setFavorite(const PresetRecord& preset, bool favorite, juce::String& error)
 {
     const auto id = canonicalPresetId(getPresetRootDir(), preset.file);

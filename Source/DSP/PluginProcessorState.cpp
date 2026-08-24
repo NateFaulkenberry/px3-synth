@@ -122,6 +122,8 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
     vibeState.setProperty(kVibeSeedId, static_cast<int64_t>(debugGetVibeSeed()), nullptr);
     state.addChild(vibeState, -1, nullptr);
 
+    state.setProperty(kTopMenuViewId, getTopMenuViewIndex(), nullptr);
+
     return state;
 }
 
@@ -244,6 +246,15 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         {
             debugSetVibeSeed(static_cast<uint32_t>(juce::jmax<int64_t>(1, static_cast<int64_t>(vibeState[kVibeSeedId]))));
         }
+    }
+
+    if (state.hasProperty(kTopMenuViewId))
+    {
+        setTopMenuViewIndex(static_cast<int>(state.getProperty(kTopMenuViewId)), false);
+    }
+    else
+    {
+        setTopMenuViewIndex(0, false);
     }
 
     applyVibeTypeProfile(vibeTypeParam->getIndex());

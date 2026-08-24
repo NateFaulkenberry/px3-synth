@@ -172,6 +172,8 @@ public:
 
     void setPitchBendNormalizedFromUI(float normalized);
     void setModWheelNormalizedFromUI(float normalized);
+    int getTopMenuViewIndex() const;
+    void setTopMenuViewIndex(int index, bool notifyHost = true);
 
     juce::ValueTree createParameterStateTree() const;
     bool applyParameterStateTree(const juce::ValueTree& state, juce::String* error = nullptr);
@@ -332,6 +334,7 @@ private:
     std::atomic<float> modWheelNormalized { 0.0f };
     std::atomic<float> pitchBendActivity { 0.0f };
     std::atomic<float> modWheelActivity { 0.0f };
+    std::atomic<int> topMenuViewIndex { 0 };
 
     float vibratoPhaseRadians { 0.0f };
     float lfoPhaseRadians { 0.0f };

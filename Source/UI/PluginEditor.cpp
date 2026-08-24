@@ -11,13 +11,12 @@
 
 namespace
 {
-const std::array<const char*, 5> kGroupNames { "OSC", "FILTER", "AMP ENV", "LFO", "OUTPUT" };
-const std::array<juce::Colour, 5> kGroupAccents {
+const std::array<const char*, 4> kGroupNames { "OSC", "FILTER", "AMP ENV", "LFO" };
+const std::array<juce::Colour, 4> kGroupAccents {
     juce::Colour::fromRGB(74, 153, 255),   // OSC: blue
     juce::Colour::fromRGB(255, 88, 88),    // FILTER: red
     juce::Colour::fromRGB(73, 222, 121),   // AMP ENV: green
-    juce::Colour::fromRGB(186, 112, 255),  // LFO: purple
-    juce::Colour::fromRGB(255, 216, 74)    // OUTPUT: yellow
+    juce::Colour::fromRGB(186, 112, 255)   // LFO: purple
 };
 
 constexpr int kFxSectionDrive = 0;
@@ -1212,25 +1211,18 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     setupPresetButton(presetPrevButton);
     setupPresetButton(presetNameButton);
     setupPresetButton(presetNextButton);
-    setupPresetButton(presetSaveButton);
-    setupPresetButton(presetSaveAsButton);
-    setupPresetButton(presetDeleteButton);
-    setupPresetButton(presetImportButton);
-    setupPresetButton(presetExportButton);
+    setupPresetButton(presetMenuButton);
 
     presetPrevButton.setButtonText("<");
     presetNameButton.setButtonText("INIT");
     presetNextButton.setButtonText(">");
-    presetSaveButton.setButtonText("SAVE");
-    presetSaveAsButton.setButtonText("SAVE AS");
-    presetDeleteButton.setButtonText("DEL");
-    presetImportButton.setButtonText("IMPORT");
-    presetExportButton.setButtonText("EXPORT");
+    presetMenuButton.setButtonText("MENU");
 
-    presetFavoriteButton.setButtonText("★");
-    presetFavoriteButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(230, 230, 230));
-    presetFavoriteButton.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(250, 210, 70));
-    presetFavoriteButton.setTooltip("Add to Favorites");
+    configureTopMenuSectionButton(topMenuOscButton, "OSC", 0);
+    configureTopMenuSectionButton(topMenuEnvButton, "ENV", 1);
+    configureTopMenuSectionButton(topMenuFltButton, "FLT", 2);
+    configureTopMenuSectionButton(topMenuFxButton, "FX", 3);
+    configureTopMenuSectionButton(topMenuMixButton, "MIX", 4);
 
     presetPrevButton.onClick = [this]()
     {
@@ -1287,45 +1279,19 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     };
 
     presetNameButton.onClick = [this]() { openPresetBrowser(); };
-    presetSaveButton.onClick = [this]() { savePreset(false); };
-    presetSaveAsButton.onClick = [this]() { savePreset(true); };
-    presetDeleteButton.onClick = [this]() { deleteCurrentPreset(); };
-    presetImportButton.onClick = [this]() { importPreset(); };
-    presetExportButton.onClick = [this]() { exportCurrentPreset(); };
-    presetFavoriteButton.onClick = [this]()
-    {
-        if (!hasCurrentPreset)
-        {
-            presetFavoriteButton.setToggleState(false, juce::dontSendNotification);
-            return;
-        }
-
-        juce::String error;
-        if (!presetManager.setFavorite(currentPreset, presetFavoriteButton.getToggleState(), error))
-        {
-            showPresetError("Favorite Failed", error);
-            presetFavoriteButton.setToggleState(currentPreset.isFavorite, juce::dontSendNotification);
-            return;
-        }
-
-        presetManager.refreshIndex();
-        rebuildPresetFilteredList();
-        if (const auto* found = presetManager.findByFile(currentPreset.file))
-        {
-            currentPreset = *found;
-            refreshPresetNameDisplay();
-        }
-    };
+    presetMenuButton.onClick = [this]() { showPresetMenu(); };
 
     addAndMakeVisible(presetPrevButton);
     addAndMakeVisible(presetNameButton);
     addAndMakeVisible(presetNextButton);
-    addAndMakeVisible(presetFavoriteButton);
-    addAndMakeVisible(presetSaveButton);
-    addAndMakeVisible(presetSaveAsButton);
-    addAndMakeVisible(presetDeleteButton);
-    addAndMakeVisible(presetImportButton);
-    addAndMakeVisible(presetExportButton);
+    addAndMakeVisible(presetMenuButton);
+    addAndMakeVisible(topMenuOscButton);
+    addAndMakeVisible(topMenuEnvButton);
+    addAndMakeVisible(topMenuFltButton);
+    addAndMakeVisible(topMenuFxButton);
+    addAndMakeVisible(topMenuMixButton);
+
+    applyTopMenuSectionSelection(audioProcessor.getTopMenuViewIndex(), false);
 
     presetBrowserPanel.setInterceptsMouseClicks(false, true);
     addAndMakeVisible(presetBrowserPanel);
@@ -1446,6 +1412,22 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colour::fromRGB(0x1A, 0x1A, 0x1A));
 
+    g.setColour(juce::Colour::fromRGB(0x1A, 0x1A, 0x1A));
+    g.fillRoundedRectangle(topMenuStripArea.toFloat(), 12.0f);
+    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 44));
+    g.drawRoundedRectangle(topMenuStripArea.toFloat(), 12.0f, 1.0f);
+    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 30));
+    g.drawLine(static_cast<float>(logoPanelArea.getRight() + 6),
+               static_cast<float>(topMenuStripArea.getY() + 10),
+               static_cast<float>(logoPanelArea.getRight() + 6),
+               static_cast<float>(topMenuStripArea.getBottom() - 10),
+               1.0f);
+    g.drawLine(static_cast<float>(topMenuPresetClusterArea.getRight() + 6),
+               static_cast<float>(topMenuStripArea.getY() + 10),
+               static_cast<float>(topMenuPresetClusterArea.getRight() + 6),
+               static_cast<float>(topMenuStripArea.getBottom() - 10),
+               1.0f);
+
     if (backgroundImage.isValid())
     {
         g.drawImageWithin(backgroundImage,
@@ -1557,11 +1539,6 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
         g.setColour(reverbEnabled ? juce::Colour::fromRGB(224, 245, 255)
                       : juce::Colour::fromRGB(170, 170, 170));
         g.drawText("REVERB", reverbSectionArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
-
-        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 18));
-        g.fillRoundedRectangle(topSpareSectionArea.toFloat(), 10.0f);
-        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 65));
-        g.drawRoundedRectangle(topSpareSectionArea.toFloat(), 10.0f, 1.0f);
 
     if (performanceControlsArea.getWidth() > 0 && pianoKeyboard.getBounds().getWidth() > 0)
     {
@@ -1925,49 +1902,59 @@ void PX3SynthAudioProcessorEditor::resized()
     // This balancing intentionally avoids dramatic jumps while resizing.
     auto bounds = getLocalBounds().reduced(16);
 
-    const auto headerHeight = juce::jlimit(210, 320, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.40)));
+    const auto headerHeight = 140;
     const auto controlsHeight = juce::jlimit(150, 270, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.34)));
     const auto keyboardHeight = juce::jlimit(106, 144, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.15)));
     // const auto statusHeight = 36;
     const auto sectionGap = 10;
 
     headerArea = bounds.removeFromTop(headerHeight);
-    logoPanelArea = { headerArea.getX() + 4, headerArea.getY() + 4, 160, 160 };
-#if PX3_DEBUG_PANEL
-    debugToggleButton.setBounds(logoPanelArea.getX() + 18,
-                                logoPanelArea.getBottom() + 8,
-                                logoPanelArea.getWidth() - 36,
-                                24);
-#endif
-    headerPlaceholderArea = { logoPanelArea.getRight() + 12,
-                              headerArea.getY(),
-                              juce::jmax(0, headerArea.getRight() - (logoPanelArea.getRight() + 12)),
-                              headerArea.getHeight() };
+    topMenuStripArea = headerArea;
 
-    auto topArea = headerPlaceholderArea.reduced(4, 2);
-    auto presetRow = topArea.removeFromTop(28);
-    topArea.removeFromTop(4);
+    auto topStripContent = topMenuStripArea.reduced(8, 8);
+    logoPanelArea = topStripContent.removeFromLeft(150);
+    topStripContent.removeFromLeft(10);
+
+    topMenuGainArea = topStripContent.removeFromRight(100);
+    topStripContent.removeFromRight(10);
+
+    headerPlaceholderArea = topStripContent;
+    auto presetRow = headerPlaceholderArea.removeFromTop(32);
+    headerPlaceholderArea.removeFromTop(6);
+
+    auto sectionButtonsRow = presetRow;
+    topMenuSectionButtonsArea = sectionButtonsRow.removeFromLeft(juce::jlimit(230, 330, presetRow.getWidth() / 2));
+    sectionButtonsRow.removeFromLeft(8);
+    topMenuPresetClusterArea = sectionButtonsRow;
+    presetBarArea = topMenuPresetClusterArea;
+
+    const auto sectionGapPx = 6;
+    auto sectionButtonsLayout = topMenuSectionButtonsArea;
+    const auto buttonWidth = juce::jmax(42, (sectionButtonsLayout.getWidth() - (sectionGapPx * 4)) / 5);
+    for (int i = 0; i < 5; ++i)
+    {
+        topMenuSectionButtons[static_cast<std::size_t>(i)]->setBounds(sectionButtonsLayout.removeFromLeft(buttonWidth));
+        if (i < 4)
+        {
+            sectionButtonsLayout.removeFromLeft(sectionGapPx);
+        }
+    }
+
+    auto gainArea = topMenuGainArea.reduced(4, 4);
+    const auto gainKnobSize = juce::jlimit(46, 60, juce::jmin(gainArea.getWidth() - 6, gainArea.getHeight() - 22));
+    gainKnob.setBounds(juce::Rectangle<int>(gainKnobSize, gainKnobSize)
+                           .withCentre({ gainArea.getCentreX(), gainArea.getY() + gainKnobSize / 2 + 4 }));
+    gainLabel.setBounds(gainArea.getX(), gainArea.getBottom() - 16, gainArea.getWidth(), 14);
+
     const auto topGap = 8;
-    updateFxSectionTargets(topArea, topGap);
+    updateFxSectionTargets(headerPlaceholderArea, topGap);
     layoutFxSectionsFromCurrentAreas();
 
-    presetBarArea = presetRow;
-
-    auto presetLayout = presetRow;
+    auto presetLayout = presetBarArea;
     presetPrevButton.setBounds(presetLayout.removeFromLeft(26));
     presetLayout.removeFromLeft(4);
-    presetExportButton.setBounds(presetLayout.removeFromRight(74));
-    presetLayout.removeFromRight(4);
-    presetImportButton.setBounds(presetLayout.removeFromRight(74));
-    presetLayout.removeFromRight(4);
-    presetDeleteButton.setBounds(presetLayout.removeFromRight(52));
-    presetLayout.removeFromRight(4);
-    presetSaveAsButton.setBounds(presetLayout.removeFromRight(84));
-    presetLayout.removeFromRight(4);
-    presetSaveButton.setBounds(presetLayout.removeFromRight(64));
-    presetLayout.removeFromRight(4);
-    presetFavoriteButton.setBounds(presetLayout.removeFromRight(28));
-    presetLayout.removeFromRight(4);
+    presetMenuButton.setBounds(presetLayout.removeFromRight(84));
+    presetLayout.removeFromRight(6);
     presetNextButton.setBounds(presetLayout.removeFromRight(26));
     presetLayout.removeFromRight(8);
     presetNameButton.setBounds(presetLayout);
@@ -1994,13 +1981,12 @@ void PX3SynthAudioProcessorEditor::resized()
     auto groupsSpan = controlsArea.reduced(8, 8);
     groupsSpan.removeFromTop(20);
 
-    const auto usableWidth = groupsSpan.getWidth() - (groupGap * 4);
+    const auto usableWidth = groupsSpan.getWidth() - (groupGap * 3);
     const auto usableWidthD = static_cast<double>(usableWidth);
-    const auto oscWidth = static_cast<int>(std::lround(usableWidthD * 0.27));
-    const auto filterWidth = static_cast<int>(std::lround(usableWidthD * 0.18));
-    const auto envWidth = static_cast<int>(std::lround(usableWidthD * 0.28));
-    const auto lfoWidth = static_cast<int>(std::lround(usableWidthD * 0.14));
-    const auto outWidth = usableWidth - oscWidth - filterWidth - envWidth - lfoWidth;
+    const auto oscWidth = static_cast<int>(std::lround(usableWidthD * 0.33));
+    const auto filterWidth = static_cast<int>(std::lround(usableWidthD * 0.21));
+    const auto envWidth = static_cast<int>(std::lround(usableWidthD * 0.29));
+    const auto lfoWidth = usableWidth - oscWidth - filterWidth - envWidth;
 
     auto x = groupsSpan.getX();
     knobGroupAreas[0] = { x, groupsSpan.getY(), oscWidth, groupsSpan.getHeight() };
@@ -2010,13 +1996,10 @@ void PX3SynthAudioProcessorEditor::resized()
     knobGroupAreas[2] = { x, groupsSpan.getY(), envWidth, groupsSpan.getHeight() };
     x += envWidth + groupGap;
     knobGroupAreas[3] = { x, groupsSpan.getY(), lfoWidth, groupsSpan.getHeight() };
-    x += lfoWidth + groupGap;
-    knobGroupAreas[4] = { x, groupsSpan.getY(), outWidth, groupsSpan.getHeight() };
 
     layoutKnobGroup(knobGroupAreas[0], 0, 3, kGroupAccents[0]);
     layoutKnobGroup(knobGroupAreas[1], 3, 2, kGroupAccents[1]);
     layoutKnobGroup(knobGroupAreas[3], 9, 1, kGroupAccents[3]);
-    layoutKnobGroup(knobGroupAreas[4], 10, 1, kGroupAccents[4]);
 
     if (envelopeGraph != nullptr)
     {
@@ -2594,7 +2577,6 @@ void PX3SynthAudioProcessorEditor::refreshPresetNameDisplay()
     }
 
     presetNameButton.setButtonText(name);
-    presetFavoriteButton.setToggleState(hasCurrentPreset && currentPreset.isFavorite, juce::dontSendNotification);
 }
 
 void PX3SynthAudioProcessorEditor::applyPresetRecord(const PresetManager::PresetRecord& record)
@@ -2745,46 +2727,6 @@ void PX3SynthAudioProcessorEditor::savePreset(bool saveAs)
                          });
 }
 
-void PX3SynthAudioProcessorEditor::deleteCurrentPreset()
-{
-    if (!hasCurrentPreset)
-    {
-        return;
-    }
-
-    if (currentPreset.isFactory || currentPreset.metadata.name.equalsIgnoreCase("INIT"))
-    {
-        showPresetError("Delete Not Allowed", "Factory and INIT presets cannot be deleted.");
-        return;
-    }
-
-    auto ok = juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::WarningIcon,
-                                                  "Delete Preset",
-                                                  "Delete \"" + currentPreset.metadata.name + "\"?",
-                                                  "Delete",
-                                                  "Cancel",
-                                                  this,
-                                                  nullptr);
-    if (!ok)
-    {
-        return;
-    }
-
-    juce::String error;
-    if (!presetManager.deleteUserPreset(currentPreset, error))
-    {
-        showPresetError("Delete Failed", error);
-        return;
-    }
-
-    hasCurrentPreset = false;
-    currentPresetDirty = false;
-    loadedStateHash.clear();
-    presetManager.refreshIndex();
-    rebuildPresetFilteredList();
-    refreshPresetNameDisplay();
-}
-
 void PX3SynthAudioProcessorEditor::importPreset()
 {
     auto chooser = std::make_shared<juce::FileChooser>("Import P(X3) preset",
@@ -2843,6 +2785,127 @@ void PX3SynthAudioProcessorEditor::exportCurrentPreset()
                                  showPresetError("Export Failed", error);
                              }
                          });
+}
+
+void PX3SynthAudioProcessorEditor::showPresetMenu()
+{
+    enum MenuItemId
+    {
+        save = 1,
+        saveAs,
+        favorite,
+        import,
+        exportPreset,
+        debug
+    };
+
+    juce::PopupMenu menu;
+    menu.addItem(MenuItemId::save, "Save");
+    menu.addItem(MenuItemId::saveAs, "Save As");
+    menu.addSeparator();
+    menu.addItem(MenuItemId::favorite,
+                 "Add to Favorites",
+                 hasCurrentPreset,
+                 hasCurrentPreset && currentPreset.isFavorite);
+    menu.addSeparator();
+    menu.addItem(MenuItemId::import, "Import");
+    menu.addItem(MenuItemId::exportPreset, "Export", hasCurrentPreset);
+#if PX3_DEBUG_PANEL
+    menu.addSeparator();
+    menu.addItem(MenuItemId::debug, "Debug");
+#endif
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&presetMenuButton),
+                       [this](int result)
+                       {
+                           switch (result)
+                           {
+                               case MenuItemId::save:
+                                   savePreset(false);
+                                   break;
+                               case MenuItemId::saveAs:
+                                   savePreset(true);
+                                   break;
+                               case MenuItemId::favorite:
+                               {
+                                   if (!hasCurrentPreset)
+                                   {
+                                       return;
+                                   }
+
+                                   const auto nextFavorite = !currentPreset.isFavorite;
+                                   juce::String error;
+                                   if (!presetManager.setFavorite(currentPreset, nextFavorite, error))
+                                   {
+                                       showPresetError("Favorite Failed", error);
+                                       return;
+                                   }
+
+                                   presetManager.refreshIndex();
+                                   rebuildPresetFilteredList();
+                                   if (const auto* found = presetManager.findByFile(currentPreset.file))
+                                   {
+                                       currentPreset = *found;
+                                       refreshPresetNameDisplay();
+                                   }
+                                   break;
+                               }
+                               case MenuItemId::import:
+                                   importPreset();
+                                   break;
+                               case MenuItemId::exportPreset:
+                                   exportCurrentPreset();
+                                   break;
+#if PX3_DEBUG_PANEL
+                               case MenuItemId::debug:
+                                   toggleDebugWindow();
+                                   break;
+#endif
+                               default:
+                                   break;
+                           }
+                       });
+}
+
+void PX3SynthAudioProcessorEditor::configureTopMenuSectionButton(juce::TextButton& button,
+                                                                 const juce::String& text,
+                                                                 int sectionIndex)
+{
+    button.setButtonText(text);
+    button.setClickingTogglesState(false);
+    button.setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGBA(40, 40, 40, 210));
+    button.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGBA(82, 140, 196, 220));
+    button.setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(224, 224, 224));
+    button.setColour(juce::TextButton::textColourOnId, juce::Colour::fromRGB(245, 245, 245));
+    button.onClick = [this, sectionIndex]()
+    {
+        applyTopMenuSectionSelection(sectionIndex, true);
+    };
+}
+
+void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex, bool pushToProcessor)
+{
+    const auto clamped = juce::jlimit(0, 4, sectionIndex);
+    selectedTopMenuSection = clamped;
+
+    for (int i = 0; i < 5; ++i)
+    {
+        topMenuSectionButtons[static_cast<std::size_t>(i)]->setToggleState(i == clamped, juce::dontSendNotification);
+    }
+
+    if (pushToProcessor)
+    {
+        audioProcessor.setTopMenuViewIndex(clamped, true);
+    }
+}
+
+void PX3SynthAudioProcessorEditor::refreshTopMenuSelectionFromProcessor()
+{
+    const auto processorIndex = audioProcessor.getTopMenuViewIndex();
+    if (processorIndex != selectedTopMenuSection)
+    {
+        applyTopMenuSectionSelection(processorIndex, false);
+    }
 }
 
 juce::String PX3SynthAudioProcessorEditor::computeCurrentStateHash() const
@@ -3398,6 +3461,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     refreshLfoFrequencyLabel();
     refreshEnvelopeGraphUI();
     refreshFxBypassUI();
+    refreshTopMenuSelectionFromProcessor();
 
     if (debugPanelVisible)
     {

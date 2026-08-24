@@ -99,6 +99,22 @@ juce::AudioParameterChoice& PX3SynthAudioProcessor::getReverbAlgorithmParam() co
 juce::AudioParameterInt& PX3SynthAudioProcessor::getPitchBendRangeParam() const { return *pitchBendRangeParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getLfoFrequencyParam() const { return *lfoFrequencyParam; }
 
+int PX3SynthAudioProcessor::getTopMenuViewIndex() const
+{
+    return juce::jlimit(0, 4, topMenuViewIndex.load(std::memory_order_relaxed));
+}
+
+void PX3SynthAudioProcessor::setTopMenuViewIndex(int index, bool notifyHost)
+{
+    const auto clamped = juce::jlimit(0, 4, index);
+    topMenuViewIndex.store(clamped, std::memory_order_relaxed);
+
+    if (notifyHost)
+    {
+        updateHostDisplay(juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged(true));
+    }
+}
+
 const juce::StringArray& PX3SynthAudioProcessor::getLfoAssignmentDisplayNames() const
 {
     return lfoAssignmentDisplayNames;

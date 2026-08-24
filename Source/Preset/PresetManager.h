@@ -65,8 +65,6 @@ public:
                         juce::String& error,
                         juce::File* outFile = nullptr);
 
-    bool deleteUserPreset(const PresetRecord& preset, juce::String& error);
-
     bool setFavorite(const PresetRecord& preset, bool favorite, juce::String& error);
     bool isFavorite(const juce::File& presetFile) const;
 

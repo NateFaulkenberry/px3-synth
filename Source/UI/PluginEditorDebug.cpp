@@ -38,10 +38,6 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
 {
     // The debug console is intentionally detached from the main editor surface
     // so frequent diagnostic refreshes do not clutter or stall normal UI work.
-    debugToggleButton.setButtonText("DEBUG");
-    debugToggleButton.onClick = [this]() { toggleDebugWindow(); };
-    addAndMakeVisible(debugToggleButton);
-
     const auto setupLabel = [](juce::Label& label, const juce::String& text)
     {
         label.setText(text, juce::dontSendNotification);

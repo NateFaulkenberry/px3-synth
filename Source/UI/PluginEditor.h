@@ -121,9 +121,12 @@ private:
     void closePresetBrowser();
     void showPresetError(const juce::String& title, const juce::String& message);
     void savePreset(bool saveAs);
-    void deleteCurrentPreset();
     void importPreset();
     void exportCurrentPreset();
+    void showPresetMenu();
+    void configureTopMenuSectionButton(juce::TextButton& button, const juce::String& text, int sectionIndex);
+    void applyTopMenuSectionSelection(int sectionIndex, bool pushToProcessor);
+    void refreshTopMenuSelectionFromProcessor();
     void updatePresetDirtyState();
     juce::String computeCurrentStateHash() const;
     int getNumRows() override;
@@ -218,7 +221,11 @@ private:
 
     juce::Rectangle<int> headerArea;
     juce::Rectangle<int> controlsArea;
+    juce::Rectangle<int> topMenuStripArea;
     juce::Rectangle<int> logoPanelArea;
+    juce::Rectangle<int> topMenuSectionButtonsArea;
+    juce::Rectangle<int> topMenuPresetClusterArea;
+    juce::Rectangle<int> topMenuGainArea;
     juce::Rectangle<int> headerPlaceholderArea;
     juce::Rectangle<int> presetBarArea;
     juce::Rectangle<int> robSectionArea;
@@ -227,7 +234,7 @@ private:
     juce::Rectangle<int> topSpareSectionArea;
     juce::Rectangle<int> midiStatusArea;
     juce::Rectangle<int> performanceControlsArea;
-    std::array<juce::Rectangle<int>, 5> knobGroupAreas {};
+    std::array<juce::Rectangle<int>, 4> knobGroupAreas {};
     std::array<juce::Rectangle<int>, 3> fxSectionSlots {};
     std::array<juce::Rectangle<float>, 3> fxSectionCurrentAreas {};
     std::array<juce::Rectangle<float>, 3> fxSectionTargetAreas {};
@@ -311,12 +318,16 @@ private:
     juce::TextButton presetPrevButton;
     juce::TextButton presetNameButton;
     juce::TextButton presetNextButton;
-    juce::ToggleButton presetFavoriteButton;
-    juce::TextButton presetSaveButton;
-    juce::TextButton presetSaveAsButton;
-    juce::TextButton presetDeleteButton;
-    juce::TextButton presetImportButton;
-    juce::TextButton presetExportButton;
+    juce::TextButton presetMenuButton;
+    juce::TextButton topMenuOscButton;
+    juce::TextButton topMenuEnvButton;
+    juce::TextButton topMenuFltButton;
+    juce::TextButton topMenuFxButton;
+    juce::TextButton topMenuMixButton;
+    std::array<juce::TextButton*, 5> topMenuSectionButtons {
+        { &topMenuOscButton, &topMenuEnvButton, &topMenuFltButton, &topMenuFxButton, &topMenuMixButton }
+    };
+    int selectedTopMenuSection { 0 };
 
     PresetBrowserPanelComponent presetBrowserPanel;
     juce::Label presetBrowserTitle;
@@ -341,7 +352,6 @@ private:
     int lastGranularModeIndex { -1 };
     int lastLfoAssignmentIndex { -1 };
 
-    juce::TextButton debugToggleButton;
     juce::Component debugPanel;
     juce::Label debugPanelTitle;
     juce::TextButton debugPanelCloseButton;

@@ -23,6 +23,7 @@ inline const juce::Identifier kModuleOrderRevisionId("moduleOrderRevision");
 inline const juce::Identifier kLfoStateId("LFO");
 inline const juce::Identifier kLfoFrequencyId("frequency");
 inline const juce::Identifier kLfoAssignmentId("assignment");
+inline const juce::Identifier kTopMenuViewId("topMenuView");
 inline const juce::Identifier kVibeStateId("VIBE");
 inline const juce::Identifier kVibeBypassId("bypass");
 inline const juce::Identifier kVibeSeedId("seed");
