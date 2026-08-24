@@ -7,7 +7,6 @@
 
 namespace
 {
-// constexpr double kMaxIsaacDelaySeconds = 4.0;
 constexpr int kCurrentStateVersion = 4;
 
 const juce::Identifier kStateTypeId("PX3_STATE");
