@@ -33,6 +33,12 @@
  * Important architecture rule:
  * parameter/base values are persisted/automated; transient DSP-effective
  * values may include modulation (LFO etc.) and are computed at read points.
+ *
+ * Implementation note:
+ * this class remains a single processor/orchestrator type, but its member
+ * function implementations are intentionally split across multiple
+ * PluginProcessor*.cpp files by responsibility (audio, MIDI, state, debug,
+ * source engines, and DSP effects).
  */
 class PX3SynthAudioProcessor final : public juce::AudioProcessor
 {

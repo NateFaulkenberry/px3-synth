@@ -62,6 +62,12 @@ target_sources(PX3Synth
         Source/UI/PluginEditorDebug.cpp
         Source/UI/SourceEnginePanel.cpp
         Source/DSP/PluginProcessor.cpp
+        Source/DSP/PluginProcessorParameters.cpp
+        Source/DSP/PluginProcessorMidi.cpp
+        Source/DSP/PluginProcessorDebug.cpp
+        Source/DSP/PluginProcessorSource.cpp
+        Source/DSP/PluginProcessorEffects.cpp
+        Source/DSP/PluginProcessorState.cpp
         Source/DSP/SynthSound.cpp
         Source/DSP/VibeEngine.cpp
         Source/DSP/SynthVoice.cpp

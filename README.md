@@ -487,6 +487,38 @@ On restore, if those files still exist, the plugin asynchronously reloads them.
 
 This section describes the major internal functions and what each one controls.
 
+## Source Code Organization
+
+`PX3SynthAudioProcessor` remains the single central orchestrator class, but its
+implementation is split across multiple files by responsibility:
+
+- `Source/DSP/PluginProcessor.h`
+  - Single authoritative class declaration for `PX3SynthAudioProcessor`.
+- `Source/DSP/PluginProcessor.cpp`
+  - Core processor orchestration: constructor/destructor, plugin identity,
+    JUCE lifecycle entry points, and `processBlock`.
+- `Source/DSP/PluginProcessorParameters.cpp`
+  - Parameter getters, LFO destination assignment, modulation application
+    helper, and FX order API (`get/setFxProcessingOrder`).
+- `Source/DSP/PluginProcessorMidi.cpp`
+  - MIDI + virtual keyboard handling, note activity tracking, pitch/mod wheel
+    state bridges.
+- `Source/DSP/PluginProcessorSource.cpp`
+  - Image/audio source engine loading, reset/disable behavior, animation
+    position updates, source previews, and wavetable generation from images.
+- `Source/DSP/PluginProcessorEffects.cpp`
+  - Delay/granular/reverb DSP helper implementations and reverb engine setup.
+- `Source/DSP/PluginProcessorState.cpp`
+  - State serialization/restoration (`getStateInformation`,
+    `setStateInformation`, ValueTree create/apply).
+- `Source/DSP/PluginProcessorDebug.cpp`
+  - Debug event logging, debug state inspection, and round-trip/restore
+    diagnostics used by the debug console.
+
+If you are looking for a specific behavior, start with the matching file above,
+then follow calls back into `processBlock` in `PluginProcessor.cpp` for the
+runtime orchestration path.
+
 ### Core Processor Lifecycle
 
 - `prepareToPlay`

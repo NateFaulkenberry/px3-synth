@@ -7,3 +7,6 @@
 
 # VS Code local history/temp
 .vscode/*.log
+
+# Notes
+notes.txt
