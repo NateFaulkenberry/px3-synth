@@ -70,6 +70,7 @@ target_sources(PX3Synth
         Source/DSP/PluginProcessorState.cpp
         Source/DSP/SynthSound.cpp
         Source/DSP/VibeEngine.cpp
+        Source/DSP/OscillatorUnit.cpp
         Source/DSP/SynthVoice.cpp
         Source/Preset/PresetManager.cpp
 )
