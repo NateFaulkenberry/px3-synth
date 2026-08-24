@@ -246,7 +246,6 @@ private:
     OscillatorSettings currentOscillatorSettings() const;
     EnvelopeSettings currentEnvelopeSettings() const;
 
-    void prepareIsaacEngine(double sampleRate);
     void prepareReverbEngine(double sampleRate);
     std::shared_ptr<ImageWavetable> createDefaultImageWavetable() const;
     std::shared_ptr<ImageWavetable> createImageWavetableFromImage(const juce::Image& sourceImage) const;

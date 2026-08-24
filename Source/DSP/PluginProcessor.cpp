@@ -7,7 +7,7 @@
 
 namespace
 {
-constexpr double kMaxIsaacDelaySeconds = 4.0;
+// constexpr double kMaxIsaacDelaySeconds = 4.0;
 constexpr int kCurrentStateVersion = 4;
 
 const juce::Identifier kStateTypeId("PX3_STATE");
@@ -572,7 +572,6 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
         }
     }
 
-    prepareIsaacEngine(sampleRate);
     prepareReverbEngine(sampleRate);
 
     juce::ignoreUnused(samplesPerBlock);
@@ -2354,48 +2353,6 @@ EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings() const
                                                                                         static_cast<juce::RangedAudioParameter*>(releaseParam)->getValue(),
                                                                                         lfoSignal));
     return settings;
-}
-
-void PX3SynthAudioProcessor::prepareIsaacEngine(double sampleRate)
-{
-    currentSampleRateHz = juce::jmax(8000.0, sampleRate);
-    isaacBufferSize = static_cast<int>(std::ceil(currentSampleRateHz * kMaxIsaacDelaySeconds));
-    isaacBufferSize = juce::jmax(1, isaacBufferSize);
-
-    for (auto& channelBuffer : isaacDelayBuffer)
-    {
-        channelBuffer.assign(static_cast<std::size_t>(isaacBufferSize), 0.0f);
-    }
-
-    for (auto& grain : isaacGrains)
-    {
-        grain = Grain {};
-    }
-
-    const auto diffSizeA = juce::jmax(8, static_cast<int>(std::round(currentSampleRateHz * 0.0097)));
-    const auto diffSizeB = juce::jmax(8, static_cast<int>(std::round(currentSampleRateHz * 0.0153)));
-    for (auto& line : isaacDiffusionLineA)
-    {
-        line.assign(static_cast<std::size_t>(diffSizeA), 0.0f);
-    }
-    for (auto& line : isaacDiffusionLineB)
-    {
-        line.assign(static_cast<std::size_t>(diffSizeB), 0.0f);
-    }
-    isaacDiffusionIndexA = { { 0, 0 } };
-    isaacDiffusionIndexB = { { 0, 0 } };
-
-    isaacWritePos = 0;
-    isaacSpawnCounter = 0;
-    isaacRhythmicStepIndex = 0;
-    isaacRhythmicSamplesUntilNext = 0;
-    isaacRhythmicSwingToggle = false;
-    isaacPanPhase = 0.0f;
-    delayModPhase = 0.0f;
-    lastDelayAlgorithmIndex = -1;
-    lastGranularModeIndex = -1;
-    isaacFeedbackFilter = { { 0.0f, 0.0f } };
-    isaacShimmerSmooth = { { 0.0f, 0.0f } };
 }
 
 void PX3SynthAudioProcessor::prepareReverbEngine(double sampleRate)
