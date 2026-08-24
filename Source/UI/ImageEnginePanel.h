@@ -11,7 +11,7 @@ class ImageEnginePanel final : public juce::Component,
                                private juce::Timer
 {
 public:
-    explicit ImageEnginePanel(SynthProjectAudioProcessor& processorIn);
+    explicit ImageEnginePanel(PX3SynthAudioProcessor& processorIn);
 
     bool isInterestedInFileDrag(const juce::StringArray& files) override;
     void fileDragEnter(const juce::StringArray& files, int x, int y) override;
@@ -30,7 +30,7 @@ private:
     void attachComboBox(juce::RangedAudioParameter& parameter, juce::ComboBox& comboBox);
     static bool isSupportedImageFile(const juce::File& file);
 
-    SynthProjectAudioProcessor& processor;
+    PX3SynthAudioProcessor& processor;
 
     juce::Rectangle<int> imagePreviewArea;
     juce::Rectangle<int> waveformArea;

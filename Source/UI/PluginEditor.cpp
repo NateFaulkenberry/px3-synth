@@ -80,7 +80,7 @@ public:
 // Interactive ADSR editor that writes directly to existing processor parameters.
 // It intentionally does not own independent envelope state so automation,
 // presets, and DAW restore all remain canonical.
-class SynthProjectAudioProcessorEditor::EnvelopeGraphComponent final : public juce::Component
+class PX3SynthAudioProcessorEditor::EnvelopeGraphComponent final : public juce::Component
 {
 public:
     EnvelopeGraphComponent(juce::AudioParameterFloat& attackIn,
@@ -565,7 +565,7 @@ private:
     float lastRelease { -1.0f };
 };
 
-void SynthProjectAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
+void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
                                                                          int x,
                                                                          int y,
                                                                          int width,
@@ -725,7 +725,7 @@ void SynthProjectAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::G
     g.fillEllipse(center.x - 3.1f, center.y - 3.1f, 6.2f, 6.2f);
 }
 
-void SynthProjectAudioProcessorEditor::KnobLabel::paint(juce::Graphics& g)
+void PX3SynthAudioProcessorEditor::KnobLabel::paint(juce::Graphics& g)
 {
     if (getText().isEmpty())
     {
@@ -750,7 +750,7 @@ void SynthProjectAudioProcessorEditor::KnobLabel::paint(juce::Graphics& g)
                true);
 }
 
-juce::String SynthProjectAudioProcessorEditor::noteNameForMidi(int midiNote)
+juce::String PX3SynthAudioProcessorEditor::noteNameForMidi(int midiNote)
 {
     static constexpr const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
 
@@ -763,17 +763,17 @@ juce::String SynthProjectAudioProcessorEditor::noteNameForMidi(int midiNote)
     return juce::String(names[midiNote % 12]) + juce::String(octave);
 }
 
-juce::String SynthProjectAudioProcessorEditor::fxModuleIdFromSection(int sectionId)
+juce::String PX3SynthAudioProcessorEditor::fxModuleIdFromSection(int sectionId)
 {
     return moduleIdFromSectionId(sectionId);
 }
 
-int SynthProjectAudioProcessorEditor::fxSectionFromModuleId(const juce::String& moduleId)
+int PX3SynthAudioProcessorEditor::fxSectionFromModuleId(const juce::String& moduleId)
 {
     return sectionIdFromModuleId(moduleId);
 }
 
-void SynthProjectAudioProcessorEditor::configureKnob(KnobBinding& binding,
+void PX3SynthAudioProcessorEditor::configureKnob(KnobBinding& binding,
                                                       const juce::String& labelText,
                                                       juce::AudioParameterFloat& parameter)
 {
@@ -799,7 +799,7 @@ void SynthProjectAudioProcessorEditor::configureKnob(KnobBinding& binding,
     addAndMakeVisible(label);
 }
 
-void SynthProjectAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
+void PX3SynthAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
                                                            KnobLabel& label,
                                                            const juce::String& labelText,
                                                            juce::AudioParameterFloat& parameter)
@@ -821,22 +821,22 @@ void SynthProjectAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
     addAndMakeVisible(label);
 }
 
-void SynthProjectAudioProcessorEditor::attachSlider(juce::RangedAudioParameter& parameter, juce::Slider& slider)
+void PX3SynthAudioProcessorEditor::attachSlider(juce::RangedAudioParameter& parameter, juce::Slider& slider)
 {
     sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(parameter, slider, nullptr));
 }
 
-void SynthProjectAudioProcessorEditor::attachComboBox(juce::RangedAudioParameter& parameter, juce::ComboBox& comboBox)
+void PX3SynthAudioProcessorEditor::attachComboBox(juce::RangedAudioParameter& parameter, juce::ComboBox& comboBox)
 {
     comboBoxAttachments.push_back(std::make_unique<juce::ComboBoxParameterAttachment>(parameter, comboBox, nullptr));
 }
 
-void SynthProjectAudioProcessorEditor::attachButton(juce::RangedAudioParameter& parameter, juce::Button& button)
+void PX3SynthAudioProcessorEditor::attachButton(juce::RangedAudioParameter& parameter, juce::Button& button)
 {
     buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(parameter, button, nullptr));
 }
 
-SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectAudioProcessor& p)
+PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcessor& p)
     : AudioProcessorEditor(&p),
     audioProcessor(p),
     tooltipWindow(this, 450),
@@ -1444,7 +1444,7 @@ SynthProjectAudioProcessorEditor::SynthProjectAudioProcessorEditor(SynthProjectA
     startTimerHz(30);
 }
 
-SynthProjectAudioProcessorEditor::~SynthProjectAudioProcessorEditor()
+PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
 {
     closeDebugWindow();
     audioProcessor.debugNotifyEditorDestroyed(this);
@@ -1461,7 +1461,7 @@ SynthProjectAudioProcessorEditor::~SynthProjectAudioProcessorEditor()
     reverbKnob.setLookAndFeel(nullptr);
 }
 
-void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
+void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colour::fromRGB(0x1A, 0x1A, 0x1A));
 
@@ -1888,7 +1888,7 @@ void SynthProjectAudioProcessorEditor::paint(juce::Graphics& g)
 
 }
 
-void SynthProjectAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
+void PX3SynthAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
 {
     if (!presetBrowserVisible)
     {
@@ -1935,7 +1935,7 @@ void SynthProjectAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
     g.fillPath(outsidePanelMask);
 }
 
-void SynthProjectAudioProcessorEditor::resized()
+void PX3SynthAudioProcessorEditor::resized()
 {
     // Layout policy:
     // - Header prioritizes logo/preset bar/fx cards for quick performance edits.
@@ -2127,7 +2127,7 @@ void SynthProjectAudioProcessorEditor::resized()
 
 }
 
-void SynthProjectAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
+void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 {
     if (presetBrowserVisible)
     {
@@ -2172,7 +2172,7 @@ void SynthProjectAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
     draggingSectionOffsetX = static_cast<float>(point.x) - fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)].getX();
 }
 
-void SynthProjectAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
+void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
 {
     if (presetBrowserVisible)
     {
@@ -2242,7 +2242,7 @@ void SynthProjectAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
     repaint(headerPlaceholderArea);
 }
 
-void SynthProjectAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
+void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
 {
     if (presetBrowserVisible)
     {
@@ -2318,7 +2318,7 @@ void SynthProjectAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
     repaint(headerPlaceholderArea);
 }
 
-void SynthProjectAudioProcessorEditor::updateFxSectionTargets(const juce::Rectangle<int>& topArea, int topGap)
+void PX3SynthAudioProcessorEditor::updateFxSectionTargets(const juce::Rectangle<int>& topArea, int topGap)
 {
     auto layoutArea = topArea;
     const auto sectionWidth = juce::jmax(108, (layoutArea.getWidth() - (topGap * 3)) / 4);
@@ -2347,7 +2347,7 @@ void SynthProjectAudioProcessorEditor::updateFxSectionTargets(const juce::Rectan
     }
 }
 
-void SynthProjectAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
+void PX3SynthAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
 {
     robSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionDrive)].toNearestInt();
     isaacSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionDelay)].toNearestInt();
@@ -2434,7 +2434,7 @@ void SynthProjectAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
     }
 }
 
-void SynthProjectAudioProcessorEditor::animateFxSections()
+void PX3SynthAudioProcessorEditor::animateFxSections()
 {
     if (!fxSectionsInitialized)
     {
@@ -2476,7 +2476,7 @@ void SynthProjectAudioProcessorEditor::animateFxSections()
     }
 }
 
-int SynthProjectAudioProcessorEditor::indexForFxSection(int sectionId) const
+int PX3SynthAudioProcessorEditor::indexForFxSection(int sectionId) const
 {
     for (int i = 0; i < 3; ++i)
     {
@@ -2489,7 +2489,7 @@ int SynthProjectAudioProcessorEditor::indexForFxSection(int sectionId) const
     return -1;
 }
 
-int SynthProjectAudioProcessorEditor::fxSectionAtPoint(juce::Point<int> point) const
+int PX3SynthAudioProcessorEditor::fxSectionAtPoint(juce::Point<int> point) const
 {
     for (int sectionId = 0; sectionId < 3; ++sectionId)
     {
@@ -2502,7 +2502,7 @@ int SynthProjectAudioProcessorEditor::fxSectionAtPoint(juce::Point<int> point) c
     return -1;
 }
 
-void SynthProjectAudioProcessorEditor::moveFxSectionToSlot(int sectionId, int slotIndex)
+void PX3SynthAudioProcessorEditor::moveFxSectionToSlot(int sectionId, int slotIndex)
 {
     const auto fromIndex = indexForFxSection(sectionId);
     const auto toIndex = juce::jlimit(0, 2, slotIndex);
@@ -2546,7 +2546,7 @@ void SynthProjectAudioProcessorEditor::moveFxSectionToSlot(int sectionId, int sl
     }
 }
 
-void SynthProjectAudioProcessorEditor::commitFxOrderToProcessor(const juce::String& source,
+void PX3SynthAudioProcessorEditor::commitFxOrderToProcessor(const juce::String& source,
                                                                 const juce::String& reason,
                                                                 int fromIndex,
                                                                 int toIndex)
@@ -2554,7 +2554,7 @@ void SynthProjectAudioProcessorEditor::commitFxOrderToProcessor(const juce::Stri
     audioProcessor.setFxProcessingOrderWithReason(fxSectionOrder, source, reason, fromIndex, toIndex);
 }
 
-void SynthProjectAudioProcessorEditor::rebuildPresetFilteredList()
+void PX3SynthAudioProcessorEditor::rebuildPresetFilteredList()
 {
     PresetManager::Query query;
 
@@ -2606,7 +2606,7 @@ void SynthProjectAudioProcessorEditor::rebuildPresetFilteredList()
     }
 }
 
-void SynthProjectAudioProcessorEditor::refreshPresetNameDisplay()
+void PX3SynthAudioProcessorEditor::refreshPresetNameDisplay()
 {
     juce::String name = hasCurrentPreset ? currentPreset.metadata.name : juce::String("INIT");
     if (currentPresetDirty)
@@ -2618,7 +2618,7 @@ void SynthProjectAudioProcessorEditor::refreshPresetNameDisplay()
     presetFavoriteButton.setToggleState(hasCurrentPreset && currentPreset.isFavorite, juce::dontSendNotification);
 }
 
-void SynthProjectAudioProcessorEditor::applyPresetRecord(const PresetManager::PresetRecord& record)
+void PX3SynthAudioProcessorEditor::applyPresetRecord(const PresetManager::PresetRecord& record)
 {
     juce::String error;
     if (!presetManager.loadPreset(record, error))
@@ -2635,7 +2635,7 @@ void SynthProjectAudioProcessorEditor::applyPresetRecord(const PresetManager::Pr
     repaint();
 }
 
-void SynthProjectAudioProcessorEditor::openPresetBrowser()
+void PX3SynthAudioProcessorEditor::openPresetBrowser()
 {
     presetBrowserBackdropSnapshot = createComponentSnapshot(getLocalBounds());
     presetBrowserVisible = true;
@@ -2647,7 +2647,7 @@ void SynthProjectAudioProcessorEditor::openPresetBrowser()
     repaint();
 }
 
-void SynthProjectAudioProcessorEditor::closePresetBrowser()
+void PX3SynthAudioProcessorEditor::closePresetBrowser()
 {
     presetBrowserVisible = false;
     presetBrowserDragging = false;
@@ -2657,7 +2657,7 @@ void SynthProjectAudioProcessorEditor::closePresetBrowser()
     repaint();
 }
 
-void SynthProjectAudioProcessorEditor::showPresetError(const juce::String& title, const juce::String& message)
+void PX3SynthAudioProcessorEditor::showPresetError(const juce::String& title, const juce::String& message)
 {
     juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
                                            title,
@@ -2666,7 +2666,7 @@ void SynthProjectAudioProcessorEditor::showPresetError(const juce::String& title
                                            this);
 }
 
-void SynthProjectAudioProcessorEditor::savePreset(bool saveAs)
+void PX3SynthAudioProcessorEditor::savePreset(bool saveAs)
 {
     if (!saveAs && hasCurrentPreset && !currentPreset.isFactory)
     {
@@ -2766,7 +2766,7 @@ void SynthProjectAudioProcessorEditor::savePreset(bool saveAs)
                          });
 }
 
-void SynthProjectAudioProcessorEditor::deleteCurrentPreset()
+void PX3SynthAudioProcessorEditor::deleteCurrentPreset()
 {
     if (!hasCurrentPreset)
     {
@@ -2806,7 +2806,7 @@ void SynthProjectAudioProcessorEditor::deleteCurrentPreset()
     refreshPresetNameDisplay();
 }
 
-void SynthProjectAudioProcessorEditor::importPreset()
+void PX3SynthAudioProcessorEditor::importPreset()
 {
     auto chooser = std::make_shared<juce::FileChooser>("Import P(X3) preset",
                                                         juce::File(),
@@ -2833,7 +2833,7 @@ void SynthProjectAudioProcessorEditor::importPreset()
                          });
 }
 
-void SynthProjectAudioProcessorEditor::exportCurrentPreset()
+void PX3SynthAudioProcessorEditor::exportCurrentPreset()
 {
     if (!hasCurrentPreset)
     {
@@ -2866,7 +2866,7 @@ void SynthProjectAudioProcessorEditor::exportCurrentPreset()
                          });
 }
 
-juce::String SynthProjectAudioProcessorEditor::computeCurrentStateHash() const
+juce::String PX3SynthAudioProcessorEditor::computeCurrentStateHash() const
 {
     auto state = audioProcessor.createParameterStateTree();
     auto xml = state.createXml();
@@ -2879,7 +2879,7 @@ juce::String SynthProjectAudioProcessorEditor::computeCurrentStateHash() const
     return juce::String::toHexString(static_cast<juce::int64>(text.hashCode64()));
 }
 
-void SynthProjectAudioProcessorEditor::updatePresetDirtyState()
+void PX3SynthAudioProcessorEditor::updatePresetDirtyState()
 {
     if (!hasCurrentPreset)
     {
@@ -2895,12 +2895,12 @@ void SynthProjectAudioProcessorEditor::updatePresetDirtyState()
     }
 }
 
-int SynthProjectAudioProcessorEditor::getNumRows()
+int PX3SynthAudioProcessorEditor::getNumRows()
 {
     return static_cast<int>(presetFiltered.size());
 }
 
-void SynthProjectAudioProcessorEditor::paintListBoxItem(int rowNumber,
+void PX3SynthAudioProcessorEditor::paintListBoxItem(int rowNumber,
                                                         juce::Graphics& g,
                                                         int width,
                                                         int height,
@@ -2929,7 +2929,7 @@ void SynthProjectAudioProcessorEditor::paintListBoxItem(int rowNumber,
                true);
 }
 
-void SynthProjectAudioProcessorEditor::selectedRowsChanged(int lastRowSelected)
+void PX3SynthAudioProcessorEditor::selectedRowsChanged(int lastRowSelected)
 {
     if (lastRowSelected < 0 || lastRowSelected >= static_cast<int>(presetFiltered.size()))
     {
@@ -2954,7 +2954,7 @@ void SynthProjectAudioProcessorEditor::selectedRowsChanged(int lastRowSelected)
     presetBrowserDetails.setText(details, juce::dontSendNotification);
 }
 
-void SynthProjectAudioProcessorEditor::refreshOscillatorModeUI()
+void PX3SynthAudioProcessorEditor::refreshOscillatorModeUI()
 {
     const auto paramModeIndex = audioProcessor.getOscillatorModeParam().getIndex();
     if (oscModeBox.getSelectedItemIndex() != paramModeIndex)
@@ -3034,7 +3034,7 @@ void SynthProjectAudioProcessorEditor::refreshOscillatorModeUI()
     repaint();
 }
 
-void SynthProjectAudioProcessorEditor::layoutKnobGroup(const juce::Rectangle<int>& groupArea,
+void PX3SynthAudioProcessorEditor::layoutKnobGroup(const juce::Rectangle<int>& groupArea,
                                                         int startIndex,
                                                         int knobCount,
                                                         const juce::Colour& sectionAccent)
@@ -3258,7 +3258,7 @@ void SynthProjectAudioProcessorEditor::layoutKnobGroup(const juce::Rectangle<int
     }
 }
 
-void SynthProjectAudioProcessorEditor::refreshAnyKeyDownState()
+void PX3SynthAudioProcessorEditor::refreshAnyKeyDownState()
 {
     const auto noteStates = audioProcessor.copyActiveNoteStates();
     const auto noteVelocities = audioProcessor.copyActiveNoteVelocities();
@@ -3267,7 +3267,7 @@ void SynthProjectAudioProcessorEditor::refreshAnyKeyDownState()
     pianoKeyboard.setActiveNotes(noteStates, noteVelocities);
 }
 
-void SynthProjectAudioProcessorEditor::refreshGranularModeUI()
+void PX3SynthAudioProcessorEditor::refreshGranularModeUI()
 {
     const auto modeIndex = audioProcessor.getGranularModeParam().getIndex();
     if (granularModeBox.getSelectedItemIndex() != modeIndex)
@@ -3319,7 +3319,7 @@ void SynthProjectAudioProcessorEditor::refreshGranularModeUI()
     repaint(isaacSectionArea);
 }
 
-void SynthProjectAudioProcessorEditor::refreshLfoAssignmentUI()
+void PX3SynthAudioProcessorEditor::refreshLfoAssignmentUI()
 {
     const auto assignmentIndex = audioProcessor.getLfoAssignmentIndex();
     if (assignmentIndex == lastLfoAssignmentIndex)
@@ -3331,13 +3331,13 @@ void SynthProjectAudioProcessorEditor::refreshLfoAssignmentUI()
     lfoAssignBox.setSelectedId(assignmentIndex + 1, juce::dontSendNotification);
 }
 
-void SynthProjectAudioProcessorEditor::refreshLfoFrequencyLabel()
+void PX3SynthAudioProcessorEditor::refreshLfoFrequencyLabel()
 {
     const auto hz = juce::jlimit(0.01f, 20.0f, audioProcessor.getLfoFrequencyParam().get());
     lfoFrequencyValueLabel.setText(juce::String(hz, 2) + " Hz", juce::dontSendNotification);
 }
 
-void SynthProjectAudioProcessorEditor::refreshEnvelopeGraphUI()
+void PX3SynthAudioProcessorEditor::refreshEnvelopeGraphUI()
 {
     if (envelopeGraph != nullptr)
     {
@@ -3345,7 +3345,7 @@ void SynthProjectAudioProcessorEditor::refreshEnvelopeGraphUI()
     }
 }
 
-void SynthProjectAudioProcessorEditor::refreshFxBypassUI()
+void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
 {
     const auto vibeEnabled = audioProcessor.getVibeEnabledParam().get();
     const auto delayEnabled = audioProcessor.getDelayEnabledParam().get();
@@ -3386,7 +3386,7 @@ void SynthProjectAudioProcessorEditor::refreshFxBypassUI()
     reverbKnob.getProperties().set("psychedelicBypassGray", !reverbEnabled);
 }
 
-void SynthProjectAudioProcessorEditor::timerCallback()
+void PX3SynthAudioProcessorEditor::timerCallback()
 {
     // Timer drives non-audio UI synchronization only. DSP state is never
     // computed here; this keeps audio-thread responsibilities isolated.

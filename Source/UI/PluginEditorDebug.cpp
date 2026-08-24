@@ -34,7 +34,7 @@ public:
 };
 }
 
-void SynthProjectAudioProcessorEditor::setupDebugPanel()
+void PX3SynthAudioProcessorEditor::setupDebugPanel()
 {
     // The debug console is intentionally detached from the main editor surface
     // so frequent diagnostic refreshes do not clutter or stall normal UI work.
@@ -396,7 +396,7 @@ void SynthProjectAudioProcessorEditor::setupDebugPanel()
     debugParamControlsInitialized = true;
 }
 
-void SynthProjectAudioProcessorEditor::openDebugWindow()
+void PX3SynthAudioProcessorEditor::openDebugWindow()
 {
     if (debugWindow == nullptr)
     {
@@ -427,7 +427,7 @@ void SynthProjectAudioProcessorEditor::openDebugWindow()
     refreshDebugPanel(false);
 }
 
-void SynthProjectAudioProcessorEditor::closeDebugWindow()
+void PX3SynthAudioProcessorEditor::closeDebugWindow()
 {
     if (debugWindow != nullptr)
     {
@@ -443,7 +443,7 @@ void SynthProjectAudioProcessorEditor::closeDebugWindow()
     repaint();
 }
 
-void SynthProjectAudioProcessorEditor::toggleDebugWindow()
+void PX3SynthAudioProcessorEditor::toggleDebugWindow()
 {
     if (debugPanelVisible)
     {
@@ -454,7 +454,7 @@ void SynthProjectAudioProcessorEditor::toggleDebugWindow()
     openDebugWindow();
 }
 
-void SynthProjectAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& bounds)
+void PX3SynthAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& bounds)
 {
     const auto previousViewPos = debugParamViewport.getViewPosition();
 
@@ -555,7 +555,7 @@ void SynthProjectAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<in
     debugParamViewport.setViewPosition(previousViewPos);
 }
 
-void SynthProjectAudioProcessorEditor::refreshDebugPanel(bool includeHeavySections)
+void PX3SynthAudioProcessorEditor::refreshDebugPanel(bool includeHeavySections)
 {
     if (!debugPanelVisible)
     {
@@ -587,7 +587,7 @@ void SynthProjectAudioProcessorEditor::refreshDebugPanel(bool includeHeavySectio
     debugInstanceText.setText(buildInstanceInfoText(), juce::dontSendNotification);
 }
 
-void SynthProjectAudioProcessorEditor::refreshDebugModuleState()
+void PX3SynthAudioProcessorEditor::refreshDebugModuleState()
 {
     const auto processor = describeProcessorOrder();
     const auto ui = describeUiOrder();
@@ -660,7 +660,7 @@ void SynthProjectAudioProcessorEditor::refreshDebugModuleState()
     debugModuleOrderText.setText(text, juce::dontSendNotification);
 }
 
-void SynthProjectAudioProcessorEditor::refreshDebugValueTree()
+void PX3SynthAudioProcessorEditor::refreshDebugValueTree()
 {
     const auto state = audioProcessor.createParameterStateTree();
     if (auto xml = state.createXml())
@@ -669,7 +669,7 @@ void SynthProjectAudioProcessorEditor::refreshDebugValueTree()
     }
 }
 
-void SynthProjectAudioProcessorEditor::refreshDebugSerializedState()
+void PX3SynthAudioProcessorEditor::refreshDebugSerializedState()
 {
     juce::String text;
     const auto size = audioProcessor.debugGetLastSerializedStateSize();
@@ -691,12 +691,12 @@ void SynthProjectAudioProcessorEditor::refreshDebugSerializedState()
     debugSerializedText.setText(text, juce::dontSendNotification);
 }
 
-void SynthProjectAudioProcessorEditor::refreshDebugParameterInspector()
+void PX3SynthAudioProcessorEditor::refreshDebugParameterInspector()
 {
     debugParameterInspectorText.setText(buildParameterInspectorText(), juce::dontSendNotification);
 }
 
-void SynthProjectAudioProcessorEditor::refreshDebugParameterControls()
+void PX3SynthAudioProcessorEditor::refreshDebugParameterControls()
 {
     if (!debugParamControlsInitialized)
     {
@@ -736,12 +736,12 @@ void SynthProjectAudioProcessorEditor::refreshDebugParameterControls()
     }
 }
 
-void SynthProjectAudioProcessorEditor::refreshDebugEventLog()
+void PX3SynthAudioProcessorEditor::refreshDebugEventLog()
 {
     debugEventLogText.setText(audioProcessor.debugGetEventLogText(), juce::dontSendNotification);
 }
 
-void SynthProjectAudioProcessorEditor::refreshDebugLfoState()
+void PX3SynthAudioProcessorEditor::refreshDebugLfoState()
 {
     const auto assignmentIndex = audioProcessor.getLfoAssignmentIndex();
     debugLfoAssignSuppressCallbacks = true;
@@ -769,7 +769,7 @@ void SynthProjectAudioProcessorEditor::refreshDebugLfoState()
     debugLfoText.setText(text, juce::dontSendNotification);
 }
 
-void SynthProjectAudioProcessorEditor::refreshDebugEnvelopeState()
+void PX3SynthAudioProcessorEditor::refreshDebugEnvelopeState()
 {
     const auto attackSec = audioProcessor.getAttackParam().get();
     const auto decaySec = audioProcessor.getDecayParam().get();
@@ -790,7 +790,7 @@ void SynthProjectAudioProcessorEditor::refreshDebugEnvelopeState()
     debugEnvelopeText.setText(text, juce::dontSendNotification);
 }
 
-void SynthProjectAudioProcessorEditor::debugCaptureSnapshot(const juce::String& reason)
+void PX3SynthAudioProcessorEditor::debugCaptureSnapshot(const juce::String& reason)
 {
     debugLastSnapshot = {};
     debugLastSnapshot.timestamp = audioProcessor.debugNowTimestamp();
@@ -829,7 +829,7 @@ void SynthProjectAudioProcessorEditor::debugCaptureSnapshot(const juce::String& 
     audioProcessor.debugLogEvent("DEBUG_PANEL", "SNAPSHOT_CAPTURED", "reason=" + reason + " order=" + describeProcessorOrder());
 }
 
-void SynthProjectAudioProcessorEditor::debugCompareWithSnapshot()
+void PX3SynthAudioProcessorEditor::debugCompareWithSnapshot()
 {
     if (!debugHasSnapshot)
     {
@@ -870,7 +870,7 @@ void SynthProjectAudioProcessorEditor::debugCompareWithSnapshot()
     audioProcessor.debugLogEvent("DEBUG_PANEL", "SNAPSHOT_COMPARE", report.replaceCharacters("\n", " | "));
 }
 
-void SynthProjectAudioProcessorEditor::debugForceSerializationTest()
+void PX3SynthAudioProcessorEditor::debugForceSerializationTest()
 {
     juce::MemoryBlock block;
     audioProcessor.getStateInformation(block);
@@ -898,7 +898,7 @@ void SynthProjectAudioProcessorEditor::debugForceSerializationTest()
     audioProcessor.debugLogEvent("DEBUG_PANEL", "FORCE_SERIALIZATION_TEST", report.replaceCharacters("\n", " | "));
 }
 
-void SynthProjectAudioProcessorEditor::debugDumpPresetToFile()
+void PX3SynthAudioProcessorEditor::debugDumpPresetToFile()
 {
     auto suggestedName = debugDumpPresetNameEditor.getText().trim();
     if (suggestedName.isEmpty())
@@ -985,7 +985,7 @@ void SynthProjectAudioProcessorEditor::debugDumpPresetToFile()
                          });
 }
 
-void SynthProjectAudioProcessorEditor::debugWriteDeterministicTestValues()
+void PX3SynthAudioProcessorEditor::debugWriteDeterministicTestValues()
 {
     for (auto& control : debugParamControls)
     {
@@ -1008,7 +1008,7 @@ void SynthProjectAudioProcessorEditor::debugWriteDeterministicTestValues()
     refreshDebugPanel(false);
 }
 
-void SynthProjectAudioProcessorEditor::debugRandomizeParameters()
+void PX3SynthAudioProcessorEditor::debugRandomizeParameters()
 {
     std::mt19937 rng(static_cast<uint32_t>(juce::Time::getMillisecondCounter()));
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
@@ -1034,7 +1034,7 @@ void SynthProjectAudioProcessorEditor::debugRandomizeParameters()
     refreshDebugPanel(false);
 }
 
-void SynthProjectAudioProcessorEditor::debugResetParameters()
+void PX3SynthAudioProcessorEditor::debugResetParameters()
 {
     for (auto& control : debugParamControls)
     {
@@ -1057,7 +1057,7 @@ void SynthProjectAudioProcessorEditor::debugResetParameters()
     refreshDebugPanel(false);
 }
 
-void SynthProjectAudioProcessorEditor::debugApplyModuleOrder(const std::array<int, 3>& order,
+void PX3SynthAudioProcessorEditor::debugApplyModuleOrder(const std::array<int, 3>& order,
                                                              const juce::String& reason,
                                                              int fromIndex,
                                                              int toIndex)
@@ -1078,7 +1078,7 @@ void SynthProjectAudioProcessorEditor::debugApplyModuleOrder(const std::array<in
     repaint();
 }
 
-std::array<juce::String, 3> SynthProjectAudioProcessorEditor::readModuleOrderFromStateTree(const juce::ValueTree& state) const
+std::array<juce::String, 3> PX3SynthAudioProcessorEditor::readModuleOrderFromStateTree(const juce::ValueTree& state) const
 {
     std::array<juce::String, 3> result { { "harmonicDrive", "delay", "reverb" } };
     const auto moduleOrder = state.getChildWithName("MODULE_ORDER");
@@ -1100,7 +1100,7 @@ std::array<juce::String, 3> SynthProjectAudioProcessorEditor::readModuleOrderFro
     return result;
 }
 
-juce::String SynthProjectAudioProcessorEditor::describeUiOrder() const
+juce::String PX3SynthAudioProcessorEditor::describeUiOrder() const
 {
     juce::StringArray items;
     for (const auto sectionId : fxSectionOrder)
@@ -1110,19 +1110,19 @@ juce::String SynthProjectAudioProcessorEditor::describeUiOrder() const
     return items.joinIntoString(",");
 }
 
-juce::String SynthProjectAudioProcessorEditor::describeProcessorOrder() const
+juce::String PX3SynthAudioProcessorEditor::describeProcessorOrder() const
 {
     return audioProcessor.debugDescribeOrder(audioProcessor.getFxProcessingOrder());
 }
 
-juce::String SynthProjectAudioProcessorEditor::describeStateTreeOrder() const
+juce::String PX3SynthAudioProcessorEditor::describeStateTreeOrder() const
 {
     const auto state = audioProcessor.createParameterStateTree();
     const auto order = readModuleOrderFromStateTree(state);
     return order[0] + "," + order[1] + "," + order[2];
 }
 
-juce::String SynthProjectAudioProcessorEditor::buildParameterInspectorText() const
+juce::String PX3SynthAudioProcessorEditor::buildParameterInspectorText() const
 {
     juce::String text;
     const auto& params = audioProcessor.getParameters();
@@ -1185,7 +1185,7 @@ juce::String SynthProjectAudioProcessorEditor::buildParameterInspectorText() con
     return text;
 }
 
-juce::String SynthProjectAudioProcessorEditor::buildInstanceInfoText() const
+juce::String PX3SynthAudioProcessorEditor::buildInstanceInfoText() const
 {
     juce::String wrapperName = "Unknown";
 #if JucePlugin_Build_AU

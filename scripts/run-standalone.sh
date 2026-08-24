@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-APP_PATH="build/SynthProject_artefacts/Standalone/PX3 Synth.app"
+APP_PATH="build/PX3Synth_artefacts/Standalone/PX3 Synth.app"
 PROC_MATCH="PX3 Synth.app/Contents/MacOS/PX3 Synth"
 DEBUG_FLAG=""
 

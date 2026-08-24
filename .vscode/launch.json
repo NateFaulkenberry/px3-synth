@@ -5,7 +5,7 @@
             "name": "Debug P(X3) Synth Standalone",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/build/SynthProject_artefacts/Standalone/PX3 Synth.app/Contents/MacOS/PX3 Synth",
+            "program": "${workspaceFolder}/build/PX3Synth_artefacts/Standalone/PX3 Synth.app/Contents/MacOS/PX3 Synth",
             "cwd": "${workspaceFolder}",
             "preLaunchTask": "CMake: Build",
             "args": []

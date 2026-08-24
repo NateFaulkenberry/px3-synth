@@ -28,13 +28,13 @@
  * The debug console is intentionally hosted here because it is a developer UI
  * surface, but it queries/acts on processor-owned state.
  */
-class SynthProjectAudioProcessorEditor final : public juce::AudioProcessorEditor,
+class PX3SynthAudioProcessorEditor final : public juce::AudioProcessorEditor,
                                               private juce::Timer,
                                               private juce::ListBoxModel
 {
 public:
-    explicit SynthProjectAudioProcessorEditor(SynthProjectAudioProcessor&);
-    ~SynthProjectAudioProcessorEditor() override;
+    explicit PX3SynthAudioProcessorEditor(PX3SynthAudioProcessor&);
+    ~PX3SynthAudioProcessorEditor() override;
 
     void paint(juce::Graphics&) override;
     void paintOverChildren(juce::Graphics&) override;
@@ -200,13 +200,13 @@ private:
     juce::String buildParameterInspectorText() const;
     juce::String buildInstanceInfoText() const;
 
-    SynthProjectAudioProcessor& audioProcessor;
+    PX3SynthAudioProcessor& audioProcessor;
     KnobLookAndFeel knobLookAndFeel;
     juce::TooltipWindow tooltipWindow;
     SourceEnginePanel sourceEnginePanel;
     PerformanceControls performanceControls;
     PianoKeyboard pianoKeyboard;
-    SynthProjectAudioProcessor::MidiStatus midiStatus;
+    PX3SynthAudioProcessor::MidiStatus midiStatus;
 
     juce::Image backgroundImage;
     juce::Image logoFrame;

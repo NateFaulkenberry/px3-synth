@@ -20,7 +20,7 @@ void configureMiniLabel(juce::Label& label, const juce::String& text)
 }
 }
 
-AudioEnginePanel::AudioEnginePanel(SynthProjectAudioProcessor& processorIn)
+AudioEnginePanel::AudioEnginePanel(PX3SynthAudioProcessor& processorIn)
     : processor(processorIn)
 {
     configureMiniSlider(positionSlider);

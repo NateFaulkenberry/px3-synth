@@ -17,13 +17,9 @@ PRODUCT_NAME="$(grep -E '^[[:space:]]*PRODUCT_NAME[[:space:]]+"' "${CMAKE_FILE}"
 
 AU_NAME="${PRODUCT_NAME}.component"
 VST3_NAME="${PRODUCT_NAME}.vst3"
-LEGACY_AU_NAME="SynthProject.component"
-LEGACY_VST3_NAME="SynthProject.vst3"
 
 AU_PATH="${HOME}/Library/Audio/Plug-Ins/Components/${AU_NAME}"
 VST3_PATH="${HOME}/Library/Audio/Plug-Ins/VST3/${VST3_NAME}"
-LEGACY_AU_PATH="${HOME}/Library/Audio/Plug-Ins/Components/${LEGACY_AU_NAME}"
-LEGACY_VST3_PATH="${HOME}/Library/Audio/Plug-Ins/VST3/${LEGACY_VST3_NAME}"
 
 removed_any=false
 
@@ -42,8 +38,6 @@ remove_bundle_if_present() {
 
 remove_bundle_if_present "${AU_PATH}" "AU"
 remove_bundle_if_present "${VST3_PATH}" "VST3"
-remove_bundle_if_present "${LEGACY_AU_PATH}" "Legacy AU"
-remove_bundle_if_present "${LEGACY_VST3_PATH}" "Legacy VST3"
 
 if [[ "${removed_any}" == false ]]; then
   echo "No local P(X3) plugin artifacts were removed."

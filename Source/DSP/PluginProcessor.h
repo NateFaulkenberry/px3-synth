@@ -34,7 +34,7 @@
  * parameter/base values are persisted/automated; transient DSP-effective
  * values may include modulation (LFO etc.) and are computed at read points.
  */
-class SynthProjectAudioProcessor final : public juce::AudioProcessor
+class PX3SynthAudioProcessor final : public juce::AudioProcessor
 {
 public:
     struct MidiStatus
@@ -44,8 +44,8 @@ public:
         bool noteOn { false };
     };
 
-    SynthProjectAudioProcessor();
-    ~SynthProjectAudioProcessor() override;
+    PX3SynthAudioProcessor();
+    ~PX3SynthAudioProcessor() override;
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;

@@ -49,7 +49,7 @@ public:
         juce::String searchText;
     };
 
-    explicit PresetManager(SynthProjectAudioProcessor& processorIn);
+    explicit PresetManager(PX3SynthAudioProcessor& processorIn);
 
     bool initialise(juce::String& error);
     void refreshIndex();
@@ -105,7 +105,7 @@ private:
         juce::String base64Data;
     };
 
-    SynthProjectAudioProcessor& processor;
+    PX3SynthAudioProcessor& processor;
 
     std::vector<PresetRecord> indexedPresets;
     juce::StringArray favoriteIds;

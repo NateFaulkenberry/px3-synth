@@ -563,9 +563,9 @@ Notable mode helpers:
 
 Build artifacts:
 
-- Standalone: `build/SynthProject_artefacts/Standalone/PX3 Synth.app`
-- VST3: `build/SynthProject_artefacts/VST3/PX3 Synth.vst3`
-- AU: `build/SynthProject_artefacts/AU/PX3 Synth.component`
+- Standalone: `build/PX3Synth_artefacts/Standalone/PX3 Synth.app`
+- VST3: `build/PX3Synth_artefacts/VST3/PX3 Synth.vst3`
+- AU: `build/PX3Synth_artefacts/AU/PX3 Synth.component`
 
 ## Troubleshooting
 

@@ -10,7 +10,7 @@ class SourceEnginePanel final : public juce::Component,
                                 private juce::Timer
 {
 public:
-    explicit SourceEnginePanel(SynthProjectAudioProcessor& processorIn);
+    explicit SourceEnginePanel(PX3SynthAudioProcessor& processorIn);
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -19,7 +19,7 @@ private:
     void timerCallback() override;
     void refreshVisibilityFromParam();
 
-    SynthProjectAudioProcessor& processor;
+    PX3SynthAudioProcessor& processor;
     ImageEnginePanel imagePanel;
     AudioEnginePanel audioPanel;
 

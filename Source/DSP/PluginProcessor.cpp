@@ -119,7 +119,7 @@ float divisionBeatsForIndex(int index)
 class ImageLoadJob final : public juce::ThreadPoolJob
 {
 public:
-    ImageLoadJob(SynthProjectAudioProcessor& ownerIn, juce::File fileIn, int serialIn)
+    ImageLoadJob(PX3SynthAudioProcessor& ownerIn, juce::File fileIn, int serialIn)
         : juce::ThreadPoolJob("PX3 Image Load"), owner(ownerIn), file(std::move(fileIn)), serial(serialIn)
     {
     }
@@ -159,7 +159,7 @@ public:
     }
 
 private:
-    SynthProjectAudioProcessor& owner;
+    PX3SynthAudioProcessor& owner;
     juce::File file;
     int serial { 0 };
 };
@@ -167,7 +167,7 @@ private:
 class AudioLoadJob final : public juce::ThreadPoolJob
 {
 public:
-    AudioLoadJob(SynthProjectAudioProcessor& ownerIn, juce::File fileIn, int serialIn)
+    AudioLoadJob(PX3SynthAudioProcessor& ownerIn, juce::File fileIn, int serialIn)
         : juce::ThreadPoolJob("PX3 Audio Load"), owner(ownerIn), file(std::move(fileIn)), serial(serialIn)
     {
     }
@@ -254,7 +254,7 @@ public:
     }
 
 private:
-    SynthProjectAudioProcessor& owner;
+    PX3SynthAudioProcessor& owner;
     juce::File file;
     int serial { 0 };
 };
@@ -276,7 +276,7 @@ inline float smoothstep(float x)
 }
 }
 
-SynthProjectAudioProcessor::SynthProjectAudioProcessor()
+PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
     const auto instanceNumber = kInstanceCounter.fetch_add(1u, std::memory_order_relaxed) + 1u;
@@ -489,61 +489,61 @@ SynthProjectAudioProcessor::SynthProjectAudioProcessor()
                   "id=" + debugInstanceId + " order=" + debugDescribeOrder(getFxProcessingOrder()));
 }
 
-SynthProjectAudioProcessor::~SynthProjectAudioProcessor()
+PX3SynthAudioProcessor::~PX3SynthAudioProcessor()
 {
     debugLogEvent("LIFECYCLE", "PROCESSOR_DESTROYED",
                   "id=" + debugInstanceId + " order=" + debugDescribeOrder(getFxProcessingOrder()));
 }
 
-const juce::String SynthProjectAudioProcessor::getName() const
+const juce::String PX3SynthAudioProcessor::getName() const
 {
     return JucePlugin_Name;
 }
 
-bool SynthProjectAudioProcessor::acceptsMidi() const
+bool PX3SynthAudioProcessor::acceptsMidi() const
 {
     return true;
 }
 
-bool SynthProjectAudioProcessor::producesMidi() const
+bool PX3SynthAudioProcessor::producesMidi() const
 {
     return false;
 }
 
-bool SynthProjectAudioProcessor::isMidiEffect() const
+bool PX3SynthAudioProcessor::isMidiEffect() const
 {
     return false;
 }
 
-double SynthProjectAudioProcessor::getTailLengthSeconds() const
+double PX3SynthAudioProcessor::getTailLengthSeconds() const
 {
     return 0.0;
 }
 
-int SynthProjectAudioProcessor::getNumPrograms()
+int PX3SynthAudioProcessor::getNumPrograms()
 {
     return 1;
 }
 
-int SynthProjectAudioProcessor::getCurrentProgram()
+int PX3SynthAudioProcessor::getCurrentProgram()
 {
     return 0;
 }
 
-void SynthProjectAudioProcessor::setCurrentProgram(int)
+void PX3SynthAudioProcessor::setCurrentProgram(int)
 {
 }
 
-const juce::String SynthProjectAudioProcessor::getProgramName(int)
+const juce::String PX3SynthAudioProcessor::getProgramName(int)
 {
     return {};
 }
 
-void SynthProjectAudioProcessor::changeProgramName(int, const juce::String&)
+void PX3SynthAudioProcessor::changeProgramName(int, const juce::String&)
 {
 }
 
-void SynthProjectAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     synth.setCurrentPlaybackSampleRate(sampleRate);
     const auto sr = static_cast<float>(juce::jmax(1.0, sampleRate));
@@ -579,17 +579,17 @@ void SynthProjectAudioProcessor::prepareToPlay(double sampleRate, int samplesPer
     juce::ignoreUnused(samplesPerBlock);
 }
 
-void SynthProjectAudioProcessor::releaseResources()
+void PX3SynthAudioProcessor::releaseResources()
 {
 }
 
-bool SynthProjectAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+bool PX3SynthAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
     return layouts.getMainOutputChannelSet() == juce::AudioChannelSet::mono()
            || layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
 }
 
-float SynthProjectAudioProcessor::currentLfoSignalForBlock(int numSamples)
+float PX3SynthAudioProcessor::currentLfoSignalForBlock(int numSamples)
 {
     // ONE LFO architecture: evaluate once per block (lightweight) and use the
     // midpoint phase so block-rate modulation feels stable during automation.
@@ -613,12 +613,12 @@ float SynthProjectAudioProcessor::currentLfoSignalForBlock(int numSamples)
     return signal;
 }
 
-int SynthProjectAudioProcessor::sanitizeVibeTypeIndex(int typeIndex) const
+int PX3SynthAudioProcessor::sanitizeVibeTypeIndex(int typeIndex) const
 {
     return juce::jlimit(0, juce::jmax(0, vibeTypeParam->choices.size() - 1), typeIndex);
 }
 
-void SynthProjectAudioProcessor::applyVibeTypeProfile(int typeIndex)
+void PX3SynthAudioProcessor::applyVibeTypeProfile(int typeIndex)
 {
     const auto clamped = sanitizeVibeTypeIndex(typeIndex);
     if (clamped == vibeTypeLastApplied.load(std::memory_order_relaxed))
@@ -671,7 +671,7 @@ void SynthProjectAudioProcessor::applyVibeTypeProfile(int typeIndex)
     vibeTypeLastApplied.store(clamped, std::memory_order_relaxed);
 }
 
-void SynthProjectAudioProcessor::updateVibeStateForBlock(int numSamples, float lfoSignal)
+void PX3SynthAudioProcessor::updateVibeStateForBlock(int numSamples, float lfoSignal)
 {
     const auto seed = vibeSeed.load(std::memory_order_relaxed);
     if (seed != vibeLastAppliedSeed.load(std::memory_order_relaxed))
@@ -701,27 +701,27 @@ void SynthProjectAudioProcessor::updateVibeStateForBlock(int numSamples, float l
     vibeEngine.advance(numSamples);
 }
 
-float SynthProjectAudioProcessor::debugGetVibeGlobalAmount() const
+float PX3SynthAudioProcessor::debugGetVibeGlobalAmount() const
 {
     return juce::jlimit(0.0f, 1.0f, vibeAmountParam->get());
 }
 
-float SynthProjectAudioProcessor::debugGetVibeEffectiveAmount() const
+float PX3SynthAudioProcessor::debugGetVibeEffectiveAmount() const
 {
     return juce::jlimit(0.0f, 1.0f, vibeEngine.getEffectiveAmount());
 }
 
-bool SynthProjectAudioProcessor::debugGetVibeBypass() const
+bool PX3SynthAudioProcessor::debugGetVibeBypass() const
 {
     return !vibeEnabledParam->get();
 }
 
-uint32_t SynthProjectAudioProcessor::debugGetVibeSeed() const
+uint32_t PX3SynthAudioProcessor::debugGetVibeSeed() const
 {
     return vibeSeed.load(std::memory_order_relaxed);
 }
 
-VibeTuning SynthProjectAudioProcessor::debugGetVibeTuning() const
+VibeTuning PX3SynthAudioProcessor::debugGetVibeTuning() const
 {
     VibeTuning t;
     t.oscillatorDrift = juce::jlimit(0.0f, 1.0f, vibeTuneOscDrift.load(std::memory_order_relaxed));
@@ -737,18 +737,18 @@ VibeTuning SynthProjectAudioProcessor::debugGetVibeTuning() const
     return t;
 }
 
-void SynthProjectAudioProcessor::debugSetVibeBypass(bool shouldBypass)
+void PX3SynthAudioProcessor::debugSetVibeBypass(bool shouldBypass)
 {
     const auto enabledValue = shouldBypass ? 0.0f : 1.0f;
     vibeEnabledParam->setValueNotifyingHost(enabledValue);
 }
 
-void SynthProjectAudioProcessor::debugSetVibeSeed(uint32_t seed)
+void PX3SynthAudioProcessor::debugSetVibeSeed(uint32_t seed)
 {
     vibeSeed.store(seed == 0u ? 1u : seed, std::memory_order_relaxed);
 }
 
-void SynthProjectAudioProcessor::debugSetVibeTuningValue(const juce::String& key, float value)
+void PX3SynthAudioProcessor::debugSetVibeTuningValue(const juce::String& key, float value)
 {
     const auto v = juce::jlimit(0.0f, 1.0f, value);
     if (key.equalsIgnoreCase("oscillatorDrift")) vibeTuneOscDrift.store(v, std::memory_order_relaxed);
@@ -763,7 +763,7 @@ void SynthProjectAudioProcessor::debugSetVibeTuningValue(const juce::String& key
     else if (key.equalsIgnoreCase("correlatedChaos")) vibeTuneChaos.store(v, std::memory_order_relaxed);
 }
 
-float SynthProjectAudioProcessor::debugGetVibeTuningValue(const juce::String& key) const
+float PX3SynthAudioProcessor::debugGetVibeTuningValue(const juce::String& key) const
 {
     if (key.equalsIgnoreCase("oscillatorDrift")) return vibeTuneOscDrift.load(std::memory_order_relaxed);
     if (key.equalsIgnoreCase("voiceVariation")) return vibeTuneVoiceVar.load(std::memory_order_relaxed);
@@ -778,7 +778,7 @@ float SynthProjectAudioProcessor::debugGetVibeTuningValue(const juce::String& ke
     return 0.0f;
 }
 
-float SynthProjectAudioProcessor::applyLfoToNormalizedValue(juce::RangedAudioParameter* parameter,
+float PX3SynthAudioProcessor::applyLfoToNormalizedValue(juce::RangedAudioParameter* parameter,
                                                              float baseNormalized,
                                                              float lfoSignal,
                                                              float* outBaseNormalized,
@@ -830,7 +830,7 @@ float SynthProjectAudioProcessor::applyLfoToNormalizedValue(juce::RangedAudioPar
     return effective;
 }
 
-void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
 
@@ -1211,7 +1211,7 @@ void SynthProjectAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     }
 }
 
-void SynthProjectAudioProcessor::updateActiveNotesFromMidi(const juce::MidiBuffer& midiMessages)
+void PX3SynthAudioProcessor::updateActiveNotesFromMidi(const juce::MidiBuffer& midiMessages)
 {
     const auto toMidiVelocity = [](const juce::MidiMessage& message)
     {
@@ -1316,7 +1316,7 @@ void SynthProjectAudioProcessor::updateActiveNotesFromMidi(const juce::MidiBuffe
     }
 }
 
-void SynthProjectAudioProcessor::clearAllActiveNotes()
+void PX3SynthAudioProcessor::clearAllActiveNotes()
 {
     for (auto& noteCount : activeNoteCounts)
     {
@@ -1329,12 +1329,12 @@ void SynthProjectAudioProcessor::clearAllActiveNotes()
     }
 }
 
-void SynthProjectAudioProcessor::incrementNoteCount(std::size_t index)
+void PX3SynthAudioProcessor::incrementNoteCount(std::size_t index)
 {
     activeNoteCounts[index].fetch_add(1, std::memory_order_relaxed);
 }
 
-void SynthProjectAudioProcessor::decrementNoteCount(std::size_t index)
+void PX3SynthAudioProcessor::decrementNoteCount(std::size_t index)
 {
     auto current = activeNoteCounts[index].load(std::memory_order_relaxed);
 
@@ -1350,7 +1350,7 @@ void SynthProjectAudioProcessor::decrementNoteCount(std::size_t index)
     }
 }
 
-void SynthProjectAudioProcessor::queueVirtualKeyboardNoteOn(int midiNote, float velocityNorm)
+void PX3SynthAudioProcessor::queueVirtualKeyboardNoteOn(int midiNote, float velocityNorm)
 {
     const auto boundedNote = juce::jlimit(PianoKeyboard::firstMidiNote, PianoKeyboard::lastMidiNote, midiNote);
     const auto boundedVelocity = juce::jlimit(0.0f, 1.0f, velocityNorm);
@@ -1358,14 +1358,14 @@ void SynthProjectAudioProcessor::queueVirtualKeyboardNoteOn(int midiNote, float 
     virtualMidiMessages.addEvent(juce::MidiMessage::noteOn(1, boundedNote, boundedVelocity), 0);
 }
 
-void SynthProjectAudioProcessor::queueVirtualKeyboardNoteOff(int midiNote)
+void PX3SynthAudioProcessor::queueVirtualKeyboardNoteOff(int midiNote)
 {
     const auto boundedNote = juce::jlimit(PianoKeyboard::firstMidiNote, PianoKeyboard::lastMidiNote, midiNote);
     const juce::ScopedLock lock(virtualMidiLock);
     virtualMidiMessages.addEvent(juce::MidiMessage::noteOff(1, boundedNote), 0);
 }
 
-std::array<bool, PianoKeyboard::totalKeys> SynthProjectAudioProcessor::copyActiveNoteStates() const
+std::array<bool, PianoKeyboard::totalKeys> PX3SynthAudioProcessor::copyActiveNoteStates() const
 {
     std::array<bool, PianoKeyboard::totalKeys> states {};
 
@@ -1377,7 +1377,7 @@ std::array<bool, PianoKeyboard::totalKeys> SynthProjectAudioProcessor::copyActiv
     return states;
 }
 
-std::array<float, PianoKeyboard::totalKeys> SynthProjectAudioProcessor::copyActiveNoteVelocities() const
+std::array<float, PianoKeyboard::totalKeys> PX3SynthAudioProcessor::copyActiveNoteVelocities() const
 {
     std::array<float, PianoKeyboard::totalKeys> velocities {};
 
@@ -1390,7 +1390,7 @@ std::array<float, PianoKeyboard::totalKeys> SynthProjectAudioProcessor::copyActi
     return velocities;
 }
 
-SynthProjectAudioProcessor::MidiStatus SynthProjectAudioProcessor::copyMidiStatus() const
+PX3SynthAudioProcessor::MidiStatus PX3SynthAudioProcessor::copyMidiStatus() const
 {
     MidiStatus status;
     status.noteNumber = lastMidiNote.load(std::memory_order_relaxed);
@@ -1399,71 +1399,71 @@ SynthProjectAudioProcessor::MidiStatus SynthProjectAudioProcessor::copyMidiStatu
     return status;
 }
 
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscSineParam() const { return *oscSineParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscSawParam() const { return *oscSawParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscSquareParam() const { return *oscSquareParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getOscillatorModeParam() const { return *oscModeParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscMacroAParam() const { return *oscMacroAParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscMacroBParam() const { return *oscMacroBParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscMacroCParam() const { return *oscMacroCParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getOscVowelParam() const { return *oscVowelParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getOscHarmonicParam(int harmonicIndex) const
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscSineParam() const { return *oscSineParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscSawParam() const { return *oscSawParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscSquareParam() const { return *oscSquareParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getOscillatorModeParam() const { return *oscModeParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscMacroAParam() const { return *oscMacroAParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscMacroBParam() const { return *oscMacroBParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscMacroCParam() const { return *oscMacroCParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getOscVowelParam() const { return *oscVowelParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscHarmonicParam(int harmonicIndex) const
 {
     const auto idx = juce::jlimit(0, 7, harmonicIndex);
     return *oscHarmonicParams[static_cast<std::size_t>(idx)];
 }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getFilterCutoffParam() const { return *filterCutoffParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getFilterResonanceParam() const { return *filterResonanceParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getFilterTypeParam() const { return *filterTypeParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getAttackParam() const { return *attackParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getDecayParam() const { return *decayParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getSustainParam() const { return *sustainParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getReleaseParam() const { return *releaseParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getMasterGainParam() const { return *masterGainParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getVibeAmountParam() const { return *vibeAmountParam; }
-juce::AudioParameterBool& SynthProjectAudioProcessor::getVibeEnabledParam() const { return *vibeEnabledParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getVibeTypeParam() const { return *vibeTypeParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getDelayAmountParam() const { return *delayAmountParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getGranularSyncDivisionParam() const { return *granularSyncDivisionParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getGranularModeParam() const { return *granularModeParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getDelayAlgorithmParam() const { return *delayAlgorithmParam; }
-juce::AudioParameterBool& SynthProjectAudioProcessor::getDelayEnabledParam() const { return *delayEnabledParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getDelayTimeParam() const { return *delayTimeParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getDelayFeedbackParam() const { return *delayFeedbackParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getReverbAmountParam() const { return *reverbAmountParam; }
-juce::AudioParameterBool& SynthProjectAudioProcessor::getReverbEnabledParam() const { return *reverbEnabledParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getReverbAlgorithmParam() const { return *reverbAlgorithmParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getSourceEngineParam() const { return *sourceEngineParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getImagePositionParam() const { return *imagePositionParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getImageAnimateParam() const { return *imageAnimateParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getImageRateParam() const { return *imageRateParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getImageAnimModeParam() const { return *imageAnimModeParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getImageAnimSyncParam() const { return *imageAnimSyncParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getImageTargetParam() const { return *imageTargetParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getAudioPositionParam() const { return *audioPositionParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getAudioGrainParam() const { return *audioGrainParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getAudioTextureParam() const { return *audioTextureParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getAudioAnimateParam() const { return *audioAnimateParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getAudioRateParam() const { return *audioRateParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getAudioAnimModeParam() const { return *audioAnimModeParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getAudioAnimSyncParam() const { return *audioAnimSyncParam; }
-juce::AudioParameterChoice& SynthProjectAudioProcessor::getAudioTargetParam() const { return *audioTargetParam; }
-juce::AudioParameterInt& SynthProjectAudioProcessor::getPitchBendRangeParam() const { return *pitchBendRangeParam; }
-juce::AudioParameterFloat& SynthProjectAudioProcessor::getLfoFrequencyParam() const { return *lfoFrequencyParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterCutoffParam() const { return *filterCutoffParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterResonanceParam() const { return *filterResonanceParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getFilterTypeParam() const { return *filterTypeParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getAttackParam() const { return *attackParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDecayParam() const { return *decayParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSustainParam() const { return *sustainParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getReleaseParam() const { return *releaseParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getMasterGainParam() const { return *masterGainParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getVibeAmountParam() const { return *vibeAmountParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getVibeEnabledParam() const { return *vibeEnabledParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getVibeTypeParam() const { return *vibeTypeParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDelayAmountParam() const { return *delayAmountParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getGranularSyncDivisionParam() const { return *granularSyncDivisionParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getGranularModeParam() const { return *granularModeParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getDelayAlgorithmParam() const { return *delayAlgorithmParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getDelayEnabledParam() const { return *delayEnabledParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDelayTimeParam() const { return *delayTimeParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDelayFeedbackParam() const { return *delayFeedbackParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getReverbAmountParam() const { return *reverbAmountParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getReverbEnabledParam() const { return *reverbEnabledParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getReverbAlgorithmParam() const { return *reverbAlgorithmParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getSourceEngineParam() const { return *sourceEngineParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getImagePositionParam() const { return *imagePositionParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getImageAnimateParam() const { return *imageAnimateParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getImageRateParam() const { return *imageRateParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getImageAnimModeParam() const { return *imageAnimModeParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getImageAnimSyncParam() const { return *imageAnimSyncParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getImageTargetParam() const { return *imageTargetParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getAudioPositionParam() const { return *audioPositionParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getAudioGrainParam() const { return *audioGrainParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getAudioTextureParam() const { return *audioTextureParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getAudioAnimateParam() const { return *audioAnimateParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getAudioRateParam() const { return *audioRateParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getAudioAnimModeParam() const { return *audioAnimModeParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getAudioAnimSyncParam() const { return *audioAnimSyncParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getAudioTargetParam() const { return *audioTargetParam; }
+juce::AudioParameterInt& PX3SynthAudioProcessor::getPitchBendRangeParam() const { return *pitchBendRangeParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLfoFrequencyParam() const { return *lfoFrequencyParam; }
 
-const juce::StringArray& SynthProjectAudioProcessor::getLfoAssignmentDisplayNames() const
+const juce::StringArray& PX3SynthAudioProcessor::getLfoAssignmentDisplayNames() const
 {
     return lfoAssignmentDisplayNames;
 }
 
-int SynthProjectAudioProcessor::getLfoAssignmentIndex() const
+int PX3SynthAudioProcessor::getLfoAssignmentIndex() const
 {
     return juce::jlimit(0,
                         juce::jmax(0, static_cast<int>(lfoAssignableTargets.size()) - 1),
                         lfoAssignmentIndex.load(std::memory_order_relaxed));
 }
 
-juce::String SynthProjectAudioProcessor::getLfoAssignmentParameterId() const
+juce::String PX3SynthAudioProcessor::getLfoAssignmentParameterId() const
 {
     const auto index = getLfoAssignmentIndex();
     if (index <= 0 || index >= static_cast<int>(lfoAssignableTargets.size()))
@@ -1474,7 +1474,7 @@ juce::String SynthProjectAudioProcessor::getLfoAssignmentParameterId() const
     return lfoAssignableTargets[static_cast<std::size_t>(index)].parameterId;
 }
 
-bool SynthProjectAudioProcessor::setLfoAssignmentIndex(int index, bool notifyHost)
+bool PX3SynthAudioProcessor::setLfoAssignmentIndex(int index, bool notifyHost)
 {
     if (lfoAssignableTargets.empty())
     {
@@ -1500,7 +1500,7 @@ bool SynthProjectAudioProcessor::setLfoAssignmentIndex(int index, bool notifyHos
     return true;
 }
 
-bool SynthProjectAudioProcessor::setLfoAssignmentByParameterId(const juce::String& parameterId, bool notifyHost)
+bool PX3SynthAudioProcessor::setLfoAssignmentByParameterId(const juce::String& parameterId, bool notifyHost)
 {
     if (parameterId.isEmpty() || parameterId.equalsIgnoreCase("none"))
     {
@@ -1518,7 +1518,7 @@ bool SynthProjectAudioProcessor::setLfoAssignmentByParameterId(const juce::Strin
     return false;
 }
 
-void SynthProjectAudioProcessor::buildLfoAssignableTargets()
+void PX3SynthAudioProcessor::buildLfoAssignableTargets()
 {
     // This list is the authoritative mapping between UI assignment index and
     // processor parameter targets. It is built from existing float parameters
@@ -1562,7 +1562,7 @@ void SynthProjectAudioProcessor::buildLfoAssignableTargets()
     lfoAssignmentIndex.store(0, std::memory_order_relaxed);
 }
 
-float SynthProjectAudioProcessor::lfoDepthForParameterId(const juce::String& parameterId) const
+float PX3SynthAudioProcessor::lfoDepthForParameterId(const juce::String& parameterId) const
 {
     // Depths are intentionally conservative by default to avoid abrupt jumps on
     // sensitive controls. Specific musical targets get tuned overrides.
@@ -1588,7 +1588,7 @@ float SynthProjectAudioProcessor::lfoDepthForParameterId(const juce::String& par
     return 0.10f;
 }
 
-std::array<int, 3> SynthProjectAudioProcessor::getFxProcessingOrder() const
+std::array<int, 3> PX3SynthAudioProcessor::getFxProcessingOrder() const
 {
     // Stored order is packed atomically; sanitize on read so malformed legacy or
     // duplicate values always recover to a valid permutation.
@@ -1620,12 +1620,12 @@ std::array<int, 3> SynthProjectAudioProcessor::getFxProcessingOrder() const
     return sanitized;
 }
 
-void SynthProjectAudioProcessor::setFxProcessingOrder(const std::array<int, 3>& order)
+void PX3SynthAudioProcessor::setFxProcessingOrder(const std::array<int, 3>& order)
 {
     setFxProcessingOrderWithReason(order, "UNKNOWN", "UNSPECIFIED", -1, -1);
 }
 
-void SynthProjectAudioProcessor::setFxProcessingOrderWithReason(const std::array<int, 3>& order,
+void PX3SynthAudioProcessor::setFxProcessingOrderWithReason(const std::array<int, 3>& order,
                                                                 const juce::String& source,
                                                                 const juce::String& reason,
                                                                 int fromIndex,
@@ -1689,22 +1689,22 @@ void SynthProjectAudioProcessor::setFxProcessingOrderWithReason(const std::array
     updateHostDisplay(juce::AudioProcessor::ChangeDetails().withProgramChanged(true));
 }
 
-juce::String SynthProjectAudioProcessor::debugGetInstanceId() const
+juce::String PX3SynthAudioProcessor::debugGetInstanceId() const
 {
     return debugInstanceId;
 }
 
-juce::String SynthProjectAudioProcessor::debugGetProcessorCreatedTime() const
+juce::String PX3SynthAudioProcessor::debugGetProcessorCreatedTime() const
 {
     return debugProcessorCreatedTime;
 }
 
-juce::String SynthProjectAudioProcessor::debugNowTimestamp() const
+juce::String PX3SynthAudioProcessor::debugNowTimestamp() const
 {
     return nowTimestamp();
 }
 
-void SynthProjectAudioProcessor::debugNotifyEditorCreated(void* editorPtr)
+void PX3SynthAudioProcessor::debugNotifyEditorCreated(void* editorPtr)
 {
     debugLogEvent("LIFECYCLE",
                   "EDITOR_CREATED",
@@ -1712,7 +1712,7 @@ void SynthProjectAudioProcessor::debugNotifyEditorCreated(void* editorPtr)
                       + " order=" + debugDescribeOrder(getFxProcessingOrder()));
 }
 
-void SynthProjectAudioProcessor::debugNotifyEditorDestroyed(void* editorPtr)
+void PX3SynthAudioProcessor::debugNotifyEditorDestroyed(void* editorPtr)
 {
     debugLogEvent("LIFECYCLE",
                   "EDITOR_DESTROYED",
@@ -1720,7 +1720,7 @@ void SynthProjectAudioProcessor::debugNotifyEditorDestroyed(void* editorPtr)
                       + " order=" + debugDescribeOrder(getFxProcessingOrder()));
 }
 
-void SynthProjectAudioProcessor::debugLogEvent(const juce::String& source,
+void PX3SynthAudioProcessor::debugLogEvent(const juce::String& source,
                                                const juce::String& event,
                                                const juce::String& details)
 {
@@ -1736,37 +1736,37 @@ void SynthProjectAudioProcessor::debugLogEvent(const juce::String& source,
     }
 }
 
-void SynthProjectAudioProcessor::debugClearEventLog()
+void PX3SynthAudioProcessor::debugClearEventLog()
 {
     const std::scoped_lock<std::mutex> lock(debugStateMutex);
     debugEventLogLines.clear();
 }
 
-juce::String SynthProjectAudioProcessor::debugGetEventLogText() const
+juce::String PX3SynthAudioProcessor::debugGetEventLogText() const
 {
     const std::scoped_lock<std::mutex> lock(debugStateMutex);
     return debugEventLogLines.joinIntoString("\n");
 }
 
-int SynthProjectAudioProcessor::debugGetLastSerializedStateSize() const
+int PX3SynthAudioProcessor::debugGetLastSerializedStateSize() const
 {
     const std::scoped_lock<std::mutex> lock(debugStateMutex);
     return static_cast<int>(debugLastSerializedState.getSize());
 }
 
-juce::String SynthProjectAudioProcessor::debugGetLastSerializedStateXml() const
+juce::String PX3SynthAudioProcessor::debugGetLastSerializedStateXml() const
 {
     const std::scoped_lock<std::mutex> lock(debugStateMutex);
     return debugLastSerializedStateXml;
 }
 
-juce::MemoryBlock SynthProjectAudioProcessor::debugGetLastSerializedStateCopy() const
+juce::MemoryBlock PX3SynthAudioProcessor::debugGetLastSerializedStateCopy() const
 {
     const std::scoped_lock<std::mutex> lock(debugStateMutex);
     return debugLastSerializedState;
 }
 
-bool SynthProjectAudioProcessor::debugRestoreLastSerializedState(juce::String& report)
+bool PX3SynthAudioProcessor::debugRestoreLastSerializedState(juce::String& report)
 {
     const auto snapshot = debugGetLastSerializedStateCopy();
     if (snapshot.getSize() == 0)
@@ -1787,7 +1787,7 @@ bool SynthProjectAudioProcessor::debugRestoreLastSerializedState(juce::String& r
     return true;
 }
 
-bool SynthProjectAudioProcessor::debugRoundTripCurrentState(juce::String& report)
+bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
 {
     juce::MemoryBlock block;
     getStateInformation(block);
@@ -1894,43 +1894,43 @@ bool SynthProjectAudioProcessor::debugRoundTripCurrentState(juce::String& report
     return pass;
 }
 
-uint32_t SynthProjectAudioProcessor::debugGetModuleOrderGeneration() const
+uint32_t PX3SynthAudioProcessor::debugGetModuleOrderGeneration() const
 {
     return fxOrderRevision.load(std::memory_order_relaxed);
 }
 
-uint32_t SynthProjectAudioProcessor::debugGetModuleOrderHash() const
+uint32_t PX3SynthAudioProcessor::debugGetModuleOrderHash() const
 {
     return fxProcessingOrderPacked.load(std::memory_order_relaxed);
 }
 
-juce::String SynthProjectAudioProcessor::debugDescribeOrder(const std::array<int, 3>& order) const
+juce::String PX3SynthAudioProcessor::debugDescribeOrder(const std::array<int, 3>& order) const
 {
     return formatOrderString(order);
 }
 
-float SynthProjectAudioProcessor::debugGetLfoPhase() const
+float PX3SynthAudioProcessor::debugGetLfoPhase() const
 {
     const auto wrapped = std::fmod(lfoPhaseForDebug.load(std::memory_order_relaxed), juce::MathConstants<float>::twoPi);
     return wrapped < 0.0f ? wrapped + juce::MathConstants<float>::twoPi : wrapped;
 }
 
-float SynthProjectAudioProcessor::debugGetLfoCurrentValue() const
+float PX3SynthAudioProcessor::debugGetLfoCurrentValue() const
 {
     return lfoCurrentValue.load(std::memory_order_relaxed);
 }
 
-float SynthProjectAudioProcessor::debugGetLfoBaseNormalized() const
+float PX3SynthAudioProcessor::debugGetLfoBaseNormalized() const
 {
     return lfoDebugBaseNormalized.load(std::memory_order_relaxed);
 }
 
-float SynthProjectAudioProcessor::debugGetLfoEffectiveNormalized() const
+float PX3SynthAudioProcessor::debugGetLfoEffectiveNormalized() const
 {
     return lfoDebugEffectiveNormalized.load(std::memory_order_relaxed);
 }
 
-juce::String SynthProjectAudioProcessor::debugGetLfoAssignmentName() const
+juce::String PX3SynthAudioProcessor::debugGetLfoAssignmentName() const
 {
     const auto index = getLfoAssignmentIndex();
     if (index <= 0 || index >= static_cast<int>(lfoAssignableTargets.size()))
@@ -1942,27 +1942,27 @@ juce::String SynthProjectAudioProcessor::debugGetLfoAssignmentName() const
         + " [" + lfoAssignableTargets[static_cast<std::size_t>(index)].parameterId + "]";
 }
 
-float SynthProjectAudioProcessor::copyPitchBendNormalized() const
+float PX3SynthAudioProcessor::copyPitchBendNormalized() const
 {
     return pitchBendNormalized.load(std::memory_order_relaxed);
 }
 
-float SynthProjectAudioProcessor::copyModWheelNormalized() const
+float PX3SynthAudioProcessor::copyModWheelNormalized() const
 {
     return modWheelNormalized.load(std::memory_order_relaxed);
 }
 
-float SynthProjectAudioProcessor::copyPitchBendActivity() const
+float PX3SynthAudioProcessor::copyPitchBendActivity() const
 {
     return pitchBendActivity.load(std::memory_order_relaxed);
 }
 
-float SynthProjectAudioProcessor::copyModWheelActivity() const
+float PX3SynthAudioProcessor::copyModWheelActivity() const
 {
     return modWheelActivity.load(std::memory_order_relaxed);
 }
 
-void SynthProjectAudioProcessor::setPitchBendNormalizedFromUI(float normalized)
+void PX3SynthAudioProcessor::setPitchBendNormalizedFromUI(float normalized)
 {
     const auto value = juce::jlimit(-1.0f, 1.0f, normalized);
     const auto previous = pitchBendNormalized.load(std::memory_order_relaxed);
@@ -1973,7 +1973,7 @@ void SynthProjectAudioProcessor::setPitchBendNormalizedFromUI(float normalized)
     pitchBendNormalized.store(value, std::memory_order_relaxed);
 }
 
-void SynthProjectAudioProcessor::setModWheelNormalizedFromUI(float normalized)
+void PX3SynthAudioProcessor::setModWheelNormalizedFromUI(float normalized)
 {
     const auto value = juce::jlimit(0.0f, 1.0f, normalized);
     const auto previous = modWheelNormalized.load(std::memory_order_relaxed);
@@ -1984,7 +1984,7 @@ void SynthProjectAudioProcessor::setModWheelNormalizedFromUI(float normalized)
     modWheelNormalized.store(value, std::memory_order_relaxed);
 }
 
-void SynthProjectAudioProcessor::requestImageLoadAsync(const juce::File& imageFile)
+void PX3SynthAudioProcessor::requestImageLoadAsync(const juce::File& imageFile)
 {
     if (!imageFile.existsAsFile())
     {
@@ -2000,7 +2000,7 @@ void SynthProjectAudioProcessor::requestImageLoadAsync(const juce::File& imageFi
     imageLoadThreadPool.addJob(new ImageLoadJob(*this, imageFile, serial), true);
 }
 
-void SynthProjectAudioProcessor::disableImageEngine()
+void PX3SynthAudioProcessor::disableImageEngine()
 {
     // In WAVETABLE mode, image is reserved for oscillator generation and cannot be disabled.
     if (oscModeParam != nullptr && oscModeParam->getIndex() == 8)
@@ -2019,7 +2019,7 @@ void SynthProjectAudioProcessor::disableImageEngine()
     }
 }
 
-void SynthProjectAudioProcessor::resetImageEngine()
+void PX3SynthAudioProcessor::resetImageEngine()
 {
     if (imagePositionParam != nullptr)
     {
@@ -2064,22 +2064,22 @@ void SynthProjectAudioProcessor::resetImageEngine()
     }
 }
 
-std::shared_ptr<ImageWavetable> SynthProjectAudioProcessor::buildImageWavetableFromImage(const juce::Image& sourceImage) const
+std::shared_ptr<ImageWavetable> PX3SynthAudioProcessor::buildImageWavetableFromImage(const juce::Image& sourceImage) const
 {
     return createImageWavetableFromImage(sourceImage);
 }
 
-int SynthProjectAudioProcessor::getImageLoadRequestSerial() const
+int PX3SynthAudioProcessor::getImageLoadRequestSerial() const
 {
     return imageLoadRequestSerial.load(std::memory_order_relaxed);
 }
 
-void SynthProjectAudioProcessor::notifyImageLoadError()
+void PX3SynthAudioProcessor::notifyImageLoadError()
 {
     imageLoadErrorFlag.store(true, std::memory_order_relaxed);
 }
 
-void SynthProjectAudioProcessor::completeImageLoad(int serial,
+void PX3SynthAudioProcessor::completeImageLoad(int serial,
                                                    std::shared_ptr<ImageWavetable> wavetable,
                                                    const juce::Image& preview,
                                                    const juce::String& sourcePath)
@@ -2096,7 +2096,7 @@ void SynthProjectAudioProcessor::completeImageLoad(int serial,
     lastLoadedImagePath = sourcePath;
 }
 
-bool SynthProjectAudioProcessor::copyImagePreview(juce::Image& imageOut) const
+bool PX3SynthAudioProcessor::copyImagePreview(juce::Image& imageOut) const
 {
     const std::scoped_lock<std::mutex> lock(imagePreviewMutex);
     if (!imagePreview.isValid())
@@ -2109,22 +2109,22 @@ bool SynthProjectAudioProcessor::copyImagePreview(juce::Image& imageOut) const
     return imageOut.isValid();
 }
 
-bool SynthProjectAudioProcessor::hasLoadedImage() const
+bool PX3SynthAudioProcessor::hasLoadedImage() const
 {
     return imageLoadedFromDisk.load(std::memory_order_relaxed);
 }
 
-bool SynthProjectAudioProcessor::consumeImageLoadErrorFlag()
+bool PX3SynthAudioProcessor::consumeImageLoadErrorFlag()
 {
     return imageLoadErrorFlag.exchange(false, std::memory_order_relaxed);
 }
 
-float SynthProjectAudioProcessor::copyCurrentImagePosition() const
+float PX3SynthAudioProcessor::copyCurrentImagePosition() const
 {
     return currentImagePositionNorm.load(std::memory_order_relaxed);
 }
 
-std::vector<float> SynthProjectAudioProcessor::copyCurrentImageWaveformPreview(int sampleCount) const
+std::vector<float> PX3SynthAudioProcessor::copyCurrentImageWaveformPreview(int sampleCount) const
 {
     const auto clampedCount = juce::jlimit(64, 2048, sampleCount);
     std::vector<float> waveform(static_cast<std::size_t>(clampedCount), 0.0f);
@@ -2162,7 +2162,7 @@ std::vector<float> SynthProjectAudioProcessor::copyCurrentImageWaveformPreview(i
     return waveform;
 }
 
-void SynthProjectAudioProcessor::requestAudioLoadAsync(const juce::File& audioFile)
+void PX3SynthAudioProcessor::requestAudioLoadAsync(const juce::File& audioFile)
 {
     if (!audioFile.existsAsFile())
     {
@@ -2178,7 +2178,7 @@ void SynthProjectAudioProcessor::requestAudioLoadAsync(const juce::File& audioFi
     audioLoadThreadPool.addJob(new AudioLoadJob(*this, audioFile, serial), true);
 }
 
-void SynthProjectAudioProcessor::disableAudioEngine()
+void PX3SynthAudioProcessor::disableAudioEngine()
 {
     if (sourceEngineParam != nullptr)
     {
@@ -2191,7 +2191,7 @@ void SynthProjectAudioProcessor::disableAudioEngine()
     }
 }
 
-void SynthProjectAudioProcessor::resetAudioEngine()
+void PX3SynthAudioProcessor::resetAudioEngine()
 {
     if (audioPositionParam != nullptr)
     {
@@ -2237,12 +2237,12 @@ void SynthProjectAudioProcessor::resetAudioEngine()
     }
 }
 
-void SynthProjectAudioProcessor::notifyAudioLoadError()
+void PX3SynthAudioProcessor::notifyAudioLoadError()
 {
     audioLoadErrorFlag.store(true, std::memory_order_relaxed);
 }
 
-void SynthProjectAudioProcessor::completeAudioLoad(int serial,
+void PX3SynthAudioProcessor::completeAudioLoad(int serial,
                                                    std::shared_ptr<AudioSourceData> source,
                                                    const juce::String& sourcePath)
 {
@@ -2261,29 +2261,29 @@ void SynthProjectAudioProcessor::completeAudioLoad(int serial,
     }
 }
 
-bool SynthProjectAudioProcessor::consumeAudioLoadErrorFlag()
+bool PX3SynthAudioProcessor::consumeAudioLoadErrorFlag()
 {
     return audioLoadErrorFlag.exchange(false, std::memory_order_relaxed);
 }
 
-bool SynthProjectAudioProcessor::copyCurrentAudioWaveformPreview(std::vector<float>& waveformOut) const
+bool PX3SynthAudioProcessor::copyCurrentAudioWaveformPreview(std::vector<float>& waveformOut) const
 {
     const std::scoped_lock<std::mutex> lock(imageStateMutex);
     waveformOut = audioWaveformPreview;
     return !waveformOut.empty();
 }
 
-float SynthProjectAudioProcessor::copyCurrentAudioPosition() const
+float PX3SynthAudioProcessor::copyCurrentAudioPosition() const
 {
     return currentAudioPositionNorm.load(std::memory_order_relaxed);
 }
 
-bool SynthProjectAudioProcessor::hasLoadedAudio() const
+bool PX3SynthAudioProcessor::hasLoadedAudio() const
 {
     return audioLoadedFromDisk.load(std::memory_order_relaxed);
 }
 
-SubtractiveSettings SynthProjectAudioProcessor::currentSubtractiveSettings() const
+SubtractiveSettings PX3SynthAudioProcessor::currentSubtractiveSettings() const
 {
     const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
     SubtractiveSettings settings;
@@ -2310,7 +2310,7 @@ SubtractiveSettings SynthProjectAudioProcessor::currentSubtractiveSettings() con
     return settings;
 }
 
-OscillatorSettings SynthProjectAudioProcessor::currentOscillatorSettings() const
+OscillatorSettings PX3SynthAudioProcessor::currentOscillatorSettings() const
 {
     const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
     OscillatorSettings settings;
@@ -2338,7 +2338,7 @@ OscillatorSettings SynthProjectAudioProcessor::currentOscillatorSettings() const
     return settings;
 }
 
-EnvelopeSettings SynthProjectAudioProcessor::currentEnvelopeSettings() const
+EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings() const
 {
     const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
     EnvelopeSettings settings;
@@ -2357,7 +2357,7 @@ EnvelopeSettings SynthProjectAudioProcessor::currentEnvelopeSettings() const
     return settings;
 }
 
-void SynthProjectAudioProcessor::prepareIsaacEngine(double sampleRate)
+void PX3SynthAudioProcessor::prepareIsaacEngine(double sampleRate)
 {
     currentSampleRateHz = juce::jmax(8000.0, sampleRate);
     isaacBufferSize = static_cast<int>(std::ceil(currentSampleRateHz * kMaxIsaacDelaySeconds));
@@ -2399,7 +2399,7 @@ void SynthProjectAudioProcessor::prepareIsaacEngine(double sampleRate)
     isaacShimmerSmooth = { { 0.0f, 0.0f } };
 }
 
-void SynthProjectAudioProcessor::prepareReverbEngine(double sampleRate)
+void PX3SynthAudioProcessor::prepareReverbEngine(double sampleRate)
 {
     juce::ignoreUnused(sampleRate);
 
@@ -2454,21 +2454,21 @@ void SynthProjectAudioProcessor::prepareReverbEngine(double sampleRate)
     cloudReadCache.fill(0.0f);
 }
 
-float SynthProjectAudioProcessor::imageSyncBeatsForIndex(int index) const
+float PX3SynthAudioProcessor::imageSyncBeatsForIndex(int index) const
 {
     static constexpr std::array<float, 6> beatDivisions { 0.0f, 4.0f, 2.0f, 1.0f, 0.5f, 0.25f };
     const auto clamped = juce::jlimit(0, static_cast<int>(beatDivisions.size()) - 1, index);
     return beatDivisions[static_cast<std::size_t>(clamped)];
 }
 
-float SynthProjectAudioProcessor::audioSyncBeatsForIndex(int index) const
+float PX3SynthAudioProcessor::audioSyncBeatsForIndex(int index) const
 {
     static constexpr std::array<float, 6> beatDivisions { 0.0f, 4.0f, 2.0f, 1.0f, 0.5f, 0.25f };
     const auto clamped = juce::jlimit(0, static_cast<int>(beatDivisions.size()) - 1, index);
     return beatDivisions[static_cast<std::size_t>(clamped)];
 }
 
-float SynthProjectAudioProcessor::updateImageAnimationPosition(int samplesThisBlock)
+float PX3SynthAudioProcessor::updateImageAnimationPosition(int samplesThisBlock)
 {
     const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
     const auto basePos = applyLfoToNormalizedValue(imagePositionParam,
@@ -2539,7 +2539,7 @@ float SynthProjectAudioProcessor::updateImageAnimationPosition(int samplesThisBl
     return animated;
 }
 
-float SynthProjectAudioProcessor::updateAudioAnimationPosition(int samplesThisBlock)
+float PX3SynthAudioProcessor::updateAudioAnimationPosition(int samplesThisBlock)
 {
     const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
     const auto basePos = applyLfoToNormalizedValue(audioPositionParam,
@@ -2610,7 +2610,7 @@ float SynthProjectAudioProcessor::updateAudioAnimationPosition(int samplesThisBl
     return animated;
 }
 
-float SynthProjectAudioProcessor::computeImageTargetControlSignal(float imagePositionNorm, int samplesThisBlock)
+float PX3SynthAudioProcessor::computeImageTargetControlSignal(float imagePositionNorm, int samplesThisBlock)
 {
     auto table = std::atomic_load(&activeImageWavetable);
     if (table == nullptr || table->frames <= 0 || table->samplesPerFrame <= 1)
@@ -2654,7 +2654,7 @@ float SynthProjectAudioProcessor::computeImageTargetControlSignal(float imagePos
     return clamp01(0.5f + 0.5f * sample);
 }
 
-std::shared_ptr<ImageWavetable> SynthProjectAudioProcessor::createDefaultImageWavetable() const
+std::shared_ptr<ImageWavetable> PX3SynthAudioProcessor::createDefaultImageWavetable() const
 {
     auto table = std::make_shared<ImageWavetable>();
     table->frames = 128;
@@ -2696,7 +2696,7 @@ std::shared_ptr<ImageWavetable> SynthProjectAudioProcessor::createDefaultImageWa
     return table;
 }
 
-std::shared_ptr<ImageWavetable> SynthProjectAudioProcessor::createImageWavetableFromImage(const juce::Image& sourceImage) const
+std::shared_ptr<ImageWavetable> PX3SynthAudioProcessor::createImageWavetableFromImage(const juce::Image& sourceImage) const
 {
     if (!sourceImage.isValid() || sourceImage.getWidth() <= 0 || sourceImage.getHeight() <= 0)
     {
@@ -2778,7 +2778,7 @@ std::shared_ptr<ImageWavetable> SynthProjectAudioProcessor::createImageWavetable
     return table;
 }
 
-void SynthProjectAudioProcessor::installImageWavetable(std::shared_ptr<ImageWavetable> newTable, const juce::Image& sourcePreview)
+void PX3SynthAudioProcessor::installImageWavetable(std::shared_ptr<ImageWavetable> newTable, const juce::Image& sourcePreview)
 {
     if (newTable == nullptr)
     {
@@ -2794,7 +2794,7 @@ void SynthProjectAudioProcessor::installImageWavetable(std::shared_ptr<ImageWave
     }
 }
 
-void SynthProjectAudioProcessor::updateTransportState()
+void PX3SynthAudioProcessor::updateTransportState()
 {
     currentBpm = 120.0;
     currentTimelineSeconds = 0.0;
@@ -2820,7 +2820,7 @@ void SynthProjectAudioProcessor::updateTransportState()
     }
 }
 
-float SynthProjectAudioProcessor::readDelaySample(int channel, float readPos) const
+float PX3SynthAudioProcessor::readDelaySample(int channel, float readPos) const
 {
     const auto& buffer = isaacDelayBuffer[static_cast<std::size_t>(channel)];
     auto rp = readPos;
@@ -2839,7 +2839,7 @@ float SynthProjectAudioProcessor::readDelaySample(int channel, float readPos) co
     return buffer[static_cast<std::size_t>(i0)] + (buffer[static_cast<std::size_t>(i1)] - buffer[static_cast<std::size_t>(i0)]) * frac;
 }
 
-float SynthProjectAudioProcessor::sanitizeAudioSample(float x) const
+float PX3SynthAudioProcessor::sanitizeAudioSample(float x) const
 {
     if (!std::isfinite(x))
     {
@@ -2849,7 +2849,7 @@ float SynthProjectAudioProcessor::sanitizeAudioSample(float x) const
     return juce::jlimit(-4.0f, 4.0f, x);
 }
 
-void SynthProjectAudioProcessor::clearGranularDiffusionState()
+void PX3SynthAudioProcessor::clearGranularDiffusionState()
 {
     for (auto& line : isaacDiffusionLineA)
     {
@@ -2863,7 +2863,7 @@ void SynthProjectAudioProcessor::clearGranularDiffusionState()
     isaacDiffusionIndexB = { { 0, 0 } };
 }
 
-float SynthProjectAudioProcessor::processAllpassSample(float x,
+float PX3SynthAudioProcessor::processAllpassSample(float x,
                                                        std::vector<float>& line,
                                                        int& index,
                                                        float feedback) const
@@ -2887,7 +2887,7 @@ float SynthProjectAudioProcessor::processAllpassSample(float x,
     return y;
 }
 
-void SynthProjectAudioProcessor::processGranularDiffusion(float& wetL,
+void PX3SynthAudioProcessor::processGranularDiffusion(float& wetL,
                                                           float& wetR,
                                                           float diffusionAmount,
                                                           float stereoAmount)
@@ -2915,7 +2915,7 @@ void SynthProjectAudioProcessor::processGranularDiffusion(float& wetL,
     wetR = lerp(wetR, widenedR, d * (0.50f + 0.40f * width));
 }
 
-void SynthProjectAudioProcessor::renderActiveGranularGrains(float& wetL, float& wetR)
+void PX3SynthAudioProcessor::renderActiveGranularGrains(float& wetL, float& wetR)
 {
     wetL = 0.0f;
     wetR = 0.0f;
@@ -2968,7 +2968,7 @@ void SynthProjectAudioProcessor::renderActiveGranularGrains(float& wetL, float& 
     }
 }
 
-void SynthProjectAudioProcessor::spawnIsaacGrain(float amount,
+void PX3SynthAudioProcessor::spawnIsaacGrain(float amount,
                                                  float timeControl,
                                                  float feedbackControl,
                                                  int syncDivisionIndex,
@@ -3120,7 +3120,7 @@ void SynthProjectAudioProcessor::spawnIsaacGrain(float amount,
     }
 }
 
-void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
+void PX3SynthAudioProcessor::processIsaacGranularSample(float inL,
                                                             float inR,
                                                             float amount,
                                                             float timeControl,
@@ -3358,7 +3358,7 @@ void SynthProjectAudioProcessor::processIsaacGranularSample(float inL,
     outR = outRight;
 }
 
-void SynthProjectAudioProcessor::processDelayAlgorithmSample(float inL,
+void PX3SynthAudioProcessor::processDelayAlgorithmSample(float inL,
                                                              float inR,
                                                              float amount,
                                                              int algorithmIndex,
@@ -3520,7 +3520,7 @@ void SynthProjectAudioProcessor::processDelayAlgorithmSample(float inL,
     outR = inR * dryMix + wetR * wetMix;
 }
 
-float SynthProjectAudioProcessor::readMoonDelaySample(int channel, float readPos) const
+float PX3SynthAudioProcessor::readMoonDelaySample(int channel, float readPos) const
 {
     const auto& buffer = moonDelayBuffer[static_cast<std::size_t>(channel)];
     auto rp = readPos;
@@ -3541,14 +3541,14 @@ float SynthProjectAudioProcessor::readMoonDelaySample(int channel, float readPos
            + (buffer[static_cast<std::size_t>(i1)] - buffer[static_cast<std::size_t>(i0)]) * frac;
 }
 
-void SynthProjectAudioProcessor::resizeReverbLine(ReverbDelayLine& line, int size)
+void PX3SynthAudioProcessor::resizeReverbLine(ReverbDelayLine& line, int size)
 {
     line.buffer.assign(static_cast<std::size_t>(juce::jmax(2, size)), 0.0f);
     line.writePos = 0;
     line.lpState = 0.0f;
 }
 
-float SynthProjectAudioProcessor::readReverbLine(const ReverbDelayLine& line, float delaySamples) const
+float PX3SynthAudioProcessor::readReverbLine(const ReverbDelayLine& line, float delaySamples) const
 {
     if (line.buffer.empty())
     {
@@ -3573,7 +3573,7 @@ float SynthProjectAudioProcessor::readReverbLine(const ReverbDelayLine& line, fl
            + (line.buffer[static_cast<std::size_t>(i1)] - line.buffer[static_cast<std::size_t>(i0)]) * frac;
 }
 
-void SynthProjectAudioProcessor::writeReverbLine(ReverbDelayLine& line, float sample)
+void PX3SynthAudioProcessor::writeReverbLine(ReverbDelayLine& line, float sample)
 {
     if (line.buffer.empty())
     {
@@ -3584,7 +3584,7 @@ void SynthProjectAudioProcessor::writeReverbLine(ReverbDelayLine& line, float sa
     line.writePos = (line.writePos + 1) % static_cast<int>(line.buffer.size());
 }
 
-float SynthProjectAudioProcessor::processReverbAllpass(ReverbDelayLine& line, float in, float delaySamples, float gain)
+float PX3SynthAudioProcessor::processReverbAllpass(ReverbDelayLine& line, float in, float delaySamples, float gain)
 {
     const auto delayed = readReverbLine(line, delaySamples);
     const auto v = in - gain * delayed;
@@ -3592,14 +3592,14 @@ float SynthProjectAudioProcessor::processReverbAllpass(ReverbDelayLine& line, fl
     return delayed + gain * v;
 }
 
-float SynthProjectAudioProcessor::processReverbDelay(ReverbDelayLine& line, float in, float delaySamples)
+float PX3SynthAudioProcessor::processReverbDelay(ReverbDelayLine& line, float in, float delaySamples)
 {
     const auto delayed = readReverbLine(line, delaySamples);
     writeReverbLine(line, in);
     return delayed;
 }
 
-void SynthProjectAudioProcessor::processReverbSampleFrame(float inL,
+void PX3SynthAudioProcessor::processReverbSampleFrame(float inL,
                                                           float inR,
                                                           float amount,
                                                           int algorithmIndex,
@@ -3871,18 +3871,18 @@ void SynthProjectAudioProcessor::processReverbSampleFrame(float inL,
     outR = sanitizeAudioSample(inR * dryGain + wetR * mix);
 }
 
-bool SynthProjectAudioProcessor::hasEditor() const
+bool PX3SynthAudioProcessor::hasEditor() const
 {
     return true;
 }
 
-juce::AudioProcessorEditor* SynthProjectAudioProcessor::createEditor()
+juce::AudioProcessorEditor* PX3SynthAudioProcessor::createEditor()
 {
     debugLogEvent("LIFECYCLE", "CREATE_EDITOR", "order=" + debugDescribeOrder(getFxProcessingOrder()));
-    return new SynthProjectAudioProcessorEditor(*this);
+    return new PX3SynthAudioProcessorEditor(*this);
 }
 
-void SynthProjectAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
+void PX3SynthAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     // DAW save path: capture current authoritative state tree -> XML payload.
     auto state = createParameterStateTree();
@@ -3906,7 +3906,7 @@ void SynthProjectAudioProcessor::getStateInformation(juce::MemoryBlock& destData
     }
 }
 
-void SynthProjectAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+void PX3SynthAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
     // DAW restore path: payload -> ValueTree -> parameter/state apply.
     const auto before = getFxProcessingOrder();
@@ -3953,7 +3953,7 @@ void SynthProjectAudioProcessor::setStateInformation(const void* data, int sizeI
                       + (ignoredError.isNotEmpty() ? " error=" + ignoredError : juce::String()));
 }
 
-juce::ValueTree SynthProjectAudioProcessor::createParameterStateTree() const
+juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
 {
     // This tree is the canonical persisted state used by DAW projects and
     // preset files. Keep fields backward-compatible when extending it.
@@ -4003,7 +4003,7 @@ juce::ValueTree SynthProjectAudioProcessor::createParameterStateTree() const
     return state;
 }
 
-bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& state, juce::String* error)
+bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& state, juce::String* error)
 {
     if (!state.isValid() || state.getType() != kStateTypeId)
     {
@@ -4206,5 +4206,5 @@ bool SynthProjectAudioProcessor::applyParameterStateTree(const juce::ValueTree& 
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new SynthProjectAudioProcessor();
+    return new PX3SynthAudioProcessor();
 }

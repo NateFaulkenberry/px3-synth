@@ -32,7 +32,7 @@ const juce::Identifier kAssetId("ASSET");
 const juce::String kPresetExtension(PresetManager::presetFileExtension);
 }
 
-PresetManager::PresetManager(SynthProjectAudioProcessor& processorIn)
+PresetManager::PresetManager(PX3SynthAudioProcessor& processorIn)
     : processor(processorIn)
 {
 }

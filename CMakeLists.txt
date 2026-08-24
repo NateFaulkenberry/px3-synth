@@ -7,7 +7,7 @@ if (NOT PX3_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
     message(FATAL_ERROR "PX3_VERSION must use SemVer MAJOR.MINOR.PATCH (example: 0.1.0).")
 endif()
 
-project(SynthProject VERSION ${PX3_VERSION} LANGUAGES C CXX)
+project(PX3Synth VERSION ${PX3_VERSION} LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,7 +29,7 @@ FetchContent_Declare(
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 FetchContent_MakeAvailable(juce)
 
-juce_add_plugin(SynthProject
+juce_add_plugin(PX3Synth
     COMPANY_NAME "PX3"
     BUNDLE_ID "com.px3.px3synth"
     IS_SYNTH TRUE
@@ -44,7 +44,7 @@ juce_add_plugin(SynthProject
     PRODUCT_NAME "PX3 Synth"
 )
 
-juce_generate_juce_header(SynthProject)
+juce_generate_juce_header(PX3Synth)
 
 juce_add_binary_data(PX3Assets
     SOURCES
@@ -52,7 +52,7 @@ juce_add_binary_data(PX3Assets
         Source/px3.gif
 )
 
-target_sources(SynthProject
+target_sources(PX3Synth
     PRIVATE
         Source/UI/AudioEnginePanel.cpp
         Source/UI/ImageEnginePanel.cpp
@@ -68,7 +68,7 @@ target_sources(SynthProject
         Source/Preset/PresetManager.cpp
 )
 
-target_include_directories(SynthProject
+target_include_directories(PX3Synth
     PRIVATE
         Source
         Source/UI
@@ -77,14 +77,14 @@ target_include_directories(SynthProject
         Source/Core
 )
 
-target_compile_definitions(SynthProject
+target_compile_definitions(PX3Synth
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
     PX3_DEBUG_PANEL=$<IF:$<BOOL:${PX3_DEBUG_PANEL}>,1,0>
 )
 
-target_link_libraries(SynthProject
+target_link_libraries(PX3Synth
     PRIVATE
         PX3Assets
         juce::juce_audio_utils
@@ -110,10 +110,10 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 
     # Apply warning policy to the shared target and JUCE-generated format targets.
     foreach(px3Target IN ITEMS
-            SynthProject
-            SynthProject_Standalone
-            SynthProject_AU
-            SynthProject_VST3)
+            PX3Synth
+            PX3Synth_Standalone
+            PX3Synth_AU
+            PX3Synth_VST3)
         if (TARGET ${px3Target})
             target_compile_options(${px3Target} PRIVATE ${PX3_WARNING_OPTIONS})
         endif()

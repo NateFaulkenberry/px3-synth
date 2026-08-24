@@ -1,6 +1,6 @@
 #include "SourceEnginePanel.h"
 
-SourceEnginePanel::SourceEnginePanel(SynthProjectAudioProcessor& processorIn)
+SourceEnginePanel::SourceEnginePanel(PX3SynthAudioProcessor& processorIn)
     : processor(processorIn),
       imagePanel(processorIn),
       audioPanel(processorIn)
