@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginProcessorInternals.h"
+#include "FilterMode.h"
 #include "OscillatorMode.h"
 
 #include "PluginEditor.h"
@@ -44,10 +45,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     } };
     filterCutoffParam = new juce::AudioParameterFloat("filterCutoff", "Filter Cutoff", juce::NormalisableRange<float>(80.0f, 18000.0f, 1.0f, 0.35f), 12000.0f);
     filterResonanceParam = new juce::AudioParameterFloat("filterResonance", "Filter Resonance", juce::NormalisableRange<float>(0.25f, 2.2f), 0.8f);
-     filterTypeParam = new juce::AudioParameterChoice("filterType",
-                                                                        "Filter Type",
-                                                                        juce::StringArray { "LP12", "LP24", "HP12", "HP24", "BandPass", "Notch", "AllPass" },
-                                                                        0);
+    filterTypeParam = new juce::AudioParameterChoice("filterType",
+                                                          "Filter Type",
+                                                          px3::filterModeChoices(),
+                                                          0);
     attackParam = new juce::AudioParameterFloat("ampAttack", "Amp Attack", juce::NormalisableRange<float>(0.001f, 3.0f, 0.001f, 0.45f), 0.005f);
     decayParam = new juce::AudioParameterFloat("ampDecay", "Amp Decay", juce::NormalisableRange<float>(0.005f, 4.0f, 0.001f, 0.45f), 0.050f);
     sustainParam = new juce::AudioParameterFloat("ampSustain", "Amp Sustain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f);
@@ -149,6 +150,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     buildLfoAssignableTargets();
 
     const auto initialEnvelope = currentEnvelopeSettings();
+    const auto initialFilter = currentFilterSettings();
     const auto initialSubtractive = currentSubtractiveSettings();
     const auto initialOscillator = currentOscillatorSettings();
 
@@ -157,6 +159,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         auto* synthVoice = new SynthVoice();
         synthVoice->setVoiceIndex(voice);
         synthVoice->setEnvelope(initialEnvelope);
+        synthVoice->setFilterSettings(initialFilter);
         synthVoice->setSubtractiveSettings(initialSubtractive);
         synthVoice->setOscillatorSettings(initialOscillator);
         synth.addVoice(synthVoice);
@@ -241,6 +244,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     applyVibeTypeProfile(vibeTypeParam->getIndex());
 
     const auto envelope = currentEnvelopeSettings();
+    const auto filter = currentFilterSettings();
     const auto subtractive = currentSubtractiveSettings();
     const auto oscillator = currentOscillatorSettings();
 
@@ -249,6 +253,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
         if (auto* voice = dynamic_cast<SynthVoice*>(synth.getVoice(voiceIndex)))
         {
             voice->setEnvelope(envelope);
+            voice->setFilterSettings(filter);
             voice->setSubtractiveSettings(subtractive);
             voice->setOscillatorSettings(oscillator);
         }
@@ -437,6 +442,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     }
 
     const auto envelope = currentEnvelopeSettings();
+    const auto filter = currentFilterSettings();
     const auto subtractive = currentSubtractiveSettings();
     const auto oscillator = currentOscillatorSettings();
     updateVibeStateForBlock(buffer.getNumSamples(), blockLfoSignal);
@@ -449,6 +455,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         if (auto* voice = dynamic_cast<SynthVoice*>(synth.getVoice(voiceIndex)))
         {
             voice->setEnvelope(envelope);
+            voice->setFilterSettings(filter);
             voice->setSubtractiveSettings(subtractive);
             voice->setOscillatorSettings(oscillator);
             voice->setPerformanceModulation(pitchBend,

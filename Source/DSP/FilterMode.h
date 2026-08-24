@@ -1,0 +1,32 @@
+#pragma once
+
+#include <JuceHeader.h>
+
+namespace px3
+{
+enum class FilterMode : int
+{
+    lp12 = 0,
+    lp24,
+    hp12,
+    hp24,
+    bp,
+    notch,
+    allPass
+};
+
+inline constexpr int filterModeMinIndex = static_cast<int>(FilterMode::lp12);
+inline constexpr int filterModeMaxIndex = static_cast<int>(FilterMode::allPass);
+inline constexpr int filterModeCount = filterModeMaxIndex - filterModeMinIndex + 1;
+
+inline constexpr int clampFilterModeIndex(int index)
+{
+    return index < filterModeMinIndex ? filterModeMinIndex
+                                      : (index > filterModeMaxIndex ? filterModeMaxIndex : index);
+}
+
+inline juce::StringArray filterModeChoices()
+{
+    return juce::StringArray { "LP12", "LP24", "HP12", "HP24", "BandPass", "Notch", "AllPass" };
+}
+}

@@ -6,17 +6,6 @@
 
 namespace
 {
-enum class FilterMode
-{
-    lp12 = 0,
-    lp24,
-    hp12,
-    hp24,
-    bp,
-    notch,
-    allPass
-};
-
 inline float softClip(float x)
 {
     return std::tanh(x);
@@ -38,29 +27,26 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     level = velocity;
     currentAngle = 0.0;
     updateAngleDelta();
-    updateFilter();
-    lowPassFilter.reset();
-    lowPassFilterStage2.reset();
-
-    adsr.noteOn();
-    noteAgeSamples = 0;
-
     const auto sampleRate = juce::jmax(1.0, getSampleRate());
+    voiceFilter.prepare(sampleRate);
+    voiceFilter.setCurrentSettingsImmediate(filterSettings);
+
+    ampEnvelope.noteOn();
+    noteAgeSamples = 0;
     oscillatorUnit.resetForNote(sampleRate, currentFrequencyHz);
 }
 
 void SynthVoice::stopNote(float, bool allowTailOff)
 {
-    if (allowTailOff)
+    if (!allowTailOff)
     {
-        adsr.noteOff();
-    }
-    else
-    {
-        adsr.reset();
+        ampEnvelope.reset();
         clearCurrentNote();
         angleDelta = 0.0;
+        return;
     }
+
+    ampEnvelope.noteOff();
 }
 
 void SynthVoice::pitchWheelMoved(int newPitchWheelValue)
@@ -86,7 +72,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         return;
     }
 
-    if (!adsr.isActive())
+    if (!ampEnvelope.isActive())
     {
         clearCurrentNote();
         angleDelta = 0.0;
@@ -102,8 +88,8 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     const auto vibeDepth = juce::jlimit(0.0f, 3.50f, vibeBase * (0.30f + 3.10f * vibeBase));
     const auto vibeActive = vibeDepth > 0.0001f;
 
-    auto targetCutoffHz = subtractiveSettings.filterCutoffHz;
-    auto targetResonanceQ = subtractiveSettings.filterResonanceQ;
+    auto targetCutoffHz = filterSettings.cutoffHz;
+    auto targetResonanceQ = filterSettings.resonanceQ;
 
     if (vibeActive)
     {
@@ -120,34 +106,13 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         targetResonanceQ *= (1.0f + resoDelta);
     }
 
-    targetFilterCutoffHz = juce::jlimit(20.0f, 20000.0f, targetCutoffHz);
-    targetFilterResonanceQ = juce::jlimit(0.20f, 10.0f, targetResonanceQ);
-
-    if (activeFilterTypeIndex != subtractiveSettings.filterTypeIndex)
-    {
-        activeFilterTypeIndex = subtractiveSettings.filterTypeIndex;
-        currentFilterCutoffHz = targetFilterCutoffHz;
-        currentFilterResonanceQ = targetFilterResonanceQ;
-        setFilterResponse(currentFilterCutoffHz,
-                          currentFilterResonanceQ,
-                          activeFilterTypeIndex);
-        filterUpdateCounter = 0;
-    }
-
-    constexpr float filterTauSec = 0.005f;
-    const auto filterCoeff = 1.0f - std::exp(-1.0f / static_cast<float>(sampleRate * filterTauSec));
+    FilterSettings runtimeFilter = filterSettings;
+    runtimeFilter.cutoffHz = juce::jlimit(20.0f, 20000.0f, targetCutoffHz);
+    runtimeFilter.resonanceQ = juce::jlimit(0.20f, 10.0f, targetResonanceQ);
+    voiceFilter.setTargetSettings(runtimeFilter);
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
-        currentFilterCutoffHz += (targetFilterCutoffHz - currentFilterCutoffHz) * filterCoeff;
-        currentFilterResonanceQ += (targetFilterResonanceQ - currentFilterResonanceQ) * filterCoeff;
-        if ((filterUpdateCounter++ & 0x07) == 0)
-        {
-            setFilterResponse(currentFilterCutoffHz,
-                              currentFilterResonanceQ,
-                              activeFilterTypeIndex);
-        }
-
         currentPitchBendNorm += (targetPitchBendNorm - currentPitchBendNorm) * 0.06f;
         currentModWheelNorm += (targetModWheelNorm - currentModWheelNorm) * 0.045f;
 
@@ -196,7 +161,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             sourceSample += oscillatorUnit.nextDeterministicNoise() * (0.0035f + 0.0165f * noiseAmount);
         }
 
-        const auto env = adsr.getNextSample();
+        const auto env = ampEnvelope.getNextSample();
         auto voiceGain = level * env * subtractiveSettings.masterGain;
 
         if (vibeActive)
@@ -217,17 +182,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                           * (1.0f / (1.0f + vcaAmount * 0.95f));
         }
 
-        auto currentSample = lowPassFilter.processSample(voicedSample);
-
-        const auto mode = static_cast<FilterMode>(juce::jlimit(0, 6, subtractiveSettings.filterTypeIndex));
-        if (mode == FilterMode::lp24 || mode == FilterMode::hp24)
-        {
-            currentSample = lowPassFilterStage2.processSample(currentSample);
-        }
-        else if (mode == FilterMode::notch)
-        {
-            currentSample = voicedSample - currentSample * 0.92f;
-        }
+        auto currentSample = voiceFilter.processSample(voicedSample);
 
         for (int channel = 0; channel < outputBuffer.getNumChannels(); ++channel)
         {
@@ -244,7 +199,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         ++noteAgeSamples;
     }
 
-    if (!adsr.isActive())
+    if (!ampEnvelope.isActive())
     {
         clearCurrentNote();
         angleDelta = 0.0;
@@ -254,29 +209,23 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 void SynthVoice::setEnvelope(const EnvelopeSettings& settings)
 {
     envelopeSettings = settings;
+    ampEnvelope.setSettings(settings);
+}
 
-    adsrParameters.attack = envelopeSettings.attackSeconds;
-    adsrParameters.decay = envelopeSettings.decaySeconds;
-    adsrParameters.sustain = envelopeSettings.sustainLevel;
-    adsrParameters.release = envelopeSettings.releaseSeconds;
+void SynthVoice::setFilterSettings(const FilterSettings& settings)
+{
+    filterSettings = settings;
+    voiceFilter.setTargetSettings(filterSettings);
 
-    adsr.setParameters(adsrParameters);
+    if (!ampEnvelope.isActive())
+    {
+        voiceFilter.setCurrentSettingsImmediate(filterSettings);
+    }
 }
 
 void SynthVoice::setSubtractiveSettings(const SubtractiveSettings& settings)
 {
     subtractiveSettings = settings;
-
-    targetFilterCutoffHz = juce::jlimit(20.0f, 20000.0f, subtractiveSettings.filterCutoffHz);
-    targetFilterResonanceQ = juce::jlimit(0.20f, 10.0f, subtractiveSettings.filterResonanceQ);
-
-    if (!adsr.isActive())
-    {
-        currentFilterCutoffHz = targetFilterCutoffHz;
-        currentFilterResonanceQ = targetFilterResonanceQ;
-        activeFilterTypeIndex = subtractiveSettings.filterTypeIndex;
-        updateFilter();
-    }
 }
 
 void SynthVoice::setOscillatorSettings(const OscillatorSettings& settings)
@@ -330,68 +279,5 @@ void SynthVoice::updateAngleDelta()
     else
     {
         angleDelta = 0.0;
-    }
-}
-
-void SynthVoice::updateFilter()
-{
-    currentFilterCutoffHz = juce::jlimit(20.0f, 20000.0f, targetFilterCutoffHz);
-    currentFilterResonanceQ = juce::jlimit(0.20f, 10.0f, targetFilterResonanceQ);
-    activeFilterTypeIndex = subtractiveSettings.filterTypeIndex;
-    setFilterResponse(currentFilterCutoffHz,
-                      currentFilterResonanceQ,
-                      activeFilterTypeIndex);
-}
-
-void SynthVoice::setFilterResponse(float cutoffHz, float resonanceQ, int filterTypeIndex)
-{
-    const auto sampleRate = getSampleRate();
-
-    if (sampleRate <= 0.0)
-    {
-        return;
-    }
-
-    const auto mode = static_cast<FilterMode>(juce::jlimit(0, 6, filterTypeIndex));
-    const auto cutoff = juce::jlimit(20.0f, 20000.0f, cutoffHz);
-    const auto q = juce::jlimit(0.20f, 10.0f, resonanceQ);
-
-    switch (mode)
-    {
-        case FilterMode::lp12:
-        case FilterMode::lp24:
-            lowPassFilter.coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(static_cast<double>(sampleRate),
-                                                                                           cutoff,
-                                                                                           q);
-            lowPassFilterStage2.coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(static_cast<double>(sampleRate),
-                                                                                                 cutoff,
-                                                                                                 q);
-            break;
-        case FilterMode::hp12:
-        case FilterMode::hp24:
-            lowPassFilter.coefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(static_cast<double>(sampleRate),
-                                                                                            cutoff,
-                                                                                            q);
-            lowPassFilterStage2.coefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(static_cast<double>(sampleRate),
-                                                                                                  cutoff,
-                                                                                                  q);
-            break;
-        case FilterMode::bp:
-            lowPassFilter.coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass(static_cast<double>(sampleRate),
-                                                                                            cutoff,
-                                                                                            q);
-            break;
-        case FilterMode::notch:
-            lowPassFilter.coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass(static_cast<double>(sampleRate),
-                                                                                            cutoff,
-                                                                                            q);
-            break;
-        case FilterMode::allPass:
-            lowPassFilter.coefficients = juce::dsp::IIR::Coefficients<float>::makeAllPass(static_cast<double>(sampleRate),
-                                                                                           cutoff,
-                                                                                           q);
-            break;
-        default:
-            break;
     }
 }

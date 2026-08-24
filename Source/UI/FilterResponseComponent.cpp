@@ -1,0 +1,132 @@
+#include "FilterResponseComponent.h"
+
+#include <cmath>
+
+FilterResponseComponent::FilterResponseComponent(juce::AudioParameterFloat& cutoffIn,
+                                                 juce::AudioParameterFloat& resonanceIn,
+                                                 juce::AudioParameterChoice& modeIn,
+                                                 juce::Colour accentIn)
+    : cutoff(cutoffIn), resonance(resonanceIn), mode(modeIn), accent(accentIn)
+{
+    refreshFromParameters();
+}
+
+void FilterResponseComponent::setAccentColour(juce::Colour accentIn)
+{
+    accent = accentIn;
+    repaint();
+}
+
+void FilterResponseComponent::refreshFromParameters()
+{
+    const auto nextMode = mode.getIndex();
+    const auto nextCutoff = cutoff.get();
+    const auto nextRes = resonance.get();
+
+    if (nextMode != lastModeIndex
+        || std::abs(nextCutoff - lastCutoff) > 0.0001f
+        || std::abs(nextRes - lastResonance) > 0.0001f)
+    {
+        lastModeIndex = nextMode;
+        lastCutoff = nextCutoff;
+        lastResonance = nextRes;
+        repaint();
+    }
+}
+
+void FilterResponseComponent::paint(juce::Graphics& g)
+{
+    auto graphRect = getLocalBounds().toFloat().reduced(2.0f);
+    if (graphRect.getWidth() < 12.0f || graphRect.getHeight() < 12.0f)
+    {
+        return;
+    }
+
+    g.setColour(juce::Colour::fromRGBA(20, 20, 20, 140));
+    g.fillRoundedRectangle(graphRect, 4.0f);
+    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 70));
+    g.drawRoundedRectangle(graphRect, 4.0f, 1.0f);
+
+    const auto left = graphRect.getX() + 4.0f;
+    const auto right = graphRect.getRight() - 4.0f;
+    const auto top = graphRect.getY() + 4.0f;
+    const auto bottom = graphRect.getBottom() - 4.0f;
+    const auto midY = (top + bottom) * 0.5f;
+
+    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 36));
+    g.drawLine(left, midY, right, midY, 1.0f);
+
+    const auto idx = juce::jlimit(0, 6, mode.getIndex());
+    const auto cutoffPos = juce::jlimit(0.08f, 0.92f, cutoffNorm());
+    const auto resBoost = juce::jlimit(0.0f, 1.0f, resonanceNorm());
+
+    juce::Path response;
+    response.startNewSubPath(left, bottom);
+
+    const auto width = juce::jmax(1.0f, right - left);
+    for (int s = 1; s <= 56; ++s)
+    {
+        const auto t = static_cast<float>(s) / 56.0f;
+        const auto x = left + t * width;
+
+        float yNorm = 0.5f;
+        if (idx == 0 || idx == 1)
+        {
+            const auto slope = idx == 0 ? 1.4f : 2.3f;
+            const auto local = clamp01(t / cutoffPos);
+            yNorm = 1.0f - std::pow(local, slope);
+        }
+        else if (idx == 2 || idx == 3)
+        {
+            const auto slope = idx == 2 ? 1.4f : 2.3f;
+            const auto local = clamp01((t - cutoffPos) / juce::jmax(0.06f, 1.0f - cutoffPos));
+            yNorm = std::pow(local, slope);
+        }
+        else if (idx == 4)
+        {
+            const auto spread = juce::jmax(0.08f, 0.32f - resBoost * 0.16f);
+            const auto d = std::abs(t - cutoffPos) / spread;
+            yNorm = juce::jmax(0.0f, 1.0f - d * d);
+        }
+        else if (idx == 5)
+        {
+            const auto spread = juce::jmax(0.08f, 0.32f - resBoost * 0.12f);
+            const auto d = std::abs(t - cutoffPos) / spread;
+            yNorm = 0.12f + 0.88f * juce::jlimit(0.0f, 1.0f, d * d);
+        }
+        else
+        {
+            yNorm = 0.55f;
+        }
+
+        if (idx == 0 || idx == 1 || idx == 2 || idx == 3)
+        {
+            const auto d = std::abs(t - cutoffPos);
+            const auto peak = std::exp(-(d * d) / 0.0036f) * (0.12f + resBoost * 0.34f);
+            yNorm += peak;
+        }
+
+        const auto y = bottom - juce::jlimit(0.0f, 1.0f, yNorm) * (bottom - top);
+        response.lineTo(x, y);
+    }
+
+    g.setColour(accent.brighter(0.15f));
+    g.strokePath(response, juce::PathStrokeType(1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+float FilterResponseComponent::clamp01(float value)
+{
+    return juce::jlimit(0.0f, 1.0f, value);
+}
+
+float FilterResponseComponent::cutoffNorm() const
+{
+    return cutoff.convertTo0to1(cutoff.get());
+}
+
+float FilterResponseComponent::resonanceNorm() const
+{
+    const auto range = resonance.getNormalisableRange();
+    const auto span = juce::jmax(0.0001f, range.end - range.start);
+    return clamp01((resonance.get() - range.start) / span);
+}

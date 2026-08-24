@@ -76,494 +76,6 @@ public:
 };
 }
 
-// Interactive ADSR editor that writes directly to existing processor parameters.
-// It intentionally does not own independent envelope state so automation,
-// presets, and DAW restore all remain canonical.
-class PX3SynthAudioProcessorEditor::EnvelopeGraphComponent final : public juce::Component
-{
-public:
-    EnvelopeGraphComponent(juce::AudioParameterFloat& attackIn,
-                           juce::AudioParameterFloat& decayIn,
-                           juce::AudioParameterFloat& sustainIn,
-                           juce::AudioParameterFloat& releaseIn,
-                           juce::Colour accentIn)
-        : attack(attackIn), decay(decayIn), sustain(sustainIn), release(releaseIn), accent(accentIn)
-    {
-        setMouseCursor(juce::MouseCursor::PointingHandCursor);
-        refreshFromParameters();
-    }
-
-    void refreshFromParameters()
-    {
-        const auto a = attack.get();
-        const auto d = decay.get();
-        const auto s = sustain.get();
-        const auto r = release.get();
-
-        if (std::abs(a - lastAttack) > 0.0001f
-            || std::abs(d - lastDecay) > 0.0001f
-            || std::abs(s - lastSustain) > 0.0001f
-            || std::abs(r - lastRelease) > 0.0001f)
-        {
-            lastAttack = a;
-            lastDecay = d;
-            lastSustain = s;
-            lastRelease = r;
-            repaint();
-        }
-    }
-
-    void paint(juce::Graphics& g) override
-    {
-        const auto area = getLocalBounds().toFloat().reduced(4.0f);
-        if (area.isEmpty())
-        {
-            return;
-        }
-
-        g.setColour(juce::Colour::fromRGBA(10, 18, 10, 155));
-        g.fillRoundedRectangle(area, 8.0f);
-        g.setColour(accent.withAlpha(0.28f));
-        g.drawRoundedRectangle(area, 8.0f, 1.0f);
-
-        const auto geom = computeGeometry();
-
-        // Subtle grid for time/level reference.
-        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 24));
-        for (int i = 1; i < 6; ++i)
-        {
-            const auto x = juce::jmap(static_cast<float>(i), 0.0f, 6.0f, geom.left, geom.right);
-            g.drawVerticalLine(static_cast<int>(std::lround(x)), geom.top, geom.bottom);
-        }
-
-        for (int i = 0; i <= 4; ++i)
-        {
-            const auto y = juce::jmap(static_cast<float>(i), 0.0f, 4.0f, geom.top, geom.bottom);
-            g.drawHorizontalLine(static_cast<int>(std::lround(y)), geom.left, geom.right);
-        }
-
-        g.setColour(juce::Colour::fromRGBA(210, 210, 210, 75));
-        g.setFont(juce::FontOptions(9.0f));
-        g.drawText("100%", juce::Rectangle<int>(static_cast<int>(geom.left) - 34, static_cast<int>(geom.top) - 6, 32, 12), juce::Justification::centredRight);
-        g.drawText("50%", juce::Rectangle<int>(static_cast<int>(geom.left) - 34, static_cast<int>((geom.top + geom.bottom) * 0.5f) - 6, 32, 12), juce::Justification::centredRight);
-        g.drawText("0%", juce::Rectangle<int>(static_cast<int>(geom.left) - 34, static_cast<int>(geom.bottom) - 6, 32, 12), juce::Justification::centredRight);
-
-        juce::Path envPath;
-        envPath.startNewSubPath(geom.start);
-        envPath.lineTo(geom.attackPoint);
-        envPath.lineTo(geom.decaySustainPoint);
-        envPath.lineTo(geom.releasePoint);
-        envPath.lineTo(geom.end);
-
-        g.setColour(accent.withAlpha(0.28f));
-        g.strokePath(envPath, juce::PathStrokeType(5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-
-        g.setColour(accent.brighter(0.25f));
-        g.strokePath(envPath, juce::PathStrokeType(2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-
-        drawHandleMarker(g, geom.attackPoint, DragHandle::attack);
-        drawHandleMarker(g, geom.decaySustainPoint, DragHandle::decaySustain);
-        drawHandleMarker(g, geom.releasePoint, DragHandle::release);
-
-        // Draw labels above curve/markers.
-        drawHandleLabel(g, geom.attackPoint, DragHandle::attack, "A");
-        drawHandleLabel(g, geom.decaySustainPoint, DragHandle::decaySustain, "D/S");
-        drawHandleLabel(g, geom.releasePoint, DragHandle::release, "R");
-
-        const auto active = dragHandle != DragHandle::none ? dragHandle : hoverHandle;
-        if (active != DragHandle::none)
-        {
-            const auto handlePos = handlePositionFor(active, geom);
-            const auto text = valueTextForHandle(active);
-
-            auto bubble = juce::Rectangle<float>(0.0f, 0.0f, 122.0f, 30.0f);
-            bubble.setCentre(handlePos.translated(0.0f, -24.0f));
-            bubble = bubble.withPosition(juce::jlimit(area.getX(), area.getRight() - bubble.getWidth(), bubble.getX()),
-                                         juce::jlimit(area.getY(), area.getBottom() - bubble.getHeight(), bubble.getY()));
-
-            g.setColour(juce::Colour::fromRGBA(9, 14, 9, 232));
-            g.fillRoundedRectangle(bubble, 6.0f);
-            g.setColour(accent.withAlpha(0.78f));
-            g.drawRoundedRectangle(bubble, 6.0f, 1.0f);
-            g.setColour(juce::Colour::fromRGB(232, 242, 232));
-            g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-            g.drawText(text, bubble.toNearestInt(), juce::Justification::centred);
-        }
-    }
-
-    void mouseMove(const juce::MouseEvent& event) override
-    {
-        hoverHandle = pickHandle(event.position, computeGeometry());
-        repaint();
-    }
-
-    void mouseExit(const juce::MouseEvent&) override
-    {
-        if (dragHandle == DragHandle::none)
-        {
-            hoverHandle = DragHandle::none;
-            repaint();
-        }
-    }
-
-    void mouseDown(const juce::MouseEvent& event) override
-    {
-        const auto geom = computeGeometry();
-        dragHandle = pickHandle(event.position, geom);
-        hoverHandle = dragHandle;
-        if (dragHandle == DragHandle::none)
-        {
-            return;
-        }
-
-        if (dragHandle == DragHandle::attack)
-        {
-            attack.beginChangeGesture();
-        }
-        else if (dragHandle == DragHandle::decaySustain)
-        {
-            decay.beginChangeGesture();
-            sustain.beginChangeGesture();
-        }
-        else if (dragHandle == DragHandle::release)
-        {
-            release.beginChangeGesture();
-        }
-
-        applyDragPosition(event.position, geom);
-    }
-
-    void mouseDrag(const juce::MouseEvent& event) override
-    {
-        if (dragHandle == DragHandle::none)
-        {
-            return;
-        }
-
-        applyDragPosition(event.position, computeGeometry());
-    }
-
-    void mouseUp(const juce::MouseEvent&) override
-    {
-        if (dragHandle == DragHandle::attack)
-        {
-            attack.endChangeGesture();
-        }
-        else if (dragHandle == DragHandle::decaySustain)
-        {
-            decay.endChangeGesture();
-            sustain.endChangeGesture();
-        }
-        else if (dragHandle == DragHandle::release)
-        {
-            release.endChangeGesture();
-        }
-
-        dragHandle = DragHandle::none;
-        repaint();
-    }
-
-    void mouseDoubleClick(const juce::MouseEvent& event) override
-    {
-        const auto handle = pickHandle(event.position, computeGeometry());
-        if (handle == DragHandle::none)
-        {
-            return;
-        }
-
-        if (handle == DragHandle::attack)
-        {
-            attack.beginChangeGesture();
-            attack.setValueNotifyingHost(static_cast<juce::RangedAudioParameter&>(attack).getDefaultValue());
-            attack.endChangeGesture();
-        }
-        else if (handle == DragHandle::decaySustain)
-        {
-            decay.beginChangeGesture();
-            sustain.beginChangeGesture();
-            decay.setValueNotifyingHost(static_cast<juce::RangedAudioParameter&>(decay).getDefaultValue());
-            sustain.setValueNotifyingHost(static_cast<juce::RangedAudioParameter&>(sustain).getDefaultValue());
-            decay.endChangeGesture();
-            sustain.endChangeGesture();
-        }
-        else if (handle == DragHandle::release)
-        {
-            release.beginChangeGesture();
-            release.setValueNotifyingHost(static_cast<juce::RangedAudioParameter&>(release).getDefaultValue());
-            release.endChangeGesture();
-        }
-
-        refreshFromParameters();
-    }
-
-private:
-    enum class DragHandle
-    {
-        none,
-        attack,
-        decaySustain,
-        release
-    };
-
-    struct Geometry
-    {
-        float left { 0.0f };
-        float right { 0.0f };
-        float top { 0.0f };
-        float bottom { 0.0f };
-        float attackRangeWidth { 1.0f };
-        float releaseRangeWidth { 1.0f };
-        float minDecayGap { 1.0f };
-        float minSustainWidth { 1.0f };
-        juce::Point<float> start;
-        juce::Point<float> attackPoint;
-        juce::Point<float> decaySustainPoint;
-        juce::Point<float> releasePoint;
-        juce::Point<float> end;
-    };
-
-    static float clamp01(float v)
-    {
-        return juce::jlimit(0.0f, 1.0f, v);
-    }
-
-    static float timeToVisualNorm(float seconds, float minValue, float maxValue)
-    {
-        const auto clamped = juce::jlimit(minValue, maxValue, seconds);
-        const auto denom = std::log(juce::jmax(minValue * 1.001f, maxValue) / minValue);
-        if (denom <= 0.0f)
-        {
-            return 0.0f;
-        }
-        return clamp01(std::log(clamped / minValue) / denom);
-    }
-
-    static float visualNormToTime(float norm, float minValue, float maxValue)
-    {
-        const auto clampedNorm = clamp01(norm);
-        return minValue * std::pow(maxValue / minValue, clampedNorm);
-    }
-
-    Geometry computeGeometry() const
-    {
-        Geometry geom;
-        const auto area = getLocalBounds().toFloat().reduced(10.0f, 8.0f);
-
-        geom.left = area.getX() + 26.0f;
-        geom.right = area.getRight() - 10.0f;
-        geom.top = area.getY() + 8.0f;
-        geom.bottom = area.getBottom() - 14.0f;
-
-        const auto totalWidth = juce::jmax(20.0f, geom.right - geom.left);
-        geom.attackRangeWidth = totalWidth * 0.30f;
-        geom.releaseRangeWidth = totalWidth * 0.30f;
-        geom.minDecayGap = juce::jmax(10.0f, totalWidth * 0.04f);
-        geom.minSustainWidth = juce::jmax(12.0f, totalWidth * 0.10f);
-
-        const auto attackRange = attack.getNormalisableRange();
-        const auto decayRange = decay.getNormalisableRange();
-        const auto releaseRange = release.getNormalisableRange();
-
-        const auto attackNorm = timeToVisualNorm(attack.get(), attackRange.start, attackRange.end);
-        const auto decayNorm = timeToVisualNorm(decay.get(), decayRange.start, decayRange.end);
-        const auto releaseNorm = timeToVisualNorm(release.get(), releaseRange.start, releaseRange.end);
-        const auto sustainNorm = clamp01(sustain.get());
-
-        const auto xAttack = geom.left + attackNorm * geom.attackRangeWidth;
-        auto xRelease = geom.right - releaseNorm * geom.releaseRangeWidth;
-        xRelease = juce::jmax(xAttack + geom.minDecayGap + geom.minSustainWidth, xRelease);
-
-        const auto xDecayMin = xAttack + geom.minDecayGap;
-        const auto xDecayMax = juce::jmax(xDecayMin + 1.0f, xRelease - geom.minSustainWidth);
-        const auto xDecay = xDecayMin + decayNorm * (xDecayMax - xDecayMin);
-        const auto ySustain = juce::jmap(sustainNorm, geom.bottom, geom.top);
-
-        geom.start = { geom.left, geom.bottom };
-        geom.attackPoint = { xAttack, geom.top };
-        geom.decaySustainPoint = { xDecay, ySustain };
-        geom.releasePoint = { xRelease, ySustain };
-        geom.end = { geom.right, geom.bottom };
-        return geom;
-    }
-
-    static float distSq(juce::Point<float> a, juce::Point<float> b)
-    {
-        const auto dx = a.getX() - b.getX();
-        const auto dy = a.getY() - b.getY();
-        return dx * dx + dy * dy;
-    }
-
-    DragHandle pickHandle(juce::Point<float> p, const Geometry& geom) const
-    {
-        constexpr float hitRadius = 13.0f;
-        const auto hitSq = hitRadius * hitRadius;
-
-        const auto a = distSq(p, geom.attackPoint);
-        const auto ds = distSq(p, geom.decaySustainPoint);
-        const auto r = distSq(p, geom.releasePoint);
-
-        auto best = DragHandle::none;
-        auto bestSq = hitSq;
-
-        if (a <= bestSq)
-        {
-            bestSq = a;
-            best = DragHandle::attack;
-        }
-        if (ds <= bestSq)
-        {
-            bestSq = ds;
-            best = DragHandle::decaySustain;
-        }
-        if (r <= bestSq)
-        {
-            best = DragHandle::release;
-        }
-
-        return best;
-    }
-
-    juce::Point<float> handlePositionFor(DragHandle handle, const Geometry& geom) const
-    {
-        if (handle == DragHandle::attack)
-        {
-            return geom.attackPoint;
-        }
-        if (handle == DragHandle::decaySustain)
-        {
-            return geom.decaySustainPoint;
-        }
-        if (handle == DragHandle::release)
-        {
-            return geom.releasePoint;
-        }
-        return geom.start;
-    }
-
-    void drawHandleMarker(juce::Graphics& g, juce::Point<float> center, DragHandle handle) const
-    {
-        const auto active = (handle == dragHandle) || (handle == hoverHandle);
-        const auto radius = active ? 6.0f : 5.0f;
-        g.setColour(accent.withAlpha(active ? 1.0f : 0.86f));
-        g.fillEllipse(center.getX() - radius, center.getY() - radius, radius * 2.0f, radius * 2.0f);
-        g.setColour(juce::Colour::fromRGBA(12, 12, 12, 220));
-        g.drawEllipse(center.getX() - radius, center.getY() - radius, radius * 2.0f, radius * 2.0f, 1.2f);
-    }
-
-    void drawHandleLabel(juce::Graphics& g,
-                         juce::Point<float> center,
-                         DragHandle handle,
-                         const juce::String& id) const
-    {
-        const auto active = (handle == dragHandle) || (handle == hoverHandle);
-        auto labelBounds = juce::Rectangle<float>(center.getX() - 14.0f, center.getY() + 6.0f, 28.0f, 12.0f);
-
-        g.setColour(juce::Colour::fromRGBA(6, 12, 6, active ? 238 : 212));
-        g.fillRoundedRectangle(labelBounds, 3.0f);
-        g.setColour(accent.withAlpha(active ? 0.9f : 0.72f));
-        g.drawRoundedRectangle(labelBounds, 3.0f, 0.9f);
-
-        g.setColour(juce::Colour::fromRGBA(238, 248, 238, active ? 250 : 236));
-        g.setFont(juce::FontOptions(9.0f, juce::Font::bold));
-        g.drawText(id,
-                   labelBounds.toNearestInt(),
-                   juce::Justification::centred);
-    }
-
-    juce::String valueTextForHandle(DragHandle handle) const
-    {
-        if (handle == DragHandle::attack)
-        {
-            const auto sec = attack.get();
-            const auto ms = sec * 1000.0f;
-            return "ATTACK " + (sec < 1.0f ? juce::String(ms, 0) + " ms" : juce::String(sec, 2) + " s");
-        }
-
-        if (handle == DragHandle::decaySustain)
-        {
-            const auto sec = decay.get();
-            const auto ms = sec * 1000.0f;
-            const auto sustainPct = sustain.get() * 100.0f;
-            const auto decayText = sec < 1.0f ? juce::String(ms, 0) + " ms" : juce::String(sec, 2) + " s";
-            return "D " + decayText + " | S " + juce::String(sustainPct, 0) + "%";
-        }
-
-        if (handle == DragHandle::release)
-        {
-            const auto sec = release.get();
-            const auto ms = sec * 1000.0f;
-            return "RELEASE " + (sec < 1.0f ? juce::String(ms, 0) + " ms" : juce::String(sec, 2) + " s");
-        }
-
-        return {};
-    }
-
-    void setParameterFromActualValue(juce::AudioParameterFloat& parameter, float value)
-    {
-        const auto range = parameter.getNormalisableRange();
-        const auto clamped = juce::jlimit(range.start, range.end, value);
-        parameter.setValueNotifyingHost(parameter.convertTo0to1(clamped));
-    }
-
-    void applyDragPosition(juce::Point<float> mousePos, const Geometry& geom)
-    {
-        if (dragHandle == DragHandle::none)
-        {
-            return;
-        }
-
-        const auto x = mousePos.getX();
-        const auto y = mousePos.getY();
-
-        if (dragHandle == DragHandle::attack)
-        {
-            const auto maxX = juce::jmin(geom.left + geom.attackRangeWidth,
-                                         geom.releasePoint.getX() - geom.minDecayGap - geom.minSustainWidth);
-            const auto clampedX = juce::jlimit(geom.left, maxX, x);
-            const auto norm = clamp01((clampedX - geom.left) / juce::jmax(1.0f, geom.attackRangeWidth));
-            const auto range = attack.getNormalisableRange();
-            setParameterFromActualValue(attack, visualNormToTime(norm, range.start, range.end));
-        }
-        else if (dragHandle == DragHandle::decaySustain)
-        {
-            const auto xMin = geom.attackPoint.getX() + geom.minDecayGap;
-            const auto xMax = geom.releasePoint.getX() - geom.minSustainWidth;
-            const auto clampedX = juce::jlimit(xMin, xMax, x);
-            const auto available = juce::jmax(1.0f, xMax - xMin);
-            const auto decayNorm = clamp01((clampedX - xMin) / available);
-
-            const auto yClamped = juce::jlimit(geom.top, geom.bottom, y);
-            const auto sustainValue = juce::jmap(yClamped, geom.bottom, geom.top, 0.0f, 1.0f);
-
-            const auto decayRange = decay.getNormalisableRange();
-            setParameterFromActualValue(decay, visualNormToTime(decayNorm, decayRange.start, decayRange.end));
-            setParameterFromActualValue(sustain, sustainValue);
-        }
-        else if (dragHandle == DragHandle::release)
-        {
-            const auto minX = geom.decaySustainPoint.getX() + geom.minSustainWidth;
-            const auto clampedX = juce::jlimit(minX, geom.right, x);
-            const auto norm = clamp01((geom.right - clampedX) / juce::jmax(1.0f, geom.releaseRangeWidth));
-            const auto range = release.getNormalisableRange();
-            setParameterFromActualValue(release, visualNormToTime(norm, range.start, range.end));
-        }
-
-        refreshFromParameters();
-    }
-
-    juce::AudioParameterFloat& attack;
-    juce::AudioParameterFloat& decay;
-    juce::AudioParameterFloat& sustain;
-    juce::AudioParameterFloat& release;
-    juce::Colour accent;
-    DragHandle hoverHandle { DragHandle::none };
-    DragHandle dragHandle { DragHandle::none };
-    float lastAttack { -1.0f };
-    float lastDecay { -1.0f };
-    float lastSustain { -1.0f };
-    float lastRelease { -1.0f };
-};
-
 void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
                                                                          int x,
                                                                          int y,
@@ -936,12 +448,18 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     sustainLabel.setVisible(false);
     releaseLabel.setVisible(false);
 
-    envelopeGraph = std::make_unique<EnvelopeGraphComponent>(audioProcessor.getAttackParam(),
-                                                             audioProcessor.getDecayParam(),
-                                                             audioProcessor.getSustainParam(),
-                                                             audioProcessor.getReleaseParam(),
-                                                             kGroupAccents[2]);
+    envelopeGraph = std::make_unique<GenericEnvelopeComponent>(audioProcessor.getAttackParam(),
+                                                               audioProcessor.getDecayParam(),
+                                                               audioProcessor.getSustainParam(),
+                                                               audioProcessor.getReleaseParam(),
+                                                               kGroupAccents[2]);
     addAndMakeVisible(*envelopeGraph);
+
+    filterResponseComponent = std::make_unique<FilterResponseComponent>(audioProcessor.getFilterCutoffParam(),
+                                                                        audioProcessor.getFilterResonanceParam(),
+                                                                        audioProcessor.getFilterTypeParam(),
+                                                                        kGroupAccents[1]);
+    addAndMakeVisible(*filterResponseComponent);
 
     lfoFrequencyValueLabel.setJustificationType(juce::Justification::centred);
     lfoFrequencyValueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(218, 218, 228));
@@ -1033,7 +551,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     filterTypeBox.setSelectedItemIndex(filterTypeParam.getIndex(), juce::dontSendNotification);
     filterTypeBox.onChange = [this]()
     {
-        repaint();
+        refreshFilterResponseUI();
     };
     filterTypeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     filterTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
@@ -1079,6 +597,19 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     oscVowelLabel.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(oscVowelBox);
     addAndMakeVisible(oscVowelLabel);
+
+    oscillatorDisplayComponent = std::make_unique<OscillatorDisplayComponent>(oscSineKnob,
+                                                                               oscSawKnob,
+                                                                               oscSquareKnob,
+                                                                               oscSineLabel,
+                                                                               oscSawLabel,
+                                                                               oscSquareLabel,
+                                                                               oscModeBox,
+                                                                               oscModeLabel,
+                                                                               oscVowelBox,
+                                                                               oscVowelLabel,
+                                                                               kGroupAccents[0]);
+    addAndMakeVisible(*oscillatorDisplayComponent);
 
     auto& delayAlgoParam = audioProcessor.getDelayAlgorithmParam();
     const auto delayAlgoChoiceCount = delayAlgoParam.choices.size();
@@ -1381,6 +912,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     refreshGranularModeUI();
     refreshLfoAssignmentUI();
     refreshEnvelopeGraphUI();
+    refreshFilterResponseUI();
     refreshFxBypassUI();
     debugEditorCreatedTime = audioProcessor.debugNowTimestamp();
 #if PX3_DEBUG_PANEL
@@ -1594,254 +1126,6 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
         g.setColour(accent.brighter(0.35f));
         g.drawText(kGroupNames[i], labelArea, juce::Justification::centred);
 
-        if (i == 0)
-        {
-            auto oscSplit = panel.reduced(8, 8);
-            oscSplit.removeFromTop(26);
-            auto oscVizRect = oscSplit.removeFromLeft(oscSplit.getWidth() / 2).reduced(4, 2);
-            oscVizRect.removeFromBottom(28);
-
-            if (oscVizRect.getWidth() > 40 && oscVizRect.getHeight() > 24)
-            {
-                const auto modeIndex = juce::jmax(0, oscModeBox.getSelectedItemIndex());
-                const auto macroA = static_cast<float>(oscSineKnob.getValue());
-                const auto macroB = static_cast<float>(oscSawKnob.getValue());
-                const auto macroC = static_cast<float>(oscSquareKnob.getValue());
-
-                auto viz = oscVizRect.toFloat();
-                g.setColour(juce::Colour::fromRGBA(12, 16, 26, 170));
-                g.fillRoundedRectangle(viz, 7.0f);
-                g.setColour(juce::Colour::fromRGBA(145, 198, 255, 80));
-                g.drawRoundedRectangle(viz, 7.0f, 1.0f);
-
-                const auto left = viz.getX() + 6.0f;
-                const auto right = viz.getRight() - 6.0f;
-                const auto top = viz.getY() + 5.0f;
-                const auto bottom = viz.getBottom() - 5.0f;
-                const auto mid = (top + bottom) * 0.5f;
-                const auto width = juce::jmax(1.0f, right - left);
-                const auto height = juce::jmax(1.0f, bottom - top);
-
-                g.setColour(juce::Colour::fromRGBA(255, 255, 255, 28));
-                for (int gx = 1; gx < 6; ++gx)
-                {
-                    const auto x = left + width * (static_cast<float>(gx) / 6.0f);
-                    g.drawLine(x, top, x, bottom, 0.7f);
-                }
-                g.drawLine(left, mid, right, mid, 0.9f);
-
-                juce::Path wave;
-                wave.startNewSubPath(left, mid);
-
-                for (int s = 0; s <= 72; ++s)
-                {
-                    const auto t = static_cast<float>(s) / 72.0f;
-                    const auto phase = t * juce::MathConstants<float>::twoPi + oscVizPhase;
-                    float y = 0.0f;
-
-                    switch (modeIndex)
-                    {
-                        case 0: // SINE
-                            y = std::sin(phase);
-                            break;
-                        case 1: // SAW
-                            y = 2.0f * t - 1.0f;
-                            break;
-                        case 2: // SQUARE
-                            y = std::sin(phase) >= 0.0f ? 1.0f : -1.0f;
-                            break;
-                        case 3: // TRIANGLE
-                            y = 1.0f - 4.0f * std::abs(t - 0.5f);
-                            break;
-                        case 4: // NOISE
-                        case 5: // PINK NOISE
-                        {
-                            const auto n = std::sin(phase * 13.0f + t * 31.0f) * 0.7f
-                                           + std::sin(phase * 29.0f + t * 19.0f) * 0.3f;
-                            y = modeIndex == 5 ? n * 0.55f : n;
-                            break;
-                        }
-                        case 6: // SUPER SAW
-                            y = (std::sin(phase)
-                                 + std::sin(phase * (1.0f + 0.04f + macroA * 0.2f))
-                                 + std::sin(phase * (1.0f - 0.05f - macroA * 0.18f)))
-                                * 0.33f;
-                            break;
-                        case 7: // PWM
-                        {
-                            const auto widthNorm = juce::jlimit(0.1f, 0.9f, 0.1f + macroA * 0.8f);
-                            y = t < widthNorm ? 1.0f : -1.0f;
-                            break;
-                        }
-                        case 8: // WAVETABLE
-                            y = std::sin(phase * (1.0f + macroA * 4.0f)) * 0.6f
-                                + std::sin(phase * (3.0f + macroB * 5.0f)) * 0.35f;
-                            break;
-                        case 9:  // ADDITIVE
-                        case 18: // ISAAC
-                            y = std::sin(phase) * 0.62f + std::sin(phase * 2.0f) * 0.22f + std::sin(phase * 3.0f) * 0.16f;
-                            break;
-                        case 10: // FORMANT
-                            y = std::sin(phase) * 0.45f + std::sin(phase * (2.0f + macroB * 2.0f)) * 0.33f + std::sin(phase * 4.0f) * 0.22f;
-                            break;
-                        case 11: // FM
-                            y = std::sin(phase + std::sin(phase * (1.0f + macroA * 4.0f)) * (macroB * 3.0f));
-                            break;
-                        case 12: // HARD SYNC
-                            y = std::sin(std::fmod(phase * (1.0f + macroA * 6.0f), juce::MathConstants<float>::twoPi));
-                            break;
-                        case 13: // KARPLUS
-                        case 15: // DIGITAL
-                        case 16: // PHYSICAL
-                            y = std::sin(phase * (1.0f + macroA * 2.0f)) * (0.7f - t * 0.35f)
-                                + std::sin(phase * (5.0f + macroB * 8.0f)) * 0.18f;
-                            break;
-                        case 14: // ORGAN
-                            y = std::sin(phase) * 0.55f + std::sin(phase * 2.0f) * 0.30f + std::sin(phase * 4.0f) * 0.15f;
-                            break;
-                        case 17: // ROB
-                            y = std::sin(phase * (1.0f + macroB * 1.8f)) * 0.6f + std::sin(phase * 7.0f + t * 9.0f) * 0.25f;
-                            break;
-                        case 19: // PX3
-                            y = std::sin(phase * (1.0f + macroA * 2.3f)
-                                         + std::sin(phase * (2.0f + macroB * 5.0f)) * (0.7f + macroC * 2.4f));
-                            break;
-                        default:
-                            y = std::sin(phase);
-                            break;
-                    }
-
-                    y = juce::jlimit(-1.0f, 1.0f, y);
-                    const auto px = left + t * width;
-                    const auto py = mid - y * (height * 0.40f);
-                    if (s == 0)
-                    {
-                        wave.startNewSubPath(px, py);
-                    }
-                    else
-                    {
-                        wave.lineTo(px, py);
-                    }
-                }
-
-                const auto glowAlpha = juce::jlimit(0.20f, 0.86f, 0.20f + 0.22f * (macroA + macroB + macroC));
-                g.setColour(juce::Colour::fromRGBA(118, 190, 255, static_cast<juce::uint8>(std::round(glowAlpha * 120.0f))));
-                g.strokePath(wave,
-                             juce::PathStrokeType(3.0f,
-                                                  juce::PathStrokeType::curved,
-                                                  juce::PathStrokeType::rounded));
-                g.setColour(juce::Colour::fromRGB(170, 228, 255));
-                g.strokePath(wave,
-                             juce::PathStrokeType(1.35f,
-                                                  juce::PathStrokeType::curved,
-                                                  juce::PathStrokeType::rounded));
-
-                g.setColour(juce::Colour::fromRGBA(255, 255, 255, 120));
-                g.setFont(juce::FontOptions(10.0f));
-                g.drawText("Mode Visual", oscVizRect.removeFromTop(14), juce::Justification::centredTop);
-            }
-        }
-
-        if (i == 1)
-        {
-            // This mini-response graph is intentionally illustrative (not an
-            // exact transfer-function plot). It helps developers and testers
-            // confirm filter mode selection at a glance without opening debug.
-            const auto idx = juce::jlimit(0, 6, filterTypeBox.getSelectedItemIndex());
-
-            const auto cutoffBounds = cutoffKnob.getBounds().toFloat();
-            const auto resonanceBounds = resonanceKnob.getBounds().toFloat();
-            const auto dropdownBounds = filterTypeBox.getBounds().toFloat();
-
-            const auto knobBottom = juce::jmax(cutoffBounds.getBottom(), resonanceBounds.getBottom());
-            const auto knobCenterX = (cutoffBounds.getCentreX() + resonanceBounds.getCentreX()) * 0.5f;
-            const auto graphWidth = juce::jmin(56.0f, panelFloat.getWidth() - 20.0f);
-            const auto graphHeight = 22.0f;
-
-            const auto minY = knobBottom + 6.0f;
-            const auto maxY = dropdownBounds.getY() - graphHeight - 4.0f;
-            const auto graphY = (maxY >= minY)
-                                    ? juce::jlimit(minY, maxY, minY + (maxY - minY) * 0.4f)
-                                    : minY;
-            const auto liftedGraphY = juce::jmax(panelFloat.getY() + 30.0f, graphY - 15.0f);
-            const auto graphX = juce::jlimit(panelFloat.getX() + 8.0f,
-                                             panelFloat.getRight() - graphWidth - 8.0f,
-                                             knobCenterX - graphWidth * 0.5f);
-            auto graphRect = juce::Rectangle<float>(graphX, liftedGraphY, graphWidth, graphHeight);
-            g.setColour(juce::Colour::fromRGBA(20, 20, 20, 140));
-            g.fillRoundedRectangle(graphRect, 4.0f);
-            g.setColour(juce::Colour::fromRGBA(255, 255, 255, 70));
-            g.drawRoundedRectangle(graphRect, 4.0f, 1.0f);
-
-            const auto left = graphRect.getX() + 4.0f;
-            const auto right = graphRect.getRight() - 4.0f;
-            const auto top = graphRect.getY() + 4.0f;
-            const auto bottom = graphRect.getBottom() - 4.0f;
-            const auto midY = (top + bottom) * 0.5f;
-
-            g.setColour(juce::Colour::fromRGBA(255, 255, 255, 36));
-            g.drawLine(left, midY, right, midY, 1.0f);
-
-            juce::Path response;
-            response.startNewSubPath(left, bottom);
-
-            const auto width = juce::jmax(1.0f, right - left);
-            for (int s = 1; s <= 40; ++s)
-            {
-                const auto t = static_cast<float>(s) / 40.0f;
-                const auto x = left + t * width;
-                float yNorm = 0.5f;
-
-                switch (idx)
-                {
-                    case 0: // LP12
-                        yNorm = 1.0f - std::pow(t, 1.35f);
-                        break;
-                    case 1: // LP24
-                        yNorm = 1.0f - std::pow(t, 2.35f);
-                        break;
-                    case 2: // HP12
-                        yNorm = std::pow(t, 1.35f);
-                        break;
-                    case 3: // HP24
-                        yNorm = std::pow(t, 2.35f);
-                        break;
-                    case 4: // BandPass
-                    {
-                        const auto d = std::abs(t - 0.5f) * 2.0f;
-                        yNorm = juce::jmax(0.0f, 1.0f - d * d);
-                        break;
-                    }
-                    case 5: // Notch
-                    {
-                        const auto d = std::abs(t - 0.5f) * 2.0f;
-                        yNorm = 0.12f + 0.88f * juce::jlimit(0.0f, 1.0f, d * d);
-                        break;
-                    }
-                    case 6: // AllPass
-                        yNorm = 0.55f;
-                        break;
-                    default:
-                        break;
-                }
-
-                const auto y = bottom - juce::jlimit(0.0f, 1.0f, yNorm) * (bottom - top);
-                response.lineTo(x, y);
-            }
-
-            g.setColour(juce::Colour::fromRGB(124, 206, 255));
-            g.strokePath(response, juce::PathStrokeType(1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-
-            if (idx == 4)
-            {
-                const auto barW = width / 7.0f;
-                const auto centerX = (left + right) * 0.5f;
-                g.setColour(juce::Colour::fromRGBA(124, 206, 255, 95));
-                g.fillRect(centerX - barW * 1.6f, bottom - (bottom - top) * 0.40f, barW, (bottom - top) * 0.40f);
-                g.fillRect(centerX - barW * 0.5f, bottom - (bottom - top) * 0.78f, barW, (bottom - top) * 0.78f);
-                g.fillRect(centerX + barW * 0.6f, bottom - (bottom - top) * 0.48f, barW, (bottom - top) * 0.48f);
-            }
-        }
     }
 
 }
@@ -1997,9 +1281,15 @@ void PX3SynthAudioProcessorEditor::resized()
     x += envWidth + groupGap;
     knobGroupAreas[3] = { x, groupsSpan.getY(), lfoWidth, groupsSpan.getHeight() };
 
-    layoutKnobGroup(knobGroupAreas[0], 0, 3, kGroupAccents[0]);
     layoutKnobGroup(knobGroupAreas[1], 3, 2, kGroupAccents[1]);
     layoutKnobGroup(knobGroupAreas[3], 9, 1, kGroupAccents[3]);
+
+    if (oscillatorDisplayComponent != nullptr)
+    {
+        auto oscArea = knobGroupAreas[0].reduced(10, 8);
+        oscArea.removeFromTop(30);
+        oscillatorDisplayComponent->setBounds(oscArea);
+    }
 
     if (envelopeGraph != nullptr)
     {
@@ -2009,28 +1299,22 @@ void PX3SynthAudioProcessorEditor::resized()
     }
 
     {
-        auto oscArea = knobGroupAreas[0].reduced(12, 8);
-        auto oscLeft = oscArea.removeFromLeft(oscArea.getWidth() / 2).reduced(0, 0);
-        auto oscRight = oscArea.reduced(0, 0);
-        auto modeRow = juce::Rectangle<int>(oscLeft.getX(), oscLeft.getBottom() - 22, oscLeft.getWidth(), 18);
-        auto vowelRow = juce::Rectangle<int>(oscRight.getX(), oscRight.getBottom() - 44, oscRight.getWidth(), 18);
-
-        auto modeLabelArea = modeRow.removeFromLeft(52);
-        oscModeLabel.setBounds(modeLabelArea);
-        oscModeBox.setBounds(modeRow.reduced(1, 0));
-
-        auto vowelLabelArea = vowelRow.removeFromLeft(52);
-        oscVowelLabel.setBounds(vowelLabelArea);
-        oscVowelBox.setBounds(vowelRow.reduced(1, 0));
-    }
-
-    {
         auto filterArea = knobGroupAreas[1].reduced(12, 8);
+        auto responseArea = filterArea;
+        responseArea.removeFromTop(30);
         const auto row = juce::Rectangle<int>(filterArea.getX(),
                                               filterArea.getBottom() - 22,
                                               filterArea.getWidth(),
                                               18);
         filterTypeBox.setBounds(row.reduced(1, 0));
+
+        if (filterResponseComponent != nullptr)
+        {
+            const auto maxBottom = row.getY() - 4;
+            auto graphArea = responseArea.withBottom(juce::jmax(responseArea.getY(), maxBottom));
+            graphArea = graphArea.withTrimmedLeft(4).withTrimmedRight(4);
+            filterResponseComponent->setBounds(graphArea);
+        }
     }
 
     {
@@ -3010,70 +2294,10 @@ void PX3SynthAudioProcessorEditor::refreshOscillatorModeUI()
         oscVowelBox.setSelectedItemIndex(paramVowelIndex, juce::dontSendNotification);
     }
 
-    const auto modeIndex = juce::jmax(0, oscModeBox.getSelectedItemIndex());
-    if (modeIndex == lastOscModeIndex)
+    if (oscillatorDisplayComponent != nullptr)
     {
-        return;
+        oscillatorDisplayComponent->refreshFromSelections(paramModeIndex, paramVowelIndex);
     }
-
-    lastOscModeIndex = modeIndex;
-
-    struct ModeUi
-    {
-        const char* a;
-        const char* b;
-        const char* c;
-        int count;
-        bool showVowel;
-    };
-
-    static const std::array<ModeUi, 20> modeUi { {
-        { "", "", "", 0, false },                // SINE
-        { "", "", "", 0, false },                // SAW
-        { "", "", "", 0, false },                // SQUARE
-        { "", "", "", 0, false },                // TRIANGLE
-        { "COLOR", "", "", 1, false },           // NOISE
-        { "COLOR", "", "", 1, false },           // PINK NOISE
-        { "DETUNE", "SPREAD", "", 2, false },    // SUPER SAW
-        { "WIDTH", "", "", 1, false },           // PWM
-        { "POSITION", "", "", 1, false },        // WAVETABLE
-        { "TILT", "ODD/EVEN", "ROLL", 3, false },// ADDITIVE
-        { "MORPH", "COLOR", "", 2, true },       // FORMANT
-        { "RATIO", "INDEX", "", 2, false },      // FM
-        { "SYNC", "DRIVE", "", 2, false },       // HARD SYNC
-        { "DECAY", "BRIGHT", "", 2, false },     // KARPLUS
-        { "TONE", "CLICK", "", 2, false },       // ORGAN
-        { "BITS", "RATE", "", 2, false },        // DIGITAL
-        { "DECAY", "MATERIAL", "", 2, false },   // PHYSICAL
-        { "TRANS", "BODY", "CHAOS", 3, false },  // ROB
-        { "SPREAD", "ODD/EVEN", "ROLL", 3, false }, // ISAAC
-        { "MORPH", "CHAR", "MOVE", 3, false }    // PX3
-    } };
-
-    const auto ui = modeUi[static_cast<std::size_t>(juce::jlimit(0, static_cast<int>(modeUi.size()) - 1, modeIndex))];
-
-    const std::array<juce::Slider*, 3> sliders { &oscSineKnob, &oscSawKnob, &oscSquareKnob };
-    const std::array<KnobLabel*, 3> labels { &oscSineLabel, &oscSawLabel, &oscSquareLabel };
-    const std::array<const char*, 3> texts { ui.a, ui.b, ui.c };
-
-    for (int i = 0; i < 3; ++i)
-    {
-        const auto show = i < ui.count;
-        sliders[static_cast<std::size_t>(i)]->setVisible(show);
-        labels[static_cast<std::size_t>(i)]->setVisible(show);
-        labels[static_cast<std::size_t>(i)]->setText(show ? texts[static_cast<std::size_t>(i)] : "", juce::dontSendNotification);
-        const auto tooltipText = show ? juce::String(texts[static_cast<std::size_t>(i)]) : juce::String();
-        labels[static_cast<std::size_t>(i)]->setTooltip(tooltipText);
-        sliders[static_cast<std::size_t>(i)]->setTooltip(tooltipText);
-    }
-
-    oscVowelBox.setVisible(ui.showVowel);
-    oscVowelLabel.setVisible(ui.showVowel);
-
-    // Mode changes alter how many OSC knobs are visible; re-run OSC layout immediately
-    // so hidden/visible knobs don't keep stale bounds from the previous mode.
-    layoutKnobGroup(knobGroupAreas[0], 0, 3, kGroupAccents[0]);
-    repaint();
 }
 
 void PX3SynthAudioProcessorEditor::layoutKnobGroup(const juce::Rectangle<int>& groupArea,
@@ -3387,6 +2611,14 @@ void PX3SynthAudioProcessorEditor::refreshEnvelopeGraphUI()
     }
 }
 
+void PX3SynthAudioProcessorEditor::refreshFilterResponseUI()
+{
+    if (filterResponseComponent != nullptr)
+    {
+        filterResponseComponent->refreshFromParameters();
+    }
+}
+
 void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
 {
     const auto vibeEnabled = audioProcessor.getVibeEnabledParam().get();
@@ -3460,6 +2692,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     refreshLfoAssignmentUI();
     refreshLfoFrequencyLabel();
     refreshEnvelopeGraphUI();
+    refreshFilterResponseUI();
     refreshFxBypassUI();
     refreshTopMenuSelectionFromProcessor();
 
@@ -3477,12 +2710,10 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         debugRefreshTickCounter = 0;
     }
 
-    oscVizPhase += 0.09f;
-    if (oscVizPhase > juce::MathConstants<float>::twoPi)
+    if (oscillatorDisplayComponent != nullptr)
     {
-        oscVizPhase -= juce::MathConstants<float>::twoPi;
+        oscillatorDisplayComponent->advanceAnimation(0.09f);
     }
-    repaint(knobGroupAreas[0].expanded(4));
 
     // MIDI status bar is temporarily disabled.
     const auto latestStatus = audioProcessor.copyMidiStatus();

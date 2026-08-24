@@ -56,8 +56,12 @@ target_sources(PX3Synth
     PRIVATE
         Source/UI/PerformanceControls.cpp
         Source/UI/PianoKeyboard.cpp
+        Source/UI/GenericEnvelopeComponent.cpp
+        Source/UI/FilterResponseComponent.cpp
+        Source/UI/OscillatorDisplayComponent.cpp
         Source/UI/PluginEditor.cpp
         Source/UI/PluginEditorDebug.cpp
+        Source/DSP/EnvelopeGenerator.cpp
         Source/DSP/PluginProcessor.cpp
         Source/DSP/PluginProcessorParameters.cpp
         Source/DSP/PluginProcessorMidi.cpp
@@ -68,6 +72,7 @@ target_sources(PX3Synth
         Source/DSP/SynthSound.cpp
         Source/DSP/VibeEngine.cpp
         Source/DSP/OscillatorUnit.cpp
+        Source/DSP/VoiceFilter.cpp
         Source/DSP/SynthVoice.cpp
         Source/Preset/PresetManager.cpp
 )

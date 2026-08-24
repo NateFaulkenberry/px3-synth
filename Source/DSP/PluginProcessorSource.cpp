@@ -17,16 +17,23 @@ SubtractiveSettings PX3SynthAudioProcessor::currentSubtractiveSettings() const
     settings.squareMix = oscSquareParam->convertFrom0to1(applyLfoToNormalizedValue(oscSquareParam,
                                                                                     static_cast<juce::RangedAudioParameter*>(oscSquareParam)->getValue(),
                                                                                     lfoSignal));
-    settings.filterCutoffHz = filterCutoffParam->convertFrom0to1(applyLfoToNormalizedValue(filterCutoffParam,
-                                                                                            static_cast<juce::RangedAudioParameter*>(filterCutoffParam)->getValue(),
-                                                                                            lfoSignal));
-    settings.filterResonanceQ = filterResonanceParam->convertFrom0to1(applyLfoToNormalizedValue(filterResonanceParam,
-                                                                                                 static_cast<juce::RangedAudioParameter*>(filterResonanceParam)->getValue(),
-                                                                                                 lfoSignal));
-    settings.filterTypeIndex = filterTypeParam->getIndex();
     settings.masterGain = masterGainParam->convertFrom0to1(applyLfoToNormalizedValue(masterGainParam,
                                                                                       static_cast<juce::RangedAudioParameter*>(masterGainParam)->getValue(),
                                                                                       lfoSignal));
+    return settings;
+}
+
+FilterSettings PX3SynthAudioProcessor::currentFilterSettings() const
+{
+    const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
+    FilterSettings settings;
+    settings.cutoffHz = filterCutoffParam->convertFrom0to1(applyLfoToNormalizedValue(filterCutoffParam,
+                                                                                      static_cast<juce::RangedAudioParameter*>(filterCutoffParam)->getValue(),
+                                                                                      lfoSignal));
+    settings.resonanceQ = filterResonanceParam->convertFrom0to1(applyLfoToNormalizedValue(filterResonanceParam,
+                                                                                           static_cast<juce::RangedAudioParameter*>(filterResonanceParam)->getValue(),
+                                                                                           lfoSignal));
+    settings.modeIndex = filterTypeParam->getIndex();
     return settings;
 }
 

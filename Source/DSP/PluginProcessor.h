@@ -214,6 +214,7 @@ private:
     void incrementNoteCount(std::size_t index);
     void decrementNoteCount(std::size_t index);
     SubtractiveSettings currentSubtractiveSettings() const;
+    FilterSettings currentFilterSettings() const;
     OscillatorSettings currentOscillatorSettings() const;
     EnvelopeSettings currentEnvelopeSettings() const;
 

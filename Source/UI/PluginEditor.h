@@ -10,6 +10,9 @@
 #include "PianoKeyboard.h"
 #include "PresetManager.h"
 #include "PluginProcessor.h"
+#include "GenericEnvelopeComponent.h"
+#include "FilterResponseComponent.h"
+#include "OscillatorDisplayComponent.h"
 
 /**
  * Main JUCE editor for P(X3).
@@ -43,8 +46,6 @@ public:
     void mouseUp(const juce::MouseEvent& event) override;
 
 private:
-    class EnvelopeGraphComponent;
-
     class KnobLookAndFeel final : public juce::LookAndFeel_V4
     {
     public:
@@ -82,6 +83,38 @@ private:
         }
     };
 
+    class SectionPanelComponent final : public juce::Component
+    {
+    public:
+        void setHeader(juce::String titleIn, juce::Colour accentIn)
+        {
+            title = std::move(titleIn);
+            accent = accentIn;
+            repaint();
+        }
+
+        void paint(juce::Graphics& g) override
+        {
+            const auto area = getLocalBounds().toFloat().reduced(2.0f);
+            g.setColour(accent.withAlpha(0.14f));
+            g.fillRoundedRectangle(area, 10.0f);
+
+            g.setColour(accent.withAlpha(0.10f));
+            g.fillRoundedRectangle(area.withTrimmedBottom(area.getHeight() * 0.5f), 10.0f);
+
+            g.setColour(accent.withAlpha(0.75f));
+            g.drawRoundedRectangle(area, 10.0f, 1.0f);
+
+            g.setColour(accent.brighter(0.30f));
+            g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
+            g.drawText(title, getLocalBounds().removeFromTop(24), juce::Justification::centred);
+        }
+
+    private:
+        juce::String title { "" };
+        juce::Colour accent { juce::Colour::fromRGB(100, 100, 100) };
+    };
+
     struct KnobBinding
     {
         juce::Slider* slider { nullptr };
@@ -104,6 +137,14 @@ private:
     void refreshLfoAssignmentUI();
     void refreshLfoFrequencyLabel();
     void refreshEnvelopeGraphUI();
+    void refreshFilterResponseUI();
+    void updatePanelVisibility();
+    bool isPanelVisible(int sectionIndex) const;
+    void layoutOscPanel();
+    void layoutFilterPanel();
+    void layoutEnvelopePanel();
+    void layoutFxPanel();
+    void layoutMixPanel();
     void updateFxSectionTargets(const juce::Rectangle<int>& topArea, int topGap);
     void layoutFxSectionsFromCurrentAreas();
     void animateFxSections();
@@ -217,10 +258,10 @@ private:
     bool anyKeyDown { false };
     float logoVibrationPhase { 0.0f };
     float logoVibrationIntensity { 0.0f };
-    float oscVizPhase { 0.0f };
 
     juce::Rectangle<int> headerArea;
     juce::Rectangle<int> controlsArea;
+    juce::Rectangle<int> panelViewportArea;
     juce::Rectangle<int> topMenuStripArea;
     juce::Rectangle<int> logoPanelArea;
     juce::Rectangle<int> topMenuSectionButtonsArea;
@@ -281,7 +322,14 @@ private:
     juce::Label lfoFrequencyValueLabel;
     KnobLabel lfoAssignLabel;
     KnobLabel midiStatusLabel;
-    std::unique_ptr<EnvelopeGraphComponent> envelopeGraph;
+    SectionPanelComponent oscPanel;
+    SectionPanelComponent envPanel;
+    SectionPanelComponent fltPanel;
+    SectionPanelComponent fxPanel;
+    SectionPanelComponent mixPanel;
+    std::unique_ptr<OscillatorDisplayComponent> oscillatorDisplayComponent;
+    std::unique_ptr<GenericEnvelopeComponent> envelopeGraph;
+    std::unique_ptr<FilterResponseComponent> filterResponseComponent;
 
     juce::Slider vibeAmountKnob;
     KnobLabel vibeAmountLabel;
@@ -348,7 +396,6 @@ private:
     std::vector<std::unique_ptr<juce::ButtonParameterAttachment>> buttonAttachments;
 
     std::array<KnobBinding, 11> knobBindings {};
-    int lastOscModeIndex { -1 };
     int lastGranularModeIndex { -1 };
     int lastLfoAssignmentIndex { -1 };
 
