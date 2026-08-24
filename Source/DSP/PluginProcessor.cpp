@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginProcessorInternals.h"
+#include "OscillatorMode.h"
 
 #include "PluginEditor.h"
 #include <cmath>
@@ -25,7 +26,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     oscSquareParam = new juce::AudioParameterFloat("oscSquare", "Osc Square", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     oscModeParam = new juce::AudioParameterChoice("oscMode",
                                                    "Oscillator Mode",
-                                                   juce::StringArray { "SINE", "SAW", "SQUARE", "TRIANGLE", "NOISE", "PINK NOISE", "SUPER SAW", "PWM", "WAVETABLE", "ADDITIVE", "FORMANT", "FM", "HARD SYNC", "KARPLUS", "ORGAN", "DIGITAL", "PHYSICAL", "ROB", "ISAAC", "PX3" },
+                                                   px3::oscillatorModeChoices(),
                                                    0);
     oscMacroAParam = new juce::AudioParameterFloat("oscMacroA", "Osc Macro A", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     oscMacroBParam = new juce::AudioParameterFloat("oscMacroB", "Osc Macro B", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);

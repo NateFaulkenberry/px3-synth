@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginProcessorInternals.h"
+#include "OscillatorMode.h"
 
 #include <memory>
 
@@ -177,7 +178,7 @@ void PX3SynthAudioProcessor::requestImageLoadAsync(const juce::File& imageFile)
 void PX3SynthAudioProcessor::disableImageEngine()
 {
     // In WAVETABLE mode, image is reserved for oscillator generation and cannot be disabled.
-    if (oscModeParam != nullptr && oscModeParam->getIndex() == 8)
+    if (oscModeParam != nullptr && oscModeParam->getIndex() == px3::oscillatorModeToIndex(px3::OscillatorMode::wavetable))
     {
         return;
     }
@@ -488,7 +489,7 @@ OscillatorSettings PX3SynthAudioProcessor::currentOscillatorSettings() const
 {
     const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
     OscillatorSettings settings;
-    settings.modeIndex = oscModeParam->getIndex();
+    settings.modeIndex = px3::clampOscillatorModeIndex(oscModeParam->getIndex());
     settings.macroA = clamp01(oscMacroAParam->convertFrom0to1(applyLfoToNormalizedValue(oscMacroAParam,
                                                                                           static_cast<juce::RangedAudioParameter*>(oscMacroAParam)->getValue(),
                                                                                           lfoSignal)));

@@ -1,5 +1,6 @@
 #include "SynthVoice.h"
 
+#include "OscillatorMode.h"
 #include "SynthSound.h"
 
 #include <cmath>
@@ -20,30 +21,6 @@ enum class FilterMode
     bp,
     notch,
     allPass
-};
-
-enum class OscMode
-{
-    sine = 0,
-    saw,
-    square,
-    triangle,
-    noise,
-    pinkNoise,
-    superSaw,
-    pwm,
-    wavetable,
-    additive,
-    formant,
-    fm,
-    hardSync,
-    karplus,
-    organ,
-    digital,
-    physical,
-    rob,
-    isaac,
-    px3
 };
 
 inline float softClip(float x)
@@ -398,7 +375,7 @@ void SynthVoice::setSubtractiveSettings(const SubtractiveSettings& settings)
 void SynthVoice::setOscillatorSettings(const OscillatorSettings& settings)
 {
     oscillatorSettings = settings;
-    oscillatorSettings.modeIndex = juce::jlimit(0, 19, oscillatorSettings.modeIndex);
+    oscillatorSettings.modeIndex = px3::clampOscillatorModeIndex(oscillatorSettings.modeIndex);
     oscillatorSettings.macroA = clamp01(oscillatorSettings.macroA);
     oscillatorSettings.macroB = clamp01(oscillatorSettings.macroB);
     oscillatorSettings.macroC = clamp01(oscillatorSettings.macroC);
@@ -785,8 +762,8 @@ float SynthVoice::renderOscillatorSample(double sampleRate,
                                          float imageSample,
                                          float granularSample)
 {
-    const auto mode = static_cast<OscMode>(juce::jlimit(0, 19, oscillatorSettings.modeIndex));
-    const auto modeIndex = juce::jlimit(0, 19, oscillatorSettings.modeIndex);
+    const auto mode = static_cast<px3::OscillatorMode>(px3::clampOscillatorModeIndex(oscillatorSettings.modeIndex));
+    const auto modeIndex = px3::clampOscillatorModeIndex(oscillatorSettings.modeIndex);
     const auto phase = static_cast<float>(currentAngle / juce::MathConstants<double>::twoPi);
     const auto sine = static_cast<float>(std::sin(currentAngle));
     const auto saw = phase * 2.0f - 1.0f;
@@ -798,19 +775,19 @@ float SynthVoice::renderOscillatorSample(double sampleRate,
 
     switch (mode)
     {
-        case OscMode::sine:
+        case px3::OscillatorMode::sine:
             sample = sine;
             break;
-        case OscMode::saw:
+        case px3::OscillatorMode::saw:
             sample = saw;
             break;
-        case OscMode::square:
+        case px3::OscillatorMode::square:
             sample = square;
             break;
-        case OscMode::triangle:
+        case px3::OscillatorMode::triangle:
             sample = triangle;
             break;
-        case OscMode::noise:
+        case px3::OscillatorMode::noise:
         {
             const auto white = nextDeterministicNoise();
             const auto color = oscillatorSettings.macroA; // 0=darker, 1=brighter
@@ -819,7 +796,7 @@ float SynthVoice::renderOscillatorSample(double sampleRate,
             sample = (noiseColorState * (1.0f - color) + white * color) * 0.78f;
             break;
         }
-        case OscMode::pinkNoise:
+        case px3::OscillatorMode::pinkNoise:
         {
             const auto white = nextDeterministicNoise();
             auto pink = renderPinkNoise(white);
@@ -830,23 +807,23 @@ float SynthVoice::renderOscillatorSample(double sampleRate,
             sample = pink * 1.45f;
             break;
         }
-        case OscMode::superSaw:
+        case px3::OscillatorMode::superSaw:
             sample = renderSuperSaw(sampleRate);
             break;
-        case OscMode::pwm:
+        case px3::OscillatorMode::pwm:
             sample = renderPwm();
             break;
-        case OscMode::wavetable:
+        case px3::OscillatorMode::wavetable:
         {
             const auto pos = std::pow(oscillatorSettings.macroA, 1.1f); // POSITION macro
             const auto warp = std::sin(currentAngle * (1.0 + pos * 6.0));
             sample = external * (0.30f + pos * 1.15f) + static_cast<float>(warp) * (0.35f - pos * 0.20f);
             break;
         }
-        case OscMode::additive:
+        case px3::OscillatorMode::additive:
             sample = renderAdditive(false);
             break;
-        case OscMode::formant:
+        case px3::OscillatorMode::formant:
         {
             static constexpr std::array<std::array<float, 8>, 5> vowelProfiles { {
                 { 1.0f, 0.62f, 0.42f, 0.24f, 0.15f, 0.09f, 0.06f, 0.03f },
@@ -877,31 +854,31 @@ float SynthVoice::renderOscillatorSample(double sampleRate,
             oscillatorSettings.harmonics = oldHarm;
             break;
         }
-        case OscMode::fm:
+        case px3::OscillatorMode::fm:
             sample = renderFm(sampleRate);
             break;
-        case OscMode::hardSync:
+        case px3::OscillatorMode::hardSync:
             sample = renderHardSync(sampleRate);
             break;
-        case OscMode::karplus:
+        case px3::OscillatorMode::karplus:
             sample = renderKarplus();
             break;
-        case OscMode::organ:
+        case px3::OscillatorMode::organ:
             sample = renderOrgan();
             break;
-        case OscMode::digital:
+        case px3::OscillatorMode::digital:
             sample = renderDigital(sampleRate);
             break;
-        case OscMode::physical:
+        case px3::OscillatorMode::physical:
             sample = renderPhysical(sampleRate);
             break;
-        case OscMode::rob:
+        case px3::OscillatorMode::rob:
             sample = renderRobOsc(sampleRate);
             break;
-        case OscMode::isaac:
+        case px3::OscillatorMode::isaac:
             sample = renderAdditive(true);
             break;
-        case OscMode::px3:
+        case px3::OscillatorMode::px3:
             sample = renderPx3(sampleRate, external);
             break;
         default:
@@ -943,29 +920,29 @@ float SynthVoice::renderOscillatorSample(double sampleRate,
 
         switch (mode)
         {
-            case OscMode::sine:
-            case OscMode::saw:
-            case OscMode::square:
-            case OscMode::triangle:
+            case px3::OscillatorMode::sine:
+            case px3::OscillatorMode::saw:
+            case px3::OscillatorMode::square:
+            case px3::OscillatorMode::triangle:
                 return 0.5f;
-            case OscMode::noise:
-            case OscMode::pinkNoise:
-            case OscMode::pwm:
-            case OscMode::wavetable:
+            case px3::OscillatorMode::noise:
+            case px3::OscillatorMode::pinkNoise:
+            case px3::OscillatorMode::pwm:
+            case px3::OscillatorMode::wavetable:
                 return a;
-            case OscMode::superSaw:
-            case OscMode::karplus:
-            case OscMode::organ:
-            case OscMode::digital:
-            case OscMode::physical:
-            case OscMode::fm:
-            case OscMode::hardSync:
-            case OscMode::formant:
+            case px3::OscillatorMode::superSaw:
+            case px3::OscillatorMode::karplus:
+            case px3::OscillatorMode::organ:
+            case px3::OscillatorMode::digital:
+            case px3::OscillatorMode::physical:
+            case px3::OscillatorMode::fm:
+            case px3::OscillatorMode::hardSync:
+            case px3::OscillatorMode::formant:
                 return 0.5f * (a + b);
-            case OscMode::additive:
-            case OscMode::isaac:
-            case OscMode::rob:
-            case OscMode::px3:
+            case px3::OscillatorMode::additive:
+            case px3::OscillatorMode::isaac:
+            case px3::OscillatorMode::rob:
+            case px3::OscillatorMode::px3:
                 return (a + b + c) * (1.0f / 3.0f);
             default:
                 return 0.5f;
@@ -999,23 +976,23 @@ float SynthVoice::renderOscillatorSample(double sampleRate,
     const auto centered = macroEnergy - 0.5f;
     modeGain *= 1.0f - slope * centered;
 
-    if (mode == OscMode::superSaw)
+    if (mode == px3::OscillatorMode::superSaw)
     {
         modeGain *= juce::jmap(std::pow(oscillatorSettings.macroA, 1.35f), 1.0f, 0.84f);
     }
-    else if (mode == OscMode::fm)
+    else if (mode == px3::OscillatorMode::fm)
     {
         modeGain *= juce::jmap(std::pow(oscillatorSettings.macroB, 1.2f), 1.0f, 0.82f);
     }
-    else if (mode == OscMode::hardSync)
+    else if (mode == px3::OscillatorMode::hardSync)
     {
         modeGain *= juce::jmap(std::pow(oscillatorSettings.macroB, 1.18f), 1.0f, 0.78f);
     }
-    else if (mode == OscMode::digital)
+    else if (mode == px3::OscillatorMode::digital)
     {
         modeGain *= juce::jmap(std::pow(oscillatorSettings.macroB, 1.1f), 1.0f, 0.86f);
     }
-    else if (mode == OscMode::rob || mode == OscMode::px3)
+    else if (mode == px3::OscillatorMode::rob || mode == px3::OscillatorMode::px3)
     {
         modeGain *= juce::jmap(std::pow(oscillatorSettings.macroC, 1.12f), 1.0f, 0.84f);
     }
