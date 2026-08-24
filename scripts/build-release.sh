@@ -346,6 +346,7 @@ PKG_COMPONENTS_DIR="${PKG_WORK_DIR}/packages"
 PKG_ROOT_AU="${PKG_WORK_DIR}/root-au"
 PKG_ROOT_VST3="${PKG_WORK_DIR}/root-vst3"
 PKG_EXPANDED_DIR="${PKG_WORK_DIR}/expanded-product"
+PRODUCT_DISTRIBUTION_XML="${PKG_WORK_DIR}/Distribution.xml"
 
 AU_NAME="$(basename "${AU_BUNDLE}")"
 VST3_NAME="$(basename "${VST3_BUNDLE}")"
@@ -401,12 +402,35 @@ pkgbuild \
   --version "${PROJECT_VERSION}" \
   "${VST3_COMPONENT_PKG}"
 
-# productbuild combines the two component packages into the single installer
-# file users run. AU and VST3 stay separate components because they install to
-# different macOS plugin directories.
+# Build an explicit product distribution so Installer UI labels always use
+# branded names instead of tool defaults that can inherit target names.
+cat > "${PRODUCT_DISTRIBUTION_XML}" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="1">
+  <title>PX3</title>
+  <options customize="never" require-scripts="false" hostArchitectures="x86_64,arm64"/>
+  <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+
+  <choices-outline>
+    <line choice="default">
+      <line choice="px3.synth"/>
+    </line>
+  </choices-outline>
+
+  <choice id="default" title="PX3"/>
+  <choice id="px3.synth" title="PX3 Synth" visible="false">
+    <pkg-ref id="${AU_PACKAGE_ID}"/>
+    <pkg-ref id="${VST3_PACKAGE_ID}"/>
+  </choice>
+
+  <pkg-ref id="${AU_PACKAGE_ID}" version="${PROJECT_VERSION}">#$(basename "${AU_COMPONENT_PKG}")</pkg-ref>
+  <pkg-ref id="${VST3_PACKAGE_ID}" version="${PROJECT_VERSION}">#$(basename "${VST3_COMPONENT_PKG}")</pkg-ref>
+</installer-gui-script>
+EOF
+
 PRODUCTBUILD_ARGS=(
-  --package "${AU_COMPONENT_PKG}"
-  --package "${VST3_COMPONENT_PKG}"
+  --distribution "${PRODUCT_DISTRIBUTION_XML}"
+  --package-path "${PKG_COMPONENTS_DIR}"
 )
 
 PKG_SIGN_STATE="unsigned"

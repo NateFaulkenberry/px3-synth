@@ -73,6 +73,7 @@ AU_NAME="$(basename "${AU_BUNDLE}")"
 
 LOCAL_AU_DIR="${HOME}/Library/Audio/Plug-Ins/Components"
 LOCAL_AU_PATH="${LOCAL_AU_DIR}/${AU_NAME}"
+LEGACY_AU_PATH="${LOCAL_AU_DIR}/SynthProject.component"
 
 if [[ -d "${LOCAL_FACTORY_PRESET_DIR}" ]]; then
   rm -rf "${LOCAL_FACTORY_PRESET_DIR}"
@@ -82,11 +83,13 @@ fi
 
 mkdir -p "${LOCAL_AU_DIR}"
 rm -rf "${LOCAL_AU_PATH}"
+rm -rf "${LEGACY_AU_PATH}"
 cp -R "${AU_BUNDLE}" "${LOCAL_AU_PATH}"
 
 echo "Installed AU:"
 echo "  Source:      ${AU_BUNDLE}"
 echo "  Destination: ${LOCAL_AU_PATH}"
+echo "  Removed legacy AU (if present): ${LEGACY_AU_PATH}"
 
 if [[ "${INSTALL_VST3}" == true ]]; then
   VST3_BUNDLE="$(find_newest_bundle "${REPO_ROOT}/build/release" "vst3")"
@@ -95,14 +98,17 @@ if [[ "${INSTALL_VST3}" == true ]]; then
 
     LOCAL_VST3_DIR="${HOME}/Library/Audio/Plug-Ins/VST3"
     LOCAL_VST3_PATH="${LOCAL_VST3_DIR}/${VST3_NAME}"
+    LEGACY_VST3_PATH="${LOCAL_VST3_DIR}/SynthProject.vst3"
 
     mkdir -p "${LOCAL_VST3_DIR}"
     rm -rf "${LOCAL_VST3_PATH}"
+    rm -rf "${LEGACY_VST3_PATH}"
     cp -R "${VST3_BUNDLE}" "${LOCAL_VST3_PATH}"
 
     echo "Installed VST3:"
     echo "  Source:      ${VST3_BUNDLE}"
     echo "  Destination: ${LOCAL_VST3_PATH}"
+    echo "  Removed legacy VST3 (if present): ${LEGACY_VST3_PATH}"
   else
     echo "VST3 not found in build/release; AU installed only."
   fi

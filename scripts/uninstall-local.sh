@@ -17,27 +17,33 @@ PRODUCT_NAME="$(grep -E '^[[:space:]]*PRODUCT_NAME[[:space:]]+"' "${CMAKE_FILE}"
 
 AU_NAME="${PRODUCT_NAME}.component"
 VST3_NAME="${PRODUCT_NAME}.vst3"
+LEGACY_AU_NAME="SynthProject.component"
+LEGACY_VST3_NAME="SynthProject.vst3"
 
 AU_PATH="${HOME}/Library/Audio/Plug-Ins/Components/${AU_NAME}"
 VST3_PATH="${HOME}/Library/Audio/Plug-Ins/VST3/${VST3_NAME}"
+LEGACY_AU_PATH="${HOME}/Library/Audio/Plug-Ins/Components/${LEGACY_AU_NAME}"
+LEGACY_VST3_PATH="${HOME}/Library/Audio/Plug-Ins/VST3/${LEGACY_VST3_NAME}"
 
 removed_any=false
 
-if [[ -d "${AU_PATH}" ]]; then
-  rm -rf "${AU_PATH}"
-  echo "Removed AU: ${AU_PATH}"
-  removed_any=true
-else
-  echo "AU not found (already removed): ${AU_PATH}"
-fi
+remove_bundle_if_present() {
+  local path="$1"
+  local label="$2"
 
-if [[ -d "${VST3_PATH}" ]]; then
-  rm -rf "${VST3_PATH}"
-  echo "Removed VST3: ${VST3_PATH}"
-  removed_any=true
-else
-  echo "VST3 not found (already removed): ${VST3_PATH}"
-fi
+  if [[ -d "${path}" ]]; then
+    rm -rf "${path}"
+    echo "Removed ${label}: ${path}"
+    removed_any=true
+  else
+    echo "${label} not found (already removed): ${path}"
+  fi
+}
+
+remove_bundle_if_present "${AU_PATH}" "AU"
+remove_bundle_if_present "${VST3_PATH}" "VST3"
+remove_bundle_if_present "${LEGACY_AU_PATH}" "Legacy AU"
+remove_bundle_if_present "${LEGACY_VST3_PATH}" "Legacy VST3"
 
 if [[ "${removed_any}" == false ]]; then
   echo "No local P(X3) plugin artifacts were removed."
