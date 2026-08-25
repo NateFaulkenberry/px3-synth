@@ -30,7 +30,7 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
         addAndMakeVisible(assignLabel);
         addAndMakeVisible(assignBox);
         baseEnabledLabelTextColour = enabledLabel.findColour(juce::Label::textColourId);
-    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+        setMouseCursor(juce::MouseCursor::NormalCursor);
     refreshFromParameters();
 }
 
@@ -87,7 +87,7 @@ void EnvelopeComponent::refreshFromParameters()
             dragHandle = DragHandle::none;
             draggingSustainSegment = false;
         }
-        setMouseCursor(currentEnabled ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+        setMouseCursor(juce::MouseCursor::NormalCursor);
         repaint();
     }
 }
@@ -229,10 +229,13 @@ void EnvelopeComponent::mouseMove(const juce::MouseEvent& event)
 {
     if (!currentEnabled)
     {
+        setMouseCursor(juce::MouseCursor::NormalCursor);
         return;
     }
 
     hoverHandle = pickHandle(event.position, computeGeometry());
+    setMouseCursor(hoverHandle != DragHandle::none ? juce::MouseCursor::PointingHandCursor
+                                                    : juce::MouseCursor::NormalCursor);
     repaint();
 }
 
@@ -241,6 +244,7 @@ void EnvelopeComponent::mouseExit(const juce::MouseEvent&)
     if (dragHandle == DragHandle::none)
     {
         hoverHandle = DragHandle::none;
+        setMouseCursor(juce::MouseCursor::NormalCursor);
         repaint();
     }
 }
@@ -258,8 +262,11 @@ void EnvelopeComponent::mouseDown(const juce::MouseEvent& event)
     draggingSustainSegment = false;
     if (dragHandle == DragHandle::none)
     {
+        setMouseCursor(juce::MouseCursor::NormalCursor);
         return;
     }
+
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
 
     if (dragHandle == DragHandle::decaySustain)
     {
@@ -325,6 +332,8 @@ void EnvelopeComponent::mouseUp(const juce::MouseEvent&)
 
     dragHandle = DragHandle::none;
     draggingSustainSegment = false;
+    setMouseCursor(hoverHandle != DragHandle::none ? juce::MouseCursor::PointingHandCursor
+                                                    : juce::MouseCursor::NormalCursor);
     repaint();
 }
 
