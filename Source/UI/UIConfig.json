@@ -134,12 +134,12 @@
   },
   "osc": {
     "panel": {
-      "fillAlpha": 0.14,
-      "strokeAlpha": 0.75,
-      "cornerRadius": 10,
+      "fillAlpha": 0,
+      "strokeAlpha": 0,
+      "cornerRadius": 0,
       "layout": {
-        "padX": 12,
-        "padY": 10
+        "padX": 0,
+        "padY": 0
       },
       "cardTitle": {
         "fontSize": 11
