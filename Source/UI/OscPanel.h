@@ -2,7 +2,6 @@
 
 #include <JuceHeader.h>
 
-#include "LfoComponent.h"
 #include "OscillatorComponent.h"
 #include "SubOscComponent.h"
 
@@ -56,34 +55,23 @@ public:
              juce::Label& osc3ModeLabel,
              juce::ComboBox& osc3VowelBox,
              juce::Label& osc3VowelLabel,
-             juce::Label& lfoAssignLabel,
-             juce::ComboBox& lfoAssignBox,
-             juce::Slider& lfoRateKnob,
-             juce::Label& lfoRateLabel,
-             juce::Label& lfoRateValueLabel,
-             juce::ComboBox& lfoWaveformBox,
-             juce::Label& lfoWaveformLabel,
              juce::Colour subAccent,
-             juce::Colour oscAccent,
-             juce::Colour lfoAccent);
+             juce::Colour oscAccent);
 
     void paint(juce::Graphics& g) override;
     void resized() override;
 
     void refreshOscillatorFromParameters(int oscIndex, bool enabled, int modeIndex, int vowelIndex);
-    void refreshLfoFromParameters(float rateHz, int waveformIndex);
     void refreshSubOscFromParameters(bool enabled, int octaveIndex, int waveformIndex);
-    void advanceAnimation(float oscDeltaPhase, float lfoDeltaSeconds);
+    void advanceAnimation(float oscDeltaPhase);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
 private:
     std::unique_ptr<SubOscComponent> subOscComponent;
     std::array<std::unique_ptr<OscillatorComponent>, 3> oscillatorComponents;
-    std::unique_ptr<LfoComponent> lfoComponent;
 
     juce::Colour accent;
     juce::Colour subHeaderAccent;
     juce::Colour oscHeaderAccent;
-    juce::Colour lfoHeaderAccent;
     std::shared_ptr<const UIConfig> uiConfig;
 };

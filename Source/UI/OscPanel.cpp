@@ -46,20 +46,11 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                    juce::Label& osc3ModeLabel,
                    juce::ComboBox& osc3VowelBox,
                    juce::Label& osc3VowelLabel,
-                   juce::Label& lfoAssignLabelIn,
-                   juce::ComboBox& lfoAssignBoxIn,
-                   juce::Slider& lfoRateKnob,
-                   juce::Label& lfoRateLabel,
-                   juce::Label& lfoRateValueLabel,
-                   juce::ComboBox& lfoWaveformBox,
-                   juce::Label& lfoWaveformLabel,
                    juce::Colour subAccent,
-                   juce::Colour oscAccent,
-                   juce::Colour lfoAccent)
+                                     juce::Colour oscAccent)
         : accent(oscAccent),
           subHeaderAccent(subAccent),
-          oscHeaderAccent(oscAccent),
-          lfoHeaderAccent(lfoAccent)
+                    oscHeaderAccent(oscAccent)
 {
     subOscComponent = std::make_unique<SubOscComponent>(subEnabledButton,
                                                         subEnabledLabel,
@@ -117,16 +108,6 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
             addAndMakeVisible(*oscillatorComponent);
         }
     }
-
-    lfoComponent = std::make_unique<LfoComponent>(lfoAssignLabelIn,
-                                                  lfoAssignBoxIn,
-                                                  lfoRateKnob,
-                                                  lfoRateLabel,
-                                                  lfoRateValueLabel,
-                                                  lfoWaveformBox,
-                                                  lfoWaveformLabel,
-                                                  lfoAccent);
-    addAndMakeVisible(*lfoComponent);
 }
 
 void OscPanel::paint(juce::Graphics& g)
@@ -163,10 +144,6 @@ void OscPanel::paint(juce::Graphics& g)
                           oscHeaderAccent);
         }
     }
-    if (lfoComponent != nullptr)
-    {
-        drawCardTitle("LFO", lfoComponent->getBounds(), lfoHeaderAccent);
-    }
 }
 
 void OscPanel::resized()
@@ -201,10 +178,6 @@ void OscPanel::resized()
         }
     }
 
-    if (lfoComponent != nullptr)
-    {
-        lfoComponent->setBounds(columns[4].reduced(2, 2));
-    }
 }
 
 void OscPanel::refreshOscillatorFromParameters(int oscIndex, bool enabled, int modeIndex, int vowelIndex)
@@ -217,14 +190,6 @@ void OscPanel::refreshOscillatorFromParameters(int oscIndex, bool enabled, int m
     }
 }
 
-void OscPanel::refreshLfoFromParameters(float rateHz, int waveformIndex)
-{
-    if (lfoComponent != nullptr)
-    {
-        lfoComponent->refreshFromParameters(rateHz, waveformIndex);
-    }
-}
-
 void OscPanel::refreshSubOscFromParameters(bool enabled, int octaveIndex, int waveformIndex)
 {
     if (subOscComponent != nullptr)
@@ -233,7 +198,7 @@ void OscPanel::refreshSubOscFromParameters(bool enabled, int octaveIndex, int wa
     }
 }
 
-void OscPanel::advanceAnimation(float oscDeltaPhase, float lfoDeltaSeconds)
+void OscPanel::advanceAnimation(float oscDeltaPhase)
 {
     for (auto& oscillatorComponent : oscillatorComponents)
     {
@@ -246,11 +211,6 @@ void OscPanel::advanceAnimation(float oscDeltaPhase, float lfoDeltaSeconds)
     if (subOscComponent != nullptr)
     {
         subOscComponent->advanceAnimation(oscDeltaPhase);
-    }
-
-    if (lfoComponent != nullptr)
-    {
-        lfoComponent->advanceAnimation(lfoDeltaSeconds);
     }
 }
 
@@ -269,10 +229,5 @@ void OscPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
             oscillatorComponent->setUIConfig(uiConfig);
         }
     }
-    if (lfoComponent != nullptr)
-    {
-        lfoComponent->setUIConfig(uiConfig);
-    }
-
     repaint();
 }

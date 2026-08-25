@@ -847,6 +847,12 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           osc3ModeLabel,
                                           osc3VowelBox,
                                           osc3VowelLabel,
+                                          juce::Colour::fromRGB(120, 180, 255),
+                                          kGroupAccents[0]);
+    modPanel = std::make_unique<ModPanel>(audioProcessor.getAttackParam(),
+                                          audioProcessor.getDecayParam(),
+                                          audioProcessor.getSustainParam(),
+                                          audioProcessor.getReleaseParam(),
                                           lfoAssignLabel,
                                           lfoAssignBox,
                                           lfoFrequencyKnob,
@@ -854,14 +860,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           lfoFrequencyValueLabel,
                                           lfoWaveformBox,
                                           lfoWaveformLabel,
-                                          juce::Colour::fromRGB(120, 180, 255),
-                                          kGroupAccents[0],
+                                          kGroupAccents[2],
                                           kGroupAccents[3]);
-    envPanel = std::make_unique<EnvPanel>(audioProcessor.getAttackParam(),
-                                          audioProcessor.getDecayParam(),
-                                          audioProcessor.getSustainParam(),
-                                          audioProcessor.getReleaseParam(),
-                                          kGroupAccents[2]);
     fltPanel = std::make_unique<FltPanel>(std::array<juce::ToggleButton*, kFilterInstanceCount> { { &filter1EnabledButton, &filter2EnabledButton } },
                                           std::array<juce::Label*, kFilterInstanceCount> { { &filter1EnabledLabel, &filter2EnabledLabel } },
                                           std::array<juce::Slider*, kFilterInstanceCount> { { &cutoffKnob, &cutoff2Knob } },
@@ -909,7 +909,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           juce::Colour::fromRGB(212, 212, 212));
 
     addAndMakeVisible(*oscPanel);
-    addAndMakeVisible(*envPanel);
+    addAndMakeVisible(*modPanel);
     addAndMakeVisible(*fltPanel);
     addAndMakeVisible(*fxPanel);
     addAndMakeVisible(*mixPanel);
@@ -1166,7 +1166,7 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
     // Panels hold child components that reference editor-owned controls.
     // Tear panels down first to avoid shutdown-order lifetime hazards.
     oscPanel.reset();
-    envPanel.reset();
+    modPanel.reset();
     fltPanel.reset();
     fxPanel.reset();
     mixPanel.reset();
@@ -1428,7 +1428,7 @@ void PX3SynthAudioProcessorEditor::resized()
 {
     // setResizeLimits() can trigger resized() during construction before
     // extracted panel components are created.
-    if (oscPanel == nullptr || envPanel == nullptr || fltPanel == nullptr || fxPanel == nullptr || mixPanel == nullptr)
+    if (oscPanel == nullptr || modPanel == nullptr || fltPanel == nullptr || fxPanel == nullptr || mixPanel == nullptr)
     {
         return;
     }
@@ -1494,13 +1494,13 @@ void PX3SynthAudioProcessorEditor::resized()
 
     panelViewportArea = controlsArea.reduced(8, 8);
     oscPanel->setBounds(panelViewportArea);
-    envPanel->setBounds(panelViewportArea);
+    modPanel->setBounds(panelViewportArea);
     fltPanel->setBounds(panelViewportArea);
     fxPanel->setBounds(panelViewportArea);
     mixPanel->setBounds(panelViewportArea);
 
     layoutOscPanel();
-    layoutEnvelopePanel();
+    layoutModPanel();
     layoutFilterPanel();
     layoutFxPanel();
     layoutMixPanel();
@@ -1682,9 +1682,9 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
     {
         fxPanel->setUIConfig(uiConfig);
     }
-    if (envPanel != nullptr)
+    if (modPanel != nullptr)
     {
-        envPanel->setUIConfig(uiConfig);
+        modPanel->setUIConfig(uiConfig);
     }
     if (oscPanel != nullptr)
     {
@@ -2742,9 +2742,9 @@ void PX3SynthAudioProcessorEditor::refreshLfoUI()
 {
     refreshLfoFrequencyLabel();
 
-    if (oscPanel != nullptr)
+    if (modPanel != nullptr)
     {
-        oscPanel->refreshLfoFromParameters(audioProcessor.getLfoFrequencyParam().get(),
+        modPanel->refreshLfoFromParameters(audioProcessor.getLfoFrequencyParam().get(),
                                            audioProcessor.getLfoWaveformParam().getIndex());
     }
 }
@@ -2761,9 +2761,9 @@ void PX3SynthAudioProcessorEditor::refreshSubOscUI()
 
 void PX3SynthAudioProcessorEditor::refreshEnvelopeGraphUI()
 {
-    if (envPanel != nullptr)
+    if (modPanel != nullptr)
     {
-        envPanel->refreshFromParameters();
+        modPanel->refreshFromParameters();
     }
 }
 
@@ -2783,7 +2783,7 @@ bool PX3SynthAudioProcessorEditor::isPanelVisible(int sectionIndex) const
 void PX3SynthAudioProcessorEditor::updatePanelVisibility()
 {
     oscPanel->setVisible(isPanelVisible(0));
-    envPanel->setVisible(isPanelVisible(1));
+    modPanel->setVisible(isPanelVisible(1));
     fltPanel->setVisible(isPanelVisible(2));
     fxPanel->setVisible(isPanelVisible(3));
     mixPanel->setVisible(isPanelVisible(4));
@@ -2805,11 +2805,11 @@ void PX3SynthAudioProcessorEditor::layoutFilterPanel()
     }
 }
 
-void PX3SynthAudioProcessorEditor::layoutEnvelopePanel()
+void PX3SynthAudioProcessorEditor::layoutModPanel()
 {
-    if (envPanel != nullptr)
+    if (modPanel != nullptr)
     {
-        envPanel->resized();
+        modPanel->resized();
     }
 }
 
@@ -2922,7 +2922,12 @@ void PX3SynthAudioProcessorEditor::timerCallback()
 
     if (isPanelVisible(0) && oscPanel != nullptr)
     {
-        oscPanel->advanceAnimation(0.09f, deltaSeconds);
+        oscPanel->advanceAnimation(0.09f);
+    }
+
+    if (isPanelVisible(1) && modPanel != nullptr)
+    {
+        modPanel->advanceAnimation(deltaSeconds);
     }
 
 #if PX3_DEBUG_PANEL

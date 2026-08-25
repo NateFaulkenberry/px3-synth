@@ -166,14 +166,6 @@
         "topFillAlpha": 0.1,
         "topFillColour": "$topFillColour"
       }
-    },
-    "lfo": {
-      "visual": {
-        "bgTintAlpha": 0.1,
-        "bgTintColour": "$topFillColour",
-        "topFillAlpha": 0.1,
-        "topFillColour": "$topFillColour"
-      }
     }
   },
   "flt": {
@@ -209,7 +201,7 @@
       }
     }
   },
-  "env": {
+  "mod": {
     "panel": {
       "fillAlpha": 0,
       "strokeAlpha": 0,
@@ -220,6 +212,14 @@
       },
       "background": "#0A120A9B",
       "outline": "#66BB6690"
+    },
+    "lfo": {
+      "visual": {
+        "bgTintAlpha": 0.1,
+        "bgTintColour": "$topFillColour",
+        "topFillAlpha": 0.1,
+        "topFillColour": "$topFillColour"
+      }
     }
   }
 }

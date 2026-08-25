@@ -56,10 +56,10 @@ void EnvelopeComponent::paint(juce::Graphics& g)
     }
 
     const auto background = uiConfig != nullptr
-                                          ? uiConfig->getColour("env.panel.background", juce::Colour::fromRGBA(10, 18, 10, 155))
+                                              ? uiConfig->getColour("mod.panel.background", juce::Colour::fromRGBA(10, 18, 10, 155))
                                 : juce::Colour::fromRGBA(10, 18, 10, 155);
     const auto outline = uiConfig != nullptr
-                                      ? uiConfig->getColour("env.panel.outline", accent.withAlpha(0.28f))
+                                          ? uiConfig->getColour("mod.panel.outline", accent.withAlpha(0.28f))
                              : accent.withAlpha(0.28f);
 
     const auto graphArea = componentBounds.reduced(2.0f);

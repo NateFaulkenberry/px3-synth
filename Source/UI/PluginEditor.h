@@ -10,7 +10,7 @@
 #include "PianoKeyboard.h"
 #include "PresetManager.h"
 #include "PluginProcessor.h"
-#include "EnvPanel.h"
+#include "ModPanel.h"
 #include "FltPanel.h"
 #include "FxPanel.h"
 #include "MixPanel.h"
@@ -117,7 +117,7 @@ private:
     bool isPanelVisible(int sectionIndex) const;
     void layoutOscPanel();
     void layoutFilterPanel();
-    void layoutEnvelopePanel();
+    void layoutModPanel();
     void layoutFxPanel();
     void layoutMixPanel();
     void updateFxSectionTargets(const juce::Rectangle<int>& topArea, int topGap);
@@ -350,7 +350,7 @@ private:
     KnobLabel lfoAssignLabel;
     KnobLabel midiStatusLabel;
     std::unique_ptr<OscPanel> oscPanel;
-    std::unique_ptr<EnvPanel> envPanel;
+    std::unique_ptr<ModPanel> modPanel;
     std::unique_ptr<FltPanel> fltPanel;
     std::unique_ptr<FxPanel> fxPanel;
     std::unique_ptr<MixPanel> mixPanel;

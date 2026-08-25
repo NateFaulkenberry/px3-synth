@@ -22,7 +22,7 @@ TopMenuBar::TopMenuBar()
     presetMenuButton.setButtonText("MENU");
 
     configureTopMenuSectionButton(topMenuOscButton, "OSC", 0);
-    configureTopMenuSectionButton(topMenuEnvButton, "ENV", 1);
+    configureTopMenuSectionButton(topMenuModButton, "MOD", 1);
     configureTopMenuSectionButton(topMenuFltButton, "FLT", 2);
     configureTopMenuSectionButton(topMenuFxButton, "FX", 3);
     configureTopMenuSectionButton(topMenuMixButton, "MIX", 4);
@@ -64,7 +64,7 @@ TopMenuBar::TopMenuBar()
     addAndMakeVisible(presetNextButton);
     addAndMakeVisible(presetMenuButton);
     addAndMakeVisible(topMenuOscButton);
-    addAndMakeVisible(topMenuEnvButton);
+    addAndMakeVisible(topMenuModButton);
     addAndMakeVisible(topMenuFltButton);
     addAndMakeVisible(topMenuFxButton);
     addAndMakeVisible(topMenuMixButton);
@@ -182,7 +182,7 @@ void TopMenuBar::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     applyStyle(presetNextButton, "styles.buttons.topMenuPreset", "topMenu.buttons.presetNext");
     applyStyle(presetMenuButton, "styles.buttons.topMenuPreset", "topMenu.buttons.presetMenu");
     applyStyle(topMenuOscButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionOsc");
-    applyStyle(topMenuEnvButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionEnv");
+    applyStyle(topMenuModButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionMod");
     applyStyle(topMenuFltButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionFlt");
     applyStyle(topMenuFxButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionFx");
     applyStyle(topMenuMixButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionMix");
