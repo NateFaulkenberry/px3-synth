@@ -502,7 +502,7 @@ bool PresetManager::createInitPresetIfMissing(juce::String& error)
     state.setProperty("osc1H7", 0.1000000014901161f, nullptr);
     state.setProperty("osc1H8", 0.07000000029802322f, nullptr);
     state.setProperty("osc2Enabled", 0.0f, nullptr);
-    state.setProperty("osc2Level", 0.0f, nullptr);
+    state.setProperty("osc2Level", 1.0f, nullptr);
     state.setProperty("osc2Coarse", 0.5f, nullptr);
     state.setProperty("osc2Fine", 0.5f, nullptr);
     state.setProperty("osc2Mode", 0.0f, nullptr);
@@ -519,7 +519,7 @@ bool PresetManager::createInitPresetIfMissing(juce::String& error)
     state.setProperty("osc2H7", 0.1000000014901161f, nullptr);
     state.setProperty("osc2H8", 0.07000000029802322f, nullptr);
     state.setProperty("osc3Enabled", 0.0f, nullptr);
-    state.setProperty("osc3Level", 0.0f, nullptr);
+    state.setProperty("osc3Level", 1.0f, nullptr);
     state.setProperty("osc3Coarse", 0.5f, nullptr);
     state.setProperty("osc3Fine", 0.5f, nullptr);
     state.setProperty("osc3Mode", 0.0f, nullptr);

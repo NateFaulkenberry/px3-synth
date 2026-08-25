@@ -36,7 +36,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         oscLevelParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(idPrefix + "Level",
                                                                                              labelPrefix + "Level",
                                                                                              juce::NormalisableRange<float>(0.0f, 1.0f),
-                                                                                             oscIndex == 0 ? 1.0f : 0.0f);
+                                                                                             1.0f);
         oscCoarseParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(idPrefix + "Coarse",
                                                                                               labelPrefix + "Coarse",
                                                                                               juce::NormalisableRange<float>(-24.0f, 24.0f, 1.0f),
