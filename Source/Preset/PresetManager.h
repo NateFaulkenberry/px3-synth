@@ -9,11 +9,11 @@
 /**
  * Preset file management for P(X3).
  *
- * This layer intentionally reuses the processor's state representation
- * (`PX3_STATE`) instead of maintaining a second independent model.
+ * This layer serializes the processor's preset/sound state representation
+ * (`PX3_STATE`) while excluding session/UI-only fields.
  *
- * Result: DAW project restore and .px3preset files round-trip through the same
- * parameter/state architecture, which keeps automation and compatibility stable.
+ * Result: .px3preset files round-trip synth/audio behavior without carrying
+ * editor navigation state such as the selected top panel.
  */
 class PresetManager
 {

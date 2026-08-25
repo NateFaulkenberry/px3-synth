@@ -1078,6 +1078,16 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
                static_cast<float>(topMenuPresetClusterArea.getRight() + 6),
                static_cast<float>(topMenuStripArea.getBottom() - 10),
                1.0f);
+    g.drawLine(static_cast<float>(topMenuSectionButtonsArea.getRight() + 4),
+               static_cast<float>(topMenuStripArea.getY() + 10),
+               static_cast<float>(topMenuSectionButtonsArea.getRight() + 4),
+               static_cast<float>(topMenuStripArea.getBottom() - 10),
+               1.0f);
+    g.drawLine(static_cast<float>(presetMenuButton.getX() - 5),
+               static_cast<float>(topMenuStripArea.getY() + 10),
+               static_cast<float>(presetMenuButton.getX() - 5),
+               static_cast<float>(topMenuStripArea.getBottom() - 10),
+               1.0f);
 
     if (backgroundImage.isValid())
     {
@@ -1099,11 +1109,12 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
     if (logoFrame.isValid())
     {
                 const auto subtitleHeight = 18.0f;
-                const auto subtitleGap = 6.0f;
+                const auto subtitleGap = 4.0f;
                 const auto logoSize = static_cast<float>(juce::jlimit(80, 120, logoPanelArea.getHeight() - 46));
                 const auto contentHeight = logoSize + subtitleGap + subtitleHeight;
                 const auto contentTop = static_cast<float>(logoPanelArea.getY())
-                                                                + (static_cast<float>(logoPanelArea.getHeight()) - contentHeight) * 0.5f;
+                                                                + (static_cast<float>(logoPanelArea.getHeight()) - contentHeight) * 0.5f
+                                                                + 2.0f;
 
                 const auto logoArea = juce::Rectangle<float>(static_cast<float>(logoPanelArea.getX()),
                                                                                                          contentTop,
@@ -1147,7 +1158,7 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
                 g.setColour(juce::Colour::fromRGB(232, 232, 232));
                 g.setFont(juce::FontOptions(14.0f));
                 const auto subtitleArea = juce::Rectangle<int>(logoPanelArea.getX() + 10,
-                                                                                                             static_cast<int>(std::round(logoArea.getBottom() + subtitleGap)),
+                                                                                                             static_cast<int>(std::round(logoArea.getBottom() + subtitleGap - 2.0f)),
                                                                                                              logoPanelArea.getWidth() - 20,
                                                                                                              static_cast<int>(subtitleHeight));
                 g.drawText("Synth v" + px3::version::string(), subtitleArea, juce::Justification::centred);
@@ -1288,7 +1299,7 @@ void PX3SynthAudioProcessorEditor::resized()
     // This balancing intentionally avoids dramatic jumps while resizing.
     auto bounds = getLocalBounds().reduced(16);
 
-    const auto headerHeight = 140;
+    const auto headerHeight = 120;
     const auto controlsHeight = juce::jlimit(150, 270, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.34)));
     const auto keyboardHeight = juce::jlimit(106, 144, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.15)));
     // const auto statusHeight = 36;
@@ -1305,8 +1316,7 @@ void PX3SynthAudioProcessorEditor::resized()
     topStripContent.removeFromRight(10);
 
     headerPlaceholderArea = topStripContent;
-    auto presetRow = headerPlaceholderArea.removeFromTop(32);
-    headerPlaceholderArea.removeFromTop(6);
+    auto presetRow = headerPlaceholderArea.withSizeKeepingCentre(headerPlaceholderArea.getWidth(), 32);
 
     auto sectionButtonsRow = presetRow;
     topMenuSectionButtonsArea = sectionButtonsRow.removeFromLeft(juce::jlimit(230, 330, presetRow.getWidth() / 2));
@@ -1315,7 +1325,7 @@ void PX3SynthAudioProcessorEditor::resized()
     presetBarArea = topMenuPresetClusterArea;
 
     const auto sectionGapPx = 6;
-    auto sectionButtonsLayout = topMenuSectionButtonsArea;
+    auto sectionButtonsLayout = topMenuSectionButtonsArea.reduced(5, 0);
     const auto buttonWidth = juce::jmax(42, (sectionButtonsLayout.getWidth() - (sectionGapPx * 4)) / 5);
     for (int i = 0; i < 5; ++i)
     {
@@ -1326,20 +1336,22 @@ void PX3SynthAudioProcessorEditor::resized()
         }
     }
 
-    auto gainArea = topMenuGainArea.reduced(4, 4);
+    auto gainArea = topMenuGainArea.reduced(9, 4);
     const auto gainKnobSize = juce::jlimit(46, 60, juce::jmin(gainArea.getWidth() - 6, gainArea.getHeight() - 22));
     gainKnob.setBounds(juce::Rectangle<int>(gainKnobSize, gainKnobSize)
                            .withCentre({ gainArea.getCentreX(), gainArea.getY() + gainKnobSize / 2 + 4 }));
     gainLabel.setBounds(gainArea.getX(), gainArea.getBottom() - 16, gainArea.getWidth(), 14);
 
     auto presetLayout = presetBarArea;
-    presetPrevButton.setBounds(presetLayout.removeFromLeft(26));
-    presetLayout.removeFromLeft(4);
-    presetMenuButton.setBounds(presetLayout.removeFromRight(84));
-    presetLayout.removeFromRight(6);
-    presetNextButton.setBounds(presetLayout.removeFromRight(26));
-    presetLayout.removeFromRight(8);
-    presetNameButton.setBounds(presetLayout);
+    auto menuSectionArea = presetLayout.removeFromRight(94);
+    auto presetSelectorArea = presetLayout.reduced(5, 0);
+    auto presetSelectorLayout = presetSelectorArea;
+    presetPrevButton.setBounds(presetSelectorLayout.removeFromLeft(26));
+    presetSelectorLayout.removeFromLeft(4);
+    presetNextButton.setBounds(presetSelectorLayout.removeFromRight(26));
+    presetSelectorLayout.removeFromRight(8);
+    presetNameButton.setBounds(presetSelectorLayout);
+    presetMenuButton.setBounds(menuSectionArea.reduced(5, 0));
 
     bounds.removeFromTop(sectionGap);
 
@@ -2237,7 +2249,7 @@ void PX3SynthAudioProcessorEditor::refreshTopMenuSelectionFromProcessor()
 
 juce::String PX3SynthAudioProcessorEditor::computeCurrentStateHash() const
 {
-    auto state = audioProcessor.createParameterStateTree();
+    auto state = audioProcessor.createPresetStateTree();
     auto xml = state.createXml();
     if (xml == nullptr)
     {

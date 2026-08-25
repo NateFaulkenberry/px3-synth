@@ -785,7 +785,7 @@ bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
                     { { "oscMode", 15.0f / 19.0f }, { "oscMacroA", 0.34f }, { "oscMacroB", 0.76f }, { "oscMacroC", 0.58f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 1.0f / 6.0f }, { "delayAmount", 0.36f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.29f } } }
     };
 
-    auto baseState = processor.createParameterStateTree();
+    auto baseState = processor.createPresetStateTree();
 
     for (const auto& def : defs)
     {
@@ -933,7 +933,7 @@ juce::ValueTree PresetManager::buildPresetTreeFromCurrentState(const PresetMetad
 {
     // Capture canonical processor state; preset files intentionally do not own
     // a separate parameter model.
-    auto pluginState = processor.createParameterStateTree();
+    auto pluginState = processor.createPresetStateTree();
     if (!pluginState.isValid())
     {
         error = "Unable to capture plugin parameter state.";
@@ -982,7 +982,7 @@ bool PresetManager::applyPresetTree(const juce::ValueTree& presetTree, juce::Str
         return false;
     }
 
-    return processor.applyParameterStateTree(stateCopy, &error);
+    return processor.applyParameterStateTree(stateCopy, &error, false);
 }
 
 juce::ValueTree PresetManager::migratePresetTreeIfNeeded(const juce::ValueTree& presetTree,
@@ -1023,6 +1023,11 @@ juce::ValueTree PresetManager::migratePresetTreeIfNeeded(const juce::ValueTree& 
     auto state = migrated.getChildWithName(kPluginStateId);
     if (state.isValid())
     {
+        if (state.hasProperty("topMenuView"))
+        {
+            state.removeProperty("topMenuView", nullptr);
+        }
+
         // Remap removed parameter IDs from legacy factory/user presets.
         static constexpr std::array<std::pair<const char*, const char*>, 3> legacyParamMap { {
             { "robAmount", "vibeAmount" },
@@ -1047,7 +1052,7 @@ juce::ValueTree PresetManager::migratePresetTreeIfNeeded(const juce::ValueTree& 
 
         // Fill missing parameters/children from the current processor defaults
         // so older presets remain complete as new parameters are introduced.
-        const auto defaultState = processor.createParameterStateTree();
+        const auto defaultState = processor.createPresetStateTree();
         if (defaultState.isValid())
         {
             for (int i = 0; i < defaultState.getNumProperties(); ++i)

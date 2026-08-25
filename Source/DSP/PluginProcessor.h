@@ -185,7 +185,10 @@ public:
     void setTopMenuViewIndex(int index, bool notifyHost = true);
 
     juce::ValueTree createParameterStateTree() const;
-    bool applyParameterStateTree(const juce::ValueTree& state, juce::String* error = nullptr);
+    juce::ValueTree createPresetStateTree() const;
+    bool applyParameterStateTree(const juce::ValueTree& state,
+                                 juce::String* error = nullptr,
+                                 bool restoreUiSessionState = true);
 
 private:
     void updateActiveNotesFromMidi(const juce::MidiBuffer& midiMessages);

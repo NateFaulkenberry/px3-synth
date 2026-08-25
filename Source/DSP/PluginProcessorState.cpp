@@ -137,7 +137,16 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
     return state;
 }
 
-bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& state, juce::String* error)
+juce::ValueTree PX3SynthAudioProcessor::createPresetStateTree() const
+{
+    auto state = createParameterStateTree();
+    state.removeProperty(kTopMenuViewId, nullptr);
+    return state;
+}
+
+bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& state,
+                                                     juce::String* error,
+                                                     bool restoreUiSessionState)
 {
     if (!state.isValid() || state.getType() != kStateTypeId)
     {
@@ -290,11 +299,11 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         }
     }
 
-    if (state.hasProperty(kTopMenuViewId))
+    if (restoreUiSessionState && state.hasProperty(kTopMenuViewId))
     {
         setTopMenuViewIndex(static_cast<int>(state.getProperty(kTopMenuViewId)), false);
     }
-    else
+    else if (restoreUiSessionState)
     {
         setTopMenuViewIndex(0, false);
     }
