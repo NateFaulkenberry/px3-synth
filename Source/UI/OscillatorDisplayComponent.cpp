@@ -77,37 +77,68 @@ void OscillatorDisplayComponent::advanceAnimation(float deltaPhase)
 
 void OscillatorDisplayComponent::resized()
 {
-    auto area = getLocalBounds().reduced(14, 10);
-    auto left = area.removeFromLeft(area.getWidth() / 2).reduced(0, 0);
-    auto right = area.reduced(0, 0);
+    auto cardArea = getLocalBounds().reduced(6, 6);
+    constexpr int targetCardWidth = 300;
+    const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
+    cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
+    auto area = cardArea.reduced(10, 10);
 
-    layoutMacroControls(right);
+    auto modeRow = area.removeFromTop(24);
+    modeLabel.setBounds(modeRow.removeFromLeft(56));
+    modeBox.setBounds(modeRow.reduced(2, 1));
 
-    auto modeRow = juce::Rectangle<int>(left.getX(), left.getBottom() - 22, left.getWidth(), 18);
-    auto vowelRow = juce::Rectangle<int>(right.getX(), right.getBottom() - 44, right.getWidth(), 18);
+    area.removeFromTop(6);
 
-    auto modeLabelArea = modeRow.removeFromLeft(52);
-    modeLabel.setBounds(modeLabelArea);
-    modeBox.setBounds(modeRow.reduced(1, 0));
+    if (vowelBox.isVisible())
+    {
+        auto vowelRow = area.removeFromTop(24);
+        vowelLabel.setBounds(vowelRow.removeFromLeft(56));
+        vowelBox.setBounds(vowelRow.reduced(2, 1));
+        area.removeFromTop(8);
+    }
+    else
+    {
+        vowelLabel.setBounds(0, 0, 0, 0);
+        vowelBox.setBounds(0, 0, 0, 0);
+    }
 
-    auto vowelLabelArea = vowelRow.removeFromLeft(52);
-    vowelLabel.setBounds(vowelLabelArea);
-    vowelBox.setBounds(vowelRow.reduced(1, 0));
+    const auto requestedGraphHeight = juce::jmax(40, getLocalBounds().reduced(20, 14).getHeight() - 60);
+    const auto maxGraphHeight = juce::jmax(40, area.getHeight() - 70);
+    const auto graphHeight = juce::jmin(requestedGraphHeight, maxGraphHeight);
+    area.removeFromBottom(graphHeight);
+    area.removeFromBottom(10);
+
+    layoutMacroControls(area);
 }
 
 void OscillatorDisplayComponent::paint(juce::Graphics& g)
 {
-    const auto cardBounds = getLocalBounds().toFloat().reduced(6.0f);
+    auto card = getLocalBounds().reduced(6, 6);
+    constexpr int targetCardWidth = 300;
+    const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
+    card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
+    const auto cardBounds = card.toFloat();
     g.setColour(accent.withAlpha(0.10f));
     g.fillRoundedRectangle(cardBounds, 8.0f);
     g.setColour(juce::Colour::fromRGBA(220, 232, 252, 88));
     g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
 
-    auto oscSplit = getLocalBounds().reduced(20, 14);
-    auto oscVizRect = oscSplit.removeFromLeft(oscSplit.getWidth() / 2).reduced(4, 2);
-    oscVizRect.removeFromBottom(28);
+    auto graphLayout = cardBounds.reduced(10.0f, 10.0f);
+    graphLayout.removeFromTop(24.0f);
+    graphLayout.removeFromTop(6.0f);
+    if (vowelBox.isVisible())
+    {
+        graphLayout.removeFromTop(24.0f);
+        graphLayout.removeFromTop(8.0f);
+    }
 
-    if (oscVizRect.getWidth() <= 40 || oscVizRect.getHeight() <= 24)
+    const auto requestedGraphHeight = static_cast<float>(juce::jmax(40, getLocalBounds().reduced(20, 14).getHeight() - 60));
+    const auto maxGraphHeight = juce::jmax(40.0f, graphLayout.getHeight() - 70.0f);
+    const auto graphHeight = juce::jmin(requestedGraphHeight, maxGraphHeight);
+    graphLayout.removeFromBottom(10.0f);
+    auto graph = graphLayout.removeFromBottom(graphHeight).reduced(0.0f, 2.0f);
+
+    if (graph.getWidth() <= 40 || graph.getHeight() <= 24)
     {
         return;
     }
@@ -117,16 +148,15 @@ void OscillatorDisplayComponent::paint(juce::Graphics& g)
     const auto macroBValue = static_cast<float>(macroB.getValue());
     const auto macroCValue = static_cast<float>(macroC.getValue());
 
-    auto viz = oscVizRect.toFloat();
     g.setColour(juce::Colour::fromRGBA(12, 16, 26, 170));
-    g.fillRoundedRectangle(viz, 7.0f);
+    g.fillRoundedRectangle(graph, 7.0f);
     g.setColour(juce::Colour::fromRGBA(145, 198, 255, 80));
-    g.drawRoundedRectangle(viz, 7.0f, 1.0f);
+    g.drawRoundedRectangle(graph, 7.0f, 1.0f);
 
-    const auto left = viz.getX() + 6.0f;
-    const auto right = viz.getRight() - 6.0f;
-    const auto top = viz.getY() + 5.0f;
-    const auto bottom = viz.getBottom() - 5.0f;
+    const auto left = graph.getX() + 6.0f;
+    const auto right = graph.getRight() - 6.0f;
+    const auto top = graph.getY() + 5.0f;
+    const auto bottom = graph.getBottom() - 5.0f;
     const auto mid = (top + bottom) * 0.5f;
     const auto width = juce::jmax(1.0f, right - left);
     const auto height = juce::jmax(1.0f, bottom - top);
@@ -247,7 +277,8 @@ void OscillatorDisplayComponent::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 120));
     g.setFont(juce::FontOptions(10.0f));
-    g.drawText("Mode Visual", oscVizRect.removeFromTop(14), juce::Justification::centredTop);
+    auto titleRow = graph.toNearestInt().removeFromTop(14);
+    g.drawText("Mode Visual", titleRow, juce::Justification::centredTop);
 }
 
 void OscillatorDisplayComponent::applyModeUi()
@@ -318,11 +349,7 @@ void OscillatorDisplayComponent::applyModeUi()
 
 void OscillatorDisplayComponent::layoutMacroControls(const juce::Rectangle<int>& area)
 {
-    constexpr int labelHeight = 22;
-    constexpr int minGap = 8;
-
-    auto right = area.reduced(2, 0);
-    right.removeFromBottom(52);
+    auto knobArea = area.reduced(2, 0);
 
     const std::array<juce::Slider*, 3> sliders { &macroA, &macroB, &macroC };
     const std::array<juce::Label*, 3> labels { &macroALabel, &macroBLabel, &macroCLabel };
@@ -341,116 +368,29 @@ void OscillatorDisplayComponent::layoutMacroControls(const juce::Rectangle<int>&
         return;
     }
 
-    const auto setTextSizedLabel = [&right](juce::Label* label, const juce::Rectangle<int>& rowBounds, int knobCenterX)
-    {
-        if (label == nullptr)
-        {
-            return;
-        }
-
-        const auto approxTextWidth = static_cast<int>(label->getText().length()) * 8 + 16;
-        const auto textWidth = juce::jlimit(42,
-                                            right.getWidth() - 6,
-                                            approxTextWidth);
-        const auto left = juce::jlimit(rowBounds.getX(),
-                                       rowBounds.getRight() - textWidth,
-                                       knobCenterX - textWidth / 2);
-        label->setBounds(left, rowBounds.getY(), textWidth, 18);
-    };
+    auto labelRow = knobArea.removeFromTop(20);
+    knobArea.removeFromTop(6);
 
     const auto visibleCount = static_cast<int>(visibleIndices.size());
+    const auto cellWidth = juce::jmax(1, knobArea.getWidth() / visibleCount);
 
-    if (visibleCount == 3)
+    for (int i = 0; i < visibleCount; ++i)
     {
-        const auto baseKnobSize = juce::jlimit(38, 62, juce::jmin(right.getWidth() - 14, (right.getHeight() - 14) / 2));
-        constexpr int centerGap = 12;
-        constexpr int verticalGap = 6;
+        const auto index = visibleIndices[static_cast<std::size_t>(i)];
+        auto labelCell = juce::Rectangle<int>(labelRow.getX() + i * cellWidth,
+                                              labelRow.getY(),
+                                              (i == visibleCount - 1) ? (labelRow.getRight() - (labelRow.getX() + i * cellWidth)) : cellWidth,
+                                              labelRow.getHeight());
+        auto knobCell = juce::Rectangle<int>(knobArea.getX() + i * cellWidth,
+                                             knobArea.getY(),
+                                             (i == visibleCount - 1) ? (knobArea.getRight() - (knobArea.getX() + i * cellWidth)) : cellWidth,
+                                             knobArea.getHeight());
 
-        auto work = right;
-        auto topRow = work.removeFromTop(work.getHeight() / 2 + 4);
-        work.removeFromTop(verticalGap);
-        auto bottomRow = work;
+        labels[static_cast<std::size_t>(index)]->setBounds(labelCell.reduced(2, 0));
 
-        auto topBody = topRow.reduced(2, 1);
-        auto topLabel = topBody.removeFromTop(labelHeight);
-        topBody.removeFromTop(8);
-        auto topKnob = juce::Rectangle<int>(baseKnobSize, baseKnobSize).withCentre(topBody.getCentre());
-
-        setTextSizedLabel(labels[static_cast<std::size_t>(visibleIndices[0])], topLabel, topKnob.getCentreX());
-        sliders[static_cast<std::size_t>(visibleIndices[0])]->setBounds(topKnob);
-
-        auto leftCell = bottomRow.removeFromLeft((bottomRow.getWidth() - centerGap) / 2).reduced(1, 1);
-        bottomRow.removeFromLeft(centerGap);
-        auto rightCell = bottomRow.reduced(1, 1);
-        const std::array<juce::Rectangle<int>, 2> cells { leftCell, rightCell };
-
-        for (int idx = 0; idx < 2; ++idx)
-        {
-            auto cell = cells[static_cast<std::size_t>(idx)];
-            auto labelRow = cell.removeFromTop(labelHeight);
-            cell.removeFromTop(8);
-            const auto cellKnobSize = juce::jlimit(36,
-                                                   baseKnobSize,
-                                                   juce::jmin(cell.getWidth() - 2, cell.getHeight() - 2));
-            auto knob = juce::Rectangle<int>(cellKnobSize, cellKnobSize).withCentre(cell.getCentre());
-            const auto index = visibleIndices[static_cast<std::size_t>(idx + 1)];
-            setTextSizedLabel(labels[static_cast<std::size_t>(index)], labelRow, knob.getCentreX());
-            sliders[static_cast<std::size_t>(index)]->setBounds(knob);
-        }
-
-        return;
-    }
-
-    if (visibleCount == 2)
-    {
-        constexpr int gap = 34;
-        auto row = right.reduced(0, 4);
-        auto labelRow = row.removeFromTop(labelHeight);
-        row.removeFromTop(8);
-
-        const auto pairWidth = juce::jmax(2, row.getWidth() - gap);
-        const auto cellWidth = juce::jmax(1, pairWidth / 2);
-        const auto rowLeft = row.getX() + (row.getWidth() - (cellWidth * 2 + gap)) / 2;
-
-        auto leftCell = juce::Rectangle<int>(rowLeft, row.getY(), cellWidth, row.getHeight()).reduced(2, 0);
-        auto rightCell = juce::Rectangle<int>(rowLeft + cellWidth + gap,
-                                              row.getY(),
-                                              cellWidth,
-                                              row.getHeight()).reduced(2, 0);
-        const std::array<juce::Rectangle<int>, 2> cells { leftCell, rightCell };
-
-        const auto maxByWidth = juce::jmax(36, cellWidth - 4);
-        const auto maxByHeight = juce::jmax(36, row.getHeight() - 2);
-        const auto knobSize = juce::jlimit(38, 72, juce::jmin(maxByWidth, maxByHeight));
-
-        for (int idx = 0; idx < 2; ++idx)
-        {
-            const auto index = visibleIndices[static_cast<std::size_t>(idx)];
-            auto knob = juce::Rectangle<int>(knobSize, knobSize).withCentre(cells[static_cast<std::size_t>(idx)].getCentre());
-            setTextSizedLabel(labels[static_cast<std::size_t>(index)], labelRow, knob.getCentreX());
-            sliders[static_cast<std::size_t>(index)]->setBounds(knob);
-        }
-
-        return;
-    }
-
-    const auto rowHeight = juce::jmax(62, (right.getHeight() - juce::jmax(0, visibleCount - 1) * minGap) / visibleCount);
-    const auto maxKnobByHeight = juce::jmax(44, rowHeight - labelHeight - 8);
-    const auto maxKnobByWidth = juce::jmax(40, right.getWidth() - 12);
-    const auto knobSize = juce::jlimit(44, 78, juce::jmin(maxKnobByWidth, maxKnobByHeight));
-
-    auto y = right.getY();
-    for (int v = 0; v < visibleCount; ++v)
-    {
-        const auto index = visibleIndices[static_cast<std::size_t>(v)];
-        auto rowBounds = juce::Rectangle<int>(right.getX(), y, right.getWidth(), rowHeight);
-        auto labelBounds = rowBounds.removeFromTop(labelHeight);
-        rowBounds.removeFromTop(6);
-        auto knob = juce::Rectangle<int>(knobSize, knobSize).withCentre(rowBounds.getCentre());
-
-        setTextSizedLabel(labels[static_cast<std::size_t>(index)], labelBounds, knob.getCentreX());
-        sliders[static_cast<std::size_t>(index)]->setBounds(knob);
-
-        y += rowHeight + minGap;
+        const auto knobSize = juce::jlimit(40,
+                                           86,
+                                           juce::jmin(knobCell.getWidth() - 10, knobCell.getHeight() - 4));
+        sliders[static_cast<std::size_t>(index)]->setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(knobCell.getCentre()));
     }
 }
