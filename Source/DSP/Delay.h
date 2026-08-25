@@ -7,7 +7,7 @@
 #include <array>
 #include <vector>
 
-class DelayComponent
+class Delay
 {
 public:
     void prepare(double sampleRate);

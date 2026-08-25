@@ -2,14 +2,14 @@
 
 #include <JuceHeader.h>
 
-#include "DelayComponent.h"
+#include "Delay.h"
 #include "LfoGenerator.h"
 #include "PianoKeyboard.h"
 #include "ReverbComponent.h"
 #include "SubOscTypes.h"
 #include "SynthSound.h"
 #include "SynthVoice.h"
-#include "VibeComponent.h"
+#include "Vibe.h"
 
 #include <array>
 #include <atomic>
@@ -302,8 +302,8 @@ private:
      * single post-distortion. Shared slow processes (PSU, temperature, chaos,
      * drift) are generated once and distributed across multiple DSP points.
      */
-    VibeComponent vibeComponent;
-    DelayComponent delayComponent;
+    Vibe vibeComponent;
+    Delay delayComponent;
     ReverbComponent reverbComponent;
     std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
     std::atomic<uint32_t> fxOrderRevision { 0u };

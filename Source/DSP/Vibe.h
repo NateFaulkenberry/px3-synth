@@ -9,7 +9,7 @@
 #include <atomic>
 #include <cstdint>
 
-class VibeComponent
+class Vibe
 {
 public:
     void prepare(double sampleRate, int voiceCount, uint32_t seed);

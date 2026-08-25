@@ -1,24 +1,24 @@
-#include "DelayComponent.h"
+#include "Delay.h"
 
 #include <cmath>
 
-float DelayComponent::clamp01(float v)
+float Delay::clamp01(float v)
 {
     return juce::jlimit(0.0f, 1.0f, v);
 }
 
-float DelayComponent::lerp(float a, float b, float t)
+float Delay::lerp(float a, float b, float t)
 {
     return a + (b - a) * t;
 }
 
-float DelayComponent::smoothstep(float x)
+float Delay::smoothstep(float x)
 {
     const auto t = clamp01(x);
     return t * t * (3.0f - 2.0f * t);
 }
 
-float DelayComponent::sanitizeAudioSample(float x)
+float Delay::sanitizeAudioSample(float x)
 {
     if (!std::isfinite(x))
     {
@@ -28,14 +28,14 @@ float DelayComponent::sanitizeAudioSample(float x)
     return juce::jlimit(-4.0f, 4.0f, x);
 }
 
-float DelayComponent::divisionBeatsForIndex(int index)
+float Delay::divisionBeatsForIndex(int index)
 {
     static constexpr std::array<float, 8> beatDivisions { 0.0f, 4.0f, 2.0f, 1.0f, 0.5f, 1.0f / 3.0f, 0.25f, 1.0f / 6.0f };
     const auto clamped = juce::jlimit(0, static_cast<int>(beatDivisions.size()) - 1, index);
     return beatDivisions[static_cast<std::size_t>(clamped)];
 }
 
-void DelayComponent::prepare(double sampleRate)
+void Delay::prepare(double sampleRate)
 {
     currentSampleRateHz = juce::jmax(1.0, sampleRate);
     const auto sr = static_cast<float>(currentSampleRateHz);
@@ -57,7 +57,7 @@ void DelayComponent::prepare(double sampleRate)
     reset();
 }
 
-void DelayComponent::reset()
+void Delay::reset()
 {
     for (auto& line : isaacDelayBuffer)
     {
@@ -89,7 +89,7 @@ void DelayComponent::reset()
     }
 }
 
-void DelayComponent::updateForBlock(const DelaySettings& settings)
+void Delay::updateForBlock(const DelaySettings& settings)
 {
     currentSettings = settings;
     currentSettings.amount = clamp01(settings.amount);
@@ -128,7 +128,7 @@ void DelayComponent::updateForBlock(const DelaySettings& settings)
     }
 }
 
-void DelayComponent::processSampleFrame(float inL, float inR, float& outL, float& outR)
+void Delay::processSampleFrame(float inL, float inR, float& outL, float& outR)
 {
     if (!currentSettings.enabled)
     {
@@ -148,7 +148,7 @@ void DelayComponent::processSampleFrame(float inL, float inR, float& outL, float
                                 outR);
 }
 
-float DelayComponent::readDelaySample(int channel, float readPos) const
+float Delay::readDelaySample(int channel, float readPos) const
 {
     const auto& buffer = isaacDelayBuffer[static_cast<std::size_t>(channel)];
     auto rp = readPos;
@@ -167,7 +167,7 @@ float DelayComponent::readDelaySample(int channel, float readPos) const
     return buffer[static_cast<std::size_t>(i0)] + (buffer[static_cast<std::size_t>(i1)] - buffer[static_cast<std::size_t>(i0)]) * frac;
 }
 
-void DelayComponent::clearGranularDiffusionState()
+void Delay::clearGranularDiffusionState()
 {
     for (auto& line : isaacDiffusionLineA)
     {
@@ -181,7 +181,7 @@ void DelayComponent::clearGranularDiffusionState()
     isaacDiffusionIndexB = { { 0, 0 } };
 }
 
-float DelayComponent::processAllpassSample(float x,
+float Delay::processAllpassSample(float x,
                                            std::vector<float>& line,
                                            int& index,
                                            float feedback) const
@@ -205,7 +205,7 @@ float DelayComponent::processAllpassSample(float x,
     return y;
 }
 
-void DelayComponent::processGranularDiffusion(float& wetL,
+void Delay::processGranularDiffusion(float& wetL,
                                               float& wetR,
                                               float diffusionAmount,
                                               float stereoAmount)
@@ -233,7 +233,7 @@ void DelayComponent::processGranularDiffusion(float& wetL,
     wetR = lerp(wetR, widenedR, d * (0.50f + 0.40f * width));
 }
 
-void DelayComponent::renderActiveGranularGrains(float& wetL, float& wetR)
+void Delay::renderActiveGranularGrains(float& wetL, float& wetR)
 {
     wetL = 0.0f;
     wetR = 0.0f;
@@ -286,7 +286,7 @@ void DelayComponent::renderActiveGranularGrains(float& wetL, float& wetR)
     }
 }
 
-void DelayComponent::spawnIsaacGrain(float amount,
+void Delay::spawnIsaacGrain(float amount,
                                      float timeControl,
                                      float feedbackControl,
                                      int syncDivisionIndex,
@@ -438,7 +438,7 @@ void DelayComponent::spawnIsaacGrain(float amount,
     }
 }
 
-void DelayComponent::processIsaacGranularSample(float inL,
+void Delay::processIsaacGranularSample(float inL,
                                                 float inR,
                                                 float amount,
                                                 float timeControl,
@@ -663,7 +663,7 @@ void DelayComponent::processIsaacGranularSample(float inL,
     outR = outRight;
 }
 
-void DelayComponent::processDelayAlgorithmSample(float inL,
+void Delay::processDelayAlgorithmSample(float inL,
                                                  float inR,
                                                  float amount,
                                                  int algorithmIndex,

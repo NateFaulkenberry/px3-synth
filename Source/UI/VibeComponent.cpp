@@ -1,6 +1,6 @@
-#include "VibeUiComponent.h"
+#include "VibeComponent.h"
 
-VibeUiComponent::VibeUiComponent(juce::ToggleButton& enabledButtonIn,
+VibeComponent::VibeComponent(juce::ToggleButton& enabledButtonIn,
                                  juce::Slider& amountKnobIn,
                                  juce::Label& amountLabelIn,
                                  juce::ComboBox& typeBoxIn,
@@ -20,13 +20,13 @@ VibeUiComponent::VibeUiComponent(juce::ToggleButton& enabledButtonIn,
     addAndMakeVisible(typeLabel);
 }
 
-void VibeUiComponent::setAccentColour(juce::Colour accentIn)
+void VibeComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
     repaint();
 }
 
-void VibeUiComponent::setActive(bool enabled)
+void VibeComponent::setActive(bool enabled)
 {
     isActive = enabled;
     amountKnob.setEnabled(isActive);
@@ -37,7 +37,7 @@ void VibeUiComponent::setActive(bool enabled)
     repaint();
 }
 
-void VibeUiComponent::resized()
+void VibeComponent::resized()
 {
     auto area = getLocalBounds().reduced(10, 8);
 
@@ -56,7 +56,7 @@ void VibeUiComponent::resized()
     amountLabel.setBounds(labelArea);
 }
 
-void VibeUiComponent::paint(juce::Graphics& g)
+void VibeComponent::paint(juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat().reduced(6.0f);
     g.setColour(isActive ? accent.withAlpha(0.08f) : juce::Colour::fromRGBA(120, 120, 120, 30));

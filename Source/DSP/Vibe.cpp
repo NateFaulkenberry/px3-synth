@@ -1,8 +1,8 @@
-#include "VibeComponent.h"
+#include "Vibe.h"
 
 #include <cmath>
 
-void VibeComponent::prepare(double sampleRate, int voiceCount, uint32_t seed)
+void Vibe::prepare(double sampleRate, int voiceCount, uint32_t seed)
 {
     setSeed(seed);
     engine.prepare(sampleRate, voiceCount, getSeed());
@@ -10,7 +10,7 @@ void VibeComponent::prepare(double sampleRate, int voiceCount, uint32_t seed)
     applyTypeProfile(0);
 }
 
-void VibeComponent::updateForBlock(const VibeSettings& settings, int numSamples)
+void Vibe::updateForBlock(const VibeSettings& settings, int numSamples)
 {
     applyTypeProfile(settings.typeIndex);
 
@@ -42,32 +42,32 @@ void VibeComponent::updateForBlock(const VibeSettings& settings, int numSamples)
     engine.advance(numSamples);
 }
 
-void VibeComponent::setSeed(uint32_t seed)
+void Vibe::setSeed(uint32_t seed)
 {
     seedValue.store(seed == 0u ? 1u : seed, std::memory_order_relaxed);
 }
 
-uint32_t VibeComponent::getSeed() const
+uint32_t Vibe::getSeed() const
 {
     return seedValue.load(std::memory_order_relaxed);
 }
 
-float VibeComponent::getGlobalAmount() const
+float Vibe::getGlobalAmount() const
 {
     return lastGlobalAmount.load(std::memory_order_relaxed);
 }
 
-float VibeComponent::getEffectiveAmount() const
+float Vibe::getEffectiveAmount() const
 {
     return juce::jlimit(0.0f, 1.0f, engine.getEffectiveAmount());
 }
 
-bool VibeComponent::isBypassed() const
+bool Vibe::isBypassed() const
 {
     return engine.isBypassed();
 }
 
-VibeTuning VibeComponent::getTuning() const
+VibeTuning Vibe::getTuning() const
 {
     VibeTuning t;
     t.oscillatorDrift = juce::jlimit(0.0f, 1.0f, tuneOscDrift.load(std::memory_order_relaxed));
@@ -83,7 +83,7 @@ VibeTuning VibeComponent::getTuning() const
     return t;
 }
 
-void VibeComponent::setTuningValue(const juce::String& key, float value)
+void Vibe::setTuningValue(const juce::String& key, float value)
 {
     const auto v = juce::jlimit(0.0f, 1.0f, value);
     if (key.equalsIgnoreCase("oscillatorDrift")) tuneOscDrift.store(v, std::memory_order_relaxed);
@@ -98,7 +98,7 @@ void VibeComponent::setTuningValue(const juce::String& key, float value)
     else if (key.equalsIgnoreCase("correlatedChaos")) tuneChaos.store(v, std::memory_order_relaxed);
 }
 
-float VibeComponent::getTuningValue(const juce::String& key) const
+float Vibe::getTuningValue(const juce::String& key) const
 {
     if (key.equalsIgnoreCase("oscillatorDrift")) return tuneOscDrift.load(std::memory_order_relaxed);
     if (key.equalsIgnoreCase("voiceVariation")) return tuneVoiceVar.load(std::memory_order_relaxed);
@@ -113,7 +113,7 @@ float VibeComponent::getTuningValue(const juce::String& key) const
     return 0.0f;
 }
 
-VibeSharedState VibeComponent::getSharedState() const
+VibeSharedState Vibe::getSharedState() const
 {
     const auto shared = engine.getSharedState();
     VibeSharedState out;
@@ -124,7 +124,7 @@ VibeSharedState VibeComponent::getSharedState() const
     return out;
 }
 
-VibeVoiceVariation VibeComponent::getVoiceVariation(int voiceIndex) const
+VibeVoiceVariation Vibe::getVoiceVariation(int voiceIndex) const
 {
     const auto variation = engine.getVoiceVariation(voiceIndex);
     VibeVoiceVariation out;
@@ -137,12 +137,12 @@ VibeVoiceVariation VibeComponent::getVoiceVariation(int voiceIndex) const
     return out;
 }
 
-int VibeComponent::sanitizeTypeIndex(int typeIndex) const
+int Vibe::sanitizeTypeIndex(int typeIndex) const
 {
     return juce::jlimit(0, static_cast<int>(kTypeChoices.size()) - 1, typeIndex);
 }
 
-void VibeComponent::applyTypeProfile(int typeIndex)
+void Vibe::applyTypeProfile(int typeIndex)
 {
     const auto clamped = sanitizeTypeIndex(typeIndex);
     if (clamped == lastAppliedType.load(std::memory_order_relaxed))

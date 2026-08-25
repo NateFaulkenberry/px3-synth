@@ -62,22 +62,22 @@ target_sources(PX3Synth
         Source/UI/FxPanel.cpp
         Source/UI/MixPanel.cpp
         Source/UI/TopMenuBar.cpp
-        Source/UI/DelayUiComponent.cpp
+        Source/UI/DelayComponent.cpp
         Source/UI/EnvelopeComponent.cpp
         Source/UI/FilterComponent.cpp
         Source/UI/LfoComponent.cpp
         Source/UI/ReverbUiComponent.cpp
         Source/UI/SubOscComponent.cpp
-        Source/UI/VibeUiComponent.cpp
+        Source/UI/VibeComponent.cpp
         Source/UI/OscillatorComponent.cpp
         Source/UI/PluginEditor.cpp
         Source/UI/PluginEditorDebug.cpp
         Source/DSP/EnvelopeGenerator.cpp
-        Source/DSP/DelayComponent.cpp
+        Source/DSP/Delay.cpp
         Source/DSP/LfoGenerator.cpp
         Source/DSP/ReverbComponent.cpp
         Source/DSP/SubOscillator.cpp
-        Source/DSP/VibeComponent.cpp
+        Source/DSP/Vibe.cpp
         Source/DSP/PluginProcessor.cpp
         Source/DSP/PluginProcessorParameters.cpp
         Source/DSP/PluginProcessorMidi.cpp

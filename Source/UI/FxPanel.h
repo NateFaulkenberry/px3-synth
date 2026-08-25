@@ -2,9 +2,9 @@
 
 #include <JuceHeader.h>
 
-#include "DelayUiComponent.h"
+#include "DelayComponent.h"
 #include "ReverbUiComponent.h"
-#include "VibeUiComponent.h"
+#include "VibeComponent.h"
 
 class FxPanel final : public juce::Component
 {
@@ -43,8 +43,8 @@ public:
     void setActive(bool vibeEnabled, bool delayEnabled, bool granularModeSelectable, bool reverbEnabled);
 
 private:
-    std::unique_ptr<VibeUiComponent> vibeUiComponent;
-    std::unique_ptr<DelayUiComponent> delayUiComponent;
+    std::unique_ptr<VibeComponent> vibeUiComponent;
+    std::unique_ptr<DelayComponent> delayPanelComponent;
     std::unique_ptr<ReverbUiComponent> reverbUiComponent;
 
     juce::String title { "FX" };

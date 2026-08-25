@@ -16,7 +16,7 @@
 #include "MixPanel.h"
 #include "OscPanel.h"
 #include "TopMenuBar.h"
-#include "DelayUiComponent.h"
+#include "DelayComponent.h"
 
 /**
  * Main JUCE editor for P(X3).

@@ -2,10 +2,10 @@
 
 #include <JuceHeader.h>
 
-class VibeUiComponent final : public juce::Component
+class VibeComponent final : public juce::Component
 {
 public:
-    VibeUiComponent(juce::ToggleButton& enabledButtonIn,
+    VibeComponent(juce::ToggleButton& enabledButtonIn,
                     juce::Slider& amountKnobIn,
                     juce::Label& amountLabelIn,
                     juce::ComboBox& typeBoxIn,

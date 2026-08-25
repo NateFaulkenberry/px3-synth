@@ -26,26 +26,26 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
                  juce::Colour panelAccent)
     : accent(panelAccent)
 {
-    vibeUiComponent = std::make_unique<VibeUiComponent>(vibeBypass,
+    vibeUiComponent = std::make_unique<VibeComponent>(vibeBypass,
                                                         vibeAmountKnob,
                                                         vibeAmountLabel,
                                                         vibeTypeBox,
                                                         vibeTypeLabel,
                                                         juce::Colour::fromRGB(236, 182, 92));
-    delayUiComponent = std::make_unique<DelayUiComponent>(delayBypass,
-                                                          delayAmountKnob,
-                                                          delayAmountLabel,
-                                                          delayAlgoBox,
-                                                          delayAlgoLabel,
-                                                          granularSyncBox,
-                                                          granularSyncLabel,
-                                                          granularModeBox,
-                                                          granularModeLabel,
-                                                          delayTimeKnob,
-                                                          delayTimeLabel,
-                                                          delayFeedbackKnob,
-                                                          delayFeedbackLabel,
-                                                          juce::Colour::fromRGB(132, 210, 255));
+    delayPanelComponent = std::make_unique<DelayComponent>(delayBypass,
+                                                                delayAmountKnob,
+                                                                delayAmountLabel,
+                                                                delayAlgoBox,
+                                                                delayAlgoLabel,
+                                                                granularSyncBox,
+                                                                granularSyncLabel,
+                                                                granularModeBox,
+                                                                granularModeLabel,
+                                                                delayTimeKnob,
+                                                                delayTimeLabel,
+                                                                delayFeedbackKnob,
+                                                                delayFeedbackLabel,
+                                                                juce::Colour::fromRGB(132, 210, 255));
     reverbUiComponent = std::make_unique<ReverbUiComponent>(reverbBypass,
                                                             reverbKnob,
                                                             reverbLabel,
@@ -54,7 +54,7 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
                                                             juce::Colour::fromRGB(128, 208, 255));
 
     addAndMakeVisible(*vibeUiComponent);
-    addAndMakeVisible(*delayUiComponent);
+    addAndMakeVisible(*delayPanelComponent);
     addAndMakeVisible(*reverbUiComponent);
 }
 
@@ -84,9 +84,9 @@ void FxPanel::setSectionBounds(const juce::Rectangle<int>& vibeBounds,
         vibeUiComponent->setBounds(vibeBounds);
     }
 
-    if (delayUiComponent != nullptr)
+    if (delayPanelComponent != nullptr)
     {
-        delayUiComponent->setBounds(delayBounds);
+        delayPanelComponent->setBounds(delayBounds);
     }
 
     if (reverbUiComponent != nullptr)
@@ -102,9 +102,9 @@ void FxPanel::setActive(bool vibeEnabled, bool delayEnabled, bool granularModeSe
         vibeUiComponent->setActive(vibeEnabled);
     }
 
-    if (delayUiComponent != nullptr)
+    if (delayPanelComponent != nullptr)
     {
-        delayUiComponent->setActive(delayEnabled, granularModeSelectable);
+        delayPanelComponent->setActive(delayEnabled, granularModeSelectable);
     }
 
     if (reverbUiComponent != nullptr)

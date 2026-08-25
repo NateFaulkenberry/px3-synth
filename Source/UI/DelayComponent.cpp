@@ -1,19 +1,19 @@
-#include "DelayUiComponent.h"
+#include "DelayComponent.h"
 
-DelayUiComponent::DelayUiComponent(juce::ToggleButton& enabledButtonIn,
-                                   juce::Slider& amountKnobIn,
-                                   juce::Label& amountLabelIn,
-                                   juce::ComboBox& algorithmBoxIn,
-                                   juce::Label& algorithmLabelIn,
-                                   juce::ComboBox& syncBoxIn,
-                                   juce::Label& syncLabelIn,
-                                   juce::ComboBox& modeBoxIn,
-                                   juce::Label& modeLabelIn,
-                                   juce::Slider& timeKnobIn,
-                                   juce::Label& timeLabelIn,
-                                   juce::Slider& feedbackKnobIn,
-                                   juce::Label& feedbackLabelIn,
-                                   juce::Colour accentIn)
+DelayComponent::DelayComponent(juce::ToggleButton& enabledButtonIn,
+                                         juce::Slider& amountKnobIn,
+                                         juce::Label& amountLabelIn,
+                                         juce::ComboBox& algorithmBoxIn,
+                                         juce::Label& algorithmLabelIn,
+                                         juce::ComboBox& syncBoxIn,
+                                         juce::Label& syncLabelIn,
+                                         juce::ComboBox& modeBoxIn,
+                                         juce::Label& modeLabelIn,
+                                         juce::Slider& timeKnobIn,
+                                         juce::Label& timeLabelIn,
+                                         juce::Slider& feedbackKnobIn,
+                                         juce::Label& feedbackLabelIn,
+                                         juce::Colour accentIn)
     : enabledButton(enabledButtonIn),
       amountKnob(amountKnobIn),
       amountLabel(amountLabelIn),
@@ -44,13 +44,13 @@ DelayUiComponent::DelayUiComponent(juce::ToggleButton& enabledButtonIn,
     addAndMakeVisible(feedbackLabel);
 }
 
-void DelayUiComponent::setAccentColour(juce::Colour accentIn)
+void DelayComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
     repaint();
 }
 
-void DelayUiComponent::setActive(bool enabled, bool granularModeSelectable)
+void DelayComponent::setActive(bool enabled, bool granularModeSelectable)
 {
     isActive = enabled;
 
@@ -74,7 +74,7 @@ void DelayUiComponent::setActive(bool enabled, bool granularModeSelectable)
     repaint();
 }
 
-void DelayUiComponent::resized()
+void DelayComponent::resized()
 {
     auto area = getLocalBounds().reduced(10, 8);
 
@@ -128,7 +128,7 @@ void DelayUiComponent::resized()
     amountLabel.setBounds(juce::Rectangle<int>(area.getX(), area.getBottom() - 18, area.getWidth(), 16));
 }
 
-void DelayUiComponent::paint(juce::Graphics& g)
+void DelayComponent::paint(juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat().reduced(6.0f);
     g.setColour(isActive ? accent.withAlpha(0.08f) : juce::Colour::fromRGBA(120, 120, 120, 30));
