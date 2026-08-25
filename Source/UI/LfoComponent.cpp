@@ -124,11 +124,14 @@ void LfoComponent::paint(juce::Graphics& g)
     const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
     card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
     const auto cardBounds = card.toFloat();
+    const auto bgTintAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.lfo.visual.bgTintAlpha", 0.10f) : 0.10f;
+    const auto bgTintColour = uiConfig != nullptr ? uiConfig->getColour("osc.lfo.visual.bgTintColour", accent)
+                                                  : accent;
     const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.lfo.visual.topFillAlpha", 0.10f) : 0.10f;
     const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("osc.lfo.visual.topFillColour", accent)
                                                    : accent;
 
-    g.setColour(accent.withAlpha(0.10f));
+    g.setColour(bgTintColour.withAlpha(bgTintAlpha));
     g.fillRoundedRectangle(cardBounds, 8.0f);
     g.setColour(topFillColour.withAlpha(topFillAlpha));
     juce::Path topFill;

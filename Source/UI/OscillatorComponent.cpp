@@ -145,11 +145,14 @@ void OscillatorComponent::paint(juce::Graphics& g)
     card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
     const auto cardBounds = card.toFloat();
     const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+    const auto bgTintAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.oscillator.visual.bgTintAlpha", 0.10f) : 0.10f;
+    const auto bgTintColour = uiConfig != nullptr ? uiConfig->getColour("osc.oscillator.visual.bgTintColour", effectiveAccent)
+                                                  : effectiveAccent;
     const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.oscillator.visual.topFillAlpha", 0.10f) : 0.10f;
     const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("osc.oscillator.visual.topFillColour", effectiveAccent)
                                                    : effectiveAccent;
 
-    g.setColour(effectiveAccent.withAlpha(0.10f));
+    g.setColour(bgTintColour.withAlpha(bgTintAlpha));
     g.fillRoundedRectangle(cardBounds, 8.0f);
     g.setColour(topFillColour.withAlpha(topFillAlpha));
     juce::Path topFill;

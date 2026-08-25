@@ -91,6 +91,8 @@
       "visual": {
         "borderPadding": 6,
         "cornerRadius": 8,
+        "bgTintAlpha": 0.08,
+        "bgTintColour": "$topFillColour",
         "topFillAlpha": 0.1,
         "topFillColour": "$topFillColour",
         "onLabel": {
@@ -106,6 +108,8 @@
       "visual": {
         "borderPadding": 6,
         "cornerRadius": 8,
+        "bgTintAlpha": 0.08,
+        "bgTintColour": "$topFillColour",
         "topFillAlpha": 0.1,
         "topFillColour": "$topFillColour",
         "onLabel": {
@@ -121,6 +125,8 @@
       "visual": {
         "borderPadding": 6,
         "cornerRadius": 8,
+        "bgTintAlpha": 0.08,
+        "bgTintColour": "$topFillColour",
         "topFillAlpha": 0.1,
         "topFillColour": "$topFillColour",
         "onLabel": {
@@ -147,18 +153,24 @@
     },
     "subOsc": {
       "visual": {
+        "bgTintAlpha": 0.1,
+        "bgTintColour": "#333333",
         "topFillAlpha": 0.1,
         "topFillColour": "$topFillColour"
       }
     },
     "oscillator": {
       "visual": {
+        "bgTintAlpha": 0.1,
+        "bgTintColour": "$topFillColour",
         "topFillAlpha": 0.1,
         "topFillColour": "$topFillColour"
       }
     },
     "lfo": {
       "visual": {
+        "bgTintAlpha": 0.1,
+        "bgTintColour": "$topFillColour",
         "topFillAlpha": 0.1,
         "topFillColour": "$topFillColour"
       }

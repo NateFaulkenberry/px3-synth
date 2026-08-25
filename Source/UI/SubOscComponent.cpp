@@ -116,11 +116,14 @@ void SubOscComponent::paint(juce::Graphics& g)
     const auto cardBounds = card.toFloat();
 
     const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+    const auto bgTintAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.subOsc.visual.bgTintAlpha", 0.10f) : 0.10f;
+    const auto bgTintColour = uiConfig != nullptr ? uiConfig->getColour("osc.subOsc.visual.bgTintColour", effectiveAccent)
+                                                  : effectiveAccent;
     const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.subOsc.visual.topFillAlpha", 0.10f) : 0.10f;
     const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("osc.subOsc.visual.topFillColour", effectiveAccent)
                                                    : effectiveAccent;
 
-    g.setColour(effectiveAccent.withAlpha(0.10f));
+    g.setColour(bgTintColour.withAlpha(bgTintAlpha));
     g.fillRoundedRectangle(cardBounds, 8.0f);
     g.setColour(topFillColour.withAlpha(topFillAlpha));
     juce::Path topFill;
