@@ -896,7 +896,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           osc3VowelLabel,
                                           juce::Colour::fromRGB(120, 180, 255),
                                           kGroupAccents[0]);
-    modPanel = std::make_unique<ModPanel>(audioProcessor.getAttackParam(),
+    modPanel = std::make_unique<ModPanel>(audioProcessor,
+                                          audioProcessor.getAttackParam(),
                                           audioProcessor.getDecayParam(),
                                           audioProcessor.getSustainParam(),
                                           audioProcessor.getReleaseParam(),
@@ -2974,6 +2975,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     }
     else if (isPanelVisible(1))
     {
+        refreshLfoAssignmentUI();
         refreshEnvelopeAssignmentUI();
         refreshEnvelopeGraphUI();
     }

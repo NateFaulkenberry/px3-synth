@@ -2,17 +2,20 @@
 
 #include <JuceHeader.h>
 
+#include <array>
 #include <memory>
 
 #include "EnvelopeComponent.h"
 #include "LfoComponent.h"
+#include "PluginProcessor.h"
 
 class UIConfig;
 
 class ModPanel final : public juce::Component
 {
 public:
-    ModPanel(juce::AudioParameterFloat& attack,
+    ModPanel(PX3SynthAudioProcessor& processorIn,
+             juce::AudioParameterFloat& attack,
              juce::AudioParameterFloat& decay,
              juce::AudioParameterFloat& sustain,
              juce::AudioParameterFloat& release,
@@ -43,8 +46,41 @@ public:
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
 private:
+    struct LfoBundle
+    {
+        juce::ToggleButton enabledButton;
+        juce::Label enabledLabel;
+        juce::Label assignLabel;
+        juce::ComboBox assignBox;
+        juce::Slider rateKnob;
+        juce::Label rateLabel;
+        juce::Label rateValueLabel;
+        juce::ComboBox waveformBox;
+        juce::Label waveformLabel;
+        std::unique_ptr<juce::ButtonParameterAttachment> enabledAttachment;
+        std::unique_ptr<juce::SliderParameterAttachment> rateAttachment;
+        std::unique_ptr<juce::ComboBoxParameterAttachment> waveformAttachment;
+        std::unique_ptr<LfoComponent> component;
+    };
+
+    struct EnvBundle
+    {
+        juce::ToggleButton enabledButton;
+        juce::Label enabledLabel;
+        juce::Label assignLabel;
+        juce::ComboBox assignBox;
+        std::unique_ptr<juce::ButtonParameterAttachment> enabledAttachment;
+        std::unique_ptr<EnvelopeComponent> component;
+    };
+
+    void configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle);
+    void configureOwnedEnvBundle(int envIndex, EnvBundle& bundle);
+
+    PX3SynthAudioProcessor& processor;
     std::unique_ptr<EnvelopeComponent> envelopeGraph;
     std::unique_ptr<LfoComponent> lfoComponent;
+    std::array<LfoBundle, 2> extraLfos;
+    std::array<EnvBundle, 2> extraEnvelopes;
 
     juce::Colour accent;
     juce::Colour lfoHeaderAccent;

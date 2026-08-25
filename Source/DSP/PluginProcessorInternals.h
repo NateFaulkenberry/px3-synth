@@ -12,7 +12,7 @@
 
 namespace px3::processor_internal
 {
-inline constexpr int kCurrentStateVersion = 8;
+inline constexpr int kCurrentStateVersion = 9;
 
 inline const juce::Identifier kStateTypeId("PX3_STATE");
 inline const juce::Identifier kStateVersionId("stateVersion");
@@ -27,6 +27,10 @@ inline const juce::Identifier kLfoWaveformId("waveform");
 inline const juce::Identifier kLfoAssignmentId("assignment");
 inline const juce::Identifier kEnvelopeStateId("ENVELOPE");
 inline const juce::Identifier kEnvelopeAssignmentId("assignment");
+inline const juce::Identifier kLfoSourcesStateId("LFO_SOURCES");
+inline const juce::Identifier kEnvelopeSourcesStateId("ENVELOPE_SOURCES");
+inline const juce::Identifier kSourceEntryId("SOURCE");
+inline const juce::Identifier kSourceIndexId("index");
 inline const juce::Identifier kSubOscStateId("SUBOSC");
 inline const juce::Identifier kSubOscEnabledId("enabled");
 inline const juce::Identifier kSubOscLevelId("level");

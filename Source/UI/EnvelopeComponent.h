@@ -19,7 +19,8 @@ public:
                       juce::Label& enabledLabelIn,
                       juce::Label& assignLabelIn,
                       juce::ComboBox& assignBoxIn,
-                      juce::Colour accentIn);
+                      juce::Colour accentIn,
+                      const juce::String& configPrefixIn = "mod.env1");
 
     void setAccentColour(juce::Colour accentIn);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
@@ -100,4 +101,5 @@ private:
     float lastRelease { -1.0f };
     bool currentEnabled { true };
     juce::Colour baseEnabledLabelTextColour;
+    juce::String configPrefix;
 };

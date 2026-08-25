@@ -358,13 +358,13 @@ juce::String PX3SynthAudioProcessor::debugDescribeOrder(const std::array<int, 3>
 
 float PX3SynthAudioProcessor::debugGetLfoPhase() const
 {
-    const auto wrapped = std::fmod(lfoPhaseForDebug.load(std::memory_order_relaxed), juce::MathConstants<float>::twoPi);
+    const auto wrapped = std::fmod(lfoPhaseForDebug[0].load(std::memory_order_relaxed), juce::MathConstants<float>::twoPi);
     return wrapped < 0.0f ? wrapped + juce::MathConstants<float>::twoPi : wrapped;
 }
 
 float PX3SynthAudioProcessor::debugGetLfoCurrentValue() const
 {
-    return lfoCurrentValue.load(std::memory_order_relaxed);
+    return lfoCurrentValues[0].load(std::memory_order_relaxed);
 }
 
 float PX3SynthAudioProcessor::debugGetLfoBaseNormalized() const

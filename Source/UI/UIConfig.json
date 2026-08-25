@@ -213,6 +213,145 @@
       "background": "#0A120A9B",
       "outline": "#66BB6690"
     },
+    "grid": {
+      "colGap": 8,
+      "rowGap": 10
+    },
+    "lfo1": {
+      "title": { "text": "LFO 1" },
+      "visual": {
+        "bgTintAlpha": 0.1,
+        "bgTintColour": "$topFillColour",
+        "topFillAlpha": 0.1,
+        "topFillColour": "$topFillColour",
+        "onLabel": {
+          "text": "ON",
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8",
+          "width": 52
+        }
+      }
+    },
+    "lfo2": {
+      "title": { "text": "LFO 2" },
+      "visual": {
+        "bgTintAlpha": 0.1,
+        "bgTintColour": "$topFillColour",
+        "topFillAlpha": 0.1,
+        "topFillColour": "$topFillColour",
+        "onLabel": {
+          "text": "ON",
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8",
+          "width": 52
+        }
+      }
+    },
+    "lfo3": {
+      "title": { "text": "LFO 3" },
+      "visual": {
+        "bgTintAlpha": 0.1,
+        "bgTintColour": "$topFillColour",
+        "topFillAlpha": 0.1,
+        "topFillColour": "$topFillColour",
+        "onLabel": {
+          "text": "ON",
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8",
+          "width": 52
+        }
+      }
+    },
+    "env1": {
+      "title": { "text": "ENV 1" },
+      "visual": {
+        "bgTintAlpha": 0.1,
+        "bgTintColour": "#49DE79",
+        "topFillAlpha": 0.1,
+        "topFillColour": "#6FE08F",
+        "cardCornerRadius": 8,
+        "outerStrokeThickness": 1.2,
+        "outerStrokeColour": "#DCE8FC",
+        "outerStrokeAlphaEnabled": 88,
+        "outerStrokeAlphaDisabled": 66,
+        "graph": {
+          "cornerRadius": 7,
+          "fillColour": "#0E0E12",
+          "fillAlpha": 170,
+          "strokeThickness": 1,
+          "strokeColourEnabled": "#49DE79",
+          "strokeAlphaEnabled": 82,
+          "strokeColourDisabled": "#888888",
+          "strokeAlphaDisabled": 62
+        },
+        "onLabel": {
+          "text": "ON",
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8",
+          "width": 52
+        }
+      }
+    },
+    "env2": {
+      "title": { "text": "ENV 2" },
+      "visual": {
+        "bgTintAlpha": 0.1,
+        "bgTintColour": "#49DE79",
+        "topFillAlpha": 0.1,
+        "topFillColour": "#6FE08F",
+        "cardCornerRadius": 8,
+        "outerStrokeThickness": 1.2,
+        "outerStrokeColour": "#DCE8FC",
+        "outerStrokeAlphaEnabled": 88,
+        "outerStrokeAlphaDisabled": 66,
+        "graph": {
+          "cornerRadius": 7,
+          "fillColour": "#0E0E12",
+          "fillAlpha": 170,
+          "strokeThickness": 1,
+          "strokeColourEnabled": "#49DE79",
+          "strokeAlphaEnabled": 82,
+          "strokeColourDisabled": "#888888",
+          "strokeAlphaDisabled": 62
+        },
+        "onLabel": {
+          "text": "ON",
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8",
+          "width": 52
+        }
+      }
+    },
+    "env3": {
+      "title": { "text": "ENV 3" },
+      "visual": {
+        "bgTintAlpha": 0.1,
+        "bgTintColour": "#49DE79",
+        "topFillAlpha": 0.1,
+        "topFillColour": "#6FE08F",
+        "cardCornerRadius": 8,
+        "outerStrokeThickness": 1.2,
+        "outerStrokeColour": "#DCE8FC",
+        "outerStrokeAlphaEnabled": 88,
+        "outerStrokeAlphaDisabled": 66,
+        "graph": {
+          "cornerRadius": 7,
+          "fillColour": "#0E0E12",
+          "fillAlpha": 170,
+          "strokeThickness": 1,
+          "strokeColourEnabled": "#49DE79",
+          "strokeAlphaEnabled": 82,
+          "strokeColourDisabled": "#888888",
+          "strokeAlphaDisabled": 62
+        },
+        "onLabel": {
+          "text": "ON",
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8",
+          "width": 52
+        }
+      }
+    },
     "lfo": {
       "visual": {
         "bgTintAlpha": 0.1,

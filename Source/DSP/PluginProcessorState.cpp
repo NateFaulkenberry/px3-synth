@@ -113,17 +113,29 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
                       static_cast<int64_t>(fxOrderRevision.load(std::memory_order_relaxed)),
                       nullptr);
 
-    // Keep LFO settings in a dedicated node for backward-compatible evolution.
-    juce::ValueTree lfoState(kLfoStateId);
-    lfoState.setProperty(kLfoEnabledId, lfoEnabledParam != nullptr ? lfoEnabledParam->get() : true, nullptr);
-    lfoState.setProperty(kLfoFrequencyId, lfoFrequencyParam->get(), nullptr);
-    lfoState.setProperty(kLfoWaveformId, lfoWaveformParam->getIndex(), nullptr);
-    lfoState.setProperty(kLfoAssignmentId, getLfoAssignmentParameterId(), nullptr);
-    state.addChild(lfoState, -1, nullptr);
+    // Keep modulation source states in dedicated nodes for backward-compatible evolution.
+    juce::ValueTree lfoSources(kLfoSourcesStateId);
+    for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
+    {
+        juce::ValueTree source(kSourceEntryId);
+        source.setProperty(kSourceIndexId, lfoIndex, nullptr);
+        source.setProperty(kLfoEnabledId, getLfoEnabledParam(lfoIndex).get(), nullptr);
+        source.setProperty(kLfoFrequencyId, getLfoFrequencyParam(lfoIndex).get(), nullptr);
+        source.setProperty(kLfoWaveformId, getLfoWaveformParam(lfoIndex).getIndex(), nullptr);
+        source.setProperty(kLfoAssignmentId, getLfoAssignmentParameterId(lfoIndex), nullptr);
+        lfoSources.addChild(source, -1, nullptr);
+    }
+    state.addChild(lfoSources, -1, nullptr);
 
-    juce::ValueTree envelopeState(kEnvelopeStateId);
-    envelopeState.setProperty(kEnvelopeAssignmentId, getEnvelopeAssignmentParameterId(), nullptr);
-    state.addChild(envelopeState, -1, nullptr);
+    juce::ValueTree envelopeSources(kEnvelopeSourcesStateId);
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        juce::ValueTree source(kSourceEntryId);
+        source.setProperty(kSourceIndexId, envIndex, nullptr);
+        source.setProperty(kEnvelopeAssignmentId, getEnvelopeAssignmentParameterId(envIndex), nullptr);
+        envelopeSources.addChild(source, -1, nullptr);
+    }
+    state.addChild(envelopeSources, -1, nullptr);
 
     juce::ValueTree subOscState(kSubOscStateId);
     subOscState.setProperty(kSubOscEnabledId, subOscEnabledParam->get(), nullptr);
@@ -245,37 +257,105 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         fxOrderRevision.store(static_cast<uint32_t>(revision), std::memory_order_relaxed);
     }
 
-    if (const auto lfoState = state.getChildWithName(kLfoStateId); lfoState.isValid())
+    auto appliedNewLfoState = false;
+    if (const auto lfoSources = state.getChildWithName(kLfoSourcesStateId); lfoSources.isValid())
     {
-        if (lfoState.hasProperty(kLfoEnabledId) && lfoEnabledParam != nullptr)
+        for (int i = 0; i < lfoSources.getNumChildren(); ++i)
         {
-            const auto enabled = static_cast<bool>(lfoState[kLfoEnabledId]);
-            lfoEnabledParam->setValueNotifyingHost(lfoEnabledParam->convertTo0to1(enabled));
-        }
+            const auto source = lfoSources.getChild(i);
+            if (!source.isValid() || source.getType() != kSourceEntryId)
+            {
+                continue;
+            }
 
-        if (lfoState.hasProperty(kLfoFrequencyId))
-        {
-            const auto frequency = juce::jlimit(0.01f, 20.0f, static_cast<float>(lfoState[kLfoFrequencyId]));
-            lfoFrequencyParam->setValueNotifyingHost(lfoFrequencyParam->convertTo0to1(frequency));
-        }
+            const auto lfoIndex = juce::jlimit(0, kLfoSourceCount - 1, static_cast<int>(source.getProperty(kSourceIndexId, 0)));
 
-        if (lfoState.hasProperty(kLfoWaveformId) && lfoWaveformParam != nullptr)
-        {
-            const auto waveform = px3::clampLfoWaveformIndex(static_cast<int>(lfoState[kLfoWaveformId]));
-            lfoWaveformParam->setValueNotifyingHost(lfoWaveformParam->convertTo0to1(static_cast<float>(waveform)));
-        }
+            if (source.hasProperty(kLfoEnabledId))
+            {
+                const auto enabled = static_cast<bool>(source[kLfoEnabledId]);
+                auto& enabledParam = getLfoEnabledParam(lfoIndex);
+                enabledParam.setValueNotifyingHost(enabledParam.convertTo0to1(enabled));
+            }
 
-        if (lfoState.hasProperty(kLfoAssignmentId))
+            if (source.hasProperty(kLfoFrequencyId))
+            {
+                const auto frequency = juce::jlimit(0.01f, 20.0f, static_cast<float>(source[kLfoFrequencyId]));
+                auto& freqParam = getLfoFrequencyParam(lfoIndex);
+                freqParam.setValueNotifyingHost(freqParam.convertTo0to1(frequency));
+            }
+
+            if (source.hasProperty(kLfoWaveformId))
+            {
+                const auto waveform = px3::clampLfoWaveformIndex(static_cast<int>(source[kLfoWaveformId]));
+                auto& waveformParam = getLfoWaveformParam(lfoIndex);
+                waveformParam.setValueNotifyingHost(waveformParam.convertTo0to1(static_cast<float>(waveform)));
+            }
+
+            if (source.hasProperty(kLfoAssignmentId))
+            {
+                setLfoAssignmentByParameterId(lfoIndex, source[kLfoAssignmentId].toString(), false);
+            }
+        }
+        appliedNewLfoState = true;
+    }
+
+    if (!appliedNewLfoState)
+    {
+        if (const auto lfoState = state.getChildWithName(kLfoStateId); lfoState.isValid())
         {
-            setLfoAssignmentByParameterId(lfoState[kLfoAssignmentId].toString(), false);
+            if (lfoState.hasProperty(kLfoEnabledId) && lfoEnabledParam != nullptr)
+            {
+                const auto enabled = static_cast<bool>(lfoState[kLfoEnabledId]);
+                lfoEnabledParam->setValueNotifyingHost(lfoEnabledParam->convertTo0to1(enabled));
+            }
+
+            if (lfoState.hasProperty(kLfoFrequencyId))
+            {
+                const auto frequency = juce::jlimit(0.01f, 20.0f, static_cast<float>(lfoState[kLfoFrequencyId]));
+                lfoFrequencyParam->setValueNotifyingHost(lfoFrequencyParam->convertTo0to1(frequency));
+            }
+
+            if (lfoState.hasProperty(kLfoWaveformId) && lfoWaveformParam != nullptr)
+            {
+                const auto waveform = px3::clampLfoWaveformIndex(static_cast<int>(lfoState[kLfoWaveformId]));
+                lfoWaveformParam->setValueNotifyingHost(lfoWaveformParam->convertTo0to1(static_cast<float>(waveform)));
+            }
+
+            if (lfoState.hasProperty(kLfoAssignmentId))
+            {
+                setLfoAssignmentByParameterId(lfoState[kLfoAssignmentId].toString(), false);
+            }
         }
     }
 
-    if (const auto envelopeState = state.getChildWithName(kEnvelopeStateId); envelopeState.isValid())
+    auto appliedNewEnvelopeState = false;
+    if (const auto envelopeSources = state.getChildWithName(kEnvelopeSourcesStateId); envelopeSources.isValid())
     {
-        if (envelopeState.hasProperty(kEnvelopeAssignmentId))
+        for (int i = 0; i < envelopeSources.getNumChildren(); ++i)
         {
-            setEnvelopeAssignmentByParameterId(envelopeState[kEnvelopeAssignmentId].toString(), false);
+            const auto source = envelopeSources.getChild(i);
+            if (!source.isValid() || source.getType() != kSourceEntryId)
+            {
+                continue;
+            }
+
+            const auto envIndex = juce::jlimit(0, kEnvelopeSourceCount - 1, static_cast<int>(source.getProperty(kSourceIndexId, 0)));
+            if (source.hasProperty(kEnvelopeAssignmentId))
+            {
+                setEnvelopeAssignmentByParameterId(envIndex, source[kEnvelopeAssignmentId].toString(), false);
+            }
+        }
+        appliedNewEnvelopeState = true;
+    }
+
+    if (!appliedNewEnvelopeState)
+    {
+        if (const auto envelopeState = state.getChildWithName(kEnvelopeStateId); envelopeState.isValid())
+        {
+            if (envelopeState.hasProperty(kEnvelopeAssignmentId))
+            {
+                setEnvelopeAssignmentByParameterId(envelopeState[kEnvelopeAssignmentId].toString(), false);
+            }
         }
     }
 

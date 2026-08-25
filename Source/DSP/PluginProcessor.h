@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "Delay.h"
+#include "EnvelopeGenerator.h"
 #include "LfoGenerator.h"
 #include "PianoKeyboard.h"
 #include "Reverb.h"
@@ -47,6 +48,9 @@
 class PX3SynthAudioProcessor final : public juce::AudioProcessor
 {
 public:
+    static constexpr int kLfoSourceCount = 3;
+    static constexpr int kEnvelopeSourceCount = 3;
+
     struct MidiStatus
     {
         int noteNumber { -1 };
@@ -106,10 +110,15 @@ public:
     juce::AudioParameterFloat& getFilterResonanceParam(int filterIndex) const;
     juce::AudioParameterChoice& getFilterTypeParam(int filterIndex) const;
     juce::AudioParameterFloat& getAttackParam() const;
+    juce::AudioParameterFloat& getAttackParam(int envIndex) const;
     juce::AudioParameterFloat& getDecayParam() const;
+    juce::AudioParameterFloat& getDecayParam(int envIndex) const;
     juce::AudioParameterFloat& getSustainParam() const;
+    juce::AudioParameterFloat& getSustainParam(int envIndex) const;
     juce::AudioParameterFloat& getReleaseParam() const;
+    juce::AudioParameterFloat& getReleaseParam(int envIndex) const;
     juce::AudioParameterBool& getAmpEnvEnabledParam() const;
+    juce::AudioParameterBool& getAmpEnvEnabledParam(int envIndex) const;
     juce::AudioParameterFloat& getMasterGainParam() const;
 
     juce::AudioParameterFloat& getVibeAmountParam() const;
@@ -129,18 +138,29 @@ public:
     juce::AudioParameterChoice& getReverbAlgorithmParam() const;
     juce::AudioParameterInt& getPitchBendRangeParam() const;
     juce::AudioParameterBool& getLfoEnabledParam() const;
+    juce::AudioParameterBool& getLfoEnabledParam(int lfoIndex) const;
     juce::AudioParameterFloat& getLfoFrequencyParam() const;
+    juce::AudioParameterFloat& getLfoFrequencyParam(int lfoIndex) const;
     juce::AudioParameterChoice& getLfoWaveformParam() const;
+    juce::AudioParameterChoice& getLfoWaveformParam(int lfoIndex) const;
     const juce::StringArray& getLfoAssignmentDisplayNames() const;
     int getLfoAssignmentIndex() const;
+    int getLfoAssignmentIndex(int lfoIndex) const;
     juce::String getLfoAssignmentParameterId() const;
+    juce::String getLfoAssignmentParameterId(int lfoIndex) const;
     bool setLfoAssignmentIndex(int index, bool notifyHost = true);
+    bool setLfoAssignmentIndex(int lfoIndex, int index, bool notifyHost = true);
     bool setLfoAssignmentByParameterId(const juce::String& parameterId, bool notifyHost = true);
+    bool setLfoAssignmentByParameterId(int lfoIndex, const juce::String& parameterId, bool notifyHost = true);
     const juce::StringArray& getEnvelopeAssignmentDisplayNames() const;
     int getEnvelopeAssignmentIndex() const;
+    int getEnvelopeAssignmentIndex(int envIndex) const;
     juce::String getEnvelopeAssignmentParameterId() const;
+    juce::String getEnvelopeAssignmentParameterId(int envIndex) const;
     bool setEnvelopeAssignmentIndex(int index, bool notifyHost = true);
+    bool setEnvelopeAssignmentIndex(int envIndex, int index, bool notifyHost = true);
     bool setEnvelopeAssignmentByParameterId(const juce::String& parameterId, bool notifyHost = true);
+    bool setEnvelopeAssignmentByParameterId(int envIndex, const juce::String& parameterId, bool notifyHost = true);
     std::array<int, 3> getFxProcessingOrder() const;
     void setFxProcessingOrder(const std::array<int, 3>& order);
     void setFxProcessingOrderWithReason(const std::array<int, 3>& order,
@@ -217,7 +237,9 @@ private:
     std::array<OscillatorLayerSettings, kOscillatorSourceCount> currentOscillatorLayerSettings() const;
     std::array<FilterSettings, kFilterInstanceCount> currentFilterSettings() const;
     EnvelopeSettings currentEnvelopeSettings() const;
+    EnvelopeSettings currentEnvelopeSettings(int envIndex) const;
     LfoSettings currentLfoSettings() const;
+    LfoSettings currentLfoSettings(int lfoIndex) const;
     VibeSettings currentVibeSettings() const;
     DelaySettings currentDelaySettings() const;
     ReverbSettings currentReverbSettings() const;
@@ -227,6 +249,10 @@ private:
     float lfoDepthForParameterId(const juce::String& parameterId) const;
     int getAssignmentIndex(std::atomic<int> const& sourceIndex) const;
     juce::String getAssignmentParameterId(std::atomic<int> const& sourceIndex) const;
+    std::atomic<int>& lfoAssignmentAtomic(int lfoIndex);
+    std::atomic<int> const& lfoAssignmentAtomic(int lfoIndex) const;
+    std::atomic<int>& envelopeAssignmentAtomic(int envIndex);
+    std::atomic<int> const& envelopeAssignmentAtomic(int envIndex) const;
     bool setAssignmentIndex(std::atomic<int>& sourceIndex, int index, bool notifyHost, const juce::String& sourceName);
     bool setAssignmentByParameterId(std::atomic<int>& sourceIndex,
                                     const juce::String& parameterId,
@@ -237,7 +263,12 @@ private:
                                     float lfoSignal,
                                     float* outBaseNormalized = nullptr,
                                     float* outEffectiveNormalized = nullptr) const;
+    float applyModulationToNormalizedValue(juce::RangedAudioParameter* parameter,
+                                           float baseNormalized,
+                                           float* outBaseNormalized = nullptr,
+                                           float* outEffectiveNormalized = nullptr) const;
     float currentLfoSignalForBlock(int numSamples);
+    float currentLfoSignalForBlock(int lfoIndex, int numSamples);
 
     juce::Synthesiser synth;
 
@@ -259,6 +290,11 @@ private:
     std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCutoffParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterResonanceParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterChoice*, kFilterInstanceCount> filterTypeParams { { nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> attackParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> decayParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> sustainParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> releaseParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterBool*, kEnvelopeSourceCount> ampEnvEnabledParams { { nullptr, nullptr, nullptr } };
     juce::AudioParameterFloat* attackParam { nullptr };
     juce::AudioParameterFloat* decayParam { nullptr };
     juce::AudioParameterFloat* sustainParam { nullptr };
@@ -290,6 +326,9 @@ private:
     juce::AudioParameterFloat* reverbCloudFeedbackParam { nullptr };
     juce::AudioParameterFloat* reverbCloudDiffusionParam { nullptr };
     juce::AudioParameterInt* pitchBendRangeParam { nullptr };
+    std::array<juce::AudioParameterBool*, kLfoSourceCount> lfoEnabledParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kLfoSourceCount> lfoFrequencyParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterChoice*, kLfoSourceCount> lfoWaveformParams { { nullptr, nullptr, nullptr } };
     juce::AudioParameterBool* lfoEnabledParam { nullptr };
     juce::AudioParameterFloat* lfoFrequencyParam { nullptr };
     juce::AudioParameterChoice* lfoWaveformParam { nullptr };
@@ -304,8 +343,8 @@ private:
 
     std::vector<LfoAssignableTarget> lfoAssignableTargets;
     juce::StringArray lfoAssignmentDisplayNames;
-    std::atomic<int> lfoAssignmentIndex { 0 };
-    std::atomic<int> envelopeAssignmentIndex { 0 };
+    std::array<std::atomic<int>, kLfoSourceCount> lfoAssignmentIndices { { 0, 0, 0 } };
+    std::array<std::atomic<int>, kEnvelopeSourceCount> envelopeAssignmentIndices { { 0, 0, 0 } };
 
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteCounts {};
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteVelocities {};
@@ -322,9 +361,12 @@ private:
     std::atomic<int> topMenuViewIndex { 0 };
 
     float vibratoPhaseRadians { 0.0f };
-    LfoGenerator lfoGenerator;
-    std::atomic<float> lfoPhaseForDebug { 0.0f };
-    std::atomic<float> lfoCurrentValue { 0.0f };
+    std::array<LfoGenerator, kLfoSourceCount> lfoGenerators;
+    std::array<std::atomic<float>, kLfoSourceCount> lfoPhaseForDebug { { 0.0f, 0.0f, 0.0f } };
+    std::array<std::atomic<float>, kLfoSourceCount> lfoCurrentValues { { 0.0f, 0.0f, 0.0f } };
+    std::array<EnvelopeGenerator, kEnvelopeSourceCount> modulationEnvelopeGenerators;
+    std::array<std::atomic<float>, kEnvelopeSourceCount> modulationEnvelopeValues { { 0.0f, 0.0f, 0.0f } };
+    bool modulationEnvelopeGateOpen { false };
     std::atomic<float> lfoDebugBaseNormalized { 0.0f };
     std::atomic<float> lfoDebugEffectiveNormalized { 0.0f };
     std::atomic<float> debugOscillatorBusRms { 0.0f };

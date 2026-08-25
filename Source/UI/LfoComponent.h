@@ -20,7 +20,8 @@ public:
                         juce::Label& rateValueLabelIn,
                         juce::ComboBox& waveformBoxIn,
                         juce::Label& waveformLabelIn,
-                        juce::Colour accentIn);
+                        juce::Colour accentIn,
+                        const juce::String& configPrefixIn = "mod.lfo1");
     ~LfoComponent() override;
 
     void setAccentColour(juce::Colour accentIn);
@@ -58,4 +59,5 @@ private:
     float currentRateHz { 1.0f };
     float visualPhase { 0.0f };
     juce::Colour baseRateValueTextColour;
+    juce::String configPrefix;
 };

@@ -116,11 +116,43 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             px3::filterModeChoices(),
             defaultMode);
     }
-    attackParam = new juce::AudioParameterFloat("ampAttack", "Amp Attack", juce::NormalisableRange<float>(0.001f, 3.0f, 0.001f, 0.45f), 0.005f);
-    decayParam = new juce::AudioParameterFloat("ampDecay", "Amp Decay", juce::NormalisableRange<float>(0.005f, 4.0f, 0.001f, 0.45f), 0.050f);
-    sustainParam = new juce::AudioParameterFloat("ampSustain", "Amp Sustain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f);
-    releaseParam = new juce::AudioParameterFloat("ampRelease", "Amp Release", juce::NormalisableRange<float>(0.010f, 5.0f, 0.001f, 0.45f), 0.100f);
-    ampEnvEnabledParam = new juce::AudioParameterBool("ampEnvEnabled", "Amp Envelope Enabled", true);
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        const auto slot = juce::String(envIndex + 1);
+        const auto idPrefix = (envIndex == 0) ? juce::String("amp") : juce::String("env") + slot;
+        const auto labelPrefix = juce::String("Env ") + slot + " ";
+
+        attackParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
+            (envIndex == 0) ? juce::String("ampAttack") : idPrefix + "Attack",
+            labelPrefix + "Attack",
+            juce::NormalisableRange<float>(0.001f, 3.0f, 0.001f, 0.45f),
+            envIndex == 0 ? 0.005f : 0.020f);
+        decayParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
+            (envIndex == 0) ? juce::String("ampDecay") : idPrefix + "Decay",
+            labelPrefix + "Decay",
+            juce::NormalisableRange<float>(0.005f, 4.0f, 0.001f, 0.45f),
+            envIndex == 0 ? 0.050f : 0.120f);
+        sustainParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
+            (envIndex == 0) ? juce::String("ampSustain") : idPrefix + "Sustain",
+            labelPrefix + "Sustain",
+            juce::NormalisableRange<float>(0.0f, 1.0f),
+            envIndex == 0 ? 0.8f : 0.7f);
+        releaseParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
+            (envIndex == 0) ? juce::String("ampRelease") : idPrefix + "Release",
+            labelPrefix + "Release",
+            juce::NormalisableRange<float>(0.010f, 5.0f, 0.001f, 0.45f),
+            envIndex == 0 ? 0.100f : 0.220f);
+        ampEnvEnabledParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterBool(
+            (envIndex == 0) ? juce::String("ampEnvEnabled") : idPrefix + "Enabled",
+            labelPrefix + "Enabled",
+            true);
+    }
+
+    attackParam = attackParams[0];
+    decayParam = decayParams[0];
+    sustainParam = sustainParams[0];
+    releaseParam = releaseParams[0];
+    ampEnvEnabledParam = ampEnvEnabledParams[0];
     masterGainParam = new juce::AudioParameterFloat("masterGain", "Master Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
 
     vibeAmountParam = new juce::AudioParameterFloat("vibeAmount", "Vibe", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
@@ -167,15 +199,31 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                        1,
                                                        24,
                                                        2);
-    lfoEnabledParam = new juce::AudioParameterBool("lfoEnabled", "LFO Enabled", true);
-    lfoFrequencyParam = new juce::AudioParameterFloat("lfoFrequency",
-                                                       "LFO Frequency",
-                                                       juce::NormalisableRange<float>(0.01f, 20.0f, 0.0001f, 0.30f),
-                                                       1.0f);
-    lfoWaveformParam = new juce::AudioParameterChoice("lfoWaveform",
-                                                       "LFO Waveform",
-                                                       px3::lfoWaveformChoices(),
-                                                       0);
+    for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
+    {
+        const auto slot = juce::String(lfoIndex + 1);
+        const auto idPrefix = (lfoIndex == 0) ? juce::String("lfo") : juce::String("lfo") + slot;
+        const auto labelPrefix = juce::String("LFO ") + slot + " ";
+
+        lfoEnabledParams[static_cast<std::size_t>(lfoIndex)] = new juce::AudioParameterBool(
+            (lfoIndex == 0) ? juce::String("lfoEnabled") : idPrefix + "Enabled",
+            labelPrefix + "Enabled",
+            true);
+        lfoFrequencyParams[static_cast<std::size_t>(lfoIndex)] = new juce::AudioParameterFloat(
+            (lfoIndex == 0) ? juce::String("lfoFrequency") : idPrefix + "Frequency",
+            labelPrefix + "Frequency",
+            juce::NormalisableRange<float>(0.01f, 20.0f, 0.0001f, 0.30f),
+            1.0f + static_cast<float>(lfoIndex));
+        lfoWaveformParams[static_cast<std::size_t>(lfoIndex)] = new juce::AudioParameterChoice(
+            (lfoIndex == 0) ? juce::String("lfoWaveform") : idPrefix + "Waveform",
+            labelPrefix + "Waveform",
+            px3::lfoWaveformChoices(),
+            0);
+    }
+
+    lfoEnabledParam = lfoEnabledParams[0];
+    lfoFrequencyParam = lfoFrequencyParams[0];
+    lfoWaveformParam = lfoWaveformParams[0];
 
     for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
     {
@@ -205,11 +253,14 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(filterResonanceParams[static_cast<std::size_t>(filterIndex)]);
         addParameter(filterTypeParams[static_cast<std::size_t>(filterIndex)]);
     }
-    addParameter(attackParam);
-    addParameter(decayParam);
-    addParameter(sustainParam);
-    addParameter(releaseParam);
-    addParameter(ampEnvEnabledParam);
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        addParameter(attackParams[static_cast<std::size_t>(envIndex)]);
+        addParameter(decayParams[static_cast<std::size_t>(envIndex)]);
+        addParameter(sustainParams[static_cast<std::size_t>(envIndex)]);
+        addParameter(releaseParams[static_cast<std::size_t>(envIndex)]);
+        addParameter(ampEnvEnabledParams[static_cast<std::size_t>(envIndex)]);
+    }
     addParameter(masterGainParam);
     addParameter(vibeAmountParam);
     addParameter(vibeEnabledParam);
@@ -236,9 +287,12 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(reverbCloudFeedbackParam);
     addParameter(reverbCloudDiffusionParam);
     addParameter(pitchBendRangeParam);
-    addParameter(lfoEnabledParam);
-    addParameter(lfoFrequencyParam);
-    addParameter(lfoWaveformParam);
+    for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
+    {
+        addParameter(lfoEnabledParams[static_cast<std::size_t>(lfoIndex)]);
+        addParameter(lfoFrequencyParams[static_cast<std::size_t>(lfoIndex)]);
+        addParameter(lfoWaveformParams[static_cast<std::size_t>(lfoIndex)]);
+    }
 
     buildLfoAssignableTargets();
 
@@ -325,8 +379,18 @@ void PX3SynthAudioProcessor::changeProgramName(int, const juce::String&)
 void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     synth.setCurrentPlaybackSampleRate(sampleRate);
-    lfoGenerator.prepare(sampleRate);
-    lfoGenerator.setSettings(currentLfoSettings());
+    for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
+    {
+        lfoGenerators[static_cast<std::size_t>(lfoIndex)].prepare(sampleRate);
+        lfoGenerators[static_cast<std::size_t>(lfoIndex)].setSettings(currentLfoSettings(lfoIndex));
+    }
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        modulationEnvelopeGenerators[static_cast<std::size_t>(envIndex)].setSettings(currentEnvelopeSettings(envIndex));
+        modulationEnvelopeGenerators[static_cast<std::size_t>(envIndex)].reset();
+        modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].store(0.0f, std::memory_order_relaxed);
+    }
+    modulationEnvelopeGateOpen = false;
     vibeComponent.prepare(sampleRate, synth.getNumVoices(), vibeComponent.getSeed());
     delayComponent.prepare(sampleRate);
     reverb.prepare(sampleRate);
@@ -374,22 +438,28 @@ bool PX3SynthAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) 
 
 float PX3SynthAudioProcessor::currentLfoSignalForBlock(int numSamples)
 {
-    // Keep one global LFO instance evaluated once per block. The generator is
-    // generic and destination-agnostic; routing is handled elsewhere.
-    const auto lfoSettings = currentLfoSettings();
-    lfoGenerator.setSettings(lfoSettings);
+    return currentLfoSignalForBlock(0, numSamples);
+}
+
+float PX3SynthAudioProcessor::currentLfoSignalForBlock(int lfoIndex, int numSamples)
+{
+    const auto idx = juce::jlimit(0, kLfoSourceCount - 1, lfoIndex);
+    auto& generator = lfoGenerators[static_cast<std::size_t>(idx)];
+
+    const auto lfoSettings = currentLfoSettings(idx);
+    generator.setSettings(lfoSettings);
 
     if (!lfoSettings.enabled)
     {
-        lfoPhaseForDebug.store(lfoGenerator.getPhaseRadians(), std::memory_order_relaxed);
-        lfoCurrentValue.store(0.0f, std::memory_order_relaxed);
+        lfoPhaseForDebug[static_cast<std::size_t>(idx)].store(generator.getPhaseRadians(), std::memory_order_relaxed);
+        lfoCurrentValues[static_cast<std::size_t>(idx)].store(0.0f, std::memory_order_relaxed);
         return 0.0f;
     }
 
-    const auto signal = lfoGenerator.getMidpointSignalAndAdvance(numSamples);
+    const auto signal = generator.getMidpointSignalAndAdvance(numSamples);
 
-    lfoPhaseForDebug.store(lfoGenerator.getPhaseRadians(), std::memory_order_relaxed);
-    lfoCurrentValue.store(signal, std::memory_order_relaxed);
+    lfoPhaseForDebug[static_cast<std::size_t>(idx)].store(generator.getPhaseRadians(), std::memory_order_relaxed);
+    lfoCurrentValues[static_cast<std::size_t>(idx)].store(signal, std::memory_order_relaxed);
     return signal;
 }
 
@@ -435,14 +505,58 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     midiMessages.swapWith(combinedMidi);
     updateActiveNotesFromMidi(midiMessages);
 
+    auto anyActiveNotes = false;
+    for (const auto& noteCount : activeNoteCounts)
+    {
+        if (noteCount.load(std::memory_order_relaxed) > 0)
+        {
+            anyActiveNotes = true;
+            break;
+        }
+    }
+
+    if (anyActiveNotes && !modulationEnvelopeGateOpen)
+    {
+        for (auto& env : modulationEnvelopeGenerators)
+        {
+            env.noteOn();
+        }
+        modulationEnvelopeGateOpen = true;
+    }
+    else if (!anyActiveNotes && modulationEnvelopeGateOpen)
+    {
+        for (auto& env : modulationEnvelopeGenerators)
+        {
+            env.noteOff();
+        }
+        modulationEnvelopeGateOpen = false;
+    }
+
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        auto& generator = modulationEnvelopeGenerators[static_cast<std::size_t>(envIndex)];
+        generator.setSettings(currentEnvelopeSettings(envIndex));
+
+        auto sampleValue = modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].load(std::memory_order_relaxed);
+        for (int i = 0; i < blockSamples; ++i)
+        {
+            sampleValue = generator.getNextSample();
+        }
+        modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].store(sampleValue, std::memory_order_relaxed);
+    }
+
     const auto pitchBend = juce::jlimit(-1.0f, 1.0f, pitchBendNormalized.load(std::memory_order_relaxed));
     const auto modWheel = juce::jlimit(0.0f, 1.0f, modWheelNormalized.load(std::memory_order_relaxed));
     const auto bendRange = static_cast<float>(pitchBendRangeParam->get());
     constexpr float vibratoRateHz = 5.0f;
     constexpr float vibratoMaxDepthSemitones = 1.0f;
 
-    const auto blockLfoSignal = currentLfoSignalForBlock(buffer.getNumSamples());
-    const auto lfoAssignedIndex = getLfoAssignmentIndex();
+    for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
+    {
+        juce::ignoreUnused(currentLfoSignalForBlock(lfoIndex, buffer.getNumSamples()));
+    }
+
+    const auto lfoAssignedIndex = getLfoAssignmentIndex(0);
     if (lfoAssignedIndex > 0 && lfoAssignedIndex < static_cast<int>(lfoAssignableTargets.size()))
     {
         const auto& target = lfoAssignableTargets[static_cast<std::size_t>(lfoAssignedIndex)];
@@ -450,11 +564,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         {
             float baseNorm = 0.0f;
             float effectiveNorm = 0.0f;
-            juce::ignoreUnused(applyLfoToNormalizedValue(target.parameter,
-                                                         target.parameter->getValue(),
-                                                         blockLfoSignal,
-                                                         &baseNorm,
-                                                         &effectiveNorm));
+            juce::ignoreUnused(applyModulationToNormalizedValue(target.parameter,
+                                                                 target.parameter->getValue(),
+                                                                 &baseNorm,
+                                                                 &effectiveNorm));
             lfoDebugBaseNormalized.store(baseNorm, std::memory_order_relaxed);
             lfoDebugEffectiveNormalized.store(effectiveNorm, std::memory_order_relaxed);
         }
@@ -465,7 +578,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         lfoDebugEffectiveNormalized.store(0.0f, std::memory_order_relaxed);
     }
 
-    const auto envelope = currentEnvelopeSettings();
+    const auto envelope = currentEnvelopeSettings(0);
     const auto filter = currentFilterSettings();
     const auto subtractive = currentSubtractiveSettings();
     const auto subOsc = currentSubOscillatorSettings();
