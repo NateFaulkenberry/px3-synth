@@ -233,7 +233,7 @@ void OscPanel::refreshSubOscFromParameters(bool enabled, int octaveIndex, int wa
     }
 }
 
-void OscPanel::advanceAnimation(float oscDeltaPhase, float lfoDeltaPhase)
+void OscPanel::advanceAnimation(float oscDeltaPhase, float lfoDeltaSeconds)
 {
     for (auto& oscillatorComponent : oscillatorComponents)
     {
@@ -250,7 +250,7 @@ void OscPanel::advanceAnimation(float oscDeltaPhase, float lfoDeltaPhase)
 
     if (lfoComponent != nullptr)
     {
-        lfoComponent->advanceAnimation(lfoDeltaPhase);
+        lfoComponent->advanceAnimation(lfoDeltaSeconds);
     }
 }
 

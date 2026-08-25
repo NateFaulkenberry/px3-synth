@@ -232,6 +232,7 @@ private:
     bool anyKeyDown { false };
     float logoVibrationPhase { 0.0f };
     float logoVibrationIntensity { 0.0f };
+    double lastAnimationTickSeconds { 0.0 };
 
     juce::Rectangle<int> headerArea;
     juce::Rectangle<int> controlsArea;

@@ -2852,6 +2852,12 @@ void PX3SynthAudioProcessorEditor::timerCallback()
 {
     loadUiConfig(false);
 
+    const auto nowSeconds = juce::Time::getMillisecondCounterHiRes() * 0.001;
+    const auto deltaSeconds = (lastAnimationTickSeconds > 0.0)
+                                  ? static_cast<float>(nowSeconds - lastAnimationTickSeconds)
+                                  : (1.0f / 30.0f);
+    lastAnimationTickSeconds = nowSeconds;
+
     // Timer drives non-audio UI synchronization only. DSP state is never
     // computed here; this keeps audio-thread responsibilities isolated.
     if (isPanelVisible(3) && draggingFxSection < 0)
@@ -2916,7 +2922,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
 
     if (isPanelVisible(0) && oscPanel != nullptr)
     {
-        oscPanel->advanceAnimation(0.09f, 0.07f);
+        oscPanel->advanceAnimation(0.09f, deltaSeconds);
     }
 
 #if PX3_DEBUG_PANEL

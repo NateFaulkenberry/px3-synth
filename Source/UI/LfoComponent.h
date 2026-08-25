@@ -50,5 +50,6 @@ private:
     WaveformComboLookAndFeel waveformComboLookAndFeel;
 
     int currentWaveformIndex { 0 };
+    float currentRateHz { 1.0f };
     float visualPhase { 0.0f };
 };

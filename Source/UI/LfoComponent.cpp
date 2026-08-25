@@ -61,7 +61,8 @@ void LfoComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 
 void LfoComponent::refreshFromParameters(float rateHz, int waveformIndex)
 {
-    rateValueLabel.setText(juce::String(juce::jlimit(0.01f, 20.0f, rateHz), 2) + " Hz", juce::dontSendNotification);
+    currentRateHz = juce::jlimit(0.01f, 20.0f, rateHz);
+    rateValueLabel.setText(juce::String(currentRateHz, 2) + " Hz", juce::dontSendNotification);
 
     const auto clamped = px3::clampLfoWaveformIndex(waveformIndex);
     currentWaveformIndex = clamped;
@@ -71,13 +72,11 @@ void LfoComponent::refreshFromParameters(float rateHz, int waveformIndex)
     }
 }
 
-void LfoComponent::advanceAnimation(float deltaPhase)
+void LfoComponent::advanceAnimation(float deltaSeconds)
 {
-    visualPhase += deltaPhase;
-    if (visualPhase >= juce::MathConstants<float>::twoPi)
-    {
-        visualPhase -= juce::MathConstants<float>::twoPi;
-    }
+    const auto clampedDeltaSeconds = juce::jlimit(1.0f / 120.0f, 0.2f, deltaSeconds);
+    const auto phaseAdvance = juce::MathConstants<float>::twoPi * currentRateHz * clampedDeltaSeconds;
+    visualPhase = std::fmod(visualPhase + phaseAdvance, juce::MathConstants<float>::twoPi);
 
     repaint();
 }

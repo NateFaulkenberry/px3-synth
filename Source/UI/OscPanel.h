@@ -73,7 +73,7 @@ public:
     void refreshOscillatorFromParameters(int oscIndex, bool enabled, int modeIndex, int vowelIndex);
     void refreshLfoFromParameters(float rateHz, int waveformIndex);
     void refreshSubOscFromParameters(bool enabled, int octaveIndex, int waveformIndex);
-    void advanceAnimation(float oscDeltaPhase, float lfoDeltaPhase);
+    void advanceAnimation(float oscDeltaPhase, float lfoDeltaSeconds);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
 private:
