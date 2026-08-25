@@ -146,3 +146,17 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         endif()
     endforeach()
 endif()
+
+# Ship external UI config alongside built bundles for runtime hot-reloadable styling.
+set(PX3_UI_CONFIG_FILE "${CMAKE_SOURCE_DIR}/Source/UI/UIConfig.json")
+foreach(px3BundleTarget IN ITEMS PX3Synth_Standalone PX3Synth_AU PX3Synth_VST3)
+    if (TARGET ${px3BundleTarget})
+        add_custom_command(TARGET ${px3BundleTarget} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${px3BundleTarget}>/../Resources"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${PX3_UI_CONFIG_FILE}"
+                "$<TARGET_FILE_DIR:${px3BundleTarget}>/../Resources/UIConfig.json"
+            VERBATIM
+        )
+    endif()
+endforeach()

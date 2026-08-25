@@ -353,6 +353,7 @@ VST3_NAME="$(basename "${VST3_BUNDLE}")"
 
 AU_COMPONENT_PKG="${PKG_COMPONENTS_DIR}/PX3-AU-v${PROJECT_VERSION}.pkg"
 VST3_COMPONENT_PKG="${PKG_COMPONENTS_DIR}/PX3-VST3-v${PROJECT_VERSION}.pkg"
+UI_CONFIG_RESOURCE_REL="Contents/Resources/UIConfig.json"
 
 AU_INSTALL_DIR="Library/Audio/Plug-Ins/Components"
 VST3_INSTALL_DIR="Library/Audio/Plug-Ins/VST3"
@@ -374,6 +375,12 @@ cp -R "${AU_BUNDLE}" "${DIST_DIR}/AU/"
 cp -R "${VST3_BUNDLE}" "${DIST_DIR}/VST3/"
 cp -R "${AU_BUNDLE}" "${PKG_ROOT_AU}/${AU_INSTALL_DIR}/"
 cp -R "${VST3_BUNDLE}" "${PKG_ROOT_VST3}/${VST3_INSTALL_DIR}/"
+
+[[ -f "${AU_BUNDLE}/${UI_CONFIG_RESOURCE_REL}" ]] \
+  || die "AU bundle is missing required UI config resource: ${AU_BUNDLE}/${UI_CONFIG_RESOURCE_REL}"
+
+[[ -f "${VST3_BUNDLE}/${UI_CONFIG_RESOURCE_REL}" ]] \
+  || die "VST3 bundle is missing required UI config resource: ${VST3_BUNDLE}/${UI_CONFIG_RESOURCE_REL}"
 
 if [[ -n "${APP_BUNDLE}" ]]; then
   mkdir -p "${DIST_DIR}/Standalone"
@@ -463,8 +470,14 @@ grep -F "$(basename "${VST3_COMPONENT_PKG}")" "${PKG_EXPANDED_DIR}/Distribution"
 pkg_payload_has "${AU_COMPONENT_PKG}" "${AU_INSTALL_DIR}/${AU_NAME}/Contents/Info.plist" \
   || die "AU component package payload validation failed: missing ${AU_INSTALL_DIR}/${AU_NAME}/Contents/Info.plist"
 
+pkg_payload_has "${AU_COMPONENT_PKG}" "${AU_INSTALL_DIR}/${AU_NAME}/${UI_CONFIG_RESOURCE_REL}" \
+  || die "AU component package payload validation failed: missing ${AU_INSTALL_DIR}/${AU_NAME}/${UI_CONFIG_RESOURCE_REL}"
+
 pkg_payload_has "${VST3_COMPONENT_PKG}" "${VST3_INSTALL_DIR}/${VST3_NAME}/Contents/Info.plist" \
   || die "VST3 component package payload validation failed: missing ${VST3_INSTALL_DIR}/${VST3_NAME}/Contents/Info.plist"
+
+pkg_payload_has "${VST3_COMPONENT_PKG}" "${VST3_INSTALL_DIR}/${VST3_NAME}/${UI_CONFIG_RESOURCE_REL}" \
+  || die "VST3 component package payload validation failed: missing ${VST3_INSTALL_DIR}/${VST3_NAME}/${UI_CONFIG_RESOURCE_REL}"
 
 if ! pkgutil --check-signature "${PKG_PATH}" >/dev/null 2>&1; then
   echo "  Warning: pkgutil signature check reported unsigned installer (acceptable for local dev)."
