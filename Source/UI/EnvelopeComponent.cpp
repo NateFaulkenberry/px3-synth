@@ -61,27 +61,8 @@ void EnvelopeComponent::paint(juce::Graphics& g)
     const auto outline = uiConfig != nullptr
                              ? uiConfig->getColour("env.envelope.outline", accent.withAlpha(0.28f))
                              : accent.withAlpha(0.28f);
-    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("env.envelope.topFillAlpha", 0.10f) : 0.10f;
-    const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("env.envelope.topFillColour", background)
-                                                   : background;
 
-    g.setColour(topFillColour.withAlpha(topFillAlpha));
-    juce::Path topFill;
-    const auto topFillBounds = componentBounds.reduced(6.0f);
-    const auto topHalf = topFillBounds.withTrimmedBottom(topFillBounds.getHeight() * 0.5f);
-    topFill.addRoundedRectangle(topHalf.getX(),
-                                topHalf.getY(),
-                                topHalf.getWidth(),
-                                topHalf.getHeight(),
-                                8.0f,
-                                8.0f,
-                                true,
-                                true,
-                                false,
-                                false);
-    g.fillPath(topFill);
-
-    const auto graphArea = componentBounds;
+    const auto graphArea = componentBounds.reduced(2.0f);
     g.setColour(background);
     g.fillRoundedRectangle(graphArea, 7.0f);
     g.setColour(outline);
@@ -281,7 +262,7 @@ EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
 {
     Geometry geom;
     const auto componentBounds = getLocalBounds().toFloat().reduced(2.0f);
-    const auto area = componentBounds;
+    const auto area = componentBounds.reduced(2.0f);
 
     geom.left = area.getX() + 26.0f;
     geom.right = area.getRight() - 10.0f;
