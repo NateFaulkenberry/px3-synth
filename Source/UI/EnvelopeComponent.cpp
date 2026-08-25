@@ -97,9 +97,19 @@ void EnvelopeComponent::paint(juce::Graphics& g)
                                 ? uiConfig->getColour("mod.panel.background", juce::Colour::fromRGBA(10, 18, 10, 155))
                                 : juce::Colour::fromRGBA(10, 18, 10, 155);
     const auto effectiveBackground = currentEnabled ? background : juce::Colour::fromRGBA(22, 22, 22, 165);
-    const auto outline = uiConfig != nullptr
-                             ? uiConfig->getColour("mod.panel.outline", effectiveAccent.withAlpha(0.28f))
-                             : effectiveAccent.withAlpha(0.28f);
+    const auto configuredOutline = uiConfig != nullptr
+                                       ? uiConfig->getColour("mod.panel.outline", effectiveAccent.withAlpha(0.28f))
+                                       : effectiveAccent.withAlpha(0.28f);
+    const auto outline = [&configuredOutline, this]()
+    {
+        if (currentEnabled)
+        {
+            return configuredOutline;
+        }
+
+        const auto gray = juce::jlimit(0.0f, 1.0f, configuredOutline.getPerceivedBrightness());
+        return juce::Colour::fromFloatRGBA(gray, gray, gray, configuredOutline.getFloatAlpha());
+    }();
 
     const auto graphArea = componentBounds.reduced(2.0f);
     g.setColour(effectiveBackground);
