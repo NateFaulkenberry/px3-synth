@@ -151,9 +151,24 @@ void EnvelopeComponent::mouseDown(const juce::MouseEvent& event)
     const auto geom = computeGeometry();
     dragHandle = pickHandle(event.position, geom);
     hoverHandle = dragHandle;
+    draggingSustainSegment = false;
     if (dragHandle == DragHandle::none)
     {
         return;
+    }
+
+    if (dragHandle == DragHandle::decaySustain)
+    {
+        constexpr float dotHitRadius = 13.0f;
+        const auto dotHitSq = dotHitRadius * dotHitRadius;
+        const auto dsDotDistSq = distSq(event.position, geom.decaySustainPoint);
+        if (dsDotDistSq > dotHitSq)
+        {
+            draggingSustainSegment = true;
+            sustainDragStartX = event.position.getX();
+            sustainDragStartDecayX = geom.decaySustainPoint.getX();
+            sustainDragStartReleaseX = geom.releasePoint.getX();
+        }
     }
 
     if (dragHandle == DragHandle::attack)
@@ -200,6 +215,7 @@ void EnvelopeComponent::mouseUp(const juce::MouseEvent&)
     }
 
     dragHandle = DragHandle::none;
+    draggingSustainSegment = false;
     repaint();
 }
 
@@ -476,11 +492,33 @@ void EnvelopeComponent::applyDragPosition(juce::Point<float> mousePos,
     }
     else if (dragHandle == DragHandle::decaySustain)
     {
-        const auto xMin = geom.attackPoint.getX() + geom.minDecayGap;
-        const auto xMax = geom.releasePoint.getX() - geom.minSustainWidth;
-        const auto clampedX = juce::jlimit(xMin, xMax, x);
-        const auto available = juce::jmax(1.0f, xMax - xMin);
-        const auto decayNorm = clamp01((clampedX - xMin) / available);
+        float decayNorm = 0.0f;
+
+        if (draggingSustainSegment)
+        {
+            const auto segmentWidth = sustainDragStartReleaseX - sustainDragStartDecayX;
+            const auto xMin = geom.attackPoint.getX() + geom.minDecayGap;
+            const auto xMax = geom.right - segmentWidth;
+            const auto targetDecayX = sustainDragStartDecayX + (x - sustainDragStartX);
+            const auto clampedDecayX = juce::jlimit(xMin, xMax, targetDecayX);
+            const auto clampedReleaseX = clampedDecayX + segmentWidth;
+
+            const auto decayRangeMin = geom.attackPoint.getX() + geom.minDecayGap;
+            const auto decayRangeMax = juce::jmax(decayRangeMin + 1.0f, clampedReleaseX - geom.minSustainWidth);
+            decayNorm = clamp01((clampedDecayX - decayRangeMin) / juce::jmax(1.0f, decayRangeMax - decayRangeMin));
+
+            const auto releaseNorm = clamp01((geom.right - clampedReleaseX) / juce::jmax(1.0f, geom.releaseRangeWidth));
+            const auto releaseRange = release.getNormalisableRange();
+            setParameterFromActualValue(release, visualNormToTime(releaseNorm, releaseRange.start, releaseRange.end));
+        }
+        else
+        {
+            const auto xMin = geom.attackPoint.getX() + geom.minDecayGap;
+            const auto xMax = geom.releasePoint.getX() - geom.minSustainWidth;
+            const auto clampedX = juce::jlimit(xMin, xMax, x);
+            const auto available = juce::jmax(1.0f, xMax - xMin);
+            decayNorm = clamp01((clampedX - xMin) / available);
+        }
 
         const auto yClamped = juce::jlimit(geom.top, geom.bottom, y);
         const auto sustainValue = juce::jmap(yClamped, geom.bottom, geom.top, 0.0f, 1.0f);

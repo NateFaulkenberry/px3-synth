@@ -79,6 +79,10 @@ private:
     std::shared_ptr<const UIConfig> uiConfig;
     DragHandle hoverHandle { DragHandle::none };
     DragHandle dragHandle { DragHandle::none };
+    bool draggingSustainSegment { false };
+    float sustainDragStartX { 0.0f };
+    float sustainDragStartDecayX { 0.0f };
+    float sustainDragStartReleaseX { 0.0f };
     float lastAttack { -1.0f };
     float lastDecay { -1.0f };
     float lastSustain { -1.0f };
