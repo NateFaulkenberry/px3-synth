@@ -772,15 +772,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                         reverbTypeBox,
                                         reverbTypeLabel,
                                         juce::Colour::fromRGB(120, 186, 255));
-    mixPanel = std::make_unique<MixPanel>(subOscEnabledButton,
-                                          subOscEnabledLabel,
-                                          subOscLevelKnob,
-                                          subOscLevelLabel,
-                                          subOscOctaveBox,
-                                          subOscOctaveLabel,
-                                          subOscWaveformBox,
-                                          subOscWaveformLabel,
-                                          juce::Colour::fromRGB(212, 212, 212));
+    mixPanel = std::make_unique<MixPanel>(juce::Colour::fromRGB(212, 212, 212));
 
     addAndMakeVisible(*oscPanel);
     addAndMakeVisible(*envPanel);
