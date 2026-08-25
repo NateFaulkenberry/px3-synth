@@ -46,16 +46,16 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
                                                                 delayFeedbackKnob,
                                                                 delayFeedbackLabel,
                                                                 juce::Colour::fromRGB(132, 210, 255));
-    reverbUiComponent = std::make_unique<ReverbUiComponent>(reverbBypass,
-                                                            reverbKnob,
-                                                            reverbLabel,
-                                                            reverbTypeBox,
-                                                            reverbTypeLabel,
-                                                            juce::Colour::fromRGB(128, 208, 255));
+    reverbComponent = std::make_unique<ReverbComponent>(reverbBypass,
+                                                        reverbKnob,
+                                                        reverbLabel,
+                                                        reverbTypeBox,
+                                                        reverbTypeLabel,
+                                                        juce::Colour::fromRGB(128, 208, 255));
 
     addAndMakeVisible(*vibeUiComponent);
     addAndMakeVisible(*delayPanelComponent);
-    addAndMakeVisible(*reverbUiComponent);
+    addAndMakeVisible(*reverbComponent);
 }
 
 void FxPanel::paint(juce::Graphics& g)
@@ -87,9 +87,9 @@ void FxPanel::setSectionBounds(const juce::Rectangle<int>& vibeBounds,
         delayPanelComponent->setBounds(delayBounds);
     }
 
-    if (reverbUiComponent != nullptr)
+    if (reverbComponent != nullptr)
     {
-        reverbUiComponent->setBounds(reverbBounds);
+        reverbComponent->setBounds(reverbBounds);
     }
 }
 
@@ -105,9 +105,9 @@ void FxPanel::setActive(bool vibeEnabled, bool delayEnabled, bool granularModeSe
         delayPanelComponent->setActive(delayEnabled, granularModeSelectable);
     }
 
-    if (reverbUiComponent != nullptr)
+    if (reverbComponent != nullptr)
     {
-        reverbUiComponent->setActive(reverbEnabled);
+        reverbComponent->setActive(reverbEnabled);
     }
 }
 
@@ -123,9 +123,9 @@ void FxPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     {
         delayPanelComponent->setUIConfig(uiConfig);
     }
-    if (reverbUiComponent != nullptr)
+    if (reverbComponent != nullptr)
     {
-        reverbUiComponent->setUIConfig(uiConfig);
+        reverbComponent->setUIConfig(uiConfig);
     }
 
     repaint();

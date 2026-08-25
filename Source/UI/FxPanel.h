@@ -3,7 +3,7 @@
 #include <JuceHeader.h>
 
 #include "DelayComponent.h"
-#include "ReverbUiComponent.h"
+#include "ReverbComponent.h"
 #include "UIConfig.h"
 #include "VibeComponent.h"
 
@@ -47,7 +47,7 @@ public:
 private:
     std::unique_ptr<VibeComponent> vibeUiComponent;
     std::unique_ptr<DelayComponent> delayPanelComponent;
-    std::unique_ptr<ReverbUiComponent> reverbUiComponent;
+    std::unique_ptr<ReverbComponent> reverbComponent;
 
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;

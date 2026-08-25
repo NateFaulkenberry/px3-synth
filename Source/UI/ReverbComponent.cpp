@@ -1,8 +1,8 @@
-#include "ReverbUiComponent.h"
+#include "ReverbComponent.h"
 
 #include "UIConfig.h"
 
-ReverbUiComponent::ReverbUiComponent(juce::ToggleButton& enabledButtonIn,
+ReverbComponent::ReverbComponent(juce::ToggleButton& enabledButtonIn,
                                      juce::Slider& amountKnobIn,
                                      juce::Label& amountLabelIn,
                                      juce::ComboBox& typeBoxIn,
@@ -22,13 +22,13 @@ ReverbUiComponent::ReverbUiComponent(juce::ToggleButton& enabledButtonIn,
     addAndMakeVisible(typeLabel);
 }
 
-void ReverbUiComponent::setAccentColour(juce::Colour accentIn)
+void ReverbComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
     repaint();
 }
 
-void ReverbUiComponent::setActive(bool enabled)
+void ReverbComponent::setActive(bool enabled)
 {
     isActive = enabled;
     amountKnob.setEnabled(isActive);
@@ -39,13 +39,13 @@ void ReverbUiComponent::setActive(bool enabled)
     repaint();
 }
 
-void ReverbUiComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
+void ReverbComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
     repaint();
 }
 
-void ReverbUiComponent::resized()
+void ReverbComponent::resized()
 {
     const auto padX = uiConfig != nullptr ? uiConfig->getInt("fx.reverb.layout.padX", 10) : 10;
     const auto padY = uiConfig != nullptr ? uiConfig->getInt("fx.reverb.layout.padY", 8) : 8;
@@ -66,7 +66,7 @@ void ReverbUiComponent::resized()
     amountLabel.setBounds(labelArea);
 }
 
-void ReverbUiComponent::paint(juce::Graphics& g)
+void ReverbComponent::paint(juce::Graphics& g)
 {
     const auto borderPad = uiConfig != nullptr ? uiConfig->getFloat("fx.reverb.visual.borderPadding", 6.0f) : 6.0f;
     const auto radius = uiConfig != nullptr ? uiConfig->getFloat("fx.reverb.visual.cornerRadius", 8.0f) : 8.0f;

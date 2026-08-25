@@ -6,10 +6,10 @@
 
 class UIConfig;
 
-class ReverbUiComponent final : public juce::Component
+class ReverbComponent final : public juce::Component
 {
 public:
-    ReverbUiComponent(juce::ToggleButton& enabledButtonIn,
+    ReverbComponent(juce::ToggleButton& enabledButtonIn,
                       juce::Slider& amountKnobIn,
                       juce::Label& amountLabelIn,
                       juce::ComboBox& typeBoxIn,
