@@ -28,6 +28,13 @@ With DEBUG panel enabled builds, you can inspect internal bus routing in the det
 - OSCILLATOR, DRY, FX, and MASTER bus RMS readouts
 - FX send and FX return gain controls for wet-path gain staging
 
+The debug performance HUD (bottom-left overlay) reports:
+
+- Per-instance CPU load from this PX3 processor's `processBlock` timing.
+- Per-instance RAM estimate from process RSS divided by active PX3 instance count.
+
+RAM is approximate in host/plugin scenarios because memory is shared within the process.
+
 Force a clean rebuild before launching standalone:
 
 ```bash

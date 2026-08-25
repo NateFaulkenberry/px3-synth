@@ -89,14 +89,23 @@ void FltPanel::paint(juce::Graphics& g)
     const auto totalGap = gap * (kFilterInstanceCount - 1);
     const auto columnWidth = juce::jmax(1, (contentArea.getWidth() - totalGap) / kFilterInstanceCount);
 
+    const auto drawCardTitle = [&g](const juce::String& text, juce::Rectangle<int> bounds, juce::Colour colour)
+    {
+        g.setColour(colour.brighter(0.2f));
+        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        g.drawText(text, bounds.removeFromTop(14), juce::Justification::centredTop, true);
+    };
+
     for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
     {
         const auto x = contentArea.getX() + filterIndex * (columnWidth + gap);
-        const auto cardBounds = juce::Rectangle<int>(x, contentArea.getY(), columnWidth, contentArea.getHeight()).reduced(2, 0).toFloat();
+        const auto cardBoundsInt = juce::Rectangle<int>(x, contentArea.getY(), columnWidth, contentArea.getHeight()).reduced(2, 0);
+        const auto cardBounds = cardBoundsInt.toFloat();
         g.setColour(accent.withAlpha(0.10f));
         g.fillRoundedRectangle(cardBounds, 8.0f);
         g.setColour(juce::Colour::fromRGBA(220, 232, 252, 88));
         g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
+        drawCardTitle("Filter " + juce::String(filterIndex + 1), cardBoundsInt, accent);
     }
 }
 

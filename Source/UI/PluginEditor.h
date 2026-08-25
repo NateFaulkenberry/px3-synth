@@ -194,6 +194,7 @@ private:
     void refreshDebugEventLog();
     void refreshDebugLfoState();
     void refreshDebugEnvelopeState();
+    void refreshDebugPerformanceOverlay();
     void debugCaptureSnapshot(const juce::String& reason);
     void debugCompareWithSnapshot();
     void debugForceSerializationTest();
@@ -405,6 +406,10 @@ private:
     std::array<KnobBinding, 19> knobBindings {};
     int lastGranularModeIndex { -1 };
     int lastLfoAssignmentIndex { -1 };
+
+    juce::Label debugPerformanceOverlayLabel;
+    juce::Rectangle<int> debugPerformanceOverlayArea;
+    uint32_t debugPerformanceOverlayLastUpdateMs { 0 };
 
     juce::Component debugPanel;
     juce::Label debugPanelTitle;

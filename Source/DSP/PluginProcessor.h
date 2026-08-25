@@ -168,6 +168,8 @@ public:
     float debugGetDryBusRms() const;
     float debugGetFxBusRms() const;
     float debugGetMasterBusRms() const;
+    float debugGetInstanceCpuLoadPercent() const;
+    int debugGetActiveInstanceCount() const;
     juce::String debugGetLfoAssignmentName() const;
     float debugGetVibeGlobalAmount() const;
     float debugGetVibeEffectiveAmount() const;
@@ -312,6 +314,7 @@ private:
     std::atomic<float> debugDryBusRms { 0.0f };
     std::atomic<float> debugFxBusRms { 0.0f };
     std::atomic<float> debugMasterBusRms { 0.0f };
+    std::atomic<float> debugInstanceCpuLoadPercent { 0.0f };
 
     /*
      * VIBE is a correlated imperfection system. It is intentionally not a

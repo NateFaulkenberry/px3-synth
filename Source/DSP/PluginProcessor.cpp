@@ -18,6 +18,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
     const auto instanceNumber = kInstanceCounter.fetch_add(1u, std::memory_order_relaxed) + 1u;
+    kActiveInstanceCount.fetch_add(1, std::memory_order_relaxed);
     debugInstanceId = "PX3-INSTANCE-" + juce::String(static_cast<int>(instanceNumber)).paddedLeft('0', 2);
     debugProcessorCreatedTime = nowTimestamp();
 
@@ -266,6 +267,7 @@ PX3SynthAudioProcessor::~PX3SynthAudioProcessor()
 {
     debugLogEvent("LIFECYCLE", "PROCESSOR_DESTROYED",
                   "id=" + debugInstanceId + " order=" + debugDescribeOrder(getFxProcessingOrder()));
+    kActiveInstanceCount.fetch_sub(1, std::memory_order_relaxed);
 }
 
 const juce::String PX3SynthAudioProcessor::getName() const
@@ -381,6 +383,8 @@ float PX3SynthAudioProcessor::currentLfoSignalForBlock(int numSamples)
 void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
+    const auto blockStartTicks = juce::Time::getHighResolutionTicks();
+    const auto ticksPerSecond = juce::Time::getHighResolutionTicksPerSecond();
     const auto blockSamples = buffer.getNumSamples();
     const auto outputChannels = buffer.getNumChannels();
 
@@ -597,6 +601,20 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         debugMasterBusRms.store(computeStereoRms(masterBusBuffer), std::memory_order_relaxed);
     }
 #endif
+
+    if (blockSamples > 0 && currentSampleRateHz > 0.0 && ticksPerSecond > 0)
+    {
+        const auto blockEndTicks = juce::Time::getHighResolutionTicks();
+        const auto elapsedTicks = juce::jmax<juce::int64>(1, blockEndTicks - blockStartTicks);
+        const auto elapsedSeconds = static_cast<double>(elapsedTicks) / static_cast<double>(ticksPerSecond);
+        const auto blockDurationSeconds = static_cast<double>(blockSamples) / currentSampleRateHz;
+
+        const auto rawLoadPercent = static_cast<float>(juce::jmax(0.0, (elapsedSeconds / blockDurationSeconds) * 100.0));
+        const auto previous = debugInstanceCpuLoadPercent.load(std::memory_order_relaxed);
+        constexpr float smoothing = 0.18f;
+        const auto smoothed = previous + (rawLoadPercent - previous) * smoothing;
+        debugInstanceCpuLoadPercent.store(smoothed, std::memory_order_relaxed);
+    }
 }
 
 bool PX3SynthAudioProcessor::hasEditor() const

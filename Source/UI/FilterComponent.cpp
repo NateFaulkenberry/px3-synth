@@ -127,13 +127,6 @@ void FilterComponent::paint(juce::Graphics& g)
     g.setColour(effectiveAccent.brighter(0.15f).withAlpha(currentEnabled ? 1.0f : 0.6f));
     g.strokePath(response, juce::PathStrokeType(1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    if (instanceLabel.isNotEmpty())
-    {
-        g.setColour(juce::Colour::fromRGBA(255, 255, 255, currentEnabled ? 120 : 90));
-        g.setFont(juce::FontOptions(10.0f));
-        auto titleRow = graphRect.toNearestInt().removeFromTop(14);
-        g.drawText(instanceLabel, titleRow, juce::Justification::centredTop);
-    }
 }
 
 float FilterComponent::clamp01(float value)

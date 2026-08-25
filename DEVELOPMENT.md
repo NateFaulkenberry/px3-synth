@@ -106,6 +106,13 @@ Major sections:
 - Internal bus diagnostics: OSC/DRY/FX/MASTER RMS readouts
 - Preset/state tools: state snapshots, round-trip tests, and developer preset dump
 
+Debug performance HUD metric semantics:
+
+- CPU metric is per-processor-instance block load, computed from `processBlock` elapsed time divided by block audio duration.
+- CPU metric is intentionally smoothed for readability; do not treat it as a peak detector.
+- RAM metric is an estimate only: process RSS divided by active PX3 processor instances.
+- RAM estimate is closest in standalone single-instance use; in DAWs it is shared-process apportionment.
+
 ## Threading Notes
 
 - `processBlock` is audio thread: do not add blocking I/O, allocations, or UI calls.

@@ -35,6 +35,7 @@ inline const juce::Identifier kVibeBypassId("bypass");
 inline const juce::Identifier kVibeSeedId("seed");
 
 inline std::atomic<uint32_t> kInstanceCounter { 0u };
+inline std::atomic<int> kActiveInstanceCount { 0 };
 
 inline const juce::StringArray kVibeTypeChoices {
     "Warm",

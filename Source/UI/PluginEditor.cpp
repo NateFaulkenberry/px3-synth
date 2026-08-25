@@ -9,6 +9,10 @@
 #include <limits>
 #include <random>
 
+#if JUCE_MAC
+#include <mach/mach.h>
+#endif
+
 namespace
 {
 const std::array<juce::Colour, 4> kGroupAccents {
@@ -51,6 +55,20 @@ int sectionIdFromModuleId(const juce::String& moduleId)
         return kFxSectionDrive;
     }
     return -1;
+}
+
+double processResidentMemoryMb()
+{
+#if JUCE_MAC
+    mach_task_basic_info_data_t info;
+    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+    const auto status = task_info(mach_task_self(), MACH_TASK_BASIC_INFO, reinterpret_cast<task_info_t>(&info), &count);
+    if (status == KERN_SUCCESS)
+    {
+        return static_cast<double>(info.resident_size) / (1024.0 * 1024.0);
+    }
+#endif
+    return 0.0;
 }
 
 class DebugPanelWindow final : public juce::DocumentWindow
@@ -1110,6 +1128,19 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     refreshFilterUI();
     refreshFxBypassUI();
     debugEditorCreatedTime = audioProcessor.debugNowTimestamp();
+
+#if PX3_DEBUG_PANEL
+    debugPerformanceOverlayLabel.setJustificationType(juce::Justification::centredLeft);
+    debugPerformanceOverlayLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    debugPerformanceOverlayLabel.setColour(juce::Label::backgroundColourId, juce::Colour::fromRGBA(0, 0, 0, 240));
+    debugPerformanceOverlayLabel.setColour(juce::Label::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 56));
+    debugPerformanceOverlayLabel.setFont(juce::FontOptions(11.0f));
+    debugPerformanceOverlayLabel.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(debugPerformanceOverlayLabel);
+    debugPerformanceOverlayLabel.toFront(false);
+    refreshDebugPerformanceOverlay();
+#endif
+
 #if PX3_DEBUG_PANEL
     setupDebugPanel();
 #endif
@@ -1496,6 +1527,18 @@ void PX3SynthAudioProcessorEditor::resized()
     presetBrowserLoadButton.setBounds(footerRight.removeFromLeft(90));
     footerRight.removeFromLeft(10);
     presetBrowserCloseButton.setBounds(footerRight.removeFromLeft(90));
+
+#if PX3_DEBUG_PANEL
+    constexpr int overlayWidth = 170;
+    constexpr int overlayHeight = 20;
+    constexpr int overlayMargin = 12;
+    debugPerformanceOverlayArea = { overlayMargin,
+                                    getHeight() - overlayHeight - overlayMargin,
+                                    overlayWidth,
+                                    overlayHeight };
+    debugPerformanceOverlayLabel.setBounds(debugPerformanceOverlayArea);
+    debugPerformanceOverlayLabel.toFront(false);
+#endif
 
 }
 
@@ -2690,6 +2733,10 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         oscPanel->advanceAnimation(0.09f, 0.07f);
     }
 
+#if PX3_DEBUG_PANEL
+    refreshDebugPerformanceOverlay();
+#endif
+
     if (isPanelVisible(4) && mixPanel != nullptr)
     {
         mixPanel->advanceAnimation(0.05f);
@@ -2742,4 +2789,23 @@ void PX3SynthAudioProcessorEditor::timerCallback()
 
         repaint();
     }
+}
+
+void PX3SynthAudioProcessorEditor::refreshDebugPerformanceOverlay()
+{
+#if PX3_DEBUG_PANEL
+    constexpr uint32_t kUpdateIntervalMs = 200;
+    const auto nowMs = juce::Time::getMillisecondCounter();
+    if (nowMs - debugPerformanceOverlayLastUpdateMs < kUpdateIntervalMs)
+    {
+        return;
+    }
+    debugPerformanceOverlayLastUpdateMs = nowMs;
+
+    const auto cpuPercent = juce::jlimit(0.0, 999.0, static_cast<double>(audioProcessor.debugGetInstanceCpuLoadPercent()));
+    const auto activeInstances = juce::jmax(1, audioProcessor.debugGetActiveInstanceCount());
+    const auto ramMb = juce::jlimit(0.0, 99999.0, processResidentMemoryMb() / static_cast<double>(activeInstances));
+    debugPerformanceOverlayLabel.setText("CPU: " + juce::String(cpuPercent, 1) + "% | RAM: " + juce::String(ramMb, 1) + " MB",
+                                         juce::dontSendNotification);
+#endif
 }

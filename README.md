@@ -187,6 +187,20 @@ When DEBUG mode is enabled, the detached debug console exposes live internal bus
 
 These are developer diagnostics and do not change the preset format.
 
+## Debug Performance HUD Accuracy
+
+When `PX3_DEBUG_PANEL` is enabled, the bottom-left CPU/RAM overlay reports:
+
+- `CPU`: per-instance plugin load measured from this instance's `processBlock` execution time relative to block audio duration.
+- `RAM`: per-instance estimate computed as process resident memory divided by active PX3 instance count.
+
+Accuracy notes:
+
+- CPU is instance-specific and is the closest real-time indicator of this plugin instance's audio-thread cost.
+- CPU is reported as smoothed block load, so very short spikes may be visually damped.
+- RAM is an estimate, not exact per-instance ownership, because process memory is shared and cannot be perfectly partitioned by plugin instance.
+- In standalone with one instance, RAM estimate effectively matches app RSS.
+
 ## UI Guide: Every Section And Control
 
 ## OSC Section

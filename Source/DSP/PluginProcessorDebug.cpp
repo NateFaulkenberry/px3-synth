@@ -381,3 +381,13 @@ float PX3SynthAudioProcessor::debugGetMasterBusRms() const
     return juce::jmax(0.0f, debugMasterBusRms.load(std::memory_order_relaxed));
 }
 
+float PX3SynthAudioProcessor::debugGetInstanceCpuLoadPercent() const
+{
+    return juce::jmax(0.0f, debugInstanceCpuLoadPercent.load(std::memory_order_relaxed));
+}
+
+int PX3SynthAudioProcessor::debugGetActiveInstanceCount() const
+{
+    return juce::jmax(1, kActiveInstanceCount.load(std::memory_order_relaxed));
+}
+
