@@ -101,9 +101,9 @@ public:
     juce::AudioParameterFloat& getSubOscLevelParam() const;
     juce::AudioParameterChoice& getSubOscOctaveParam() const;
     juce::AudioParameterChoice& getSubOscWaveformParam() const;
-    juce::AudioParameterFloat& getFilterCutoffParam() const;
-    juce::AudioParameterFloat& getFilterResonanceParam() const;
-    juce::AudioParameterChoice& getFilterTypeParam() const;
+    juce::AudioParameterFloat& getFilterCutoffParam(int filterIndex) const;
+    juce::AudioParameterFloat& getFilterResonanceParam(int filterIndex) const;
+    juce::AudioParameterChoice& getFilterTypeParam(int filterIndex) const;
     juce::AudioParameterFloat& getAttackParam() const;
     juce::AudioParameterFloat& getDecayParam() const;
     juce::AudioParameterFloat& getSustainParam() const;
@@ -205,7 +205,7 @@ private:
     SubtractiveSettings currentSubtractiveSettings() const;
     SubOscSettings currentSubOscillatorSettings() const;
     std::array<OscillatorLayerSettings, kOscillatorSourceCount> currentOscillatorLayerSettings() const;
-    FilterSettings currentFilterSettings() const;
+    std::array<FilterSettings, kFilterInstanceCount> currentFilterSettings() const;
     EnvelopeSettings currentEnvelopeSettings() const;
     LfoSettings currentLfoSettings() const;
     VibeSettings currentVibeSettings() const;
@@ -238,9 +238,9 @@ private:
     juce::AudioParameterFloat* subOscLevelParam { nullptr };
     juce::AudioParameterChoice* subOscOctaveParam { nullptr };
     juce::AudioParameterChoice* subOscWaveformParam { nullptr };
-    juce::AudioParameterFloat* filterCutoffParam { nullptr };
-    juce::AudioParameterFloat* filterResonanceParam { nullptr };
-    juce::AudioParameterChoice* filterTypeParam { nullptr };
+    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCutoffParams { { nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterResonanceParams { { nullptr, nullptr } };
+    std::array<juce::AudioParameterChoice*, kFilterInstanceCount> filterTypeParams { { nullptr, nullptr } };
     juce::AudioParameterFloat* attackParam { nullptr };
     juce::AudioParameterFloat* decayParam { nullptr };
     juce::AudioParameterFloat* sustainParam { nullptr };

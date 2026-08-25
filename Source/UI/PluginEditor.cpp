@@ -423,6 +423,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         KnobBinding { &osc3SquareKnob, &osc3SquareLabel, nullptr },
         KnobBinding { &cutoffKnob, &cutoffLabel, nullptr },
         KnobBinding { &resonanceKnob, &resonanceLabel, nullptr },
+        KnobBinding { &cutoff2Knob, &cutoff2Label, nullptr },
+        KnobBinding { &resonance2Knob, &resonance2Label, nullptr },
         KnobBinding { &attackKnob, &attackLabel, nullptr },
         KnobBinding { &decayKnob, &decayLabel, nullptr },
         KnobBinding { &sustainKnob, &sustainLabel, nullptr },
@@ -440,14 +442,16 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureKnob(knobBindings[6], "PARAM A", audioProcessor.getOscillatorMacroAParam(2));
     configureKnob(knobBindings[7], "PARAM B", audioProcessor.getOscillatorMacroBParam(2));
     configureKnob(knobBindings[8], "PARAM C", audioProcessor.getOscillatorMacroCParam(2));
-    configureKnob(knobBindings[9], "Cutoff", audioProcessor.getFilterCutoffParam());
-    configureKnob(knobBindings[10], "Reso", audioProcessor.getFilterResonanceParam());
-    configureKnob(knobBindings[11], "Attack", audioProcessor.getAttackParam());
-    configureKnob(knobBindings[12], "Decay", audioProcessor.getDecayParam());
-    configureKnob(knobBindings[13], "Sustain", audioProcessor.getSustainParam());
-    configureKnob(knobBindings[14], "Release", audioProcessor.getReleaseParam());
-    configureKnob(knobBindings[15], "Freq", audioProcessor.getLfoFrequencyParam());
-    configureKnob(knobBindings[16], "Master", audioProcessor.getMasterGainParam());
+    configureKnob(knobBindings[9], "Cutoff", audioProcessor.getFilterCutoffParam(0));
+    configureKnob(knobBindings[10], "Reso", audioProcessor.getFilterResonanceParam(0));
+    configureKnob(knobBindings[11], "Cutoff", audioProcessor.getFilterCutoffParam(1));
+    configureKnob(knobBindings[12], "Reso", audioProcessor.getFilterResonanceParam(1));
+    configureKnob(knobBindings[13], "Attack", audioProcessor.getAttackParam());
+    configureKnob(knobBindings[14], "Decay", audioProcessor.getDecayParam());
+    configureKnob(knobBindings[15], "Sustain", audioProcessor.getSustainParam());
+    configureKnob(knobBindings[16], "Release", audioProcessor.getReleaseParam());
+    configureKnob(knobBindings[17], "Freq", audioProcessor.getLfoFrequencyParam());
+    configureKnob(knobBindings[18], "Master", audioProcessor.getMasterGainParam());
 
     // ADSR graph replaces visible envelope knobs; parameter attachments remain unchanged.
     attackKnob.setVisible(false);
@@ -627,20 +631,26 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     vibeTypeLabel.setFont(juce::FontOptions(11.5f));
     vibeTypeLabel.setInterceptsMouseClicks(false, false);
 
-    auto& filterTypeParam = audioProcessor.getFilterTypeParam();
-    const auto filterChoiceCount = filterTypeParam.choices.size();
-    for (int i = 0; i < filterChoiceCount; ++i)
+    const auto configureFilterSelector = [this](int filterIndex, juce::ComboBox& filterBox)
     {
-        filterTypeBox.addItem(filterTypeParam.choices[i], i + 1);
-    }
-    filterTypeBox.setSelectedItemIndex(filterTypeParam.getIndex(), juce::dontSendNotification);
-    filterTypeBox.onChange = [this]()
-    {
-        refreshFilterUI();
+        auto& filterTypeParam = audioProcessor.getFilterTypeParam(filterIndex);
+        const auto filterChoiceCount = filterTypeParam.choices.size();
+        for (int i = 0; i < filterChoiceCount; ++i)
+        {
+            filterBox.addItem(filterTypeParam.choices[i], i + 1);
+        }
+        filterBox.setSelectedItemIndex(filterTypeParam.getIndex(), juce::dontSendNotification);
+        filterBox.onChange = [this]()
+        {
+            refreshFilterUI();
+        };
+        filterBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+        filterBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+        filterBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
     };
-    filterTypeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
-    filterTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    filterTypeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+
+    configureFilterSelector(0, filterTypeBox);
+    configureFilterSelector(1, filter2TypeBox);
 
     auto configureOscSelector = [this](int oscIndex, juce::ComboBox& modeBox, KnobLabel& modeLabel, juce::ComboBox& vowelBox, KnobLabel& vowelLabel)
     {
@@ -819,14 +829,14 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           audioProcessor.getSustainParam(),
                                           audioProcessor.getReleaseParam(),
                                           kGroupAccents[2]);
-    fltPanel = std::make_unique<FltPanel>(cutoffKnob,
-                                          cutoffLabel,
-                                          resonanceKnob,
-                                          resonanceLabel,
-                                          filterTypeBox,
-                                          audioProcessor.getFilterCutoffParam(),
-                                          audioProcessor.getFilterResonanceParam(),
-                                          audioProcessor.getFilterTypeParam(),
+    fltPanel = std::make_unique<FltPanel>(std::array<juce::Slider*, kFilterInstanceCount> { { &cutoffKnob, &cutoff2Knob } },
+                                          std::array<juce::Label*, kFilterInstanceCount> { { &cutoffLabel, &cutoff2Label } },
+                                          std::array<juce::Slider*, kFilterInstanceCount> { { &resonanceKnob, &resonance2Knob } },
+                                          std::array<juce::Label*, kFilterInstanceCount> { { &resonanceLabel, &resonance2Label } },
+                                          std::array<juce::ComboBox*, kFilterInstanceCount> { { &filterTypeBox, &filter2TypeBox } },
+                                          std::array<juce::AudioParameterFloat*, kFilterInstanceCount> { { &audioProcessor.getFilterCutoffParam(0), &audioProcessor.getFilterCutoffParam(1) } },
+                                          std::array<juce::AudioParameterFloat*, kFilterInstanceCount> { { &audioProcessor.getFilterResonanceParam(0), &audioProcessor.getFilterResonanceParam(1) } },
+                                          std::array<juce::AudioParameterChoice*, kFilterInstanceCount> { { &audioProcessor.getFilterTypeParam(0), &audioProcessor.getFilterTypeParam(1) } },
                                           kGroupAccents[1]);
     fxPanel = std::make_unique<FxPanel>(robBypassButton,
                                         vibeAmountKnob,
@@ -884,7 +894,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachSlider(audioProcessor.getOscillatorLevelParam(1), osc2LevelFader);
     attachSlider(audioProcessor.getOscillatorLevelParam(2), osc3LevelFader);
 
-    attachComboBox(audioProcessor.getFilterTypeParam(), filterTypeBox);
+    attachComboBox(audioProcessor.getFilterTypeParam(0), filterTypeBox);
+    attachComboBox(audioProcessor.getFilterTypeParam(1), filter2TypeBox);
     attachComboBox(audioProcessor.getOscillatorModeParam(0), oscModeBox);
     attachComboBox(audioProcessor.getOscillatorVowelParam(0), oscVowelBox);
     attachComboBox(audioProcessor.getOscillatorModeParam(1), osc2ModeBox);

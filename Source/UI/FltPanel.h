@@ -2,19 +2,22 @@
 
 #include <JuceHeader.h>
 
+#include "../DSP/FilterTypes.h"
 #include "FilterComponent.h"
+
+#include <array>
 
 class FltPanel final : public juce::Component
 {
 public:
-    FltPanel(juce::Slider& cutoffKnob,
-             juce::Label& cutoffLabel,
-             juce::Slider& resonanceKnob,
-             juce::Label& resonanceLabel,
-             juce::ComboBox& filterTypeBox,
-             juce::AudioParameterFloat& cutoffParam,
-             juce::AudioParameterFloat& resonanceParam,
-             juce::AudioParameterChoice& filterTypeParam,
+    FltPanel(std::array<juce::Slider*, kFilterInstanceCount> cutoffKnobs,
+             std::array<juce::Label*, kFilterInstanceCount> cutoffLabels,
+             std::array<juce::Slider*, kFilterInstanceCount> resonanceKnobs,
+             std::array<juce::Label*, kFilterInstanceCount> resonanceLabels,
+             std::array<juce::ComboBox*, kFilterInstanceCount> filterTypeBoxes,
+             std::array<juce::AudioParameterFloat*, kFilterInstanceCount> cutoffParams,
+             std::array<juce::AudioParameterFloat*, kFilterInstanceCount> resonanceParams,
+             std::array<juce::AudioParameterChoice*, kFilterInstanceCount> filterTypeParams,
              juce::Colour panelAccent);
     ~FltPanel() override;
 
@@ -30,15 +33,15 @@ private:
                                                                  juce::Label& label) override;
     };
 
-    juce::Slider& cutoffKnob;
-    juce::Label& cutoffLabel;
-    juce::Slider& resonanceKnob;
-    juce::Label& resonanceLabel;
-    juce::ComboBox& filterTypeBox;
+    std::array<juce::Slider*, kFilterInstanceCount> cutoffKnobs;
+    std::array<juce::Label*, kFilterInstanceCount> cutoffLabels;
+    std::array<juce::Slider*, kFilterInstanceCount> resonanceKnobs;
+    std::array<juce::Label*, kFilterInstanceCount> resonanceLabels;
+    std::array<juce::ComboBox*, kFilterInstanceCount> filterTypeBoxes;
 
     FilterComboLookAndFeel filterComboLookAndFeel;
 
-    std::unique_ptr<FilterComponent> filterComponent;
+    std::array<std::unique_ptr<FilterComponent>, kFilterInstanceCount> filterComponents;
 
     juce::String title { "FLT" };
     juce::Colour accent;

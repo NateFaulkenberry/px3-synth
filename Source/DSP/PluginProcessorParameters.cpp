@@ -117,9 +117,21 @@ juce::AudioParameterBool& PX3SynthAudioProcessor::getSubOscEnabledParam() const 
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getSubOscLevelParam() const { return *subOscLevelParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getSubOscOctaveParam() const { return *subOscOctaveParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getSubOscWaveformParam() const { return *subOscWaveformParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterCutoffParam() const { return *filterCutoffParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterResonanceParam() const { return *filterResonanceParam; }
-juce::AudioParameterChoice& PX3SynthAudioProcessor::getFilterTypeParam() const { return *filterTypeParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterCutoffParam(int filterIndex) const
+{
+    const auto idx = juce::jlimit(0, kFilterInstanceCount - 1, filterIndex);
+    return *filterCutoffParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterResonanceParam(int filterIndex) const
+{
+    const auto idx = juce::jlimit(0, kFilterInstanceCount - 1, filterIndex);
+    return *filterResonanceParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getFilterTypeParam(int filterIndex) const
+{
+    const auto idx = juce::jlimit(0, kFilterInstanceCount - 1, filterIndex);
+    return *filterTypeParams[static_cast<std::size_t>(idx)];
+}
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getAttackParam() const { return *attackParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getDecayParam() const { return *decayParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getSustainParam() const { return *sustainParam; }
@@ -281,14 +293,14 @@ float PX3SynthAudioProcessor::lfoDepthForParameterId(const juce::String& paramet
         return 0.30f;
     }
 
-    if (parameterId.equalsIgnoreCase("filterResonance")
+    if (parameterId.containsIgnoreCase("Resonance")
         || parameterId.equalsIgnoreCase("delayFeedback")
         || parameterId.equalsIgnoreCase("reverbAmount"))
     {
         return 0.12f;
     }
 
-    if (parameterId.equalsIgnoreCase("filterCutoff")
+    if (parameterId.containsIgnoreCase("Cutoff")
         || parameterId.equalsIgnoreCase("delayTime")
         || parameterId.equalsIgnoreCase("reverbDecay"))
     {

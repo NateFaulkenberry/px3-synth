@@ -87,12 +87,29 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                           "Sub Osc Waveform",
                                                           px3::subOscWaveformChoices(),
                                                           1);
-    filterCutoffParam = new juce::AudioParameterFloat("filterCutoff", "Filter Cutoff", juce::NormalisableRange<float>(80.0f, 18000.0f, 1.0f, 0.35f), 12000.0f);
-    filterResonanceParam = new juce::AudioParameterFloat("filterResonance", "Filter Resonance", juce::NormalisableRange<float>(0.25f, 2.2f), 0.8f);
-    filterTypeParam = new juce::AudioParameterChoice("filterType",
-                                                          "Filter Type",
-                                                          px3::filterModeChoices(),
-                                                          0);
+    for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
+    {
+        const auto slot = juce::String(filterIndex + 1);
+        const auto idPrefix = "filter" + slot;
+        const auto labelPrefix = "Filter " + slot + " ";
+        const auto defaultMode = filterIndex == 0 ? 0 : 6; // LP12 for Filter 1, AllPass for others.
+
+        filterCutoffParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
+            idPrefix + "Cutoff",
+            labelPrefix + "Cutoff",
+            juce::NormalisableRange<float>(80.0f, 18000.0f, 1.0f, 0.35f),
+            12000.0f);
+        filterResonanceParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
+            idPrefix + "Resonance",
+            labelPrefix + "Resonance",
+            juce::NormalisableRange<float>(0.25f, 2.2f),
+            0.8f);
+        filterTypeParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterChoice(
+            idPrefix + "Type",
+            labelPrefix + "Type",
+            px3::filterModeChoices(),
+            defaultMode);
+    }
     attackParam = new juce::AudioParameterFloat("ampAttack", "Amp Attack", juce::NormalisableRange<float>(0.001f, 3.0f, 0.001f, 0.45f), 0.005f);
     decayParam = new juce::AudioParameterFloat("ampDecay", "Amp Decay", juce::NormalisableRange<float>(0.005f, 4.0f, 0.001f, 0.45f), 0.050f);
     sustainParam = new juce::AudioParameterFloat("ampSustain", "Amp Sustain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f);
@@ -173,9 +190,12 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(subOscLevelParam);
     addParameter(subOscOctaveParam);
     addParameter(subOscWaveformParam);
-    addParameter(filterCutoffParam);
-    addParameter(filterResonanceParam);
-    addParameter(filterTypeParam);
+    for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
+    {
+        addParameter(filterCutoffParams[static_cast<std::size_t>(filterIndex)]);
+        addParameter(filterResonanceParams[static_cast<std::size_t>(filterIndex)]);
+        addParameter(filterTypeParams[static_cast<std::size_t>(filterIndex)]);
+    }
     addParameter(attackParam);
     addParameter(decayParam);
     addParameter(sustainParam);

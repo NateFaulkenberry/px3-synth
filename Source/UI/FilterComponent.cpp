@@ -5,8 +5,13 @@
 FilterComponent::FilterComponent(juce::AudioParameterFloat& cutoffIn,
                                  juce::AudioParameterFloat& resonanceIn,
                                  juce::AudioParameterChoice& modeIn,
+                                 juce::String instanceLabelIn,
                                  juce::Colour accentIn)
-    : cutoff(cutoffIn), resonance(resonanceIn), mode(modeIn), accent(accentIn)
+    : cutoff(cutoffIn),
+      resonance(resonanceIn),
+      mode(modeIn),
+            instanceLabel(instanceLabelIn),
+      accent(accentIn)
 {
     refreshFromParameters();
 }
@@ -47,10 +52,12 @@ void FilterComponent::paint(juce::Graphics& g)
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 70));
     g.drawRoundedRectangle(graphRect, 4.0f, 1.0f);
 
-    const auto left = graphRect.getX() + 4.0f;
-    const auto right = graphRect.getRight() - 4.0f;
-    const auto top = graphRect.getY() + 4.0f;
-    const auto bottom = graphRect.getBottom() - 4.0f;
+    auto contentRect = graphRect;
+
+    const auto left = contentRect.getX() + 4.0f;
+    const auto right = contentRect.getRight() - 4.0f;
+    const auto top = contentRect.getY() + 4.0f;
+    const auto bottom = contentRect.getBottom() - 4.0f;
     const auto midY = (top + bottom) * 0.5f;
 
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 36));
@@ -112,6 +119,14 @@ void FilterComponent::paint(juce::Graphics& g)
 
     g.setColour(accent.brighter(0.15f));
     g.strokePath(response, juce::PathStrokeType(1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    if (instanceLabel.isNotEmpty())
+    {
+        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 120));
+        g.setFont(juce::FontOptions(10.0f));
+        auto titleRow = graphRect.toNearestInt().removeFromTop(14);
+        g.drawText(instanceLabel, titleRow, juce::Justification::centredTop);
+    }
 }
 
 float FilterComponent::clamp01(float value)

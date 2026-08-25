@@ -28,18 +28,30 @@ SubOscSettings PX3SynthAudioProcessor::currentSubOscillatorSettings() const
     return settings;
 }
 
-FilterSettings PX3SynthAudioProcessor::currentFilterSettings() const
+std::array<FilterSettings, kFilterInstanceCount> PX3SynthAudioProcessor::currentFilterSettings() const
 {
     const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
-    FilterSettings settings;
-    settings.cutoffHz = filterCutoffParam->convertFrom0to1(applyLfoToNormalizedValue(filterCutoffParam,
-                                                                                      static_cast<juce::RangedAudioParameter*>(filterCutoffParam)->getValue(),
-                                                                                      lfoSignal));
-    settings.resonanceQ = filterResonanceParam->convertFrom0to1(applyLfoToNormalizedValue(filterResonanceParam,
-                                                                                           static_cast<juce::RangedAudioParameter*>(filterResonanceParam)->getValue(),
-                                                                                           lfoSignal));
-    settings.modeIndex = filterTypeParam->getIndex();
-    return settings;
+    std::array<FilterSettings, kFilterInstanceCount> filterSettings;
+
+    for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
+    {
+        auto& settings = filterSettings[static_cast<std::size_t>(filterIndex)];
+        auto& cutoffParam = getFilterCutoffParam(filterIndex);
+        auto& resonanceParam = getFilterResonanceParam(filterIndex);
+        auto& modeParam = getFilterTypeParam(filterIndex);
+
+        settings.cutoffHz = cutoffParam.convertFrom0to1(applyLfoToNormalizedValue(
+            &cutoffParam,
+            static_cast<juce::RangedAudioParameter&>(cutoffParam).getValue(),
+            lfoSignal));
+        settings.resonanceQ = resonanceParam.convertFrom0to1(applyLfoToNormalizedValue(
+            &resonanceParam,
+            static_cast<juce::RangedAudioParameter&>(resonanceParam).getValue(),
+            lfoSignal));
+        settings.modeIndex = modeParam.getIndex();
+    }
+
+    return filterSettings;
 }
 
 std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcessor::currentOscillatorLayerSettings() const

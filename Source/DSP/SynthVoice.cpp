@@ -28,8 +28,12 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     currentAngle = 0.0;
     updateAngleDelta();
     const auto sampleRate = juce::jmax(1.0, getSampleRate());
-    voiceFilter.prepare(sampleRate);
-    voiceFilter.setCurrentSettingsImmediate(filterSettings);
+    for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
+    {
+        auto& filter = voiceFilters[static_cast<std::size_t>(filterIndex)];
+        filter.prepare(sampleRate);
+        filter.setCurrentSettingsImmediate(filterSettings[static_cast<std::size_t>(filterIndex)]);
+    }
     subOscillator.prepare(sampleRate);
     subOscillator.setSettings(subOscillatorSettings);
     subOscillator.resetForNote();
@@ -94,28 +98,32 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     const auto vibeDepth = juce::jlimit(0.0f, 3.50f, vibeBase * (0.30f + 3.10f * vibeBase));
     const auto vibeActive = vibeDepth > 0.0001f;
 
-    auto targetCutoffHz = filterSettings.cutoffHz;
-    auto targetResonanceQ = filterSettings.resonanceQ;
-
-    if (vibeActive)
+    for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
     {
-        const auto temperatureCutoff = vibeShared.temperature * vibeTuning.temperatureDrift * 0.34f;
-        const auto psuCutoff = vibeShared.psu * vibeTuning.psuMovement * 0.22f;
-        const auto voiceCutoff = vibeVariation.cutoffOffset * vibeTuning.voiceVariation;
-        const auto chaosCutoff = vibeShared.chaos * vibeTuning.correlatedChaos * 0.28f;
-        const auto cutoffMul = 1.0f + (temperatureCutoff + psuCutoff + voiceCutoff + chaosCutoff) * vibeDepth;
+        auto runtimeFilter = filterSettings[static_cast<std::size_t>(filterIndex)];
 
-        const auto resoDelta = (vibeVariation.resonanceOffset * vibeTuning.voiceVariation
-                    + vibeShared.chaos * vibeTuning.filterVariation * 0.16f) * vibeDepth;
+        auto targetCutoffHz = runtimeFilter.cutoffHz;
+        auto targetResonanceQ = runtimeFilter.resonanceQ;
 
-        targetCutoffHz *= cutoffMul;
-        targetResonanceQ *= (1.0f + resoDelta);
+        if (vibeActive)
+        {
+            const auto temperatureCutoff = vibeShared.temperature * vibeTuning.temperatureDrift * 0.34f;
+            const auto psuCutoff = vibeShared.psu * vibeTuning.psuMovement * 0.22f;
+            const auto voiceCutoff = vibeVariation.cutoffOffset * vibeTuning.voiceVariation;
+            const auto chaosCutoff = vibeShared.chaos * vibeTuning.correlatedChaos * 0.28f;
+            const auto cutoffMul = 1.0f + (temperatureCutoff + psuCutoff + voiceCutoff + chaosCutoff) * vibeDepth;
+
+            const auto resoDelta = (vibeVariation.resonanceOffset * vibeTuning.voiceVariation
+                        + vibeShared.chaos * vibeTuning.filterVariation * 0.16f) * vibeDepth;
+
+            targetCutoffHz *= cutoffMul;
+            targetResonanceQ *= (1.0f + resoDelta);
+        }
+
+        runtimeFilter.cutoffHz = juce::jlimit(20.0f, 20000.0f, targetCutoffHz);
+        runtimeFilter.resonanceQ = juce::jlimit(0.20f, 10.0f, targetResonanceQ);
+        voiceFilters[static_cast<std::size_t>(filterIndex)].setTargetSettings(runtimeFilter);
     }
-
-    FilterSettings runtimeFilter = filterSettings;
-    runtimeFilter.cutoffHz = juce::jlimit(20.0f, 20000.0f, targetCutoffHz);
-    runtimeFilter.resonanceQ = juce::jlimit(0.20f, 10.0f, targetResonanceQ);
-    voiceFilter.setTargetSettings(runtimeFilter);
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
@@ -211,8 +219,12 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
         auto sourceSample = softClip((oscillatorStageSample + subStageSample) * 0.96f);
 
-        // FILTER STAGE: processes combined oscillator bus signal.
-        auto filteredSample = voiceFilter.processSample(sourceSample);
+        // FILTER STAGE: each configured filter instance processes in sequence.
+        auto filteredSample = sourceSample;
+        for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
+        {
+            filteredSample = voiceFilters[static_cast<std::size_t>(filterIndex)].processSample(filteredSample);
+        }
 
         // AMP STAGE: envelope and voice gain are downstream of filter.
         const auto env = ampEnvelope.getNextSample();
@@ -264,14 +276,21 @@ void SynthVoice::setEnvelope(const EnvelopeSettings& settings)
     ampEnvelope.setSettings(settings);
 }
 
-void SynthVoice::setFilterSettings(const FilterSettings& settings)
+void SynthVoice::setFilterSettings(const std::array<FilterSettings, kFilterInstanceCount>& settings)
 {
     filterSettings = settings;
-    voiceFilter.setTargetSettings(filterSettings);
+    for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
+    {
+        voiceFilters[static_cast<std::size_t>(filterIndex)].setTargetSettings(filterSettings[static_cast<std::size_t>(filterIndex)]);
+    }
 
     if (!ampEnvelope.isActive())
     {
-        voiceFilter.setCurrentSettingsImmediate(filterSettings);
+        for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
+        {
+            voiceFilters[static_cast<std::size_t>(filterIndex)].setCurrentSettingsImmediate(
+                filterSettings[static_cast<std::size_t>(filterIndex)]);
+        }
     }
 }
 

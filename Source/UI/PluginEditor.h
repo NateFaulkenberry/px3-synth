@@ -282,6 +282,9 @@ private:
     juce::Slider cutoffKnob;
     juce::Slider resonanceKnob;
     juce::ComboBox filterTypeBox;
+    juce::Slider cutoff2Knob;
+    juce::Slider resonance2Knob;
+    juce::ComboBox filter2TypeBox;
     juce::Slider attackKnob;
     juce::Slider decayKnob;
     juce::Slider sustainKnob;
@@ -316,6 +319,9 @@ private:
     KnobLabel cutoffLabel;
     KnobLabel resonanceLabel;
     KnobLabel filterTypeLabel;
+    KnobLabel cutoff2Label;
+    KnobLabel resonance2Label;
+    KnobLabel filter2TypeLabel;
     KnobLabel attackLabel;
     KnobLabel decayLabel;
     KnobLabel sustainLabel;
@@ -392,7 +398,7 @@ private:
     std::vector<std::unique_ptr<juce::ComboBoxParameterAttachment>> comboBoxAttachments;
     std::vector<std::unique_ptr<juce::ButtonParameterAttachment>> buttonAttachments;
 
-    std::array<KnobBinding, 17> knobBindings {};
+    std::array<KnobBinding, 19> knobBindings {};
     int lastGranularModeIndex { -1 };
     int lastLfoAssignmentIndex { -1 };
 

@@ -10,6 +10,7 @@ public:
     FilterComponent(juce::AudioParameterFloat& cutoffIn,
                     juce::AudioParameterFloat& resonanceIn,
                     juce::AudioParameterChoice& modeIn,
+                    juce::String instanceLabelIn,
                     juce::Colour accentIn);
 
     void setAccentColour(juce::Colour accentIn);
@@ -25,6 +26,7 @@ private:
     juce::AudioParameterFloat& cutoff;
     juce::AudioParameterFloat& resonance;
     juce::AudioParameterChoice& mode;
+    juce::String instanceLabel;
     juce::Colour accent;
 
     int lastModeIndex { -1 };

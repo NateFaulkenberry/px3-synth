@@ -34,7 +34,7 @@ public:
     void renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override;
 
     void setEnvelope(const EnvelopeSettings& settings);
-    void setFilterSettings(const FilterSettings& settings);
+    void setFilterSettings(const std::array<FilterSettings, kFilterInstanceCount>& settings);
     void setSubtractiveSettings(const SubtractiveSettings& settings);
     void setSubOscillatorSettings(const SubOscSettings& settings);
     void setOscillatorLayerSettings(const std::array<OscillatorLayerSettings, kOscillatorSourceCount>& settings);
@@ -57,13 +57,13 @@ private:
     // Cached control settings for this voice. The processor refreshes these
     // every block so render code can run branch-light in the inner loop.
     EnvelopeSettings envelopeSettings;
-    FilterSettings filterSettings;
+    std::array<FilterSettings, kFilterInstanceCount> filterSettings;
     SubtractiveSettings subtractiveSettings;
     SubOscSettings subOscillatorSettings;
     std::array<OscillatorLayerSettings, kOscillatorSourceCount> oscillatorLayerSettings;
 
     EnvelopeGenerator ampEnvelope;
-    VoiceFilter voiceFilter;
+    std::array<VoiceFilter, kFilterInstanceCount> voiceFilters;
 
     double currentAngle { 0.0 };
     double angleDelta { 0.0 };
