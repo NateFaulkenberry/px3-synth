@@ -1028,28 +1028,6 @@ juce::ValueTree PresetManager::migratePresetTreeIfNeeded(const juce::ValueTree& 
             state.removeProperty("topMenuView", nullptr);
         }
 
-        // Remap removed parameter IDs from legacy factory/user presets.
-        static constexpr std::array<std::pair<const char*, const char*>, 3> legacyParamMap { {
-            { "robAmount", "vibeAmount" },
-            { "robEnabled", "vibeEnabled" },
-            { "isaacAmount", "delayAmount" }
-        } };
-
-        for (const auto& [legacyId, currentId] : legacyParamMap)
-        {
-            const juce::Identifier legacyKey(legacyId);
-            const juce::Identifier currentKey(currentId);
-            if (!state.hasProperty(currentKey) && state.hasProperty(legacyKey))
-            {
-                state.setProperty(currentKey, state.getProperty(legacyKey), nullptr);
-            }
-
-            if (state.hasProperty(legacyKey))
-            {
-                state.removeProperty(legacyKey, nullptr);
-            }
-        }
-
         // Fill missing parameters/children from the current processor defaults
         // so older presets remain complete as new parameters are introduced.
         const auto defaultState = processor.createPresetStateTree();
