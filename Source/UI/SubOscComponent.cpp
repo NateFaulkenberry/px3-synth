@@ -42,6 +42,9 @@ void SubOscComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 
 void SubOscComponent::refreshFromParameters(bool enabled, int octaveIndex, int waveformIndex)
 {
+    const auto enabledChanged = (currentEnabled != enabled);
+    const auto waveformChanged = (currentWaveformIndex != px3::clampSubOscWaveformIndex(waveformIndex));
+
     currentEnabled = enabled;
     currentWaveformIndex = px3::clampSubOscWaveformIndex(waveformIndex);
 
@@ -59,10 +62,20 @@ void SubOscComponent::refreshFromParameters(bool enabled, int octaveIndex, int w
     octaveLabel.setEnabled(currentEnabled);
     waveformBox.setEnabled(currentEnabled);
     waveformLabel.setEnabled(currentEnabled);
+
+    if (enabledChanged || waveformChanged)
+    {
+        repaint();
+    }
 }
 
 void SubOscComponent::advanceAnimation(float deltaPhase)
 {
+    if (!currentEnabled)
+    {
+        return;
+    }
+
     visualPhase += deltaPhase;
     if (visualPhase >= juce::MathConstants<float>::twoPi)
     {

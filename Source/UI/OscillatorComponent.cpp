@@ -86,6 +86,11 @@ void OscillatorComponent::refreshFromParameters(bool enabled, int modeIndex, int
 
 void OscillatorComponent::advanceAnimation(float deltaPhase)
 {
+    if (!currentEnabled)
+    {
+        return;
+    }
+
     phase += deltaPhase;
     if (phase > juce::MathConstants<float>::twoPi)
     {
@@ -321,7 +326,9 @@ void OscillatorComponent::paint(juce::Graphics& g)
                  juce::PathStrokeType(3.0f,
                                       juce::PathStrokeType::curved,
                                       juce::PathStrokeType::rounded));
-    g.setColour(juce::Colour::fromRGB(170, 228, 255));
+    const auto waveDetailColour = currentEnabled ? juce::Colour::fromRGB(170, 228, 255)
+                                                 : juce::Colour::fromRGB(178, 178, 178);
+    g.setColour(waveDetailColour);
     g.strokePath(wave,
                  juce::PathStrokeType(1.35f,
                                       juce::PathStrokeType::curved,
@@ -351,6 +358,11 @@ void OscillatorComponent::applyModeUi()
         int count;
         bool showVowel;
     };
+        if (!currentEnabled)
+        {
+            return;
+        }
+
 
     static const std::array<ModeUi, 20> modeUi { {
         { "", "", "", 0, false },
