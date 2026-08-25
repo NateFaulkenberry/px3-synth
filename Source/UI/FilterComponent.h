@@ -2,6 +2,10 @@
 
 #include <JuceHeader.h>
 
+#include <memory>
+
+class UIConfig;
+
 // Reusable filter response visualization that reads cutoff, resonance, and
 // mode from provided parameters.
 class FilterComponent final : public juce::Component
@@ -15,6 +19,8 @@ public:
                     juce::Colour accentIn);
 
     void setAccentColour(juce::Colour accentIn);
+    void setUIConfig(std::shared_ptr<const UIConfig> configIn);
+    void setGraphBounds(juce::Rectangle<int> boundsIn);
     void refreshFromParameters();
 
     void paint(juce::Graphics& g) override;
@@ -30,6 +36,8 @@ private:
     juce::AudioParameterBool& enabled;
     juce::String instanceLabel;
     juce::Colour accent;
+    std::shared_ptr<const UIConfig> uiConfig;
+    juce::Rectangle<int> graphBounds;
 
     bool currentEnabled { true };
     int lastModeIndex { -1 };

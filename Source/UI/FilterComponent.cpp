@@ -1,5 +1,7 @@
 #include "FilterComponent.h"
 
+#include "UIConfig.h"
+
 #include <cmath>
 
 FilterComponent::FilterComponent(juce::AudioParameterFloat& cutoffIn,
@@ -21,6 +23,18 @@ FilterComponent::FilterComponent(juce::AudioParameterFloat& cutoffIn,
 void FilterComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
+    repaint();
+}
+
+void FilterComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
+{
+    uiConfig = std::move(configIn);
+    repaint();
+}
+
+void FilterComponent::setGraphBounds(juce::Rectangle<int> boundsIn)
+{
+    graphBounds = boundsIn;
     repaint();
 }
 
@@ -46,7 +60,38 @@ void FilterComponent::refreshFromParameters()
 
 void FilterComponent::paint(juce::Graphics& g)
 {
-    auto graphRect = getLocalBounds().toFloat().reduced(2.0f);
+    const auto cardFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.card.fillAlpha", 0.10f) : 0.10f;
+    const auto cardTopFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.card.topFillAlpha", 0.10f) : 0.10f;
+    const auto cardRadius = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.card.cornerRadius", 8.0f) : 8.0f;
+    const auto cardStrokeThickness = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.card.strokeThickness", 1.2f) : 1.2f;
+    const auto cardStrokeColour = uiConfig != nullptr
+                                      ? uiConfig->getColour("flt.panel.card.strokeColour", juce::Colour::fromRGBA(220, 232, 252, 88))
+                                      : juce::Colour::fromRGBA(220, 232, 252, 88);
+    const auto cardTopFillColour = uiConfig != nullptr ? uiConfig->getColour("flt.panel.card.topFillColour", accent)
+                                                       : accent;
+
+    const auto cardBounds = getLocalBounds().toFloat();
+    g.setColour(accent.withAlpha(cardFillAlpha));
+    g.fillRoundedRectangle(cardBounds, cardRadius);
+    g.setColour(cardTopFillColour.withAlpha(cardTopFillAlpha));
+    juce::Path topFill;
+    const auto topFillBounds = cardBounds.reduced(6.0f);
+    const auto topHalf = topFillBounds.withTrimmedBottom(topFillBounds.getHeight() * 0.5f);
+    topFill.addRoundedRectangle(topHalf.getX(),
+                                topHalf.getY(),
+                                topHalf.getWidth(),
+                                topHalf.getHeight(),
+                                cardRadius,
+                                cardRadius,
+                                true,
+                                true,
+                                false,
+                                false);
+    g.fillPath(topFill);
+    g.setColour(cardStrokeColour);
+    g.drawRoundedRectangle(cardBounds, cardRadius, cardStrokeThickness);
+
+    auto graphRect = graphBounds.isEmpty() ? getLocalBounds().toFloat().reduced(2.0f) : graphBounds.toFloat();
     if (graphRect.getWidth() < 12.0f || graphRect.getHeight() < 12.0f)
     {
         return;
