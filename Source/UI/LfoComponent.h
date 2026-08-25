@@ -7,7 +7,9 @@
 class LfoComponent final : public juce::Component
 {
 public:
-    LfoComponent(juce::Slider& rateKnobIn,
+    LfoComponent(juce::Label& assignLabelIn,
+                        juce::ComboBox& assignBoxIn,
+                        juce::Slider& rateKnobIn,
                         juce::Label& rateLabelIn,
                         juce::Label& rateValueLabelIn,
                         juce::ComboBox& waveformBoxIn,
@@ -34,6 +36,8 @@ private:
     juce::Slider& rateKnob;
     juce::Label& rateLabel;
     juce::Label& rateValueLabel;
+    juce::Label& assignLabel;
+    juce::ComboBox& assignBox;
     juce::ComboBox& waveformBox;
     juce::Label& waveformLabel;
     juce::Colour accent;

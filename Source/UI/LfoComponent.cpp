@@ -12,7 +12,9 @@ juce::PopupMenu::Options LfoComponent::WaveformComboLookAndFeel::getOptionsForCo
                   .withPreferredPopupDirection(juce::PopupMenu::Options::PopupDirection::upwards);
 }
 
-LfoComponent::LfoComponent(juce::Slider& rateKnobIn,
+LfoComponent::LfoComponent(juce::Label& assignLabelIn,
+                                         juce::ComboBox& assignBoxIn,
+                                         juce::Slider& rateKnobIn,
                                          juce::Label& rateLabelIn,
                                          juce::Label& rateValueLabelIn,
                                          juce::ComboBox& waveformBoxIn,
@@ -21,6 +23,8 @@ LfoComponent::LfoComponent(juce::Slider& rateKnobIn,
     : rateKnob(rateKnobIn),
       rateLabel(rateLabelIn),
       rateValueLabel(rateValueLabelIn),
+      assignLabel(assignLabelIn),
+      assignBox(assignBoxIn),
       waveformBox(waveformBoxIn),
       waveformLabel(waveformLabelIn),
       accent(accentIn)
@@ -28,6 +32,9 @@ LfoComponent::LfoComponent(juce::Slider& rateKnobIn,
     addAndMakeVisible(rateKnob);
     addAndMakeVisible(rateLabel);
     addAndMakeVisible(rateValueLabel);
+    assignBox.setLookAndFeel(&waveformComboLookAndFeel);
+    addAndMakeVisible(assignLabel);
+    addAndMakeVisible(assignBox);
     waveformBox.setLookAndFeel(&waveformComboLookAndFeel);
     addAndMakeVisible(waveformBox);
     addAndMakeVisible(waveformLabel);
@@ -35,6 +42,7 @@ LfoComponent::LfoComponent(juce::Slider& rateKnobIn,
 
 LfoComponent::~LfoComponent()
 {
+    assignBox.setLookAndFeel(nullptr);
     waveformBox.setLookAndFeel(nullptr);
 }
 
@@ -75,17 +83,29 @@ void LfoComponent::resized()
     cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
     auto area = cardArea.reduced(10, 10);
 
+    auto assignRow = area.removeFromTop(24);
+    assignLabel.setBounds(assignRow.removeFromLeft(52));
+    assignBox.setBounds(assignRow.reduced(2, 1));
+
+    area.removeFromTop(6);
+
     auto top = area.removeFromTop(24);
     waveformLabel.setBounds(top.removeFromLeft(78));
     waveformBox.setBounds(top.reduced(2, 1));
 
-    area.removeFromTop(6);
-    auto bottom = area.removeFromBottom(22);
-    auto valueArea = bottom.removeFromRight(90);
-    rateValueLabel.setBounds(valueArea);
-    rateLabel.setBounds(bottom);
+    area.removeFromTop(8);
+
+    area.removeFromBottom(96);
+    area.removeFromBottom(10);
+
+    auto valueRow = area.removeFromBottom(20);
+    rateValueLabel.setBounds(valueRow.reduced(2, 0));
 
     area.removeFromBottom(4);
+    auto labelRow = area.removeFromTop(18);
+    rateLabel.setBounds(labelRow.reduced(2, 0));
+
+    area.removeFromTop(6);
     const auto knobSize = juce::jlimit(52, 110, juce::jmin(area.getWidth() - 16, area.getHeight()));
     rateKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(area.getCentre()));
 }
@@ -103,9 +123,12 @@ void LfoComponent::paint(juce::Graphics& g)
     g.setColour(juce::Colour::fromRGBA(220, 232, 252, 88));
     g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
 
-    auto graph = cardBounds.reduced(10.0f, 10.0f);
-    graph.removeFromTop(36.0f);
-    graph.removeFromBottom(30.0f);
+    auto graphLayout = cardBounds.reduced(10.0f, 10.0f);
+    graphLayout.removeFromTop(24.0f);
+    graphLayout.removeFromTop(8.0f);
+    graphLayout.removeFromBottom(10.0f);
+
+    auto graph = graphLayout.removeFromBottom(96.0f).reduced(0.0f, 2.0f);
 
     if (graph.getWidth() < 40.0f || graph.getHeight() < 20.0f)
     {
