@@ -36,7 +36,6 @@ LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
 {
         addAndMakeVisible(enabledButton);
         addAndMakeVisible(enabledLabel);
-    baseRateKnobFillColour = rateKnob.findColour(juce::Slider::rotarySliderFillColourId);
     baseRateValueTextColour = rateValueLabel.findColour(juce::Label::textColourId);
     addAndMakeVisible(rateKnob);
     addAndMakeVisible(rateLabel);
@@ -89,9 +88,8 @@ void LfoComponent::refreshFromParameters(bool enabled, float rateHz, int wavefor
     waveformLabel.setEnabled(currentEnabled);
     rateKnob.setEnabled(currentEnabled);
     rateKnob.setInterceptsMouseClicks(currentEnabled, currentEnabled);
+    rateKnob.getProperties().set("knobBypassed", !currentEnabled);
     rateKnob.getProperties().set("psychedelicBypassGray", !currentEnabled);
-    const auto disabledKnobFill = juce::Colour::fromRGB(158, 158, 158);
-    rateKnob.setColour(juce::Slider::rotarySliderFillColourId, currentEnabled ? baseRateKnobFillColour : disabledKnobFill);
     rateLabel.setEnabled(currentEnabled);
     rateValueLabel.setEnabled(currentEnabled);
     const auto disabledRateValueColour = juce::Colour::fromRGB(178, 178, 178);
@@ -110,6 +108,7 @@ void LfoComponent::refreshFromParameters(bool enabled, float rateHz, int wavefor
 
     if (enabledChanged)
     {
+        rateKnob.repaint();
         repaint();
     }
 }

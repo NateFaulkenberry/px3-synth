@@ -120,9 +120,11 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
 
     const auto psychedelicEnabled = static_cast<bool>(slider.getProperties().getWithDefault("psychedelicFx", false));
     const auto psychedelicGrayscale = static_cast<bool>(slider.getProperties().getWithDefault("psychedelicBypassGray", false));
+    const auto knobBypassed = static_cast<bool>(slider.getProperties().getWithDefault("knobBypassed", false));
+    const auto renderGrayscale = psychedelicGrayscale || knobBypassed;
     const auto psychedelicAmount = juce::jlimit(0.0f, 1.0f, sliderPos);
     const auto accentGrayValue = juce::jlimit(0.0f, 1.0f, accent.getPerceivedBrightness());
-    const auto accentForHighlight = psychedelicGrayscale
+    const auto accentForHighlight = renderGrayscale
                                         ? juce::Colour::fromFloatRGBA(accentGrayValue, accentGrayValue, accentGrayValue, 1.0f)
                                         : accent;
 
@@ -214,7 +216,7 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
                               true);
 
             const auto glowAlpha = juce::jlimit(0.0f, 0.65f, 0.06f + glow * 0.34f);
-            g.setColour(psychedelicGrayscale
+            g.setColour(renderGrayscale
                             ? juce::Colour::fromFloatRGBA(grayValue, grayValue, grayValue, glowAlpha)
                             : juce::Colour::fromHSV(hue, 0.90f, 1.0f, glowAlpha));
             g.strokePath(arc,
@@ -223,7 +225,7 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
                                               juce::PathStrokeType::rounded));
 
             const auto borderAlpha = juce::jlimit(0.0f, 0.95f, 0.25f + glow * 0.62f);
-            g.setColour(psychedelicGrayscale
+            g.setColour(renderGrayscale
                             ? juce::Colour::fromFloatRGBA(grayValue, grayValue, grayValue, borderAlpha)
                             : juce::Colour::fromHSV(hue, 0.98f, 1.0f, borderAlpha));
             g.strokePath(arc,
@@ -247,10 +249,12 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
 
     juce::Path pointer;
     pointer.addRoundedRectangle(-2.1f, -radius * 0.56f, 4.2f, radius * 0.36f, 1.7f);
-    g.setColour(juce::Colour::fromRGB(246, 246, 246));
+    g.setColour(renderGrayscale ? juce::Colour::fromRGB(200, 200, 200)
+                                : juce::Colour::fromRGB(246, 246, 246));
     g.fillPath(pointer, juce::AffineTransform::rotation(angle).translated(center.x, center.y));
 
-    g.setColour(juce::Colour::fromRGB(210, 210, 210));
+    g.setColour(renderGrayscale ? juce::Colour::fromRGB(170, 170, 170)
+                                : juce::Colour::fromRGB(210, 210, 210));
     g.fillEllipse(center.x - 3.1f, center.y - 3.1f, 6.2f, 6.2f);
 }
 
