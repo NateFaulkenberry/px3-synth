@@ -56,6 +56,11 @@ target_sources(PX3Synth
     PRIVATE
         Source/UI/PerformanceControls.cpp
         Source/UI/PianoKeyboard.cpp
+        Source/UI/OscPanel.cpp
+        Source/UI/EnvPanel.cpp
+        Source/UI/FltPanel.cpp
+        Source/UI/FxPanel.cpp
+        Source/UI/MixPanel.cpp
         Source/UI/DelayUiComponent.cpp
         Source/UI/EnvelopeComponent.cpp
         Source/UI/FilterResponseComponent.cpp

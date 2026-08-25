@@ -10,14 +10,12 @@
 #include "PianoKeyboard.h"
 #include "PresetManager.h"
 #include "PluginProcessor.h"
+#include "EnvPanel.h"
+#include "FltPanel.h"
+#include "FxPanel.h"
+#include "MixPanel.h"
+#include "OscPanel.h"
 #include "DelayUiComponent.h"
-#include "EnvelopeComponent.h"
-#include "FilterResponseComponent.h"
-#include "LfoComponent.h"
-#include "ReverbUiComponent.h"
-#include "SubOscComponent.h"
-#include "VibeUiComponent.h"
-#include "OscillatorDisplayComponent.h"
 
 /**
  * Main JUCE editor for P(X3).
@@ -86,38 +84,6 @@ private:
             g.setColour(juce::Colour::fromRGBA(138, 188, 255, 180));
             g.drawRoundedRectangle(panel, 10.0f, 1.0f);
         }
-    };
-
-    class SectionPanelComponent final : public juce::Component
-    {
-    public:
-        void setHeader(juce::String titleIn, juce::Colour accentIn)
-        {
-            title = std::move(titleIn);
-            accent = accentIn;
-            repaint();
-        }
-
-        void paint(juce::Graphics& g) override
-        {
-            const auto area = getLocalBounds().toFloat().reduced(2.0f);
-            g.setColour(accent.withAlpha(0.14f));
-            g.fillRoundedRectangle(area, 10.0f);
-
-            g.setColour(accent.withAlpha(0.10f));
-            g.fillRoundedRectangle(area.withTrimmedBottom(area.getHeight() * 0.5f), 10.0f);
-
-            g.setColour(accent.withAlpha(0.75f));
-            g.drawRoundedRectangle(area, 10.0f, 1.0f);
-
-            g.setColour(accent.brighter(0.30f));
-            g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
-            g.drawText(title, getLocalBounds().removeFromTop(24), juce::Justification::centred);
-        }
-
-    private:
-        juce::String title { "" };
-        juce::Colour accent { juce::Colour::fromRGB(100, 100, 100) };
     };
 
     struct KnobBinding
@@ -334,19 +300,11 @@ private:
     juce::Label lfoFrequencyValueLabel;
     KnobLabel lfoAssignLabel;
     KnobLabel midiStatusLabel;
-    SectionPanelComponent oscPanel;
-    SectionPanelComponent envPanel;
-    SectionPanelComponent fltPanel;
-    SectionPanelComponent fxPanel;
-    SectionPanelComponent mixPanel;
-    std::unique_ptr<OscillatorDisplayComponent> oscillatorDisplayComponent;
-    std::unique_ptr<DelayUiComponent> delayUiComponent;
-    std::unique_ptr<LfoComponent> lfoComponent;
-    std::unique_ptr<ReverbUiComponent> reverbUiComponent;
-    std::unique_ptr<SubOscComponent> subOscComponent;
-    std::unique_ptr<VibeUiComponent> vibeUiComponent;
-    std::unique_ptr<EnvelopeComponent> envelopeGraph;
-    std::unique_ptr<FilterResponseComponent> filterResponseComponent;
+    std::unique_ptr<OscPanel> oscPanel;
+    std::unique_ptr<EnvPanel> envPanel;
+    std::unique_ptr<FltPanel> fltPanel;
+    std::unique_ptr<FxPanel> fxPanel;
+    std::unique_ptr<MixPanel> mixPanel;
 
     juce::Slider vibeAmountKnob;
     KnobLabel vibeAmountLabel;

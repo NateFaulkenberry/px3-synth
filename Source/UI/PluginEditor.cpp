@@ -386,17 +386,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     setResizable(true, true);
     setResizeLimits(980, 600, 1900, 980);
 
-    oscPanel.setHeader("OSC", kGroupAccents[0]);
-    envPanel.setHeader("ENV", kGroupAccents[2]);
-    fltPanel.setHeader("FLT", kGroupAccents[1]);
-    fxPanel.setHeader("FX", juce::Colour::fromRGB(120, 186, 255));
-    mixPanel.setHeader("MIX", juce::Colour::fromRGB(212, 212, 212));
-    addAndMakeVisible(oscPanel);
-    addAndMakeVisible(envPanel);
-    addAndMakeVisible(fltPanel);
-    addAndMakeVisible(fxPanel);
-    addAndMakeVisible(mixPanel);
-
     addAndMakeVisible(performanceControls);
     addAndMakeVisible(pianoKeyboard);
 
@@ -458,19 +447,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     sustainLabel.setVisible(false);
     releaseLabel.setVisible(false);
 
-    envelopeGraph = std::make_unique<EnvelopeComponent>(audioProcessor.getAttackParam(),
-                                                               audioProcessor.getDecayParam(),
-                                                               audioProcessor.getSustainParam(),
-                                                               audioProcessor.getReleaseParam(),
-                                                               kGroupAccents[2]);
-    envPanel.addAndMakeVisible(*envelopeGraph);
-
-    filterResponseComponent = std::make_unique<FilterResponseComponent>(audioProcessor.getFilterCutoffParam(),
-                                                                        audioProcessor.getFilterResonanceParam(),
-                                                                        audioProcessor.getFilterTypeParam(),
-                                                                        kGroupAccents[1]);
-    fltPanel.addAndMakeVisible(*filterResponseComponent);
-
     lfoFrequencyValueLabel.setJustificationType(juce::Justification::centred);
     lfoFrequencyValueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(218, 218, 228));
     lfoFrequencyValueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
@@ -518,17 +494,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         audioProcessor.setLfoAssignmentIndex(selected);
     };
 
-    oscPanel.addAndMakeVisible(lfoAssignLabel);
-    oscPanel.addAndMakeVisible(lfoAssignBox);
-
-    lfoComponent = std::make_unique<LfoComponent>(lfoFrequencyKnob,
-                                                         lfoFrequencyLabel,
-                                                         lfoFrequencyValueLabel,
-                                                         lfoWaveformBox,
-                                                         lfoWaveformLabel,
-                                                         kGroupAccents[3]);
-    oscPanel.addAndMakeVisible(*lfoComponent);
-
     configureEffectKnob(subOscLevelKnob,
                         subOscLevelLabel,
                         "LEVEL",
@@ -574,17 +539,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     subOscEnabledButton.setClickingTogglesState(true);
     subOscEnabledButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
     subOscEnabledButton.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
-
-    subOscComponent = std::make_unique<SubOscComponent>(subOscEnabledButton,
-                                                               subOscEnabledLabel,
-                                                               subOscLevelKnob,
-                                                               subOscLevelLabel,
-                                                               subOscOctaveBox,
-                                                               subOscOctaveLabel,
-                                                               subOscWaveformBox,
-                                                               subOscWaveformLabel,
-                                                               juce::Colour::fromRGB(212, 212, 212));
-    mixPanel.addAndMakeVisible(*subOscComponent);
 
     // OSC macro labels can become long in some modes; use a slightly smaller font.
     oscSineLabel.setFont(juce::FontOptions(11.0f));
@@ -684,19 +638,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     addAndMakeVisible(oscVowelBox);
     addAndMakeVisible(oscVowelLabel);
 
-    oscillatorDisplayComponent = std::make_unique<OscillatorDisplayComponent>(oscSineKnob,
-                                                                               oscSawKnob,
-                                                                               oscSquareKnob,
-                                                                               oscSineLabel,
-                                                                               oscSawLabel,
-                                                                               oscSquareLabel,
-                                                                               oscModeBox,
-                                                                               oscModeLabel,
-                                                                               oscVowelBox,
-                                                                               oscVowelLabel,
-                                                                               kGroupAccents[0]);
-    oscPanel.addAndMakeVisible(*oscillatorDisplayComponent);
-
     auto& delayAlgoParam = audioProcessor.getDelayAlgorithmParam();
     const auto delayAlgoChoiceCount = delayAlgoParam.choices.size();
     for (int i = 0; i < delayAlgoChoiceCount; ++i)
@@ -774,42 +715,79 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureBypassButton(delayBypassButton);
     configureBypassButton(reverbBypassButton);
 
-    vibeUiComponent = std::make_unique<VibeUiComponent>(robBypassButton,
-                                                        vibeAmountKnob,
-                                                        vibeAmountLabel,
-                                                        vibeTypeBox,
-                                                        vibeTypeLabel,
-                                                        juce::Colour::fromRGB(236, 182, 92));
-    delayUiComponent = std::make_unique<DelayUiComponent>(delayBypassButton,
-                                                          isaacTextureKnob,
-                                                          isaacTextureLabel,
-                                                          delayAlgoBox,
-                                                          delayAlgoLabel,
-                                                          granularSyncBox,
-                                                          granularSyncLabel,
-                                                          granularModeBox,
-                                                          granularModeLabel,
-                                                          delayTimeKnob,
-                                                          delayTimeLabel,
-                                                          delayFeedbackKnob,
-                                                          delayFeedbackLabel,
-                                                          juce::Colour::fromRGB(132, 210, 255));
-    reverbUiComponent = std::make_unique<ReverbUiComponent>(reverbBypassButton,
-                                                            reverbKnob,
-                                                            reverbLabel,
-                                                            reverbTypeBox,
-                                                            reverbTypeLabel,
-                                                            juce::Colour::fromRGB(128, 208, 255));
-    fxPanel.addAndMakeVisible(*vibeUiComponent);
-    fxPanel.addAndMakeVisible(*delayUiComponent);
-    fxPanel.addAndMakeVisible(*reverbUiComponent);
-    fxPanel.addMouseListener(this, true);
+    oscPanel = std::make_unique<OscPanel>(oscSineKnob,
+                                          oscSawKnob,
+                                          oscSquareKnob,
+                                          oscSineLabel,
+                                          oscSawLabel,
+                                          oscSquareLabel,
+                                          oscModeBox,
+                                          oscModeLabel,
+                                          oscVowelBox,
+                                          oscVowelLabel,
+                                          lfoAssignLabel,
+                                          lfoAssignBox,
+                                          lfoFrequencyKnob,
+                                          lfoFrequencyLabel,
+                                          lfoFrequencyValueLabel,
+                                          lfoWaveformBox,
+                                          lfoWaveformLabel,
+                                          kGroupAccents[0],
+                                          kGroupAccents[3]);
+    envPanel = std::make_unique<EnvPanel>(audioProcessor.getAttackParam(),
+                                          audioProcessor.getDecayParam(),
+                                          audioProcessor.getSustainParam(),
+                                          audioProcessor.getReleaseParam(),
+                                          kGroupAccents[2]);
+    fltPanel = std::make_unique<FltPanel>(cutoffKnob,
+                                          cutoffLabel,
+                                          resonanceKnob,
+                                          resonanceLabel,
+                                          filterTypeBox,
+                                          audioProcessor.getFilterCutoffParam(),
+                                          audioProcessor.getFilterResonanceParam(),
+                                          audioProcessor.getFilterTypeParam(),
+                                          kGroupAccents[1]);
+    fxPanel = std::make_unique<FxPanel>(robBypassButton,
+                                        vibeAmountKnob,
+                                        vibeAmountLabel,
+                                        vibeTypeBox,
+                                        vibeTypeLabel,
+                                        delayBypassButton,
+                                        isaacTextureKnob,
+                                        isaacTextureLabel,
+                                        delayAlgoBox,
+                                        delayAlgoLabel,
+                                        granularSyncBox,
+                                        granularSyncLabel,
+                                        granularModeBox,
+                                        granularModeLabel,
+                                        delayTimeKnob,
+                                        delayTimeLabel,
+                                        delayFeedbackKnob,
+                                        delayFeedbackLabel,
+                                        reverbBypassButton,
+                                        reverbKnob,
+                                        reverbLabel,
+                                        reverbTypeBox,
+                                        reverbTypeLabel,
+                                        juce::Colour::fromRGB(120, 186, 255));
+    mixPanel = std::make_unique<MixPanel>(subOscEnabledButton,
+                                          subOscEnabledLabel,
+                                          subOscLevelKnob,
+                                          subOscLevelLabel,
+                                          subOscOctaveBox,
+                                          subOscOctaveLabel,
+                                          subOscWaveformBox,
+                                          subOscWaveformLabel,
+                                          juce::Colour::fromRGB(212, 212, 212));
 
-    fltPanel.addAndMakeVisible(cutoffKnob);
-    fltPanel.addAndMakeVisible(cutoffLabel);
-    fltPanel.addAndMakeVisible(resonanceKnob);
-    fltPanel.addAndMakeVisible(resonanceLabel);
-    fltPanel.addAndMakeVisible(filterTypeBox);
+    addAndMakeVisible(*oscPanel);
+    addAndMakeVisible(*envPanel);
+    addAndMakeVisible(*fltPanel);
+    addAndMakeVisible(*fxPanel);
+    addAndMakeVisible(*mixPanel);
+    fxPanel->addMouseListener(this, true);
 
     for (auto& binding : knobBindings)
     {
@@ -1043,7 +1021,21 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
 PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
 {
-    fxPanel.removeMouseListener(this);
+    stopTimer();
+
+    if (fxPanel != nullptr)
+    {
+        fxPanel->removeMouseListener(this);
+    }
+
+    // Panels hold child components that reference editor-owned controls.
+    // Tear panels down first to avoid shutdown-order lifetime hazards.
+    oscPanel.reset();
+    envPanel.reset();
+    fltPanel.reset();
+    fxPanel.reset();
+    mixPanel.reset();
+
     closeDebugWindow();
     audioProcessor.debugNotifyEditorDestroyed(this);
 
@@ -1166,7 +1158,7 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
 
     if (isPanelVisible(3))
     {
-        const auto fxOffset = fxPanel.getPosition();
+        const auto fxOffset = fxPanel->getPosition();
         const auto robArea = robSectionArea.translated(fxOffset.x, fxOffset.y);
         const auto delayArea = isaacSectionArea.translated(fxOffset.x, fxOffset.y);
         const auto revArea = reverbSectionArea.translated(fxOffset.x, fxOffset.y);
@@ -1292,6 +1284,13 @@ void PX3SynthAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
 
 void PX3SynthAudioProcessorEditor::resized()
 {
+    // setResizeLimits() can trigger resized() during construction before
+    // extracted panel components are created.
+    if (oscPanel == nullptr || envPanel == nullptr || fltPanel == nullptr || fxPanel == nullptr || mixPanel == nullptr)
+    {
+        return;
+    }
+
     // Layout policy:
     // - Header prioritizes logo/preset bar/fx cards for quick performance edits.
     // - Mid section hosts core synth controls.
@@ -1370,11 +1369,11 @@ void PX3SynthAudioProcessorEditor::resized()
     // midiStatusLabel.setBounds(midiStatusArea.withTrimmedLeft(180).withTrimmedRight(180));
 
     panelViewportArea = controlsArea.reduced(8, 8);
-    oscPanel.setBounds(panelViewportArea);
-    envPanel.setBounds(panelViewportArea);
-    fltPanel.setBounds(panelViewportArea);
-    fxPanel.setBounds(panelViewportArea);
-    mixPanel.setBounds(panelViewportArea);
+    oscPanel->setBounds(panelViewportArea);
+    envPanel->setBounds(panelViewportArea);
+    fltPanel->setBounds(panelViewportArea);
+    fxPanel->setBounds(panelViewportArea);
+    mixPanel->setBounds(panelViewportArea);
 
     layoutOscPanel();
     layoutEnvelopePanel();
@@ -1479,7 +1478,7 @@ void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
     pressedFxSection = sectionId;
     fxDragStartPoint = point;
     fxDragHasMoved = false;
-    const auto localPoint = point - fxPanel.getPosition();
+    const auto localPoint = point - fxPanel->getPosition();
     draggingSectionOffsetX = static_cast<float>(localPoint.x) - fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)].getX();
 }
 
@@ -1522,7 +1521,7 @@ void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
         return;
     }
 
-    const auto localPoint = point - fxPanel.getPosition();
+    const auto localPoint = point - fxPanel->getPosition();
     if (!fxDragHasMoved)
     {
         if (point.getDistanceFrom(fxDragStartPoint) < 4)
@@ -1557,7 +1556,7 @@ void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
 
     moveFxSectionToSlot(draggingFxSection, targetSlot);
     layoutFxSectionsFromCurrentAreas();
-    repaint(fxPanel.getBounds());
+    repaint(fxPanel->getBounds());
 }
 
 void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
@@ -1595,7 +1594,7 @@ void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
         return;
     }
 
-    const auto releasePoint = point - fxPanel.getPosition();
+    const auto releasePoint = point - fxPanel->getPosition();
     const auto isHeaderClick = !fxDragHasMoved && pressedFxSection >= 0;
     if (isHeaderClick)
     {
@@ -1643,7 +1642,7 @@ void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
     fxDragHasMoved = false;
     commitFxOrderToProcessor("USER", "USER_DRAG_END", -1, -1);
     layoutFxSectionsFromCurrentAreas();
-    repaint(fxPanel.getBounds());
+    repaint(fxPanel->getBounds());
 }
 
 void PX3SynthAudioProcessorEditor::updateFxSectionTargets(const juce::Rectangle<int>& topArea, int topGap)
@@ -1681,25 +1680,9 @@ void PX3SynthAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
     isaacSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionDelay)].toNearestInt();
     reverbSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionReverb)].toNearestInt();
 
+    if (fxPanel != nullptr)
     {
-        if (vibeUiComponent != nullptr)
-        {
-            vibeUiComponent->setBounds(robSectionArea);
-        }
-    }
-
-    {
-        if (delayUiComponent != nullptr)
-        {
-            delayUiComponent->setBounds(isaacSectionArea);
-        }
-    }
-
-    {
-        if (reverbUiComponent != nullptr)
-        {
-            reverbUiComponent->setBounds(reverbSectionArea);
-        }
+        fxPanel->setSectionBounds(robSectionArea, isaacSectionArea, reverbSectionArea);
     }
 }
 
@@ -1741,7 +1724,7 @@ void PX3SynthAudioProcessorEditor::animateFxSections()
     if (changed)
     {
         layoutFxSectionsFromCurrentAreas();
-        repaint(fxPanel.getBounds());
+        repaint(fxPanel->getBounds());
     }
 }
 
@@ -1765,7 +1748,7 @@ int PX3SynthAudioProcessorEditor::fxSectionAtPoint(juce::Point<int> point) const
         return -1;
     }
 
-    const auto localPoint = point - fxPanel.getPosition();
+    const auto localPoint = point - fxPanel->getPosition();
     for (int sectionId = 0; sectionId < 3; ++sectionId)
     {
         if (fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)].toNearestInt().contains(localPoint))
@@ -2349,9 +2332,9 @@ void PX3SynthAudioProcessorEditor::refreshOscillatorModeUI()
         oscVowelBox.setSelectedItemIndex(paramVowelIndex, juce::dontSendNotification);
     }
 
-    if (oscillatorDisplayComponent != nullptr)
+    if (oscPanel != nullptr)
     {
-        oscillatorDisplayComponent->refreshFromSelections(paramModeIndex, paramVowelIndex);
+        oscPanel->refreshFromSelections(paramModeIndex, paramVowelIndex);
     }
 }
 
@@ -2438,36 +2421,36 @@ void PX3SynthAudioProcessorEditor::refreshLfoUI()
 {
     refreshLfoFrequencyLabel();
 
-    if (lfoComponent != nullptr)
+    if (oscPanel != nullptr)
     {
-        lfoComponent->refreshFromParameters(audioProcessor.getLfoFrequencyParam().get(),
-                                            audioProcessor.getLfoWaveformParam().getIndex());
+        oscPanel->refreshLfoFromParameters(audioProcessor.getLfoFrequencyParam().get(),
+                                           audioProcessor.getLfoWaveformParam().getIndex());
     }
 }
 
 void PX3SynthAudioProcessorEditor::refreshSubOscUI()
 {
-    if (subOscComponent != nullptr)
+    if (mixPanel != nullptr)
     {
-        subOscComponent->refreshFromParameters(audioProcessor.getSubOscEnabledParam().get(),
-                                               audioProcessor.getSubOscOctaveParam().getIndex(),
-                                               audioProcessor.getSubOscWaveformParam().getIndex());
+        mixPanel->refreshFromParameters(audioProcessor.getSubOscEnabledParam().get(),
+                                        audioProcessor.getSubOscOctaveParam().getIndex(),
+                                        audioProcessor.getSubOscWaveformParam().getIndex());
     }
 }
 
 void PX3SynthAudioProcessorEditor::refreshEnvelopeGraphUI()
 {
-    if (envelopeGraph != nullptr)
+    if (envPanel != nullptr)
     {
-        envelopeGraph->refreshFromParameters();
+        envPanel->refreshFromParameters();
     }
 }
 
 void PX3SynthAudioProcessorEditor::refreshFilterResponseUI()
 {
-    if (filterResponseComponent != nullptr)
+    if (fltPanel != nullptr)
     {
-        filterResponseComponent->refreshFromParameters();
+        fltPanel->refreshFromParameters();
     }
 }
 
@@ -2478,87 +2461,40 @@ bool PX3SynthAudioProcessorEditor::isPanelVisible(int sectionIndex) const
 
 void PX3SynthAudioProcessorEditor::updatePanelVisibility()
 {
-    oscPanel.setVisible(isPanelVisible(0));
-    envPanel.setVisible(isPanelVisible(1));
-    fltPanel.setVisible(isPanelVisible(2));
-    fxPanel.setVisible(isPanelVisible(3));
-    mixPanel.setVisible(isPanelVisible(4));
+    oscPanel->setVisible(isPanelVisible(0));
+    envPanel->setVisible(isPanelVisible(1));
+    fltPanel->setVisible(isPanelVisible(2));
+    fxPanel->setVisible(isPanelVisible(3));
+    mixPanel->setVisible(isPanelVisible(4));
 }
 
 void PX3SynthAudioProcessorEditor::layoutOscPanel()
 {
-    auto panelArea = oscPanel.getLocalBounds().reduced(12, 10);
-    panelArea.removeFromTop(26);
-
-    auto oscArea = panelArea.removeFromLeft(static_cast<int>(std::lround(static_cast<double>(panelArea.getWidth()) * 0.58)));
-    panelArea.removeFromLeft(12);
-    auto lfoArea = panelArea;
-
-    if (oscillatorDisplayComponent != nullptr)
+    if (oscPanel != nullptr)
     {
-        oscillatorDisplayComponent->setBounds(oscArea.reduced(4, 2));
-    }
-
-    auto lfoInner = lfoArea.reduced(10, 6);
-    const auto assignRow = lfoInner.removeFromBottom(22);
-    auto assign = assignRow;
-    auto labelArea = assign.removeFromLeft(52);
-    lfoAssignLabel.setBounds(labelArea);
-    lfoAssignBox.setBounds(assign.reduced(1, 0));
-
-    if (lfoComponent != nullptr)
-    {
-        lfoComponent->setBounds(lfoInner.reduced(2, 2));
+        oscPanel->resized();
     }
 }
 
 void PX3SynthAudioProcessorEditor::layoutFilterPanel()
 {
-    auto panelArea = fltPanel.getLocalBounds().reduced(12, 10);
-    panelArea.removeFromTop(26);
-
-    auto filterArea = panelArea.reduced(4, 0);
-    const auto row = juce::Rectangle<int>(filterArea.getX(),
-                                          filterArea.getBottom() - 22,
-                                          filterArea.getWidth(),
-                                          18);
-    filterTypeBox.setBounds(row.reduced(1, 0));
-
-    auto responseArea = filterArea.withBottom(juce::jmax(filterArea.getY(), row.getY() - 6));
-    auto knobBand = responseArea.removeFromTop(120);
-    const auto knobSize = juce::jlimit(56, 110, juce::jmin((knobBand.getWidth() - 24) / 2, knobBand.getHeight() - 24));
-
-    auto leftKnob = juce::Rectangle<int>(knobSize, knobSize)
-                        .withCentre({ knobBand.getX() + knobBand.getWidth() / 4, knobBand.getCentreY() + 8 });
-    auto rightKnob = juce::Rectangle<int>(knobSize, knobSize)
-                         .withCentre({ knobBand.getX() + (knobBand.getWidth() * 3) / 4, knobBand.getCentreY() + 8 });
-
-    cutoffLabel.setBounds(juce::Rectangle<int>(leftKnob.getX(), leftKnob.getY() - 20, leftKnob.getWidth(), 18));
-    cutoffKnob.setBounds(leftKnob);
-    resonanceLabel.setBounds(juce::Rectangle<int>(rightKnob.getX(), rightKnob.getY() - 20, rightKnob.getWidth(), 18));
-    resonanceKnob.setBounds(rightKnob);
-
-    if (filterResponseComponent != nullptr)
+    if (fltPanel != nullptr)
     {
-        filterResponseComponent->setBounds(responseArea.withTrimmedLeft(8).withTrimmedRight(8).reduced(0, 4));
+        fltPanel->resized();
     }
 }
 
 void PX3SynthAudioProcessorEditor::layoutEnvelopePanel()
 {
-    if (envelopeGraph == nullptr)
+    if (envPanel != nullptr)
     {
-        return;
+        envPanel->resized();
     }
-
-    auto panelArea = envPanel.getLocalBounds().reduced(12, 10);
-    panelArea.removeFromTop(26);
-    envelopeGraph->setBounds(panelArea.reduced(4, 2));
 }
 
 void PX3SynthAudioProcessorEditor::layoutFxPanel()
 {
-    auto panelArea = fxPanel.getLocalBounds().reduced(12, 10);
+    auto panelArea = fxPanel->getLocalBounds().reduced(12, 10);
     panelArea.removeFromTop(26);
     updateFxSectionTargets(panelArea, 12);
     layoutFxSectionsFromCurrentAreas();
@@ -2566,17 +2502,10 @@ void PX3SynthAudioProcessorEditor::layoutFxPanel()
 
 void PX3SynthAudioProcessorEditor::layoutMixPanel()
 {
-    if (subOscComponent == nullptr)
+    if (mixPanel != nullptr)
     {
-        return;
+        mixPanel->resized();
     }
-
-    auto panelArea = mixPanel.getLocalBounds().reduced(12, 10);
-    panelArea.removeFromTop(26);
-    const auto componentWidth = juce::jmin(panelArea.getWidth() - 8, 320);
-    const auto componentHeight = juce::jmin(panelArea.getHeight() - 6, 260);
-    subOscComponent->setBounds(juce::Rectangle<int>(componentWidth, componentHeight)
-                                   .withCentre(panelArea.getCentre()));
 }
 
 void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
@@ -2591,19 +2520,9 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
     delayBypassButton.setToggleState(delayEnabled, juce::dontSendNotification);
     reverbBypassButton.setToggleState(reverbEnabled, juce::dontSendNotification);
 
-    if (vibeUiComponent != nullptr)
+    if (fxPanel != nullptr)
     {
-        vibeUiComponent->setActive(vibeEnabled);
-    }
-
-    if (delayUiComponent != nullptr)
-    {
-        delayUiComponent->setActive(delayEnabled, granularModeSelectable);
-    }
-
-    if (reverbUiComponent != nullptr)
-    {
-        reverbUiComponent->setActive(reverbEnabled);
+        fxPanel->setActive(vibeEnabled, delayEnabled, granularModeSelectable, reverbEnabled);
     }
 }
 
@@ -2629,7 +2548,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
                 }
             }
             layoutFxSectionsFromCurrentAreas();
-            repaint(fxPanel.getBounds());
+            repaint(fxPanel->getBounds());
         }
     }
 
@@ -2675,19 +2594,14 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         debugRefreshTickCounter = 0;
     }
 
-    if (isPanelVisible(0) && oscillatorDisplayComponent != nullptr)
+    if (isPanelVisible(0) && oscPanel != nullptr)
     {
-        oscillatorDisplayComponent->advanceAnimation(0.09f);
+        oscPanel->advanceAnimation(0.09f, 0.07f);
     }
 
-    if (isPanelVisible(0) && lfoComponent != nullptr)
+    if (isPanelVisible(4) && mixPanel != nullptr)
     {
-        lfoComponent->advanceAnimation(0.07f);
-    }
-
-    if (isPanelVisible(4) && subOscComponent != nullptr)
-    {
-        subOscComponent->advanceAnimation(0.05f);
+        mixPanel->advanceAnimation(0.05f);
     }
 
     // MIDI status bar is temporarily disabled.
