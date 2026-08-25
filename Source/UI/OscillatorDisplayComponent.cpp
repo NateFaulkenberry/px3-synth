@@ -97,6 +97,12 @@ void OscillatorDisplayComponent::resized()
 
 void OscillatorDisplayComponent::paint(juce::Graphics& g)
 {
+    const auto cardBounds = getLocalBounds().toFloat().reduced(6.0f);
+    g.setColour(accent.withAlpha(0.10f));
+    g.fillRoundedRectangle(cardBounds, 8.0f);
+    g.setColour(juce::Colour::fromRGBA(220, 232, 252, 88));
+    g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
+
     auto oscSplit = getLocalBounds().reduced(8, 0);
     auto oscVizRect = oscSplit.removeFromLeft(oscSplit.getWidth() / 2).reduced(4, 2);
     oscVizRect.removeFromBottom(28);

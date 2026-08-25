@@ -78,7 +78,11 @@ void OscPanel::resized()
 
     if (oscillatorDisplayComponent != nullptr)
     {
-        oscillatorDisplayComponent->setBounds(oscArea.reduced(4, 2));
+        auto oscCardBounds = oscArea.reduced(4, 2);
+        constexpr int targetCardWidth = 300;
+        const auto cardWidth = juce::jmin(targetCardWidth, oscCardBounds.getWidth());
+        oscCardBounds = oscCardBounds.withSizeKeepingCentre(cardWidth, oscCardBounds.getHeight());
+        oscillatorDisplayComponent->setBounds(oscCardBounds);
     }
 
     auto lfoInner = lfoArea.reduced(10, 6);
