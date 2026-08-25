@@ -26,7 +26,6 @@ public:
 private:
     std::unique_ptr<EnvelopeComponent> envelopeGraph;
 
-    juce::String title { "ENV" };
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
 };

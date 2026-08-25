@@ -45,7 +45,7 @@
       "presetClusterMenuWidth": 94,
       "prevNextWidth": 26,
       "presetHorizontalPad": 5,
-      "presetSmallGap": 4,
+      "presetSmallGap": 8,
       "menuButtonMinWidth": 64,
       "menuButtonMaxWidth": 78,
       "menuButtonInset": 16
@@ -80,10 +80,7 @@
       "fillAlpha": 0.14,
       "topFillAlpha": 0.1,
       "strokeAlpha": 0.75,
-      "cornerRadius": 10,
-      "title": {
-        "fontSize": 15
-      }
+      "cornerRadius": 10
     },
     "vibe": {
       "layout": { "padX": 10, "padY": 8 },
@@ -125,15 +122,48 @@
       }
     }
   },
-  "env": {
+  "osc": {
     "panel": {
       "fillAlpha": 0.14,
       "topFillAlpha": 0.1,
       "strokeAlpha": 0.75,
       "cornerRadius": 10,
-      "title": {
-        "fontSize": 15
+      "cardTitle": {
+        "fontSize": 11
       }
+    }
+  },
+  "flt": {
+    "panel": {
+      "fillAlpha": 0.14,
+      "topFillAlpha": 0.1,
+      "strokeAlpha": 0.75,
+      "cornerRadius": 10,
+      "card": {
+        "fillAlpha": 0.1,
+        "cornerRadius": 8,
+        "strokeThickness": 1.2,
+        "strokeColour": "#DCE8FC58",
+        "title": {
+          "fontSize": 11
+        }
+      }
+    }
+  },
+  "mix": {
+    "panel": {
+      "fillAlpha": 0.14,
+      "topFillAlpha": 0.1,
+      "strokeAlpha": 0.75,
+      "cornerRadius": 10
+    }
+  },
+  "env": {
+    "panel": {
+      "fillAlpha": 0,
+      "topFillAlpha": 0,
+      "strokeAlpha": 0,
+      "cornerRadius": 0
     },
     "envelope": {
       "background": "#0A120A9B",

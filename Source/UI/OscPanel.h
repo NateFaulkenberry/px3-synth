@@ -7,6 +7,9 @@
 #include "SubOscComponent.h"
 
 #include <array>
+#include <memory>
+
+class UIConfig;
 
 class OscPanel final : public juce::Component
 {
@@ -71,15 +74,16 @@ public:
     void refreshLfoFromParameters(float rateHz, int waveformIndex);
     void refreshSubOscFromParameters(bool enabled, int octaveIndex, int waveformIndex);
     void advanceAnimation(float oscDeltaPhase, float lfoDeltaPhase);
+    void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
 private:
     std::unique_ptr<SubOscComponent> subOscComponent;
     std::array<std::unique_ptr<OscillatorComponent>, 3> oscillatorComponents;
     std::unique_ptr<LfoComponent> lfoComponent;
 
-    juce::String title { "OSC" };
     juce::Colour accent;
     juce::Colour subHeaderAccent;
     juce::Colour oscHeaderAccent;
     juce::Colour lfoHeaderAccent;
+    std::shared_ptr<const UIConfig> uiConfig;
 };

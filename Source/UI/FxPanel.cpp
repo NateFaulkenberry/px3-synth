@@ -63,7 +63,6 @@ void FxPanel::paint(juce::Graphics& g)
     const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.fillAlpha", 0.14f) : 0.14f;
     const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.topFillAlpha", 0.10f) : 0.10f;
     const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.strokeAlpha", 0.75f) : 0.75f;
-    const auto titleFontSize = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.title.fontSize", 15.0f) : 15.0f;
     const auto radius = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.cornerRadius", 10.0f) : 10.0f;
 
     const auto area = getLocalBounds().toFloat().reduced(2.0f);
@@ -76,9 +75,6 @@ void FxPanel::paint(juce::Graphics& g)
     g.setColour(accent.withAlpha(strokeAlpha));
     g.drawRoundedRectangle(area, radius, 1.0f);
 
-    g.setColour(accent.brighter(0.30f));
-    g.setFont(juce::FontOptions(titleFontSize, juce::Font::bold));
-    g.drawText(title, getLocalBounds().removeFromTop(24), juce::Justification::centred);
 }
 
 void FxPanel::setSectionBounds(const juce::Rectangle<int>& vibeBounds,

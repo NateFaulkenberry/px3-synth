@@ -49,7 +49,6 @@ private:
     std::unique_ptr<DelayComponent> delayPanelComponent;
     std::unique_ptr<ReverbUiComponent> reverbUiComponent;
 
-    juce::String title { "FX" };
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
 };

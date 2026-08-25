@@ -53,6 +53,21 @@ Explicitly disable forced rebuild (default):
 ./scripts/run-standalone.sh --build false
 ```
 
+## UIConfig JSON During Development
+
+UI styling/layout is driven by `Source/UI/UIConfig.json`.
+
+In debug-enabled runtime (`JUCE_DEBUG` or `PX3_DEBUG_PANEL`):
+
+- The editor hot-reloads when the file modification time changes.
+- You can override config location with `PX3_UI_CONFIG_PATH=/absolute/path/to/UIConfig.json`.
+- Default debug behavior prefers source-tree `Source/UI/UIConfig.json` when available.
+
+In non-debug runtime:
+
+- The editor loads from the app/plugin bundle (`Contents/UIConfig.json` or `Contents/Resources/UIConfig.json`).
+- Source-tree probing is intentionally disabled.
+
 ## Install Locally (Development)
 
 Install latest Release AU and (by default) VST3 into user plugin folders:
@@ -108,7 +123,9 @@ The release pipeline:
 2. Builds plugin artifacts.
 3. Locates AU/VST3 and Standalone (if enabled).
 4. Validates bundle metadata and Mach-O architecture.
-5. Packages a distributable release directory and ZIP.
+5. Validates `Contents/Resources/UIConfig.json` is present in AU and VST3 bundles.
+6. Packages a distributable release directory, ZIP, and installer PKG.
+7. Validates AU/VST3 component pkg payloads include `Contents/Resources/UIConfig.json`.
 
 ## Optional Signing
 

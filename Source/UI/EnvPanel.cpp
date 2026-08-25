@@ -22,7 +22,6 @@ void EnvPanel::paint(juce::Graphics& g)
     const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("env.panel.fillAlpha", 0.14f) : 0.14f;
     const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("env.panel.topFillAlpha", 0.10f) : 0.10f;
     const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("env.panel.strokeAlpha", 0.75f) : 0.75f;
-    const auto titleFontSize = uiConfig != nullptr ? uiConfig->getFloat("env.panel.title.fontSize", 15.0f) : 15.0f;
     const auto panelRadius = uiConfig != nullptr ? uiConfig->getFloat("env.panel.cornerRadius", 10.0f) : 10.0f;
 
     const auto area = getLocalBounds().toFloat().reduced(2.0f);
@@ -35,12 +34,7 @@ void EnvPanel::paint(juce::Graphics& g)
     g.setColour(accent.withAlpha(strokeAlpha));
     g.drawRoundedRectangle(area, panelRadius, 1.0f);
 
-    g.setColour(accent.brighter(0.30f));
-    g.setFont(juce::FontOptions(titleFontSize, juce::Font::bold));
-    g.drawText(title, getLocalBounds().removeFromTop(24), juce::Justification::centred);
-
     auto cardArea = getLocalBounds().reduced(12, 10);
-    cardArea.removeFromTop(26);
     constexpr int targetCardWidth = 300;
     const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
     cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
@@ -72,7 +66,6 @@ void EnvPanel::resized()
     }
 
     auto panelArea = getLocalBounds().reduced(12, 10);
-    panelArea.removeFromTop(26);
 
     constexpr int targetCardWidth = 300;
     const auto cardWidth = juce::jmin(targetCardWidth, panelArea.getWidth());

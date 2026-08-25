@@ -1,5 +1,7 @@
 #include "FltPanel.h"
 
+#include "UIConfig.h"
+
 #include <array>
 
 juce::PopupMenu::Options FltPanel::FilterComboLookAndFeel::getOptionsForComboBoxPopupMenu(juce::ComboBox& box,
@@ -68,31 +70,38 @@ FltPanel::~FltPanel()
 
 void FltPanel::paint(juce::Graphics& g)
 {
+    const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.fillAlpha", 0.14f) : 0.14f;
+    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.topFillAlpha", 0.10f) : 0.10f;
+    const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.strokeAlpha", 0.75f) : 0.75f;
+    const auto panelRadius = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.cornerRadius", 10.0f) : 10.0f;
+    const auto cardFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.card.fillAlpha", 0.10f) : 0.10f;
+    const auto cardRadius = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.card.cornerRadius", 8.0f) : 8.0f;
+    const auto cardStrokeThickness = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.card.strokeThickness", 1.2f) : 1.2f;
+    const auto cardTitleFontSize = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.card.title.fontSize", 11.0f) : 11.0f;
+    const auto cardStrokeColour = uiConfig != nullptr
+                                      ? uiConfig->getColour("flt.panel.card.strokeColour", juce::Colour::fromRGBA(220, 232, 252, 88))
+                                      : juce::Colour::fromRGBA(220, 232, 252, 88);
+
     const auto area = getLocalBounds().toFloat().reduced(2.0f);
-    g.setColour(accent.withAlpha(0.14f));
-    g.fillRoundedRectangle(area, 10.0f);
+    g.setColour(accent.withAlpha(fillAlpha));
+    g.fillRoundedRectangle(area, panelRadius);
 
-    g.setColour(accent.withAlpha(0.10f));
-    g.fillRoundedRectangle(area.withTrimmedBottom(area.getHeight() * 0.5f), 10.0f);
+    g.setColour(accent.withAlpha(topFillAlpha));
+    g.fillRoundedRectangle(area.withTrimmedBottom(area.getHeight() * 0.5f), panelRadius);
 
-    g.setColour(accent.withAlpha(0.75f));
-    g.drawRoundedRectangle(area, 10.0f, 1.0f);
-
-    g.setColour(accent.brighter(0.30f));
-    g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
-    g.drawText(title, getLocalBounds().removeFromTop(24), juce::Justification::centred);
+    g.setColour(accent.withAlpha(strokeAlpha));
+    g.drawRoundedRectangle(area, panelRadius, 1.0f);
 
     auto contentArea = getLocalBounds().reduced(12, 10);
-    contentArea.removeFromTop(26);
 
     constexpr int gap = 8;
     const auto totalGap = gap * (kFilterInstanceCount - 1);
     const auto columnWidth = juce::jmax(1, (contentArea.getWidth() - totalGap) / kFilterInstanceCount);
 
-    const auto drawCardTitle = [&g](const juce::String& text, juce::Rectangle<int> bounds, juce::Colour colour)
+    const auto drawCardTitle = [&g, cardTitleFontSize](const juce::String& text, juce::Rectangle<int> bounds, juce::Colour colour)
     {
         g.setColour(colour.brighter(0.2f));
-        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        g.setFont(juce::FontOptions(cardTitleFontSize, juce::Font::bold));
         g.drawText(text, bounds.removeFromTop(14), juce::Justification::centredTop, true);
     };
 
@@ -101,10 +110,10 @@ void FltPanel::paint(juce::Graphics& g)
         const auto x = contentArea.getX() + filterIndex * (columnWidth + gap);
         const auto cardBoundsInt = juce::Rectangle<int>(x, contentArea.getY(), columnWidth, contentArea.getHeight()).reduced(2, 0);
         const auto cardBounds = cardBoundsInt.toFloat();
-        g.setColour(accent.withAlpha(0.10f));
-        g.fillRoundedRectangle(cardBounds, 8.0f);
-        g.setColour(juce::Colour::fromRGBA(220, 232, 252, 88));
-        g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
+        g.setColour(accent.withAlpha(cardFillAlpha));
+        g.fillRoundedRectangle(cardBounds, cardRadius);
+        g.setColour(cardStrokeColour);
+        g.drawRoundedRectangle(cardBounds, cardRadius, cardStrokeThickness);
         drawCardTitle("Filter " + juce::String(filterIndex + 1), cardBoundsInt, accent);
     }
 }
@@ -112,7 +121,6 @@ void FltPanel::paint(juce::Graphics& g)
 void FltPanel::resized()
 {
     auto panelArea = getLocalBounds().reduced(12, 10);
-    panelArea.removeFromTop(26);
 
     constexpr int gap = 8;
     const auto totalGap = gap * (kFilterInstanceCount - 1);
@@ -178,4 +186,10 @@ void FltPanel::refreshFromParameters()
             filterComponent->refreshFromParameters();
         }
     }
+}
+
+void FltPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
+{
+    uiConfig = std::move(configIn);
+    repaint();
 }

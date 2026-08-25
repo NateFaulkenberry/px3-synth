@@ -119,6 +119,34 @@ Debug performance HUD metric semantics:
 - UI/debug actions run on message thread.
 - Cross-thread data handoff uses atomics and minimal lock scopes.
 
+## UIConfig Runtime Notes
+
+Primary files:
+
+- `Source/UI/UIConfig.json`
+- `Source/UI/UIConfig.h`
+- `Source/UI/UIConfig.cpp`
+- `Source/UI/UIConfigManager.h`
+- `Source/UI/UIConfigManager.cpp`
+
+Editor integration points:
+
+- `resolveUiConfigFile()` in `Source/UI/PluginEditor.cpp` decides active config path.
+- `loadUiConfig(false)` runs in `timerCallback()` (30 Hz) and calls `reloadIfChanged()`.
+- `loadUiConfig(true)` is used on initial load and path switches.
+
+Resolution policy:
+
+- Debug (`JUCE_DEBUG` or `PX3_DEBUG_PANEL`) prefers source-tree config for fast iteration.
+- `PX3_UI_CONFIG_PATH` can force a specific file in debug-mode runtime.
+- Non-debug runtime does not probe source tree and only loads from bundle locations.
+
+Failure behavior:
+
+- Missing/unreadable/invalid JSON does not crash UI config flow.
+- Parse failures keep last-known-good config active.
+- UI config path switches and hot reloads emit debug event-log entries with full file paths.
+
 ## Versioning (SemVer)
 
 Authoritative version source:

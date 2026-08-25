@@ -1,5 +1,7 @@
 #include "MixPanel.h"
 
+#include "UIConfig.h"
+
 #include <array>
 
 MixPanel::MixPanel(juce::Slider& subOscGainFaderIn,
@@ -43,25 +45,26 @@ MixPanel::MixPanel(juce::Slider& subOscGainFaderIn,
 
 void MixPanel::paint(juce::Graphics& g)
 {
+    const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("mix.panel.fillAlpha", 0.14f) : 0.14f;
+    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("mix.panel.topFillAlpha", 0.10f) : 0.10f;
+    const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("mix.panel.strokeAlpha", 0.75f) : 0.75f;
+    const auto panelRadius = uiConfig != nullptr ? uiConfig->getFloat("mix.panel.cornerRadius", 10.0f) : 10.0f;
+
     const auto area = getLocalBounds().toFloat().reduced(2.0f);
-    g.setColour(accent.withAlpha(0.14f));
-    g.fillRoundedRectangle(area, 10.0f);
+    g.setColour(accent.withAlpha(fillAlpha));
+    g.fillRoundedRectangle(area, panelRadius);
 
-    g.setColour(accent.withAlpha(0.10f));
-    g.fillRoundedRectangle(area.withTrimmedBottom(area.getHeight() * 0.5f), 10.0f);
+    g.setColour(accent.withAlpha(topFillAlpha));
+    g.fillRoundedRectangle(area.withTrimmedBottom(area.getHeight() * 0.5f), panelRadius);
 
-    g.setColour(accent.withAlpha(0.75f));
-    g.drawRoundedRectangle(area, 10.0f, 1.0f);
+    g.setColour(accent.withAlpha(strokeAlpha));
+    g.drawRoundedRectangle(area, panelRadius, 1.0f);
 
-    g.setColour(accent.brighter(0.30f));
-    g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
-    g.drawText(title, getLocalBounds().removeFromTop(24), juce::Justification::centred);
 }
 
 void MixPanel::resized()
 {
     auto area = getLocalBounds().reduced(14, 12);
-    area.removeFromTop(26);
 
     auto columnsArea = area;
     const auto labelHeight = 20;
@@ -118,4 +121,10 @@ void MixPanel::configureLabel(juce::Label& label, const juce::String& text)
     label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(220, 226, 236));
     label.setFont(juce::FontOptions(11.5f));
     label.setInterceptsMouseClicks(false, false);
+}
+
+void MixPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
+{
+    uiConfig = std::move(configIn);
+    repaint();
 }

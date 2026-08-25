@@ -1693,6 +1693,18 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
     {
         envPanel->setUIConfig(uiConfig);
     }
+    if (oscPanel != nullptr)
+    {
+        oscPanel->setUIConfig(uiConfig);
+    }
+    if (fltPanel != nullptr)
+    {
+        fltPanel->setUIConfig(uiConfig);
+    }
+    if (mixPanel != nullptr)
+    {
+        mixPanel->setUIConfig(uiConfig);
+    }
 
     if (uiConfig != nullptr)
     {
@@ -2811,7 +2823,6 @@ void PX3SynthAudioProcessorEditor::layoutEnvelopePanel()
 void PX3SynthAudioProcessorEditor::layoutFxPanel()
 {
     auto panelArea = fxPanel->getLocalBounds().reduced(12, 10);
-    panelArea.removeFromTop(26);
     updateFxSectionTargets(panelArea, 12);
     layoutFxSectionsFromCurrentAreas();
 }

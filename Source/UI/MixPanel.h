@@ -2,6 +2,10 @@
 
 #include <JuceHeader.h>
 
+#include <memory>
+
+class UIConfig;
+
 class MixPanel final : public juce::Component
 {
 public:
@@ -20,6 +24,7 @@ public:
 
     void refreshFromParameters();
     void advanceAnimation(float deltaPhase);
+    void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
 private:
     void configureFader(juce::Slider& slider);
@@ -34,6 +39,6 @@ private:
     juce::Slider& osc3GainFader;
     juce::Label& osc3GainLabel;
 
-    juce::String title { "MIX" };
     juce::Colour accent;
+    std::shared_ptr<const UIConfig> uiConfig;
 };

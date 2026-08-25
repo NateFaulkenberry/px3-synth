@@ -6,6 +6,9 @@
 #include "FilterComponent.h"
 
 #include <array>
+#include <memory>
+
+class UIConfig;
 
 class FltPanel final : public juce::Component
 {
@@ -28,6 +31,7 @@ public:
     void resized() override;
 
     void refreshFromParameters();
+    void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
 private:
     struct FilterComboLookAndFeel final : public juce::LookAndFeel_V4
@@ -48,6 +52,6 @@ private:
 
     std::array<std::unique_ptr<FilterComponent>, kFilterInstanceCount> filterComponents;
 
-    juce::String title { "FLT" };
     juce::Colour accent;
+    std::shared_ptr<const UIConfig> uiConfig;
 };

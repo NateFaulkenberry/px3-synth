@@ -145,6 +145,36 @@ cmake -B build -G Ninja -DPX3_DEBUG_PANEL=ON
 cmake --build build
 ```
 
+## UIConfig JSON
+
+Runtime UI styling and layout are loaded from `UIConfig.json`.
+
+Source of truth in the repo:
+
+- `Source/UI/UIConfig.json`
+
+Hot reload behavior:
+
+- The editor checks for file changes during `timerCallback()` and reloads when file modification time changes.
+- If JSON parsing fails, the previous valid config remains active.
+- UI config load/reload and path-switch events are logged in the debug event log.
+
+Path resolution order:
+
+- Debug builds (`JUCE_DEBUG` or `PX3_DEBUG_PANEL`):
+  - `PX3_UI_CONFIG_PATH` (if set and file exists)
+  - `./Source/UI/UIConfig.json` from current working directory
+  - upward probe for `Source/UI/UIConfig.json`, then `UIConfig.json`
+  - bundle fallback: `Contents/UIConfig.json`, then `Contents/Resources/UIConfig.json`
+- Non-debug builds:
+  - bundle only: `Contents/UIConfig.json`, then `Contents/Resources/UIConfig.json`
+  - no source-tree probing
+
+Production packaging:
+
+- CMake copies `Source/UI/UIConfig.json` into `Contents/Resources/UIConfig.json` for Standalone, AU, and VST3 bundles.
+- `scripts/build-release.sh` fails fast if AU/VST3 bundles or component pkg payloads are missing `Contents/Resources/UIConfig.json`.
+
 ## Developer Preset Dumping
 
 When DEBUG mode is enabled, the detached P(X3) DEBUG CONSOLE includes a `PRESET / STATE TOOLS` block with:

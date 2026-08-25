@@ -1,5 +1,7 @@
 #include "OscPanel.h"
 
+#include "UIConfig.h"
+
 #include <cmath>
 
 OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
@@ -129,24 +131,26 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
 
 void OscPanel::paint(juce::Graphics& g)
 {
+    const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.fillAlpha", 0.14f) : 0.14f;
+    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.topFillAlpha", 0.10f) : 0.10f;
+    const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.strokeAlpha", 0.75f) : 0.75f;
+    const auto panelRadius = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.cornerRadius", 10.0f) : 10.0f;
+    const auto cardTitleFontSize = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.cardTitle.fontSize", 11.0f) : 11.0f;
+
     const auto area = getLocalBounds().toFloat().reduced(2.0f);
-    g.setColour(accent.withAlpha(0.14f));
-    g.fillRoundedRectangle(area, 10.0f);
+    g.setColour(accent.withAlpha(fillAlpha));
+    g.fillRoundedRectangle(area, panelRadius);
 
-    g.setColour(accent.withAlpha(0.10f));
-    g.fillRoundedRectangle(area.withTrimmedBottom(area.getHeight() * 0.5f), 10.0f);
+    g.setColour(accent.withAlpha(topFillAlpha));
+    g.fillRoundedRectangle(area.withTrimmedBottom(area.getHeight() * 0.5f), panelRadius);
 
-    g.setColour(accent.withAlpha(0.75f));
-    g.drawRoundedRectangle(area, 10.0f, 1.0f);
+    g.setColour(accent.withAlpha(strokeAlpha));
+    g.drawRoundedRectangle(area, panelRadius, 1.0f);
 
-    g.setColour(accent.brighter(0.30f));
-    g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
-    g.drawText(title, getLocalBounds().removeFromTop(24), juce::Justification::centred);
-
-    const auto drawCardTitle = [&g](const juce::String& text, juce::Rectangle<int> bounds, juce::Colour colour)
+    const auto drawCardTitle = [&g, cardTitleFontSize](const juce::String& text, juce::Rectangle<int> bounds, juce::Colour colour)
     {
         g.setColour(colour.brighter(0.2f));
-        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        g.setFont(juce::FontOptions(cardTitleFontSize, juce::Font::bold));
         g.drawText(text, bounds.removeFromTop(14), juce::Justification::centredTop, true);
     };
 
@@ -172,7 +176,6 @@ void OscPanel::paint(juce::Graphics& g)
 void OscPanel::resized()
 {
     auto panelArea = getLocalBounds().reduced(12, 10);
-    panelArea.removeFromTop(26);
 
     constexpr int columnCount = 5;
     constexpr int gap = 8;
@@ -251,4 +254,10 @@ void OscPanel::advanceAnimation(float oscDeltaPhase, float lfoDeltaPhase)
     {
         lfoComponent->advanceAnimation(lfoDeltaPhase);
     }
+}
+
+void OscPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
+{
+    uiConfig = std::move(configIn);
+    repaint();
 }
