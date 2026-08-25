@@ -13,8 +13,6 @@ class OscPanel final : public juce::Component
 public:
     OscPanel(juce::ToggleButton& subEnabledButton,
              juce::Label& subEnabledLabel,
-             juce::Slider& subLevelKnob,
-             juce::Label& subLevelLabel,
              juce::ComboBox& subOctaveBox,
              juce::Label& subOctaveLabel,
              juce::ComboBox& subWaveformBox,

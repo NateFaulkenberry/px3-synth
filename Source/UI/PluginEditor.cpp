@@ -506,10 +506,19 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         audioProcessor.setLfoAssignmentIndex(selected);
     };
 
-    configureEffectKnob(subOscLevelKnob,
-                        subOscLevelLabel,
-                        "LEVEL",
-                        audioProcessor.getSubOscLevelParam());
+    const auto configureMixFader = [](juce::Slider& slider)
+    {
+        slider.setSliderStyle(juce::Slider::LinearVertical);
+        slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        slider.setRange(0.0, 1.0, 0.0);
+        slider.setDoubleClickReturnValue(true, 1.0);
+        slider.setScrollWheelEnabled(false);
+    };
+
+    configureMixFader(subOscLevelKnob);
+    configureMixFader(osc1LevelFader);
+    configureMixFader(osc2LevelFader);
+    configureMixFader(osc3LevelFader);
 
     auto& subOscOctaveParam = audioProcessor.getSubOscOctaveParam();
     for (int i = 0; i < subOscOctaveParam.choices.size(); ++i)
@@ -755,8 +764,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     oscPanel = std::make_unique<OscPanel>(subOscEnabledButton,
                                           subOscEnabledLabel,
-                                          subOscLevelKnob,
-                                          subOscLevelLabel,
                                           subOscOctaveBox,
                                           subOscOctaveLabel,
                                           subOscWaveformBox,
@@ -845,7 +852,15 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                         reverbTypeBox,
                                         reverbTypeLabel,
                                         juce::Colour::fromRGB(120, 186, 255));
-    mixPanel = std::make_unique<MixPanel>(juce::Colour::fromRGB(212, 212, 212));
+    mixPanel = std::make_unique<MixPanel>(subOscLevelKnob,
+                                          subOscLevelLabel,
+                                          osc1LevelFader,
+                                          osc1LevelLabel,
+                                          osc2LevelFader,
+                                          osc2LevelLabel,
+                                          osc3LevelFader,
+                                          osc3LevelLabel,
+                                          juce::Colour::fromRGB(212, 212, 212));
 
     addAndMakeVisible(*oscPanel);
     addAndMakeVisible(*envPanel);
@@ -865,6 +880,9 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachSlider(audioProcessor.getDelayFeedbackParam(), delayFeedbackKnob);
     attachSlider(audioProcessor.getReverbAmountParam(), reverbKnob);
     attachSlider(audioProcessor.getSubOscLevelParam(), subOscLevelKnob);
+    attachSlider(audioProcessor.getOscillatorLevelParam(0), osc1LevelFader);
+    attachSlider(audioProcessor.getOscillatorLevelParam(1), osc2LevelFader);
+    attachSlider(audioProcessor.getOscillatorLevelParam(2), osc3LevelFader);
 
     attachComboBox(audioProcessor.getFilterTypeParam(), filterTypeBox);
     attachComboBox(audioProcessor.getOscillatorModeParam(0), oscModeBox);

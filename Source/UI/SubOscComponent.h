@@ -7,8 +7,6 @@ class SubOscComponent final : public juce::Component
 public:
     SubOscComponent(juce::ToggleButton& enabledButtonIn,
                            juce::Label& enabledLabelIn,
-                           juce::Slider& levelKnobIn,
-                           juce::Label& levelLabelIn,
                            juce::ComboBox& octaveBoxIn,
                            juce::Label& octaveLabelIn,
                            juce::ComboBox& waveformBoxIn,
@@ -27,8 +25,6 @@ private:
 
     juce::ToggleButton& enabledButton;
     juce::Label& enabledLabel;
-    juce::Slider& levelKnob;
-    juce::Label& levelLabel;
     juce::ComboBox& octaveBox;
     juce::Label& octaveLabel;
     juce::ComboBox& waveformBox;

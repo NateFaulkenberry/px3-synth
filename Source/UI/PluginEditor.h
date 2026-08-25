@@ -289,6 +289,9 @@ private:
     juce::Slider gainKnob;
     juce::Slider lfoFrequencyKnob;
     juce::Slider subOscLevelKnob;
+    juce::Slider osc1LevelFader;
+    juce::Slider osc2LevelFader;
+    juce::Slider osc3LevelFader;
     juce::ComboBox lfoWaveformBox;
     juce::ComboBox subOscOctaveBox;
     juce::ComboBox subOscWaveformBox;
@@ -321,6 +324,9 @@ private:
     KnobLabel lfoFrequencyLabel;
     KnobLabel lfoWaveformLabel;
     KnobLabel subOscLevelLabel;
+    KnobLabel osc1LevelLabel;
+    KnobLabel osc2LevelLabel;
+    KnobLabel osc3LevelLabel;
     KnobLabel subOscOctaveLabel;
     KnobLabel subOscWaveformLabel;
     KnobLabel subOscEnabledLabel;

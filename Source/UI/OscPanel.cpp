@@ -4,8 +4,6 @@
 
 OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                    juce::Label& subEnabledLabel,
-                   juce::Slider& subLevelKnob,
-                   juce::Label& subLevelLabel,
                    juce::ComboBox& subOctaveBox,
                    juce::Label& subOctaveLabel,
                    juce::ComboBox& subWaveformBox,
@@ -63,8 +61,6 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
 {
     subOscComponent = std::make_unique<SubOscComponent>(subEnabledButton,
                                                         subEnabledLabel,
-                                                        subLevelKnob,
-                                                        subLevelLabel,
                                                         subOctaveBox,
                                                         subOctaveLabel,
                                                         subWaveformBox,

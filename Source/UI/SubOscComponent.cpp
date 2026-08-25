@@ -6,8 +6,6 @@
 
 SubOscComponent::SubOscComponent(juce::ToggleButton& enabledButtonIn,
                                                juce::Label& enabledLabelIn,
-                                               juce::Slider& levelKnobIn,
-                                               juce::Label& levelLabelIn,
                                                juce::ComboBox& octaveBoxIn,
                                                juce::Label& octaveLabelIn,
                                                juce::ComboBox& waveformBoxIn,
@@ -15,8 +13,6 @@ SubOscComponent::SubOscComponent(juce::ToggleButton& enabledButtonIn,
                                                juce::Colour accentIn)
     : enabledButton(enabledButtonIn),
       enabledLabel(enabledLabelIn),
-      levelKnob(levelKnobIn),
-      levelLabel(levelLabelIn),
       octaveBox(octaveBoxIn),
       octaveLabel(octaveLabelIn),
       waveformBox(waveformBoxIn),
@@ -25,8 +21,6 @@ SubOscComponent::SubOscComponent(juce::ToggleButton& enabledButtonIn,
 {
     addAndMakeVisible(enabledButton);
     addAndMakeVisible(enabledLabel);
-    addAndMakeVisible(levelKnob);
-    addAndMakeVisible(levelLabel);
     addAndMakeVisible(octaveBox);
     addAndMakeVisible(octaveLabel);
     addAndMakeVisible(waveformBox);
@@ -54,8 +48,6 @@ void SubOscComponent::refreshFromParameters(bool enabled, int octaveIndex, int w
         waveformBox.setSelectedItemIndex(currentWaveformIndex, juce::dontSendNotification);
     }
 
-    levelKnob.setEnabled(currentEnabled);
-    levelLabel.setEnabled(currentEnabled);
     octaveBox.setEnabled(currentEnabled);
     octaveLabel.setEnabled(currentEnabled);
     waveformBox.setEnabled(currentEnabled);
@@ -100,22 +92,12 @@ void SubOscComponent::resized()
     area.removeFromTop(8);
 
     auto graphArea = area;
-    const auto requestedGraphHeight = static_cast<int>(juce::jmax(52, getLocalBounds().reduced(20, 14).getHeight() - 168));
-    const auto maxGraphHeight = juce::jmax(52, graphArea.getHeight() - 88);
+    const auto requestedGraphHeight = static_cast<int>(juce::jmax(80, getLocalBounds().reduced(20, 14).getHeight() - 128));
+    const auto maxGraphHeight = juce::jmax(80, graphArea.getHeight() - 24);
     const auto graphHeight = juce::jmin(requestedGraphHeight, maxGraphHeight);
 
     graphArea.removeFromBottom(graphHeight);
     graphArea.removeFromBottom(10);
-
-    auto knobArea = graphArea.reduced(2, 0);
-    auto labelRow = knobArea.removeFromTop(20);
-    knobArea.removeFromTop(6);
-    levelLabel.setBounds(labelRow.reduced(2, 0));
-
-    const auto knobSize = juce::jlimit(40,
-                                       86,
-                                       juce::jmin(knobArea.getWidth() - 10, knobArea.getHeight() - 4));
-    levelKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(knobArea.getCentre()));
 }
 
 void SubOscComponent::paint(juce::Graphics& g)
@@ -141,8 +123,8 @@ void SubOscComponent::paint(juce::Graphics& g)
     graphLayout.removeFromTop(24.0f);
     graphLayout.removeFromTop(8.0f);
 
-    const auto requestedGraphHeight = static_cast<float>(juce::jmax(52, getLocalBounds().reduced(20, 14).getHeight() - 168));
-    const auto maxGraphHeight = juce::jmax(52.0f, graphLayout.getHeight() - 88.0f);
+    const auto requestedGraphHeight = static_cast<float>(juce::jmax(80, getLocalBounds().reduced(20, 14).getHeight() - 128));
+    const auto maxGraphHeight = juce::jmax(80.0f, graphLayout.getHeight() - 24.0f);
     const auto graphHeight = juce::jmin(requestedGraphHeight, maxGraphHeight);
     graphLayout.removeFromBottom(10.0f);
     auto graph = graphLayout.removeFromBottom(graphHeight).reduced(0.0f, 2.0f);
