@@ -62,20 +62,6 @@ void ModPanel::paint(juce::Graphics& g)
     g.setColour(accent.withAlpha(strokeAlpha));
     g.drawRoundedRectangle(area, panelRadius, 1.0f);
 
-    const auto panelPadX = uiConfig != nullptr ? uiConfig->getInt("mod.panel.layout.padX", 12) : 12;
-    const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("mod.panel.layout.padY", 10) : 10;
-    auto cardArea = getLocalBounds().reduced(panelPadX, panelPadY);
-
-    constexpr int gap = 8;
-    const auto columnWidth = juce::jmax(1, (cardArea.getWidth() - gap) / 2);
-    auto envCardArea = juce::Rectangle<int>(cardArea.getX(), cardArea.getY(), columnWidth, cardArea.getHeight());
-
-    const auto envCardBounds = envCardArea.toFloat().reduced(2.0f);
-    g.setColour(accent.withAlpha(0.10f));
-    g.fillRoundedRectangle(envCardBounds, 8.0f);
-    g.setColour(juce::Colour::fromRGBA(220, 232, 252, 88));
-    g.drawRoundedRectangle(envCardBounds, 8.0f, 1.2f);
-
 }
 
 void ModPanel::paintOverChildren(juce::Graphics& g)
