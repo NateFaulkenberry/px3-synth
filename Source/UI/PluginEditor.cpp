@@ -803,6 +803,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     fxPanel.addAndMakeVisible(*vibeUiComponent);
     fxPanel.addAndMakeVisible(*delayUiComponent);
     fxPanel.addAndMakeVisible(*reverbUiComponent);
+    fxPanel.addMouseListener(this, true);
 
     fltPanel.addAndMakeVisible(cutoffKnob);
     fltPanel.addAndMakeVisible(cutoffLabel);
@@ -1042,6 +1043,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
 PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
 {
+    fxPanel.removeMouseListener(this);
     closeDebugWindow();
     audioProcessor.debugNotifyEditorDestroyed(this);
 
@@ -1409,9 +1411,11 @@ void PX3SynthAudioProcessorEditor::resized()
 
 void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 {
+    const auto point = event.getEventRelativeTo(this).getPosition();
+
     if (presetBrowserVisible)
     {
-        const auto mousePos = event.getPosition();
+        const auto mousePos = point;
         if (!presetBrowserPanel.getBounds().contains(mousePos))
         {
             closePresetBrowser();
@@ -1430,7 +1434,6 @@ void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
         return;
     }
 
-    const auto point = event.getPosition();
     logoClickArmed = false;
     if (logoPanelArea.contains(point))
     {
@@ -1450,6 +1453,16 @@ void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
         return;
     }
 
+    if (auto* eventComponent = event.eventComponent)
+    {
+        if (dynamic_cast<juce::Slider*>(eventComponent) != nullptr
+            || dynamic_cast<juce::ComboBox*>(eventComponent) != nullptr
+            || dynamic_cast<juce::Button*>(eventComponent) != nullptr)
+        {
+            return;
+        }
+    }
+
     draggingFxSection = sectionId;
     pressedFxSection = sectionId;
     fxDragStartPoint = point;
@@ -1460,11 +1473,13 @@ void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 
 void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
 {
+    const auto point = event.getEventRelativeTo(this).getPosition();
+
     if (presetBrowserVisible)
     {
         if (presetBrowserDragging)
         {
-            auto newTopLeft = event.getPosition() - presetBrowserDragOffset;
+            auto newTopLeft = point - presetBrowserDragOffset;
             const auto margin = 8;
             const auto maxX = getWidth() - presetBrowserPanel.getWidth() - margin;
             const auto maxY = getHeight() - presetBrowserPanel.getHeight() - margin;
@@ -1478,7 +1493,7 @@ void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
 
     if (logoClickArmed)
     {
-        if (event.getPosition().getDistanceFrom(logoMouseDownPoint) >= 4)
+        if (point.getDistanceFrom(logoMouseDownPoint) >= 4)
         {
             logoClickArmed = false;
         }
@@ -1495,7 +1510,6 @@ void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
         return;
     }
 
-    const auto point = event.getPosition();
     const auto localPoint = point - fxPanel.getPosition();
     if (!fxDragHasMoved)
     {
@@ -1536,6 +1550,8 @@ void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
 
 void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
 {
+    const auto point = event.getEventRelativeTo(this).getPosition();
+
     if (presetBrowserVisible)
     {
         juce::ignoreUnused(event);
@@ -1547,7 +1563,7 @@ void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
     if (logoClickArmed)
     {
         logoClickArmed = false;
-        if (logoPanelArea.contains(event.getPosition()))
+        if (logoPanelArea.contains(point))
         {
             juce::URL("https://px3px3.com").launchInDefaultBrowser();
         }
@@ -1567,7 +1583,7 @@ void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
         return;
     }
 
-    const auto releasePoint = event.getPosition() - fxPanel.getPosition();
+    const auto releasePoint = point - fxPanel.getPosition();
     const auto isHeaderClick = !fxDragHasMoved && pressedFxSection >= 0;
     if (isHeaderClick)
     {
