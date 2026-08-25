@@ -447,7 +447,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureKnob(knobBindings[13], "Sustain", audioProcessor.getSustainParam());
     configureKnob(knobBindings[14], "Release", audioProcessor.getReleaseParam());
     configureKnob(knobBindings[15], "Freq", audioProcessor.getLfoFrequencyParam());
-    configureKnob(knobBindings[16], "Gain", audioProcessor.getMasterGainParam());
+    configureKnob(knobBindings[16], "Master", audioProcessor.getMasterGainParam());
 
     // ADSR graph replaces visible envelope knobs; parameter attachments remain unchanged.
     attackKnob.setVisible(false);
