@@ -9,15 +9,6 @@ SubtractiveSettings PX3SynthAudioProcessor::currentSubtractiveSettings() const
 {
     const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
     SubtractiveSettings settings;
-    settings.sineMix = oscSineParam->convertFrom0to1(applyLfoToNormalizedValue(oscSineParam,
-                                                                                static_cast<juce::RangedAudioParameter*>(oscSineParam)->getValue(),
-                                                                                lfoSignal));
-    settings.sawMix = oscSawParam->convertFrom0to1(applyLfoToNormalizedValue(oscSawParam,
-                                                                              static_cast<juce::RangedAudioParameter*>(oscSawParam)->getValue(),
-                                                                              lfoSignal));
-    settings.squareMix = oscSquareParam->convertFrom0to1(applyLfoToNormalizedValue(oscSquareParam,
-                                                                                    static_cast<juce::RangedAudioParameter*>(oscSquareParam)->getValue(),
-                                                                                    lfoSignal));
     settings.masterGain = masterGainParam->convertFrom0to1(applyLfoToNormalizedValue(masterGainParam,
                                                                                       static_cast<juce::RangedAudioParameter*>(masterGainParam)->getValue(),
                                                                                       lfoSignal));
@@ -51,32 +42,56 @@ FilterSettings PX3SynthAudioProcessor::currentFilterSettings() const
     return settings;
 }
 
-OscillatorSettings PX3SynthAudioProcessor::currentOscillatorSettings() const
+std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcessor::currentOscillatorLayerSettings() const
 {
     const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
-    OscillatorSettings settings;
-    settings.modeIndex = px3::clampOscillatorModeIndex(oscModeParam->getIndex());
-    settings.macroA = clamp01(oscMacroAParam->convertFrom0to1(applyLfoToNormalizedValue(oscMacroAParam,
-                                                                                          static_cast<juce::RangedAudioParameter*>(oscMacroAParam)->getValue(),
-                                                                                          lfoSignal)));
-    settings.macroB = clamp01(oscMacroBParam->convertFrom0to1(applyLfoToNormalizedValue(oscMacroBParam,
-                                                                                          static_cast<juce::RangedAudioParameter*>(oscMacroBParam)->getValue(),
-                                                                                          lfoSignal)));
-    settings.macroC = clamp01(oscMacroCParam->convertFrom0to1(applyLfoToNormalizedValue(oscMacroCParam,
-                                                                                          static_cast<juce::RangedAudioParameter*>(oscMacroCParam)->getValue(),
-                                                                                          lfoSignal)));
-    settings.vowelIndex = oscVowelParam->getIndex();
-    for (std::size_t i = 0; i < settings.harmonics.size(); ++i)
+    std::array<OscillatorLayerSettings, kOscillatorSourceCount> layerSettings;
+
+    for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
     {
-        if (oscHarmonicParams[i] != nullptr)
+        auto& layer = layerSettings[static_cast<std::size_t>(oscIndex)];
+        auto& settings = layer.oscillator;
+
+        layer.enabled = getOscillatorEnabledParam(oscIndex).get();
+        layer.level = getOscillatorLevelParam(oscIndex).convertFrom0to1(
+            applyLfoToNormalizedValue(&getOscillatorLevelParam(oscIndex),
+                                      static_cast<juce::RangedAudioParameter&>(getOscillatorLevelParam(oscIndex)).getValue(),
+                                      lfoSignal));
+        layer.coarseSemitones = getOscillatorCoarseParam(oscIndex).convertFrom0to1(
+            applyLfoToNormalizedValue(&getOscillatorCoarseParam(oscIndex),
+                                      static_cast<juce::RangedAudioParameter&>(getOscillatorCoarseParam(oscIndex)).getValue(),
+                                      lfoSignal));
+        layer.fineCents = getOscillatorFineParam(oscIndex).convertFrom0to1(
+            applyLfoToNormalizedValue(&getOscillatorFineParam(oscIndex),
+                                      static_cast<juce::RangedAudioParameter&>(getOscillatorFineParam(oscIndex)).getValue(),
+                                      lfoSignal));
+
+        settings.modeIndex = px3::clampOscillatorModeIndex(getOscillatorModeParam(oscIndex).getIndex());
+        settings.macroA = clamp01(getOscillatorMacroAParam(oscIndex).convertFrom0to1(
+            applyLfoToNormalizedValue(&getOscillatorMacroAParam(oscIndex),
+                                      static_cast<juce::RangedAudioParameter&>(getOscillatorMacroAParam(oscIndex)).getValue(),
+                                      lfoSignal)));
+        settings.macroB = clamp01(getOscillatorMacroBParam(oscIndex).convertFrom0to1(
+            applyLfoToNormalizedValue(&getOscillatorMacroBParam(oscIndex),
+                                      static_cast<juce::RangedAudioParameter&>(getOscillatorMacroBParam(oscIndex)).getValue(),
+                                      lfoSignal)));
+        settings.macroC = clamp01(getOscillatorMacroCParam(oscIndex).convertFrom0to1(
+            applyLfoToNormalizedValue(&getOscillatorMacroCParam(oscIndex),
+                                      static_cast<juce::RangedAudioParameter&>(getOscillatorMacroCParam(oscIndex)).getValue(),
+                                      lfoSignal)));
+        settings.vowelIndex = getOscillatorVowelParam(oscIndex).getIndex();
+
+        for (std::size_t harmonicIndex = 0; harmonicIndex < settings.harmonics.size(); ++harmonicIndex)
         {
-            settings.harmonics[i] = clamp01(oscHarmonicParams[i]->convertFrom0to1(
-                applyLfoToNormalizedValue(oscHarmonicParams[i],
-                                          static_cast<juce::RangedAudioParameter*>(oscHarmonicParams[i])->getValue(),
+            auto& harmonicParam = getOscillatorHarmonicParam(oscIndex, static_cast<int>(harmonicIndex));
+            settings.harmonics[harmonicIndex] = clamp01(harmonicParam.convertFrom0to1(
+                applyLfoToNormalizedValue(&harmonicParam,
+                                          static_cast<juce::RangedAudioParameter&>(harmonicParam).getValue(),
                                           lfoSignal)));
         }
     }
-    return settings;
+
+    return layerSettings;
 }
 
 EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings() const

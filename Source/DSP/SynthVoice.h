@@ -14,11 +14,10 @@
 
 #include <array>
 
+inline constexpr int kOscillatorSourceCount = 3;
+
 struct SubtractiveSettings
 {
-    float sineMix { 1.0f };
-    float sawMix { 0.0f };
-    float squareMix { 0.0f };
     float masterGain { 0.6f };
 };
 
@@ -38,7 +37,7 @@ public:
     void setFilterSettings(const FilterSettings& settings);
     void setSubtractiveSettings(const SubtractiveSettings& settings);
     void setSubOscillatorSettings(const SubOscSettings& settings);
-    void setOscillatorSettings(const OscillatorSettings& settings);
+    void setOscillatorLayerSettings(const std::array<OscillatorLayerSettings, kOscillatorSourceCount>& settings);
     void setPerformanceModulation(float pitchBendNormalized,
                                   float modWheelNormalized,
                                   float pitchBendRangeSemitones,
@@ -61,7 +60,7 @@ private:
     FilterSettings filterSettings;
     SubtractiveSettings subtractiveSettings;
     SubOscSettings subOscillatorSettings;
-    OscillatorSettings oscillatorSettings;
+    std::array<OscillatorLayerSettings, kOscillatorSourceCount> oscillatorLayerSettings;
 
     EnvelopeGenerator ampEnvelope;
     VoiceFilter voiceFilter;
@@ -82,7 +81,7 @@ private:
     float vibratoMaxDepthSemitones { 1.0f };
     int currentMidiNote { 60 };
 
-    OscillatorUnit oscillatorUnit;
+    std::array<OscillatorUnit, kOscillatorSourceCount> oscillatorUnits;
     SubOscillator subOscillator;
 
     int noteAgeSamples { 0 };

@@ -415,6 +415,12 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         KnobBinding { &oscSineKnob, &oscSineLabel, nullptr },
         KnobBinding { &oscSawKnob, &oscSawLabel, nullptr },
         KnobBinding { &oscSquareKnob, &oscSquareLabel, nullptr },
+        KnobBinding { &osc2SineKnob, &osc2SineLabel, nullptr },
+        KnobBinding { &osc2SawKnob, &osc2SawLabel, nullptr },
+        KnobBinding { &osc2SquareKnob, &osc2SquareLabel, nullptr },
+        KnobBinding { &osc3SineKnob, &osc3SineLabel, nullptr },
+        KnobBinding { &osc3SawKnob, &osc3SawLabel, nullptr },
+        KnobBinding { &osc3SquareKnob, &osc3SquareLabel, nullptr },
         KnobBinding { &cutoffKnob, &cutoffLabel, nullptr },
         KnobBinding { &resonanceKnob, &resonanceLabel, nullptr },
         KnobBinding { &attackKnob, &attackLabel, nullptr },
@@ -425,17 +431,23 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         KnobBinding { &gainKnob, &gainLabel, nullptr }
     };
 
-    configureKnob(knobBindings[0], "PARAM A", audioProcessor.getOscMacroAParam());
-    configureKnob(knobBindings[1], "PARAM B", audioProcessor.getOscMacroBParam());
-    configureKnob(knobBindings[2], "PARAM C", audioProcessor.getOscMacroCParam());
-    configureKnob(knobBindings[3], "Cutoff", audioProcessor.getFilterCutoffParam());
-    configureKnob(knobBindings[4], "Reso", audioProcessor.getFilterResonanceParam());
-    configureKnob(knobBindings[5], "Attack", audioProcessor.getAttackParam());
-    configureKnob(knobBindings[6], "Decay", audioProcessor.getDecayParam());
-    configureKnob(knobBindings[7], "Sustain", audioProcessor.getSustainParam());
-    configureKnob(knobBindings[8], "Release", audioProcessor.getReleaseParam());
-    configureKnob(knobBindings[9], "Freq", audioProcessor.getLfoFrequencyParam());
-    configureKnob(knobBindings[10], "Gain", audioProcessor.getMasterGainParam());
+    configureKnob(knobBindings[0], "PARAM A", audioProcessor.getOscillatorMacroAParam(0));
+    configureKnob(knobBindings[1], "PARAM B", audioProcessor.getOscillatorMacroBParam(0));
+    configureKnob(knobBindings[2], "PARAM C", audioProcessor.getOscillatorMacroCParam(0));
+    configureKnob(knobBindings[3], "PARAM A", audioProcessor.getOscillatorMacroAParam(1));
+    configureKnob(knobBindings[4], "PARAM B", audioProcessor.getOscillatorMacroBParam(1));
+    configureKnob(knobBindings[5], "PARAM C", audioProcessor.getOscillatorMacroCParam(1));
+    configureKnob(knobBindings[6], "PARAM A", audioProcessor.getOscillatorMacroAParam(2));
+    configureKnob(knobBindings[7], "PARAM B", audioProcessor.getOscillatorMacroBParam(2));
+    configureKnob(knobBindings[8], "PARAM C", audioProcessor.getOscillatorMacroCParam(2));
+    configureKnob(knobBindings[9], "Cutoff", audioProcessor.getFilterCutoffParam());
+    configureKnob(knobBindings[10], "Reso", audioProcessor.getFilterResonanceParam());
+    configureKnob(knobBindings[11], "Attack", audioProcessor.getAttackParam());
+    configureKnob(knobBindings[12], "Decay", audioProcessor.getDecayParam());
+    configureKnob(knobBindings[13], "Sustain", audioProcessor.getSustainParam());
+    configureKnob(knobBindings[14], "Release", audioProcessor.getReleaseParam());
+    configureKnob(knobBindings[15], "Freq", audioProcessor.getLfoFrequencyParam());
+    configureKnob(knobBindings[16], "Gain", audioProcessor.getMasterGainParam());
 
     // ADSR graph replaces visible envelope knobs; parameter attachments remain unchanged.
     attackKnob.setVisible(false);
@@ -544,6 +556,12 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     oscSineLabel.setFont(juce::FontOptions(11.0f));
     oscSawLabel.setFont(juce::FontOptions(11.0f));
     oscSquareLabel.setFont(juce::FontOptions(11.0f));
+    osc2SineLabel.setFont(juce::FontOptions(11.0f));
+    osc2SawLabel.setFont(juce::FontOptions(11.0f));
+    osc2SquareLabel.setFont(juce::FontOptions(11.0f));
+    osc3SineLabel.setFont(juce::FontOptions(11.0f));
+    osc3SawLabel.setFont(juce::FontOptions(11.0f));
+    osc3SquareLabel.setFont(juce::FontOptions(11.0f));
 
     configureEffectKnob(vibeAmountKnob, vibeAmountLabel, "AMOUNT", audioProcessor.getVibeAmountParam());
     configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "", audioProcessor.getDelayAmountParam());
@@ -597,45 +615,48 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     filterTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     filterTypeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
 
-    auto& oscModeParam = audioProcessor.getOscillatorModeParam();
-    const auto oscModeCount = oscModeParam.choices.size();
-    for (int i = 0; i < oscModeCount; ++i)
+    auto configureOscSelector = [this](int oscIndex, juce::ComboBox& modeBox, KnobLabel& modeLabel, juce::ComboBox& vowelBox, KnobLabel& vowelLabel)
     {
-        oscModeBox.addItem(oscModeParam.choices[i], i + 1);
-    }
-    oscModeBox.setSelectedItemIndex(oscModeParam.getIndex(), juce::dontSendNotification);
-    oscModeBox.onChange = [this]()
-    {
-        refreshOscillatorModeUI();
-    };
-    oscModeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
-    oscModeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    oscModeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
-    oscModeLabel.setText("MODE", juce::dontSendNotification);
-    oscModeLabel.setJustificationType(juce::Justification::centred);
-    oscModeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    oscModeLabel.setFont(juce::FontOptions(11.5f));
-    oscModeLabel.setInterceptsMouseClicks(false, false);
-    addAndMakeVisible(oscModeBox);
-    addAndMakeVisible(oscModeLabel);
+        auto& oscModeParam = audioProcessor.getOscillatorModeParam(oscIndex);
+        for (int i = 0; i < oscModeParam.choices.size(); ++i)
+        {
+            modeBox.addItem(oscModeParam.choices[i], i + 1);
+        }
+        modeBox.setSelectedItemIndex(oscModeParam.getIndex(), juce::dontSendNotification);
+        modeBox.onChange = [this]()
+        {
+            refreshOscillatorModeUI();
+        };
+        modeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+        modeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+        modeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
 
-    auto& oscVowelParam = audioProcessor.getOscVowelParam();
-    const auto oscVowelCount = oscVowelParam.choices.size();
-    for (int i = 0; i < oscVowelCount; ++i)
-    {
-        oscVowelBox.addItem(oscVowelParam.choices[i], i + 1);
-    }
-    oscVowelBox.setSelectedItemIndex(oscVowelParam.getIndex(), juce::dontSendNotification);
-    oscVowelBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
-    oscVowelBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    oscVowelBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
-    oscVowelLabel.setText("VOWEL", juce::dontSendNotification);
-    oscVowelLabel.setJustificationType(juce::Justification::centred);
-    oscVowelLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    oscVowelLabel.setFont(juce::FontOptions(11.5f));
-    oscVowelLabel.setInterceptsMouseClicks(false, false);
-    addAndMakeVisible(oscVowelBox);
-    addAndMakeVisible(oscVowelLabel);
+        modeLabel.setText("MODE", juce::dontSendNotification);
+        modeLabel.setJustificationType(juce::Justification::centred);
+        modeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+        modeLabel.setFont(juce::FontOptions(11.5f));
+        modeLabel.setInterceptsMouseClicks(false, false);
+
+        auto& oscVowelParam = audioProcessor.getOscillatorVowelParam(oscIndex);
+        for (int i = 0; i < oscVowelParam.choices.size(); ++i)
+        {
+            vowelBox.addItem(oscVowelParam.choices[i], i + 1);
+        }
+        vowelBox.setSelectedItemIndex(oscVowelParam.getIndex(), juce::dontSendNotification);
+        vowelBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+        vowelBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+        vowelBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+
+        vowelLabel.setText("VOWEL", juce::dontSendNotification);
+        vowelLabel.setJustificationType(juce::Justification::centred);
+        vowelLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+        vowelLabel.setFont(juce::FontOptions(11.5f));
+        vowelLabel.setInterceptsMouseClicks(false, false);
+    };
+
+    configureOscSelector(0, oscModeBox, oscModeLabel, oscVowelBox, oscVowelLabel);
+    configureOscSelector(1, osc2ModeBox, osc2ModeLabel, osc2VowelBox, osc2VowelLabel);
+    configureOscSelector(2, osc3ModeBox, osc3ModeLabel, osc3VowelBox, osc3VowelLabel);
 
     auto& delayAlgoParam = audioProcessor.getDelayAlgorithmParam();
     const auto delayAlgoChoiceCount = delayAlgoParam.choices.size();
@@ -714,7 +735,15 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureBypassButton(delayBypassButton);
     configureBypassButton(reverbBypassButton);
 
-    oscPanel = std::make_unique<OscPanel>(oscSineKnob,
+    oscPanel = std::make_unique<OscPanel>(subOscEnabledButton,
+                                          subOscEnabledLabel,
+                                          subOscLevelKnob,
+                                          subOscLevelLabel,
+                                          subOscOctaveBox,
+                                          subOscOctaveLabel,
+                                          subOscWaveformBox,
+                                          subOscWaveformLabel,
+                                          oscSineKnob,
                                           oscSawKnob,
                                           oscSquareKnob,
                                           oscSineLabel,
@@ -724,6 +753,26 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           oscModeLabel,
                                           oscVowelBox,
                                           oscVowelLabel,
+                                          osc2SineKnob,
+                                          osc2SawKnob,
+                                          osc2SquareKnob,
+                                          osc2SineLabel,
+                                          osc2SawLabel,
+                                          osc2SquareLabel,
+                                          osc2ModeBox,
+                                          osc2ModeLabel,
+                                          osc2VowelBox,
+                                          osc2VowelLabel,
+                                          osc3SineKnob,
+                                          osc3SawKnob,
+                                          osc3SquareKnob,
+                                          osc3SineLabel,
+                                          osc3SawLabel,
+                                          osc3SquareLabel,
+                                          osc3ModeBox,
+                                          osc3ModeLabel,
+                                          osc3VowelBox,
+                                          osc3VowelLabel,
                                           lfoAssignLabel,
                                           lfoAssignBox,
                                           lfoFrequencyKnob,
@@ -731,6 +780,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           lfoFrequencyValueLabel,
                                           lfoWaveformBox,
                                           lfoWaveformLabel,
+                                          juce::Colour::fromRGB(120, 180, 255),
                                           kGroupAccents[0],
                                           kGroupAccents[3]);
     envPanel = std::make_unique<EnvPanel>(audioProcessor.getAttackParam(),
@@ -793,8 +843,12 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachSlider(audioProcessor.getSubOscLevelParam(), subOscLevelKnob);
 
     attachComboBox(audioProcessor.getFilterTypeParam(), filterTypeBox);
-    attachComboBox(audioProcessor.getOscillatorModeParam(), oscModeBox);
-    attachComboBox(audioProcessor.getOscVowelParam(), oscVowelBox);
+    attachComboBox(audioProcessor.getOscillatorModeParam(0), oscModeBox);
+    attachComboBox(audioProcessor.getOscillatorVowelParam(0), oscVowelBox);
+    attachComboBox(audioProcessor.getOscillatorModeParam(1), osc2ModeBox);
+    attachComboBox(audioProcessor.getOscillatorVowelParam(1), osc2VowelBox);
+    attachComboBox(audioProcessor.getOscillatorModeParam(2), osc3ModeBox);
+    attachComboBox(audioProcessor.getOscillatorVowelParam(2), osc3VowelBox);
     attachComboBox(audioProcessor.getLfoWaveformParam(), lfoWaveformBox);
     attachComboBox(audioProcessor.getSubOscOctaveParam(), subOscOctaveBox);
     attachComboBox(audioProcessor.getSubOscWaveformParam(), subOscWaveformBox);
@@ -2265,21 +2319,43 @@ void PX3SynthAudioProcessorEditor::selectedRowsChanged(int lastRowSelected)
 
 void PX3SynthAudioProcessorEditor::refreshOscillatorModeUI()
 {
-    const auto paramModeIndex = audioProcessor.getOscillatorModeParam().getIndex();
-    if (oscModeBox.getSelectedItemIndex() != paramModeIndex)
+    for (int oscIndex = 0; oscIndex < 3; ++oscIndex)
     {
-        oscModeBox.setSelectedItemIndex(paramModeIndex, juce::dontSendNotification);
-    }
+        juce::ComboBox* modeBox = nullptr;
+        juce::ComboBox* vowelBox = nullptr;
 
-    const auto paramVowelIndex = audioProcessor.getOscVowelParam().getIndex();
-    if (oscVowelBox.getSelectedItemIndex() != paramVowelIndex)
-    {
-        oscVowelBox.setSelectedItemIndex(paramVowelIndex, juce::dontSendNotification);
-    }
+        if (oscIndex == 0)
+        {
+            modeBox = &oscModeBox;
+            vowelBox = &oscVowelBox;
+        }
+        else if (oscIndex == 1)
+        {
+            modeBox = &osc2ModeBox;
+            vowelBox = &osc2VowelBox;
+        }
+        else
+        {
+            modeBox = &osc3ModeBox;
+            vowelBox = &osc3VowelBox;
+        }
 
-    if (oscPanel != nullptr)
-    {
-        oscPanel->refreshFromSelections(paramModeIndex, paramVowelIndex);
+        const auto paramModeIndex = audioProcessor.getOscillatorModeParam(oscIndex).getIndex();
+        if (modeBox->getSelectedItemIndex() != paramModeIndex)
+        {
+            modeBox->setSelectedItemIndex(paramModeIndex, juce::dontSendNotification);
+        }
+
+        const auto paramVowelIndex = audioProcessor.getOscillatorVowelParam(oscIndex).getIndex();
+        if (vowelBox->getSelectedItemIndex() != paramVowelIndex)
+        {
+            vowelBox->setSelectedItemIndex(paramVowelIndex, juce::dontSendNotification);
+        }
+
+        if (oscPanel != nullptr)
+        {
+            oscPanel->refreshOscillatorFromSelections(oscIndex, paramModeIndex, paramVowelIndex);
+        }
     }
 }
 
@@ -2375,11 +2451,11 @@ void PX3SynthAudioProcessorEditor::refreshLfoUI()
 
 void PX3SynthAudioProcessorEditor::refreshSubOscUI()
 {
-    if (mixPanel != nullptr)
+    if (oscPanel != nullptr)
     {
-        mixPanel->refreshFromParameters(audioProcessor.getSubOscEnabledParam().get(),
-                                        audioProcessor.getSubOscOctaveParam().getIndex(),
-                                        audioProcessor.getSubOscWaveformParam().getIndex());
+        oscPanel->refreshSubOscFromParameters(audioProcessor.getSubOscEnabledParam().get(),
+                                              audioProcessor.getSubOscOctaveParam().getIndex(),
+                                              audioProcessor.getSubOscWaveformParam().getIndex());
     }
 }
 

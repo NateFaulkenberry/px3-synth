@@ -62,18 +62,56 @@ float PX3SynthAudioProcessor::applyLfoToNormalizedValue(juce::RangedAudioParamet
     return effective;
 }
 
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscSineParam() const { return *oscSineParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscSawParam() const { return *oscSawParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscSquareParam() const { return *oscSquareParam; }
-juce::AudioParameterChoice& PX3SynthAudioProcessor::getOscillatorModeParam() const { return *oscModeParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscMacroAParam() const { return *oscMacroAParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscMacroBParam() const { return *oscMacroBParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscMacroCParam() const { return *oscMacroCParam; }
-juce::AudioParameterChoice& PX3SynthAudioProcessor::getOscVowelParam() const { return *oscVowelParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscHarmonicParam(int harmonicIndex) const
+juce::AudioParameterBool& PX3SynthAudioProcessor::getOscillatorEnabledParam(int oscIndex) const
 {
-    const auto idx = juce::jlimit(0, 7, harmonicIndex);
-    return *oscHarmonicParams[static_cast<std::size_t>(idx)];
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    return *oscEnabledParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorLevelParam(int oscIndex) const
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    return *oscLevelParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorCoarseParam(int oscIndex) const
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    return *oscCoarseParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorFineParam(int oscIndex) const
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    return *oscFineParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getOscillatorModeParam(int oscIndex) const
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    return *oscModeParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorMacroAParam(int oscIndex) const
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    return *oscMacroAParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorMacroBParam(int oscIndex) const
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    return *oscMacroBParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorMacroCParam(int oscIndex) const
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    return *oscMacroCParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getOscillatorVowelParam(int oscIndex) const
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    return *oscVowelParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorHarmonicParam(int oscIndex, int harmonicIndex) const
+{
+    const auto oscIdx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    const auto harmIdx = juce::jlimit(0, 7, harmonicIndex);
+    return *oscHarmonicParams[static_cast<std::size_t>(oscIdx)][static_cast<std::size_t>(harmIdx)];
 }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getSubOscEnabledParam() const { return *subOscEnabledParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getSubOscLevelParam() const { return *subOscLevelParam; }

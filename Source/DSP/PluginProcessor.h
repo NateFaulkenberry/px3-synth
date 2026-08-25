@@ -87,15 +87,16 @@ public:
     std::array<float, PianoKeyboard::totalKeys> copyActiveNoteVelocities() const;
     MidiStatus copyMidiStatus() const;
 
-    juce::AudioParameterFloat& getOscSineParam() const;
-    juce::AudioParameterFloat& getOscSawParam() const;
-    juce::AudioParameterFloat& getOscSquareParam() const;
-    juce::AudioParameterChoice& getOscillatorModeParam() const;
-    juce::AudioParameterFloat& getOscMacroAParam() const;
-    juce::AudioParameterFloat& getOscMacroBParam() const;
-    juce::AudioParameterFloat& getOscMacroCParam() const;
-    juce::AudioParameterChoice& getOscVowelParam() const;
-    juce::AudioParameterFloat& getOscHarmonicParam(int harmonicIndex) const;
+    juce::AudioParameterBool& getOscillatorEnabledParam(int oscIndex) const;
+    juce::AudioParameterFloat& getOscillatorLevelParam(int oscIndex) const;
+    juce::AudioParameterFloat& getOscillatorCoarseParam(int oscIndex) const;
+    juce::AudioParameterFloat& getOscillatorFineParam(int oscIndex) const;
+    juce::AudioParameterChoice& getOscillatorModeParam(int oscIndex) const;
+    juce::AudioParameterFloat& getOscillatorMacroAParam(int oscIndex) const;
+    juce::AudioParameterFloat& getOscillatorMacroBParam(int oscIndex) const;
+    juce::AudioParameterFloat& getOscillatorMacroCParam(int oscIndex) const;
+    juce::AudioParameterChoice& getOscillatorVowelParam(int oscIndex) const;
+    juce::AudioParameterFloat& getOscillatorHarmonicParam(int oscIndex, int harmonicIndex) const;
     juce::AudioParameterBool& getSubOscEnabledParam() const;
     juce::AudioParameterFloat& getSubOscLevelParam() const;
     juce::AudioParameterChoice& getSubOscOctaveParam() const;
@@ -203,8 +204,8 @@ private:
     void decrementNoteCount(std::size_t index);
     SubtractiveSettings currentSubtractiveSettings() const;
     SubOscSettings currentSubOscillatorSettings() const;
+    std::array<OscillatorLayerSettings, kOscillatorSourceCount> currentOscillatorLayerSettings() const;
     FilterSettings currentFilterSettings() const;
-    OscillatorSettings currentOscillatorSettings() const;
     EnvelopeSettings currentEnvelopeSettings() const;
     LfoSettings currentLfoSettings() const;
     VibeSettings currentVibeSettings() const;
@@ -223,15 +224,16 @@ private:
 
     juce::Synthesiser synth;
 
-    juce::AudioParameterFloat* oscSineParam { nullptr };
-    juce::AudioParameterFloat* oscSawParam { nullptr };
-    juce::AudioParameterFloat* oscSquareParam { nullptr };
-    juce::AudioParameterChoice* oscModeParam { nullptr };
-    juce::AudioParameterFloat* oscMacroAParam { nullptr };
-    juce::AudioParameterFloat* oscMacroBParam { nullptr };
-    juce::AudioParameterFloat* oscMacroCParam { nullptr };
-    juce::AudioParameterChoice* oscVowelParam { nullptr };
-    std::array<juce::AudioParameterFloat*, 8> oscHarmonicParams { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterBool*, kOscillatorSourceCount> oscEnabledParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscLevelParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscCoarseParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscFineParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterChoice*, kOscillatorSourceCount> oscModeParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscMacroAParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscMacroBParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscMacroCParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterChoice*, kOscillatorSourceCount> oscVowelParams { { nullptr, nullptr, nullptr } };
+    std::array<std::array<juce::AudioParameterFloat*, 8>, kOscillatorSourceCount> oscHarmonicParams { { { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } }, { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } }, { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } } } };
     juce::AudioParameterBool* subOscEnabledParam { nullptr };
     juce::AudioParameterFloat* subOscLevelParam { nullptr };
     juce::AudioParameterChoice* subOscOctaveParam { nullptr };

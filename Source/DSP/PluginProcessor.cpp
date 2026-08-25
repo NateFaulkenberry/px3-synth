@@ -24,27 +24,59 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     fxProcessingOrderPacked.store(packFxOrder({ { 0, 1, 2 } }), std::memory_order_relaxed);
     fxOrderRevision.store(0u, std::memory_order_relaxed);
 
-    oscSineParam = new juce::AudioParameterFloat("oscSine", "Osc Sine", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
-    oscSawParam = new juce::AudioParameterFloat("oscSaw", "Osc Saw", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    oscSquareParam = new juce::AudioParameterFloat("oscSquare", "Osc Square", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    oscModeParam = new juce::AudioParameterChoice("oscMode",
-                                                   "Oscillator Mode",
-                                                   px3::oscillatorModeChoices(),
-                                                   0);
-    oscMacroAParam = new juce::AudioParameterFloat("oscMacroA", "Osc Macro A", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    oscMacroBParam = new juce::AudioParameterFloat("oscMacroB", "Osc Macro B", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    oscMacroCParam = new juce::AudioParameterFloat("oscMacroC", "Osc Macro C", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    oscVowelParam = new juce::AudioParameterChoice("oscVowel", "Osc Vowel", juce::StringArray { "A", "E", "I", "O", "U" }, 0);
-    oscHarmonicParams = { {
-        new juce::AudioParameterFloat("oscH1", "Osc Harmonic 1", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f),
-        new juce::AudioParameterFloat("oscH2", "Osc Harmonic 2", juce::NormalisableRange<float>(0.0f, 1.0f), 0.7f),
-        new juce::AudioParameterFloat("oscH3", "Osc Harmonic 3", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f),
-        new juce::AudioParameterFloat("oscH4", "Osc Harmonic 4", juce::NormalisableRange<float>(0.0f, 1.0f), 0.3f),
-        new juce::AudioParameterFloat("oscH5", "Osc Harmonic 5", juce::NormalisableRange<float>(0.0f, 1.0f), 0.2f),
-        new juce::AudioParameterFloat("oscH6", "Osc Harmonic 6", juce::NormalisableRange<float>(0.0f, 1.0f), 0.14f),
-        new juce::AudioParameterFloat("oscH7", "Osc Harmonic 7", juce::NormalisableRange<float>(0.0f, 1.0f), 0.1f),
-        new juce::AudioParameterFloat("oscH8", "Osc Harmonic 8", juce::NormalisableRange<float>(0.0f, 1.0f), 0.07f)
-    } };
+    for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
+    {
+        const auto slot = juce::String(oscIndex + 1);
+        const auto idPrefix = "osc" + slot;
+        const auto labelPrefix = "Osc " + slot + " ";
+
+        oscEnabledParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterBool(idPrefix + "Enabled",
+                                                                                              labelPrefix + "Enabled",
+                                                                                              oscIndex == 0);
+        oscLevelParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(idPrefix + "Level",
+                                                                                             labelPrefix + "Level",
+                                                                                             juce::NormalisableRange<float>(0.0f, 1.0f),
+                                                                                             oscIndex == 0 ? 1.0f : 0.0f);
+        oscCoarseParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(idPrefix + "Coarse",
+                                                                                              labelPrefix + "Coarse",
+                                                                                              juce::NormalisableRange<float>(-24.0f, 24.0f, 1.0f),
+                                                                                              0.0f);
+        oscFineParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(idPrefix + "Fine",
+                                                                                            labelPrefix + "Fine",
+                                                                                            juce::NormalisableRange<float>(-100.0f, 100.0f, 1.0f),
+                                                                                            0.0f);
+        oscModeParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterChoice(idPrefix + "Mode",
+                                                                                             labelPrefix + "Mode",
+                                                                                             px3::oscillatorModeChoices(),
+                                                                                             0);
+        oscMacroAParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(idPrefix + "MacroA",
+                                                                                              labelPrefix + "Macro A",
+                                                                                              juce::NormalisableRange<float>(0.0f, 1.0f),
+                                                                                              0.5f);
+        oscMacroBParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(idPrefix + "MacroB",
+                                                                                              labelPrefix + "Macro B",
+                                                                                              juce::NormalisableRange<float>(0.0f, 1.0f),
+                                                                                              0.5f);
+        oscMacroCParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(idPrefix + "MacroC",
+                                                                                              labelPrefix + "Macro C",
+                                                                                              juce::NormalisableRange<float>(0.0f, 1.0f),
+                                                                                              0.5f);
+        oscVowelParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterChoice(idPrefix + "Vowel",
+                                                                                              labelPrefix + "Vowel",
+                                                                                              juce::StringArray { "A", "E", "I", "O", "U" },
+                                                                                              0);
+
+        oscHarmonicParams[static_cast<std::size_t>(oscIndex)] = { {
+            new juce::AudioParameterFloat(idPrefix + "H1", labelPrefix + "Harmonic 1", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f),
+            new juce::AudioParameterFloat(idPrefix + "H2", labelPrefix + "Harmonic 2", juce::NormalisableRange<float>(0.0f, 1.0f), 0.7f),
+            new juce::AudioParameterFloat(idPrefix + "H3", labelPrefix + "Harmonic 3", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f),
+            new juce::AudioParameterFloat(idPrefix + "H4", labelPrefix + "Harmonic 4", juce::NormalisableRange<float>(0.0f, 1.0f), 0.3f),
+            new juce::AudioParameterFloat(idPrefix + "H5", labelPrefix + "Harmonic 5", juce::NormalisableRange<float>(0.0f, 1.0f), 0.2f),
+            new juce::AudioParameterFloat(idPrefix + "H6", labelPrefix + "Harmonic 6", juce::NormalisableRange<float>(0.0f, 1.0f), 0.14f),
+            new juce::AudioParameterFloat(idPrefix + "H7", labelPrefix + "Harmonic 7", juce::NormalisableRange<float>(0.0f, 1.0f), 0.1f),
+            new juce::AudioParameterFloat(idPrefix + "H8", labelPrefix + "Harmonic 8", juce::NormalisableRange<float>(0.0f, 1.0f), 0.07f)
+        } };
+    }
     subOscEnabledParam = new juce::AudioParameterBool("subOscEnabled", "Sub Osc Enabled", false);
     subOscLevelParam = new juce::AudioParameterFloat("subOscLevel", "Sub Osc Level", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     subOscOctaveParam = new juce::AudioParameterChoice("subOscOctave",
@@ -120,17 +152,22 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                        px3::lfoWaveformChoices(),
                                                        0);
 
-    addParameter(oscSineParam);
-    addParameter(oscSawParam);
-    addParameter(oscSquareParam);
-    addParameter(oscModeParam);
-    addParameter(oscMacroAParam);
-    addParameter(oscMacroBParam);
-    addParameter(oscMacroCParam);
-    addParameter(oscVowelParam);
-    for (auto* harmonicParam : oscHarmonicParams)
+    for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
     {
-        addParameter(harmonicParam);
+        addParameter(oscEnabledParams[static_cast<std::size_t>(oscIndex)]);
+        addParameter(oscLevelParams[static_cast<std::size_t>(oscIndex)]);
+        addParameter(oscCoarseParams[static_cast<std::size_t>(oscIndex)]);
+        addParameter(oscFineParams[static_cast<std::size_t>(oscIndex)]);
+        addParameter(oscModeParams[static_cast<std::size_t>(oscIndex)]);
+        addParameter(oscMacroAParams[static_cast<std::size_t>(oscIndex)]);
+        addParameter(oscMacroBParams[static_cast<std::size_t>(oscIndex)]);
+        addParameter(oscMacroCParams[static_cast<std::size_t>(oscIndex)]);
+        addParameter(oscVowelParams[static_cast<std::size_t>(oscIndex)]);
+
+        for (auto* harmonicParam : oscHarmonicParams[static_cast<std::size_t>(oscIndex)])
+        {
+            addParameter(harmonicParam);
+        }
     }
     addParameter(subOscEnabledParam);
     addParameter(subOscLevelParam);
@@ -178,7 +215,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     const auto initialFilter = currentFilterSettings();
     const auto initialSubtractive = currentSubtractiveSettings();
     const auto initialSubOsc = currentSubOscillatorSettings();
-    const auto initialOscillator = currentOscillatorSettings();
+    const auto initialOscillatorLayers = currentOscillatorLayerSettings();
 
     for (int voice = 0; voice < 16; ++voice)
     {
@@ -188,7 +225,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         synthVoice->setFilterSettings(initialFilter);
         synthVoice->setSubtractiveSettings(initialSubtractive);
         synthVoice->setSubOscillatorSettings(initialSubOsc);
-        synthVoice->setOscillatorSettings(initialOscillator);
+        synthVoice->setOscillatorLayerSettings(initialOscillatorLayers);
         synth.addVoice(synthVoice);
     }
 
@@ -277,7 +314,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     const auto filter = currentFilterSettings();
     const auto subtractive = currentSubtractiveSettings();
     const auto subOsc = currentSubOscillatorSettings();
-    const auto oscillator = currentOscillatorSettings();
+    const auto oscillatorLayers = currentOscillatorLayerSettings();
 
     for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
     {
@@ -287,7 +324,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
             voice->setFilterSettings(filter);
             voice->setSubtractiveSettings(subtractive);
             voice->setSubOscillatorSettings(subOsc);
-            voice->setOscillatorSettings(oscillator);
+            voice->setOscillatorLayerSettings(oscillatorLayers);
         }
     }
     juce::ignoreUnused(samplesPerBlock);
@@ -389,7 +426,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     const auto filter = currentFilterSettings();
     const auto subtractive = currentSubtractiveSettings();
     const auto subOsc = currentSubOscillatorSettings();
-    const auto oscillator = currentOscillatorSettings();
+    const auto oscillatorLayers = currentOscillatorLayerSettings();
     vibeComponent.updateForBlock(currentVibeSettings(), buffer.getNumSamples());
     const auto vibeShared = vibeComponent.getSharedState();
     const auto vibeTuning = vibeComponent.getTuning();
@@ -403,7 +440,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             voice->setFilterSettings(filter);
             voice->setSubtractiveSettings(subtractive);
             voice->setSubOscillatorSettings(subOsc);
-            voice->setOscillatorSettings(oscillator);
+            voice->setOscillatorLayerSettings(oscillatorLayers);
             voice->setPerformanceModulation(pitchBend,
                                             modWheel,
                                             bendRange,

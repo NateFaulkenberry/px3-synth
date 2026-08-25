@@ -4,20 +4,51 @@
 
 #include "LfoComponent.h"
 #include "OscillatorComponent.h"
+#include "SubOscComponent.h"
+
+#include <array>
 
 class OscPanel final : public juce::Component
 {
 public:
-    OscPanel(juce::Slider& macroA,
-             juce::Slider& macroB,
-             juce::Slider& macroC,
-             juce::Label& macroALabel,
-             juce::Label& macroBLabel,
-             juce::Label& macroCLabel,
-             juce::ComboBox& modeBox,
-             juce::Label& modeLabel,
-             juce::ComboBox& vowelBox,
-             juce::Label& vowelLabel,
+    OscPanel(juce::ToggleButton& subEnabledButton,
+             juce::Label& subEnabledLabel,
+             juce::Slider& subLevelKnob,
+             juce::Label& subLevelLabel,
+             juce::ComboBox& subOctaveBox,
+             juce::Label& subOctaveLabel,
+             juce::ComboBox& subWaveformBox,
+             juce::Label& subWaveformLabel,
+             juce::Slider& osc1MacroA,
+             juce::Slider& osc1MacroB,
+             juce::Slider& osc1MacroC,
+             juce::Label& osc1MacroALabel,
+             juce::Label& osc1MacroBLabel,
+             juce::Label& osc1MacroCLabel,
+             juce::ComboBox& osc1ModeBox,
+             juce::Label& osc1ModeLabel,
+             juce::ComboBox& osc1VowelBox,
+             juce::Label& osc1VowelLabel,
+             juce::Slider& osc2MacroA,
+             juce::Slider& osc2MacroB,
+             juce::Slider& osc2MacroC,
+             juce::Label& osc2MacroALabel,
+             juce::Label& osc2MacroBLabel,
+             juce::Label& osc2MacroCLabel,
+             juce::ComboBox& osc2ModeBox,
+             juce::Label& osc2ModeLabel,
+             juce::ComboBox& osc2VowelBox,
+             juce::Label& osc2VowelLabel,
+             juce::Slider& osc3MacroA,
+             juce::Slider& osc3MacroB,
+             juce::Slider& osc3MacroC,
+             juce::Label& osc3MacroALabel,
+             juce::Label& osc3MacroBLabel,
+             juce::Label& osc3MacroCLabel,
+             juce::ComboBox& osc3ModeBox,
+             juce::Label& osc3ModeLabel,
+             juce::ComboBox& osc3VowelBox,
+             juce::Label& osc3VowelLabel,
              juce::Label& lfoAssignLabel,
              juce::ComboBox& lfoAssignBox,
              juce::Slider& lfoRateKnob,
@@ -25,20 +56,26 @@ public:
              juce::Label& lfoRateValueLabel,
              juce::ComboBox& lfoWaveformBox,
              juce::Label& lfoWaveformLabel,
-             juce::Colour panelAccent,
+             juce::Colour subAccent,
+             juce::Colour oscAccent,
              juce::Colour lfoAccent);
 
     void paint(juce::Graphics& g) override;
     void resized() override;
 
-    void refreshFromSelections(int modeIndex, int vowelIndex);
+    void refreshOscillatorFromSelections(int oscIndex, int modeIndex, int vowelIndex);
     void refreshLfoFromParameters(float rateHz, int waveformIndex);
+    void refreshSubOscFromParameters(bool enabled, int octaveIndex, int waveformIndex);
     void advanceAnimation(float oscDeltaPhase, float lfoDeltaPhase);
 
 private:
-    std::unique_ptr<OscillatorComponent> oscillatorComponent;
+    std::unique_ptr<SubOscComponent> subOscComponent;
+    std::array<std::unique_ptr<OscillatorComponent>, 3> oscillatorComponents;
     std::unique_ptr<LfoComponent> lfoComponent;
 
     juce::String title { "OSC" };
     juce::Colour accent;
+    juce::Colour subHeaderAccent;
+    juce::Colour oscHeaderAccent;
+    juce::Colour lfoHeaderAccent;
 };

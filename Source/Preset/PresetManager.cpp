@@ -483,23 +483,58 @@ bool PresetManager::createInitPresetIfMissing(juce::String& error)
 
     // Canonical INIT payload captured from /INIT.px3preset in the repository.
     // These normalized values define the shipped first-run factory INIT state.
-    state.setProperty("stateVersion", 4, nullptr);
-    state.setProperty("oscSine", 1.0f, nullptr);
-    state.setProperty("oscSaw", 0.0f, nullptr);
-    state.setProperty("oscSquare", 0.0f, nullptr);
-    state.setProperty("oscMode", 0.0f, nullptr);
-    state.setProperty("oscMacroA", 0.5f, nullptr);
-    state.setProperty("oscMacroB", 0.5f, nullptr);
-    state.setProperty("oscMacroC", 0.5f, nullptr);
-    state.setProperty("oscVowel", 0.0f, nullptr);
-    state.setProperty("oscH1", 1.0f, nullptr);
-    state.setProperty("oscH2", 0.699999988079071f, nullptr);
-    state.setProperty("oscH3", 0.449999988079071f, nullptr);
-    state.setProperty("oscH4", 0.300000011920929f, nullptr);
-    state.setProperty("oscH5", 0.2000000029802322f, nullptr);
-    state.setProperty("oscH6", 0.1400000005960464f, nullptr);
-    state.setProperty("oscH7", 0.1000000014901161f, nullptr);
-    state.setProperty("oscH8", 0.07000000029802322f, nullptr);
+    state.setProperty("stateVersion", 6, nullptr);
+    state.setProperty("osc1Enabled", 1.0f, nullptr);
+    state.setProperty("osc1Level", 1.0f, nullptr);
+    state.setProperty("osc1Coarse", 0.5f, nullptr);
+    state.setProperty("osc1Fine", 0.5f, nullptr);
+    state.setProperty("osc1Mode", 0.0f, nullptr);
+    state.setProperty("osc1MacroA", 0.5f, nullptr);
+    state.setProperty("osc1MacroB", 0.5f, nullptr);
+    state.setProperty("osc1MacroC", 0.5f, nullptr);
+    state.setProperty("osc1Vowel", 0.0f, nullptr);
+    state.setProperty("osc1H1", 1.0f, nullptr);
+    state.setProperty("osc1H2", 0.699999988079071f, nullptr);
+    state.setProperty("osc1H3", 0.449999988079071f, nullptr);
+    state.setProperty("osc1H4", 0.300000011920929f, nullptr);
+    state.setProperty("osc1H5", 0.2000000029802322f, nullptr);
+    state.setProperty("osc1H6", 0.1400000005960464f, nullptr);
+    state.setProperty("osc1H7", 0.1000000014901161f, nullptr);
+    state.setProperty("osc1H8", 0.07000000029802322f, nullptr);
+    state.setProperty("osc2Enabled", 0.0f, nullptr);
+    state.setProperty("osc2Level", 0.0f, nullptr);
+    state.setProperty("osc2Coarse", 0.5f, nullptr);
+    state.setProperty("osc2Fine", 0.5f, nullptr);
+    state.setProperty("osc2Mode", 0.0f, nullptr);
+    state.setProperty("osc2MacroA", 0.5f, nullptr);
+    state.setProperty("osc2MacroB", 0.5f, nullptr);
+    state.setProperty("osc2MacroC", 0.5f, nullptr);
+    state.setProperty("osc2Vowel", 0.0f, nullptr);
+    state.setProperty("osc2H1", 1.0f, nullptr);
+    state.setProperty("osc2H2", 0.699999988079071f, nullptr);
+    state.setProperty("osc2H3", 0.449999988079071f, nullptr);
+    state.setProperty("osc2H4", 0.300000011920929f, nullptr);
+    state.setProperty("osc2H5", 0.2000000029802322f, nullptr);
+    state.setProperty("osc2H6", 0.1400000005960464f, nullptr);
+    state.setProperty("osc2H7", 0.1000000014901161f, nullptr);
+    state.setProperty("osc2H8", 0.07000000029802322f, nullptr);
+    state.setProperty("osc3Enabled", 0.0f, nullptr);
+    state.setProperty("osc3Level", 0.0f, nullptr);
+    state.setProperty("osc3Coarse", 0.5f, nullptr);
+    state.setProperty("osc3Fine", 0.5f, nullptr);
+    state.setProperty("osc3Mode", 0.0f, nullptr);
+    state.setProperty("osc3MacroA", 0.5f, nullptr);
+    state.setProperty("osc3MacroB", 0.5f, nullptr);
+    state.setProperty("osc3MacroC", 0.5f, nullptr);
+    state.setProperty("osc3Vowel", 0.0f, nullptr);
+    state.setProperty("osc3H1", 1.0f, nullptr);
+    state.setProperty("osc3H2", 0.699999988079071f, nullptr);
+    state.setProperty("osc3H3", 0.449999988079071f, nullptr);
+    state.setProperty("osc3H4", 0.300000011920929f, nullptr);
+    state.setProperty("osc3H5", 0.2000000029802322f, nullptr);
+    state.setProperty("osc3H6", 0.1400000005960464f, nullptr);
+    state.setProperty("osc3H7", 0.1000000014901161f, nullptr);
+    state.setProperty("osc3H8", 0.07000000029802322f, nullptr);
     state.setProperty("filterCutoff", 0.2481092661619186f, nullptr);
     state.setProperty("filterResonance", 0.282051295042038f, nullptr);
     state.setProperty("filterType", 0.0f, nullptr);
@@ -754,35 +789,35 @@ bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
 
     const std::vector<Def> defs {
         { "Neon Machine", "LEADS", "P(X3)", "Bright PX3 lead with motion.",
-          { { "oscMode", 19.0f / 19.0f }, { "oscMacroA", 0.62f }, { "oscMacroB", 0.55f }, { "oscMacroC", 0.58f }, { "filterCutoff", 0.82f }, { "filterResonance", 0.36f }, { "vibeAmount", 0.35f }, { "vibeEnabled", 1.0f }, { "reverbAmount", 0.20f }, { "reverbEnabled", 1.0f } } },
+          { { "osc1Mode", 19.0f / 19.0f }, { "osc1MacroA", 0.62f }, { "osc1MacroB", 0.55f }, { "osc1MacroC", 0.58f }, { "filterCutoff", 0.82f }, { "filterResonance", 0.36f }, { "vibeAmount", 0.35f }, { "vibeEnabled", 1.0f }, { "reverbAmount", 0.20f }, { "reverbEnabled", 1.0f } } },
         { "Sub Pressure", "BASS", "P(X3)", "Low-end focused bass with light drive.",
-                    { { "oscMode", 1.0f / 19.0f }, { "oscMacroA", 0.0f }, { "filterCutoff", 0.28f }, { "filterResonance", 0.15f }, { "vibeAmount", 0.42f }, { "vibeEnabled", 1.0f }, { "ampAttack", 0.01f }, { "ampDecay", 0.24f }, { "ampSustain", 0.75f } } },
+                    { { "osc1Mode", 1.0f / 19.0f }, { "osc1MacroA", 0.0f }, { "filterCutoff", 0.28f }, { "filterResonance", 0.15f }, { "vibeAmount", 0.42f }, { "vibeEnabled", 1.0f }, { "ampAttack", 0.01f }, { "ampDecay", 0.24f }, { "ampSustain", 0.75f } } },
         { "Soft Orbit", "PADS", "P(X3)", "Slow evolving supersaw pad.",
-                    { { "oscMode", 6.0f / 19.0f }, { "oscMacroA", 0.38f }, { "oscMacroB", 0.72f }, { "ampAttack", 0.40f }, { "ampRelease", 0.65f }, { "reverbAmount", 0.44f }, { "reverbEnabled", 1.0f } } },
+                    { { "osc1Mode", 6.0f / 19.0f }, { "osc1MacroA", 0.38f }, { "osc1MacroB", 0.72f }, { "ampAttack", 0.40f }, { "ampRelease", 0.65f }, { "reverbAmount", 0.44f }, { "reverbEnabled", 1.0f } } },
         { "Glass Pluck", "PLUCKS", "P(X3)", "Fast attack pluck with ping-pong delay.",
-                    { { "oscMode", 11.0f / 19.0f }, { "oscMacroA", 0.42f }, { "oscMacroB", 0.44f }, { "ampAttack", 0.0f }, { "ampDecay", 0.16f }, { "ampSustain", 0.10f }, { "ampRelease", 0.18f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 3.0f / 6.0f }, { "delayAmount", 0.30f } } },
+                    { { "osc1Mode", 11.0f / 19.0f }, { "osc1MacroA", 0.42f }, { "osc1MacroB", 0.44f }, { "ampAttack", 0.0f }, { "ampDecay", 0.16f }, { "ampSustain", 0.10f }, { "ampRelease", 0.18f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 3.0f / 6.0f }, { "delayAmount", 0.30f } } },
         { "Chaos Reactor", "EXPERIMENTAL", "P(X3)", "Aggressive ROB chaos texture.",
-          { { "oscMode", 17.0f / 19.0f }, { "oscMacroA", 0.82f }, { "oscMacroB", 0.74f }, { "oscMacroC", 0.93f }, { "vibeAmount", 0.68f }, { "vibeEnabled", 1.0f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.35f } } },
+          { { "osc1Mode", 17.0f / 19.0f }, { "osc1MacroA", 0.82f }, { "osc1MacroB", 0.74f }, { "osc1MacroC", 0.93f }, { "vibeAmount", 0.68f }, { "vibeEnabled", 1.0f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.35f } } },
                 { "Image Sweep", "EXPERIMENTAL", "P(X3)", "Wavetable sweep style patch.",
-                    { { "oscMode", 8.0f / 19.0f }, { "oscMacroA", 0.25f }, { "oscMacroB", 0.50f }, { "oscMacroC", 0.55f }, { "reverbAmount", 0.22f }, { "reverbEnabled", 1.0f } } },
+                    { { "osc1Mode", 8.0f / 19.0f }, { "osc1MacroA", 0.25f }, { "osc1MacroB", 0.50f }, { "osc1MacroC", 0.55f }, { "reverbAmount", 0.22f }, { "reverbEnabled", 1.0f } } },
                 { "Broken Radio", "EXPERIMENTAL", "P(X3)", "Lo-fi digital texture demo.",
-                                        { { "oscMode", 15.0f / 19.0f }, { "oscMacroA", 0.52f }, { "oscMacroB", 0.62f }, { "oscMacroC", 0.70f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.44f } } },
+                                        { { "osc1Mode", 15.0f / 19.0f }, { "osc1MacroA", 0.52f }, { "osc1MacroB", 0.62f }, { "osc1MacroC", 0.70f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.44f } } },
 
                 // Extra randomized-style factory starters for shipping variety.
                 { "Dustline Runner", "BASS", "P(X3)", "Tight low bass with controlled grit.",
-                    { { "oscMode", 2.0f / 19.0f }, { "oscMacroA", 0.18f }, { "oscMacroB", 0.71f }, { "filterCutoff", 0.24f }, { "filterResonance", 0.29f }, { "ampAttack", 0.01f }, { "ampDecay", 0.22f }, { "ampSustain", 0.78f }, { "ampRelease", 0.27f }, { "vibeEnabled", 1.0f }, { "vibeAmount", 0.47f }, { "masterGain", 0.66f } } },
+                    { { "osc1Mode", 2.0f / 19.0f }, { "osc1MacroA", 0.18f }, { "osc1MacroB", 0.71f }, { "filterCutoff", 0.24f }, { "filterResonance", 0.29f }, { "ampAttack", 0.01f }, { "ampDecay", 0.22f }, { "ampSustain", 0.78f }, { "ampRelease", 0.27f }, { "vibeEnabled", 1.0f }, { "vibeAmount", 0.47f }, { "masterGain", 0.66f } } },
                 { "Arc Light Mono", "LEADS", "P(X3)", "Focused mono lead with short ambience.",
-                    { { "oscMode", 12.0f / 19.0f }, { "oscMacroA", 0.69f }, { "oscMacroB", 0.26f }, { "oscMacroC", 0.52f }, { "filterCutoff", 0.66f }, { "filterResonance", 0.42f }, { "ampAttack", 0.02f }, { "ampDecay", 0.19f }, { "ampSustain", 0.48f }, { "ampRelease", 0.21f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.18f } } },
+                    { { "osc1Mode", 12.0f / 19.0f }, { "osc1MacroA", 0.69f }, { "osc1MacroB", 0.26f }, { "osc1MacroC", 0.52f }, { "filterCutoff", 0.66f }, { "filterResonance", 0.42f }, { "ampAttack", 0.02f }, { "ampDecay", 0.19f }, { "ampSustain", 0.48f }, { "ampRelease", 0.21f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.18f } } },
                 { "Moonglass Bloom", "PADS", "P(X3)", "Wide evolving pad with slow movement.",
-                    { { "oscMode", 6.0f / 19.0f }, { "oscMacroA", 0.41f }, { "oscMacroB", 0.84f }, { "oscMacroC", 0.37f }, { "filterCutoff", 0.58f }, { "filterResonance", 0.24f }, { "ampAttack", 0.54f }, { "ampDecay", 0.46f }, { "ampSustain", 0.72f }, { "ampRelease", 0.78f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.56f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.21f } } },
+                    { { "osc1Mode", 6.0f / 19.0f }, { "osc1MacroA", 0.41f }, { "osc1MacroB", 0.84f }, { "osc1MacroC", 0.37f }, { "filterCutoff", 0.58f }, { "filterResonance", 0.24f }, { "ampAttack", 0.54f }, { "ampDecay", 0.46f }, { "ampSustain", 0.72f }, { "ampRelease", 0.78f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.56f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.21f } } },
                 { "Pixel Harp", "PLUCKS", "P(X3)", "Snappy digital pluck with timed echoes.",
-                    { { "oscMode", 15.0f / 19.0f }, { "oscMacroA", 0.77f }, { "oscMacroB", 0.33f }, { "filterCutoff", 0.74f }, { "filterResonance", 0.45f }, { "ampAttack", 0.0f }, { "ampDecay", 0.14f }, { "ampSustain", 0.12f }, { "ampRelease", 0.17f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 4.0f / 6.0f }, { "delayAmount", 0.39f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.11f } } },
+                    { { "osc1Mode", 15.0f / 19.0f }, { "osc1MacroA", 0.77f }, { "osc1MacroB", 0.33f }, { "filterCutoff", 0.74f }, { "filterResonance", 0.45f }, { "ampAttack", 0.0f }, { "ampDecay", 0.14f }, { "ampSustain", 0.12f }, { "ampRelease", 0.17f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 4.0f / 6.0f }, { "delayAmount", 0.39f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.11f } } },
                 { "Volt Garden", "EXPERIMENTAL", "P(X3)", "Animated hybrid patch with shifting harmonics.",
-                    { { "oscMode", 18.0f / 19.0f }, { "oscMacroA", 0.74f }, { "oscMacroB", 0.62f }, { "oscMacroC", 0.81f }, { "filterCutoff", 0.63f }, { "filterResonance", 0.58f }, { "vibeEnabled", 1.0f }, { "vibeAmount", 0.52f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.48f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.31f } } },
+                    { { "osc1Mode", 18.0f / 19.0f }, { "osc1MacroA", 0.74f }, { "osc1MacroB", 0.62f }, { "osc1MacroC", 0.81f }, { "filterCutoff", 0.63f }, { "filterResonance", 0.58f }, { "vibeEnabled", 1.0f }, { "vibeAmount", 0.52f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.48f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.31f } } },
                 { "Raster Drift", "EXPERIMENTAL", "P(X3)", "Modulated texture with moderate ambience.",
-                    { { "oscMode", 8.0f / 19.0f }, { "oscMacroA", 0.63f }, { "oscMacroB", 0.42f }, { "filterCutoff", 0.57f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.24f } } },
+                    { { "osc1Mode", 8.0f / 19.0f }, { "osc1MacroA", 0.63f }, { "osc1MacroB", 0.42f }, { "filterCutoff", 0.57f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.24f } } },
                 { "Tape Phantom", "EXPERIMENTAL", "P(X3)", "Lo-fi texture with diffused tail.",
-                    { { "oscMode", 15.0f / 19.0f }, { "oscMacroA", 0.34f }, { "oscMacroB", 0.76f }, { "oscMacroC", 0.58f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 1.0f / 6.0f }, { "delayAmount", 0.36f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.29f } } }
+                    { { "osc1Mode", 15.0f / 19.0f }, { "osc1MacroA", 0.34f }, { "osc1MacroB", 0.76f }, { "osc1MacroC", 0.58f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 1.0f / 6.0f }, { "delayAmount", 0.36f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.29f } } }
     };
 
     auto baseState = processor.createPresetStateTree();

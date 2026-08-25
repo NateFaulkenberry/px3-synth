@@ -12,7 +12,7 @@
 
 namespace px3::processor_internal
 {
-inline constexpr int kCurrentStateVersion = 5;
+inline constexpr int kCurrentStateVersion = 6;
 
 inline const juce::Identifier kStateTypeId("PX3_STATE");
 inline const juce::Identifier kStateVersionId("stateVersion");

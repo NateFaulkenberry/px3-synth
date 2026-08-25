@@ -261,10 +261,24 @@ private:
     juce::Slider oscSineKnob;
     juce::Slider oscSawKnob;
     juce::Slider oscSquareKnob;
+    juce::Slider osc2SineKnob;
+    juce::Slider osc2SawKnob;
+    juce::Slider osc2SquareKnob;
+    juce::Slider osc3SineKnob;
+    juce::Slider osc3SawKnob;
+    juce::Slider osc3SquareKnob;
     juce::ComboBox oscModeBox;
+    juce::ComboBox osc2ModeBox;
+    juce::ComboBox osc3ModeBox;
     KnobLabel oscModeLabel;
+    KnobLabel osc2ModeLabel;
+    KnobLabel osc3ModeLabel;
     juce::ComboBox oscVowelBox;
+    juce::ComboBox osc2VowelBox;
+    juce::ComboBox osc3VowelBox;
     KnobLabel oscVowelLabel;
+    KnobLabel osc2VowelLabel;
+    KnobLabel osc3VowelLabel;
     juce::Slider cutoffKnob;
     juce::Slider resonanceKnob;
     juce::ComboBox filterTypeBox;
@@ -284,6 +298,12 @@ private:
     KnobLabel oscSineLabel;
     KnobLabel oscSawLabel;
     KnobLabel oscSquareLabel;
+    KnobLabel osc2SineLabel;
+    KnobLabel osc2SawLabel;
+    KnobLabel osc2SquareLabel;
+    KnobLabel osc3SineLabel;
+    KnobLabel osc3SawLabel;
+    KnobLabel osc3SquareLabel;
     KnobLabel cutoffLabel;
     KnobLabel resonanceLabel;
     KnobLabel filterTypeLabel;
@@ -360,7 +380,7 @@ private:
     std::vector<std::unique_ptr<juce::ComboBoxParameterAttachment>> comboBoxAttachments;
     std::vector<std::unique_ptr<juce::ButtonParameterAttachment>> buttonAttachments;
 
-    std::array<KnobBinding, 11> knobBindings {};
+    std::array<KnobBinding, 17> knobBindings {};
     int lastGranularModeIndex { -1 };
     int lastLfoAssignmentIndex { -1 };
 

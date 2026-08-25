@@ -36,7 +36,10 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
 
     ampEnvelope.noteOn();
     noteAgeSamples = 0;
-    oscillatorUnit.resetForNote(sampleRate, currentFrequencyHz);
+    for (auto& oscillatorUnit : oscillatorUnits)
+    {
+        oscillatorUnit.resetForNote(sampleRate, currentFrequencyHz);
+    }
 }
 
 void SynthVoice::stopNote(float, bool allowTailOff)
@@ -146,18 +149,29 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         oscillatorContext.modWheelNorm = currentModWheelNorm;
         oscillatorContext.pwmModWheelNorm = targetModWheelNorm;
 
-        const auto osc1Sample = oscillatorUnit.renderSample(sampleRate, oscillatorContext);
+        const auto baseOscillatorPitchRatio = static_cast<float>(pitchRatio);
         const auto subSample = subOscillator.renderSample(currentFrequencyHz);
 
         // OSCILLATOR BUS (voice-local): parallel source contributions.
-        // Future Osc2/Osc3 can plug into this summing point with their own
-        // bypass and gain, without changing downstream stages.
         float oscillatorBusSample = 0.0f;
-        constexpr bool osc1Bypassed = false;
-        constexpr float osc1Gain = 1.0f;
-        if (!osc1Bypassed)
+
+        for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
         {
-            oscillatorBusSample += osc1Sample * osc1Gain;
+            const auto& layer = oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)];
+            if (!layer.enabled)
+            {
+                continue;
+            }
+
+            OscillatorUnit::RenderContext sourceContext = oscillatorContext;
+            const auto semitoneOffset = static_cast<double>(layer.coarseSemitones)
+                                        + static_cast<double>(layer.fineCents) * 0.01;
+            const auto sourcePitchRatio = std::pow(2.0, semitoneOffset / 12.0);
+            sourceContext.pitchRatio = baseOscillatorPitchRatio * static_cast<float>(sourcePitchRatio);
+            sourceContext.currentFrequencyHz = currentFrequencyHz * sourcePitchRatio;
+
+            const auto sourceSample = oscillatorUnits[static_cast<std::size_t>(oscIndex)].renderSample(sampleRate, sourceContext);
+            oscillatorBusSample += sourceSample * juce::jlimit(0.0f, 1.0f, layer.level);
         }
 
         const auto subBypassed = !subOscillatorSettings.enabled;
@@ -181,7 +195,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             sourceSample = std::tanh(asymShaped * (1.0f + sat * 3.4f)) * (1.0f / (1.0f + sat * 0.90f));
 
             const auto noiseAmount = vibeTuning.noise * vibeDepth * (0.55f + 0.45f * std::abs(vibeShared.psu));
-            sourceSample += oscillatorUnit.nextDeterministicNoise() * (0.0035f + 0.0165f * noiseAmount);
+            sourceSample += oscillatorUnits[0].nextDeterministicNoise() * (0.0035f + 0.0165f * noiseAmount);
         }
 
         // FILTER STAGE: processes combined oscillator bus signal.
@@ -259,9 +273,14 @@ void SynthVoice::setSubOscillatorSettings(const SubOscSettings& settings)
     subOscillator.setSettings(subOscillatorSettings);
 }
 
-void SynthVoice::setOscillatorSettings(const OscillatorSettings& settings)
+void SynthVoice::setOscillatorLayerSettings(const std::array<OscillatorLayerSettings, kOscillatorSourceCount>& settings)
 {
-    oscillatorUnit.setSettings(settings);
+    oscillatorLayerSettings = settings;
+    for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
+    {
+        oscillatorUnits[static_cast<std::size_t>(oscIndex)].setSettings(
+            oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)].oscillator);
+    }
 }
 
 void SynthVoice::setPerformanceModulation(float pitchBendNormalized,
