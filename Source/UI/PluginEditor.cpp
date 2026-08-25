@@ -1350,7 +1350,12 @@ void PX3SynthAudioProcessorEditor::resized()
     presetNextButton.setBounds(presetSelectorLayout.removeFromRight(26));
     presetSelectorLayout.removeFromRight(8);
     presetNameButton.setBounds(presetSelectorLayout);
-    presetMenuButton.setBounds(menuSectionArea.reduced(5, 0));
+    auto menuButtonBounds = menuSectionArea;
+    const auto menuButtonWidth = juce::jlimit(64, 78, menuButtonBounds.getWidth() - 16);
+    menuButtonBounds = juce::Rectangle<int>(menuButtonWidth, menuButtonBounds.getHeight())
+                           .withCentre(menuButtonBounds.getCentre())
+                           .translated(3, 0);
+    presetMenuButton.setBounds(menuButtonBounds);
 
     bounds.removeFromTop(sectionGap);
 
