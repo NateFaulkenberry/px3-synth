@@ -10,11 +10,14 @@
 class FltPanel final : public juce::Component
 {
 public:
-    FltPanel(std::array<juce::Slider*, kFilterInstanceCount> cutoffKnobs,
+    FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabledButtons,
+             std::array<juce::Label*, kFilterInstanceCount> enabledLabels,
+             std::array<juce::Slider*, kFilterInstanceCount> cutoffKnobs,
              std::array<juce::Label*, kFilterInstanceCount> cutoffLabels,
              std::array<juce::Slider*, kFilterInstanceCount> resonanceKnobs,
              std::array<juce::Label*, kFilterInstanceCount> resonanceLabels,
              std::array<juce::ComboBox*, kFilterInstanceCount> filterTypeBoxes,
+             std::array<juce::AudioParameterBool*, kFilterInstanceCount> enabledParams,
              std::array<juce::AudioParameterFloat*, kFilterInstanceCount> cutoffParams,
              std::array<juce::AudioParameterFloat*, kFilterInstanceCount> resonanceParams,
              std::array<juce::AudioParameterChoice*, kFilterInstanceCount> filterTypeParams,
@@ -33,6 +36,8 @@ private:
                                                                  juce::Label& label) override;
     };
 
+    std::array<juce::ToggleButton*, kFilterInstanceCount> enabledButtons;
+    std::array<juce::Label*, kFilterInstanceCount> enabledLabels;
     std::array<juce::Slider*, kFilterInstanceCount> cutoffKnobs;
     std::array<juce::Label*, kFilterInstanceCount> cutoffLabels;
     std::array<juce::Slider*, kFilterInstanceCount> resonanceKnobs;

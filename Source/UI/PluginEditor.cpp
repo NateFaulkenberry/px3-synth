@@ -582,6 +582,17 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureOscEnabledControl(osc1EnabledLabel, osc1EnabledButton);
     configureOscEnabledControl(osc2EnabledLabel, osc2EnabledButton);
     configureOscEnabledControl(osc3EnabledLabel, osc3EnabledButton);
+    configureOscEnabledControl(filter1EnabledLabel, filter1EnabledButton);
+    configureOscEnabledControl(filter2EnabledLabel, filter2EnabledButton);
+
+    filter1EnabledButton.onClick = [this]()
+    {
+        refreshFilterUI();
+    };
+    filter2EnabledButton.onClick = [this]()
+    {
+        refreshFilterUI();
+    };
 
     // OSC macro labels can become long in some modes; use a slightly smaller font.
     oscSineLabel.setFont(juce::FontOptions(11.0f));
@@ -829,11 +840,14 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           audioProcessor.getSustainParam(),
                                           audioProcessor.getReleaseParam(),
                                           kGroupAccents[2]);
-    fltPanel = std::make_unique<FltPanel>(std::array<juce::Slider*, kFilterInstanceCount> { { &cutoffKnob, &cutoff2Knob } },
+    fltPanel = std::make_unique<FltPanel>(std::array<juce::ToggleButton*, kFilterInstanceCount> { { &filter1EnabledButton, &filter2EnabledButton } },
+                                          std::array<juce::Label*, kFilterInstanceCount> { { &filter1EnabledLabel, &filter2EnabledLabel } },
+                                          std::array<juce::Slider*, kFilterInstanceCount> { { &cutoffKnob, &cutoff2Knob } },
                                           std::array<juce::Label*, kFilterInstanceCount> { { &cutoffLabel, &cutoff2Label } },
                                           std::array<juce::Slider*, kFilterInstanceCount> { { &resonanceKnob, &resonance2Knob } },
                                           std::array<juce::Label*, kFilterInstanceCount> { { &resonanceLabel, &resonance2Label } },
                                           std::array<juce::ComboBox*, kFilterInstanceCount> { { &filterTypeBox, &filter2TypeBox } },
+                                          std::array<juce::AudioParameterBool*, kFilterInstanceCount> { { &audioProcessor.getFilterEnabledParam(0), &audioProcessor.getFilterEnabledParam(1) } },
                                           std::array<juce::AudioParameterFloat*, kFilterInstanceCount> { { &audioProcessor.getFilterCutoffParam(0), &audioProcessor.getFilterCutoffParam(1) } },
                                           std::array<juce::AudioParameterFloat*, kFilterInstanceCount> { { &audioProcessor.getFilterResonanceParam(0), &audioProcessor.getFilterResonanceParam(1) } },
                                           std::array<juce::AudioParameterChoice*, kFilterInstanceCount> { { &audioProcessor.getFilterTypeParam(0), &audioProcessor.getFilterTypeParam(1) } },
@@ -914,6 +928,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachButton(audioProcessor.getVibeEnabledParam(), robBypassButton);
     attachButton(audioProcessor.getDelayEnabledParam(), delayBypassButton);
     attachButton(audioProcessor.getReverbEnabledParam(), reverbBypassButton);
+    attachButton(audioProcessor.getFilterEnabledParam(0), filter1EnabledButton);
+    attachButton(audioProcessor.getFilterEnabledParam(1), filter2EnabledButton);
     attachButton(audioProcessor.getOscillatorEnabledParam(0), osc1EnabledButton);
     attachButton(audioProcessor.getOscillatorEnabledParam(1), osc2EnabledButton);
     attachButton(audioProcessor.getOscillatorEnabledParam(2), osc3EnabledButton);

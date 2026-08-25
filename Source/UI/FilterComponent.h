@@ -10,6 +10,7 @@ public:
     FilterComponent(juce::AudioParameterFloat& cutoffIn,
                     juce::AudioParameterFloat& resonanceIn,
                     juce::AudioParameterChoice& modeIn,
+                    juce::AudioParameterBool& enabledIn,
                     juce::String instanceLabelIn,
                     juce::Colour accentIn);
 
@@ -26,9 +27,11 @@ private:
     juce::AudioParameterFloat& cutoff;
     juce::AudioParameterFloat& resonance;
     juce::AudioParameterChoice& mode;
+    juce::AudioParameterBool& enabled;
     juce::String instanceLabel;
     juce::Colour accent;
 
+    bool currentEnabled { true };
     int lastModeIndex { -1 };
     float lastCutoff { -1.0f };
     float lastResonance { -1.0f };

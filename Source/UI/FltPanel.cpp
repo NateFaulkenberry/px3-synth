@@ -10,16 +10,21 @@ juce::PopupMenu::Options FltPanel::FilterComboLookAndFeel::getOptionsForComboBox
                   .withPreferredPopupDirection(juce::PopupMenu::Options::PopupDirection::upwards);
 }
 
-FltPanel::FltPanel(std::array<juce::Slider*, kFilterInstanceCount> cutoffKnobsIn,
+FltPanel::FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabledButtonsIn,
+                                     std::array<juce::Label*, kFilterInstanceCount> enabledLabelsIn,
+                                     std::array<juce::Slider*, kFilterInstanceCount> cutoffKnobsIn,
                    std::array<juce::Label*, kFilterInstanceCount> cutoffLabelsIn,
                    std::array<juce::Slider*, kFilterInstanceCount> resonanceKnobsIn,
                    std::array<juce::Label*, kFilterInstanceCount> resonanceLabelsIn,
                    std::array<juce::ComboBox*, kFilterInstanceCount> filterTypeBoxesIn,
+                                     std::array<juce::AudioParameterBool*, kFilterInstanceCount> enabledParams,
                    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> cutoffParams,
                    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> resonanceParams,
                    std::array<juce::AudioParameterChoice*, kFilterInstanceCount> filterTypeParams,
                    juce::Colour panelAccent)
-    : cutoffKnobs(cutoffKnobsIn),
+        : enabledButtons(enabledButtonsIn),
+            enabledLabels(enabledLabelsIn),
+            cutoffKnobs(cutoffKnobsIn),
       cutoffLabels(cutoffLabelsIn),
       resonanceKnobs(resonanceKnobsIn),
       resonanceLabels(resonanceLabelsIn),
@@ -28,6 +33,8 @@ FltPanel::FltPanel(std::array<juce::Slider*, kFilterInstanceCount> cutoffKnobsIn
 {
     for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
     {
+                addAndMakeVisible(*enabledButtons[static_cast<std::size_t>(filterIndex)]);
+                addAndMakeVisible(*enabledLabels[static_cast<std::size_t>(filterIndex)]);
         addAndMakeVisible(*cutoffKnobs[static_cast<std::size_t>(filterIndex)]);
         addAndMakeVisible(*cutoffLabels[static_cast<std::size_t>(filterIndex)]);
         addAndMakeVisible(*resonanceKnobs[static_cast<std::size_t>(filterIndex)]);
@@ -39,10 +46,13 @@ FltPanel::FltPanel(std::array<juce::Slider*, kFilterInstanceCount> cutoffKnobsIn
             *cutoffParams[static_cast<std::size_t>(filterIndex)],
             *resonanceParams[static_cast<std::size_t>(filterIndex)],
             *filterTypeParams[static_cast<std::size_t>(filterIndex)],
+            *enabledParams[static_cast<std::size_t>(filterIndex)],
             "Filter " + juce::String(filterIndex + 1),
             panelAccent);
         addAndMakeVisible(*filterComponents[static_cast<std::size_t>(filterIndex)]);
     }
+
+    refreshFromParameters();
 }
 
 FltPanel::~FltPanel()
@@ -108,6 +118,12 @@ void FltPanel::resized()
 
         auto contentArea = filterArea.reduced(8, 8);
 
+        auto enabledRow = contentArea.removeFromTop(24);
+        enabledLabels[static_cast<std::size_t>(filterIndex)]->setBounds(enabledRow.removeFromLeft(56));
+        enabledButtons[static_cast<std::size_t>(filterIndex)]->setBounds(enabledRow.removeFromLeft(40).reduced(2, 2));
+
+        contentArea.removeFromTop(6);
+
         auto row = contentArea.removeFromTop(24);
         filterTypeBoxes[static_cast<std::size_t>(filterIndex)]->setBounds(row.reduced(2, 1));
         contentArea.removeFromTop(8);
@@ -136,8 +152,18 @@ void FltPanel::resized()
 
 void FltPanel::refreshFromParameters()
 {
-    for (auto& filterComponent : filterComponents)
+    for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
     {
+        const auto idx = static_cast<std::size_t>(filterIndex);
+        const auto isEnabled = enabledButtons[idx]->getToggleState();
+
+        filterTypeBoxes[idx]->setEnabled(isEnabled);
+        cutoffKnobs[idx]->setEnabled(isEnabled);
+        cutoffLabels[idx]->setEnabled(isEnabled);
+        resonanceKnobs[idx]->setEnabled(isEnabled);
+        resonanceLabels[idx]->setEnabled(isEnabled);
+
+        auto& filterComponent = filterComponents[idx];
         if (filterComponent != nullptr)
         {
             filterComponent->refreshFromParameters();

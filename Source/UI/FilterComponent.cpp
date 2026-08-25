@@ -5,12 +5,14 @@
 FilterComponent::FilterComponent(juce::AudioParameterFloat& cutoffIn,
                                  juce::AudioParameterFloat& resonanceIn,
                                  juce::AudioParameterChoice& modeIn,
+                       juce::AudioParameterBool& enabledIn,
                                  juce::String instanceLabelIn,
                                  juce::Colour accentIn)
     : cutoff(cutoffIn),
       resonance(resonanceIn),
       mode(modeIn),
-            instanceLabel(instanceLabelIn),
+    enabled(enabledIn),
+    instanceLabel(instanceLabelIn),
       accent(accentIn)
 {
     refreshFromParameters();
@@ -27,11 +29,14 @@ void FilterComponent::refreshFromParameters()
     const auto nextMode = mode.getIndex();
     const auto nextCutoff = cutoff.get();
     const auto nextRes = resonance.get();
+    const auto nextEnabled = enabled.get();
 
     if (nextMode != lastModeIndex
         || std::abs(nextCutoff - lastCutoff) > 0.0001f
-        || std::abs(nextRes - lastResonance) > 0.0001f)
+        || std::abs(nextRes - lastResonance) > 0.0001f
+        || nextEnabled != currentEnabled)
     {
+        currentEnabled = nextEnabled;
         lastModeIndex = nextMode;
         lastCutoff = nextCutoff;
         lastResonance = nextRes;
@@ -47,9 +52,11 @@ void FilterComponent::paint(juce::Graphics& g)
         return;
     }
 
+    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+
     g.setColour(juce::Colour::fromRGBA(20, 20, 20, 140));
     g.fillRoundedRectangle(graphRect, 4.0f);
-    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 70));
+    g.setColour(juce::Colour::fromRGBA(220, 232, 252, currentEnabled ? 88 : 66));
     g.drawRoundedRectangle(graphRect, 4.0f, 1.0f);
 
     auto contentRect = graphRect;
@@ -117,12 +124,12 @@ void FilterComponent::paint(juce::Graphics& g)
         response.lineTo(x, y);
     }
 
-    g.setColour(accent.brighter(0.15f));
+    g.setColour(effectiveAccent.brighter(0.15f).withAlpha(currentEnabled ? 1.0f : 0.6f));
     g.strokePath(response, juce::PathStrokeType(1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
     if (instanceLabel.isNotEmpty())
     {
-        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 120));
+        g.setColour(juce::Colour::fromRGBA(255, 255, 255, currentEnabled ? 120 : 90));
         g.setFont(juce::FontOptions(10.0f));
         auto titleRow = graphRect.toNearestInt().removeFromTop(14);
         g.drawText(instanceLabel, titleRow, juce::Justification::centredTop);

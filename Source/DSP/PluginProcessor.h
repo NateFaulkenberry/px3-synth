@@ -101,6 +101,7 @@ public:
     juce::AudioParameterFloat& getSubOscLevelParam() const;
     juce::AudioParameterChoice& getSubOscOctaveParam() const;
     juce::AudioParameterChoice& getSubOscWaveformParam() const;
+    juce::AudioParameterBool& getFilterEnabledParam(int filterIndex) const;
     juce::AudioParameterFloat& getFilterCutoffParam(int filterIndex) const;
     juce::AudioParameterFloat& getFilterResonanceParam(int filterIndex) const;
     juce::AudioParameterChoice& getFilterTypeParam(int filterIndex) const;
@@ -238,6 +239,7 @@ private:
     juce::AudioParameterFloat* subOscLevelParam { nullptr };
     juce::AudioParameterChoice* subOscOctaveParam { nullptr };
     juce::AudioParameterChoice* subOscWaveformParam { nullptr };
+    std::array<juce::AudioParameterBool*, kFilterInstanceCount> filterEnabledParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCutoffParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterResonanceParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterChoice*, kFilterInstanceCount> filterTypeParams { { nullptr, nullptr } };

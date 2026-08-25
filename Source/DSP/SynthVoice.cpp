@@ -223,6 +223,11 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         auto filteredSample = sourceSample;
         for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
         {
+            const auto& settings = filterSettings[static_cast<std::size_t>(filterIndex)];
+            if (!settings.enabled)
+            {
+                continue;
+            }
             filteredSample = voiceFilters[static_cast<std::size_t>(filterIndex)].processSample(filteredSample);
         }
 

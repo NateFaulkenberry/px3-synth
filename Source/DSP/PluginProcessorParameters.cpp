@@ -117,6 +117,11 @@ juce::AudioParameterBool& PX3SynthAudioProcessor::getSubOscEnabledParam() const 
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getSubOscLevelParam() const { return *subOscLevelParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getSubOscOctaveParam() const { return *subOscOctaveParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getSubOscWaveformParam() const { return *subOscWaveformParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getFilterEnabledParam(int filterIndex) const
+{
+    const auto idx = juce::jlimit(0, kFilterInstanceCount - 1, filterIndex);
+    return *filterEnabledParams[static_cast<std::size_t>(idx)];
+}
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterCutoffParam(int filterIndex) const
 {
     const auto idx = juce::jlimit(0, kFilterInstanceCount - 1, filterIndex);

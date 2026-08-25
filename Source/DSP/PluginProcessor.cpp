@@ -94,6 +94,11 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         const auto labelPrefix = "Filter " + slot + " ";
         const auto defaultMode = filterIndex == 0 ? 0 : 6; // LP12 for Filter 1, AllPass for others.
 
+        filterEnabledParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterBool(
+            idPrefix + "Enabled",
+            labelPrefix + "Enabled",
+            true);
+
         filterCutoffParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
             idPrefix + "Cutoff",
             labelPrefix + "Cutoff",
@@ -192,6 +197,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(subOscWaveformParam);
     for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
     {
+        addParameter(filterEnabledParams[static_cast<std::size_t>(filterIndex)]);
         addParameter(filterCutoffParams[static_cast<std::size_t>(filterIndex)]);
         addParameter(filterResonanceParams[static_cast<std::size_t>(filterIndex)]);
         addParameter(filterTypeParams[static_cast<std::size_t>(filterIndex)]);

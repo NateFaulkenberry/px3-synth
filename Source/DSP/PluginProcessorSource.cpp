@@ -36,10 +36,12 @@ std::array<FilterSettings, kFilterInstanceCount> PX3SynthAudioProcessor::current
     for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
     {
         auto& settings = filterSettings[static_cast<std::size_t>(filterIndex)];
+        auto& enabledParam = getFilterEnabledParam(filterIndex);
         auto& cutoffParam = getFilterCutoffParam(filterIndex);
         auto& resonanceParam = getFilterResonanceParam(filterIndex);
         auto& modeParam = getFilterTypeParam(filterIndex);
 
+        settings.enabled = enabledParam.get();
         settings.cutoffHz = cutoffParam.convertFrom0to1(applyLfoToNormalizedValue(
             &cutoffParam,
             static_cast<juce::RangedAudioParameter&>(cutoffParam).getValue(),
