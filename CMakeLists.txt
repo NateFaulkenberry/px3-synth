@@ -61,6 +61,7 @@ target_sources(PX3Synth
         Source/UI/FltPanel.cpp
         Source/UI/FxPanel.cpp
         Source/UI/MixPanel.cpp
+        Source/UI/TopMenuBar.cpp
         Source/UI/DelayUiComponent.cpp
         Source/UI/EnvelopeComponent.cpp
         Source/UI/FilterResponseComponent.cpp

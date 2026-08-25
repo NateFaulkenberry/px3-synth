@@ -826,30 +826,9 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     // midiStatusLabel.setInterceptsMouseClicks(false, false);
     // addAndMakeVisible(midiStatusLabel);
 
-    const auto setupPresetButton = [](juce::TextButton& button)
-    {
-        button.setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGBA(40, 40, 40, 210));
-        button.setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(232, 232, 232));
-        button.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGBA(68, 124, 180, 220));
-    };
+    topMenuBar = std::make_unique<TopMenuBar>();
 
-    setupPresetButton(presetPrevButton);
-    setupPresetButton(presetNameButton);
-    setupPresetButton(presetNextButton);
-    setupPresetButton(presetMenuButton);
-
-    presetPrevButton.setButtonText("<");
-    presetNameButton.setButtonText("INIT");
-    presetNextButton.setButtonText(">");
-    presetMenuButton.setButtonText("MENU");
-
-    configureTopMenuSectionButton(topMenuOscButton, "OSC", 0);
-    configureTopMenuSectionButton(topMenuEnvButton, "ENV", 1);
-    configureTopMenuSectionButton(topMenuFltButton, "FLT", 2);
-    configureTopMenuSectionButton(topMenuFxButton, "FX", 3);
-    configureTopMenuSectionButton(topMenuMixButton, "MIX", 4);
-
-    presetPrevButton.onClick = [this]()
+    topMenuBar->setOnPresetPrevious([this]()
     {
         if (presetFiltered.empty())
         {
@@ -874,9 +853,9 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
         const auto next = (currentIndex - 1 + static_cast<int>(presetFiltered.size())) % static_cast<int>(presetFiltered.size());
         applyPresetRecord(presetFiltered[static_cast<std::size_t>(next)]);
-    };
+    });
 
-    presetNextButton.onClick = [this]()
+    topMenuBar->setOnPresetNext([this]()
     {
         if (presetFiltered.empty())
         {
@@ -901,20 +880,23 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
         const auto next = (currentIndex + 1) % static_cast<int>(presetFiltered.size());
         applyPresetRecord(presetFiltered[static_cast<std::size_t>(next)]);
+    });
+
+    topMenuBar->setOnPresetName([this]() { openPresetBrowser(); });
+    topMenuBar->setOnPresetMenu([this]() { showPresetMenu(); });
+    topMenuBar->setOnSectionSelected([this](int sectionIndex)
+    {
+        applyTopMenuSectionSelection(sectionIndex, true);
+    });
+
+    addAndMakeVisible(*topMenuBar);
+
+    const auto setupPresetButton = [](juce::TextButton& button)
+    {
+        button.setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGBA(40, 40, 40, 210));
+        button.setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(232, 232, 232));
+        button.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGBA(68, 124, 180, 220));
     };
-
-    presetNameButton.onClick = [this]() { openPresetBrowser(); };
-    presetMenuButton.onClick = [this]() { showPresetMenu(); };
-
-    addAndMakeVisible(presetPrevButton);
-    addAndMakeVisible(presetNameButton);
-    addAndMakeVisible(presetNextButton);
-    addAndMakeVisible(presetMenuButton);
-    addAndMakeVisible(topMenuOscButton);
-    addAndMakeVisible(topMenuEnvButton);
-    addAndMakeVisible(topMenuFltButton);
-    addAndMakeVisible(topMenuFxButton);
-    addAndMakeVisible(topMenuMixButton);
 
     applyTopMenuSectionSelection(audioProcessor.getTopMenuViewIndex(), false);
 
@@ -1075,9 +1057,9 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
                static_cast<float>(topMenuSectionButtonsArea.getRight() + 4),
                static_cast<float>(topMenuStripArea.getBottom() - 10),
                1.0f);
-    g.drawLine(static_cast<float>(presetMenuButton.getX() - 5),
+    g.drawLine(static_cast<float>(topMenuMenuButtonArea.getX() - 5),
                static_cast<float>(topMenuStripArea.getY() + 10),
-               static_cast<float>(presetMenuButton.getX() - 5),
+               static_cast<float>(topMenuMenuButtonArea.getX() - 5),
                static_cast<float>(topMenuStripArea.getBottom() - 10),
                1.0f);
 
@@ -1315,24 +1297,15 @@ void PX3SynthAudioProcessorEditor::resized()
     topStripContent.removeFromRight(10);
 
     headerPlaceholderArea = topStripContent;
-    auto presetRow = headerPlaceholderArea.withSizeKeepingCentre(headerPlaceholderArea.getWidth(), 32);
-
-    auto sectionButtonsRow = presetRow;
-    topMenuSectionButtonsArea = sectionButtonsRow.removeFromLeft(juce::jlimit(230, 330, presetRow.getWidth() / 2));
-    sectionButtonsRow.removeFromLeft(8);
-    topMenuPresetClusterArea = sectionButtonsRow;
-    presetBarArea = topMenuPresetClusterArea;
-
-    const auto sectionGapPx = 6;
-    auto sectionButtonsLayout = topMenuSectionButtonsArea.reduced(5, 0);
-    const auto buttonWidth = juce::jmax(42, (sectionButtonsLayout.getWidth() - (sectionGapPx * 4)) / 5);
-    for (int i = 0; i < 5; ++i)
+    if (topMenuBar != nullptr)
     {
-        topMenuSectionButtons[static_cast<std::size_t>(i)]->setBounds(sectionButtonsLayout.removeFromLeft(buttonWidth));
-        if (i < 4)
-        {
-            sectionButtonsLayout.removeFromLeft(sectionGapPx);
-        }
+        topMenuBar->setBounds(headerPlaceholderArea);
+
+        const auto menuOrigin = topMenuBar->getPosition();
+        topMenuSectionButtonsArea = topMenuBar->getSectionButtonsArea().translated(menuOrigin.x, menuOrigin.y);
+        topMenuPresetClusterArea = topMenuBar->getPresetClusterArea().translated(menuOrigin.x, menuOrigin.y);
+        topMenuMenuButtonArea = topMenuBar->getPresetMenuButtonBounds().translated(menuOrigin.x, menuOrigin.y);
+        presetBarArea = topMenuPresetClusterArea;
     }
 
     auto gainArea = topMenuGainArea.reduced(9, 4);
@@ -1340,22 +1313,6 @@ void PX3SynthAudioProcessorEditor::resized()
     gainKnob.setBounds(juce::Rectangle<int>(gainKnobSize, gainKnobSize)
                            .withCentre({ gainArea.getCentreX(), gainArea.getY() + gainKnobSize / 2 + 4 }));
     gainLabel.setBounds(gainArea.getX(), gainArea.getBottom() - 16, gainArea.getWidth(), 14);
-
-    auto presetLayout = presetBarArea;
-    auto menuSectionArea = presetLayout.removeFromRight(94);
-    auto presetSelectorArea = presetLayout.reduced(5, 0);
-    auto presetSelectorLayout = presetSelectorArea;
-    presetPrevButton.setBounds(presetSelectorLayout.removeFromLeft(26));
-    presetSelectorLayout.removeFromLeft(4);
-    presetNextButton.setBounds(presetSelectorLayout.removeFromRight(26));
-    presetSelectorLayout.removeFromRight(8);
-    presetNameButton.setBounds(presetSelectorLayout);
-    auto menuButtonBounds = menuSectionArea;
-    const auto menuButtonWidth = juce::jlimit(64, 78, menuButtonBounds.getWidth() - 16);
-    menuButtonBounds = juce::Rectangle<int>(menuButtonWidth, menuButtonBounds.getHeight())
-                           .withCentre(menuButtonBounds.getCentre())
-                           .translated(3, 0);
-    presetMenuButton.setBounds(menuButtonBounds);
 
     bounds.removeFromTop(sectionGap);
 
@@ -1877,7 +1834,10 @@ void PX3SynthAudioProcessorEditor::refreshPresetNameDisplay()
         name << "*";
     }
 
-    presetNameButton.setButtonText(name);
+    if (topMenuBar != nullptr)
+    {
+        topMenuBar->setPresetName(name);
+    }
 }
 
 void PX3SynthAudioProcessorEditor::applyPresetRecord(const PresetManager::PresetRecord& record)
@@ -2116,7 +2076,12 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
     menu.addItem(MenuItemId::debug, "Debug");
 #endif
 
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&presetMenuButton),
+    if (topMenuBar == nullptr)
+    {
+        return;
+    }
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&topMenuBar->getPresetMenuButton()),
                        [this](int result)
                        {
                            switch (result)
@@ -2168,30 +2133,14 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
                        });
 }
 
-void PX3SynthAudioProcessorEditor::configureTopMenuSectionButton(juce::TextButton& button,
-                                                                 const juce::String& text,
-                                                                 int sectionIndex)
-{
-    button.setButtonText(text);
-    button.setClickingTogglesState(false);
-    button.setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGBA(40, 40, 40, 210));
-    button.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGBA(82, 140, 196, 220));
-    button.setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(224, 224, 224));
-    button.setColour(juce::TextButton::textColourOnId, juce::Colour::fromRGB(245, 245, 245));
-    button.onClick = [this, sectionIndex]()
-    {
-        applyTopMenuSectionSelection(sectionIndex, true);
-    };
-}
-
 void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex, bool pushToProcessor)
 {
     const auto clamped = juce::jlimit(0, 4, sectionIndex);
     selectedTopMenuSection = clamped;
 
-    for (int i = 0; i < 5; ++i)
+    if (topMenuBar != nullptr)
     {
-        topMenuSectionButtons[static_cast<std::size_t>(i)]->setToggleState(i == clamped, juce::dontSendNotification);
+        topMenuBar->setSelectedSection(clamped);
     }
 
     updatePanelVisibility();

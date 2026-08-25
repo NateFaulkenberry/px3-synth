@@ -20,7 +20,7 @@ MixPanel::MixPanel(juce::ToggleButton& subOscEnabledButton,
                                                         subOscWaveformBox,
                                                         subOscWaveformLabel,
                                                         panelAccent);
-    addAndMakeVisible(*subOscComponent);
+    // addAndMakeVisible(*subOscComponent);
 }
 
 void MixPanel::paint(juce::Graphics& g)

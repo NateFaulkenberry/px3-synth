@@ -15,6 +15,7 @@
 #include "FxPanel.h"
 #include "MixPanel.h"
 #include "OscPanel.h"
+#include "TopMenuBar.h"
 #include "DelayUiComponent.h"
 
 /**
@@ -138,7 +139,6 @@ private:
     void importPreset();
     void exportCurrentPreset();
     void showPresetMenu();
-    void configureTopMenuSectionButton(juce::TextButton& button, const juce::String& text, int sectionIndex);
     void applyTopMenuSectionSelection(int sectionIndex, bool pushToProcessor);
     void refreshTopMenuSelectionFromProcessor();
     void updatePresetDirtyState();
@@ -235,6 +235,7 @@ private:
     juce::Rectangle<int> logoPanelArea;
     juce::Rectangle<int> topMenuSectionButtonsArea;
     juce::Rectangle<int> topMenuPresetClusterArea;
+    juce::Rectangle<int> topMenuMenuButtonArea;
     juce::Rectangle<int> topMenuGainArea;
     juce::Rectangle<int> headerPlaceholderArea;
     juce::Rectangle<int> presetBarArea;
@@ -305,6 +306,7 @@ private:
     std::unique_ptr<FltPanel> fltPanel;
     std::unique_ptr<FxPanel> fxPanel;
     std::unique_ptr<MixPanel> mixPanel;
+    std::unique_ptr<TopMenuBar> topMenuBar;
 
     juce::Slider vibeAmountKnob;
     KnobLabel vibeAmountLabel;
@@ -338,18 +340,6 @@ private:
     juce::String loadedStateHash;
     int dirtyUpdateCounter { 0 };
 
-    juce::TextButton presetPrevButton;
-    juce::TextButton presetNameButton;
-    juce::TextButton presetNextButton;
-    juce::TextButton presetMenuButton;
-    juce::TextButton topMenuOscButton;
-    juce::TextButton topMenuEnvButton;
-    juce::TextButton topMenuFltButton;
-    juce::TextButton topMenuFxButton;
-    juce::TextButton topMenuMixButton;
-    std::array<juce::TextButton*, 5> topMenuSectionButtons {
-        { &topMenuOscButton, &topMenuEnvButton, &topMenuFltButton, &topMenuFxButton, &topMenuMixButton }
-    };
     int selectedTopMenuSection { 0 };
 
     PresetBrowserPanelComponent presetBrowserPanel;
