@@ -44,6 +44,13 @@ FltPanel::FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabled
         filterTypeBoxes[static_cast<std::size_t>(filterIndex)]->setLookAndFeel(&filterComboLookAndFeel);
         addAndMakeVisible(*filterTypeBoxes[static_cast<std::size_t>(filterIndex)]);
 
+                const auto idx = static_cast<std::size_t>(filterIndex);
+                cutoffLabelBaseColours[idx] = cutoffLabels[idx]->findColour(juce::Label::textColourId);
+                resonanceLabelBaseColours[idx] = resonanceLabels[idx]->findColour(juce::Label::textColourId);
+                filterTypeBoxBaseBgColours[idx] = filterTypeBoxes[idx]->findColour(juce::ComboBox::backgroundColourId);
+                filterTypeBoxBaseTextColours[idx] = filterTypeBoxes[idx]->findColour(juce::ComboBox::textColourId);
+                filterTypeBoxBaseOutlineColours[idx] = filterTypeBoxes[idx]->findColour(juce::ComboBox::outlineColourId);
+
         filterComponents[static_cast<std::size_t>(filterIndex)] = std::make_unique<FilterComponent>(
             *cutoffParams[static_cast<std::size_t>(filterIndex)],
             *resonanceParams[static_cast<std::size_t>(filterIndex)],
@@ -161,16 +168,39 @@ void FltPanel::resized()
 
 void FltPanel::refreshFromParameters()
 {
+    const auto disabledLabelColour = juce::Colour::fromRGB(176, 176, 176);
+    const auto disabledComboBgColour = juce::Colour::fromRGBA(48, 48, 48, 210);
+    const auto disabledComboTextColour = juce::Colour::fromRGB(176, 176, 176);
+    const auto disabledComboOutlineColour = juce::Colour::fromRGBA(168, 168, 168, 94);
+
     for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
     {
         const auto idx = static_cast<std::size_t>(filterIndex);
         const auto isEnabled = enabledButtons[idx]->getToggleState();
 
         filterTypeBoxes[idx]->setEnabled(isEnabled);
+        filterTypeBoxes[idx]->setColour(juce::ComboBox::backgroundColourId,
+                                        isEnabled ? filterTypeBoxBaseBgColours[idx] : disabledComboBgColour);
+        filterTypeBoxes[idx]->setColour(juce::ComboBox::textColourId,
+                                        isEnabled ? filterTypeBoxBaseTextColours[idx] : disabledComboTextColour);
+        filterTypeBoxes[idx]->setColour(juce::ComboBox::outlineColourId,
+                                        isEnabled ? filterTypeBoxBaseOutlineColours[idx] : disabledComboOutlineColour);
+
         cutoffKnobs[idx]->setEnabled(isEnabled);
+        cutoffKnobs[idx]->setInterceptsMouseClicks(isEnabled, isEnabled);
+        cutoffKnobs[idx]->getProperties().set("knobBypassed", !isEnabled);
+        cutoffKnobs[idx]->getProperties().set("psychedelicBypassGray", !isEnabled);
         cutoffLabels[idx]->setEnabled(isEnabled);
+        cutoffLabels[idx]->setColour(juce::Label::textColourId,
+                                     isEnabled ? cutoffLabelBaseColours[idx] : disabledLabelColour);
+
         resonanceKnobs[idx]->setEnabled(isEnabled);
+        resonanceKnobs[idx]->setInterceptsMouseClicks(isEnabled, isEnabled);
+        resonanceKnobs[idx]->getProperties().set("knobBypassed", !isEnabled);
+        resonanceKnobs[idx]->getProperties().set("psychedelicBypassGray", !isEnabled);
         resonanceLabels[idx]->setEnabled(isEnabled);
+        resonanceLabels[idx]->setColour(juce::Label::textColourId,
+                                        isEnabled ? resonanceLabelBaseColours[idx] : disabledLabelColour);
 
         auto& filterComponent = filterComponents[idx];
         if (filterComponent != nullptr)

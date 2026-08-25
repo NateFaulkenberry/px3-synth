@@ -69,11 +69,14 @@ void FilterComponent::paint(juce::Graphics& g)
                                       : juce::Colour::fromRGBA(220, 232, 252, 88);
     const auto cardTopFillColour = uiConfig != nullptr ? uiConfig->getColour("flt.panel.card.topFillColour", accent)
                                                        : accent;
+    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+    const auto effectiveCardTopFill = currentEnabled ? cardTopFillColour : juce::Colour::fromRGB(136, 136, 136);
+    const auto effectiveCardStroke = currentEnabled ? cardStrokeColour : juce::Colour::fromRGBA(168, 168, 168, 90);
 
     const auto cardBounds = getLocalBounds().toFloat();
-    g.setColour(accent.withAlpha(cardFillAlpha));
+    g.setColour(effectiveAccent.withAlpha(cardFillAlpha));
     g.fillRoundedRectangle(cardBounds, cardRadius);
-    g.setColour(cardTopFillColour.withAlpha(cardTopFillAlpha));
+    g.setColour(effectiveCardTopFill.withAlpha(cardTopFillAlpha));
     juce::Path topFill;
     const auto topFillBounds = cardBounds.reduced(6.0f);
     const auto topHalf = topFillBounds.withTrimmedBottom(topFillBounds.getHeight() * 0.5f);
@@ -88,7 +91,7 @@ void FilterComponent::paint(juce::Graphics& g)
                                 false,
                                 false);
     g.fillPath(topFill);
-    g.setColour(cardStrokeColour);
+    g.setColour(effectiveCardStroke);
     g.drawRoundedRectangle(cardBounds, cardRadius, cardStrokeThickness);
 
     auto graphRect = graphBounds.isEmpty() ? getLocalBounds().toFloat().reduced(2.0f) : graphBounds.toFloat();
@@ -96,8 +99,6 @@ void FilterComponent::paint(juce::Graphics& g)
     {
         return;
     }
-
-    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
 
     g.setColour(juce::Colour::fromRGBA(20, 20, 20, 140));
     g.fillRoundedRectangle(graphRect, 4.0f);
