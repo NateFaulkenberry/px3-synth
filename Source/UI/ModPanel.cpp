@@ -76,6 +76,11 @@ void ModPanel::paint(juce::Graphics& g)
         drawCardTitle("LFO", lfoComponent->getBounds(), lfoHeaderAccent);
     }
 
+    if (envelopeGraph != nullptr)
+    {
+        drawCardTitle("ENV", envelopeGraph->getBounds(), accent);
+    }
+
     const auto panelPadX = uiConfig != nullptr ? uiConfig->getInt("mod.panel.layout.padX", 12) : 12;
     const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("mod.panel.layout.padY", 10) : 10;
     auto cardArea = getLocalBounds().reduced(panelPadX, panelPadY);

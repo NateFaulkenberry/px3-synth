@@ -356,7 +356,7 @@ EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
     Geometry geom;
     const auto componentBounds = getLocalBounds().toFloat().reduced(2.0f);
     auto area = componentBounds.reduced(2.0f);
-    area.removeFromTop(58.0f);
+    area.removeFromTop(84.0f);
 
     geom.left = area.getX() + 26.0f;
     geom.right = area.getRight() - 10.0f;
