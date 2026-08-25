@@ -358,6 +358,7 @@ private:
     KnobLabel midiStatusLabel;
     std::unique_ptr<OscPanel> oscPanel;
     std::unique_ptr<ModPanel> modPanel;
+    juce::Viewport modPanelViewport;
     std::unique_ptr<FltPanel> fltPanel;
     std::unique_ptr<FxPanel> fxPanel;
     std::unique_ptr<MixPanel> mixPanel;

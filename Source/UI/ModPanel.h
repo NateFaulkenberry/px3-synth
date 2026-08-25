@@ -33,6 +33,7 @@ public:
              juce::Label& lfoRateValueLabel,
              juce::ComboBox& lfoWaveformBox,
              juce::Label& lfoWaveformLabel,
+             juce::LookAndFeel* sharedLfoKnobLookAndFeel,
              juce::Colour panelAccent,
              juce::Colour lfoAccent);
 
@@ -44,6 +45,8 @@ public:
     void refreshLfoFromParameters(bool enabled, float rateHz, int waveformIndex);
     void advanceAnimation(float lfoDeltaSeconds);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
+    int getPreferredContentWidth() const;
+    int getPreferredContentHeight() const;
 
 private:
     struct LfoBundle
@@ -84,5 +87,6 @@ private:
 
     juce::Colour accent;
     juce::Colour lfoHeaderAccent;
+    juce::LookAndFeel* lfoKnobLookAndFeel { nullptr };
     std::shared_ptr<const UIConfig> uiConfig;
 };

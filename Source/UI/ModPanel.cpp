@@ -21,11 +21,13 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
                    juce::Label& lfoRateValueLabel,
                    juce::ComboBox& lfoWaveformBox,
                    juce::Label& lfoWaveformLabel,
+                 juce::LookAndFeel* sharedLfoKnobLookAndFeel,
                    juce::Colour panelAccent,
                    juce::Colour lfoAccent)
         : processor(processorIn),
             accent(panelAccent),
-      lfoHeaderAccent(lfoAccent)
+        lfoHeaderAccent(lfoAccent),
+        lfoKnobLookAndFeel(sharedLfoKnobLookAndFeel)
 {
     envelopeGraph = std::make_unique<EnvelopeComponent>(attack,
                                                         decay,
@@ -116,6 +118,10 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
     const auto& lfoRateParam = processor.getLfoFrequencyParam(lfoIndex);
     const auto& lfoRateRange = lfoRateParam.getNormalisableRange();
     bundle.rateKnob.setRange(lfoRateRange.start, lfoRateRange.end);
+    if (lfoKnobLookAndFeel != nullptr)
+    {
+        bundle.rateKnob.setLookAndFeel(lfoKnobLookAndFeel);
+    }
 
     const auto& lfoWaveformParam = processor.getLfoWaveformParam(lfoIndex);
     for (int i = 0; i < lfoWaveformParam.choices.size(); ++i)
@@ -322,17 +328,24 @@ void ModPanel::resized()
 
     const auto colGap = uiConfig != nullptr ? uiConfig->getInt("mod.grid.colGap", 8) : 8;
     const auto rowGap = uiConfig != nullptr ? uiConfig->getInt("mod.grid.rowGap", 10) : 10;
-    const auto rowHeight = juce::jmax(1, (panelArea.getHeight() - rowGap) / 2);
-    const auto colWidth = juce::jmax(1, (panelArea.getWidth() - (2 * colGap)) / 3);
+    const auto minColWidth = uiConfig != nullptr ? uiConfig->getInt("mod.grid.minColWidth", 280) : 280;
+    const auto minLfoHeight = uiConfig != nullptr ? uiConfig->getInt("mod.grid.minLfoHeight", 300) : 300;
+    const auto minEnvHeight = uiConfig != nullptr ? uiConfig->getInt("mod.grid.minEnvHeight", 220) : 220;
 
-    auto lfoRow = juce::Rectangle<int>(panelArea.getX(), panelArea.getY(), panelArea.getWidth(), rowHeight);
-    auto envRow = juce::Rectangle<int>(panelArea.getX(), lfoRow.getBottom() + rowGap, panelArea.getWidth(), rowHeight);
+    const auto colWidth = juce::jmax(minColWidth, juce::jmax(1, (panelArea.getWidth() - (2 * colGap)) / 3));
+    const auto lfoRowHeight = juce::jmax(minLfoHeight, juce::jmax(1, (panelArea.getHeight() - rowGap) / 2));
+    const auto envRowHeight = juce::jmax(minEnvHeight, juce::jmax(1, panelArea.getHeight() - rowGap - lfoRowHeight));
+    const auto totalGridWidth = colWidth * 3 + colGap * 2;
+    const auto gridX = panelArea.getX() + juce::jmax(0, (panelArea.getWidth() - totalGridWidth) / 2);
+
+    auto lfoRow = juce::Rectangle<int>(gridX, panelArea.getY(), totalGridWidth, lfoRowHeight);
+    auto envRow = juce::Rectangle<int>(gridX, lfoRow.getBottom() + rowGap, totalGridWidth, envRowHeight);
 
     std::array<juce::Rectangle<int>, 3> lfoCells {};
     std::array<juce::Rectangle<int>, 3> envCells {};
     for (int i = 0; i < 3; ++i)
     {
-        const auto x = panelArea.getX() + i * (colWidth + colGap);
+        const auto x = gridX + i * (colWidth + colGap);
         lfoCells[static_cast<std::size_t>(i)] = juce::Rectangle<int>(x, lfoRow.getY(), colWidth, lfoRow.getHeight());
         envCells[static_cast<std::size_t>(i)] = juce::Rectangle<int>(x, envRow.getY(), colWidth, envRow.getHeight());
     }
@@ -343,6 +356,23 @@ void ModPanel::resized()
     extraLfos[1].component->setBounds(lfoCells[2].reduced(2, 2));
     extraEnvelopes[0].component->setBounds(envCells[1].reduced(2, 2));
     extraEnvelopes[1].component->setBounds(envCells[2].reduced(2, 2));
+}
+
+int ModPanel::getPreferredContentWidth() const
+{
+    const auto panelPadX = uiConfig != nullptr ? uiConfig->getInt("mod.panel.layout.padX", 12) : 12;
+    const auto colGap = uiConfig != nullptr ? uiConfig->getInt("mod.grid.colGap", 8) : 8;
+    const auto minColWidth = uiConfig != nullptr ? uiConfig->getInt("mod.grid.minColWidth", 280) : 280;
+    return panelPadX * 2 + minColWidth * 3 + colGap * 2;
+}
+
+int ModPanel::getPreferredContentHeight() const
+{
+    const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("mod.panel.layout.padY", 10) : 10;
+    const auto rowGap = uiConfig != nullptr ? uiConfig->getInt("mod.grid.rowGap", 10) : 10;
+    const auto minLfoHeight = uiConfig != nullptr ? uiConfig->getInt("mod.grid.minLfoHeight", 300) : 300;
+    const auto minEnvHeight = uiConfig != nullptr ? uiConfig->getInt("mod.grid.minEnvHeight", 220) : 220;
+    return panelPadY * 2 + rowGap + minLfoHeight + minEnvHeight;
 }
 
 void ModPanel::refreshFromParameters()

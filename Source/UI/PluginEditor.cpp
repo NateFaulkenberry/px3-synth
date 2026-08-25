@@ -915,6 +915,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           lfoFrequencyValueLabel,
                                           lfoWaveformBox,
                                           lfoWaveformLabel,
+                                          &knobLookAndFeel,
                                           kGroupAccents[2],
                                           kGroupAccents[3]);
     fltPanel = std::make_unique<FltPanel>(std::array<juce::ToggleButton*, kFilterInstanceCount> { { &filter1EnabledButton, &filter2EnabledButton } },
@@ -964,7 +965,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           juce::Colour::fromRGB(212, 212, 212));
 
     addAndMakeVisible(*oscPanel);
-    addAndMakeVisible(*modPanel);
+    modPanelViewport.setViewedComponent(modPanel.get(), false);
+    modPanelViewport.setScrollBarsShown(true, true);
+    modPanelViewport.setScrollBarThickness(10);
+    addAndMakeVisible(modPanelViewport);
     addAndMakeVisible(*fltPanel);
     addAndMakeVisible(*fxPanel);
     addAndMakeVisible(*mixPanel);
@@ -1224,6 +1228,7 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
     // Panels hold child components that reference editor-owned controls.
     // Tear panels down first to avoid shutdown-order lifetime hazards.
     oscPanel.reset();
+    modPanelViewport.setViewedComponent(nullptr, false);
     modPanel.reset();
     fltPanel.reset();
     fxPanel.reset();
@@ -1552,7 +1557,7 @@ void PX3SynthAudioProcessorEditor::resized()
 
     panelViewportArea = controlsArea.reduced(8, 8);
     oscPanel->setBounds(panelViewportArea);
-    modPanel->setBounds(panelViewportArea);
+    modPanelViewport.setBounds(panelViewportArea);
     fltPanel->setBounds(panelViewportArea);
     fxPanel->setBounds(panelViewportArea);
     mixPanel->setBounds(panelViewportArea);
@@ -2855,7 +2860,11 @@ bool PX3SynthAudioProcessorEditor::isPanelVisible(int sectionIndex) const
 void PX3SynthAudioProcessorEditor::updatePanelVisibility()
 {
     oscPanel->setVisible(isPanelVisible(0));
-    modPanel->setVisible(isPanelVisible(1));
+    modPanelViewport.setVisible(isPanelVisible(1));
+    if (modPanel != nullptr)
+    {
+        modPanel->setVisible(true);
+    }
     fltPanel->setVisible(isPanelVisible(2));
     fxPanel->setVisible(isPanelVisible(3));
     mixPanel->setVisible(isPanelVisible(4));
@@ -2879,8 +2888,13 @@ void PX3SynthAudioProcessorEditor::layoutFilterPanel()
 
 void PX3SynthAudioProcessorEditor::layoutModPanel()
 {
-    if (modPanel != nullptr)
+    if (modPanel != nullptr && modPanelViewport.getWidth() > 0 && modPanelViewport.getHeight() > 0)
     {
+        const auto preferredWidth = modPanel->getPreferredContentWidth();
+        const auto preferredHeight = modPanel->getPreferredContentHeight();
+        const auto contentWidth = juce::jmax(modPanelViewport.getWidth(), preferredWidth);
+        const auto contentHeight = juce::jmax(modPanelViewport.getHeight(), preferredHeight);
+        modPanel->setBounds(0, 0, contentWidth, contentHeight);
         modPanel->resized();
     }
 }

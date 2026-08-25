@@ -215,7 +215,10 @@
     },
     "grid": {
       "colGap": 8,
-      "rowGap": 10
+      "rowGap": 10,
+      "minColWidth": 280,
+      "minLfoHeight": 300,
+      "minEnvHeight": 220
     },
     "lfo1": {
       "title": { "text": "LFO 1" },
