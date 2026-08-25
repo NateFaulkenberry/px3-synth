@@ -1565,6 +1565,9 @@ void PX3SynthAudioProcessorEditor::resized()
 
 juce::File PX3SynthAudioProcessorEditor::resolveUiConfigFile() const
 {
+    const auto executableFile = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
+    const auto executableDir = executableFile.getParentDirectory();
+
 #if JUCE_DEBUG || PX3_DEBUG_PANEL
     if (const auto envPath = juce::SystemStats::getEnvironmentVariable("PX3_UI_CONFIG_PATH", {});
         envPath.isNotEmpty())
@@ -1581,24 +1584,8 @@ juce::File PX3SynthAudioProcessorEditor::resolveUiConfigFile() const
     {
         return cwdCandidate;
     }
-#endif
 
-    const auto executableFile = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
-    const auto executableDir = executableFile.getParentDirectory();
-
-    const auto contentsCandidate = executableDir.getParentDirectory().getChildFile("UIConfig.json");
-    if (contentsCandidate.existsAsFile())
-    {
-        return contentsCandidate;
-    }
-
-    const auto resourcesCandidate = executableDir.getParentDirectory().getChildFile("Resources/UIConfig.json");
-    if (resourcesCandidate.existsAsFile())
-    {
-        return resourcesCandidate;
-    }
-
-#if JUCE_DEBUG || PX3_DEBUG_PANEL
+    // In debug builds, prefer source-tree config even when a bundled copy exists.
     auto probe = executableDir;
     for (int i = 0; i < 10; ++i)
     {
@@ -1621,7 +1608,21 @@ juce::File PX3SynthAudioProcessorEditor::resolveUiConfigFile() const
         }
         probe = parent;
     }
+#endif
 
+    const auto contentsCandidate = executableDir.getParentDirectory().getChildFile("UIConfig.json");
+    if (contentsCandidate.existsAsFile())
+    {
+        return contentsCandidate;
+    }
+
+    const auto resourcesCandidate = executableDir.getParentDirectory().getChildFile("Resources/UIConfig.json");
+    if (resourcesCandidate.existsAsFile())
+    {
+        return resourcesCandidate;
+    }
+
+#if JUCE_DEBUG || PX3_DEBUG_PANEL
     return cwdCandidate;
 #else
     return {};
