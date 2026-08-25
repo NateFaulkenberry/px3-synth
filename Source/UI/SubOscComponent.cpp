@@ -1,6 +1,7 @@
 #include "SubOscComponent.h"
 
 #include "SubOscMode.h"
+#include "UIConfig.h"
 
 #include <cmath>
 
@@ -30,6 +31,12 @@ SubOscComponent::SubOscComponent(juce::ToggleButton& enabledButtonIn,
 void SubOscComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
+    repaint();
+}
+
+void SubOscComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
+{
+    uiConfig = std::move(configIn);
     repaint();
 }
 
@@ -109,9 +116,14 @@ void SubOscComponent::paint(juce::Graphics& g)
     const auto cardBounds = card.toFloat();
 
     const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.subOsc.visual.topFillAlpha", 0.10f) : 0.10f;
+    const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("osc.subOsc.visual.topFillColour", effectiveAccent)
+                                                   : effectiveAccent;
 
     g.setColour(effectiveAccent.withAlpha(0.10f));
     g.fillRoundedRectangle(cardBounds, 8.0f);
+    g.setColour(topFillColour.withAlpha(topFillAlpha));
+    g.fillRoundedRectangle(cardBounds.withTrimmedBottom(cardBounds.getHeight() * 0.5f), 8.0f);
     g.setColour(juce::Colour::fromRGBA(220, 232, 252, currentEnabled ? 88 : 66));
     g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
 

@@ -132,7 +132,6 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
 void OscPanel::paint(juce::Graphics& g)
 {
     const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.fillAlpha", 0.14f) : 0.14f;
-    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.topFillAlpha", 0.10f) : 0.10f;
     const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.strokeAlpha", 0.75f) : 0.75f;
     const auto panelRadius = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.cornerRadius", 10.0f) : 10.0f;
     const auto cardTitleFontSize = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.cardTitle.fontSize", 11.0f) : 11.0f;
@@ -140,9 +139,6 @@ void OscPanel::paint(juce::Graphics& g)
     const auto area = getLocalBounds().toFloat().reduced(2.0f);
     g.setColour(accent.withAlpha(fillAlpha));
     g.fillRoundedRectangle(area, panelRadius);
-
-    g.setColour(accent.withAlpha(topFillAlpha));
-    g.fillRoundedRectangle(area.withTrimmedBottom(area.getHeight() * 0.5f), panelRadius);
 
     g.setColour(accent.withAlpha(strokeAlpha));
     g.drawRoundedRectangle(area, panelRadius, 1.0f);
@@ -259,5 +255,22 @@ void OscPanel::advanceAnimation(float oscDeltaPhase, float lfoDeltaPhase)
 void OscPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+
+    if (subOscComponent != nullptr)
+    {
+        subOscComponent->setUIConfig(uiConfig);
+    }
+    for (auto& oscillatorComponent : oscillatorComponents)
+    {
+        if (oscillatorComponent != nullptr)
+        {
+            oscillatorComponent->setUIConfig(uiConfig);
+        }
+    }
+    if (lfoComponent != nullptr)
+    {
+        lfoComponent->setUIConfig(uiConfig);
+    }
+
     repaint();
 }

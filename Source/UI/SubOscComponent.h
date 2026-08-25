@@ -2,6 +2,10 @@
 
 #include <JuceHeader.h>
 
+#include <memory>
+
+class UIConfig;
+
 class SubOscComponent final : public juce::Component
 {
 public:
@@ -14,6 +18,7 @@ public:
                            juce::Colour accentIn);
 
     void setAccentColour(juce::Colour accentIn);
+    void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void refreshFromParameters(bool enabled, int octaveIndex, int waveformIndex);
     void advanceAnimation(float deltaPhase);
 
@@ -30,6 +35,7 @@ private:
     juce::ComboBox& waveformBox;
     juce::Label& waveformLabel;
     juce::Colour accent;
+    std::shared_ptr<const UIConfig> uiConfig;
 
     bool currentEnabled { false };
     int currentWaveformIndex { 0 };

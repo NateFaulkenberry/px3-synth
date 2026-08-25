@@ -49,23 +49,36 @@ void EnvelopeComponent::refreshFromParameters()
 
 void EnvelopeComponent::paint(juce::Graphics& g)
 {
-    const auto area = getLocalBounds().toFloat().reduced(4.0f);
-    if (area.isEmpty())
+    const auto componentBounds = getLocalBounds().toFloat().reduced(2.0f);
+    if (componentBounds.isEmpty())
     {
         return;
     }
 
+    const auto componentFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("env.envelope.fillAlpha", 0.08f) : 0.08f;
+    const auto componentCornerRadius = uiConfig != nullptr ? uiConfig->getFloat("env.envelope.cornerRadius", 8.0f) : 8.0f;
     const auto background = uiConfig != nullptr
                                 ? uiConfig->getColour("env.envelope.background", juce::Colour::fromRGBA(10, 18, 10, 155))
                                 : juce::Colour::fromRGBA(10, 18, 10, 155);
     const auto outline = uiConfig != nullptr
                              ? uiConfig->getColour("env.envelope.outline", accent.withAlpha(0.28f))
                              : accent.withAlpha(0.28f);
+    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("env.envelope.topFillAlpha", 0.10f) : 0.10f;
+    const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("env.envelope.topFillColour", background)
+                                                   : background;
 
-    g.setColour(background);
-    g.fillRoundedRectangle(area, 8.0f);
+    g.setColour(accent.withAlpha(componentFillAlpha));
+    g.fillRoundedRectangle(componentBounds, componentCornerRadius);
+    g.setColour(topFillColour.withAlpha(topFillAlpha));
+    g.fillRoundedRectangle(componentBounds.withTrimmedBottom(componentBounds.getHeight() * 0.5f), componentCornerRadius);
     g.setColour(outline);
-    g.drawRoundedRectangle(area, 8.0f, 1.0f);
+    g.drawRoundedRectangle(componentBounds, componentCornerRadius, 1.0f);
+
+    const auto graphArea = componentBounds.reduced(8.0f, 6.0f);
+    g.setColour(background);
+    g.fillRoundedRectangle(graphArea, 7.0f);
+    g.setColour(outline);
+    g.drawRoundedRectangle(graphArea, 7.0f, 1.0f);
 
     const auto geom = computeGeometry();
 
@@ -117,8 +130,8 @@ void EnvelopeComponent::paint(juce::Graphics& g)
 
         auto bubble = juce::Rectangle<float>(0.0f, 0.0f, 122.0f, 30.0f);
         bubble.setCentre(handlePos.translated(0.0f, -24.0f));
-        bubble = bubble.withPosition(juce::jlimit(area.getX(), area.getRight() - bubble.getWidth(), bubble.getX()),
-                                     juce::jlimit(area.getY(), area.getBottom() - bubble.getHeight(), bubble.getY()));
+        bubble = bubble.withPosition(juce::jlimit(componentBounds.getX(), componentBounds.getRight() - bubble.getWidth(), bubble.getX()),
+                         juce::jlimit(componentBounds.getY(), componentBounds.getBottom() - bubble.getHeight(), bubble.getY()));
 
         g.setColour(juce::Colour::fromRGBA(9, 14, 9, 232));
         g.fillRoundedRectangle(bubble, 6.0f);
@@ -260,7 +273,8 @@ float EnvelopeComponent::visualNormToTime(float norm, float minValue, float maxV
 EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
 {
     Geometry geom;
-    const auto area = getLocalBounds().toFloat().reduced(10.0f, 8.0f);
+    const auto componentBounds = getLocalBounds().toFloat().reduced(2.0f);
+    const auto area = componentBounds.reduced(8.0f, 6.0f);
 
     geom.left = area.getX() + 26.0f;
     geom.right = area.getRight() - 10.0f;

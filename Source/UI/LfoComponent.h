@@ -2,6 +2,10 @@
 
 #include <JuceHeader.h>
 
+#include <memory>
+
+class UIConfig;
+
 // Reusable LFO UI section that visualizes and lays out controls while
 // remaining independent from modulation destinations.
 class LfoComponent final : public juce::Component
@@ -18,6 +22,7 @@ public:
     ~LfoComponent() override;
 
     void setAccentColour(juce::Colour accentIn);
+    void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void refreshFromParameters(float rateHz, int waveformIndex);
     void advanceAnimation(float deltaPhase);
 
@@ -41,6 +46,7 @@ private:
     juce::ComboBox& waveformBox;
     juce::Label& waveformLabel;
     juce::Colour accent;
+    std::shared_ptr<const UIConfig> uiConfig;
     WaveformComboLookAndFeel waveformComboLookAndFeel;
 
     int currentWaveformIndex { 0 };

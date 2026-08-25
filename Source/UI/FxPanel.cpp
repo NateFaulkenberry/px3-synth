@@ -61,16 +61,12 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
 void FxPanel::paint(juce::Graphics& g)
 {
     const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.fillAlpha", 0.14f) : 0.14f;
-    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.topFillAlpha", 0.10f) : 0.10f;
     const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.strokeAlpha", 0.75f) : 0.75f;
     const auto radius = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.cornerRadius", 10.0f) : 10.0f;
 
     const auto area = getLocalBounds().toFloat().reduced(2.0f);
     g.setColour(accent.withAlpha(fillAlpha));
     g.fillRoundedRectangle(area, radius);
-
-    g.setColour(accent.withAlpha(topFillAlpha));
-    g.fillRoundedRectangle(area.withTrimmedBottom(area.getHeight() * 0.5f), radius);
 
     g.setColour(accent.withAlpha(strokeAlpha));
     g.drawRoundedRectangle(area, radius, 1.0f);

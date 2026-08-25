@@ -1,5 +1,7 @@
 #include "OscillatorComponent.h"
 
+#include "UIConfig.h"
+
 #include <cmath>
 #include <vector>
 
@@ -50,6 +52,12 @@ OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
 void OscillatorComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
+    repaint();
+}
+
+void OscillatorComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
+{
+    uiConfig = std::move(configIn);
     repaint();
 }
 
@@ -137,9 +145,14 @@ void OscillatorComponent::paint(juce::Graphics& g)
     card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
     const auto cardBounds = card.toFloat();
     const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.oscillator.visual.topFillAlpha", 0.10f) : 0.10f;
+    const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("osc.oscillator.visual.topFillColour", effectiveAccent)
+                                                   : effectiveAccent;
 
     g.setColour(effectiveAccent.withAlpha(0.10f));
     g.fillRoundedRectangle(cardBounds, 8.0f);
+    g.setColour(topFillColour.withAlpha(topFillAlpha));
+    g.fillRoundedRectangle(cardBounds.withTrimmedBottom(cardBounds.getHeight() * 0.5f), 8.0f);
     g.setColour(juce::Colour::fromRGBA(220, 232, 252, currentEnabled ? 88 : 66));
     g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
 

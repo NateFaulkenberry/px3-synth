@@ -1,6 +1,7 @@
 #include "LfoComponent.h"
 
 #include "LfoMode.h"
+#include "UIConfig.h"
 
 #include <cmath>
 
@@ -49,6 +50,12 @@ LfoComponent::~LfoComponent()
 void LfoComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
+    repaint();
+}
+
+void LfoComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
+{
+    uiConfig = std::move(configIn);
     repaint();
 }
 
@@ -117,9 +124,14 @@ void LfoComponent::paint(juce::Graphics& g)
     const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
     card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
     const auto cardBounds = card.toFloat();
+    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.lfo.visual.topFillAlpha", 0.10f) : 0.10f;
+    const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("osc.lfo.visual.topFillColour", accent)
+                                                   : accent;
 
     g.setColour(accent.withAlpha(0.10f));
     g.fillRoundedRectangle(cardBounds, 8.0f);
+    g.setColour(topFillColour.withAlpha(topFillAlpha));
+    g.fillRoundedRectangle(cardBounds.withTrimmedBottom(cardBounds.getHeight() * 0.5f), 8.0f);
     g.setColour(juce::Colour::fromRGBA(220, 232, 252, 88));
     g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
 

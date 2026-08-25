@@ -70,9 +70,15 @@ void VibeComponent::paint(juce::Graphics& g)
 {
     const auto borderPad = uiConfig != nullptr ? uiConfig->getFloat("fx.vibe.visual.borderPadding", 6.0f) : 6.0f;
     const auto radius = uiConfig != nullptr ? uiConfig->getFloat("fx.vibe.visual.cornerRadius", 8.0f) : 8.0f;
+    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.vibe.visual.topFillAlpha", 0.10f) : 0.10f;
     auto bounds = getLocalBounds().toFloat().reduced(borderPad);
-    g.setColour(isActive ? accent.withAlpha(0.08f) : juce::Colour::fromRGBA(120, 120, 120, 30));
+    const auto fillColour = isActive ? accent : juce::Colour::fromRGBA(120, 120, 120, 180);
+    const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("fx.vibe.visual.topFillColour", fillColour)
+                                                   : fillColour;
+    g.setColour(fillColour.withAlpha(0.08f));
     g.fillRoundedRectangle(bounds, radius);
+    g.setColour(topFillColour.withAlpha(topFillAlpha));
+    g.fillRoundedRectangle(bounds.withTrimmedBottom(bounds.getHeight() * 0.5f), radius);
 
     const auto textColour = uiConfig != nullptr
                                 ? uiConfig->getColour("fx.vibe.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))

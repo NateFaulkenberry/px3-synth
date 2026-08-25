@@ -3,6 +3,9 @@
 #include <JuceHeader.h>
 
 #include <array>
+#include <memory>
+
+class UIConfig;
 
 // Reusable oscillator UI component that owns oscillator-only layout, mode UI,
 // and waveform visualization while using externally-owned controls.
@@ -24,6 +27,7 @@ public:
                         juce::Colour accentIn);
 
     void setAccentColour(juce::Colour accentIn);
+    void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void refreshFromParameters(bool enabled, int modeIndex, int vowelIndex);
     void advanceAnimation(float deltaPhase);
 
@@ -48,6 +52,7 @@ private:
     juce::ComboBox& vowelBox;
     juce::Label& vowelLabel;
     juce::Colour accent;
+    std::shared_ptr<const UIConfig> uiConfig;
     bool currentEnabled { true };
 
     float phase { 0.0f };

@@ -11,7 +11,8 @@
     "buttonOn": "#447CB4DC",
     "buttonText": "#E8E8E8",
     "sectionButtonOn": "#528CC4DC",
-    "sectionButtonTextOn": "#F5F5F5"
+    "sectionButtonTextOn": "#F5F5F5",
+    "topFillColour": "#CCCCCC"
   },
   "editor": {
     "background": {
@@ -77,9 +78,8 @@
   },
   "fx": {
     "panel": {
-      "fillAlpha": 0.14,
-      "topFillAlpha": 0.1,
-      "strokeAlpha": 0.75,
+      "fillAlpha": 0,
+      "strokeAlpha": 0,
       "cornerRadius": 10
     },
     "vibe": {
@@ -87,6 +87,8 @@
       "visual": {
         "borderPadding": 6,
         "cornerRadius": 8,
+        "topFillAlpha": 0.1,
+        "topFillColour": "$topFillColour",
         "onLabel": {
           "text": "ON",
           "fontSize": 11.5,
@@ -100,6 +102,8 @@
       "visual": {
         "borderPadding": 6,
         "cornerRadius": 8,
+        "topFillAlpha": 0.1,
+        "topFillColour": "$topFillColour",
         "onLabel": {
           "text": "ON",
           "fontSize": 11.5,
@@ -113,6 +117,8 @@
       "visual": {
         "borderPadding": 6,
         "cornerRadius": 8,
+        "topFillAlpha": 0.1,
+        "topFillColour": "$topFillColour",
         "onLabel": {
           "text": "ON",
           "fontSize": 11.5,
@@ -125,22 +131,40 @@
   "osc": {
     "panel": {
       "fillAlpha": 0.14,
-      "topFillAlpha": 0.1,
       "strokeAlpha": 0.75,
       "cornerRadius": 10,
       "cardTitle": {
         "fontSize": 11
+      }
+    },
+    "subOsc": {
+      "visual": {
+        "topFillAlpha": 0.1,
+        "topFillColour": "$topFillColour"
+      }
+    },
+    "oscillator": {
+      "visual": {
+        "topFillAlpha": 0.1,
+        "topFillColour": "$topFillColour"
+      }
+    },
+    "lfo": {
+      "visual": {
+        "topFillAlpha": 0.1,
+        "topFillColour": "$topFillColour"
       }
     }
   },
   "flt": {
     "panel": {
       "fillAlpha": 0.14,
-      "topFillAlpha": 0.1,
       "strokeAlpha": 0.75,
       "cornerRadius": 10,
       "card": {
         "fillAlpha": 0.1,
+        "topFillAlpha": 0.1,
+        "topFillColour": "$topFillColour",
         "cornerRadius": 8,
         "strokeThickness": 1.2,
         "strokeColour": "#DCE8FC58",
@@ -153,7 +177,6 @@
   "mix": {
     "panel": {
       "fillAlpha": 0.14,
-      "topFillAlpha": 0.1,
       "strokeAlpha": 0.75,
       "cornerRadius": 10
     }
@@ -161,13 +184,14 @@
   "env": {
     "panel": {
       "fillAlpha": 0,
-      "topFillAlpha": 0,
       "strokeAlpha": 0,
       "cornerRadius": 0
     },
     "envelope": {
       "background": "#0A120A9B",
-      "outline": "#66BB6690"
+      "outline": "#66BB6690",
+      "topFillAlpha": 0.1,
+      "topFillColour": "$topFillColour"
     }
   }
 }

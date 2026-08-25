@@ -46,16 +46,12 @@ MixPanel::MixPanel(juce::Slider& subOscGainFaderIn,
 void MixPanel::paint(juce::Graphics& g)
 {
     const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("mix.panel.fillAlpha", 0.14f) : 0.14f;
-    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("mix.panel.topFillAlpha", 0.10f) : 0.10f;
     const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("mix.panel.strokeAlpha", 0.75f) : 0.75f;
     const auto panelRadius = uiConfig != nullptr ? uiConfig->getFloat("mix.panel.cornerRadius", 10.0f) : 10.0f;
 
     const auto area = getLocalBounds().toFloat().reduced(2.0f);
     g.setColour(accent.withAlpha(fillAlpha));
     g.fillRoundedRectangle(area, panelRadius);
-
-    g.setColour(accent.withAlpha(topFillAlpha));
-    g.fillRoundedRectangle(area.withTrimmedBottom(area.getHeight() * 0.5f), panelRadius);
 
     g.setColour(accent.withAlpha(strokeAlpha));
     g.drawRoundedRectangle(area, panelRadius, 1.0f);
