@@ -61,6 +61,24 @@ void EnvelopeComponent::paint(juce::Graphics& g)
     const auto outline = uiConfig != nullptr
                              ? uiConfig->getColour("env.envelope.outline", accent.withAlpha(0.28f))
                              : accent.withAlpha(0.28f);
+    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("env.envelope.topFillAlpha", 0.10f) : 0.10f;
+    const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("env.envelope.topFillColour", background)
+                                                   : background;
+
+    g.setColour(topFillColour.withAlpha(topFillAlpha));
+    juce::Path topFill;
+    const auto topHalf = componentBounds.withTrimmedBottom(componentBounds.getHeight() * 0.5f);
+    topFill.addRoundedRectangle(topHalf.getX(),
+                                topHalf.getY(),
+                                topHalf.getWidth(),
+                                topHalf.getHeight(),
+                                8.0f,
+                                8.0f,
+                                true,
+                                true,
+                                false,
+                                false);
+    g.fillPath(topFill);
 
     const auto graphArea = componentBounds.reduced(8.0f, 6.0f);
     g.setColour(background);
