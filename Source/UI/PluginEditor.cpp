@@ -1565,6 +1565,7 @@ void PX3SynthAudioProcessorEditor::resized()
 
 juce::File PX3SynthAudioProcessorEditor::resolveUiConfigFile() const
 {
+#if JUCE_DEBUG || PX3_DEBUG_PANEL
     if (const auto envPath = juce::SystemStats::getEnvironmentVariable("PX3_UI_CONFIG_PATH", {});
         envPath.isNotEmpty())
     {
@@ -1580,6 +1581,7 @@ juce::File PX3SynthAudioProcessorEditor::resolveUiConfigFile() const
     {
         return cwdCandidate;
     }
+#endif
 
     const auto executableFile = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
     const auto executableDir = executableFile.getParentDirectory();
@@ -1596,6 +1598,7 @@ juce::File PX3SynthAudioProcessorEditor::resolveUiConfigFile() const
         return resourcesCandidate;
     }
 
+#if JUCE_DEBUG || PX3_DEBUG_PANEL
     auto probe = executableDir;
     for (int i = 0; i < 10; ++i)
     {
@@ -1620,12 +1623,20 @@ juce::File PX3SynthAudioProcessorEditor::resolveUiConfigFile() const
     }
 
     return cwdCandidate;
+#else
+    return {};
+#endif
 }
 
 void PX3SynthAudioProcessorEditor::loadUiConfig(bool forceReload)
 {
     const auto hadConfigBeforeLoad = (uiConfig != nullptr);
     const auto resolvedPath = resolveUiConfigFile();
+    if (resolvedPath == juce::File())
+    {
+        return;
+    }
+
     if (resolvedPath != uiConfigManager.getConfigFile())
     {
         uiConfigManager.setConfigFile(resolvedPath);
