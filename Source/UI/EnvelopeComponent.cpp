@@ -67,7 +67,8 @@ void EnvelopeComponent::paint(juce::Graphics& g)
 
     g.setColour(topFillColour.withAlpha(topFillAlpha));
     juce::Path topFill;
-    const auto topHalf = componentBounds.withTrimmedBottom(componentBounds.getHeight() * 0.5f);
+    const auto topFillBounds = componentBounds.reduced(6.0f);
+    const auto topHalf = topFillBounds.withTrimmedBottom(topFillBounds.getHeight() * 0.5f);
     topFill.addRoundedRectangle(topHalf.getX(),
                                 topHalf.getY(),
                                 topHalf.getWidth(),
@@ -80,7 +81,7 @@ void EnvelopeComponent::paint(juce::Graphics& g)
                                 false);
     g.fillPath(topFill);
 
-    const auto graphArea = componentBounds.reduced(8.0f, 6.0f);
+    const auto graphArea = componentBounds;
     g.setColour(background);
     g.fillRoundedRectangle(graphArea, 7.0f);
     g.setColour(outline);
@@ -280,7 +281,7 @@ EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
 {
     Geometry geom;
     const auto componentBounds = getLocalBounds().toFloat().reduced(2.0f);
-    const auto area = componentBounds.reduced(8.0f, 6.0f);
+    const auto area = componentBounds;
 
     geom.left = area.getX() + 26.0f;
     geom.right = area.getRight() - 10.0f;
