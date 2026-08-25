@@ -23,6 +23,11 @@ Run standalone:
 ./scripts/run-standalone.sh
 ```
 
+With DEBUG panel enabled builds, you can inspect internal bus routing in the detached debug console:
+
+- OSCILLATOR, DRY, FX, and MASTER bus RMS readouts
+- FX send and FX return gain controls for wet-path gain staging
+
 Force a clean rebuild before launching standalone:
 
 ```bash
@@ -144,3 +149,4 @@ git push origin v0.1.0
 - Release build intentionally disables copy-after-build plugin installation.
 - Build and install are separate operations.
 - Notarization and stapling are not performed by this script.
+- Internal audio routing is explicitly staged as OSCILLATOR -> DRY -> FX -> MASTER.

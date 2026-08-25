@@ -389,6 +389,74 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
         debugParamControls.push_back(std::move(control));
     }
 
+    {
+        auto control = std::make_unique<DebugParamControl>();
+        control->key = "fxSendGain";
+        control->label.setText("FX Send Gain", juce::dontSendNotification);
+        control->label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(230, 230, 230));
+        control->label.setFont(juce::FontOptions(11.0f));
+        control->slider.setRange(0.0, 1.0, 0.0001);
+        control->slider.setSliderStyle(juce::Slider::LinearHorizontal);
+        control->slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 78, 18);
+        control->slider.setScrollWheelEnabled(false);
+        control->slider.setValue(audioProcessor.getFxSendGainParam().get(), juce::dontSendNotification);
+        control->slider.onValueChange = [this, ptr = control.get()]
+        {
+            if (ptr->suppressCallbacks)
+            {
+                return;
+            }
+
+            const auto requested = static_cast<float>(ptr->slider.getValue());
+            ptr->lastRequested = requested;
+            auto& p = audioProcessor.getFxSendGainParam();
+            p.beginChangeGesture();
+            p.setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, requested));
+            p.endChangeGesture();
+        };
+        control->readback.setColour(juce::Label::textColourId, juce::Colour::fromRGB(184, 235, 184));
+        control->readback.setFont(juce::FontOptions(10.0f));
+
+        debugParamContent.addAndMakeVisible(control->label);
+        debugParamContent.addAndMakeVisible(control->slider);
+        debugParamContent.addAndMakeVisible(control->readback);
+        debugParamControls.push_back(std::move(control));
+    }
+
+    {
+        auto control = std::make_unique<DebugParamControl>();
+        control->key = "fxReturnGain";
+        control->label.setText("FX Return Gain", juce::dontSendNotification);
+        control->label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(230, 230, 230));
+        control->label.setFont(juce::FontOptions(11.0f));
+        control->slider.setRange(0.0, 1.0, 0.0001);
+        control->slider.setSliderStyle(juce::Slider::LinearHorizontal);
+        control->slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 78, 18);
+        control->slider.setScrollWheelEnabled(false);
+        control->slider.setValue(audioProcessor.getFxReturnGainParam().get(), juce::dontSendNotification);
+        control->slider.onValueChange = [this, ptr = control.get()]
+        {
+            if (ptr->suppressCallbacks)
+            {
+                return;
+            }
+
+            const auto requested = static_cast<float>(ptr->slider.getValue());
+            ptr->lastRequested = requested;
+            auto& p = audioProcessor.getFxReturnGainParam();
+            p.beginChangeGesture();
+            p.setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, requested));
+            p.endChangeGesture();
+        };
+        control->readback.setColour(juce::Label::textColourId, juce::Colour::fromRGB(184, 235, 184));
+        control->readback.setFont(juce::FontOptions(10.0f));
+
+        debugParamContent.addAndMakeVisible(control->label);
+        debugParamContent.addAndMakeVisible(control->slider);
+        debugParamContent.addAndMakeVisible(control->readback);
+        debugParamControls.push_back(std::move(control));
+    }
+
     debugParamControlsInitialized = true;
 }
 
@@ -717,6 +785,14 @@ void PX3SynthAudioProcessorEditor::refreshDebugParameterControls()
         {
             actualValue = static_cast<float>(audioProcessor.debugGetVibeSeed());
         }
+        else if (control->key == "fxSendGain")
+        {
+            actualValue = audioProcessor.getFxSendGainParam().get();
+        }
+        else if (control->key == "fxReturnGain")
+        {
+            actualValue = audioProcessor.getFxReturnGainParam().get();
+        }
         else
         {
             actualValue = audioProcessor.debugGetVibeTuningValue(control->key);
@@ -751,6 +827,10 @@ void PX3SynthAudioProcessorEditor::refreshDebugLfoState()
     const auto effectiveNorm = audioProcessor.debugGetLfoEffectiveNormalized();
     const auto assignmentId = audioProcessor.getLfoAssignmentParameterId();
     const auto assignmentName = audioProcessor.debugGetLfoAssignmentName();
+    const auto oscBusRms = audioProcessor.debugGetOscillatorBusRms();
+    const auto dryBusRms = audioProcessor.debugGetDryBusRms();
+    const auto fxBusRms = audioProcessor.debugGetFxBusRms();
+    const auto masterBusRms = audioProcessor.debugGetMasterBusRms();
 
     juce::String text;
     text << "Frequency: " << juce::String(frequencyHz, 4) << " Hz\n"
@@ -760,7 +840,12 @@ void PX3SynthAudioProcessorEditor::refreshDebugLfoState()
          << "LFO Value: " << juce::String(lfoValue, 5) << "\n"
          << "Base (norm): " << juce::String(baseNorm, 5) << "\n"
          << "Effective (norm): " << juce::String(effectiveNorm, 5) << "\n"
-         << "Delta: " << juce::String(effectiveNorm - baseNorm, 5);
+         << "Delta: " << juce::String(effectiveNorm - baseNorm, 5) << "\n\n"
+         << "Bus RMS\n"
+         << "Oscillator: " << juce::String(oscBusRms, 6) << "\n"
+         << "Dry: " << juce::String(dryBusRms, 6) << "\n"
+         << "FX: " << juce::String(fxBusRms, 6) << "\n"
+         << "Master: " << juce::String(masterBusRms, 6);
 
     debugLfoText.setText(text, juce::dontSendNotification);
 }
@@ -998,6 +1083,8 @@ void PX3SynthAudioProcessorEditor::debugWriteDeterministicTestValues()
         else if (control->key == "waveformAsymmetry") control->slider.setValue(0.44, juce::sendNotificationSync);
         else if (control->key == "temperatureDrift") control->slider.setValue(0.59, juce::sendNotificationSync);
         else if (control->key == "correlatedChaos") control->slider.setValue(0.72, juce::sendNotificationSync);
+        else if (control->key == "fxSendGain") control->slider.setValue(0.81, juce::sendNotificationSync);
+        else if (control->key == "fxReturnGain") control->slider.setValue(0.77, juce::sendNotificationSync);
     }
 
     audioProcessor.debugLogEvent("DEBUG_PANEL", "WRITE_TEST_VALUES", "deterministic values applied");
@@ -1047,6 +1134,8 @@ void PX3SynthAudioProcessorEditor::debugResetParameters()
         else if (control->key == "waveformAsymmetry") control->slider.setValue(0.32, juce::sendNotificationSync);
         else if (control->key == "temperatureDrift") control->slider.setValue(0.40, juce::sendNotificationSync);
         else if (control->key == "correlatedChaos") control->slider.setValue(0.50, juce::sendNotificationSync);
+        else if (control->key == "fxSendGain") control->slider.setValue(1.0, juce::sendNotificationSync);
+        else if (control->key == "fxReturnGain") control->slider.setValue(1.0, juce::sendNotificationSync);
     }
 
     audioProcessor.debugLogEvent("DEBUG_PANEL", "RESET_PARAMETERS", "all ranged parameters reset to defaults");

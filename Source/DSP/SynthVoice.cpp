@@ -146,9 +146,28 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         oscillatorContext.modWheelNorm = currentModWheelNorm;
         oscillatorContext.pwmModWheelNorm = targetModWheelNorm;
 
-        auto sourceSample = oscillatorUnit.renderSample(sampleRate, oscillatorContext);
+        const auto osc1Sample = oscillatorUnit.renderSample(sampleRate, oscillatorContext);
         const auto subSample = subOscillator.renderSample(currentFrequencyHz);
-        sourceSample = softClip(sourceSample * 0.92f + subSample);
+
+        // OSCILLATOR BUS (voice-local): parallel source contributions.
+        // Future Osc2/Osc3 can plug into this summing point with their own
+        // bypass and gain, without changing downstream stages.
+        float oscillatorBusSample = 0.0f;
+        constexpr bool osc1Bypassed = false;
+        constexpr float osc1Gain = 1.0f;
+        if (!osc1Bypassed)
+        {
+            oscillatorBusSample += osc1Sample * osc1Gain;
+        }
+
+        const auto subBypassed = !subOscillatorSettings.enabled;
+        const auto subGain = juce::jlimit(0.0f, 1.0f, subOscillatorSettings.level);
+        if (!subBypassed)
+        {
+            oscillatorBusSample += subSample * subGain;
+        }
+
+        auto sourceSample = softClip(oscillatorBusSample * 0.92f);
 
         if (vibeActive)
         {
@@ -165,6 +184,10 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             sourceSample += oscillatorUnit.nextDeterministicNoise() * (0.0035f + 0.0165f * noiseAmount);
         }
 
+        // FILTER STAGE: processes combined oscillator bus signal.
+        auto filteredSample = voiceFilter.processSample(sourceSample);
+
+        // AMP STAGE: envelope and voice gain are downstream of filter.
         const auto env = ampEnvelope.getNextSample();
         auto voiceGain = level * env * subtractiveSettings.masterGain;
 
@@ -177,7 +200,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             voiceGain = juce::jlimit(0.0f, 2.0f, voiceGain);
         }
 
-        auto voicedSample = sourceSample * voiceGain;
+        auto voicedSample = filteredSample * voiceGain;
         if (vibeActive)
         {
             const auto vcaAmount = (vibeTuning.vcaNonlinearity * vibeDepth
@@ -186,11 +209,9 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                           * (1.0f / (1.0f + vcaAmount * 0.95f));
         }
 
-        auto currentSample = voiceFilter.processSample(voicedSample);
-
         for (int channel = 0; channel < outputBuffer.getNumChannels(); ++channel)
         {
-            outputBuffer.addSample(channel, startSample + sample, currentSample);
+            outputBuffer.addSample(channel, startSample + sample, voicedSample);
         }
 
         currentAngle += angleDelta;

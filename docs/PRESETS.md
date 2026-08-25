@@ -37,19 +37,7 @@ Top-level properties:
 Children:
 
 1. `PX3_STATE`
-   - Parameter and engine state payload used by processor restore.
-2. `ASSETS`
-   - Zero or more `ASSET` entries.
-
-Asset entry fields:
-
-- `type` (`image` or `audio`)
-- `parameterKey` (`imagePath` or `audioPath`)
-- `originalPath`
-- `fileName`
-- `hash`
-- `embedded` (bool)
-- `data` (base64 payload when embedded)
+   - Parameter/state payload used by processor restore.
 
 ## Versioning And Migration
 
@@ -68,8 +56,6 @@ Structure:
 
 - `Presets/Factory/`
 - `Presets/User/`
-- `Assets/Images/`
-- `Assets/Audio/`
 - `Settings/`
 
 Favorites metadata:
@@ -83,7 +69,7 @@ Factory and user presets are separated at the data-model level.
 On first initialization, P(X3) ensures an initial factory set exists, including:
 
 - `INIT`
-- BASS / LEADS / PADS / PLUCKS / EXPERIMENTAL / IMAGE ENGINE / AUDIO ENGINE examples
+- BASS / LEADS / PADS / PLUCKS / EXPERIMENTAL examples
 
 Factory presets are read-only from the UI perspective.
 
@@ -105,25 +91,12 @@ User presets support:
 - Import validates and copies into user preset library (category-based).
 - Name collisions on import are resolved by suffixing (`Name 2`, `Name 3`, ...).
 
-## Asset Handling
-
-Current implementation supports embedded asset data in `.px3preset` for image/audio path-backed sources:
-
-1. On save:
-   - If `imagePath` or `audioPath` points to an existing file, file data is embedded in preset.
-   - Asset is also cached under Application Support assets folder.
-2. On load:
-   - Embedded data is materialized into the local assets cache.
-   - `PX3_STATE` asset paths are rewritten to the materialized local file before state apply.
-
-If a preset has no available asset payload/path, state loads safely and engine behavior depends on available sources.
-
 ## Safety And Compatibility
 
 - Corrupt/invalid preset files are rejected with user-visible errors.
 - Missing parameters are tolerated (current/default values remain).
 - Unknown parameters are ignored safely.
-- Loading does not run in the audio callback and uses existing async image/audio load mechanisms for engine resources.
+- Loading does not run in the audio callback.
 
 ## DAW Project State
 

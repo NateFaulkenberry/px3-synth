@@ -361,3 +361,23 @@ juce::String PX3SynthAudioProcessor::debugGetLfoAssignmentName() const
         + " [" + lfoAssignableTargets[static_cast<std::size_t>(index)].parameterId + "]";
 }
 
+float PX3SynthAudioProcessor::debugGetOscillatorBusRms() const
+{
+    return juce::jmax(0.0f, debugOscillatorBusRms.load(std::memory_order_relaxed));
+}
+
+float PX3SynthAudioProcessor::debugGetDryBusRms() const
+{
+    return juce::jmax(0.0f, debugDryBusRms.load(std::memory_order_relaxed));
+}
+
+float PX3SynthAudioProcessor::debugGetFxBusRms() const
+{
+    return juce::jmax(0.0f, debugFxBusRms.load(std::memory_order_relaxed));
+}
+
+float PX3SynthAudioProcessor::debugGetMasterBusRms() const
+{
+    return juce::jmax(0.0f, debugMasterBusRms.load(std::memory_order_relaxed));
+}
+

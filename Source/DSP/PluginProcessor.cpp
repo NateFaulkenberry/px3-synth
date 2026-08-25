@@ -89,6 +89,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     delayEnabledParam = new juce::AudioParameterBool("delayEnabled", "Delay Enabled", true);
     delayTimeParam = new juce::AudioParameterFloat("delayTime", "Delay Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
     delayFeedbackParam = new juce::AudioParameterFloat("delayFeedback", "Delay Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.38f);
+    fxSendGainParam = new juce::AudioParameterFloat("fxSendGain", "FX Send", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    fxReturnGainParam = new juce::AudioParameterFloat("fxReturnGain", "FX Return", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
     reverbAmountParam = new juce::AudioParameterFloat("reverbAmount", "Reverb", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     reverbEnabledParam = new juce::AudioParameterBool("reverbEnabled", "Reverb Enabled", true);
     reverbAlgorithmParam = new juce::AudioParameterChoice("reverbAlgorithm",
@@ -152,6 +154,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(delayEnabledParam);
     addParameter(delayTimeParam);
     addParameter(delayFeedbackParam);
+    addParameter(fxSendGainParam);
+    addParameter(fxReturnGainParam);
     addParameter(reverbAmountParam);
     addParameter(reverbEnabledParam);
     addParameter(reverbAlgorithmParam);
@@ -258,6 +262,17 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     delayComponent.prepare(sampleRate);
     reverbComponent.prepare(sampleRate);
 
+    const auto busChannels = juce::jmax(1, getTotalNumOutputChannels());
+    const auto busSamples = juce::jmax(1, samplesPerBlock);
+    oscillatorBusBuffer.setSize(busChannels, busSamples, false, false, true);
+    dryBusBuffer.setSize(busChannels, busSamples, false, false, true);
+    fxBusBuffer.setSize(busChannels, busSamples, false, false, true);
+    masterBusBuffer.setSize(busChannels, busSamples, false, false, true);
+    oscillatorBusBuffer.clear();
+    dryBusBuffer.clear();
+    fxBusBuffer.clear();
+    masterBusBuffer.clear();
+
     const auto envelope = currentEnvelopeSettings();
     const auto filter = currentFilterSettings();
     const auto subtractive = currentSubtractiveSettings();
@@ -303,10 +318,27 @@ float PX3SynthAudioProcessor::currentLfoSignalForBlock(int numSamples)
 void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
+    const auto blockSamples = buffer.getNumSamples();
+    const auto outputChannels = buffer.getNumChannels();
 
     for (int channel = getTotalNumInputChannels(); channel < getTotalNumOutputChannels(); ++channel)
     {
         buffer.clear(channel, 0, buffer.getNumSamples());
+    }
+
+    if (blockSamples > oscillatorBusBuffer.getNumSamples() || outputChannels > oscillatorBusBuffer.getNumChannels())
+    {
+        // Host block size should not exceed prepareToPlay max block size.
+        buffer.clear();
+        return;
+    }
+
+    for (int channel = 0; channel < outputChannels; ++channel)
+    {
+        oscillatorBusBuffer.clear(channel, 0, blockSamples);
+        dryBusBuffer.clear(channel, 0, blockSamples);
+        fxBusBuffer.clear(channel, 0, blockSamples);
+        masterBusBuffer.clear(channel, 0, blockSamples);
     }
 
     juce::MidiBuffer combinedMidi;
@@ -383,30 +415,48 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
     }
 
-    synth.renderNextBlock(buffer, midiMessages, 0, buffer.getNumSamples());
+    // OSCILLATOR BUS: currently receives all active voice audio.
+    // Each voice now explicitly mixes oscillator sources -> filter -> amp before
+    // contributing here, so future sources can sum in parallel at the same point.
+    synth.renderNextBlock(oscillatorBusBuffer, midiMessages, 0, blockSamples);
+
+    // DRY BUS: post-voice synth signal boundary, before FX returns are summed.
+    for (int channel = 0; channel < outputChannels; ++channel)
+    {
+        dryBusBuffer.copyFrom(channel, 0, oscillatorBusBuffer, channel, 0, blockSamples);
+    }
+
     updateTransportState();
 
     delayComponent.updateForBlock(currentDelaySettings());
     reverbComponent.updateForBlock(currentReverbSettings(), buffer.getNumSamples());
     const auto fxOrder = getFxProcessingOrder();
+    const auto fxSendGain = juce::jlimit(0.0f, 1.0f, fxSendGainParam != nullptr ? fxSendGainParam->get() : 1.0f);
+    const auto fxReturnGain = juce::jlimit(0.0f, 1.0f, fxReturnGainParam != nullptr ? fxReturnGainParam->get() : 1.0f);
 
     const auto blockPhaseAdvance = juce::MathConstants<float>::twoPi * vibratoRateHz
-                                   * (static_cast<float>(buffer.getNumSamples()) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));
+                                   * (static_cast<float>(blockSamples) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));
     vibratoPhaseRadians += blockPhaseAdvance;
     while (vibratoPhaseRadians >= juce::MathConstants<float>::twoPi)
     {
         vibratoPhaseRadians -= juce::MathConstants<float>::twoPi;
     }
 
-    const auto activityDecay = std::exp(-static_cast<float>(buffer.getNumSamples())
+    const auto activityDecay = std::exp(-static_cast<float>(blockSamples)
                                         / (static_cast<float>(juce::jmax(1.0, currentSampleRateHz)) * 0.25f));
     pitchBendActivity.store(pitchBendActivity.load(std::memory_order_relaxed) * activityDecay, std::memory_order_relaxed);
     modWheelActivity.store(modWheelActivity.load(std::memory_order_relaxed) * activityDecay, std::memory_order_relaxed);
 
-    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+    for (int sample = 0; sample < blockSamples; ++sample)
     {
-        auto stageL = buffer.getSample(0, sample);
-        auto stageR = (buffer.getNumChannels() > 1) ? buffer.getSample(1, sample) : stageL;
+        const auto dryL = dryBusBuffer.getSample(0, sample);
+        const auto dryR = (outputChannels > 1) ? dryBusBuffer.getSample(1, sample) : dryL;
+
+        const auto fxInL = dryL * fxSendGain;
+        const auto fxInR = dryR * fxSendGain;
+
+        auto stageL = fxInL;
+        auto stageR = fxInR;
 
         for (const auto stage : fxOrder)
         {
@@ -428,13 +478,62 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             }
         }
 
-        buffer.setSample(0, sample, stageL);
-        if (buffer.getNumChannels() > 1)
+        // FX BUS: net FX return relative to dry path.
+        const auto fxL = (stageL - fxInL) * fxReturnGain;
+        const auto fxR = (stageR - fxInR) * fxReturnGain;
+        fxBusBuffer.setSample(0, sample, fxL);
+        if (outputChannels > 1)
         {
-            buffer.setSample(1, sample, stageR);
+            fxBusBuffer.setSample(1, sample, fxR);
+        }
+
+        // MASTER BUS: DRY + FX return.
+        masterBusBuffer.setSample(0, sample, dryL + fxL);
+        if (outputChannels > 1)
+        {
+            masterBusBuffer.setSample(1, sample, dryR + fxR);
         }
     }
-    reverbComponent.applyPostBlockCompensation(buffer);
+
+    reverbComponent.applyPostBlockCompensation(masterBusBuffer);
+
+    for (int channel = 0; channel < outputChannels; ++channel)
+    {
+        buffer.copyFrom(channel, 0, masterBusBuffer, channel, 0, blockSamples);
+    }
+
+#if JUCE_DEBUG
+    if (blockSamples > 0)
+    {
+        auto computeStereoRms = [blockSamples, outputChannels](const juce::AudioBuffer<float>& src)
+        {
+            const auto chCount = juce::jmin(2, juce::jmin(outputChannels, src.getNumChannels()));
+            if (chCount <= 0)
+            {
+                return 0.0f;
+            }
+
+            double energy = 0.0;
+            for (int ch = 0; ch < chCount; ++ch)
+            {
+                const auto* data = src.getReadPointer(ch);
+                for (int i = 0; i < blockSamples; ++i)
+                {
+                    const auto s = static_cast<double>(data[i]);
+                    energy += s * s;
+                }
+            }
+
+            const auto mean = energy / static_cast<double>(chCount * blockSamples);
+            return static_cast<float>(std::sqrt(juce::jmax(0.0, mean)));
+        };
+
+        debugOscillatorBusRms.store(computeStereoRms(oscillatorBusBuffer), std::memory_order_relaxed);
+        debugDryBusRms.store(computeStereoRms(dryBusBuffer), std::memory_order_relaxed);
+        debugFxBusRms.store(computeStereoRms(fxBusBuffer), std::memory_order_relaxed);
+        debugMasterBusRms.store(computeStereoRms(masterBusBuffer), std::memory_order_relaxed);
+    }
+#endif
 }
 
 bool PX3SynthAudioProcessor::hasEditor() const

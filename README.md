@@ -1,6 +1,6 @@
 # P(X3) Synth
 
-P(X3) is a polyphonic JUCE synthesizer with a multi-mode oscillator, source engines (image/audio), and reorderable FX (VIBE, Delay, Reverb). This README is a full operating guide for new users and a function-level map for developers.
+P(X3) is a polyphonic JUCE synthesizer with a multi-mode oscillator and reorderable FX (VIBE, Delay, Reverb). This README is a full operating guide for new users and a function-level map for developers.
 
 Current version: v0.1.0
 
@@ -15,10 +15,9 @@ For developer architecture, maintenance map, and release workflow, see `DEVELOPM
 - Three macro knobs whose meaning changes by oscillator mode.
 - Filter, amp envelope, and master gain section.
 - One global LFO modulation source with assignable destination.
-- Source Engine system:
-  - Image Engine (image->wavetable + animation + modulation routing).
-  - Audio Engine (granular source playback + animation).
 - Three FX blocks with bypass and drag/drop processing order.
+- Explicit internal audio bus routing: OSCILLATOR -> DRY -> FX -> MASTER.
+- Independent FX send and FX return gain controls in the DSP path (available in debug tooling).
 - Clickable 88-key keyboard (A0-C8) with medium click velocity.
 - Performance strip (pitch bend and mod wheel).
 
@@ -159,16 +158,34 @@ Important:
 
 ```text
 MIDI/Virtual Keyboard
-  -> Synth Voices (oscillator mode + macros + envelope + filter)
+  -> OSCILLATOR BUS (all active voices summed)
+  -> DRY BUS (post-voice boundary)
+  -> FX SEND (scaled by fxSendGain)
   -> FX Chain (user-order: VIBE / Delay / Reverb)
+  -> FX BUS (wet return, scaled by fxReturnGain)
+  -> MASTER BUS (DRY + FX)
   -> Master Output
 ```
 
 Important routing rules:
 
-- When OSC mode is WAVETABLE, Image Engine is reserved for oscillator generation.
-- In WAVETABLE mode, Audio source selection is disabled.
-- Image Target modulation does not drive FX in WAVETABLE mode.
+- LFO remains a modulation source only and is not mixed into any audio bus.
+
+Bus architecture notes:
+
+- Voice stage order is explicit: oscillator-source sum -> filter -> amp envelope/gain.
+- DRY BUS is the stable pre-FX reference signal.
+- FX BUS stores return-only contribution relative to the sent signal.
+- MASTER BUS is the final sum and the source for post-block reverb compensation.
+
+## Debug Bus Observability
+
+When DEBUG mode is enabled, the detached debug console exposes live internal bus observability:
+
+- Bus RMS readouts for OSCILLATOR, DRY, FX, and MASTER buses.
+- FX send/return gain controls for quick wet-path gain-staging checks.
+
+These are developer diagnostics and do not change the preset format.
 
 ## UI Guide: Every Section And Control
 
@@ -216,7 +233,6 @@ Macro mapping by mode:
   - A = WIDTH.
 - WAVETABLE
   - A = POSITION (wavetable frame/morph position).
-  - Also mirrors Image Position for visible feedback in WAVETABLE mode.
 - ADDITIVE
   - A = TILT (harmonic rolloff shape).
   - B = ODD/EVEN harmonic balance.
@@ -329,64 +345,6 @@ Controls:
 
 - Gain (0.0 to 1.0 master voice gain factor).
 
-## Source Engine Section
-
-Top toggles:
-
-- IMAGE
-- AUDIO
-
-Only one source is active at a time.
-
-WAVETABLE exception:
-
-- If OSC MODE is WAVETABLE, AUDIO selection is disabled and source is forced to IMAGE.
-
-### Image Engine Panel
-
-File input:
-
-- Drop image file or click preview area.
-- Supported: .png, .jpg, .jpeg, .bmp, .gif.
-
-Controls:
-
-- POS: base frame position through generated wavetable.
-- ANIM: animation depth around POS.
-- RATE: animation rate (or rate basis when sync mode active).
-- MODE: Forward / Reverse / PingPong.
-- TARGET: where Image Engine control signal modulates:
-  - VIBE
-  - Delay
-  - Reverb
-- OFF: disables Image routing (switches source mode away from Image when allowed).
-- RESET: restores default image engine params and default internal wavetable.
-
-TARGET behavior details:
-
-- Processor extracts a control signal from current image wavetable content.
-- That signal is smoothed, converted to a scale, and applied to only one chosen FX amount.
-- In WAVETABLE mode, TARGET is disabled because Image Engine is oscillator-reserved.
-
-### Audio Engine Panel
-
-File input:
-
-- Drop audio file or click waveform area.
-- Supported: .wav, .aiff, .aif, .flac, .mp3, .ogg.
-
-Controls:
-
-- POS: read position in loaded audio source.
-- GRAIN: granular grain size behavior.
-- TEXT: texture/random spread behavior.
-- ANIM: animation depth around POS.
-- RATE: animation rate.
-- MODE: Forward / Reverse / PingPong.
-- SYNC: Free, 1 Bar, 1/2, 1/4, 1/8, 1/16.
-- OFF: disables Audio routing (switches source mode to Image).
-- RESET: resets params and unloads active audio source.
-
 ## FX Sections
 
 You have three FX blocks:
@@ -497,10 +455,6 @@ Saved in plugin state:
 - Includes ADSR (attack/decay/sustain/release) values used by the AMP ENV graph.
 - LFO assignment target selection.
 - FX processing order.
-- Last loaded image path.
-- Last loaded audio path.
-
-On restore, if those files still exist, the plugin asynchronously reloads them.
 
 ## Automation Vs Modulation
 
@@ -531,9 +485,6 @@ implementation is split across multiple files by responsibility:
 - `Source/DSP/PluginProcessorMidi.cpp`
   - MIDI + virtual keyboard handling, note activity tracking, pitch/mod wheel
     state bridges.
-- `Source/DSP/PluginProcessorSource.cpp`
-  - Image/audio source engine loading, reset/disable behavior, animation
-    position updates, source previews, and wavetable generation from images.
 - `Source/DSP/PluginProcessorEffects.cpp`
   - Delay/granular/reverb DSP helper implementations and reverb engine setup.
 - `Source/DSP/PluginProcessorState.cpp`
@@ -555,8 +506,7 @@ runtime orchestration path.
   - Merges MIDI + virtual keyboard MIDI.
   - Updates note state for UI.
   - Computes ONE LFO signal for the block and applies effective-value modulation at read points.
-  - Updates animation positions (image/audio).
-  - Updates all synth voices with oscillator/filter/envelope/performance/source settings.
+- Updates all synth voices with oscillator/filter/envelope/performance settings.
   - Renders synth voices.
   - Processes FX in current drag-ordered chain.
 
@@ -574,7 +524,6 @@ runtime orchestration path.
 - `SynthVoice::renderNextBlock`
   - Per-sample voice render pipeline.
   - Applies pitch bend/mod wheel smoothing.
-  - Samples image/audio source content.
   - Renders selected oscillator mode.
   - Applies envelope + filter.
 - `SynthVoice::renderOscillatorSample`
@@ -584,19 +533,6 @@ runtime orchestration path.
 Notable mode helpers:
 
 - `renderSuperSaw`, `renderPwm`, `renderAdditive`, `renderFm`, `renderHardSync`, `renderKarplus`, `renderOrgan`, `renderDigital`, `renderPhysical`, `renderRobOsc`, `renderPx3`.
-
-### Source Engine Internals
-
-- `requestImageLoadAsync` / `requestAudioLoadAsync`
-  - Asynchronous file loading via thread pools.
-- `disableImageEngine` / `disableAudioEngine`
-  - Turns off routing by switching source mode and animation as needed.
-- `resetImageEngine` / `resetAudioEngine`
-  - Restores defaults and clears loaded media state.
-- `updateImageAnimationPosition` / `updateAudioAnimationPosition`
-  - Computes animated POS each block (free-run or tempo-synced).
-- `computeImageTargetControlSignal`
-  - Scans image wavetable and creates modulation control signal for target FX.
 
 ### FX + Ordering
 
@@ -633,9 +569,5 @@ Build artifacts:
 - No sound:
   - Verify MIDI input, note activity label, and that at least one key is active.
   - Check Gain and section bypass states.
-  - If in WAVETABLE mode, remember Audio source is disabled by design.
-- Dropped file does nothing:
-  - Confirm extension is supported.
-  - Try click-to-load from chooser.
 - FX order seems wrong:
   - Drag section headers only; order updates on drop and is persisted.

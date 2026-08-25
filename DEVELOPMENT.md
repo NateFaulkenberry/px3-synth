@@ -9,9 +9,11 @@ This guide is for maintainers. It focuses on architecture, state flow, debugging
 High-level runtime flow:
 
 1. MIDI input (host + virtual keyboard)
-2. Synth voice rendering (oscillator mode + macros + envelope + filter)
-3. FX chain (VIBE, Delay, Reverb) in processor-owned module order
-4. Output buffer
+2. Synth voice rendering into OSCILLATOR BUS (voice-local oscillator sum -> filter -> amp)
+3. DRY BUS boundary (post-voice reference)
+4. FX send path (scaled by `fxSendGain`) into processor-owned FX chain order
+5. FX BUS return (wet delta scaled by `fxReturnGain`)
+6. MASTER BUS sum (DRY + FX), then output buffer write
 
 State flow:
 
@@ -27,19 +29,28 @@ Key architectural rule:
 - DSP-effective values may include modulation and are transient.
 - Do not write transient modulation values back to host parameters.
 
+Bus architecture rule:
+
+- Keep bus boundaries explicit in `processBlock`: OSCILLATOR, DRY, FX, MASTER.
+- Do not allocate bus storage in the audio callback.
+- LFO remains modulation-only and is never mixed into audio buses.
+
 ## Source Layout
 
 Main code lives in Source/
 
 - `Source/DSP/`: processor lifecycle, parameter definitions, voice/sound DSP (`PluginProcessor.*`, `SynthVoice.*`, `SynthSound.*`)
-- `Source/UI/`: editor surface + UI components (`PluginEditor.*`, `ImageEnginePanel.*`, `AudioEnginePanel.*`, `SourceEnginePanel.*`, `PerformanceControls.*`, `PianoKeyboard.*`)
+- `Source/UI/`: editor surface + UI components (`PluginEditor.*`, `PerformanceControls.*`, `PianoKeyboard.*`)
 - `Source/Preset/`: preset read/write/import/export and metadata (`PresetManager.*`)
-- `Source/Core/`: shared lightweight data/types (`AudioSourceData.h`, `ImageWavetable.h`, `PX3Version.h`)
+- `Source/Core/`: shared lightweight data/types (`PX3Version.h`)
 
 ## Where Do I Look?
 
 Want to change oscillator synthesis behavior?
 - `Source/DSP/SynthVoice.cpp`
+
+Want to change internal bus routing stages?
+- `Source/DSP/PluginProcessor.cpp` (`prepareToPlay`, `processBlock`)
 
 Want to change envelope/filter defaults/ranges?
 - parameter definitions in `Source/DSP/PluginProcessor.cpp`
@@ -55,14 +66,24 @@ Want to change module ordering behavior?
 - UI drag/commit in `Source/UI/PluginEditor.cpp`
 - canonical order storage/serialization in `Source/DSP/PluginProcessor.cpp`
 
+Want to tune FX send/return gain behavior?
+- parameter definitions + registration in `Source/DSP/PluginProcessor.cpp`
+- accessors in `Source/DSP/PluginProcessorParameters.cpp`
+- mix math in `Source/DSP/PluginProcessor.cpp`
+
 Want to change preset/state serialization?
 - processor state tree in `Source/DSP/PluginProcessor.cpp`
 - preset file format in `Source/Preset/PresetManager.cpp`
 - format details in `docs/PRESETS.md`
 
 Want to change debug console behavior?
-- setup/layout/actions in `Source/UI/PluginEditor.cpp`
-- debug event/state helpers in `Source/DSP/PluginProcessor.cpp`
+- setup/layout/actions in `Source/UI/PluginEditorDebug.cpp`
+- debug event/state helpers in `Source/DSP/PluginProcessorDebug.cpp`
+
+Want to change bus RMS debug taps?
+- bus meter writes in `Source/DSP/PluginProcessor.cpp`
+- debug getters in `Source/DSP/PluginProcessorDebug.cpp`
+- debug readout text in `Source/UI/PluginEditorDebug.cpp`
 
 Want to change plugin version?
 - edit `PX3_VERSION` in `CMakeLists.txt`
@@ -82,6 +103,7 @@ Major sections:
 - ValueTree/serialized state views: persistence inspection
 - Parameter inspector + backend controls: direct parameter read/write validation
 - LFO + ADSR diagnostics: modulation and envelope observability
+- Internal bus diagnostics: OSC/DRY/FX/MASTER RMS readouts
 - Preset/state tools: state snapshots, round-trip tests, and developer preset dump
 
 ## Threading Notes

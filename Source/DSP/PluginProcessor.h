@@ -119,6 +119,8 @@ public:
     juce::AudioParameterBool& getDelayEnabledParam() const;
     juce::AudioParameterFloat& getDelayTimeParam() const;
     juce::AudioParameterFloat& getDelayFeedbackParam() const;
+    juce::AudioParameterFloat& getFxSendGainParam() const;
+    juce::AudioParameterFloat& getFxReturnGainParam() const;
     juce::AudioParameterFloat& getReverbAmountParam() const;
     juce::AudioParameterBool& getReverbEnabledParam() const;
     juce::AudioParameterChoice& getReverbAlgorithmParam() const;
@@ -160,6 +162,10 @@ public:
     float debugGetLfoCurrentValue() const;
     float debugGetLfoBaseNormalized() const;
     float debugGetLfoEffectiveNormalized() const;
+    float debugGetOscillatorBusRms() const;
+    float debugGetDryBusRms() const;
+    float debugGetFxBusRms() const;
+    float debugGetMasterBusRms() const;
     juce::String debugGetLfoAssignmentName() const;
     float debugGetVibeGlobalAmount() const;
     float debugGetVibeEffectiveAmount() const;
@@ -248,6 +254,8 @@ private:
     juce::AudioParameterBool* delayEnabledParam { nullptr };
     juce::AudioParameterFloat* delayTimeParam { nullptr };
     juce::AudioParameterFloat* delayFeedbackParam { nullptr };
+    juce::AudioParameterFloat* fxSendGainParam { nullptr };
+    juce::AudioParameterFloat* fxReturnGainParam { nullptr };
     juce::AudioParameterFloat* reverbAmountParam { nullptr };
     juce::AudioParameterBool* reverbEnabledParam { nullptr };
     juce::AudioParameterChoice* reverbAlgorithmParam { nullptr };
@@ -296,6 +304,10 @@ private:
     std::atomic<float> lfoCurrentValue { 0.0f };
     std::atomic<float> lfoDebugBaseNormalized { 0.0f };
     std::atomic<float> lfoDebugEffectiveNormalized { 0.0f };
+    std::atomic<float> debugOscillatorBusRms { 0.0f };
+    std::atomic<float> debugDryBusRms { 0.0f };
+    std::atomic<float> debugFxBusRms { 0.0f };
+    std::atomic<float> debugMasterBusRms { 0.0f };
 
     /*
      * VIBE is a correlated imperfection system. It is intentionally not a
@@ -305,6 +317,13 @@ private:
     Vibe vibeComponent;
     Delay delayComponent;
     ReverbComponent reverbComponent;
+
+    // Internal routing buses (prepared once, reused per block).
+    juce::AudioBuffer<float> oscillatorBusBuffer;
+    juce::AudioBuffer<float> dryBusBuffer;
+    juce::AudioBuffer<float> fxBusBuffer;
+    juce::AudioBuffer<float> masterBusBuffer;
+
     std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
     std::atomic<uint32_t> fxOrderRevision { 0u };
     juce::String debugInstanceId;
