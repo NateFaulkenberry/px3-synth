@@ -2,20 +2,10 @@
 
 #include <JuceHeader.h>
 
-#include "SubOscComponent.h"
-
 class MixPanel final : public juce::Component
 {
 public:
-    MixPanel(juce::ToggleButton& subOscEnabledButton,
-             juce::Label& subOscEnabledLabel,
-             juce::Slider& subOscLevelKnob,
-             juce::Label& subOscLevelLabel,
-             juce::ComboBox& subOscOctaveBox,
-             juce::Label& subOscOctaveLabel,
-             juce::ComboBox& subOscWaveformBox,
-             juce::Label& subOscWaveformLabel,
-             juce::Colour panelAccent);
+    explicit MixPanel(juce::Colour panelAccent);
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -24,8 +14,6 @@ public:
     void advanceAnimation(float deltaPhase);
 
 private:
-    std::unique_ptr<SubOscComponent> subOscComponent;
-
     juce::String title { "MIX" };
     juce::Colour accent;
 };
