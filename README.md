@@ -54,6 +54,25 @@ Optional standalone script flags:
 
 JUCE is fetched automatically through CMake FetchContent.
 
+## Uninstall And Logic Rescan
+
+Remove installed P(X3) plugin bundles and related app/plugin data:
+
+```bash
+./scripts/uninstall-local.sh
+```
+
+Trigger Logic Pro relaunch helper after cleanup:
+
+```bash
+./scripts/uninstall-local.sh --logic-rescan
+```
+
+Notes:
+
+- The uninstall script targets both user and system plugin folders/cache paths.
+- System-wide removals may require `sudo`.
+
 ## Building a Release Installer
 
 Run:

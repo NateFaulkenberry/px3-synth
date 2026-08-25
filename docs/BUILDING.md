@@ -74,11 +74,25 @@ Install locations:
 
 ## Uninstall Local Development Plugins
 
-Remove only P(X3) local plugin artifacts:
+Remove P(X3) plugin bundles and app/plugin data from user and system locations:
 
 ```bash
 ./scripts/uninstall-local.sh
 ```
+
+Run with Logic rescan helper:
+
+```bash
+./scripts/uninstall-local.sh --logic-rescan
+```
+
+Behavior notes:
+
+- Removes AU/VST3 from both `~/Library/...` and `/Library/...` plugin folders when present.
+- Clears Audio Unit and Logic cache entries used by plugin discovery.
+- Restarts `AudioComponentRegistrar` when possible.
+- `--logic-rescan` launches Logic Pro (if not already running) after cleanup so AU cache rebuild/rescan starts on launch.
+- System path cleanup may require `sudo`.
 
 ## Release Build (Apple Silicon)
 
