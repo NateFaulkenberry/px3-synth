@@ -1,23 +1,23 @@
-#include "FilterResponseComponent.h"
+#include "FilterComponent.h"
 
 #include <cmath>
 
-FilterResponseComponent::FilterResponseComponent(juce::AudioParameterFloat& cutoffIn,
-                                                 juce::AudioParameterFloat& resonanceIn,
-                                                 juce::AudioParameterChoice& modeIn,
-                                                 juce::Colour accentIn)
+FilterComponent::FilterComponent(juce::AudioParameterFloat& cutoffIn,
+                                 juce::AudioParameterFloat& resonanceIn,
+                                 juce::AudioParameterChoice& modeIn,
+                                 juce::Colour accentIn)
     : cutoff(cutoffIn), resonance(resonanceIn), mode(modeIn), accent(accentIn)
 {
     refreshFromParameters();
 }
 
-void FilterResponseComponent::setAccentColour(juce::Colour accentIn)
+void FilterComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
     repaint();
 }
 
-void FilterResponseComponent::refreshFromParameters()
+void FilterComponent::refreshFromParameters()
 {
     const auto nextMode = mode.getIndex();
     const auto nextCutoff = cutoff.get();
@@ -34,7 +34,7 @@ void FilterResponseComponent::refreshFromParameters()
     }
 }
 
-void FilterResponseComponent::paint(juce::Graphics& g)
+void FilterComponent::paint(juce::Graphics& g)
 {
     auto graphRect = getLocalBounds().toFloat().reduced(2.0f);
     if (graphRect.getWidth() < 12.0f || graphRect.getHeight() < 12.0f)
@@ -114,17 +114,17 @@ void FilterResponseComponent::paint(juce::Graphics& g)
     g.strokePath(response, juce::PathStrokeType(1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
-float FilterResponseComponent::clamp01(float value)
+float FilterComponent::clamp01(float value)
 {
     return juce::jlimit(0.0f, 1.0f, value);
 }
 
-float FilterResponseComponent::cutoffNorm() const
+float FilterComponent::cutoffNorm() const
 {
     return cutoff.convertTo0to1(cutoff.get());
 }
 
-float FilterResponseComponent::resonanceNorm() const
+float FilterComponent::resonanceNorm() const
 {
     const auto range = resonance.getNormalisableRange();
     const auto span = juce::jmax(0.0001f, range.end - range.start);

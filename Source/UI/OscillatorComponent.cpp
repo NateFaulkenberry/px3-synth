@@ -1,9 +1,9 @@
-#include "OscillatorDisplayComponent.h"
+#include "OscillatorComponent.h"
 
 #include <cmath>
 #include <vector>
 
-OscillatorDisplayComponent::OscillatorDisplayComponent(juce::Slider& macroAIn,
+OscillatorComponent::OscillatorComponent(juce::Slider& macroAIn,
                                                        juce::Slider& macroBIn,
                                                        juce::Slider& macroCIn,
                                                        juce::Label& macroALabelIn,
@@ -40,13 +40,13 @@ OscillatorDisplayComponent::OscillatorDisplayComponent(juce::Slider& macroAIn,
     applyModeUi();
 }
 
-void OscillatorDisplayComponent::setAccentColour(juce::Colour accentIn)
+void OscillatorComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
     repaint();
 }
 
-void OscillatorDisplayComponent::refreshFromSelections(int modeIndex, int vowelIndex)
+void OscillatorComponent::refreshFromSelections(int modeIndex, int vowelIndex)
 {
     if (modeBox.getSelectedItemIndex() != modeIndex)
     {
@@ -64,7 +64,7 @@ void OscillatorDisplayComponent::refreshFromSelections(int modeIndex, int vowelI
     }
 }
 
-void OscillatorDisplayComponent::advanceAnimation(float deltaPhase)
+void OscillatorComponent::advanceAnimation(float deltaPhase)
 {
     phase += deltaPhase;
     if (phase > juce::MathConstants<float>::twoPi)
@@ -75,7 +75,7 @@ void OscillatorDisplayComponent::advanceAnimation(float deltaPhase)
     repaint();
 }
 
-void OscillatorDisplayComponent::resized()
+void OscillatorComponent::resized()
 {
     auto cardArea = getLocalBounds().reduced(6, 6);
     constexpr int targetCardWidth = 300;
@@ -111,7 +111,7 @@ void OscillatorDisplayComponent::resized()
     layoutMacroControls(area);
 }
 
-void OscillatorDisplayComponent::paint(juce::Graphics& g)
+void OscillatorComponent::paint(juce::Graphics& g)
 {
     auto card = getLocalBounds().reduced(6, 6);
     constexpr int targetCardWidth = 300;
@@ -281,7 +281,7 @@ void OscillatorDisplayComponent::paint(juce::Graphics& g)
     g.drawText("Mode Visual", titleRow, juce::Justification::centredTop);
 }
 
-void OscillatorDisplayComponent::applyModeUi()
+void OscillatorComponent::applyModeUi()
 {
     const auto modeIndex = juce::jmax(0, modeBox.getSelectedItemIndex());
     if (modeIndex == lastModeIndex)
@@ -347,7 +347,7 @@ void OscillatorDisplayComponent::applyModeUi()
     repaint();
 }
 
-void OscillatorDisplayComponent::layoutMacroControls(const juce::Rectangle<int>& area)
+void OscillatorComponent::layoutMacroControls(const juce::Rectangle<int>& area)
 {
     auto knobArea = area.reduced(2, 0);
 

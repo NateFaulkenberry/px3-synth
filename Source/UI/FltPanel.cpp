@@ -31,11 +31,11 @@ FltPanel::FltPanel(juce::Slider& cutoffKnobIn,
     filterTypeBox.setLookAndFeel(&filterComboLookAndFeel);
     addAndMakeVisible(filterTypeBox);
 
-    filterResponseComponent = std::make_unique<FilterResponseComponent>(cutoffParam,
-                                                                        resonanceParam,
-                                                                        filterTypeParam,
-                                                                        panelAccent);
-    addAndMakeVisible(*filterResponseComponent);
+    filterComponent = std::make_unique<FilterComponent>(cutoffParam,
+                                                        resonanceParam,
+                                                        filterTypeParam,
+                                                        panelAccent);
+    addAndMakeVisible(*filterComponent);
 }
 
 FltPanel::~FltPanel()
@@ -102,16 +102,16 @@ void FltPanel::resized()
     resonanceLabel.setBounds(juce::Rectangle<int>(rightKnob.getX(), rightKnob.getY() - 20, rightKnob.getWidth(), 18));
     resonanceKnob.setBounds(rightKnob);
 
-    if (filterResponseComponent != nullptr)
+    if (filterComponent != nullptr)
     {
-        filterResponseComponent->setBounds(responseArea.withTrimmedLeft(8).withTrimmedRight(8).reduced(0, 4));
+        filterComponent->setBounds(responseArea.withTrimmedLeft(8).withTrimmedRight(8).reduced(0, 4));
     }
 }
 
 void FltPanel::refreshFromParameters()
 {
-    if (filterResponseComponent != nullptr)
+    if (filterComponent != nullptr)
     {
-        filterResponseComponent->refreshFromParameters();
+        filterComponent->refreshFromParameters();
     }
 }

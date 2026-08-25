@@ -64,12 +64,12 @@ target_sources(PX3Synth
         Source/UI/TopMenuBar.cpp
         Source/UI/DelayUiComponent.cpp
         Source/UI/EnvelopeComponent.cpp
-        Source/UI/FilterResponseComponent.cpp
+        Source/UI/FilterComponent.cpp
         Source/UI/LfoComponent.cpp
         Source/UI/ReverbUiComponent.cpp
         Source/UI/SubOscComponent.cpp
         Source/UI/VibeUiComponent.cpp
-        Source/UI/OscillatorDisplayComponent.cpp
+        Source/UI/OscillatorComponent.cpp
         Source/UI/PluginEditor.cpp
         Source/UI/PluginEditorDebug.cpp
         Source/DSP/EnvelopeGenerator.cpp

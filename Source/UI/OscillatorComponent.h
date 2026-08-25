@@ -6,20 +6,20 @@
 
 // Reusable oscillator UI component that owns oscillator-only layout, mode UI,
 // and waveform visualization while using externally-owned controls.
-class OscillatorDisplayComponent final : public juce::Component
+class OscillatorComponent final : public juce::Component
 {
 public:
-    OscillatorDisplayComponent(juce::Slider& macroAIn,
-                               juce::Slider& macroBIn,
-                               juce::Slider& macroCIn,
-                               juce::Label& macroALabelIn,
-                               juce::Label& macroBLabelIn,
-                               juce::Label& macroCLabelIn,
-                               juce::ComboBox& modeBoxIn,
-                               juce::Label& modeLabelIn,
-                               juce::ComboBox& vowelBoxIn,
-                               juce::Label& vowelLabelIn,
-                               juce::Colour accentIn);
+    OscillatorComponent(juce::Slider& macroAIn,
+                        juce::Slider& macroBIn,
+                        juce::Slider& macroCIn,
+                        juce::Label& macroALabelIn,
+                        juce::Label& macroBLabelIn,
+                        juce::Label& macroCLabelIn,
+                        juce::ComboBox& modeBoxIn,
+                        juce::Label& modeLabelIn,
+                        juce::ComboBox& vowelBoxIn,
+                        juce::Label& vowelLabelIn,
+                        juce::Colour accentIn);
 
     void setAccentColour(juce::Colour accentIn);
     void refreshFromSelections(int modeIndex, int vowelIndex);

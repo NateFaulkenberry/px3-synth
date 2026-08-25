@@ -23,18 +23,18 @@ OscPanel::OscPanel(juce::Slider& macroA,
                    juce::Colour lfoAccent)
         : accent(panelAccent)
 {
-    oscillatorDisplayComponent = std::make_unique<OscillatorDisplayComponent>(macroA,
-                                                                               macroB,
-                                                                               macroC,
-                                                                               macroALabel,
-                                                                               macroBLabel,
-                                                                               macroCLabel,
-                                                                               modeBox,
-                                                                               modeLabel,
-                                                                               vowelBox,
-                                                                               vowelLabel,
-                                                                               panelAccent);
-    addAndMakeVisible(*oscillatorDisplayComponent);
+    oscillatorComponent = std::make_unique<OscillatorComponent>(macroA,
+                                                                 macroB,
+                                                                 macroC,
+                                                                 macroALabel,
+                                                                 macroBLabel,
+                                                                 macroCLabel,
+                                                                 modeBox,
+                                                                 modeLabel,
+                                                                 vowelBox,
+                                                                 vowelLabel,
+                                                                 panelAccent);
+    addAndMakeVisible(*oscillatorComponent);
 
     lfoComponent = std::make_unique<LfoComponent>(lfoAssignLabelIn,
                                                   lfoAssignBoxIn,
@@ -73,13 +73,13 @@ void OscPanel::resized()
     panelArea.removeFromLeft(12);
     auto lfoArea = panelArea;
 
-    if (oscillatorDisplayComponent != nullptr)
+    if (oscillatorComponent != nullptr)
     {
         auto oscCardBounds = oscArea.reduced(4, 2);
         constexpr int targetCardWidth = 300;
         const auto cardWidth = juce::jmin(targetCardWidth, oscCardBounds.getWidth());
         oscCardBounds = oscCardBounds.withSizeKeepingCentre(cardWidth, oscCardBounds.getHeight());
-        oscillatorDisplayComponent->setBounds(oscCardBounds);
+        oscillatorComponent->setBounds(oscCardBounds);
     }
 
     auto lfoInner = lfoArea.reduced(10, 6);
@@ -95,9 +95,9 @@ void OscPanel::resized()
 
 void OscPanel::refreshFromSelections(int modeIndex, int vowelIndex)
 {
-    if (oscillatorDisplayComponent != nullptr)
+    if (oscillatorComponent != nullptr)
     {
-        oscillatorDisplayComponent->refreshFromSelections(modeIndex, vowelIndex);
+        oscillatorComponent->refreshFromSelections(modeIndex, vowelIndex);
     }
 }
 
@@ -111,9 +111,9 @@ void OscPanel::refreshLfoFromParameters(float rateHz, int waveformIndex)
 
 void OscPanel::advanceAnimation(float oscDeltaPhase, float lfoDeltaPhase)
 {
-    if (oscillatorDisplayComponent != nullptr)
+    if (oscillatorComponent != nullptr)
     {
-        oscillatorDisplayComponent->advanceAnimation(oscDeltaPhase);
+        oscillatorComponent->advanceAnimation(oscDeltaPhase);
     }
 
     if (lfoComponent != nullptr)

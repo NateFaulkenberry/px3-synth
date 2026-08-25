@@ -19,7 +19,7 @@ public:
     float processSample(float inputSample);
 
 private:
-    void applyFilterResponse(float cutoffHz, float resonanceQ, int modeIndex);
+    void applyFilter(float cutoffHz, float resonanceQ, int modeIndex);
 
     juce::dsp::IIR::Filter<float> stageA;
     juce::dsp::IIR::Filter<float> stageB;

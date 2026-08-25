@@ -3,7 +3,7 @@
 #include <JuceHeader.h>
 
 #include "LfoComponent.h"
-#include "OscillatorDisplayComponent.h"
+#include "OscillatorComponent.h"
 
 class OscPanel final : public juce::Component
 {
@@ -36,7 +36,7 @@ public:
     void advanceAnimation(float oscDeltaPhase, float lfoDeltaPhase);
 
 private:
-    std::unique_ptr<OscillatorDisplayComponent> oscillatorDisplayComponent;
+    std::unique_ptr<OscillatorComponent> oscillatorComponent;
     std::unique_ptr<LfoComponent> lfoComponent;
 
     juce::String title { "OSC" };

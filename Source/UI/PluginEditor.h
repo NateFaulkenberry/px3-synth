@@ -111,7 +111,7 @@ private:
     void refreshLfoUI();
     void refreshSubOscUI();
     void refreshEnvelopeGraphUI();
-    void refreshFilterResponseUI();
+    void refreshFilterUI();
     void updatePanelVisibility();
     bool isPanelVisible(int sectionIndex) const;
     void layoutOscPanel();

@@ -4,13 +4,13 @@
 
 // Reusable filter response visualization that reads cutoff, resonance, and
 // mode from provided parameters.
-class FilterResponseComponent final : public juce::Component
+class FilterComponent final : public juce::Component
 {
 public:
-    FilterResponseComponent(juce::AudioParameterFloat& cutoffIn,
-                            juce::AudioParameterFloat& resonanceIn,
-                            juce::AudioParameterChoice& modeIn,
-                            juce::Colour accentIn);
+    FilterComponent(juce::AudioParameterFloat& cutoffIn,
+                    juce::AudioParameterFloat& resonanceIn,
+                    juce::AudioParameterChoice& modeIn,
+                    juce::Colour accentIn);
 
     void setAccentColour(juce::Colour accentIn);
     void refreshFromParameters();

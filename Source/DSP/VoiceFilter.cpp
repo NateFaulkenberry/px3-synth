@@ -31,9 +31,9 @@ void VoiceFilter::setTargetSettings(const FilterSettings& settings)
         currentSettings.modeIndex = targetSettings.modeIndex;
         currentSettings.cutoffHz = targetSettings.cutoffHz;
         currentSettings.resonanceQ = targetSettings.resonanceQ;
-        applyFilterResponse(currentSettings.cutoffHz,
-                            currentSettings.resonanceQ,
-                            currentSettings.modeIndex);
+        applyFilter(currentSettings.cutoffHz,
+                currentSettings.resonanceQ,
+                currentSettings.modeIndex);
         filterUpdateCounter = 0;
     }
 }
@@ -42,9 +42,9 @@ void VoiceFilter::setCurrentSettingsImmediate(const FilterSettings& settings)
 {
     setTargetSettings(settings);
     currentSettings = targetSettings;
-    applyFilterResponse(currentSettings.cutoffHz,
-                        currentSettings.resonanceQ,
-                        currentSettings.modeIndex);
+    applyFilter(currentSettings.cutoffHz,
+                currentSettings.resonanceQ,
+                currentSettings.modeIndex);
     filterUpdateCounter = 0;
 }
 
@@ -63,9 +63,9 @@ float VoiceFilter::processSample(float inputSample)
 
     if ((filterUpdateCounter++ & 0x07) == 0)
     {
-        applyFilterResponse(currentSettings.cutoffHz,
-                            currentSettings.resonanceQ,
-                            currentSettings.modeIndex);
+        applyFilter(currentSettings.cutoffHz,
+                currentSettings.resonanceQ,
+                currentSettings.modeIndex);
     }
 
     const auto mode = static_cast<px3::FilterMode>(px3::clampFilterModeIndex(currentSettings.modeIndex));
@@ -83,7 +83,7 @@ float VoiceFilter::processSample(float inputSample)
     return output;
 }
 
-void VoiceFilter::applyFilterResponse(float cutoffHz, float resonanceQ, int modeIndex)
+void VoiceFilter::applyFilter(float cutoffHz, float resonanceQ, int modeIndex)
 {
     if (sampleRate <= 0.0)
     {

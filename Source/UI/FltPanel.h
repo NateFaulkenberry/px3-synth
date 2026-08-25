@@ -2,7 +2,7 @@
 
 #include <JuceHeader.h>
 
-#include "FilterResponseComponent.h"
+#include "FilterComponent.h"
 
 class FltPanel final : public juce::Component
 {
@@ -38,7 +38,7 @@ private:
 
     FilterComboLookAndFeel filterComboLookAndFeel;
 
-    std::unique_ptr<FilterResponseComponent> filterResponseComponent;
+    std::unique_ptr<FilterComponent> filterComponent;
 
     juce::String title { "FLT" };
     juce::Colour accent;

@@ -591,7 +591,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     filterTypeBox.setSelectedItemIndex(filterTypeParam.getIndex(), juce::dontSendNotification);
     filterTypeBox.onChange = [this]()
     {
-        refreshFilterResponseUI();
+        refreshFilterUI();
     };
     filterTypeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     filterTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
@@ -981,7 +981,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     refreshLfoUI();
     refreshSubOscUI();
     refreshEnvelopeGraphUI();
-    refreshFilterResponseUI();
+    refreshFilterUI();
     refreshFxBypassUI();
     debugEditorCreatedTime = audioProcessor.debugNowTimestamp();
 #if PX3_DEBUG_PANEL
@@ -2148,7 +2148,7 @@ void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex
     }
     else if (clamped == 2)
     {
-        refreshFilterResponseUI();
+        refreshFilterUI();
     }
     else if (clamped == 3)
     {
@@ -2391,7 +2391,7 @@ void PX3SynthAudioProcessorEditor::refreshEnvelopeGraphUI()
     }
 }
 
-void PX3SynthAudioProcessorEditor::refreshFilterResponseUI()
+void PX3SynthAudioProcessorEditor::refreshFilterUI()
 {
     if (fltPanel != nullptr)
     {
@@ -2516,7 +2516,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     }
     else if (isPanelVisible(2))
     {
-        refreshFilterResponseUI();
+        refreshFilterUI();
     }
     else if (isPanelVisible(4))
     {
