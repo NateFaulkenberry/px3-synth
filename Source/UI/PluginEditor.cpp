@@ -521,6 +521,17 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     lfoAssignLabel.setFont(juce::FontOptions(11.5f));
     lfoAssignLabel.setInterceptsMouseClicks(false, false);
 
+    envBypassLabel.setText("ON", juce::dontSendNotification);
+    envBypassLabel.setJustificationType(juce::Justification::centredLeft);
+    envBypassLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    envBypassLabel.setFont(juce::FontOptions(11.5f));
+    envBypassLabel.setInterceptsMouseClicks(false, false);
+
+    envBypassButton.setButtonText("");
+    envBypassButton.setClickingTogglesState(true);
+    envBypassButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
+    envBypassButton.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
+
     lfoBypassLabel.setText("ON", juce::dontSendNotification);
     lfoBypassLabel.setJustificationType(juce::Justification::centredLeft);
     lfoBypassLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
@@ -868,6 +879,9 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           audioProcessor.getDecayParam(),
                                           audioProcessor.getSustainParam(),
                                           audioProcessor.getReleaseParam(),
+                                          audioProcessor.getAmpEnvEnabledParam(),
+                                          envBypassButton,
+                                          envBypassLabel,
                                           lfoBypassButton,
                                           lfoBypassLabel,
                                           lfoAssignLabel,
@@ -973,6 +987,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachButton(audioProcessor.getOscillatorEnabledParam(1), osc2EnabledButton);
     attachButton(audioProcessor.getOscillatorEnabledParam(2), osc3EnabledButton);
     attachButton(audioProcessor.getSubOscEnabledParam(), subOscEnabledButton);
+    attachButton(audioProcessor.getAmpEnvEnabledParam(), envBypassButton);
     attachButton(audioProcessor.getLfoEnabledParam(), lfoBypassButton);
 
     // MIDI status bar is temporarily disabled.

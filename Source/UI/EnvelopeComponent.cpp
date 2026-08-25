@@ -5,12 +5,25 @@
 #include <cmath>
 
 EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
-                                                   juce::AudioParameterFloat& decayIn,
-                                                   juce::AudioParameterFloat& sustainIn,
-                                                   juce::AudioParameterFloat& releaseIn,
-                                                   juce::Colour accentIn)
-    : attack(attackIn), decay(decayIn), sustain(sustainIn), release(releaseIn), accent(accentIn)
+                                                                         juce::AudioParameterFloat& decayIn,
+                                                                         juce::AudioParameterFloat& sustainIn,
+                                                                         juce::AudioParameterFloat& releaseIn,
+                                                                         juce::AudioParameterBool& enabledIn,
+                                                                         juce::ToggleButton& enabledButtonIn,
+                                                                         juce::Label& enabledLabelIn,
+                                                                         juce::Colour accentIn)
+        : attack(attackIn),
+            decay(decayIn),
+            sustain(sustainIn),
+            release(releaseIn),
+            enabled(enabledIn),
+            enabledButton(enabledButtonIn),
+            enabledLabel(enabledLabelIn),
+            accent(accentIn)
 {
+        addAndMakeVisible(enabledButton);
+        addAndMakeVisible(enabledLabel);
+        baseEnabledLabelTextColour = enabledLabel.findColour(juce::Label::textColourId);
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
     refreshFromParameters();
 }
@@ -24,6 +37,17 @@ void EnvelopeComponent::setAccentColour(juce::Colour accentIn)
 void EnvelopeComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+
+    const auto textColour = uiConfig != nullptr
+                                ? uiConfig->getColour("mod.env.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
+                                : juce::Colour::fromRGB(232, 232, 232);
+    const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat("mod.env.visual.onLabel.fontSize", 11.5f) : 11.5f;
+    const auto text = uiConfig != nullptr ? uiConfig->getString("mod.env.visual.onLabel.text", "ON") : juce::String("ON");
+    enabledLabel.setText(text, juce::dontSendNotification);
+    enabledLabel.setColour(juce::Label::textColourId, textColour);
+    enabledLabel.setFont(juce::FontOptions(fontSize));
+    baseEnabledLabelTextColour = textColour;
+
     repaint();
 }
 
@@ -33,16 +57,29 @@ void EnvelopeComponent::refreshFromParameters()
     const auto d = decay.get();
     const auto s = sustain.get();
     const auto r = release.get();
+    const auto nextEnabled = enabled.get();
 
     if (std::abs(a - lastAttack) > 0.0001f
         || std::abs(d - lastDecay) > 0.0001f
         || std::abs(s - lastSustain) > 0.0001f
-        || std::abs(r - lastRelease) > 0.0001f)
+        || std::abs(r - lastRelease) > 0.0001f
+        || nextEnabled != currentEnabled)
     {
         lastAttack = a;
         lastDecay = d;
         lastSustain = s;
         lastRelease = r;
+        currentEnabled = nextEnabled;
+        enabledButton.setToggleState(currentEnabled, juce::dontSendNotification);
+        enabledLabel.setColour(juce::Label::textColourId,
+                               currentEnabled ? baseEnabledLabelTextColour : juce::Colour::fromRGB(176, 176, 176));
+        if (!currentEnabled)
+        {
+            hoverHandle = DragHandle::none;
+            dragHandle = DragHandle::none;
+            draggingSustainSegment = false;
+        }
+        setMouseCursor(currentEnabled ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
         repaint();
     }
 }
@@ -55,15 +92,17 @@ void EnvelopeComponent::paint(juce::Graphics& g)
         return;
     }
 
+    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
     const auto background = uiConfig != nullptr
-                                              ? uiConfig->getColour("mod.panel.background", juce::Colour::fromRGBA(10, 18, 10, 155))
+                                ? uiConfig->getColour("mod.panel.background", juce::Colour::fromRGBA(10, 18, 10, 155))
                                 : juce::Colour::fromRGBA(10, 18, 10, 155);
+    const auto effectiveBackground = currentEnabled ? background : juce::Colour::fromRGBA(22, 22, 22, 165);
     const auto outline = uiConfig != nullptr
-                                          ? uiConfig->getColour("mod.panel.outline", accent.withAlpha(0.28f))
-                             : accent.withAlpha(0.28f);
+                             ? uiConfig->getColour("mod.panel.outline", effectiveAccent.withAlpha(0.28f))
+                             : effectiveAccent.withAlpha(0.28f);
 
     const auto graphArea = componentBounds.reduced(2.0f);
-    g.setColour(background);
+    g.setColour(effectiveBackground);
     g.fillRoundedRectangle(graphArea, 7.0f);
     g.setColour(outline);
     g.drawRoundedRectangle(graphArea, 7.0f, 1.0f);
@@ -96,10 +135,10 @@ void EnvelopeComponent::paint(juce::Graphics& g)
     envPath.lineTo(geom.releasePoint);
     envPath.lineTo(geom.end);
 
-    g.setColour(accent.withAlpha(0.28f));
+    g.setColour(effectiveAccent.withAlpha(0.28f));
     g.strokePath(envPath, juce::PathStrokeType(5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    g.setColour(accent.brighter(0.25f));
+    g.setColour(currentEnabled ? accent.brighter(0.25f) : juce::Colour::fromRGB(176, 176, 176));
     g.strokePath(envPath, juce::PathStrokeType(2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
     drawHandleMarker(g, geom.attackPoint, DragHandle::attack);
@@ -123,7 +162,7 @@ void EnvelopeComponent::paint(juce::Graphics& g)
 
         g.setColour(juce::Colour::fromRGBA(9, 14, 9, 232));
         g.fillRoundedRectangle(bubble, 6.0f);
-        g.setColour(accent.withAlpha(0.78f));
+        g.setColour(effectiveAccent.withAlpha(0.78f));
         g.drawRoundedRectangle(bubble, 6.0f, 1.0f);
         g.setColour(juce::Colour::fromRGB(232, 242, 232));
         g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
@@ -133,6 +172,11 @@ void EnvelopeComponent::paint(juce::Graphics& g)
 
 void EnvelopeComponent::mouseMove(const juce::MouseEvent& event)
 {
+    if (!currentEnabled)
+    {
+        return;
+    }
+
     hoverHandle = pickHandle(event.position, computeGeometry());
     repaint();
 }
@@ -148,6 +192,11 @@ void EnvelopeComponent::mouseExit(const juce::MouseEvent&)
 
 void EnvelopeComponent::mouseDown(const juce::MouseEvent& event)
 {
+    if (!currentEnabled)
+    {
+        return;
+    }
+
     const auto geom = computeGeometry();
     dragHandle = pickHandle(event.position, geom);
     hoverHandle = dragHandle;
@@ -190,6 +239,11 @@ void EnvelopeComponent::mouseDown(const juce::MouseEvent& event)
 
 void EnvelopeComponent::mouseDrag(const juce::MouseEvent& event)
 {
+    if (!currentEnabled)
+    {
+        return;
+    }
+
     if (dragHandle == DragHandle::none)
     {
         return;
@@ -221,6 +275,11 @@ void EnvelopeComponent::mouseUp(const juce::MouseEvent&)
 
 void EnvelopeComponent::mouseDoubleClick(const juce::MouseEvent& event)
 {
+    if (!currentEnabled)
+    {
+        return;
+    }
+
     const auto handle = pickHandle(event.position, computeGeometry());
     if (handle == DragHandle::none)
     {
@@ -278,7 +337,8 @@ EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
 {
     Geometry geom;
     const auto componentBounds = getLocalBounds().toFloat().reduced(2.0f);
-    const auto area = componentBounds.reduced(2.0f);
+    auto area = componentBounds.reduced(2.0f);
+    area.removeFromTop(30.0f);
 
     geom.left = area.getX() + 26.0f;
     geom.right = area.getRight() - 10.0f;
@@ -408,7 +468,8 @@ void EnvelopeComponent::drawHandleMarker(juce::Graphics& g,
 {
     const auto active = (handle == dragHandle) || (handle == hoverHandle);
     const auto radius = active ? 6.0f : 5.0f;
-    g.setColour(accent.withAlpha(active ? 1.0f : 0.86f));
+    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+    g.setColour(effectiveAccent.withAlpha(active ? 1.0f : 0.86f));
     g.fillEllipse(center.getX() - radius, center.getY() - radius, radius * 2.0f, radius * 2.0f);
     g.setColour(juce::Colour::fromRGBA(12, 12, 12, 220));
     g.drawEllipse(center.getX() - radius, center.getY() - radius, radius * 2.0f, radius * 2.0f, 1.2f);
@@ -424,7 +485,8 @@ void EnvelopeComponent::drawHandleLabel(juce::Graphics& g,
 
     g.setColour(juce::Colour::fromRGBA(6, 12, 6, active ? 238 : 212));
     g.fillRoundedRectangle(labelBounds, 3.0f);
-    g.setColour(accent.withAlpha(active ? 0.9f : 0.72f));
+    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+    g.setColour(effectiveAccent.withAlpha(active ? 0.9f : 0.72f));
     g.drawRoundedRectangle(labelBounds, 3.0f, 0.9f);
 
     g.setColour(juce::Colour::fromRGBA(238, 248, 238, active ? 250 : 236));
@@ -473,6 +535,11 @@ void EnvelopeComponent::setParameterFromActualValue(juce::AudioParameterFloat& p
 void EnvelopeComponent::applyDragPosition(juce::Point<float> mousePos,
                                                  const Geometry& geom)
 {
+    if (!currentEnabled)
+    {
+        return;
+    }
+
     if (dragHandle == DragHandle::none)
     {
         return;
@@ -537,4 +604,16 @@ void EnvelopeComponent::applyDragPosition(juce::Point<float> mousePos,
     }
 
     refreshFromParameters();
+}
+
+void EnvelopeComponent::resized()
+{
+    auto area = getLocalBounds().reduced(6, 6);
+    auto enabledRow = area.removeFromTop(24);
+    const auto labelWidth = uiConfig != nullptr
+                                ? uiConfig->getInt("mod.env.visual.onLabel.width",
+                                                   uiConfig->getInt("mod.env.visual.onLabel.bounds.width", 52))
+                                : 52;
+    enabledLabel.setBounds(enabledRow.removeFromLeft(labelWidth));
+    enabledButton.setBounds(enabledRow.removeFromLeft(40).reduced(2, 2));
 }

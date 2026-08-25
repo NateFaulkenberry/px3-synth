@@ -265,15 +265,18 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     auto serializedDecay = decayParam->get();
     auto serializedSustain = sustainParam->get();
     auto serializedRelease = releaseParam->get();
+    auto serializedAmpEnvEnabled = ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true;
     if (state.hasProperty("ampAttack")) serializedAttack = static_cast<float>(state["ampAttack"]);
     if (state.hasProperty("ampDecay")) serializedDecay = static_cast<float>(state["ampDecay"]);
     if (state.hasProperty("ampSustain")) serializedSustain = static_cast<float>(state["ampSustain"]);
     if (state.hasProperty("ampRelease")) serializedRelease = static_cast<float>(state["ampRelease"]);
+    if (state.hasProperty("ampEnvEnabled")) serializedAmpEnvEnabled = static_cast<bool>(state["ampEnvEnabled"]);
 
     const auto attackMatches = std::abs(serializedAttack - attackParam->get()) <= 0.0005f;
     const auto decayMatches = std::abs(serializedDecay - decayParam->get()) <= 0.0005f;
     const auto sustainMatches = std::abs(serializedSustain - sustainParam->get()) <= 0.0005f;
     const auto releaseMatches = std::abs(serializedRelease - releaseParam->get()) <= 0.0005f;
+    const auto ampEnvEnabledMatches = ampEnvEnabledParam == nullptr || serializedAmpEnvEnabled == ampEnvEnabledParam->get();
 
     const auto pass = (debugDescribeOrder(currentOrder) == debugDescribeOrder(decodedOrder))
                    && frequencyMatches
@@ -287,7 +290,8 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
                    && attackMatches
                    && decayMatches
                    && sustainMatches
-                   && releaseMatches;
+                   && releaseMatches
+                   && ampEnvEnabledMatches;
     report = "TEST_STATE_ROUND_TRIP\n"
              "before=" + debugDescribeOrder(currentOrder) + "\n"
              "serialized=" + debugDescribeOrder(decodedOrder) + "\n"
@@ -315,6 +319,8 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
              "sustainSerialized=" + juce::String(serializedSustain, 6) + "\n"
              "releaseCurrent=" + juce::String(releaseParam->get(), 6) + "\n"
              "releaseSerialized=" + juce::String(serializedRelease, 6) + "\n"
+             "ampEnvEnabledCurrent=" + juce::String(ampEnvEnabledParam != nullptr && ampEnvEnabledParam->get() ? 1 : 0) + "\n"
+             "ampEnvEnabledSerialized=" + juce::String(serializedAmpEnvEnabled ? 1 : 0) + "\n"
              "size=" + juce::String(static_cast<int>(block.getSize())) + "\n"
              "result=" + juce::String(pass ? "PASS" : "FAIL");
 

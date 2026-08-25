@@ -112,6 +112,17 @@ EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings() const
 {
     const auto lfoSignal = lfoCurrentValue.load(std::memory_order_relaxed);
     EnvelopeSettings settings;
+    const auto envEnabled = ampEnvEnabledParam == nullptr || ampEnvEnabledParam->get();
+
+    if (!envEnabled)
+    {
+        settings.attackSeconds = 0.001f;
+        settings.decaySeconds = 0.005f;
+        settings.sustainLevel = 1.0f;
+        settings.releaseSeconds = 0.010f;
+        return settings;
+    }
+
     settings.attackSeconds = attackParam->convertFrom0to1(applyLfoToNormalizedValue(attackParam,
                                                                                      static_cast<juce::RangedAudioParameter*>(attackParam)->getValue(),
                                                                                      lfoSignal));

@@ -11,15 +11,19 @@ class EnvelopeComponent final : public juce::Component
 {
 public:
     EnvelopeComponent(juce::AudioParameterFloat& attackIn,
-                             juce::AudioParameterFloat& decayIn,
-                             juce::AudioParameterFloat& sustainIn,
-                             juce::AudioParameterFloat& releaseIn,
-                             juce::Colour accentIn);
+                      juce::AudioParameterFloat& decayIn,
+                      juce::AudioParameterFloat& sustainIn,
+                      juce::AudioParameterFloat& releaseIn,
+                      juce::AudioParameterBool& enabledIn,
+                      juce::ToggleButton& enabledButtonIn,
+                      juce::Label& enabledLabelIn,
+                      juce::Colour accentIn);
 
     void setAccentColour(juce::Colour accentIn);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void refreshFromParameters();
 
+    void resized() override;
     void paint(juce::Graphics& g) override;
     void mouseMove(const juce::MouseEvent& event) override;
     void mouseExit(const juce::MouseEvent&) override;
@@ -75,6 +79,9 @@ private:
     juce::AudioParameterFloat& decay;
     juce::AudioParameterFloat& sustain;
     juce::AudioParameterFloat& release;
+    juce::AudioParameterBool& enabled;
+    juce::ToggleButton& enabledButton;
+    juce::Label& enabledLabel;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
     DragHandle hoverHandle { DragHandle::none };
@@ -87,4 +94,6 @@ private:
     float lastDecay { -1.0f };
     float lastSustain { -1.0f };
     float lastRelease { -1.0f };
+    bool currentEnabled { true };
+    juce::Colour baseEnabledLabelTextColour;
 };

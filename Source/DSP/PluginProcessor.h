@@ -109,6 +109,7 @@ public:
     juce::AudioParameterFloat& getDecayParam() const;
     juce::AudioParameterFloat& getSustainParam() const;
     juce::AudioParameterFloat& getReleaseParam() const;
+    juce::AudioParameterBool& getAmpEnvEnabledParam() const;
     juce::AudioParameterFloat& getMasterGainParam() const;
 
     juce::AudioParameterFloat& getVibeAmountParam() const;
@@ -250,6 +251,7 @@ private:
     juce::AudioParameterFloat* decayParam { nullptr };
     juce::AudioParameterFloat* sustainParam { nullptr };
     juce::AudioParameterFloat* releaseParam { nullptr };
+    juce::AudioParameterBool* ampEnvEnabledParam { nullptr };
     juce::AudioParameterFloat* masterGainParam { nullptr };
     juce::AudioParameterFloat* vibeAmountParam { nullptr };
     juce::AudioParameterBool* vibeEnabledParam { nullptr };

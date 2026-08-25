@@ -226,6 +226,16 @@
           "bounds": { "x": 14, "y": 11, "width": 24, "height": 14 }
         }
       }
+    },
+    "env": {
+      "visual": {
+        "onLabel": {
+          "text": "ON",
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8",
+          "width": 52
+        }
+      }
     }
   }
 }

@@ -141,6 +141,7 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getAttackParam() const { retu
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getDecayParam() const { return *decayParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getSustainParam() const { return *sustainParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getReleaseParam() const { return *releaseParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getAmpEnvEnabledParam() const { return *ampEnvEnabledParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getMasterGainParam() const { return *masterGainParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getVibeAmountParam() const { return *vibeAmountParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getVibeEnabledParam() const { return *vibeEnabledParam; }

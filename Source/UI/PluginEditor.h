@@ -306,6 +306,7 @@ private:
     juce::ComboBox subOscWaveformBox;
     juce::ComboBox lfoAssignBox;
     juce::ToggleButton lfoBypassButton;
+    juce::ToggleButton envBypassButton;
     juce::ToggleButton filter1EnabledButton;
     juce::ToggleButton filter2EnabledButton;
     juce::ToggleButton osc1EnabledButton;
@@ -348,6 +349,7 @@ private:
     KnobLabel subOscWaveformLabel;
     KnobLabel subOscEnabledLabel;
     KnobLabel lfoBypassLabel;
+    KnobLabel envBypassLabel;
     juce::Label lfoFrequencyValueLabel;
     KnobLabel lfoAssignLabel;
     KnobLabel midiStatusLabel;

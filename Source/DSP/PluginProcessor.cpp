@@ -120,6 +120,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     decayParam = new juce::AudioParameterFloat("ampDecay", "Amp Decay", juce::NormalisableRange<float>(0.005f, 4.0f, 0.001f, 0.45f), 0.050f);
     sustainParam = new juce::AudioParameterFloat("ampSustain", "Amp Sustain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f);
     releaseParam = new juce::AudioParameterFloat("ampRelease", "Amp Release", juce::NormalisableRange<float>(0.010f, 5.0f, 0.001f, 0.45f), 0.100f);
+    ampEnvEnabledParam = new juce::AudioParameterBool("ampEnvEnabled", "Amp Envelope Enabled", true);
     masterGainParam = new juce::AudioParameterFloat("masterGain", "Master Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
 
     vibeAmountParam = new juce::AudioParameterFloat("vibeAmount", "Vibe", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
@@ -208,6 +209,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(decayParam);
     addParameter(sustainParam);
     addParameter(releaseParam);
+    addParameter(ampEnvEnabledParam);
     addParameter(masterGainParam);
     addParameter(vibeAmountParam);
     addParameter(vibeEnabledParam);
