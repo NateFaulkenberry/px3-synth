@@ -152,11 +152,12 @@ void OscillatorComponent::paint(juce::Graphics& g)
     const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("osc.oscillator.visual.topFillColour", effectiveAccent)
                                                    : effectiveAccent;
 
+    const auto innerFillBounds = cardBounds.reduced(6.0f);
     g.setColour(bgTintColour.withAlpha(bgTintAlpha));
-    g.fillRoundedRectangle(cardBounds, 8.0f);
+    g.fillRoundedRectangle(innerFillBounds, 8.0f);
     g.setColour(topFillColour.withAlpha(topFillAlpha));
     juce::Path topFill;
-    const auto topFillBounds = cardBounds.reduced(6.0f);
+    const auto topFillBounds = innerFillBounds;
     const auto topHalf = topFillBounds.withTrimmedBottom(topFillBounds.getHeight() * 0.5f);
     topFill.addRoundedRectangle(topHalf.getX(),
                                 topHalf.getY(),

@@ -78,11 +78,12 @@ void ReverbComponent::paint(juce::Graphics& g)
                                                   : fillColour;
     const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("fx.reverb.visual.topFillColour", fillColour)
                                                    : fillColour;
+    const auto innerFillBounds = bounds;
     g.setColour(bgTintColour.withAlpha(bgTintAlpha));
-    g.fillRoundedRectangle(bounds, radius);
+    g.fillRoundedRectangle(innerFillBounds, radius);
     g.setColour(topFillColour.withAlpha(topFillAlpha));
     juce::Path topFill;
-    const auto topHalf = bounds.withTrimmedBottom(bounds.getHeight() * 0.5f);
+    const auto topHalf = innerFillBounds.withTrimmedBottom(innerFillBounds.getHeight() * 0.5f);
     topFill.addRoundedRectangle(topHalf.getX(),
                                 topHalf.getY(),
                                 topHalf.getWidth(),

@@ -154,7 +154,7 @@
     "subOsc": {
       "visual": {
         "bgTintAlpha": 0.1,
-        "bgTintColour": "#333333",
+        "bgTintColour": "$topFillColour",
         "topFillAlpha": 0.1,
         "topFillColour": "$topFillColour"
       }
