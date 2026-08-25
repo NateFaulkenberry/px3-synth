@@ -91,7 +91,9 @@ void FltPanel::paint(juce::Graphics& g)
     g.setColour(accent.withAlpha(strokeAlpha));
     g.drawRoundedRectangle(area, panelRadius, 1.0f);
 
-    auto contentArea = getLocalBounds().reduced(12, 10);
+    const auto panelPadX = uiConfig != nullptr ? uiConfig->getInt("flt.panel.layout.padX", 12) : 12;
+    const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("flt.panel.layout.padY", 10) : 10;
+    auto contentArea = getLocalBounds().reduced(panelPadX, panelPadY);
 
     constexpr int gap = 8;
     const auto totalGap = gap * (kFilterInstanceCount - 1);
@@ -133,7 +135,9 @@ void FltPanel::paint(juce::Graphics& g)
 
 void FltPanel::resized()
 {
-    auto panelArea = getLocalBounds().reduced(12, 10);
+    const auto panelPadX = uiConfig != nullptr ? uiConfig->getInt("flt.panel.layout.padX", 12) : 12;
+    const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("flt.panel.layout.padY", 10) : 10;
+    auto panelArea = getLocalBounds().reduced(panelPadX, panelPadY);
 
     constexpr int gap = 8;
     const auto totalGap = gap * (kFilterInstanceCount - 1);

@@ -80,7 +80,11 @@
     "panel": {
       "fillAlpha": 0,
       "strokeAlpha": 0,
-      "cornerRadius": 10
+      "cornerRadius": 10,
+      "layout": {
+        "padX": 12,
+        "padY": 10
+      }
     },
     "vibe": {
       "layout": { "padX": 10, "padY": 8 },
@@ -133,6 +137,10 @@
       "fillAlpha": 0.14,
       "strokeAlpha": 0.75,
       "cornerRadius": 10,
+      "layout": {
+        "padX": 12,
+        "padY": 10
+      },
       "cardTitle": {
         "fontSize": 11
       }
@@ -161,6 +169,10 @@
       "fillAlpha": 0.14,
       "strokeAlpha": 0.75,
       "cornerRadius": 10,
+      "layout": {
+        "padX": 12,
+        "padY": 10
+      },
       "card": {
         "fillAlpha": 0.1,
         "topFillAlpha": 0.1,
@@ -178,14 +190,22 @@
     "panel": {
       "fillAlpha": 0.14,
       "strokeAlpha": 0.75,
-      "cornerRadius": 10
+      "cornerRadius": 10,
+      "layout": {
+        "padX": 14,
+        "padY": 12
+      }
     }
   },
   "env": {
     "panel": {
       "fillAlpha": 0,
       "strokeAlpha": 0,
-      "cornerRadius": 0
+      "cornerRadius": 0,
+      "layout": {
+        "padX": 12,
+        "padY": 10
+      }
     },
     "envelope": {
       "background": "#0A120A9B",

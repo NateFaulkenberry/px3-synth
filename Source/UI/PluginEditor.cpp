@@ -1375,13 +1375,6 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
                    1.0f);
     }
 
-    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 26));
-    g.drawLine(static_cast<float>(controlsArea.getX()),
-               static_cast<float>(controlsArea.getY()),
-               static_cast<float>(controlsArea.getRight()),
-               static_cast<float>(controlsArea.getY()),
-               1.0f);
-
 }
 
 void PX3SynthAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
@@ -2822,7 +2815,9 @@ void PX3SynthAudioProcessorEditor::layoutEnvelopePanel()
 
 void PX3SynthAudioProcessorEditor::layoutFxPanel()
 {
-    auto panelArea = fxPanel->getLocalBounds().reduced(12, 10);
+    const auto padX = uiConfig != nullptr ? uiConfig->getInt("fx.panel.layout.padX", 12) : 12;
+    const auto padY = uiConfig != nullptr ? uiConfig->getInt("fx.panel.layout.padY", 10) : 10;
+    auto panelArea = fxPanel->getLocalBounds().reduced(padX, padY);
     updateFxSectionTargets(panelArea, 12);
     layoutFxSectionsFromCurrentAreas();
 }

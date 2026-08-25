@@ -60,7 +60,9 @@ void MixPanel::paint(juce::Graphics& g)
 
 void MixPanel::resized()
 {
-    auto area = getLocalBounds().reduced(14, 12);
+    const auto padX = uiConfig != nullptr ? uiConfig->getInt("mix.panel.layout.padX", 14) : 14;
+    const auto padY = uiConfig != nullptr ? uiConfig->getInt("mix.panel.layout.padY", 12) : 12;
+    auto area = getLocalBounds().reduced(padX, padY);
 
     auto columnsArea = area;
     const auto labelHeight = 20;

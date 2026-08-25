@@ -30,7 +30,9 @@ void EnvPanel::paint(juce::Graphics& g)
     g.setColour(accent.withAlpha(strokeAlpha));
     g.drawRoundedRectangle(area, panelRadius, 1.0f);
 
-    auto cardArea = getLocalBounds().reduced(12, 10);
+    const auto panelPadX = uiConfig != nullptr ? uiConfig->getInt("env.panel.layout.padX", 12) : 12;
+    const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("env.panel.layout.padY", 10) : 10;
+    auto cardArea = getLocalBounds().reduced(panelPadX, panelPadY);
     constexpr int targetCardWidth = 300;
     const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
     cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
@@ -61,7 +63,9 @@ void EnvPanel::resized()
         return;
     }
 
-    auto panelArea = getLocalBounds().reduced(12, 10);
+    const auto panelPadX = uiConfig != nullptr ? uiConfig->getInt("env.panel.layout.padX", 12) : 12;
+    const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("env.panel.layout.padY", 10) : 10;
+    auto panelArea = getLocalBounds().reduced(panelPadX, panelPadY);
 
     constexpr int targetCardWidth = 300;
     const auto cardWidth = juce::jmin(targetCardWidth, panelArea.getWidth());

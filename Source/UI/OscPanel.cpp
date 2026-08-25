@@ -171,7 +171,9 @@ void OscPanel::paint(juce::Graphics& g)
 
 void OscPanel::resized()
 {
-    auto panelArea = getLocalBounds().reduced(12, 10);
+    const auto padX = uiConfig != nullptr ? uiConfig->getInt("osc.panel.layout.padX", 12) : 12;
+    const auto padY = uiConfig != nullptr ? uiConfig->getInt("osc.panel.layout.padY", 10) : 10;
+    auto panelArea = getLocalBounds().reduced(padX, padY);
 
     constexpr int columnCount = 5;
     constexpr int gap = 8;
