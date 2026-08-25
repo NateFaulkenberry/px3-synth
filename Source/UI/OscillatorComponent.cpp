@@ -152,7 +152,19 @@ void OscillatorComponent::paint(juce::Graphics& g)
     g.setColour(effectiveAccent.withAlpha(0.10f));
     g.fillRoundedRectangle(cardBounds, 8.0f);
     g.setColour(topFillColour.withAlpha(topFillAlpha));
-    g.fillRoundedRectangle(cardBounds.withTrimmedBottom(cardBounds.getHeight() * 0.5f), 8.0f);
+    juce::Path topFill;
+    const auto topHalf = cardBounds.withTrimmedBottom(cardBounds.getHeight() * 0.5f);
+    topFill.addRoundedRectangle(topHalf.getX(),
+                                topHalf.getY(),
+                                topHalf.getWidth(),
+                                topHalf.getHeight(),
+                                8.0f,
+                                8.0f,
+                                true,
+                                true,
+                                false,
+                                false);
+    g.fillPath(topFill);
     g.setColour(juce::Colour::fromRGBA(220, 232, 252, currentEnabled ? 88 : 66));
     g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
 

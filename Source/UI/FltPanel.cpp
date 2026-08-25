@@ -112,7 +112,19 @@ void FltPanel::paint(juce::Graphics& g)
         g.setColour(accent.withAlpha(cardFillAlpha));
         g.fillRoundedRectangle(cardBounds, cardRadius);
         g.setColour(cardTopFillColour.withAlpha(cardTopFillAlpha));
-        g.fillRoundedRectangle(cardBounds.withTrimmedBottom(cardBounds.getHeight() * 0.5f), cardRadius);
+        juce::Path topFill;
+        const auto topHalf = cardBounds.withTrimmedBottom(cardBounds.getHeight() * 0.5f);
+        topFill.addRoundedRectangle(topHalf.getX(),
+                        topHalf.getY(),
+                        topHalf.getWidth(),
+                        topHalf.getHeight(),
+                        cardRadius,
+                        cardRadius,
+                        true,
+                        true,
+                        false,
+                        false);
+        g.fillPath(topFill);
         g.setColour(cardStrokeColour);
         g.drawRoundedRectangle(cardBounds, cardRadius, cardStrokeThickness);
         drawCardTitle("Filter " + juce::String(filterIndex + 1), cardBoundsInt, accent);

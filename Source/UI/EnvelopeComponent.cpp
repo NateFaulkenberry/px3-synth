@@ -70,7 +70,19 @@ void EnvelopeComponent::paint(juce::Graphics& g)
     g.setColour(accent.withAlpha(componentFillAlpha));
     g.fillRoundedRectangle(componentBounds, componentCornerRadius);
     g.setColour(topFillColour.withAlpha(topFillAlpha));
-    g.fillRoundedRectangle(componentBounds.withTrimmedBottom(componentBounds.getHeight() * 0.5f), componentCornerRadius);
+    juce::Path topFill;
+    const auto topHalf = componentBounds.withTrimmedBottom(componentBounds.getHeight() * 0.5f);
+    topFill.addRoundedRectangle(topHalf.getX(),
+                                topHalf.getY(),
+                                topHalf.getWidth(),
+                                topHalf.getHeight(),
+                                componentCornerRadius,
+                                componentCornerRadius,
+                                true,
+                                true,
+                                false,
+                                false);
+    g.fillPath(topFill);
     g.setColour(outline);
     g.drawRoundedRectangle(componentBounds, componentCornerRadius, 1.0f);
 

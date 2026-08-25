@@ -78,7 +78,19 @@ void ReverbUiComponent::paint(juce::Graphics& g)
     g.setColour(fillColour.withAlpha(0.08f));
     g.fillRoundedRectangle(bounds, radius);
     g.setColour(topFillColour.withAlpha(topFillAlpha));
-    g.fillRoundedRectangle(bounds.withTrimmedBottom(bounds.getHeight() * 0.5f), radius);
+    juce::Path topFill;
+    const auto topHalf = bounds.withTrimmedBottom(bounds.getHeight() * 0.5f);
+    topFill.addRoundedRectangle(topHalf.getX(),
+                                topHalf.getY(),
+                                topHalf.getWidth(),
+                                topHalf.getHeight(),
+                                radius,
+                                radius,
+                                true,
+                                true,
+                                false,
+                                false);
+    g.fillPath(topFill);
 
     const auto textColour = uiConfig != nullptr
                                 ? uiConfig->getColour("fx.reverb.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
