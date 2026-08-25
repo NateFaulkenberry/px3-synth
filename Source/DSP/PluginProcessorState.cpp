@@ -121,6 +121,10 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
     lfoState.setProperty(kLfoAssignmentId, getLfoAssignmentParameterId(), nullptr);
     state.addChild(lfoState, -1, nullptr);
 
+    juce::ValueTree envelopeState(kEnvelopeStateId);
+    envelopeState.setProperty(kEnvelopeAssignmentId, getEnvelopeAssignmentParameterId(), nullptr);
+    state.addChild(envelopeState, -1, nullptr);
+
     juce::ValueTree subOscState(kSubOscStateId);
     subOscState.setProperty(kSubOscEnabledId, subOscEnabledParam->get(), nullptr);
     subOscState.setProperty(kSubOscLevelId, subOscLevelParam->get(), nullptr);
@@ -264,6 +268,14 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         if (lfoState.hasProperty(kLfoAssignmentId))
         {
             setLfoAssignmentByParameterId(lfoState[kLfoAssignmentId].toString(), false);
+        }
+    }
+
+    if (const auto envelopeState = state.getChildWithName(kEnvelopeStateId); envelopeState.isValid())
+    {
+        if (envelopeState.hasProperty(kEnvelopeAssignmentId))
+        {
+            setEnvelopeAssignmentByParameterId(envelopeState[kEnvelopeAssignmentId].toString(), false);
         }
     }
 

@@ -11,6 +11,8 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
                                                                          juce::AudioParameterBool& enabledIn,
                                                                          juce::ToggleButton& enabledButtonIn,
                                                                          juce::Label& enabledLabelIn,
+                                                                         juce::Label& assignLabelIn,
+                                                                         juce::ComboBox& assignBoxIn,
                                                                          juce::Colour accentIn)
         : attack(attackIn),
             decay(decayIn),
@@ -19,10 +21,14 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
             enabled(enabledIn),
             enabledButton(enabledButtonIn),
             enabledLabel(enabledLabelIn),
+            assignLabel(assignLabelIn),
+            assignBox(assignBoxIn),
             accent(accentIn)
 {
         addAndMakeVisible(enabledButton);
         addAndMakeVisible(enabledLabel);
+        addAndMakeVisible(assignLabel);
+        addAndMakeVisible(assignBox);
         baseEnabledLabelTextColour = enabledLabel.findColour(juce::Label::textColourId);
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
     refreshFromParameters();
@@ -71,6 +77,8 @@ void EnvelopeComponent::refreshFromParameters()
         lastRelease = r;
         currentEnabled = nextEnabled;
         enabledButton.setToggleState(currentEnabled, juce::dontSendNotification);
+        assignLabel.setEnabled(currentEnabled);
+        assignBox.setEnabled(currentEnabled);
         enabledLabel.setColour(juce::Label::textColourId,
                                currentEnabled ? baseEnabledLabelTextColour : juce::Colour::fromRGB(176, 176, 176));
         if (!currentEnabled)
@@ -348,7 +356,7 @@ EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
     Geometry geom;
     const auto componentBounds = getLocalBounds().toFloat().reduced(2.0f);
     auto area = componentBounds.reduced(2.0f);
-    area.removeFromTop(30.0f);
+    area.removeFromTop(58.0f);
 
     geom.left = area.getX() + 26.0f;
     geom.right = area.getRight() - 10.0f;
@@ -626,4 +634,9 @@ void EnvelopeComponent::resized()
                                 : 52;
     enabledLabel.setBounds(enabledRow.removeFromLeft(labelWidth));
     enabledButton.setBounds(enabledRow.removeFromLeft(40).reduced(2, 2));
+
+    area.removeFromTop(6);
+    auto assignRow = area.removeFromTop(24);
+    assignLabel.setBounds(assignRow.removeFromLeft(52));
+    assignBox.setBounds(assignRow.reduced(2, 1));
 }

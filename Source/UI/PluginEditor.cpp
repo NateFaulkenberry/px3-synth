@@ -521,6 +521,12 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     lfoAssignLabel.setFont(juce::FontOptions(11.5f));
     lfoAssignLabel.setInterceptsMouseClicks(false, false);
 
+    envAssignLabel.setText("Assign", juce::dontSendNotification);
+    envAssignLabel.setJustificationType(juce::Justification::centred);
+    envAssignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    envAssignLabel.setFont(juce::FontOptions(11.5f));
+    envAssignLabel.setInterceptsMouseClicks(false, false);
+
     envBypassLabel.setText("ON", juce::dontSendNotification);
     envBypassLabel.setJustificationType(juce::Justification::centredLeft);
     envBypassLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
@@ -545,6 +551,9 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     lfoAssignBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     lfoAssignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     lfoAssignBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    envAssignBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    envAssignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    envAssignBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
 
     const auto& lfoAssignments = audioProcessor.getLfoAssignmentDisplayNames();
     for (int i = 0; i < lfoAssignments.size(); ++i)
@@ -556,6 +565,18 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     {
         const auto selected = juce::jmax(0, lfoAssignBox.getSelectedId() - 1);
         audioProcessor.setLfoAssignmentIndex(selected);
+    };
+
+    const auto& envAssignments = audioProcessor.getEnvelopeAssignmentDisplayNames();
+    for (int i = 0; i < envAssignments.size(); ++i)
+    {
+        envAssignBox.addItem(envAssignments[i], i + 1);
+    }
+
+    envAssignBox.onChange = [this]()
+    {
+        const auto selected = juce::jmax(0, envAssignBox.getSelectedId() - 1);
+        audioProcessor.setEnvelopeAssignmentIndex(selected);
     };
 
     const auto configureMixFader = [](juce::Slider& slider)
@@ -882,6 +903,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           audioProcessor.getAmpEnvEnabledParam(),
                                           envBypassButton,
                                           envBypassLabel,
+                                          envAssignLabel,
+                                          envAssignBox,
                                           lfoBypassButton,
                                           lfoBypassLabel,
                                           lfoAssignLabel,
@@ -1159,6 +1182,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     refreshOscillatorModeUI();
     refreshGranularModeUI();
     refreshLfoAssignmentUI();
+    refreshEnvelopeAssignmentUI();
     refreshLfoUI();
     refreshSubOscUI();
     refreshEnvelopeGraphUI();
@@ -1737,6 +1761,7 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
         const auto comboStyle = uiConfig->getObject("styles.combos.default");
         uiConfig->applyComboStyle(comboStyle, lfoWaveformBox);
         uiConfig->applyComboStyle(comboStyle, lfoAssignBox);
+        uiConfig->applyComboStyle(comboStyle, envAssignBox);
         uiConfig->applyComboStyle(comboStyle, subOscOctaveBox);
         uiConfig->applyComboStyle(comboStyle, subOscWaveformBox);
         uiConfig->applyComboStyle(comboStyle, vibeTypeBox);
@@ -2765,6 +2790,18 @@ void PX3SynthAudioProcessorEditor::refreshLfoAssignmentUI()
     lfoAssignBox.setSelectedId(assignmentIndex + 1, juce::dontSendNotification);
 }
 
+void PX3SynthAudioProcessorEditor::refreshEnvelopeAssignmentUI()
+{
+    const auto assignmentIndex = audioProcessor.getEnvelopeAssignmentIndex();
+    if (assignmentIndex == lastEnvelopeAssignmentIndex)
+    {
+        return;
+    }
+
+    lastEnvelopeAssignmentIndex = assignmentIndex;
+    envAssignBox.setSelectedId(assignmentIndex + 1, juce::dontSendNotification);
+}
+
 void PX3SynthAudioProcessorEditor::refreshLfoFrequencyLabel()
 {
     const auto hz = juce::jlimit(0.01f, 20.0f, audioProcessor.getLfoFrequencyParam().get());
@@ -2937,6 +2974,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     }
     else if (isPanelVisible(1))
     {
+        refreshEnvelopeAssignmentUI();
         refreshEnvelopeGraphUI();
     }
     else if (isPanelVisible(2))

@@ -108,6 +108,7 @@ private:
     void refreshGranularModeUI();
     void refreshFxBypassUI();
     void refreshLfoAssignmentUI();
+    void refreshEnvelopeAssignmentUI();
     void refreshLfoFrequencyLabel();
     void refreshLfoUI();
     void refreshSubOscUI();
@@ -305,6 +306,7 @@ private:
     juce::ComboBox subOscOctaveBox;
     juce::ComboBox subOscWaveformBox;
     juce::ComboBox lfoAssignBox;
+    juce::ComboBox envAssignBox;
     juce::ToggleButton lfoBypassButton;
     juce::ToggleButton envBypassButton;
     juce::ToggleButton filter1EnabledButton;
@@ -350,6 +352,7 @@ private:
     KnobLabel subOscEnabledLabel;
     KnobLabel lfoBypassLabel;
     KnobLabel envBypassLabel;
+    KnobLabel envAssignLabel;
     juce::Label lfoFrequencyValueLabel;
     KnobLabel lfoAssignLabel;
     KnobLabel midiStatusLabel;
@@ -415,6 +418,7 @@ private:
     std::array<KnobBinding, 19> knobBindings {};
     int lastGranularModeIndex { -1 };
     int lastLfoAssignmentIndex { -1 };
+    int lastEnvelopeAssignmentIndex { -1 };
 
     juce::Label debugPerformanceOverlayLabel;
     juce::Rectangle<int> debugPerformanceOverlayArea;

@@ -136,6 +136,11 @@ public:
     juce::String getLfoAssignmentParameterId() const;
     bool setLfoAssignmentIndex(int index, bool notifyHost = true);
     bool setLfoAssignmentByParameterId(const juce::String& parameterId, bool notifyHost = true);
+    const juce::StringArray& getEnvelopeAssignmentDisplayNames() const;
+    int getEnvelopeAssignmentIndex() const;
+    juce::String getEnvelopeAssignmentParameterId() const;
+    bool setEnvelopeAssignmentIndex(int index, bool notifyHost = true);
+    bool setEnvelopeAssignmentByParameterId(const juce::String& parameterId, bool notifyHost = true);
     std::array<int, 3> getFxProcessingOrder() const;
     void setFxProcessingOrder(const std::array<int, 3>& order);
     void setFxProcessingOrderWithReason(const std::array<int, 3>& order,
@@ -220,6 +225,13 @@ private:
     void updateTransportState();
     void buildLfoAssignableTargets();
     float lfoDepthForParameterId(const juce::String& parameterId) const;
+    int getAssignmentIndex(std::atomic<int> const& sourceIndex) const;
+    juce::String getAssignmentParameterId(std::atomic<int> const& sourceIndex) const;
+    bool setAssignmentIndex(std::atomic<int>& sourceIndex, int index, bool notifyHost, const juce::String& sourceName);
+    bool setAssignmentByParameterId(std::atomic<int>& sourceIndex,
+                                    const juce::String& parameterId,
+                                    bool notifyHost,
+                                    const juce::String& sourceName);
     float applyLfoToNormalizedValue(juce::RangedAudioParameter* parameter,
                                     float baseNormalized,
                                     float lfoSignal,
@@ -293,6 +305,7 @@ private:
     std::vector<LfoAssignableTarget> lfoAssignableTargets;
     juce::StringArray lfoAssignmentDisplayNames;
     std::atomic<int> lfoAssignmentIndex { 0 };
+    std::atomic<int> envelopeAssignmentIndex { 0 };
 
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteCounts {};
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteVelocities {};

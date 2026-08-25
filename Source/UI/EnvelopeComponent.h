@@ -17,6 +17,8 @@ public:
                       juce::AudioParameterBool& enabledIn,
                       juce::ToggleButton& enabledButtonIn,
                       juce::Label& enabledLabelIn,
+                      juce::Label& assignLabelIn,
+                      juce::ComboBox& assignBoxIn,
                       juce::Colour accentIn);
 
     void setAccentColour(juce::Colour accentIn);
@@ -82,6 +84,8 @@ private:
     juce::AudioParameterBool& enabled;
     juce::ToggleButton& enabledButton;
     juce::Label& enabledLabel;
+    juce::Label& assignLabel;
+    juce::ComboBox& assignBox;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
     DragHandle hoverHandle { DragHandle::none };

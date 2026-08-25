@@ -19,6 +19,8 @@ public:
              juce::AudioParameterBool& envEnabled,
              juce::ToggleButton& envEnabledButton,
              juce::Label& envEnabledLabel,
+             juce::Label& envAssignLabel,
+             juce::ComboBox& envAssignBox,
              juce::ToggleButton& lfoEnabledButton,
              juce::Label& lfoEnabledLabel,
              juce::Label& lfoAssignLabel,

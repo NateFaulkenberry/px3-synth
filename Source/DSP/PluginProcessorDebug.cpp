@@ -207,6 +207,7 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     auto serializedLfoWaveform = lfoWaveformParam->getIndex();
     auto serializedLfoEnabled = lfoEnabledParam != nullptr ? lfoEnabledParam->get() : true;
     auto serializedLfoAssignment = juce::String("none");
+    auto serializedEnvelopeAssignment = juce::String("none");
     if (const auto lfoState = state.getChildWithName(kLfoStateId); lfoState.isValid())
     {
         if (lfoState.hasProperty(kLfoEnabledId))
@@ -231,6 +232,15 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     const auto waveformMatches = serializedLfoWaveform == lfoWaveformParam->getIndex();
     const auto enabledMatches = lfoEnabledParam == nullptr || serializedLfoEnabled == lfoEnabledParam->get();
     const auto assignmentMatches = serializedLfoAssignment.equalsIgnoreCase(getLfoAssignmentParameterId());
+
+    if (const auto envelopeState = state.getChildWithName(kEnvelopeStateId); envelopeState.isValid())
+    {
+        if (envelopeState.hasProperty(kEnvelopeAssignmentId))
+        {
+            serializedEnvelopeAssignment = envelopeState[kEnvelopeAssignmentId].toString();
+        }
+    }
+    const auto envelopeAssignmentMatches = serializedEnvelopeAssignment.equalsIgnoreCase(getEnvelopeAssignmentParameterId());
 
     auto serializedSubOscEnabled = subOscEnabledParam->get();
     auto serializedSubOscLevel = subOscLevelParam->get();
@@ -283,6 +293,7 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
                    && enabledMatches
                    && waveformMatches
                    && assignmentMatches
+                   && envelopeAssignmentMatches
                    && subOscEnabledMatches
                    && subOscLevelMatches
                    && subOscOctaveMatches
@@ -303,6 +314,8 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
              "lfoWaveformSerialized=" + juce::String(serializedLfoWaveform) + "\n"
              "lfoAssignmentCurrent=" + getLfoAssignmentParameterId() + "\n"
              "lfoAssignmentSerialized=" + serializedLfoAssignment + "\n"
+             "envAssignmentCurrent=" + getEnvelopeAssignmentParameterId() + "\n"
+             "envAssignmentSerialized=" + serializedEnvelopeAssignment + "\n"
              "subOscEnabledCurrent=" + juce::String(subOscEnabledParam->get() ? 1 : 0) + "\n"
              "subOscEnabledSerialized=" + juce::String(serializedSubOscEnabled ? 1 : 0) + "\n"
              "subOscLevelCurrent=" + juce::String(subOscLevelParam->get(), 4) + "\n"

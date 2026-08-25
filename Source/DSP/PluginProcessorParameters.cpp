@@ -184,16 +184,16 @@ const juce::StringArray& PX3SynthAudioProcessor::getLfoAssignmentDisplayNames() 
     return lfoAssignmentDisplayNames;
 }
 
-int PX3SynthAudioProcessor::getLfoAssignmentIndex() const
+int PX3SynthAudioProcessor::getAssignmentIndex(std::atomic<int> const& sourceIndex) const
 {
     return juce::jlimit(0,
                         juce::jmax(0, static_cast<int>(lfoAssignableTargets.size()) - 1),
-                        lfoAssignmentIndex.load(std::memory_order_relaxed));
+                        sourceIndex.load(std::memory_order_relaxed));
 }
 
-juce::String PX3SynthAudioProcessor::getLfoAssignmentParameterId() const
+juce::String PX3SynthAudioProcessor::getAssignmentParameterId(std::atomic<int> const& sourceIndex) const
 {
-    const auto index = getLfoAssignmentIndex();
+    const auto index = getAssignmentIndex(sourceIndex);
     if (index <= 0 || index >= static_cast<int>(lfoAssignableTargets.size()))
     {
         return "none";
@@ -202,18 +202,21 @@ juce::String PX3SynthAudioProcessor::getLfoAssignmentParameterId() const
     return lfoAssignableTargets[static_cast<std::size_t>(index)].parameterId;
 }
 
-bool PX3SynthAudioProcessor::setLfoAssignmentIndex(int index, bool notifyHost)
+bool PX3SynthAudioProcessor::setAssignmentIndex(std::atomic<int>& sourceIndex,
+                                                int index,
+                                                bool notifyHost,
+                                                const juce::String& sourceName)
 {
     if (lfoAssignableTargets.empty())
     {
-        lfoAssignmentIndex.store(0, std::memory_order_relaxed);
+        sourceIndex.store(0, std::memory_order_relaxed);
         return false;
     }
 
     const auto clamped = juce::jlimit(0,
                                       static_cast<int>(lfoAssignableTargets.size()) - 1,
                                       index);
-    lfoAssignmentIndex.store(clamped, std::memory_order_relaxed);
+    sourceIndex.store(clamped, std::memory_order_relaxed);
 
     if (notifyHost)
     {
@@ -221,29 +224,77 @@ bool PX3SynthAudioProcessor::setLfoAssignmentIndex(int index, bool notifyHost)
         updateHostDisplay(juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged(true));
     }
 
-    debugLogEvent("LFO",
+    debugLogEvent(sourceName,
                   "ASSIGNMENT_CHANGED",
                   "index=" + juce::String(clamped)
-                      + " id=" + getLfoAssignmentParameterId());
+                      + " id=" + getAssignmentParameterId(sourceIndex));
     return true;
 }
 
-bool PX3SynthAudioProcessor::setLfoAssignmentByParameterId(const juce::String& parameterId, bool notifyHost)
+bool PX3SynthAudioProcessor::setAssignmentByParameterId(std::atomic<int>& sourceIndex,
+                                                        const juce::String& parameterId,
+                                                        bool notifyHost,
+                                                        const juce::String& sourceName)
 {
     if (parameterId.isEmpty() || parameterId.equalsIgnoreCase("none"))
     {
-        return setLfoAssignmentIndex(0, notifyHost);
+        return setAssignmentIndex(sourceIndex, 0, notifyHost, sourceName);
     }
 
     for (int i = 0; i < static_cast<int>(lfoAssignableTargets.size()); ++i)
     {
         if (lfoAssignableTargets[static_cast<std::size_t>(i)].parameterId.equalsIgnoreCase(parameterId))
         {
-            return setLfoAssignmentIndex(i, notifyHost);
+            return setAssignmentIndex(sourceIndex, i, notifyHost, sourceName);
         }
     }
 
     return false;
+}
+
+int PX3SynthAudioProcessor::getLfoAssignmentIndex() const
+{
+    return getAssignmentIndex(lfoAssignmentIndex);
+}
+
+juce::String PX3SynthAudioProcessor::getLfoAssignmentParameterId() const
+{
+    return getAssignmentParameterId(lfoAssignmentIndex);
+}
+
+bool PX3SynthAudioProcessor::setLfoAssignmentIndex(int index, bool notifyHost)
+{
+    return setAssignmentIndex(lfoAssignmentIndex, index, notifyHost, "LFO");
+}
+
+bool PX3SynthAudioProcessor::setLfoAssignmentByParameterId(const juce::String& parameterId, bool notifyHost)
+{
+    return setAssignmentByParameterId(lfoAssignmentIndex, parameterId, notifyHost, "LFO");
+}
+
+const juce::StringArray& PX3SynthAudioProcessor::getEnvelopeAssignmentDisplayNames() const
+{
+    return lfoAssignmentDisplayNames;
+}
+
+int PX3SynthAudioProcessor::getEnvelopeAssignmentIndex() const
+{
+    return getAssignmentIndex(envelopeAssignmentIndex);
+}
+
+juce::String PX3SynthAudioProcessor::getEnvelopeAssignmentParameterId() const
+{
+    return getAssignmentParameterId(envelopeAssignmentIndex);
+}
+
+bool PX3SynthAudioProcessor::setEnvelopeAssignmentIndex(int index, bool notifyHost)
+{
+    return setAssignmentIndex(envelopeAssignmentIndex, index, notifyHost, "ENV");
+}
+
+bool PX3SynthAudioProcessor::setEnvelopeAssignmentByParameterId(const juce::String& parameterId, bool notifyHost)
+{
+    return setAssignmentByParameterId(envelopeAssignmentIndex, parameterId, notifyHost, "ENV");
 }
 
 void PX3SynthAudioProcessor::buildLfoAssignableTargets()
