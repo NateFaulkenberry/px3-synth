@@ -59,6 +59,7 @@ private:
     static float visualNormToTime(float norm, float minValue, float maxValue);
     Geometry computeGeometry() const;
     static float distSq(juce::Point<float> a, juce::Point<float> b);
+    static float distToSegmentSq(juce::Point<float> p, juce::Point<float> a, juce::Point<float> b);
     DragHandle pickHandle(juce::Point<float> p, const Geometry& geom) const;
     juce::Point<float> handlePositionFor(DragHandle handle, const Geometry& geom) const;
     void drawHandleMarker(juce::Graphics& g, juce::Point<float> center, DragHandle handle) const;

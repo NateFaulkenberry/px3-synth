@@ -56,10 +56,10 @@ void EnvelopeComponent::paint(juce::Graphics& g)
     }
 
     const auto background = uiConfig != nullptr
-                                ? uiConfig->getColour("env.envelope.background", juce::Colour::fromRGBA(10, 18, 10, 155))
+                                          ? uiConfig->getColour("env.panel.background", juce::Colour::fromRGBA(10, 18, 10, 155))
                                 : juce::Colour::fromRGBA(10, 18, 10, 155);
     const auto outline = uiConfig != nullptr
-                             ? uiConfig->getColour("env.envelope.outline", accent.withAlpha(0.28f))
+                                      ? uiConfig->getColour("env.panel.outline", accent.withAlpha(0.28f))
                              : accent.withAlpha(0.28f);
 
     const auto graphArea = componentBounds.reduced(2.0f);
@@ -308,6 +308,23 @@ float EnvelopeComponent::distSq(juce::Point<float> a, juce::Point<float> b)
     return dx * dx + dy * dy;
 }
 
+float EnvelopeComponent::distToSegmentSq(juce::Point<float> p, juce::Point<float> a, juce::Point<float> b)
+{
+    const auto ab = b - a;
+    const auto ap = p - a;
+    const auto abLenSq = ab.getX() * ab.getX() + ab.getY() * ab.getY();
+
+    if (abLenSq <= 0.0001f)
+    {
+        return distSq(p, a);
+    }
+
+    const auto tRaw = (ap.getX() * ab.getX() + ap.getY() * ab.getY()) / abLenSq;
+    const auto t = juce::jlimit(0.0f, 1.0f, tRaw);
+    const auto closest = a + ab * t;
+    return distSq(p, closest);
+}
+
 EnvelopeComponent::DragHandle EnvelopeComponent::pickHandle(juce::Point<float> p,
                                                                           const Geometry& geom) const
 {
@@ -334,6 +351,18 @@ EnvelopeComponent::DragHandle EnvelopeComponent::pickHandle(juce::Point<float> p
     if (r <= bestSq)
     {
         best = DragHandle::release;
+    }
+
+    // Allow dragging anywhere on the sustain line by mapping line hits to D/S.
+    if (best == DragHandle::none)
+    {
+        constexpr float lineHitRadius = 8.0f;
+        const auto lineHitSq = lineHitRadius * lineHitRadius;
+        const auto lineDistSq = distToSegmentSq(p, geom.decaySustainPoint, geom.releasePoint);
+        if (lineDistSq <= lineHitSq)
+        {
+            return DragHandle::decaySustain;
+        }
     }
 
     return best;
