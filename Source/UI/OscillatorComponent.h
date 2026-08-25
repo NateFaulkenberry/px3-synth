@@ -9,7 +9,9 @@
 class OscillatorComponent final : public juce::Component
 {
 public:
-    OscillatorComponent(juce::Slider& macroAIn,
+    OscillatorComponent(juce::ToggleButton& enabledButtonIn,
+                        juce::Label& enabledLabelIn,
+                        juce::Slider& macroAIn,
                         juce::Slider& macroBIn,
                         juce::Slider& macroCIn,
                         juce::Label& macroALabelIn,
@@ -22,7 +24,7 @@ public:
                         juce::Colour accentIn);
 
     void setAccentColour(juce::Colour accentIn);
-    void refreshFromSelections(int modeIndex, int vowelIndex);
+    void refreshFromParameters(bool enabled, int modeIndex, int vowelIndex);
     void advanceAnimation(float deltaPhase);
 
     void resized() override;
@@ -31,7 +33,10 @@ public:
 private:
     void applyModeUi();
     void layoutMacroControls(const juce::Rectangle<int>& area);
+    void applyEnabledUi();
 
+    juce::ToggleButton& enabledButton;
+    juce::Label& enabledLabel;
     juce::Slider& macroA;
     juce::Slider& macroB;
     juce::Slider& macroC;
@@ -43,6 +48,7 @@ private:
     juce::ComboBox& vowelBox;
     juce::Label& vowelLabel;
     juce::Colour accent;
+    bool currentEnabled { true };
 
     float phase { 0.0f };
     int lastModeIndex { -1 };

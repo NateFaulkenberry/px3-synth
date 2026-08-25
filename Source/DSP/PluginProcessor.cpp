@@ -78,7 +78,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         } };
     }
     subOscEnabledParam = new juce::AudioParameterBool("subOscEnabled", "Sub Osc Enabled", false);
-    subOscLevelParam = new juce::AudioParameterFloat("subOscLevel", "Sub Osc Level", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    subOscLevelParam = new juce::AudioParameterFloat("subOscLevel", "Sub Osc Level", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     subOscOctaveParam = new juce::AudioParameterChoice("subOscOctave",
                                                         "Sub Osc Octave",
                                                         px3::subOscOctaveChoices(),

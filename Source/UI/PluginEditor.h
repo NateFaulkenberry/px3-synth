@@ -293,17 +293,23 @@ private:
     juce::ComboBox subOscOctaveBox;
     juce::ComboBox subOscWaveformBox;
     juce::ComboBox lfoAssignBox;
+    juce::ToggleButton osc1EnabledButton;
+    juce::ToggleButton osc2EnabledButton;
+    juce::ToggleButton osc3EnabledButton;
     juce::ToggleButton subOscEnabledButton;
 
     KnobLabel oscSineLabel;
     KnobLabel oscSawLabel;
     KnobLabel oscSquareLabel;
+    KnobLabel osc1EnabledLabel;
     KnobLabel osc2SineLabel;
     KnobLabel osc2SawLabel;
     KnobLabel osc2SquareLabel;
+    KnobLabel osc2EnabledLabel;
     KnobLabel osc3SineLabel;
     KnobLabel osc3SawLabel;
     KnobLabel osc3SquareLabel;
+    KnobLabel osc3EnabledLabel;
     KnobLabel cutoffLabel;
     KnobLabel resonanceLabel;
     KnobLabel filterTypeLabel;

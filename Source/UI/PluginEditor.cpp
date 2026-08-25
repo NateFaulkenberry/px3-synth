@@ -552,6 +552,24 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     subOscEnabledButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
     subOscEnabledButton.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
 
+    const auto configureOscEnabledControl = [](juce::Label& label, juce::ToggleButton& button)
+    {
+        label.setText("ON", juce::dontSendNotification);
+        label.setJustificationType(juce::Justification::centredLeft);
+        label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+        label.setFont(juce::FontOptions(11.5f));
+        label.setInterceptsMouseClicks(false, false);
+
+        button.setButtonText("");
+        button.setClickingTogglesState(true);
+        button.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
+        button.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
+    };
+
+    configureOscEnabledControl(osc1EnabledLabel, osc1EnabledButton);
+    configureOscEnabledControl(osc2EnabledLabel, osc2EnabledButton);
+    configureOscEnabledControl(osc3EnabledLabel, osc3EnabledButton);
+
     // OSC macro labels can become long in some modes; use a slightly smaller font.
     oscSineLabel.setFont(juce::FontOptions(11.0f));
     oscSawLabel.setFont(juce::FontOptions(11.0f));
@@ -746,6 +764,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           oscSineKnob,
                                           oscSawKnob,
                                           oscSquareKnob,
+                                          osc1EnabledButton,
+                                          osc1EnabledLabel,
                                           oscSineLabel,
                                           oscSawLabel,
                                           oscSquareLabel,
@@ -756,6 +776,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           osc2SineKnob,
                                           osc2SawKnob,
                                           osc2SquareKnob,
+                                          osc2EnabledButton,
+                                          osc2EnabledLabel,
                                           osc2SineLabel,
                                           osc2SawLabel,
                                           osc2SquareLabel,
@@ -766,6 +788,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           osc3SineKnob,
                                           osc3SawKnob,
                                           osc3SquareKnob,
+                                          osc3EnabledButton,
+                                          osc3EnabledLabel,
                                           osc3SineLabel,
                                           osc3SawLabel,
                                           osc3SquareLabel,
@@ -861,6 +885,9 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachButton(audioProcessor.getVibeEnabledParam(), robBypassButton);
     attachButton(audioProcessor.getDelayEnabledParam(), delayBypassButton);
     attachButton(audioProcessor.getReverbEnabledParam(), reverbBypassButton);
+    attachButton(audioProcessor.getOscillatorEnabledParam(0), osc1EnabledButton);
+    attachButton(audioProcessor.getOscillatorEnabledParam(1), osc2EnabledButton);
+    attachButton(audioProcessor.getOscillatorEnabledParam(2), osc3EnabledButton);
     attachButton(audioProcessor.getSubOscEnabledParam(), subOscEnabledButton);
 
     // MIDI status bar is temporarily disabled.
@@ -2346,6 +2373,8 @@ void PX3SynthAudioProcessorEditor::refreshOscillatorModeUI()
             modeBox->setSelectedItemIndex(paramModeIndex, juce::dontSendNotification);
         }
 
+        const auto enabled = audioProcessor.getOscillatorEnabledParam(oscIndex).get();
+
         const auto paramVowelIndex = audioProcessor.getOscillatorVowelParam(oscIndex).getIndex();
         if (vowelBox->getSelectedItemIndex() != paramVowelIndex)
         {
@@ -2354,7 +2383,7 @@ void PX3SynthAudioProcessorEditor::refreshOscillatorModeUI()
 
         if (oscPanel != nullptr)
         {
-            oscPanel->refreshOscillatorFromSelections(oscIndex, paramModeIndex, paramVowelIndex);
+            oscPanel->refreshOscillatorFromParameters(oscIndex, enabled, paramModeIndex, paramVowelIndex);
         }
     }
 }

@@ -3,18 +3,22 @@
 #include <cmath>
 #include <vector>
 
-OscillatorComponent::OscillatorComponent(juce::Slider& macroAIn,
-                                                       juce::Slider& macroBIn,
-                                                       juce::Slider& macroCIn,
-                                                       juce::Label& macroALabelIn,
-                                                       juce::Label& macroBLabelIn,
-                                                       juce::Label& macroCLabelIn,
-                                                       juce::ComboBox& modeBoxIn,
-                                                       juce::Label& modeLabelIn,
-                                                       juce::ComboBox& vowelBoxIn,
-                                                       juce::Label& vowelLabelIn,
-                                                       juce::Colour accentIn)
-    : macroA(macroAIn),
+OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
+                                                                                                             juce::Label& enabledLabelIn,
+                                                                                                             juce::Slider& macroAIn,
+                                                                                                             juce::Slider& macroBIn,
+                                                                                                             juce::Slider& macroCIn,
+                                                                                                             juce::Label& macroALabelIn,
+                                                                                                             juce::Label& macroBLabelIn,
+                                                                                                             juce::Label& macroCLabelIn,
+                                                                                                             juce::ComboBox& modeBoxIn,
+                                                                                                             juce::Label& modeLabelIn,
+                                                                                                             juce::ComboBox& vowelBoxIn,
+                                                                                                             juce::Label& vowelLabelIn,
+                                                                                                             juce::Colour accentIn)
+        : enabledButton(enabledButtonIn),
+            enabledLabel(enabledLabelIn),
+            macroA(macroAIn),
       macroB(macroBIn),
       macroC(macroCIn),
       macroALabel(macroALabelIn),
@@ -26,6 +30,8 @@ OscillatorComponent::OscillatorComponent(juce::Slider& macroAIn,
       vowelLabel(vowelLabelIn),
       accent(accentIn)
 {
+        addAndMakeVisible(enabledButton);
+        addAndMakeVisible(enabledLabel);
     addAndMakeVisible(macroA);
     addAndMakeVisible(macroB);
     addAndMakeVisible(macroC);
@@ -38,6 +44,7 @@ OscillatorComponent::OscillatorComponent(juce::Slider& macroAIn,
     addAndMakeVisible(vowelLabel);
 
     applyModeUi();
+    applyEnabledUi();
 }
 
 void OscillatorComponent::setAccentColour(juce::Colour accentIn)
@@ -46,8 +53,11 @@ void OscillatorComponent::setAccentColour(juce::Colour accentIn)
     repaint();
 }
 
-void OscillatorComponent::refreshFromSelections(int modeIndex, int vowelIndex)
+void OscillatorComponent::refreshFromParameters(bool enabled, int modeIndex, int vowelIndex)
 {
+    currentEnabled = enabled;
+    enabledButton.setToggleState(enabled, juce::dontSendNotification);
+
     if (modeBox.getSelectedItemIndex() != modeIndex)
     {
         modeBox.setSelectedItemIndex(modeIndex, juce::dontSendNotification);
@@ -62,6 +72,8 @@ void OscillatorComponent::refreshFromSelections(int modeIndex, int vowelIndex)
     {
         applyModeUi();
     }
+
+    applyEnabledUi();
 }
 
 void OscillatorComponent::advanceAnimation(float deltaPhase)
@@ -82,6 +94,12 @@ void OscillatorComponent::resized()
     const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
     cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
     auto area = cardArea.reduced(10, 10);
+
+    auto enabledRow = area.removeFromTop(24);
+    enabledLabel.setBounds(enabledRow.removeFromLeft(56));
+    enabledButton.setBounds(enabledRow.removeFromLeft(40).reduced(2, 2));
+
+    area.removeFromTop(6);
 
     auto modeRow = area.removeFromTop(24);
     modeLabel.setBounds(modeRow.removeFromLeft(56));
@@ -118,12 +136,16 @@ void OscillatorComponent::paint(juce::Graphics& g)
     const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
     card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
     const auto cardBounds = card.toFloat();
-    g.setColour(accent.withAlpha(0.10f));
+    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+
+    g.setColour(effectiveAccent.withAlpha(0.10f));
     g.fillRoundedRectangle(cardBounds, 8.0f);
-    g.setColour(juce::Colour::fromRGBA(220, 232, 252, 88));
+    g.setColour(juce::Colour::fromRGBA(220, 232, 252, currentEnabled ? 88 : 66));
     g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
 
     auto graphLayout = cardBounds.reduced(10.0f, 10.0f);
+    graphLayout.removeFromTop(24.0f);
+    graphLayout.removeFromTop(6.0f);
     graphLayout.removeFromTop(24.0f);
     graphLayout.removeFromTop(6.0f);
     if (vowelBox.isVisible())
@@ -150,7 +172,7 @@ void OscillatorComponent::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour::fromRGBA(12, 16, 26, 170));
     g.fillRoundedRectangle(graph, 7.0f);
-    g.setColour(juce::Colour::fromRGBA(145, 198, 255, 80));
+    g.setColour(effectiveAccent.withAlpha(0.32f));
     g.drawRoundedRectangle(graph, 7.0f, 1.0f);
 
     const auto left = graph.getX() + 6.0f;
@@ -264,7 +286,7 @@ void OscillatorComponent::paint(juce::Graphics& g)
     }
 
     const auto glowAlpha = juce::jlimit(0.20f, 0.86f, 0.20f + 0.22f * (macroAValue + macroBValue + macroCValue));
-    g.setColour(accent.withAlpha(juce::jlimit(0.2f, 1.0f, glowAlpha * 0.6f)));
+    g.setColour(effectiveAccent.withAlpha(juce::jlimit(0.2f, 1.0f, glowAlpha * 0.6f)));
     g.strokePath(wave,
                  juce::PathStrokeType(3.0f,
                                       juce::PathStrokeType::curved,
@@ -343,7 +365,28 @@ void OscillatorComponent::applyModeUi()
     vowelBox.setVisible(ui.showVowel);
     vowelLabel.setVisible(ui.showVowel);
 
+    applyEnabledUi();
     resized();
+    repaint();
+}
+
+void OscillatorComponent::applyEnabledUi()
+{
+    modeBox.setEnabled(currentEnabled);
+    modeLabel.setEnabled(currentEnabled);
+    vowelBox.setEnabled(currentEnabled && vowelBox.isVisible());
+    vowelLabel.setEnabled(currentEnabled && vowelLabel.isVisible());
+
+    const std::array<juce::Slider*, 3> sliders { &macroA, &macroB, &macroC };
+    const std::array<juce::Label*, 3> labels { &macroALabel, &macroBLabel, &macroCLabel };
+
+    for (int i = 0; i < 3; ++i)
+    {
+        const auto visible = sliders[static_cast<std::size_t>(i)]->isVisible();
+        sliders[static_cast<std::size_t>(i)]->setEnabled(currentEnabled && visible);
+        labels[static_cast<std::size_t>(i)]->setEnabled(currentEnabled && visible);
+    }
+
     repaint();
 }
 

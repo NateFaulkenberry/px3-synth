@@ -13,6 +13,8 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                    juce::Slider& osc1MacroA,
                    juce::Slider& osc1MacroB,
                    juce::Slider& osc1MacroC,
+                   juce::ToggleButton& osc1EnabledButton,
+                   juce::Label& osc1EnabledLabel,
                    juce::Label& osc1MacroALabel,
                    juce::Label& osc1MacroBLabel,
                    juce::Label& osc1MacroCLabel,
@@ -23,6 +25,8 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                    juce::Slider& osc2MacroA,
                    juce::Slider& osc2MacroB,
                    juce::Slider& osc2MacroC,
+                   juce::ToggleButton& osc2EnabledButton,
+                   juce::Label& osc2EnabledLabel,
                    juce::Label& osc2MacroALabel,
                    juce::Label& osc2MacroBLabel,
                    juce::Label& osc2MacroCLabel,
@@ -33,6 +37,8 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                    juce::Slider& osc3MacroA,
                    juce::Slider& osc3MacroB,
                    juce::Slider& osc3MacroC,
+                   juce::ToggleButton& osc3EnabledButton,
+                   juce::Label& osc3EnabledLabel,
                    juce::Label& osc3MacroALabel,
                    juce::Label& osc3MacroBLabel,
                    juce::Label& osc3MacroCLabel,
@@ -66,7 +72,9 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                                                         subAccent);
     addAndMakeVisible(*subOscComponent);
 
-    oscillatorComponents[0] = std::make_unique<OscillatorComponent>(osc1MacroA,
+    oscillatorComponents[0] = std::make_unique<OscillatorComponent>(osc1EnabledButton,
+                                                                     osc1EnabledLabel,
+                                                                     osc1MacroA,
                                                                      osc1MacroB,
                                                                      osc1MacroC,
                                                                      osc1MacroALabel,
@@ -77,7 +85,9 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                                                                      osc1VowelBox,
                                                                      osc1VowelLabel,
                                                                      oscAccent);
-    oscillatorComponents[1] = std::make_unique<OscillatorComponent>(osc2MacroA,
+    oscillatorComponents[1] = std::make_unique<OscillatorComponent>(osc2EnabledButton,
+                                                                     osc2EnabledLabel,
+                                                                     osc2MacroA,
                                                                      osc2MacroB,
                                                                      osc2MacroC,
                                                                      osc2MacroALabel,
@@ -88,7 +98,9 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                                                                      osc2VowelBox,
                                                                      osc2VowelLabel,
                                                                      oscAccent);
-    oscillatorComponents[2] = std::make_unique<OscillatorComponent>(osc3MacroA,
+    oscillatorComponents[2] = std::make_unique<OscillatorComponent>(osc3EnabledButton,
+                                                                     osc3EnabledLabel,
+                                                                     osc3MacroA,
                                                                      osc3MacroB,
                                                                      osc3MacroC,
                                                                      osc3MacroALabel,
@@ -198,13 +210,13 @@ void OscPanel::resized()
     }
 }
 
-void OscPanel::refreshOscillatorFromSelections(int oscIndex, int modeIndex, int vowelIndex)
+void OscPanel::refreshOscillatorFromParameters(int oscIndex, bool enabled, int modeIndex, int vowelIndex)
 {
     const auto idx = juce::jlimit(0, 2, oscIndex);
     auto& oscillatorComponent = oscillatorComponents[static_cast<std::size_t>(idx)];
     if (oscillatorComponent != nullptr)
     {
-        oscillatorComponent->refreshFromSelections(modeIndex, vowelIndex);
+        oscillatorComponent->refreshFromParameters(enabled, modeIndex, vowelIndex);
     }
 }
 
