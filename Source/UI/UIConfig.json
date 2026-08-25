@@ -82,8 +82,8 @@
       "strokeAlpha": 0,
       "cornerRadius": 10,
       "layout": {
-        "padX": 12,
-        "padY": 10
+        "padX": 0,
+        "padY": 0
       }
     },
     "vibe": {
@@ -191,7 +191,7 @@
         "topFillColour": "$topFillColour",
         "cornerRadius": 8,
         "strokeThickness": 1.2,
-        "strokeColour": "#FFFFFF",
+        "strokeColour": "#77403f",
         "title": {
           "fontSize": 11
         }
