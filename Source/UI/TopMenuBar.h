@@ -4,6 +4,9 @@
 
 #include <array>
 #include <functional>
+#include <memory>
+
+class UIConfig;
 
 class TopMenuBar final : public juce::Component
 {
@@ -20,6 +23,7 @@ public:
 
     void setSelectedSection(int sectionIndex);
     void setPresetName(const juce::String& name);
+    void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
     const juce::Rectangle<int>& getSectionButtonsArea() const;
     const juce::Rectangle<int>& getPresetClusterArea() const;
@@ -53,4 +57,6 @@ private:
     std::function<void()> onPresetNext;
     std::function<void()> onPresetName;
     std::function<void()> onPresetMenu;
+
+    std::shared_ptr<const UIConfig> uiConfig;
 };

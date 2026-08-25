@@ -2,7 +2,11 @@
 
 #include <JuceHeader.h>
 
+#include <memory>
+
 #include "EnvelopeComponent.h"
+
+class UIConfig;
 
 class EnvPanel final : public juce::Component
 {
@@ -17,10 +21,12 @@ public:
     void resized() override;
 
     void refreshFromParameters();
+    void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
 private:
     std::unique_ptr<EnvelopeComponent> envelopeGraph;
 
     juce::String title { "ENV" };
     juce::Colour accent;
+    std::shared_ptr<const UIConfig> uiConfig;
 };

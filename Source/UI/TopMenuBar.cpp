@@ -1,5 +1,7 @@
 #include "TopMenuBar.h"
 
+#include "UIConfig.h"
+
 TopMenuBar::TopMenuBar()
 {
     const auto setupPresetButton = [](juce::TextButton& button)
@@ -70,14 +72,27 @@ TopMenuBar::TopMenuBar()
 
 void TopMenuBar::resized()
 {
-    auto presetRow = getLocalBounds().withSizeKeepingCentre(getWidth(), 32);
+    const auto rowHeight = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.rowHeight", 32) : 32;
+    const auto sectionGapPx = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.sectionGap", 6) : 6;
+    const auto sectionMinWidth = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.sectionMinWidth", 230) : 230;
+    const auto sectionMaxWidth = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.sectionMaxWidth", 330) : 330;
+    const auto presetClusterRightWidth = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.presetClusterMenuWidth", 94) : 94;
+    const auto presetPrevNextWidth = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.prevNextWidth", 26) : 26;
+    const auto presetHorizontalPad = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.presetHorizontalPad", 5) : 5;
+    const auto presetSmallGap = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.presetSmallGap", 4) : 4;
+    const auto menuButtonMinWidth = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.menuButtonMinWidth", 64) : 64;
+    const auto menuButtonMaxWidth = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.menuButtonMaxWidth", 78) : 78;
+    const auto menuButtonInset = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.menuButtonInset", 16) : 16;
+
+    auto presetRow = getLocalBounds().withSizeKeepingCentre(getWidth(), rowHeight);
 
     auto sectionButtonsRow = presetRow;
-    topMenuSectionButtonsArea = sectionButtonsRow.removeFromLeft(juce::jlimit(230, 330, presetRow.getWidth() / 2));
+    topMenuSectionButtonsArea = sectionButtonsRow.removeFromLeft(juce::jlimit(sectionMinWidth,
+                                                                               sectionMaxWidth,
+                                                                               presetRow.getWidth() / 2));
     sectionButtonsRow.removeFromLeft(8);
     topMenuPresetClusterArea = sectionButtonsRow;
 
-    const auto sectionGapPx = 6;
     auto sectionButtonsLayout = topMenuSectionButtonsArea.reduced(5, 0);
     const auto buttonWidth = juce::jmax(42, (sectionButtonsLayout.getWidth() - (sectionGapPx * 4)) / 5);
     for (int i = 0; i < 5; ++i)
@@ -90,16 +105,16 @@ void TopMenuBar::resized()
     }
 
     auto presetLayout = topMenuPresetClusterArea;
-    auto menuSectionArea = presetLayout.removeFromRight(94);
-    auto presetSelectorArea = presetLayout.reduced(5, 0);
+    auto menuSectionArea = presetLayout.removeFromRight(presetClusterRightWidth);
+    auto presetSelectorArea = presetLayout.reduced(presetHorizontalPad, 0);
     auto presetSelectorLayout = presetSelectorArea;
-    presetPrevButton.setBounds(presetSelectorLayout.removeFromLeft(26));
-    presetSelectorLayout.removeFromLeft(4);
-    presetNextButton.setBounds(presetSelectorLayout.removeFromRight(26));
+    presetPrevButton.setBounds(presetSelectorLayout.removeFromLeft(presetPrevNextWidth));
+    presetSelectorLayout.removeFromLeft(presetSmallGap);
+    presetNextButton.setBounds(presetSelectorLayout.removeFromRight(presetPrevNextWidth));
     presetSelectorLayout.removeFromRight(8);
     presetNameButton.setBounds(presetSelectorLayout);
     auto menuButtonBounds = menuSectionArea;
-    const auto menuButtonWidth = juce::jlimit(64, 78, menuButtonBounds.getWidth() - 16);
+    const auto menuButtonWidth = juce::jlimit(menuButtonMinWidth, menuButtonMaxWidth, menuButtonBounds.getWidth() - menuButtonInset);
     menuButtonBounds = juce::Rectangle<int>(menuButtonWidth, menuButtonBounds.getHeight())
                            .withCentre(menuButtonBounds.getCentre())
                            .translated(3, 0);
@@ -143,6 +158,37 @@ void TopMenuBar::setSelectedSection(int sectionIndex)
 void TopMenuBar::setPresetName(const juce::String& name)
 {
     presetNameButton.setButtonText(name);
+}
+
+void TopMenuBar::setUIConfig(std::shared_ptr<const UIConfig> configIn)
+{
+    uiConfig = std::move(configIn);
+
+    const auto applyStyle = [this](juce::TextButton& button,
+                                   const juce::String& defaultsPath,
+                                   const juce::String& overridePath)
+    {
+        if (uiConfig == nullptr)
+        {
+            return;
+        }
+
+        const auto style = uiConfig->mergedObject(defaultsPath, overridePath);
+        uiConfig->applyTextButtonStyle(style, button);
+    };
+
+    applyStyle(presetPrevButton, "styles.buttons.topMenuPreset", "topMenu.buttons.presetPrev");
+    applyStyle(presetNameButton, "styles.buttons.topMenuPreset", "topMenu.buttons.presetName");
+    applyStyle(presetNextButton, "styles.buttons.topMenuPreset", "topMenu.buttons.presetNext");
+    applyStyle(presetMenuButton, "styles.buttons.topMenuPreset", "topMenu.buttons.presetMenu");
+    applyStyle(topMenuOscButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionOsc");
+    applyStyle(topMenuEnvButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionEnv");
+    applyStyle(topMenuFltButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionFlt");
+    applyStyle(topMenuFxButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionFx");
+    applyStyle(topMenuMixButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionMix");
+
+    resized();
+    repaint();
 }
 
 const juce::Rectangle<int>& TopMenuBar::getSectionButtonsArea() const

@@ -1,0 +1,84 @@
+#include "UIConfigManager.h"
+
+UIConfigManager::UIConfigManager() = default;
+
+void UIConfigManager::setConfigFile(const juce::File& file)
+{
+    configFile = file;
+    lastWriteTime = juce::Time();
+}
+
+const juce::File& UIConfigManager::getConfigFile() const
+{
+    return configFile;
+}
+
+std::shared_ptr<const UIConfig> UIConfigManager::getConfig() const
+{
+    return activeConfig;
+}
+
+UIConfigManager::LoadResult UIConfigManager::loadInitial()
+{
+    return loadFromDisk(true);
+}
+
+UIConfigManager::LoadResult UIConfigManager::reloadIfChanged()
+{
+    return loadFromDisk(false);
+}
+
+UIConfigManager::LoadResult UIConfigManager::loadFromDisk(bool forceReload)
+{
+    LoadResult result;
+
+    if (configFile == juce::File())
+    {
+        result.message = "UIConfig file not configured.";
+        return result;
+    }
+
+    if (!configFile.existsAsFile())
+    {
+        result.message = "UIConfig file not found: " + configFile.getFullPathName();
+        return result;
+    }
+
+    const auto writeTime = configFile.getLastModificationTime();
+    if (!forceReload && writeTime == lastWriteTime)
+    {
+        return result;
+    }
+
+    const auto raw = configFile.loadFileAsString();
+    if (raw.isEmpty())
+    {
+        result.message = "Unable to read UIConfig file: " + configFile.getFullPathName();
+        return result;
+    }
+
+    juce::String parseError;
+    auto parsed = UIConfig::fromJsonText(raw, parseError);
+    if (parsed == nullptr || !parsed->isValid())
+    {
+        result.message = parseError.isNotEmpty() ? parseError
+                                                 : "Unknown UIConfig parse failure.";
+        return result;
+    }
+
+    const auto wasEmpty = (activeConfig == nullptr);
+    activeConfig = std::move(parsed);
+    lastWriteTime = writeTime;
+    result.loaded = true;
+    result.changed = forceReload || !wasEmpty;
+
+    auto msg = juce::String("Loaded UIConfig: ") + configFile.getFullPathName();
+    const auto warning = activeConfig->getValidationWarning();
+    if (warning.isNotEmpty())
+    {
+        msg << " | Warning: " << warning;
+    }
+
+    result.message = msg;
+    return result;
+}

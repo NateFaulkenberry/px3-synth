@@ -2,6 +2,7 @@
 
 #include "BinaryData.h"
 #include "PX3Version.h"
+#include "UIConfig.h"
 
 #include <algorithm>
 #include <cmath>
@@ -370,6 +371,9 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     tooltipWindow(this, 450),
     presetManager(p)
 {
+    uiConfigManager.setConfigFile(resolveUiConfigFile());
+    loadUiConfig(true);
+
     backgroundImage = juce::ImageFileFormat::loadFrom(BinaryData::pp_png, BinaryData::pp_pngSize);
     logoFrame = juce::ImageFileFormat::loadFrom(BinaryData::px3_gif, BinaryData::px3_gifSize);
 
@@ -1127,6 +1131,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     refreshEnvelopeGraphUI();
     refreshFilterUI();
     refreshFxBypassUI();
+    applyUiConfig();
     debugEditorCreatedTime = audioProcessor.debugNowTimestamp();
 
 #if PX3_DEBUG_PANEL
@@ -1183,12 +1188,18 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
 
 void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour::fromRGB(0x1A, 0x1A, 0x1A));
+    const auto bg = uiConfig != nullptr
+                        ? uiConfig->getColour("editor.background.baseColour", juce::Colour::fromRGB(0x1A, 0x1A, 0x1A))
+                        : juce::Colour::fromRGB(0x1A, 0x1A, 0x1A);
+    const auto stripRadius = uiConfig != nullptr ? uiConfig->getFloat("editor.topStrip.cornerRadius", 12.0f) : 12.0f;
+    g.fillAll(bg);
 
-    g.setColour(juce::Colour::fromRGB(0x1A, 0x1A, 0x1A));
-    g.fillRoundedRectangle(topMenuStripArea.toFloat(), 12.0f);
+    g.setColour(uiConfig != nullptr
+                    ? uiConfig->getColour("editor.topStrip.fillColour", juce::Colour::fromRGB(0x1A, 0x1A, 0x1A))
+                    : juce::Colour::fromRGB(0x1A, 0x1A, 0x1A));
+    g.fillRoundedRectangle(topMenuStripArea.toFloat(), stripRadius);
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 44));
-    g.drawRoundedRectangle(topMenuStripArea.toFloat(), 12.0f, 1.0f);
+    g.drawRoundedRectangle(topMenuStripArea.toFloat(), stripRadius, 1.0f);
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 30));
     g.drawLine(static_cast<float>(logoPanelArea.getRight() + 6),
                static_cast<float>(topMenuStripArea.getY() + 10),
@@ -1221,12 +1232,16 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
                           juce::RectanglePlacement::fillDestination,
                           false);
 
-        g.setColour(juce::Colour::fromRGBA(26, 26, 26, 150));
+        const auto darkness = uiConfig != nullptr ? uiConfig->getInt("editor.background.imageDarkness", 150) : 150;
+        const auto alpha = static_cast<juce::uint8>(juce::jlimit(0, 255, darkness));
+        g.setColour(juce::Colour::fromRGBA(26, 26, 26, alpha));
         g.fillAll();
     }
 
-    g.setColour(juce::Colour::fromRGB(0x1A, 0x1A, 0x1A));
-    g.fillRoundedRectangle(logoPanelArea.toFloat(), 12.0f);
+    g.setColour(uiConfig != nullptr
+                    ? uiConfig->getColour("editor.logo.fillColour", juce::Colour::fromRGB(0x1A, 0x1A, 0x1A))
+                    : juce::Colour::fromRGB(0x1A, 0x1A, 0x1A));
+    g.fillRoundedRectangle(logoPanelArea.toFloat(), stripRadius);
 
     if (logoFrame.isValid())
     {
@@ -1277,8 +1292,12 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
             g.setOpacity(1.0f);
         }
 
-                g.setColour(juce::Colour::fromRGB(232, 232, 232));
-                g.setFont(juce::FontOptions(14.0f));
+                g.setColour(uiConfig != nullptr
+                                ? uiConfig->getColour("editor.logo.subtitle.colour", juce::Colour::fromRGB(232, 232, 232))
+                                : juce::Colour::fromRGB(232, 232, 232));
+                g.setFont(juce::FontOptions(uiConfig != nullptr
+                                                ? uiConfig->getFloat("editor.logo.subtitle.fontSize", 14.0f)
+                                                : 14.0f));
                 const auto subtitleArea = juce::Rectangle<int>(logoPanelArea.getX() + 10,
                                                                                                              static_cast<int>(std::round(logoArea.getBottom() + subtitleGap - 2.0f)),
                                                                                                              logoPanelArea.getWidth() - 20,
@@ -1428,20 +1447,22 @@ void PX3SynthAudioProcessorEditor::resized()
     // This balancing intentionally avoids dramatic jumps while resizing.
     auto bounds = getLocalBounds().reduced(16);
 
-    const auto headerHeight = 120;
+    const auto headerHeight = uiConfig != nullptr ? uiConfig->getInt("editor.layout.headerHeight", 120) : 120;
     const auto controlsHeight = juce::jlimit(150, 270, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.34)));
     const auto keyboardHeight = juce::jlimit(106, 144, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.15)));
     // const auto statusHeight = 36;
-    const auto sectionGap = 10;
+    const auto sectionGap = uiConfig != nullptr ? uiConfig->getInt("editor.layout.sectionGap", 10) : 10;
 
     headerArea = bounds.removeFromTop(headerHeight);
     topMenuStripArea = headerArea;
 
     auto topStripContent = topMenuStripArea.reduced(8, 8);
-    logoPanelArea = topStripContent.removeFromLeft(150);
+    const auto logoWidth = uiConfig != nullptr ? uiConfig->getInt("editor.layout.logoPanelWidth", 150) : 150;
+    logoPanelArea = topStripContent.removeFromLeft(logoWidth);
     topStripContent.removeFromLeft(10);
 
-    topMenuGainArea = topStripContent.removeFromRight(100);
+    const auto gainWidth = uiConfig != nullptr ? uiConfig->getInt("editor.layout.gainPanelWidth", 100) : 100;
+    topMenuGainArea = topStripContent.removeFromRight(gainWidth);
     topStripContent.removeFromRight(10);
 
     headerPlaceholderArea = topStripContent;
@@ -1540,6 +1561,151 @@ void PX3SynthAudioProcessorEditor::resized()
     debugPerformanceOverlayLabel.toFront(false);
 #endif
 
+}
+
+juce::File PX3SynthAudioProcessorEditor::resolveUiConfigFile() const
+{
+    if (const auto envPath = juce::SystemStats::getEnvironmentVariable("PX3_UI_CONFIG_PATH", {});
+        envPath.isNotEmpty())
+    {
+        auto envFile = juce::File(envPath);
+        if (envFile.existsAsFile())
+        {
+            return envFile;
+        }
+    }
+
+    const auto cwdCandidate = juce::File::getCurrentWorkingDirectory().getChildFile("Source/UI/UIConfig.json");
+    if (cwdCandidate.existsAsFile())
+    {
+        return cwdCandidate;
+    }
+
+    const auto executableFile = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
+    const auto executableDir = executableFile.getParentDirectory();
+
+    const auto contentsCandidate = executableDir.getParentDirectory().getChildFile("UIConfig.json");
+    if (contentsCandidate.existsAsFile())
+    {
+        return contentsCandidate;
+    }
+
+    const auto resourcesCandidate = executableDir.getParentDirectory().getChildFile("Resources/UIConfig.json");
+    if (resourcesCandidate.existsAsFile())
+    {
+        return resourcesCandidate;
+    }
+
+    auto probe = executableDir;
+    for (int i = 0; i < 10; ++i)
+    {
+        const auto sourceCandidate = probe.getChildFile("Source/UI/UIConfig.json");
+        if (sourceCandidate.existsAsFile())
+        {
+            return sourceCandidate;
+        }
+
+        const auto rootCandidate = probe.getChildFile("UIConfig.json");
+        if (rootCandidate.existsAsFile())
+        {
+            return rootCandidate;
+        }
+
+        const auto parent = probe.getParentDirectory();
+        if (parent == probe)
+        {
+            break;
+        }
+        probe = parent;
+    }
+
+    return cwdCandidate;
+}
+
+void PX3SynthAudioProcessorEditor::loadUiConfig(bool forceReload)
+{
+    const auto hadConfigBeforeLoad = (uiConfig != nullptr);
+    const auto resolvedPath = resolveUiConfigFile();
+    if (resolvedPath != uiConfigManager.getConfigFile())
+    {
+        uiConfigManager.setConfigFile(resolvedPath);
+        forceReload = true;
+        juce::Logger::writeToLog("[PX3 UIConfig] Switched config path to: " + resolvedPath.getFullPathName());
+        audioProcessor.debugLogEvent("UI_CONFIG",
+                                     "UI_CONFIG_PATH_SWITCHED",
+                                     "file=\"" + resolvedPath.getFullPathName() + "\"");
+    }
+
+    const auto result = forceReload ? uiConfigManager.loadInitial() : uiConfigManager.reloadIfChanged();
+    if (result.loaded)
+    {
+        uiConfig = uiConfigManager.getConfig();
+        applyUiConfig();
+
+        const auto mode = hadConfigBeforeLoad ? "HOT_RELOAD" : "INITIAL_LOAD";
+        audioProcessor.debugLogEvent("UI_CONFIG",
+                                     hadConfigBeforeLoad ? "UI_CONFIG_HOT_RELOADED" : "UI_CONFIG_LOADED",
+                                     "mode=" + juce::String(mode)
+                                         + " file=\"" + uiConfigManager.getConfigFile().getFullPathName() + "\""
+                                         + " changed=" + juce::String(result.changed ? 1 : 0));
+
+        if (result.message.isNotEmpty())
+        {
+            juce::Logger::writeToLog("[PX3 UIConfig] " + result.message);
+        }
+        return;
+    }
+
+    if (result.message.isNotEmpty())
+    {
+        const auto now = juce::Time::getMillisecondCounter();
+        if (forceReload || now - uiConfigLastErrorLogMs > 1000)
+        {
+            uiConfigLastErrorLogMs = now;
+            juce::Logger::writeToLog("[PX3 UIConfig] " + result.message);
+        }
+    }
+}
+
+void PX3SynthAudioProcessorEditor::applyUiConfig()
+{
+    if (topMenuBar != nullptr)
+    {
+        topMenuBar->setUIConfig(uiConfig);
+    }
+    if (fxPanel != nullptr)
+    {
+        fxPanel->setUIConfig(uiConfig);
+    }
+    if (envPanel != nullptr)
+    {
+        envPanel->setUIConfig(uiConfig);
+    }
+
+    if (uiConfig != nullptr)
+    {
+        const auto comboStyle = uiConfig->getObject("styles.combos.default");
+        uiConfig->applyComboStyle(comboStyle, lfoWaveformBox);
+        uiConfig->applyComboStyle(comboStyle, lfoAssignBox);
+        uiConfig->applyComboStyle(comboStyle, subOscOctaveBox);
+        uiConfig->applyComboStyle(comboStyle, subOscWaveformBox);
+        uiConfig->applyComboStyle(comboStyle, vibeTypeBox);
+        uiConfig->applyComboStyle(comboStyle, filterTypeBox);
+        uiConfig->applyComboStyle(comboStyle, filter2TypeBox);
+        uiConfig->applyComboStyle(comboStyle, oscModeBox);
+        uiConfig->applyComboStyle(comboStyle, osc2ModeBox);
+        uiConfig->applyComboStyle(comboStyle, osc3ModeBox);
+        uiConfig->applyComboStyle(comboStyle, oscVowelBox);
+        uiConfig->applyComboStyle(comboStyle, osc2VowelBox);
+        uiConfig->applyComboStyle(comboStyle, osc3VowelBox);
+        uiConfig->applyComboStyle(comboStyle, delayAlgoBox);
+        uiConfig->applyComboStyle(comboStyle, granularSyncBox);
+        uiConfig->applyComboStyle(comboStyle, granularModeBox);
+        uiConfig->applyComboStyle(comboStyle, reverbTypeBox);
+    }
+
+    resized();
+    repaint();
 }
 
 void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
@@ -2666,6 +2832,8 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
 
 void PX3SynthAudioProcessorEditor::timerCallback()
 {
+    loadUiConfig(false);
+
     // Timer drives non-audio UI synchronization only. DSP state is never
     // computed here; this keeps audio-thread responsibilities isolated.
     if (isPanelVisible(3) && draggingFxSection < 0)

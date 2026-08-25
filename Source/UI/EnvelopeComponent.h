@@ -2,6 +2,10 @@
 
 #include <JuceHeader.h>
 
+#include <memory>
+
+class UIConfig;
+
 // Reusable interactive ADSR graph that binds directly to provided parameters.
 class EnvelopeComponent final : public juce::Component
 {
@@ -13,6 +17,7 @@ public:
                              juce::Colour accentIn);
 
     void setAccentColour(juce::Colour accentIn);
+    void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void refreshFromParameters();
 
     void paint(juce::Graphics& g) override;
@@ -70,6 +75,7 @@ private:
     juce::AudioParameterFloat& sustain;
     juce::AudioParameterFloat& release;
     juce::Colour accent;
+    std::shared_ptr<const UIConfig> uiConfig;
     DragHandle hoverHandle { DragHandle::none };
     DragHandle dragHandle { DragHandle::none };
     float lastAttack { -1.0f };

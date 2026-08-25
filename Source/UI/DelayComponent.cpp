@@ -1,5 +1,7 @@
 #include "DelayComponent.h"
 
+#include "UIConfig.h"
+
 DelayComponent::DelayComponent(juce::ToggleButton& enabledButtonIn,
                                          juce::Slider& amountKnobIn,
                                          juce::Label& amountLabelIn,
@@ -74,9 +76,17 @@ void DelayComponent::setActive(bool enabled, bool granularModeSelectable)
     repaint();
 }
 
+void DelayComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
+{
+    uiConfig = std::move(configIn);
+    repaint();
+}
+
 void DelayComponent::resized()
 {
-    auto area = getLocalBounds().reduced(10, 8);
+    const auto padX = uiConfig != nullptr ? uiConfig->getInt("fx.delay.layout.padX", 10) : 10;
+    const auto padY = uiConfig != nullptr ? uiConfig->getInt("fx.delay.layout.padY", 8) : 8;
+    auto area = getLocalBounds().reduced(padX, padY);
 
     auto top = area.removeFromTop(24);
     enabledButton.setBounds(top.removeFromLeft(22));
@@ -130,11 +140,22 @@ void DelayComponent::resized()
 
 void DelayComponent::paint(juce::Graphics& g)
 {
-    auto bounds = getLocalBounds().toFloat().reduced(6.0f);
+    const auto borderPad = uiConfig != nullptr ? uiConfig->getFloat("fx.delay.visual.borderPadding", 6.0f) : 6.0f;
+    const auto radius = uiConfig != nullptr ? uiConfig->getFloat("fx.delay.visual.cornerRadius", 8.0f) : 8.0f;
+    auto bounds = getLocalBounds().toFloat().reduced(borderPad);
     g.setColour(isActive ? accent.withAlpha(0.08f) : juce::Colour::fromRGBA(120, 120, 120, 30));
-    g.fillRoundedRectangle(bounds, 8.0f);
+    g.fillRoundedRectangle(bounds, radius);
 
-    g.setColour(juce::Colour::fromRGB(232, 232, 232).withAlpha(isActive ? 1.0f : 0.6f));
-    g.setFont(juce::FontOptions(11.5f));
-    g.drawText("ON", 36, 11, 24, 14, juce::Justification::centredLeft, false);
+    const auto textColour = uiConfig != nullptr
+                                ? uiConfig->getColour("fx.delay.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
+                                : juce::Colour::fromRGB(232, 232, 232);
+    const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat("fx.delay.visual.onLabel.fontSize", 11.5f) : 11.5f;
+    const auto textBounds = uiConfig != nullptr
+                                ? uiConfig->getRect("fx.delay.visual.onLabel.bounds", getLocalBounds(), { 36, 11, 24, 14 })
+                                : juce::Rectangle<int>(36, 11, 24, 14);
+    const auto text = uiConfig != nullptr ? uiConfig->getString("fx.delay.visual.onLabel.text", "ON") : juce::String("ON");
+
+    g.setColour(textColour.withAlpha(isActive ? 1.0f : 0.6f));
+    g.setFont(juce::FontOptions(fontSize));
+    g.drawText(text, textBounds, juce::Justification::centredLeft, false);
 }

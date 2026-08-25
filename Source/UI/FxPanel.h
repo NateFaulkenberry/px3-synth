@@ -4,6 +4,7 @@
 
 #include "DelayComponent.h"
 #include "ReverbUiComponent.h"
+#include "UIConfig.h"
 #include "VibeComponent.h"
 
 class FxPanel final : public juce::Component
@@ -41,6 +42,7 @@ public:
                           const juce::Rectangle<int>& reverbBounds);
 
     void setActive(bool vibeEnabled, bool delayEnabled, bool granularModeSelectable, bool reverbEnabled);
+    void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
 private:
     std::unique_ptr<VibeComponent> vibeUiComponent;
@@ -49,4 +51,5 @@ private:
 
     juce::String title { "FX" };
     juce::Colour accent;
+    std::shared_ptr<const UIConfig> uiConfig;
 };

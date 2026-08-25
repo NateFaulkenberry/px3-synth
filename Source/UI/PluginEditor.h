@@ -17,6 +17,7 @@
 #include "OscPanel.h"
 #include "TopMenuBar.h"
 #include "DelayComponent.h"
+#include "UIConfigManager.h"
 
 /**
  * Main JUCE editor for P(X3).
@@ -152,6 +153,9 @@ private:
     void selectedRowsChanged(int lastRowSelected) override;
     static juce::String noteNameForMidi(int midiNote);
     void timerCallback() override;
+    juce::File resolveUiConfigFile() const;
+    void loadUiConfig(bool forceReload);
+    void applyUiConfig();
 
     static juce::String fxModuleIdFromSection(int sectionId);
     static int fxSectionFromModuleId(const juce::String& moduleId);
@@ -468,4 +472,8 @@ private:
     bool debugHasSnapshot { false };
     juce::String debugEditorCreatedTime;
     DebugSnapshot debugLastSnapshot;
+
+    UIConfigManager uiConfigManager;
+    std::shared_ptr<const UIConfig> uiConfig;
+    uint32_t uiConfigLastErrorLogMs { 0 };
 };

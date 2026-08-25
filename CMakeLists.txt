@@ -67,6 +67,8 @@ target_sources(PX3Synth
         Source/UI/FilterComponent.cpp
         Source/UI/LfoComponent.cpp
         Source/UI/ReverbUiComponent.cpp
+        Source/UI/UIConfig.cpp
+        Source/UI/UIConfigManager.cpp
         Source/UI/SubOscComponent.cpp
         Source/UI/VibeComponent.cpp
         Source/UI/OscillatorComponent.cpp

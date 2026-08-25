@@ -1,0 +1,143 @@
+{
+  "palette": {
+    "bgBase": "#1A1A1A",
+    "bgTopStrip": "#1A1A1A",
+    "logoFill": "#1A1A1A",
+    "logoText": "#E8E8E8",
+    "comboBg": "#222222D2",
+    "comboText": "#E8E8E8",
+    "comboOutline": "#FFFFFF69",
+    "buttonBg": "#282828D2",
+    "buttonOn": "#447CB4DC",
+    "buttonText": "#E8E8E8",
+    "sectionButtonOn": "#528CC4DC",
+    "sectionButtonTextOn": "#F5F5F5"
+  },
+  "editor": {
+    "background": {
+      "baseColour": "$bgBase",
+      "imageDarkness": 150
+    },
+    "topStrip": {
+      "fillColour": "$bgTopStrip",
+      "cornerRadius": 12
+    },
+    "logo": {
+      "fillColour": "$logoFill",
+      "subtitle": {
+        "colour": "$logoText",
+        "fontSize": 14
+      }
+    },
+    "layout": {
+      "headerHeight": 120,
+      "sectionGap": 10,
+      "logoPanelWidth": 150,
+      "gainPanelWidth": 100
+    }
+  },
+  "topMenu": {
+    "layout": {
+      "rowHeight": 32,
+      "sectionGap": 6,
+      "sectionMinWidth": 230,
+      "sectionMaxWidth": 330,
+      "presetClusterMenuWidth": 94,
+      "prevNextWidth": 26,
+      "presetHorizontalPad": 5,
+      "presetSmallGap": 4,
+      "menuButtonMinWidth": 64,
+      "menuButtonMaxWidth": 78,
+      "menuButtonInset": 16
+    },
+    "buttons": {}
+  },
+  "styles": {
+    "buttons": {
+      "topMenuPreset": {
+        "buttonColour": "$buttonBg",
+        "buttonOnColour": "$buttonOn",
+        "textColour": "$buttonText",
+        "textOnColour": "$buttonText"
+      },
+      "topMenuSection": {
+        "buttonColour": "$buttonBg",
+        "buttonOnColour": "$sectionButtonOn",
+        "textColour": "$buttonText",
+        "textOnColour": "$sectionButtonTextOn"
+      }
+    },
+    "combos": {
+      "default": {
+        "backgroundColour": "$comboBg",
+        "textColour": "$comboText",
+        "outlineColour": "$comboOutline"
+      }
+    }
+  },
+  "fx": {
+    "panel": {
+      "fillAlpha": 0.14,
+      "topFillAlpha": 0.1,
+      "strokeAlpha": 0.75,
+      "cornerRadius": 10,
+      "title": {
+        "fontSize": 15
+      }
+    },
+    "vibe": {
+      "layout": { "padX": 10, "padY": 8 },
+      "visual": {
+        "borderPadding": 6,
+        "cornerRadius": 8,
+        "onLabel": {
+          "text": "ON",
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8",
+          "bounds": { "x": 36, "y": 11, "width": 24, "height": 14 }
+        }
+      }
+    },
+    "delay": {
+      "layout": { "padX": 10, "padY": 8 },
+      "visual": {
+        "borderPadding": 6,
+        "cornerRadius": 8,
+        "onLabel": {
+          "text": "ON",
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8",
+          "bounds": { "x": 36, "y": 11, "width": 24, "height": 14 }
+        }
+      }
+    },
+    "reverb": {
+      "layout": { "padX": 10, "padY": 8 },
+      "visual": {
+        "borderPadding": 6,
+        "cornerRadius": 8,
+        "onLabel": {
+          "text": "ON",
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8",
+          "bounds": { "x": 36, "y": 11, "width": 24, "height": 14 }
+        }
+      }
+    }
+  },
+  "env": {
+    "panel": {
+      "fillAlpha": 0.14,
+      "topFillAlpha": 0.1,
+      "strokeAlpha": 0.75,
+      "cornerRadius": 10,
+      "title": {
+        "fontSize": 15
+      }
+    },
+    "envelope": {
+      "background": "#0A120A9B",
+      "outline": "#66BB6690"
+    }
+  }
+}

@@ -1,5 +1,7 @@
 #include "EnvelopeComponent.h"
 
+#include "UIConfig.h"
+
 #include <cmath>
 
 EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
@@ -16,6 +18,12 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
 void EnvelopeComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
+    repaint();
+}
+
+void EnvelopeComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
+{
+    uiConfig = std::move(configIn);
     repaint();
 }
 
@@ -47,9 +55,16 @@ void EnvelopeComponent::paint(juce::Graphics& g)
         return;
     }
 
-    g.setColour(juce::Colour::fromRGBA(10, 18, 10, 155));
+    const auto background = uiConfig != nullptr
+                                ? uiConfig->getColour("env.envelope.background", juce::Colour::fromRGBA(10, 18, 10, 155))
+                                : juce::Colour::fromRGBA(10, 18, 10, 155);
+    const auto outline = uiConfig != nullptr
+                             ? uiConfig->getColour("env.envelope.outline", accent.withAlpha(0.28f))
+                             : accent.withAlpha(0.28f);
+
+    g.setColour(background);
     g.fillRoundedRectangle(area, 8.0f);
-    g.setColour(accent.withAlpha(0.28f));
+    g.setColour(outline);
     g.drawRoundedRectangle(area, 8.0f, 1.0f);
 
     const auto geom = computeGeometry();

@@ -2,6 +2,10 @@
 
 #include <JuceHeader.h>
 
+#include <memory>
+
+class UIConfig;
+
 class DelayComponent final : public juce::Component
 {
 public:
@@ -22,6 +26,7 @@ public:
 
     void setAccentColour(juce::Colour accentIn);
     void setActive(bool enabled, bool granularModeSelectable);
+    void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
     void resized() override;
     void paint(juce::Graphics& g) override;
@@ -41,5 +46,6 @@ private:
     juce::Slider& feedbackKnob;
     juce::Label& feedbackLabel;
     juce::Colour accent;
+    std::shared_ptr<const UIConfig> uiConfig;
     bool isActive { true };
 };
