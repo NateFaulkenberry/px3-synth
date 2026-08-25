@@ -82,11 +82,12 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
     bundle.assignLabel.setFont(juce::FontOptions(11.5f));
     bundle.assignLabel.setInterceptsMouseClicks(false, false);
 
-    bundle.rateLabel.setText("Freq", juce::dontSendNotification);
+    bundle.rateLabel.setText("", juce::dontSendNotification);
     bundle.rateLabel.setJustificationType(juce::Justification::centred);
     bundle.rateLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.rateLabel.setFont(juce::FontOptions(13.0f));
     bundle.rateLabel.setInterceptsMouseClicks(false, false);
+    bundle.rateLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
 
     bundle.rateValueLabel.setJustificationType(juce::Justification::centred);
     bundle.rateValueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(218, 218, 228));

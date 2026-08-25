@@ -968,7 +968,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     addAndMakeVisible(*oscPanel);
     modPanelViewport.setViewedComponent(modPanel.get(), false);
-    modPanelViewport.setScrollBarsShown(true, true);
+    modPanelViewport.setScrollBarsShown(true, false);
     modPanelViewport.setScrollBarThickness(10);
     addAndMakeVisible(modPanelViewport);
     addAndMakeVisible(*fltPanel);
