@@ -94,38 +94,75 @@ void EnvelopeComponent::refreshFromParameters()
 
 void EnvelopeComponent::paint(juce::Graphics& g)
 {
-    const auto componentBounds = getLocalBounds().toFloat().reduced(2.0f);
-    if (componentBounds.isEmpty())
+    auto card = getLocalBounds().reduced(6, 6);
+    constexpr int targetCardWidth = 300;
+    const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
+    card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
+    const auto cardBounds = card.toFloat();
+    if (cardBounds.isEmpty())
     {
         return;
     }
 
     const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
-    const auto background = uiConfig != nullptr
-                                ? uiConfig->getColour("mod.panel.background", juce::Colour::fromRGBA(10, 18, 10, 155))
-                                : juce::Colour::fromRGBA(10, 18, 10, 155);
-    const auto effectiveBackground = currentEnabled ? background : juce::Colour::fromRGBA(22, 22, 22, 165);
-    const auto configuredOutline = uiConfig != nullptr
-                                       ? uiConfig->getColour("mod.panel.outline", effectiveAccent.withAlpha(0.28f))
-                                       : effectiveAccent.withAlpha(0.28f);
-    const auto outline = [&configuredOutline, this]()
-    {
-        if (currentEnabled)
-        {
-            return configuredOutline;
-        }
+    const auto bgTintAlpha = uiConfig != nullptr ? uiConfig->getFloat("mod.env.visual.bgTintAlpha", 0.10f) : 0.10f;
+    const auto enabledBgTintColour = uiConfig != nullptr ? uiConfig->getColour("mod.env.visual.bgTintColour", effectiveAccent)
+                                                         : effectiveAccent;
+    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("mod.env.visual.topFillAlpha", 0.10f) : 0.10f;
+    const auto enabledTopFillColour = uiConfig != nullptr ? uiConfig->getColour("mod.env.visual.topFillColour", effectiveAccent)
+                                                          : effectiveAccent;
+    const auto cardCornerRadius = uiConfig != nullptr ? uiConfig->getFloat("mod.env.visual.cardCornerRadius", 8.0f) : 8.0f;
+    const auto outerStrokeThickness = uiConfig != nullptr ? uiConfig->getFloat("mod.env.visual.outerStrokeThickness", 1.2f) : 1.2f;
+    const auto outerStrokeColour = uiConfig != nullptr ? uiConfig->getColour("mod.env.visual.outerStrokeColour", juce::Colour::fromRGB(220, 232, 252))
+                                                       : juce::Colour::fromRGB(220, 232, 252);
+    const auto outerStrokeAlphaEnabled = uiConfig != nullptr ? uiConfig->getInt("mod.env.visual.outerStrokeAlphaEnabled", 88) : 88;
+    const auto outerStrokeAlphaDisabled = uiConfig != nullptr ? uiConfig->getInt("mod.env.visual.outerStrokeAlphaDisabled", 66) : 66;
+    const auto bgTintColour = currentEnabled ? enabledBgTintColour : juce::Colour::fromRGB(112, 112, 112);
+    const auto topFillColour = currentEnabled ? enabledTopFillColour : juce::Colour::fromRGB(136, 136, 136);
 
-        const auto gray = juce::jlimit(0.0f, 1.0f, configuredOutline.getPerceivedBrightness());
-        return juce::Colour::fromFloatRGBA(gray, gray, gray, configuredOutline.getFloatAlpha());
-    }();
-
-    const auto graphArea = componentBounds.reduced(2.0f);
-    g.setColour(effectiveBackground);
-    g.fillRoundedRectangle(graphArea, 7.0f);
-    g.setColour(outline);
-    g.drawRoundedRectangle(graphArea, 7.0f, 1.0f);
+    const auto innerFillBounds = cardBounds.reduced(6.0f);
+    g.setColour(bgTintColour.withAlpha(bgTintAlpha));
+    g.fillRoundedRectangle(innerFillBounds, cardCornerRadius);
+    g.setColour(topFillColour.withAlpha(topFillAlpha));
+    juce::Path topFill;
+    const auto topHalf = innerFillBounds.withTrimmedBottom(innerFillBounds.getHeight() * 0.5f);
+    topFill.addRoundedRectangle(topHalf.getX(),
+                                topHalf.getY(),
+                                topHalf.getWidth(),
+                                topHalf.getHeight(),
+                                cardCornerRadius,
+                                cardCornerRadius,
+                                true,
+                                true,
+                                false,
+                                false);
+    g.fillPath(topFill);
+    g.setColour(outerStrokeColour.withAlpha(static_cast<float>(currentEnabled ? outerStrokeAlphaEnabled : outerStrokeAlphaDisabled) / 255.0f));
+    g.drawRoundedRectangle(cardBounds, cardCornerRadius, outerStrokeThickness);
 
     const auto geom = computeGeometry();
+    const auto graphArea = juce::Rectangle<float>(geom.left - 6.0f,
+                                                  geom.top - 5.0f,
+                                                  (geom.right - geom.left) + 12.0f,
+                                                  (geom.bottom - geom.top) + 10.0f);
+    const auto graphCornerRadius = uiConfig != nullptr ? uiConfig->getFloat("mod.env.visual.graph.cornerRadius", 7.0f) : 7.0f;
+    const auto graphFillColour = uiConfig != nullptr ? uiConfig->getColour("mod.env.visual.graph.fillColour", juce::Colour::fromRGB(14, 14, 18))
+                                                     : juce::Colour::fromRGB(14, 14, 18);
+    const auto graphFillAlpha = uiConfig != nullptr ? uiConfig->getInt("mod.env.visual.graph.fillAlpha", 170) : 170;
+    const auto graphStrokeThickness = uiConfig != nullptr ? uiConfig->getFloat("mod.env.visual.graph.strokeThickness", 1.0f) : 1.0f;
+    const auto graphStrokeAlphaEnabled = uiConfig != nullptr ? uiConfig->getInt("mod.env.visual.graph.strokeAlphaEnabled", 82) : 82;
+    const auto graphStrokeAlphaDisabled = uiConfig != nullptr ? uiConfig->getInt("mod.env.visual.graph.strokeAlphaDisabled", 62) : 62;
+    const auto graphStrokeColourEnabled = uiConfig != nullptr ? uiConfig->getColour("mod.env.visual.graph.strokeColourEnabled", effectiveAccent)
+                                                              : effectiveAccent;
+    const auto graphStrokeColourDisabled = uiConfig != nullptr ? uiConfig->getColour("mod.env.visual.graph.strokeColourDisabled", juce::Colour::fromRGB(136, 136, 136))
+                                                               : juce::Colour::fromRGB(136, 136, 136);
+    const auto graphStrokeColour = currentEnabled ? graphStrokeColourEnabled : graphStrokeColourDisabled;
+    const auto graphStrokeAlpha = currentEnabled ? graphStrokeAlphaEnabled : graphStrokeAlphaDisabled;
+
+    g.setColour(graphFillColour.withAlpha(static_cast<float>(graphFillAlpha) / 255.0f));
+    g.fillRoundedRectangle(graphArea, graphCornerRadius);
+    g.setColour(graphStrokeColour.withAlpha(static_cast<float>(graphStrokeAlpha) / 255.0f));
+    g.drawRoundedRectangle(graphArea, graphCornerRadius, graphStrokeThickness);
 
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 24));
     for (int i = 1; i < 6; ++i)
@@ -175,8 +212,8 @@ void EnvelopeComponent::paint(juce::Graphics& g)
 
         auto bubble = juce::Rectangle<float>(0.0f, 0.0f, 122.0f, 30.0f);
         bubble.setCentre(handlePos.translated(0.0f, -24.0f));
-        bubble = bubble.withPosition(juce::jlimit(componentBounds.getX(), componentBounds.getRight() - bubble.getWidth(), bubble.getX()),
-                         juce::jlimit(componentBounds.getY(), componentBounds.getBottom() - bubble.getHeight(), bubble.getY()));
+        bubble = bubble.withPosition(juce::jlimit(cardBounds.getX(), cardBounds.getRight() - bubble.getWidth(), bubble.getX()),
+                 juce::jlimit(cardBounds.getY(), cardBounds.getBottom() - bubble.getHeight(), bubble.getY()));
 
         g.setColour(juce::Colour::fromRGBA(9, 14, 9, 232));
         g.fillRoundedRectangle(bubble, 6.0f);
@@ -354,14 +391,22 @@ float EnvelopeComponent::visualNormToTime(float norm, float minValue, float maxV
 EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
 {
     Geometry geom;
-    const auto componentBounds = getLocalBounds().toFloat().reduced(2.0f);
-    auto area = componentBounds.reduced(2.0f);
-    area.removeFromTop(84.0f);
+    auto card = getLocalBounds().reduced(6, 6);
+    constexpr int targetCardWidth = 300;
+    const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
+    card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
+    auto graphLayout = card.toFloat().reduced(10.0f, 10.0f);
+    graphLayout.removeFromTop(24.0f);
+    graphLayout.removeFromTop(6.0f);
+    graphLayout.removeFromTop(24.0f);
+    graphLayout.removeFromTop(6.0f);
+    graphLayout.removeFromTop(8.0f);
+    graphLayout.removeFromBottom(10.0f);
 
-    geom.left = area.getX() + 26.0f;
-    geom.right = area.getRight() - 10.0f;
-    geom.top = area.getY() + 8.0f;
-    geom.bottom = area.getBottom() - 14.0f;
+    geom.left = graphLayout.getX() + 6.0f;
+    geom.right = graphLayout.getRight() - 6.0f;
+    geom.top = graphLayout.getY() + 5.0f;
+    geom.bottom = graphLayout.getBottom() - 5.0f;
 
     const auto totalWidth = juce::jmax(20.0f, geom.right - geom.left);
     geom.attackRangeWidth = totalWidth * 0.30f;
@@ -626,7 +671,11 @@ void EnvelopeComponent::applyDragPosition(juce::Point<float> mousePos,
 
 void EnvelopeComponent::resized()
 {
-    auto area = getLocalBounds().reduced(6, 6);
+    auto cardArea = getLocalBounds().reduced(6, 6);
+    constexpr int targetCardWidth = 300;
+    const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
+    cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
+    auto area = cardArea.reduced(10, 10);
     auto enabledRow = area.removeFromTop(24);
     const auto labelWidth = uiConfig != nullptr
                                 ? uiConfig->getInt("mod.env.visual.onLabel.width",
