@@ -305,6 +305,7 @@ private:
     juce::ComboBox subOscOctaveBox;
     juce::ComboBox subOscWaveformBox;
     juce::ComboBox lfoAssignBox;
+    juce::ToggleButton lfoBypassButton;
     juce::ToggleButton filter1EnabledButton;
     juce::ToggleButton filter2EnabledButton;
     juce::ToggleButton osc1EnabledButton;
@@ -346,6 +347,7 @@ private:
     KnobLabel subOscOctaveLabel;
     KnobLabel subOscWaveformLabel;
     KnobLabel subOscEnabledLabel;
+    KnobLabel lfoBypassLabel;
     juce::Label lfoFrequencyValueLabel;
     KnobLabel lfoAssignLabel;
     KnobLabel midiStatusLabel;

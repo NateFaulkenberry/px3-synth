@@ -11,7 +11,9 @@ class UIConfig;
 class LfoComponent final : public juce::Component
 {
 public:
-    LfoComponent(juce::Label& assignLabelIn,
+    LfoComponent(juce::ToggleButton& enabledButtonIn,
+                        juce::Label& enabledLabelIn,
+                        juce::Label& assignLabelIn,
                         juce::ComboBox& assignBoxIn,
                         juce::Slider& rateKnobIn,
                         juce::Label& rateLabelIn,
@@ -23,7 +25,7 @@ public:
 
     void setAccentColour(juce::Colour accentIn);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
-    void refreshFromParameters(float rateHz, int waveformIndex);
+    void refreshFromParameters(bool enabled, float rateHz, int waveformIndex);
     void advanceAnimation(float deltaPhase);
 
     void resized() override;
@@ -38,6 +40,8 @@ private:
                                                                  juce::Label& label) override;
     };
 
+    juce::ToggleButton& enabledButton;
+    juce::Label& enabledLabel;
     juce::Slider& rateKnob;
     juce::Label& rateLabel;
     juce::Label& rateValueLabel;
@@ -49,7 +53,10 @@ private:
     std::shared_ptr<const UIConfig> uiConfig;
     WaveformComboLookAndFeel waveformComboLookAndFeel;
 
+    bool currentEnabled { true };
     int currentWaveformIndex { 0 };
     float currentRateHz { 1.0f };
     float visualPhase { 0.0f };
+    juce::Colour baseRateKnobFillColour;
+    juce::Colour baseRateValueTextColour;
 };

@@ -166,6 +166,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                        1,
                                                        24,
                                                        2);
+    lfoEnabledParam = new juce::AudioParameterBool("lfoEnabled", "LFO Enabled", true);
     lfoFrequencyParam = new juce::AudioParameterFloat("lfoFrequency",
                                                        "LFO Frequency",
                                                        juce::NormalisableRange<float>(0.01f, 20.0f, 0.0001f, 0.30f),
@@ -233,6 +234,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(reverbCloudFeedbackParam);
     addParameter(reverbCloudDiffusionParam);
     addParameter(pitchBendRangeParam);
+    addParameter(lfoEnabledParam);
     addParameter(lfoFrequencyParam);
     addParameter(lfoWaveformParam);
 
@@ -372,7 +374,16 @@ float PX3SynthAudioProcessor::currentLfoSignalForBlock(int numSamples)
 {
     // Keep one global LFO instance evaluated once per block. The generator is
     // generic and destination-agnostic; routing is handled elsewhere.
-    lfoGenerator.setSettings(currentLfoSettings());
+    const auto lfoSettings = currentLfoSettings();
+    lfoGenerator.setSettings(lfoSettings);
+
+    if (!lfoSettings.enabled)
+    {
+        lfoPhaseForDebug.store(lfoGenerator.getPhaseRadians(), std::memory_order_relaxed);
+        lfoCurrentValue.store(0.0f, std::memory_order_relaxed);
+        return 0.0f;
+    }
+
     const auto signal = lfoGenerator.getMidpointSignalAndAdvance(numSamples);
 
     lfoPhaseForDebug.store(lfoGenerator.getPhaseRadians(), std::memory_order_relaxed);

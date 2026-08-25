@@ -130,6 +130,7 @@ EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings() const
 LfoSettings PX3SynthAudioProcessor::currentLfoSettings() const
 {
     LfoSettings settings;
+    settings.enabled = lfoEnabledParam == nullptr || lfoEnabledParam->get();
     settings.frequencyHz = juce::jlimit(0.01f, 20.0f, lfoFrequencyParam->get());
     settings.waveformIndex = lfoWaveformParam != nullptr ? lfoWaveformParam->getIndex() : 0;
     return settings;

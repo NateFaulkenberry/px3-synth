@@ -21,6 +21,7 @@ inline const juce::Identifier kModuleEntryId("MODULE");
 inline const juce::Identifier kModuleIdProperty("id");
 inline const juce::Identifier kModuleOrderRevisionId("moduleOrderRevision");
 inline const juce::Identifier kLfoStateId("LFO");
+inline const juce::Identifier kLfoEnabledId("enabled");
 inline const juce::Identifier kLfoFrequencyId("frequency");
 inline const juce::Identifier kLfoWaveformId("waveform");
 inline const juce::Identifier kLfoAssignmentId("assignment");

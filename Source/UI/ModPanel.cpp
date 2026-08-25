@@ -6,6 +6,8 @@ ModPanel::ModPanel(juce::AudioParameterFloat& attack,
                    juce::AudioParameterFloat& decay,
                    juce::AudioParameterFloat& sustain,
                    juce::AudioParameterFloat& release,
+                   juce::ToggleButton& lfoEnabledButton,
+                   juce::Label& lfoEnabledLabel,
                    juce::Label& lfoAssignLabel,
                    juce::ComboBox& lfoAssignBox,
                    juce::Slider& lfoRateKnob,
@@ -23,7 +25,9 @@ ModPanel::ModPanel(juce::AudioParameterFloat& attack,
                                                         sustain,
                                                         release,
                                                         panelAccent);
-    lfoComponent = std::make_unique<LfoComponent>(lfoAssignLabel,
+    lfoComponent = std::make_unique<LfoComponent>(lfoEnabledButton,
+                                                  lfoEnabledLabel,
+                                                  lfoAssignLabel,
                                                   lfoAssignBox,
                                                   lfoRateKnob,
                                                   lfoRateLabel,
@@ -123,11 +127,11 @@ void ModPanel::refreshFromParameters()
     }
 }
 
-void ModPanel::refreshLfoFromParameters(float rateHz, int waveformIndex)
+void ModPanel::refreshLfoFromParameters(bool enabled, float rateHz, int waveformIndex)
 {
     if (lfoComponent != nullptr)
     {
-        lfoComponent->refreshFromParameters(rateHz, waveformIndex);
+        lfoComponent->refreshFromParameters(enabled, rateHz, waveformIndex);
     }
 }
 

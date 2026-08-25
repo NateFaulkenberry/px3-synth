@@ -127,6 +127,7 @@ public:
     juce::AudioParameterBool& getReverbEnabledParam() const;
     juce::AudioParameterChoice& getReverbAlgorithmParam() const;
     juce::AudioParameterInt& getPitchBendRangeParam() const;
+    juce::AudioParameterBool& getLfoEnabledParam() const;
     juce::AudioParameterFloat& getLfoFrequencyParam() const;
     juce::AudioParameterChoice& getLfoWaveformParam() const;
     const juce::StringArray& getLfoAssignmentDisplayNames() const;
@@ -275,6 +276,7 @@ private:
     juce::AudioParameterFloat* reverbCloudFeedbackParam { nullptr };
     juce::AudioParameterFloat* reverbCloudDiffusionParam { nullptr };
     juce::AudioParameterInt* pitchBendRangeParam { nullptr };
+    juce::AudioParameterBool* lfoEnabledParam { nullptr };
     juce::AudioParameterFloat* lfoFrequencyParam { nullptr };
     juce::AudioParameterChoice* lfoWaveformParam { nullptr };
 

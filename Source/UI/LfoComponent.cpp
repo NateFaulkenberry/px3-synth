@@ -13,15 +13,19 @@ juce::PopupMenu::Options LfoComponent::WaveformComboLookAndFeel::getOptionsForCo
                   .withPreferredPopupDirection(juce::PopupMenu::Options::PopupDirection::upwards);
 }
 
-LfoComponent::LfoComponent(juce::Label& assignLabelIn,
-                                         juce::ComboBox& assignBoxIn,
-                                         juce::Slider& rateKnobIn,
-                                         juce::Label& rateLabelIn,
-                                         juce::Label& rateValueLabelIn,
-                                         juce::ComboBox& waveformBoxIn,
-                                         juce::Label& waveformLabelIn,
-                                         juce::Colour accentIn)
-    : rateKnob(rateKnobIn),
+LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
+                                                     juce::Label& enabledLabelIn,
+                                                     juce::Label& assignLabelIn,
+                                                     juce::ComboBox& assignBoxIn,
+                                                     juce::Slider& rateKnobIn,
+                                                     juce::Label& rateLabelIn,
+                                                     juce::Label& rateValueLabelIn,
+                                                     juce::ComboBox& waveformBoxIn,
+                                                     juce::Label& waveformLabelIn,
+                                                     juce::Colour accentIn)
+        : enabledButton(enabledButtonIn),
+            enabledLabel(enabledLabelIn),
+            rateKnob(rateKnobIn),
       rateLabel(rateLabelIn),
       rateValueLabel(rateValueLabelIn),
       assignLabel(assignLabelIn),
@@ -30,6 +34,10 @@ LfoComponent::LfoComponent(juce::Label& assignLabelIn,
       waveformLabel(waveformLabelIn),
       accent(accentIn)
 {
+        addAndMakeVisible(enabledButton);
+        addAndMakeVisible(enabledLabel);
+    baseRateKnobFillColour = rateKnob.findColour(juce::Slider::rotarySliderFillColourId);
+    baseRateValueTextColour = rateValueLabel.findColour(juce::Label::textColourId);
     addAndMakeVisible(rateKnob);
     addAndMakeVisible(rateLabel);
     addAndMakeVisible(rateValueLabel);
@@ -56,11 +64,40 @@ void LfoComponent::setAccentColour(juce::Colour accentIn)
 void LfoComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+
+    const auto textColour = uiConfig != nullptr
+                                ? uiConfig->getColour("mod.lfo.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
+                                : juce::Colour::fromRGB(232, 232, 232);
+    const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat("mod.lfo.visual.onLabel.fontSize", 11.5f) : 11.5f;
+    const auto text = uiConfig != nullptr ? uiConfig->getString("mod.lfo.visual.onLabel.text", "ON") : juce::String("ON");
+    enabledLabel.setText(text, juce::dontSendNotification);
+    enabledLabel.setColour(juce::Label::textColourId, textColour);
+    enabledLabel.setFont(juce::FontOptions(fontSize));
+
     repaint();
 }
 
-void LfoComponent::refreshFromParameters(float rateHz, int waveformIndex)
+void LfoComponent::refreshFromParameters(bool enabled, float rateHz, int waveformIndex)
 {
+    const auto enabledChanged = currentEnabled != enabled;
+    currentEnabled = enabled;
+
+    enabledButton.setToggleState(currentEnabled, juce::dontSendNotification);
+    assignBox.setEnabled(currentEnabled);
+    assignLabel.setEnabled(currentEnabled);
+    waveformBox.setEnabled(currentEnabled);
+    waveformLabel.setEnabled(currentEnabled);
+    rateKnob.setEnabled(currentEnabled);
+    rateKnob.setInterceptsMouseClicks(currentEnabled, currentEnabled);
+    rateKnob.getProperties().set("psychedelicBypassGray", !currentEnabled);
+    const auto disabledKnobFill = juce::Colour::fromRGB(158, 158, 158);
+    rateKnob.setColour(juce::Slider::rotarySliderFillColourId, currentEnabled ? baseRateKnobFillColour : disabledKnobFill);
+    rateLabel.setEnabled(currentEnabled);
+    rateValueLabel.setEnabled(currentEnabled);
+    const auto disabledRateValueColour = juce::Colour::fromRGB(178, 178, 178);
+    rateValueLabel.setColour(juce::Label::textColourId,
+                             currentEnabled ? baseRateValueTextColour : disabledRateValueColour);
+
     currentRateHz = juce::jlimit(0.01f, 20.0f, rateHz);
     rateValueLabel.setText(juce::String(currentRateHz, 2) + " Hz", juce::dontSendNotification);
 
@@ -70,10 +107,20 @@ void LfoComponent::refreshFromParameters(float rateHz, int waveformIndex)
     {
         waveformBox.setSelectedItemIndex(clamped, juce::dontSendNotification);
     }
+
+    if (enabledChanged)
+    {
+        repaint();
+    }
 }
 
 void LfoComponent::advanceAnimation(float deltaSeconds)
 {
+    if (!currentEnabled)
+    {
+        return;
+    }
+
     const auto clampedDeltaSeconds = juce::jlimit(1.0f / 120.0f, 0.2f, deltaSeconds);
     const auto phaseAdvance = juce::MathConstants<float>::twoPi * currentRateHz * clampedDeltaSeconds;
     visualPhase = std::fmod(visualPhase + phaseAdvance, juce::MathConstants<float>::twoPi);
@@ -88,6 +135,16 @@ void LfoComponent::resized()
     const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
     cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
     auto area = cardArea.reduced(10, 10);
+
+    auto enabledRow = area.removeFromTop(24);
+    const auto labelWidth = uiConfig != nullptr
+                                ? uiConfig->getInt("mod.lfo.visual.onLabel.width",
+                                                   uiConfig->getInt("mod.lfo.visual.onLabel.bounds.width", 52))
+                                : 52;
+    enabledLabel.setBounds(enabledRow.removeFromLeft(labelWidth));
+    enabledButton.setBounds(enabledRow.removeFromLeft(40).reduced(2, 2));
+
+    area.removeFromTop(6);
 
     auto assignRow = area.removeFromTop(24);
     assignLabel.setBounds(assignRow.removeFromLeft(52));
@@ -123,12 +180,15 @@ void LfoComponent::paint(juce::Graphics& g)
     const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
     card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
     const auto cardBounds = card.toFloat();
+    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
     const auto bgTintAlpha = uiConfig != nullptr ? uiConfig->getFloat("mod.lfo.visual.bgTintAlpha", 0.10f) : 0.10f;
-    const auto bgTintColour = uiConfig != nullptr ? uiConfig->getColour("mod.lfo.visual.bgTintColour", accent)
-                                                  : accent;
+    const auto enabledBgTintColour = uiConfig != nullptr ? uiConfig->getColour("mod.lfo.visual.bgTintColour", effectiveAccent)
+                                                         : effectiveAccent;
     const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("mod.lfo.visual.topFillAlpha", 0.10f) : 0.10f;
-    const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("mod.lfo.visual.topFillColour", accent)
-                                                   : accent;
+    const auto enabledTopFillColour = uiConfig != nullptr ? uiConfig->getColour("mod.lfo.visual.topFillColour", effectiveAccent)
+                                                          : effectiveAccent;
+    const auto bgTintColour = currentEnabled ? enabledBgTintColour : juce::Colour::fromRGB(112, 112, 112);
+    const auto topFillColour = currentEnabled ? enabledTopFillColour : juce::Colour::fromRGB(136, 136, 136);
 
     const auto innerFillBounds = cardBounds.reduced(6.0f);
     g.setColour(bgTintColour.withAlpha(bgTintAlpha));
@@ -148,11 +208,14 @@ void LfoComponent::paint(juce::Graphics& g)
                                 false,
                                 false);
     g.fillPath(topFill);
-    g.setColour(juce::Colour::fromRGBA(220, 232, 252, 88));
+    g.setColour(juce::Colour::fromRGBA(220, 232, 252, currentEnabled ? 88 : 66));
     g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
 
     auto graphLayout = cardBounds.reduced(10.0f, 10.0f);
     graphLayout.removeFromTop(24.0f);
+    graphLayout.removeFromTop(6.0f);
+    graphLayout.removeFromTop(24.0f);
+    graphLayout.removeFromTop(6.0f);
     graphLayout.removeFromTop(8.0f);
     graphLayout.removeFromBottom(10.0f);
 
@@ -165,7 +228,7 @@ void LfoComponent::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour::fromRGBA(14, 14, 18, 170));
     g.fillRoundedRectangle(graph, 7.0f);
-    g.setColour(accent.withAlpha(0.32f));
+    g.setColour(effectiveAccent.withAlpha(0.32f));
     g.drawRoundedRectangle(graph, 7.0f, 1.0f);
 
     const auto left = graph.getX() + 6.0f;
@@ -203,12 +266,14 @@ void LfoComponent::paint(juce::Graphics& g)
         }
     }
 
-    g.setColour(accent.withAlpha(0.70f));
+    g.setColour(effectiveAccent.withAlpha(currentEnabled ? 0.70f : 0.42f));
     g.strokePath(wave,
                  juce::PathStrokeType(2.6f,
                                       juce::PathStrokeType::curved,
                                       juce::PathStrokeType::rounded));
-    g.setColour(juce::Colour::fromRGB(232, 240, 255));
+    const auto waveDetailColour = currentEnabled ? juce::Colour::fromRGB(232, 240, 255)
+                                                 : juce::Colour::fromRGB(178, 178, 178);
+    g.setColour(waveDetailColour);
     g.strokePath(wave,
                  juce::PathStrokeType(1.2f,
                                       juce::PathStrokeType::curved,

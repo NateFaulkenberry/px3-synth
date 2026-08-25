@@ -115,6 +115,7 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
 
     // Keep LFO settings in a dedicated node for backward-compatible evolution.
     juce::ValueTree lfoState(kLfoStateId);
+    lfoState.setProperty(kLfoEnabledId, lfoEnabledParam != nullptr ? lfoEnabledParam->get() : true, nullptr);
     lfoState.setProperty(kLfoFrequencyId, lfoFrequencyParam->get(), nullptr);
     lfoState.setProperty(kLfoWaveformId, lfoWaveformParam->getIndex(), nullptr);
     lfoState.setProperty(kLfoAssignmentId, getLfoAssignmentParameterId(), nullptr);
@@ -242,6 +243,12 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
 
     if (const auto lfoState = state.getChildWithName(kLfoStateId); lfoState.isValid())
     {
+        if (lfoState.hasProperty(kLfoEnabledId) && lfoEnabledParam != nullptr)
+        {
+            const auto enabled = static_cast<bool>(lfoState[kLfoEnabledId]);
+            lfoEnabledParam->setValueNotifyingHost(lfoEnabledParam->convertTo0to1(enabled));
+        }
+
         if (lfoState.hasProperty(kLfoFrequencyId))
         {
             const auto frequency = juce::jlimit(0.01f, 20.0f, static_cast<float>(lfoState[kLfoFrequencyId]));

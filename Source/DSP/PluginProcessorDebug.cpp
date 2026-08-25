@@ -205,9 +205,14 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
 
     auto serializedLfoFrequency = lfoFrequencyParam->get();
     auto serializedLfoWaveform = lfoWaveformParam->getIndex();
+    auto serializedLfoEnabled = lfoEnabledParam != nullptr ? lfoEnabledParam->get() : true;
     auto serializedLfoAssignment = juce::String("none");
     if (const auto lfoState = state.getChildWithName(kLfoStateId); lfoState.isValid())
     {
+        if (lfoState.hasProperty(kLfoEnabledId))
+        {
+            serializedLfoEnabled = static_cast<bool>(lfoState[kLfoEnabledId]);
+        }
         if (lfoState.hasProperty(kLfoFrequencyId))
         {
             serializedLfoFrequency = juce::jlimit(0.01f, 20.0f, static_cast<float>(lfoState[kLfoFrequencyId]));
@@ -224,6 +229,7 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
 
     const auto frequencyMatches = std::abs(serializedLfoFrequency - lfoFrequencyParam->get()) <= 0.0005f;
     const auto waveformMatches = serializedLfoWaveform == lfoWaveformParam->getIndex();
+    const auto enabledMatches = lfoEnabledParam == nullptr || serializedLfoEnabled == lfoEnabledParam->get();
     const auto assignmentMatches = serializedLfoAssignment.equalsIgnoreCase(getLfoAssignmentParameterId());
 
     auto serializedSubOscEnabled = subOscEnabledParam->get();
@@ -271,6 +277,7 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
 
     const auto pass = (debugDescribeOrder(currentOrder) == debugDescribeOrder(decodedOrder))
                    && frequencyMatches
+                   && enabledMatches
                    && waveformMatches
                    && assignmentMatches
                    && subOscEnabledMatches
@@ -286,6 +293,8 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
              "serialized=" + debugDescribeOrder(decodedOrder) + "\n"
              "lfoFrequencyCurrent=" + juce::String(lfoFrequencyParam->get(), 4) + "\n"
              "lfoFrequencySerialized=" + juce::String(serializedLfoFrequency, 4) + "\n"
+             "lfoEnabledCurrent=" + juce::String(lfoEnabledParam != nullptr && lfoEnabledParam->get() ? 1 : 0) + "\n"
+             "lfoEnabledSerialized=" + juce::String(serializedLfoEnabled ? 1 : 0) + "\n"
              "lfoWaveformCurrent=" + juce::String(lfoWaveformParam->getIndex()) + "\n"
              "lfoWaveformSerialized=" + juce::String(serializedLfoWaveform) + "\n"
              "lfoAssignmentCurrent=" + getLfoAssignmentParameterId() + "\n"

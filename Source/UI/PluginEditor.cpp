@@ -95,14 +95,14 @@ public:
 }
 
 void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
-                                                                         int x,
-                                                                         int y,
-                                                                         int width,
-                                                                         int height,
-                                                                         float sliderPos,
-                                                                         float rotaryStartAngle,
-                                                                         float rotaryEndAngle,
-                                                                         juce::Slider& slider)
+                                                                     int x,
+                                                                     int y,
+                                                                     int width,
+                                                                     int height,
+                                                                     float sliderPos,
+                                                                     float rotaryStartAngle,
+                                                                     float rotaryEndAngle,
+                                                                     juce::Slider& slider)
 {
     const auto fullBounds = juce::Rectangle<float>(static_cast<float>(x),
                                                    static_cast<float>(y),
@@ -118,8 +118,8 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
                             ? slider.findColour(juce::Slider::rotarySliderFillColourId)
                             : juce::Colour::fromRGB(234, 166, 76);
 
-    const auto psychedelicEnabled = static_cast<bool>(slider.getProperties()["psychedelicFx"]);
-    const auto psychedelicGrayscale = static_cast<bool>(slider.getProperties()["psychedelicBypassGray"]);
+    const auto psychedelicEnabled = static_cast<bool>(slider.getProperties().getWithDefault("psychedelicFx", false));
+    const auto psychedelicGrayscale = static_cast<bool>(slider.getProperties().getWithDefault("psychedelicBypassGray", false));
     const auto psychedelicAmount = juce::jlimit(0.0f, 1.0f, sliderPos);
     const auto accentGrayValue = juce::jlimit(0.0f, 1.0f, accent.getPerceivedBrightness());
     const auto accentForHighlight = psychedelicGrayscale
@@ -516,6 +516,17 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     lfoAssignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     lfoAssignLabel.setFont(juce::FontOptions(11.5f));
     lfoAssignLabel.setInterceptsMouseClicks(false, false);
+
+    lfoBypassLabel.setText("ON", juce::dontSendNotification);
+    lfoBypassLabel.setJustificationType(juce::Justification::centredLeft);
+    lfoBypassLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    lfoBypassLabel.setFont(juce::FontOptions(11.5f));
+    lfoBypassLabel.setInterceptsMouseClicks(false, false);
+
+    lfoBypassButton.setButtonText("");
+    lfoBypassButton.setClickingTogglesState(true);
+    lfoBypassButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
+    lfoBypassButton.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
     lfoAssignBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     lfoAssignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     lfoAssignBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
@@ -853,6 +864,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           audioProcessor.getDecayParam(),
                                           audioProcessor.getSustainParam(),
                                           audioProcessor.getReleaseParam(),
+                                          lfoBypassButton,
+                                          lfoBypassLabel,
                                           lfoAssignLabel,
                                           lfoAssignBox,
                                           lfoFrequencyKnob,
@@ -956,6 +969,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachButton(audioProcessor.getOscillatorEnabledParam(1), osc2EnabledButton);
     attachButton(audioProcessor.getOscillatorEnabledParam(2), osc3EnabledButton);
     attachButton(audioProcessor.getSubOscEnabledParam(), subOscEnabledButton);
+    attachButton(audioProcessor.getLfoEnabledParam(), lfoBypassButton);
 
     // MIDI status bar is temporarily disabled.
     // midiStatusLabel.setText("MIDI In: waiting for note...", juce::dontSendNotification);
@@ -2744,7 +2758,8 @@ void PX3SynthAudioProcessorEditor::refreshLfoUI()
 
     if (modPanel != nullptr)
     {
-        modPanel->refreshLfoFromParameters(audioProcessor.getLfoFrequencyParam().get(),
+        modPanel->refreshLfoFromParameters(audioProcessor.getLfoEnabledParam().get(),
+                                           audioProcessor.getLfoFrequencyParam().get(),
                                            audioProcessor.getLfoWaveformParam().getIndex());
     }
 }
@@ -2889,11 +2904,16 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         refreshFxBypassUI();
     }
 
+    const auto lfoUiVisible = isPanelVisible(0) || isPanelVisible(1);
+    if (lfoUiVisible)
+    {
+        refreshLfoUI();
+    }
+
     if (isPanelVisible(0))
     {
         refreshOscillatorModeUI();
         refreshLfoAssignmentUI();
-        refreshLfoUI();
         refreshSubOscUI();
     }
     else if (isPanelVisible(1))

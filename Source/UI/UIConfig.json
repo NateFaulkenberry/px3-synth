@@ -218,7 +218,13 @@
         "bgTintAlpha": 0.1,
         "bgTintColour": "$topFillColour",
         "topFillAlpha": 0.1,
-        "topFillColour": "$topFillColour"
+        "topFillColour": "$topFillColour",
+        "onLabel": {
+          "text": "ON",
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8",
+          "bounds": { "x": 14, "y": 11, "width": 24, "height": 14 }
+        }
       }
     }
   }

@@ -16,6 +16,8 @@ public:
              juce::AudioParameterFloat& decay,
              juce::AudioParameterFloat& sustain,
              juce::AudioParameterFloat& release,
+             juce::ToggleButton& lfoEnabledButton,
+             juce::Label& lfoEnabledLabel,
              juce::Label& lfoAssignLabel,
              juce::ComboBox& lfoAssignBox,
              juce::Slider& lfoRateKnob,
@@ -30,7 +32,7 @@ public:
     void resized() override;
 
     void refreshFromParameters();
-    void refreshLfoFromParameters(float rateHz, int waveformIndex);
+    void refreshLfoFromParameters(bool enabled, float rateHz, int waveformIndex);
     void advanceAnimation(float lfoDeltaSeconds);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
