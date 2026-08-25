@@ -1,5 +1,13 @@
 #include "FltPanel.h"
 
+juce::PopupMenu::Options FltPanel::FilterComboLookAndFeel::getOptionsForComboBoxPopupMenu(juce::ComboBox& box,
+                                                                                            juce::Label& label)
+{
+    auto options = juce::LookAndFeel_V4::getOptionsForComboBoxPopupMenu(box, label);
+    return options.withParentComponent(box.getParentComponent())
+                  .withPreferredPopupDirection(juce::PopupMenu::Options::PopupDirection::upwards);
+}
+
 FltPanel::FltPanel(juce::Slider& cutoffKnobIn,
                    juce::Label& cutoffLabelIn,
                    juce::Slider& resonanceKnobIn,
@@ -20,6 +28,7 @@ FltPanel::FltPanel(juce::Slider& cutoffKnobIn,
     addAndMakeVisible(cutoffLabel);
     addAndMakeVisible(resonanceKnob);
     addAndMakeVisible(resonanceLabel);
+    filterTypeBox.setLookAndFeel(&filterComboLookAndFeel);
     addAndMakeVisible(filterTypeBox);
 
     filterResponseComponent = std::make_unique<FilterResponseComponent>(cutoffParam,
@@ -27,6 +36,11 @@ FltPanel::FltPanel(juce::Slider& cutoffKnobIn,
                                                                         filterTypeParam,
                                                                         panelAccent);
     addAndMakeVisible(*filterResponseComponent);
+}
+
+FltPanel::~FltPanel()
+{
+    filterTypeBox.setLookAndFeel(nullptr);
 }
 
 void FltPanel::paint(juce::Graphics& g)
@@ -44,6 +58,18 @@ void FltPanel::paint(juce::Graphics& g)
     g.setColour(accent.brighter(0.30f));
     g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
     g.drawText(title, getLocalBounds().removeFromTop(24), juce::Justification::centred);
+
+    auto cardArea = getLocalBounds().reduced(12, 10);
+    cardArea.removeFromTop(26);
+    constexpr int targetCardWidth = 300;
+    const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
+    cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
+
+    const auto cardBounds = cardArea.toFloat().reduced(2.0f);
+    g.setColour(accent.withAlpha(0.10f));
+    g.fillRoundedRectangle(cardBounds, 8.0f);
+    g.setColour(juce::Colour::fromRGBA(220, 232, 252, 88));
+    g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
 }
 
 void FltPanel::resized()
@@ -52,13 +78,17 @@ void FltPanel::resized()
     panelArea.removeFromTop(26);
 
     auto filterArea = panelArea.reduced(4, 0);
-    const auto row = juce::Rectangle<int>(filterArea.getX(),
-                                          filterArea.getBottom() - 22,
-                                          filterArea.getWidth(),
-                                          18);
-    filterTypeBox.setBounds(row.reduced(1, 0));
+    constexpr int targetCardWidth = 300;
+    const auto cardWidth = juce::jmin(targetCardWidth, filterArea.getWidth());
+    filterArea = filterArea.withSizeKeepingCentre(cardWidth, filterArea.getHeight());
 
-    auto responseArea = filterArea.withBottom(juce::jmax(filterArea.getY(), row.getY() - 6));
+    auto contentArea = filterArea.reduced(8, 8);
+
+    auto row = contentArea.removeFromTop(24);
+    filterTypeBox.setBounds(row.reduced(2, 1));
+    contentArea.removeFromTop(8);
+
+    auto responseArea = contentArea;
     auto knobBand = responseArea.removeFromTop(120);
     const auto knobSize = juce::jlimit(56, 110, juce::jmin((knobBand.getWidth() - 24) / 2, knobBand.getHeight() - 24));
 

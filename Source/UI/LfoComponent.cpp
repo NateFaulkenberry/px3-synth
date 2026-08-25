@@ -4,6 +4,14 @@
 
 #include <cmath>
 
+juce::PopupMenu::Options LfoComponent::WaveformComboLookAndFeel::getOptionsForComboBoxPopupMenu(juce::ComboBox& box,
+                                                                                                  juce::Label& label)
+{
+    auto options = juce::LookAndFeel_V4::getOptionsForComboBoxPopupMenu(box, label);
+    return options.withParentComponent(box.getParentComponent())
+                  .withPreferredPopupDirection(juce::PopupMenu::Options::PopupDirection::upwards);
+}
+
 LfoComponent::LfoComponent(juce::Slider& rateKnobIn,
                                          juce::Label& rateLabelIn,
                                          juce::Label& rateValueLabelIn,
@@ -20,8 +28,14 @@ LfoComponent::LfoComponent(juce::Slider& rateKnobIn,
     addAndMakeVisible(rateKnob);
     addAndMakeVisible(rateLabel);
     addAndMakeVisible(rateValueLabel);
+    waveformBox.setLookAndFeel(&waveformComboLookAndFeel);
     addAndMakeVisible(waveformBox);
     addAndMakeVisible(waveformLabel);
+}
+
+LfoComponent::~LfoComponent()
+{
+    waveformBox.setLookAndFeel(nullptr);
 }
 
 void LfoComponent::setAccentColour(juce::Colour accentIn)
@@ -55,11 +69,15 @@ void LfoComponent::advanceAnimation(float deltaPhase)
 
 void LfoComponent::resized()
 {
-    auto area = getLocalBounds().reduced(8, 6);
+    auto cardArea = getLocalBounds().reduced(6, 6);
+    constexpr int targetCardWidth = 300;
+    const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
+    cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
+    auto area = cardArea.reduced(10, 10);
 
-    auto top = area.removeFromTop(26);
+    auto top = area.removeFromTop(24);
     waveformLabel.setBounds(top.removeFromLeft(78));
-    waveformBox.setBounds(top.reduced(1, 0));
+    waveformBox.setBounds(top.reduced(2, 1));
 
     area.removeFromTop(6);
     auto bottom = area.removeFromBottom(22);
@@ -74,7 +92,18 @@ void LfoComponent::resized()
 
 void LfoComponent::paint(juce::Graphics& g)
 {
-    auto graph = getLocalBounds().toFloat().reduced(10.0f, 10.0f);
+    auto card = getLocalBounds().reduced(6, 6);
+    constexpr int targetCardWidth = 300;
+    const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
+    card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
+    const auto cardBounds = card.toFloat();
+
+    g.setColour(accent.withAlpha(0.10f));
+    g.fillRoundedRectangle(cardBounds, 8.0f);
+    g.setColour(juce::Colour::fromRGBA(220, 232, 252, 88));
+    g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
+
+    auto graph = cardBounds.reduced(10.0f, 10.0f);
     graph.removeFromTop(36.0f);
     graph.removeFromBottom(30.0f);
 

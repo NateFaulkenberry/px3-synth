@@ -86,15 +86,18 @@ void OscPanel::resized()
     }
 
     auto lfoInner = lfoArea.reduced(10, 6);
-    const auto assignRow = lfoInner.removeFromBottom(22);
-    auto assign = assignRow;
+    constexpr int targetCardWidth = 300;
+    const auto lfoCardWidth = juce::jmax(1, juce::jmin(targetCardWidth, lfoInner.getWidth()));
+    auto lfoColumn = juce::Rectangle<int>(lfoCardWidth, lfoInner.getHeight()).withCentre(lfoInner.getCentre());
+
+    auto assign = lfoColumn.removeFromBottom(22);
     auto labelArea = assign.removeFromLeft(52);
     lfoAssignLabel.setBounds(labelArea);
     lfoAssignBox.setBounds(assign.reduced(1, 0));
 
     if (lfoComponent != nullptr)
     {
-        lfoComponent->setBounds(lfoInner.reduced(2, 2));
+        lfoComponent->setBounds(lfoColumn.reduced(2, 2));
     }
 }
 

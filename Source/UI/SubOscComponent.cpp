@@ -75,7 +75,10 @@ void SubOscComponent::advanceAnimation(float deltaPhase)
 
 void SubOscComponent::resized()
 {
-    auto area = getLocalBounds().reduced(10, 8);
+    auto area = getLocalBounds().reduced(12, 10);
+    constexpr int targetCardWidth = 300;
+    const auto cardWidth = juce::jmin(targetCardWidth, area.getWidth());
+    area = area.withSizeKeepingCentre(cardWidth, area.getHeight());
 
     auto top = area.removeFromTop(24);
     enabledLabel.setBounds(top.removeFromLeft(58));
@@ -102,7 +105,20 @@ void SubOscComponent::resized()
 
 void SubOscComponent::paint(juce::Graphics& g)
 {
-    auto graph = getLocalBounds().toFloat().reduced(12.0f, 10.0f);
+    auto card = getLocalBounds().reduced(6, 6);
+    constexpr int targetCardWidth = 300;
+    const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
+    card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
+    const auto cardBounds = card.toFloat();
+
+    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+
+    g.setColour(effectiveAccent.withAlpha(0.10f));
+    g.fillRoundedRectangle(cardBounds, 8.0f);
+    g.setColour(juce::Colour::fromRGBA(220, 232, 252, currentEnabled ? 88 : 66));
+    g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
+
+    auto graph = cardBounds.reduced(12.0f, 10.0f);
     graph.removeFromTop(58.0f);
     graph.removeFromBottom(118.0f);
 
@@ -110,8 +126,6 @@ void SubOscComponent::paint(juce::Graphics& g)
     {
         return;
     }
-
-    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
 
     g.setColour(juce::Colour::fromRGBA(14, 14, 18, 170));
     g.fillRoundedRectangle(graph, 7.0f);

@@ -13,6 +13,7 @@ public:
                         juce::ComboBox& waveformBoxIn,
                         juce::Label& waveformLabelIn,
                         juce::Colour accentIn);
+    ~LfoComponent() override;
 
     void setAccentColour(juce::Colour accentIn);
     void refreshFromParameters(float rateHz, int waveformIndex);
@@ -24,12 +25,19 @@ public:
 private:
     static float waveformSample(float phaseNorm, int waveformIndex);
 
+    struct WaveformComboLookAndFeel final : public juce::LookAndFeel_V4
+    {
+        juce::PopupMenu::Options getOptionsForComboBoxPopupMenu(juce::ComboBox& box,
+                                                                 juce::Label& label) override;
+    };
+
     juce::Slider& rateKnob;
     juce::Label& rateLabel;
     juce::Label& rateValueLabel;
     juce::ComboBox& waveformBox;
     juce::Label& waveformLabel;
     juce::Colour accent;
+    WaveformComboLookAndFeel waveformComboLookAndFeel;
 
     int currentWaveformIndex { 0 };
     float visualPhase { 0.0f };

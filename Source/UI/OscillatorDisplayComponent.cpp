@@ -77,7 +77,7 @@ void OscillatorDisplayComponent::advanceAnimation(float deltaPhase)
 
 void OscillatorDisplayComponent::resized()
 {
-    auto area = getLocalBounds().reduced(2, 0);
+    auto area = getLocalBounds().reduced(14, 10);
     auto left = area.removeFromLeft(area.getWidth() / 2).reduced(0, 0);
     auto right = area.reduced(0, 0);
 
@@ -103,7 +103,7 @@ void OscillatorDisplayComponent::paint(juce::Graphics& g)
     g.setColour(juce::Colour::fromRGBA(220, 232, 252, 88));
     g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
 
-    auto oscSplit = getLocalBounds().reduced(8, 0);
+    auto oscSplit = getLocalBounds().reduced(20, 14);
     auto oscVizRect = oscSplit.removeFromLeft(oscSplit.getWidth() / 2).reduced(4, 2);
     oscVizRect.removeFromBottom(28);
 

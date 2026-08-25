@@ -596,7 +596,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     filterTypeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     filterTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     filterTypeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
-    addAndMakeVisible(filterTypeBox);
 
     auto& oscModeParam = audioProcessor.getOscillatorModeParam();
     const auto oscModeCount = oscModeParam.choices.size();
