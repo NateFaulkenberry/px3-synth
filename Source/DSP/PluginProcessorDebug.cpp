@@ -208,23 +208,39 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     auto serializedLfoEnabled = lfoEnabledParam != nullptr ? lfoEnabledParam->get() : true;
     auto serializedLfoAssignment = juce::String("none");
     auto serializedEnvelopeAssignment = juce::String("none");
-    if (const auto lfoState = state.getChildWithName(kLfoStateId); lfoState.isValid())
+    if (const auto lfoSources = state.getChildWithName(kLfoSourcesStateId); lfoSources.isValid())
     {
-        if (lfoState.hasProperty(kLfoEnabledId))
+        for (int i = 0; i < lfoSources.getNumChildren(); ++i)
         {
-            serializedLfoEnabled = static_cast<bool>(lfoState[kLfoEnabledId]);
-        }
-        if (lfoState.hasProperty(kLfoFrequencyId))
-        {
-            serializedLfoFrequency = juce::jlimit(0.01f, 20.0f, static_cast<float>(lfoState[kLfoFrequencyId]));
-        }
-        if (lfoState.hasProperty(kLfoWaveformId))
-        {
-            serializedLfoWaveform = px3::clampLfoWaveformIndex(static_cast<int>(lfoState[kLfoWaveformId]));
-        }
-        if (lfoState.hasProperty(kLfoAssignmentId))
-        {
-            serializedLfoAssignment = lfoState[kLfoAssignmentId].toString();
+            const auto source = lfoSources.getChild(i);
+            if (!source.isValid() || source.getType() != kSourceEntryId)
+            {
+                continue;
+            }
+
+            const auto sourceIndex = juce::jlimit(0, kLfoSourceCount - 1, static_cast<int>(source.getProperty(kSourceIndexId, 0)));
+            if (sourceIndex != 0)
+            {
+                continue;
+            }
+
+            if (source.hasProperty(kLfoEnabledId))
+            {
+                serializedLfoEnabled = static_cast<bool>(source[kLfoEnabledId]);
+            }
+            if (source.hasProperty(kLfoFrequencyId))
+            {
+                serializedLfoFrequency = juce::jlimit(0.01f, 20.0f, static_cast<float>(source[kLfoFrequencyId]));
+            }
+            if (source.hasProperty(kLfoWaveformId))
+            {
+                serializedLfoWaveform = px3::clampLfoWaveformIndex(static_cast<int>(source[kLfoWaveformId]));
+            }
+            if (source.hasProperty(kLfoAssignmentId))
+            {
+                serializedLfoAssignment = source[kLfoAssignmentId].toString();
+            }
+            break;
         }
     }
 
@@ -233,11 +249,22 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     const auto enabledMatches = lfoEnabledParam == nullptr || serializedLfoEnabled == lfoEnabledParam->get();
     const auto assignmentMatches = serializedLfoAssignment.equalsIgnoreCase(getLfoAssignmentParameterId());
 
-    if (const auto envelopeState = state.getChildWithName(kEnvelopeStateId); envelopeState.isValid())
+    if (const auto envelopeSources = state.getChildWithName(kEnvelopeSourcesStateId); envelopeSources.isValid())
     {
-        if (envelopeState.hasProperty(kEnvelopeAssignmentId))
+        for (int i = 0; i < envelopeSources.getNumChildren(); ++i)
         {
-            serializedEnvelopeAssignment = envelopeState[kEnvelopeAssignmentId].toString();
+            const auto source = envelopeSources.getChild(i);
+            if (!source.isValid() || source.getType() != kSourceEntryId)
+            {
+                continue;
+            }
+
+            const auto sourceIndex = juce::jlimit(0, kEnvelopeSourceCount - 1, static_cast<int>(source.getProperty(kSourceIndexId, 0)));
+            if (sourceIndex == 0 && source.hasProperty(kEnvelopeAssignmentId))
+            {
+                serializedEnvelopeAssignment = source[kEnvelopeAssignmentId].toString();
+                break;
+            }
         }
     }
     const auto envelopeAssignmentMatches = serializedEnvelopeAssignment.equalsIgnoreCase(getEnvelopeAssignmentParameterId());

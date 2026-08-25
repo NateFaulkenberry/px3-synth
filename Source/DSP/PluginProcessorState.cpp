@@ -257,7 +257,6 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         fxOrderRevision.store(static_cast<uint32_t>(revision), std::memory_order_relaxed);
     }
 
-    auto appliedNewLfoState = false;
     if (const auto lfoSources = state.getChildWithName(kLfoSourcesStateId); lfoSources.isValid())
     {
         for (int i = 0; i < lfoSources.getNumChildren(); ++i)
@@ -296,39 +295,8 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                 setLfoAssignmentByParameterId(lfoIndex, source[kLfoAssignmentId].toString(), false);
             }
         }
-        appliedNewLfoState = true;
     }
 
-    if (!appliedNewLfoState)
-    {
-        if (const auto lfoState = state.getChildWithName(kLfoStateId); lfoState.isValid())
-        {
-            if (lfoState.hasProperty(kLfoEnabledId) && lfoEnabledParam != nullptr)
-            {
-                const auto enabled = static_cast<bool>(lfoState[kLfoEnabledId]);
-                lfoEnabledParam->setValueNotifyingHost(lfoEnabledParam->convertTo0to1(enabled));
-            }
-
-            if (lfoState.hasProperty(kLfoFrequencyId))
-            {
-                const auto frequency = juce::jlimit(0.01f, 20.0f, static_cast<float>(lfoState[kLfoFrequencyId]));
-                lfoFrequencyParam->setValueNotifyingHost(lfoFrequencyParam->convertTo0to1(frequency));
-            }
-
-            if (lfoState.hasProperty(kLfoWaveformId) && lfoWaveformParam != nullptr)
-            {
-                const auto waveform = px3::clampLfoWaveformIndex(static_cast<int>(lfoState[kLfoWaveformId]));
-                lfoWaveformParam->setValueNotifyingHost(lfoWaveformParam->convertTo0to1(static_cast<float>(waveform)));
-            }
-
-            if (lfoState.hasProperty(kLfoAssignmentId))
-            {
-                setLfoAssignmentByParameterId(lfoState[kLfoAssignmentId].toString(), false);
-            }
-        }
-    }
-
-    auto appliedNewEnvelopeState = false;
     if (const auto envelopeSources = state.getChildWithName(kEnvelopeSourcesStateId); envelopeSources.isValid())
     {
         for (int i = 0; i < envelopeSources.getNumChildren(); ++i)
@@ -343,18 +311,6 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
             if (source.hasProperty(kEnvelopeAssignmentId))
             {
                 setEnvelopeAssignmentByParameterId(envIndex, source[kEnvelopeAssignmentId].toString(), false);
-            }
-        }
-        appliedNewEnvelopeState = true;
-    }
-
-    if (!appliedNewEnvelopeState)
-    {
-        if (const auto envelopeState = state.getChildWithName(kEnvelopeStateId); envelopeState.isValid())
-        {
-            if (envelopeState.hasProperty(kEnvelopeAssignmentId))
-            {
-                setEnvelopeAssignmentByParameterId(envelopeState[kEnvelopeAssignmentId].toString(), false);
             }
         }
     }

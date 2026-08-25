@@ -68,18 +68,10 @@ void LfoComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 
     const auto pref = configPrefix + ".visual.";
 
-    const auto textColour = uiConfig != nullptr
-                                ? uiConfig->getColour(pref + "onLabel.textColour",
-                                                      uiConfig->getColour("mod.lfo.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232)))
-                                : juce::Colour::fromRGB(232, 232, 232);
-    const auto fontSize = uiConfig != nullptr
-                              ? uiConfig->getFloat(pref + "onLabel.fontSize",
-                                                   uiConfig->getFloat("mod.lfo.visual.onLabel.fontSize", 11.5f))
-                              : 11.5f;
-    const auto text = uiConfig != nullptr
-                          ? uiConfig->getString(pref + "onLabel.text",
-                                                uiConfig->getString("mod.lfo.visual.onLabel.text", "ON"))
-                          : juce::String("ON");
+    const auto textColour = uiConfig != nullptr ? uiConfig->getColour(pref + "onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
+                                                : juce::Colour::fromRGB(232, 232, 232);
+    const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat(pref + "onLabel.fontSize", 11.5f) : 11.5f;
+    const auto text = uiConfig != nullptr ? uiConfig->getString(pref + "onLabel.text", "ON") : juce::String("ON");
     enabledLabel.setText(text, juce::dontSendNotification);
     enabledLabel.setColour(juce::Label::textColourId, textColour);
     enabledLabel.setFont(juce::FontOptions(fontSize));
@@ -147,11 +139,7 @@ void LfoComponent::resized()
     auto area = cardArea.reduced(10, 10);
 
     auto enabledRow = area.removeFromTop(24);
-    const auto labelWidth = uiConfig != nullptr
-                                ? uiConfig->getInt(configPrefix + ".visual.onLabel.width",
-                                                   uiConfig->getInt("mod.lfo.visual.onLabel.width",
-                                                                    uiConfig->getInt("mod.lfo.visual.onLabel.bounds.width", 52)))
-                                : 52;
+    const auto labelWidth = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".visual.onLabel.width", 52) : 52;
     enabledLabel.setBounds(enabledRow.removeFromLeft(labelWidth));
     enabledButton.setBounds(enabledRow.removeFromLeft(40).reduced(2, 2));
 
@@ -192,19 +180,11 @@ void LfoComponent::paint(juce::Graphics& g)
     card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
     const auto cardBounds = card.toFloat();
     const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
-    const auto bgTintAlpha = uiConfig != nullptr
-                                 ? uiConfig->getFloat(configPrefix + ".visual.bgTintAlpha",
-                                                      uiConfig->getFloat("mod.lfo.visual.bgTintAlpha", 0.10f))
-                                 : 0.10f;
-    const auto enabledBgTintColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.bgTintColour",
-                                                                                uiConfig->getColour("mod.lfo.visual.bgTintColour", effectiveAccent))
+    const auto bgTintAlpha = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.bgTintAlpha", 0.10f) : 0.10f;
+    const auto enabledBgTintColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.bgTintColour", effectiveAccent)
                                                          : effectiveAccent;
-    const auto topFillAlpha = uiConfig != nullptr
-                                  ? uiConfig->getFloat(configPrefix + ".visual.topFillAlpha",
-                                                       uiConfig->getFloat("mod.lfo.visual.topFillAlpha", 0.10f))
-                                  : 0.10f;
-    const auto enabledTopFillColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.topFillColour",
-                                                                                 uiConfig->getColour("mod.lfo.visual.topFillColour", effectiveAccent))
+    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.topFillAlpha", 0.10f) : 0.10f;
+    const auto enabledTopFillColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.topFillColour", effectiveAccent)
                                                           : effectiveAccent;
     const auto bgTintColour = currentEnabled ? enabledBgTintColour : juce::Colour::fromRGB(112, 112, 112);
     const auto topFillColour = currentEnabled ? enabledTopFillColour : juce::Colour::fromRGB(136, 136, 136);

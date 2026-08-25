@@ -48,18 +48,10 @@ void EnvelopeComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 
     const auto pref = configPrefix + ".visual.";
 
-    const auto textColour = uiConfig != nullptr
-                                ? uiConfig->getColour(pref + "onLabel.textColour",
-                                                      uiConfig->getColour("mod.env.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232)))
-                                : juce::Colour::fromRGB(232, 232, 232);
-    const auto fontSize = uiConfig != nullptr
-                              ? uiConfig->getFloat(pref + "onLabel.fontSize",
-                                                   uiConfig->getFloat("mod.env.visual.onLabel.fontSize", 11.5f))
-                              : 11.5f;
-    const auto text = uiConfig != nullptr
-                          ? uiConfig->getString(pref + "onLabel.text",
-                                                uiConfig->getString("mod.env.visual.onLabel.text", "ON"))
-                          : juce::String("ON");
+    const auto textColour = uiConfig != nullptr ? uiConfig->getColour(pref + "onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
+                                                : juce::Colour::fromRGB(232, 232, 232);
+    const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat(pref + "onLabel.fontSize", 11.5f) : 11.5f;
+    const auto text = uiConfig != nullptr ? uiConfig->getString(pref + "onLabel.text", "ON") : juce::String("ON");
     enabledLabel.setText(text, juce::dontSendNotification);
     enabledLabel.setColour(juce::Label::textColourId, textColour);
     enabledLabel.setFont(juce::FontOptions(fontSize));
@@ -116,39 +108,18 @@ void EnvelopeComponent::paint(juce::Graphics& g)
     }
 
     const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
-    const auto bgTintAlpha = uiConfig != nullptr
-                                 ? uiConfig->getFloat(configPrefix + ".visual.bgTintAlpha",
-                                                      uiConfig->getFloat("mod.env.visual.bgTintAlpha", 0.10f))
-                                 : 0.10f;
-    const auto enabledBgTintColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.bgTintColour",
-                                                                                uiConfig->getColour("mod.env.visual.bgTintColour", effectiveAccent))
+    const auto bgTintAlpha = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.bgTintAlpha", 0.10f) : 0.10f;
+    const auto enabledBgTintColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.bgTintColour", effectiveAccent)
                                                          : effectiveAccent;
-    const auto topFillAlpha = uiConfig != nullptr
-                                  ? uiConfig->getFloat(configPrefix + ".visual.topFillAlpha",
-                                                       uiConfig->getFloat("mod.env.visual.topFillAlpha", 0.10f))
-                                  : 0.10f;
-    const auto enabledTopFillColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.topFillColour",
-                                                                                 uiConfig->getColour("mod.env.visual.topFillColour", effectiveAccent))
+    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.topFillAlpha", 0.10f) : 0.10f;
+    const auto enabledTopFillColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.topFillColour", effectiveAccent)
                                                           : effectiveAccent;
-    const auto cardCornerRadius = uiConfig != nullptr
-                                      ? uiConfig->getFloat(configPrefix + ".visual.cardCornerRadius",
-                                                           uiConfig->getFloat("mod.env.visual.cardCornerRadius", 8.0f))
-                                      : 8.0f;
-    const auto outerStrokeThickness = uiConfig != nullptr
-                                          ? uiConfig->getFloat(configPrefix + ".visual.outerStrokeThickness",
-                                                               uiConfig->getFloat("mod.env.visual.outerStrokeThickness", 1.2f))
-                                          : 1.2f;
-    const auto outerStrokeColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.outerStrokeColour",
-                                                                              uiConfig->getColour("mod.env.visual.outerStrokeColour", juce::Colour::fromRGB(220, 232, 252)))
+    const auto cardCornerRadius = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.cardCornerRadius", 8.0f) : 8.0f;
+    const auto outerStrokeThickness = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.outerStrokeThickness", 1.2f) : 1.2f;
+    const auto outerStrokeColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.outerStrokeColour", juce::Colour::fromRGB(220, 232, 252))
                                                        : juce::Colour::fromRGB(220, 232, 252);
-    const auto outerStrokeAlphaEnabled = uiConfig != nullptr
-                                             ? uiConfig->getInt(configPrefix + ".visual.outerStrokeAlphaEnabled",
-                                                                uiConfig->getInt("mod.env.visual.outerStrokeAlphaEnabled", 88))
-                                             : 88;
-    const auto outerStrokeAlphaDisabled = uiConfig != nullptr
-                                              ? uiConfig->getInt(configPrefix + ".visual.outerStrokeAlphaDisabled",
-                                                                 uiConfig->getInt("mod.env.visual.outerStrokeAlphaDisabled", 66))
-                                              : 66;
+    const auto outerStrokeAlphaEnabled = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".visual.outerStrokeAlphaEnabled", 88) : 88;
+    const auto outerStrokeAlphaDisabled = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".visual.outerStrokeAlphaDisabled", 66) : 66;
     const auto bgTintColour = currentEnabled ? enabledBgTintColour : juce::Colour::fromRGB(112, 112, 112);
     const auto topFillColour = currentEnabled ? enabledTopFillColour : juce::Colour::fromRGB(136, 136, 136);
 
@@ -177,34 +148,16 @@ void EnvelopeComponent::paint(juce::Graphics& g)
                                                   geom.top - 5.0f,
                                                   (geom.right - geom.left) + 12.0f,
                                                   (geom.bottom - geom.top) + 10.0f);
-    const auto graphCornerRadius = uiConfig != nullptr
-                                       ? uiConfig->getFloat(configPrefix + ".visual.graph.cornerRadius",
-                                                            uiConfig->getFloat("mod.env.visual.graph.cornerRadius", 7.0f))
-                                       : 7.0f;
-    const auto graphFillColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.graph.fillColour",
-                                                                            uiConfig->getColour("mod.env.visual.graph.fillColour", juce::Colour::fromRGB(14, 14, 18)))
+    const auto graphCornerRadius = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.graph.cornerRadius", 7.0f) : 7.0f;
+    const auto graphFillColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.graph.fillColour", juce::Colour::fromRGB(14, 14, 18))
                                                      : juce::Colour::fromRGB(14, 14, 18);
-    const auto graphFillAlpha = uiConfig != nullptr
-                                    ? uiConfig->getInt(configPrefix + ".visual.graph.fillAlpha",
-                                                       uiConfig->getInt("mod.env.visual.graph.fillAlpha", 170))
-                                    : 170;
-    const auto graphStrokeThickness = uiConfig != nullptr
-                                          ? uiConfig->getFloat(configPrefix + ".visual.graph.strokeThickness",
-                                                               uiConfig->getFloat("mod.env.visual.graph.strokeThickness", 1.0f))
-                                          : 1.0f;
-    const auto graphStrokeAlphaEnabled = uiConfig != nullptr
-                                             ? uiConfig->getInt(configPrefix + ".visual.graph.strokeAlphaEnabled",
-                                                                uiConfig->getInt("mod.env.visual.graph.strokeAlphaEnabled", 82))
-                                             : 82;
-    const auto graphStrokeAlphaDisabled = uiConfig != nullptr
-                                              ? uiConfig->getInt(configPrefix + ".visual.graph.strokeAlphaDisabled",
-                                                                 uiConfig->getInt("mod.env.visual.graph.strokeAlphaDisabled", 62))
-                                              : 62;
-    const auto graphStrokeColourEnabled = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.graph.strokeColourEnabled",
-                                                                                     uiConfig->getColour("mod.env.visual.graph.strokeColourEnabled", effectiveAccent))
+    const auto graphFillAlpha = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".visual.graph.fillAlpha", 170) : 170;
+    const auto graphStrokeThickness = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.graph.strokeThickness", 1.0f) : 1.0f;
+    const auto graphStrokeAlphaEnabled = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".visual.graph.strokeAlphaEnabled", 82) : 82;
+    const auto graphStrokeAlphaDisabled = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".visual.graph.strokeAlphaDisabled", 62) : 62;
+    const auto graphStrokeColourEnabled = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.graph.strokeColourEnabled", effectiveAccent)
                                                               : effectiveAccent;
-    const auto graphStrokeColourDisabled = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.graph.strokeColourDisabled",
-                                                                                      uiConfig->getColour("mod.env.visual.graph.strokeColourDisabled", juce::Colour::fromRGB(136, 136, 136)))
+    const auto graphStrokeColourDisabled = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.graph.strokeColourDisabled", juce::Colour::fromRGB(136, 136, 136))
                                                                : juce::Colour::fromRGB(136, 136, 136);
     const auto graphStrokeColour = currentEnabled ? graphStrokeColourEnabled : graphStrokeColourDisabled;
     const auto graphStrokeAlpha = currentEnabled ? graphStrokeAlphaEnabled : graphStrokeAlphaDisabled;
@@ -736,11 +689,7 @@ void EnvelopeComponent::resized()
     cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
     auto area = cardArea.reduced(10, 10);
     auto enabledRow = area.removeFromTop(24);
-    const auto labelWidth = uiConfig != nullptr
-                                ? uiConfig->getInt(configPrefix + ".visual.onLabel.width",
-                                                   uiConfig->getInt("mod.env.visual.onLabel.width",
-                                                                    uiConfig->getInt("mod.env.visual.onLabel.bounds.width", 52)))
-                                : 52;
+    const auto labelWidth = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".visual.onLabel.width", 52) : 52;
     enabledLabel.setBounds(enabledRow.removeFromLeft(labelWidth));
     enabledButton.setBounds(enabledRow.removeFromLeft(40).reduced(2, 2));
 
