@@ -166,12 +166,12 @@
   },
   "flt": {
     "panel": {
-      "fillAlpha": 0.14,
-      "strokeAlpha": 0.75,
+      "fillAlpha": 0,
+      "strokeAlpha": 0,
       "cornerRadius": 10,
       "layout": {
-        "padX": 12,
-        "padY": 10
+        "padX": 0,
+        "padY": 0
       },
       "card": {
         "fillAlpha": 0.1,
@@ -179,7 +179,7 @@
         "topFillColour": "$topFillColour",
         "cornerRadius": 8,
         "strokeThickness": 1.2,
-        "strokeColour": "#DCE8FC58",
+        "strokeColour": "#FFFFFF",
         "title": {
           "fontSize": 11
         }
