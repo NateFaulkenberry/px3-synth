@@ -325,7 +325,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     lfoGenerator.setSettings(currentLfoSettings());
     vibeComponent.prepare(sampleRate, synth.getNumVoices(), vibeComponent.getSeed());
     delayComponent.prepare(sampleRate);
-    reverbComponent.prepare(sampleRate);
+    reverb.prepare(sampleRate);
 
     const auto busChannels = juce::jmax(1, getTotalNumOutputChannels());
     const auto busSamples = juce::jmax(1, samplesPerBlock);
@@ -496,7 +496,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     updateTransportState();
 
     delayComponent.updateForBlock(currentDelaySettings());
-    reverbComponent.updateForBlock(currentReverbSettings(), buffer.getNumSamples());
+    reverb.updateForBlock(currentReverbSettings(), buffer.getNumSamples());
     const auto fxOrder = getFxProcessingOrder();
     const auto fxSendGain = juce::jlimit(0.0f, 1.0f, fxSendGainParam != nullptr ? fxSendGainParam->get() : 1.0f);
     const auto fxReturnGain = juce::jlimit(0.0f, 1.0f, fxReturnGainParam != nullptr ? fxReturnGainParam->get() : 1.0f);
@@ -537,7 +537,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                     break;
 
                 case 2: // Reverb
-                    reverbComponent.processSampleFrame(stageL, stageR, stageL, stageR);
+                    reverb.processSampleFrame(stageL, stageR, stageL, stageR);
                     break;
 
                 default:
@@ -562,7 +562,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
     }
 
-    reverbComponent.applyPostBlockCompensation(masterBusBuffer);
+    reverb.applyPostBlockCompensation(masterBusBuffer);
 
     for (int channel = 0; channel < outputChannels; ++channel)
     {

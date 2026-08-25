@@ -5,7 +5,7 @@
 #include "Delay.h"
 #include "LfoGenerator.h"
 #include "PianoKeyboard.h"
-#include "ReverbComponent.h"
+#include "Reverb.h"
 #include "SubOscTypes.h"
 #include "SynthSound.h"
 #include "SynthVoice.h"
@@ -323,7 +323,7 @@ private:
      */
     Vibe vibeComponent;
     Delay delayComponent;
-    ReverbComponent reverbComponent;
+    ::Reverb reverb;
 
     // Internal routing buses (prepared once, reused per block).
     juce::AudioBuffer<float> oscillatorBusBuffer;

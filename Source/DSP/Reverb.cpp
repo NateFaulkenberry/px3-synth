@@ -1,24 +1,24 @@
-#include "ReverbComponent.h"
+#include "Reverb.h"
 
 #include <cmath>
 
-float ReverbComponent::clamp01(float v)
+float ::Reverb::clamp01(float v)
 {
     return juce::jlimit(0.0f, 1.0f, v);
 }
 
-float ReverbComponent::lerp(float a, float b, float t)
+float ::Reverb::lerp(float a, float b, float t)
 {
     return a + (b - a) * t;
 }
 
-float ReverbComponent::smoothstep(float x)
+float ::Reverb::smoothstep(float x)
 {
     const auto t = clamp01(x);
     return t * t * (3.0f - 2.0f * t);
 }
 
-float ReverbComponent::sanitizeAudioSample(float x)
+float ::Reverb::sanitizeAudioSample(float x)
 {
     if (!std::isfinite(x))
     {
@@ -28,14 +28,14 @@ float ReverbComponent::sanitizeAudioSample(float x)
     return juce::jlimit(-4.0f, 4.0f, x);
 }
 
-void ReverbComponent::resizeLine(DelayLine& line, int size)
+void ::Reverb::resizeLine(DelayLine& line, int size)
 {
     line.buffer.assign(static_cast<std::size_t>(juce::jmax(2, size)), 0.0f);
     line.writePos = 0;
     line.lpState = 0.0f;
 }
 
-void ReverbComponent::writeLine(DelayLine& line, float sample)
+void ::Reverb::writeLine(DelayLine& line, float sample)
 {
     if (line.buffer.empty())
     {
@@ -46,7 +46,7 @@ void ReverbComponent::writeLine(DelayLine& line, float sample)
     line.writePos = (line.writePos + 1) % static_cast<int>(line.buffer.size());
 }
 
-float ReverbComponent::readLine(const DelayLine& line, float delaySamples)
+float ::Reverb::readLine(const DelayLine& line, float delaySamples)
 {
     if (line.buffer.empty())
     {
@@ -71,7 +71,7 @@ float ReverbComponent::readLine(const DelayLine& line, float delaySamples)
            + (line.buffer[static_cast<std::size_t>(i1)] - line.buffer[static_cast<std::size_t>(i0)]) * frac;
 }
 
-float ReverbComponent::processAllpass(DelayLine& line, float in, float delaySamples, float gain)
+float ::Reverb::processAllpass(DelayLine& line, float in, float delaySamples, float gain)
 {
     const auto delayed = readLine(line, delaySamples);
     const auto v = in - gain * delayed;
@@ -79,14 +79,14 @@ float ReverbComponent::processAllpass(DelayLine& line, float in, float delaySamp
     return delayed + gain * v;
 }
 
-float ReverbComponent::processDelay(DelayLine& line, float in, float delaySamples)
+float ::Reverb::processDelay(DelayLine& line, float in, float delaySamples)
 {
     const auto delayed = readLine(line, delaySamples);
     writeLine(line, in);
     return delayed;
 }
 
-void ReverbComponent::prepare(double sampleRate)
+void ::Reverb::prepare(double sampleRate)
 {
     sampleRateHz = juce::jmax(1.0, sampleRate);
 
@@ -97,7 +97,7 @@ void ReverbComponent::prepare(double sampleRate)
     reset();
 }
 
-void ReverbComponent::reset()
+void ::Reverb::reset()
 {
     reverb.reset();
     outputCompGain = 1.0f;
@@ -145,7 +145,7 @@ void ReverbComponent::reset()
     cloudReadCache.fill(0.0f);
 }
 
-void ReverbComponent::updateForBlock(const ReverbSettings& settings, int numSamples)
+void ::Reverb::updateForBlock(const ReverbSettings& settings, int numSamples)
 {
     currentSettings.amount = clamp01(settings.amount);
     currentSettings.enabled = settings.enabled;
@@ -165,7 +165,7 @@ void ReverbComponent::updateForBlock(const ReverbSettings& settings, int numSamp
     blockPostEnergy = 0.0;
 }
 
-void ReverbComponent::processSampleFrame(float inL, float inR, float& outL, float& outR)
+void ::Reverb::processSampleFrame(float inL, float inR, float& outL, float& outR)
 {
     const auto amountTarget = currentSettings.enabled ? currentSettings.amount : 0.0f;
     const auto smoothCoeff = juce::jlimit(0.0001f, 1.0f, amountSmoothingCoeff);
@@ -190,7 +190,7 @@ void ReverbComponent::processSampleFrame(float inL, float inR, float& outL, floa
     outR = inR;
 }
 
-void ReverbComponent::applyPostBlockCompensation(juce::AudioBuffer<float>& buffer)
+void ::Reverb::applyPostBlockCompensation(juce::AudioBuffer<float>& buffer)
 {
     if (amountSmoothed > 0.0001f && blockSampleCount > 0)
     {
@@ -217,7 +217,7 @@ void ReverbComponent::applyPostBlockCompensation(juce::AudioBuffer<float>& buffe
     }
 }
 
-void ReverbComponent::processCore(float inL,
+void ::Reverb::processCore(float inL,
                                   float inR,
                                   float amount,
                                   int algorithmIndex,

@@ -7,7 +7,7 @@
 #include <array>
 #include <vector>
 
-class ReverbComponent
+class Reverb
 {
 public:
     void prepare(double sampleRate);

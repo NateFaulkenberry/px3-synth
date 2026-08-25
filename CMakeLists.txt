@@ -77,7 +77,7 @@ target_sources(PX3Synth
         Source/DSP/EnvelopeGenerator.cpp
         Source/DSP/Delay.cpp
         Source/DSP/LfoGenerator.cpp
-        Source/DSP/ReverbComponent.cpp
+        Source/DSP/Reverb.cpp
         Source/DSP/SubOscillator.cpp
         Source/DSP/Vibe.cpp
         Source/DSP/PluginProcessor.cpp
