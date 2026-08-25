@@ -36,9 +36,6 @@ public:
     void advanceAnimation(float oscDeltaPhase, float lfoDeltaPhase);
 
 private:
-    juce::Label& lfoAssignLabel;
-    juce::ComboBox& lfoAssignBox;
-
     std::unique_ptr<OscillatorDisplayComponent> oscillatorDisplayComponent;
     std::unique_ptr<LfoComponent> lfoComponent;
 

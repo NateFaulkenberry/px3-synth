@@ -21,9 +21,7 @@ OscPanel::OscPanel(juce::Slider& macroA,
                    juce::Label& lfoWaveformLabel,
                    juce::Colour panelAccent,
                    juce::Colour lfoAccent)
-    : lfoAssignLabel(lfoAssignLabelIn),
-      lfoAssignBox(lfoAssignBoxIn),
-      accent(panelAccent)
+        : accent(panelAccent)
 {
     oscillatorDisplayComponent = std::make_unique<OscillatorDisplayComponent>(macroA,
                                                                                macroB,
@@ -38,10 +36,9 @@ OscPanel::OscPanel(juce::Slider& macroA,
                                                                                panelAccent);
     addAndMakeVisible(*oscillatorDisplayComponent);
 
-    addAndMakeVisible(lfoAssignLabel);
-    addAndMakeVisible(lfoAssignBox);
-
-    lfoComponent = std::make_unique<LfoComponent>(lfoRateKnob,
+    lfoComponent = std::make_unique<LfoComponent>(lfoAssignLabelIn,
+                                                  lfoAssignBoxIn,
+                                                  lfoRateKnob,
                                                   lfoRateLabel,
                                                   lfoRateValueLabel,
                                                   lfoWaveformBox,
@@ -89,11 +86,6 @@ void OscPanel::resized()
     constexpr int targetCardWidth = 300;
     const auto lfoCardWidth = juce::jmax(1, juce::jmin(targetCardWidth, lfoInner.getWidth()));
     auto lfoColumn = juce::Rectangle<int>(lfoCardWidth, lfoInner.getHeight()).withCentre(lfoInner.getCentre());
-
-    auto assign = lfoColumn.removeFromBottom(22);
-    auto labelArea = assign.removeFromLeft(52);
-    lfoAssignLabel.setBounds(labelArea);
-    lfoAssignBox.setBounds(assign.reduced(1, 0));
 
     if (lfoComponent != nullptr)
     {
