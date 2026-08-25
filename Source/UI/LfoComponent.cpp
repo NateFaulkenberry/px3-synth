@@ -132,7 +132,8 @@ void LfoComponent::paint(juce::Graphics& g)
     g.fillRoundedRectangle(cardBounds, 8.0f);
     g.setColour(topFillColour.withAlpha(topFillAlpha));
     juce::Path topFill;
-    const auto topHalf = cardBounds.withTrimmedBottom(cardBounds.getHeight() * 0.5f);
+    const auto topFillBounds = cardBounds.reduced(6.0f);
+    const auto topHalf = topFillBounds.withTrimmedBottom(topFillBounds.getHeight() * 0.5f);
     topFill.addRoundedRectangle(topHalf.getX(),
                                 topHalf.getY(),
                                 topHalf.getWidth(),
