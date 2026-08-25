@@ -55,36 +55,12 @@ void EnvelopeComponent::paint(juce::Graphics& g)
         return;
     }
 
-    const auto componentFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("env.envelope.fillAlpha", 0.08f) : 0.08f;
-    const auto componentCornerRadius = uiConfig != nullptr ? uiConfig->getFloat("env.envelope.cornerRadius", 8.0f) : 8.0f;
     const auto background = uiConfig != nullptr
                                 ? uiConfig->getColour("env.envelope.background", juce::Colour::fromRGBA(10, 18, 10, 155))
                                 : juce::Colour::fromRGBA(10, 18, 10, 155);
     const auto outline = uiConfig != nullptr
                              ? uiConfig->getColour("env.envelope.outline", accent.withAlpha(0.28f))
                              : accent.withAlpha(0.28f);
-    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("env.envelope.topFillAlpha", 0.10f) : 0.10f;
-    const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("env.envelope.topFillColour", background)
-                                                   : background;
-
-    g.setColour(accent.withAlpha(componentFillAlpha));
-    g.fillRoundedRectangle(componentBounds, componentCornerRadius);
-    g.setColour(topFillColour.withAlpha(topFillAlpha));
-    juce::Path topFill;
-    const auto topHalf = componentBounds.withTrimmedBottom(componentBounds.getHeight() * 0.5f);
-    topFill.addRoundedRectangle(topHalf.getX(),
-                                topHalf.getY(),
-                                topHalf.getWidth(),
-                                topHalf.getHeight(),
-                                componentCornerRadius,
-                                componentCornerRadius,
-                                true,
-                                true,
-                                false,
-                                false);
-    g.fillPath(topFill);
-    g.setColour(outline);
-    g.drawRoundedRectangle(componentBounds, componentCornerRadius, 1.0f);
 
     const auto graphArea = componentBounds.reduced(8.0f, 6.0f);
     g.setColour(background);
