@@ -55,8 +55,6 @@ void ModPanel::paint(juce::Graphics& g)
     const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("mod.panel.fillAlpha", 0.14f) : 0.14f;
     const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("mod.panel.strokeAlpha", 0.75f) : 0.75f;
     const auto panelRadius = uiConfig != nullptr ? uiConfig->getFloat("mod.panel.cornerRadius", 10.0f) : 10.0f;
-    const auto cardTitleFontSize = uiConfig != nullptr ? uiConfig->getFloat("mod.panel.cardTitle.fontSize", 11.0f) : 11.0f;
-
     const auto area = getLocalBounds().toFloat().reduced(2.0f);
     g.setColour(accent.withAlpha(fillAlpha));
     g.fillRoundedRectangle(area, panelRadius);
@@ -64,6 +62,25 @@ void ModPanel::paint(juce::Graphics& g)
     g.setColour(accent.withAlpha(strokeAlpha));
     g.drawRoundedRectangle(area, panelRadius, 1.0f);
 
+    const auto panelPadX = uiConfig != nullptr ? uiConfig->getInt("mod.panel.layout.padX", 12) : 12;
+    const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("mod.panel.layout.padY", 10) : 10;
+    auto cardArea = getLocalBounds().reduced(panelPadX, panelPadY);
+
+    constexpr int gap = 8;
+    const auto columnWidth = juce::jmax(1, (cardArea.getWidth() - gap) / 2);
+    auto envCardArea = juce::Rectangle<int>(cardArea.getX(), cardArea.getY(), columnWidth, cardArea.getHeight());
+
+    const auto envCardBounds = envCardArea.toFloat().reduced(2.0f);
+    g.setColour(accent.withAlpha(0.10f));
+    g.fillRoundedRectangle(envCardBounds, 8.0f);
+    g.setColour(juce::Colour::fromRGBA(220, 232, 252, 88));
+    g.drawRoundedRectangle(envCardBounds, 8.0f, 1.2f);
+
+}
+
+void ModPanel::paintOverChildren(juce::Graphics& g)
+{
+    const auto cardTitleFontSize = uiConfig != nullptr ? uiConfig->getFloat("mod.panel.cardTitle.fontSize", 11.0f) : 11.0f;
     const auto drawCardTitle = [&g, cardTitleFontSize](const juce::String& text, juce::Rectangle<int> bounds, juce::Colour colour)
     {
         g.setColour(colour.brighter(0.2f));
@@ -80,21 +97,6 @@ void ModPanel::paint(juce::Graphics& g)
     {
         drawCardTitle("ENV", envelopeGraph->getBounds(), accent);
     }
-
-    const auto panelPadX = uiConfig != nullptr ? uiConfig->getInt("mod.panel.layout.padX", 12) : 12;
-    const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("mod.panel.layout.padY", 10) : 10;
-    auto cardArea = getLocalBounds().reduced(panelPadX, panelPadY);
-
-    constexpr int gap = 8;
-    const auto columnWidth = juce::jmax(1, (cardArea.getWidth() - gap) / 2);
-    auto envCardArea = juce::Rectangle<int>(cardArea.getX(), cardArea.getY(), columnWidth, cardArea.getHeight());
-
-    const auto envCardBounds = envCardArea.toFloat().reduced(2.0f);
-    g.setColour(accent.withAlpha(0.10f));
-    g.fillRoundedRectangle(envCardBounds, 8.0f);
-    g.setColour(juce::Colour::fromRGBA(220, 232, 252, 88));
-    g.drawRoundedRectangle(envCardBounds, 8.0f, 1.2f);
-
 }
 
 void ModPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)

@@ -34,6 +34,7 @@ public:
              juce::Colour lfoAccent);
 
     void paint(juce::Graphics& g) override;
+    void paintOverChildren(juce::Graphics& g) override;
     void resized() override;
 
     void refreshFromParameters();
