@@ -7,15 +7,19 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 APP_PATH="build/PX3Synth_artefacts/Standalone/PX3 Synth.app"
 PROC_MATCH="PX3 Synth.app/Contents/MacOS/PX3 Synth"
 DEBUG_FLAG=""
+FORCE_BUILD="false"
 
 usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/run-standalone.sh [--debug true|false]
+  ./scripts/run-standalone.sh [--debug true|false] [--build [true|false]]
 
 Options:
   --debug BOOL        Reconfigure/rebuild before launch with PX3_DEBUG_PANEL=ON/OFF.
                       Example: --debug true
+  --build [BOOL]      Force a rebuild before launch. Defaults to false.
+                      If provided without a value, it is treated as true.
+                      Example: --build true
   -h, --help          Show this help.
 EOF
 }
@@ -38,6 +42,26 @@ while [[ $# -gt 0 ]]; do
       esac
       shift 2
       ;;
+    --build)
+      if [[ $# -ge 2 && ! "$2" =~ ^- ]]; then
+        case "$2" in
+          [Tt][Rr][Uu][Ee]|1|[Oo][Nn]|[Yy][Ee][Ss])
+            FORCE_BUILD="true"
+            ;;
+          [Ff][Aa][Ll][Ss][Ee]|0|[Oo][Ff][Ff]|[Nn][Oo])
+            FORCE_BUILD="false"
+            ;;
+          *)
+            echo "Invalid --build value: $2 (expected true|false)" >&2
+            exit 1
+            ;;
+        esac
+        shift 2
+      else
+        FORCE_BUILD="true"
+        shift
+      fi
+      ;;
     -h|--help)
       usage
       exit 0
@@ -52,6 +76,11 @@ done
 
 if [[ -n "${DEBUG_FLAG}" ]]; then
   cmake -S "${REPO_ROOT}" -B "${REPO_ROOT}/build" -DPX3_DEBUG_PANEL="${DEBUG_FLAG}"
+fi
+
+if [[ "${FORCE_BUILD}" == "true" ]]; then
+  cmake --build "${REPO_ROOT}/build" --clean-first
+elif [[ -n "${DEBUG_FLAG}" ]]; then
   cmake --build "${REPO_ROOT}/build"
 fi
 

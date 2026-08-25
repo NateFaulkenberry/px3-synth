@@ -23,6 +23,24 @@ Run standalone:
 ./scripts/run-standalone.sh
 ```
 
+Force a clean rebuild before launching standalone:
+
+```bash
+./scripts/run-standalone.sh --build true
+```
+
+Shorthand (no value means true):
+
+```bash
+./scripts/run-standalone.sh --build
+```
+
+Explicitly disable forced rebuild (default):
+
+```bash
+./scripts/run-standalone.sh --build false
+```
+
 ## Install Locally (Development)
 
 Install latest Release AU and (by default) VST3 into user plugin folders:

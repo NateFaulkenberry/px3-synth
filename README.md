@@ -40,6 +40,19 @@ cmake --build build
 ./scripts/run-standalone.sh
 ```
 
+Optional standalone script flags:
+
+```bash
+# force clean rebuild before launching
+./scripts/run-standalone.sh --build true
+
+# equivalent shorthand (no value means true)
+./scripts/run-standalone.sh --build
+
+# explicitly disable forced rebuild (default)
+./scripts/run-standalone.sh --build false
+```
+
 JUCE is fetched automatically through CMake FetchContent.
 
 ## Building a Release Installer
@@ -87,9 +100,24 @@ The in-plugin DEBUG panel is controlled at build time and is OFF by default.
 
 - Enable/disable when launching standalone (script reconfigures/rebuilds first):
 
+- Optional forced rebuild when launching standalone:
+
+```bash
+./scripts/run-standalone.sh --build true
+./scripts/run-standalone.sh --build
+```
+
+- Enable/disable when launching standalone debug mode:
+
 ```bash
 ./scripts/run-standalone.sh --debug true
 ./scripts/run-standalone.sh --debug false
+```
+
+- Combine debug + forced rebuild:
+
+```bash
+./scripts/run-standalone.sh --debug true --build true
 ```
 
 - If building manually with CMake:
