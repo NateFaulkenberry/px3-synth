@@ -2585,6 +2585,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         refreshOscillatorModeUI();
         refreshLfoAssignmentUI();
         refreshLfoUI();
+        refreshSubOscUI();
     }
     else if (isPanelVisible(1))
     {
@@ -2594,11 +2595,6 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     {
         refreshFilterUI();
     }
-    else if (isPanelVisible(4))
-    {
-        refreshSubOscUI();
-    }
-
     refreshTopMenuSelectionFromProcessor();
 
     if (debugPanelVisible)

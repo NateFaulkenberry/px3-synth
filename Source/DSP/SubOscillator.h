@@ -13,9 +13,11 @@ public:
     float renderSample(double baseFrequencyHz);
 
 private:
-    static float waveformSampleAtPhase(float phaseRadians, int waveformIndex);
+    static float waveformSampleAtPhase(float phaseNorm, float phaseDelta, int waveformIndex);
+    static float polyBlep(float t, float dt);
+    static float wrapPhase01(float phaseNorm);
 
     double sampleRateHz { 44100.0 };
     SubOscSettings settings;
-    float phaseRadians { 0.0f };
+    float phaseNorm { 0.0f };
 };

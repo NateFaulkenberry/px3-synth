@@ -75,32 +75,47 @@ void SubOscComponent::advanceAnimation(float deltaPhase)
 
 void SubOscComponent::resized()
 {
-    auto area = getLocalBounds().reduced(12, 10);
+    auto cardArea = getLocalBounds().reduced(6, 6);
     constexpr int targetCardWidth = 300;
-    const auto cardWidth = juce::jmin(targetCardWidth, area.getWidth());
-    area = area.withSizeKeepingCentre(cardWidth, area.getHeight());
+    const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
+    cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
+    auto area = cardArea.reduced(10, 10);
 
-    auto top = area.removeFromTop(24);
-    enabledLabel.setBounds(top.removeFromLeft(58));
-    enabledButton.setBounds(top.removeFromLeft(40));
+    auto enabledRow = area.removeFromTop(24);
+    enabledLabel.setBounds(enabledRow.removeFromLeft(56));
+    enabledButton.setBounds(enabledRow.removeFromLeft(40).reduced(2, 2));
 
     area.removeFromTop(6);
-    auto selectors = area.removeFromTop(24);
-    auto octaveCell = selectors.removeFromLeft(selectors.getWidth() / 2).reduced(0, 0);
-    auto waveformCell = selectors;
 
-    octaveLabel.setBounds(octaveCell.removeFromLeft(56));
-    octaveBox.setBounds(octaveCell.reduced(1, 0));
+    auto octaveRow = area.removeFromTop(24);
+    octaveLabel.setBounds(octaveRow.removeFromLeft(56));
+    octaveBox.setBounds(octaveRow.reduced(2, 1));
 
-    waveformLabel.setBounds(waveformCell.removeFromLeft(56));
-    waveformBox.setBounds(waveformCell.reduced(1, 0));
+    area.removeFromTop(6);
+
+    auto waveformRow = area.removeFromTop(24);
+    waveformLabel.setBounds(waveformRow.removeFromLeft(56));
+    waveformBox.setBounds(waveformRow.reduced(2, 1));
 
     area.removeFromTop(8);
-    const auto knobSize = juce::jlimit(54, 108, juce::jmin(area.getWidth() - 18, area.getHeight() - 18));
-    const auto knobBounds = juce::Rectangle<int>(knobSize, knobSize)
-                                .withCentre({ area.getCentreX(), area.getCentreY() + 8 });
-    levelLabel.setBounds(juce::Rectangle<int>(knobBounds.getX(), knobBounds.getY() - 20, knobBounds.getWidth(), 18));
-    levelKnob.setBounds(knobBounds);
+
+    auto graphArea = area;
+    const auto requestedGraphHeight = static_cast<int>(juce::jmax(52, getLocalBounds().reduced(20, 14).getHeight() - 168));
+    const auto maxGraphHeight = juce::jmax(52, graphArea.getHeight() - 88);
+    const auto graphHeight = juce::jmin(requestedGraphHeight, maxGraphHeight);
+
+    graphArea.removeFromBottom(graphHeight);
+    graphArea.removeFromBottom(10);
+
+    auto knobArea = graphArea.reduced(2, 0);
+    auto labelRow = knobArea.removeFromTop(20);
+    knobArea.removeFromTop(6);
+    levelLabel.setBounds(labelRow.reduced(2, 0));
+
+    const auto knobSize = juce::jlimit(40,
+                                       86,
+                                       juce::jmin(knobArea.getWidth() - 10, knobArea.getHeight() - 4));
+    levelKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(knobArea.getCentre()));
 }
 
 void SubOscComponent::paint(juce::Graphics& g)
@@ -118,9 +133,19 @@ void SubOscComponent::paint(juce::Graphics& g)
     g.setColour(juce::Colour::fromRGBA(220, 232, 252, currentEnabled ? 88 : 66));
     g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
 
-    auto graph = cardBounds.reduced(12.0f, 10.0f);
-    graph.removeFromTop(58.0f);
-    graph.removeFromBottom(118.0f);
+    auto graphLayout = cardBounds.reduced(10.0f, 10.0f);
+    graphLayout.removeFromTop(24.0f);
+    graphLayout.removeFromTop(6.0f);
+    graphLayout.removeFromTop(24.0f);
+    graphLayout.removeFromTop(6.0f);
+    graphLayout.removeFromTop(24.0f);
+    graphLayout.removeFromTop(8.0f);
+
+    const auto requestedGraphHeight = static_cast<float>(juce::jmax(52, getLocalBounds().reduced(20, 14).getHeight() - 168));
+    const auto maxGraphHeight = juce::jmax(52.0f, graphLayout.getHeight() - 88.0f);
+    const auto graphHeight = juce::jmin(requestedGraphHeight, maxGraphHeight);
+    graphLayout.removeFromBottom(10.0f);
+    auto graph = graphLayout.removeFromBottom(graphHeight).reduced(0.0f, 2.0f);
 
     if (graph.getWidth() < 40.0f || graph.getHeight() < 20.0f)
     {

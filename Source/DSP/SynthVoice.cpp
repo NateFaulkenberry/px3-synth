@@ -119,6 +119,29 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
+        const auto applyVibeSourceStage = [&](float inSample, float noiseScale)
+        {
+            if (!vibeActive)
+            {
+                return inSample;
+            }
+
+            const auto asym = (vibeTuning.waveformAsymmetry * (0.35f + 0.65f * vibeVariation.asymmetryBias)) * vibeDepth;
+            const auto sat = (vibeTuning.saturation * (0.45f + 0.55f * vibeVariation.saturationBias)) * vibeDepth;
+            const auto chaos = vibeShared.chaos * vibeTuning.correlatedChaos * 0.18f * vibeDepth;
+
+            const auto asymShaped = inSample
+                                    + asym * inSample * inSample * (inSample >= 0.0f ? 0.9f : -0.7f)
+                                    + chaos;
+            auto stageSample = std::tanh(asymShaped * (1.0f + sat * 3.4f)) * (1.0f / (1.0f + sat * 0.90f));
+
+            const auto noiseAmount = vibeTuning.noise * vibeDepth * (0.55f + 0.45f * std::abs(vibeShared.psu));
+            stageSample += oscillatorUnits[0].nextDeterministicNoise()
+                           * (0.0035f + 0.0165f * noiseAmount)
+                           * juce::jlimit(0.0f, 1.0f, noiseScale);
+            return stageSample;
+        };
+
         currentPitchBendNorm += (targetPitchBendNorm - currentPitchBendNorm) * 0.06f;
         currentModWheelNorm += (targetModWheelNorm - currentModWheelNorm) * 0.045f;
 
@@ -174,29 +197,19 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             oscillatorBusSample += sourceSample * juce::jlimit(0.0f, 1.0f, layer.level);
         }
 
+        auto oscillatorStageSample = softClip(oscillatorBusSample * 0.92f);
+        oscillatorStageSample = applyVibeSourceStage(oscillatorStageSample, 1.0f);
+
+        auto subStageSample = 0.0f;
         const auto subBypassed = !subOscillatorSettings.enabled;
         const auto subGain = juce::jlimit(0.0f, 1.0f, subOscillatorSettings.level);
         if (!subBypassed)
         {
-            oscillatorBusSample += subSample * subGain;
+            subStageSample = softClip(subSample * subGain * 0.92f);
+            subStageSample = applyVibeSourceStage(subStageSample, 0.6f);
         }
 
-        auto sourceSample = softClip(oscillatorBusSample * 0.92f);
-
-        if (vibeActive)
-        {
-            const auto asym = (vibeTuning.waveformAsymmetry * (0.35f + 0.65f * vibeVariation.asymmetryBias)) * vibeDepth;
-            const auto sat = (vibeTuning.saturation * (0.45f + 0.55f * vibeVariation.saturationBias)) * vibeDepth;
-            const auto chaos = vibeShared.chaos * vibeTuning.correlatedChaos * 0.18f * vibeDepth;
-
-            const auto asymShaped = sourceSample
-                                    + asym * sourceSample * sourceSample * (sourceSample >= 0.0f ? 0.9f : -0.7f)
-                                    + chaos;
-            sourceSample = std::tanh(asymShaped * (1.0f + sat * 3.4f)) * (1.0f / (1.0f + sat * 0.90f));
-
-            const auto noiseAmount = vibeTuning.noise * vibeDepth * (0.55f + 0.45f * std::abs(vibeShared.psu));
-            sourceSample += oscillatorUnits[0].nextDeterministicNoise() * (0.0035f + 0.0165f * noiseAmount);
-        }
+        auto sourceSample = softClip((oscillatorStageSample + subStageSample) * 0.96f);
 
         // FILTER STAGE: processes combined oscillator bus signal.
         auto filteredSample = voiceFilter.processSample(sourceSample);
