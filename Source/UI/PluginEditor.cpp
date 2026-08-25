@@ -58,6 +58,7 @@ int sectionIdFromModuleId(const juce::String& moduleId)
     return -1;
 }
 
+#if PX3_DEBUG_PANEL
 double processResidentMemoryMb()
 {
 #if JUCE_MAC
@@ -71,6 +72,7 @@ double processResidentMemoryMb()
 #endif
     return 0.0;
 }
+#endif
 
 class DebugPanelWindow final : public juce::DocumentWindow
 {
