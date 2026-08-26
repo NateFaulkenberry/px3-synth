@@ -201,6 +201,7 @@ void MixPanel::configureChannelWidgets(ChannelWidgets& channel,
     channel.pan.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     channel.pan.setRange(-1.0, 1.0, 0.0);
     channel.pan.setDoubleClickReturnValue(true, 0.0);
+    channel.pan.getProperties().set("isMixerPanKnob", true);
     if (knobLookAndFeel != nullptr)
     {
         channel.pan.setLookAndFeel(knobLookAndFeel);

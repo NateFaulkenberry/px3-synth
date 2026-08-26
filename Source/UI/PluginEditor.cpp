@@ -133,6 +133,7 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
     const auto radius = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.5f;
     const auto center = bounds.getCentre();
     const auto angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
+    const auto isMixerPanKnob = static_cast<bool>(slider.getProperties().getWithDefault("isMixerPanKnob", false));
     const auto accent = slider.isColourSpecified(juce::Slider::rotarySliderFillColourId)
                             ? slider.findColour(juce::Slider::rotarySliderFillColourId)
                             : juce::Colour::fromRGB(234, 166, 76);
@@ -254,23 +255,65 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
         }
     }
 
-    juce::Path ring;
-    ring.addCentredArc(center.x,
-                       center.y,
-                       radius * 0.88f,
-                       radius * 0.88f,
-                       0.0f,
-                       rotaryStartAngle,
-                       angle,
-                       true);
-    g.setColour(accentForHighlight);
-    g.strokePath(ring, juce::PathStrokeType(3.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    float indicatorAngle = angle;
+    if (isMixerPanKnob)
+    {
+        const auto topCenterAngle = -juce::MathConstants<float>::halfPi;
+        const auto panValue = juce::jlimit(-1.0f, 1.0f, static_cast<float>(slider.getValue()));
+        const auto panArcEndAngle = topCenterAngle + panValue * juce::MathConstants<float>::halfPi;
+        indicatorAngle = panValue * juce::MathConstants<float>::halfPi;
+
+        if (std::abs(panValue) > 0.001f)
+        {
+            juce::Path panRing;
+            const auto arcRadius = radius * 0.88f;
+            constexpr int steps = 24;
+            for (int i = 0; i <= steps; ++i)
+            {
+                const auto t = static_cast<float>(i) / static_cast<float>(steps);
+                const auto a = topCenterAngle + (panArcEndAngle - topCenterAngle) * t;
+                const auto px = center.x + std::cos(a) * arcRadius;
+                const auto py = center.y + std::sin(a) * arcRadius;
+                if (i == 0)
+                {
+                    panRing.startNewSubPath(px, py);
+                }
+                else
+                {
+                    panRing.lineTo(px, py);
+                }
+            }
+
+            const auto panBlue = renderGrayscale
+                                     ? juce::Colour::fromRGB(200, 200, 200)
+                                     : juce::Colour::fromRGB(86, 140, 255);
+            g.setColour(panBlue);
+            g.strokePath(panRing,
+                         juce::PathStrokeType(3.2f,
+                                              juce::PathStrokeType::curved,
+                                              juce::PathStrokeType::rounded));
+        }
+    }
+    else
+    {
+        juce::Path ring;
+        ring.addCentredArc(center.x,
+                           center.y,
+                           radius * 0.88f,
+                           radius * 0.88f,
+                           0.0f,
+                           rotaryStartAngle,
+                           angle,
+                           true);
+        g.setColour(accentForHighlight);
+        g.strokePath(ring, juce::PathStrokeType(3.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
 
     juce::Path pointer;
     pointer.addRoundedRectangle(-2.1f, -radius * 0.56f, 4.2f, radius * 0.36f, 1.7f);
     g.setColour(renderGrayscale ? juce::Colour::fromRGB(200, 200, 200)
                                 : juce::Colour::fromRGB(246, 246, 246));
-    g.fillPath(pointer, juce::AffineTransform::rotation(angle).translated(center.x, center.y));
+    g.fillPath(pointer, juce::AffineTransform::rotation(indicatorAngle).translated(center.x, center.y));
 
     g.setColour(renderGrayscale ? juce::Colour::fromRGB(170, 170, 170)
                                 : juce::Colour::fromRGB(210, 210, 210));
