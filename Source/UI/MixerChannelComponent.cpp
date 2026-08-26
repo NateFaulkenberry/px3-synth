@@ -51,7 +51,7 @@ void MixerChannelComponent::resized()
         area.removeFromTop(sectionSpacing);
     }
 
-    const int knobSize = 35;
+    const int knobSize = 46;
     const int knobGap = buttonGap;
     const int labelSlotWidth = juce::jmax(knobSize, 36);
 
