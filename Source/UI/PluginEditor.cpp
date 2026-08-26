@@ -1062,8 +1062,9 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     addAndMakeVisible(*oscPanel);
     modPanelViewport.setViewedComponent(modPanel.get(), false);
-    modPanelViewport.setScrollBarsShown(false, true);
+    modPanelViewport.setScrollBarsShown(true, false);
     modPanelViewport.setScrollBarThickness(10);
+    modPanelViewport.setSingleStepSizes(16, 24);
     addAndMakeVisible(modPanelViewport);
     addAndMakeVisible(*fltPanel);
     addAndMakeVisible(*fxPanel);
@@ -3032,7 +3033,7 @@ void PX3SynthAudioProcessorEditor::layoutModPanel()
         const auto preferredWidth = modPanel->getPreferredContentWidth();
         const auto preferredHeight = modPanel->getPreferredContentHeight();
         const auto contentWidth = juce::jmax(modPanelViewport.getWidth(), preferredWidth);
-        const auto contentHeight = juce::jmax(modPanelViewport.getHeight(), preferredHeight);
+        const auto contentHeight = preferredHeight;
         modPanel->setBounds(0, 0, contentWidth, contentHeight);
         modPanel->resized();
     }
