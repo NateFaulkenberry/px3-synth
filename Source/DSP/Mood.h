@@ -73,6 +73,7 @@ private:
     int clockSampleCounter { 0 };
     float clockHeldL { 0.0f };
     float clockHeldR { 0.0f };
+    bool wasEnabled { false };
 
     double sampleRateHz { 44100.0 };
 };

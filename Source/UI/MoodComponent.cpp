@@ -60,11 +60,6 @@ MoodComponent::MoodComponent(juce::ToggleButton& enabledButtonIn,
     addAndMakeVisible(enabledButton);
     addAndMakeVisible(freezeButton);
 
-    // Mood ON control uses the card's ON text; hide the default toggle outline.
-    enabledButton.setColour(juce::ToggleButton::tickColourId, juce::Colours::transparentBlack);
-    enabledButton.setColour(juce::ToggleButton::tickDisabledColourId, juce::Colours::transparentBlack);
-    enabledButton.setColour(juce::ToggleButton::textColourId, juce::Colours::transparentBlack);
-
     addAndMakeVisible(mixKnob);
     addAndMakeVisible(mixLabel);
     addAndMakeVisible(clockKnob);

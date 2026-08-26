@@ -72,6 +72,14 @@ void Mood::reset()
 
 void Mood::updateForBlock(const MoodSettings& settings)
 {
+    const auto nextEnabled = settings.enabled;
+    if (wasEnabled && !nextEnabled)
+    {
+        // Entering bypass: clear all loop/delay memory so re-enable starts clean.
+        reset();
+    }
+    wasEnabled = nextEnabled;
+
     currentSettings = settings;
 
     currentSettings.mix = clamp01(settings.mix);
@@ -382,17 +390,17 @@ void Mood::renderWetSlip(float inL, float inR, float& wetL, float& wetR)
 
 void Mood::processSampleFrame(float inL, float inR, float& outL, float& outR)
 {
-    // Always-listening behavior: circular history keeps running unless frozen.
-    if (!currentSettings.freeze)
-    {
-        writeHistory(inL, inR);
-    }
-
     if (!currentSettings.enabled)
     {
         outL = inL;
         outR = inR;
         return;
+    }
+
+    // Always-listening behavior: circular history keeps running unless frozen.
+    if (!currentSettings.freeze)
+    {
+        writeHistory(inL, inR);
     }
 
     float clockInL = inL;
