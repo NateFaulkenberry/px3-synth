@@ -210,11 +210,11 @@
   "mix": {
     "panel": {
       "fillAlpha": 0.14,
-      "strokeAlpha": 0.75,
+      "strokeAlpha": 0.5,
       "cornerRadius": 10,
       "layout": {
-        "padX": 14,
-        "padY": 12
+        "padX": 10,
+        "padY": 10
       }
     },
     "channel": {
@@ -231,8 +231,8 @@
     },
     "fader": {
       "trackWidth": 4,
-      "thumbWidth": 18,
-      "thumbHeight": 8,
+      "thumbWidth": 25,
+      "thumbHeight": 20,
       "cornerRadius": 2,
       "trackPadding": 6,
       "trackColour": "#82BEFFCC",
