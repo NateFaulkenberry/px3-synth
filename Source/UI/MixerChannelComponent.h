@@ -2,10 +2,6 @@
 
 #include <JuceHeader.h>
 
-#include <memory>
-
-class UIConfig;
-
 class MixerChannelComponent final : public juce::Component
 {
 public:
@@ -28,8 +24,6 @@ public:
     explicit MixerChannelComponent(Controls controlsIn);
 
     void resized() override;
-
-    void applyLayoutFromConfig(const std::shared_ptr<const UIConfig>& config);
 
 private:
     Controls controls;

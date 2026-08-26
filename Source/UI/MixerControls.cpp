@@ -156,12 +156,20 @@ SoloButton::SoloButton()
 
 void MixerLevelMeter::setLevel(float linearLevel)
 {
-    const auto clamped = juce::jlimit(0.0f, 2.0f, linearLevel);
-    if (std::abs(clamped - level) < 0.0001f)
+    constexpr float minDb = -60.0f;
+    float normalized = 0.0f;
+
+    if (linearLevel > 0.0f)
+    {
+        const auto db = juce::Decibels::gainToDecibels(linearLevel, minDb);
+        normalized = juce::jmap(juce::jlimit(minDb, 0.0f, db), minDb, 0.0f, 0.0f, 1.0f);
+    }
+
+    if (std::abs(normalized - level) < 0.0001f)
     {
         return;
     }
-    level = clamped;
+    level = normalized;
     repaint();
 }
 

@@ -760,10 +760,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     float fxPanRight = 1.0f;
     panToGains(fxPan, fxPanLeft, fxPanRight);
 
-#if JUCE_DEBUG
     std::array<double, kMixerSourceCount> mixerSourceEnergy { { 0.0, 0.0, 0.0, 0.0 } };
     double fxReturnEnergy = 0.0;
-#endif
 
     const auto blockPhaseAdvance = juce::MathConstants<float>::twoPi * vibratoRateHz
                                    * (static_cast<float>(blockSamples) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));
@@ -802,10 +800,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             fxInL += sampleValue * panL * sendGain * sendGate;
             fxInR += sampleValue * panR * sendGain * sendGate;
 
-#if JUCE_DEBUG
             mixerSourceEnergy[static_cast<std::size_t>(sourceIndex)] += static_cast<double>(sourceDryL) * static_cast<double>(sourceDryL)
                                                                          + static_cast<double>(sourceDryR) * static_cast<double>(sourceDryR);
-#endif
         }
 
         dryBusBuffer.setSample(0, sample, dryL);
@@ -845,10 +841,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         const auto fxReturnGate = fxReturnGateSmoother.getNextValue();
         const auto fxL = (stageL - fxInL) * fxReturnGain * fxPanLeft * fxReturnGate;
         const auto fxR = (stageR - fxInR) * fxReturnGain * fxPanRight * fxReturnGate;
-    #if JUCE_DEBUG
         fxReturnEnergy += static_cast<double>(fxL) * static_cast<double>(fxL)
                   + static_cast<double>(fxR) * static_cast<double>(fxR);
-    #endif
         fxBusBuffer.setSample(0, sample, fxL);
         if (outputChannels > 1)
         {
@@ -870,7 +864,6 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         buffer.copyFrom(channel, 0, masterBusBuffer, channel, 0, blockSamples);
     }
 
-#if JUCE_DEBUG
     if (blockSamples > 0)
     {
         auto computeStereoRms = [blockSamples, outputChannels](const juce::AudioBuffer<float>& src)
@@ -909,7 +902,6 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
         debugFxReturnRms.store(static_cast<float>(std::sqrt(juce::jmax(0.0, fxReturnEnergy / norm))), std::memory_order_relaxed);
     }
-#endif
 
     if (blockSamples > 0 && currentSampleRateHz > 0.0 && ticksPerSecond > 0)
     {

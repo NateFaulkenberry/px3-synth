@@ -1,23 +1,8 @@
 #include "MixerChannelComponent.h"
 
-#include "UIConfig.h"
-
 MixerChannelComponent::MixerChannelComponent(Controls controlsIn)
     : controls(std::move(controlsIn))
 {
-}
-
-void MixerChannelComponent::applyLayoutFromConfig(const std::shared_ptr<const UIConfig>& config)
-{
-    if (config == nullptr)
-    {
-        return;
-    }
-
-    sectionSpacing = config->getInt("mix.channel.layout.sectionSpacing", sectionSpacing);
-    buttonGap = config->getInt("mix.channel.layout.buttonGap", buttonGap);
-    footerLabelHeight = config->getInt("mix.channel.layout.footerLabelHeight", footerLabelHeight);
-    meterHeight = config->getInt("mix.channel.layout.meterHeight", meterHeight);
 }
 
 void MixerChannelComponent::resized()
@@ -66,7 +51,7 @@ void MixerChannelComponent::resized()
         area.removeFromTop(sectionSpacing);
     }
 
-    const int knobSize = 29;
+    const int knobSize = 35;
     const int knobGap = buttonGap;
     const int labelSlotWidth = juce::jmax(knobSize, 36);
 

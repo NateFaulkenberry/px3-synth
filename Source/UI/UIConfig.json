@@ -221,13 +221,7 @@
       "width": 84,
       "spacing": 8,
       "titleSize": 11.5,
-      "labelSize": 9.5,
-      "layout": {
-        "sectionSpacing": 5,
-        "buttonGap": 4,
-        "footerLabelHeight": 12,
-        "meterHeight": 12
-      }
+      "labelSize": 9.5
     },
     "fader": {
       "trackWidth": 4,

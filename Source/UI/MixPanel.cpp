@@ -122,13 +122,6 @@ void MixPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
     applyConfigToChannels();
-    for (auto* channel : channels)
-    {
-        if (channel != nullptr && channel->component != nullptr)
-        {
-            channel->component->applyLayoutFromConfig(uiConfig);
-        }
-    }
     resized();
     repaint();
 }
