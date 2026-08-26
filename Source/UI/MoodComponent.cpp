@@ -185,7 +185,7 @@ void MoodComponent::resized()
     grid.removeFromTop(rowGap);
     auto row3 = grid;
 
-    const auto placeKnobRow = [labelHeight, colGap](juce::Rectangle<int> row,
+    const auto placeKnobRow = [](juce::Rectangle<int> row,
                                                      juce::Slider& knobA,
                                                      juce::Label& labelA,
                                                      juce::Slider& knobB,
@@ -199,7 +199,7 @@ void MoodComponent::resized()
         row.removeFromLeft(colGap);
         auto right = row;
 
-        const auto placeCell = [labelHeight](juce::Rectangle<int> cell, juce::Slider& knob, juce::Label& label)
+        const auto placeCell = [](juce::Rectangle<int> cell, juce::Slider& knob, juce::Label& label)
         {
             auto labelArea = cell.removeFromBottom(labelHeight);
             auto knobArea = cell;
