@@ -442,7 +442,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     const auto initialSubOsc = currentSubOscillatorSettings();
     const auto initialOscillatorLayers = currentOscillatorLayerSettings();
 
-    for (int voice = 0; voice < 16; ++voice)
+    constexpr int kPolyphonyVoiceCount = 64;
+    for (int voice = 0; voice < kPolyphonyVoiceCount; ++voice)
     {
         auto* synthVoice = new SynthVoice();
         synthVoice->setVoiceIndex(voice);
@@ -455,6 +456,9 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     }
 
     synth.addSound(new SynthSound());
+    // Preserve AMP release tails during dense performance by avoiding hard
+    // stopNote(false) steals whenever possible.
+    synth.setNoteStealingEnabled(false);
     clearAllActiveNotes();
 
     debugLogEvent("LIFECYCLE", "PROCESSOR_CREATED",

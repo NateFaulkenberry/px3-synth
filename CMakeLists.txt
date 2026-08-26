@@ -80,6 +80,7 @@ target_sources(PX3Synth
         Source/UI/OscillatorComponent.cpp
         Source/UI/PluginEditor.cpp
         Source/UI/PluginEditorDebug.cpp
+        Source/DSP/AmpEnvelope.cpp
         Source/DSP/EnvelopeGenerator.cpp
         Source/DSP/Delay.cpp
         Source/DSP/Mood.cpp

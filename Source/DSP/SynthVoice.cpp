@@ -10,6 +10,22 @@ inline float softClip(float x)
 {
     return std::tanh(x);
 }
+
+inline float sanitizeAudioSample(float x)
+{
+    if (!std::isfinite(x))
+    {
+        return 0.0f;
+    }
+
+    // Flush tiny denormal magnitudes that can create zipper-like artifacts.
+    if (std::abs(x) < 1.0e-20f)
+    {
+        return 0.0f;
+    }
+
+    return x;
+}
 }
 
 bool SynthVoice::canPlaySound(juce::SynthesiserSound* sound)
@@ -46,6 +62,7 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     subOscillator.setSettings(subOscillatorSettings);
     subOscillator.resetForNote();
 
+    ampEnvelope.setSettings(envelopeSettings);
     ampEnvelope.noteOn();
     noteAgeSamples = 0;
     for (auto& oscillatorUnit : oscillatorUnits)
@@ -229,8 +246,9 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
             const auto sourceSample = oscillatorUnits[static_cast<std::size_t>(oscIndex)].renderSample(sampleRate, sourceContext)
                                       * juce::jlimit(0.0f, 1.0f, layer.level);
-            auto sourceStageSample = softClip(sourceSample * 0.92f);
+            auto sourceStageSample = softClip(sanitizeAudioSample(sourceSample) * 0.92f);
             sourceStageSample = applyVibeSourceStage(sourceStageSample, 1.0f);
+            sourceStageSample = sanitizeAudioSample(sourceStageSample);
             sourceSamples[static_cast<std::size_t>(oscIndex + 1)] = sourceStageSample;
 
             sourceAngle += sourceAngleDelta;
@@ -247,6 +265,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         {
             subStageSample = softClip(subSample * subGain * 0.92f);
             subStageSample = applyVibeSourceStage(subStageSample, 0.6f);
+            subStageSample = sanitizeAudioSample(subStageSample);
         }
         sourceSamples[0] = subStageSample;
 
@@ -276,6 +295,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                     continue;
                 }
                 filteredSample = sourceFilters[static_cast<std::size_t>(sourceIndex)][static_cast<std::size_t>(filterIndex)].processSample(filteredSample);
+                filteredSample = sanitizeAudioSample(filteredSample);
             }
 
             auto voicedSample = filteredSample * voiceGain;
@@ -287,9 +307,13 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                               * (1.0f / (1.0f + vcaAmount * 0.95f));
             }
 
+            voicedSample = sanitizeAudioSample(voicedSample);
+
             voicedSourceSamples[static_cast<std::size_t>(sourceIndex)] = voicedSample;
             summedSample += voicedSample;
         }
+
+        summedSample = sanitizeAudioSample(summedSample);
 
         if (outputBuffer.getNumChannels() >= kVoiceMixerSourceCount)
         {

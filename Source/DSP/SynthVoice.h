@@ -2,7 +2,7 @@
 
 #include <JuceHeader.h>
 
-#include "EnvelopeGenerator.h"
+#include "AmpEnvelope.h"
 #include "EnvelopeTypes.h"
 #include "FilterTypes.h"
 #include "OscillatorTypes.h"
@@ -63,7 +63,7 @@ private:
     SubOscSettings subOscillatorSettings;
     std::array<OscillatorLayerSettings, kOscillatorSourceCount> oscillatorLayerSettings;
 
-    EnvelopeGenerator ampEnvelope;
+    AmpEnvelope ampEnvelope;
     std::array<std::array<VoiceFilter, kFilterInstanceCount>, kVoiceMixerSourceCount> sourceFilters;
 
     double currentAngle { 0.0 };

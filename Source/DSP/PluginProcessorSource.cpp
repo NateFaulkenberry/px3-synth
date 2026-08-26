@@ -103,18 +103,12 @@ EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings() const
 {
     EnvelopeSettings settings;
 
-    settings.attackSeconds = attackParam->convertFrom0to1(applyModulationToNormalizedValue(
-        attackParam,
-        static_cast<juce::RangedAudioParameter*>(attackParam)->getValue()));
-    settings.decaySeconds = decayParam->convertFrom0to1(applyModulationToNormalizedValue(
-        decayParam,
-        static_cast<juce::RangedAudioParameter*>(decayParam)->getValue()));
-    settings.sustainLevel = sustainParam->convertFrom0to1(applyModulationToNormalizedValue(
-        sustainParam,
-        static_cast<juce::RangedAudioParameter*>(sustainParam)->getValue()));
-    settings.releaseSeconds = releaseParam->convertFrom0to1(applyModulationToNormalizedValue(
-        releaseParam,
-        static_cast<juce::RangedAudioParameter*>(releaseParam)->getValue()));
+    // AMP ENV is a dedicated VCA contour and must remain independent of the
+    // assignable modulation matrix destination path.
+    settings.attackSeconds = attackParam->get();
+    settings.decaySeconds = decayParam->get();
+    settings.sustainLevel = sustainParam->get();
+    settings.releaseSeconds = releaseParam->get();
     return settings;
 }
 
