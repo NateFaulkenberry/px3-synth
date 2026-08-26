@@ -189,6 +189,28 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         }
     }
 
+    static constexpr std::array<const char*, PX3SynthAudioProcessor::kMixerSourceCount> kMixerSendIds {
+        { "mix.sub.fxSend", "mix.osc1.fxSend", "mix.osc2.fxSend", "mix.osc3.fxSend" }
+    };
+
+    for (const auto* sendId : kMixerSendIds)
+    {
+        if (!state.hasProperty(sendId))
+        {
+            for (auto* parameter : getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                {
+                    if (ranged->getParameterID() == sendId)
+                    {
+                        ranged->setValueNotifyingHost(ranged->convertTo0to1(1.0f));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     std::array<int, 4> fxOrderFromState { { 0, 1, 3, 2 } };
     auto hasModuleOrder = false;
     auto moduleOrderSource = juce::String("none");

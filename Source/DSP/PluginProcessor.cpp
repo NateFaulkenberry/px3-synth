@@ -192,7 +192,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         mixerSendParams[static_cast<std::size_t>(i)] = new juce::AudioParameterFloat("mix." + sourceId + ".fxSend",
                                                                                        sourceName + " FX Send",
                                                                                        juce::NormalisableRange<float>(0.0f, 1.0f),
-                                                                                       0.0f);
+                                                                                       1.0f);
         mixerMuteParams[static_cast<std::size_t>(i)] = new juce::AudioParameterBool("mix." + sourceId + ".mute",
                                                                                       sourceName + " Mute",
                                                                                       false);
