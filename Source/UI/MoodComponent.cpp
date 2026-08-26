@@ -59,7 +59,8 @@ MoodComponent::MoodComponent(juce::ToggleButton& enabledButtonIn,
       accent(accentIn)
 {
     addAndMakeVisible(enabledButton);
-    addAndMakeVisible(freezeButton);
+    // TODO: maybe restore this at some point
+    // addAndMakeVisible(freezeButton);
 
     addAndMakeVisible(mixKnob);
     addAndMakeVisible(mixLabel);
