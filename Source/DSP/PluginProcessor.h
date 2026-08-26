@@ -132,15 +132,15 @@ public:
     juce::AudioParameterFloat& getFilterResonanceParam(int filterIndex) const;
     juce::AudioParameterChoice& getFilterTypeParam(int filterIndex) const;
     juce::AudioParameterFloat& getAttackParam() const;
-    juce::AudioParameterFloat& getAttackParam(int envIndex) const;
+    juce::AudioParameterFloat& getEnvelopeAttackParam(int envIndex) const;
     juce::AudioParameterFloat& getDecayParam() const;
-    juce::AudioParameterFloat& getDecayParam(int envIndex) const;
+    juce::AudioParameterFloat& getEnvelopeDecayParam(int envIndex) const;
     juce::AudioParameterFloat& getSustainParam() const;
-    juce::AudioParameterFloat& getSustainParam(int envIndex) const;
+    juce::AudioParameterFloat& getEnvelopeSustainParam(int envIndex) const;
     juce::AudioParameterFloat& getReleaseParam() const;
-    juce::AudioParameterFloat& getReleaseParam(int envIndex) const;
+    juce::AudioParameterFloat& getEnvelopeReleaseParam(int envIndex) const;
     juce::AudioParameterBool& getAmpEnvEnabledParam() const;
-    juce::AudioParameterBool& getAmpEnvEnabledParam(int envIndex) const;
+    juce::AudioParameterBool& getEnvelopeEnabledParam(int envIndex) const;
     juce::AudioParameterFloat& getMasterGainParam() const;
 
     juce::AudioParameterFloat& getVibeAmountParam() const;
@@ -356,7 +356,7 @@ private:
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> decayParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> sustainParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> releaseParams { { nullptr, nullptr, nullptr } };
-    std::array<juce::AudioParameterBool*, kEnvelopeSourceCount> ampEnvEnabledParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterBool*, kEnvelopeSourceCount> envelopeEnabledParams { { nullptr, nullptr, nullptr } };
     juce::AudioParameterFloat* attackParam { nullptr };
     juce::AudioParameterFloat* decayParam { nullptr };
     juce::AudioParameterFloat* sustainParam { nullptr };

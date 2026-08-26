@@ -15,15 +15,6 @@ class ModPanel final : public juce::Component
 {
 public:
     ModPanel(PX3SynthAudioProcessor& processorIn,
-             juce::AudioParameterFloat& attack,
-             juce::AudioParameterFloat& decay,
-             juce::AudioParameterFloat& sustain,
-             juce::AudioParameterFloat& release,
-             juce::AudioParameterBool& envEnabled,
-             juce::ToggleButton& envEnabledButton,
-             juce::Label& envEnabledLabel,
-             juce::Label& envAssignLabel,
-             juce::ComboBox& envAssignBox,
              juce::ToggleButton& lfoEnabledButton,
              juce::Label& lfoEnabledLabel,
              juce::Label& lfoAssignLabel,
@@ -36,9 +27,6 @@ public:
              juce::Label& lfoAmountValueLabel,
              juce::ComboBox& lfoWaveformBox,
              juce::Label& lfoWaveformLabel,
-             juce::Slider& envAmountKnob,
-             juce::Label& envAmountLabel,
-             juce::Label& envAmountValueLabel,
              juce::LookAndFeel* sharedLfoKnobLookAndFeel,
              juce::Colour panelAccent,
              juce::Colour lfoAccent);
@@ -94,10 +82,9 @@ private:
     void configureOwnedEnvBundle(int envIndex, EnvBundle& bundle);
 
     PX3SynthAudioProcessor& processor;
-    std::unique_ptr<EnvelopeComponent> envelopeGraph;
     std::unique_ptr<LfoComponent> lfoComponent;
     std::array<LfoBundle, 2> extraLfos;
-    std::array<EnvBundle, 2> extraEnvelopes;
+    std::array<EnvBundle, PX3SynthAudioProcessor::kEnvelopeSourceCount> envelopes;
 
     juce::Colour accent;
     juce::Colour lfoHeaderAccent;

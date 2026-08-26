@@ -121,11 +121,11 @@ EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings() const
 EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
-    auto& attack = getAttackParam(idx);
-    auto& decay = getDecayParam(idx);
-    auto& sustain = getSustainParam(idx);
-    auto& release = getReleaseParam(idx);
-    auto& enabledParam = getAmpEnvEnabledParam(idx);
+    auto& attack = getEnvelopeAttackParam(idx);
+    auto& decay = getEnvelopeDecayParam(idx);
+    auto& sustain = getEnvelopeSustainParam(idx);
+    auto& release = getEnvelopeReleaseParam(idx);
+    auto& enabledParam = getEnvelopeEnabledParam(idx);
 
     EnvelopeSettings settings;
     const auto envEnabled = enabledParam.get();

@@ -6,60 +6,7 @@ AmpPanel::AmpPanel(PX3SynthAudioProcessor& processorIn, juce::Colour panelAccent
     : processor(processorIn),
       accent(panelAccent)
 {
-    const auto applyChipLabelStyle = [](juce::Label& label)
-    {
-        label.setColour(juce::Label::backgroundColourId, juce::Colour::fromRGBA(255, 255, 255, 54));
-        label.setColour(juce::Label::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 96));
-    };
-
-    enabledLabel.setText("ON", juce::dontSendNotification);
-    enabledLabel.setJustificationType(juce::Justification::centredLeft);
-    enabledLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    enabledLabel.setFont(juce::FontOptions(11.5f));
-    enabledLabel.setInterceptsMouseClicks(false, false);
-    applyChipLabelStyle(enabledLabel);
-
-    assignLabel.setText("AMP", juce::dontSendNotification);
-    assignLabel.setJustificationType(juce::Justification::centred);
-    assignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    assignLabel.setFont(juce::FontOptions(11.5f));
-    assignLabel.setInterceptsMouseClicks(false, false);
-    applyChipLabelStyle(assignLabel);
-
-    enabledButton.setButtonText("");
-    enabledButton.setClickingTogglesState(true);
-    enabledButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
-    enabledButton.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
-
-    assignBox.addItem("AMP", 1);
-    assignBox.setSelectedId(1, juce::dontSendNotification);
-    assignBox.setEnabled(false);
-    assignBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
-    assignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    assignBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
-
-    envelopeGraph = std::make_unique<EnvelopeComponent>(processor.getAttackParam(),
-                                                        processor.getDecayParam(),
-                                                        processor.getSustainParam(),
-                                                        processor.getReleaseParam(),
-                                                        processor.getAmpEnvEnabledParam(),
-                                                        enabledButton,
-                                                        enabledLabel,
-                                                        assignLabel,
-                                                        assignBox,
-                                                        nullptr,
-                                                        nullptr,
-                                                        nullptr,
-                                                        panelAccent,
-                                                        "amp.env");
-    enabledButton.setVisible(false);
-    enabledButton.setEnabled(false);
-    enabledLabel.setVisible(false);
-    enabledLabel.setEnabled(false);
-    assignLabel.setVisible(false);
-    assignLabel.setEnabled(false);
-    assignBox.setVisible(false);
-    assignBox.setEnabled(false);
+    ampEnvelopeComponent = std::make_unique<AmpEnvelopeComponent>(processor, panelAccent);
 
     if (!processor.getAmpEnvEnabledParam().get())
     {
@@ -69,7 +16,7 @@ AmpPanel::AmpPanel(PX3SynthAudioProcessor& processorIn, juce::Colour panelAccent
         ampEnabled.endChangeGesture();
     }
 
-    addAndMakeVisible(*envelopeGraph);
+    addAndMakeVisible(*ampEnvelopeComponent);
 }
 
 void AmpPanel::paint(juce::Graphics& g)
@@ -87,7 +34,7 @@ void AmpPanel::paint(juce::Graphics& g)
 
 void AmpPanel::paintOverChildren(juce::Graphics& g)
 {
-    if (envelopeGraph == nullptr)
+    if (ampEnvelopeComponent == nullptr)
     {
         return;
     }
@@ -98,7 +45,7 @@ void AmpPanel::paintOverChildren(juce::Graphics& g)
     g.setColour(accent.brighter(0.2f));
     g.setFont(juce::FontOptions(titleFont, juce::Font::bold));
     g.drawText(title,
-               envelopeGraph->getBounds().removeFromTop(14),
+               ampEnvelopeComponent->getBounds().removeFromTop(14),
                juce::Justification::centredTop,
                true);
 }
@@ -107,15 +54,9 @@ void AmpPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
 
-    if (uiConfig != nullptr)
+    if (ampEnvelopeComponent != nullptr)
     {
-        const auto comboStyle = uiConfig->getObject("styles.combos.default");
-        uiConfig->applyComboStyle(comboStyle, assignBox);
-    }
-
-    if (envelopeGraph != nullptr)
-    {
-        envelopeGraph->setUIConfig(uiConfig);
+        ampEnvelopeComponent->setUIConfig(uiConfig);
     }
 
     repaint();
@@ -123,7 +64,7 @@ void AmpPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 
 void AmpPanel::resized()
 {
-    if (envelopeGraph == nullptr)
+    if (ampEnvelopeComponent == nullptr)
     {
         return;
     }
@@ -132,7 +73,7 @@ void AmpPanel::resized()
     const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("amp.panel.layout.padY", 10) : 10;
     auto panelArea = getLocalBounds().reduced(panelPadX, panelPadY);
 
-    envelopeGraph->setBounds(panelArea);
+    ampEnvelopeComponent->setBounds(panelArea);
 }
 
 int AmpPanel::getPreferredContentWidth() const
@@ -159,8 +100,8 @@ void AmpPanel::refreshFromParameters()
         ampEnabled.endChangeGesture();
     }
 
-    if (envelopeGraph != nullptr)
+    if (ampEnvelopeComponent != nullptr)
     {
-        envelopeGraph->refreshFromParameters();
+        ampEnvelopeComponent->refreshFromParameters();
     }
 }

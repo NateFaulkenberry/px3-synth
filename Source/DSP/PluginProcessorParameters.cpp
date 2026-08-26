@@ -213,34 +213,34 @@ juce::AudioParameterChoice& PX3SynthAudioProcessor::getFilterTypeParam(int filte
     return *filterTypeParams[static_cast<std::size_t>(idx)];
 }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getAttackParam() const { return *attackParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getAttackParam(int envIndex) const
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getEnvelopeAttackParam(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     return *attackParams[static_cast<std::size_t>(idx)];
 }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getDecayParam() const { return *decayParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getDecayParam(int envIndex) const
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getEnvelopeDecayParam(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     return *decayParams[static_cast<std::size_t>(idx)];
 }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getSustainParam() const { return *sustainParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getSustainParam(int envIndex) const
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getEnvelopeSustainParam(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     return *sustainParams[static_cast<std::size_t>(idx)];
 }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getReleaseParam() const { return *releaseParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getReleaseParam(int envIndex) const
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getEnvelopeReleaseParam(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     return *releaseParams[static_cast<std::size_t>(idx)];
 }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getAmpEnvEnabledParam() const { return *ampEnvEnabledParam; }
-juce::AudioParameterBool& PX3SynthAudioProcessor::getAmpEnvEnabledParam(int envIndex) const
+juce::AudioParameterBool& PX3SynthAudioProcessor::getEnvelopeEnabledParam(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
-    return *ampEnvEnabledParams[static_cast<std::size_t>(idx)];
+    return *envelopeEnabledParams[static_cast<std::size_t>(idx)];
 }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getMasterGainParam() const { return *masterGainParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getVibeAmountParam() const { return *vibeAmountParam; }

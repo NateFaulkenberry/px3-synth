@@ -534,7 +534,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         KnobBinding { &attackKnob, &attackLabel, nullptr },
         KnobBinding { &decayKnob, &decayLabel, nullptr },
         KnobBinding { &sustainKnob, &sustainLabel, nullptr },
-        KnobBinding { &envAmountKnob, &envAmountLabel, nullptr },
         KnobBinding { &releaseKnob, &releaseLabel, nullptr },
         KnobBinding { &lfoFrequencyKnob, &lfoFrequencyLabel, nullptr },
         KnobBinding { &lfoAmountKnob, &lfoAmountLabel, nullptr },
@@ -562,10 +561,9 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureKnob(knobBindings[18], "Decay", audioProcessor.getDecayParam());
     configureKnob(knobBindings[19], "Sustain", audioProcessor.getSustainParam());
     configureKnob(knobBindings[20], "Release", audioProcessor.getReleaseParam());
-    configureKnob(knobBindings[21], "Amount", audioProcessor.getEnvelopeAmountParam());
-    configureKnob(knobBindings[22], "Freq", audioProcessor.getLfoFrequencyParam());
-    configureKnob(knobBindings[23], "Amount", audioProcessor.getLfoAmountParam());
-    configureKnob(knobBindings[24], "Master", audioProcessor.getMasterGainParam());
+    configureKnob(knobBindings[21], "Freq", audioProcessor.getLfoFrequencyParam());
+    configureKnob(knobBindings[22], "Amount", audioProcessor.getLfoAmountParam());
+    configureKnob(knobBindings[23], "Master", audioProcessor.getMasterGainParam());
 
     const auto formatPitchCents = [](double semitoneValue)
     {
@@ -642,14 +640,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         lfoAmountValueLabel.setText(prefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
     };
 
-    envAmountKnob.onValueChange = [this]()
-    {
-        const auto amount = juce::jlimit(-1.0f, 1.0f, static_cast<float>(envAmountKnob.getValue()));
-        const auto amountPercent = static_cast<int>(std::lround(amount * 100.0f));
-        const auto prefix = amountPercent > 0 ? juce::String("+") : juce::String();
-        envAmountValueLabel.setText(prefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
-    };
-
     lfoAmountLabel.setText("AMOUNT", juce::dontSendNotification);
     lfoAmountLabel.setJustificationType(juce::Justification::centred);
     lfoAmountLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
@@ -657,15 +647,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     lfoAmountLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
     lfoAmountLabel.setInterceptsMouseClicks(false, false);
 
-    envAmountLabel.setText("AMOUNT", juce::dontSendNotification);
-    envAmountLabel.setJustificationType(juce::Justification::centred);
-    envAmountLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    envAmountLabel.setFont(juce::FontOptions(11.0f));
-    envAmountLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
-    envAmountLabel.setInterceptsMouseClicks(false, false);
-
     lfoAmountKnob.onValueChange();
-    envAmountKnob.onValueChange();
 
     auto& lfoWaveformParam = audioProcessor.getLfoWaveformParam();
     for (int i = 0; i < lfoWaveformParam.choices.size(); ++i)
@@ -732,18 +714,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     {
         const auto selected = juce::jmax(0, lfoAssignBox.getSelectedId() - 1);
         audioProcessor.setLfoAssignmentIndex(selected);
-    };
-
-    const auto& envAssignments = audioProcessor.getEnvelopeAssignmentDisplayNames();
-    for (int i = 0; i < envAssignments.size(); ++i)
-    {
-        envAssignBox.addItem(envAssignments[i], i + 1);
-    }
-
-    envAssignBox.onChange = [this]()
-    {
-        const auto selected = juce::jmax(0, envAssignBox.getSelectedId() - 1);
-        audioProcessor.setEnvelopeAssignmentIndex(selected);
     };
 
     const auto configureMixFader = [](juce::Slider& slider)
@@ -1136,15 +1106,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           juce::Colour::fromRGB(120, 180, 255),
                                           kGroupAccents[0]);
     modPanel = std::make_unique<ModPanel>(audioProcessor,
-                                          audioProcessor.getAttackParam(0),
-                                          audioProcessor.getDecayParam(0),
-                                          audioProcessor.getSustainParam(0),
-                                          audioProcessor.getReleaseParam(0),
-                                          audioProcessor.getAmpEnvEnabledParam(0),
-                                          envBypassButton,
-                                          envBypassLabel,
-                                          envAssignLabel,
-                                          envAssignBox,
                                           lfoBypassButton,
                                           lfoBypassLabel,
                                           lfoAssignLabel,
@@ -1157,9 +1118,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           lfoAmountValueLabel,
                                           lfoWaveformBox,
                                           lfoWaveformLabel,
-                                          envAmountKnob,
-                                          envAmountLabel,
-                                          envAmountValueLabel,
                                           &knobLookAndFeel,
                                           kGroupAccents[2],
                                           kGroupAccents[3]);
@@ -1244,7 +1202,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     for (auto& binding : knobBindings)
     {
-        attachSlider(*binding.parameter, *binding.slider);
+        if (binding.parameter != nullptr && binding.slider != nullptr)
+        {
+            attachSlider(*binding.parameter, *binding.slider);
+        }
     }
 
     attachSlider(audioProcessor.getVibeAmountParam(), vibeAmountKnob);
@@ -1292,10 +1253,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachButton(audioProcessor.getOscillatorEnabledParam(1), osc2EnabledButton);
     attachButton(audioProcessor.getOscillatorEnabledParam(2), osc3EnabledButton);
     attachButton(audioProcessor.getSubOscEnabledParam(), subOscEnabledButton);
-    attachButton(audioProcessor.getAmpEnvEnabledParam(0), envBypassButton);
     attachButton(audioProcessor.getLfoEnabledParam(), lfoBypassButton);
-    attachSlider(audioProcessor.getEnvelopeAmountParam(0), envAmountKnob);
-    attachSlider(audioProcessor.getLfoAmountParam(0), lfoAmountKnob);
 
     // MIDI status bar is temporarily disabled.
     // midiStatusLabel.setText("MIDI In: waiting for note...", juce::dontSendNotification);
@@ -1519,7 +1477,10 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
 
     for (auto& binding : knobBindings)
     {
-        binding.slider->setLookAndFeel(nullptr);
+        if (binding.slider != nullptr)
+        {
+            binding.slider->setLookAndFeel(nullptr);
+        }
     }
 
     vibeAmountKnob.setLookAndFeel(nullptr);
@@ -3124,14 +3085,7 @@ void PX3SynthAudioProcessorEditor::refreshLfoAssignmentUI()
 
 void PX3SynthAudioProcessorEditor::refreshEnvelopeAssignmentUI()
 {
-    const auto assignmentIndex = audioProcessor.getEnvelopeAssignmentIndex();
-    if (assignmentIndex == lastEnvelopeAssignmentIndex)
-    {
-        return;
-    }
-
-    lastEnvelopeAssignmentIndex = assignmentIndex;
-    envAssignBox.setSelectedId(assignmentIndex + 1, juce::dontSendNotification);
+    // ENV assignment controls are owned by ModPanel (ENV1/2/3) and refreshed there.
 }
 
 void PX3SynthAudioProcessorEditor::refreshLfoFrequencyLabel()

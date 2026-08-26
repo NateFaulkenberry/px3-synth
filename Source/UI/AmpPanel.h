@@ -4,7 +4,7 @@
 
 #include <memory>
 
-#include "EnvelopeComponent.h"
+#include "AmpEnvelopeComponent.h"
 #include "PluginProcessor.h"
 
 class UIConfig;
@@ -26,12 +26,7 @@ public:
 private:
     PX3SynthAudioProcessor& processor;
 
-    juce::ToggleButton enabledButton;
-    juce::Label enabledLabel;
-    juce::Label assignLabel;
-    juce::ComboBox assignBox;
-
-    std::unique_ptr<EnvelopeComponent> envelopeGraph;
+    std::unique_ptr<AmpEnvelopeComponent> ampEnvelopeComponent;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
 };

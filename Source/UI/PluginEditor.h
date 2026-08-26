@@ -467,7 +467,7 @@ private:
     std::vector<std::unique_ptr<juce::ComboBoxParameterAttachment>> comboBoxAttachments;
     std::vector<std::unique_ptr<juce::ButtonParameterAttachment>> buttonAttachments;
 
-    std::array<KnobBinding, 25> knobBindings {};
+    std::array<KnobBinding, 24> knobBindings {};
     int lastGranularModeIndex { -1 };
     int lastLfoAssignmentIndex { -1 };
     int lastEnvelopeAssignmentIndex { -1 };

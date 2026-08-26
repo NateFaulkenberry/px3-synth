@@ -5,15 +5,6 @@
 #include <cmath>
 
 ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
-                   juce::AudioParameterFloat& attack,
-                   juce::AudioParameterFloat& decay,
-                   juce::AudioParameterFloat& sustain,
-                   juce::AudioParameterFloat& release,
-                   juce::AudioParameterBool& envEnabled,
-                   juce::ToggleButton& envEnabledButton,
-                   juce::Label& envEnabledLabel,
-                   juce::Label& envAssignLabel,
-                   juce::ComboBox& envAssignBox,
                    juce::ToggleButton& lfoEnabledButton,
                    juce::Label& lfoEnabledLabel,
                    juce::Label& lfoAssignLabel,
@@ -26,9 +17,6 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
                                      juce::Label& lfoAmountValueLabel,
                    juce::ComboBox& lfoWaveformBox,
                    juce::Label& lfoWaveformLabel,
-                                     juce::Slider& envAmountKnob,
-                                     juce::Label& envAmountLabel,
-                                     juce::Label& envAmountValueLabel,
                  juce::LookAndFeel* sharedLfoKnobLookAndFeel,
                    juce::Colour panelAccent,
                    juce::Colour lfoAccent)
@@ -37,19 +25,6 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
         lfoHeaderAccent(lfoAccent),
         lfoKnobLookAndFeel(sharedLfoKnobLookAndFeel)
 {
-    envelopeGraph = std::make_unique<EnvelopeComponent>(attack,
-                                                        decay,
-                                                        sustain,
-                                                        release,
-                                                        envEnabled,
-                                                        envEnabledButton,
-                                                        envEnabledLabel,
-                                                        envAssignLabel,
-                                                        envAssignBox,
-                                                          &envAmountKnob,
-                                                          &envAmountLabel,
-                                                          &envAmountValueLabel,
-                                                        panelAccent);
     lfoComponent = std::make_unique<LfoComponent>(lfoEnabledButton,
                                                   lfoEnabledLabel,
                                                   lfoAssignLabel,
@@ -68,7 +43,6 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
     lfoRateLabel.setText("", juce::dontSendNotification);
     lfoRateLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
 
-    addAndMakeVisible(*envelopeGraph);
     addAndMakeVisible(*lfoComponent);
 
     for (int lfoIndex = 1; lfoIndex < PX3SynthAudioProcessor::kLfoSourceCount; ++lfoIndex)
@@ -78,9 +52,9 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
         addAndMakeVisible(*bundle.component);
     }
 
-    for (int envIndex = 1; envIndex < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++envIndex)
+    for (int envIndex = 0; envIndex < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++envIndex)
     {
-        auto& bundle = extraEnvelopes[static_cast<std::size_t>(envIndex - 1)];
+        auto& bundle = envelopes[static_cast<std::size_t>(envIndex)];
         configureOwnedEnvBundle(envIndex, bundle);
         addAndMakeVisible(*bundle.component);
     }
@@ -303,14 +277,14 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
         bundle.amountValueLabel.setText(prefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
     };
 
-    bundle.enabledAttachment = std::make_unique<juce::ButtonParameterAttachment>(processor.getAmpEnvEnabledParam(envIndex), bundle.enabledButton, nullptr);
+    bundle.enabledAttachment = std::make_unique<juce::ButtonParameterAttachment>(processor.getEnvelopeEnabledParam(envIndex), bundle.enabledButton, nullptr);
     bundle.amountAttachment = std::make_unique<juce::SliderParameterAttachment>(processor.getEnvelopeAmountParam(envIndex), bundle.amountKnob, nullptr);
 
-    bundle.component = std::make_unique<EnvelopeComponent>(processor.getAttackParam(envIndex),
-                                                           processor.getDecayParam(envIndex),
-                                                           processor.getSustainParam(envIndex),
-                                                           processor.getReleaseParam(envIndex),
-                                                           processor.getAmpEnvEnabledParam(envIndex),
+    bundle.component = std::make_unique<EnvelopeComponent>(processor.getEnvelopeAttackParam(envIndex),
+                                                           processor.getEnvelopeDecayParam(envIndex),
+                                                           processor.getEnvelopeSustainParam(envIndex),
+                                                           processor.getEnvelopeReleaseParam(envIndex),
+                                                           processor.getEnvelopeEnabledParam(envIndex),
                                                            bundle.enabledButton,
                                                            bundle.enabledLabel,
                                                            bundle.assignLabel,
@@ -359,17 +333,13 @@ void ModPanel::paintOverChildren(juce::Graphics& g)
         drawCardTitle(lfoTitle, extraLfos[static_cast<std::size_t>(i)].component->getBounds(), lfoHeaderAccent);
     }
 
-    if (envelopeGraph != nullptr)
+    for (int i = 0; i < static_cast<int>(envelopes.size()); ++i)
     {
-        const auto env1Title = uiConfig != nullptr ? uiConfig->getString("mod.env1.title.text", "ENV 1") : juce::String("ENV 1");
-        drawCardTitle(env1Title, envelopeGraph->getBounds(), accent);
-    }
-    for (int i = 0; i < static_cast<int>(extraEnvelopes.size()); ++i)
-    {
+        const auto envNumber = i + 1;
         const auto envTitle = uiConfig != nullptr
-                                  ? uiConfig->getString("mod.env" + juce::String(i + 2) + ".title.text", "ENV " + juce::String(i + 2))
-                                  : juce::String("ENV ") + juce::String(i + 2);
-        drawCardTitle(envTitle, extraEnvelopes[static_cast<std::size_t>(i)].component->getBounds(), accent);
+                                  ? uiConfig->getString("mod.env" + juce::String(envNumber) + ".title.text", "ENV " + juce::String(envNumber))
+                                  : juce::String("ENV ") + juce::String(envNumber);
+        drawCardTitle(envTitle, envelopes[static_cast<std::size_t>(i)].component->getBounds(), accent);
     }
 }
 
@@ -385,15 +355,10 @@ void ModPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
             uiConfig->applyComboStyle(comboStyle, bundle.assignBox);
             uiConfig->applyComboStyle(comboStyle, bundle.waveformBox);
         }
-        for (auto& bundle : extraEnvelopes)
+        for (auto& bundle : envelopes)
         {
             uiConfig->applyComboStyle(comboStyle, bundle.assignBox);
         }
-    }
-
-    if (envelopeGraph != nullptr)
-    {
-        envelopeGraph->setUIConfig(uiConfig);
     }
 
     if (lfoComponent != nullptr)
@@ -409,7 +374,7 @@ void ModPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
         }
     }
 
-    for (auto& bundle : extraEnvelopes)
+    for (auto& bundle : envelopes)
     {
         if (bundle.component != nullptr)
         {
@@ -422,7 +387,7 @@ void ModPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 
 void ModPanel::resized()
 {
-    if (envelopeGraph == nullptr || lfoComponent == nullptr)
+    if (lfoComponent == nullptr)
     {
         return;
     }
@@ -455,12 +420,14 @@ void ModPanel::resized()
         envCells[static_cast<std::size_t>(i)] = juce::Rectangle<int>(x, envRow.getY(), colWidth, envRow.getHeight());
     }
 
-    envelopeGraph->setBounds(envCells[0].reduced(2, 2));
     lfoComponent->setBounds(lfoCells[0].reduced(2, 2));
     extraLfos[0].component->setBounds(lfoCells[1].reduced(2, 2));
     extraLfos[1].component->setBounds(lfoCells[2].reduced(2, 2));
-    extraEnvelopes[0].component->setBounds(envCells[1].reduced(2, 2));
-    extraEnvelopes[1].component->setBounds(envCells[2].reduced(2, 2));
+
+    for (int i = 0; i < static_cast<int>(envelopes.size()); ++i)
+    {
+        envelopes[static_cast<std::size_t>(i)].component->setBounds(envCells[static_cast<std::size_t>(i)].reduced(2, 2));
+    }
 }
 
 int ModPanel::getPreferredContentWidth() const
@@ -482,15 +449,10 @@ int ModPanel::getPreferredContentHeight() const
 
 void ModPanel::refreshFromParameters()
 {
-    if (envelopeGraph != nullptr)
+    for (int i = 0; i < static_cast<int>(envelopes.size()); ++i)
     {
-        envelopeGraph->refreshFromParameters();
-    }
-
-    for (int i = 0; i < static_cast<int>(extraEnvelopes.size()); ++i)
-    {
-        const auto envIndex = i + 1;
-        auto& bundle = extraEnvelopes[static_cast<std::size_t>(i)];
+        const auto envIndex = i;
+        auto& bundle = envelopes[static_cast<std::size_t>(i)];
         if (bundle.component != nullptr)
         {
             bundle.assignBox.setSelectedId(processor.getEnvelopeAssignmentIndex(envIndex) + 1, juce::dontSendNotification);

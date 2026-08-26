@@ -178,7 +178,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             labelPrefix + "Release",
             juce::NormalisableRange<float>(0.010f, 5.0f, 0.001f, 0.45f),
             0.220f);
-        ampEnvEnabledParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterBool(
+        envelopeEnabledParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterBool(
             idPrefix + "Enabled",
             labelPrefix + "Enabled",
             true);
@@ -368,7 +368,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(decayParams[static_cast<std::size_t>(envIndex)]);
         addParameter(sustainParams[static_cast<std::size_t>(envIndex)]);
         addParameter(releaseParams[static_cast<std::size_t>(envIndex)]);
-        addParameter(ampEnvEnabledParams[static_cast<std::size_t>(envIndex)]);
+        addParameter(envelopeEnabledParams[static_cast<std::size_t>(envIndex)]);
     }
     addParameter(masterGainParam);
     addParameter(vibeAmountParam);
