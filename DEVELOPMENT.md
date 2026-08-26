@@ -9,11 +9,12 @@ This guide is for maintainers. It focuses on architecture, state flow, debugging
 High-level runtime flow:
 
 1. MIDI input (host + virtual keyboard)
-2. Synth voice rendering into OSCILLATOR BUS (voice-local oscillator sum -> filter -> amp)
-3. DRY BUS boundary (post-voice reference)
-4. FX send path (scaled by `fxSendGain`) into processor-owned FX chain order
-5. FX BUS return (wet delta scaled by `fxReturnGain`)
-6. MASTER BUS sum (DRY + FX), then output buffer write
+2. Synth voice rendering into source stems (SUB, OSC1, OSC2, OSC3)
+3. Per-source mixer stage (pan/send/mute/solo gating)
+4. DRY BUS boundary (post-source-gate reference)
+5. FX send path (per-source send * `fxSendGain`) into processor-owned FX chain order
+6. FX BUS return (wet delta scaled by `fxReturnGain`, return pan/mute/solo)
+7. MASTER BUS sum (DRY + FX), then output buffer write
 
 State flow:
 
@@ -31,7 +32,7 @@ Key architectural rule:
 
 Bus architecture rule:
 
-- Keep bus boundaries explicit in `processBlock`: OSCILLATOR, DRY, FX, MASTER.
+- Keep bus boundaries explicit in `processBlock`: source stems, DRY, FX, MASTER.
 - Do not allocate bus storage in the audio callback.
 - LFO remains modulation-only and is never mixed into audio buses.
 
@@ -52,6 +53,18 @@ Want to change oscillator synthesis behavior?
 Want to change internal bus routing stages?
 - `Source/DSP/PluginProcessor.cpp` (`prepareToPlay`, `processBlock`)
 
+Want to change mixer channel layout and control arrangement?
+- `Source/UI/MixerChannelComponent.cpp`
+- `Source/UI/MixPanel.cpp`
+
+Want to change mixer control paint/style behavior?
+- `Source/UI/MixerControls.cpp`
+- `Source/UI/UIConfig.json` (`mix.fader`, `mix.mute`, `mix.solo`, `mix.meter`)
+
+Current mixer layout note:
+- Strip-internal geometry is defined in `Source/UI/MixerChannelComponent.cpp`.
+- `mix.channel` in UIConfig currently controls spacing and text sizing, not full strip geometry.
+
 Want to change envelope/filter defaults/ranges?
 - parameter definitions in `Source/DSP/PluginProcessor.cpp`
 - envelope/filter usage in `Source/DSP/SynthVoice.cpp`
@@ -70,6 +83,12 @@ Want to tune FX send/return gain behavior?
 - parameter definitions + registration in `Source/DSP/PluginProcessor.cpp`
 - accessors in `Source/DSP/PluginProcessorParameters.cpp`
 - mix math in `Source/DSP/PluginProcessor.cpp`
+
+Want to tune solo/mute routing policy?
+- routing policy helpers in `Source/DSP/PluginProcessorParameters.cpp`:
+   - `sourceDryAudible`
+   - `sourceSendAudible`
+   - `fxReturnAudible`
 
 Want to change preset/state serialization?
 - processor state tree in `Source/DSP/PluginProcessor.cpp`

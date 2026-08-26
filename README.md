@@ -1,6 +1,6 @@
 # P(X3) Synth
 
-P(X3) is a polyphonic JUCE synthesizer with a multi-mode oscillator and reorderable FX (VIBE, Delay, Reverb). This README is a full operating guide for new users and a function-level map for developers.
+P(X3) is a polyphonic JUCE synthesizer with a multi-mode source engine, a channel-style mixer, and reorderable FX (VIBE, Delay, Reverb, Mood). This README is a full operating guide for new users and a function-level map for developers.
 
 Current version: v0.1.0
 
@@ -13,11 +13,13 @@ For developer architecture, maintenance map, and release workflow, see `DEVELOPM
 - 16-voice poly synth engine.
 - 20 oscillator modes (classic + experimental + PX3).
 - Three macro knobs whose meaning changes by oscillator mode.
+- Dedicated SUB + OSC1/OSC2/OSC3 source channels.
 - Filter, amp envelope, and master gain section.
-- One global LFO modulation source with assignable destination.
-- Three FX blocks with bypass and drag/drop processing order.
-- Explicit internal audio bus routing: OSCILLATOR -> DRY -> FX -> MASTER.
-- Independent FX send and FX return gain controls in the DSP path (available in debug tooling).
+- Three LFO modulation sources with assignable destinations.
+- Four FX blocks with bypass and drag/drop processing order.
+- Mixer channel controls: level, pan, send, mute, solo, per-channel meter.
+- Explicit internal audio bus routing: OSCILLATOR STEMS -> DRY BUS + FX SEND BUS -> FX CHAIN -> FX RETURN -> MASTER.
+- FX return controls: level, pan, mute, solo.
 - Clickable 88-key keyboard (A0-C8) with medium click velocity.
 - Performance strip (pitch bend and mod wheel).
 
@@ -159,6 +161,12 @@ Hot reload behavior:
 - If JSON parsing fails, the previous valid config remains active.
 - UI config load/reload and path-switch events are logged in the debug event log.
 
+Mixer config scope:
+
+- `mix.fader`, `mix.mute`, `mix.solo`, and `mix.meter` are fully style-driven from UIConfig.
+- `mix.channel` currently supports spacing and text sizing.
+- Channel internal geometry (section spacing, button spacing, footer row heights) is currently code-defined.
+
 Path resolution order:
 
 - Debug builds (`JUCE_DEBUG` or `PX3_DEBUG_PANEL`):
@@ -207,12 +215,12 @@ Important:
 
 ```text
 MIDI/Virtual Keyboard
-  -> OSCILLATOR BUS (all active voices summed)
-  -> DRY BUS (post-voice boundary)
-  -> FX SEND (scaled by fxSendGain)
-  -> FX Chain (user-order: VIBE / Delay / Reverb)
-  -> FX BUS (wet return, scaled by fxReturnGain)
-  -> MASTER BUS (DRY + FX)
+  -> Voice Stems (SUB, OSC1, OSC2, OSC3)
+  -> DRY BUS (channel pan/mute/solo applied)
+  -> FX SEND BUS (channel sends + send gates)
+  -> FX Chain (user-order: VIBE / Delay / Reverb / Mood)
+  -> FX RETURN (return gain/pan/mute/solo applied)
+  -> MASTER BUS (DRY + FX RETURN)
   -> Master Output
 ```
 
@@ -222,10 +230,21 @@ Important routing rules:
 
 Bus architecture notes:
 
-- Voice stage order is explicit: oscillator-source sum -> filter -> amp envelope/gain.
-- DRY BUS is the stable pre-FX reference signal.
+- Voice rendering exports explicit stems for SUB/OSC1/OSC2/OSC3.
+- DRY BUS is the post-channel-gate reference signal.
+- FX send path is independent per source and can be gated by solo state.
 - FX BUS stores return-only contribution relative to the sent signal.
 - MASTER BUS is the final sum and the source for post-block reverb compensation.
+
+## Mixer Solo Rules
+
+Mixer solo behavior is intentionally explicit:
+
+- If no solo buttons are engaged, all unmuted source channels feed DRY and FX normally.
+- If one or more source solos (SUB/OSC1/OSC2/OSC3) are engaged, only soloed sources are audible in the DRY path.
+- During source-solo mode, FX path only passes when FX solo is also engaged.
+- During source-solo + FX-solo mode, only soloed sources feed FX sends.
+- FX return mute always hard-mutes the FX return channel.
 
 ## Debug Bus Observability
 
@@ -385,21 +404,21 @@ This envelope remains per voice and shapes oscillator loudness before FX.
 
 Controls:
 
-- Freq: global LFO frequency (Hz).
-- Assign: one destination selected from supported float parameters.
+- Three independent LFO lanes (LFO 1/2/3).
+- Per-LFO frequency and destination assignment.
 
 Behavior:
 
-- ONE LFO means a single shared modulation signal is generated per processing block.
-- The selected destination receives normalized modulation:
+- Each LFO lane generates a modulation signal per processing block.
+- Assigned destinations receive normalized modulation:
   - effective = clamp(base + (depth * lfoSignal))
 - UI knobs/sliders still represent and automate base values only.
 - DSP reads effective values for sound generation; host-visible parameter values are never written by LFO.
 
 Current limits:
 
-- One destination at a time (single assignment).
-- One global depth setting in processor code (no per-target depth UI yet).
+- Each LFO supports one assignment at a time.
+- Depth is defined by target mapping in DSP (no per-target depth UI editor yet).
 - Block-rate LFO evaluation (intentionally lightweight; no sample-rate modulation path yet).
 
 ## OUTPUT Section
@@ -410,11 +429,12 @@ Controls:
 
 ## FX Sections
 
-You have three FX blocks:
+You have four FX blocks:
 
 - VIBE
 - DELAY
 - REVERB
+- MOOD
 
 Each block has a corner bypass toggle and can be reordered by drag-and-drop.
 
@@ -523,7 +543,7 @@ Saved in plugin state:
 
 - Automation controls base parameter values (what host lanes and UI show).
 - The AMP ENV graph writes those same base ADSR parameters; automation and graph edits stay in sync.
-- Modulation is an internal DSP-time offset from the ONE LFO.
+- Modulation is an internal DSP-time offset from the active LFO lanes.
 - Effective DSP value is computed from base + modulation and clamped to parameter range.
 - The plugin does not push effective values back to host automation lanes.
 - This keeps automation deterministic and prevents host writeback noise while still allowing animated sound.
@@ -568,7 +588,7 @@ runtime orchestration path.
 - `processBlock`
   - Merges MIDI + virtual keyboard MIDI.
   - Updates note state for UI.
-  - Computes ONE LFO signal for the block and applies effective-value modulation at read points.
+  - Computes LFO signals for the block and applies effective-value modulation at read points.
 - Updates all synth voices with oscillator/filter/envelope/performance settings.
   - Renders synth voices.
   - Processes FX in current drag-ordered chain.

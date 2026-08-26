@@ -35,6 +35,11 @@ The debug performance HUD (bottom-left overlay) reports:
 
 RAM is approximate in host/plugin scenarios because memory is shared within the process.
 
+Mixer note:
+
+- Channel-strip meters in the main mixer UI are active in normal runtime builds (not only debug-panel builds).
+- Internal debug panel still provides deeper bus-level RMS observability (OSC/DRY/FX/MASTER).
+
 Force a clean rebuild before launching standalone:
 
 ```bash
@@ -187,4 +192,5 @@ git push origin v0.1.0
 - Release build intentionally disables copy-after-build plugin installation.
 - Build and install are separate operations.
 - Notarization and stapling are not performed by this script.
-- Internal audio routing is explicitly staged as OSCILLATOR -> DRY -> FX -> MASTER.
+- Internal audio routing is explicitly staged as source stems -> DRY -> FX -> MASTER.
+- FX chain modules are VIBE, Delay, Reverb, and Mood (user-reorderable).
