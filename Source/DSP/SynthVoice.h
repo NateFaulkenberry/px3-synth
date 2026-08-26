@@ -84,6 +84,7 @@ private:
 
     std::array<OscillatorUnit, kOscillatorSourceCount> oscillatorUnits;
     std::array<double, kOscillatorSourceCount> oscillatorAngles { { 0.0, 0.0, 0.0 } };
+    std::array<bool, kOscillatorSourceCount> oscillatorAudibleForCurrentNote { { true, true, true } };
     SubOscillator subOscillator;
 
     int noteAgeSamples { 0 };

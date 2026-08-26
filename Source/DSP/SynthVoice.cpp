@@ -69,6 +69,10 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     {
         oscillatorUnit.resetForNote(sampleRate, currentFrequencyHz);
     }
+    for (auto& audible : oscillatorAudibleForCurrentNote)
+    {
+        audible = true;
+    }
     for (auto& oscillatorAngle : oscillatorAngles)
     {
         oscillatorAngle = currentAngle;
@@ -220,6 +224,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
         {
             const auto& layer = oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)];
+            auto& audibleForCurrentNote = oscillatorAudibleForCurrentNote[static_cast<std::size_t>(oscIndex)];
             const auto semitoneOffset = static_cast<double>(layer.pitchSemitones)
                                         + static_cast<double>(layer.coarseSemitones)
                                         + static_cast<double>(layer.fineCents) * 0.01;
@@ -230,6 +235,33 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             auto& sourceAngle = oscillatorAngles[static_cast<std::size_t>(oscIndex)];
 
             if (!layer.enabled)
+            {
+                if (audibleForCurrentNote)
+                {
+                    audibleForCurrentNote = false;
+
+                    // If an oscillator is bypassed while a note is still held,
+                    // clear its per-source filter memory so no residual ring
+                    // leaks and no stale note resumes when re-enabled.
+                    constexpr int sourceOffset = 1; // [0]=sub, [1..3]=osc1..3
+                    const auto sourceIndex = oscIndex + sourceOffset;
+                    for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
+                    {
+                        auto& filter = sourceFilters[static_cast<std::size_t>(sourceIndex)][static_cast<std::size_t>(filterIndex)];
+                        filter.reset();
+                        filter.setCurrentSettingsImmediate(filterSettings[static_cast<std::size_t>(filterIndex)]);
+                    }
+                }
+
+                sourceAngle += sourceAngleDelta;
+                if (sourceAngle >= juce::MathConstants<double>::twoPi)
+                {
+                    sourceAngle -= juce::MathConstants<double>::twoPi;
+                }
+                continue;
+            }
+
+            if (!audibleForCurrentNote)
             {
                 sourceAngle += sourceAngleDelta;
                 if (sourceAngle >= juce::MathConstants<double>::twoPi)
