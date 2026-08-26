@@ -455,7 +455,7 @@ bool PX3SynthAudioProcessor::sourceSendAudible(int sourceIndex, bool anySolo, bo
 
     if (anySourceSolo)
     {
-        return sourceSoloed(sourceIndex);
+        return fxSolo && sourceSoloed(sourceIndex);
     }
 
     return fxSolo;
@@ -475,7 +475,7 @@ bool PX3SynthAudioProcessor::fxReturnAudible(bool anySolo, bool anySourceSolo, b
 
     if (anySourceSolo)
     {
-        return true;
+        return fxSolo;
     }
 
     return fxSolo;

@@ -110,14 +110,15 @@ void MixerToggleButton::paintButton(juce::Graphics& g, bool shouldDrawButtonAsHi
     {
         fill = style.disabledColour;
     }
-    else if (getToggleState())
-    {
-        fill = style.activeColour;
-    }
-
-    if (shouldDrawButtonAsDown)
+    else if (shouldDrawButtonAsDown)
     {
         fill = style.pressedColour;
+    }
+    else if (getToggleState())
+    {
+        fill = shouldDrawButtonAsHighlighted
+                   ? style.activeColour.interpolatedWith(style.hoverColour, 0.25f)
+                   : style.activeColour;
     }
     else if (shouldDrawButtonAsHighlighted)
     {
