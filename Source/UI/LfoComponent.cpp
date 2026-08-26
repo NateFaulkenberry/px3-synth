@@ -1,5 +1,6 @@
 #include "LfoComponent.h"
 
+#include "ComponentCardDrawing.h"
 #include "LfoMode.h"
 #include "UIConfig.h"
 
@@ -189,26 +190,20 @@ void LfoComponent::paint(juce::Graphics& g)
     const auto bgTintColour = currentEnabled ? enabledBgTintColour : juce::Colour::fromRGB(112, 112, 112);
     const auto topFillColour = currentEnabled ? enabledTopFillColour : juce::Colour::fromRGB(136, 136, 136);
 
-    const auto innerFillBounds = cardBounds.reduced(6.0f);
-    g.setColour(bgTintColour.withAlpha(bgTintAlpha));
-    g.fillRoundedRectangle(innerFillBounds, 8.0f);
-    g.setColour(topFillColour.withAlpha(topFillAlpha));
-    juce::Path topFill;
-    const auto topFillBounds = innerFillBounds;
-    const auto topHalf = topFillBounds.withTrimmedBottom(topFillBounds.getHeight() * 0.5f);
-    topFill.addRoundedRectangle(topHalf.getX(),
-                                topHalf.getY(),
-                                topHalf.getWidth(),
-                                topHalf.getHeight(),
-                                8.0f,
-                                8.0f,
-                                true,
-                                true,
-                                false,
-                                false);
-    g.fillPath(topFill);
-    g.setColour(juce::Colour::fromRGBA(220, 232, 252, currentEnabled ? 88 : 66));
-    g.drawRoundedRectangle(cardBounds, 8.0f, 1.2f);
+    px3::ui::ComponentCardStyle cardStyle;
+    cardStyle.borderPadding = 0.0f;
+    cardStyle.cornerRadius = 8.0f;
+    cardStyle.fillInset = 6.0f;
+    cardStyle.backgroundColour = bgTintColour;
+    cardStyle.backgroundAlpha = bgTintAlpha;
+    cardStyle.topFillColour = topFillColour;
+    cardStyle.topFillAlpha = topFillAlpha;
+    cardStyle.topFillHeightRatio = 0.5f;
+    cardStyle.drawOutline = true;
+    cardStyle.outlineColour = juce::Colour::fromRGB(220, 232, 252);
+    cardStyle.outlineAlpha = static_cast<float>(currentEnabled ? 88 : 66) / 255.0f;
+    cardStyle.outlineThickness = 1.2f;
+    px3::ui::drawComponentCard(g, cardBounds, cardStyle);
 
     auto graphLayout = cardBounds.reduced(10.0f, 10.0f);
     graphLayout.removeFromTop(24.0f);

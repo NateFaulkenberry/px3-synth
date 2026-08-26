@@ -1,5 +1,6 @@
 #include "DelayComponent.h"
 
+#include "ComponentCardDrawing.h"
 #include "UIConfig.h"
 
 DelayComponent::DelayComponent(juce::ToggleButton& enabledButtonIn,
@@ -144,29 +145,22 @@ void DelayComponent::paint(juce::Graphics& g)
     const auto radius = uiConfig != nullptr ? uiConfig->getFloat("fx.delay.visual.cornerRadius", 8.0f) : 8.0f;
     const auto bgTintAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.delay.visual.bgTintAlpha", 0.08f) : 0.08f;
     const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.delay.visual.topFillAlpha", 0.10f) : 0.10f;
-    auto bounds = getLocalBounds().toFloat().reduced(borderPad);
+    auto bounds = getLocalBounds().toFloat();
     const auto fillColour = isActive ? accent : juce::Colour::fromRGBA(120, 120, 120, 180);
     const auto bgTintColour = uiConfig != nullptr ? uiConfig->getColour("fx.delay.visual.bgTintColour", fillColour)
                                                   : fillColour;
     const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("fx.delay.visual.topFillColour", fillColour)
                                                    : fillColour;
-    const auto innerFillBounds = bounds;
-    g.setColour(bgTintColour.withAlpha(bgTintAlpha));
-    g.fillRoundedRectangle(innerFillBounds, radius);
-    g.setColour(topFillColour.withAlpha(topFillAlpha));
-    juce::Path topFill;
-    const auto topHalf = innerFillBounds.withTrimmedBottom(innerFillBounds.getHeight() * 0.5f);
-    topFill.addRoundedRectangle(topHalf.getX(),
-                                topHalf.getY(),
-                                topHalf.getWidth(),
-                                topHalf.getHeight(),
-                                radius,
-                                radius,
-                                true,
-                                true,
-                                false,
-                                false);
-    g.fillPath(topFill);
+    px3::ui::ComponentCardStyle cardStyle;
+    cardStyle.borderPadding = borderPad;
+    cardStyle.cornerRadius = radius;
+    cardStyle.fillInset = 0.0f;
+    cardStyle.backgroundColour = bgTintColour;
+    cardStyle.backgroundAlpha = bgTintAlpha;
+    cardStyle.topFillColour = topFillColour;
+    cardStyle.topFillAlpha = topFillAlpha;
+    cardStyle.topFillHeightRatio = 0.5f;
+    px3::ui::drawComponentCard(g, bounds, cardStyle);
 
     const auto textColour = uiConfig != nullptr
                                 ? uiConfig->getColour("fx.delay.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))

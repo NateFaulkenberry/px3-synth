@@ -1,5 +1,6 @@
 #include "MoodComponent.h"
 
+#include "ComponentCardDrawing.h"
 #include "UIConfig.h"
 
 MoodComponent::MoodComponent(juce::ToggleButton& enabledButtonIn,
@@ -227,30 +228,23 @@ void MoodComponent::paint(juce::Graphics& g)
     const auto bgTintAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.mood.visual.bgTintAlpha", 0.08f) : 0.08f;
     const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.mood.visual.topFillAlpha", 0.10f) : 0.10f;
 
-    auto bounds = getLocalBounds().toFloat().reduced(borderPad);
+    auto bounds = getLocalBounds().toFloat();
     const auto fillColour = isActive ? accent : juce::Colour::fromRGBA(120, 120, 120, 180);
     const auto bgTintColour = uiConfig != nullptr ? uiConfig->getColour("fx.mood.visual.bgTintColour", fillColour)
                                                   : fillColour;
     const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("fx.mood.visual.topFillColour", fillColour)
                                                    : fillColour;
 
-    g.setColour(bgTintColour.withAlpha(bgTintAlpha));
-    g.fillRoundedRectangle(bounds, radius);
-
-    g.setColour(topFillColour.withAlpha(topFillAlpha));
-    juce::Path topFill;
-    const auto topHalf = bounds.withTrimmedBottom(bounds.getHeight() * 0.52f);
-    topFill.addRoundedRectangle(topHalf.getX(),
-                                topHalf.getY(),
-                                topHalf.getWidth(),
-                                topHalf.getHeight(),
-                                radius,
-                                radius,
-                                true,
-                                true,
-                                false,
-                                false);
-    g.fillPath(topFill);
+    px3::ui::ComponentCardStyle cardStyle;
+    cardStyle.borderPadding = borderPad;
+    cardStyle.cornerRadius = radius;
+    cardStyle.fillInset = 0.0f;
+    cardStyle.backgroundColour = bgTintColour;
+    cardStyle.backgroundAlpha = bgTintAlpha;
+    cardStyle.topFillColour = topFillColour;
+    cardStyle.topFillAlpha = topFillAlpha;
+    cardStyle.topFillHeightRatio = 0.52f;
+    px3::ui::drawComponentCard(g, bounds, cardStyle);
 
     const auto textColour = uiConfig != nullptr
                                 ? uiConfig->getColour("fx.mood.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))

@@ -1,5 +1,6 @@
 #include "EnvelopeComponent.h"
 
+#include "ComponentCardDrawing.h"
 #include "UIConfig.h"
 
 #include <cmath>
@@ -124,25 +125,20 @@ void EnvelopeComponent::paint(juce::Graphics& g)
     const auto bgTintColour = currentEnabled ? enabledBgTintColour : juce::Colour::fromRGB(112, 112, 112);
     const auto topFillColour = currentEnabled ? enabledTopFillColour : juce::Colour::fromRGB(136, 136, 136);
 
-    const auto innerFillBounds = cardBounds.reduced(6.0f);
-    g.setColour(bgTintColour.withAlpha(bgTintAlpha));
-    g.fillRoundedRectangle(innerFillBounds, cardCornerRadius);
-    g.setColour(topFillColour.withAlpha(topFillAlpha));
-    juce::Path topFill;
-    const auto topHalf = innerFillBounds.withTrimmedBottom(innerFillBounds.getHeight() * 0.5f);
-    topFill.addRoundedRectangle(topHalf.getX(),
-                                topHalf.getY(),
-                                topHalf.getWidth(),
-                                topHalf.getHeight(),
-                                cardCornerRadius,
-                                cardCornerRadius,
-                                true,
-                                true,
-                                false,
-                                false);
-    g.fillPath(topFill);
-    g.setColour(outerStrokeColour.withAlpha(static_cast<float>(currentEnabled ? outerStrokeAlphaEnabled : outerStrokeAlphaDisabled) / 255.0f));
-    g.drawRoundedRectangle(cardBounds, cardCornerRadius, outerStrokeThickness);
+    px3::ui::ComponentCardStyle cardStyle;
+    cardStyle.borderPadding = 0.0f;
+    cardStyle.cornerRadius = cardCornerRadius;
+    cardStyle.fillInset = 6.0f;
+    cardStyle.backgroundColour = bgTintColour;
+    cardStyle.backgroundAlpha = bgTintAlpha;
+    cardStyle.topFillColour = topFillColour;
+    cardStyle.topFillAlpha = topFillAlpha;
+    cardStyle.topFillHeightRatio = 0.5f;
+    cardStyle.drawOutline = true;
+    cardStyle.outlineColour = outerStrokeColour;
+    cardStyle.outlineAlpha = static_cast<float>(currentEnabled ? outerStrokeAlphaEnabled : outerStrokeAlphaDisabled) / 255.0f;
+    cardStyle.outlineThickness = outerStrokeThickness;
+    px3::ui::drawComponentCard(g, cardBounds, cardStyle);
 
     const auto geom = computeGeometry();
     const auto graphArea = juce::Rectangle<float>(geom.left - 6.0f,

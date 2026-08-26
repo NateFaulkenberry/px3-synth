@@ -66,6 +66,7 @@ target_sources(PX3Synth
         Source/UI/MixerChannelComponent.cpp
         Source/UI/TopMenuBar.cpp
         Source/UI/DelayComponent.cpp
+        Source/UI/ComponentCardDrawing.cpp
         Source/UI/MoodComponent.cpp
         Source/UI/EnvelopeComponent.cpp
         Source/UI/FilterComponent.cpp
