@@ -83,6 +83,7 @@ private:
     int currentMidiNote { 60 };
 
     std::array<OscillatorUnit, kOscillatorSourceCount> oscillatorUnits;
+    std::array<double, kOscillatorSourceCount> oscillatorAngles { { 0.0, 0.0, 0.0 } };
     SubOscillator subOscillator;
 
     int noteAgeSamples { 0 };

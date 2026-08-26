@@ -49,7 +49,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         oscPitchParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(
             juce::ParameterID(idPrefix + "Pitch", 1),
             labelPrefix + "Pitch",
-            juce::NormalisableRange<float>(-0.12f, 0.12f, 0.01f),
+            juce::NormalisableRange<float>(-0.24f, 0.24f, 0.01f),
             0.0f,
             juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
             {
@@ -92,7 +92,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     subOscPitchParam = new juce::AudioParameterFloat(
         juce::ParameterID("subOscPitch", 1),
         "Sub Osc Pitch",
-        juce::NormalisableRange<float>(-0.12f, 0.12f, 0.01f),
+        juce::NormalisableRange<float>(-0.24f, 0.24f, 0.01f),
         0.0f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
         {

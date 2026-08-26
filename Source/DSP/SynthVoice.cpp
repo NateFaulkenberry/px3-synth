@@ -47,6 +47,10 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     {
         oscillatorUnit.resetForNote(sampleRate, currentFrequencyHz);
     }
+    for (auto& oscillatorAngle : oscillatorAngles)
+    {
+        oscillatorAngle = currentAngle;
+    }
 }
 
 void SynthVoice::stopNote(float, bool allowTailOff)
@@ -194,24 +198,41 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
         {
             const auto& layer = oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)];
-            if (!layer.enabled)
-            {
-                continue;
-            }
-
-            OscillatorUnit::RenderContext sourceContext = oscillatorContext;
             const auto semitoneOffset = static_cast<double>(layer.pitchSemitones)
                                         + static_cast<double>(layer.coarseSemitones)
                                         + static_cast<double>(layer.fineCents) * 0.01;
             const auto sourcePitchRatio = std::pow(2.0, semitoneOffset / 12.0);
+            const auto sourceFrequencyHz = currentFrequencyHz * sourcePitchRatio;
+            const auto sourceAngleDelta = juce::MathConstants<double>::twoPi * sourceFrequencyHz / sampleRate;
+
+            auto& sourceAngle = oscillatorAngles[static_cast<std::size_t>(oscIndex)];
+
+            if (!layer.enabled)
+            {
+                sourceAngle += sourceAngleDelta;
+                if (sourceAngle >= juce::MathConstants<double>::twoPi)
+                {
+                    sourceAngle -= juce::MathConstants<double>::twoPi;
+                }
+                continue;
+            }
+
+            OscillatorUnit::RenderContext sourceContext = oscillatorContext;
             sourceContext.pitchRatio = baseOscillatorPitchRatio * static_cast<float>(sourcePitchRatio);
-            sourceContext.currentFrequencyHz = currentFrequencyHz * sourcePitchRatio;
+            sourceContext.currentFrequencyHz = sourceFrequencyHz;
+            sourceContext.currentAngle = sourceAngle;
 
             const auto sourceSample = oscillatorUnits[static_cast<std::size_t>(oscIndex)].renderSample(sampleRate, sourceContext)
                                       * juce::jlimit(0.0f, 1.0f, layer.level);
             auto sourceStageSample = softClip(sourceSample * 0.92f);
             sourceStageSample = applyVibeSourceStage(sourceStageSample, 1.0f);
             sourceSamples[static_cast<std::size_t>(oscIndex + 1)] = sourceStageSample;
+
+            sourceAngle += sourceAngleDelta;
+            if (sourceAngle >= juce::MathConstants<double>::twoPi)
+            {
+                sourceAngle -= juce::MathConstants<double>::twoPi;
+            }
         }
 
         auto subStageSample = 0.0f;

@@ -16,7 +16,7 @@ void SubOscillator::setSettings(const SubOscSettings& newSettings)
 {
     settings.enabled = newSettings.enabled;
     settings.level = juce::jlimit(0.0f, 1.0f, newSettings.level);
-    settings.pitchSemitones = juce::jlimit(-0.12f, 0.12f, newSettings.pitchSemitones);
+    settings.pitchSemitones = juce::jlimit(-0.24f, 0.24f, newSettings.pitchSemitones);
     settings.octaveIndex = px3::clampSubOscOctaveIndex(newSettings.octaveIndex);
     settings.waveformIndex = px3::clampSubOscWaveformIndex(newSettings.waveformIndex);
 }
