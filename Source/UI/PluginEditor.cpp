@@ -563,7 +563,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     const auto configurePitchReadout = [&](juce::Slider& pitchKnob, juce::Label& valueLabel)
     {
         pitchKnob.getProperties().set("isMixerPanKnob", true);
-        pitchKnob.setRange(-12.0, 12.0, 0.01);
+        pitchKnob.setRange(-0.12, 0.12, 0.01);
 
         valueLabel.setJustificationType(juce::Justification::centred);
         valueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(214, 214, 224));

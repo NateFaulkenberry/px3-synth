@@ -384,7 +384,7 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
 
         if (subOscState.hasProperty(kSubOscPitchId) && subOscPitchParam != nullptr)
         {
-            const auto pitch = juce::jlimit(-12.0f, 12.0f, static_cast<float>(subOscState[kSubOscPitchId]));
+            const auto pitch = juce::jlimit(-0.12f, 0.12f, static_cast<float>(subOscState[kSubOscPitchId]));
             subOscPitchParam->setValueNotifyingHost(subOscPitchParam->convertTo0to1(pitch));
         }
 
