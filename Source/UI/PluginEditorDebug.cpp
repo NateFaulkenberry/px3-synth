@@ -948,10 +948,18 @@ void PX3SynthAudioProcessorEditor::refreshDebugEnvelopeState()
 
         for (int i = 0; i < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++i)
         {
+           const auto baseNorm = audioProcessor.debugGetEnvelopeDestinationBaseNormalized(i);
+           const auto effectiveNorm = audioProcessor.debugGetEnvelopeDestinationEffectiveNormalized(i);
+           const auto contributionNorm = audioProcessor.debugGetEnvelopeContributionNormalized(i);
            text << "ENV " << juce::String(i + 1)
                << " value=" << juce::String(audioProcessor.debugGetEnvelopeCurrentValue(i), 5)
                << " amount=" << juce::String(audioProcessor.getEnvelopeAmountParam(i).get(), 4)
-               << " assign=" << audioProcessor.getEnvelopeAssignmentParameterId(i)
+               << " assign=" << audioProcessor.debugGetEnvelopeAssignmentName(i)
+               << "\n"
+               << "      contribution(norm)=" << juce::String(contributionNorm, 5)
+               << " base(norm)=" << juce::String(baseNorm, 5)
+               << " effective(norm)=" << juce::String(effectiveNorm, 5)
+               << " delta(norm)=" << juce::String(effectiveNorm - baseNorm, 5)
                << "\n";
         }
 

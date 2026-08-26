@@ -241,6 +241,10 @@ public:
     float debugGetLfoBaseNormalized() const;
     float debugGetLfoEffectiveNormalized() const;
     float debugGetEnvelopeCurrentValue(int envIndex) const;
+    float debugGetEnvelopeContributionNormalized(int envIndex) const;
+    float debugGetEnvelopeDestinationBaseNormalized(int envIndex) const;
+    float debugGetEnvelopeDestinationEffectiveNormalized(int envIndex) const;
+    juce::String debugGetEnvelopeAssignmentName(int envIndex) const;
     float debugGetOscillatorBusRms() const;
     float debugGetDryBusRms() const;
     float debugGetFxBusRms() const;
@@ -455,6 +459,9 @@ private:
     std::array<std::atomic<float>, kLfoSourceCount> lfoPhaseForDebug { { 0.0f, 0.0f, 0.0f } };
     std::array<std::atomic<float>, kLfoSourceCount> lfoCurrentValues { { 0.0f, 0.0f, 0.0f } };
     std::array<std::atomic<float>, kEnvelopeSourceCount> modulationEnvelopeValues { { 0.0f, 0.0f, 0.0f } };
+    std::array<std::atomic<float>, kEnvelopeSourceCount> debugEnvelopeContributionNormalized { { 0.0f, 0.0f, 0.0f } };
+    std::array<std::atomic<float>, kEnvelopeSourceCount> debugEnvelopeDestinationBaseNormalized { { 0.0f, 0.0f, 0.0f } };
+    std::array<std::atomic<float>, kEnvelopeSourceCount> debugEnvelopeDestinationEffectiveNormalized { { 0.0f, 0.0f, 0.0f } };
     std::atomic<float> lfoDebugBaseNormalized { 0.0f };
     std::atomic<float> lfoDebugEffectiveNormalized { 0.0f };
     std::atomic<float> debugOscillatorBusRms { 0.0f };

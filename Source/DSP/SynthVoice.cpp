@@ -194,7 +194,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         }
     }
 
-    std::array<float, 3> modEnvelopeBlockSums { { 0.0f, 0.0f, 0.0f } };
+    std::array<float, 3> modEnvelopePeakValues { { 0.0f, 0.0f, 0.0f } };
     for (int sample = 0; sample < numSamples; ++sample)
     {
         for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
@@ -203,7 +203,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             {
                 const auto envSample = modEnvelopeGenerators[envIndex].getNextSample();
                 modEnvelopeValues[envIndex] = envSample;
-                modEnvelopeBlockSums[envIndex] += envSample;
+                modEnvelopePeakValues[envIndex] = juce::jmax(modEnvelopePeakValues[envIndex], envSample);
             }
             else
             {
@@ -423,15 +423,14 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     }
 
     // Source interface contract for processor-side modulation sampling is a
-    // block representative value. Use block-mean to preserve transient ENV
-    // energy (especially short attack/decay) instead of boundary snapshots.
+    // block representative value. Use peak-per-block so short envelopes are
+    // still observable by downstream control-rate modulation reads.
     if (numSamples > 0)
     {
-        const auto invSamples = 1.0f / static_cast<float>(numSamples);
         for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
         {
             modEnvelopeValues[envIndex] = modEnvelopeEnabled[envIndex]
-                                              ? juce::jlimit(0.0f, 1.0f, modEnvelopeBlockSums[envIndex] * invSamples)
+                                              ? juce::jlimit(0.0f, 1.0f, modEnvelopePeakValues[envIndex])
                                               : 0.0f;
         }
     }

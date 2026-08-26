@@ -416,6 +416,37 @@ float PX3SynthAudioProcessor::debugGetEnvelopeCurrentValue(int envIndex) const
     return modulationEnvelopeValues[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
 }
 
+float PX3SynthAudioProcessor::debugGetEnvelopeContributionNormalized(int envIndex) const
+{
+    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
+    return debugEnvelopeContributionNormalized[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
+}
+
+float PX3SynthAudioProcessor::debugGetEnvelopeDestinationBaseNormalized(int envIndex) const
+{
+    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
+    return debugEnvelopeDestinationBaseNormalized[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
+}
+
+float PX3SynthAudioProcessor::debugGetEnvelopeDestinationEffectiveNormalized(int envIndex) const
+{
+    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
+    return debugEnvelopeDestinationEffectiveNormalized[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
+}
+
+juce::String PX3SynthAudioProcessor::debugGetEnvelopeAssignmentName(int envIndex) const
+{
+    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
+    const auto assignment = getEnvelopeAssignmentIndex(idx);
+    if (assignment <= 0 || assignment >= static_cast<int>(lfoAssignableTargets.size()))
+    {
+        return "None";
+    }
+
+    return lfoAssignableTargets[static_cast<std::size_t>(assignment)].displayName
+        + " [" + lfoAssignableTargets[static_cast<std::size_t>(assignment)].parameterId + "]";
+}
+
 juce::String PX3SynthAudioProcessor::debugGetLfoAssignmentName() const
 {
     const auto index = getLfoAssignmentIndex();

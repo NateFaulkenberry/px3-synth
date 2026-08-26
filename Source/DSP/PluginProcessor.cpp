@@ -755,6 +755,40 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         lfoDebugEffectiveNormalized.store(0.0f, std::memory_order_relaxed);
     }
 
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        auto baseNorm = 0.0f;
+        auto effectiveNorm = 0.0f;
+        auto contributionNorm = 0.0f;
+
+        const auto assignment = getEnvelopeAssignmentIndex(envIndex);
+        if (assignment > 0 && assignment < static_cast<int>(lfoAssignableTargets.size()))
+        {
+            const auto& target = lfoAssignableTargets[static_cast<std::size_t>(assignment)];
+            if (target.parameter != nullptr)
+            {
+                const auto envSignal = juce::jlimit(0.0f,
+                                                    1.0f,
+                                                    modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].load(std::memory_order_relaxed));
+                const auto envAmount = juce::jlimit(-1.0f, 1.0f, getEnvelopeAmountParam(envIndex).get());
+                contributionNorm = target.normalizedDepth * (envSignal * envAmount);
+
+                const auto baseNormalized = target.parameter->getValue();
+                juce::ignoreUnused(applyModulationToNormalizedValue(target.parameter,
+                                                                     baseNormalized,
+                                                                     &baseNorm,
+                                                                     &effectiveNorm));
+            }
+        }
+
+        debugEnvelopeContributionNormalized[static_cast<std::size_t>(envIndex)].store(contributionNorm,
+                                                                                       std::memory_order_relaxed);
+        debugEnvelopeDestinationBaseNormalized[static_cast<std::size_t>(envIndex)].store(baseNorm,
+                                                                                          std::memory_order_relaxed);
+        debugEnvelopeDestinationEffectiveNormalized[static_cast<std::size_t>(envIndex)].store(effectiveNorm,
+                                                                                               std::memory_order_relaxed);
+    }
+
     const auto ampEnvelope = currentAmpEnvelopeSettings();
     const auto ampEnvelopeEnabled = ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true;
     std::array<EnvelopeSettings, kEnvelopeSourceCount> modEnvelopeSettings;
