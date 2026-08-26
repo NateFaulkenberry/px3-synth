@@ -535,10 +535,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureKnob(knobBindings[6], "PARAM A", audioProcessor.getOscillatorMacroAParam(2));
     configureKnob(knobBindings[7], "PARAM B", audioProcessor.getOscillatorMacroBParam(2));
     configureKnob(knobBindings[8], "PARAM C", audioProcessor.getOscillatorMacroCParam(2));
-    configureKnob(knobBindings[9], "PITCH", audioProcessor.getOscillatorPitchParam(0));
-    configureKnob(knobBindings[10], "PITCH", audioProcessor.getOscillatorPitchParam(1));
-    configureKnob(knobBindings[11], "PITCH", audioProcessor.getOscillatorPitchParam(2));
-    configureKnob(knobBindings[12], "PITCH", audioProcessor.getSubOscPitchParam());
+    configureKnob(knobBindings[9], "TUNE", audioProcessor.getOscillatorPitchParam(0));
+    configureKnob(knobBindings[10], "TUNE", audioProcessor.getOscillatorPitchParam(1));
+    configureKnob(knobBindings[11], "TUNE", audioProcessor.getOscillatorPitchParam(2));
+    configureKnob(knobBindings[12], "TUNE", audioProcessor.getSubOscPitchParam());
     configureKnob(knobBindings[13], "Cutoff", audioProcessor.getFilterCutoffParam(0));
     configureKnob(knobBindings[14], "Reso", audioProcessor.getFilterResonanceParam(0));
     configureKnob(knobBindings[15], "Cutoff", audioProcessor.getFilterCutoffParam(1));
