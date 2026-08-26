@@ -259,7 +259,13 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
     if (isMixerPanKnob)
     {
         const auto topCenterAngle = -juce::MathConstants<float>::halfPi;
-        const auto panValue = juce::jlimit(-1.0f, 1.0f, static_cast<float>(slider.getValue()));
+        const auto minValue = static_cast<float>(slider.getMinimum());
+        const auto maxValue = static_cast<float>(slider.getMaximum());
+        const auto valueSpan = juce::jmax(0.0001f, maxValue - minValue);
+        const auto normalized = juce::jlimit(0.0f,
+                                             1.0f,
+                                             (static_cast<float>(slider.getValue()) - minValue) / valueSpan);
+        const auto panValue = juce::jlimit(-1.0f, 1.0f, normalized * 2.0f - 1.0f);
         const auto panArcEndAngle = topCenterAngle + panValue * juce::MathConstants<float>::halfPi;
         indicatorAngle = panValue * juce::MathConstants<float>::halfPi;
 
