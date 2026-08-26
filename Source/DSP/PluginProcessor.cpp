@@ -179,6 +179,30 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     delayFeedbackParam = new juce::AudioParameterFloat("delayFeedback", "Delay Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.38f);
     fxSendGainParam = new juce::AudioParameterFloat("fxSendGain", "FX Send", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
     fxReturnGainParam = new juce::AudioParameterFloat("fxReturnGain", "FX Return", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    static constexpr std::array<const char*, kMixerSourceCount> mixerIds { { "sub", "osc1", "osc2", "osc3" } };
+    static constexpr std::array<const char*, kMixerSourceCount> mixerNames { { "Sub", "Osc 1", "Osc 2", "Osc 3" } };
+    for (int i = 0; i < kMixerSourceCount; ++i)
+    {
+        const auto sourceId = juce::String(mixerIds[static_cast<std::size_t>(i)]);
+        const auto sourceName = juce::String(mixerNames[static_cast<std::size_t>(i)]);
+        mixerPanParams[static_cast<std::size_t>(i)] = new juce::AudioParameterFloat("mix." + sourceId + ".pan",
+                                                                                      sourceName + " Pan",
+                                                                                      juce::NormalisableRange<float>(-1.0f, 1.0f),
+                                                                                      0.0f);
+        mixerSendParams[static_cast<std::size_t>(i)] = new juce::AudioParameterFloat("mix." + sourceId + ".fxSend",
+                                                                                       sourceName + " FX Send",
+                                                                                       juce::NormalisableRange<float>(0.0f, 1.0f),
+                                                                                       0.0f);
+        mixerMuteParams[static_cast<std::size_t>(i)] = new juce::AudioParameterBool("mix." + sourceId + ".mute",
+                                                                                      sourceName + " Mute",
+                                                                                      false);
+        mixerSoloParams[static_cast<std::size_t>(i)] = new juce::AudioParameterBool("mix." + sourceId + ".solo",
+                                                                                      sourceName + " Solo",
+                                                                                      false);
+    }
+    fxReturnMuteParam = new juce::AudioParameterBool("mix.fx.mute", "FX Return Mute", false);
+    fxReturnSoloParam = new juce::AudioParameterBool("mix.fx.solo", "FX Return Solo", false);
+    fxReturnPanParam = new juce::AudioParameterFloat("mix.fx.pan", "FX Return Pan", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
     reverbAmountParam = new juce::AudioParameterFloat("reverbAmount", "Reverb", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     reverbEnabledParam = new juce::AudioParameterBool("reverbEnabled", "Reverb Enabled", true);
     reverbAlgorithmParam = new juce::AudioParameterChoice("reverbAlgorithm",
@@ -298,6 +322,16 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(delayFeedbackParam);
     addParameter(fxSendGainParam);
     addParameter(fxReturnGainParam);
+    for (int i = 0; i < kMixerSourceCount; ++i)
+    {
+        addParameter(mixerPanParams[static_cast<std::size_t>(i)]);
+        addParameter(mixerSendParams[static_cast<std::size_t>(i)]);
+        addParameter(mixerMuteParams[static_cast<std::size_t>(i)]);
+        addParameter(mixerSoloParams[static_cast<std::size_t>(i)]);
+    }
+    addParameter(fxReturnMuteParam);
+    addParameter(fxReturnSoloParam);
+    addParameter(fxReturnPanParam);
     addParameter(reverbAmountParam);
     addParameter(reverbEnabledParam);
     addParameter(reverbAlgorithmParam);
@@ -417,6 +451,7 @@ void PX3SynthAudioProcessor::changeProgramName(int, const juce::String&)
 
 void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
+    currentSampleRateHz = juce::jmax(1.0, sampleRate);
     synth.setCurrentPlaybackSampleRate(sampleRate);
     for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
     {
@@ -435,7 +470,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     moodComponent.prepare(sampleRate);
     reverb.prepare(sampleRate);
 
-    const auto busChannels = juce::jmax(1, getTotalNumOutputChannels());
+    const auto busChannels = juce::jmax(kMixerSourceCount, getTotalNumOutputChannels());
     const auto busSamples = juce::jmax(1, samplesPerBlock);
     oscillatorBusBuffer.setSize(busChannels, busSamples, false, false, true);
     dryBusBuffer.setSize(busChannels, busSamples, false, false, true);
@@ -445,6 +480,19 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     dryBusBuffer.clear();
     fxBusBuffer.clear();
     masterBusBuffer.clear();
+
+    for (int i = 0; i < kMixerSourceCount; ++i)
+    {
+        auto& dryGate = sourceDryGateSmoothers[static_cast<std::size_t>(i)];
+        auto& sendGate = sourceSendGateSmoothers[static_cast<std::size_t>(i)];
+        dryGate.reset(sampleRate, 0.010);
+        sendGate.reset(sampleRate, 0.010);
+        dryGate.setCurrentAndTargetValue(1.0f);
+        sendGate.setCurrentAndTargetValue(1.0f);
+    }
+
+    fxReturnGateSmoother.reset(sampleRate, 0.010);
+    fxReturnGateSmoother.setCurrentAndTargetValue(1.0f);
 
     const auto envelope = currentEnvelopeSettings();
     const auto filter = currentFilterSettings();
@@ -516,19 +564,28 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         buffer.clear(channel, 0, buffer.getNumSamples());
     }
 
-    if (blockSamples > oscillatorBusBuffer.getNumSamples() || outputChannels > oscillatorBusBuffer.getNumChannels())
+    if (blockSamples > oscillatorBusBuffer.getNumSamples() || kMixerSourceCount > oscillatorBusBuffer.getNumChannels())
     {
         // Host block size should not exceed prepareToPlay max block size.
         buffer.clear();
         return;
     }
 
-    for (int channel = 0; channel < outputChannels; ++channel)
+    for (int channel = 0; channel < oscillatorBusBuffer.getNumChannels(); ++channel)
     {
         oscillatorBusBuffer.clear(channel, 0, blockSamples);
-        dryBusBuffer.clear(channel, 0, blockSamples);
-        fxBusBuffer.clear(channel, 0, blockSamples);
-        masterBusBuffer.clear(channel, 0, blockSamples);
+        if (channel < dryBusBuffer.getNumChannels())
+        {
+            dryBusBuffer.clear(channel, 0, blockSamples);
+        }
+        if (channel < fxBusBuffer.getNumChannels())
+        {
+            fxBusBuffer.clear(channel, 0, blockSamples);
+        }
+        if (channel < masterBusBuffer.getNumChannels())
+        {
+            masterBusBuffer.clear(channel, 0, blockSamples);
+        }
     }
 
     juce::MidiBuffer combinedMidi;
@@ -653,12 +710,6 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     // contributing here, so future sources can sum in parallel at the same point.
     synth.renderNextBlock(oscillatorBusBuffer, midiMessages, 0, blockSamples);
 
-    // DRY BUS: post-voice synth signal boundary, before FX returns are summed.
-    for (int channel = 0; channel < outputChannels; ++channel)
-    {
-        dryBusBuffer.copyFrom(channel, 0, oscillatorBusBuffer, channel, 0, blockSamples);
-    }
-
     updateTransportState();
 
     delayComponent.updateForBlock(currentDelaySettings());
@@ -667,6 +718,52 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     const auto fxOrder = getFxProcessingOrder();
     const auto fxSendGain = juce::jlimit(0.0f, 1.0f, fxSendGainParam != nullptr ? fxSendGainParam->get() : 1.0f);
     const auto fxReturnGain = juce::jlimit(0.0f, 1.0f, fxReturnGainParam != nullptr ? fxReturnGainParam->get() : 1.0f);
+    const auto fxPan = juce::jlimit(-1.0f, 1.0f, fxReturnPanParam != nullptr ? fxReturnPanParam->get() : 0.0f);
+
+    std::array<float, kMixerSourceCount> sourcePanValues { { 0.0f, 0.0f, 0.0f, 0.0f } };
+    std::array<float, kMixerSourceCount> sourceSendValues { { 0.0f, 0.0f, 0.0f, 0.0f } };
+    for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
+    {
+        sourcePanValues[static_cast<std::size_t>(sourceIndex)] = juce::jlimit(-1.0f, 1.0f, getMixerPanParam(sourceIndex).get());
+        sourceSendValues[static_cast<std::size_t>(sourceIndex)] = juce::jlimit(0.0f, 1.0f, getMixerSendParam(sourceIndex).get());
+    }
+
+    const auto anySolo = anyChannelSoloed();
+    const auto anySourceSolo = anySourceSoloed();
+    const auto fxSolo = fxReturnSoloParam != nullptr && fxReturnSoloParam->get();
+
+    for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
+    {
+        sourceDryGateSmoothers[static_cast<std::size_t>(sourceIndex)].setTargetValue(sourceDryAudible(sourceIndex, anySolo) ? 1.0f : 0.0f);
+        sourceSendGateSmoothers[static_cast<std::size_t>(sourceIndex)].setTargetValue(
+            sourceSendAudible(sourceIndex, anySolo, anySourceSolo, fxSolo) ? 1.0f : 0.0f);
+    }
+    fxReturnGateSmoother.setTargetValue(fxReturnAudible(anySolo, anySourceSolo, fxSolo) ? 1.0f : 0.0f);
+
+    auto panToGains = [](float pan, float& leftGain, float& rightGain)
+    {
+        const auto angle = (pan + 1.0f) * juce::MathConstants<float>::pi * 0.25f;
+        leftGain = std::cos(angle);
+        rightGain = std::sin(angle);
+    };
+
+    std::array<float, kMixerSourceCount> sourcePanLeft { { 1.0f, 1.0f, 1.0f, 1.0f } };
+    std::array<float, kMixerSourceCount> sourcePanRight { { 1.0f, 1.0f, 1.0f, 1.0f } };
+    for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
+    {
+        panToGains(sourcePanValues[static_cast<std::size_t>(sourceIndex)],
+                   sourcePanLeft[static_cast<std::size_t>(sourceIndex)],
+                   sourcePanRight[static_cast<std::size_t>(sourceIndex)]);
+    }
+
+    float fxPanLeft = 1.0f;
+    float fxPanRight = 1.0f;
+    panToGains(fxPan, fxPanLeft, fxPanRight);
+
+#if JUCE_DEBUG
+    std::array<double, kMixerSourceCount> mixerSourceEnergy { { 0.0, 0.0, 0.0, 0.0 } };
+    double fxReturnEnergy = 0.0;
+#endif
 
     const auto blockPhaseAdvance = juce::MathConstants<float>::twoPi * vibratoRateHz
                                    * (static_cast<float>(blockSamples) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));
@@ -683,11 +780,39 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     for (int sample = 0; sample < blockSamples; ++sample)
     {
-        const auto dryL = dryBusBuffer.getSample(0, sample);
-        const auto dryR = (outputChannels > 1) ? dryBusBuffer.getSample(1, sample) : dryL;
+        float dryL = 0.0f;
+        float dryR = 0.0f;
+        float fxInL = 0.0f;
+        float fxInR = 0.0f;
 
-        const auto fxInL = dryL * fxSendGain;
-        const auto fxInR = dryR * fxSendGain;
+        for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
+        {
+            const auto sampleValue = oscillatorBusBuffer.getSample(sourceIndex, sample);
+            const auto dryGate = sourceDryGateSmoothers[static_cast<std::size_t>(sourceIndex)].getNextValue();
+            const auto sendGate = sourceSendGateSmoothers[static_cast<std::size_t>(sourceIndex)].getNextValue();
+            const auto panL = sourcePanLeft[static_cast<std::size_t>(sourceIndex)];
+            const auto panR = sourcePanRight[static_cast<std::size_t>(sourceIndex)];
+            const auto sourceDryL = sampleValue * panL * dryGate;
+            const auto sourceDryR = sampleValue * panR * dryGate;
+
+            dryL += sourceDryL;
+            dryR += sourceDryR;
+
+            const auto sendGain = sourceSendValues[static_cast<std::size_t>(sourceIndex)] * fxSendGain;
+            fxInL += sampleValue * panL * sendGain * sendGate;
+            fxInR += sampleValue * panR * sendGain * sendGate;
+
+#if JUCE_DEBUG
+            mixerSourceEnergy[static_cast<std::size_t>(sourceIndex)] += static_cast<double>(sourceDryL) * static_cast<double>(sourceDryL)
+                                                                         + static_cast<double>(sourceDryR) * static_cast<double>(sourceDryR);
+#endif
+        }
+
+        dryBusBuffer.setSample(0, sample, dryL);
+        if (outputChannels > 1)
+        {
+            dryBusBuffer.setSample(1, sample, dryR);
+        }
 
         auto stageL = fxInL;
         auto stageR = fxInR;
@@ -717,8 +842,13 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
 
         // FX BUS: net FX return relative to dry path.
-        const auto fxL = (stageL - fxInL) * fxReturnGain;
-        const auto fxR = (stageR - fxInR) * fxReturnGain;
+        const auto fxReturnGate = fxReturnGateSmoother.getNextValue();
+        const auto fxL = (stageL - fxInL) * fxReturnGain * fxPanLeft * fxReturnGate;
+        const auto fxR = (stageR - fxInR) * fxReturnGain * fxPanRight * fxReturnGate;
+    #if JUCE_DEBUG
+        fxReturnEnergy += static_cast<double>(fxL) * static_cast<double>(fxL)
+                  + static_cast<double>(fxR) * static_cast<double>(fxR);
+    #endif
         fxBusBuffer.setSample(0, sample, fxL);
         if (outputChannels > 1)
         {
@@ -770,6 +900,14 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         debugDryBusRms.store(computeStereoRms(dryBusBuffer), std::memory_order_relaxed);
         debugFxBusRms.store(computeStereoRms(fxBusBuffer), std::memory_order_relaxed);
         debugMasterBusRms.store(computeStereoRms(masterBusBuffer), std::memory_order_relaxed);
+
+        const auto norm = static_cast<double>(juce::jmax(1, blockSamples)) * 2.0;
+        for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
+        {
+            const auto rms = static_cast<float>(std::sqrt(juce::jmax(0.0, mixerSourceEnergy[static_cast<std::size_t>(sourceIndex)] / norm)));
+            debugMixerSourceRms[static_cast<std::size_t>(sourceIndex)].store(rms, std::memory_order_relaxed);
+        }
+        debugFxReturnRms.store(static_cast<float>(std::sqrt(juce::jmax(0.0, fxReturnEnergy / norm))), std::memory_order_relaxed);
     }
 #endif
 

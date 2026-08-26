@@ -241,6 +241,29 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getDelayTimeParam() const { r
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getDelayFeedbackParam() const { return *delayFeedbackParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getFxSendGainParam() const { return *fxSendGainParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getFxReturnGainParam() const { return *fxReturnGainParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getMixerPanParam(int sourceIndex) const
+{
+    const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);
+    return *mixerPanParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getMixerSendParam(int sourceIndex) const
+{
+    const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);
+    return *mixerSendParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterBool& PX3SynthAudioProcessor::getMixerMuteParam(int sourceIndex) const
+{
+    const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);
+    return *mixerMuteParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterBool& PX3SynthAudioProcessor::getMixerSoloParam(int sourceIndex) const
+{
+    const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);
+    return *mixerSoloParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterBool& PX3SynthAudioProcessor::getFxReturnMuteParam() const { return *fxReturnMuteParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getFxReturnSoloParam() const { return *fxReturnSoloParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getFxReturnPanParam() const { return *fxReturnPanParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getReverbAmountParam() const { return *reverbAmountParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getReverbEnabledParam() const { return *reverbEnabledParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getReverbAlgorithmParam() const { return *reverbAlgorithmParam; }
@@ -369,6 +392,93 @@ bool PX3SynthAudioProcessor::setAssignmentIndex(std::atomic<int>& sourceIndex,
                   "index=" + juce::String(clamped)
                       + " id=" + getAssignmentParameterId(sourceIndex));
     return true;
+}
+
+bool PX3SynthAudioProcessor::sourceMuted(int sourceIndex) const
+{
+    const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);
+    return mixerMuteParams[static_cast<std::size_t>(idx)] != nullptr
+           && mixerMuteParams[static_cast<std::size_t>(idx)]->get();
+}
+
+bool PX3SynthAudioProcessor::sourceSoloed(int sourceIndex) const
+{
+    const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);
+    return mixerSoloParams[static_cast<std::size_t>(idx)] != nullptr
+           && mixerSoloParams[static_cast<std::size_t>(idx)]->get();
+}
+
+bool PX3SynthAudioProcessor::anySourceSoloed() const
+{
+    for (int i = 0; i < kMixerSourceCount; ++i)
+    {
+        if (sourceSoloed(i))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool PX3SynthAudioProcessor::anyChannelSoloed() const
+{
+    const auto fxSolo = fxReturnSoloParam != nullptr && fxReturnSoloParam->get();
+    return anySourceSoloed() || fxSolo;
+}
+
+bool PX3SynthAudioProcessor::sourceDryAudible(int sourceIndex, bool anySolo) const
+{
+    if (sourceMuted(sourceIndex))
+    {
+        return false;
+    }
+
+    if (anySolo)
+    {
+        return sourceSoloed(sourceIndex);
+    }
+
+    return true;
+}
+
+bool PX3SynthAudioProcessor::sourceSendAudible(int sourceIndex, bool anySolo, bool anySourceSolo, bool fxSolo) const
+{
+    if (sourceMuted(sourceIndex))
+    {
+        return false;
+    }
+
+    if (!anySolo)
+    {
+        return true;
+    }
+
+    if (anySourceSolo)
+    {
+        return sourceSoloed(sourceIndex);
+    }
+
+    return fxSolo;
+}
+
+bool PX3SynthAudioProcessor::fxReturnAudible(bool anySolo, bool anySourceSolo, bool fxSolo) const
+{
+    if (fxReturnMuteParam != nullptr && fxReturnMuteParam->get())
+    {
+        return false;
+    }
+
+    if (!anySolo)
+    {
+        return true;
+    }
+
+    if (anySourceSolo)
+    {
+        return true;
+    }
+
+    return fxSolo;
 }
 
 bool PX3SynthAudioProcessor::setAssignmentByParameterId(std::atomic<int>& sourceIndex,

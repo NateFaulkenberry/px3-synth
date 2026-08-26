@@ -216,6 +216,62 @@
         "padX": 14,
         "padY": 12
       }
+    },
+    "channel": {
+      "width": 84,
+      "spacing": 8,
+      "titleSize": 11.5,
+      "labelSize": 9.5,
+      "layout": {
+        "sectionSpacing": 5,
+        "buttonGap": 4,
+        "footerLabelHeight": 12,
+        "meterHeight": 12
+      }
+    },
+    "fader": {
+      "trackWidth": 4,
+      "thumbWidth": 18,
+      "thumbHeight": 8,
+      "cornerRadius": 2,
+      "trackPadding": 6,
+      "trackColour": "#82BEFFCC",
+      "trackBackgroundColour": "#1A1C20BE",
+      "thumbColour": "#E6ECF6",
+      "disabledColour": "#78787878",
+      "hoverColour": "#F0F6FFDD"
+    },
+    "mute": {
+      "size": { "width": 42, "height": 18 },
+      "cornerRadius": 4,
+      "textSize": 9.5,
+      "textColour": "#E8E8E8",
+      "normalColour": "#2C2E34D2",
+      "hoverColour": "#42464FE6",
+      "activeColour": "#E05A5AE0",
+      "pressedColour": "#F06A6AE0",
+      "disabledColour": "#22222288",
+      "borderColour": "#DCE0EC78"
+    },
+    "solo": {
+      "size": { "width": 42, "height": 18 },
+      "cornerRadius": 4,
+      "textSize": 9.5,
+      "textColour": "#E8E8E8",
+      "normalColour": "#2C2E34D2",
+      "hoverColour": "#42464FE6",
+      "activeColour": "#4C88CAE0",
+      "pressedColour": "#60A4EEE0",
+      "disabledColour": "#22222288",
+      "borderColour": "#DCE0EC78"
+    },
+    "meter": {
+      "cornerRadius": 2,
+      "backgroundColour": "#121418B4",
+      "fillColour": "#78D28CDC",
+      "highColour": "#E6C45AE6",
+      "clipColour": "#E65A5AE6",
+      "borderColour": "#DCE0EC5A"
     }
   },
   "mod": {

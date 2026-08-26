@@ -51,6 +51,25 @@ class PX3SynthAudioProcessor final : public juce::AudioProcessor
 public:
     static constexpr int kLfoSourceCount = 3;
     static constexpr int kEnvelopeSourceCount = 3;
+    static constexpr int kMixerSourceCount = 4;
+    static constexpr int kMixerChannelCount = 5;
+
+    enum MixerSourceId
+    {
+        mixerSub = 0,
+        mixerOsc1,
+        mixerOsc2,
+        mixerOsc3
+    };
+
+    enum MixerChannelId
+    {
+        mixerChannelSub = 0,
+        mixerChannelOsc1,
+        mixerChannelOsc2,
+        mixerChannelOsc3,
+        mixerChannelFx
+    };
 
     struct MidiStatus
     {
@@ -134,6 +153,13 @@ public:
     juce::AudioParameterFloat& getDelayFeedbackParam() const;
     juce::AudioParameterFloat& getFxSendGainParam() const;
     juce::AudioParameterFloat& getFxReturnGainParam() const;
+    juce::AudioParameterFloat& getMixerPanParam(int sourceIndex) const;
+    juce::AudioParameterFloat& getMixerSendParam(int sourceIndex) const;
+    juce::AudioParameterBool& getMixerMuteParam(int sourceIndex) const;
+    juce::AudioParameterBool& getMixerSoloParam(int sourceIndex) const;
+    juce::AudioParameterBool& getFxReturnMuteParam() const;
+    juce::AudioParameterBool& getFxReturnSoloParam() const;
+    juce::AudioParameterFloat& getFxReturnPanParam() const;
     juce::AudioParameterFloat& getReverbAmountParam() const;
     juce::AudioParameterBool& getReverbEnabledParam() const;
     juce::AudioParameterChoice& getReverbAlgorithmParam() const;
@@ -211,6 +237,8 @@ public:
     float debugGetDryBusRms() const;
     float debugGetFxBusRms() const;
     float debugGetMasterBusRms() const;
+    float debugGetMixerSourceRms(int sourceIndex) const;
+    float debugGetFxReturnRms() const;
     float debugGetInstanceCpuLoadPercent() const;
     int debugGetActiveInstanceCount() const;
     juce::String debugGetLfoAssignmentName() const;
@@ -244,6 +272,14 @@ public:
                                  bool restoreUiSessionState = true);
 
 private:
+    bool anySourceSoloed() const;
+    bool anyChannelSoloed() const;
+    bool sourceMuted(int sourceIndex) const;
+    bool sourceSoloed(int sourceIndex) const;
+    bool sourceDryAudible(int sourceIndex, bool anySolo) const;
+    bool sourceSendAudible(int sourceIndex, bool anySolo, bool anySourceSolo, bool fxSolo) const;
+    bool fxReturnAudible(bool anySolo, bool anySourceSolo, bool fxSolo) const;
+
     void updateActiveNotesFromMidi(const juce::MidiBuffer& midiMessages);
     void clearAllActiveNotes();
     void incrementNoteCount(std::size_t index);
@@ -330,6 +366,13 @@ private:
     juce::AudioParameterFloat* delayFeedbackParam { nullptr };
     juce::AudioParameterFloat* fxSendGainParam { nullptr };
     juce::AudioParameterFloat* fxReturnGainParam { nullptr };
+    std::array<juce::AudioParameterFloat*, kMixerSourceCount> mixerPanParams { { nullptr, nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kMixerSourceCount> mixerSendParams { { nullptr, nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterBool*, kMixerSourceCount> mixerMuteParams { { nullptr, nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterBool*, kMixerSourceCount> mixerSoloParams { { nullptr, nullptr, nullptr, nullptr } };
+    juce::AudioParameterBool* fxReturnMuteParam { nullptr };
+    juce::AudioParameterBool* fxReturnSoloParam { nullptr };
+    juce::AudioParameterFloat* fxReturnPanParam { nullptr };
     juce::AudioParameterFloat* reverbAmountParam { nullptr };
     juce::AudioParameterBool* reverbEnabledParam { nullptr };
     juce::AudioParameterChoice* reverbAlgorithmParam { nullptr };
@@ -405,6 +448,8 @@ private:
     std::atomic<float> debugDryBusRms { 0.0f };
     std::atomic<float> debugFxBusRms { 0.0f };
     std::atomic<float> debugMasterBusRms { 0.0f };
+    std::array<std::atomic<float>, kMixerSourceCount> debugMixerSourceRms { { 0.0f, 0.0f, 0.0f, 0.0f } };
+    std::atomic<float> debugFxReturnRms { 0.0f };
     std::atomic<float> debugInstanceCpuLoadPercent { 0.0f };
 
     /*
@@ -422,6 +467,9 @@ private:
     juce::AudioBuffer<float> dryBusBuffer;
     juce::AudioBuffer<float> fxBusBuffer;
     juce::AudioBuffer<float> masterBusBuffer;
+    std::array<juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear>, kMixerSourceCount> sourceDryGateSmoothers;
+    std::array<juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear>, kMixerSourceCount> sourceSendGateSmoothers;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> fxReturnGateSmoother;
 
     std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
     std::atomic<uint32_t> fxOrderRevision { 0u };

@@ -15,6 +15,7 @@
 #include <array>
 
 inline constexpr int kOscillatorSourceCount = 3;
+inline constexpr int kVoiceMixerSourceCount = 4;
 
 struct SubtractiveSettings
 {
@@ -63,7 +64,7 @@ private:
     std::array<OscillatorLayerSettings, kOscillatorSourceCount> oscillatorLayerSettings;
 
     EnvelopeGenerator ampEnvelope;
-    std::array<VoiceFilter, kFilterInstanceCount> voiceFilters;
+    std::array<std::array<VoiceFilter, kFilterInstanceCount>, kVoiceMixerSourceCount> sourceFilters;
 
     double currentAngle { 0.0 };
     double angleDelta { 0.0 };

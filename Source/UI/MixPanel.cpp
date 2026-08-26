@@ -1,47 +1,49 @@
 #include "MixPanel.h"
 
+#include "PluginProcessor.h"
 #include "UIConfig.h"
 
 #include <array>
+#include <cmath>
 
-MixPanel::MixPanel(juce::Slider& subOscGainFaderIn,
-                                     juce::Label& subOscGainLabelIn,
-                                     juce::Slider& osc1GainFaderIn,
-                                     juce::Label& osc1GainLabelIn,
-                                     juce::Slider& osc2GainFaderIn,
-                                     juce::Label& osc2GainLabelIn,
-                                     juce::Slider& osc3GainFaderIn,
-                                     juce::Label& osc3GainLabelIn,
-                                     juce::Colour panelAccent)
-        : subOscGainFader(subOscGainFaderIn),
-            subOscGainLabel(subOscGainLabelIn),
-            osc1GainFader(osc1GainFaderIn),
-            osc1GainLabel(osc1GainLabelIn),
-            osc2GainFader(osc2GainFaderIn),
-            osc2GainLabel(osc2GainLabelIn),
-            osc3GainFader(osc3GainFaderIn),
-            osc3GainLabel(osc3GainLabelIn),
+MixPanel::MixPanel(PX3SynthAudioProcessor& processorIn,
+                   juce::LookAndFeel* knobLookAndFeelIn,
+                   juce::Colour panelAccent)
+        : processor(processorIn),
+            knobLookAndFeel(knobLookAndFeelIn),
+            channels { { &subChannel, &osc1Channel, &osc2Channel, &osc3Channel, &fxChannel } },
             accent(panelAccent)
 {
-        configureFader(subOscGainFader);
-        configureFader(osc1GainFader);
-        configureFader(osc2GainFader);
-        configureFader(osc3GainFader);
+        configureChannelWidgets(subChannel, "SUB", true, false);
+        configureChannelWidgets(osc1Channel, "OSC 1", true, false);
+        configureChannelWidgets(osc2Channel, "OSC 2", true, false);
+        configureChannelWidgets(osc3Channel, "OSC 3", true, false);
+        configureChannelWidgets(fxChannel, "FX", false, true);
 
-        configureLabel(subOscGainLabel, "Sub Osc");
-        configureLabel(osc1GainLabel, "Osc 1");
-        configureLabel(osc2GainLabel, "Osc 2");
-        configureLabel(osc3GainLabel, "Osc 3");
+        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getSubOscLevelParam(), subChannel.fader, nullptr));
+        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getOscillatorLevelParam(0), osc1Channel.fader, nullptr));
+        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getOscillatorLevelParam(1), osc2Channel.fader, nullptr));
+        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getOscillatorLevelParam(2), osc3Channel.fader, nullptr));
+        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getFxReturnGainParam(), fxChannel.fader, nullptr));
 
-        addAndMakeVisible(subOscGainFader);
-        addAndMakeVisible(subOscGainLabel);
-        addAndMakeVisible(osc1GainFader);
-        addAndMakeVisible(osc1GainLabel);
-        addAndMakeVisible(osc2GainFader);
-        addAndMakeVisible(osc2GainLabel);
-        addAndMakeVisible(osc3GainFader);
-        addAndMakeVisible(osc3GainLabel);
+        for (int sourceIndex = 0; sourceIndex < PX3SynthAudioProcessor::kMixerSourceCount; ++sourceIndex)
+        {
+            auto* channel = channels[static_cast<std::size_t>(sourceIndex)];
+            sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerPanParam(sourceIndex), channel->pan, nullptr));
+            sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerSendParam(sourceIndex), channel->send, nullptr));
+            buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getMixerMuteParam(sourceIndex), channel->mute, nullptr));
+            buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getMixerSoloParam(sourceIndex), channel->solo, nullptr));
+        }
+
+        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getFxReturnPanParam(), fxChannel.pan, nullptr));
+        buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getFxReturnMuteParam(), fxChannel.mute, nullptr));
+        buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getFxReturnSoloParam(), fxChannel.solo, nullptr));
+
+        applyConfigToChannels();
+        startTimerHz(30);
 }
+
+MixPanel::~MixPanel() = default;
 
 void MixPanel::paint(juce::Graphics& g)
 {
@@ -64,28 +66,45 @@ void MixPanel::resized()
     const auto padY = uiConfig != nullptr ? uiConfig->getInt("mix.panel.layout.padY", 12) : 12;
     auto area = getLocalBounds().reduced(padX, padY);
 
-    auto columnsArea = area;
-    const auto labelHeight = 20;
-    auto labelRow = columnsArea.removeFromBottom(labelHeight);
-    columnsArea.removeFromBottom(8);
+    auto gap = uiConfig != nullptr ? uiConfig->getInt("mix.channel.spacing", 10) : 10;
+    const auto channelCount = static_cast<int>(channels.size());
 
-    constexpr int channelCount = 4;
-    constexpr int gap = 12;
-    const auto totalGap = gap * (channelCount - 1);
-    const auto channelWidth = juce::jmax(28, (columnsArea.getWidth() - totalGap) / channelCount);
-
-    std::array<juce::Slider*, channelCount> faders { { &subOscGainFader, &osc1GainFader, &osc2GainFader, &osc3GainFader } };
-    std::array<juce::Label*, channelCount> labels { { &subOscGainLabel, &osc1GainLabel, &osc2GainLabel, &osc3GainLabel } };
-
-    auto x = columnsArea.getX();
-    for (int i = 0; i < channelCount; ++i)
+    if (channelCount <= 0)
     {
-        auto channelBounds = juce::Rectangle<int>(x, columnsArea.getY(), channelWidth, columnsArea.getHeight());
-        auto faderBounds = channelBounds.reduced(8, 2);
+        return;
+    }
 
-        faders[static_cast<std::size_t>(i)]->setBounds(faderBounds);
-        labels[static_cast<std::size_t>(i)]->setBounds(juce::Rectangle<int>(x, labelRow.getY(), channelWidth, labelRow.getHeight()));
-        x += channelWidth + gap;
+    if (area.getWidth() < 1)
+    {
+        return;
+    }
+
+    if (area.getWidth() <= gap * (channelCount - 1))
+    {
+        gap = 2;
+    }
+
+    const auto totalGap = gap * (channelCount - 1);
+    const auto usableWidth = juce::jmax(channelCount, area.getWidth() - totalGap);
+    const auto baseWidth = juce::jmax(48, usableWidth / channelCount);
+    auto remainder = juce::jmax(0, usableWidth - baseWidth * channelCount);
+
+    auto x = area.getX();
+    for (auto* channel : channels)
+    {
+        if (channel == nullptr || channel->component == nullptr)
+        {
+            continue;
+        }
+
+        const auto extra = remainder > 0 ? 1 : 0;
+        if (remainder > 0)
+        {
+            --remainder;
+        }
+        const auto width = baseWidth + extra;
+        channel->component->setBounds(x, area.getY(), width, area.getHeight());
+        x += width + gap;
     }
 }
 
@@ -99,30 +118,198 @@ void MixPanel::advanceAnimation(float deltaPhase)
     juce::ignoreUnused(deltaPhase);
 }
 
-void MixPanel::configureFader(juce::Slider& slider)
-{
-    slider.setSliderStyle(juce::Slider::LinearVertical);
-    slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-    slider.setRange(0.0, 1.0, 0.0);
-    slider.setScrollWheelEnabled(false);
-    slider.setDoubleClickReturnValue(true, 1.0);
-    slider.setColour(juce::Slider::backgroundColourId, juce::Colour::fromRGBA(26, 28, 32, 190));
-    slider.setColour(juce::Slider::trackColourId, juce::Colour::fromRGBA(130, 190, 255, 180));
-    slider.setColour(juce::Slider::thumbColourId, juce::Colour::fromRGB(230, 236, 246));
-    slider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour::fromRGBA(255, 255, 255, 36));
-}
-
-void MixPanel::configureLabel(juce::Label& label, const juce::String& text)
-{
-    label.setText(text, juce::dontSendNotification);
-    label.setJustificationType(juce::Justification::centred);
-    label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(220, 226, 236));
-    label.setFont(juce::FontOptions(11.5f));
-    label.setInterceptsMouseClicks(false, false);
-}
-
 void MixPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+    applyConfigToChannels();
+    for (auto* channel : channels)
+    {
+        if (channel != nullptr && channel->component != nullptr)
+        {
+            channel->component->applyLayoutFromConfig(uiConfig);
+        }
+    }
+    resized();
     repaint();
+}
+
+void MixPanel::timerCallback()
+{
+    refreshMeterValues();
+}
+
+MixerToggleButton::Style MixPanel::buttonStyleFromConfig(const std::shared_ptr<const UIConfig>& uiConfig,
+                                                          const juce::String& pathPrefix,
+                                                          const MixerToggleButton::Style& fallback)
+{
+    auto style = fallback;
+    if (uiConfig == nullptr)
+    {
+        return style;
+    }
+
+    style.width = uiConfig->getInt(pathPrefix + ".size.width", style.width);
+    style.height = uiConfig->getInt(pathPrefix + ".size.height", style.height);
+    style.cornerRadius = uiConfig->getFloat(pathPrefix + ".cornerRadius", style.cornerRadius);
+    style.textSize = uiConfig->getFloat(pathPrefix + ".textSize", style.textSize);
+    style.textColour = uiConfig->getColour(pathPrefix + ".textColour", style.textColour);
+    style.normalColour = uiConfig->getColour(pathPrefix + ".normalColour", style.normalColour);
+    style.hoverColour = uiConfig->getColour(pathPrefix + ".hoverColour", style.hoverColour);
+    style.activeColour = uiConfig->getColour(pathPrefix + ".activeColour", style.activeColour);
+    style.pressedColour = uiConfig->getColour(pathPrefix + ".pressedColour", style.pressedColour);
+    style.disabledColour = uiConfig->getColour(pathPrefix + ".disabledColour", style.disabledColour);
+    style.borderColour = uiConfig->getColour(pathPrefix + ".borderColour", style.borderColour);
+    return style;
+}
+
+void MixPanel::configureChannelWidgets(ChannelWidgets& channel,
+                                       const juce::String& titleText,
+                                       bool hasSend,
+                                       bool stereoTagVisible)
+{
+    channel.hasSend = hasSend;
+
+    channel.title.setText(titleText, juce::dontSendNotification);
+    channel.title.setJustificationType(juce::Justification::centred);
+    channel.title.setColour(juce::Label::textColourId, juce::Colour::fromRGB(220, 226, 236));
+    channel.title.setFont(juce::FontOptions(11.5f));
+    channel.title.setInterceptsMouseClicks(false, false);
+
+    channel.stereoTag.setText("STEREO", juce::dontSendNotification);
+    channel.stereoTag.setJustificationType(juce::Justification::centred);
+    channel.stereoTag.setColour(juce::Label::textColourId, juce::Colour::fromRGBA(220, 226, 236, 170));
+    channel.stereoTag.setFont(juce::FontOptions(9.5f));
+    channel.stereoTag.setInterceptsMouseClicks(false, false);
+    channel.stereoTag.setVisible(stereoTagVisible);
+
+    channel.panLabel.setText("PAN", juce::dontSendNotification);
+    channel.panLabel.setJustificationType(juce::Justification::centred);
+    channel.panLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(220, 226, 236));
+    channel.panLabel.setFont(juce::FontOptions(9.5f));
+    channel.panLabel.setInterceptsMouseClicks(false, false);
+
+    channel.sendLabel.setText("SEND", juce::dontSendNotification);
+    channel.sendLabel.setJustificationType(juce::Justification::centred);
+    channel.sendLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(220, 226, 236));
+    channel.sendLabel.setFont(juce::FontOptions(9.5f));
+    channel.sendLabel.setInterceptsMouseClicks(false, false);
+    channel.sendLabel.setVisible(hasSend);
+
+    channel.valueLabel.setText("0.0 dB", juce::dontSendNotification);
+    channel.valueLabel.setJustificationType(juce::Justification::centred);
+    channel.valueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGBA(220, 226, 236, 180));
+    channel.valueLabel.setFont(juce::FontOptions(9.5f));
+    channel.valueLabel.setInterceptsMouseClicks(false, false);
+
+    channel.fader.setRange(0.0, 1.0, 0.0);
+    channel.fader.setDoubleClickReturnValue(true, 1.0);
+
+    channel.pan.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    channel.pan.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    channel.pan.setRange(-1.0, 1.0, 0.0);
+    channel.pan.setDoubleClickReturnValue(true, 0.0);
+    if (knobLookAndFeel != nullptr)
+    {
+        channel.pan.setLookAndFeel(knobLookAndFeel);
+    }
+
+    channel.send.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    channel.send.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    channel.send.setRange(0.0, 1.0, 0.0);
+    channel.send.setDoubleClickReturnValue(true, 0.0);
+    channel.send.setVisible(hasSend);
+    if (knobLookAndFeel != nullptr)
+    {
+        channel.send.setLookAndFeel(knobLookAndFeel);
+    }
+
+    channel.component = std::make_unique<MixerChannelComponent>(
+        MixerChannelComponent::Controls { &channel.title,
+                                          &channel.meter,
+                                          &channel.mute,
+                                          &channel.solo,
+                                          &channel.fader,
+                                          &channel.valueLabel,
+                                          &channel.pan,
+                                          &channel.panLabel,
+                                          &channel.send,
+                                          &channel.sendLabel,
+                                          &channel.stereoTag,
+                                          hasSend });
+
+    addAndMakeVisible(*channel.component);
+    channel.component->addAndMakeVisible(channel.title);
+    channel.component->addAndMakeVisible(channel.stereoTag);
+    channel.component->addAndMakeVisible(channel.meter);
+    channel.component->addAndMakeVisible(channel.mute);
+    channel.component->addAndMakeVisible(channel.solo);
+    channel.component->addAndMakeVisible(channel.fader);
+    channel.component->addAndMakeVisible(channel.valueLabel);
+    channel.component->addAndMakeVisible(channel.pan);
+    channel.component->addAndMakeVisible(channel.panLabel);
+    channel.component->addAndMakeVisible(channel.send);
+    channel.component->addAndMakeVisible(channel.sendLabel);
+}
+
+void MixPanel::applyConfigToChannels()
+{
+    const auto faderStyle = FaderStyle::fromUIConfig(uiConfig, "mix.fader");
+    const auto muteStyle = buttonStyleFromConfig(uiConfig, "mix.mute", MixerToggleButton::Style());
+    const auto soloStyle = buttonStyleFromConfig(uiConfig, "mix.solo", MixerToggleButton::Style());
+    const auto titleSize = uiConfig != nullptr ? uiConfig->getFloat("mix.channel.titleSize", 11.5f) : 11.5f;
+    const auto labelSize = uiConfig != nullptr ? uiConfig->getFloat("mix.channel.labelSize", 9.5f) : 9.5f;
+    MixerLevelMeter::Style meterStyle;
+    if (uiConfig != nullptr)
+    {
+        meterStyle.cornerRadius = uiConfig->getFloat("mix.meter.cornerRadius", meterStyle.cornerRadius);
+        meterStyle.backgroundColour = uiConfig->getColour("mix.meter.backgroundColour", meterStyle.backgroundColour);
+        meterStyle.fillColour = uiConfig->getColour("mix.meter.fillColour", meterStyle.fillColour);
+        meterStyle.highColour = uiConfig->getColour("mix.meter.highColour", meterStyle.highColour);
+        meterStyle.clipColour = uiConfig->getColour("mix.meter.clipColour", meterStyle.clipColour);
+        meterStyle.borderColour = uiConfig->getColour("mix.meter.borderColour", meterStyle.borderColour);
+    }
+
+    for (auto* channel : channels)
+    {
+        if (channel == nullptr)
+        {
+            continue;
+        }
+
+        channel->fader.applyStyle(faderStyle);
+        channel->mute.applyStyle(muteStyle);
+        channel->solo.applyStyle(soloStyle);
+        channel->title.setFont(juce::FontOptions(titleSize));
+        channel->panLabel.setFont(juce::FontOptions(labelSize));
+        channel->sendLabel.setFont(juce::FontOptions(labelSize));
+        channel->valueLabel.setFont(juce::FontOptions(labelSize));
+        channel->stereoTag.setFont(juce::FontOptions(labelSize - 0.5f));
+        channel->meter.applyStyle(meterStyle);
+    }
+}
+
+void MixPanel::refreshMeterValues()
+{
+    for (int sourceIndex = 0; sourceIndex < PX3SynthAudioProcessor::kMixerSourceCount; ++sourceIndex)
+    {
+        if (auto* channel = channels[static_cast<std::size_t>(sourceIndex)])
+        {
+            channel->meter.setLevel(processor.debugGetMixerSourceRms(sourceIndex));
+            channel->valueLabel.setText(linearGainToDbText(static_cast<float>(channel->fader.getValue())), juce::dontSendNotification);
+        }
+    }
+
+    fxChannel.meter.setLevel(processor.debugGetFxReturnRms());
+    fxChannel.valueLabel.setText(linearGainToDbText(static_cast<float>(fxChannel.fader.getValue())), juce::dontSendNotification);
+}
+
+juce::String MixPanel::linearGainToDbText(float linearGain)
+{
+    if (linearGain <= 0.00001f)
+    {
+        return "-INF dB";
+    }
+
+    const auto db = juce::Decibels::gainToDecibels(linearGain);
+    return juce::String(db, 1) + " dB";
 }

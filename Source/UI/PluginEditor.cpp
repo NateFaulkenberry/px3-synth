@@ -1056,14 +1056,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                         reverbTypeBox,
                                         reverbTypeLabel,
                                         juce::Colour::fromRGB(120, 186, 255));
-    mixPanel = std::make_unique<MixPanel>(subOscLevelKnob,
-                                          subOscLevelLabel,
-                                          osc1LevelFader,
-                                          osc1LevelLabel,
-                                          osc2LevelFader,
-                                          osc2LevelLabel,
-                                          osc3LevelFader,
-                                          osc3LevelLabel,
+    mixPanel = std::make_unique<MixPanel>(audioProcessor,
+                                          &knobLookAndFeel,
                                           juce::Colour::fromRGB(212, 212, 212));
 
     addAndMakeVisible(*oscPanel);
@@ -1095,11 +1089,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachSlider(audioProcessor.getMoodSpreadParam(), moodSpreadKnob);
     attachSlider(audioProcessor.getMoodDegradeParam(), moodDegradeKnob);
     attachSlider(audioProcessor.getReverbAmountParam(), reverbKnob);
-    attachSlider(audioProcessor.getSubOscLevelParam(), subOscLevelKnob);
-    attachSlider(audioProcessor.getOscillatorLevelParam(0), osc1LevelFader);
-    attachSlider(audioProcessor.getOscillatorLevelParam(1), osc2LevelFader);
-    attachSlider(audioProcessor.getOscillatorLevelParam(2), osc3LevelFader);
-
     attachComboBox(audioProcessor.getFilterTypeParam(0), filterTypeBox);
     attachComboBox(audioProcessor.getFilterTypeParam(1), filter2TypeBox);
     attachComboBox(audioProcessor.getOscillatorModeParam(0), oscModeBox);
