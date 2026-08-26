@@ -868,6 +868,11 @@ void PX3SynthAudioProcessorEditor::refreshDebugLfoState()
     const auto dryBusRms = audioProcessor.debugGetDryBusRms();
     const auto fxBusRms = audioProcessor.debugGetFxBusRms();
     const auto masterBusRms = audioProcessor.debugGetMasterBusRms();
+    const auto oscBusPeak = audioProcessor.debugGetOscillatorBusPeak();
+    const auto dryBusPeak = audioProcessor.debugGetDryBusPeak();
+    const auto fxBusPeak = audioProcessor.debugGetFxBusPeak();
+    const auto masterBusPeak = audioProcessor.debugGetMasterBusPeak();
+    const auto masterPreOutputPeak = audioProcessor.debugGetMasterPreOutputPeak();
 
     juce::String text;
     text << "Frequency: " << juce::String(frequencyHz, 4) << " Hz\n"
@@ -882,7 +887,13 @@ void PX3SynthAudioProcessorEditor::refreshDebugLfoState()
          << "Oscillator: " << juce::String(oscBusRms, 6) << "\n"
          << "Dry: " << juce::String(dryBusRms, 6) << "\n"
          << "FX: " << juce::String(fxBusRms, 6) << "\n"
-         << "Master: " << juce::String(masterBusRms, 6);
+         << "Master: " << juce::String(masterBusRms, 6) << "\n\n"
+         << "Bus Peak\n"
+         << "Oscillator: " << juce::String(oscBusPeak, 6) << "\n"
+         << "Dry: " << juce::String(dryBusPeak, 6) << "\n"
+         << "FX: " << juce::String(fxBusPeak, 6) << "\n"
+         << "Master: " << juce::String(masterBusPeak, 6) << "\n"
+         << "Master pre-output: " << juce::String(masterPreOutputPeak, 6);
 
     text << "\n\nLFO Sources\n";
     for (int i = 0; i < PX3SynthAudioProcessor::kLfoSourceCount; ++i)
@@ -923,6 +934,19 @@ void PX3SynthAudioProcessorEditor::refreshDebugEnvelopeState()
      const auto osc1Rms = audioProcessor.debugGetMixerSourceRms(PX3SynthAudioProcessor::mixerOsc1);
      const auto osc2Rms = audioProcessor.debugGetMixerSourceRms(PX3SynthAudioProcessor::mixerOsc2);
      const auto osc3Rms = audioProcessor.debugGetMixerSourceRms(PX3SynthAudioProcessor::mixerOsc3);
+    const auto subPeak = audioProcessor.debugGetMixerSourcePeak(PX3SynthAudioProcessor::mixerSub);
+    const auto osc1Peak = audioProcessor.debugGetMixerSourcePeak(PX3SynthAudioProcessor::mixerOsc1);
+    const auto osc2Peak = audioProcessor.debugGetMixerSourcePeak(PX3SynthAudioProcessor::mixerOsc2);
+    const auto osc3Peak = audioProcessor.debugGetMixerSourcePeak(PX3SynthAudioProcessor::mixerOsc3);
+    const auto voicePeak = audioProcessor.debugGetVoicePeak();
+    const auto voiceSubPeak = audioProcessor.debugGetVoiceSourcePeak(PX3SynthAudioProcessor::mixerSub);
+    const auto voiceOsc1Peak = audioProcessor.debugGetVoiceSourcePeak(PX3SynthAudioProcessor::mixerOsc1);
+    const auto voiceOsc2Peak = audioProcessor.debugGetVoiceSourcePeak(PX3SynthAudioProcessor::mixerOsc2);
+    const auto voiceOsc3Peak = audioProcessor.debugGetVoiceSourcePeak(PX3SynthAudioProcessor::mixerOsc3);
+    const auto activeVoiceCount = audioProcessor.debugGetActiveVoiceCount();
+    const auto releasingVoiceCount = audioProcessor.debugGetReleasingVoiceCount();
+    const auto nearSilentReleaseVoiceCount = audioProcessor.debugGetNearSilentReleaseVoiceCount();
+    const auto polyGain = audioProcessor.debugGetPolyphonyGainApplied();
 
     juce::String text;
     text << "Attack:  " << attackText << "\n"
@@ -931,19 +955,34 @@ void PX3SynthAudioProcessorEditor::refreshDebugEnvelopeState()
             << "Release: " << releaseText << "\n"
             << "AMP Enabled: " << juce::String(ampEnabled ? "ON" : "OFF") << "\n\n"
             << "Graph:  /\\__====\\\n\n"
+                << "Polyphony\n"
+                << "activeVoices=" << juce::String(activeVoiceCount)
+                << " releasingVoices=" << juce::String(releasingVoiceCount)
+                << " nearSilentReleaseVoices=" << juce::String(nearSilentReleaseVoiceCount)
+                << " polyGain=" << juce::String(polyGain, 5) << "\n\n"
+                << "Per-Voice Peak\n"
+                << "voicePeak=" << juce::String(voicePeak, 6)
+                << " sub=" << juce::String(voiceSubPeak, 6)
+                << " osc1=" << juce::String(voiceOsc1Peak, 6)
+                << " osc2=" << juce::String(voiceOsc2Peak, 6)
+                << " osc3=" << juce::String(voiceOsc3Peak, 6) << "\n\n"
                 << "AMP Release Probe (post-AMP per-source dry RMS)\n"
                 << "SUB  enabled=" << juce::String(subEnabled ? 1 : 0)
                 << " mixLevel=" << juce::String(subMixerLevel, 4)
-                << " rms=" << juce::String(subRms, 6) << "\n"
+                << " rms=" << juce::String(subRms, 6)
+                << " peak=" << juce::String(subPeak, 6) << "\n"
                 << "OSC1 enabled=" << juce::String(osc1Enabled ? 1 : 0)
                 << " mixLevel=" << juce::String(osc1MixerLevel, 4)
-                << " rms=" << juce::String(osc1Rms, 6) << "\n"
+                << " rms=" << juce::String(osc1Rms, 6)
+                << " peak=" << juce::String(osc1Peak, 6) << "\n"
                 << "OSC2 enabled=" << juce::String(osc2Enabled ? 1 : 0)
                 << " mixLevel=" << juce::String(osc2MixerLevel, 4)
-                << " rms=" << juce::String(osc2Rms, 6) << "\n"
+                << " rms=" << juce::String(osc2Rms, 6)
+                << " peak=" << juce::String(osc2Peak, 6) << "\n"
                 << "OSC3 enabled=" << juce::String(osc3Enabled ? 1 : 0)
                 << " mixLevel=" << juce::String(osc3MixerLevel, 4)
-                << " rms=" << juce::String(osc3Rms, 6) << "\n\n"
+                << " rms=" << juce::String(osc3Rms, 6)
+                << " peak=" << juce::String(osc3Peak, 6) << "\n\n"
             << "Mod Envelope Sources\n";
 
         for (int i = 0; i < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++i)

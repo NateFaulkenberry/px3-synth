@@ -56,6 +56,10 @@ public:
                       const VibeSharedState& sharedState,
                       const VibeVoiceVariation& variation,
                       const VibeTuning& tuningState);
+    float getCurrentAmpEnvelopeValue() const;
+    float getLastBlockPeak() const;
+    float getLastBlockSourcePeak(int sourceIndex) const;
+    int getNoteAgeSamples() const;
 
 private:
     void updateAngleDelta();
@@ -95,6 +99,10 @@ private:
     std::array<double, kOscillatorSourceCount> oscillatorAngles { { 0.0, 0.0, 0.0 } };
     std::array<bool, kOscillatorSourceCount> oscillatorAudibleForCurrentNote { { true, true, true } };
     SubOscillator subOscillator;
+
+    float currentAmpEnvelopeValue { 0.0f };
+    float lastBlockPeak { 0.0f };
+    std::array<float, kVoiceMixerSourceCount> lastBlockSourcePeaks { { 0.0f, 0.0f, 0.0f, 0.0f } };
 
     int noteAgeSamples { 0 };
     int voiceIndex { 0 };

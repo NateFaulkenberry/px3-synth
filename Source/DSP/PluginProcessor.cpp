@@ -575,6 +575,9 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     const auto initialFxPan = fxReturnPanParam != nullptr ? fxReturnPanParam->get() : 0.0f;
     fxReturnPanSmoother.setCurrentAndTargetValue(juce::jlimit(-1.0f, 1.0f, initialFxPan));
 
+    polyphonyGainSmoother.reset(sampleRate, 0.050);
+    polyphonyGainSmoother.setCurrentAndTargetValue(1.0f);
+
     const auto ampEnvelope = currentAmpEnvelopeSettings();
     const auto ampEnvelopeEnabled = ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true;
     std::array<EnvelopeSettings, kEnvelopeSourceCount> modEnvelopeSettings;
@@ -863,6 +866,81 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     // contributing here, so future sources can sum in parallel at the same point.
     synth.renderNextBlock(oscillatorBusBuffer, midiMessages, 0, blockSamples);
 
+    constexpr float kNearSilentReleaseThreshold = 1.0e-4f;
+    constexpr float kPolyphonyReferenceVoices = 1.0f;
+    constexpr float kPolyphonyGainFloor = 0.10f;
+
+    auto activeVoiceCount = 0;
+    auto heldVoiceCount = 0;
+    auto releasingVoiceCount = 0;
+    auto nearSilentReleaseVoiceCount = 0;
+    auto releasingVoiceEnergyEquivalent = 0.0f;
+    auto blockVoicePeak = 0.0f;
+    std::array<float, kMixerSourceCount> blockVoiceSourcePeak { { 0.0f, 0.0f, 0.0f, 0.0f } };
+    for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
+    {
+        auto* voice = dynamic_cast<SynthVoice*>(synth.getVoice(voiceIndex));
+        if (voice == nullptr || !voice->isVoiceActive())
+        {
+            continue;
+        }
+
+        ++activeVoiceCount;
+        if (voice->isKeyDown())
+        {
+            ++heldVoiceCount;
+        }
+        else
+        {
+            ++releasingVoiceCount;
+            const auto env = juce::jlimit(0.0f, 1.0f, voice->getCurrentAmpEnvelopeValue());
+            releasingVoiceEnergyEquivalent += env * env;
+            if (env <= kNearSilentReleaseThreshold)
+            {
+                ++nearSilentReleaseVoiceCount;
+            }
+        }
+
+        blockVoicePeak = juce::jmax(blockVoicePeak, voice->getLastBlockPeak());
+        for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
+        {
+            blockVoiceSourcePeak[static_cast<std::size_t>(sourceIndex)] = juce::jmax(
+                blockVoiceSourcePeak[static_cast<std::size_t>(sourceIndex)],
+                voice->getLastBlockSourcePeak(sourceIndex));
+        }
+    }
+
+    const auto effectiveVoiceLoad = juce::jmax(1.0f,
+                                               static_cast<float>(heldVoiceCount) + releasingVoiceEnergyEquivalent);
+    auto polyphonyGainTarget = 1.0f;
+    if (effectiveVoiceLoad > kPolyphonyReferenceVoices)
+    {
+        polyphonyGainTarget = std::sqrt(kPolyphonyReferenceVoices / effectiveVoiceLoad);
+    }
+    polyphonyGainTarget = juce::jlimit(kPolyphonyGainFloor, 1.0f, polyphonyGainTarget);
+    polyphonyGainSmoother.setTargetValue(polyphonyGainTarget);
+
+    for (int sample = 0; sample < blockSamples; ++sample)
+    {
+        const auto polyGain = polyphonyGainSmoother.getNextValue();
+        for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
+        {
+            const auto scaled = oscillatorBusBuffer.getSample(sourceIndex, sample) * polyGain;
+            oscillatorBusBuffer.setSample(sourceIndex, sample, scaled);
+        }
+    }
+
+    debugActiveVoiceCount.store(activeVoiceCount, std::memory_order_relaxed);
+    debugReleasingVoiceCount.store(releasingVoiceCount, std::memory_order_relaxed);
+    debugNearSilentReleaseVoiceCount.store(nearSilentReleaseVoiceCount, std::memory_order_relaxed);
+    debugVoicePeak.store(blockVoicePeak, std::memory_order_relaxed);
+    for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
+    {
+        debugVoiceSourcePeak[static_cast<std::size_t>(sourceIndex)].store(blockVoiceSourcePeak[static_cast<std::size_t>(sourceIndex)],
+                                                                           std::memory_order_relaxed);
+    }
+    debugPolyphonyGainApplied.store(polyphonyGainSmoother.getCurrentValue(), std::memory_order_relaxed);
+
     // Capture the newest per-voice modulation envelope values for downstream
     // modulation reads and debug snapshots in the next processing stage.
     collectModulationEnvelopeValuesFromVoices();
@@ -1083,16 +1161,55 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             return static_cast<float>(std::sqrt(juce::jmax(0.0, mean)));
         };
 
+        auto computeStereoPeak = [blockSamples, outputChannels](const juce::AudioBuffer<float>& src)
+        {
+            const auto chCount = juce::jmin(2, juce::jmin(outputChannels, src.getNumChannels()));
+            if (chCount <= 0)
+            {
+                return 0.0f;
+            }
+
+            auto peak = 0.0f;
+            for (int ch = 0; ch < chCount; ++ch)
+            {
+                const auto* data = src.getReadPointer(ch);
+                for (int i = 0; i < blockSamples; ++i)
+                {
+                    peak = juce::jmax(peak, std::abs(data[i]));
+                }
+            }
+
+            return peak;
+        };
+
         debugOscillatorBusRms.store(computeStereoRms(oscillatorBusBuffer), std::memory_order_relaxed);
         debugDryBusRms.store(computeStereoRms(dryBusBuffer), std::memory_order_relaxed);
         debugFxBusRms.store(computeStereoRms(fxBusBuffer), std::memory_order_relaxed);
         debugMasterBusRms.store(computeStereoRms(masterBusBuffer), std::memory_order_relaxed);
+        debugOscillatorBusPeak.store(computeStereoPeak(oscillatorBusBuffer), std::memory_order_relaxed);
+        debugDryBusPeak.store(computeStereoPeak(dryBusBuffer), std::memory_order_relaxed);
+        debugFxBusPeak.store(computeStereoPeak(fxBusBuffer), std::memory_order_relaxed);
+        const auto masterPeak = computeStereoPeak(masterBusBuffer);
+        debugMasterPreOutputPeak.store(masterPeak, std::memory_order_relaxed);
+        debugMasterBusPeak.store(masterPeak, std::memory_order_relaxed);
 
         const auto norm = static_cast<double>(juce::jmax(1, blockSamples)) * 2.0;
         for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
         {
             const auto rms = static_cast<float>(std::sqrt(juce::jmax(0.0, mixerSourceEnergy[static_cast<std::size_t>(sourceIndex)] / norm)));
             debugMixerSourceRms[static_cast<std::size_t>(sourceIndex)].store(rms, std::memory_order_relaxed);
+
+            auto sourcePeak = 0.0f;
+            const auto sourceChannel = sourceIndex;
+            if (sourceChannel < oscillatorBusBuffer.getNumChannels())
+            {
+                const auto* sourceData = oscillatorBusBuffer.getReadPointer(sourceChannel);
+                for (int i = 0; i < blockSamples; ++i)
+                {
+                    sourcePeak = juce::jmax(sourcePeak, std::abs(sourceData[i]));
+                }
+            }
+            debugMixerSourcePeak[static_cast<std::size_t>(sourceIndex)].store(sourcePeak, std::memory_order_relaxed);
         }
         debugFxReturnRms.store(static_cast<float>(std::sqrt(juce::jmax(0.0, fxReturnEnergy / norm))), std::memory_order_relaxed);
     }

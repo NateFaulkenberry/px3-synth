@@ -249,7 +249,19 @@ public:
     float debugGetDryBusRms() const;
     float debugGetFxBusRms() const;
     float debugGetMasterBusRms() const;
+    float debugGetOscillatorBusPeak() const;
+    float debugGetDryBusPeak() const;
+    float debugGetFxBusPeak() const;
+    float debugGetMasterBusPeak() const;
+    float debugGetMasterPreOutputPeak() const;
     float debugGetMixerSourceRms(int sourceIndex) const;
+    float debugGetMixerSourcePeak(int sourceIndex) const;
+    float debugGetVoicePeak() const;
+    float debugGetVoiceSourcePeak(int sourceIndex) const;
+    int debugGetActiveVoiceCount() const;
+    int debugGetReleasingVoiceCount() const;
+    int debugGetNearSilentReleaseVoiceCount() const;
+    float debugGetPolyphonyGainApplied() const;
     float debugGetFxReturnRms() const;
     float debugGetInstanceCpuLoadPercent() const;
     int debugGetActiveInstanceCount() const;
@@ -468,7 +480,19 @@ private:
     std::atomic<float> debugDryBusRms { 0.0f };
     std::atomic<float> debugFxBusRms { 0.0f };
     std::atomic<float> debugMasterBusRms { 0.0f };
+    std::atomic<float> debugOscillatorBusPeak { 0.0f };
+    std::atomic<float> debugDryBusPeak { 0.0f };
+    std::atomic<float> debugFxBusPeak { 0.0f };
+    std::atomic<float> debugMasterBusPeak { 0.0f };
+    std::atomic<float> debugMasterPreOutputPeak { 0.0f };
     std::array<std::atomic<float>, kMixerSourceCount> debugMixerSourceRms { { 0.0f, 0.0f, 0.0f, 0.0f } };
+    std::array<std::atomic<float>, kMixerSourceCount> debugMixerSourcePeak { { 0.0f, 0.0f, 0.0f, 0.0f } };
+    std::array<std::atomic<float>, kMixerSourceCount> debugVoiceSourcePeak { { 0.0f, 0.0f, 0.0f, 0.0f } };
+    std::atomic<float> debugVoicePeak { 0.0f };
+    std::atomic<int> debugActiveVoiceCount { 0 };
+    std::atomic<int> debugReleasingVoiceCount { 0 };
+    std::atomic<int> debugNearSilentReleaseVoiceCount { 0 };
+    std::atomic<float> debugPolyphonyGainApplied { 1.0f };
     std::atomic<float> debugFxReturnRms { 0.0f };
     std::atomic<float> debugInstanceCpuLoadPercent { 0.0f };
 
@@ -491,6 +515,7 @@ private:
     std::array<juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear>, kMixerSourceCount> sourceSendGateSmoothers;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> fxReturnGateSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> fxReturnPanSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> polyphonyGainSmoother;
 
     std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
     std::atomic<uint32_t> fxOrderRevision { 0u };

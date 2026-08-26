@@ -41,7 +41,8 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     baseFrequencyHz = juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber);
     currentFrequencyHz = baseFrequencyHz;
     level = velocity;
-    currentAngle = 0.0;
+    const auto phaseSeed = std::fmod(static_cast<double>(voiceIndex + 1) * 0.6180339887498949, 1.0);
+    currentAngle = juce::MathConstants<double>::twoPi * phaseSeed;
     updateAngleDelta();
     const auto sampleRate = juce::jmax(1.0, getSampleRate());
     if (std::abs(sampleRate - ampEnvelopePreparedSampleRate) > 0.5)
@@ -94,9 +95,12 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     {
         audible = true;
     }
-    for (auto& oscillatorAngle : oscillatorAngles)
+    for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
     {
-        oscillatorAngle = currentAngle;
+        const auto spread = (juce::MathConstants<double>::twoPi / static_cast<double>(kOscillatorSourceCount))
+                            * static_cast<double>(oscIndex);
+        oscillatorAngles[static_cast<std::size_t>(oscIndex)] = std::fmod(currentAngle + spread,
+                                                                          juce::MathConstants<double>::twoPi);
     }
 }
 
@@ -145,11 +149,17 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     // Keep fast exits cheap; this runs on the real-time audio thread.
     if (angleDelta == 0.0)
     {
+        currentAmpEnvelopeValue = 0.0f;
+        lastBlockPeak = 0.0f;
+        lastBlockSourcePeaks.fill(0.0f);
         return;
     }
 
     if (!ampEnvelope.isActive())
     {
+        currentAmpEnvelopeValue = 0.0f;
+        lastBlockPeak = 0.0f;
+        lastBlockSourcePeaks.fill(0.0f);
         clearCurrentNote();
         angleDelta = 0.0;
         return;
@@ -195,6 +205,27 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     }
 
     std::array<float, 3> modEnvelopePeakValues { { 0.0f, 0.0f, 0.0f } };
+    auto blockPeak = 0.0f;
+    std::array<float, kVoiceMixerSourceCount> blockSourcePeaks { { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+    auto activeSourceCount = 0;
+    if (subOscillatorSettings.enabled)
+    {
+        ++activeSourceCount;
+    }
+    for (const auto& layer : oscillatorLayerSettings)
+    {
+        if (layer.enabled)
+        {
+            ++activeSourceCount;
+        }
+    }
+    const auto perSourceNormalization = activeSourceCount > 0
+                                            ? 1.0f / std::sqrt(static_cast<float>(activeSourceCount))
+                                            : 1.0f;
+
+    constexpr float kReleaseSilenceThreshold = 1.0e-4f;
+
     for (int sample = 0; sample < numSamples; ++sample)
     {
         for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
@@ -351,6 +382,21 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
         // AMP STAGE: envelope and voice gain are downstream of filter.
         const auto env = ampEnvelope.getNextSample();
+        currentAmpEnvelopeValue = env;
+
+        if (!isKeyDown() && env <= kReleaseSilenceThreshold)
+        {
+            ampEnvelope.reset();
+            for (auto& modEnvelope : modEnvelopeGenerators)
+            {
+                modEnvelope.reset();
+            }
+            modEnvelopeValues.fill(0.0f);
+            clearCurrentNote();
+            angleDelta = 0.0;
+            break;
+        }
+
         auto voiceGain = level * env * subtractiveSettings.masterGain;
 
         if (vibeActive)
@@ -378,7 +424,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                 filteredSample = sanitizeAudioSample(filteredSample);
             }
 
-            auto voicedSample = filteredSample * voiceGain;
+            auto voicedSample = filteredSample * voiceGain * perSourceNormalization;
             if (vibeActive)
             {
                 const auto vcaAmount = (vibeTuning.vcaNonlinearity * vibeDepth
@@ -390,10 +436,13 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             voicedSample = sanitizeAudioSample(voicedSample);
 
             voicedSourceSamples[static_cast<std::size_t>(sourceIndex)] = voicedSample;
+            blockSourcePeaks[static_cast<std::size_t>(sourceIndex)] = juce::jmax(blockSourcePeaks[static_cast<std::size_t>(sourceIndex)],
+                                                                                  std::abs(voicedSample));
             summedSample += voicedSample;
         }
 
         summedSample = sanitizeAudioSample(summedSample);
+        blockPeak = juce::jmax(blockPeak, std::abs(summedSample));
 
         if (outputBuffer.getNumChannels() >= kVoiceMixerSourceCount)
         {
@@ -422,6 +471,9 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         ++noteAgeSamples;
     }
 
+    lastBlockPeak = blockPeak;
+    lastBlockSourcePeaks = blockSourcePeaks;
+
     // Source interface contract for processor-side modulation sampling is a
     // block representative value. Use peak-per-block so short envelopes are
     // still observable by downstream control-rate modulation reads.
@@ -437,6 +489,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
     if (!ampEnvelope.isActive())
     {
+        currentAmpEnvelopeValue = 0.0f;
         clearCurrentNote();
         angleDelta = 0.0;
     }
@@ -557,6 +610,31 @@ void SynthVoice::setPerformanceModulation(float pitchBendNormalized,
 void SynthVoice::setVoiceIndex(int index)
 {
     voiceIndex = juce::jmax(0, index);
+}
+
+float SynthVoice::getCurrentAmpEnvelopeValue() const
+{
+    return currentAmpEnvelopeValue;
+}
+
+float SynthVoice::getLastBlockPeak() const
+{
+    return lastBlockPeak;
+}
+
+float SynthVoice::getLastBlockSourcePeak(int sourceIndex) const
+{
+    if (sourceIndex < 0 || sourceIndex >= kVoiceMixerSourceCount)
+    {
+        return 0.0f;
+    }
+
+    return lastBlockSourcePeaks[static_cast<std::size_t>(sourceIndex)];
+}
+
+int SynthVoice::getNoteAgeSamples() const
+{
+    return noteAgeSamples;
 }
 
 void SynthVoice::setVibeState(float globalAmount,

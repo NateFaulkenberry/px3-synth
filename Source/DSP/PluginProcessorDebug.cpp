@@ -479,10 +479,72 @@ float PX3SynthAudioProcessor::debugGetMasterBusRms() const
     return juce::jmax(0.0f, debugMasterBusRms.load(std::memory_order_relaxed));
 }
 
+float PX3SynthAudioProcessor::debugGetOscillatorBusPeak() const
+{
+    return juce::jmax(0.0f, debugOscillatorBusPeak.load(std::memory_order_relaxed));
+}
+
+float PX3SynthAudioProcessor::debugGetDryBusPeak() const
+{
+    return juce::jmax(0.0f, debugDryBusPeak.load(std::memory_order_relaxed));
+}
+
+float PX3SynthAudioProcessor::debugGetFxBusPeak() const
+{
+    return juce::jmax(0.0f, debugFxBusPeak.load(std::memory_order_relaxed));
+}
+
+float PX3SynthAudioProcessor::debugGetMasterBusPeak() const
+{
+    return juce::jmax(0.0f, debugMasterBusPeak.load(std::memory_order_relaxed));
+}
+
+float PX3SynthAudioProcessor::debugGetMasterPreOutputPeak() const
+{
+    return juce::jmax(0.0f, debugMasterPreOutputPeak.load(std::memory_order_relaxed));
+}
+
 float PX3SynthAudioProcessor::debugGetMixerSourceRms(int sourceIndex) const
 {
     const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);
     return debugMixerSourceRms[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
+}
+
+float PX3SynthAudioProcessor::debugGetMixerSourcePeak(int sourceIndex) const
+{
+    const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);
+    return debugMixerSourcePeak[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
+}
+
+float PX3SynthAudioProcessor::debugGetVoicePeak() const
+{
+    return juce::jmax(0.0f, debugVoicePeak.load(std::memory_order_relaxed));
+}
+
+float PX3SynthAudioProcessor::debugGetVoiceSourcePeak(int sourceIndex) const
+{
+    const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);
+    return debugVoiceSourcePeak[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
+}
+
+int PX3SynthAudioProcessor::debugGetActiveVoiceCount() const
+{
+    return juce::jmax(0, debugActiveVoiceCount.load(std::memory_order_relaxed));
+}
+
+int PX3SynthAudioProcessor::debugGetReleasingVoiceCount() const
+{
+    return juce::jmax(0, debugReleasingVoiceCount.load(std::memory_order_relaxed));
+}
+
+int PX3SynthAudioProcessor::debugGetNearSilentReleaseVoiceCount() const
+{
+    return juce::jmax(0, debugNearSilentReleaseVoiceCount.load(std::memory_order_relaxed));
+}
+
+float PX3SynthAudioProcessor::debugGetPolyphonyGainApplied() const
+{
+    return juce::jmax(0.0f, debugPolyphonyGainApplied.load(std::memory_order_relaxed));
 }
 
 float PX3SynthAudioProcessor::debugGetFxReturnRms() const
