@@ -2,6 +2,15 @@
 
 #include <cmath>
 
+bool EnvelopeGenerator::paramsDiffer(const juce::ADSR::Parameters& a, const juce::ADSR::Parameters& b)
+{
+    constexpr float epsilon = 1.0e-6f;
+    return std::abs(a.attack - b.attack) > epsilon
+           || std::abs(a.decay - b.decay) > epsilon
+           || std::abs(a.sustain - b.sustain) > epsilon
+           || std::abs(a.release - b.release) > epsilon;
+}
+
 void EnvelopeGenerator::prepare(double sampleRate)
 {
     sampleRateHz = juce::jmax(1.0, sampleRate);
@@ -11,7 +20,6 @@ void EnvelopeGenerator::prepare(double sampleRate)
     // but not long enough to blur envelope timing.
     constexpr double outputSmoothingSeconds = 0.0008;
     outputSmoother.reset(sampleRateHz, outputSmoothingSeconds);
-    outputSmoother.setCurrentAndTargetValue(0.0f);
 }
 
 void EnvelopeGenerator::setSettings(const EnvelopeSettings& settings)
@@ -23,7 +31,12 @@ void EnvelopeGenerator::setSettings(const EnvelopeSettings& settings)
     adsrParameters.sustain = envelopeSettings.sustainLevel;
     adsrParameters.release = envelopeSettings.releaseSeconds;
 
-    adsr.setParameters(adsrParameters);
+    if (!parametersInitialized || paramsDiffer(adsrParameters, lastAppliedParameters))
+    {
+        adsr.setParameters(adsrParameters);
+        lastAppliedParameters = adsrParameters;
+        parametersInitialized = true;
+    }
 }
 
 void EnvelopeGenerator::noteOn()

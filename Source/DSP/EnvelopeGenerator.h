@@ -18,9 +18,13 @@ public:
     float getNextSample();
 
 private:
+    static bool paramsDiffer(const juce::ADSR::Parameters& a, const juce::ADSR::Parameters& b);
+
     double sampleRateHz { 44100.0 };
     EnvelopeSettings envelopeSettings;
     juce::ADSR adsr;
     juce::ADSR::Parameters adsrParameters;
+    juce::ADSR::Parameters lastAppliedParameters;
+    bool parametersInitialized { false };
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> outputSmoother;
 };

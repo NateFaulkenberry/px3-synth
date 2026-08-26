@@ -88,6 +88,7 @@ private:
 
     int noteAgeSamples { 0 };
     int voiceIndex { 0 };
+    double ampEnvelopePreparedSampleRate { 0.0 };
 
     float vibeGlobalAmount { 0.0f };
     bool vibeBypass { false };

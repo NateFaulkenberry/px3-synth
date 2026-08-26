@@ -28,7 +28,11 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     currentAngle = 0.0;
     updateAngleDelta();
     const auto sampleRate = juce::jmax(1.0, getSampleRate());
-    ampEnvelope.prepare(sampleRate);
+    if (std::abs(sampleRate - ampEnvelopePreparedSampleRate) > 0.5)
+    {
+        ampEnvelope.prepare(sampleRate);
+        ampEnvelopePreparedSampleRate = sampleRate;
+    }
     for (int sourceIndex = 0; sourceIndex < kVoiceMixerSourceCount; ++sourceIndex)
     {
         for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
