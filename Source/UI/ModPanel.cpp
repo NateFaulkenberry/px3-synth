@@ -50,6 +50,10 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
                                                   lfoWaveformLabel,
                                                   lfoAccent);
 
+    // Match additional LFO cards: no explicit "Freq" chip label under the knob.
+    lfoRateLabel.setText("", juce::dontSendNotification);
+    lfoRateLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+
     addAndMakeVisible(*envelopeGraph);
     addAndMakeVisible(*lfoComponent);
 
@@ -70,17 +74,25 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
 
 void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
 {
+    const auto applyChipLabelStyle = [](juce::Label& label)
+    {
+        label.setColour(juce::Label::backgroundColourId, juce::Colour::fromRGBA(255, 255, 255, 54));
+        label.setColour(juce::Label::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 96));
+    };
+
     bundle.enabledLabel.setText("ON", juce::dontSendNotification);
     bundle.enabledLabel.setJustificationType(juce::Justification::centredLeft);
     bundle.enabledLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.enabledLabel.setFont(juce::FontOptions(11.5f));
     bundle.enabledLabel.setInterceptsMouseClicks(false, false);
+    applyChipLabelStyle(bundle.enabledLabel);
 
     bundle.assignLabel.setText("Assign", juce::dontSendNotification);
     bundle.assignLabel.setJustificationType(juce::Justification::centred);
     bundle.assignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.assignLabel.setFont(juce::FontOptions(11.5f));
     bundle.assignLabel.setInterceptsMouseClicks(false, false);
+    applyChipLabelStyle(bundle.assignLabel);
 
     bundle.rateLabel.setText("", juce::dontSendNotification);
     bundle.rateLabel.setJustificationType(juce::Justification::centred);
@@ -100,6 +112,7 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
     bundle.waveformLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.waveformLabel.setFont(juce::FontOptions(11.5f));
     bundle.waveformLabel.setInterceptsMouseClicks(false, false);
+    applyChipLabelStyle(bundle.waveformLabel);
 
     bundle.enabledButton.setButtonText("");
     bundle.enabledButton.setClickingTogglesState(true);
@@ -169,17 +182,25 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
 
 void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
 {
+    const auto applyChipLabelStyle = [](juce::Label& label)
+    {
+        label.setColour(juce::Label::backgroundColourId, juce::Colour::fromRGBA(255, 255, 255, 54));
+        label.setColour(juce::Label::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 96));
+    };
+
     bundle.enabledLabel.setText("ON", juce::dontSendNotification);
     bundle.enabledLabel.setJustificationType(juce::Justification::centredLeft);
     bundle.enabledLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.enabledLabel.setFont(juce::FontOptions(11.5f));
     bundle.enabledLabel.setInterceptsMouseClicks(false, false);
+    applyChipLabelStyle(bundle.enabledLabel);
 
     bundle.assignLabel.setText("Assign", juce::dontSendNotification);
     bundle.assignLabel.setJustificationType(juce::Justification::centred);
     bundle.assignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.assignLabel.setFont(juce::FontOptions(11.5f));
     bundle.assignLabel.setInterceptsMouseClicks(false, false);
+    applyChipLabelStyle(bundle.assignLabel);
 
     bundle.enabledButton.setButtonText("");
     bundle.enabledButton.setClickingTogglesState(true);
