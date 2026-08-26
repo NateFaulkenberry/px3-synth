@@ -143,6 +143,11 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorFineParam(int os
     const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
     return *oscFineParams[static_cast<std::size_t>(idx)];
 }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorPitchParam(int oscIndex) const
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    return *oscPitchParams[static_cast<std::size_t>(idx)];
+}
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getOscillatorModeParam(int oscIndex) const
 {
     const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
@@ -176,6 +181,7 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorHarmonicParam(in
 }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getSubOscEnabledParam() const { return *subOscEnabledParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getSubOscLevelParam() const { return *subOscLevelParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSubOscPitchParam() const { return *subOscPitchParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getSubOscOctaveParam() const { return *subOscOctaveParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getSubOscWaveformParam() const { return *subOscWaveformParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getFilterEnabledParam(int filterIndex) const

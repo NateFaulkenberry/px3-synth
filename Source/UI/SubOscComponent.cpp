@@ -7,6 +7,8 @@
 
 SubOscComponent::SubOscComponent(juce::ToggleButton& enabledButtonIn,
                                                juce::Label& enabledLabelIn,
+                                                                                             juce::Slider& pitchIn,
+                                                                                             juce::Label& pitchLabelIn,
                                                juce::ComboBox& octaveBoxIn,
                                                juce::Label& octaveLabelIn,
                                                juce::ComboBox& waveformBoxIn,
@@ -14,6 +16,8 @@ SubOscComponent::SubOscComponent(juce::ToggleButton& enabledButtonIn,
                                                juce::Colour accentIn)
     : enabledButton(enabledButtonIn),
       enabledLabel(enabledLabelIn),
+            pitch(pitchIn),
+            pitchLabel(pitchLabelIn),
       octaveBox(octaveBoxIn),
       octaveLabel(octaveLabelIn),
       waveformBox(waveformBoxIn),
@@ -22,6 +26,8 @@ SubOscComponent::SubOscComponent(juce::ToggleButton& enabledButtonIn,
 {
     addAndMakeVisible(enabledButton);
     addAndMakeVisible(enabledLabel);
+    addAndMakeVisible(pitch);
+    addAndMakeVisible(pitchLabel);
     addAndMakeVisible(octaveBox);
     addAndMakeVisible(octaveLabel);
     addAndMakeVisible(waveformBox);
@@ -62,6 +68,8 @@ void SubOscComponent::refreshFromParameters(bool enabled, int octaveIndex, int w
     octaveLabel.setEnabled(currentEnabled);
     waveformBox.setEnabled(currentEnabled);
     waveformLabel.setEnabled(currentEnabled);
+    pitch.setEnabled(currentEnabled);
+    pitchLabel.setEnabled(currentEnabled);
 
     if (enabledChanged || waveformChanged)
     {
@@ -109,10 +117,20 @@ void SubOscComponent::resized()
     waveformLabel.setBounds(waveformRow.removeFromLeft(56));
     waveformBox.setBounds(waveformRow.reduced(2, 1));
 
+    area.removeFromTop(2);
+
+    auto pitchLabelRow = area.removeFromTop(18);
+    pitchLabel.setBounds(pitchLabelRow.withSizeKeepingCentre(58, 18));
+
+    area.removeFromTop(2);
+
+    auto pitchRow = area.removeFromTop(54);
+    pitch.setBounds(pitchRow.withSizeKeepingCentre(50, 50));
+
     area.removeFromTop(8);
 
     auto graphArea = area;
-    const auto requestedGraphHeight = static_cast<int>(juce::jmax(80, getLocalBounds().reduced(20, 14).getHeight() - 128));
+    const auto requestedGraphHeight = static_cast<int>(juce::jmax(80, getLocalBounds().reduced(20, 14).getHeight() - 202));
     const auto maxGraphHeight = juce::jmax(80, graphArea.getHeight() - 24);
     const auto graphHeight = juce::jmin(requestedGraphHeight, maxGraphHeight);
 
@@ -164,8 +182,13 @@ void SubOscComponent::paint(juce::Graphics& g)
     graphLayout.removeFromTop(6.0f);
     graphLayout.removeFromTop(24.0f);
     graphLayout.removeFromTop(8.0f);
+    graphLayout.removeFromTop(2.0f);
+    graphLayout.removeFromTop(18.0f);
+    graphLayout.removeFromTop(2.0f);
+    graphLayout.removeFromTop(54.0f);
+    graphLayout.removeFromTop(8.0f);
 
-    const auto requestedGraphHeight = static_cast<float>(juce::jmax(80, getLocalBounds().reduced(20, 14).getHeight() - 128));
+    const auto requestedGraphHeight = static_cast<float>(juce::jmax(80, getLocalBounds().reduced(20, 14).getHeight() - 202));
     const auto maxGraphHeight = juce::jmax(80.0f, graphLayout.getHeight() - 24.0f);
     const auto graphHeight = juce::jmin(requestedGraphHeight, maxGraphHeight);
     graphLayout.removeFromBottom(10.0f);

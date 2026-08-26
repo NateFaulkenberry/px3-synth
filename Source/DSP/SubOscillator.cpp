@@ -16,6 +16,7 @@ void SubOscillator::setSettings(const SubOscSettings& newSettings)
 {
     settings.enabled = newSettings.enabled;
     settings.level = juce::jlimit(0.0f, 1.0f, newSettings.level);
+    settings.pitchSemitones = juce::jlimit(-12.0f, 12.0f, newSettings.pitchSemitones);
     settings.octaveIndex = px3::clampSubOscOctaveIndex(newSettings.octaveIndex);
     settings.waveformIndex = px3::clampSubOscWaveformIndex(newSettings.waveformIndex);
 }
@@ -32,7 +33,8 @@ float SubOscillator::renderSample(double baseFrequencyHz)
         return 0.0f;
     }
 
-    const auto semitones = static_cast<double>(px3::subOscSemitoneOffsetForOctaveIndex(settings.octaveIndex));
+    const auto semitones = static_cast<double>(px3::subOscSemitoneOffsetForOctaveIndex(settings.octaveIndex))
+                           + static_cast<double>(settings.pitchSemitones);
     const auto ratio = std::pow(2.0, semitones / 12.0);
     const auto subFrequencyHz = juce::jmax(1.0, baseFrequencyHz * ratio);
     const auto sampleRate = static_cast<float>(juce::jmax(1.0, sampleRateHz));

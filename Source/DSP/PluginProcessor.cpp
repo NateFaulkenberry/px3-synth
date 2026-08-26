@@ -46,6 +46,15 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                                                             labelPrefix + "Fine",
                                                                                             juce::NormalisableRange<float>(-100.0f, 100.0f, 1.0f),
                                                                                             0.0f);
+        oscPitchParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(
+            juce::ParameterID(idPrefix + "Pitch", 1),
+            labelPrefix + "Pitch",
+            juce::NormalisableRange<float>(-12.0f, 12.0f),
+            0.0f,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
+            {
+                return juce::String(value >= 0.0f ? "+" : "") + juce::String(value, 2) + " st";
+            }));
         oscModeParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterChoice(idPrefix + "Mode",
                                                                                              labelPrefix + "Mode",
                                                                                              px3::oscillatorModeChoices(),
@@ -80,6 +89,15 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     }
     subOscEnabledParam = new juce::AudioParameterBool("subOscEnabled", "Sub Osc Enabled", false);
     subOscLevelParam = new juce::AudioParameterFloat("subOscLevel", "Sub Osc Level", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    subOscPitchParam = new juce::AudioParameterFloat(
+        juce::ParameterID("subOscPitch", 1),
+        "Sub Osc Pitch",
+        juce::NormalisableRange<float>(-12.0f, 12.0f),
+        0.0f,
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
+        {
+            return juce::String(value >= 0.0f ? "+" : "") + juce::String(value, 2) + " st";
+        }));
     subOscOctaveParam = new juce::AudioParameterChoice("subOscOctave",
                                                         "Sub Osc Octave",
                                                         px3::subOscOctaveChoices(),
@@ -279,6 +297,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(oscLevelParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscCoarseParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscFineParams[static_cast<std::size_t>(oscIndex)]);
+        addParameter(oscPitchParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscModeParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscMacroAParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscMacroBParams[static_cast<std::size_t>(oscIndex)]);
@@ -292,6 +311,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     }
     addParameter(subOscEnabledParam);
     addParameter(subOscLevelParam);
+    addParameter(subOscPitchParam);
     addParameter(subOscOctaveParam);
     addParameter(subOscWaveformParam);
     for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)

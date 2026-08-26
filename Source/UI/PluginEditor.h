@@ -302,6 +302,10 @@ private:
     juce::Slider gainKnob;
     juce::Slider lfoFrequencyKnob;
     juce::Slider subOscLevelKnob;
+    juce::Slider subOscPitchKnob;
+    juce::Slider osc1PitchKnob;
+    juce::Slider osc2PitchKnob;
+    juce::Slider osc3PitchKnob;
     juce::Slider osc1LevelFader;
     juce::Slider osc2LevelFader;
     juce::Slider osc3LevelFader;
@@ -347,6 +351,10 @@ private:
     KnobLabel lfoFrequencyLabel;
     KnobLabel lfoWaveformLabel;
     KnobLabel subOscLevelLabel;
+    KnobLabel subOscPitchLabel;
+    KnobLabel osc1PitchLabel;
+    KnobLabel osc2PitchLabel;
+    KnobLabel osc3PitchLabel;
     KnobLabel osc1LevelLabel;
     KnobLabel osc2LevelLabel;
     KnobLabel osc3LevelLabel;
@@ -445,7 +453,7 @@ private:
     std::vector<std::unique_ptr<juce::ComboBoxParameterAttachment>> comboBoxAttachments;
     std::vector<std::unique_ptr<juce::ButtonParameterAttachment>> buttonAttachments;
 
-    std::array<KnobBinding, 19> knobBindings {};
+    std::array<KnobBinding, 23> knobBindings {};
     int lastGranularModeIndex { -1 };
     int lastLfoAssignmentIndex { -1 };
     int lastEnvelopeAssignmentIndex { -1 };

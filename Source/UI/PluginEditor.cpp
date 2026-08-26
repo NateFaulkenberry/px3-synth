@@ -510,6 +510,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         KnobBinding { &osc3SineKnob, &osc3SineLabel, nullptr },
         KnobBinding { &osc3SawKnob, &osc3SawLabel, nullptr },
         KnobBinding { &osc3SquareKnob, &osc3SquareLabel, nullptr },
+        KnobBinding { &osc1PitchKnob, &osc1PitchLabel, nullptr },
+        KnobBinding { &osc2PitchKnob, &osc2PitchLabel, nullptr },
+        KnobBinding { &osc3PitchKnob, &osc3PitchLabel, nullptr },
+        KnobBinding { &subOscPitchKnob, &subOscPitchLabel, nullptr },
         KnobBinding { &cutoffKnob, &cutoffLabel, nullptr },
         KnobBinding { &resonanceKnob, &resonanceLabel, nullptr },
         KnobBinding { &cutoff2Knob, &cutoff2Label, nullptr },
@@ -531,16 +535,20 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureKnob(knobBindings[6], "PARAM A", audioProcessor.getOscillatorMacroAParam(2));
     configureKnob(knobBindings[7], "PARAM B", audioProcessor.getOscillatorMacroBParam(2));
     configureKnob(knobBindings[8], "PARAM C", audioProcessor.getOscillatorMacroCParam(2));
-    configureKnob(knobBindings[9], "Cutoff", audioProcessor.getFilterCutoffParam(0));
-    configureKnob(knobBindings[10], "Reso", audioProcessor.getFilterResonanceParam(0));
-    configureKnob(knobBindings[11], "Cutoff", audioProcessor.getFilterCutoffParam(1));
-    configureKnob(knobBindings[12], "Reso", audioProcessor.getFilterResonanceParam(1));
-    configureKnob(knobBindings[13], "Attack", audioProcessor.getAttackParam());
-    configureKnob(knobBindings[14], "Decay", audioProcessor.getDecayParam());
-    configureKnob(knobBindings[15], "Sustain", audioProcessor.getSustainParam());
-    configureKnob(knobBindings[16], "Release", audioProcessor.getReleaseParam());
-    configureKnob(knobBindings[17], "Freq", audioProcessor.getLfoFrequencyParam());
-    configureKnob(knobBindings[18], "Master", audioProcessor.getMasterGainParam());
+    configureKnob(knobBindings[9], "PITCH", audioProcessor.getOscillatorPitchParam(0));
+    configureKnob(knobBindings[10], "PITCH", audioProcessor.getOscillatorPitchParam(1));
+    configureKnob(knobBindings[11], "PITCH", audioProcessor.getOscillatorPitchParam(2));
+    configureKnob(knobBindings[12], "PITCH", audioProcessor.getSubOscPitchParam());
+    configureKnob(knobBindings[13], "Cutoff", audioProcessor.getFilterCutoffParam(0));
+    configureKnob(knobBindings[14], "Reso", audioProcessor.getFilterResonanceParam(0));
+    configureKnob(knobBindings[15], "Cutoff", audioProcessor.getFilterCutoffParam(1));
+    configureKnob(knobBindings[16], "Reso", audioProcessor.getFilterResonanceParam(1));
+    configureKnob(knobBindings[17], "Attack", audioProcessor.getAttackParam());
+    configureKnob(knobBindings[18], "Decay", audioProcessor.getDecayParam());
+    configureKnob(knobBindings[19], "Sustain", audioProcessor.getSustainParam());
+    configureKnob(knobBindings[20], "Release", audioProcessor.getReleaseParam());
+    configureKnob(knobBindings[21], "Freq", audioProcessor.getLfoFrequencyParam());
+    configureKnob(knobBindings[22], "Master", audioProcessor.getMasterGainParam());
 
     // ADSR graph replaces visible envelope knobs; parameter attachments remain unchanged.
     attackKnob.setVisible(false);
@@ -736,6 +744,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     osc3SineLabel.setFont(juce::FontOptions(11.0f));
     osc3SawLabel.setFont(juce::FontOptions(11.0f));
     osc3SquareLabel.setFont(juce::FontOptions(11.0f));
+    osc1PitchLabel.setFont(juce::FontOptions(11.0f));
+    osc2PitchLabel.setFont(juce::FontOptions(11.0f));
+    osc3PitchLabel.setFont(juce::FontOptions(11.0f));
+    subOscPitchLabel.setFont(juce::FontOptions(11.0f));
 
     configureEffectKnob(vibeAmountKnob, vibeAmountLabel, "AMOUNT", audioProcessor.getVibeAmountParam());
     configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "", audioProcessor.getDelayAmountParam());
@@ -973,10 +985,14 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     oscPanel = std::make_unique<OscPanel>(subOscEnabledButton,
                                           subOscEnabledLabel,
+                                          subOscPitchKnob,
+                                          subOscPitchLabel,
                                           subOscOctaveBox,
                                           subOscOctaveLabel,
                                           subOscWaveformBox,
                                           subOscWaveformLabel,
+                                          osc1PitchKnob,
+                                          osc1PitchLabel,
                                           oscSineKnob,
                                           oscSawKnob,
                                           oscSquareKnob,
@@ -989,6 +1005,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           oscModeLabel,
                                           oscVowelBox,
                                           oscVowelLabel,
+                                          osc2PitchKnob,
+                                          osc2PitchLabel,
                                           osc2SineKnob,
                                           osc2SawKnob,
                                           osc2SquareKnob,
@@ -1001,6 +1019,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           osc2ModeLabel,
                                           osc2VowelBox,
                                           osc2VowelLabel,
+                                          osc3PitchKnob,
+                                          osc3PitchLabel,
                                           osc3SineKnob,
                                           osc3SawKnob,
                                           osc3SquareKnob,

@@ -12,7 +12,7 @@
 
 namespace px3::processor_internal
 {
-inline constexpr int kCurrentStateVersion = 9;
+inline constexpr int kCurrentStateVersion = 10;
 
 inline const juce::Identifier kStateTypeId("PX3_STATE");
 inline const juce::Identifier kStateVersionId("stateVersion");
@@ -32,6 +32,7 @@ inline const juce::Identifier kSourceIndexId("index");
 inline const juce::Identifier kSubOscStateId("SUBOSC");
 inline const juce::Identifier kSubOscEnabledId("enabled");
 inline const juce::Identifier kSubOscLevelId("level");
+inline const juce::Identifier kSubOscPitchId("pitch");
 inline const juce::Identifier kSubOscOctaveId("octave");
 inline const juce::Identifier kSubOscWaveformId("waveform");
 inline const juce::Identifier kTopMenuViewId("topMenuView");

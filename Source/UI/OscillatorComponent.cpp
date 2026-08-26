@@ -7,6 +7,8 @@
 
 OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
                                                                                                              juce::Label& enabledLabelIn,
+                                                                                                             juce::Slider& pitchIn,
+                                                                                                             juce::Label& pitchLabelIn,
                                                                                                              juce::Slider& macroAIn,
                                                                                                              juce::Slider& macroBIn,
                                                                                                              juce::Slider& macroCIn,
@@ -20,6 +22,8 @@ OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
                                                                                                              juce::Colour accentIn)
         : enabledButton(enabledButtonIn),
             enabledLabel(enabledLabelIn),
+            pitch(pitchIn),
+            pitchLabel(pitchLabelIn),
             macroA(macroAIn),
       macroB(macroBIn),
       macroC(macroCIn),
@@ -34,6 +38,8 @@ OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
 {
         addAndMakeVisible(enabledButton);
         addAndMakeVisible(enabledLabel);
+    addAndMakeVisible(pitch);
+    addAndMakeVisible(pitchLabel);
     addAndMakeVisible(macroA);
     addAndMakeVisible(macroB);
     addAndMakeVisible(macroC);
@@ -133,7 +139,15 @@ void OscillatorComponent::resized()
         vowelBox.setBounds(0, 0, 0, 0);
     }
 
-    const auto requestedGraphHeight = juce::jmax(40, getLocalBounds().reduced(20, 14).getHeight() - 60);
+    area.removeFromTop(2);
+    auto pitchLabelRow = area.removeFromTop(18);
+    pitchLabel.setBounds(pitchLabelRow.withSizeKeepingCentre(58, 18));
+    area.removeFromTop(2);
+    auto pitchRow = area.removeFromTop(54);
+    pitch.setBounds(pitchRow.withSizeKeepingCentre(50, 50));
+    area.removeFromTop(8);
+
+    const auto requestedGraphHeight = juce::jmax(40, getLocalBounds().reduced(20, 14).getHeight() - 134);
     const auto maxGraphHeight = juce::jmax(40, area.getHeight() - 70);
     const auto graphHeight = juce::jmin(requestedGraphHeight, maxGraphHeight);
     area.removeFromBottom(graphHeight);
@@ -189,7 +203,13 @@ void OscillatorComponent::paint(juce::Graphics& g)
         graphLayout.removeFromTop(8.0f);
     }
 
-    const auto requestedGraphHeight = static_cast<float>(juce::jmax(40, getLocalBounds().reduced(20, 14).getHeight() - 60));
+    graphLayout.removeFromTop(2.0f);
+    graphLayout.removeFromTop(18.0f);
+    graphLayout.removeFromTop(2.0f);
+    graphLayout.removeFromTop(54.0f);
+    graphLayout.removeFromTop(8.0f);
+
+    const auto requestedGraphHeight = static_cast<float>(juce::jmax(40, getLocalBounds().reduced(20, 14).getHeight() - 134));
     const auto maxGraphHeight = juce::jmax(40.0f, graphLayout.getHeight() - 70.0f);
     const auto graphHeight = juce::jmin(requestedGraphHeight, maxGraphHeight);
     graphLayout.removeFromBottom(10.0f);
@@ -418,6 +438,8 @@ void OscillatorComponent::applyEnabledUi()
     modeLabel.setEnabled(currentEnabled);
     vowelBox.setEnabled(currentEnabled && vowelBox.isVisible());
     vowelLabel.setEnabled(currentEnabled && vowelLabel.isVisible());
+    pitch.setEnabled(currentEnabled);
+    pitchLabel.setEnabled(currentEnabled);
 
     const std::array<juce::Slider*, 3> sliders { &macroA, &macroB, &macroC };
     const std::array<juce::Label*, 3> labels { &macroALabel, &macroBLabel, &macroCLabel };

@@ -14,6 +14,8 @@ class OscillatorComponent final : public juce::Component
 public:
     OscillatorComponent(juce::ToggleButton& enabledButtonIn,
                         juce::Label& enabledLabelIn,
+                        juce::Slider& pitchIn,
+                        juce::Label& pitchLabelIn,
                         juce::Slider& macroAIn,
                         juce::Slider& macroBIn,
                         juce::Slider& macroCIn,
@@ -41,6 +43,8 @@ private:
 
     juce::ToggleButton& enabledButton;
     juce::Label& enabledLabel;
+    juce::Slider& pitch;
+    juce::Label& pitchLabel;
     juce::Slider& macroA;
     juce::Slider& macroB;
     juce::Slider& macroC;

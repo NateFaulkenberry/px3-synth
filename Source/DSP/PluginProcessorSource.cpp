@@ -19,6 +19,8 @@ SubOscSettings PX3SynthAudioProcessor::currentSubOscillatorSettings() const
     settings.enabled = subOscEnabledParam != nullptr && subOscEnabledParam->get();
     settings.level = subOscLevelParam->convertFrom0to1(applyModulationToNormalizedValue(subOscLevelParam,
                                                                                          static_cast<juce::RangedAudioParameter*>(subOscLevelParam)->getValue()));
+    settings.pitchSemitones = subOscPitchParam->convertFrom0to1(applyModulationToNormalizedValue(subOscPitchParam,
+                                                                                                   static_cast<juce::RangedAudioParameter*>(subOscPitchParam)->getValue()));
     settings.octaveIndex = px3::clampSubOscOctaveIndex(subOscOctaveParam != nullptr ? subOscOctaveParam->getIndex() : 1);
     settings.waveformIndex = px3::clampSubOscWaveformIndex(subOscWaveformParam != nullptr ? subOscWaveformParam->getIndex() : 1);
     return settings;
@@ -62,6 +64,9 @@ std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcess
         layer.level = getOscillatorLevelParam(oscIndex).convertFrom0to1(
             applyModulationToNormalizedValue(&getOscillatorLevelParam(oscIndex),
                                              static_cast<juce::RangedAudioParameter&>(getOscillatorLevelParam(oscIndex)).getValue()));
+        layer.pitchSemitones = getOscillatorPitchParam(oscIndex).convertFrom0to1(
+            applyModulationToNormalizedValue(&getOscillatorPitchParam(oscIndex),
+                                             static_cast<juce::RangedAudioParameter&>(getOscillatorPitchParam(oscIndex)).getValue()));
         layer.coarseSemitones = getOscillatorCoarseParam(oscIndex).convertFrom0to1(
             applyModulationToNormalizedValue(&getOscillatorCoarseParam(oscIndex),
                                              static_cast<juce::RangedAudioParameter&>(getOscillatorCoarseParam(oscIndex)).getValue()));

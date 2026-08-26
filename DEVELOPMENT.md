@@ -50,6 +50,27 @@ Main code lives in Source/
 Want to change oscillator synthesis behavior?
 - `Source/DSP/SynthVoice.cpp`
 
+Developer note: oscillator/sub pitch controls
+
+- OSC/Sub pitch controls are real automatable parameters (not UI-only state).
+- Parameter IDs:
+   - `osc1Pitch`
+   - `osc2Pitch`
+   - `osc3Pitch`
+   - `subOscPitch`
+- Range/default: continuous `-12.0 .. +12.0` semitones, default `0.0`.
+- Display format: signed semitone string (example: `+4.62 st`).
+- DSP mapping:
+   - Oscillators: applied in `Source/DSP/SynthVoice.cpp` as part of semitone offset before ratio conversion.
+   - Sub oscillator: applied in `Source/DSP/SubOscillator.cpp` and summed with sub octave offset.
+   - Frequency ratio relationship is `pow(2.0, semitones / 12.0)`.
+- Modulation:
+   - Pitch parameters are modulation destinations through the existing assignment system in `Source/DSP/PluginProcessorParameters.cpp` (`buildLfoAssignableTargets`).
+   - LFO/Envelope modulation is transient DSP-effective value math and does not overwrite base parameter values.
+- State/preset persistence:
+   - Included automatically through parameter tree serialization.
+   - Additional explicit sub-osc subtree persistence/backfill is handled in `Source/DSP/PluginProcessorState.cpp`.
+
 Want to change internal bus routing stages?
 - `Source/DSP/PluginProcessor.cpp` (`prepareToPlay`, `processBlock`)
 

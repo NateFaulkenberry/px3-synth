@@ -22,6 +22,7 @@ struct OscillatorLayerSettings
 {
     bool enabled { true };
     float level { 1.0f };
+    float pitchSemitones { 0.0f };
     float coarseSemitones { 0.0f };
     float fineCents { 0.0f };
     OscillatorSettings oscillator;

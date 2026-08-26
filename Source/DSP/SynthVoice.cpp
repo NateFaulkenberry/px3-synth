@@ -200,7 +200,8 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             }
 
             OscillatorUnit::RenderContext sourceContext = oscillatorContext;
-            const auto semitoneOffset = static_cast<double>(layer.coarseSemitones)
+            const auto semitoneOffset = static_cast<double>(layer.pitchSemitones)
+                                        + static_cast<double>(layer.coarseSemitones)
                                         + static_cast<double>(layer.fineCents) * 0.01;
             const auto sourcePitchRatio = std::pow(2.0, semitoneOffset / 12.0);
             sourceContext.pitchRatio = baseOscillatorPitchRatio * static_cast<float>(sourcePitchRatio);

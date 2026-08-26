@@ -140,6 +140,7 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
     juce::ValueTree subOscState(kSubOscStateId);
     subOscState.setProperty(kSubOscEnabledId, subOscEnabledParam->get(), nullptr);
     subOscState.setProperty(kSubOscLevelId, subOscLevelParam->get(), nullptr);
+    subOscState.setProperty(kSubOscPitchId, subOscPitchParam->get(), nullptr);
     subOscState.setProperty(kSubOscOctaveId, subOscOctaveParam->getIndex(), nullptr);
     subOscState.setProperty(kSubOscWaveformId, subOscWaveformParam->getIndex(), nullptr);
     state.addChild(subOscState, -1, nullptr);
@@ -209,6 +210,24 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                 }
             }
         }
+    }
+
+    static constexpr std::array<const char*, kOscillatorSourceCount> kOscPitchIds {
+        { "osc1Pitch", "osc2Pitch", "osc3Pitch" }
+    };
+
+    for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
+    {
+        if (!state.hasProperty(kOscPitchIds[static_cast<std::size_t>(oscIndex)]))
+        {
+            auto& pitchParam = getOscillatorPitchParam(oscIndex);
+            pitchParam.setValueNotifyingHost(pitchParam.convertTo0to1(0.0f));
+        }
+    }
+
+    if (!state.hasProperty("subOscPitch") && subOscPitchParam != nullptr)
+    {
+        subOscPitchParam->setValueNotifyingHost(subOscPitchParam->convertTo0to1(0.0f));
     }
 
     std::array<int, 4> fxOrderFromState { { 0, 1, 3, 2 } };
@@ -361,6 +380,12 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         {
             const auto level = juce::jlimit(0.0f, 1.0f, static_cast<float>(subOscState[kSubOscLevelId]));
             subOscLevelParam->setValueNotifyingHost(subOscLevelParam->convertTo0to1(level));
+        }
+
+        if (subOscState.hasProperty(kSubOscPitchId) && subOscPitchParam != nullptr)
+        {
+            const auto pitch = juce::jlimit(-12.0f, 12.0f, static_cast<float>(subOscState[kSubOscPitchId]));
+            subOscPitchParam->setValueNotifyingHost(subOscPitchParam->convertTo0to1(pitch));
         }
 
         if (subOscState.hasProperty(kSubOscOctaveId) && subOscOctaveParam != nullptr)
