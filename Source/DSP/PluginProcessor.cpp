@@ -697,11 +697,16 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         generator.setSettings(currentEnvelopeSettings(envIndex));
 
         auto sampleValue = modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].load(std::memory_order_relaxed);
+        auto blockPeak = 0.0f;
         for (int i = 0; i < blockSamples; ++i)
         {
             sampleValue = generator.getNextSample();
+            blockPeak = juce::jmax(blockPeak, sampleValue);
         }
-        modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].store(sampleValue, std::memory_order_relaxed);
+
+        // Using a block peak keeps short A/D transients audible when modulation
+        // destinations are evaluated once per block.
+        modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].store(blockPeak, std::memory_order_relaxed);
     }
 
     const auto pitchBend = juce::jlimit(-1.0f, 1.0f, pitchBendNormalized.load(std::memory_order_relaxed));
