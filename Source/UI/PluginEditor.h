@@ -388,7 +388,6 @@ private:
     juce::ComboBox reverbTypeBox;
     KnobLabel reverbTypeLabel;
     juce::ToggleButton moodBypassButton;
-    juce::ToggleButton moodTrueBypassButton;
     juce::ToggleButton moodFreezeButton;
     juce::Slider moodMixKnob;
     KnobLabel moodMixLabel;

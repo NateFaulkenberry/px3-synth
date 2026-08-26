@@ -3,7 +3,6 @@
 #include "UIConfig.h"
 
 MoodComponent::MoodComponent(juce::ToggleButton& enabledButtonIn,
-                             juce::ToggleButton& trueBypassButtonIn,
                              juce::ToggleButton& freezeButtonIn,
                              juce::Slider& mixKnobIn,
                              juce::Label& mixLabelIn,
@@ -31,7 +30,6 @@ MoodComponent::MoodComponent(juce::ToggleButton& enabledButtonIn,
                              juce::Label& loopModeLabelIn,
                              juce::Colour accentIn)
     : enabledButton(enabledButtonIn),
-      trueBypassButton(trueBypassButtonIn),
       freezeButton(freezeButtonIn),
       mixKnob(mixKnobIn),
       mixLabel(mixLabelIn),
@@ -60,7 +58,6 @@ MoodComponent::MoodComponent(juce::ToggleButton& enabledButtonIn,
       accent(accentIn)
 {
     addAndMakeVisible(enabledButton);
-    addAndMakeVisible(trueBypassButton);
     addAndMakeVisible(freezeButton);
 
     addAndMakeVisible(mixKnob);
@@ -154,7 +151,6 @@ void MoodComponent::resized()
 
     auto header = area.removeFromTop(24);
     enabledButton.setBounds(header.removeFromLeft(22));
-    trueBypassButton.setBounds(header.removeFromLeft(54));
     freezeButton.setBounds(header.removeFromLeft(48));
 
     area.removeFromTop(2);

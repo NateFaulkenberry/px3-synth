@@ -10,7 +10,6 @@ class MoodComponent final : public juce::Component
 {
 public:
     MoodComponent(juce::ToggleButton& enabledButtonIn,
-                  juce::ToggleButton& trueBypassButtonIn,
                   juce::ToggleButton& freezeButtonIn,
                   juce::Slider& mixKnobIn,
                   juce::Label& mixLabelIn,
@@ -47,7 +46,6 @@ public:
 
 private:
     juce::ToggleButton& enabledButton;
-    juce::ToggleButton& trueBypassButton;
     juce::ToggleButton& freezeButton;
 
     juce::Slider& mixKnob;

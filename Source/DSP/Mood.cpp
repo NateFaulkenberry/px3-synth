@@ -388,7 +388,7 @@ void Mood::processSampleFrame(float inL, float inR, float& outL, float& outR)
         writeHistory(inL, inR);
     }
 
-    if (!currentSettings.enabled && currentSettings.trueBypass)
+    if (!currentSettings.enabled)
     {
         outL = inL;
         outR = inR;

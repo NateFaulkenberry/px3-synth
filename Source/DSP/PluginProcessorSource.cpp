@@ -204,7 +204,7 @@ MoodSettings PX3SynthAudioProcessor::currentMoodSettings() const
 {
     MoodSettings settings;
     settings.enabled = moodEnabledParam != nullptr && moodEnabledParam->get();
-    settings.trueBypass = moodTrueBypassParam != nullptr && moodTrueBypassParam->get();
+    settings.trueBypass = false;
     settings.freeze = moodFreezeParam != nullptr && moodFreezeParam->get();
 
     settings.mix = moodMixParam->convertFrom0to1(applyModulationToNormalizedValue(moodMixParam,

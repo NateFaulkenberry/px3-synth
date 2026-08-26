@@ -65,6 +65,16 @@ int sectionIdFromModuleId(const juce::String& moduleId)
     return -1;
 }
 
+void enableLabelHoverOverlay(juce::Label& label, const juce::String& tooltipText = {})
+{
+    label.setInterceptsMouseClicks(true, false);
+    const auto text = tooltipText.isNotEmpty() ? tooltipText : label.getText();
+    if (text.isNotEmpty())
+    {
+        label.setTooltip(text);
+    }
+}
+
 #if PX3_DEBUG_PANEL
 double processResidentMemoryMb()
 {
@@ -357,7 +367,8 @@ void PX3SynthAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
     label.setJustificationType(juce::Justification::centred);
     label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     label.setFont(juce::FontOptions(11.5f));
-    label.setInterceptsMouseClicks(false, false);
+    label.setInterceptsMouseClicks(true, false);
+    label.setTooltip(labelText);
 
     addAndMakeVisible(slider);
     addAndMakeVisible(label);
@@ -522,19 +533,19 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     lfoWaveformLabel.setJustificationType(juce::Justification::centredLeft);
     lfoWaveformLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     lfoWaveformLabel.setFont(juce::FontOptions(11.5f));
-    lfoWaveformLabel.setInterceptsMouseClicks(false, false);
+    enableLabelHoverOverlay(lfoWaveformLabel, "Waveform");
 
     lfoAssignLabel.setText("Assign", juce::dontSendNotification);
     lfoAssignLabel.setJustificationType(juce::Justification::centred);
     lfoAssignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     lfoAssignLabel.setFont(juce::FontOptions(11.5f));
-    lfoAssignLabel.setInterceptsMouseClicks(false, false);
+    enableLabelHoverOverlay(lfoAssignLabel, "LFO Assignment");
 
     envAssignLabel.setText("Assign", juce::dontSendNotification);
     envAssignLabel.setJustificationType(juce::Justification::centred);
     envAssignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     envAssignLabel.setFont(juce::FontOptions(11.5f));
-    envAssignLabel.setInterceptsMouseClicks(false, false);
+    enableLabelHoverOverlay(envAssignLabel, "Envelope Assignment");
 
     envBypassLabel.setText("ON", juce::dontSendNotification);
     envBypassLabel.setJustificationType(juce::Justification::centredLeft);
@@ -615,7 +626,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     subOscOctaveLabel.setJustificationType(juce::Justification::centredLeft);
     subOscOctaveLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     subOscOctaveLabel.setFont(juce::FontOptions(11.5f));
-    subOscOctaveLabel.setInterceptsMouseClicks(false, false);
+    enableLabelHoverOverlay(subOscOctaveLabel, "Octave");
 
     auto& subOscWaveformParam = audioProcessor.getSubOscWaveformParam();
     for (int i = 0; i < subOscWaveformParam.choices.size(); ++i)
@@ -630,7 +641,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     subOscWaveformLabel.setJustificationType(juce::Justification::centredLeft);
     subOscWaveformLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     subOscWaveformLabel.setFont(juce::FontOptions(11.5f));
-    subOscWaveformLabel.setInterceptsMouseClicks(false, false);
+    enableLabelHoverOverlay(subOscWaveformLabel, "Waveform");
 
     subOscEnabledLabel.setText("ON", juce::dontSendNotification);
     subOscEnabledLabel.setJustificationType(juce::Justification::centredLeft);
@@ -727,7 +738,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     vibeTypeLabel.setJustificationType(juce::Justification::centred);
     vibeTypeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     vibeTypeLabel.setFont(juce::FontOptions(11.5f));
-    vibeTypeLabel.setInterceptsMouseClicks(false, false);
+    enableLabelHoverOverlay(vibeTypeLabel, "Type");
 
     const auto configureFilterSelector = [this](int filterIndex, juce::ComboBox& filterBox)
     {
@@ -770,7 +781,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         modeLabel.setJustificationType(juce::Justification::centred);
         modeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
         modeLabel.setFont(juce::FontOptions(11.5f));
-        modeLabel.setInterceptsMouseClicks(false, false);
+        enableLabelHoverOverlay(modeLabel, "Mode");
 
         auto& oscVowelParam = audioProcessor.getOscillatorVowelParam(oscIndex);
         for (int i = 0; i < oscVowelParam.choices.size(); ++i)
@@ -786,7 +797,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         vowelLabel.setJustificationType(juce::Justification::centred);
         vowelLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
         vowelLabel.setFont(juce::FontOptions(11.5f));
-        vowelLabel.setInterceptsMouseClicks(false, false);
+        enableLabelHoverOverlay(vowelLabel, "Vowel");
     };
 
     configureOscSelector(0, oscModeBox, oscModeLabel, oscVowelBox, oscVowelLabel);
@@ -807,7 +818,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     delayAlgoLabel.setJustificationType(juce::Justification::centred);
     delayAlgoLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     delayAlgoLabel.setFont(juce::FontOptions(11.5f));
-    delayAlgoLabel.setInterceptsMouseClicks(false, false);
+    enableLabelHoverOverlay(delayAlgoLabel, "Algorithm");
 
     auto& granularSyncParam = audioProcessor.getGranularSyncDivisionParam();
     const auto choiceCount = granularSyncParam.choices.size();
@@ -823,7 +834,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     granularSyncLabel.setJustificationType(juce::Justification::centred);
     granularSyncLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     granularSyncLabel.setFont(juce::FontOptions(11.5f));
-    granularSyncLabel.setInterceptsMouseClicks(false, false);
+    enableLabelHoverOverlay(granularSyncLabel, "Sync Division");
 
     auto& granularModeParam = audioProcessor.getGranularModeParam();
     const auto modeChoiceCount = granularModeParam.choices.size();
@@ -839,7 +850,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     granularModeLabel.setJustificationType(juce::Justification::centred);
     granularModeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     granularModeLabel.setFont(juce::FontOptions(11.5f));
-    granularModeLabel.setInterceptsMouseClicks(false, false);
+    enableLabelHoverOverlay(granularModeLabel, "Granular Mode");
 
     auto& reverbAlgoParam = audioProcessor.getReverbAlgorithmParam();
     const auto reverbChoiceCount = reverbAlgoParam.choices.size();
@@ -855,7 +866,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     reverbTypeLabel.setJustificationType(juce::Justification::centred);
     reverbTypeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     reverbTypeLabel.setFont(juce::FontOptions(11.5f));
-    reverbTypeLabel.setInterceptsMouseClicks(false, false);
+    enableLabelHoverOverlay(reverbTypeLabel, "Algorithm");
 
     auto& moodRoutingParam = audioProcessor.getMoodRoutingParam();
     for (int i = 0; i < moodRoutingParam.choices.size(); ++i)
@@ -870,7 +881,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     moodRoutingLabel.setJustificationType(juce::Justification::centred);
     moodRoutingLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     moodRoutingLabel.setFont(juce::FontOptions(11.5f));
-    moodRoutingLabel.setInterceptsMouseClicks(false, false);
+    enableLabelHoverOverlay(moodRoutingLabel, "Routing");
 
     auto& moodWetModeParam = audioProcessor.getMoodWetModeParam();
     for (int i = 0; i < moodWetModeParam.choices.size(); ++i)
@@ -885,7 +896,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     moodWetModeLabel.setJustificationType(juce::Justification::centred);
     moodWetModeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     moodWetModeLabel.setFont(juce::FontOptions(11.5f));
-    moodWetModeLabel.setInterceptsMouseClicks(false, false);
+    enableLabelHoverOverlay(moodWetModeLabel, "Wet Mode");
 
     auto& moodLoopModeParam = audioProcessor.getMoodLoopModeParam();
     for (int i = 0; i < moodLoopModeParam.choices.size(); ++i)
@@ -900,7 +911,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     moodLoopModeLabel.setJustificationType(juce::Justification::centred);
     moodLoopModeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     moodLoopModeLabel.setFont(juce::FontOptions(11.5f));
-    moodLoopModeLabel.setInterceptsMouseClicks(false, false);
+    enableLabelHoverOverlay(moodLoopModeLabel, "Loop Mode");
 
     const auto configureBypassButton = [](juce::ToggleButton& button)
     {
@@ -914,7 +925,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureBypassButton(robBypassButton);
     configureBypassButton(delayBypassButton);
     configureBypassButton(moodBypassButton);
-    configureBypassButton(moodTrueBypassButton);
     configureBypassButton(moodFreezeButton);
     configureBypassButton(reverbBypassButton);
 
@@ -1015,7 +1025,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                         delayFeedbackKnob,
                                         delayFeedbackLabel,
                                         moodBypassButton,
-                                        moodTrueBypassButton,
                                         moodFreezeButton,
                                         moodMixKnob,
                                         moodMixLabel,
@@ -1114,7 +1123,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachButton(audioProcessor.getVibeEnabledParam(), robBypassButton);
     attachButton(audioProcessor.getDelayEnabledParam(), delayBypassButton);
     attachButton(audioProcessor.getMoodEnabledParam(), moodBypassButton);
-    attachButton(audioProcessor.getMoodTrueBypassParam(), moodTrueBypassButton);
     attachButton(audioProcessor.getMoodFreezeParam(), moodFreezeButton);
     attachButton(audioProcessor.getReverbEnabledParam(), reverbBypassButton);
     attachButton(audioProcessor.getFilterEnabledParam(0), filter1EnabledButton);

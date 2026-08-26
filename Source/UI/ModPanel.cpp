@@ -91,7 +91,8 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
     bundle.assignLabel.setJustificationType(juce::Justification::centred);
     bundle.assignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.assignLabel.setFont(juce::FontOptions(11.5f));
-    bundle.assignLabel.setInterceptsMouseClicks(false, false);
+    bundle.assignLabel.setInterceptsMouseClicks(true, false);
+    bundle.assignLabel.setTooltip("LFO Assignment");
     applyChipLabelStyle(bundle.assignLabel);
 
     bundle.rateLabel.setText("", juce::dontSendNotification);
@@ -111,7 +112,8 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
     bundle.waveformLabel.setJustificationType(juce::Justification::centredLeft);
     bundle.waveformLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.waveformLabel.setFont(juce::FontOptions(11.5f));
-    bundle.waveformLabel.setInterceptsMouseClicks(false, false);
+    bundle.waveformLabel.setInterceptsMouseClicks(true, false);
+    bundle.waveformLabel.setTooltip("Waveform");
     applyChipLabelStyle(bundle.waveformLabel);
 
     bundle.enabledButton.setButtonText("");
@@ -199,7 +201,8 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
     bundle.assignLabel.setJustificationType(juce::Justification::centred);
     bundle.assignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.assignLabel.setFont(juce::FontOptions(11.5f));
-    bundle.assignLabel.setInterceptsMouseClicks(false, false);
+    bundle.assignLabel.setInterceptsMouseClicks(true, false);
+    bundle.assignLabel.setTooltip("Envelope Assignment");
     applyChipLabelStyle(bundle.assignLabel);
 
     bundle.enabledButton.setButtonText("");

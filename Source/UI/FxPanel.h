@@ -30,7 +30,6 @@ public:
             juce::Slider& delayFeedbackKnob,
             juce::Label& delayFeedbackLabel,
             juce::ToggleButton& moodBypass,
-            juce::ToggleButton& moodTrueBypass,
             juce::ToggleButton& moodFreeze,
             juce::Slider& moodMixKnob,
             juce::Label& moodMixLabel,
