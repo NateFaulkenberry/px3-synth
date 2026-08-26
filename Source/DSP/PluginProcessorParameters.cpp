@@ -83,7 +83,9 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
         return effective;
     }
 
-    const auto applySource = [&](std::atomic<int> const& assignmentIndex, float signal)
+    const auto applySource = [&](std::atomic<int> const& assignmentIndex,
+                                 float signal,
+                                 float amount)
     {
         const auto assignment = juce::jlimit(0,
                                              juce::jmax(0, static_cast<int>(lfoAssignableTargets.size()) - 1),
@@ -98,17 +100,23 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
         const auto samePointer = (target.parameter == parameter);
         if (sameId || samePointer)
         {
-            effective = clamp01(effective + target.normalizedDepth * signal);
+            effective = clamp01(effective + target.normalizedDepth * (signal * amount));
         }
     };
 
     for (int i = 0; i < kLfoSourceCount; ++i)
     {
-        applySource(lfoAssignmentAtomic(i), lfoCurrentValues[static_cast<std::size_t>(i)].load(std::memory_order_relaxed));
+        const auto index = static_cast<std::size_t>(i);
+        applySource(lfoAssignmentAtomic(i),
+                    lfoCurrentValues[index].load(std::memory_order_relaxed),
+                    getLfoAmountParam(i).get());
     }
     for (int i = 0; i < kEnvelopeSourceCount; ++i)
     {
-        applySource(envelopeAssignmentAtomic(i), modulationEnvelopeValues[static_cast<std::size_t>(i)].load(std::memory_order_relaxed));
+        const auto index = static_cast<std::size_t>(i);
+        applySource(envelopeAssignmentAtomic(i),
+                    modulationEnvelopeValues[index].load(std::memory_order_relaxed),
+                    getEnvelopeAmountParam(i).get());
     }
 
     if (outBaseNormalized != nullptr)
@@ -301,11 +309,23 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getLfoFrequencyParam(int lfoI
     const auto idx = juce::jlimit(0, kLfoSourceCount - 1, lfoIndex);
     return *lfoFrequencyParams[static_cast<std::size_t>(idx)];
 }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLfoAmountParam() const { return getLfoAmountParam(0); }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLfoAmountParam(int lfoIndex) const
+{
+    const auto idx = juce::jlimit(0, kLfoSourceCount - 1, lfoIndex);
+    return *lfoAmountParams[static_cast<std::size_t>(idx)];
+}
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getLfoWaveformParam() const { return getLfoWaveformParam(0); }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getLfoWaveformParam(int lfoIndex) const
 {
     const auto idx = juce::jlimit(0, kLfoSourceCount - 1, lfoIndex);
     return *lfoWaveformParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getEnvelopeAmountParam() const { return getEnvelopeAmountParam(0); }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getEnvelopeAmountParam(int envIndex) const
+{
+    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
+    return *envelopeAmountParams[static_cast<std::size_t>(idx)];
 }
 std::atomic<int>& PX3SynthAudioProcessor::lfoAssignmentAtomic(int lfoIndex)
 {
@@ -617,10 +637,14 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
         // Exclude controls that define modulation behavior itself, rather than
         // being destinations of modulation.
                 return id.equalsIgnoreCase("lfoFrequency")
+                         || id.equalsIgnoreCase("lfoAmount")
                          || id.equalsIgnoreCase("lfoEnabled")
                              || id.equalsIgnoreCase("lfoWaveform")
                              || id.containsIgnoreCase("lfo2")
                              || id.containsIgnoreCase("lfo3")
+                             || id.equalsIgnoreCase("envAmount")
+                             || id.equalsIgnoreCase("env2Amount")
+                             || id.equalsIgnoreCase("env3Amount")
                              || id.equalsIgnoreCase("ampAttack")
                              || id.equalsIgnoreCase("ampDecay")
                              || id.equalsIgnoreCase("ampSustain")

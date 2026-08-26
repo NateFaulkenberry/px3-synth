@@ -31,8 +31,14 @@ public:
              juce::Slider& lfoRateKnob,
              juce::Label& lfoRateLabel,
              juce::Label& lfoRateValueLabel,
+             juce::Slider& lfoAmountKnob,
+             juce::Label& lfoAmountLabel,
+             juce::Label& lfoAmountValueLabel,
              juce::ComboBox& lfoWaveformBox,
              juce::Label& lfoWaveformLabel,
+             juce::Slider& envAmountKnob,
+             juce::Label& envAmountLabel,
+             juce::Label& envAmountValueLabel,
              juce::LookAndFeel* sharedLfoKnobLookAndFeel,
              juce::Colour panelAccent,
              juce::Colour lfoAccent);
@@ -58,10 +64,14 @@ private:
         juce::Slider rateKnob;
         juce::Label rateLabel;
         juce::Label rateValueLabel;
+        juce::Slider amountKnob;
+        juce::Label amountLabel;
+        juce::Label amountValueLabel;
         juce::ComboBox waveformBox;
         juce::Label waveformLabel;
         std::unique_ptr<juce::ButtonParameterAttachment> enabledAttachment;
         std::unique_ptr<juce::SliderParameterAttachment> rateAttachment;
+        std::unique_ptr<juce::SliderParameterAttachment> amountAttachment;
         std::unique_ptr<juce::ComboBoxParameterAttachment> waveformAttachment;
         std::unique_ptr<LfoComponent> component;
     };
@@ -72,7 +82,11 @@ private:
         juce::Label enabledLabel;
         juce::Label assignLabel;
         juce::ComboBox assignBox;
+        juce::Slider amountKnob;
+        juce::Label amountLabel;
+        juce::Label amountValueLabel;
         std::unique_ptr<juce::ButtonParameterAttachment> enabledAttachment;
+        std::unique_ptr<juce::SliderParameterAttachment> amountAttachment;
         std::unique_ptr<EnvelopeComponent> component;
     };
 

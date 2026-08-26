@@ -21,6 +21,9 @@ LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
                                                      juce::Slider& rateKnobIn,
                                                      juce::Label& rateLabelIn,
                                                      juce::Label& rateValueLabelIn,
+                                     juce::Slider& amountKnobIn,
+                                     juce::Label& amountLabelIn,
+                                     juce::Label& amountValueLabelIn,
                                                      juce::ComboBox& waveformBoxIn,
                                                      juce::Label& waveformLabelIn,
                                                      juce::Colour accentIn,
@@ -30,6 +33,9 @@ LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
             rateKnob(rateKnobIn),
       rateLabel(rateLabelIn),
       rateValueLabel(rateValueLabelIn),
+    amountKnob(amountKnobIn),
+    amountLabel(amountLabelIn),
+    amountValueLabel(amountValueLabelIn),
       assignLabel(assignLabelIn),
       assignBox(assignBoxIn),
       waveformBox(waveformBoxIn),
@@ -40,9 +46,13 @@ LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
         addAndMakeVisible(enabledButton);
         addAndMakeVisible(enabledLabel);
     baseRateValueTextColour = rateValueLabel.findColour(juce::Label::textColourId);
+    baseAmountValueTextColour = amountValueLabel.findColour(juce::Label::textColourId);
     addAndMakeVisible(rateKnob);
     addAndMakeVisible(rateLabel);
     addAndMakeVisible(rateValueLabel);
+    addAndMakeVisible(amountKnob);
+    addAndMakeVisible(amountLabel);
+    addAndMakeVisible(amountValueLabel);
     assignBox.setLookAndFeel(&waveformComboLookAndFeel);
     addAndMakeVisible(assignLabel);
     addAndMakeVisible(assignBox);
@@ -80,7 +90,7 @@ void LfoComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     repaint();
 }
 
-void LfoComponent::refreshFromParameters(bool enabled, float rateHz, int waveformIndex)
+void LfoComponent::refreshFromParameters(bool enabled, float rateHz, float amount, int waveformIndex)
 {
     const auto enabledChanged = currentEnabled != enabled;
     currentEnabled = enabled;
@@ -94,14 +104,27 @@ void LfoComponent::refreshFromParameters(bool enabled, float rateHz, int wavefor
     rateKnob.setInterceptsMouseClicks(currentEnabled, currentEnabled);
     rateKnob.getProperties().set("knobBypassed", !currentEnabled);
     rateKnob.getProperties().set("psychedelicBypassGray", !currentEnabled);
+    amountKnob.setEnabled(currentEnabled);
+    amountKnob.setInterceptsMouseClicks(currentEnabled, currentEnabled);
+    amountKnob.getProperties().set("knobBypassed", !currentEnabled);
+    amountKnob.getProperties().set("psychedelicBypassGray", !currentEnabled);
     rateLabel.setEnabled(currentEnabled);
     rateValueLabel.setEnabled(currentEnabled);
+    amountLabel.setEnabled(currentEnabled);
+    amountValueLabel.setEnabled(currentEnabled);
     const auto disabledRateValueColour = juce::Colour::fromRGB(178, 178, 178);
+    const auto disabledAmountValueColour = juce::Colour::fromRGB(178, 178, 178);
     rateValueLabel.setColour(juce::Label::textColourId,
                              currentEnabled ? baseRateValueTextColour : disabledRateValueColour);
+    amountValueLabel.setColour(juce::Label::textColourId,
+                               currentEnabled ? baseAmountValueTextColour : disabledAmountValueColour);
 
     currentRateHz = juce::jlimit(0.01f, 20.0f, rateHz);
     rateValueLabel.setText(juce::String(currentRateHz, 2) + " Hz", juce::dontSendNotification);
+    currentAmount = juce::jlimit(-1.0f, 1.0f, amount);
+    const auto amountPercent = static_cast<int>(std::lround(currentAmount * 100.0f));
+    const auto amountPrefix = amountPercent > 0 ? juce::String("+") : juce::String();
+    amountValueLabel.setText(amountPrefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
 
     const auto clamped = px3::clampLfoWaveformIndex(waveformIndex);
     currentWaveformIndex = clamped;
@@ -113,6 +136,7 @@ void LfoComponent::refreshFromParameters(bool enabled, float rateHz, int wavefor
     if (enabledChanged)
     {
         rateKnob.repaint();
+        amountKnob.repaint();
         repaint();
     }
 }
@@ -160,6 +184,18 @@ void LfoComponent::resized()
 
     area.removeFromBottom(96);
     area.removeFromBottom(10);
+
+    auto amountBlock = area.removeFromBottom(44);
+    auto amountValueRow = amountBlock.removeFromBottom(20);
+    amountValueLabel.setBounds(amountValueRow.reduced(2, 0));
+    auto amountLabelRow = amountBlock.removeFromTop(18);
+    amountLabel.setBounds(amountLabelRow.reduced(2, 0));
+
+    amountBlock.removeFromTop(4);
+    const auto amountKnobSize = juce::jlimit(44, 84, juce::jmin(amountBlock.getWidth() - 16, amountBlock.getHeight()));
+    amountKnob.setBounds(juce::Rectangle<int>(amountKnobSize, amountKnobSize).withCentre(amountBlock.getCentre()));
+
+    area.removeFromBottom(6);
 
     auto valueRow = area.removeFromBottom(20);
     rateValueLabel.setBounds(valueRow.reduced(2, 0));

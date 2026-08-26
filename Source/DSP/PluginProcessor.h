@@ -185,8 +185,12 @@ public:
     juce::AudioParameterBool& getLfoEnabledParam(int lfoIndex) const;
     juce::AudioParameterFloat& getLfoFrequencyParam() const;
     juce::AudioParameterFloat& getLfoFrequencyParam(int lfoIndex) const;
+    juce::AudioParameterFloat& getLfoAmountParam() const;
+    juce::AudioParameterFloat& getLfoAmountParam(int lfoIndex) const;
     juce::AudioParameterChoice& getLfoWaveformParam() const;
     juce::AudioParameterChoice& getLfoWaveformParam(int lfoIndex) const;
+    juce::AudioParameterFloat& getEnvelopeAmountParam() const;
+    juce::AudioParameterFloat& getEnvelopeAmountParam(int envIndex) const;
     const juce::StringArray& getLfoAssignmentDisplayNames() const;
     int getLfoAssignmentIndex() const;
     int getLfoAssignmentIndex(int lfoIndex) const;
@@ -407,10 +411,13 @@ private:
     juce::AudioParameterInt* pitchBendRangeParam { nullptr };
     std::array<juce::AudioParameterBool*, kLfoSourceCount> lfoEnabledParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kLfoSourceCount> lfoFrequencyParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kLfoSourceCount> lfoAmountParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterChoice*, kLfoSourceCount> lfoWaveformParams { { nullptr, nullptr, nullptr } };
     juce::AudioParameterBool* lfoEnabledParam { nullptr };
     juce::AudioParameterFloat* lfoFrequencyParam { nullptr };
+    juce::AudioParameterFloat* lfoAmountParam { nullptr };
     juce::AudioParameterChoice* lfoWaveformParam { nullptr };
+    std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> envelopeAmountParams { { nullptr, nullptr, nullptr } };
 
     struct LfoAssignableTarget
     {

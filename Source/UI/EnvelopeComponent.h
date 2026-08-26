@@ -19,6 +19,9 @@ public:
                       juce::Label& enabledLabelIn,
                       juce::Label& assignLabelIn,
                       juce::ComboBox& assignBoxIn,
+                      juce::Slider* amountKnobIn,
+                      juce::Label* amountLabelIn,
+                      juce::Label* amountValueLabelIn,
                       juce::Colour accentIn,
                       const juce::String& configPrefixIn = "mod.env1");
 
@@ -88,6 +91,10 @@ private:
     juce::Label& enabledLabel;
     juce::Label& assignLabel;
     juce::ComboBox& assignBox;
+    juce::Slider* amountKnob { nullptr };
+    juce::Label* amountLabel { nullptr };
+    juce::Label* amountValueLabel { nullptr };
+    juce::Colour baseAmountValueTextColour;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
     DragHandle hoverHandle { DragHandle::none };

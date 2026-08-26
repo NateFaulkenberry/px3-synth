@@ -534,8 +534,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         KnobBinding { &attackKnob, &attackLabel, nullptr },
         KnobBinding { &decayKnob, &decayLabel, nullptr },
         KnobBinding { &sustainKnob, &sustainLabel, nullptr },
+        KnobBinding { &envAmountKnob, &envAmountLabel, nullptr },
         KnobBinding { &releaseKnob, &releaseLabel, nullptr },
         KnobBinding { &lfoFrequencyKnob, &lfoFrequencyLabel, nullptr },
+        KnobBinding { &lfoAmountKnob, &lfoAmountLabel, nullptr },
         KnobBinding { &gainKnob, &gainLabel, nullptr }
     };
 
@@ -560,8 +562,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureKnob(knobBindings[18], "Decay", audioProcessor.getDecayParam());
     configureKnob(knobBindings[19], "Sustain", audioProcessor.getSustainParam());
     configureKnob(knobBindings[20], "Release", audioProcessor.getReleaseParam());
-    configureKnob(knobBindings[21], "Freq", audioProcessor.getLfoFrequencyParam());
-    configureKnob(knobBindings[22], "Master", audioProcessor.getMasterGainParam());
+    configureKnob(knobBindings[21], "Amount", audioProcessor.getEnvelopeAmountParam());
+    configureKnob(knobBindings[22], "Freq", audioProcessor.getLfoFrequencyParam());
+    configureKnob(knobBindings[23], "Amount", audioProcessor.getLfoAmountParam());
+    configureKnob(knobBindings[24], "Master", audioProcessor.getMasterGainParam());
 
     const auto formatPitchCents = [](double semitoneValue)
     {
@@ -613,10 +617,55 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     lfoFrequencyValueLabel.setFont(juce::FontOptions(11.0f));
     lfoFrequencyValueLabel.setInterceptsMouseClicks(false, false);
 
+    lfoAmountValueLabel.setJustificationType(juce::Justification::centred);
+    lfoAmountValueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(218, 218, 228));
+    lfoAmountValueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+    lfoAmountValueLabel.setFont(juce::FontOptions(11.0f));
+    lfoAmountValueLabel.setInterceptsMouseClicks(false, false);
+
+    envAmountValueLabel.setJustificationType(juce::Justification::centred);
+    envAmountValueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(218, 218, 228));
+    envAmountValueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+    envAmountValueLabel.setFont(juce::FontOptions(11.0f));
+    envAmountValueLabel.setInterceptsMouseClicks(false, false);
+
     lfoFrequencyKnob.onValueChange = [this]()
     {
         refreshLfoFrequencyLabel();
     };
+
+    lfoAmountKnob.onValueChange = [this]()
+    {
+        const auto amount = juce::jlimit(-1.0f, 1.0f, static_cast<float>(lfoAmountKnob.getValue()));
+        const auto amountPercent = static_cast<int>(std::lround(amount * 100.0f));
+        const auto prefix = amountPercent > 0 ? juce::String("+") : juce::String();
+        lfoAmountValueLabel.setText(prefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
+    };
+
+    envAmountKnob.onValueChange = [this]()
+    {
+        const auto amount = juce::jlimit(-1.0f, 1.0f, static_cast<float>(envAmountKnob.getValue()));
+        const auto amountPercent = static_cast<int>(std::lround(amount * 100.0f));
+        const auto prefix = amountPercent > 0 ? juce::String("+") : juce::String();
+        envAmountValueLabel.setText(prefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
+    };
+
+    lfoAmountLabel.setText("AMOUNT", juce::dontSendNotification);
+    lfoAmountLabel.setJustificationType(juce::Justification::centred);
+    lfoAmountLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    lfoAmountLabel.setFont(juce::FontOptions(11.0f));
+    lfoAmountLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+    lfoAmountLabel.setInterceptsMouseClicks(false, false);
+
+    envAmountLabel.setText("AMOUNT", juce::dontSendNotification);
+    envAmountLabel.setJustificationType(juce::Justification::centred);
+    envAmountLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    envAmountLabel.setFont(juce::FontOptions(11.0f));
+    envAmountLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+    envAmountLabel.setInterceptsMouseClicks(false, false);
+
+    lfoAmountKnob.onValueChange();
+    envAmountKnob.onValueChange();
 
     auto& lfoWaveformParam = audioProcessor.getLfoWaveformParam();
     for (int i = 0; i < lfoWaveformParam.choices.size(); ++i)
@@ -1103,8 +1152,14 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           lfoFrequencyKnob,
                                           lfoFrequencyLabel,
                                           lfoFrequencyValueLabel,
+                                          lfoAmountKnob,
+                                          lfoAmountLabel,
+                                          lfoAmountValueLabel,
                                           lfoWaveformBox,
                                           lfoWaveformLabel,
+                                          envAmountKnob,
+                                          envAmountLabel,
+                                          envAmountValueLabel,
                                           &knobLookAndFeel,
                                           kGroupAccents[2],
                                           kGroupAccents[3]);
@@ -1239,6 +1294,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachButton(audioProcessor.getSubOscEnabledParam(), subOscEnabledButton);
     attachButton(audioProcessor.getAmpEnvEnabledParam(0), envBypassButton);
     attachButton(audioProcessor.getLfoEnabledParam(), lfoBypassButton);
+    attachSlider(audioProcessor.getEnvelopeAmountParam(0), envAmountKnob);
+    attachSlider(audioProcessor.getLfoAmountParam(0), lfoAmountKnob);
 
     // MIDI status bar is temporarily disabled.
     // midiStatusLabel.setText("MIDI In: waiting for note...", juce::dontSendNotification);

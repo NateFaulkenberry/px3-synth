@@ -14,6 +14,9 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
                                                                          juce::Label& enabledLabelIn,
                                                                          juce::Label& assignLabelIn,
                                                                          juce::ComboBox& assignBoxIn,
+                                                                         juce::Slider* amountKnobIn,
+                                                                         juce::Label* amountLabelIn,
+                                                                         juce::Label* amountValueLabelIn,
                                                                          juce::Colour accentIn,
                                                                          const juce::String& configPrefixIn)
         : attack(attackIn),
@@ -25,6 +28,9 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
             enabledLabel(enabledLabelIn),
             assignLabel(assignLabelIn),
             assignBox(assignBoxIn),
+            amountKnob(amountKnobIn),
+            amountLabel(amountLabelIn),
+            amountValueLabel(amountValueLabelIn),
             accent(accentIn),
             configPrefix(configPrefixIn)
 {
@@ -32,6 +38,19 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
         addAndMakeVisible(enabledLabel);
         addAndMakeVisible(assignLabel);
         addAndMakeVisible(assignBox);
+        if (amountKnob != nullptr)
+        {
+            addAndMakeVisible(*amountKnob);
+        }
+        if (amountLabel != nullptr)
+        {
+            addAndMakeVisible(*amountLabel);
+        }
+        if (amountValueLabel != nullptr)
+        {
+            baseAmountValueTextColour = amountValueLabel->findColour(juce::Label::textColourId);
+            addAndMakeVisible(*amountValueLabel);
+        }
         baseEnabledLabelTextColour = enabledLabel.findColour(juce::Label::textColourId);
         setMouseCursor(juce::MouseCursor::NormalCursor);
     refreshFromParameters();
@@ -87,6 +106,27 @@ void EnvelopeComponent::refreshFromParameters()
         enabledButton.setToggleState(currentEnabled, juce::dontSendNotification);
         assignLabel.setEnabled(currentEnabled);
         assignBox.setEnabled(currentEnabled);
+        if (amountKnob != nullptr)
+        {
+            amountKnob->setEnabled(currentEnabled);
+            amountKnob->setInterceptsMouseClicks(currentEnabled, currentEnabled);
+            amountKnob->getProperties().set("knobBypassed", !currentEnabled);
+            amountKnob->getProperties().set("psychedelicBypassGray", !currentEnabled);
+        }
+        if (amountLabel != nullptr)
+        {
+            amountLabel->setEnabled(currentEnabled);
+        }
+        if (amountValueLabel != nullptr)
+        {
+            amountValueLabel->setEnabled(currentEnabled);
+            amountValueLabel->setColour(juce::Label::textColourId,
+                                        currentEnabled ? baseAmountValueTextColour : juce::Colour::fromRGB(176, 176, 176));
+            const auto amountValue = amountKnob != nullptr ? static_cast<float>(amountKnob->getValue()) : 0.0f;
+            const auto amountPercent = static_cast<int>(std::lround(juce::jlimit(-1.0f, 1.0f, amountValue) * 100.0f));
+            const auto amountPrefix = amountPercent > 0 ? juce::String("+") : juce::String();
+            amountValueLabel->setText(amountPrefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
+        }
         enabledLabel.setColour(juce::Label::textColourId,
                                currentEnabled ? baseEnabledLabelTextColour : juce::Colour::fromRGB(176, 176, 176));
         if (!currentEnabled)
@@ -435,6 +475,11 @@ EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
         graphLayout.removeFromTop(6.0f);
         graphLayout.removeFromTop(8.0f);
         graphLayout.removeFromBottom(10.0f);
+        if (amountKnob != nullptr)
+        {
+            graphLayout.removeFromTop(44.0f);
+            graphLayout.removeFromTop(6.0f);
+        }
     }
 
     geom.left = graphLayout.getX() + 6.0f;
@@ -719,4 +764,16 @@ void EnvelopeComponent::resized()
     auto assignRow = area.removeFromTop(24);
     assignLabel.setBounds(assignRow.removeFromLeft(52));
     assignBox.setBounds(assignRow.reduced(2, 1));
+
+    if (amountKnob != nullptr && amountLabel != nullptr && amountValueLabel != nullptr)
+    {
+        area.removeFromTop(6);
+        auto amountArea = area.removeFromTop(44);
+        auto amountLabelRow = amountArea.removeFromTop(18);
+        amountLabel->setBounds(amountLabelRow.reduced(2, 0));
+        auto amountValueRow = amountArea.removeFromBottom(20);
+        amountValueLabel->setBounds(amountValueRow.reduced(2, 0));
+        const auto amountKnobSize = juce::jlimit(30, 52, juce::jmin(amountArea.getWidth() - 16, amountArea.getHeight()));
+        amountKnob->setBounds(juce::Rectangle<int>(amountKnobSize, amountKnobSize).withCentre(amountArea.getCentre()));
+    }
 }

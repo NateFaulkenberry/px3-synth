@@ -302,8 +302,10 @@ private:
     juce::Slider decayKnob;
     juce::Slider sustainKnob;
     juce::Slider releaseKnob;
+    juce::Slider envAmountKnob;
     juce::Slider gainKnob;
     juce::Slider lfoFrequencyKnob;
+    juce::Slider lfoAmountKnob;
     juce::Slider subOscLevelKnob;
     juce::Slider subOscPitchKnob;
     juce::Slider osc1PitchKnob;
@@ -352,6 +354,7 @@ private:
     KnobLabel releaseLabel;
     KnobLabel gainLabel;
     KnobLabel lfoFrequencyLabel;
+    KnobLabel lfoAmountLabel;
     KnobLabel lfoWaveformLabel;
     KnobLabel subOscLevelLabel;
     KnobLabel subOscPitchLabel;
@@ -370,8 +373,11 @@ private:
     KnobLabel subOscEnabledLabel;
     KnobLabel lfoBypassLabel;
     KnobLabel envBypassLabel;
+    KnobLabel envAmountLabel;
     KnobLabel envAssignLabel;
     juce::Label lfoFrequencyValueLabel;
+    juce::Label lfoAmountValueLabel;
+    juce::Label envAmountValueLabel;
     KnobLabel lfoAssignLabel;
     KnobLabel midiStatusLabel;
     std::unique_ptr<OscPanel> oscPanel;
@@ -461,7 +467,7 @@ private:
     std::vector<std::unique_ptr<juce::ComboBoxParameterAttachment>> comboBoxAttachments;
     std::vector<std::unique_ptr<juce::ButtonParameterAttachment>> buttonAttachments;
 
-    std::array<KnobBinding, 23> knobBindings {};
+    std::array<KnobBinding, 25> knobBindings {};
     int lastGranularModeIndex { -1 };
     int lastLfoAssignmentIndex { -1 };
     int lastEnvelopeAssignmentIndex { -1 };

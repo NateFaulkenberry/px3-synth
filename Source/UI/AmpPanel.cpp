@@ -47,6 +47,9 @@ AmpPanel::AmpPanel(PX3SynthAudioProcessor& processorIn, juce::Colour panelAccent
                                                         enabledLabel,
                                                         assignLabel,
                                                         assignBox,
+                                                        nullptr,
+                                                        nullptr,
+                                                        nullptr,
                                                         panelAccent,
                                                         "amp.env");
     enabledButton.setVisible(false);

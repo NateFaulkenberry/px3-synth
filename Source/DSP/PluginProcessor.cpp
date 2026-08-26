@@ -292,15 +292,34 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             labelPrefix + "Frequency",
             juce::NormalisableRange<float>(0.01f, 20.0f, 0.0001f, 0.30f),
             1.0f + static_cast<float>(lfoIndex));
+        lfoAmountParams[static_cast<std::size_t>(lfoIndex)] = new juce::AudioParameterFloat(
+            (lfoIndex == 0) ? juce::String("lfoAmount") : idPrefix + "Amount",
+            labelPrefix + "Amount",
+            juce::NormalisableRange<float>(-1.0f, 1.0f),
+            0.0f);
         lfoWaveformParams[static_cast<std::size_t>(lfoIndex)] = new juce::AudioParameterChoice(
             (lfoIndex == 0) ? juce::String("lfoWaveform") : idPrefix + "Waveform",
             labelPrefix + "Waveform",
             px3::lfoWaveformChoices(),
             0);
+
+    }
+
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        const auto slot = juce::String(envIndex + 1);
+        const auto idPrefix = juce::String("env") + slot;
+        const auto labelPrefix = juce::String("ENV ") + slot + " ";
+        envelopeAmountParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
+            (envIndex == 0) ? juce::String("envAmount") : idPrefix + "Amount",
+            labelPrefix + "Amount",
+            juce::NormalisableRange<float>(-1.0f, 1.0f),
+            0.0f);
     }
 
     lfoEnabledParam = lfoEnabledParams[0];
     lfoFrequencyParam = lfoFrequencyParams[0];
+    lfoAmountParam = lfoAmountParams[0];
     lfoWaveformParam = lfoWaveformParams[0];
 
     for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
@@ -402,7 +421,12 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     {
         addParameter(lfoEnabledParams[static_cast<std::size_t>(lfoIndex)]);
         addParameter(lfoFrequencyParams[static_cast<std::size_t>(lfoIndex)]);
+        addParameter(lfoAmountParams[static_cast<std::size_t>(lfoIndex)]);
         addParameter(lfoWaveformParams[static_cast<std::size_t>(lfoIndex)]);
+    }
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        addParameter(envelopeAmountParams[static_cast<std::size_t>(envIndex)]);
     }
 
     buildLfoAssignableTargets();
