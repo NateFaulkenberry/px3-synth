@@ -11,6 +11,7 @@ namespace
 constexpr int kFxSectionDrive = 0;
 constexpr int kFxSectionDelay = 1;
 constexpr int kFxSectionReverb = 2;
+constexpr int kFxSectionMood = 3;
 
 class DebugPanelWindow final : public juce::DocumentWindow
 {
@@ -252,23 +253,23 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
 
     debugResetOrderButton.onClick = [this]()
     {
-        debugApplyModuleOrder({ { kFxSectionDrive, kFxSectionDelay, kFxSectionReverb } }, "DEBUG_RESET_ORDER");
+        debugApplyModuleOrder({ { kFxSectionDrive, kFxSectionDelay, kFxSectionMood, kFxSectionReverb } }, "DEBUG_RESET_ORDER");
     };
     debugOrderAButton.onClick = [this]()
     {
-        debugApplyModuleOrder({ { kFxSectionDelay, kFxSectionReverb, kFxSectionDrive } }, "DEBUG_ORDER_DELAY_REVERB_DRIVE");
+        debugApplyModuleOrder({ { kFxSectionDelay, kFxSectionMood, kFxSectionReverb, kFxSectionDrive } }, "DEBUG_ORDER_DELAY_MOOD_REVERB_DRIVE");
     };
     debugOrderBButton.onClick = [this]()
     {
-        debugApplyModuleOrder({ { kFxSectionReverb, kFxSectionDrive, kFxSectionDelay } }, "DEBUG_ORDER_REVERB_DRIVE_DELAY");
+        debugApplyModuleOrder({ { kFxSectionReverb, kFxSectionDrive, kFxSectionDelay, kFxSectionMood } }, "DEBUG_ORDER_REVERB_DRIVE_DELAY_MOOD");
     };
     debugOrderCButton.onClick = [this]()
     {
-        debugApplyModuleOrder({ { kFxSectionDrive, kFxSectionDelay, kFxSectionReverb } }, "DEBUG_ORDER_DRIVE_DELAY_REVERB");
+        debugApplyModuleOrder({ { kFxSectionMood, kFxSectionDrive, kFxSectionDelay, kFxSectionReverb } }, "DEBUG_ORDER_MOOD_DRIVE_DELAY_REVERB");
     };
     debugInvalidOrderButton.onClick = [this]()
     {
-        debugApplyModuleOrder({ { kFxSectionDelay, kFxSectionDelay, kFxSectionReverb } }, "DEBUG_INVALID_ORDER_TEST");
+        debugApplyModuleOrder({ { kFxSectionDelay, kFxSectionDelay, kFxSectionMood, kFxSectionReverb } }, "DEBUG_INVALID_ORDER_TEST");
     };
 
     debugRandomizeParamsButton.onClick = [this]() { debugRandomizeParameters(); };
@@ -660,15 +661,16 @@ void PX3SynthAudioProcessorEditor::refreshDebugModuleState()
 
     const auto processorOrder = audioProcessor.getFxProcessingOrder();
     const auto treeOrder = readModuleOrderFromStateTree(audioProcessor.createParameterStateTree());
-    std::array<juce::String, 3> uiOrderNames {
+    std::array<juce::String, 4> uiOrderNames {
         { fxModuleIdFromSection(fxSectionOrder[0]),
           fxModuleIdFromSection(fxSectionOrder[1]),
-          fxModuleIdFromSection(fxSectionOrder[2]) }
+          fxModuleIdFromSection(fxSectionOrder[2]),
+          fxModuleIdFromSection(fxSectionOrder[3]) }
     };
 
-    const auto findPos = [](const juce::String& id, const std::array<juce::String, 3>& orderNames)
+    const auto findPos = [](const juce::String& id, const std::array<juce::String, 4>& orderNames)
     {
-        for (int i = 0; i < 3; ++i)
+        for (int i = 0; i < 4; ++i)
         {
             if (id.equalsIgnoreCase(orderNames[static_cast<std::size_t>(i)]))
             {
@@ -678,10 +680,11 @@ void PX3SynthAudioProcessorEditor::refreshDebugModuleState()
         return -1;
     };
 
-    std::array<juce::String, 3> processorOrderNames {
+    std::array<juce::String, 4> processorOrderNames {
         { fxModuleIdFromSection(processorOrder[0]),
           fxModuleIdFromSection(processorOrder[1]),
-          fxModuleIdFromSection(processorOrder[2]) }
+          fxModuleIdFromSection(processorOrder[2]),
+          fxModuleIdFromSection(processorOrder[3]) }
     };
 
     juce::String text;
@@ -692,18 +695,21 @@ void PX3SynthAudioProcessorEditor::refreshDebugModuleState()
     text << "[0] " << processorOrderNames[0] << "\n";
     text << "[1] " << processorOrderNames[1] << "\n";
     text << "[2] " << processorOrderNames[2] << "\n";
+    text << "[3] " << processorOrderNames[3] << "\n";
     text << "Raw UI Array:\n";
     text << "[0] " << uiOrderNames[0] << "\n";
     text << "[1] " << uiOrderNames[1] << "\n";
     text << "[2] " << uiOrderNames[2] << "\n";
+    text << "[3] " << uiOrderNames[3] << "\n";
     text << "Raw ValueTree MODULE_ORDER:\n";
     text << "module[0] = " << treeOrder[0] << "\n";
     text << "module[1] = " << treeOrder[1] << "\n";
     text << "module[2] = " << treeOrder[2] << "\n";
+    text << "module[3] = " << treeOrder[3] << "\n";
     text << "Generation: " << juce::String(static_cast<int64_t>(audioProcessor.debugGetModuleOrderGeneration())) << "\n";
     text << "Hash: " << juce::String(static_cast<int64_t>(audioProcessor.debugGetModuleOrderHash())) << "\n";
 
-    static const std::array<juce::String, 3> modules { juce::String("harmonicDrive"), juce::String("delay"), juce::String("reverb") };
+    static const std::array<juce::String, 4> modules { juce::String("harmonicDrive"), juce::String("delay"), juce::String("mood"), juce::String("reverb") };
     text << "\nPer-Module Positions\n";
     for (const auto& moduleId : modules)
     {
@@ -1142,13 +1148,13 @@ void PX3SynthAudioProcessorEditor::debugResetParameters()
     refreshDebugPanel(false);
 }
 
-void PX3SynthAudioProcessorEditor::debugApplyModuleOrder(const std::array<int, 3>& order,
+void PX3SynthAudioProcessorEditor::debugApplyModuleOrder(const std::array<int, 4>& order,
                                                              const juce::String& reason,
                                                              int fromIndex,
                                                              int toIndex)
 {
     fxSectionOrder = order;
-    for (int stage = 0; stage < 3; ++stage)
+    for (int stage = 0; stage < 4; ++stage)
     {
         const auto slot = indexForFxSection(stage);
         if (slot >= 0)
@@ -1163,9 +1169,9 @@ void PX3SynthAudioProcessorEditor::debugApplyModuleOrder(const std::array<int, 3
     repaint();
 }
 
-std::array<juce::String, 3> PX3SynthAudioProcessorEditor::readModuleOrderFromStateTree(const juce::ValueTree& state) const
+std::array<juce::String, 4> PX3SynthAudioProcessorEditor::readModuleOrderFromStateTree(const juce::ValueTree& state) const
 {
-    std::array<juce::String, 3> result { { "harmonicDrive", "delay", "reverb" } };
+    std::array<juce::String, 4> result { { "harmonicDrive", "delay", "mood", "reverb" } };
     const auto moduleOrder = state.getChildWithName("MODULE_ORDER");
     if (!moduleOrder.isValid())
     {
@@ -1173,7 +1179,7 @@ std::array<juce::String, 3> PX3SynthAudioProcessorEditor::readModuleOrderFromSta
     }
 
     int write = 0;
-    for (int i = 0; i < moduleOrder.getNumChildren() && write < 3; ++i)
+    for (int i = 0; i < moduleOrder.getNumChildren() && write < 4; ++i)
     {
         const auto module = moduleOrder.getChild(i);
         if (!module.isValid() || !module.hasProperty("id"))
@@ -1204,7 +1210,7 @@ juce::String PX3SynthAudioProcessorEditor::describeStateTreeOrder() const
 {
     const auto state = audioProcessor.createParameterStateTree();
     const auto order = readModuleOrderFromStateTree(state);
-    return order[0] + "," + order[1] + "," + order[2];
+    return order[0] + "," + order[1] + "," + order[2] + "," + order[3];
 }
 
 juce::String PX3SynthAudioProcessorEditor::buildParameterInspectorText() const
@@ -1300,7 +1306,7 @@ juce::String PX3SynthAudioProcessorEditor::buildInstanceInfoText() const
     text << "Sample Rate: " << juce::String(audioProcessor.getSampleRate(), 2) << "\n";
     text << "Block Size: " << juce::String(audioProcessor.getBlockSize()) << "\n";
     text << "Num Params: " << juce::String(audioProcessor.getParameters().size()) << "\n";
-    text << "Num Modules: 3\n";
+    text << "Num Modules: 4\n";
     return text;
 }
 

@@ -161,11 +161,13 @@ private:
     static juce::String fxModuleIdFromSection(int sectionId);
     static int fxSectionFromModuleId(const juce::String& moduleId);
 
+    static constexpr int kFxSectionCount = 4;
+
     struct DebugSnapshot
     {
         juce::String timestamp;
-        std::array<int, 3> processorOrder { { 0, 1, 2 } };
-        std::array<int, 3> uiOrder { { 0, 1, 2 } };
+        std::array<int, kFxSectionCount> processorOrder { { 0, 1, 3, 2 } };
+        std::array<int, kFxSectionCount> uiOrder { { 0, 1, 3, 2 } };
         juce::String stateXml;
         juce::String serializedXml;
         int serializedBytes { 0 };
@@ -207,11 +209,11 @@ private:
     void debugWriteDeterministicTestValues();
     void debugRandomizeParameters();
     void debugResetParameters();
-    void debugApplyModuleOrder(const std::array<int, 3>& order,
+    void debugApplyModuleOrder(const std::array<int, kFxSectionCount>& order,
                                const juce::String& reason,
                                int fromIndex = -1,
                                int toIndex = -1);
-    std::array<juce::String, 3> readModuleOrderFromStateTree(const juce::ValueTree& state) const;
+    std::array<juce::String, kFxSectionCount> readModuleOrderFromStateTree(const juce::ValueTree& state) const;
     juce::String describeUiOrder() const;
     juce::String describeProcessorOrder() const;
     juce::String describeStateTreeOrder() const;
@@ -248,14 +250,15 @@ private:
     juce::Rectangle<int> presetBarArea;
     juce::Rectangle<int> robSectionArea;
     juce::Rectangle<int> isaacSectionArea;
+    juce::Rectangle<int> moodSectionArea;
     juce::Rectangle<int> reverbSectionArea;
     juce::Rectangle<int> topSpareSectionArea;
     juce::Rectangle<int> midiStatusArea;
     juce::Rectangle<int> performanceControlsArea;
-    std::array<juce::Rectangle<int>, 3> fxSectionSlots {};
-    std::array<juce::Rectangle<float>, 3> fxSectionCurrentAreas {};
-    std::array<juce::Rectangle<float>, 3> fxSectionTargetAreas {};
-    std::array<int, 3> fxSectionOrder { { 0, 1, 2 } };
+    std::array<juce::Rectangle<int>, kFxSectionCount> fxSectionSlots {};
+    std::array<juce::Rectangle<float>, kFxSectionCount> fxSectionCurrentAreas {};
+    std::array<juce::Rectangle<float>, kFxSectionCount> fxSectionTargetAreas {};
+    std::array<int, kFxSectionCount> fxSectionOrder { { 0, 1, 3, 2 } };
     bool fxSectionsInitialized { false };
     int draggingFxSection { -1 };
     float draggingSectionOffsetX { 0.0f };
@@ -384,6 +387,33 @@ private:
     KnobLabel reverbLabel;
     juce::ComboBox reverbTypeBox;
     KnobLabel reverbTypeLabel;
+    juce::ToggleButton moodBypassButton;
+    juce::ToggleButton moodTrueBypassButton;
+    juce::ToggleButton moodFreezeButton;
+    juce::Slider moodMixKnob;
+    KnobLabel moodMixLabel;
+    juce::Slider moodClockKnob;
+    KnobLabel moodClockLabel;
+    juce::Slider moodWetTimeKnob;
+    KnobLabel moodWetTimeLabel;
+    juce::Slider moodWetModifyKnob;
+    KnobLabel moodWetModifyLabel;
+    juce::Slider moodLoopLengthKnob;
+    KnobLabel moodLoopLengthLabel;
+    juce::Slider moodLoopModifyKnob;
+    KnobLabel moodLoopModifyLabel;
+    juce::Slider moodFeedbackKnob;
+    KnobLabel moodFeedbackLabel;
+    juce::Slider moodSpreadKnob;
+    KnobLabel moodSpreadLabel;
+    juce::Slider moodDegradeKnob;
+    KnobLabel moodDegradeLabel;
+    juce::ComboBox moodRoutingBox;
+    KnobLabel moodRoutingLabel;
+    juce::ComboBox moodWetModeBox;
+    KnobLabel moodWetModeLabel;
+    juce::ComboBox moodLoopModeBox;
+    KnobLabel moodLoopModeLabel;
     juce::ToggleButton robBypassButton;
     juce::ToggleButton delayBypassButton;
     juce::ToggleButton reverbBypassButton;

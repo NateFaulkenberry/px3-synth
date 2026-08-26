@@ -181,12 +181,12 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     }
 
     const auto currentOrder = getFxProcessingOrder();
-    std::array<int, 3> decodedOrder { { 0, 1, 2 } };
+    std::array<int, 4> decodedOrder { { 0, 1, 3, 2 } };
     if (const auto moduleOrder = state.getChildWithName(kModuleOrderId); moduleOrder.isValid())
     {
-        std::array<bool, 3> seen { { false, false, false } };
+        std::array<bool, 4> seen { { false, false, false, false } };
         int write = 0;
-        for (int i = 0; i < moduleOrder.getNumChildren() && write < 3; ++i)
+        for (int i = 0; i < moduleOrder.getNumChildren() && write < 4; ++i)
         {
             const auto node = moduleOrder.getChild(i);
             if (!node.isValid() || !node.hasProperty(kModuleIdProperty))
@@ -378,7 +378,7 @@ uint32_t PX3SynthAudioProcessor::debugGetModuleOrderHash() const
     return fxProcessingOrderPacked.load(std::memory_order_relaxed);
 }
 
-juce::String PX3SynthAudioProcessor::debugDescribeOrder(const std::array<int, 3>& order) const
+juce::String PX3SynthAudioProcessor::debugDescribeOrder(const std::array<int, 4>& order) const
 {
     return formatOrderString(order);
 }

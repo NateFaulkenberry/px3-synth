@@ -51,9 +51,12 @@ inline const juce::StringArray kVibeTypeChoices {
     "LoFi"
 };
 
-inline const std::array<juce::String, 3> kFxModuleIds { juce::String("harmonicDrive"),
-                                                         juce::String("delay"),
-                                                         juce::String("reverb") };
+inline constexpr int kFxStageCount = 4;
+
+inline const std::array<juce::String, kFxStageCount> kFxModuleIds { juce::String("harmonicDrive"),
+                                                                     juce::String("delay"),
+                                                                     juce::String("reverb"),
+                                                                     juce::String("mood") };
 
 inline juce::String nowTimestamp()
 {
@@ -64,13 +67,13 @@ inline juce::String nowTimestamp()
 
 inline juce::String moduleIdForStage(int stage)
 {
-    const auto clamped = juce::jlimit(0, 2, stage);
+    const auto clamped = juce::jlimit(0, kFxStageCount - 1, stage);
     return kFxModuleIds[static_cast<std::size_t>(clamped)];
 }
 
 inline int stageForModuleId(const juce::String& moduleId)
 {
-    for (int stage = 0; stage < 3; ++stage)
+    for (int stage = 0; stage < kFxStageCount; ++stage)
     {
         if (moduleId.equalsIgnoreCase(kFxModuleIds[static_cast<std::size_t>(stage)]))
         {
@@ -81,7 +84,7 @@ inline int stageForModuleId(const juce::String& moduleId)
     return -1;
 }
 
-inline juce::String formatOrderString(const std::array<int, 3>& order)
+inline juce::String formatOrderString(const std::array<int, kFxStageCount>& order)
 {
     juce::StringArray items;
     for (const auto stage : order)
@@ -91,19 +94,21 @@ inline juce::String formatOrderString(const std::array<int, 3>& order)
     return items.joinIntoString(",");
 }
 
-inline uint32_t packFxOrder(const std::array<int, 3>& order)
+inline uint32_t packFxOrder(const std::array<int, kFxStageCount>& order)
 {
     return (static_cast<uint32_t>(order[0] & 0x3)
             | (static_cast<uint32_t>(order[1] & 0x3) << 2)
-            | (static_cast<uint32_t>(order[2] & 0x3) << 4));
+            | (static_cast<uint32_t>(order[2] & 0x3) << 4)
+            | (static_cast<uint32_t>(order[3] & 0x3) << 6));
 }
 
-inline std::array<int, 3> unpackFxOrder(uint32_t packed)
+inline std::array<int, kFxStageCount> unpackFxOrder(uint32_t packed)
 {
     return {
         { static_cast<int>(packed & 0x3u),
           static_cast<int>((packed >> 2) & 0x3u),
-          static_cast<int>((packed >> 4) & 0x3u) }
+          static_cast<int>((packed >> 4) & 0x3u),
+          static_cast<int>((packed >> 6) & 0x3u) }
     };
 }
 

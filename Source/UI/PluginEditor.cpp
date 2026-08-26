@@ -26,6 +26,7 @@ const std::array<juce::Colour, 4> kGroupAccents {
 constexpr int kFxSectionDrive = 0;
 constexpr int kFxSectionDelay = 1;
 constexpr int kFxSectionReverb = 2;
+constexpr int kFxSectionMood = 3;
 
 juce::String moduleIdFromSectionId(int sectionId)
 {
@@ -33,6 +34,8 @@ juce::String moduleIdFromSectionId(int sectionId)
     {
         case kFxSectionDelay:
             return "delay";
+        case kFxSectionMood:
+            return "mood";
         case kFxSectionReverb:
             return "reverb";
         case kFxSectionDrive:
@@ -50,6 +53,10 @@ int sectionIdFromModuleId(const juce::String& moduleId)
     if (moduleId.equalsIgnoreCase("reverb"))
     {
         return kFxSectionReverb;
+    }
+    if (moduleId.equalsIgnoreCase("mood"))
+    {
+        return kFxSectionMood;
     }
     if (moduleId.equalsIgnoreCase("harmonicDrive"))
     {
@@ -681,6 +688,15 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureEffectKnob(delayTimeKnob, delayTimeLabel, "TIME", audioProcessor.getDelayTimeParam());
     configureEffectKnob(delayFeedbackKnob, delayFeedbackLabel, "FEEDBACK", audioProcessor.getDelayFeedbackParam());
     configureEffectKnob(reverbKnob, reverbLabel, "", audioProcessor.getReverbAmountParam());
+    configureEffectKnob(moodMixKnob, moodMixLabel, "MIX", audioProcessor.getMoodMixParam());
+    configureEffectKnob(moodClockKnob, moodClockLabel, "CLOCK", audioProcessor.getMoodClockParam());
+    configureEffectKnob(moodWetTimeKnob, moodWetTimeLabel, "WET TIME", audioProcessor.getMoodWetTimeParam());
+    configureEffectKnob(moodWetModifyKnob, moodWetModifyLabel, "WET MOD", audioProcessor.getMoodWetModifyParam());
+    configureEffectKnob(moodLoopLengthKnob, moodLoopLengthLabel, "LOOP LEN", audioProcessor.getMoodLoopLengthParam());
+    configureEffectKnob(moodLoopModifyKnob, moodLoopModifyLabel, "LOOP MOD", audioProcessor.getMoodLoopModifyParam());
+    configureEffectKnob(moodFeedbackKnob, moodFeedbackLabel, "FEEDBACK", audioProcessor.getMoodFeedbackParam());
+    configureEffectKnob(moodSpreadKnob, moodSpreadLabel, "SPREAD", audioProcessor.getMoodSpreadParam());
+    configureEffectKnob(moodDegradeKnob, moodDegradeLabel, "DEGRADE", audioProcessor.getMoodDegradeParam());
 
     // isaacTextureLabel.setText("INTENSITY", juce::dontSendNotification);
     // isaacTextureLabel.setVisible(true);
@@ -841,6 +857,51 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     reverbTypeLabel.setFont(juce::FontOptions(11.5f));
     reverbTypeLabel.setInterceptsMouseClicks(false, false);
 
+    auto& moodRoutingParam = audioProcessor.getMoodRoutingParam();
+    for (int i = 0; i < moodRoutingParam.choices.size(); ++i)
+    {
+        moodRoutingBox.addItem(moodRoutingParam.choices[i], i + 1);
+    }
+    moodRoutingBox.setSelectedItemIndex(moodRoutingParam.getIndex(), juce::dontSendNotification);
+    moodRoutingBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    moodRoutingBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    moodRoutingBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    moodRoutingLabel.setText("ROUTE", juce::dontSendNotification);
+    moodRoutingLabel.setJustificationType(juce::Justification::centred);
+    moodRoutingLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    moodRoutingLabel.setFont(juce::FontOptions(11.5f));
+    moodRoutingLabel.setInterceptsMouseClicks(false, false);
+
+    auto& moodWetModeParam = audioProcessor.getMoodWetModeParam();
+    for (int i = 0; i < moodWetModeParam.choices.size(); ++i)
+    {
+        moodWetModeBox.addItem(moodWetModeParam.choices[i], i + 1);
+    }
+    moodWetModeBox.setSelectedItemIndex(moodWetModeParam.getIndex(), juce::dontSendNotification);
+    moodWetModeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    moodWetModeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    moodWetModeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    moodWetModeLabel.setText("WET", juce::dontSendNotification);
+    moodWetModeLabel.setJustificationType(juce::Justification::centred);
+    moodWetModeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    moodWetModeLabel.setFont(juce::FontOptions(11.5f));
+    moodWetModeLabel.setInterceptsMouseClicks(false, false);
+
+    auto& moodLoopModeParam = audioProcessor.getMoodLoopModeParam();
+    for (int i = 0; i < moodLoopModeParam.choices.size(); ++i)
+    {
+        moodLoopModeBox.addItem(moodLoopModeParam.choices[i], i + 1);
+    }
+    moodLoopModeBox.setSelectedItemIndex(moodLoopModeParam.getIndex(), juce::dontSendNotification);
+    moodLoopModeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+    moodLoopModeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    moodLoopModeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    moodLoopModeLabel.setText("LOOP", juce::dontSendNotification);
+    moodLoopModeLabel.setJustificationType(juce::Justification::centred);
+    moodLoopModeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    moodLoopModeLabel.setFont(juce::FontOptions(11.5f));
+    moodLoopModeLabel.setInterceptsMouseClicks(false, false);
+
     const auto configureBypassButton = [](juce::ToggleButton& button)
     {
         button.setButtonText("");
@@ -852,6 +913,9 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     configureBypassButton(robBypassButton);
     configureBypassButton(delayBypassButton);
+    configureBypassButton(moodBypassButton);
+    configureBypassButton(moodTrueBypassButton);
+    configureBypassButton(moodFreezeButton);
     configureBypassButton(reverbBypassButton);
 
     oscPanel = std::make_unique<OscPanel>(subOscEnabledButton,
@@ -950,6 +1014,33 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                         delayTimeLabel,
                                         delayFeedbackKnob,
                                         delayFeedbackLabel,
+                                        moodBypassButton,
+                                        moodTrueBypassButton,
+                                        moodFreezeButton,
+                                        moodMixKnob,
+                                        moodMixLabel,
+                                        moodClockKnob,
+                                        moodClockLabel,
+                                        moodWetTimeKnob,
+                                        moodWetTimeLabel,
+                                        moodWetModifyKnob,
+                                        moodWetModifyLabel,
+                                        moodLoopLengthKnob,
+                                        moodLoopLengthLabel,
+                                        moodLoopModifyKnob,
+                                        moodLoopModifyLabel,
+                                        moodFeedbackKnob,
+                                        moodFeedbackLabel,
+                                        moodSpreadKnob,
+                                        moodSpreadLabel,
+                                        moodDegradeKnob,
+                                        moodDegradeLabel,
+                                        moodRoutingBox,
+                                        moodRoutingLabel,
+                                        moodWetModeBox,
+                                        moodWetModeLabel,
+                                        moodLoopModeBox,
+                                        moodLoopModeLabel,
                                         reverbBypassButton,
                                         reverbKnob,
                                         reverbLabel,
@@ -968,7 +1059,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     addAndMakeVisible(*oscPanel);
     modPanelViewport.setViewedComponent(modPanel.get(), false);
-    modPanelViewport.setScrollBarsShown(true, false);
+    modPanelViewport.setScrollBarsShown(false, true);
     modPanelViewport.setScrollBarThickness(10);
     addAndMakeVisible(modPanelViewport);
     addAndMakeVisible(*fltPanel);
@@ -985,6 +1076,15 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachSlider(audioProcessor.getDelayAmountParam(), isaacTextureKnob);
     attachSlider(audioProcessor.getDelayTimeParam(), delayTimeKnob);
     attachSlider(audioProcessor.getDelayFeedbackParam(), delayFeedbackKnob);
+    attachSlider(audioProcessor.getMoodMixParam(), moodMixKnob);
+    attachSlider(audioProcessor.getMoodClockParam(), moodClockKnob);
+    attachSlider(audioProcessor.getMoodWetTimeParam(), moodWetTimeKnob);
+    attachSlider(audioProcessor.getMoodWetModifyParam(), moodWetModifyKnob);
+    attachSlider(audioProcessor.getMoodLoopLengthParam(), moodLoopLengthKnob);
+    attachSlider(audioProcessor.getMoodLoopModifyParam(), moodLoopModifyKnob);
+    attachSlider(audioProcessor.getMoodFeedbackParam(), moodFeedbackKnob);
+    attachSlider(audioProcessor.getMoodSpreadParam(), moodSpreadKnob);
+    attachSlider(audioProcessor.getMoodDegradeParam(), moodDegradeKnob);
     attachSlider(audioProcessor.getReverbAmountParam(), reverbKnob);
     attachSlider(audioProcessor.getSubOscLevelParam(), subOscLevelKnob);
     attachSlider(audioProcessor.getOscillatorLevelParam(0), osc1LevelFader);
@@ -1005,11 +1105,17 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachComboBox(audioProcessor.getDelayAlgorithmParam(), delayAlgoBox);
     attachComboBox(audioProcessor.getGranularSyncDivisionParam(), granularSyncBox);
     attachComboBox(audioProcessor.getGranularModeParam(), granularModeBox);
+    attachComboBox(audioProcessor.getMoodRoutingParam(), moodRoutingBox);
+    attachComboBox(audioProcessor.getMoodWetModeParam(), moodWetModeBox);
+    attachComboBox(audioProcessor.getMoodLoopModeParam(), moodLoopModeBox);
     attachComboBox(audioProcessor.getReverbAlgorithmParam(), reverbTypeBox);
     attachComboBox(audioProcessor.getVibeTypeParam(), vibeTypeBox);
 
     attachButton(audioProcessor.getVibeEnabledParam(), robBypassButton);
     attachButton(audioProcessor.getDelayEnabledParam(), delayBypassButton);
+    attachButton(audioProcessor.getMoodEnabledParam(), moodBypassButton);
+    attachButton(audioProcessor.getMoodTrueBypassParam(), moodTrueBypassButton);
+    attachButton(audioProcessor.getMoodFreezeParam(), moodFreezeButton);
     attachButton(audioProcessor.getReverbEnabledParam(), reverbBypassButton);
     attachButton(audioProcessor.getFilterEnabledParam(0), filter1EnabledButton);
     attachButton(audioProcessor.getFilterEnabledParam(1), filter2EnabledButton);
@@ -1248,6 +1354,15 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
     isaacTextureKnob.setLookAndFeel(nullptr);
     delayTimeKnob.setLookAndFeel(nullptr);
     delayFeedbackKnob.setLookAndFeel(nullptr);
+    moodMixKnob.setLookAndFeel(nullptr);
+    moodClockKnob.setLookAndFeel(nullptr);
+    moodWetTimeKnob.setLookAndFeel(nullptr);
+    moodWetModifyKnob.setLookAndFeel(nullptr);
+    moodLoopLengthKnob.setLookAndFeel(nullptr);
+    moodLoopModifyKnob.setLookAndFeel(nullptr);
+    moodFeedbackKnob.setLookAndFeel(nullptr);
+    moodSpreadKnob.setLookAndFeel(nullptr);
+    moodDegradeKnob.setLookAndFeel(nullptr);
     reverbKnob.setLookAndFeel(nullptr);
 }
 
@@ -1375,9 +1490,11 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
         const auto fxOffset = fxPanel->getPosition();
         const auto robArea = robSectionArea.translated(fxOffset.x, fxOffset.y);
         const auto delayArea = isaacSectionArea.translated(fxOffset.x, fxOffset.y);
+        const auto moodArea = moodSectionArea.translated(fxOffset.x, fxOffset.y);
         const auto revArea = reverbSectionArea.translated(fxOffset.x, fxOffset.y);
         const auto vibeEnabled = audioProcessor.getVibeEnabledParam().get();
         const auto delayEnabled = audioProcessor.getDelayEnabledParam().get();
+        const auto moodEnabled = audioProcessor.getMoodEnabledParam().get();
         const auto reverbEnabled = audioProcessor.getReverbEnabledParam().get();
 
         g.setColour(vibeEnabled ? juce::Colour::fromRGBA(104, 194, 255, 35)
@@ -1409,6 +1526,17 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
         g.setColour(delayEnabled ? juce::Colour::fromRGB(250, 244, 224)
                      : juce::Colour::fromRGB(170, 170, 170));
         g.drawText("DELAY", delayArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
+
+        g.setColour(moodEnabled ? juce::Colour::fromRGBA(238, 182, 120, 35)
+                : juce::Colour::fromRGBA(120, 120, 120, 30));
+        g.fillRoundedRectangle(moodArea.toFloat(), 10.0f);
+        g.setColour(moodEnabled ? juce::Colour::fromRGBA(238, 182, 120, 180)
+                : juce::Colour::fromRGBA(150, 150, 150, 130));
+        g.drawRoundedRectangle(moodArea.toFloat(), 10.0f, 1.0f);
+
+        g.setColour(moodEnabled ? juce::Colour::fromRGB(255, 240, 214)
+                : juce::Colour::fromRGB(170, 170, 170));
+        g.drawText("MOOD", moodArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
 
         g.setColour(reverbEnabled ? juce::Colour::fromRGB(224, 245, 255)
                       : juce::Colour::fromRGB(170, 170, 170));
@@ -1784,6 +1912,9 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
         uiConfig->applyComboStyle(comboStyle, delayAlgoBox);
         uiConfig->applyComboStyle(comboStyle, granularSyncBox);
         uiConfig->applyComboStyle(comboStyle, granularModeBox);
+        uiConfig->applyComboStyle(comboStyle, moodRoutingBox);
+        uiConfig->applyComboStyle(comboStyle, moodWetModeBox);
+        uiConfig->applyComboStyle(comboStyle, moodLoopModeBox);
         uiConfig->applyComboStyle(comboStyle, reverbTypeBox);
     }
 
@@ -1904,7 +2035,7 @@ void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
 
     auto area = fxSectionCurrentAreas[static_cast<std::size_t>(draggingFxSection)];
     const auto minX = static_cast<float>(fxSectionSlots[0].getX());
-    const auto maxX = static_cast<float>(fxSectionSlots[2].getRight() - fxSectionSlots[2].getWidth());
+    const auto maxX = static_cast<float>(fxSectionSlots[kFxSectionCount - 1].getRight() - fxSectionSlots[kFxSectionCount - 1].getWidth());
     auto newX = static_cast<float>(localPoint.x) - draggingSectionOffsetX;
     newX = juce::jlimit(minX, maxX, newX);
     area.setX(newX);
@@ -1914,7 +2045,7 @@ void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
     const auto centerX = area.getCentreX();
     int targetSlot = 0;
     float bestDistance = std::numeric_limits<float>::max();
-    for (int slot = 0; slot < 3; ++slot)
+    for (int slot = 0; slot < kFxSectionCount; ++slot)
     {
         const auto slotCenterX = static_cast<float>(fxSectionSlots[static_cast<std::size_t>(slot)].getCentreX());
         const auto distance = std::abs(centerX - slotCenterX);
@@ -1999,6 +2130,14 @@ void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
                     p.endChangeGesture();
                     break;
                 }
+                case kFxSectionMood:
+                {
+                    auto& p = audioProcessor.getMoodEnabledParam();
+                    p.beginChangeGesture();
+                    p.setValueNotifyingHost(p.convertTo0to1(!p.get()));
+                    p.endChangeGesture();
+                    break;
+                }
                 default:
                     break;
             }
@@ -2021,14 +2160,14 @@ void PX3SynthAudioProcessorEditor::updateFxSectionTargets(const juce::Rectangle<
     auto layoutArea = topArea;
     const auto sectionWidth = juce::jmax(108, (layoutArea.getWidth() - (topGap * 3)) / 4);
 
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < kFxSectionCount; ++i)
     {
         fxSectionSlots[static_cast<std::size_t>(i)] = layoutArea.removeFromLeft(sectionWidth);
         layoutArea.removeFromLeft(topGap);
     }
     topSpareSectionArea = layoutArea;
 
-    for (int stage = 0; stage < 3; ++stage)
+    for (int stage = 0; stage < kFxSectionCount; ++stage)
     {
         const auto slotIndex = indexForFxSection(stage);
         if (slotIndex >= 0)
@@ -2049,11 +2188,12 @@ void PX3SynthAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
 {
     robSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionDrive)].toNearestInt();
     isaacSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionDelay)].toNearestInt();
+    moodSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionMood)].toNearestInt();
     reverbSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionReverb)].toNearestInt();
 
     if (fxPanel != nullptr)
     {
-        fxPanel->setSectionBounds(robSectionArea, isaacSectionArea, reverbSectionArea);
+        fxPanel->setSectionBounds(robSectionArea, isaacSectionArea, moodSectionArea, reverbSectionArea);
     }
 }
 
@@ -2065,7 +2205,7 @@ void PX3SynthAudioProcessorEditor::animateFxSections()
     }
 
     bool changed = false;
-    for (int sectionId = 0; sectionId < 3; ++sectionId)
+    for (int sectionId = 0; sectionId < kFxSectionCount; ++sectionId)
     {
         if (sectionId == draggingFxSection)
         {
@@ -2101,7 +2241,7 @@ void PX3SynthAudioProcessorEditor::animateFxSections()
 
 int PX3SynthAudioProcessorEditor::indexForFxSection(int sectionId) const
 {
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < kFxSectionCount; ++i)
     {
         if (fxSectionOrder[static_cast<std::size_t>(i)] == sectionId)
         {
@@ -2120,7 +2260,7 @@ int PX3SynthAudioProcessorEditor::fxSectionAtPoint(juce::Point<int> point) const
     }
 
     const auto localPoint = point - fxPanel->getPosition();
-    for (int sectionId = 0; sectionId < 3; ++sectionId)
+    for (int sectionId = 0; sectionId < kFxSectionCount; ++sectionId)
     {
         if (fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)].toNearestInt().contains(localPoint))
         {
@@ -2134,7 +2274,7 @@ int PX3SynthAudioProcessorEditor::fxSectionAtPoint(juce::Point<int> point) const
 void PX3SynthAudioProcessorEditor::moveFxSectionToSlot(int sectionId, int slotIndex)
 {
     const auto fromIndex = indexForFxSection(sectionId);
-    const auto toIndex = juce::jlimit(0, 2, slotIndex);
+    const auto toIndex = juce::jlimit(0, kFxSectionCount - 1, slotIndex);
     if (fromIndex < 0 || fromIndex == toIndex)
     {
         return;
@@ -2164,7 +2304,7 @@ void PX3SynthAudioProcessorEditor::moveFxSectionToSlot(int sectionId, int slotIn
     // Persist order immediately as slots change so host/project state always tracks UI order.
     commitFxOrderToProcessor("USER", "USER_DRAG", fromIndex, toIndex);
 
-    for (int stage = 0; stage < 3; ++stage)
+    for (int stage = 0; stage < kFxSectionCount; ++stage)
     {
         const auto slot = indexForFxSection(stage);
         if (slot >= 0)
@@ -2924,15 +3064,17 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
     const auto delayEnabled = audioProcessor.getDelayEnabledParam().get();
     const auto delayIsGranular = audioProcessor.getDelayAlgorithmParam().getIndex() == 0;
     const auto granularModeSelectable = delayEnabled && delayIsGranular;
+    const auto moodEnabled = audioProcessor.getMoodEnabledParam().get();
     const auto reverbEnabled = audioProcessor.getReverbEnabledParam().get();
 
     robBypassButton.setToggleState(vibeEnabled, juce::dontSendNotification);
     delayBypassButton.setToggleState(delayEnabled, juce::dontSendNotification);
+    moodBypassButton.setToggleState(moodEnabled, juce::dontSendNotification);
     reverbBypassButton.setToggleState(reverbEnabled, juce::dontSendNotification);
 
     if (fxPanel != nullptr)
     {
-        fxPanel->setActive(vibeEnabled, delayEnabled, granularModeSelectable, reverbEnabled);
+        fxPanel->setActive(vibeEnabled, delayEnabled, granularModeSelectable, moodEnabled, reverbEnabled);
     }
 }
 
@@ -2954,7 +3096,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         if (processorOrder != fxSectionOrder)
         {
             fxSectionOrder = processorOrder;
-            for (int stage = 0; stage < 3; ++stage)
+            for (int stage = 0; stage < kFxSectionCount; ++stage)
             {
                 const auto slot = indexForFxSection(stage);
                 if (slot >= 0)

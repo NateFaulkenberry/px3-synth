@@ -200,6 +200,41 @@ ReverbSettings PX3SynthAudioProcessor::currentReverbSettings() const
     return settings;
 }
 
+MoodSettings PX3SynthAudioProcessor::currentMoodSettings() const
+{
+    MoodSettings settings;
+    settings.enabled = moodEnabledParam != nullptr && moodEnabledParam->get();
+    settings.trueBypass = moodTrueBypassParam != nullptr && moodTrueBypassParam->get();
+    settings.freeze = moodFreezeParam != nullptr && moodFreezeParam->get();
+
+    settings.mix = moodMixParam->convertFrom0to1(applyModulationToNormalizedValue(moodMixParam,
+                                                                                   static_cast<juce::RangedAudioParameter*>(moodMixParam)->getValue()));
+    settings.clock = moodClockParam->convertFrom0to1(applyModulationToNormalizedValue(moodClockParam,
+                                                                                       static_cast<juce::RangedAudioParameter*>(moodClockParam)->getValue()));
+    settings.wetTime = moodWetTimeParam->convertFrom0to1(applyModulationToNormalizedValue(moodWetTimeParam,
+                                                                                           static_cast<juce::RangedAudioParameter*>(moodWetTimeParam)->getValue()));
+    settings.wetModify = moodWetModifyParam->convertFrom0to1(applyModulationToNormalizedValue(moodWetModifyParam,
+                                                                                               static_cast<juce::RangedAudioParameter*>(moodWetModifyParam)->getValue()));
+    settings.loopLength = moodLoopLengthParam->convertFrom0to1(applyModulationToNormalizedValue(moodLoopLengthParam,
+                                                                                                 static_cast<juce::RangedAudioParameter*>(moodLoopLengthParam)->getValue()));
+    settings.loopModify = moodLoopModifyParam->convertFrom0to1(applyModulationToNormalizedValue(moodLoopModifyParam,
+                                                                                                 static_cast<juce::RangedAudioParameter*>(moodLoopModifyParam)->getValue()));
+    settings.feedback = moodFeedbackParam->convertFrom0to1(applyModulationToNormalizedValue(moodFeedbackParam,
+                                                                                             static_cast<juce::RangedAudioParameter*>(moodFeedbackParam)->getValue()));
+    settings.spread = moodSpreadParam->convertFrom0to1(applyModulationToNormalizedValue(moodSpreadParam,
+                                                                                         static_cast<juce::RangedAudioParameter*>(moodSpreadParam)->getValue()));
+    settings.degrade = moodDegradeParam->convertFrom0to1(applyModulationToNormalizedValue(moodDegradeParam,
+                                                                                           static_cast<juce::RangedAudioParameter*>(moodDegradeParam)->getValue()));
+
+    settings.routing = moodRoutingParam != nullptr
+                           ? juce::jlimit(0.0f, 1.0f, static_cast<float>(moodRoutingParam->getIndex()) / 2.0f)
+                           : 0.0f;
+    settings.wetModeIndex = moodWetModeParam != nullptr ? moodWetModeParam->getIndex() : 0;
+    settings.loopModeIndex = moodLoopModeParam != nullptr ? moodLoopModeParam->getIndex() : 0;
+    settings.bpm = currentBpm;
+    return settings;
+}
+
 void PX3SynthAudioProcessor::updateTransportState()
 {
     currentBpm = 120.0;

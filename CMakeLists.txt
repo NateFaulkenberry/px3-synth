@@ -63,6 +63,7 @@ target_sources(PX3Synth
         Source/UI/MixPanel.cpp
         Source/UI/TopMenuBar.cpp
         Source/UI/DelayComponent.cpp
+        Source/UI/MoodComponent.cpp
         Source/UI/EnvelopeComponent.cpp
         Source/UI/FilterComponent.cpp
         Source/UI/LfoComponent.cpp
@@ -76,6 +77,7 @@ target_sources(PX3Synth
         Source/UI/PluginEditorDebug.cpp
         Source/DSP/EnvelopeGenerator.cpp
         Source/DSP/Delay.cpp
+        Source/DSP/Mood.cpp
         Source/DSP/LfoGenerator.cpp
         Source/DSP/Reverb.cpp
         Source/DSP/SubOscillator.cpp

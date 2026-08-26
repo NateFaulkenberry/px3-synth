@@ -120,6 +120,23 @@
         }
       }
     },
+    "mood": {
+      "layout": { "padX": 10, "padY": 8 },
+      "visual": {
+        "borderPadding": 6,
+        "cornerRadius": 8,
+        "bgTintAlpha": 0.08,
+        "bgTintColour": "$topFillColour",
+        "topFillAlpha": 0.1,
+        "topFillColour": "$topFillColour",
+        "onLabel": {
+          "text": "ON",
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8",
+          "bounds": { "x": 36, "y": 11, "width": 24, "height": 14 }
+        }
+      }
+    },
     "reverb": {
       "layout": { "padX": 10, "padY": 8 },
       "visual": {

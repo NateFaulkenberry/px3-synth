@@ -189,16 +189,16 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         }
     }
 
-    std::array<int, 3> fxOrderFromState { { 0, 1, 2 } };
+    std::array<int, 4> fxOrderFromState { { 0, 1, 3, 2 } };
     auto hasModuleOrder = false;
     auto moduleOrderSource = juce::String("none");
 
     if (const auto moduleOrder = state.getChildWithName(kModuleOrderId); moduleOrder.isValid())
     {
-        std::array<bool, 3> seen { { false, false, false } };
+        std::array<bool, 4> seen { { false, false, false, false } };
         int write = 0;
 
-        for (int i = 0; i < moduleOrder.getNumChildren() && write < 3; ++i)
+        for (int i = 0; i < moduleOrder.getNumChildren() && write < 4; ++i)
         {
             const auto moduleNode = moduleOrder.getChild(i);
             if (!moduleNode.isValid() || moduleNode.getType() != kModuleEntryId || !moduleNode.hasProperty(kModuleIdProperty))
@@ -224,7 +224,7 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         {
             hasModuleOrder = true;
             moduleOrderSource = "MODULE_ORDER";
-            for (int stage = 0; stage < 3 && write < 3; ++stage)
+            for (int stage = 0; stage < 4 && write < 4; ++stage)
             {
                 if (!seen[static_cast<std::size_t>(stage)])
                 {
@@ -242,7 +242,7 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
     }
     else
     {
-        setFxProcessingOrderWithReason({ { 0, 1, 2 } }, "HOST", "STATE_RESTORE_DEFAULT", -1, -1);
+        setFxProcessingOrderWithReason({ { 0, 1, 3, 2 } }, "HOST", "STATE_RESTORE_DEFAULT", -1, -1);
     }
 
     debugLogEvent("HOST",

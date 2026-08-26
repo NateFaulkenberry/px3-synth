@@ -22,7 +22,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     debugInstanceId = "PX3-INSTANCE-" + juce::String(static_cast<int>(instanceNumber)).paddedLeft('0', 2);
     debugProcessorCreatedTime = nowTimestamp();
 
-    fxProcessingOrderPacked.store(packFxOrder({ { 0, 1, 2 } }), std::memory_order_relaxed);
+    fxProcessingOrderPacked.store(packFxOrder({ { 0, 1, 3, 2 } }), std::memory_order_relaxed);
     fxOrderRevision.store(0u, std::memory_order_relaxed);
 
     for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
@@ -185,6 +185,30 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                            "Reverb Mode",
                                                            juce::StringArray { "ROOM", "PLATE", "HALL", "CLOUD" },
                                                            0);
+    moodEnabledParam = new juce::AudioParameterBool("moodEnabled", "Mood Enabled", true);
+    moodTrueBypassParam = new juce::AudioParameterBool("moodTrueBypass", "Mood True Bypass", false);
+    moodFreezeParam = new juce::AudioParameterBool("moodFreeze", "Mood Freeze", false);
+    moodMixParam = new juce::AudioParameterFloat("moodMix", "Mood Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
+    moodClockParam = new juce::AudioParameterFloat("moodClock", "Mood Clock", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    moodWetTimeParam = new juce::AudioParameterFloat("moodWetTime", "Mood Wet Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.40f);
+    moodWetModifyParam = new juce::AudioParameterFloat("moodWetModify", "Mood Wet Modify", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
+    moodLoopLengthParam = new juce::AudioParameterFloat("moodLoopLength", "Mood Loop Length", juce::NormalisableRange<float>(0.0f, 1.0f), 0.28f);
+    moodLoopModifyParam = new juce::AudioParameterFloat("moodLoopModify", "Mood Loop Modify", juce::NormalisableRange<float>(0.0f, 1.0f), 0.50f);
+    moodFeedbackParam = new juce::AudioParameterFloat("moodFeedback", "Mood Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
+    moodSpreadParam = new juce::AudioParameterFloat("moodSpread", "Mood Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.50f);
+    moodDegradeParam = new juce::AudioParameterFloat("moodDegrade", "Mood Degrade", juce::NormalisableRange<float>(0.0f, 1.0f), 0.20f);
+    moodRoutingParam = new juce::AudioParameterChoice("moodRouting",
+                                                       "Mood Routing",
+                                                       juce::StringArray { "DRY->WET", "LOOP->WET", "PARALLEL" },
+                                                       0);
+    moodWetModeParam = new juce::AudioParameterChoice("moodWetMode",
+                                                       "Mood Wet Mode",
+                                                       juce::StringArray { "REVERB", "DELAY", "SLIP" },
+                                                       0);
+    moodLoopModeParam = new juce::AudioParameterChoice("moodLoopMode",
+                                                        "Mood Loop Mode",
+                                                        juce::StringArray { "ENV", "TAPE", "STRETCH" },
+                                                        0);
     reverbSizeParam = new juce::AudioParameterFloat("reverbSize", "Reverb Size", juce::NormalisableRange<float>(0.0f, 1.0f), 0.52f);
     reverbDecayParam = new juce::AudioParameterFloat("reverbDecay", "Reverb Decay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.48f);
     reverbDampingParam = new juce::AudioParameterFloat("reverbDamping", "Reverb Damping", juce::NormalisableRange<float>(0.0f, 1.0f), 0.46f);
@@ -277,6 +301,21 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(reverbAmountParam);
     addParameter(reverbEnabledParam);
     addParameter(reverbAlgorithmParam);
+    addParameter(moodEnabledParam);
+    addParameter(moodTrueBypassParam);
+    addParameter(moodFreezeParam);
+    addParameter(moodMixParam);
+    addParameter(moodClockParam);
+    addParameter(moodWetTimeParam);
+    addParameter(moodWetModifyParam);
+    addParameter(moodLoopLengthParam);
+    addParameter(moodLoopModifyParam);
+    addParameter(moodFeedbackParam);
+    addParameter(moodSpreadParam);
+    addParameter(moodDegradeParam);
+    addParameter(moodRoutingParam);
+    addParameter(moodWetModeParam);
+    addParameter(moodLoopModeParam);
     addParameter(reverbSizeParam);
     addParameter(reverbDecayParam);
     addParameter(reverbDampingParam);
@@ -393,6 +432,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     modulationEnvelopeGateOpen = false;
     vibeComponent.prepare(sampleRate, synth.getNumVoices(), vibeComponent.getSeed());
     delayComponent.prepare(sampleRate);
+    moodComponent.prepare(sampleRate);
     reverb.prepare(sampleRate);
 
     const auto busChannels = juce::jmax(1, getTotalNumOutputChannels());
@@ -622,6 +662,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     updateTransportState();
 
     delayComponent.updateForBlock(currentDelaySettings());
+    moodComponent.updateForBlock(currentMoodSettings());
     reverb.updateForBlock(currentReverbSettings(), buffer.getNumSamples());
     const auto fxOrder = getFxProcessingOrder();
     const auto fxSendGain = juce::jlimit(0.0f, 1.0f, fxSendGainParam != nullptr ? fxSendGainParam->get() : 1.0f);
@@ -664,6 +705,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
                 case 2: // Reverb
                     reverb.processSampleFrame(stageL, stageR, stageL, stageR);
+                    break;
+
+                case 3: // Mood
+                    moodComponent.processSampleFrame(stageL, stageR, stageL, stageR);
                     break;
 
                 default:

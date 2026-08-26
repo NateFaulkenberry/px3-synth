@@ -5,6 +5,7 @@
 #include "Delay.h"
 #include "EnvelopeGenerator.h"
 #include "LfoGenerator.h"
+#include "Mood.h"
 #include "PianoKeyboard.h"
 #include "Reverb.h"
 #include "SubOscTypes.h"
@@ -136,6 +137,21 @@ public:
     juce::AudioParameterFloat& getReverbAmountParam() const;
     juce::AudioParameterBool& getReverbEnabledParam() const;
     juce::AudioParameterChoice& getReverbAlgorithmParam() const;
+    juce::AudioParameterBool& getMoodEnabledParam() const;
+    juce::AudioParameterBool& getMoodTrueBypassParam() const;
+    juce::AudioParameterBool& getMoodFreezeParam() const;
+    juce::AudioParameterFloat& getMoodMixParam() const;
+    juce::AudioParameterFloat& getMoodClockParam() const;
+    juce::AudioParameterFloat& getMoodWetTimeParam() const;
+    juce::AudioParameterFloat& getMoodWetModifyParam() const;
+    juce::AudioParameterFloat& getMoodLoopLengthParam() const;
+    juce::AudioParameterFloat& getMoodLoopModifyParam() const;
+    juce::AudioParameterFloat& getMoodFeedbackParam() const;
+    juce::AudioParameterFloat& getMoodSpreadParam() const;
+    juce::AudioParameterFloat& getMoodDegradeParam() const;
+    juce::AudioParameterChoice& getMoodRoutingParam() const;
+    juce::AudioParameterChoice& getMoodWetModeParam() const;
+    juce::AudioParameterChoice& getMoodLoopModeParam() const;
     juce::AudioParameterInt& getPitchBendRangeParam() const;
     juce::AudioParameterBool& getLfoEnabledParam() const;
     juce::AudioParameterBool& getLfoEnabledParam(int lfoIndex) const;
@@ -161,9 +177,9 @@ public:
     bool setEnvelopeAssignmentIndex(int envIndex, int index, bool notifyHost = true);
     bool setEnvelopeAssignmentByParameterId(const juce::String& parameterId, bool notifyHost = true);
     bool setEnvelopeAssignmentByParameterId(int envIndex, const juce::String& parameterId, bool notifyHost = true);
-    std::array<int, 3> getFxProcessingOrder() const;
-    void setFxProcessingOrder(const std::array<int, 3>& order);
-    void setFxProcessingOrderWithReason(const std::array<int, 3>& order,
+    std::array<int, 4> getFxProcessingOrder() const;
+    void setFxProcessingOrder(const std::array<int, 4>& order);
+    void setFxProcessingOrderWithReason(const std::array<int, 4>& order,
                                         const juce::String& source,
                                         const juce::String& reason,
                                         int fromIndex = -1,
@@ -186,7 +202,7 @@ public:
     bool debugRoundTripCurrentState(juce::String& report);
     uint32_t debugGetModuleOrderGeneration() const;
     uint32_t debugGetModuleOrderHash() const;
-    juce::String debugDescribeOrder(const std::array<int, 3>& order) const;
+    juce::String debugDescribeOrder(const std::array<int, 4>& order) const;
     float debugGetLfoPhase() const;
     float debugGetLfoCurrentValue() const;
     float debugGetLfoBaseNormalized() const;
@@ -243,6 +259,7 @@ private:
     VibeSettings currentVibeSettings() const;
     DelaySettings currentDelaySettings() const;
     ReverbSettings currentReverbSettings() const;
+    MoodSettings currentMoodSettings() const;
 
     void updateTransportState();
     void buildLfoAssignableTargets();
@@ -316,6 +333,21 @@ private:
     juce::AudioParameterFloat* reverbAmountParam { nullptr };
     juce::AudioParameterBool* reverbEnabledParam { nullptr };
     juce::AudioParameterChoice* reverbAlgorithmParam { nullptr };
+    juce::AudioParameterBool* moodEnabledParam { nullptr };
+    juce::AudioParameterBool* moodTrueBypassParam { nullptr };
+    juce::AudioParameterBool* moodFreezeParam { nullptr };
+    juce::AudioParameterFloat* moodMixParam { nullptr };
+    juce::AudioParameterFloat* moodClockParam { nullptr };
+    juce::AudioParameterFloat* moodWetTimeParam { nullptr };
+    juce::AudioParameterFloat* moodWetModifyParam { nullptr };
+    juce::AudioParameterFloat* moodLoopLengthParam { nullptr };
+    juce::AudioParameterFloat* moodLoopModifyParam { nullptr };
+    juce::AudioParameterFloat* moodFeedbackParam { nullptr };
+    juce::AudioParameterFloat* moodSpreadParam { nullptr };
+    juce::AudioParameterFloat* moodDegradeParam { nullptr };
+    juce::AudioParameterChoice* moodRoutingParam { nullptr };
+    juce::AudioParameterChoice* moodWetModeParam { nullptr };
+    juce::AudioParameterChoice* moodLoopModeParam { nullptr };
     juce::AudioParameterFloat* reverbSizeParam { nullptr };
     juce::AudioParameterFloat* reverbDecayParam { nullptr };
     juce::AudioParameterFloat* reverbDampingParam { nullptr };
@@ -382,6 +414,7 @@ private:
      */
     Vibe vibeComponent;
     Delay delayComponent;
+    Mood moodComponent;
     ::Reverb reverb;
 
     // Internal routing buses (prepared once, reused per block).

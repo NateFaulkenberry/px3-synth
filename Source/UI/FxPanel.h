@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "DelayComponent.h"
+#include "MoodComponent.h"
 #include "ReverbComponent.h"
 #include "UIConfig.h"
 #include "VibeComponent.h"
@@ -28,6 +29,33 @@ public:
             juce::Label& delayTimeLabel,
             juce::Slider& delayFeedbackKnob,
             juce::Label& delayFeedbackLabel,
+            juce::ToggleButton& moodBypass,
+            juce::ToggleButton& moodTrueBypass,
+            juce::ToggleButton& moodFreeze,
+            juce::Slider& moodMixKnob,
+            juce::Label& moodMixLabel,
+            juce::Slider& moodClockKnob,
+            juce::Label& moodClockLabel,
+            juce::Slider& moodWetTimeKnob,
+            juce::Label& moodWetTimeLabel,
+            juce::Slider& moodWetModifyKnob,
+            juce::Label& moodWetModifyLabel,
+            juce::Slider& moodLoopLengthKnob,
+            juce::Label& moodLoopLengthLabel,
+            juce::Slider& moodLoopModifyKnob,
+            juce::Label& moodLoopModifyLabel,
+            juce::Slider& moodFeedbackKnob,
+            juce::Label& moodFeedbackLabel,
+            juce::Slider& moodSpreadKnob,
+            juce::Label& moodSpreadLabel,
+            juce::Slider& moodDegradeKnob,
+            juce::Label& moodDegradeLabel,
+            juce::ComboBox& moodRoutingBox,
+            juce::Label& moodRoutingLabel,
+            juce::ComboBox& moodWetModeBox,
+            juce::Label& moodWetModeLabel,
+            juce::ComboBox& moodLoopModeBox,
+            juce::Label& moodLoopModeLabel,
             juce::ToggleButton& reverbBypass,
             juce::Slider& reverbKnob,
             juce::Label& reverbLabel,
@@ -39,14 +67,20 @@ public:
 
     void setSectionBounds(const juce::Rectangle<int>& vibeBounds,
                           const juce::Rectangle<int>& delayBounds,
+                          const juce::Rectangle<int>& moodBounds,
                           const juce::Rectangle<int>& reverbBounds);
 
-    void setActive(bool vibeEnabled, bool delayEnabled, bool granularModeSelectable, bool reverbEnabled);
+    void setActive(bool vibeEnabled,
+                   bool delayEnabled,
+                   bool granularModeSelectable,
+                   bool moodEnabled,
+                   bool reverbEnabled);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
 private:
     std::unique_ptr<VibeComponent> vibeUiComponent;
     std::unique_ptr<DelayComponent> delayPanelComponent;
+    std::unique_ptr<MoodComponent> moodComponent;
     std::unique_ptr<ReverbComponent> reverbComponent;
 
     juce::Colour accent;

@@ -18,6 +18,33 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
                  juce::Label& delayTimeLabel,
                  juce::Slider& delayFeedbackKnob,
                  juce::Label& delayFeedbackLabel,
+                 juce::ToggleButton& moodBypass,
+                 juce::ToggleButton& moodTrueBypass,
+                 juce::ToggleButton& moodFreeze,
+                 juce::Slider& moodMixKnob,
+                 juce::Label& moodMixLabel,
+                 juce::Slider& moodClockKnob,
+                 juce::Label& moodClockLabel,
+                 juce::Slider& moodWetTimeKnob,
+                 juce::Label& moodWetTimeLabel,
+                 juce::Slider& moodWetModifyKnob,
+                 juce::Label& moodWetModifyLabel,
+                 juce::Slider& moodLoopLengthKnob,
+                 juce::Label& moodLoopLengthLabel,
+                 juce::Slider& moodLoopModifyKnob,
+                 juce::Label& moodLoopModifyLabel,
+                 juce::Slider& moodFeedbackKnob,
+                 juce::Label& moodFeedbackLabel,
+                 juce::Slider& moodSpreadKnob,
+                 juce::Label& moodSpreadLabel,
+                 juce::Slider& moodDegradeKnob,
+                 juce::Label& moodDegradeLabel,
+                 juce::ComboBox& moodRoutingBox,
+                 juce::Label& moodRoutingLabel,
+                 juce::ComboBox& moodWetModeBox,
+                 juce::Label& moodWetModeLabel,
+                 juce::ComboBox& moodLoopModeBox,
+                 juce::Label& moodLoopModeLabel,
                  juce::ToggleButton& reverbBypass,
                  juce::Slider& reverbKnob,
                  juce::Label& reverbLabel,
@@ -46,6 +73,34 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
                                                                 delayFeedbackKnob,
                                                                 delayFeedbackLabel,
                                                                 juce::Colour::fromRGB(132, 210, 255));
+    moodComponent = std::make_unique<MoodComponent>(moodBypass,
+                                                    moodTrueBypass,
+                                                    moodFreeze,
+                                                    moodMixKnob,
+                                                    moodMixLabel,
+                                                    moodClockKnob,
+                                                    moodClockLabel,
+                                                    moodWetTimeKnob,
+                                                    moodWetTimeLabel,
+                                                    moodWetModifyKnob,
+                                                    moodWetModifyLabel,
+                                                    moodLoopLengthKnob,
+                                                    moodLoopLengthLabel,
+                                                    moodLoopModifyKnob,
+                                                    moodLoopModifyLabel,
+                                                    moodFeedbackKnob,
+                                                    moodFeedbackLabel,
+                                                    moodSpreadKnob,
+                                                    moodSpreadLabel,
+                                                    moodDegradeKnob,
+                                                    moodDegradeLabel,
+                                                    moodRoutingBox,
+                                                    moodRoutingLabel,
+                                                    moodWetModeBox,
+                                                    moodWetModeLabel,
+                                                    moodLoopModeBox,
+                                                    moodLoopModeLabel,
+                                                    juce::Colour::fromRGB(202, 150, 98));
     reverbComponent = std::make_unique<ReverbComponent>(reverbBypass,
                                                         reverbKnob,
                                                         reverbLabel,
@@ -55,6 +110,7 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
 
     addAndMakeVisible(*vibeUiComponent);
     addAndMakeVisible(*delayPanelComponent);
+    addAndMakeVisible(*moodComponent);
     addAndMakeVisible(*reverbComponent);
 }
 
@@ -75,6 +131,7 @@ void FxPanel::paint(juce::Graphics& g)
 
 void FxPanel::setSectionBounds(const juce::Rectangle<int>& vibeBounds,
                                const juce::Rectangle<int>& delayBounds,
+                               const juce::Rectangle<int>& moodBounds,
                                const juce::Rectangle<int>& reverbBounds)
 {
     if (vibeUiComponent != nullptr)
@@ -87,13 +144,22 @@ void FxPanel::setSectionBounds(const juce::Rectangle<int>& vibeBounds,
         delayPanelComponent->setBounds(delayBounds);
     }
 
+    if (moodComponent != nullptr)
+    {
+        moodComponent->setBounds(moodBounds);
+    }
+
     if (reverbComponent != nullptr)
     {
         reverbComponent->setBounds(reverbBounds);
     }
 }
 
-void FxPanel::setActive(bool vibeEnabled, bool delayEnabled, bool granularModeSelectable, bool reverbEnabled)
+void FxPanel::setActive(bool vibeEnabled,
+                        bool delayEnabled,
+                        bool granularModeSelectable,
+                        bool moodEnabled,
+                        bool reverbEnabled)
 {
     if (vibeUiComponent != nullptr)
     {
@@ -103,6 +169,11 @@ void FxPanel::setActive(bool vibeEnabled, bool delayEnabled, bool granularModeSe
     if (delayPanelComponent != nullptr)
     {
         delayPanelComponent->setActive(delayEnabled, granularModeSelectable);
+    }
+
+    if (moodComponent != nullptr)
+    {
+        moodComponent->setActive(moodEnabled);
     }
 
     if (reverbComponent != nullptr)
@@ -122,6 +193,10 @@ void FxPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     if (delayPanelComponent != nullptr)
     {
         delayPanelComponent->setUIConfig(uiConfig);
+    }
+    if (moodComponent != nullptr)
+    {
+        moodComponent->setUIConfig(uiConfig);
     }
     if (reverbComponent != nullptr)
     {
