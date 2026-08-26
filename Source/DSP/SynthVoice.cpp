@@ -194,13 +194,16 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         }
     }
 
+    std::array<float, 3> modEnvelopeBlockSums { { 0.0f, 0.0f, 0.0f } };
     for (int sample = 0; sample < numSamples; ++sample)
     {
         for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
         {
             if (modEnvelopeEnabled[envIndex])
             {
-                modEnvelopeValues[envIndex] = modEnvelopeGenerators[envIndex].getNextSample();
+                const auto envSample = modEnvelopeGenerators[envIndex].getNextSample();
+                modEnvelopeValues[envIndex] = envSample;
+                modEnvelopeBlockSums[envIndex] += envSample;
             }
             else
             {
@@ -417,6 +420,20 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         }
 
         ++noteAgeSamples;
+    }
+
+    // Source interface contract for processor-side modulation sampling is a
+    // block representative value. Use block-mean to preserve transient ENV
+    // energy (especially short attack/decay) instead of boundary snapshots.
+    if (numSamples > 0)
+    {
+        const auto invSamples = 1.0f / static_cast<float>(numSamples);
+        for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
+        {
+            modEnvelopeValues[envIndex] = modEnvelopeEnabled[envIndex]
+                                              ? juce::jlimit(0.0f, 1.0f, modEnvelopeBlockSums[envIndex] * invSamples)
+                                              : 0.0f;
+        }
     }
 
     if (!ampEnvelope.isActive())
