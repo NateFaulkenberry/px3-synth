@@ -27,6 +27,7 @@ void Mood::prepare(double sampleRate)
 
     // Smooth user/performance control changes to avoid zipper artifacts.
     constexpr double smoothingSeconds = 0.025;
+    enabledSmoothed.reset(sampleRateHz, 0.030);
     mixSmoothed.reset(sampleRateHz, smoothingSeconds);
     clockSmoothed.reset(sampleRateHz, smoothingSeconds);
     routingSmoothed.reset(sampleRateHz, smoothingSeconds);
@@ -37,6 +38,11 @@ void Mood::prepare(double sampleRate)
     feedbackSmoothed.reset(sampleRateHz, smoothingSeconds);
     spreadSmoothed.reset(sampleRateHz, smoothingSeconds);
     degradeSmoothed.reset(sampleRateHz, smoothingSeconds);
+
+    // Slew-limit wet signal movement to reduce discontinuities from rapid
+    // read-head or mode/routing motion.
+    constexpr float wetSlewTauSeconds = 0.0035f;
+    wetSlewCoeff = std::exp(-1.0f / (static_cast<float>(sampleRateHz) * wetSlewTauSeconds));
 
     constexpr float maxHistorySeconds = 8.0f;
     constexpr float maxWetDelaySeconds = 6.0f;
@@ -83,6 +89,7 @@ void Mood::reset()
     }
 
     mixSmoothed.setCurrentAndTargetValue(currentSettings.mix);
+    enabledSmoothed.setCurrentAndTargetValue(currentSettings.enabled ? 1.0f : 0.0f);
     clockSmoothed.setCurrentAndTargetValue(currentSettings.clock);
     routingSmoothed.setCurrentAndTargetValue(currentSettings.routing);
     wetTimeSmoothed.setCurrentAndTargetValue(currentSettings.wetTime);
@@ -92,6 +99,9 @@ void Mood::reset()
     feedbackSmoothed.setCurrentAndTargetValue(currentSettings.feedback);
     spreadSmoothed.setCurrentAndTargetValue(currentSettings.spread);
     degradeSmoothed.setCurrentAndTargetValue(currentSettings.degrade);
+
+    wetSlewL = 0.0f;
+    wetSlewR = 0.0f;
 }
 
 void Mood::updateForBlock(const MoodSettings& settings)
@@ -99,12 +109,13 @@ void Mood::updateForBlock(const MoodSettings& settings)
     const auto nextEnabled = settings.enabled;
     if (wasEnabled && !nextEnabled)
     {
-        // Entering bypass: clear all loop/delay memory so re-enable starts clean.
-        reset();
+        // Defer hard state reset until bypass crossfade reaches silence.
+        pendingResetOnBypass = true;
     }
     wasEnabled = nextEnabled;
 
     currentSettings = settings;
+    enabledSmoothed.setTargetValue(nextEnabled ? 1.0f : 0.0f);
 
     mixSmoothed.setTargetValue(clamp01(settings.mix));
     clockSmoothed.setTargetValue(clamp01(settings.clock));
@@ -414,10 +425,19 @@ void Mood::renderWetSlip(float inL, float inR, float& wetL, float& wetR)
 
 void Mood::processSampleFrame(float inL, float inR, float& outL, float& outR)
 {
-    if (!currentSettings.enabled)
+    const auto enabledMix = enabledSmoothed.getNextValue();
+
+    if (enabledMix <= 0.0001f)
     {
         outL = inL;
         outR = inR;
+
+        if (pendingResetOnBypass)
+        {
+            reset();
+            pendingResetOnBypass = false;
+        }
+
         return;
     }
 
@@ -504,11 +524,17 @@ void Mood::processSampleFrame(float inL, float inR, float& outL, float& outR)
     const auto wetBlendL = wetL + loopXL;
     const auto wetBlendR = wetR + loopXR;
 
+    wetSlewL = wetSlewCoeff * wetSlewL + (1.0f - wetSlewCoeff) * wetBlendL;
+    wetSlewR = wetSlewCoeff * wetSlewR + (1.0f - wetSlewCoeff) * wetBlendR;
+
     const auto wetMix = currentSettings.mix;
     const auto dryMix = 1.0f - wetMix;
 
-    const auto yL = dryMix * inL + wetMix * wetBlendL;
-    const auto yR = dryMix * inR + wetMix * wetBlendR;
+    const auto processedL = dryMix * inL + wetMix * wetSlewL;
+    const auto processedR = dryMix * inR + wetMix * wetSlewR;
+
+    const auto yL = juce::jmap(enabledMix, inL, processedL);
+    const auto yR = juce::jmap(enabledMix, inR, processedR);
 
     outL = sanitizeAudioSample(yL);
     outR = sanitizeAudioSample(yR);

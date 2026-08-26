@@ -9,6 +9,7 @@
 class EnvelopeGenerator
 {
 public:
+    void prepare(double sampleRateHz);
     void setSettings(const EnvelopeSettings& settings);
     void noteOn();
     void noteOff();
@@ -17,7 +18,9 @@ public:
     float getNextSample();
 
 private:
+    double sampleRateHz { 44100.0 };
     EnvelopeSettings envelopeSettings;
     juce::ADSR adsr;
     juce::ADSR::Parameters adsrParameters;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> outputSmoother;
 };

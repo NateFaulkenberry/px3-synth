@@ -527,6 +527,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     }
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
     {
+        modulationEnvelopeGenerators[static_cast<std::size_t>(envIndex)].prepare(sampleRate);
         modulationEnvelopeGenerators[static_cast<std::size_t>(envIndex)].setSettings(currentEnvelopeSettings(envIndex));
         modulationEnvelopeGenerators[static_cast<std::size_t>(envIndex)].reset();
         modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].store(0.0f, std::memory_order_relaxed);

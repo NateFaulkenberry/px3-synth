@@ -74,7 +74,12 @@ private:
     float clockHeldL { 0.0f };
     float clockHeldR { 0.0f };
     bool wasEnabled { false };
+    bool pendingResetOnBypass { false };
+    float wetSlewL { 0.0f };
+    float wetSlewR { 0.0f };
+    float wetSlewCoeff { 0.0f };
 
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> enabledSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> mixSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> clockSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> routingSmoothed;
