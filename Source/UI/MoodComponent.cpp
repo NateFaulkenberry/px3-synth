@@ -60,6 +60,11 @@ MoodComponent::MoodComponent(juce::ToggleButton& enabledButtonIn,
     addAndMakeVisible(enabledButton);
     addAndMakeVisible(freezeButton);
 
+    // Mood ON control uses the card's ON text; hide the default toggle outline.
+    enabledButton.setColour(juce::ToggleButton::tickColourId, juce::Colours::transparentBlack);
+    enabledButton.setColour(juce::ToggleButton::tickDisabledColourId, juce::Colours::transparentBlack);
+    enabledButton.setColour(juce::ToggleButton::textColourId, juce::Colours::transparentBlack);
+
     addAndMakeVisible(mixKnob);
     addAndMakeVisible(mixLabel);
     addAndMakeVisible(clockKnob);
@@ -173,45 +178,51 @@ void MoodComponent::resized()
 
     area.removeFromTop(6);
 
-    auto knobsTop = area.removeFromTop(74);
-    auto knobsBottom = area.removeFromTop(74);
+    constexpr int labelHeight = 16;
+    constexpr int rowGap = 6;
+    constexpr int colGap = 6;
 
-    auto placeKnob = [](juce::Rectangle<int>& row, juce::Slider& knob, juce::Label& label)
+    auto grid = area;
+    const auto rowHeight = juce::jmax(40, (grid.getHeight() - 2 * rowGap) / 3);
+    auto row1 = grid.removeFromTop(rowHeight);
+    grid.removeFromTop(rowGap);
+    auto row2 = grid.removeFromTop(rowHeight);
+    grid.removeFromTop(rowGap);
+    auto row3 = grid;
+
+    const auto placeKnobRow = [labelHeight, colGap](juce::Rectangle<int> row,
+                                                     juce::Slider& knobA,
+                                                     juce::Label& labelA,
+                                                     juce::Slider& knobB,
+                                                     juce::Label& labelB,
+                                                     juce::Slider& knobC,
+                                                     juce::Label& labelC)
     {
-        auto cell = row.removeFromLeft(row.getWidth() / juce::jmax(1, 3));
-        auto kArea = cell.removeFromTop(56);
-        const auto size = juce::jlimit(30, 44, juce::jmin(kArea.getWidth(), kArea.getHeight()));
-        knob.setBounds(juce::Rectangle<int>(size, size).withCentre(kArea.getCentre()));
-        label.setBounds(cell.withTrimmedTop(2).withHeight(16));
+        auto left = row.removeFromLeft((row.getWidth() - 2 * colGap) / 3);
+        row.removeFromLeft(colGap);
+        auto mid = row.removeFromLeft((row.getWidth() - colGap) / 2);
+        row.removeFromLeft(colGap);
+        auto right = row;
+
+        const auto placeCell = [labelHeight](juce::Rectangle<int> cell, juce::Slider& knob, juce::Label& label)
+        {
+            auto labelArea = cell.removeFromBottom(labelHeight);
+            auto knobArea = cell;
+            const auto knobSize = juce::jlimit(30,
+                                               64,
+                                               juce::jmin(knobArea.getWidth() - 2, knobArea.getHeight() - 2));
+            knob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(knobArea.getCentre()));
+            label.setBounds(labelArea);
+        };
+
+        placeCell(left, knobA, labelA);
+        placeCell(mid, knobB, labelB);
+        placeCell(right, knobC, labelC);
     };
 
-    auto topA = knobsTop;
-    placeKnob(topA, wetTimeKnob, wetTimeLabel);
-    placeKnob(topA, wetModifyKnob, wetModifyLabel);
-    placeKnob(topA, loopLengthKnob, loopLengthLabel);
-
-    auto botA = knobsBottom;
-    placeKnob(botA, loopModifyKnob, loopModifyLabel);
-    placeKnob(botA, feedbackKnob, feedbackLabel);
-    placeKnob(botA, spreadKnob, spreadLabel);
-
-    auto sharedRow = area.removeFromTop(74);
-    auto left = sharedRow.removeFromLeft(sharedRow.getWidth() / 2);
-    auto right = sharedRow;
-
-    const auto placeShared = [](juce::Rectangle<int> cell, juce::Slider& knob, juce::Label& label)
-    {
-        auto kArea = cell.removeFromTop(56);
-        const auto size = juce::jlimit(30, 44, juce::jmin(kArea.getWidth(), kArea.getHeight()));
-        knob.setBounds(juce::Rectangle<int>(size, size).withCentre(kArea.getCentre()));
-        label.setBounds(cell.withTrimmedTop(2).withHeight(16));
-    };
-
-    placeShared(left, clockKnob, clockLabel);
-    placeShared(right, mixKnob, mixLabel);
-
-    auto degradeRow = area.removeFromTop(58);
-    placeShared(degradeRow.withSizeKeepingCentre(86, degradeRow.getHeight()), degradeKnob, degradeLabel);
+    placeKnobRow(row1, wetTimeKnob, wetTimeLabel, wetModifyKnob, wetModifyLabel, loopLengthKnob, loopLengthLabel);
+    placeKnobRow(row2, loopModifyKnob, loopModifyLabel, feedbackKnob, feedbackLabel, spreadKnob, spreadLabel);
+    placeKnobRow(row3, clockKnob, clockLabel, mixKnob, mixLabel, degradeKnob, degradeLabel);
 }
 
 void MoodComponent::paint(juce::Graphics& g)
