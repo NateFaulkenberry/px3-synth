@@ -16,6 +16,7 @@ public:
                         juce::Label& enabledLabelIn,
                         juce::Slider& pitchIn,
                         juce::Label& pitchLabelIn,
+                        juce::Label& pitchValueLabelIn,
                         juce::Slider& macroAIn,
                         juce::Slider& macroBIn,
                         juce::Slider& macroCIn,
@@ -45,6 +46,7 @@ private:
     juce::Label& enabledLabel;
     juce::Slider& pitch;
     juce::Label& pitchLabel;
+    juce::Label& pitchValueLabel;
     juce::Slider& macroA;
     juce::Slider& macroB;
     juce::Slider& macroC;

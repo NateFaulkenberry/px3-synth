@@ -355,6 +355,10 @@ private:
     KnobLabel osc1PitchLabel;
     KnobLabel osc2PitchLabel;
     KnobLabel osc3PitchLabel;
+    juce::Label subOscPitchValueLabel;
+    juce::Label osc1PitchValueLabel;
+    juce::Label osc2PitchValueLabel;
+    juce::Label osc3PitchValueLabel;
     KnobLabel osc1LevelLabel;
     KnobLabel osc2LevelLabel;
     KnobLabel osc3LevelLabel;

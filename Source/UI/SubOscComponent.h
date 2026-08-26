@@ -13,6 +13,7 @@ public:
                            juce::Label& enabledLabelIn,
                            juce::Slider& pitchIn,
                            juce::Label& pitchLabelIn,
+                           juce::Label& pitchValueLabelIn,
                            juce::ComboBox& octaveBoxIn,
                            juce::Label& octaveLabelIn,
                            juce::ComboBox& waveformBoxIn,
@@ -34,6 +35,7 @@ private:
     juce::Label& enabledLabel;
     juce::Slider& pitch;
     juce::Label& pitchLabel;
+    juce::Label& pitchValueLabel;
     juce::ComboBox& octaveBox;
     juce::Label& octaveLabel;
     juce::ComboBox& waveformBox;

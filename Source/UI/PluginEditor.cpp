@@ -550,6 +550,40 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureKnob(knobBindings[21], "Freq", audioProcessor.getLfoFrequencyParam());
     configureKnob(knobBindings[22], "Master", audioProcessor.getMasterGainParam());
 
+    const auto formatPitchCents = [](double semitoneValue)
+    {
+        const auto cents = static_cast<int>(std::lround(semitoneValue * 100.0));
+        if (cents > 0)
+        {
+            return "+" + juce::String(cents) + " c";
+        }
+        return juce::String(cents) + " c";
+    };
+
+    const auto configurePitchReadout = [&](juce::Slider& pitchKnob, juce::Label& valueLabel)
+    {
+        pitchKnob.getProperties().set("isMixerPanKnob", true);
+        pitchKnob.setRange(-12.0, 12.0, 0.01);
+
+        valueLabel.setJustificationType(juce::Justification::centred);
+        valueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(214, 214, 224));
+        valueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+        valueLabel.setFont(juce::FontOptions(11.0f));
+        valueLabel.setInterceptsMouseClicks(false, false);
+
+        pitchKnob.onValueChange = [&pitchKnob, &valueLabel, formatPitchCents]()
+        {
+            valueLabel.setText(formatPitchCents(pitchKnob.getValue()), juce::dontSendNotification);
+        };
+
+        valueLabel.setText(formatPitchCents(pitchKnob.getValue()), juce::dontSendNotification);
+    };
+
+    configurePitchReadout(osc1PitchKnob, osc1PitchValueLabel);
+    configurePitchReadout(osc2PitchKnob, osc2PitchValueLabel);
+    configurePitchReadout(osc3PitchKnob, osc3PitchValueLabel);
+    configurePitchReadout(subOscPitchKnob, subOscPitchValueLabel);
+
     // ADSR graph replaces visible envelope knobs; parameter attachments remain unchanged.
     attackKnob.setVisible(false);
     decayKnob.setVisible(false);
@@ -987,12 +1021,14 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           subOscEnabledLabel,
                                           subOscPitchKnob,
                                           subOscPitchLabel,
+                                          subOscPitchValueLabel,
                                           subOscOctaveBox,
                                           subOscOctaveLabel,
                                           subOscWaveformBox,
                                           subOscWaveformLabel,
                                           osc1PitchKnob,
                                           osc1PitchLabel,
+                                          osc1PitchValueLabel,
                                           oscSineKnob,
                                           oscSawKnob,
                                           oscSquareKnob,
@@ -1007,6 +1043,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           oscVowelLabel,
                                           osc2PitchKnob,
                                           osc2PitchLabel,
+                                          osc2PitchValueLabel,
                                           osc2SineKnob,
                                           osc2SawKnob,
                                           osc2SquareKnob,
@@ -1021,6 +1058,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           osc2VowelLabel,
                                           osc3PitchKnob,
                                           osc3PitchLabel,
+                                          osc3PitchValueLabel,
                                           osc3SineKnob,
                                           osc3SawKnob,
                                           osc3SquareKnob,
