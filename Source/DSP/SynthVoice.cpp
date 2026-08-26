@@ -49,6 +49,14 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
         ampEnvelope.prepare(sampleRate);
         ampEnvelopePreparedSampleRate = sampleRate;
     }
+    if (std::abs(sampleRate - modEnvelopePreparedSampleRate) > 0.5)
+    {
+        for (auto& modEnvelope : modEnvelopeGenerators)
+        {
+            modEnvelope.prepare(sampleRate);
+        }
+        modEnvelopePreparedSampleRate = sampleRate;
+    }
     for (int sourceIndex = 0; sourceIndex < kVoiceMixerSourceCount; ++sourceIndex)
     {
         for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
@@ -64,6 +72,19 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
 
     ampEnvelope.setSettings(envelopeSettings);
     ampEnvelope.noteOn();
+    for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
+    {
+        modEnvelopeGenerators[envIndex].setSettings(modEnvelopeSettings[envIndex]);
+        if (modEnvelopeEnabled[envIndex])
+        {
+            modEnvelopeGenerators[envIndex].noteOn();
+        }
+        else
+        {
+            modEnvelopeGenerators[envIndex].reset();
+            modEnvelopeValues[envIndex] = 0.0f;
+        }
+    }
     noteAgeSamples = 0;
     for (auto& oscillatorUnit : oscillatorUnits)
     {
@@ -84,12 +105,24 @@ void SynthVoice::stopNote(float, bool allowTailOff)
     if (!allowTailOff)
     {
         ampEnvelope.reset();
+        for (auto& modEnvelope : modEnvelopeGenerators)
+        {
+            modEnvelope.reset();
+        }
+        modEnvelopeValues.fill(0.0f);
         clearCurrentNote();
         angleDelta = 0.0;
         return;
     }
 
     ampEnvelope.noteOff();
+    for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
+    {
+        if (modEnvelopeEnabled[envIndex])
+        {
+            modEnvelopeGenerators[envIndex].noteOff();
+        }
+    }
 }
 
 void SynthVoice::pitchWheelMoved(int newPitchWheelValue)
@@ -163,6 +196,18 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
+        for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
+        {
+            if (modEnvelopeEnabled[envIndex])
+            {
+                modEnvelopeValues[envIndex] = modEnvelopeGenerators[envIndex].getNextSample();
+            }
+            else
+            {
+                modEnvelopeValues[envIndex] = 0.0f;
+            }
+        }
+
         const auto applyVibeSourceStage = [&](float inSample, float noiseScale)
         {
             if (!vibeActive)
@@ -381,10 +426,53 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     }
 }
 
-void SynthVoice::setEnvelope(const EnvelopeSettings& settings)
+void SynthVoice::setAmpEnvelope(const EnvelopeSettings& settings)
 {
     envelopeSettings = settings;
-    ampEnvelope.setSettings(settings);
+    if (ampEnvelopeEnabled)
+    {
+        ampEnvelope.setSettings(settings);
+    }
+}
+
+void SynthVoice::setAmpEnvelopeEnabled(bool shouldEnable)
+{
+    ampEnvelopeEnabled = shouldEnable;
+    if (ampEnvelopeEnabled)
+    {
+        ampEnvelope.setSettings(envelopeSettings);
+    }
+    else
+    {
+        ampEnvelope.setSettings(EnvelopeSettings {});
+    }
+}
+
+void SynthVoice::setModEnvelopeSettings(const std::array<EnvelopeSettings, 3>& settings,
+                                        const std::array<bool, 3>& enabled)
+{
+    modEnvelopeSettings = settings;
+    modEnvelopeEnabled = enabled;
+
+    for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
+    {
+        modEnvelopeGenerators[envIndex].setSettings(modEnvelopeSettings[envIndex]);
+        if (!modEnvelopeEnabled[envIndex])
+        {
+            modEnvelopeGenerators[envIndex].reset();
+            modEnvelopeValues[envIndex] = 0.0f;
+        }
+    }
+}
+
+float SynthVoice::getModEnvelopeValue(int envIndex) const
+{
+    if (envIndex < 0 || envIndex >= static_cast<int>(modEnvelopeValues.size()))
+    {
+        return 0.0f;
+    }
+
+    return modEnvelopeValues[static_cast<std::size_t>(envIndex)];
 }
 
 void SynthVoice::setFilterSettings(const std::array<FilterSettings, kFilterInstanceCount>& settings)

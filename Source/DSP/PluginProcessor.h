@@ -3,7 +3,6 @@
 #include <JuceHeader.h>
 
 #include "Delay.h"
-#include "EnvelopeGenerator.h"
 #include "LfoGenerator.h"
 #include "Mood.h"
 #include "PianoKeyboard.h"
@@ -297,8 +296,8 @@ private:
     SubOscSettings currentSubOscillatorSettings() const;
     std::array<OscillatorLayerSettings, kOscillatorSourceCount> currentOscillatorLayerSettings() const;
     std::array<FilterSettings, kFilterInstanceCount> currentFilterSettings() const;
-    EnvelopeSettings currentEnvelopeSettings() const;
-    EnvelopeSettings currentEnvelopeSettings(int envIndex) const;
+    EnvelopeSettings currentAmpEnvelopeSettings() const;
+    EnvelopeSettings currentModEnvelopeSettings(int envIndex) const;
     LfoSettings currentLfoSettings() const;
     LfoSettings currentLfoSettings(int lfoIndex) const;
     VibeSettings currentVibeSettings() const;
@@ -331,6 +330,7 @@ private:
                                            float* outEffectiveNormalized = nullptr) const;
     float currentLfoSignalForBlock(int numSamples);
     float currentLfoSignalForBlock(int lfoIndex, int numSamples);
+    void collectModulationEnvelopeValuesFromVoices();
 
     juce::Synthesiser synth;
 
@@ -454,9 +454,7 @@ private:
     std::array<LfoGenerator, kLfoSourceCount> lfoGenerators;
     std::array<std::atomic<float>, kLfoSourceCount> lfoPhaseForDebug { { 0.0f, 0.0f, 0.0f } };
     std::array<std::atomic<float>, kLfoSourceCount> lfoCurrentValues { { 0.0f, 0.0f, 0.0f } };
-    std::array<EnvelopeGenerator, kEnvelopeSourceCount> modulationEnvelopeGenerators;
     std::array<std::atomic<float>, kEnvelopeSourceCount> modulationEnvelopeValues { { 0.0f, 0.0f, 0.0f } };
-    bool modulationEnvelopeGateOpen { false };
     std::atomic<float> lfoDebugBaseNormalized { 0.0f };
     std::atomic<float> lfoDebugEffectiveNormalized { 0.0f };
     std::atomic<float> debugOscillatorBusRms { 0.0f };

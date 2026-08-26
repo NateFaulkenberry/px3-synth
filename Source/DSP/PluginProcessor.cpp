@@ -436,7 +436,14 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
 
     buildLfoAssignableTargets();
 
-    const auto initialEnvelope = currentEnvelopeSettings();
+    const auto initialAmpEnvelope = currentAmpEnvelopeSettings();
+    std::array<EnvelopeSettings, kEnvelopeSourceCount> initialModEnvelopeSettings;
+    std::array<bool, kEnvelopeSourceCount> initialModEnvelopeEnabled;
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        initialModEnvelopeSettings[static_cast<std::size_t>(envIndex)] = currentModEnvelopeSettings(envIndex);
+        initialModEnvelopeEnabled[static_cast<std::size_t>(envIndex)] = getEnvelopeEnabledParam(envIndex).get();
+    }
     const auto initialFilter = currentFilterSettings();
     const auto initialSubtractive = currentSubtractiveSettings();
     const auto initialSubOsc = currentSubOscillatorSettings();
@@ -447,7 +454,9 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     {
         auto* synthVoice = new SynthVoice();
         synthVoice->setVoiceIndex(voice);
-        synthVoice->setEnvelope(initialEnvelope);
+        synthVoice->setAmpEnvelope(initialAmpEnvelope);
+        synthVoice->setAmpEnvelopeEnabled(ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true);
+        synthVoice->setModEnvelopeSettings(initialModEnvelopeSettings, initialModEnvelopeEnabled);
         synthVoice->setFilterSettings(initialFilter);
         synthVoice->setSubtractiveSettings(initialSubtractive);
         synthVoice->setSubOscillatorSettings(initialSubOsc);
@@ -531,12 +540,8 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     }
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
     {
-        modulationEnvelopeGenerators[static_cast<std::size_t>(envIndex)].prepare(sampleRate);
-        modulationEnvelopeGenerators[static_cast<std::size_t>(envIndex)].setSettings(currentEnvelopeSettings(envIndex));
-        modulationEnvelopeGenerators[static_cast<std::size_t>(envIndex)].reset();
         modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].store(0.0f, std::memory_order_relaxed);
     }
-    modulationEnvelopeGateOpen = false;
     vibeComponent.prepare(sampleRate, synth.getNumVoices(), vibeComponent.getSeed());
     delayComponent.prepare(sampleRate);
     moodComponent.prepare(sampleRate);
@@ -566,7 +571,15 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     fxReturnGateSmoother.reset(sampleRate, 0.010);
     fxReturnGateSmoother.setCurrentAndTargetValue(1.0f);
 
-    const auto envelope = currentEnvelopeSettings();
+    const auto ampEnvelope = currentAmpEnvelopeSettings();
+    const auto ampEnvelopeEnabled = ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true;
+    std::array<EnvelopeSettings, kEnvelopeSourceCount> modEnvelopeSettings;
+    std::array<bool, kEnvelopeSourceCount> modEnvelopeEnabled;
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        modEnvelopeSettings[static_cast<std::size_t>(envIndex)] = currentModEnvelopeSettings(envIndex);
+        modEnvelopeEnabled[static_cast<std::size_t>(envIndex)] = getEnvelopeEnabledParam(envIndex).get();
+    }
     const auto filter = currentFilterSettings();
     const auto subtractive = currentSubtractiveSettings();
     const auto subOsc = currentSubOscillatorSettings();
@@ -576,7 +589,9 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     {
         if (auto* voice = dynamic_cast<SynthVoice*>(synth.getVoice(voiceIndex)))
         {
-            voice->setEnvelope(envelope);
+            voice->setAmpEnvelope(ampEnvelope);
+            voice->setAmpEnvelopeEnabled(ampEnvelopeEnabled);
+            voice->setModEnvelopeSettings(modEnvelopeSettings, modEnvelopeEnabled);
             voice->setFilterSettings(filter);
             voice->setSubtractiveSettings(subtractive);
             voice->setSubOscillatorSettings(subOsc);
@@ -621,6 +636,36 @@ float PX3SynthAudioProcessor::currentLfoSignalForBlock(int lfoIndex, int numSamp
     lfoPhaseForDebug[static_cast<std::size_t>(idx)].store(generator.getPhaseRadians(), std::memory_order_relaxed);
     lfoCurrentValues[static_cast<std::size_t>(idx)].store(signal, std::memory_order_relaxed);
     return signal;
+}
+
+void PX3SynthAudioProcessor::collectModulationEnvelopeValuesFromVoices()
+{
+    std::array<float, kEnvelopeSourceCount> sums { { 0.0f, 0.0f, 0.0f } };
+    auto activeVoiceCount = 0;
+
+    for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
+    {
+        auto* voice = dynamic_cast<SynthVoice*>(synth.getVoice(voiceIndex));
+        if (voice == nullptr || !voice->isVoiceActive())
+        {
+            continue;
+        }
+
+        ++activeVoiceCount;
+        for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+        {
+            sums[static_cast<std::size_t>(envIndex)] += voice->getModEnvelopeValue(envIndex);
+        }
+    }
+
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        const auto value = activeVoiceCount > 0
+                               ? sums[static_cast<std::size_t>(envIndex)] / static_cast<float>(activeVoiceCount)
+                               : 0.0f;
+        modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].store(juce::jlimit(0.0f, 1.0f, value),
+                                                                            std::memory_order_relaxed);
+    }
 }
 
 void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
@@ -674,52 +719,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     midiMessages.swapWith(combinedMidi);
     updateActiveNotesFromMidi(midiMessages);
 
-    auto anyActiveNotes = false;
-    for (const auto& noteCount : activeNoteCounts)
-    {
-        if (noteCount.load(std::memory_order_relaxed) > 0)
-        {
-            anyActiveNotes = true;
-            break;
-        }
-    }
-
-    if (anyActiveNotes && !modulationEnvelopeGateOpen)
-    {
-        for (auto& env : modulationEnvelopeGenerators)
-        {
-            env.noteOn();
-        }
-        modulationEnvelopeGateOpen = true;
-    }
-    else if (!anyActiveNotes && modulationEnvelopeGateOpen)
-    {
-        for (auto& env : modulationEnvelopeGenerators)
-        {
-            env.noteOff();
-        }
-        modulationEnvelopeGateOpen = false;
-    }
-
-    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
-    {
-        auto& generator = modulationEnvelopeGenerators[static_cast<std::size_t>(envIndex)];
-        generator.setSettings(currentEnvelopeSettings(envIndex));
-
-        auto sampleValue = modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].load(std::memory_order_relaxed);
-        auto blockSum = 0.0f;
-        for (int i = 0; i < blockSamples; ++i)
-        {
-            sampleValue = generator.getNextSample();
-            blockSum += sampleValue;
-        }
-
-        // Use block-mean envelope magnitude for per-block modulation sampling.
-        // This preserves fast transients better than end-of-block sampling while
-        // avoiding peak-latched tails that can overextend modulation influence.
-        const auto blockMean = blockSamples > 0 ? (blockSum / static_cast<float>(blockSamples)) : sampleValue;
-        modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].store(blockMean, std::memory_order_relaxed);
-    }
+    // MOD ENV signals are voice-owned and sampled from active voices.
+    collectModulationEnvelopeValuesFromVoices();
 
     const auto pitchBend = juce::jlimit(-1.0f, 1.0f, pitchBendNormalized.load(std::memory_order_relaxed));
     const auto modWheel = juce::jlimit(0.0f, 1.0f, modWheelNormalized.load(std::memory_order_relaxed));
@@ -754,7 +755,15 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         lfoDebugEffectiveNormalized.store(0.0f, std::memory_order_relaxed);
     }
 
-    const auto envelope = currentEnvelopeSettings();
+    const auto ampEnvelope = currentAmpEnvelopeSettings();
+    const auto ampEnvelopeEnabled = ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true;
+    std::array<EnvelopeSettings, kEnvelopeSourceCount> modEnvelopeSettings;
+    std::array<bool, kEnvelopeSourceCount> modEnvelopeEnabled;
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        modEnvelopeSettings[static_cast<std::size_t>(envIndex)] = currentModEnvelopeSettings(envIndex);
+        modEnvelopeEnabled[static_cast<std::size_t>(envIndex)] = getEnvelopeEnabledParam(envIndex).get();
+    }
     const auto filter = currentFilterSettings();
     const auto subtractive = currentSubtractiveSettings();
     const auto subOsc = currentSubOscillatorSettings();
@@ -768,7 +777,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     {
         if (auto* voice = dynamic_cast<SynthVoice*>(synth.getVoice(voiceIndex)))
         {
-            voice->setEnvelope(envelope);
+            voice->setAmpEnvelope(ampEnvelope);
+            voice->setAmpEnvelopeEnabled(ampEnvelopeEnabled);
+            voice->setModEnvelopeSettings(modEnvelopeSettings, modEnvelopeEnabled);
             voice->setFilterSettings(filter);
             voice->setSubtractiveSettings(subtractive);
             voice->setSubOscillatorSettings(subOsc);
@@ -788,6 +799,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     // Each voice now explicitly mixes oscillator sources -> filter -> amp before
     // contributing here, so future sources can sum in parallel at the same point.
     synth.renderNextBlock(oscillatorBusBuffer, midiMessages, 0, blockSamples);
+
+    // Capture the newest per-voice modulation envelope values for downstream
+    // modulation reads and debug snapshots in the next processing stage.
+    collectModulationEnvelopeValuesFromVoices();
 
     updateTransportState();
 

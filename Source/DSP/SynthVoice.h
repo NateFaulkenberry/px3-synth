@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "AmpEnvelope.h"
+#include "EnvelopeGenerator.h"
 #include "EnvelopeTypes.h"
 #include "FilterTypes.h"
 #include "OscillatorTypes.h"
@@ -34,7 +35,11 @@ public:
 
     void renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override;
 
-    void setEnvelope(const EnvelopeSettings& settings);
+    void setAmpEnvelope(const EnvelopeSettings& settings);
+    void setAmpEnvelopeEnabled(bool shouldEnable);
+    void setModEnvelopeSettings(const std::array<EnvelopeSettings, 3>& settings,
+                                const std::array<bool, 3>& enabled);
+    float getModEnvelopeValue(int envIndex) const;
     void setFilterSettings(const std::array<FilterSettings, kFilterInstanceCount>& settings);
     void setSubtractiveSettings(const SubtractiveSettings& settings);
     void setSubOscillatorSettings(const SubOscSettings& settings);
@@ -64,6 +69,10 @@ private:
     std::array<OscillatorLayerSettings, kOscillatorSourceCount> oscillatorLayerSettings;
 
     AmpEnvelope ampEnvelope;
+    std::array<EnvelopeGenerator, 3> modEnvelopeGenerators;
+    std::array<EnvelopeSettings, 3> modEnvelopeSettings;
+    std::array<bool, 3> modEnvelopeEnabled { { true, true, true } };
+    std::array<float, 3> modEnvelopeValues { { 0.0f, 0.0f, 0.0f } };
     std::array<std::array<VoiceFilter, kFilterInstanceCount>, kVoiceMixerSourceCount> sourceFilters;
 
     double currentAngle { 0.0 };
@@ -90,6 +99,8 @@ private:
     int noteAgeSamples { 0 };
     int voiceIndex { 0 };
     double ampEnvelopePreparedSampleRate { 0.0 };
+    double modEnvelopePreparedSampleRate { 0.0 };
+    bool ampEnvelopeEnabled { true };
 
     float vibeGlobalAmount { 0.0f };
     bool vibeBypass { false };

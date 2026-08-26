@@ -99,7 +99,7 @@ std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcess
     return layerSettings;
 }
 
-EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings() const
+EnvelopeSettings PX3SynthAudioProcessor::currentAmpEnvelopeSettings() const
 {
     EnvelopeSettings settings;
 
@@ -112,7 +112,7 @@ EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings() const
     return settings;
 }
 
-EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings(int envIndex) const
+EnvelopeSettings PX3SynthAudioProcessor::currentModEnvelopeSettings(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     auto& attack = getEnvelopeAttackParam(idx);
