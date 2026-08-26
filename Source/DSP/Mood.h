@@ -75,5 +75,16 @@ private:
     float clockHeldR { 0.0f };
     bool wasEnabled { false };
 
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> mixSmoothed;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> clockSmoothed;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> routingSmoothed;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> wetTimeSmoothed;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> wetModifySmoothed;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> loopLengthSmoothed;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> loopModifySmoothed;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> feedbackSmoothed;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> spreadSmoothed;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> degradeSmoothed;
+
     double sampleRateHz { 44100.0 };
 };

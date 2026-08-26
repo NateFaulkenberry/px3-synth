@@ -25,6 +25,19 @@ void Mood::prepare(double sampleRate)
 {
     sampleRateHz = juce::jmax(1.0, sampleRate);
 
+    // Smooth user/performance control changes to avoid zipper artifacts.
+    constexpr double smoothingSeconds = 0.025;
+    mixSmoothed.reset(sampleRateHz, smoothingSeconds);
+    clockSmoothed.reset(sampleRateHz, smoothingSeconds);
+    routingSmoothed.reset(sampleRateHz, smoothingSeconds);
+    wetTimeSmoothed.reset(sampleRateHz, smoothingSeconds);
+    wetModifySmoothed.reset(sampleRateHz, smoothingSeconds);
+    loopLengthSmoothed.reset(sampleRateHz, smoothingSeconds);
+    loopModifySmoothed.reset(sampleRateHz, smoothingSeconds);
+    feedbackSmoothed.reset(sampleRateHz, smoothingSeconds);
+    spreadSmoothed.reset(sampleRateHz, smoothingSeconds);
+    degradeSmoothed.reset(sampleRateHz, smoothingSeconds);
+
     constexpr float maxHistorySeconds = 8.0f;
     constexpr float maxWetDelaySeconds = 6.0f;
 
@@ -68,6 +81,17 @@ void Mood::reset()
     {
         grain.active = false;
     }
+
+    mixSmoothed.setCurrentAndTargetValue(currentSettings.mix);
+    clockSmoothed.setCurrentAndTargetValue(currentSettings.clock);
+    routingSmoothed.setCurrentAndTargetValue(currentSettings.routing);
+    wetTimeSmoothed.setCurrentAndTargetValue(currentSettings.wetTime);
+    wetModifySmoothed.setCurrentAndTargetValue(currentSettings.wetModify);
+    loopLengthSmoothed.setCurrentAndTargetValue(currentSettings.loopLength);
+    loopModifySmoothed.setCurrentAndTargetValue(currentSettings.loopModify);
+    feedbackSmoothed.setCurrentAndTargetValue(currentSettings.feedback);
+    spreadSmoothed.setCurrentAndTargetValue(currentSettings.spread);
+    degradeSmoothed.setCurrentAndTargetValue(currentSettings.degrade);
 }
 
 void Mood::updateForBlock(const MoodSettings& settings)
@@ -82,22 +106,22 @@ void Mood::updateForBlock(const MoodSettings& settings)
 
     currentSettings = settings;
 
-    currentSettings.mix = clamp01(settings.mix);
-    currentSettings.clock = clamp01(settings.clock);
-    currentSettings.routing = clamp01(settings.routing);
-    currentSettings.wetTime = clamp01(settings.wetTime);
-    currentSettings.wetModify = clamp01(settings.wetModify);
-    currentSettings.loopLength = clamp01(settings.loopLength);
-    currentSettings.loopModify = clamp01(settings.loopModify);
-    currentSettings.feedback = clamp01(settings.feedback);
-    currentSettings.spread = clamp01(settings.spread);
-    currentSettings.degrade = clamp01(settings.degrade);
+    mixSmoothed.setTargetValue(clamp01(settings.mix));
+    clockSmoothed.setTargetValue(clamp01(settings.clock));
+    routingSmoothed.setTargetValue(clamp01(settings.routing));
+    wetTimeSmoothed.setTargetValue(clamp01(settings.wetTime));
+    wetModifySmoothed.setTargetValue(clamp01(settings.wetModify));
+    loopLengthSmoothed.setTargetValue(clamp01(settings.loopLength));
+    loopModifySmoothed.setTargetValue(clamp01(settings.loopModify));
+    feedbackSmoothed.setTargetValue(clamp01(settings.feedback));
+    spreadSmoothed.setTargetValue(clamp01(settings.spread));
+    degradeSmoothed.setTargetValue(clamp01(settings.degrade));
 
     currentSettings.wetModeIndex = juce::jlimit(0, 2, settings.wetModeIndex);
     currentSettings.loopModeIndex = juce::jlimit(0, 2, settings.loopModeIndex);
 
-    const auto clockRatio = 0.25f + currentSettings.clock * 1.75f;
-    const auto degradeWeight = std::pow(currentSettings.degrade, 1.35f);
+    const auto clockRatio = 0.25f + clockSmoothed.getCurrentValue() * 1.75f;
+    const auto degradeWeight = std::pow(degradeSmoothed.getCurrentValue(), 1.35f);
     const auto effectiveRate = juce::jmax(0.05f, clockRatio * (1.0f - 0.82f * degradeWeight));
     clockHoldSamples = juce::jlimit(1,
                                     1024,
@@ -396,6 +420,29 @@ void Mood::processSampleFrame(float inL, float inR, float& outL, float& outR)
         outR = inR;
         return;
     }
+
+    currentSettings.mix = mixSmoothed.getNextValue();
+    currentSettings.clock = clockSmoothed.getNextValue();
+    currentSettings.routing = routingSmoothed.getNextValue();
+    currentSettings.wetTime = wetTimeSmoothed.getNextValue();
+    currentSettings.wetModify = wetModifySmoothed.getNextValue();
+    currentSettings.loopLength = loopLengthSmoothed.getNextValue();
+    currentSettings.loopModify = loopModifySmoothed.getNextValue();
+    currentSettings.feedback = feedbackSmoothed.getNextValue();
+    currentSettings.spread = spreadSmoothed.getNextValue();
+    currentSettings.degrade = degradeSmoothed.getNextValue();
+
+    const auto clockRatio = 0.25f + currentSettings.clock * 1.75f;
+    const auto degradeWeight = std::pow(currentSettings.degrade, 1.35f);
+    const auto effectiveRate = juce::jmax(0.05f, clockRatio * (1.0f - 0.82f * degradeWeight));
+    const auto targetHold = juce::jlimit(1,
+                                         1024,
+                                         static_cast<int>(std::round(static_cast<float>(sampleRateHz)
+                                                                     / (sampleRateHz * effectiveRate))));
+    clockHoldSamples = juce::jlimit(1,
+                                    1024,
+                                    static_cast<int>(std::lround(0.92f * static_cast<float>(clockHoldSamples)
+                                                                 + 0.08f * static_cast<float>(targetHold))));
 
     // Always-listening behavior: circular history keeps running unless frozen.
     if (!currentSettings.freeze)
