@@ -643,6 +643,16 @@ void PX3SynthAudioProcessor::collectModulationEnvelopeValuesFromVoices()
     std::array<float, kEnvelopeSourceCount> sums { { 0.0f, 0.0f, 0.0f } };
     auto activeVoiceCount = 0;
 
+    auto anyHeldNotes = false;
+    for (const auto& noteCount : activeNoteCounts)
+    {
+        if (noteCount.load(std::memory_order_relaxed) > 0)
+        {
+            anyHeldNotes = true;
+            break;
+        }
+    }
+
     for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
     {
         auto* voice = dynamic_cast<SynthVoice*>(synth.getVoice(voiceIndex));
@@ -658,11 +668,26 @@ void PX3SynthAudioProcessor::collectModulationEnvelopeValuesFromVoices()
         }
     }
 
+    if (activeVoiceCount <= 0)
+    {
+        // If notes are currently held but voices have not yet been advanced in
+        // this block, keep the previous modulation value instead of snapping to
+        // zero and losing ENV impact on downstream destinations.
+        if (anyHeldNotes)
+        {
+            return;
+        }
+
+        for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+        {
+            modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].store(0.0f, std::memory_order_relaxed);
+        }
+        return;
+    }
+
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
     {
-        const auto value = activeVoiceCount > 0
-                               ? sums[static_cast<std::size_t>(envIndex)] / static_cast<float>(activeVoiceCount)
-                               : 0.0f;
+        const auto value = sums[static_cast<std::size_t>(envIndex)] / static_cast<float>(activeVoiceCount);
         modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].store(juce::jlimit(0.0f, 1.0f, value),
                                                                             std::memory_order_relaxed);
     }
