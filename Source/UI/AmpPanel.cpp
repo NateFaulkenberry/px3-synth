@@ -38,8 +38,6 @@ AmpPanel::AmpPanel(PX3SynthAudioProcessor& processorIn, juce::Colour panelAccent
     assignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     assignBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
 
-    enabledAttachment = std::make_unique<juce::ButtonParameterAttachment>(processor.getAmpEnvEnabledParam(), enabledButton, nullptr);
-
     envelopeGraph = std::make_unique<EnvelopeComponent>(processor.getAttackParam(),
                                                         processor.getDecayParam(),
                                                         processor.getSustainParam(),
@@ -51,6 +49,23 @@ AmpPanel::AmpPanel(PX3SynthAudioProcessor& processorIn, juce::Colour panelAccent
                                                         assignBox,
                                                         panelAccent,
                                                         "amp.env");
+    enabledButton.setVisible(false);
+    enabledButton.setEnabled(false);
+    enabledLabel.setVisible(false);
+    enabledLabel.setEnabled(false);
+    assignLabel.setVisible(false);
+    assignLabel.setEnabled(false);
+    assignBox.setVisible(false);
+    assignBox.setEnabled(false);
+
+    if (!processor.getAmpEnvEnabledParam().get())
+    {
+        auto& ampEnabled = processor.getAmpEnvEnabledParam();
+        ampEnabled.beginChangeGesture();
+        ampEnabled.setValueNotifyingHost(1.0f);
+        ampEnabled.endChangeGesture();
+    }
+
     addAndMakeVisible(*envelopeGraph);
 }
 
@@ -114,12 +129,7 @@ void AmpPanel::resized()
     const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("amp.panel.layout.padY", 10) : 10;
     auto panelArea = getLocalBounds().reduced(panelPadX, panelPadY);
 
-    const auto maxWidth = uiConfig != nullptr ? uiConfig->getInt("amp.env.layout.maxWidth", 360) : 360;
-    const auto minHeight = uiConfig != nullptr ? uiConfig->getInt("amp.env.layout.minHeight", 250) : 250;
-    const auto maxHeight = uiConfig != nullptr ? uiConfig->getInt("amp.env.layout.maxHeight", 340) : 340;
-    const auto cardWidth = juce::jmin(maxWidth, panelArea.getWidth());
-    const auto cardHeight = juce::jlimit(minHeight, maxHeight, panelArea.getHeight());
-    envelopeGraph->setBounds(juce::Rectangle<int>(cardWidth, cardHeight).withCentre(panelArea.getCentre()));
+    envelopeGraph->setBounds(panelArea);
 }
 
 int AmpPanel::getPreferredContentWidth() const
@@ -138,6 +148,14 @@ int AmpPanel::getPreferredContentHeight() const
 
 void AmpPanel::refreshFromParameters()
 {
+    if (!processor.getAmpEnvEnabledParam().get())
+    {
+        auto& ampEnabled = processor.getAmpEnvEnabledParam();
+        ampEnabled.beginChangeGesture();
+        ampEnabled.setValueNotifyingHost(1.0f);
+        ampEnabled.endChangeGesture();
+    }
+
     if (envelopeGraph != nullptr)
     {
         envelopeGraph->refreshFromParameters();

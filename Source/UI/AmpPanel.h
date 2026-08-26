@@ -30,7 +30,6 @@ private:
     juce::Label enabledLabel;
     juce::Label assignLabel;
     juce::ComboBox assignBox;
-    std::unique_ptr<juce::ButtonParameterAttachment> enabledAttachment;
 
     std::unique_ptr<EnvelopeComponent> envelopeGraph;
     juce::Colour accent;

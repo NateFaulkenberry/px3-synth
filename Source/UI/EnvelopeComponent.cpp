@@ -46,27 +46,31 @@ void EnvelopeComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
 
-    const auto pref = configPrefix + ".visual.";
+    if (enabledLabel.isVisible())
+    {
+        const auto pref = configPrefix + ".visual.";
 
-    const auto textColour = uiConfig != nullptr ? uiConfig->getColour(pref + "onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
-                                                : juce::Colour::fromRGB(232, 232, 232);
-    const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat(pref + "onLabel.fontSize", 11.5f) : 11.5f;
-    const auto text = uiConfig != nullptr ? uiConfig->getString(pref + "onLabel.text", "ON") : juce::String("ON");
-    enabledLabel.setText(text, juce::dontSendNotification);
-    enabledLabel.setColour(juce::Label::textColourId, textColour);
-    enabledLabel.setFont(juce::FontOptions(fontSize));
-    baseEnabledLabelTextColour = textColour;
+        const auto textColour = uiConfig != nullptr ? uiConfig->getColour(pref + "onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
+                                                    : juce::Colour::fromRGB(232, 232, 232);
+        const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat(pref + "onLabel.fontSize", 11.5f) : 11.5f;
+        const auto text = uiConfig != nullptr ? uiConfig->getString(pref + "onLabel.text", "ON") : juce::String("ON");
+        enabledLabel.setText(text, juce::dontSendNotification);
+        enabledLabel.setColour(juce::Label::textColourId, textColour);
+        enabledLabel.setFont(juce::FontOptions(fontSize));
+        baseEnabledLabelTextColour = textColour;
+    }
 
     repaint();
 }
 
 void EnvelopeComponent::refreshFromParameters()
 {
+    const auto forceEnabled = uiConfig != nullptr ? uiConfig->getBool(configPrefix + ".behavior.alwaysEnabled", false) : false;
     const auto a = attack.get();
     const auto d = decay.get();
     const auto s = sustain.get();
     const auto r = release.get();
-    const auto nextEnabled = enabled.get();
+    const auto nextEnabled = forceEnabled ? true : enabled.get();
 
     if (std::abs(a - lastAttack) > 0.0001f
         || std::abs(d - lastDecay) > 0.0001f
@@ -97,10 +101,7 @@ void EnvelopeComponent::refreshFromParameters()
 
 void EnvelopeComponent::paint(juce::Graphics& g)
 {
-    auto card = getLocalBounds().reduced(6, 6);
-    constexpr int targetCardWidth = 300;
-    const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
-    card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
+    const auto card = computeCardBounds();
     const auto cardBounds = card.toFloat();
     if (cardBounds.isEmpty())
     {
@@ -226,6 +227,25 @@ void EnvelopeComponent::paint(juce::Graphics& g)
         g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
         g.drawText(text, bubble.toNearestInt(), juce::Justification::centred);
     }
+}
+
+juce::Rectangle<int> EnvelopeComponent::computeCardBounds() const
+{
+    auto card = getLocalBounds().reduced(6, 6);
+
+    const auto widthPercent = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".layout.cardWidthPercent", 0.0f) : 0.0f;
+    if (widthPercent > 0.0f)
+    {
+        const auto clampedPercent = juce::jlimit(0.1f, 1.0f, widthPercent);
+        const auto cardWidth = juce::jlimit(120,
+                                            card.getWidth(),
+                                            static_cast<int>(std::lround(static_cast<float>(card.getWidth()) * clampedPercent)));
+        return card.withSizeKeepingCentre(cardWidth, card.getHeight());
+    }
+
+    const auto targetCardWidth = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".layout.cardTargetWidth", 300) : 300;
+    const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
+    return card.withSizeKeepingCentre(cardWidth, card.getHeight());
 }
 
 void EnvelopeComponent::mouseMove(const juce::MouseEvent& event)
@@ -403,17 +423,23 @@ float EnvelopeComponent::visualNormToTime(float norm, float minValue, float maxV
 EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
 {
     Geometry geom;
-    auto card = getLocalBounds().reduced(6, 6);
-    constexpr int targetCardWidth = 300;
-    const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
-    card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
+    auto card = computeCardBounds();
+    const auto fullHeightGraph = uiConfig != nullptr ? uiConfig->getBool(configPrefix + ".behavior.fullHeightGraph", false) : false;
     auto graphLayout = card.toFloat().reduced(10.0f, 10.0f);
-    graphLayout.removeFromTop(24.0f);
-    graphLayout.removeFromTop(6.0f);
-    graphLayout.removeFromTop(24.0f);
-    graphLayout.removeFromTop(6.0f);
-    graphLayout.removeFromTop(8.0f);
-    graphLayout.removeFromBottom(10.0f);
+    if (fullHeightGraph)
+    {
+        graphLayout.removeFromTop(12.0f);
+        graphLayout.removeFromBottom(6.0f);
+    }
+    else
+    {
+        graphLayout.removeFromTop(24.0f);
+        graphLayout.removeFromTop(6.0f);
+        graphLayout.removeFromTop(24.0f);
+        graphLayout.removeFromTop(6.0f);
+        graphLayout.removeFromTop(8.0f);
+        graphLayout.removeFromBottom(10.0f);
+    }
 
     geom.left = graphLayout.getX() + 6.0f;
     geom.right = graphLayout.getRight() - 6.0f;

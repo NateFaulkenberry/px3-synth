@@ -101,16 +101,6 @@ std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcess
 EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings() const
 {
     EnvelopeSettings settings;
-    const auto envEnabled = ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true;
-
-    if (!envEnabled)
-    {
-        settings.attackSeconds = 0.001f;
-        settings.decaySeconds = 0.005f;
-        settings.sustainLevel = 1.0f;
-        settings.releaseSeconds = 0.010f;
-        return settings;
-    }
 
     settings.attackSeconds = attackParam->convertFrom0to1(applyModulationToNormalizedValue(
         attackParam,

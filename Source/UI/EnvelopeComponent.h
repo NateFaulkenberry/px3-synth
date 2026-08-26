@@ -64,6 +64,7 @@ private:
     static float clamp01(float v);
     static float timeToVisualNorm(float seconds, float minValue, float maxValue);
     static float visualNormToTime(float norm, float minValue, float maxValue);
+    juce::Rectangle<int> computeCardBounds() const;
     Geometry computeGeometry() const;
     static float distSq(juce::Point<float> a, juce::Point<float> b);
     static float distToSegmentSq(juce::Point<float> p, juce::Point<float> a, juce::Point<float> b);

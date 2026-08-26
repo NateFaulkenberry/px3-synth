@@ -483,7 +483,12 @@
     },
     "env": {
       "title": { "text": "AMP ENV" },
+      "behavior": {
+        "alwaysEnabled": true,
+        "fullHeightGraph": true
+      },
       "layout": {
+        "cardWidthPercent": 0.6,
         "maxWidth": 360,
         "minHeight": 250,
         "maxHeight": 340
@@ -507,12 +512,6 @@
           "strokeAlphaEnabled": 82,
           "strokeColourDisabled": "#888888",
           "strokeAlphaDisabled": 62
-        },
-        "onLabel": {
-          "text": "ON",
-          "fontSize": 11.5,
-          "textColour": "#E8E8E8",
-          "width": 52
         }
       }
     }
