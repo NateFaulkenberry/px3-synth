@@ -274,8 +274,8 @@
       "strokeAlpha": 0,
       "cornerRadius": 0,
       "layout": {
-        "padX": 12,
-        "padY": 10
+        "padX": 0,
+        "padY": 0
       },
       "background": "#0A120A9B",
       "outline": "#66BB6690"
