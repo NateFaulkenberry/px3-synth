@@ -571,6 +571,10 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     fxReturnGateSmoother.reset(sampleRate, 0.010);
     fxReturnGateSmoother.setCurrentAndTargetValue(1.0f);
 
+    fxReturnPanSmoother.reset(sampleRate, 0.012);
+    const auto initialFxPan = fxReturnPanParam != nullptr ? fxReturnPanParam->get() : 0.0f;
+    fxReturnPanSmoother.setCurrentAndTargetValue(juce::jlimit(-1.0f, 1.0f, initialFxPan));
+
     const auto ampEnvelope = currentAmpEnvelopeSettings();
     const auto ampEnvelopeEnabled = ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true;
     std::array<EnvelopeSettings, kEnvelopeSourceCount> modEnvelopeSettings;
@@ -883,13 +887,14 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                                                      fxReturnGainParam,
                                                      static_cast<juce::RangedAudioParameter*>(fxReturnGainParam)->getValue())))
                                   : 1.0f;
-    const auto fxPan = fxReturnPanParam != nullptr
-                           ? juce::jlimit(-1.0f,
-                                          1.0f,
-                                          fxReturnPanParam->convertFrom0to1(applyModulationToNormalizedValue(
-                                              fxReturnPanParam,
-                                              static_cast<juce::RangedAudioParameter*>(fxReturnPanParam)->getValue())))
-                           : 0.0f;
+    const auto fxPanTarget = fxReturnPanParam != nullptr
+                                 ? juce::jlimit(-1.0f,
+                                                1.0f,
+                                                fxReturnPanParam->convertFrom0to1(applyModulationToNormalizedValue(
+                                                    fxReturnPanParam,
+                                                    static_cast<juce::RangedAudioParameter*>(fxReturnPanParam)->getValue())))
+                                 : 0.0f;
+    fxReturnPanSmoother.setTargetValue(fxPanTarget);
 
     std::array<float, kMixerSourceCount> sourceLevelValues { { 1.0f, 1.0f, 1.0f, 1.0f } };
     std::array<float, kMixerSourceCount> sourcePanValues { { 0.0f, 0.0f, 0.0f, 0.0f } };
@@ -944,10 +949,6 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                    sourcePanLeft[static_cast<std::size_t>(sourceIndex)],
                    sourcePanRight[static_cast<std::size_t>(sourceIndex)]);
     }
-
-    float fxPanLeft = 1.0f;
-    float fxPanRight = 1.0f;
-    panToGains(fxPan, fxPanLeft, fxPanRight);
 
     std::array<double, kMixerSourceCount> mixerSourceEnergy { { 0.0, 0.0, 0.0, 0.0 } };
     double fxReturnEnergy = 0.0;
@@ -1029,6 +1030,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
         // FX BUS: net FX return relative to dry path.
         const auto fxReturnGate = fxReturnGateSmoother.getNextValue();
+        float fxPanLeft = 1.0f;
+        float fxPanRight = 1.0f;
+        panToGains(fxReturnPanSmoother.getNextValue(), fxPanLeft, fxPanRight);
         const auto fxL = (stageL - fxInL) * fxReturnGain * fxPanLeft * fxReturnGate;
         const auto fxR = (stageR - fxInR) * fxReturnGain * fxPanRight * fxReturnGate;
         fxReturnEnergy += static_cast<double>(fxL) * static_cast<double>(fxL)

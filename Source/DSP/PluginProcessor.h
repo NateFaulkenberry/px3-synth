@@ -490,6 +490,7 @@ private:
     std::array<juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear>, kMixerSourceCount> sourceDryGateSmoothers;
     std::array<juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear>, kMixerSourceCount> sourceSendGateSmoothers;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> fxReturnGateSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> fxReturnPanSmoother;
 
     std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
     std::atomic<uint32_t> fxOrderRevision { 0u };
