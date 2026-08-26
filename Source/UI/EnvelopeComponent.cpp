@@ -44,7 +44,7 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
         }
         if (amountLabel != nullptr)
         {
-            addAndMakeVisible(*amountLabel);
+            amountLabel->setVisible(false);
         }
         if (amountValueLabel != nullptr)
         {
@@ -112,10 +112,6 @@ void EnvelopeComponent::refreshFromParameters()
             amountKnob->setInterceptsMouseClicks(currentEnabled, currentEnabled);
             amountKnob->getProperties().set("knobBypassed", !currentEnabled);
             amountKnob->getProperties().set("psychedelicBypassGray", !currentEnabled);
-        }
-        if (amountLabel != nullptr)
-        {
-            amountLabel->setEnabled(currentEnabled);
         }
         if (amountValueLabel != nullptr)
         {
@@ -474,7 +470,6 @@ EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
         graphLayout.removeFromTop(24.0f);
         graphLayout.removeFromTop(6.0f);
         graphLayout.removeFromTop(8.0f);
-        graphLayout.removeFromBottom(10.0f);
         if (amountKnob != nullptr)
         {
             graphLayout.removeFromTop(44.0f);
@@ -769,11 +764,10 @@ void EnvelopeComponent::resized()
     {
         area.removeFromTop(6);
         auto amountArea = area.removeFromTop(44);
-        auto amountLabelRow = amountArea.removeFromTop(18);
-        amountLabel->setBounds(amountLabelRow.reduced(2, 0));
         auto amountValueRow = amountArea.removeFromBottom(20);
         amountValueLabel->setBounds(amountValueRow.reduced(2, 0));
-        const auto amountKnobSize = juce::jlimit(30, 52, juce::jmin(amountArea.getWidth() - 16, amountArea.getHeight()));
+        const auto amountKnobSize = juce::jlimit(44, 84, juce::jmin(amountArea.getWidth() - 16, amountArea.getHeight()));
         amountKnob->setBounds(juce::Rectangle<int>(amountKnobSize, amountKnobSize).withCentre(amountArea.getCentre()));
+        amountLabel->setBounds(0, 0, 0, 0);
     }
 }

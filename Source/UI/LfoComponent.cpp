@@ -51,8 +51,8 @@ LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
     addAndMakeVisible(rateLabel);
     addAndMakeVisible(rateValueLabel);
     addAndMakeVisible(amountKnob);
-    addAndMakeVisible(amountLabel);
     addAndMakeVisible(amountValueLabel);
+    amountLabel.setVisible(false);
     assignBox.setLookAndFeel(&waveformComboLookAndFeel);
     addAndMakeVisible(assignLabel);
     addAndMakeVisible(assignBox);
@@ -185,28 +185,27 @@ void LfoComponent::resized()
     area.removeFromBottom(96);
     area.removeFromBottom(10);
 
-    auto amountBlock = area.removeFromBottom(44);
-    auto amountValueRow = amountBlock.removeFromBottom(20);
-    amountValueLabel.setBounds(amountValueRow.reduced(2, 0));
-    auto amountLabelRow = amountBlock.removeFromTop(18);
-    amountLabel.setBounds(amountLabelRow.reduced(2, 0));
+    auto controlRow = area;
+    const auto rowGap = 10;
+    auto left = controlRow.removeFromLeft((controlRow.getWidth() - rowGap) / 2);
+    controlRow.removeFromLeft(rowGap);
+    auto right = controlRow;
 
-    amountBlock.removeFromTop(4);
-    const auto amountKnobSize = juce::jlimit(44, 84, juce::jmin(amountBlock.getWidth() - 16, amountBlock.getHeight()));
-    amountKnob.setBounds(juce::Rectangle<int>(amountKnobSize, amountKnobSize).withCentre(amountBlock.getCentre()));
+    auto layoutKnobColumn = [](juce::Rectangle<int> column,
+                               juce::Slider& knob,
+                               juce::Label& valueLabel)
+    {
+        auto valueRow = column.removeFromBottom(20);
+        valueLabel.setBounds(valueRow.reduced(2, 0));
+        column.removeFromBottom(4);
+        const auto knobSize = juce::jlimit(44, 84, juce::jmin(column.getWidth() - 16, column.getHeight()));
+        knob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(column.getCentre()));
+    };
 
-    area.removeFromBottom(6);
-
-    auto valueRow = area.removeFromBottom(20);
-    rateValueLabel.setBounds(valueRow.reduced(2, 0));
-
-    area.removeFromBottom(4);
-    auto labelRow = area.removeFromTop(18);
-    rateLabel.setBounds(labelRow.reduced(2, 0));
-
-    area.removeFromTop(6);
-    const auto knobSize = juce::jlimit(52, 110, juce::jmin(area.getWidth() - 16, area.getHeight()));
-    rateKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(area.getCentre()));
+    layoutKnobColumn(left, rateKnob, rateValueLabel);
+    layoutKnobColumn(right, amountKnob, amountValueLabel);
+    rateLabel.setBounds(0, 0, 0, 0);
+    amountLabel.setBounds(0, 0, 0, 0);
 }
 
 void LfoComponent::paint(juce::Graphics& g)
