@@ -155,6 +155,7 @@ public:
     juce::AudioParameterFloat& getDelayFeedbackParam() const;
     juce::AudioParameterFloat& getFxSendGainParam() const;
     juce::AudioParameterFloat& getFxReturnGainParam() const;
+    juce::AudioParameterFloat& getMixerLevelParam(int sourceIndex) const;
     juce::AudioParameterFloat& getMixerPanParam(int sourceIndex) const;
     juce::AudioParameterFloat& getMixerSendParam(int sourceIndex) const;
     juce::AudioParameterBool& getMixerMuteParam(int sourceIndex) const;
@@ -374,6 +375,7 @@ private:
     juce::AudioParameterFloat* delayFeedbackParam { nullptr };
     juce::AudioParameterFloat* fxSendGainParam { nullptr };
     juce::AudioParameterFloat* fxReturnGainParam { nullptr };
+    std::array<juce::AudioParameterFloat*, kMixerSourceCount> mixerLevelParams { { nullptr, nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kMixerSourceCount> mixerPanParams { { nullptr, nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kMixerSourceCount> mixerSendParams { { nullptr, nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterBool*, kMixerSourceCount> mixerMuteParams { { nullptr, nullptr, nullptr, nullptr } };

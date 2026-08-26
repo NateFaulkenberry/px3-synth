@@ -20,10 +20,10 @@ MixPanel::MixPanel(PX3SynthAudioProcessor& processorIn,
         configureChannelWidgets(osc3Channel, "OSC 3", true, false);
         configureChannelWidgets(fxChannel, "FX", false, true);
 
-        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getSubOscLevelParam(), subChannel.fader, nullptr));
-        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getOscillatorLevelParam(0), osc1Channel.fader, nullptr));
-        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getOscillatorLevelParam(1), osc2Channel.fader, nullptr));
-        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getOscillatorLevelParam(2), osc3Channel.fader, nullptr));
+        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerLevelParam(0), subChannel.fader, nullptr));
+        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerLevelParam(1), osc1Channel.fader, nullptr));
+        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerLevelParam(2), osc2Channel.fader, nullptr));
+        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerLevelParam(3), osc3Channel.fader, nullptr));
         sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getFxReturnGainParam(), fxChannel.fader, nullptr));
 
         for (int sourceIndex = 0; sourceIndex < PX3SynthAudioProcessor::kMixerSourceCount; ++sourceIndex)

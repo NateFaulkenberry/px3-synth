@@ -17,8 +17,9 @@ SubOscSettings PX3SynthAudioProcessor::currentSubOscillatorSettings() const
 {
     SubOscSettings settings;
     settings.enabled = subOscEnabledParam != nullptr && subOscEnabledParam->get();
-    settings.level = subOscLevelParam->convertFrom0to1(applyModulationToNormalizedValue(subOscLevelParam,
-                                                                                         static_cast<juce::RangedAudioParameter*>(subOscLevelParam)->getValue()));
+    // Source generation level is fixed at unity; mixer-stage source level is
+    // now authoritative for channel balancing and pre-fader send behavior.
+    settings.level = 1.0f;
     settings.pitchSemitones = subOscPitchParam->convertFrom0to1(applyModulationToNormalizedValue(subOscPitchParam,
                                                                                                    static_cast<juce::RangedAudioParameter*>(subOscPitchParam)->getValue()));
     settings.octaveIndex = px3::clampSubOscOctaveIndex(subOscOctaveParam != nullptr ? subOscOctaveParam->getIndex() : 1);
@@ -61,9 +62,9 @@ std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcess
         auto& settings = layer.oscillator;
 
         layer.enabled = getOscillatorEnabledParam(oscIndex).get();
-        layer.level = getOscillatorLevelParam(oscIndex).convertFrom0to1(
-            applyModulationToNormalizedValue(&getOscillatorLevelParam(oscIndex),
-                                             static_cast<juce::RangedAudioParameter&>(getOscillatorLevelParam(oscIndex)).getValue()));
+        // Source generation level is fixed at unity; mixer-stage source level
+        // is the single gain stage for user-facing channel levels.
+        layer.level = 1.0f;
         layer.pitchSemitones = getOscillatorPitchParam(oscIndex).convertFrom0to1(
             applyModulationToNormalizedValue(&getOscillatorPitchParam(oscIndex),
                                              static_cast<juce::RangedAudioParameter&>(getOscillatorPitchParam(oscIndex)).getValue()));

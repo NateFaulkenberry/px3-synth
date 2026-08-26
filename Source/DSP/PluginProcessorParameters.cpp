@@ -255,6 +255,11 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getDelayTimeParam() const { r
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getDelayFeedbackParam() const { return *delayFeedbackParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getFxSendGainParam() const { return *fxSendGainParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getFxReturnGainParam() const { return *fxReturnGainParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getMixerLevelParam(int sourceIndex) const
+{
+    const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);
+    return *mixerLevelParams[static_cast<std::size_t>(idx)];
+}
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getMixerPanParam(int sourceIndex) const
 {
     const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);

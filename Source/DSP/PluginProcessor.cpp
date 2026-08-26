@@ -219,6 +219,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                                                       sourceName + " Pan",
                                                                                       juce::NormalisableRange<float>(-1.0f, 1.0f),
                                                                                       0.0f);
+        mixerLevelParams[static_cast<std::size_t>(i)] = new juce::AudioParameterFloat("mix." + sourceId + ".level",
+                                                sourceName + " Level",
+                                                juce::NormalisableRange<float>(0.0f, 1.0f),
+                                                1.0f);
         mixerSendParams[static_cast<std::size_t>(i)] = new juce::AudioParameterFloat("mix." + sourceId + ".fxSend",
                                                                                        sourceName + " FX Send",
                                                                                        juce::NormalisableRange<float>(0.0f, 1.0f),
@@ -381,6 +385,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(fxReturnGainParam);
     for (int i = 0; i < kMixerSourceCount; ++i)
     {
+        addParameter(mixerLevelParams[static_cast<std::size_t>(i)]);
         addParameter(mixerPanParams[static_cast<std::size_t>(i)]);
         addParameter(mixerSendParams[static_cast<std::size_t>(i)]);
         addParameter(mixerMuteParams[static_cast<std::size_t>(i)]);
@@ -697,16 +702,18 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         generator.setSettings(currentEnvelopeSettings(envIndex));
 
         auto sampleValue = modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].load(std::memory_order_relaxed);
-        auto blockPeak = 0.0f;
+        auto blockSum = 0.0f;
         for (int i = 0; i < blockSamples; ++i)
         {
             sampleValue = generator.getNextSample();
-            blockPeak = juce::jmax(blockPeak, sampleValue);
+            blockSum += sampleValue;
         }
 
-        // Using a block peak keeps short A/D transients audible when modulation
-        // destinations are evaluated once per block.
-        modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].store(blockPeak, std::memory_order_relaxed);
+        // Use block-mean envelope magnitude for per-block modulation sampling.
+        // This preserves fast transients better than end-of-block sampling while
+        // avoiding peak-latched tails that can overextend modulation influence.
+        const auto blockMean = blockSamples > 0 ? (blockSum / static_cast<float>(blockSamples)) : sampleValue;
+        modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].store(blockMean, std::memory_order_relaxed);
     }
 
     const auto pitchBend = juce::jlimit(-1.0f, 1.0f, pitchBendNormalized.load(std::memory_order_relaxed));
@@ -787,10 +794,12 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     const auto fxReturnGain = juce::jlimit(0.0f, 1.0f, fxReturnGainParam != nullptr ? fxReturnGainParam->get() : 1.0f);
     const auto fxPan = juce::jlimit(-1.0f, 1.0f, fxReturnPanParam != nullptr ? fxReturnPanParam->get() : 0.0f);
 
+    std::array<float, kMixerSourceCount> sourceLevelValues { { 1.0f, 1.0f, 1.0f, 1.0f } };
     std::array<float, kMixerSourceCount> sourcePanValues { { 0.0f, 0.0f, 0.0f, 0.0f } };
     std::array<float, kMixerSourceCount> sourceSendValues { { 0.0f, 0.0f, 0.0f, 0.0f } };
     for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
     {
+        sourceLevelValues[static_cast<std::size_t>(sourceIndex)] = juce::jlimit(0.0f, 1.0f, getMixerLevelParam(sourceIndex).get());
         sourcePanValues[static_cast<std::size_t>(sourceIndex)] = juce::jlimit(-1.0f, 1.0f, getMixerPanParam(sourceIndex).get());
         sourceSendValues[static_cast<std::size_t>(sourceIndex)] = juce::jlimit(0.0f, 1.0f, getMixerSendParam(sourceIndex).get());
     }
@@ -857,8 +866,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             const auto sendGate = sourceSendGateSmoothers[static_cast<std::size_t>(sourceIndex)].getNextValue();
             const auto panL = sourcePanLeft[static_cast<std::size_t>(sourceIndex)];
             const auto panR = sourcePanRight[static_cast<std::size_t>(sourceIndex)];
-            const auto sourceDryL = sampleValue * panL * dryGate;
-            const auto sourceDryR = sampleValue * panR * dryGate;
+            const auto sourceLevel = sourceLevelValues[static_cast<std::size_t>(sourceIndex)];
+            const auto sourceDryL = sampleValue * sourceLevel * panL * dryGate;
+            const auto sourceDryR = sampleValue * sourceLevel * panR * dryGate;
 
             dryL += sourceDryL;
             dryR += sourceDryR;
