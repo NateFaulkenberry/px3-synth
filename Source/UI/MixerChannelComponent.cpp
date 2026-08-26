@@ -66,27 +66,65 @@ void MixerChannelComponent::resized()
         area.removeFromTop(sectionSpacing);
     }
 
-    if (controls.panLabel != nullptr)
-    {
-        controls.panLabel->setBounds(area.removeFromTop(footerLabelHeight));
-    }
+    const int knobSize = 29;
+    const int knobGap = buttonGap;
+    const int labelSlotWidth = juce::jmax(knobSize, 36);
 
-    if (controls.pan != nullptr)
+    if (controls.hasSend && controls.pan != nullptr && controls.send != nullptr)
     {
-        controls.pan->setBounds(area.removeFromTop(22));
-        area.removeFromTop(sectionSpacing);
-    }
+        if (controls.panLabel != nullptr || controls.sendLabel != nullptr)
+        {
+            auto labelsRow = area.removeFromTop(footerLabelHeight);
+            const auto labelsWidth = 2 * labelSlotWidth + knobGap;
+            auto centeredLabels = labelsRow.withSizeKeepingCentre(labelsWidth, footerLabelHeight);
 
-    if (controls.hasSend)
+            if (controls.panLabel != nullptr)
+            {
+                controls.panLabel->setBounds(centeredLabels.removeFromLeft(labelSlotWidth));
+            }
+
+            centeredLabels.removeFromLeft(knobGap);
+
+            if (controls.sendLabel != nullptr)
+            {
+                controls.sendLabel->setBounds(centeredLabels.removeFromLeft(labelSlotWidth));
+            }
+
+            area.removeFromTop(sectionSpacing);
+        }
+
+        auto knobsRow = area.removeFromTop(knobSize);
+        const auto knobsWidth = 2 * labelSlotWidth + knobGap;
+        auto centeredKnobs = knobsRow.withSizeKeepingCentre(knobsWidth, knobSize);
+        auto panSlot = centeredKnobs.removeFromLeft(labelSlotWidth);
+        controls.pan->setBounds(panSlot.withSizeKeepingCentre(knobSize, knobSize));
+        centeredKnobs.removeFromLeft(knobGap);
+        auto sendSlot = centeredKnobs.removeFromLeft(labelSlotWidth);
+        controls.send->setBounds(sendSlot.withSizeKeepingCentre(knobSize, knobSize));
+    }
+    else
     {
+        if (controls.panLabel != nullptr)
+        {
+            auto panLabelRow = area.removeFromTop(footerLabelHeight);
+            controls.panLabel->setBounds(panLabelRow.withSizeKeepingCentre(labelSlotWidth, footerLabelHeight));
+            area.removeFromTop(sectionSpacing);
+        }
+
+        if (controls.pan != nullptr)
+        {
+            auto panRow = area.removeFromTop(knobSize);
+            controls.pan->setBounds(panRow.withSizeKeepingCentre(knobSize, knobSize));
+        }
+
         if (controls.sendLabel != nullptr)
         {
-            controls.sendLabel->setBounds(area.removeFromTop(footerLabelHeight));
+            controls.sendLabel->setBounds({});
         }
 
         if (controls.send != nullptr)
         {
-            controls.send->setBounds(area.removeFromTop(22));
+            controls.send->setBounds({});
         }
     }
 }
