@@ -853,6 +853,16 @@ void PX3SynthAudioProcessorEditor::refreshDebugLfoState()
          << "FX: " << juce::String(fxBusRms, 6) << "\n"
          << "Master: " << juce::String(masterBusRms, 6);
 
+    text << "\n\nLFO Sources\n";
+    for (int i = 0; i < PX3SynthAudioProcessor::kLfoSourceCount; ++i)
+    {
+        text << "LFO " << juce::String(i + 1)
+             << " value=" << juce::String(audioProcessor.debugGetLfoCurrentValue(i), 5)
+             << " amount=" << juce::String(audioProcessor.getLfoAmountParam(i).get(), 4)
+             << " assign=" << audioProcessor.getLfoAssignmentParameterId(i)
+             << "\n";
+    }
+
     debugLfoText.setText(text, juce::dontSendNotification);
 }
 
@@ -872,7 +882,17 @@ void PX3SynthAudioProcessorEditor::refreshDebugEnvelopeState()
          << "Decay:   " << decayText << "\n"
          << "Sustain: " << juce::String(sustainNorm, 4) << " (" << juce::String(sustainNorm * 100.0f, 1) << "%)\n"
          << "Release: " << releaseText << "\n\n"
-         << "Graph:  /\\__====\\";
+            << "Graph:  /\\__====\\\n\n"
+            << "Mod Envelope Sources\n";
+
+        for (int i = 0; i < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++i)
+        {
+           text << "ENV " << juce::String(i + 1)
+               << " value=" << juce::String(audioProcessor.debugGetEnvelopeCurrentValue(i), 5)
+               << " amount=" << juce::String(audioProcessor.getEnvelopeAmountParam(i).get(), 4)
+               << " assign=" << audioProcessor.getEnvelopeAssignmentParameterId(i)
+               << "\n";
+        }
 
     debugEnvelopeText.setText(text, juce::dontSendNotification);
 }

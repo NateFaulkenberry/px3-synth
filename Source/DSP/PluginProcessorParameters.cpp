@@ -83,9 +83,11 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
         return effective;
     }
 
-    const auto applySource = [&](std::atomic<int> const& assignmentIndex,
-                                 float signal,
-                                 float amount)
+    float totalDelta = 0.0f;
+
+    const auto accumulateSourceDelta = [&](std::atomic<int> const& assignmentIndex,
+                                           float signal,
+                                           float amount)
     {
         const auto assignment = juce::jlimit(0,
                                              juce::jmax(0, static_cast<int>(lfoAssignableTargets.size()) - 1),
@@ -100,24 +102,28 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
         const auto samePointer = (target.parameter == parameter);
         if (sameId || samePointer)
         {
-            effective = clamp01(effective + target.normalizedDepth * (signal * amount));
+            totalDelta += target.normalizedDepth * (signal * amount);
         }
     };
 
     for (int i = 0; i < kLfoSourceCount; ++i)
     {
         const auto index = static_cast<std::size_t>(i);
-        applySource(lfoAssignmentAtomic(i),
-                    lfoCurrentValues[index].load(std::memory_order_relaxed),
-                    getLfoAmountParam(i).get());
+        accumulateSourceDelta(lfoAssignmentAtomic(i),
+                              lfoCurrentValues[index].load(std::memory_order_relaxed),
+                              getLfoAmountParam(i).get());
     }
     for (int i = 0; i < kEnvelopeSourceCount; ++i)
     {
         const auto index = static_cast<std::size_t>(i);
-        applySource(envelopeAssignmentAtomic(i),
-                    modulationEnvelopeValues[index].load(std::memory_order_relaxed),
-                    getEnvelopeAmountParam(i).get());
+        accumulateSourceDelta(envelopeAssignmentAtomic(i),
+                              modulationEnvelopeValues[index].load(std::memory_order_relaxed),
+                              getEnvelopeAmountParam(i).get());
     }
+
+    // Apply all source contributions in normalized space, then clamp once.
+    // This preserves additive behavior across multiple sources.
+    effective = clamp01(base + totalDelta);
 
     if (outBaseNormalized != nullptr)
     {
@@ -637,6 +643,21 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
     lfoAssignableTargets.push_back({ "none", "None", nullptr, 0.0f });
     lfoAssignmentDisplayNames.add("None");
 
+    // Canonical source-level destinations must route to mixer params because
+    // legacy osc/sub level params are not in the active DSP level path.
+    const auto addCanonicalTarget = [this](const juce::String& canonicalId,
+                                           const juce::String& displayName,
+                                           juce::RangedAudioParameter& runtimeParam)
+    {
+        lfoAssignableTargets.push_back({ canonicalId, displayName, &runtimeParam, lfoDepthForParameterId(canonicalId) });
+        lfoAssignmentDisplayNames.add(displayName);
+    };
+
+    addCanonicalTarget("subOscLevel", "Sub Osc Level", getMixerLevelParam(mixerSub));
+    addCanonicalTarget("osc1Level", "Osc 1 Level", getMixerLevelParam(mixerOsc1));
+    addCanonicalTarget("osc2Level", "Osc 2 Level", getMixerLevelParam(mixerOsc2));
+    addCanonicalTarget("osc3Level", "Osc 3 Level", getMixerLevelParam(mixerOsc3));
+
     const auto shouldExclude = [](const juce::String& id)
     {
         // Exclude controls that define modulation behavior itself, rather than
@@ -670,6 +691,10 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
                              || id.containsIgnoreCase("env3Sustain")
                              || id.containsIgnoreCase("env3Release")
                              || id.containsIgnoreCase("env3Enabled")
+               || id.equalsIgnoreCase("osc1Level")
+               || id.equalsIgnoreCase("osc2Level")
+               || id.equalsIgnoreCase("osc3Level")
+               || id.equalsIgnoreCase("subOscLevel")
                || id.equalsIgnoreCase("pitchBendRange");
     };
 
@@ -707,28 +732,11 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
 
 float PX3SynthAudioProcessor::lfoDepthForParameterId(const juce::String& parameterId) const
 {
-    // Depths are intentionally conservative by default to avoid abrupt jumps on
-    // sensitive controls. Specific musical targets get tuned overrides.
-    if (parameterId.equalsIgnoreCase("masterGain"))
-    {
-        return 0.30f;
-    }
-
-    if (parameterId.containsIgnoreCase("Resonance")
-        || parameterId.equalsIgnoreCase("delayFeedback")
-        || parameterId.equalsIgnoreCase("reverbAmount"))
-    {
-        return 0.12f;
-    }
-
-    if (parameterId.containsIgnoreCase("Cutoff")
-        || parameterId.equalsIgnoreCase("delayTime")
-        || parameterId.equalsIgnoreCase("reverbDecay"))
-    {
-        return 0.22f;
-    }
-
-    return 0.10f;
+    juce::ignoreUnused(parameterId);
+    // Source amount is already user-scaled (-100%..+100%).
+    // Use full normalized depth here so routing is clearly audible and
+    // modulation behavior is consistent across destinations.
+    return 1.0f;
 }
 
 std::array<int, 4> PX3SynthAudioProcessor::getFxProcessingOrder() const

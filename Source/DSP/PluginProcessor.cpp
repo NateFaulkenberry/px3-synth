@@ -790,18 +790,52 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     moodComponent.updateForBlock(currentMoodSettings());
     reverb.updateForBlock(currentReverbSettings(), buffer.getNumSamples());
     const auto fxOrder = getFxProcessingOrder();
-    const auto fxSendGain = juce::jlimit(0.0f, 1.0f, fxSendGainParam != nullptr ? fxSendGainParam->get() : 1.0f);
-    const auto fxReturnGain = juce::jlimit(0.0f, 1.0f, fxReturnGainParam != nullptr ? fxReturnGainParam->get() : 1.0f);
-    const auto fxPan = juce::jlimit(-1.0f, 1.0f, fxReturnPanParam != nullptr ? fxReturnPanParam->get() : 0.0f);
+    const auto fxSendGain = fxSendGainParam != nullptr
+                                ? juce::jlimit(0.0f,
+                                               1.0f,
+                                               fxSendGainParam->convertFrom0to1(applyModulationToNormalizedValue(
+                                                   fxSendGainParam,
+                                                   static_cast<juce::RangedAudioParameter*>(fxSendGainParam)->getValue())))
+                                : 1.0f;
+    const auto fxReturnGain = fxReturnGainParam != nullptr
+                                  ? juce::jlimit(0.0f,
+                                                 1.0f,
+                                                 fxReturnGainParam->convertFrom0to1(applyModulationToNormalizedValue(
+                                                     fxReturnGainParam,
+                                                     static_cast<juce::RangedAudioParameter*>(fxReturnGainParam)->getValue())))
+                                  : 1.0f;
+    const auto fxPan = fxReturnPanParam != nullptr
+                           ? juce::jlimit(-1.0f,
+                                          1.0f,
+                                          fxReturnPanParam->convertFrom0to1(applyModulationToNormalizedValue(
+                                              fxReturnPanParam,
+                                              static_cast<juce::RangedAudioParameter*>(fxReturnPanParam)->getValue())))
+                           : 0.0f;
 
     std::array<float, kMixerSourceCount> sourceLevelValues { { 1.0f, 1.0f, 1.0f, 1.0f } };
     std::array<float, kMixerSourceCount> sourcePanValues { { 0.0f, 0.0f, 0.0f, 0.0f } };
     std::array<float, kMixerSourceCount> sourceSendValues { { 0.0f, 0.0f, 0.0f, 0.0f } };
     for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
     {
-        sourceLevelValues[static_cast<std::size_t>(sourceIndex)] = juce::jlimit(0.0f, 1.0f, getMixerLevelParam(sourceIndex).get());
-        sourcePanValues[static_cast<std::size_t>(sourceIndex)] = juce::jlimit(-1.0f, 1.0f, getMixerPanParam(sourceIndex).get());
-        sourceSendValues[static_cast<std::size_t>(sourceIndex)] = juce::jlimit(0.0f, 1.0f, getMixerSendParam(sourceIndex).get());
+        auto& levelParam = getMixerLevelParam(sourceIndex);
+        auto& panParam = getMixerPanParam(sourceIndex);
+        auto& sendParam = getMixerSendParam(sourceIndex);
+
+        sourceLevelValues[static_cast<std::size_t>(sourceIndex)] = juce::jlimit(0.0f,
+                                                                                 1.0f,
+                                                                                 levelParam.convertFrom0to1(applyModulationToNormalizedValue(
+                                                                                     &levelParam,
+                                                                                     static_cast<juce::RangedAudioParameter&>(levelParam).getValue())));
+        sourcePanValues[static_cast<std::size_t>(sourceIndex)] = juce::jlimit(-1.0f,
+                                                                               1.0f,
+                                                                               panParam.convertFrom0to1(applyModulationToNormalizedValue(
+                                                                                   &panParam,
+                                                                                   static_cast<juce::RangedAudioParameter&>(panParam).getValue())));
+        sourceSendValues[static_cast<std::size_t>(sourceIndex)] = juce::jlimit(0.0f,
+                                                                                1.0f,
+                                                                                sendParam.convertFrom0to1(applyModulationToNormalizedValue(
+                                                                                    &sendParam,
+                                                                                    static_cast<juce::RangedAudioParameter&>(sendParam).getValue())));
     }
 
     const auto anySolo = anyChannelSoloed();

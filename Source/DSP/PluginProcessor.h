@@ -238,8 +238,10 @@ public:
     juce::String debugDescribeOrder(const std::array<int, 4>& order) const;
     float debugGetLfoPhase() const;
     float debugGetLfoCurrentValue() const;
+    float debugGetLfoCurrentValue(int lfoIndex) const;
     float debugGetLfoBaseNormalized() const;
     float debugGetLfoEffectiveNormalized() const;
+    float debugGetEnvelopeCurrentValue(int envIndex) const;
     float debugGetOscillatorBusRms() const;
     float debugGetDryBusRms() const;
     float debugGetFxBusRms() const;

@@ -394,6 +394,12 @@ float PX3SynthAudioProcessor::debugGetLfoCurrentValue() const
     return lfoCurrentValues[0].load(std::memory_order_relaxed);
 }
 
+float PX3SynthAudioProcessor::debugGetLfoCurrentValue(int lfoIndex) const
+{
+    const auto idx = juce::jlimit(0, kLfoSourceCount - 1, lfoIndex);
+    return lfoCurrentValues[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
+}
+
 float PX3SynthAudioProcessor::debugGetLfoBaseNormalized() const
 {
     return lfoDebugBaseNormalized.load(std::memory_order_relaxed);
@@ -402,6 +408,12 @@ float PX3SynthAudioProcessor::debugGetLfoBaseNormalized() const
 float PX3SynthAudioProcessor::debugGetLfoEffectiveNormalized() const
 {
     return lfoDebugEffectiveNormalized.load(std::memory_order_relaxed);
+}
+
+float PX3SynthAudioProcessor::debugGetEnvelopeCurrentValue(int envIndex) const
+{
+    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
+    return modulationEnvelopeValues[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
 }
 
 juce::String PX3SynthAudioProcessor::debugGetLfoAssignmentName() const
