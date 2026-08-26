@@ -13,6 +13,33 @@ constexpr int kFxSectionDelay = 1;
 constexpr int kFxSectionReverb = 2;
 constexpr int kFxSectionMood = 3;
 
+void setDebugTextStable(juce::TextEditor& editor,
+                        const juce::String& text,
+                        bool freezeWhileInteracting)
+{
+    if (editor.getText() == text)
+    {
+        return;
+    }
+
+    if (freezeWhileInteracting && (editor.hasKeyboardFocus(true) || editor.isMouseOverOrDragging(true)))
+    {
+        return;
+    }
+
+    const auto previousCaret = editor.getCaretPosition();
+    const auto previousCharCount = editor.getTotalNumChars();
+    const auto wasAtEnd = previousCaret >= juce::jmax(0, previousCharCount - 1);
+
+    editor.setText(text, juce::dontSendNotification);
+
+    if (!wasAtEnd)
+    {
+        const auto clamped = juce::jlimit(0, editor.getTotalNumChars(), previousCaret);
+        editor.setCaretPosition(clamped);
+    }
+}
+
 class DebugPanelWindow final : public juce::DocumentWindow
 {
 public:
@@ -589,7 +616,7 @@ void PX3SynthAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& 
     right.removeFromTop(4);
 
     debugEnvelopeLabel.setBounds(right.removeFromTop(18));
-    debugEnvelopeText.setBounds(right.removeFromTop(68));
+    debugEnvelopeText.setBounds(right.removeFromTop(180));
     right.removeFromTop(4);
 
     debugPresetToolsLabel.setBounds(right.removeFromTop(18));
@@ -763,7 +790,9 @@ void PX3SynthAudioProcessorEditor::refreshDebugSerializedState()
 
 void PX3SynthAudioProcessorEditor::refreshDebugParameterInspector()
 {
-    debugParameterInspectorText.setText(buildParameterInspectorText(), juce::dontSendNotification);
+    setDebugTextStable(debugParameterInspectorText,
+                       buildParameterInspectorText(),
+                       true);
 }
 
 void PX3SynthAudioProcessorEditor::refreshDebugParameterControls()
@@ -816,7 +845,9 @@ void PX3SynthAudioProcessorEditor::refreshDebugParameterControls()
 
 void PX3SynthAudioProcessorEditor::refreshDebugEventLog()
 {
-    debugEventLogText.setText(audioProcessor.debugGetEventLogText(), juce::dontSendNotification);
+    setDebugTextStable(debugEventLogText,
+                       audioProcessor.debugGetEventLogText(),
+                       true);
 }
 
 void PX3SynthAudioProcessorEditor::refreshDebugLfoState()
@@ -863,7 +894,7 @@ void PX3SynthAudioProcessorEditor::refreshDebugLfoState()
              << "\n";
     }
 
-    debugLfoText.setText(text, juce::dontSendNotification);
+    setDebugTextStable(debugLfoText, text, true);
 }
 
 void PX3SynthAudioProcessorEditor::refreshDebugEnvelopeState()
@@ -876,13 +907,43 @@ void PX3SynthAudioProcessorEditor::refreshDebugEnvelopeState()
     const auto attackText = attackSec < 1.0f ? juce::String(attackSec * 1000.0f, 1) + " ms" : juce::String(attackSec, 4) + " s";
     const auto decayText = decaySec < 1.0f ? juce::String(decaySec * 1000.0f, 1) + " ms" : juce::String(decaySec, 4) + " s";
     const auto releaseText = releaseSec < 1.0f ? juce::String(releaseSec * 1000.0f, 1) + " ms" : juce::String(releaseSec, 4) + " s";
+     const auto ampEnabled = audioProcessor.getAmpEnvEnabledParam().get();
+
+     const auto subEnabled = audioProcessor.getSubOscEnabledParam().get();
+     const auto osc1Enabled = audioProcessor.getOscillatorEnabledParam(0).get();
+     const auto osc2Enabled = audioProcessor.getOscillatorEnabledParam(1).get();
+     const auto osc3Enabled = audioProcessor.getOscillatorEnabledParam(2).get();
+
+     const auto subMixerLevel = audioProcessor.getMixerLevelParam(PX3SynthAudioProcessor::mixerSub).get();
+     const auto osc1MixerLevel = audioProcessor.getMixerLevelParam(PX3SynthAudioProcessor::mixerOsc1).get();
+     const auto osc2MixerLevel = audioProcessor.getMixerLevelParam(PX3SynthAudioProcessor::mixerOsc2).get();
+     const auto osc3MixerLevel = audioProcessor.getMixerLevelParam(PX3SynthAudioProcessor::mixerOsc3).get();
+
+     const auto subRms = audioProcessor.debugGetMixerSourceRms(PX3SynthAudioProcessor::mixerSub);
+     const auto osc1Rms = audioProcessor.debugGetMixerSourceRms(PX3SynthAudioProcessor::mixerOsc1);
+     const auto osc2Rms = audioProcessor.debugGetMixerSourceRms(PX3SynthAudioProcessor::mixerOsc2);
+     const auto osc3Rms = audioProcessor.debugGetMixerSourceRms(PX3SynthAudioProcessor::mixerOsc3);
 
     juce::String text;
     text << "Attack:  " << attackText << "\n"
          << "Decay:   " << decayText << "\n"
          << "Sustain: " << juce::String(sustainNorm, 4) << " (" << juce::String(sustainNorm * 100.0f, 1) << "%)\n"
-         << "Release: " << releaseText << "\n\n"
+            << "Release: " << releaseText << "\n"
+            << "AMP Enabled: " << juce::String(ampEnabled ? "ON" : "OFF") << "\n\n"
             << "Graph:  /\\__====\\\n\n"
+                << "AMP Release Probe (post-AMP per-source dry RMS)\n"
+                << "SUB  enabled=" << juce::String(subEnabled ? 1 : 0)
+                << " mixLevel=" << juce::String(subMixerLevel, 4)
+                << " rms=" << juce::String(subRms, 6) << "\n"
+                << "OSC1 enabled=" << juce::String(osc1Enabled ? 1 : 0)
+                << " mixLevel=" << juce::String(osc1MixerLevel, 4)
+                << " rms=" << juce::String(osc1Rms, 6) << "\n"
+                << "OSC2 enabled=" << juce::String(osc2Enabled ? 1 : 0)
+                << " mixLevel=" << juce::String(osc2MixerLevel, 4)
+                << " rms=" << juce::String(osc2Rms, 6) << "\n"
+                << "OSC3 enabled=" << juce::String(osc3Enabled ? 1 : 0)
+                << " mixLevel=" << juce::String(osc3MixerLevel, 4)
+                << " rms=" << juce::String(osc3Rms, 6) << "\n\n"
             << "Mod Envelope Sources\n";
 
         for (int i = 0; i < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++i)
@@ -894,7 +955,7 @@ void PX3SynthAudioProcessorEditor::refreshDebugEnvelopeState()
                << "\n";
         }
 
-    debugEnvelopeText.setText(text, juce::dontSendNotification);
+    setDebugTextStable(debugEnvelopeText, text, true);
 }
 
 void PX3SynthAudioProcessorEditor::debugCaptureSnapshot(const juce::String& reason)

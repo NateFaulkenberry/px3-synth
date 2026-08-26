@@ -84,11 +84,7 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
     }
 
     float totalDelta = 0.0f;
-    float levelDomainEnvelopeFactor = 1.0f;
     const auto parameterId = parameter->getParameterID();
-    const auto isLevelDomainDestination = parameterId.endsWithIgnoreCase("Level")
-                                          || parameterId.containsIgnoreCase(".level")
-                                          || parameterId.equalsIgnoreCase("masterGain");
 
     const auto accumulateSourceDelta = [&](std::atomic<int> const& assignmentIndex,
                                            float signal,
@@ -126,46 +122,12 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
                                             modulationEnvelopeValues[index].load(std::memory_order_relaxed));
         const auto envAmount = juce::jlimit(-1.0f, 1.0f, getEnvelopeAmountParam(i).get());
 
-        if (isLevelDomainDestination)
-        {
-            const auto assignment = juce::jlimit(0,
-                                                 juce::jmax(0, static_cast<int>(lfoAssignableTargets.size()) - 1),
-                                                 envelopeAssignmentAtomic(i).load(std::memory_order_relaxed));
-            if (assignment > 0 && assignment < static_cast<int>(lfoAssignableTargets.size()))
-            {
-                const auto& target = lfoAssignableTargets[static_cast<std::size_t>(assignment)];
-                const auto sameId = target.parameterId.equalsIgnoreCase(parameterId);
-                const auto samePointer = (target.parameter == parameter);
-                if (sameId || samePointer)
-                {
-                    if (envAmount >= 0.0f)
-                    {
-                        // Positive amount morphs gain from base to envelope-shaped level.
-                        levelDomainEnvelopeFactor *= (1.0f - envAmount) + (envAmount * envSignal);
-                    }
-                    else
-                    {
-                        // Negative amount inverts the envelope influence.
-                        const auto amt = -envAmount;
-                        const auto invertedEnv = 1.0f - envSignal;
-                        levelDomainEnvelopeFactor *= (1.0f - amt) + (amt * invertedEnv);
-                    }
-                    continue;
-                }
-            }
-        }
-
         accumulateSourceDelta(envelopeAssignmentAtomic(i), envSignal, envAmount);
     }
 
     // Apply all source contributions in normalized space, then clamp once.
     // This preserves additive behavior across multiple sources.
     effective = clamp01(base + totalDelta);
-
-    if (isLevelDomainDestination)
-    {
-        effective = clamp01(effective * levelDomainEnvelopeFactor);
-    }
 
     if (outBaseNormalized != nullptr)
     {
