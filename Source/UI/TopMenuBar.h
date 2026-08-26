@@ -41,12 +41,13 @@ private:
     juce::TextButton presetMenuButton;
     juce::TextButton topMenuOscButton;
     juce::TextButton topMenuModButton;
+    juce::TextButton topMenuAmpButton;
     juce::TextButton topMenuFltButton;
     juce::TextButton topMenuFxButton;
     juce::TextButton topMenuMixButton;
 
-    std::array<juce::TextButton*, 5> topMenuSectionButtons {
-        { &topMenuOscButton, &topMenuModButton, &topMenuFltButton, &topMenuFxButton, &topMenuMixButton }
+    std::array<juce::TextButton*, 6> topMenuSectionButtons {
+        { &topMenuOscButton, &topMenuModButton, &topMenuAmpButton, &topMenuFltButton, &topMenuFxButton, &topMenuMixButton }
     };
 
     juce::Rectangle<int> topMenuSectionButtonsArea;

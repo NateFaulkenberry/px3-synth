@@ -100,7 +100,31 @@ std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcess
 
 EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings() const
 {
-    return currentEnvelopeSettings(0);
+    EnvelopeSettings settings;
+    const auto envEnabled = ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true;
+
+    if (!envEnabled)
+    {
+        settings.attackSeconds = 0.001f;
+        settings.decaySeconds = 0.005f;
+        settings.sustainLevel = 1.0f;
+        settings.releaseSeconds = 0.010f;
+        return settings;
+    }
+
+    settings.attackSeconds = attackParam->convertFrom0to1(applyModulationToNormalizedValue(
+        attackParam,
+        static_cast<juce::RangedAudioParameter*>(attackParam)->getValue()));
+    settings.decaySeconds = decayParam->convertFrom0to1(applyModulationToNormalizedValue(
+        decayParam,
+        static_cast<juce::RangedAudioParameter*>(decayParam)->getValue()));
+    settings.sustainLevel = sustainParam->convertFrom0to1(applyModulationToNormalizedValue(
+        sustainParam,
+        static_cast<juce::RangedAudioParameter*>(sustainParam)->getValue()));
+    settings.releaseSeconds = releaseParam->convertFrom0to1(applyModulationToNormalizedValue(
+        releaseParam,
+        static_cast<juce::RangedAudioParameter*>(releaseParam)->getValue()));
+    return settings;
 }
 
 EnvelopeSettings PX3SynthAudioProcessor::currentEnvelopeSettings(int envIndex) const

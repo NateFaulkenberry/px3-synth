@@ -204,31 +204,31 @@ juce::AudioParameterChoice& PX3SynthAudioProcessor::getFilterTypeParam(int filte
     const auto idx = juce::jlimit(0, kFilterInstanceCount - 1, filterIndex);
     return *filterTypeParams[static_cast<std::size_t>(idx)];
 }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getAttackParam() const { return getAttackParam(0); }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getAttackParam() const { return *attackParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getAttackParam(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     return *attackParams[static_cast<std::size_t>(idx)];
 }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getDecayParam() const { return getDecayParam(0); }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDecayParam() const { return *decayParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getDecayParam(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     return *decayParams[static_cast<std::size_t>(idx)];
 }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getSustainParam() const { return getSustainParam(0); }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSustainParam() const { return *sustainParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getSustainParam(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     return *sustainParams[static_cast<std::size_t>(idx)];
 }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getReleaseParam() const { return getReleaseParam(0); }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getReleaseParam() const { return *releaseParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getReleaseParam(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     return *releaseParams[static_cast<std::size_t>(idx)];
 }
-juce::AudioParameterBool& PX3SynthAudioProcessor::getAmpEnvEnabledParam() const { return getAmpEnvEnabledParam(0); }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getAmpEnvEnabledParam() const { return *ampEnvEnabledParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getAmpEnvEnabledParam(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
@@ -334,12 +334,12 @@ std::atomic<int> const& PX3SynthAudioProcessor::envelopeAssignmentAtomic(int env
 
 int PX3SynthAudioProcessor::getTopMenuViewIndex() const
 {
-    return juce::jlimit(0, 4, topMenuViewIndex.load(std::memory_order_relaxed));
+    return juce::jlimit(0, 5, topMenuViewIndex.load(std::memory_order_relaxed));
 }
 
 void PX3SynthAudioProcessor::setTopMenuViewIndex(int index, bool notifyHost)
 {
-    const auto clamped = juce::jlimit(0, 4, index);
+    const auto clamped = juce::jlimit(0, 5, index);
     topMenuViewIndex.store(clamped, std::memory_order_relaxed);
 
     if (notifyHost)
@@ -626,6 +626,11 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
                              || id.equalsIgnoreCase("ampSustain")
                              || id.equalsIgnoreCase("ampRelease")
                              || id.equalsIgnoreCase("ampEnvEnabled")
+                             || id.containsIgnoreCase("env1Attack")
+                             || id.containsIgnoreCase("env1Decay")
+                             || id.containsIgnoreCase("env1Sustain")
+                             || id.containsIgnoreCase("env1Release")
+                             || id.containsIgnoreCase("env1Enabled")
                              || id.containsIgnoreCase("env2Attack")
                              || id.containsIgnoreCase("env2Decay")
                              || id.containsIgnoreCase("env2Sustain")

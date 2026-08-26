@@ -134,43 +134,55 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             px3::filterModeChoices(),
             defaultMode);
     }
+    attackParam = new juce::AudioParameterFloat("ampAttack",
+                                                 "Amp Attack",
+                                                 juce::NormalisableRange<float>(0.001f, 3.0f, 0.001f, 0.45f),
+                                                 0.005f);
+    decayParam = new juce::AudioParameterFloat("ampDecay",
+                                                "Amp Decay",
+                                                juce::NormalisableRange<float>(0.005f, 4.0f, 0.001f, 0.45f),
+                                                0.050f);
+    sustainParam = new juce::AudioParameterFloat("ampSustain",
+                                                  "Amp Sustain",
+                                                  juce::NormalisableRange<float>(0.0f, 1.0f),
+                                                  0.8f);
+    releaseParam = new juce::AudioParameterFloat("ampRelease",
+                                                  "Amp Release",
+                                                  juce::NormalisableRange<float>(0.010f, 5.0f, 0.001f, 0.45f),
+                                                  0.100f);
+    ampEnvEnabledParam = new juce::AudioParameterBool("ampEnvEnabled", "Amp Enabled", true);
+
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
     {
         const auto slot = juce::String(envIndex + 1);
-        const auto idPrefix = (envIndex == 0) ? juce::String("amp") : juce::String("env") + slot;
+        const auto idPrefix = juce::String("env") + slot;
         const auto labelPrefix = juce::String("Env ") + slot + " ";
 
         attackParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
-            (envIndex == 0) ? juce::String("ampAttack") : idPrefix + "Attack",
+            idPrefix + "Attack",
             labelPrefix + "Attack",
             juce::NormalisableRange<float>(0.001f, 3.0f, 0.001f, 0.45f),
-            envIndex == 0 ? 0.005f : 0.020f);
+            0.020f);
         decayParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
-            (envIndex == 0) ? juce::String("ampDecay") : idPrefix + "Decay",
+            idPrefix + "Decay",
             labelPrefix + "Decay",
             juce::NormalisableRange<float>(0.005f, 4.0f, 0.001f, 0.45f),
-            envIndex == 0 ? 0.050f : 0.120f);
+            0.120f);
         sustainParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
-            (envIndex == 0) ? juce::String("ampSustain") : idPrefix + "Sustain",
+            idPrefix + "Sustain",
             labelPrefix + "Sustain",
             juce::NormalisableRange<float>(0.0f, 1.0f),
-            envIndex == 0 ? 0.8f : 0.7f);
+            0.7f);
         releaseParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
-            (envIndex == 0) ? juce::String("ampRelease") : idPrefix + "Release",
+            idPrefix + "Release",
             labelPrefix + "Release",
             juce::NormalisableRange<float>(0.010f, 5.0f, 0.001f, 0.45f),
-            envIndex == 0 ? 0.100f : 0.220f);
+            0.220f);
         ampEnvEnabledParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterBool(
-            (envIndex == 0) ? juce::String("ampEnvEnabled") : idPrefix + "Enabled",
+            idPrefix + "Enabled",
             labelPrefix + "Enabled",
             true);
     }
-
-    attackParam = attackParams[0];
-    decayParam = decayParams[0];
-    sustainParam = sustainParams[0];
-    releaseParam = releaseParams[0];
-    ampEnvEnabledParam = ampEnvEnabledParams[0];
     masterGainParam = new juce::AudioParameterFloat("masterGain", "Master Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
 
     vibeAmountParam = new juce::AudioParameterFloat("vibeAmount", "Vibe", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
@@ -321,6 +333,12 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(filterResonanceParams[static_cast<std::size_t>(filterIndex)]);
         addParameter(filterTypeParams[static_cast<std::size_t>(filterIndex)]);
     }
+    addParameter(attackParam);
+    addParameter(decayParam);
+    addParameter(sustainParam);
+    addParameter(releaseParam);
+    addParameter(ampEnvEnabledParam);
+
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
     {
         addParameter(attackParams[static_cast<std::size_t>(envIndex)]);
@@ -695,7 +713,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         lfoDebugEffectiveNormalized.store(0.0f, std::memory_order_relaxed);
     }
 
-    const auto envelope = currentEnvelopeSettings(0);
+    const auto envelope = currentEnvelopeSettings();
     const auto filter = currentFilterSettings();
     const auto subtractive = currentSubtractiveSettings();
     const auto subOsc = currentSubOscillatorSettings();

@@ -11,6 +11,7 @@
 #include "PresetManager.h"
 #include "PluginProcessor.h"
 #include "ModPanel.h"
+#include "AmpPanel.h"
 #include "FltPanel.h"
 #include "FxPanel.h"
 #include "MixPanel.h"
@@ -113,10 +114,12 @@ private:
     void refreshLfoUI();
     void refreshSubOscUI();
     void refreshEnvelopeGraphUI();
+    void refreshAmpEnvelopeUI();
     void refreshFilterUI();
     void updatePanelVisibility();
     bool isPanelVisible(int sectionIndex) const;
     void layoutOscPanel();
+    void layoutAmpPanel();
     void layoutFilterPanel();
     void layoutModPanel();
     void layoutFxPanel();
@@ -374,6 +377,7 @@ private:
     std::unique_ptr<OscPanel> oscPanel;
     std::unique_ptr<ModPanel> modPanel;
     juce::Viewport modPanelViewport;
+    std::unique_ptr<AmpPanel> ampPanel;
     std::unique_ptr<FltPanel> fltPanel;
     std::unique_ptr<FxPanel> fxPanel;
     std::unique_ptr<MixPanel> mixPanel;

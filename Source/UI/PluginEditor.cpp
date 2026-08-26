@@ -28,6 +28,13 @@ constexpr int kFxSectionDelay = 1;
 constexpr int kFxSectionReverb = 2;
 constexpr int kFxSectionMood = 3;
 
+constexpr int kSectionOsc = 0;
+constexpr int kSectionMod = 1;
+constexpr int kSectionAmp = 2;
+constexpr int kSectionFilter = 3;
+constexpr int kSectionFx = 4;
+constexpr int kSectionMix = 5;
+
 juce::String moduleIdFromSectionId(int sectionId)
 {
     switch (sectionId)
@@ -1080,11 +1087,11 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           juce::Colour::fromRGB(120, 180, 255),
                                           kGroupAccents[0]);
     modPanel = std::make_unique<ModPanel>(audioProcessor,
-                                          audioProcessor.getAttackParam(),
-                                          audioProcessor.getDecayParam(),
-                                          audioProcessor.getSustainParam(),
-                                          audioProcessor.getReleaseParam(),
-                                          audioProcessor.getAmpEnvEnabledParam(),
+                                          audioProcessor.getAttackParam(0),
+                                          audioProcessor.getDecayParam(0),
+                                          audioProcessor.getSustainParam(0),
+                                          audioProcessor.getReleaseParam(0),
+                                          audioProcessor.getAmpEnvEnabledParam(0),
                                           envBypassButton,
                                           envBypassLabel,
                                           envAssignLabel,
@@ -1101,6 +1108,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           &knobLookAndFeel,
                                           kGroupAccents[2],
                                           kGroupAccents[3]);
+    ampPanel = std::make_unique<AmpPanel>(audioProcessor, kGroupAccents[2]);
     fltPanel = std::make_unique<FltPanel>(std::array<juce::ToggleButton*, kFilterInstanceCount> { { &filter1EnabledButton, &filter2EnabledButton } },
                                           std::array<juce::Label*, kFilterInstanceCount> { { &filter1EnabledLabel, &filter2EnabledLabel } },
                                           std::array<juce::Slider*, kFilterInstanceCount> { { &cutoffKnob, &cutoff2Knob } },
@@ -1173,6 +1181,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     modPanelViewport.setScrollBarThickness(10);
     modPanelViewport.setSingleStepSizes(16, 24);
     addAndMakeVisible(modPanelViewport);
+    addAndMakeVisible(*ampPanel);
     addAndMakeVisible(*fltPanel);
     addAndMakeVisible(*fxPanel);
     addAndMakeVisible(*mixPanel);
@@ -1228,7 +1237,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachButton(audioProcessor.getOscillatorEnabledParam(1), osc2EnabledButton);
     attachButton(audioProcessor.getOscillatorEnabledParam(2), osc3EnabledButton);
     attachButton(audioProcessor.getSubOscEnabledParam(), subOscEnabledButton);
-    attachButton(audioProcessor.getAmpEnvEnabledParam(), envBypassButton);
+    attachButton(audioProcessor.getAmpEnvEnabledParam(0), envBypassButton);
     attachButton(audioProcessor.getLfoEnabledParam(), lfoBypassButton);
 
     // MIDI status bar is temporarily disabled.
@@ -1443,6 +1452,7 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
     oscPanel.reset();
     modPanelViewport.setViewedComponent(nullptr, false);
     modPanel.reset();
+    ampPanel.reset();
     fltPanel.reset();
     fxPanel.reset();
     mixPanel.reset();
@@ -1590,7 +1600,7 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
                 g.drawText("Synth v" + px3::version::string(), subtitleArea, juce::Justification::centred);
     }
 
-    if (isPanelVisible(3))
+    if (isPanelVisible(kSectionFx))
     {
         const auto fxOffset = fxPanel->getPosition();
         const auto robArea = robSectionArea.translated(fxOffset.x, fxOffset.y);
@@ -1726,7 +1736,7 @@ void PX3SynthAudioProcessorEditor::resized()
 {
     // setResizeLimits() can trigger resized() during construction before
     // extracted panel components are created.
-    if (oscPanel == nullptr || modPanel == nullptr || fltPanel == nullptr || fxPanel == nullptr || mixPanel == nullptr)
+    if (oscPanel == nullptr || modPanel == nullptr || ampPanel == nullptr || fltPanel == nullptr || fxPanel == nullptr || mixPanel == nullptr)
     {
         return;
     }
@@ -1793,12 +1803,14 @@ void PX3SynthAudioProcessorEditor::resized()
     panelViewportArea = controlsArea.reduced(8, 8);
     oscPanel->setBounds(panelViewportArea);
     modPanelViewport.setBounds(panelViewportArea);
+    ampPanel->setBounds(panelViewportArea);
     fltPanel->setBounds(panelViewportArea);
     fxPanel->setBounds(panelViewportArea);
     mixPanel->setBounds(panelViewportArea);
 
     layoutOscPanel();
     layoutModPanel();
+    layoutAmpPanel();
     layoutFilterPanel();
     layoutFxPanel();
     layoutMixPanel();
@@ -1984,6 +1996,10 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
     {
         modPanel->setUIConfig(uiConfig);
     }
+    if (ampPanel != nullptr)
+    {
+        ampPanel->setUIConfig(uiConfig);
+    }
     if (oscPanel != nullptr)
     {
         oscPanel->setUIConfig(uiConfig);
@@ -2060,7 +2076,7 @@ void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
         return;
     }
 
-    if (!isPanelVisible(3))
+    if (!isPanelVisible(kSectionFx))
     {
         return;
     }
@@ -2123,7 +2139,7 @@ void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
         return;
     }
 
-    if (!isPanelVisible(3))
+    if (!isPanelVisible(kSectionFx))
     {
         return;
     }
@@ -2193,7 +2209,7 @@ void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
         return;
     }
 
-    if (!isPanelVisible(3))
+    if (!isPanelVisible(kSectionFx))
     {
         draggingFxSection = -1;
         pressedFxSection = -1;
@@ -2359,7 +2375,7 @@ int PX3SynthAudioProcessorEditor::indexForFxSection(int sectionId) const
 
 int PX3SynthAudioProcessorEditor::fxSectionAtPoint(juce::Point<int> point) const
 {
-    if (!isPanelVisible(3))
+    if (!isPanelVisible(kSectionFx))
     {
         return -1;
     }
@@ -2789,7 +2805,7 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
 
 void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex, bool pushToProcessor)
 {
-    const auto clamped = juce::jlimit(0, 4, sectionIndex);
+    const auto clamped = juce::jlimit(0, 5, sectionIndex);
     selectedTopMenuSection = clamped;
 
     if (topMenuBar != nullptr)
@@ -2799,26 +2815,32 @@ void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex
 
     updatePanelVisibility();
 
-    if (clamped == 0)
+    if (clamped == kSectionOsc)
     {
         refreshOscillatorModeUI();
         refreshLfoAssignmentUI();
         refreshLfoUI();
     }
-    else if (clamped == 1)
+    else if (clamped == kSectionMod)
     {
+        refreshLfoAssignmentUI();
+        refreshEnvelopeAssignmentUI();
         refreshEnvelopeGraphUI();
     }
-    else if (clamped == 2)
+    else if (clamped == kSectionAmp)
+    {
+        refreshAmpEnvelopeUI();
+    }
+    else if (clamped == kSectionFilter)
     {
         refreshFilterUI();
     }
-    else if (clamped == 3)
+    else if (clamped == kSectionFx)
     {
         refreshGranularModeUI();
         refreshFxBypassUI();
     }
-    else if (clamped == 4)
+    else if (clamped == kSectionMix)
     {
         refreshSubOscUI();
     }
@@ -3091,6 +3113,14 @@ void PX3SynthAudioProcessorEditor::refreshEnvelopeGraphUI()
     }
 }
 
+void PX3SynthAudioProcessorEditor::refreshAmpEnvelopeUI()
+{
+    if (ampPanel != nullptr)
+    {
+        ampPanel->refreshFromParameters();
+    }
+}
+
 void PX3SynthAudioProcessorEditor::refreshFilterUI()
 {
     if (fltPanel != nullptr)
@@ -3101,20 +3131,21 @@ void PX3SynthAudioProcessorEditor::refreshFilterUI()
 
 bool PX3SynthAudioProcessorEditor::isPanelVisible(int sectionIndex) const
 {
-    return selectedTopMenuSection == juce::jlimit(0, 4, sectionIndex);
+    return selectedTopMenuSection == juce::jlimit(0, 5, sectionIndex);
 }
 
 void PX3SynthAudioProcessorEditor::updatePanelVisibility()
 {
-    oscPanel->setVisible(isPanelVisible(0));
-    modPanelViewport.setVisible(isPanelVisible(1));
+    oscPanel->setVisible(isPanelVisible(kSectionOsc));
+    modPanelViewport.setVisible(isPanelVisible(kSectionMod));
     if (modPanel != nullptr)
     {
         modPanel->setVisible(true);
     }
-    fltPanel->setVisible(isPanelVisible(2));
-    fxPanel->setVisible(isPanelVisible(3));
-    mixPanel->setVisible(isPanelVisible(4));
+    ampPanel->setVisible(isPanelVisible(kSectionAmp));
+    fltPanel->setVisible(isPanelVisible(kSectionFilter));
+    fxPanel->setVisible(isPanelVisible(kSectionFx));
+    mixPanel->setVisible(isPanelVisible(kSectionMix));
 }
 
 void PX3SynthAudioProcessorEditor::layoutOscPanel()
@@ -3130,6 +3161,14 @@ void PX3SynthAudioProcessorEditor::layoutFilterPanel()
     if (fltPanel != nullptr)
     {
         fltPanel->resized();
+    }
+}
+
+void PX3SynthAudioProcessorEditor::layoutAmpPanel()
+{
+    if (ampPanel != nullptr)
+    {
+        ampPanel->resized();
     }
 }
 
@@ -3195,7 +3234,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
 
     // Timer drives non-audio UI synchronization only. DSP state is never
     // computed here; this keeps audio-thread responsibilities isolated.
-    if (isPanelVisible(3) && draggingFxSection < 0)
+    if (isPanelVisible(kSectionFx) && draggingFxSection < 0)
     {
         const auto processorOrder = audioProcessor.getFxProcessingOrder();
         if (processorOrder != fxSectionOrder)
@@ -3217,32 +3256,36 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         }
     }
 
-    if (isPanelVisible(3))
+    if (isPanelVisible(kSectionFx))
     {
         animateFxSections();
         refreshGranularModeUI();
         refreshFxBypassUI();
     }
 
-    const auto lfoUiVisible = isPanelVisible(0) || isPanelVisible(1);
+    const auto lfoUiVisible = isPanelVisible(kSectionOsc) || isPanelVisible(kSectionMod);
     if (lfoUiVisible)
     {
         refreshLfoUI();
     }
 
-    if (isPanelVisible(0))
+    if (isPanelVisible(kSectionOsc))
     {
         refreshOscillatorModeUI();
         refreshLfoAssignmentUI();
         refreshSubOscUI();
     }
-    else if (isPanelVisible(1))
+    else if (isPanelVisible(kSectionMod))
     {
         refreshLfoAssignmentUI();
         refreshEnvelopeAssignmentUI();
         refreshEnvelopeGraphUI();
     }
-    else if (isPanelVisible(2))
+    else if (isPanelVisible(kSectionAmp))
+    {
+        refreshAmpEnvelopeUI();
+    }
+    else if (isPanelVisible(kSectionFilter))
     {
         refreshFilterUI();
     }
@@ -3262,12 +3305,12 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         debugRefreshTickCounter = 0;
     }
 
-    if (isPanelVisible(0) && oscPanel != nullptr)
+    if (isPanelVisible(kSectionOsc) && oscPanel != nullptr)
     {
         oscPanel->advanceAnimation(0.09f);
     }
 
-    if (isPanelVisible(1) && modPanel != nullptr)
+    if (isPanelVisible(kSectionMod) && modPanel != nullptr)
     {
         modPanel->advanceAnimation(deltaSeconds);
     }
@@ -3276,7 +3319,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     refreshDebugPerformanceOverlay();
 #endif
 
-    if (isPanelVisible(4) && mixPanel != nullptr)
+    if (isPanelVisible(kSectionMix) && mixPanel != nullptr)
     {
         mixPanel->advanceAnimation(0.05f);
     }

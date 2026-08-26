@@ -41,8 +41,8 @@
     "layout": {
       "rowHeight": 32,
       "sectionGap": 6,
-      "sectionMinWidth": 230,
-      "sectionMaxWidth": 330,
+      "sectionMinWidth": 282,
+      "sectionMaxWidth": 390,
       "presetClusterMenuWidth": 94,
       "prevNextWidth": 26,
       "presetHorizontalPad": 5,
@@ -51,7 +51,9 @@
       "menuButtonMaxWidth": 78,
       "menuButtonInset": 16
     },
-    "buttons": {}
+    "buttons": {
+      "sectionAmp": {}
+    }
   },
   "styles": {
     "buttons": {
@@ -437,6 +439,55 @@
       }
     },
     "env": {
+      "visual": {
+        "bgTintAlpha": 0.1,
+        "bgTintColour": "#49DE79",
+        "topFillAlpha": 0.1,
+        "topFillColour": "#6FE08F",
+        "cardCornerRadius": 8,
+        "outerStrokeThickness": 1.2,
+        "outerStrokeColour": "#DCE8FC",
+        "outerStrokeAlphaEnabled": 88,
+        "outerStrokeAlphaDisabled": 66,
+        "graph": {
+          "cornerRadius": 7,
+          "fillColour": "#0E0E12",
+          "fillAlpha": 170,
+          "strokeThickness": 1,
+          "strokeColourEnabled": "#49DE79",
+          "strokeAlphaEnabled": 82,
+          "strokeColourDisabled": "#888888",
+          "strokeAlphaDisabled": 62
+        },
+        "onLabel": {
+          "text": "ON",
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8",
+          "width": 52
+        }
+      }
+    }
+  },
+  "amp": {
+    "panel": {
+      "fillAlpha": 0,
+      "strokeAlpha": 0,
+      "cornerRadius": 0,
+      "layout": {
+        "padX": 0,
+        "padY": 0
+      },
+      "cardTitle": {
+        "fontSize": 11
+      }
+    },
+    "env": {
+      "title": { "text": "AMP ENV" },
+      "layout": {
+        "maxWidth": 360,
+        "minHeight": 250,
+        "maxHeight": 340
+      },
       "visual": {
         "bgTintAlpha": 0.1,
         "bgTintColour": "#49DE79",

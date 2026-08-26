@@ -23,9 +23,10 @@ TopMenuBar::TopMenuBar()
 
     configureTopMenuSectionButton(topMenuOscButton, "OSC", 0);
     configureTopMenuSectionButton(topMenuModButton, "MOD", 1);
-    configureTopMenuSectionButton(topMenuFltButton, "FLT", 2);
-    configureTopMenuSectionButton(topMenuFxButton, "FX", 3);
-    configureTopMenuSectionButton(topMenuMixButton, "MIX", 4);
+    configureTopMenuSectionButton(topMenuAmpButton, "AMP", 2);
+    configureTopMenuSectionButton(topMenuFltButton, "FLT", 3);
+    configureTopMenuSectionButton(topMenuFxButton, "FX", 4);
+    configureTopMenuSectionButton(topMenuMixButton, "MIX", 5);
 
     presetPrevButton.onClick = [this]()
     {
@@ -65,6 +66,7 @@ TopMenuBar::TopMenuBar()
     addAndMakeVisible(presetMenuButton);
     addAndMakeVisible(topMenuOscButton);
     addAndMakeVisible(topMenuModButton);
+    addAndMakeVisible(topMenuAmpButton);
     addAndMakeVisible(topMenuFltButton);
     addAndMakeVisible(topMenuFxButton);
     addAndMakeVisible(topMenuMixButton);
@@ -74,8 +76,8 @@ void TopMenuBar::resized()
 {
     const auto rowHeight = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.rowHeight", 32) : 32;
     const auto sectionGapPx = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.sectionGap", 6) : 6;
-    const auto sectionMinWidth = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.sectionMinWidth", 230) : 230;
-    const auto sectionMaxWidth = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.sectionMaxWidth", 330) : 330;
+    const auto sectionMinWidth = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.sectionMinWidth", 282) : 282;
+    const auto sectionMaxWidth = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.sectionMaxWidth", 390) : 390;
     const auto presetClusterRightWidth = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.presetClusterMenuWidth", 94) : 94;
     const auto presetPrevNextWidth = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.prevNextWidth", 26) : 26;
     const auto presetHorizontalPad = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.presetHorizontalPad", 5) : 5;
@@ -94,11 +96,11 @@ void TopMenuBar::resized()
     topMenuPresetClusterArea = sectionButtonsRow;
 
     auto sectionButtonsLayout = topMenuSectionButtonsArea.reduced(5, 0);
-    const auto buttonWidth = juce::jmax(42, (sectionButtonsLayout.getWidth() - (sectionGapPx * 4)) / 5);
-    for (int i = 0; i < 5; ++i)
+    const auto buttonWidth = juce::jmax(42, (sectionButtonsLayout.getWidth() - (sectionGapPx * 5)) / 6);
+    for (int i = 0; i < 6; ++i)
     {
         topMenuSectionButtons[static_cast<std::size_t>(i)]->setBounds(sectionButtonsLayout.removeFromLeft(buttonWidth));
-        if (i < 4)
+        if (i < 5)
         {
             sectionButtonsLayout.removeFromLeft(sectionGapPx);
         }
@@ -148,8 +150,8 @@ void TopMenuBar::setOnPresetMenu(std::function<void()> callback)
 
 void TopMenuBar::setSelectedSection(int sectionIndex)
 {
-    const auto clamped = juce::jlimit(0, 4, sectionIndex);
-    for (int i = 0; i < 5; ++i)
+    const auto clamped = juce::jlimit(0, 5, sectionIndex);
+    for (int i = 0; i < 6; ++i)
     {
         topMenuSectionButtons[static_cast<std::size_t>(i)]->setToggleState(i == clamped, juce::dontSendNotification);
     }
@@ -183,6 +185,7 @@ void TopMenuBar::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     applyStyle(presetMenuButton, "styles.buttons.topMenuPreset", "topMenu.buttons.presetMenu");
     applyStyle(topMenuOscButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionOsc");
     applyStyle(topMenuModButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionMod");
+    applyStyle(topMenuAmpButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionAmp");
     applyStyle(topMenuFltButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionFlt");
     applyStyle(topMenuFxButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionFx");
     applyStyle(topMenuMixButton, "styles.buttons.topMenuSection", "topMenu.buttons.sectionMix");

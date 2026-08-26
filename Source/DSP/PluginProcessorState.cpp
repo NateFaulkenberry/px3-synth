@@ -225,6 +225,53 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         }
     }
 
+    // Legacy states before dedicated AMP/ENV1 split only stored amp* ADSR IDs.
+    // Seed ENV1 from those values when env1* IDs are missing.
+    if (!state.hasProperty("env1Attack"))
+    {
+        auto& env1Attack = getAttackParam(0);
+        if (state.hasProperty("ampAttack"))
+        {
+            const auto attackNorm = juce::jlimit(0.0f, 1.0f, static_cast<float>(state["ampAttack"]));
+            env1Attack.setValueNotifyingHost(attackNorm);
+        }
+    }
+    if (!state.hasProperty("env1Decay"))
+    {
+        auto& env1Decay = getDecayParam(0);
+        if (state.hasProperty("ampDecay"))
+        {
+            const auto decayNorm = juce::jlimit(0.0f, 1.0f, static_cast<float>(state["ampDecay"]));
+            env1Decay.setValueNotifyingHost(decayNorm);
+        }
+    }
+    if (!state.hasProperty("env1Sustain"))
+    {
+        auto& env1Sustain = getSustainParam(0);
+        if (state.hasProperty("ampSustain"))
+        {
+            const auto sustainNorm = juce::jlimit(0.0f, 1.0f, static_cast<float>(state["ampSustain"]));
+            env1Sustain.setValueNotifyingHost(sustainNorm);
+        }
+    }
+    if (!state.hasProperty("env1Release"))
+    {
+        auto& env1Release = getReleaseParam(0);
+        if (state.hasProperty("ampRelease"))
+        {
+            const auto releaseNorm = juce::jlimit(0.0f, 1.0f, static_cast<float>(state["ampRelease"]));
+            env1Release.setValueNotifyingHost(releaseNorm);
+        }
+    }
+    if (!state.hasProperty("env1Enabled"))
+    {
+        auto& env1Enabled = getAmpEnvEnabledParam(0);
+        if (state.hasProperty("ampEnvEnabled"))
+        {
+            env1Enabled.setValueNotifyingHost(static_cast<bool>(state["ampEnvEnabled"]) ? 1.0f : 0.0f);
+        }
+    }
+
     if (!state.hasProperty("subOscPitch") && subOscPitchParam != nullptr)
     {
         subOscPitchParam->setValueNotifyingHost(subOscPitchParam->convertTo0to1(0.0f));

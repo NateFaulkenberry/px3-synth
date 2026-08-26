@@ -58,6 +58,7 @@ target_sources(PX3Synth
         Source/UI/PianoKeyboard.cpp
         Source/UI/OscPanel.cpp
         Source/UI/ModPanel.cpp
+        Source/UI/AmpPanel.cpp
         Source/UI/FltPanel.cpp
         Source/UI/FxPanel.cpp
         Source/UI/MixPanel.cpp
