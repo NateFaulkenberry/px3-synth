@@ -575,7 +575,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     const auto initialFxPan = fxReturnPanParam != nullptr ? fxReturnPanParam->get() : 0.0f;
     fxReturnPanSmoother.setCurrentAndTargetValue(juce::jlimit(-1.0f, 1.0f, initialFxPan));
 
-    polyphonyGainSmoother.reset(sampleRate, 0.050);
+    polyphonyGainSmoother.reset(sampleRate, 0.012);
     polyphonyGainSmoother.setCurrentAndTargetValue(1.0f);
 
     const auto ampEnvelope = currentAmpEnvelopeSettings();
@@ -867,8 +867,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     synth.renderNextBlock(oscillatorBusBuffer, midiMessages, 0, blockSamples);
 
     constexpr float kNearSilentReleaseThreshold = 1.0e-4f;
-    constexpr float kPolyphonyReferenceVoices = 1.0f;
-    constexpr float kPolyphonyGainFloor = 0.10f;
+    constexpr float kPolyphonyReferenceVoices = 0.85f;
+    constexpr float kPolyphonyGainFloor = 0.06f;
+    constexpr float kReleasingVoiceBaseWeight = 0.32f;
+    constexpr float kReleaseEnvelopeWeight = 2.10f;
 
     auto activeVoiceCount = 0;
     auto heldVoiceCount = 0;
@@ -894,7 +896,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         {
             ++releasingVoiceCount;
             const auto env = juce::jlimit(0.0f, 1.0f, voice->getCurrentAmpEnvelopeValue());
-            releasingVoiceEnergyEquivalent += env * env;
+            releasingVoiceEnergyEquivalent += env;
             if (env <= kNearSilentReleaseThreshold)
             {
                 ++nearSilentReleaseVoiceCount;
@@ -911,7 +913,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     }
 
     const auto effectiveVoiceLoad = juce::jmax(1.0f,
-                                               static_cast<float>(heldVoiceCount) + releasingVoiceEnergyEquivalent);
+                                               static_cast<float>(heldVoiceCount)
+                                                   + static_cast<float>(releasingVoiceCount) * kReleasingVoiceBaseWeight
+                                                   + releasingVoiceEnergyEquivalent * kReleaseEnvelopeWeight);
     auto polyphonyGainTarget = 1.0f;
     if (effectiveVoiceLoad > kPolyphonyReferenceVoices)
     {
@@ -931,6 +935,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     }
 
     debugActiveVoiceCount.store(activeVoiceCount, std::memory_order_relaxed);
+    debugHeldVoiceCount.store(heldVoiceCount, std::memory_order_relaxed);
     debugReleasingVoiceCount.store(releasingVoiceCount, std::memory_order_relaxed);
     debugNearSilentReleaseVoiceCount.store(nearSilentReleaseVoiceCount, std::memory_order_relaxed);
     debugVoicePeak.store(blockVoicePeak, std::memory_order_relaxed);
@@ -939,6 +944,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         debugVoiceSourcePeak[static_cast<std::size_t>(sourceIndex)].store(blockVoiceSourcePeak[static_cast<std::size_t>(sourceIndex)],
                                                                            std::memory_order_relaxed);
     }
+    debugEffectiveVoiceLoad.store(effectiveVoiceLoad, std::memory_order_relaxed);
+    debugReleaseEnergyEquivalent.store(releasingVoiceEnergyEquivalent, std::memory_order_relaxed);
+    debugPolyphonyGainTarget.store(polyphonyGainTarget, std::memory_order_relaxed);
     debugPolyphonyGainApplied.store(polyphonyGainSmoother.getCurrentValue(), std::memory_order_relaxed);
 
     // Capture the newest per-voice modulation envelope values for downstream

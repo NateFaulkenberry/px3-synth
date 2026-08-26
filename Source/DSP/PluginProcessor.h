@@ -262,6 +262,10 @@ public:
     int debugGetReleasingVoiceCount() const;
     int debugGetNearSilentReleaseVoiceCount() const;
     float debugGetPolyphonyGainApplied() const;
+    float debugGetPolyphonyGainTarget() const;
+    float debugGetEffectiveVoiceLoad() const;
+    float debugGetReleaseEnergyEquivalent() const;
+    int debugGetHeldVoiceCount() const;
     float debugGetFxReturnRms() const;
     float debugGetInstanceCpuLoadPercent() const;
     int debugGetActiveInstanceCount() const;
@@ -490,9 +494,13 @@ private:
     std::array<std::atomic<float>, kMixerSourceCount> debugVoiceSourcePeak { { 0.0f, 0.0f, 0.0f, 0.0f } };
     std::atomic<float> debugVoicePeak { 0.0f };
     std::atomic<int> debugActiveVoiceCount { 0 };
+    std::atomic<int> debugHeldVoiceCount { 0 };
     std::atomic<int> debugReleasingVoiceCount { 0 };
     std::atomic<int> debugNearSilentReleaseVoiceCount { 0 };
     std::atomic<float> debugPolyphonyGainApplied { 1.0f };
+    std::atomic<float> debugPolyphonyGainTarget { 1.0f };
+    std::atomic<float> debugEffectiveVoiceLoad { 1.0f };
+    std::atomic<float> debugReleaseEnergyEquivalent { 0.0f };
     std::atomic<float> debugFxReturnRms { 0.0f };
     std::atomic<float> debugInstanceCpuLoadPercent { 0.0f };
 

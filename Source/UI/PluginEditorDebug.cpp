@@ -944,8 +944,12 @@ void PX3SynthAudioProcessorEditor::refreshDebugEnvelopeState()
     const auto voiceOsc2Peak = audioProcessor.debugGetVoiceSourcePeak(PX3SynthAudioProcessor::mixerOsc2);
     const auto voiceOsc3Peak = audioProcessor.debugGetVoiceSourcePeak(PX3SynthAudioProcessor::mixerOsc3);
     const auto activeVoiceCount = audioProcessor.debugGetActiveVoiceCount();
+    const auto heldVoiceCount = audioProcessor.debugGetHeldVoiceCount();
     const auto releasingVoiceCount = audioProcessor.debugGetReleasingVoiceCount();
     const auto nearSilentReleaseVoiceCount = audioProcessor.debugGetNearSilentReleaseVoiceCount();
+    const auto releaseEnergyEq = audioProcessor.debugGetReleaseEnergyEquivalent();
+    const auto effectiveVoiceLoad = audioProcessor.debugGetEffectiveVoiceLoad();
+    const auto polyGainTarget = audioProcessor.debugGetPolyphonyGainTarget();
     const auto polyGain = audioProcessor.debugGetPolyphonyGainApplied();
 
     juce::String text;
@@ -957,9 +961,15 @@ void PX3SynthAudioProcessorEditor::refreshDebugEnvelopeState()
             << "Graph:  /\\__====\\\n\n"
                 << "Polyphony\n"
                 << "activeVoices=" << juce::String(activeVoiceCount)
+                << " heldVoices=" << juce::String(heldVoiceCount)
                 << " releasingVoices=" << juce::String(releasingVoiceCount)
                 << " nearSilentReleaseVoices=" << juce::String(nearSilentReleaseVoiceCount)
-                << " polyGain=" << juce::String(polyGain, 5) << "\n\n"
+                << "\n"
+                << "releaseEnergyEq=" << juce::String(releaseEnergyEq, 5)
+                << " effectiveLoad=" << juce::String(effectiveVoiceLoad, 5)
+                << "\n"
+                << "polyGainTarget=" << juce::String(polyGainTarget, 5)
+                << " polyGainApplied=" << juce::String(polyGain, 5) << "\n\n"
                 << "Per-Voice Peak\n"
                 << "voicePeak=" << juce::String(voicePeak, 6)
                 << " sub=" << juce::String(voiceSubPeak, 6)

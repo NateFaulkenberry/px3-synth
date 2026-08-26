@@ -547,6 +547,26 @@ float PX3SynthAudioProcessor::debugGetPolyphonyGainApplied() const
     return juce::jmax(0.0f, debugPolyphonyGainApplied.load(std::memory_order_relaxed));
 }
 
+float PX3SynthAudioProcessor::debugGetPolyphonyGainTarget() const
+{
+    return juce::jmax(0.0f, debugPolyphonyGainTarget.load(std::memory_order_relaxed));
+}
+
+float PX3SynthAudioProcessor::debugGetEffectiveVoiceLoad() const
+{
+    return juce::jmax(0.0f, debugEffectiveVoiceLoad.load(std::memory_order_relaxed));
+}
+
+float PX3SynthAudioProcessor::debugGetReleaseEnergyEquivalent() const
+{
+    return juce::jmax(0.0f, debugReleaseEnergyEquivalent.load(std::memory_order_relaxed));
+}
+
+int PX3SynthAudioProcessor::debugGetHeldVoiceCount() const
+{
+    return juce::jmax(0, debugHeldVoiceCount.load(std::memory_order_relaxed));
+}
+
 float PX3SynthAudioProcessor::debugGetFxReturnRms() const
 {
     return debugFxReturnRms.load(std::memory_order_relaxed);
