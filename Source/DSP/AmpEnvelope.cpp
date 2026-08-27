@@ -54,6 +54,7 @@ void AmpEnvelope::noteOn()
 {
     inRelease = false;
     releaseStartLevel = 0.0f;
+    releaseProgress = 0.0f;
     adsr.noteOn();
 }
 
@@ -72,7 +73,13 @@ void AmpEnvelope::reset()
     outputSmoother.setCurrentAndTargetValue(0.0f);
     lastRawAdsrValue = 0.0f;
     releaseStartLevel = 0.0f;
+    releaseProgress = 0.0f;
     inRelease = false;
+}
+
+float AmpEnvelope::getReleaseProgress() const
+{
+    return inRelease ? releaseProgress : 0.0f;
 }
 
 float AmpEnvelope::shapeReleaseProgress(float progress)
@@ -104,12 +111,21 @@ float AmpEnvelope::getNextSample()
     constexpr auto useLinearRelease = false;
 #endif
 
+    if (inRelease)
+    {
+        if (releaseStartLevel > 1.0e-6f && useLinearRelease)
+        {
+            releaseProgress = juce::jlimit(0.0f, 1.0f, 1.0f - raw / releaseStartLevel);
+        }
+    }
+
     if (inRelease && !useLinearRelease)
     {
         if (releaseStartLevel > 1.0e-6f)
         {
             // The ADSR's linear ramp doubles as the release progress clock.
             const auto progress = juce::jlimit(0.0f, 1.0f, 1.0f - raw / releaseStartLevel);
+            releaseProgress = progress;
             shaped = releaseStartLevel * shapeReleaseProgress(progress);
         }
 

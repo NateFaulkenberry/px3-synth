@@ -379,9 +379,35 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             --fastReleaseSamplesRemaining;
         }
 
-        const auto releaseTailShape = isKeyDown()
-                                          ? 1.0f
-                                          : juce::jlimit(0.0f, 1.0f, (env - 0.02f) / 0.30f);
+        // Scheduled off release progress, not off the envelope value. Keying it
+        // to the value meant the filter's timing moved when the AMP ENV release
+        // curve changed shape: an exponential release reaches 0.02 less than
+        // halfway through the tail, which pinned this filter at its most
+        // aggressive setting for the rest of every release.
+#if PX3_DIAGNOSTICS
+        const auto releaseTailShape =
+            isKeyDown()
+                ? 1.0f
+                : (diag.legacyTailShapeFromEnv
+                       ? juce::jlimit(0.0f, 1.0f, (env - 0.02f) / 0.30f)
+                       : juce::jlimit(0.0f, 1.0f, (0.98f - ampEnvelope.getReleaseProgress()) / 0.30f));
+#else
+        const auto releaseTailShape =
+            isKeyDown()
+                ? 1.0f
+                : juce::jlimit(0.0f, 1.0f, (0.98f - ampEnvelope.getReleaseProgress()) / 0.30f);
+#endif
+#if PX3_DIAGNOSTICS
+        if (diag.capturing && !isKeyDown())
+        {
+            ++diag.releaseSamplesTotal;
+            if (releaseTailShape < 0.1f)
+            {
+                ++diag.releaseSamplesHeavilyFiltered;
+            }
+        }
+#endif
+
         auto ecoReleaseVoice = !isKeyDown();
 #if PX3_DIAGNOSTICS
         if (diag.freezeVibeReleaseSwitch)

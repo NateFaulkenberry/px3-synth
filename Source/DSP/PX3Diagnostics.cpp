@@ -38,6 +38,52 @@ void analyseBlock(const float* postPoly, const float* master, int numSamples)
 
         const auto lifecycleHere = s.lifecycleMark[idx] != 0;
 
+        if (std::abs(current[stageMaster]) > 1.0f)
+        {
+            ++s.masterClipSamples;
+        }
+
+        {
+            const auto x = current[stageMaster];
+            const auto secondDifference = std::abs(x - 2.0f * s.transientPrev1 + s.transientPrev2);
+            // Only score where there is actually signal, so the numerical noise
+            // floor after a tail ends cannot register as a click.
+            if (std::abs(x) > 1.0e-4f && s.transientRunningMean > 1.0e-9f)
+            {
+                const auto ratio = secondDifference / s.transientRunningMean;
+                if (ratio > s.maxTransientRatio)
+                {
+                    s.maxTransientRatio = ratio;
+                    s.worstTransientSample = s.globalSampleBase + n;
+                    s.worstTransientAtLifecycle = lifecycleHere;
+                }
+                if (ratio > 8.0f)
+                {
+                    ++s.transientEventCount;
+                }
+
+                // 50 ms clear of any voice start/stop.
+                if (s.samplesSinceLifecycle > 2400)
+                {
+                    if (ratio > s.maxQuietTransientRatio)
+                    {
+                        s.maxQuietTransientRatio = ratio;
+                        s.worstQuietTransientSample = s.globalSampleBase + n;
+                    }
+                    if (ratio > 8.0f)
+                    {
+                        ++s.quietTransientEvents;
+                    }
+                }
+            }
+            // ~20 ms running mean of the second difference.
+            s.samplesSinceLifecycle = lifecycleHere ? 0 : s.samplesSinceLifecycle + 1;
+            constexpr float alpha = 1.0f / 960.0f;
+            s.transientRunningMean += (secondDifference - s.transientRunningMean) * alpha;
+            s.transientPrev2 = s.transientPrev1;
+            s.transientPrev1 = x;
+        }
+
         if (s.hasPrev)
         {
             Event event;
@@ -78,6 +124,29 @@ void analyseBlock(const float* postPoly, const float* master, int numSamples)
             }
         }
 
+        {
+            // 50 ms window over the applied polyphony gain.
+            const auto gain = s.blockPolyGain[idx];
+            s.polyGainHistory.push_back(gain);
+            s.polyGainRunMin = std::min(s.polyGainRunMin, gain);
+            s.polyGainRunMax = std::max(s.polyGainRunMax, gain);
+            constexpr std::size_t window = 2400;
+            if (s.polyGainHistory.size() > window)
+            {
+                const auto past = s.polyGainHistory[s.polyGainHistory.size() - 1 - window];
+                s.maxPolyGainDropPer50ms = std::max(s.maxPolyGainDropPer50ms, past - gain);
+                s.maxPolyGainRisePer50ms = std::max(s.maxPolyGainRisePer50ms, gain - past);
+                if (gain > 1.0e-6f && past > 1.0e-6f)
+                {
+                    const auto changeDb = std::abs(20.0f * std::log10(gain / past));
+                    if (changeDb > 3.0f)
+                    {
+                        ++s.polyGainLurchSamples;
+                    }
+                }
+            }
+        }
+
         if (s.tracing)
         {
             for (int stage = 0; stage < stageCount; ++stage)
@@ -90,6 +159,8 @@ void analyseBlock(const float* postPoly, const float* master, int numSamples)
             s.tracePrePolyPeak.push_back(s.blockPrePolyPeak);
             s.traceOverloadBlend.push_back(s.blockOverloadBlend);
             s.traceGainTarget.push_back(s.blockGainTarget);
+            s.traceActiveVoices.push_back(s.blockActiveVoices);
+            s.traceReleasingVoices.push_back(s.blockReleasingVoices);
         }
 
         for (int stage = 0; stage < stageCount; ++stage)
@@ -102,6 +173,7 @@ void analyseBlock(const float* postPoly, const float* master, int numSamples)
         s.hasPrev = true;
     }
 
+    s.polyGainLurchSeconds = static_cast<float>(s.polyGainLurchSamples) / 48000.0f;
     s.globalSampleBase += numSamples;
     ++s.blockIndex;
 }

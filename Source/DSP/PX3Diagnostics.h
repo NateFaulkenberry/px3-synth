@@ -69,6 +69,7 @@ struct State
     bool legacyHardStopPruning { false };  // control: pre-fix instantaneous stopNote(false)
     bool legacyPolyphonyLoad { false };    // control: pre-fix key-state load + no attenuation hold
     bool legacyLinearRelease { false };    // control: pre-fix linear AMP ENV release ramp
+    bool legacyTailShapeFromEnv { false }; // control: tail filter scheduled off env value
     bool disableOnsetGuard { false };
     bool disableReleaseTailFilter { false };
     bool freezeVibeReleaseSwitch { false }; // keep held-note vibe path during release
@@ -96,10 +97,14 @@ struct State
     float blockPrePolyPeak { 0.0f };
     float blockOverloadBlend { 0.0f };
     float blockGainTarget { 1.0f };
+    float blockActiveVoices { 0.0f };
+    float blockReleasingVoices { 0.0f };
     std::vector<float> traceLoad;
     std::vector<float> tracePrePolyPeak;
     std::vector<float> traceOverloadBlend;
     std::vector<float> traceGainTarget;
+    std::vector<float> traceActiveVoices;
+    std::vector<float> traceReleasingVoices;
 
     // Carried across blocks so block boundaries are analysed too.
     std::array<float, stageCount> prevSample { {} };
@@ -129,6 +134,45 @@ struct State
     float maxTruncationStep { 0.0f };
     float maxHardStopEnv { 0.0f };
 
+    // Loudness / gain-modulation health, which sample-delta metrics cannot see.
+    int masterClipSamples { 0 };
+    // How much of each release tail is spent at the release lowpass's most
+    // aggressive setting (~150 Hz), which is a direct read of whether that
+    // filter's schedule still matches the envelope shape.
+    long long releaseSamplesTotal { 0 };
+    long long releaseSamplesHeavilyFiltered { 0 };
+
+    // Transient/click detection: a click is a spike in the second difference
+    // relative to the local signal, so it is visible even at low level where an
+    // absolute sample-delta threshold sees nothing.
+    float transientPrev1 { 0.0f };
+    float transientPrev2 { 0.0f };
+    float transientRunningMean { 0.0f };
+    float maxTransientRatio { 0.0f };
+    int transientEventCount { 0 };
+    // Same detector, but scored only well away from any voice start/stop, so it
+    // sees artifacts that happen in the middle of a sustaining tail rather than
+    // the legitimate transient of a note attack.
+    int samplesSinceLifecycle { 1 << 30 };
+    float maxQuietTransientRatio { 0.0f };
+    int quietTransientEvents { 0 };
+    long long worstQuietTransientSample { -1 };
+    long long worstTransientSample { -1 };
+    bool worstTransientAtLifecycle { false };
+    // Gain excursion over a perceptually relevant window. Measuring the step
+    // across a block boundary only proves the smoother is continuous; it says
+    // nothing about the gain lurching around while notes are played.
+    std::vector<float> polyGainHistory;
+    float maxPolyGainDropPer50ms { 0.0f };
+    float maxPolyGainRisePer50ms { 0.0f };
+    // How often the gain lurches, not just how far: repeated large moves at
+    // note rate are heard as pumping / artifacting even when each move is
+    // individually click-free.
+    int polyGainLurchSamples { 0 };
+    float polyGainLurchSeconds { 0.0f };
+    float polyGainRunMin { 2.0f };
+    float polyGainRunMax { 0.0f };
+
     std::vector<Event> worst; // kept sorted descending by master delta
 
     void resetResults()
@@ -152,6 +196,27 @@ struct State
         clearFromEnvInactive = 0;
         maxTruncationStep = 0.0f;
         maxHardStopEnv = 0.0f;
+        masterClipSamples = 0;
+        releaseSamplesTotal = 0;
+        releaseSamplesHeavilyFiltered = 0;
+        transientPrev1 = 0.0f;
+        transientPrev2 = 0.0f;
+        transientRunningMean = 0.0f;
+        maxTransientRatio = 0.0f;
+        transientEventCount = 0;
+        samplesSinceLifecycle = 1 << 30;
+        maxQuietTransientRatio = 0.0f;
+        quietTransientEvents = 0;
+        worstQuietTransientSample = -1;
+        worstTransientSample = -1;
+        worstTransientAtLifecycle = false;
+        polyGainHistory.clear();
+        maxPolyGainDropPer50ms = 0.0f;
+        maxPolyGainRisePer50ms = 0.0f;
+        polyGainLurchSamples = 0;
+        polyGainLurchSeconds = 0.0f;
+        polyGainRunMin = 2.0f;
+        polyGainRunMax = 0.0f;
         blockIndex = 0;
         globalSampleBase = 0;
         worst.clear();
@@ -165,6 +230,8 @@ struct State
         tracePrePolyPeak.clear();
         traceOverloadBlend.clear();
         traceGainTarget.clear();
+        traceActiveVoices.clear();
+        traceReleasingVoices.clear();
     }
 
     void resetModes()
@@ -175,6 +242,7 @@ struct State
         legacyHardStopPruning = false;
         legacyPolyphonyLoad = false;
         legacyLinearRelease = false;
+        legacyTailShapeFromEnv = false;
         disableOnsetGuard = false;
         disableReleaseTailFilter = false;
         freezeVibeReleaseSwitch = false;

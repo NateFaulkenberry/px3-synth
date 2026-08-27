@@ -17,6 +17,11 @@ public:
     bool isActive() const;
     float getNextSample();
 
+    // 0 at note-off, 1 at the end of the release. Downstream release-dependent
+    // processing should schedule off this rather than off the envelope value,
+    // so its timing does not change when the envelope curve changes.
+    float getReleaseProgress() const;
+
 private:
     static bool paramsDiffer(const juce::ADSR::Parameters& a, const juce::ADSR::Parameters& b);
 
@@ -36,6 +41,7 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> outputSmoother;
 
     float lastRawAdsrValue { 0.0f };
+    float releaseProgress { 0.0f };
     float releaseStartLevel { 0.0f };
     bool inRelease { false };
 };

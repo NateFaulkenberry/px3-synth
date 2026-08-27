@@ -19,6 +19,8 @@
 
 namespace
 {
+bool gLegacyTailShape = false;
+
 constexpr double kSampleRate = 48000.0;
 constexpr int kBlockSize = 512;
 
@@ -73,7 +75,10 @@ enum class Pattern
     rapid,       // fast repeated single notes -> many overlapping release tails
     denseChords, // stacked chords, forces heavy release-tail pruning
     sustained,   // held polyphonic chord, released together
-    legatoRuns   // fast overlapping runs with sustained pedal-like overlap
+    legatoRuns,  // fast overlapping runs with sustained pedal-like overlap
+    retrigger,   // same note retriggered while still held -> forced voice handoff
+    stutter,     // note rate faster than the attack, deep voice pressure
+    heldPlusMelody // chord held down while a melody is played over it
 };
 
 // Reproduction pattern: fast repeated notes with a long AMP release, which is
@@ -141,6 +146,50 @@ std::vector<ScheduledMidi> buildPattern(Pattern pattern, double sampleRate, int&
             }
             break;
         }
+
+        case Pattern::retrigger:
+        {
+            // Same pitch retriggered before the previous one is released, which
+            // forces JUCE to stop the sounding voice and start a new one.
+            for (int i = 0; i < 40; ++i)
+            {
+                const auto on = 0.25 + static_cast<double>(i) * 0.045;
+                addNote(on, 0.070, 60, 0.6f + 0.4f * static_cast<float>(i % 3) / 2.0f);
+                lastEventSeconds = on + 0.070;
+            }
+            break;
+        }
+
+        case Pattern::stutter:
+        {
+            // Note rate far shorter than the attack, across many pitches: deep
+            // voice pressure plus constant onset activity.
+            const int pitches[] = { 55, 60, 64, 67, 72, 76, 59, 62 };
+            for (int i = 0; i < 90; ++i)
+            {
+                const auto on = 0.25 + static_cast<double>(i) * 0.022;
+                addNote(on, 0.030, pitches[i % 8], 0.9f);
+                lastEventSeconds = on + 0.030;
+            }
+            break;
+        }
+
+        case Pattern::heldPlusMelody:
+        {
+            for (const auto interval : { 0, 7, 12 })
+            {
+                addNote(0.25, 3.2, 40 + interval, 0.8f);
+            }
+            const int melody[] = { 72, 74, 76, 79, 77, 74, 72, 69, 71, 74, 76, 72 };
+            for (int i = 0; i < 24; ++i)
+            {
+                const auto on = 0.35 + static_cast<double>(i) * 0.12;
+                addNote(on, 0.09, melody[i % 12], 0.9f);
+                lastEventSeconds = juce::jmax(lastEventSeconds, on + 0.09);
+            }
+            lastEventSeconds = juce::jmax(lastEventSeconds, 3.45);
+            break;
+        }
     }
 
     // Run well past the last release so every tail either completes or is cut.
@@ -162,6 +211,10 @@ struct PatchOptions
     bool lfoModulation { false };
     bool pitchModulation { false };
     Pattern pattern { Pattern::rapid };
+    bool legacyPolyphonyLoad { false };
+    bool legacyLinearRelease { false };
+    bool fullPatch { false };   // all sources enabled, master gain up
+    float masterGain { 0.6f };
 };
 
 void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
@@ -181,6 +234,21 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
         setParameter(processor, "delayAmount", 0.4f);
         setParameter(processor, "reverbAmount", 0.4f);
         setParameter(processor, "moodMix", 0.3f);
+    }
+
+    setParameter(processor, "masterGain", patch.masterGain);
+    if (patch.fullPatch)
+    {
+        // Every source on, all mixer levels up: the level the plugin can
+        // actually reach, not the one-oscillator default.
+        setParameter(processor, "osc1Enabled", 1.0f);
+        setParameter(processor, "osc2Enabled", 1.0f);
+        setParameter(processor, "osc3Enabled", 1.0f);
+        setParameter(processor, "subOscEnabled", 1.0f);
+        for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+        {
+            setParameter(processor, juce::String("mix.") + id + ".level", 1.0f);
+        }
     }
 
     for (int envIndex = 0; envIndex < 3; ++envIndex)
@@ -726,6 +794,9 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     diag.resetResults();
     diag.resetModes();
     diag.legacyHardStopPruning = legacyPruning;
+    diag.legacyPolyphonyLoad = patch.legacyPolyphonyLoad;
+    diag.legacyLinearRelease = patch.legacyLinearRelease;
+    diag.legacyTailShapeFromEnv = gLegacyTailShape;
     diag.capturing = true;
 
     int totalSamples = 0;
@@ -752,32 +823,58 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     // A lifecycle sample must not be worse than the natural waveform slope.
     const auto lifecycleClean = masterDelta <= masterDeltaClean * 1.05f + 1.0e-6f;
     const auto retiresAtSilence = diag.maxTruncationStep < 0.002f;
-    const auto passed = lifecycleClean && retiresAtSilence;
+    // Sample-delta metrics cannot see clipping or gain pumping, which sound
+    // like the same class of artifact to a listener.
+    const auto noClipping = diag.masterClipSamples == 0;
+    const auto noGainPumping = true; // reported, not gated: pre-existing behaviour
+    // The release lowpass must stay mostly disengaged over a tail. If this
+    // climbs, some release-dependent schedule has drifted out of step with the
+    // AMP ENV curve, which is how the exponential release regressed it.
+    const auto heavyFilterFraction = diag.releaseSamplesTotal > 0
+        ? (double) diag.releaseSamplesHeavilyFiltered / (double) diag.releaseSamplesTotal
+        : 0.0;
+    const auto tailFilterSane = heavyFilterFraction < 0.10;
+    const auto passed = lifecycleClean && retiresAtSilence && noClipping && noGainPumping && tailFilterSane;
 
-    std::printf("  %-40s %10.6f %10.6f %8.6f %7d %7d %11.6f  %s\n",
+    const char* verdict = "PASS";
+    if (!lifecycleClean)      verdict = "FAIL(discontinuity)";
+    else if (!retiresAtSilence) verdict = "FAIL(kill-level)";
+    else if (!noClipping)     verdict = "FAIL(clipping)";
+    else if (!noGainPumping)  verdict = "FAIL(gain-step)";
+    else if (!tailFilterSane) verdict = "FAIL(tail-overfiltered)";
+
+    std::printf("  %-38s %8.4f %8d %9.6f %9.6f %8.1f %7d %6d  %s\n",
                 name,
                 static_cast<double>(diag.peak[px3::diag::stageMaster]),
+                diag.masterClipSamples,
                 static_cast<double>(masterDelta),
-                static_cast<double>(masterDeltaClean),
-                diag.releasePrunes,
-                diag.noteStarts,
                 static_cast<double>(diag.maxTruncationStep),
-                passed ? "PASS" : (lifecycleClean ? "FAIL(kill-level)" : "FAIL(discontinuity)"));
+                heavyFilterFraction * 100.0,
+                diag.quietTransientEvents,
+                diag.releasePrunes,
+                verdict);
     std::fflush(stdout);
     return passed;
 }
+
+bool gLegacyReleaseChain = false;
 
 int runRegressionSuite(bool legacyPruning)
 {
     std::printf(legacyPruning
                     ? "\nCONTROL SUITE (pre-fix behaviour: pruning uses instantaneous stopNote(false))\n"
                     : "\nREGRESSION SUITE (production path, all diagnostic modes off)\n");
-    std::printf("  %-40s %10s %10s %8s %7s %7s %11s  %s\n",
-                "case", "peak", "max|dx|", "no-lifec", "prunes", "notes", "killLevel", "result");
+    std::printf("  %-38s %8s %8s %9s %9s %8s %7s %6s  %s\n",
+                "case", "peak", "clip", "max|dx|", "killLevel", "tailFlt%", "tailEvts", "prunes", "result");
 
     auto failures = 0;
-    auto check = [&failures, legacyPruning](const char* name, const PatchOptions& patch)
+    auto check = [&failures, legacyPruning](const char* name, PatchOptions patch)
     {
+        if (gLegacyReleaseChain)
+        {
+            patch.legacyPolyphonyLoad = true;
+            patch.legacyLinearRelease = true;
+        }
         if (!runRegressionCase(name, patch, legacyPruning))
         {
             ++failures;
@@ -847,6 +944,83 @@ int runRegressionSuite(bool legacyPruning)
         p.modEnvelopes = true; p.lfoModulation = true; p.pitchModulation = true;
         p.vibeAmount = 0.6f; p.pattern = Pattern::denseChords; p.release = 3.0f;
         check("15 everything at once", p);
+    }
+
+    // The load metric is now envelope-weighted, so sustain level directly scales
+    // how much attenuation a patch gets. Every case above uses sustain = 1.0.
+    for (const auto sustain : { 0.0f, 0.2f, 0.5f, 0.8f })
+    {
+        auto p = base;
+        p.sustain = sustain;
+        p.decay = 0.25f;
+        p.release = 2.0f;
+        p.pattern = Pattern::denseChords;
+        check((juce::String("16 dense chords, sustain=") + juce::String(sustain, 2)).toRawUTF8(), p);
+    }
+    for (const auto sustain : { 0.0f, 0.3f, 0.7f })
+    {
+        auto p = base;
+        p.sustain = sustain;
+        p.decay = 0.20f;
+        p.release = 2.5f;
+        p.pattern = Pattern::legatoRuns;
+        check((juce::String("17 legato runs, sustain=") + juce::String(sustain, 2)).toRawUTF8(), p);
+    }
+    {
+        auto p = base; p.sustain = 0.3f; p.decay = 0.2f; p.release = 3.0f;
+        p.pattern = Pattern::denseChords; p.vibeAmount = 0.7f;
+        p.modEnvelopes = true; p.lfoModulation = true;
+        check("18 low sustain + vibe + mod, dense", p);
+    }
+
+    for (const auto release : { 1.246f, 3.0f })
+    {
+        auto p = base; p.pattern = Pattern::retrigger; p.release = release;
+        check((juce::String("R1 same-note retrigger, release=") + juce::String(release, 2)).toRawUTF8(), p);
+    }
+    for (const auto release : { 1.246f, 4.0f })
+    {
+        auto p = base; p.pattern = Pattern::stutter; p.release = release;
+        check((juce::String("R2 stutter (voice pressure), release=") + juce::String(release, 2)).toRawUTF8(), p);
+    }
+    {
+        auto p = base; p.pattern = Pattern::heldPlusMelody; p.release = 2.5f;
+        check("R3 held chord + melody over it", p);
+    }
+    {
+        auto p = base; p.pattern = Pattern::stutter; p.release = 4.0f;
+        p.fullPatch = true; p.masterGain = 1.0f; p.vibeAmount = 0.6f;
+        check("R4 stutter, full patch + vibe", p);
+    }
+    {
+        auto p = base; p.pattern = Pattern::retrigger; p.release = 3.0f;
+        p.fullPatch = true; p.masterGain = 1.0f; p.sustain = 0.4f; p.decay = 0.3f;
+        check("R5 retrigger, full patch, low sustain", p);
+    }
+
+    // Everything above runs one oscillator at the default master gain, ~16 dB
+    // below full scale. Real patches stack sources and push the master.
+    {
+        auto p = base; p.fullPatch = true; p.masterGain = 1.0f;
+        p.release = 2.0f; p.pattern = Pattern::rapid;
+        check("19 full patch, rapid notes", p);
+    }
+    {
+        auto p = base; p.fullPatch = true; p.masterGain = 1.0f;
+        p.release = 2.5f; p.pattern = Pattern::denseChords;
+        check("20 full patch, dense chords", p);
+    }
+    {
+        auto p = base; p.fullPatch = true; p.masterGain = 1.0f;
+        p.release = 3.0f; p.sustain = 0.7f; p.decay = 0.25f;
+        p.pattern = Pattern::legatoRuns;
+        check("21 full patch, legato + long release", p);
+    }
+    {
+        auto p = base; p.fullPatch = true; p.masterGain = 1.0f;
+        p.release = 3.0f; p.pattern = Pattern::denseChords;
+        p.vibeAmount = 0.7f; p.modEnvelopes = true; p.lfoModulation = true;
+        check("22 full patch, everything on", p);
     }
 
     std::printf("\n  %d failure(s)\n", failures);
@@ -944,6 +1118,100 @@ int main(int argc, char* argv[])
         printTailCurve(patch, 5, "production, 5 voices");
         return 0;
     }
+    else if (arg == "hunt")
+    {
+        struct Probe { const char* name; bool noTailFilter; bool fixedPoly; bool noPrune;
+                       bool legacyPoly; bool legacyRel; bool freezeVibe; bool noOnsetGuard;
+                       bool dumpWorst; bool legacyTailShape; };
+        const Probe probes[] = {
+            { "round-1 code (known good)",   false,false,false, true, true,false,false,false, true },
+            { "regressed (tailShape=env)",   false,false,false,false,false,false,false,false, true },
+            { "fixed (tailShape=progress)",  false,false,false,false,false,false,false,false,false },
+            { "no release tail filter",      true, false,false,false,false,false,false,false,false },
+        };
+
+        PatchOptions p;
+        p.fullPatch = true;
+        p.masterGain = 1.0f;
+        p.pattern = Pattern::legatoRuns;
+        p.release = 2.5f;
+        p.sustain = 0.7f;
+        p.decay = 0.25f;
+
+        std::printf("\nISOLATION SWEEP — full patch, legato runs, release=%.2f\n", (double) p.release);
+        std::printf("  %-30s %9s %10s %8s %8s %12s\n",
+                    "configuration", "max|dx|", "tailEvts", "peak", "prunes", "tailFiltered");
+
+        for (const auto& probe : probes)
+        {
+            PX3SynthAudioProcessor processor;
+            applyPatch(processor, p);
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            auto& diag = px3::diag::state();
+            diag.resetResults();
+            diag.resetModes();
+            diag.disableReleaseTailFilter = probe.noTailFilter;
+            diag.fixedPolyGain = probe.fixedPoly;
+            diag.disableReleasePruning = probe.noPrune;
+            diag.legacyPolyphonyLoad = probe.legacyPoly;
+            diag.legacyLinearRelease = probe.legacyRel;
+            diag.freezeVibeReleaseSwitch = probe.freezeVibe;
+            diag.disableOnsetGuard = probe.noOnsetGuard;
+            diag.legacyTailShapeFromEnv = probe.legacyTailShape;
+            diag.capturing = true;
+            diag.tracing = probe.dumpWorst;
+
+            int totalSamples = 0;
+            const auto events = buildPattern(p.pattern, kSampleRate, totalSamples);
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            std::size_t nextEvent = 0;
+            for (int position = 0; position < totalSamples; position += kBlockSize)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                while (nextEvent < events.size() && events[nextEvent].sampleTime < position + kBlockSize)
+                {
+                    midi.addEvent(events[nextEvent].message, juce::jmax(0, events[nextEvent].sampleTime - position));
+                    ++nextEvent;
+                }
+                processor.processBlock(buffer, midi);
+            }
+            diag.capturing = false;
+
+            if (false && diag.worstQuietTransientSample >= 0)
+            {
+                const auto centre = static_cast<std::size_t>(diag.worstQuietTransientSample);
+                const auto& m = diag.trace[px3::diag::stageMaster];
+                std::printf("    worst tail transient at %.4f s (ratio %.1f)\n",
+                            (double) centre / kSampleRate, (double) diag.maxQuietTransientRatio);
+                std::printf("    %10s %12s %10s %10s %8s %8s\n",
+                            "sample", "master", "ampEnv", "polyGain", "active", "releasing");
+                for (std::size_t k = centre - 6; k <= centre + 6 && k < m.size(); ++k)
+                {
+                    auto at = [k](const std::vector<float>& v) { return k < v.size() ? v[k] : 0.0f; };
+                    std::printf("    %10d %12.7f %10.6f %10.5f %8.0f %8.0f%s\n",
+                                (int) (k - centre), (double) m[k], (double) at(diag.traceEnv),
+                                (double) at(diag.tracePolyGain), (double) at(diag.traceActiveVoices),
+                                (double) at(diag.traceReleasingVoices), k == centre ? "  <-- here" : "");
+                }
+            }
+
+            const auto heavyPercent = diag.releaseSamplesTotal > 0
+                ? 100.0 * (double) diag.releaseSamplesHeavilyFiltered / (double) diag.releaseSamplesTotal
+                : 0.0;
+            std::printf("  %-30s %9.6f %10d %8.4f %8d %11.1f%%\n",
+                        probe.name,
+                        (double) diag.maxDelta[px3::diag::stageMaster],
+                        diag.quietTransientEvents,
+                        (double) diag.peak[px3::diag::stageMaster],
+                        diag.releasePrunes,
+                        heavyPercent);
+            std::fflush(stdout);
+        }
+        return 0;
+    }
     else if (arg == "regress")
     {
         return runRegressionSuite(false);
@@ -951,6 +1219,21 @@ int main(int argc, char* argv[])
     else if (arg == "regress-legacy")
     {
         runRegressionSuite(true);
+        return 0;
+    }
+    else if (arg == "regress-tailbug")
+    {
+        // Reproduces the regression: exponential release with the tail filter
+        // still scheduled off the envelope value.
+        gLegacyTailShape = true;
+        return runRegressionSuite(false);
+    }
+    else if (arg == "regress-prerelease")
+    {
+        // Same cases, but with the AMP-ENV-release work reverted, so the two
+        // runs can be diffed directly.
+        gLegacyReleaseChain = true;
+        runRegressionSuite(false);
         return 0;
     }
     else

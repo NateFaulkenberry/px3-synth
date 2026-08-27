@@ -1120,6 +1120,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         d.blockPrePolyPeak = prePolyPeak;
         d.blockOverloadBlend = overloadBlend;
         d.blockGainTarget = polyphonyGainTarget;
+        d.blockActiveVoices = static_cast<float>(activeVoiceCount);
+        d.blockReleasingVoices = static_cast<float>(releasingVoiceCount);
     }
 #endif
 
