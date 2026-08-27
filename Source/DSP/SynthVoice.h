@@ -98,6 +98,7 @@ private:
     std::array<OscillatorUnit, kOscillatorSourceCount> oscillatorUnits;
     std::array<double, kOscillatorSourceCount> oscillatorAngles { { 0.0, 0.0, 0.0 } };
     std::array<bool, kOscillatorSourceCount> oscillatorAudibleForCurrentNote { { true, true, true } };
+    std::array<float, kVoiceMixerSourceCount> releaseSmoothingState { { 0.0f, 0.0f, 0.0f, 0.0f } };
     SubOscillator subOscillator;
 
     float currentAmpEnvelopeValue { 0.0f };

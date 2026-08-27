@@ -951,6 +951,13 @@ void PX3SynthAudioProcessorEditor::refreshDebugEnvelopeState()
     const auto effectiveVoiceLoad = audioProcessor.debugGetEffectiveVoiceLoad();
     const auto polyGainTarget = audioProcessor.debugGetPolyphonyGainTarget();
     const auto polyGain = audioProcessor.debugGetPolyphonyGainApplied();
+    const auto tailBypass = audioProcessor.debugGetPolyGainTailBypassActive();
+    const auto releaseVoicesPruned = audioProcessor.debugGetReleaseVoicesPruned();
+    const auto cpuLoadPercent = audioProcessor.debugGetInstanceCpuLoadPercent();
+    const auto masterPreOutputPeak = audioProcessor.debugGetMasterPreOutputPeak();
+    const auto prePolyPeak = audioProcessor.debugGetOscillatorBusPrePolyPeak();
+    const auto prePolyClipSamples = audioProcessor.debugGetOscillatorBusPrePolyClipSamples();
+    const auto masterClipSamples = audioProcessor.debugGetMasterClipSamples();
 
     juce::String text;
     text << "Attack:  " << attackText << "\n"
@@ -969,7 +976,19 @@ void PX3SynthAudioProcessorEditor::refreshDebugEnvelopeState()
                 << " effectiveLoad=" << juce::String(effectiveVoiceLoad, 5)
                 << "\n"
                 << "polyGainTarget=" << juce::String(polyGainTarget, 5)
-                << " polyGainApplied=" << juce::String(polyGain, 5) << "\n\n"
+                << " polyGainApplied=" << juce::String(polyGain, 5)
+                << "\n"
+                << "polyGainTailBypass=" << juce::String(tailBypass ? "ON" : "OFF")
+                << "\n"
+                << "releaseVoicesPruned=" << juce::String(releaseVoicesPruned)
+                << "\n"
+                << "cpuLoad=" << juce::String(cpuLoadPercent, 2) << "%"
+                << "\n"
+                << "masterPreOutputPeak=" << juce::String(masterPreOutputPeak, 6)
+                << " masterClipSamples=" << juce::String(masterClipSamples)
+                << "\n"
+                << "oscPrePolyPeak=" << juce::String(prePolyPeak, 6)
+                << " oscPrePolyClipSamples=" << juce::String(prePolyClipSamples) << "\n\n"
                 << "Per-Voice Peak\n"
                 << "voicePeak=" << juce::String(voicePeak, 6)
                 << " sub=" << juce::String(voiceSubPeak, 6)

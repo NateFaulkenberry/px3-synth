@@ -2,10 +2,13 @@
 
 #include "SynthSound.h"
 
+#include <atomic>
 #include <cmath>
 
 namespace
 {
+std::atomic<uint32_t> gNoteStartSequence { 1u };
+
 inline float softClip(float x)
 {
     return std::tanh(x);
@@ -41,7 +44,13 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     baseFrequencyHz = juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber);
     currentFrequencyHz = baseFrequencyHz;
     level = velocity;
-    const auto phaseSeed = std::fmod(static_cast<double>(voiceIndex + 1) * 0.6180339887498949, 1.0);
+    const auto sequence = gNoteStartSequence.fetch_add(1u, std::memory_order_relaxed);
+    auto hash = static_cast<uint32_t>(voiceIndex + 1) * 747796405u;
+    hash ^= sequence * 2891336453u;
+    hash ^= static_cast<uint32_t>(midiNoteNumber + 1) * 277803737u;
+    hash ^= (hash >> 16);
+    hash *= 2246822519u;
+    const auto phaseSeed = static_cast<double>(hash & 0x00FFFFFFu) / static_cast<double>(0x01000000u);
     currentAngle = juce::MathConstants<double>::twoPi * phaseSeed;
     updateAngleDelta();
     const auto sampleRate = juce::jmax(1.0, getSampleRate());
@@ -102,6 +111,7 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
         oscillatorAngles[static_cast<std::size_t>(oscIndex)] = std::fmod(currentAngle + spread,
                                                                           juce::MathConstants<double>::twoPi);
     }
+    releaseSmoothingState.fill(0.0f);
 }
 
 void SynthVoice::stopNote(float, bool allowTailOff)
@@ -242,6 +252,29 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             }
         }
 
+        // Pull AMP ENV once per sample and use it consistently across all
+        // per-voice stages to avoid release-tail modulation grain.
+        const auto env = ampEnvelope.getNextSample();
+        currentAmpEnvelopeValue = env;
+
+        if (!isKeyDown() && env <= kReleaseSilenceThreshold)
+        {
+            ampEnvelope.reset();
+            for (auto& modEnvelope : modEnvelopeGenerators)
+            {
+                modEnvelope.reset();
+            }
+            modEnvelopeValues.fill(0.0f);
+            clearCurrentNote();
+            angleDelta = 0.0;
+            break;
+        }
+
+        const auto releaseTailShape = isKeyDown()
+                                          ? 1.0f
+                                          : juce::jlimit(0.0f, 1.0f, (env - 0.02f) / 0.30f);
+        const auto ecoReleaseVoice = !isKeyDown();
+
         const auto applyVibeSourceStage = [&](float inSample, float noiseScale)
         {
             if (!vibeActive)
@@ -249,9 +282,20 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                 return inSample;
             }
 
+            // Release voices can dominate CPU under dense overlap. Keep held
+            // voices fully detailed, but run release tails through a cleaner,
+            // lighter path to prevent real-time overload artifacts.
+            if (ecoReleaseVoice)
+            {
+                juce::ignoreUnused(noiseScale);
+                return inSample;
+            }
+
             const auto asym = (vibeTuning.waveformAsymmetry * (0.35f + 0.65f * vibeVariation.asymmetryBias)) * vibeDepth;
-            const auto sat = (vibeTuning.saturation * (0.45f + 0.55f * vibeVariation.saturationBias)) * vibeDepth;
-            const auto chaos = vibeShared.chaos * vibeTuning.correlatedChaos * 0.18f * vibeDepth;
+            const auto sat = (vibeTuning.saturation * (0.45f + 0.55f * vibeVariation.saturationBias))
+                             * vibeDepth
+                             * (0.30f + 0.70f * releaseTailShape);
+            const auto chaos = vibeShared.chaos * vibeTuning.correlatedChaos * 0.18f * vibeDepth * releaseTailShape;
 
             const auto asymShaped = inSample
                                     + asym * inSample * inSample * (inSample >= 0.0f ? 0.9f : -0.7f)
@@ -259,8 +303,10 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             auto stageSample = std::tanh(asymShaped * (1.0f + sat * 3.4f)) * (1.0f / (1.0f + sat * 0.90f));
 
             const auto noiseAmount = vibeTuning.noise * vibeDepth * (0.55f + 0.45f * std::abs(vibeShared.psu));
+            const auto noiseTailScale = 0.18f + 0.82f * releaseTailShape;
             stageSample += oscillatorUnits[0].nextDeterministicNoise()
                            * (0.0035f + 0.0165f * noiseAmount)
+                           * noiseTailScale
                            * juce::jlimit(0.0f, 1.0f, noiseScale);
             return stageSample;
         };
@@ -381,22 +427,6 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         sourceSamples[0] = subStageSample;
 
         // AMP STAGE: envelope and voice gain are downstream of filter.
-        const auto env = ampEnvelope.getNextSample();
-        currentAmpEnvelopeValue = env;
-
-        if (!isKeyDown() && env <= kReleaseSilenceThreshold)
-        {
-            ampEnvelope.reset();
-            for (auto& modEnvelope : modEnvelopeGenerators)
-            {
-                modEnvelope.reset();
-            }
-            modEnvelopeValues.fill(0.0f);
-            clearCurrentNote();
-            angleDelta = 0.0;
-            break;
-        }
-
         auto voiceGain = level * env * subtractiveSettings.masterGain;
 
         if (vibeActive)
@@ -425,12 +455,25 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             }
 
             auto voicedSample = filteredSample * voiceGain * perSourceNormalization;
-            if (vibeActive)
+            if (vibeActive && !ecoReleaseVoice)
             {
                 const auto vcaAmount = (vibeTuning.vcaNonlinearity * vibeDepth
-                                        + vibeShared.chaos * vibeTuning.correlatedChaos * 0.16f * vibeDepth);
+                                        + vibeShared.chaos * vibeTuning.correlatedChaos * 0.16f * vibeDepth)
+                                       * (0.28f + 0.72f * releaseTailShape);
                 voicedSample = std::tanh(voicedSample * (1.0f + vcaAmount * 3.2f))
                               * (1.0f / (1.0f + vcaAmount * 0.95f));
+            }
+
+            if (!isKeyDown())
+            {
+                auto& tailState = releaseSmoothingState[static_cast<std::size_t>(sourceIndex)];
+                const auto tailSmooth = 0.07f + 0.53f * releaseTailShape;
+                tailState += (voicedSample - tailState) * tailSmooth;
+                voicedSample = tailState;
+            }
+            else
+            {
+                releaseSmoothingState[static_cast<std::size_t>(sourceIndex)] = voicedSample;
             }
 
             voicedSample = sanitizeAudioSample(voicedSample);

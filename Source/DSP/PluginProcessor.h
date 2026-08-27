@@ -250,10 +250,13 @@ public:
     float debugGetFxBusRms() const;
     float debugGetMasterBusRms() const;
     float debugGetOscillatorBusPeak() const;
+    float debugGetOscillatorBusPrePolyPeak() const;
+    int debugGetOscillatorBusPrePolyClipSamples() const;
     float debugGetDryBusPeak() const;
     float debugGetFxBusPeak() const;
     float debugGetMasterBusPeak() const;
     float debugGetMasterPreOutputPeak() const;
+    int debugGetMasterClipSamples() const;
     float debugGetMixerSourceRms(int sourceIndex) const;
     float debugGetMixerSourcePeak(int sourceIndex) const;
     float debugGetVoicePeak() const;
@@ -266,6 +269,8 @@ public:
     float debugGetEffectiveVoiceLoad() const;
     float debugGetReleaseEnergyEquivalent() const;
     int debugGetHeldVoiceCount() const;
+    bool debugGetPolyGainTailBypassActive() const;
+    int debugGetReleaseVoicesPruned() const;
     float debugGetFxReturnRms() const;
     float debugGetInstanceCpuLoadPercent() const;
     int debugGetActiveInstanceCount() const;
@@ -485,10 +490,13 @@ private:
     std::atomic<float> debugFxBusRms { 0.0f };
     std::atomic<float> debugMasterBusRms { 0.0f };
     std::atomic<float> debugOscillatorBusPeak { 0.0f };
+    std::atomic<float> debugOscillatorBusPrePolyPeak { 0.0f };
+    std::atomic<int> debugOscillatorBusPrePolyClipSamples { 0 };
     std::atomic<float> debugDryBusPeak { 0.0f };
     std::atomic<float> debugFxBusPeak { 0.0f };
     std::atomic<float> debugMasterBusPeak { 0.0f };
     std::atomic<float> debugMasterPreOutputPeak { 0.0f };
+    std::atomic<int> debugMasterClipSamples { 0 };
     std::array<std::atomic<float>, kMixerSourceCount> debugMixerSourceRms { { 0.0f, 0.0f, 0.0f, 0.0f } };
     std::array<std::atomic<float>, kMixerSourceCount> debugMixerSourcePeak { { 0.0f, 0.0f, 0.0f, 0.0f } };
     std::array<std::atomic<float>, kMixerSourceCount> debugVoiceSourcePeak { { 0.0f, 0.0f, 0.0f, 0.0f } };
@@ -501,6 +509,8 @@ private:
     std::atomic<float> debugPolyphonyGainTarget { 1.0f };
     std::atomic<float> debugEffectiveVoiceLoad { 1.0f };
     std::atomic<float> debugReleaseEnergyEquivalent { 0.0f };
+    std::atomic<int> debugPolyGainTailBypassActive { 0 };
+    std::atomic<int> debugReleaseVoicesPruned { 0 };
     std::atomic<float> debugFxReturnRms { 0.0f };
     std::atomic<float> debugInstanceCpuLoadPercent { 0.0f };
 

@@ -484,6 +484,16 @@ float PX3SynthAudioProcessor::debugGetOscillatorBusPeak() const
     return juce::jmax(0.0f, debugOscillatorBusPeak.load(std::memory_order_relaxed));
 }
 
+float PX3SynthAudioProcessor::debugGetOscillatorBusPrePolyPeak() const
+{
+    return juce::jmax(0.0f, debugOscillatorBusPrePolyPeak.load(std::memory_order_relaxed));
+}
+
+int PX3SynthAudioProcessor::debugGetOscillatorBusPrePolyClipSamples() const
+{
+    return juce::jmax(0, debugOscillatorBusPrePolyClipSamples.load(std::memory_order_relaxed));
+}
+
 float PX3SynthAudioProcessor::debugGetDryBusPeak() const
 {
     return juce::jmax(0.0f, debugDryBusPeak.load(std::memory_order_relaxed));
@@ -502,6 +512,11 @@ float PX3SynthAudioProcessor::debugGetMasterBusPeak() const
 float PX3SynthAudioProcessor::debugGetMasterPreOutputPeak() const
 {
     return juce::jmax(0.0f, debugMasterPreOutputPeak.load(std::memory_order_relaxed));
+}
+
+int PX3SynthAudioProcessor::debugGetMasterClipSamples() const
+{
+    return juce::jmax(0, debugMasterClipSamples.load(std::memory_order_relaxed));
 }
 
 float PX3SynthAudioProcessor::debugGetMixerSourceRms(int sourceIndex) const
@@ -565,6 +580,16 @@ float PX3SynthAudioProcessor::debugGetReleaseEnergyEquivalent() const
 int PX3SynthAudioProcessor::debugGetHeldVoiceCount() const
 {
     return juce::jmax(0, debugHeldVoiceCount.load(std::memory_order_relaxed));
+}
+
+bool PX3SynthAudioProcessor::debugGetPolyGainTailBypassActive() const
+{
+    return debugPolyGainTailBypassActive.load(std::memory_order_relaxed) != 0;
+}
+
+int PX3SynthAudioProcessor::debugGetReleaseVoicesPruned() const
+{
+    return juce::jmax(0, debugReleaseVoicesPruned.load(std::memory_order_relaxed));
 }
 
 float PX3SynthAudioProcessor::debugGetFxReturnRms() const
