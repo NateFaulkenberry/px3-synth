@@ -2280,6 +2280,113 @@ int main(int argc, char* argv[])
         std::printf("\n  %lld failure(s)\n", failures);
         return static_cast<int>(failures);
     }
+    else if (arg == "subosc")
+    {
+        gFilterPass = 0;
+        gFilterFail = 0;
+        std::printf("\nSUB OSC BYPASS BEHAVIOUR\n");
+        std::printf("  bypassing a source mid-note must cut its tail and not resurrect it\n\n");
+
+        // Timeline: note on -> sub bypassed mid-note -> sub re-enabled mid-note
+        // -> a second note. Energy is measured in each window separately, with a
+        // resonant filter in circuit since that is the most ring-prone setting.
+        struct Windows { double whileOn, afterBypass, afterReEnable, secondNote, transient; };
+
+        auto runBypassTimeline = []
+        {
+            px3::diag::resetNoteStartSequence();
+            PX3SynthAudioProcessor processor;
+            setParameter(processor, "ampAttack", 0.005f);
+            setParameter(processor, "ampSustain", 1.0f);
+            setParameter(processor, "ampRelease", 0.2f);
+            setParameter(processor, "delayEnabled", 0.0f);
+            setParameter(processor, "reverbEnabled", 0.0f);
+            setParameter(processor, "moodEnabled", 0.0f);
+            setParameter(processor, "subOscEnabled", 1.0f);
+            setParameter(processor, "osc1Enabled", 0.0f);
+            setParameter(processor, "osc2Enabled", 0.0f);
+            setParameter(processor, "osc3Enabled", 0.0f);
+            setParameter(processor, "filter1Enabled", 1.0f);
+            setParameter(processor, "filter1Cutoff", 220.0f);
+            setParameter(processor, "filter1Resonance", 2.2f);
+            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+                setParameter(processor, juce::String("mix.") + id + ".level", 1.0f);
+
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            auto& diag = px3::diag::state();
+            diag.resetResults();
+            diag.resetModes();
+            diag.capturing = true;
+            diag.tracing = true;
+
+            const auto noteOn     = static_cast<int>(0.05 * kSampleRate);
+            const auto bypassAt   = static_cast<int>(0.60 * kSampleRate);
+            const auto reEnableAt = static_cast<int>(1.00 * kSampleRate);
+            const auto secondNote = static_cast<int>(1.60 * kSampleRate);
+            const auto total      = static_cast<int>(2.20 * kSampleRate);
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            for (int position = 0; position < total; position += kBlockSize)
+            {
+                if (position >= bypassAt && position < bypassAt + kBlockSize)
+                    setParameter(processor, "subOscEnabled", 0.0f);
+                if (position >= reEnableAt && position < reEnableAt + kBlockSize)
+                    setParameter(processor, "subOscEnabled", 1.0f);
+
+                buffer.clear();
+                juce::MidiBuffer midi;
+                auto at = [&](int when, const juce::MidiMessage& m)
+                {
+                    if (position <= when && position + kBlockSize > when)
+                        midi.addEvent(m, juce::jmax(0, when - position));
+                };
+                at(noteOn, juce::MidiMessage::noteOn(1, 45, 0.9f));
+                at(secondNote - 2000, juce::MidiMessage::noteOff(1, 45));
+                at(secondNote, juce::MidiMessage::noteOn(1, 45, 0.9f));
+                processor.processBlock(buffer, midi);
+            }
+            diag.capturing = false;
+            diag.tracing = false;
+
+            const auto& m = diag.trace[px3::diag::stageMaster];
+            auto rms = [&m](double a, double b)
+            {
+                double e = 0.0; long long n = 0;
+                for (auto i = (std::size_t)(a * kSampleRate); i < (std::size_t)(b * kSampleRate) && i < m.size(); ++i)
+                { e += (double) m[i] * m[i]; ++n; }
+                return n > 0 ? std::sqrt(e / (double) n) : 0.0;
+            };
+            Windows w;
+            w.whileOn       = rms(0.30, 0.58);
+            w.afterBypass   = rms(0.70, 0.95);
+            w.afterReEnable = rms(1.10, 1.50);
+            w.secondNote    = rms(1.75, 2.10);
+            w.transient     = diag.maxQuietTransientRatio;
+            return w;
+        };
+
+        const auto w = runBypassTimeline();
+        std::printf("    while sub on          rms=%.6f\n", w.whileOn);
+        std::printf("    after bypass          rms=%.6f\n", w.afterBypass);
+        std::printf("    after re-enable       rms=%.6f\n", w.afterReEnable);
+        std::printf("    next note             rms=%.6f\n\n", w.secondNote);
+
+        filterCheck("sub produces signal while enabled", w.whileOn > 1.0e-3,
+                    juce::String("rms=") + juce::String(w.whileOn, 6));
+        filterCheck("bypassing the sub cuts its tail (no ring-on)", w.afterBypass < 1.0e-6,
+                    juce::String("rms after bypass=") + juce::String(w.afterBypass, 9));
+        filterCheck("re-enabling mid-note does NOT resurrect the tail", w.afterReEnable < 1.0e-6,
+                    juce::String("rms after re-enable=") + juce::String(w.afterReEnable, 9));
+        filterCheck("the next note plays normally again", w.secondNote > 1.0e-3,
+                    juce::String("rms=") + juce::String(w.secondNote, 6));
+        filterCheck("bypassing the sub introduces no click", w.transient < 12.0,
+                    juce::String("transient=") + juce::String(w.transient, 1));
+
+        std::printf("\n  %d passed, %d failed\n", gFilterPass, gFilterFail);
+        return gFilterFail;
+    }
     else if (arg == "filter")
     {
         gFilterPass = 0;

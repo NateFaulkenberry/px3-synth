@@ -126,6 +126,10 @@ private:
     std::array<OscillatorUnit, kOscillatorSourceCount> oscillatorUnits;
     std::array<double, kOscillatorSourceCount> oscillatorAngles { { 0.0, 0.0, 0.0 } };
     std::array<bool, kOscillatorSourceCount> oscillatorAudibleForCurrentNote { { true, true, true } };
+    // The sub follows the same rule as the oscillator layers: bypassing it
+    // mid-note retires it for the rest of that note rather than leaving a tail
+    // that resumes when it is switched back on.
+    bool subAudibleForCurrentNote { true };
     std::array<float, kVoiceMixerSourceCount> releaseSmoothingState { { 0.0f, 0.0f, 0.0f, 0.0f } };
     SubOscillator subOscillator;
 

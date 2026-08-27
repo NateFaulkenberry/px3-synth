@@ -142,6 +142,7 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     {
         audible = true;
     }
+    subAudibleForCurrentNote = true;
     for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
     {
         const auto spread = (juce::MathConstants<double>::twoPi / static_cast<double>(kOscillatorSourceCount))
@@ -631,15 +632,38 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         }
 
         auto subStageSample = 0.0f;
-        const auto subBypassed = !subOscillatorSettings.enabled;
         const auto subGain = juce::jlimit(0.0f, 1.0f, subOscillatorSettings.level);
-        if (!subBypassed)
+        constexpr int kSubSourceIndex = 0;
+
+        if (!subOscillatorSettings.enabled)
+        {
+            if (subAudibleForCurrentNote)
+            {
+                subAudibleForCurrentNote = false;
+
+                // Bypassing the sub while a note is still sounding clears its
+                // per-source filter memory and release-tail state, so the tail
+                // is cut rather than left ringing, and switching the sub back on
+                // mid-note cannot resurrect it. This matches the oscillator
+                // layers exactly; the sub previously had no such handling.
+                for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
+                {
+                    auto& filter = sourceFilters[kSubSourceIndex][static_cast<std::size_t>(filterIndex)];
+                    filter.reset();
+                    filter.setCurrentSettingsImmediate(filterSettings[static_cast<std::size_t>(filterIndex)]);
+                }
+                releaseSmoothingState[kSubSourceIndex] = 0.0f;
+                subOscillator.resetForNote();
+            }
+        }
+        else if (subAudibleForCurrentNote)
         {
             subStageSample = softClip(subSample * subGain * 0.92f);
             subStageSample = applyVibeSourceStage(subStageSample, 0.6f);
             subStageSample = sanitizeAudioSample(subStageSample);
         }
-        sourceSamples[0] = subStageSample;
+
+        sourceSamples[kSubSourceIndex] = subStageSample;
 
         // AMP STAGE: envelope and voice gain are downstream of filter.
 #if PX3_DIAGNOSTICS
