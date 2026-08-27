@@ -1,5 +1,6 @@
 #include "SynthVoice.h"
 
+#include "PX3Diagnostics.h"
 #include "SynthSound.h"
 
 #include <atomic>
@@ -13,6 +14,10 @@ inline float softClip(float x)
 {
     return std::tanh(x);
 }
+
+// Long enough to be inaudible, short enough that a pruned release tail stops
+// consuming CPU within a single typical host block.
+constexpr float kFastReleaseSeconds = 0.005f;
 
 inline float sanitizeAudioSample(float x)
 {
@@ -96,6 +101,8 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
         }
     }
     noteAgeSamples = 0;
+    fastReleaseTotalSamples = 0;
+    fastReleaseSamplesRemaining = 0;
     for (auto& oscillatorUnit : oscillatorUnits)
     {
         oscillatorUnit.resetForNote(sampleRate, currentFrequencyHz);
@@ -112,20 +119,41 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
                                                                           juce::MathConstants<double>::twoPi);
     }
     releaseSmoothingState.fill(0.0f);
+
+#if PX3_DIAGNOSTICS
+    {
+        auto& diag = px3::diag::state();
+        if (diag.capturing)
+        {
+            ++diag.noteStarts;
+            diag.oscillatorResets += kOscillatorSourceCount;
+        }
+        diagMarkStart = true;
+        diagHasPrevEnv = false;
+        diagHasPrevVoiceGain = false;
+        diagLastVoiceOut = 0.0f;
+    }
+#endif
 }
 
 void SynthVoice::stopNote(float, bool allowTailOff)
 {
     if (!allowTailOff)
     {
-        ampEnvelope.reset();
-        for (auto& modEnvelope : modEnvelopeGenerators)
+#if PX3_DIAGNOSTICS
         {
-            modEnvelope.reset();
+            auto& diag = px3::diag::state();
+            if (diag.capturing && isVoiceActive())
+            {
+                ++diag.hardStops;
+                ++diag.clearCurrentNoteEvents;
+                diag.maxHardStopEnv = juce::jmax(diag.maxHardStopEnv, currentAmpEnvelopeValue);
+                diag.maxTruncationStep = juce::jmax(diag.maxTruncationStep, std::abs(diagLastVoiceOut));
+                diag.markLifecycle(0);
+            }
         }
-        modEnvelopeValues.fill(0.0f);
-        clearCurrentNote();
-        angleDelta = 0.0;
+#endif
+        retireVoice();
         return;
     }
 
@@ -137,6 +165,37 @@ void SynthVoice::stopNote(float, bool allowTailOff)
             modEnvelopeGenerators[envIndex].noteOff();
         }
     }
+}
+
+void SynthVoice::retireVoice()
+{
+    ampEnvelope.reset();
+    for (auto& modEnvelope : modEnvelopeGenerators)
+    {
+        modEnvelope.reset();
+    }
+    modEnvelopeValues.fill(0.0f);
+    fastReleaseTotalSamples = 0;
+    fastReleaseSamplesRemaining = 0;
+    clearCurrentNote();
+    angleDelta = 0.0;
+}
+
+void SynthVoice::beginFastRelease()
+{
+    if (!isVoiceActive() || fastReleaseSamplesRemaining > 0)
+    {
+        return;
+    }
+
+    const auto sampleRate = juce::jmax(1.0, getSampleRate());
+    fastReleaseTotalSamples = juce::jmax(1, static_cast<int>(kFastReleaseSeconds * static_cast<float>(sampleRate)));
+    fastReleaseSamplesRemaining = fastReleaseTotalSamples;
+}
+
+bool SynthVoice::isFastReleasing() const
+{
+    return fastReleaseSamplesRemaining > 0;
 }
 
 void SynthVoice::pitchWheelMoved(int newPitchWheelValue)
@@ -170,10 +229,22 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         currentAmpEnvelopeValue = 0.0f;
         lastBlockPeak = 0.0f;
         lastBlockSourcePeaks.fill(0.0f);
+#if PX3_DIAGNOSTICS
+        diagNoteEnvelopeInactiveClear(startSample);
+#endif
         clearCurrentNote();
         angleDelta = 0.0;
         return;
     }
+
+#if PX3_DIAGNOSTICS
+    auto& diag = px3::diag::state();
+    if (diagMarkStart)
+    {
+        diag.markLifecycle(startSample);
+        diagMarkStart = false;
+    }
+#endif
 
     const auto sampleRate = juce::jmax(1.0, getSampleRate());
     const auto vibratoPhaseInc = juce::MathConstants<double>::twoPi * static_cast<double>(vibratoRateHz) / sampleRate;
@@ -257,23 +328,66 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         const auto env = ampEnvelope.getNextSample();
         currentAmpEnvelopeValue = env;
 
+#if PX3_DIAGNOSTICS
+        if (diagHasPrevEnv)
+        {
+            diag.noteEnvDelta(env - diagPrevEnv);
+        }
+        diagPrevEnv = env;
+        diagHasPrevEnv = true;
+#endif
+
         if (!isKeyDown() && env <= kReleaseSilenceThreshold)
         {
-            ampEnvelope.reset();
-            for (auto& modEnvelope : modEnvelopeGenerators)
+#if PX3_DIAGNOSTICS
+            if (diag.capturing)
             {
-                modEnvelope.reset();
+                ++diag.clearFromReleaseFloor;
+                ++diag.clearCurrentNoteEvents;
+                diag.maxTruncationStep = juce::jmax(diag.maxTruncationStep, std::abs(diagLastVoiceOut));
+                diag.markLifecycle(startSample + sample);
             }
-            modEnvelopeValues.fill(0.0f);
-            clearCurrentNote();
-            angleDelta = 0.0;
+#endif
+            retireVoice();
             break;
+        }
+
+        // Budget-driven retirement: fade out over a few milliseconds rather
+        // than cutting the tail off at its current amplitude.
+        auto fastReleaseGain = 1.0f;
+        if (fastReleaseTotalSamples > 0)
+        {
+            if (fastReleaseSamplesRemaining <= 0)
+            {
+#if PX3_DIAGNOSTICS
+                if (diag.capturing)
+                {
+                    ++diag.clearCurrentNoteEvents;
+                    diag.maxTruncationStep = juce::jmax(diag.maxTruncationStep, std::abs(diagLastVoiceOut));
+                    diag.markLifecycle(startSample + sample);
+                }
+#endif
+                retireVoice();
+                break;
+            }
+
+            const auto fadeProgress = 1.0f
+                                      - static_cast<float>(fastReleaseSamplesRemaining)
+                                            / static_cast<float>(fastReleaseTotalSamples);
+            fastReleaseGain = 0.5f * (1.0f + std::cos(juce::MathConstants<float>::pi * fadeProgress));
+            --fastReleaseSamplesRemaining;
         }
 
         const auto releaseTailShape = isKeyDown()
                                           ? 1.0f
                                           : juce::jlimit(0.0f, 1.0f, (env - 0.02f) / 0.30f);
-        const auto ecoReleaseVoice = !isKeyDown();
+        auto ecoReleaseVoice = !isKeyDown();
+#if PX3_DIAGNOSTICS
+        if (diag.freezeVibeReleaseSwitch)
+        {
+            ecoReleaseVoice = false;
+        }
+#endif
 
         const auto applyVibeSourceStage = [&](float inSample, float noiseScale)
         {
@@ -427,12 +541,21 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         sourceSamples[0] = subStageSample;
 
         // AMP STAGE: envelope and voice gain are downstream of filter.
-        auto voiceGain = level * env * subtractiveSettings.masterGain;
+#if PX3_DIAGNOSTICS
+        const auto ampEnvGainForAudio = diag.bypassAmpEnvGain ? 1.0f : env;
+#else
+        const auto ampEnvGainForAudio = env;
+#endif
+        auto voiceGain = level * ampEnvGainForAudio * subtractiveSettings.masterGain;
 
         // Fast attacks can still produce a tiny startup edge when many voices
         // overlap; apply a very short, attack-dependent onset guard only while
         // keys are held. Slow attacks are effectively unchanged.
+#if PX3_DIAGNOSTICS
+        if (isKeyDown() && !diag.disableOnsetGuard)
+#else
         if (isKeyDown())
+#endif
         {
             const auto attackSeconds = juce::jmax(0.001f, envelopeSettings.attackSeconds);
             if (attackSeconds < 0.02f)
@@ -459,6 +582,19 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             voiceGain = juce::jlimit(0.0f, 2.0f, voiceGain);
         }
 
+        voiceGain *= fastReleaseGain;
+
+#if PX3_DIAGNOSTICS
+        if (diagHasPrevVoiceGain)
+        {
+            diag.noteVoiceGainDelta(voiceGain - diagPrevVoiceGain);
+        }
+        diagPrevVoiceGain = voiceGain;
+        diagHasPrevVoiceGain = true;
+        float diagOscStageSum = 0.0f;
+        float diagPostEnvStageSum = 0.0f;
+#endif
+
         std::array<float, kVoiceMixerSourceCount> voicedSourceSamples { { 0.0f, 0.0f, 0.0f, 0.0f } };
         float summedSample = 0.0f;
         for (int sourceIndex = 0; sourceIndex < kVoiceMixerSourceCount; ++sourceIndex)
@@ -476,6 +612,10 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             }
 
             auto voicedSample = filteredSample * voiceGain * perSourceNormalization;
+#if PX3_DIAGNOSTICS
+            diagOscStageSum += filteredSample * perSourceNormalization;
+            diagPostEnvStageSum += voicedSample;
+#endif
             if (vibeActive && !ecoReleaseVoice)
             {
                 const auto vcaAmount = (vibeTuning.vcaNonlinearity * vibeDepth
@@ -485,7 +625,11 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                               * (1.0f / (1.0f + vcaAmount * 0.95f));
             }
 
+#if PX3_DIAGNOSTICS
+            if (!isKeyDown() && !diag.disableReleaseTailFilter)
+#else
             if (!isKeyDown())
+#endif
             {
                 auto& tailState = releaseSmoothingState[static_cast<std::size_t>(sourceIndex)];
                 const auto tailSmooth = 0.02f + 0.18f * releaseTailShape;
@@ -507,6 +651,17 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
         summedSample = sanitizeAudioSample(summedSample);
         blockPeak = juce::jmax(blockPeak, std::abs(summedSample));
+
+#if PX3_DIAGNOSTICS
+        diagLastVoiceOut = summedSample;
+        if (diag.capturing)
+        {
+            const auto diagIndex = startSample + sample;
+            diag.addVoiceSample(px3::diag::stageOsc, diagIndex, diagOscStageSum);
+            diag.addVoiceSample(px3::diag::stagePostEnv, diagIndex, diagPostEnvStageSum);
+            diag.addVoiceSample(px3::diag::stageVoiceOut, diagIndex, summedSample);
+        }
+#endif
 
         if (outputBuffer.getNumChannels() >= kVoiceMixerSourceCount)
         {
@@ -554,10 +709,29 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     if (!ampEnvelope.isActive())
     {
         currentAmpEnvelopeValue = 0.0f;
+#if PX3_DIAGNOSTICS
+        diagNoteEnvelopeInactiveClear(startSample + numSamples - 1);
+#endif
         clearCurrentNote();
         angleDelta = 0.0;
     }
 }
+
+#if PX3_DIAGNOSTICS
+void SynthVoice::diagNoteEnvelopeInactiveClear(int sampleIndex)
+{
+    auto& diag = px3::diag::state();
+    if (!diag.capturing || !isVoiceActive())
+    {
+        return;
+    }
+
+    ++diag.clearFromEnvInactive;
+    ++diag.clearCurrentNoteEvents;
+    diag.maxTruncationStep = juce::jmax(diag.maxTruncationStep, std::abs(diagLastVoiceOut));
+    diag.markLifecycle(sampleIndex);
+}
+#endif
 
 void SynthVoice::setAmpEnvelope(const EnvelopeSettings& settings)
 {

@@ -6,6 +6,7 @@
 #include "SubOscMode.h"
 
 #include "PluginEditor.h"
+#include "PX3Diagnostics.h"
 
 #include <algorithm>
 #include <cmath>
@@ -740,6 +741,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
     }
 
+#if PX3_DIAGNOSTICS
+    px3::diag::state().beginBlock(blockSamples);
+#endif
+
     juce::MidiBuffer combinedMidi;
     combinedMidi.addEvents(midiMessages, 0, buffer.getNumSamples(), 0);
 
@@ -865,6 +870,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     }
 
     auto releaseVoicesPrunedThisBlock = 0;
+#if PX3_DIAGNOSTICS
+    if (!px3::diag::state().disableReleasePruning)
+#endif
     {
         std::vector<SynthVoice*> releaseCandidates;
         auto heldVoicesForBudget = 0;
@@ -881,8 +889,11 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             {
                 ++heldVoicesForBudget;
             }
-            else
+            else if (!voice->isFastReleasing())
             {
+                // Voices already fading out under the budget are on their way
+                // to silence; counting them again would prune still-audible
+                // tails for capacity that is about to free itself.
                 releaseCandidates.push_back(voice);
             }
         }
@@ -918,13 +929,29 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             {
                 if (auto* voice = releaseCandidates[static_cast<std::size_t>(i)])
                 {
-                    voice->stopNote(0.0f, false);
+                    // Fade the tail out over a few ms instead of cutting it at
+                    // its current amplitude; a hard stop here is a step
+                    // discontinuity in the summed output, i.e. an audible click.
+#if PX3_DIAGNOSTICS
+                    if (px3::diag::state().legacyHardStopPruning)
+                    {
+                        voice->stopNote(0.0f, false);
+                    }
+                    else
+#endif
+                    voice->beginFastRelease();
                     ++releaseVoicesPrunedThisBlock;
                 }
             }
         }
     }
     debugReleaseVoicesPruned.store(releaseVoicesPrunedThisBlock, std::memory_order_relaxed);
+#if PX3_DIAGNOSTICS
+    if (px3::diag::state().capturing)
+    {
+        px3::diag::state().releasePrunes += releaseVoicesPrunedThisBlock;
+    }
+#endif
 
     // OSCILLATOR BUS: currently receives all active voice audio.
     // Each voice now explicitly mixes oscillator sources -> filter -> amp before
@@ -1034,9 +1061,33 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     }
     polyphonyGainSmoother.setTargetValue(polyphonyGainTarget);
 
+#if PX3_DIAGNOSTICS
+    auto& diagState = px3::diag::state();
+    const auto polyGainAtBlockStart = diagState.fixedPolyGain ? 1.0f : polyphonyGainSmoother.getCurrentValue();
+    auto diagPrevPolyGain = polyGainAtBlockStart;
+    if (diagState.capturing)
+    {
+        diagState.maxPolyGainBlockStep = juce::jmax(diagState.maxPolyGainBlockStep,
+                                                    std::abs(polyphonyGainTarget - polyGainAtBlockStart));
+    }
+#endif
+
     for (int sample = 0; sample < blockSamples; ++sample)
     {
-        const auto polyGain = polyphonyGainSmoother.getNextValue();
+        auto polyGain = polyphonyGainSmoother.getNextValue();
+#if PX3_DIAGNOSTICS
+        if (diagState.fixedPolyGain)
+        {
+            polyGain = 1.0f;
+        }
+        if (diagState.capturing)
+        {
+            diagState.maxPolyGainDelta = juce::jmax(diagState.maxPolyGainDelta,
+                                                    std::abs(polyGain - diagPrevPolyGain));
+            diagState.minPolyGain = juce::jmin(diagState.minPolyGain, polyGain);
+            diagPrevPolyGain = polyGain;
+        }
+#endif
         for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
         {
             const auto scaled = oscillatorBusBuffer.getSample(sourceIndex, sample) * polyGain;
@@ -1254,6 +1305,25 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     {
         buffer.copyFrom(channel, 0, masterBusBuffer, channel, 0, blockSamples);
     }
+
+#if PX3_DIAGNOSTICS
+    if (diagState.capturing && blockSamples > 0)
+    {
+        diagState.postPolySum.assign(static_cast<std::size_t>(blockSamples), 0.0f);
+        for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
+        {
+            const auto* sourceData = oscillatorBusBuffer.getReadPointer(sourceIndex);
+            for (int sample = 0; sample < blockSamples; ++sample)
+            {
+                diagState.postPolySum[static_cast<std::size_t>(sample)] += sourceData[sample];
+            }
+        }
+
+        px3::diag::analyseBlock(diagState.postPolySum.data(),
+                                masterBusBuffer.getReadPointer(0),
+                                blockSamples);
+    }
+#endif
 
     if (blockSamples > 0)
     {

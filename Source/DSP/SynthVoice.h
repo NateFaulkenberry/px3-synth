@@ -4,6 +4,7 @@
 
 #include "AmpEnvelope.h"
 #include "EnvelopeGenerator.h"
+#include "PX3Diagnostics.h"
 #include "EnvelopeTypes.h"
 #include "FilterTypes.h"
 #include "OscillatorTypes.h"
@@ -50,6 +51,14 @@ public:
                                   float vibratoPhaseRadians,
                                   float vibratoRateHz,
                                   float vibratoMaxDepthSemitones);
+    // Retires a voice under the release-tail budget without truncating it.
+    // The voice keeps rendering through a short cosine fade to silence and then
+    // tears down exactly like a naturally finished release. A hard
+    // stopNote(false) here would step the output straight to zero from whatever
+    // level the tail happened to be at, which is an audible click.
+    void beginFastRelease();
+    bool isFastReleasing() const;
+
     void setVoiceIndex(int index);
     void setVibeState(float globalAmount,
                       bool bypass,
@@ -63,6 +72,19 @@ public:
 
 private:
     void updateAngleDelta();
+    void retireVoice();
+
+#if PX3_DIAGNOSTICS
+    // Temporary signal-path isolation support; compiled out of plugin builds.
+    void diagNoteEnvelopeInactiveClear(int sampleIndex);
+
+    float diagPrevEnv { 0.0f };
+    float diagPrevVoiceGain { 0.0f };
+    float diagLastVoiceOut { 0.0f };
+    bool diagHasPrevEnv { false };
+    bool diagHasPrevVoiceGain { false };
+    bool diagMarkStart { false };
+#endif
 
     // Cached control settings for this voice. The processor refreshes these
     // every block so render code can run branch-light in the inner loop.
@@ -107,6 +129,8 @@ private:
 
     int noteAgeSamples { 0 };
     int voiceIndex { 0 };
+    int fastReleaseTotalSamples { 0 };
+    int fastReleaseSamplesRemaining { 0 };
     double ampEnvelopePreparedSampleRate { 0.0 };
     double modEnvelopePreparedSampleRate { 0.0 };
     bool ampEnvelopeEnabled { true };

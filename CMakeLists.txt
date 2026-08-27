@@ -16,6 +16,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(PX3_COPY_PLUGIN_AFTER_BUILD "Copy plugin formats into local plugin folders after building" ON)
 option(PX3_DEBUG_PANEL "Enable in-plugin debug panel UI" OFF)
+# Temporary offline signal-path isolation harness. OFF for normal plugin builds.
+option(PX3_BUILD_DIAGNOSTIC "Build the offline PX3Diag signal-path harness" OFF)
 
 include(FetchContent)
 
@@ -52,8 +54,7 @@ juce_add_binary_data(PX3Assets
         Source/px3.gif
 )
 
-target_sources(PX3Synth
-    PRIVATE
+set(PX3_SHARED_SOURCES
         Source/UI/PerformanceControls.cpp
         Source/UI/PianoKeyboard.cpp
         Source/UI/OscPanel.cpp
@@ -100,17 +101,21 @@ target_sources(PX3Synth
         Source/DSP/OscillatorUnit.cpp
         Source/DSP/VoiceFilter.cpp
         Source/DSP/SynthVoice.cpp
+        Source/DSP/PX3Diagnostics.cpp
         Source/Preset/PresetManager.cpp
 )
 
-target_include_directories(PX3Synth
-    PRIVATE
+set(PX3_INCLUDE_DIRS
         Source
         Source/UI
         Source/DSP
         Source/Preset
         Source/Core
 )
+
+target_sources(PX3Synth PRIVATE ${PX3_SHARED_SOURCES})
+
+target_include_directories(PX3Synth PRIVATE ${PX3_INCLUDE_DIRS})
 
 target_compile_definitions(PX3Synth
     PRIVATE
@@ -153,6 +158,35 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
             target_compile_options(${px3Target} PRIVATE ${PX3_WARNING_OPTIONS})
         endif()
     endforeach()
+endif()
+
+# Offline signal-path isolation harness. Renders the real processor headlessly
+# and reports per-stage sample-delta discontinuities. Temporary diagnostic tool.
+if (PX3_BUILD_DIAGNOSTIC)
+    juce_add_console_app(PX3Diag PRODUCT_NAME "PX3Diag")
+    juce_generate_juce_header(PX3Diag)
+
+    target_sources(PX3Diag PRIVATE ${PX3_SHARED_SOURCES} Tools/DiagnosticMain.cpp)
+    target_include_directories(PX3Diag PRIVATE ${PX3_INCLUDE_DIRS})
+
+    target_compile_definitions(PX3Diag
+        PRIVATE
+            JUCE_WEB_BROWSER=0
+            JUCE_USE_CURL=0
+            JUCE_STANDALONE_APPLICATION=1
+            PX3_DEBUG_PANEL=0
+            PX3_DIAGNOSTICS=1
+            JucePlugin_Name="PX3 Synth"
+    )
+
+    target_link_libraries(PX3Diag
+        PRIVATE
+            PX3Assets
+            juce::juce_audio_utils
+            juce::juce_dsp
+        PUBLIC
+            juce::juce_recommended_config_flags
+    )
 endif()
 
 # Ship external UI config alongside built bundles for runtime hot-reloadable styling.
