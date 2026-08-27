@@ -23,6 +23,7 @@ namespace
 bool gLegacyTailShape = false;
 bool gLegacyInstantReleaseFilter = false;
 bool gLegacyUnsmoothedMixer = false;
+bool gLegacyPostPanSend = false;
 
 constexpr double kSampleRate = 48000.0;
 constexpr int kBlockSize = 512;
@@ -452,6 +453,279 @@ void runMode(const ModeOptions& mode, const PatchOptions& patch)
 
     std::fflush(stdout);
 }
+
+
+// ---------------------------------------------------------------------------
+// Mixer test matrix.
+//
+// Every question the audit asks is answered by measuring energy at the mixer's
+// own taps: per source, per side, separately for the dry path and the send path,
+// plus the FX return. Nothing here infers behaviour from listening or from
+// reading the code.
+// ---------------------------------------------------------------------------
+
+struct MixerConfig
+{
+    bool sourceEnabled[4] { true, true, true, true };
+    float level[4] { 1.0f, 1.0f, 1.0f, 1.0f };
+    float pan[4] { 0.0f, 0.0f, 0.0f, 0.0f };
+    float send[4] { 0.0f, 0.0f, 0.0f, 0.0f };
+    bool mute[4] { false, false, false, false };
+    bool solo[4] { false, false, false, false };
+    float fxReturnGain { 1.0f };
+    float fxReturnPan { 0.0f };
+    bool fxMute { false };
+    bool fxSolo { false };
+    float fxSendGain { 1.0f };
+    bool fxEnabled { true };
+};
+
+struct MixerMeasurement
+{
+    double dryL[4] { }, dryR[4] { };
+    double sendL[4] { }, sendR[4] { };
+    double fxL { 0.0 }, fxR { 0.0 };
+    double masterL { 0.0 }, masterR { 0.0 };
+
+    double dry(int i) const { return std::sqrt(dryL[i] * dryL[i] + dryR[i] * dryR[i]); }
+    double send(int i) const { return std::sqrt(sendL[i] * sendL[i] + sendR[i] * sendR[i]); }
+};
+
+const char* kMixerIds[4] = { "sub", "osc1", "osc2", "osc3" };
+const char* kMixerNames[4] = { "SUB", "OSC1", "OSC2", "OSC3" };
+
+MixerMeasurement measureMixer(const MixerConfig& config)
+{
+    px3::diag::resetNoteStartSequence();
+    PX3SynthAudioProcessor processor;
+
+    // Deterministic, unambiguous source material: a plain sine on every source.
+    setParameter(processor, "ampAttack", 0.005f);
+    setParameter(processor, "ampDecay", 0.100f);
+    setParameter(processor, "ampSustain", 1.0f);
+    setParameter(processor, "ampRelease", 0.200f);
+    setParameter(processor, "ampEnvEnabled", 1.0f);
+    setParameter(processor, "vibeAmount", 0.0f);
+    setParameter(processor, "masterGain", 0.6f);
+
+    for (int i = 0; i < 3; ++i)
+    {
+        const auto slot = juce::String(i + 1);
+        setParameter(processor, "osc" + slot + "Enabled", config.sourceEnabled[i + 1] ? 1.0f : 0.0f);
+        if (auto* mode = findParameter(processor, "osc" + slot + "Mode"))
+        {
+            mode->setValueNotifyingHost(0.0f); // SINE
+        }
+    }
+    setParameter(processor, "subOscEnabled", config.sourceEnabled[0] ? 1.0f : 0.0f);
+
+    // Reverb only. Delay's granular engine and Mood both draw from
+    // juce::Random::getSystemRandom() during processing, which makes the FX
+    // return non-reproducible between renders and would make FX-return
+    // measurements meaningless.
+    setParameter(processor, "delayEnabled", 0.0f);
+    setParameter(processor, "moodEnabled", 0.0f);
+    setParameter(processor, "delayAmount", 0.0f);
+    setParameter(processor, "reverbEnabled", config.fxEnabled ? 1.0f : 0.0f);
+    setParameter(processor, "reverbAmount", config.fxEnabled ? 0.6f : 0.0f);
+
+    for (int i = 0; i < 4; ++i)
+    {
+        setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".level", config.level[i]);
+        setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".pan", config.pan[i]);
+        setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".fxSend", config.send[i]);
+        setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".mute", config.mute[i] ? 1.0f : 0.0f);
+        setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".solo", config.solo[i] ? 1.0f : 0.0f);
+    }
+    setParameter(processor, "fxReturnGain", config.fxReturnGain);
+    setParameter(processor, "mix.fx.pan", config.fxReturnPan);
+    setParameter(processor, "mix.fx.mute", config.fxMute ? 1.0f : 0.0f);
+    setParameter(processor, "mix.fx.solo", config.fxSolo ? 1.0f : 0.0f);
+    setParameter(processor, "fxSendGain", config.fxSendGain);
+
+    processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+    processor.prepareToPlay(kSampleRate, kBlockSize);
+
+    auto& diag = px3::diag::state();
+    diag.resetResults();
+    diag.resetModes();
+    diag.legacyPostPanSend = gLegacyPostPanSend;
+
+    const auto noteOn = static_cast<int>(0.05 * kSampleRate);
+    const auto settle = static_cast<int>(0.60 * kSampleRate);   // past attack and all smoothers
+    const auto totalSamples = static_cast<int>(1.60 * kSampleRate);
+
+    juce::AudioBuffer<float> buffer(2, kBlockSize);
+    auto delivered = false;
+    for (int position = 0; position < totalSamples; position += kBlockSize)
+    {
+        // Measure only once everything has settled, so smoothing ramps never
+        // contaminate a steady-state routing measurement.
+        diag.capturing = position >= settle;
+
+        buffer.clear();
+        juce::MidiBuffer midi;
+        if (!delivered && position + kBlockSize > noteOn)
+        {
+            midi.addEvent(juce::MidiMessage::noteOn(1, 57, 0.9f), juce::jmax(0, noteOn - position));
+            delivered = true;
+        }
+        processor.processBlock(buffer, midi);
+    }
+    diag.capturing = false;
+
+    MixerMeasurement m;
+    for (int i = 0; i < 4; ++i)
+    {
+        m.dryL[i] = diag.rmsOf(diag.sourceDryEnergyL[i]);
+        m.dryR[i] = diag.rmsOf(diag.sourceDryEnergyR[i]);
+        m.sendL[i] = diag.rmsOf(diag.sourceSendEnergyL[i]);
+        m.sendR[i] = diag.rmsOf(diag.sourceSendEnergyR[i]);
+    }
+    m.fxL = diag.rmsOf(diag.fxReturnEnergyL);
+    m.fxR = diag.rmsOf(diag.fxReturnEnergyR);
+    m.masterL = diag.rmsOf(diag.masterEnergyL);
+    m.masterR = diag.rmsOf(diag.masterEnergyR);
+    return m;
+}
+
+
+// Renders while a mixer parameter is changed mid-flight, and reports what that
+// did to the audio. Used for the dynamic / rapid-automation sections.
+struct MixerDynamicResult
+{
+    double transient { 0.0 };
+    double maxDryGainStep { 0.0 };
+    double maxSendGainStep { 0.0 };
+    double silentPeriodPeak { 0.0 };
+    double activePeak { 0.0 };
+};
+
+MixerDynamicResult measureMixerDynamics(const juce::String& paramId,
+                                        float fromValue,
+                                        float toValue,
+                                        int togglesPerSecond,
+                                        bool playNote,
+                                        bool silenceGapTest)
+{
+    px3::diag::resetNoteStartSequence();
+    PX3SynthAudioProcessor processor;
+
+    setParameter(processor, "ampAttack", 0.005f);
+    setParameter(processor, "ampDecay", 0.100f);
+    setParameter(processor, "ampSustain", 1.0f);
+    setParameter(processor, "ampRelease", 0.150f);
+    setParameter(processor, "ampEnvEnabled", 1.0f);
+    setParameter(processor, "vibeAmount", 0.0f);
+    setParameter(processor, "masterGain", 0.6f);
+    setParameter(processor, "delayEnabled", 0.0f);
+    setParameter(processor, "moodEnabled", 0.0f);
+    setParameter(processor, "reverbEnabled", 0.0f);
+    setParameter(processor, "reverbAmount", 0.0f);
+    for (int i = 0; i < 3; ++i)
+    {
+        const auto slot = juce::String(i + 1);
+        setParameter(processor, "osc" + slot + "Enabled", i == 0 ? 1.0f : 0.0f);
+        if (auto* mode = findParameter(processor, "osc" + slot + "Mode")) mode->setValueNotifyingHost(0.0f);
+    }
+    setParameter(processor, "subOscEnabled", 0.0f);
+    for (int i = 0; i < 4; ++i)
+    {
+        setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".level", 1.0f);
+        setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".fxSend", 0.0f);
+    }
+    setParameter(processor, paramId, fromValue);
+
+    processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+    processor.prepareToPlay(kSampleRate, kBlockSize);
+
+    auto& diag = px3::diag::state();
+    diag.resetResults();
+    diag.resetModes();
+    diag.capturing = true;
+    diag.tracing = true;
+
+    const auto totalSamples = static_cast<int>(3.0 * kSampleRate);
+    const auto noteOn = static_cast<int>(0.05 * kSampleRate);
+    const auto noteOff = static_cast<int>(1.20 * kSampleRate);
+    const auto noteOn2 = static_cast<int>(2.00 * kSampleRate);
+    const auto togglePeriod = togglesPerSecond > 0
+                                  ? static_cast<int>(kSampleRate / togglesPerSecond) : 0;
+
+    juce::AudioBuffer<float> buffer(2, kBlockSize);
+    auto toggleState = false;
+    auto nextToggle = static_cast<int>(0.40 * kSampleRate);
+
+    for (int position = 0; position < totalSamples; position += kBlockSize)
+    {
+        if (togglePeriod > 0 && position >= nextToggle)
+        {
+            toggleState = !toggleState;
+            setParameter(processor, paramId, toggleState ? toValue : fromValue);
+            nextToggle += togglePeriod;
+        }
+        else if (togglePeriod == 0)
+        {
+            const auto through = juce::jlimit(0.0, 1.0, position / static_cast<double>(totalSamples));
+            const auto shaped = through < 0.5 ? through * 2.0 : (1.0 - through) * 2.0;
+            setParameter(processor, paramId, fromValue + (toValue - fromValue) * static_cast<float>(shaped));
+        }
+
+        buffer.clear();
+        juce::MidiBuffer midi;
+        if (playNote)
+        {
+            if (position <= noteOn && position + kBlockSize > noteOn)
+                midi.addEvent(juce::MidiMessage::noteOn(1, 64, 0.9f), juce::jmax(0, noteOn - position));
+            if (silenceGapTest)
+            {
+                if (position <= noteOff && position + kBlockSize > noteOff)
+                    midi.addEvent(juce::MidiMessage::noteOff(1, 64), juce::jmax(0, noteOff - position));
+                if (position <= noteOn2 && position + kBlockSize > noteOn2)
+                    midi.addEvent(juce::MidiMessage::noteOn(1, 64, 0.9f), juce::jmax(0, noteOn2 - position));
+            }
+        }
+        processor.processBlock(buffer, midi);
+    }
+    diag.capturing = false;
+    diag.tracing = false;
+
+    MixerDynamicResult r;
+    r.transient = diag.maxQuietTransientRatio;
+    r.maxDryGainStep = diag.maxMixerDryGainStep;
+    r.maxSendGainStep = diag.maxMixerSendGainStep;
+
+    const auto& master = diag.trace[px3::diag::stageMaster];
+    // The gap runs from well after the release has finished to just before the
+    // next note, so anything non-zero there is stale buffer content.
+    const auto gapStart = static_cast<std::size_t>(1.70 * kSampleRate);
+    const auto gapEnd = static_cast<std::size_t>(1.95 * kSampleRate);
+    for (std::size_t i = 0; i < master.size(); ++i)
+    {
+        const auto v = std::abs(static_cast<double>(master[i]));
+        if (i >= gapStart && i < gapEnd) r.silentPeriodPeak = std::max(r.silentPeriodPeak, v);
+        else r.activePeak = std::max(r.activePeak, v);
+    }
+    return r;
+}
+
+int gMixPass = 0;
+int gMixFail = 0;
+
+void mixCheck(const char* name, bool ok, const juce::String& detail)
+{
+    if (ok) ++gMixPass; else ++gMixFail;
+    std::printf("    %-52s %s  %s\n", name, ok ? "PASS" : "FAIL", detail.toRawUTF8());
+    std::fflush(stdout);
+}
+
+bool nearlyEqual(double a, double b, double tolerance = 0.02)
+{
+    const auto scale = std::max(1.0e-9, std::max(std::abs(a), std::abs(b)));
+    return std::abs(a - b) / scale <= tolerance;
+}
+
+juce::String fmt(double v) { return juce::String(v, 6); }
 
 // ---------------------------------------------------------------------------
 // Release-tail shape analysis.
@@ -1609,6 +1883,617 @@ int main(int argc, char* argv[])
             }
         }
         return 0;
+    }
+    else if (arg == "mixermatrix")
+    {
+        gMixPass = 0;
+        gMixFail = 0;
+        std::printf("\nMIXER TEST MATRIX\n");
+        std::printf("  all values are RMS measured at the mixer's own taps, after all smoothing settles\n");
+
+        auto baseConfig = []
+        {
+            MixerConfig c;
+            for (int i = 0; i < 4; ++i) { c.level[i] = 1.0f; c.send[i] = 0.0f; }
+            return c;
+        };
+
+        // ---- source stem independence -----------------------------------
+        std::printf("\n  [0] MEASUREMENT DETERMINISM - identical configs must measure identically\n");
+        {
+            MixerConfig c;
+            for (int i = 0; i < 4; ++i) { c.level[i] = 1.0f; c.send[i] = 0.5f; }
+            const auto a = measureMixer(c);
+            const auto b = measureMixer(c);
+            auto same = true;
+            for (int i = 0; i < 4; ++i)
+            {
+                if (a.dry(i) != b.dry(i) || a.send(i) != b.send(i)) same = false;
+            }
+            const auto fxSame = a.fxL == b.fxL && a.fxR == b.fxR;
+            mixCheck("repeated measurement is bit-identical (sources)", same, "");
+            mixCheck("repeated measurement is bit-identical (FX return)", fxSame,
+                     juce::String("fxL ") + fmt(a.fxL) + " vs " + fmt(b.fxL));
+        }
+
+        std::printf("\n  [3] SOURCE STEM BOUNDARY - one source active at a time\n");
+        for (int active = 0; active < 4; ++active)
+        {
+            auto c = baseConfig();
+            for (int i = 0; i < 4; ++i) c.sourceEnabled[i] = (i == active);
+            const auto m = measureMixer(c);
+            auto othersSilent = true;
+            juce::String detail;
+            for (int i = 0; i < 4; ++i)
+            {
+                if (i != active && m.dry(i) > 1.0e-7) othersSilent = false;
+            }
+            detail << kMixerNames[active] << " dry=" << fmt(m.dry(active)) << " others=";
+            for (int i = 0; i < 4; ++i) if (i != active) detail << fmt(m.dry(i)) << " ";
+            mixCheck((juce::String("only ") + kMixerNames[active] + " active -> only it produces audio").toRawUTF8(),
+                     m.dry(active) > 1.0e-5 && othersSilent, detail);
+        }
+
+        // ---- gain -------------------------------------------------------
+        std::printf("\n  [4] CHANNEL GAIN - min / half / max, per channel\n");
+        for (int ch = 0; ch < 4; ++ch)
+        {
+            auto atLevel = [&](float level)
+            {
+                auto c = baseConfig();
+                c.level[ch] = level;
+                return measureMixer(c);
+            };
+            const auto lo = atLevel(0.0f);
+            const auto mid = atLevel(0.5f);
+            const auto hi = atLevel(1.0f);
+            const auto ratio = hi.dry(ch) > 1.0e-9 ? mid.dry(ch) / hi.dry(ch) : -1.0;
+            mixCheck((juce::String(kMixerNames[ch]) + " gain scales its own dry contribution").toRawUTF8(),
+                     lo.dry(ch) < 1.0e-7 && nearlyEqual(ratio, 0.5, 0.03) && hi.dry(ch) > 1.0e-5,
+                     juce::String("0.0=") + fmt(lo.dry(ch)) + " 0.5/1.0 ratio=" + fmt(ratio));
+
+            auto othersUnchanged = true;
+            for (int i = 0; i < 4; ++i)
+                if (i != ch && !nearlyEqual(lo.dry(i), hi.dry(i))) othersUnchanged = false;
+            mixCheck((juce::String(kMixerNames[ch]) + " gain does not affect other channels").toRawUTF8(),
+                     othersUnchanged, "");
+        }
+
+        // ---- pan --------------------------------------------------------
+        std::printf("\n  [7] PAN - centre / hard left / hard right, per channel\n");
+        for (int ch = 0; ch < 4; ++ch)
+        {
+            auto atPan = [&](float pan)
+            {
+                auto c = baseConfig();
+                c.pan[ch] = pan;
+                return measureMixer(c);
+            };
+            const auto centre = atPan(0.0f);
+            const auto left = atPan(-1.0f);
+            const auto right = atPan(1.0f);
+
+            mixCheck((juce::String(kMixerNames[ch]) + " pan centre is balanced").toRawUTF8(),
+                     nearlyEqual(centre.dryL[ch], centre.dryR[ch]),
+                     juce::String("L=") + fmt(centre.dryL[ch]) + " R=" + fmt(centre.dryR[ch]));
+            mixCheck((juce::String(kMixerNames[ch]) + " pan hard left -> right silent").toRawUTF8(),
+                     left.dryL[ch] > 1.0e-5 && left.dryR[ch] < 1.0e-7,
+                     juce::String("L=") + fmt(left.dryL[ch]) + " R=" + fmt(left.dryR[ch]));
+            mixCheck((juce::String(kMixerNames[ch]) + " pan hard right -> left silent").toRawUTF8(),
+                     right.dryR[ch] > 1.0e-5 && right.dryL[ch] < 1.0e-7,
+                     juce::String("L=") + fmt(right.dryL[ch]) + " R=" + fmt(right.dryR[ch]));
+            // constant power: total energy preserved across pan positions
+            mixCheck((juce::String(kMixerNames[ch]) + " pan preserves total level (constant power)").toRawUTF8(),
+                     nearlyEqual(centre.dry(ch), left.dry(ch), 0.03) && nearlyEqual(centre.dry(ch), right.dry(ch), 0.03),
+                     juce::String("c/l/r=") + fmt(centre.dry(ch)) + "/" + fmt(left.dry(ch)) + "/" + fmt(right.dry(ch)));
+
+            auto othersUnchanged = true;
+            for (int i = 0; i < 4; ++i)
+                if (i != ch && !nearlyEqual(centre.dry(i), left.dry(i))) othersUnchanged = false;
+            mixCheck((juce::String(kMixerNames[ch]) + " pan does not affect other channels").toRawUTF8(),
+                     othersUnchanged, "");
+        }
+
+        // ---- mute -------------------------------------------------------
+        std::printf("\n  [5][17] MUTE - dry and send, per channel\n");
+        for (int ch = 0; ch < 4; ++ch)
+        {
+            auto c = baseConfig();
+            for (int i = 0; i < 4; ++i) c.send[i] = 1.0f;
+            const auto unmuted = measureMixer(c);
+            c.mute[ch] = true;
+            const auto muted = measureMixer(c);
+
+            mixCheck((juce::String(kMixerNames[ch]) + " mute silences its dry path").toRawUTF8(),
+                     muted.dry(ch) < 1.0e-7 && unmuted.dry(ch) > 1.0e-5,
+                     juce::String("unmuted=") + fmt(unmuted.dry(ch)) + " muted=" + fmt(muted.dry(ch)));
+            mixCheck((juce::String(kMixerNames[ch]) + " mute silences its send (policy A)").toRawUTF8(),
+                     muted.send(ch) < 1.0e-7 && unmuted.send(ch) > 1.0e-5,
+                     juce::String("unmuted=") + fmt(unmuted.send(ch)) + " muted=" + fmt(muted.send(ch)));
+
+            auto othersOk = true;
+            for (int i = 0; i < 4; ++i)
+                if (i != ch && (!nearlyEqual(unmuted.dry(i), muted.dry(i)) || !nearlyEqual(unmuted.send(i), muted.send(i))))
+                    othersOk = false;
+            mixCheck((juce::String(kMixerNames[ch]) + " mute leaves other channels untouched").toRawUTF8(),
+                     othersOk, "");
+        }
+
+        // ---- solo -------------------------------------------------------
+        std::printf("\n  [6][16] SOLO - dry, send and FX return policy\n");
+        for (int ch = 0; ch < 4; ++ch)
+        {
+            auto c = baseConfig();
+            for (int i = 0; i < 4; ++i) c.send[i] = 1.0f;
+            c.solo[ch] = true;
+            const auto m = measureMixer(c);
+
+            auto onlySoloedDry = m.dry(ch) > 1.0e-5;
+            for (int i = 0; i < 4; ++i) if (i != ch && m.dry(i) > 1.0e-7) onlySoloedDry = false;
+            mixCheck((juce::String("solo ") + kMixerNames[ch] + " -> only its dry is audible").toRawUTF8(),
+                     onlySoloedDry, juce::String("soloed dry=") + fmt(m.dry(ch)));
+
+            auto allSendsOff = true;
+            for (int i = 0; i < 4; ++i) if (m.send(i) > 1.0e-7) allSendsOff = false;
+            mixCheck((juce::String("solo ") + kMixerNames[ch] + " -> all sends gated, FX return silent").toRawUTF8(),
+                     allSendsOff && m.fxL < 1.0e-7 && m.fxR < 1.0e-7,
+                     juce::String("fxL=") + fmt(m.fxL) + " fxR=" + fmt(m.fxR));
+        }
+
+        // ---- THE CRITICAL TEST: dry pan must not move the send ----------
+        std::printf("\n  [8][10] SOURCE PAN vs FX SEND INDEPENDENCE (critical)\n");
+        for (int ch = 0; ch < 4; ++ch)
+        {
+            auto atPan = [&](float pan)
+            {
+                auto c = baseConfig();
+                for (int i = 0; i < 4; ++i) c.send[i] = 0.0f;
+                c.send[ch] = 1.0f;
+                c.pan[ch] = pan;
+                return measureMixer(c);
+            };
+            const auto centre = atPan(0.0f);
+            const auto left = atPan(-1.0f);
+            const auto right = atPan(1.0f);
+
+            const auto sendStable = nearlyEqual(centre.sendL[ch], left.sendL[ch], 0.02)
+                                    && nearlyEqual(centre.sendR[ch], left.sendR[ch], 0.02)
+                                    && nearlyEqual(centre.sendL[ch], right.sendL[ch], 0.02)
+                                    && nearlyEqual(centre.sendR[ch], right.sendR[ch], 0.02);
+            juce::String detail;
+            detail << "sendL c/l/r=" << fmt(centre.sendL[ch]) << "/" << fmt(left.sendL[ch]) << "/" << fmt(right.sendL[ch])
+                   << "  sendR c/l/r=" << fmt(centre.sendR[ch]) << "/" << fmt(left.sendR[ch]) << "/" << fmt(right.sendR[ch]);
+            mixCheck((juce::String(kMixerNames[ch]) + " dry pan does NOT move its FX send").toRawUTF8(),
+                     sendStable, detail);
+            mixCheck((juce::String(kMixerNames[ch]) + " send is centred (mono send)").toRawUTF8(),
+                     nearlyEqual(centre.sendL[ch], centre.sendR[ch]), "");
+            // and the dry pan still worked
+            mixCheck((juce::String(kMixerNames[ch]) + " dry still pans while send holds").toRawUTF8(),
+                     left.dryR[ch] < 1.0e-7 && right.dryL[ch] < 1.0e-7, "");
+        }
+
+        // ---- send level independence ------------------------------------
+        std::printf("\n  [9] FX SEND LEVEL - dry unchanged, send scales\n");
+        for (int ch = 0; ch < 4; ++ch)
+        {
+            auto atSend = [&](float send)
+            {
+                auto c = baseConfig();
+                c.send[ch] = send;
+                return measureMixer(c);
+            };
+            const auto s0 = atSend(0.0f);
+            const auto s50 = atSend(0.5f);
+            const auto s100 = atSend(1.0f);
+            const auto ratio = s100.send(ch) > 1.0e-9 ? s50.send(ch) / s100.send(ch) : -1.0;
+
+            mixCheck((juce::String(kMixerNames[ch]) + " send scales predictably").toRawUTF8(),
+                     s0.send(ch) < 1.0e-7 && nearlyEqual(ratio, 0.5, 0.03),
+                     juce::String("0=") + fmt(s0.send(ch)) + " 50/100 ratio=" + fmt(ratio));
+            mixCheck((juce::String(kMixerNames[ch]) + " send does not alter its own dry").toRawUTF8(),
+                     nearlyEqual(s0.dry(ch), s100.dry(ch)),
+                     juce::String("dry ") + fmt(s0.dry(ch)) + " -> " + fmt(s100.dry(ch)));
+
+            auto othersOk = true;
+            for (int i = 0; i < 4; ++i)
+                if (i != ch && !nearlyEqual(s0.send(i), s100.send(i))) othersOk = false;
+            mixCheck((juce::String(kMixerNames[ch]) + " send does not alter other channels' sends").toRawUTF8(),
+                     othersOk, "");
+        }
+
+        // ---- FX channel --------------------------------------------------
+        std::printf("\n  [11][12] FX CHANNEL - gain, pan, mute, solo\n");
+        {
+            auto fxBase = []
+            {
+                MixerConfig c;
+                for (int i = 0; i < 4; ++i) { c.level[i] = 1.0f; c.send[i] = 0.0f; }
+                c.send[1] = 1.0f;   // OSC1 feeds the FX bus
+                return c;
+            };
+            const auto nominal = measureMixer(fxBase());
+
+            auto c = fxBase(); c.fxReturnGain = 0.5f;
+            const auto halfGain = measureMixer(c);
+            const auto fxRatio = (nominal.fxL + nominal.fxR) > 1.0e-9
+                                     ? (halfGain.fxL + halfGain.fxR) / (nominal.fxL + nominal.fxR) : -1.0;
+            mixCheck("FX return gain scales the return", nearlyEqual(fxRatio, 0.5, 0.05),
+                     juce::String("ratio=") + fmt(fxRatio));
+            mixCheck("FX return gain leaves dry sources untouched",
+                     nearlyEqual(nominal.dry(1), halfGain.dry(1)), "");
+
+            c = fxBase(); c.fxMute = true;
+            const auto fxMuted = measureMixer(c);
+            mixCheck("FX mute silences the return",
+                     fxMuted.fxL < 1.0e-7 && fxMuted.fxR < 1.0e-7 && nominal.fxL > 1.0e-6,
+                     juce::String("nominal fxL=") + fmt(nominal.fxL) + " muted fxL=" + fmt(fxMuted.fxL));
+            mixCheck("FX mute leaves OSC1 dry audible",
+                     nearlyEqual(nominal.dry(1), fxMuted.dry(1)) && fxMuted.dry(1) > 1.0e-5,
+                     juce::String("dry ") + fmt(nominal.dry(1)) + " -> " + fmt(fxMuted.dry(1)));
+
+            c = fxBase(); c.fxSolo = true;
+            const auto fxSoloed = measureMixer(c);
+            auto allDrySilent = true;
+            for (int i = 0; i < 4; ++i) if (fxSoloed.dry(i) > 1.0e-7) allDrySilent = false;
+            mixCheck("FX solo -> dry sources silent, return audible",
+                     allDrySilent && (fxSoloed.fxL + fxSoloed.fxR) > 1.0e-6,
+                     juce::String("fxL=") + fmt(fxSoloed.fxL));
+
+            c = fxBase(); c.fxReturnPan = -1.0f;
+            const auto fxLeft = measureMixer(c);
+            c = fxBase(); c.fxReturnPan = 1.0f;
+            const auto fxRight = measureMixer(c);
+            mixCheck("FX return pan hard left -> right silent",
+                     fxLeft.fxL > 1.0e-6 && fxLeft.fxR < 1.0e-7,
+                     juce::String("L=") + fmt(fxLeft.fxL) + " R=" + fmt(fxLeft.fxR));
+            mixCheck("FX return pan hard right -> left silent",
+                     fxRight.fxR > 1.0e-6 && fxRight.fxL < 1.0e-7,
+                     juce::String("L=") + fmt(fxRight.fxL) + " R=" + fmt(fxRight.fxR));
+            mixCheck("FX return pan does not move source dry pan",
+                     nearlyEqual(nominal.dryL[1], fxLeft.dryL[1]) && nearlyEqual(nominal.dryR[1], fxLeft.dryR[1]),
+                     "");
+
+            // source pan vs FX return pan are independent controls
+            c = fxBase(); c.pan[1] = -1.0f; c.fxReturnPan = 1.0f;
+            const auto crossed = measureMixer(c);
+            mixCheck("OSC1 hard left + FX return hard right stay independent",
+                     crossed.dryR[1] < 1.0e-7 && crossed.fxL < 1.0e-7 && crossed.fxR > 1.0e-6,
+                     juce::String("dryR=") + fmt(crossed.dryR[1]) + " fxL=" + fmt(crossed.fxL)
+                         + " fxR=" + fmt(crossed.fxR));
+        }
+
+        // ---- edge cases ---------------------------------------------------
+        std::printf("\n  [26] EDGE CASES\n");
+        {
+            auto c = MixerConfig();
+            for (int i = 0; i < 4; ++i) { c.level[i] = 1.0f; c.send[i] = 1.0f; c.mute[i] = true; }
+            const auto allMuted = measureMixer(c);
+            auto silent = allMuted.masterL < 1.0e-7 && allMuted.masterR < 1.0e-7;
+            mixCheck("all channels muted -> master silent", silent,
+                     juce::String("masterL=") + fmt(allMuted.masterL));
+
+            c = MixerConfig();
+            for (int i = 0; i < 4; ++i) { c.level[i] = 1.0f; c.send[i] = 1.0f; c.solo[i] = true; }
+            const auto allSoloed = measureMixer(c);
+            auto allAudible = true;
+            for (int i = 0; i < 4; ++i) if (allSoloed.dry(i) < 1.0e-6) allAudible = false;
+            mixCheck("all channels soloed -> all dry audible", allAudible, "");
+
+            c = MixerConfig();
+            for (int i = 0; i < 4; ++i) { c.level[i] = 1.0f; c.send[i] = 0.0f; c.pan[i] = -1.0f; }
+            const auto allLeft = measureMixer(c);
+            mixCheck("all sources hard left -> right channel silent",
+                     allLeft.masterL > 1.0e-5 && allLeft.masterR < 1.0e-6,
+                     juce::String("L=") + fmt(allLeft.masterL) + " R=" + fmt(allLeft.masterR));
+
+            for (int i = 0; i < 4; ++i) c.pan[i] = 1.0f;
+            const auto allRight = measureMixer(c);
+            mixCheck("all sources hard right -> left channel silent",
+                     allRight.masterR > 1.0e-5 && allRight.masterL < 1.0e-6,
+                     juce::String("L=") + fmt(allRight.masterL) + " R=" + fmt(allRight.masterR));
+
+            c = MixerConfig();
+            for (int i = 0; i < 4; ++i) { c.level[i] = 1.0f; c.send[i] = 0.0f; }
+            const auto noSends = measureMixer(c);
+            mixCheck("no channel sending -> FX return silent",
+                     noSends.fxL < 1.0e-7 && noSends.fxR < 1.0e-7,
+                     juce::String("fxL=") + fmt(noSends.fxL));
+        }
+
+        // ---- cross-channel contamination ---------------------------------
+        std::printf("\n  [13][27] CROSS-CHANNEL CONTAMINATION\n");
+        {
+            auto reference = MixerConfig();
+            for (int i = 0; i < 4; ++i) { reference.level[i] = 1.0f; reference.send[i] = 0.4f; reference.pan[i] = 0.0f; }
+            const auto base = measureMixer(reference);
+
+            for (int ch = 0; ch < 4; ++ch)
+            {
+                struct Change { const char* what; };
+                for (int variant = 0; variant < 5; ++variant)
+                {
+                    auto c = reference;
+                    const char* what = "";
+                    switch (variant)
+                    {
+                        case 0: c.level[ch] = 0.25f; what = "gain"; break;
+                        case 1: c.pan[ch] = -0.8f;  what = "pan";  break;
+                        case 2: c.mute[ch] = true;  what = "mute"; break;
+                        case 3: c.solo[ch] = true;  what = "solo"; break;
+                        case 4: c.send[ch] = 1.0f;  what = "send"; break;
+                        default: break;
+                    }
+                    const auto m = measureMixer(c);
+                    auto ok = true;
+                    juce::String detail;
+                    for (int other = 0; other < 4; ++other)
+                    {
+                        if (other == ch) continue;
+                        // solo legitimately changes every other channel; all others must not.
+                        if (variant == 3) continue;
+                        if (!nearlyEqual(base.dry(other), m.dry(other))
+                            || !nearlyEqual(base.send(other), m.send(other)))
+                        {
+                            ok = false;
+                            detail << kMixerNames[other] << " dry " << fmt(base.dry(other)) << "->" << fmt(m.dry(other))
+                                   << " send " << fmt(base.send(other)) << "->" << fmt(m.send(other)) << "  ";
+                        }
+                    }
+                    mixCheck((juce::String(kMixerNames[ch]) + " " + what + " leaves all other channels bit-stable").toRawUTF8(),
+                             ok, detail);
+                }
+            }
+        }
+
+
+        // ---- dynamic control changes while audio runs -------------------
+        std::printf("\n  [18][19] DYNAMIC + RAPID CONTROL CHANGES DURING AUDIO\n");
+        {
+            // Continuous controls must not step (a staircase means block-rate
+            // stepping). Gates legitimately ramp over their fade time, so they
+            // are judged on the transient/corner metric only.
+            struct Dyn { const char* label; const char* id; float from; float to; int togglesPerSec; bool isGate; };
+            const Dyn dyn[] = {
+                { "osc1 fader swept",      "mix.osc1.level",  0.0f, 1.0f, 0,  false },
+                { "osc1 pan swept",        "mix.osc1.pan",   -1.0f, 1.0f, 0,  false },
+                { "osc1 send swept",       "mix.osc1.fxSend", 0.0f, 1.0f, 0,  false },
+                { "fx send gain swept",    "fxSendGain",      0.0f, 1.0f, 0,  false },
+                { "fx return gain swept",  "fxReturnGain",    0.0f, 1.0f, 0,  false },
+                { "fx return pan swept",   "mix.fx.pan",     -1.0f, 1.0f, 0,  false },
+                { "osc1 mute toggled 20/s","mix.osc1.mute",   0.0f, 1.0f, 20, true },
+                { "osc1 solo toggled 20/s","mix.osc1.solo",   0.0f, 1.0f, 20, true },
+                { "osc2 mute toggled 40/s","mix.osc2.mute",   0.0f, 1.0f, 40, true },
+                { "fx mute toggled 20/s",  "mix.fx.mute",     0.0f, 1.0f, 20, true },
+                { "fx solo toggled 20/s",  "mix.fx.solo",     0.0f, 1.0f, 20, true },
+            };
+            for (const auto& d : dyn)
+            {
+                const auto r = measureMixerDynamics(d.id, d.from, d.to, d.togglesPerSec, true, false);
+                const auto worstStep = std::max(r.maxDryGainStep, r.maxSendGainStep);
+                const auto ok = r.transient < 12.0 && (d.isGate || worstStep < 0.001);
+                mixCheck((juce::String(d.label) + " is click-free").toRawUTF8(), ok,
+                         juce::String("gainStep=") + fmt(worstStep) + " transient=" + juce::String(r.transient, 1));
+            }
+        }
+
+        // ---- silent channels and buffer reuse ---------------------------
+        std::printf("\n  [20][21] SILENT CHANNELS AND BUFFER CLEARING\n");
+        {
+            const auto noAudio = measureMixerDynamics("mix.osc1.level", 0.0f, 1.0f, 0, false, false);
+            mixCheck("no note playing: mixer moves produce no audio at all",
+                     noAudio.activePeak == 0.0 && noAudio.silentPeriodPeak == 0.0,
+                     juce::String("peak=") + fmt(noAudio.activePeak));
+
+            const auto panNoAudio = measureMixerDynamics("mix.osc1.pan", -1.0f, 1.0f, 0, false, false);
+            mixCheck("no note playing: pan moves produce no audio at all",
+                     panNoAudio.activePeak == 0.0, juce::String("peak=") + fmt(panNoAudio.activePeak));
+
+            const auto muteNoAudio = measureMixerDynamics("mix.osc1.mute", 0.0f, 1.0f, 20, false, false);
+            mixCheck("no note playing: mute toggling produces no audio at all",
+                     muteNoAudio.activePeak == 0.0, juce::String("peak=") + fmt(muteNoAudio.activePeak));
+
+            const auto gap = measureMixerDynamics("mix.osc1.pan", -1.0f, 1.0f, 0, true, true);
+            mixCheck("audio -> silence -> audio leaves no stale buffer content",
+                     gap.silentPeriodPeak == 0.0 && gap.activePeak > 1.0e-3,
+                     juce::String("gap peak=") + fmt(gap.silentPeriodPeak) + " active peak=" + fmt(gap.activePeak));
+        }
+
+
+        // ---- meters -----------------------------------------------------
+        std::printf("\n  [22] METERS - each channel meter reads its own channel\n");
+        {
+            auto meterRead = [](int soloChannel, float level)
+            {
+                px3::diag::resetNoteStartSequence();
+                PX3SynthAudioProcessor processor;
+                setParameter(processor, "ampAttack", 0.005f);
+                setParameter(processor, "ampSustain", 1.0f);
+                setParameter(processor, "ampRelease", 0.2f);
+                setParameter(processor, "delayEnabled", 0.0f);
+                setParameter(processor, "moodEnabled", 0.0f);
+                setParameter(processor, "reverbEnabled", 0.0f);
+                setParameter(processor, "masterGain", 0.6f);
+                setParameter(processor, "subOscEnabled", 1.0f);
+                for (int i = 0; i < 3; ++i)
+                {
+                    const auto slot = juce::String(i + 1);
+                    setParameter(processor, "osc" + slot + "Enabled", 1.0f);
+                    if (auto* m = findParameter(processor, "osc" + slot + "Mode")) m->setValueNotifyingHost(0.0f);
+                }
+                for (int i = 0; i < 4; ++i)
+                {
+                    setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".level", level);
+                    setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".fxSend", 0.0f);
+                    setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".mute",
+                                 (soloChannel >= 0 && i != soloChannel) ? 1.0f : 0.0f);
+                }
+                processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                processor.prepareToPlay(kSampleRate, kBlockSize);
+
+                juce::AudioBuffer<float> buffer(2, kBlockSize);
+                auto delivered = false;
+                const auto noteOn = static_cast<int>(0.05 * kSampleRate);
+                for (int position = 0; position < static_cast<int>(1.0 * kSampleRate); position += kBlockSize)
+                {
+                    buffer.clear();
+                    juce::MidiBuffer midi;
+                    if (!delivered && position + kBlockSize > noteOn)
+                    {
+                        midi.addEvent(juce::MidiMessage::noteOn(1, 57, 0.9f), juce::jmax(0, noteOn - position));
+                        delivered = true;
+                    }
+                    processor.processBlock(buffer, midi);
+                }
+                std::array<float, 4> meters { };
+                for (int i = 0; i < 4; ++i) meters[static_cast<std::size_t>(i)] = processor.debugGetMixerSourceRms(i);
+                return meters;
+            };
+
+            for (int ch = 0; ch < 4; ++ch)
+            {
+                const auto meters = meterRead(ch, 1.0f);
+                auto ok = meters[static_cast<std::size_t>(ch)] > 1.0e-5f;
+                juce::String detail;
+                for (int i = 0; i < 4; ++i)
+                {
+                    if (i != ch && meters[static_cast<std::size_t>(i)] > 1.0e-7f) ok = false;
+                    detail << kMixerNames[i] << "=" << fmt(meters[static_cast<std::size_t>(i)]) << " ";
+                }
+                mixCheck((juce::String("only ") + kMixerNames[ch] + " audible -> only its meter moves").toRawUTF8(),
+                         ok, detail);
+            }
+
+            const auto full = meterRead(-1, 1.0f);
+            const auto half = meterRead(-1, 0.5f);
+            auto postFader = true;
+            for (int i = 0; i < 4; ++i)
+            {
+                const auto ratio = full[static_cast<std::size_t>(i)] > 1.0e-9f
+                                       ? half[static_cast<std::size_t>(i)] / full[static_cast<std::size_t>(i)] : -1.0f;
+                if (!nearlyEqual(ratio, 0.5, 0.03)) postFader = false;
+            }
+            mixCheck("channel meters are post-fader (halve with the fader)", postFader, "");
+        }
+
+        // ---- long release and maximum polyphony ---------------------------
+        std::printf("\n  [26] LONG RELEASE TAILS AND MAXIMUM POLYPHONY\n");
+        {
+            auto stress = [](const juce::String& paramId, float from, float to, bool manyNotes, float release)
+            {
+                px3::diag::resetNoteStartSequence();
+                PX3SynthAudioProcessor processor;
+                setParameter(processor, "ampAttack", 0.005f);
+                setParameter(processor, "ampSustain", 0.8f);
+                setParameter(processor, "ampRelease", release);
+                setParameter(processor, "delayEnabled", 0.0f);
+                setParameter(processor, "moodEnabled", 0.0f);
+                setParameter(processor, "reverbEnabled", 0.0f);
+                setParameter(processor, "masterGain", 0.6f);
+                setParameter(processor, "subOscEnabled", 0.0f);
+                for (int i = 0; i < 3; ++i)
+                {
+                    const auto slot = juce::String(i + 1);
+                    setParameter(processor, "osc" + slot + "Enabled", i == 0 ? 1.0f : 0.0f);
+                    if (auto* m = findParameter(processor, "osc" + slot + "Mode")) m->setValueNotifyingHost(0.0f);
+                }
+                setParameter(processor, paramId, from);
+                processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                processor.prepareToPlay(kSampleRate, kBlockSize);
+
+                auto& d = px3::diag::state();
+                d.resetResults();
+                d.resetModes();
+                d.capturing = true;
+
+                const auto totalSamples = static_cast<int>(4.0 * kSampleRate);
+                juce::AudioBuffer<float> buffer(2, kBlockSize);
+                int nextNote = static_cast<int>(0.05 * kSampleRate);
+                int noteIndex = 0;
+                for (int position = 0; position < totalSamples; position += kBlockSize)
+                {
+                    const auto through = juce::jlimit(0.0, 1.0, position / static_cast<double>(totalSamples));
+                    const auto shaped = through < 0.5 ? through * 2.0 : (1.0 - through) * 2.0;
+                    setParameter(processor, paramId, from + (to - from) * static_cast<float>(shaped));
+
+                    buffer.clear();
+                    juce::MidiBuffer midi;
+                    if (manyNotes)
+                    {
+                        while (nextNote < position + kBlockSize && noteIndex < 48)
+                        {
+                            midi.addEvent(juce::MidiMessage::noteOn(1, 45 + (noteIndex * 5) % 36, 0.85f),
+                                          juce::jmax(0, nextNote - position));
+                            midi.addEvent(juce::MidiMessage::noteOff(1, 45 + (noteIndex * 5) % 36),
+                                          juce::jmax(0, juce::jmin(kBlockSize - 1, nextNote - position + 1200)));
+                            nextNote += static_cast<int>(0.05 * kSampleRate);
+                            ++noteIndex;
+                        }
+                    }
+                    else if (noteIndex == 0 && position + kBlockSize > nextNote)
+                    {
+                        midi.addEvent(juce::MidiMessage::noteOn(1, 57, 0.9f), juce::jmax(0, nextNote - position));
+                        midi.addEvent(juce::MidiMessage::noteOff(1, 57), kBlockSize - 1);
+                        ++noteIndex;
+                    }
+                    processor.processBlock(buffer, midi);
+                }
+                d.capturing = false;
+                return std::make_pair(static_cast<double>(std::max(d.maxMixerDryGainStep, d.maxMixerSendGainStep)),
+                                      static_cast<double>(d.maxQuietTransientRatio));
+            };
+
+            const auto longRelease = stress("mix.osc1.pan", -1.0f, 1.0f, false, 3.0f);
+            mixCheck("pan swept across a 3 s release tail stays clean",
+                     longRelease.first < 0.001 && longRelease.second < 12.0,
+                     juce::String("step=") + fmt(longRelease.first) + " transient="
+                         + juce::String(longRelease.second, 1));
+
+            const auto polyLevel = stress("mix.osc1.level", 0.0f, 1.0f, true, 2.5f);
+            mixCheck("fader swept at maximum polyphony stays clean",
+                     polyLevel.first < 0.001 && polyLevel.second < 12.0,
+                     juce::String("step=") + fmt(polyLevel.first) + " transient="
+                         + juce::String(polyLevel.second, 1));
+
+            const auto polySend = stress("mix.osc1.fxSend", 0.0f, 1.0f, true, 2.5f);
+            mixCheck("send swept at maximum polyphony stays clean",
+                     polySend.first < 0.001 && polySend.second < 12.0,
+                     juce::String("step=") + fmt(polySend.first) + " transient="
+                         + juce::String(polySend.second, 1));
+        }
+
+        std::printf("\n  %d passed, %d failed\n", gMixPass, gMixFail);
+        return gMixFail;
+    }
+    else if (arg == "mixermatrix-legacy")
+    {
+        // Reproduces the post-pan FX send, to prove the matrix detects it.
+        gLegacyPostPanSend = true;
+        gMixPass = 0;
+        gMixFail = 0;
+        std::printf("\nMIXER MATRIX with the post-pan FX send reintroduced\n");
+        for (int ch = 0; ch < 4; ++ch)
+        {
+            auto atPan = [&](float pan)
+            {
+                MixerConfig c;
+                for (int i = 0; i < 4; ++i) { c.level[i] = 1.0f; c.send[i] = 0.0f; }
+                c.send[ch] = 1.0f;
+                c.pan[ch] = pan;
+                return measureMixer(c);
+            };
+            const auto centre = atPan(0.0f);
+            const auto left = atPan(-1.0f);
+            const auto right = atPan(1.0f);
+            const auto stable = nearlyEqual(centre.sendL[ch], left.sendL[ch], 0.02)
+                                && nearlyEqual(centre.sendR[ch], right.sendR[ch], 0.02)
+                                && nearlyEqual(centre.sendL[ch], right.sendL[ch], 0.02);
+            mixCheck((juce::String(kMixerNames[ch]) + " dry pan does NOT move its FX send").toRawUTF8(),
+                     stable,
+                     juce::String("sendL c/l/r=") + fmt(centre.sendL[ch]) + "/" + fmt(left.sendL[ch])
+                         + "/" + fmt(right.sendL[ch]));
+        }
+        std::printf("\n  %d passed, %d failed\n", gMixPass, gMixFail);
+        return gMixFail;
     }
     else if (arg == "ceiling")
     {

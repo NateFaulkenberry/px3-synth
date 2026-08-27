@@ -36,3 +36,38 @@ private:
     float current { 0.0f };
     float coefficient { 1.0f };
 };
+
+// Mute/solo gate.
+//
+// A gate has to reach exactly 0 and exactly 1 - a mute must be silent, not
+// asymptotically quiet - so it advances a linear phase and shapes it with
+// smoothstep. That lands at both ends with zero slope, unlike a linear ramp,
+// which stops dead on arrival and leaves a corner in the gain that ticks on
+// material with no harmonics of its own to mask it.
+struct SmoothedGate
+{
+    void prepare(double sampleRate, double fadeSeconds)
+    {
+        const auto samples = juce::jmax(1.0, fadeSeconds * juce::jmax(1.0, sampleRate));
+        phaseStep = 1.0f / static_cast<float>(samples);
+    }
+
+    void setCurrent(bool open) noexcept
+    {
+        targetOpen = open;
+        phase = open ? 1.0f : 0.0f;
+    }
+
+    void setTarget(bool open) noexcept { targetOpen = open; }
+
+    float next() noexcept
+    {
+        phase = juce::jlimit(0.0f, 1.0f, phase + (targetOpen ? phaseStep : -phaseStep));
+        return phase * phase * (3.0f - 2.0f * phase);
+    }
+
+private:
+    float phase { 1.0f };
+    float phaseStep { 1.0f };
+    bool targetOpen { true };
+};

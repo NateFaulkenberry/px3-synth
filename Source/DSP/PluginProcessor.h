@@ -530,9 +530,9 @@ private:
     juce::AudioBuffer<float> dryBusBuffer;
     juce::AudioBuffer<float> fxBusBuffer;
     juce::AudioBuffer<float> masterBusBuffer;
-    std::array<juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear>, kMixerSourceCount> sourceDryGateSmoothers;
-    std::array<juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear>, kMixerSourceCount> sourceSendGateSmoothers;
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> fxReturnGateSmoother;
+    std::array<SmoothedGate, kMixerSourceCount> sourceDryGateSmoothers;
+    std::array<SmoothedGate, kMixerSourceCount> sourceSendGateSmoothers;
+    SmoothedGate fxReturnGateSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> fxReturnPanSmoother;
     // Mixer faders, pans and sends are user-facing gains applied per sample, so
     // they are smoothed per sample rather than stepped once per block.

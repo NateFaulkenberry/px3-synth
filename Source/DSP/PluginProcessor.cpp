@@ -31,6 +31,10 @@ constexpr float kDefaultChannelHeadroomDb = -4.0f;
 // instrument is louder without moving the user-facing master gain default.
 constexpr float kOutputBoostDb = 6.0f;
 
+// Pan-law gain at centre. The FX send is taken pre-pan and placed centrally, so
+// this is the fixed per-side gain it uses.
+const float kSendCentreGain = std::cos(juce::MathConstants<float>::pi * 0.25f);
+
 // Constant-power pan law, shared by the audio path and by smoother initialisation.
 void panToGainsStatic(float pan, float& leftGain, float& rightGain)
 {
@@ -591,14 +595,19 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     {
         auto& dryGate = sourceDryGateSmoothers[static_cast<std::size_t>(i)];
         auto& sendGate = sourceSendGateSmoothers[static_cast<std::size_t>(i)];
-        dryGate.reset(sampleRate, 0.010);
-        sendGate.reset(sampleRate, 0.010);
-        dryGate.setCurrentAndTargetValue(1.0f);
-        sendGate.setCurrentAndTargetValue(1.0f);
+        dryGate.prepare(sampleRate, 0.010);
+        sendGate.prepare(sampleRate, 0.010);
+        dryGate.setCurrent(sourceDryAudible(i, anyChannelSoloed()));
+        sendGate.setCurrent(sourceSendAudible(i,
+                                              anyChannelSoloed(),
+                                              anySourceSoloed(),
+                                              fxReturnSoloParam != nullptr && fxReturnSoloParam->get()));
     }
 
-    fxReturnGateSmoother.reset(sampleRate, 0.010);
-    fxReturnGateSmoother.setCurrentAndTargetValue(1.0f);
+    fxReturnGateSmoother.prepare(sampleRate, 0.010);
+    fxReturnGateSmoother.setCurrent(fxReturnAudible(anyChannelSoloed(),
+                                                    anySourceSoloed(),
+                                                    fxReturnSoloParam != nullptr && fxReturnSoloParam->get()));
 
     // Fader/pan/send smoothing. Long enough to kill the block-rate staircase,
     // short enough that a fader still feels immediate.
@@ -1298,11 +1307,11 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
     {
-        sourceDryGateSmoothers[static_cast<std::size_t>(sourceIndex)].setTargetValue(sourceDryAudible(sourceIndex, anySolo) ? 1.0f : 0.0f);
-        sourceSendGateSmoothers[static_cast<std::size_t>(sourceIndex)].setTargetValue(
-            sourceSendAudible(sourceIndex, anySolo, anySourceSolo, fxSolo) ? 1.0f : 0.0f);
+        sourceDryGateSmoothers[static_cast<std::size_t>(sourceIndex)].setTarget(sourceDryAudible(sourceIndex, anySolo));
+        sourceSendGateSmoothers[static_cast<std::size_t>(sourceIndex)].setTarget(
+            sourceSendAudible(sourceIndex, anySolo, anySourceSolo, fxSolo));
     }
-    fxReturnGateSmoother.setTargetValue(fxReturnAudible(anySolo, anySourceSolo, fxSolo) ? 1.0f : 0.0f);
+    fxReturnGateSmoother.setTarget(fxReturnAudible(anySolo, anySourceSolo, fxSolo));
 
     auto panToGains = [](float pan, float& leftGain, float& rightGain)
     {
@@ -1356,11 +1365,23 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         float fxInL = 0.0f;
         float fxInR = 0.0f;
 
+        // Master FX send trim is one shared control, so its smoother must be
+        // advanced exactly once per sample. Advancing it inside the per-source
+        // loop stepped it four times per sample and handed each source a
+        // different value, which is shared mutable state between channels.
+        auto masterSendTrim = fxSendGainSmoother.next(fxSendGain);
+#if PX3_DIAGNOSTICS
+        if (diagState.legacyUnsmoothedMixer)
+        {
+            masterSendTrim = fxSendGain;
+        }
+#endif
+
         for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
         {
             const auto sampleValue = oscillatorBusBuffer.getSample(sourceIndex, sample);
-            const auto dryGate = sourceDryGateSmoothers[static_cast<std::size_t>(sourceIndex)].getNextValue();
-            const auto sendGate = sourceSendGateSmoothers[static_cast<std::size_t>(sourceIndex)].getNextValue();
+            const auto dryGate = sourceDryGateSmoothers[static_cast<std::size_t>(sourceIndex)].next();
+            const auto sendGate = sourceSendGateSmoothers[static_cast<std::size_t>(sourceIndex)].next();
             const auto idxSource = static_cast<std::size_t>(sourceIndex);
             auto panL = sourcePanLeftSmoothers[idxSource].next(sourcePanLeft[idxSource]);
             auto panR = sourcePanRightSmoothers[idxSource].next(sourcePanRight[idxSource]);
@@ -1379,16 +1400,29 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             dryL += sourceDryL;
             dryR += sourceDryR;
 
-            auto sendGain = sourceSendSmoothers[idxSource].next(sourceSendValues[idxSource])
-                            * fxSendGainSmoother.next(fxSendGain);
+            auto sendGain = sourceSendSmoothers[idxSource].next(sourceSendValues[idxSource]) * masterSendTrim;
 #if PX3_DIAGNOSTICS
             if (diagState.legacyUnsmoothedMixer)
             {
                 sendGain = sourceSendValues[idxSource] * fxSendGain;
             }
 #endif
-            fxInL += sampleValue * panL * sendGain * sendGate;
-            fxInR += sampleValue * panR * sendGain * sendGate;
+            // The FX send is an independent, centred contribution to the FX bus.
+            // It deliberately does NOT use panL/panR: a source's dry pan places
+            // its dry signal only, and must not steer that source's send. The
+            // centre pan-law gain keeps the send level identical to what a
+            // centred source produced before.
+#if PX3_DIAGNOSTICS
+            const auto sendPanL = diagState.legacyPostPanSend ? panL : kSendCentreGain;
+            const auto sendPanR = diagState.legacyPostPanSend ? panR : kSendCentreGain;
+#else
+            const auto sendPanL = kSendCentreGain;
+            const auto sendPanR = kSendCentreGain;
+#endif
+            const auto sendContributionL = sampleValue * sendPanL * sendGain * sendGate;
+            const auto sendContributionR = sampleValue * sendPanR * sendGain * sendGate;
+            fxInL += sendContributionL;
+            fxInR += sendContributionR;
 
             mixerSourceEnergy[static_cast<std::size_t>(sourceIndex)] += static_cast<double>(sourceDryL) * static_cast<double>(sourceDryL)
                                                                          + static_cast<double>(sourceDryR) * static_cast<double>(sourceDryR);
@@ -1396,9 +1430,20 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 #if PX3_DIAGNOSTICS
             if (diagState.capturing)
             {
+                const auto di = static_cast<std::size_t>(sourceIndex);
+                diagState.sourceDryEnergyL[di] += static_cast<double>(sourceDryL) * static_cast<double>(sourceDryL);
+                diagState.sourceDryEnergyR[di] += static_cast<double>(sourceDryR) * static_cast<double>(sourceDryR);
+                diagState.sourceSendEnergyL[di] += static_cast<double>(sendContributionL) * static_cast<double>(sendContributionL);
+                diagState.sourceSendEnergyR[di] += static_cast<double>(sendContributionR) * static_cast<double>(sendContributionR);
+            }
+#endif
+
+#if PX3_DIAGNOSTICS
+            if (diagState.capturing)
+            {
                 const auto idx = static_cast<std::size_t>(sourceIndex);
                 const auto dryGain = sourceLevel * panL * dryGate;
-                const auto sendGainNow = sendGain * panL * sendGate;
+                const auto sendGainNow = sendGain * sendPanL * sendGate;
                 if (diagState.hasPrevMixerGain)
                 {
                     diagState.maxMixerDryGainStep =
@@ -1448,7 +1493,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
 
         // FX BUS: net FX return relative to dry path.
-        const auto fxReturnGate = fxReturnGateSmoother.getNextValue();
+        const auto fxReturnGate = fxReturnGateSmoother.next();
         float fxPanLeft = 1.0f;
         float fxPanRight = 1.0f;
         panToGains(fxReturnPanSmoother.getNextValue(), fxPanLeft, fxPanRight);
@@ -1478,6 +1523,19 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         const auto fxR = (stageR - fxInR) * smoothedFxReturnGain * fxPanRight * fxReturnGate;
         fxReturnEnergy += static_cast<double>(fxL) * static_cast<double>(fxL)
                   + static_cast<double>(fxR) * static_cast<double>(fxR);
+
+#if PX3_DIAGNOSTICS
+        if (diagState.capturing)
+        {
+            diagState.fxReturnEnergyL += static_cast<double>(fxL) * static_cast<double>(fxL);
+            diagState.fxReturnEnergyR += static_cast<double>(fxR) * static_cast<double>(fxR);
+            const auto mL = dryL + fxL;
+            const auto mR = dryR + fxR;
+            diagState.masterEnergyL += static_cast<double>(mL) * static_cast<double>(mL);
+            diagState.masterEnergyR += static_cast<double>(mR) * static_cast<double>(mR);
+            ++diagState.mixerSampleCount;
+        }
+#endif
         fxBusBuffer.setSample(0, sample, fxL);
         if (outputChannels > 1)
         {

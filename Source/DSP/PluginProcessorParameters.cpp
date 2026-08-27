@@ -514,11 +514,9 @@ bool PX3SynthAudioProcessor::fxReturnAudible(bool anySolo, bool anySourceSolo, b
         return true;
     }
 
-    if (anySourceSolo)
-    {
-        return fxSolo;
-    }
-
+    // Once anything is soloed the FX return is audible only if the FX channel
+    // itself is soloed. This does not depend on whether a source is also soloed.
+    juce::ignoreUnused(anySourceSolo);
     return fxSolo;
 }
 

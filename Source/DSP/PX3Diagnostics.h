@@ -75,6 +75,7 @@ struct State
     bool legacyUnsmoothedMixer { false };      // control: mixer/master gains applied per block, unsmoothed
     bool disableOutputBoost { false };         // control: removes the fixed output boost
     bool disableOutputCeiling { false };       // control: removes the output ceiling
+    bool legacyPostPanSend { false };          // control: FX send follows the source's dry pan
     bool disableOnsetGuard { false };
     bool disableReleaseTailFilter { false };
     bool freezeVibeReleaseSwitch { false }; // keep held-note vibe path during release
@@ -188,6 +189,24 @@ struct State
     float prevFxReturnGain { 0.0f };
     float maxMasterGainStep { 0.0f };
     float maxSourceNormalisationStep { 0.0f };
+
+    // ---- mixer observability -------------------------------------------
+    // Energy accumulated at each mixer tap, per channel and per side, so every
+    // routing question can be answered by measurement rather than inspection.
+    double sourceDryEnergyL[4] { };   // post level, pan, dry gate
+    double sourceDryEnergyR[4] { };
+    double sourceSendEnergyL[4] { };  // post send level, send gate, pre-FX
+    double sourceSendEnergyR[4] { };
+    double fxReturnEnergyL { 0.0 };   // post FX processing, return gain/pan/gate
+    double fxReturnEnergyR { 0.0 };
+    double masterEnergyL { 0.0 };
+    double masterEnergyR { 0.0 };
+    long long mixerSampleCount { 0 };
+
+    double rmsOf(double energy) const
+    {
+        return mixerSampleCount > 0 ? std::sqrt(energy / static_cast<double>(mixerSampleCount)) : 0.0;
+    }
     float maxQuietTransientRatio { 0.0f };
     int quietTransientEvents { 0 };
     long long worstQuietTransientSample { -1 };
@@ -257,6 +276,14 @@ struct State
         prevFxReturnGain = 0.0f;
         maxMasterGainStep = 0.0f;
         maxSourceNormalisationStep = 0.0f;
+        for (int i = 0; i < 4; ++i)
+        {
+            sourceDryEnergyL[i] = sourceDryEnergyR[i] = 0.0;
+            sourceSendEnergyL[i] = sourceSendEnergyR[i] = 0.0;
+        }
+        fxReturnEnergyL = fxReturnEnergyR = 0.0;
+        masterEnergyL = masterEnergyR = 0.0;
+        mixerSampleCount = 0;
         maxQuietTransientRatio = 0.0f;
         quietTransientEvents = 0;
         worstQuietTransientSample = -1;
@@ -300,6 +327,7 @@ struct State
         legacyUnsmoothedMixer = false;
         disableOutputBoost = false;
         disableOutputCeiling = false;
+        legacyPostPanSend = false;
         disableOnsetGuard = false;
         disableReleaseTailFilter = false;
         freezeVibeReleaseSwitch = false;
