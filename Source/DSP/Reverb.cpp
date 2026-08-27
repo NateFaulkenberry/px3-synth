@@ -111,7 +111,13 @@ void ::Reverb::reset()
     wetDcY1 = { { 0.0f, 0.0f } };
     wetSlewState = { { 0.0f, 0.0f } };
 
-    const auto maxPreDelaySamples = juce::jmax(8, static_cast<int>(std::round(sampleRateHz * 0.30)));
+    // Must hold the LONGEST delay processCore can ask for, which is
+    // 1.0 + preDelay * sampleRate * 0.30 at preDelay = 1, plus room for the
+    // interpolator's second tap. Sized at exactly sampleRate * 0.30 the request
+    // overran the line by one sample at the top of the range, and readLine
+    // wraps rather than clamps, so maximum pre-delay collapsed to a one-sample
+    // delay - the control read as "off" at both ends of its travel.
+    const auto maxPreDelaySamples = juce::jmax(8, static_cast<int>(std::round(sampleRateHz * 0.30)) + 8);
     for (auto& line : preDelayLines)
     {
         resizeLine(line, maxPreDelaySamples);

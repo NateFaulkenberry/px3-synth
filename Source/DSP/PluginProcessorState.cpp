@@ -3,6 +3,8 @@
 #include "LfoMode.h"
 #include "SubOscMode.h"
 
+#include <cmath>
+
 // File role: plugin state serialization/restoration and ValueTree mapping.
 // Preserve IDs and schema compatibility here; avoid mixing runtime DSP updates
 // except where state apply must touch live parameter-backed settings.
@@ -185,7 +187,21 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
             if (state.hasProperty(paramID))
             {
                 const auto value = static_cast<float>(state[paramID]);
-                ranged->setValueNotifyingHost(value);
+
+                // A stored value must be a real number in the normalised range
+                // before it is allowed anywhere near the DSP. NaN cannot be
+                // clamped into range - every comparison against it is false, so
+                // jlimit and the parameter's own clamping both pass it straight
+                // through - and a NaN parameter silences the synth and spreads
+                // through any calculation that reads it. A malformed or
+                // corrupted preset must leave the existing value alone rather
+                // than poison it.
+                if (! std::isfinite(value))
+                {
+                    continue;
+                }
+
+                ranged->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, value));
             }
         }
     }
@@ -344,7 +360,15 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
 
         if (subOscState.hasProperty(kSubOscPitchId) && subOscPitchParam != nullptr)
         {
-            const auto pitch = juce::jlimit(-0.12f, 0.12f, static_cast<float>(subOscState[kSubOscPitchId]));
+            // Clamped to the parameter's own range rather than a literal. This
+            // was hardcoded to +/-0.12 while the parameter spans +/-0.24, so a
+            // saved sub-osc detune beyond half travel was silently pulled back
+            // to half on load - the preset restored a different patch than the
+            // one that was saved. Reading the range from the parameter means a
+            // future range change cannot reintroduce the mismatch.
+            const auto& range = subOscPitchParam->getNormalisableRange();
+            const auto pitch = juce::jlimit(range.start, range.end,
+                                            static_cast<float>(subOscState[kSubOscPitchId]));
             subOscPitchParam->setValueNotifyingHost(subOscPitchParam->convertTo0to1(pitch));
         }
 

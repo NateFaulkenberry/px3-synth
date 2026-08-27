@@ -266,7 +266,6 @@ void OscillatorUnit::resetForNote(double sampleRate, double currentFrequencyHz)
                                              bufferSamples - 2,
                                              static_cast<int>(std::round(safeRate / frequency)))
                               : 8;
-    karplusWriteIndex = 0;
     karplusLastSample = 0.0f;
 
     // Clear the whole delay line before seeding the excitation. Without this a
@@ -281,6 +280,19 @@ void OscillatorUnit::resetForNote(double sampleRate, double currentFrequencyHz)
         const auto n = juce::Random::getSystemRandom().nextFloat() * 2.0f - 1.0f;
         karplusBuffer[static_cast<std::size_t>(i)] = n * 0.5f;
     }
+
+    // Start writing one delay period in, so the read tap - which trails the
+    // write tap by exactly that much - begins on the excitation just seeded.
+    //
+    // Starting both taps at 0 meant the write tap marched across indices
+    // 0..delay-1 overwriting the burst during the very samples the read tap was
+    // still traversing the untouched far end of the buffer. By the time the
+    // read tap reached index 0 the burst was gone, and the only excitation left
+    // was the handful of note-age noise samples renderKarplus adds - roughly a
+    // twentieth of the intended amplitude, which is why KARPLUS was audible
+    // only as a faint click. The buffer is sized for the lowest supported note,
+    // so it is longer than the delay and there is room for both taps.
+    karplusWriteIndex = bufferSamples > 0 ? karplusDelaySamples % bufferSamples : 0;
 
     for (std::size_t i = 0; i < physicalState.size(); ++i)
     {

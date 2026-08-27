@@ -70,6 +70,10 @@ private:
     float slipCapturePos { 0.0f };
 
     int clockHoldSamples { 1 };
+    // The hold length is smoothed here in floating point and only rounded when
+    // it is used. Smoothing it in the integer itself gave the filter a fixed
+    // point at every value it could hold - see processSampleFrame.
+    float clockHoldSmoothed { 1.0f };
     int clockSampleCounter { 0 };
     float clockHeldL { 0.0f };
     float clockHeldR { 0.0f };

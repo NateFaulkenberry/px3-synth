@@ -79,6 +79,7 @@ void Mood::reset()
     slipReadPos = 0.0f;
     slipCapturePos = 0.0f;
     clockHoldSamples = 1;
+    clockHoldSmoothed = 1.0f;
     clockSampleCounter = 0;
     clockHeldL = 0.0f;
     clockHeldR = 0.0f;
@@ -137,6 +138,7 @@ void Mood::updateForBlock(const MoodSettings& settings)
     clockHoldSamples = juce::jlimit(1,
                                     1024,
                                     static_cast<int>(std::round(static_cast<float>(sampleRateHz) / (sampleRateHz * effectiveRate))));
+    clockHoldSmoothed = static_cast<float>(clockHoldSamples);
 }
 
 float Mood::readInterp(const std::vector<float>& line, float pos) const
@@ -459,10 +461,18 @@ void Mood::processSampleFrame(float inL, float inR, float& outL, float& outR)
                                          1024,
                                          static_cast<int>(std::round(static_cast<float>(sampleRateHz)
                                                                      / (sampleRateHz * effectiveRate))));
-    clockHoldSamples = juce::jlimit(1,
-                                    1024,
-                                    static_cast<int>(std::lround(0.92f * static_cast<float>(clockHoldSamples)
-                                                                 + 0.08f * static_cast<float>(targetHold))));
+    // Smoothed as a float, rounded only for use.
+    //
+    // This used to smooth the integer into itself:
+    //     clockHoldSamples = lround(0.92 * clockHoldSamples + 0.08 * targetHold)
+    // The whole reachable range of targetHold is 1..4, so the 8% step was never
+    // as much as half a sample and lround always returned the value it started
+    // from - the filter had a fixed point at every integer, and the hold length
+    // stayed at whatever reset() left it at for the lifetime of the processor.
+    // Both controls that feed it, CLOCK and DEGRADE, therefore had no audible
+    // effect at all.
+    clockHoldSmoothed += 0.08f * (static_cast<float>(targetHold) - clockHoldSmoothed);
+    clockHoldSamples = juce::jlimit(1, 1024, static_cast<int>(std::lround(clockHoldSmoothed)));
 
     // Always-listening behavior: circular history keeps running unless frozen.
     if (!currentSettings.freeze)
