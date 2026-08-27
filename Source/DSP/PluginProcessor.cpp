@@ -581,6 +581,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
 
     polyphonyGainSmoother.reset(sampleRate, 0.035);
     polyphonyGainSmoother.setCurrentAndTargetValue(1.0f);
+    polyphonyGainHold = 1.0f;
 
     const auto ampEnvelope = currentAmpEnvelopeSettings();
     const auto ampEnvelopeEnabled = ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true;
@@ -979,8 +980,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     constexpr float kNearSilentReleaseThreshold = 1.0e-4f;
     constexpr float kPolyphonyReferenceVoices = 0.50f;
     constexpr float kPolyphonyGainFloor = 0.10f;
-    constexpr float kReleasingVoiceBaseWeight = 0.35f;
-    constexpr float kReleaseEnvelopeWeight = 2.20f;
+    // How long the polyphony gain takes to recover once the load drops. This is
+    // deliberately longer than a musical release so a decaying tail cannot lift
+    // its own gain back up while it is still audible.
+    constexpr float kPolyphonyLoadReleaseSeconds = 2.5f;
     constexpr float kEstimatedMasterFromSource = 2.8f;
     constexpr float kAttenuationStartPeak = 0.30f;
     constexpr float kAttenuationFullPeak = 0.85f;
@@ -994,6 +997,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     auto releasingVoiceCount = 0;
     auto nearSilentReleaseVoiceCount = 0;
     auto releasingVoiceEnergyEquivalent = 0.0f;
+    auto activeVoiceEnergyEquivalent = 0.0f;
     auto blockVoicePeak = 0.0f;
     std::array<float, kMixerSourceCount> blockVoiceSourcePeak { { 0.0f, 0.0f, 0.0f, 0.0f } };
     for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
@@ -1005,6 +1009,15 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
 
         ++activeVoiceCount;
+
+        // Load is measured by how much signal each voice is actually
+        // contributing, not by whether its key is still down. Weighting
+        // releasing voices differently made the load jump by 2.5x at note-off
+        // with no change in the audio, which stepped the polyphony gain down
+        // and then swung it back up across the whole release tail.
+        const auto env = juce::jlimit(0.0f, 1.0f, voice->getCurrentAmpEnvelopeValue());
+        activeVoiceEnergyEquivalent += env;
+
         if (voice->isKeyDown())
         {
             ++heldVoiceCount;
@@ -1012,7 +1025,6 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         else
         {
             ++releasingVoiceCount;
-            const auto env = juce::jlimit(0.0f, 1.0f, voice->getCurrentAmpEnvelopeValue());
             releasingVoiceEnergyEquivalent += env;
             if (env <= kNearSilentReleaseThreshold)
             {
@@ -1029,10 +1041,18 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
     }
 
-    const auto effectiveVoiceLoad = juce::jmax(1.0f,
-                                               static_cast<float>(heldVoiceCount)
-                                                   + static_cast<float>(releasingVoiceCount) * kReleasingVoiceBaseWeight
-                                                   + releasingVoiceEnergyEquivalent * kReleaseEnvelopeWeight);
+#if PX3_DIAGNOSTICS
+    const auto legacyPolyphonyLoad = px3::diag::state().legacyPolyphonyLoad;
+    const auto effectiveVoiceLoad =
+        legacyPolyphonyLoad
+            ? juce::jmax(1.0f,
+                         static_cast<float>(heldVoiceCount)
+                             + static_cast<float>(releasingVoiceCount) * 0.35f
+                             + releasingVoiceEnergyEquivalent * 2.20f)
+            : juce::jmax(1.0f, activeVoiceEnergyEquivalent);
+#else
+    const auto effectiveVoiceLoad = juce::jmax(1.0f, activeVoiceEnergyEquivalent);
+#endif
     auto polyphonyGainFromLoad = 1.0f;
     if (effectiveVoiceLoad > kPolyphonyReferenceVoices)
     {
@@ -1059,7 +1079,51 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     {
         polyphonyGainTarget = 1.0f;
     }
-    polyphonyGainSmoother.setTargetValue(polyphonyGainTarget);
+
+    // Attenuate immediately, recover slowly.
+    //
+    // Every input to the target above - the voice load, the predicted peak, and
+    // the tail bypass thresholds - falls as a release tail decays. Following
+    // them upwards re-shapes the AMP ENV release into a swell: measured at up to
+    // 13.6 dB of gain rise across a single 1.25 s tail. Recovery is therefore
+    // slower than any musical release, so the gain is effectively constant for
+    // the lifetime of a tail. Silence is the one moment the gain can move for
+    // free, so it resets there rather than holding attenuation into the next note.
+#if PX3_DIAGNOSTICS
+    if (legacyPolyphonyLoad)
+    {
+        polyphonyGainHold = polyphonyGainTarget;
+    }
+    else
+#endif
+    if (activeVoiceCount == 0)
+    {
+        polyphonyGainHold = polyphonyGainTarget;
+    }
+    else if (polyphonyGainTarget < polyphonyGainHold)
+    {
+        polyphonyGainHold = polyphonyGainTarget;
+    }
+    else
+    {
+        const auto recoveryPerBlock = 1.0f
+                                      - std::exp(-static_cast<float>(blockSamples)
+                                                 / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)
+                                                                      * kPolyphonyLoadReleaseSeconds));
+        polyphonyGainHold += (polyphonyGainTarget - polyphonyGainHold) * recoveryPerBlock;
+    }
+
+#if PX3_DIAGNOSTICS
+    {
+        auto& d = px3::diag::state();
+        d.blockLoad = effectiveVoiceLoad;
+        d.blockPrePolyPeak = prePolyPeak;
+        d.blockOverloadBlend = overloadBlend;
+        d.blockGainTarget = polyphonyGainTarget;
+    }
+#endif
+
+    polyphonyGainSmoother.setTargetValue(polyphonyGainHold);
 
 #if PX3_DIAGNOSTICS
     auto& diagState = px3::diag::state();
@@ -1082,6 +1146,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
         if (diagState.capturing)
         {
+            diagState.setPolyGainSample(sample, polyGain);
             diagState.maxPolyGainDelta = juce::jmax(diagState.maxPolyGainDelta,
                                                     std::abs(polyGain - diagPrevPolyGain));
             diagState.minPolyGain = juce::jmin(diagState.minPolyGain, polyGain);

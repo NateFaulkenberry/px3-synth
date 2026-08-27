@@ -329,6 +329,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         currentAmpEnvelopeValue = env;
 
 #if PX3_DIAGNOSTICS
+        diag.setEnvSample(startSample + sample, env);
         if (diagHasPrevEnv)
         {
             diag.noteEnvDelta(env - diagPrevEnv);

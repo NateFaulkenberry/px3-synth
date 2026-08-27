@@ -78,6 +78,20 @@ void analyseBlock(const float* postPoly, const float* master, int numSamples)
             }
         }
 
+        if (s.tracing)
+        {
+            for (int stage = 0; stage < stageCount; ++stage)
+            {
+                s.trace[static_cast<std::size_t>(stage)].push_back(current[static_cast<std::size_t>(stage)]);
+            }
+            s.traceEnv.push_back(s.blockEnv[idx]);
+            s.tracePolyGain.push_back(s.blockPolyGain[idx]);
+            s.traceLoad.push_back(s.blockLoad);
+            s.tracePrePolyPeak.push_back(s.blockPrePolyPeak);
+            s.traceOverloadBlend.push_back(s.blockOverloadBlend);
+            s.traceGainTarget.push_back(s.blockGainTarget);
+        }
+
         for (int stage = 0; stage < stageCount; ++stage)
         {
             s.prevSample[static_cast<std::size_t>(stage)] = current[static_cast<std::size_t>(stage)];

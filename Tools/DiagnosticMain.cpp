@@ -12,6 +12,7 @@
 #include "PluginProcessor.h"
 #include "PX3Diagnostics.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -26,6 +27,19 @@ struct ScheduledMidi
     int sampleTime;
     juce::MidiMessage message;
 };
+
+// Events are appended per note (on then off), so the list is not in time order
+// whenever notes overlap. The block loop consumes it sequentially, so it must be
+// sorted or simultaneous notes never reach the same block.
+void sortByTime(std::vector<ScheduledMidi>& events)
+{
+    std::stable_sort(events.begin(),
+                     events.end(),
+                     [](const ScheduledMidi& a, const ScheduledMidi& b)
+                     {
+                         return a.sampleTime < b.sampleTime;
+                     });
+}
 
 juce::RangedAudioParameter* findParameter(juce::AudioProcessor& processor, const juce::String& id)
 {
@@ -131,6 +145,7 @@ std::vector<ScheduledMidi> buildPattern(Pattern pattern, double sampleRate, int&
 
     // Run well past the last release so every tail either completes or is cut.
     totalSamplesOut = static_cast<int>((lastEventSeconds + 3.5) * sampleRate);
+    sortByTime(events);
     return events;
 }
 
@@ -324,6 +339,377 @@ void runMode(const ModeOptions& mode, const PatchOptions& patch)
     }
 
     std::fflush(stdout);
+}
+
+// ---------------------------------------------------------------------------
+// Release-tail shape analysis.
+//
+// "Jagged" is a property of the tail's amplitude envelope, not of single-sample
+// deltas, so this measures the windowed peak envelope in dB and reports how far
+// it departs from a smooth monotonic decay.
+// ---------------------------------------------------------------------------
+
+struct TailReport
+{
+    float releaseSeconds { 0.0f };
+    float timeTo60dB { 0.0f };
+    float timeTo80dB { 0.0f };
+    float audibleTailSeconds { 0.0f }; // time from note-off until -60 dBFS
+    float maxEnvelopeWobbleDb { 0.0f };
+    int envelopeReversals { 0 };
+    float maxDbSlopeJumpPerMs { 0.0f };
+    float terminalDropDb { 0.0f };
+    float peak { 0.0f };
+};
+
+// Windowed peak envelope in dB, one point per millisecond.
+std::vector<float> envelopeDb(const std::vector<float>& signal, int from, int to, int windowSamples)
+{
+    std::vector<float> result;
+    for (int position = from; position + windowSamples <= to; position += windowSamples)
+    {
+        auto peak = 0.0f;
+        for (int n = position; n < position + windowSamples; ++n)
+        {
+            peak = juce::jmax(peak, std::abs(signal[static_cast<std::size_t>(n)]));
+        }
+        result.push_back(peak > 1.0e-9f ? 20.0f * std::log10(peak) : -180.0f);
+    }
+    return result;
+}
+
+TailReport analyseTail(const std::vector<float>& signal, int noteOffSample, double sampleRate)
+{
+    TailReport report;
+    const auto windowSamples = static_cast<int>(sampleRate / 1000.0); // 1 ms
+    const auto total = static_cast<int>(signal.size());
+    const auto db = envelopeDb(signal, noteOffSample, total, windowSamples);
+    if (db.size() < 8)
+    {
+        return report;
+    }
+
+    const auto reference = db[0];
+    report.peak = std::pow(10.0f, reference / 20.0f);
+
+    auto crossed60 = false;
+    auto crossed80 = false;
+    for (std::size_t i = 0; i < db.size(); ++i)
+    {
+        const auto drop = reference - db[i];
+        if (!crossed60 && drop >= 60.0f)
+        {
+            report.timeTo60dB = static_cast<float>(i) / 1000.0f;
+            report.audibleTailSeconds = report.timeTo60dB;
+            crossed60 = true;
+        }
+        if (!crossed80 && drop >= 80.0f)
+        {
+            report.timeTo80dB = static_cast<float>(i) / 1000.0f;
+            crossed80 = true;
+        }
+    }
+
+    // Only judge smoothness over the audible part of the tail (down to -70 dB
+    // relative); below that the envelope is numerically noisy and inaudible.
+    std::size_t last = 0;
+    for (std::size_t i = 0; i < db.size(); ++i)
+    {
+        if (reference - db[i] <= 70.0f)
+        {
+            last = i;
+        }
+    }
+
+    for (std::size_t i = 1; i + 1 <= last; ++i)
+    {
+        // Wobble: how far the envelope rises again after falling.
+        if (db[i] > db[i - 1])
+        {
+            report.maxEnvelopeWobbleDb = juce::jmax(report.maxEnvelopeWobbleDb, db[i] - db[i - 1]);
+            ++report.envelopeReversals;
+        }
+    }
+
+    for (std::size_t i = 2; i + 1 <= last; ++i)
+    {
+        const auto slopeNow = db[i] - db[i - 1];
+        const auto slopeBefore = db[i - 1] - db[i - 2];
+        report.maxDbSlopeJumpPerMs = juce::jmax(report.maxDbSlopeJumpPerMs, std::abs(slopeNow - slopeBefore));
+    }
+
+    // How much level is left in the final 20 ms before the tail ends: a linear
+    // amplitude ramp still has real level right up to the moment it hits zero.
+    if (last > 20)
+    {
+        report.terminalDropDb = db[last - 20] - db[last];
+    }
+
+    return report;
+}
+
+void writeWav(const juce::String& path, const std::vector<float>& signal, double sampleRate)
+{
+    juce::File file(path);
+    file.deleteFile();
+    juce::WavAudioFormat format;
+    std::unique_ptr<juce::FileOutputStream> stream(file.createOutputStream());
+    if (stream == nullptr)
+    {
+        return;
+    }
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        format.createWriterFor(stream.release(), sampleRate, 1, 16, {}, 0));
+    if (writer == nullptr)
+    {
+        return;
+    }
+    juce::AudioBuffer<float> buffer(1, static_cast<int>(signal.size()));
+    for (int n = 0; n < static_cast<int>(signal.size()); ++n)
+    {
+        buffer.setSample(0, n, juce::jlimit(-1.0f, 1.0f, signal[static_cast<std::size_t>(n)]));
+    }
+    writer->writeFromAudioSampleBuffer(buffer, 0, buffer.getNumSamples());
+}
+
+// The gain actually applied to the tail is ampEnv * polyGain. Measuring that
+// directly removes the waveform/chord-beating confound from the envelope shape.
+struct GainReport
+{
+    float polyGainAtNoteOff { 0.0f };
+    float polyGainMin { 0.0f };
+    float polyGainMax { 0.0f };
+    float polyGainSwingDb { 0.0f };
+    float maxRiseDb { 0.0f };       // any rise at all in a decaying tail is wrong
+    float maxSlopeJumpDb { 0.0f };  // per 10 ms, curvature of the decay
+    float terminalDropDb { 0.0f };  // level lost in the final 20 ms
+    float audibleSeconds { 0.0f };  // note-off until applied gain is -60 dB
+};
+
+GainReport analyseAppliedGain(const std::vector<float>& env,
+                              const std::vector<float>& poly,
+                              int noteOffSample,
+                              double sampleRate)
+{
+    GainReport report;
+    const auto step = static_cast<int>(sampleRate / 100.0); // 10 ms
+    const auto total = static_cast<int>(std::min(env.size(), poly.size()));
+
+    std::vector<float> db;
+    for (int n = noteOffSample; n < total; n += step)
+    {
+        const auto index = static_cast<std::size_t>(n);
+        const auto gain = env[index] * poly[index];
+        db.push_back(gain > 1.0e-9f ? 20.0f * std::log10(gain) : -180.0f);
+    }
+    if (db.size() < 6)
+    {
+        return report;
+    }
+
+    report.polyGainAtNoteOff = poly[static_cast<std::size_t>(noteOffSample)];
+    report.polyGainMin = report.polyGainAtNoteOff;
+    report.polyGainMax = report.polyGainAtNoteOff;
+
+    const auto reference = db[0];
+    std::size_t last = 0;
+    for (std::size_t i = 0; i < db.size(); ++i)
+    {
+        if (reference - db[i] <= 60.0f)
+        {
+            last = i;
+        }
+    }
+    report.audibleSeconds = static_cast<float>(last) / 100.0f;
+
+    for (int n = noteOffSample; n < total; n += step)
+    {
+        const auto index = static_cast<std::size_t>(n);
+        if (env[index] <= 1.0e-6f)
+        {
+            break;
+        }
+        report.polyGainMin = std::min(report.polyGainMin, poly[index]);
+        report.polyGainMax = std::max(report.polyGainMax, poly[index]);
+    }
+    if (report.polyGainMin > 1.0e-6f)
+    {
+        report.polyGainSwingDb = 20.0f * std::log10(report.polyGainMax / report.polyGainMin);
+    }
+
+    for (std::size_t i = 1; i <= last; ++i)
+    {
+        report.maxRiseDb = std::max(report.maxRiseDb, db[i] - db[i - 1]);
+    }
+    for (std::size_t i = 2; i <= last; ++i)
+    {
+        const auto slopeNow = db[i] - db[i - 1];
+        const auto slopeBefore = db[i - 1] - db[i - 2];
+        report.maxSlopeJumpDb = std::max(report.maxSlopeJumpDb, std::abs(slopeNow - slopeBefore));
+    }
+    if (last >= 2)
+    {
+        report.terminalDropDb = db[last - 2] - db[last];
+    }
+
+    return report;
+}
+
+struct TailMode
+{
+    const char* name;
+    bool disableReleaseTailFilter;
+    bool fixedPolyGain;
+    bool legacyPolyphonyLoad;
+    bool legacyLinearRelease;
+};
+
+void runTailAnalysis(const PatchOptions& patch,
+                     int voiceCount,
+                     const TailMode& mode,
+                     const juce::String& wavDirectory)
+{
+    PX3SynthAudioProcessor processor;
+    applyPatch(processor, patch);
+    processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+    processor.prepareToPlay(kSampleRate, kBlockSize);
+
+    auto& diag = px3::diag::state();
+    diag.resetResults();
+    diag.resetModes();
+    diag.disableReleaseTailFilter = mode.disableReleaseTailFilter;
+    diag.fixedPolyGain = mode.fixedPolyGain;
+    diag.legacyPolyphonyLoad = mode.legacyPolyphonyLoad;
+    diag.legacyLinearRelease = mode.legacyLinearRelease;
+    diag.capturing = true;
+    diag.tracing = true;
+
+    const auto holdSeconds = 0.6;
+    const auto noteOnSample = static_cast<int>(0.05 * kSampleRate);
+    const auto noteOffSample = static_cast<int>((0.05 + holdSeconds) * kSampleRate);
+    const auto totalSamples = static_cast<int>((0.05 + holdSeconds + patch.release + 1.5) * kSampleRate);
+
+    std::vector<ScheduledMidi> events;
+    for (int v = 0; v < voiceCount; ++v)
+    {
+        const auto note = 57 + v * 4;
+        events.push_back({ noteOnSample, juce::MidiMessage::noteOn(1, note, 0.9f) });
+        events.push_back({ noteOffSample, juce::MidiMessage::noteOff(1, note) });
+    }
+    sortByTime(events);
+
+    juce::AudioBuffer<float> buffer(2, kBlockSize);
+    std::size_t nextEvent = 0;
+    for (int position = 0; position < totalSamples; position += kBlockSize)
+    {
+        buffer.clear();
+        juce::MidiBuffer midi;
+        while (nextEvent < events.size() && events[nextEvent].sampleTime < position + kBlockSize)
+        {
+            midi.addEvent(events[nextEvent].message, juce::jmax(0, events[nextEvent].sampleTime - position));
+            ++nextEvent;
+        }
+        processor.processBlock(buffer, midi);
+    }
+    diag.capturing = false;
+    diag.tracing = false;
+
+    const auto& master = diag.trace[px3::diag::stageMaster];
+    const auto report = analyseTail(master, noteOffSample, kSampleRate);
+    const auto gain = analyseAppliedGain(diag.traceEnv, diag.tracePolyGain, noteOffSample, kSampleRate);
+
+    std::printf("  %-24s %6.3f %6.3f %6.3f %8.2f %8.2f %8.2f %8.2f %8.2f\n",
+                mode.name,
+                static_cast<double>(gain.polyGainAtNoteOff),
+                static_cast<double>(gain.polyGainMin),
+                static_cast<double>(gain.polyGainMax),
+                static_cast<double>(gain.polyGainSwingDb),
+                static_cast<double>(gain.maxRiseDb),
+                static_cast<double>(gain.maxSlopeJumpDb),
+                static_cast<double>(gain.terminalDropDb),
+                static_cast<double>(report.timeTo60dB));
+
+    if (wavDirectory.isNotEmpty())
+    {
+        writeWav(wavDirectory + "/tail_" + juce::String(mode.name).replace(" ", "_") + ".wav",
+                 master,
+                 kSampleRate);
+    }
+}
+
+void printTailCurve(const PatchOptions& patch, int voiceCount, const char* label)
+{
+    PX3SynthAudioProcessor processor;
+    applyPatch(processor, patch);
+    processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+    processor.prepareToPlay(kSampleRate, kBlockSize);
+
+    auto& diag = px3::diag::state();
+    diag.resetResults();
+    diag.resetModes();
+    diag.capturing = true;
+    diag.tracing = true;
+
+    const auto noteOnSample = static_cast<int>(0.05 * kSampleRate);
+    const auto noteOffSample = static_cast<int>(0.65 * kSampleRate);
+    const auto totalSamples = static_cast<int>((0.65 + patch.release + 1.0) * kSampleRate);
+
+    std::vector<ScheduledMidi> events;
+    for (int v = 0; v < voiceCount; ++v)
+    {
+        const auto note = 57 + v * 4;
+        events.push_back({ noteOnSample, juce::MidiMessage::noteOn(1, note, 0.9f) });
+        events.push_back({ noteOffSample, juce::MidiMessage::noteOff(1, note) });
+    }
+    sortByTime(events);
+
+    juce::AudioBuffer<float> buffer(2, kBlockSize);
+    std::size_t nextEvent = 0;
+    for (int position = 0; position < totalSamples; position += kBlockSize)
+    {
+        buffer.clear();
+        juce::MidiBuffer midi;
+        while (nextEvent < events.size() && events[nextEvent].sampleTime < position + kBlockSize)
+        {
+            midi.addEvent(events[nextEvent].message, juce::jmax(0, events[nextEvent].sampleTime - position));
+            ++nextEvent;
+        }
+        processor.processBlock(buffer, midi);
+    }
+    diag.capturing = false;
+    diag.tracing = false;
+
+    const auto& master = diag.trace[px3::diag::stageMaster];
+    const auto windowSamples = static_cast<int>(kSampleRate / 1000.0);
+    const auto db = envelopeDb(master, noteOnSample, static_cast<int>(master.size()), windowSamples);
+    const auto noteOffMs = (noteOffSample - noteOnSample) / windowSamples;
+
+    std::printf("\n  curve (%s), 1 point per 50 ms from NOTE-ON; note-off at %d ms\n", label, noteOffMs);
+    std::printf("    %8s %10s %10s %10s %8s %9s %9s %9s\n",
+                "t(ms)", "out(dB)", "ampEnv", "polyGain", "load", "prePeak", "ovrBlend", "target");
+    for (std::size_t i = 0; i < db.size(); i += 50)
+    {
+        const auto sampleIndex = static_cast<std::size_t>(noteOnSample) + i * static_cast<std::size_t>(windowSamples);
+        const auto env = sampleIndex < diag.traceEnv.size() ? diag.traceEnv[sampleIndex] : 0.0f;
+        const auto poly = sampleIndex < diag.tracePolyGain.size() ? diag.tracePolyGain[sampleIndex] : 0.0f;
+        auto at = [sampleIndex](const std::vector<float>& v)
+        {
+            return sampleIndex < v.size() ? v[sampleIndex] : 0.0f;
+        };
+        std::printf("    %8d %10.2f %10.6f %10.4f %8.3f %9.4f %9.4f %9.4f\n",
+                    static_cast<int>(i),
+                    static_cast<double>(db[i]),
+                    static_cast<double>(env),
+                    static_cast<double>(poly),
+                    static_cast<double>(at(diag.traceLoad)),
+                    static_cast<double>(at(diag.tracePrePolyPeak)),
+                    static_cast<double>(at(diag.traceOverloadBlend)),
+                    static_cast<double>(at(diag.traceGainTarget)));
+        if (db[i] < db[0] - 90.0f)
+        {
+            break;
+        }
+    }
 }
 
 // Regression check: the production path must not produce any discontinuity that
@@ -534,6 +920,30 @@ int main(int argc, char* argv[])
         runMode({ "T3", "production path, tail filter disabled + vibe switch frozen",
                   false, false, false, false, true, true }, patch);
     }
+    else if (arg == "release")
+    {
+        const auto wavDirectory = argc > 3 ? juce::String(argv[3]) : juce::String();
+
+        for (const auto voices : { 1, 5 })
+        {
+            std::printf("\n================================================================\n");
+            std::printf("RELEASE TAIL SHAPE  —  %d voice(s), ampRelease=%.3f\n",
+                        voices, static_cast<double>(patch.release));
+            std::printf("================================================================\n");
+            std::printf("  applied gain = ampEnv * polyGain; a smooth release should show"
+                        " swing~0, rise~0, small slope jump\n");
+            std::printf("  %-24s %6s %6s %6s %8s %8s %8s %8s %8s\n",
+                        "configuration", "pgOff", "pgMin", "pgMax", "swingDb", "riseDb", "slopeJmp", "last20ms", "t-60dB");
+            runTailAnalysis(patch, voices, { "BEFORE (both old)", false, false, true, true }, wavDirectory);
+            runTailAnalysis(patch, voices, { "old polyGain, new release", false, false, true, false }, wavDirectory);
+            runTailAnalysis(patch, voices, { "new polyGain, old release", false, false, false, true }, wavDirectory);
+            runTailAnalysis(patch, voices, { "AFTER (production)", false, false, false, false }, wavDirectory);
+            runTailAnalysis(patch, voices, { "reference: polyGain=1.0", false, true, false, false }, wavDirectory);
+        }
+
+        printTailCurve(patch, 5, "production, 5 voices");
+        return 0;
+    }
     else if (arg == "regress")
     {
         return runRegressionSuite(false);
@@ -545,7 +955,7 @@ int main(int argc, char* argv[])
     }
     else
     {
-        std::printf("usage: PX3Diag [primary|reintroduce|pruning|tail|regress|regress-legacy] [dry]\n");
+        std::printf("usage: PX3Diag [primary|reintroduce|pruning|tail|release|regress|regress-legacy] [dry] [wavDir]\n");
         return 1;
     }
 

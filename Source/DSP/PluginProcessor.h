@@ -534,6 +534,9 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> fxReturnGateSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> fxReturnPanSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> polyphonyGainSmoother;
+    // Attenuation hold: drops instantly, recovers slowly, so a decaying release
+    // tail cannot lift its own polyphony gain while it is still audible.
+    float polyphonyGainHold { 1.0f };
 
     std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
     std::atomic<uint32_t> fxOrderRevision { 0u };

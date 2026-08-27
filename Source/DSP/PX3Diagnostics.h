@@ -67,6 +67,8 @@ struct State
     bool fixedPolyGain { false };         // polyphony gain forced to exactly 1.0
     bool disableReleasePruning { false };  // release-tail budget not enforced at all
     bool legacyHardStopPruning { false };  // control: pre-fix instantaneous stopNote(false)
+    bool legacyPolyphonyLoad { false };    // control: pre-fix key-state load + no attenuation hold
+    bool legacyLinearRelease { false };    // control: pre-fix linear AMP ENV release ramp
     bool disableOnsetGuard { false };
     bool disableReleaseTailFilter { false };
     bool freezeVibeReleaseSwitch { false }; // keep held-note vibe path during release
@@ -80,6 +82,24 @@ struct State
     std::vector<float> voiceStage[stageCount];
     std::vector<unsigned char> lifecycleMark; // 1 = voice start/stop happened here
     std::vector<float> postPolySum;           // oscillator bus summed after poly gain
+    std::vector<float> blockEnv;              // per-sample AMP ENV of the last voice rendered
+    std::vector<float> blockPolyGain;         // per-sample polyphony gain
+
+    // ---------------- per-sample trace (release-tail analysis) -------------
+    bool tracing { false };
+    std::vector<float> trace[stageCount];
+    std::vector<float> traceEnv;
+    std::vector<float> tracePolyGain;
+
+    // Per-block inputs to the polyphony gain target, held for the whole block.
+    float blockLoad { 0.0f };
+    float blockPrePolyPeak { 0.0f };
+    float blockOverloadBlend { 0.0f };
+    float blockGainTarget { 1.0f };
+    std::vector<float> traceLoad;
+    std::vector<float> tracePrePolyPeak;
+    std::vector<float> traceOverloadBlend;
+    std::vector<float> traceGainTarget;
 
     // Carried across blocks so block boundaries are analysed too.
     std::array<float, stageCount> prevSample { {} };
@@ -135,6 +155,16 @@ struct State
         blockIndex = 0;
         globalSampleBase = 0;
         worst.clear();
+        for (auto& buffer : trace)
+        {
+            buffer.clear();
+        }
+        traceEnv.clear();
+        tracePolyGain.clear();
+        traceLoad.clear();
+        tracePrePolyPeak.clear();
+        traceOverloadBlend.clear();
+        traceGainTarget.clear();
     }
 
     void resetModes()
@@ -143,6 +173,8 @@ struct State
         fixedPolyGain = false;
         disableReleasePruning = false;
         legacyHardStopPruning = false;
+        legacyPolyphonyLoad = false;
+        legacyLinearRelease = false;
         disableOnsetGuard = false;
         disableReleaseTailFilter = false;
         freezeVibeReleaseSwitch = false;
@@ -155,6 +187,24 @@ struct State
             buffer.assign(static_cast<std::size_t>(numSamples), 0.0f);
         }
         lifecycleMark.assign(static_cast<std::size_t>(numSamples), 0);
+        blockEnv.assign(static_cast<std::size_t>(numSamples), 0.0f);
+        blockPolyGain.assign(static_cast<std::size_t>(numSamples), 1.0f);
+    }
+
+    void setEnvSample(int sampleIndex, float value)
+    {
+        if (sampleIndex >= 0 && static_cast<std::size_t>(sampleIndex) < blockEnv.size())
+        {
+            blockEnv[static_cast<std::size_t>(sampleIndex)] = value;
+        }
+    }
+
+    void setPolyGainSample(int sampleIndex, float value)
+    {
+        if (sampleIndex >= 0 && static_cast<std::size_t>(sampleIndex) < blockPolyGain.size())
+        {
+            blockPolyGain[static_cast<std::size_t>(sampleIndex)] = value;
+        }
     }
 
     void addVoiceSample(int stage, int sampleIndex, float value)

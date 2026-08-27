@@ -1,5 +1,7 @@
 #include "AmpEnvelope.h"
 
+#include "PX3Diagnostics.h"
+
 #include <cmath>
 
 bool AmpEnvelope::paramsDiffer(const juce::ADSR::Parameters& a, const juce::ADSR::Parameters& b)
@@ -50,11 +52,17 @@ void AmpEnvelope::setSettings(const EnvelopeSettings& newSettings)
 
 void AmpEnvelope::noteOn()
 {
+    inRelease = false;
+    releaseStartLevel = 0.0f;
     adsr.noteOn();
 }
 
 void AmpEnvelope::noteOff()
 {
+    // juce::ADSR computes its release rate from the level it is at right now,
+    // which is the value it last returned.
+    releaseStartLevel = lastRawAdsrValue;
+    inRelease = releaseStartLevel > 1.0e-6f;
     adsr.noteOff();
 }
 
@@ -62,6 +70,20 @@ void AmpEnvelope::reset()
 {
     adsr.reset();
     outputSmoother.setCurrentAndTargetValue(0.0f);
+    lastRawAdsrValue = 0.0f;
+    releaseStartLevel = 0.0f;
+    inRelease = false;
+}
+
+float AmpEnvelope::shapeReleaseProgress(float progress)
+{
+    // -60 dB across the release, normalised so the curve starts at exactly 1.0
+    // and reaches exactly 0.0 at the end of the set release time.
+    constexpr float decayConstant = 6.9077553f; // ln(1000)
+    constexpr float floorValue = 0.001f;        // exp(-decayConstant)
+
+    const auto shaped = std::exp(-decayConstant * juce::jlimit(0.0f, 1.0f, progress));
+    return juce::jmax(0.0f, (shaped - floorValue) / (1.0f - floorValue));
 }
 
 bool AmpEnvelope::isActive() const
@@ -72,6 +94,31 @@ bool AmpEnvelope::isActive() const
 float AmpEnvelope::getNextSample()
 {
     const auto raw = juce::jlimit(0.0f, 1.0f, adsr.getNextSample());
-    outputSmoother.setTargetValue(raw);
+    lastRawAdsrValue = raw;
+
+    auto shaped = raw;
+
+#if PX3_DIAGNOSTICS
+    const auto useLinearRelease = px3::diag::state().legacyLinearRelease;
+#else
+    constexpr auto useLinearRelease = false;
+#endif
+
+    if (inRelease && !useLinearRelease)
+    {
+        if (releaseStartLevel > 1.0e-6f)
+        {
+            // The ADSR's linear ramp doubles as the release progress clock.
+            const auto progress = juce::jlimit(0.0f, 1.0f, 1.0f - raw / releaseStartLevel);
+            shaped = releaseStartLevel * shapeReleaseProgress(progress);
+        }
+
+        if (!adsr.isActive())
+        {
+            inRelease = false;
+        }
+    }
+
+    outputSmoother.setTargetValue(shaped);
     return outputSmoother.getNextValue();
 }
