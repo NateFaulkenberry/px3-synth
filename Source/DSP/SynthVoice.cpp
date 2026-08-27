@@ -36,6 +36,17 @@ inline float sanitizeAudioSample(float x)
 }
 }
 
+#if PX3_DIAGNOSTICS
+namespace px3::diag
+{
+void resetNoteStartSequence()
+{
+    gNoteStartSequence.store(1u, std::memory_order_relaxed);
+    juce::Random::getSystemRandom().setSeed(20260827);
+}
+}
+#endif
+
 bool SynthVoice::canPlaySound(juce::SynthesiserSound* sound)
 {
     return dynamic_cast<SynthSound*>(sound) != nullptr;
@@ -131,6 +142,7 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
         diagMarkStart = true;
         diagHasPrevEnv = false;
         diagHasPrevVoiceGain = false;
+        diagVoiceGainHistory = 0;
         diagLastVoiceOut = 0.0f;
     }
 #endif
@@ -595,7 +607,22 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                                                    1.0f,
                                                    static_cast<float>(noteAgeSamples)
                                                        / static_cast<float>(juce::jmax(1, onsetSamples)));
-                const auto onsetGuard = onsetPos * onsetPos;
+                // Smoothstep, not onsetPos^2. A squared ramp arrives at full
+                // gain with a slope of 2/onsetSamples still on it and then
+                // clamps, leaving a corner in the amplitude envelope exactly
+                // onsetSamples after note-on. That corner is inaudible on
+                // harmonically rich waveforms but is a distinct tick on a sine,
+                // which has nothing of its own to mask it. Smoothstep reaches
+                // 1.0 with zero slope, so the guard lands flat.
+                const auto smoothstep = onsetPos * onsetPos * (3.0f - 2.0f * onsetPos);
+#if PX3_DIAGNOSTICS
+                const auto curve = px3::diag::state().onsetGuardCurve;
+                const auto onsetGuard = curve == 1 ? onsetPos * onsetPos
+                                      : curve == 2 ? smoothstep
+                                                   : smoothstep * smoothstep;
+#else
+                const auto onsetGuard = smoothstep * smoothstep;
+#endif
                 voiceGain *= onsetGuard;
             }
         }
@@ -615,9 +642,26 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         if (diagHasPrevVoiceGain)
         {
             diag.noteVoiceGainDelta(voiceGain - diagPrevVoiceGain);
+            if (diagVoiceGainHistory >= 2)
+            {
+                const auto curvature = std::abs(voiceGain - 2.0f * diagPrevVoiceGain + diagPrevVoiceGain2);
+                if (curvature > diag.maxVoiceGainCurvature)
+                {
+                    diag.maxVoiceGainCurvature = curvature;
+                    diag.worstCurvatureSample = diag.globalSampleBase + startSample + sample;
+                    diag.worstCurvatureNoteAge = noteAgeSamples;
+                    diag.worstCurvatureKeyDown = isKeyDown();
+                    diag.worstCurvatureGains[0] = diagPrevVoiceGain2;
+                    diag.worstCurvatureGains[1] = diagPrevVoiceGain;
+                    diag.worstCurvatureGains[2] = voiceGain;
+                    diag.worstCurvatureEnv = env;
+                }
+            }
         }
+        diagPrevVoiceGain2 = diagPrevVoiceGain;
         diagPrevVoiceGain = voiceGain;
         diagHasPrevVoiceGain = true;
+        ++diagVoiceGainHistory;
         float diagOscStageSum = 0.0f;
         float diagPostEnvStageSum = 0.0f;
 #endif

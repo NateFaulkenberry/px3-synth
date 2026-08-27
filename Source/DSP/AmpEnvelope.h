@@ -38,10 +38,21 @@ private:
     juce::ADSR::Parameters adsrParameters;
     juce::ADSR::Parameters lastAppliedParameters;
     bool parametersInitialized { false };
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> outputSmoother;
+
+    // One-pole rather than a linear ramp. A linear smoother lands on its target
+    // and stops dead, leaving a corner in the envelope every time a stage
+    // plateaus; that corner is inaudible under a rich waveform but ticks on a
+    // sine. A one-pole approaches asymptotically and never corners.
+    float smoothedOutput { 0.0f };
+    float outputSmoothingCoefficient { 1.0f };
 
     float lastRawAdsrValue { 0.0f };
     float releaseProgress { 0.0f };
-    float releaseStartLevel { 0.0f };
+    // Anchors for the release curve. The raw anchor drives progress (it tracks
+    // the ADSR's own linear ramp); the level anchor scales the shaped output and
+    // must be the level the envelope was ACTUALLY at, so that re-entering
+    // release mid-tail is continuous.
+    float releaseRawAnchor { 0.0f };
+    float releaseLevelAnchor { 0.0f };
     bool inRelease { false };
 };

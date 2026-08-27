@@ -78,7 +78,8 @@ enum class Pattern
     legatoRuns,  // fast overlapping runs with sustained pedal-like overlap
     retrigger,   // same note retriggered while still held -> forced voice handoff
     stutter,     // note rate faster than the attack, deep voice pressure
-    heldPlusMelody // chord held down while a melody is played over it
+    heldPlusMelody, // chord held down while a melody is played over it
+    isolatedNotes   // well-separated single notes: each onset/offset stands alone
 };
 
 // Reproduction pattern: fast repeated notes with a long AMP release, which is
@@ -174,6 +175,20 @@ std::vector<ScheduledMidi> buildPattern(Pattern pattern, double sampleRate, int&
             break;
         }
 
+        case Pattern::isolatedNotes:
+        {
+            // Wide gaps so every note-on and note-off is measured in isolation,
+            // with no overlap, pruning or polyphony effects in the way.
+            const int pitches[] = { 48, 55, 60, 64, 67, 72, 76, 81 };
+            for (int i = 0; i < 8; ++i)
+            {
+                const auto on = 0.25 + static_cast<double>(i) * 0.40;
+                addNote(on, 0.20, pitches[i], 0.9f);
+                lastEventSeconds = on + 0.20;
+            }
+            break;
+        }
+
         case Pattern::heldPlusMelody:
         {
             for (const auto interval : { 0, 7, 12 })
@@ -211,6 +226,7 @@ struct PatchOptions
     bool lfoModulation { false };
     bool pitchModulation { false };
     Pattern pattern { Pattern::rapid };
+    int oscillatorMode { -1 };  // -1 = leave at default
     bool legacyPolyphonyLoad { false };
     bool legacyLinearRelease { false };
     bool fullPatch { false };   // all sources enabled, master gain up
@@ -237,6 +253,16 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
     }
 
     setParameter(processor, "masterGain", patch.masterGain);
+    if (patch.oscillatorMode >= 0)
+    {
+        // Choice params are set by index over the 0..1 normalised range.
+        if (auto* mode = findParameter(processor, "osc1Mode"))
+        {
+            const auto count = juce::jmax(1, mode->getNumSteps() - 1);
+            mode->setValueNotifyingHost(static_cast<float>(patch.oscillatorMode)
+                                        / static_cast<float>(count));
+        }
+    }
     if (patch.fullPatch)
     {
         // Every source on, all mixer levels up: the level the plugin can
@@ -315,6 +341,7 @@ void runMode(const ModeOptions& mode, const PatchOptions& patch)
     processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
     processor.prepareToPlay(kSampleRate, kBlockSize);
 
+    px3::diag::resetNoteStartSequence();
     auto& diag = px3::diag::state();
     diag.resetResults();
     diag.resetModes();
@@ -642,6 +669,7 @@ void runTailAnalysis(const PatchOptions& patch,
     processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
     processor.prepareToPlay(kSampleRate, kBlockSize);
 
+    px3::diag::resetNoteStartSequence();
     auto& diag = px3::diag::state();
     diag.resetResults();
     diag.resetModes();
@@ -712,6 +740,7 @@ void printTailCurve(const PatchOptions& patch, int voiceCount, const char* label
     processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
     processor.prepareToPlay(kSampleRate, kBlockSize);
 
+    px3::diag::resetNoteStartSequence();
     auto& diag = px3::diag::state();
     diag.resetResults();
     diag.resetModes();
@@ -790,6 +819,7 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
     processor.prepareToPlay(kSampleRate, kBlockSize);
 
+    px3::diag::resetNoteStartSequence();
     auto& diag = px3::diag::state();
     diag.resetResults();
     diag.resetModes();
@@ -834,7 +864,12 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
         ? (double) diag.releaseSamplesHeavilyFiltered / (double) diag.releaseSamplesTotal
         : 0.0;
     const auto tailFilterSane = heavyFilterFraction < 0.10;
-    const auto passed = lifecycleClean && retiresAtSilence && noClipping && noGainPumping && tailFilterSane;
+    // A corner anywhere in the gain envelope (onset guard landing, fade join,
+    // guard switching in or out) spikes this and is audible on waveforms that
+    // have no harmonics of their own to mask it.
+    const auto gainEnvelopeSmooth = diag.maxVoiceGainCurvature < 0.0025f;
+    const auto passed = lifecycleClean && retiresAtSilence && noClipping
+                        && noGainPumping && tailFilterSane && gainEnvelopeSmooth;
 
     const char* verdict = "PASS";
     if (!lifecycleClean)      verdict = "FAIL(discontinuity)";
@@ -842,17 +877,28 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     else if (!noClipping)     verdict = "FAIL(clipping)";
     else if (!noGainPumping)  verdict = "FAIL(gain-step)";
     else if (!tailFilterSane) verdict = "FAIL(tail-overfiltered)";
+    else if (!gainEnvelopeSmooth) verdict = "FAIL(gain-corner)";
 
-    std::printf("  %-38s %8.4f %8d %9.6f %9.6f %8.1f %7d %6d  %s\n",
+    std::printf("  %-38s %8.4f %8d %9.6f %9.6f %7.1f %9.5f %6d  %s\n",
                 name,
                 static_cast<double>(diag.peak[px3::diag::stageMaster]),
                 diag.masterClipSamples,
                 static_cast<double>(masterDelta),
                 static_cast<double>(diag.maxTruncationStep),
                 heavyFilterFraction * 100.0,
-                diag.quietTransientEvents,
+                static_cast<double>(diag.maxVoiceGainCurvature),
                 diag.releasePrunes,
                 verdict);
+    if (!gainEnvelopeSmooth)
+    {
+        std::printf("      -> worst gain corner: noteAge=%d samples, keyDown=%d, env=%.6f, gains %.6f %.6f %.6f\n",
+                    diag.worstCurvatureNoteAge,
+                    diag.worstCurvatureKeyDown ? 1 : 0,
+                    static_cast<double>(diag.worstCurvatureEnv),
+                    static_cast<double>(diag.worstCurvatureGains[0]),
+                    static_cast<double>(diag.worstCurvatureGains[1]),
+                    static_cast<double>(diag.worstCurvatureGains[2]));
+    }
     std::fflush(stdout);
     return passed;
 }
@@ -864,8 +910,8 @@ int runRegressionSuite(bool legacyPruning)
     std::printf(legacyPruning
                     ? "\nCONTROL SUITE (pre-fix behaviour: pruning uses instantaneous stopNote(false))\n"
                     : "\nREGRESSION SUITE (production path, all diagnostic modes off)\n");
-    std::printf("  %-38s %8s %8s %9s %9s %8s %7s %6s  %s\n",
-                "case", "peak", "clip", "max|dx|", "killLevel", "tailFlt%", "tailEvts", "prunes", "result");
+    std::printf("  %-38s %8s %8s %9s %9s %7s %9s %6s  %s\n",
+                "case", "peak", "clip", "max|dx|", "killLevel", "tailFlt%", "gainCurv", "prunes", "result");
 
     auto failures = 0;
     auto check = [&failures, legacyPruning](const char* name, PatchOptions patch)
@@ -996,6 +1042,22 @@ int runRegressionSuite(bool legacyPruning)
         auto p = base; p.pattern = Pattern::retrigger; p.release = 3.0f;
         p.fullPatch = true; p.masterGain = 1.0f; p.sustain = 0.4f; p.decay = 0.3f;
         check("R5 retrigger, full patch, low sustain", p);
+    }
+
+    // The reported sine repro: 1 ms attack, 10 ms release. Short envelope stages
+    // leave onset/offset discontinuities completely unmasked.
+    for (int mode : { 0, 1, 2, 3, 6, 8, 11, 19 })
+    {
+        auto p = base;
+        p.attack = 0.001f; p.decay = 0.100f; p.sustain = 0.8f; p.release = 0.010f;
+        p.pattern = Pattern::isolatedNotes; p.oscillatorMode = mode;
+        check((juce::String("W ") + juce::String(mode) + " short A/R, osc mode " + juce::String(mode)).toRawUTF8(), p);
+    }
+    {
+        auto p = base;
+        p.attack = 0.001f; p.decay = 0.05f; p.sustain = 0.6f; p.release = 0.010f;
+        p.pattern = Pattern::rapid; p.oscillatorMode = 0;
+        check("W sine, short A/R, rapid notes", p);
     }
 
     // Everything above runs one oscillator at the default master gain, ~16 dB
@@ -1149,6 +1211,7 @@ int main(int argc, char* argv[])
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
 
+            px3::diag::resetNoteStartSequence();
             auto& diag = px3::diag::state();
             diag.resetResults();
             diag.resetModes();
@@ -1219,6 +1282,186 @@ int main(int argc, char* argv[])
     else if (arg == "regress-legacy")
     {
         runRegressionSuite(true);
+        return 0;
+    }
+    else if (arg == "waveforms")
+    {
+        // Short attack + short release is where onset/offset discontinuities are
+        // least masked. Sine shows them most because it has no harmonics of its
+        // own to hide behind, so every mode is measured against its own noise.
+        const char* modeNames[] = {
+            "SINE", "SAW", "SQUARE", "TRIANGLE", "NOISE", "PINK NOISE", "SUPER SAW",
+            "PWM", "WAVETABLE", "ADDITIVE", "FORMANT", "FM", "HARD SYNC", "KARPLUS",
+            "ORGAN", "DIGITAL", "PHYSICAL", "ROB", "ISAAC", "PX3"
+        };
+        constexpr int modeCount = 20;
+
+        struct Variant { const char* label; bool noTailFilter; bool noOnsetGuard; int guardCurve; };
+        const Variant variants[] = {
+            { "before: t^2",        false, false, 1 },
+            { "smoothstep",         false, false, 2 },
+            { "after: smoothstep^2",false, false, 0 },
+            { "no onset guard",     false, true,  0 },
+        };
+
+        std::printf("\nOSCILLATOR WAVEFORM SWEEP — attack=1ms, release=10ms, single oscillator\n");
+        std::printf("  each cell is  transientRatio/gainCurvature\n");
+        std::printf("  transientRatio: audio-domain, meaningless for waveforms with their own edges (SAW/SQUARE/PWM/KARPLUS)\n");
+        std::printf("  gainCurvature : second difference of the voice gain envelope - waveform independent, this is the defect\n\n");
+        std::printf("  %-12s", "mode");
+        for (const auto& v : variants)
+        {
+            std::printf(" %17s", v.label);
+        }
+        std::printf("\n");
+
+        for (int mode = 0; mode < modeCount; ++mode)
+        {
+            std::printf("  %-12s", modeNames[mode]);
+            for (const auto& variant : variants)
+            {
+                PatchOptions p;
+                p.attack = 0.001f;
+                p.decay = 0.100f;
+                p.sustain = 0.800f;
+                p.release = 0.010f;
+                p.pattern = Pattern::isolatedNotes;
+                p.oscillatorMode = mode;
+                p.fxEnabled = false;
+                p.vibeEnabled = false;
+
+                PX3SynthAudioProcessor processor;
+                applyPatch(processor, p);
+                processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                processor.prepareToPlay(kSampleRate, kBlockSize);
+
+                auto& diag = px3::diag::state();
+                diag.resetResults();
+                diag.resetModes();
+                diag.disableReleaseTailFilter = variant.noTailFilter;
+                diag.disableOnsetGuard = variant.noOnsetGuard;
+                diag.onsetGuardCurve = variant.guardCurve;
+                diag.capturing = true;
+
+                int totalSamples = 0;
+                const auto events = buildPattern(p.pattern, kSampleRate, totalSamples);
+                juce::AudioBuffer<float> buffer(2, kBlockSize);
+                std::size_t nextEvent = 0;
+                for (int position = 0; position < totalSamples; position += kBlockSize)
+                {
+                    buffer.clear();
+                    juce::MidiBuffer midi;
+                    while (nextEvent < events.size() && events[nextEvent].sampleTime < position + kBlockSize)
+                    {
+                        midi.addEvent(events[nextEvent].message, juce::jmax(0, events[nextEvent].sampleTime - position));
+                        ++nextEvent;
+                    }
+                    processor.processBlock(buffer, midi);
+                }
+                diag.capturing = false;
+
+                std::printf(" %9.1f/%.5f", (double) diag.maxTransientRatio,
+                            (double) diag.maxVoiceGainCurvature);
+                std::fflush(stdout);
+            }
+            std::printf("\n");
+        }
+        return 0;
+    }
+    else if (arg == "sine")
+    {
+        struct Variant { const char* label; bool noTailFilter; bool noOnsetGuard; bool fixedPoly;
+                         int guardCurve; };
+        const Variant variants[] = {
+            { "before: t^2",          false, false, false, 1 },
+            { "smoothstep",           false, false, false, 2 },
+            { "after: smoothstep^2",  false, false, false, 0 },
+            { "no onset guard",       false, true,  false, 0 },
+        };
+
+        for (const auto& variant : variants)
+        {
+            PatchOptions p;
+            p.attack = 0.001f;
+            p.decay = 0.100f;
+            p.sustain = 0.800f;
+            p.release = 0.010f;
+            p.pattern = Pattern::isolatedNotes;
+            p.oscillatorMode = 0; // SINE
+            p.fxEnabled = false;
+            p.vibeEnabled = false;
+
+            PX3SynthAudioProcessor processor;
+            applyPatch(processor, p);
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            px3::diag::resetNoteStartSequence();
+            auto& diag = px3::diag::state();
+            diag.resetResults();
+            diag.resetModes();
+            diag.disableReleaseTailFilter = variant.noTailFilter;
+            diag.disableOnsetGuard = variant.noOnsetGuard;
+            diag.fixedPolyGain = variant.fixedPoly;
+            diag.onsetGuardCurve = variant.guardCurve;
+            diag.capturing = true;
+            diag.tracing = true;
+
+            int totalSamples = 0;
+            const auto events = buildPattern(p.pattern, kSampleRate, totalSamples);
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            std::size_t nextEvent = 0;
+            for (int position = 0; position < totalSamples; position += kBlockSize)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                while (nextEvent < events.size() && events[nextEvent].sampleTime < position + kBlockSize)
+                {
+                    midi.addEvent(events[nextEvent].message, juce::jmax(0, events[nextEvent].sampleTime - position));
+                    ++nextEvent;
+                }
+                processor.processBlock(buffer, midi);
+            }
+            diag.capturing = false;
+            diag.tracing = false;
+
+            const auto worst = diag.worstTransientSample;
+            // Which note event is this closest to?
+            long long nearest = -1;
+            const char* kind = "?";
+            for (const auto& e : events)
+            {
+                const auto delta = std::llabs((long long) e.sampleTime - worst);
+                if (nearest < 0 || delta < nearest)
+                {
+                    nearest = delta;
+                    kind = e.message.isNoteOn() ? "note-ON" : "note-OFF";
+                }
+            }
+
+            std::printf("\n=== SINE, %s ===\n", variant.label);
+            std::printf("  worst transient ratio %.1f at %.4f s, %.2f ms after nearest %s\n",
+                        (double) diag.maxTransientRatio,
+                        (double) worst / kSampleRate,
+                        (double) nearest / kSampleRate * 1000.0,
+                        kind);
+
+            const auto& m = diag.trace[px3::diag::stageMaster];
+            const auto& osc = diag.trace[px3::diag::stageOsc];
+            const auto& env = diag.trace[px3::diag::stagePostEnv];
+            std::printf("  %8s %13s %13s %13s %11s\n", "n", "master", "oscStage", "postEnvStage", "ampEnv");
+            for (long long k = worst - 5; k <= worst + 5; ++k)
+            {
+                if (k < 0 || k >= (long long) m.size()) continue;
+                const auto i = (std::size_t) k;
+                std::printf("  %8lld %13.8f %13.8f %13.8f %11.7f%s\n",
+                            k - worst, (double) m[i],
+                            i < osc.size() ? (double) osc[i] : 0.0,
+                            i < env.size() ? (double) env[i] : 0.0,
+                            i < diag.traceEnv.size() ? (double) diag.traceEnv[i] : 0.0,
+                            k == worst ? "  <--" : "");
+            }
+        }
         return 0;
     }
     else if (arg == "regress-tailbug")

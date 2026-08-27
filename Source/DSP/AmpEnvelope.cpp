@@ -26,7 +26,8 @@ void AmpEnvelope::prepare(double sampleRate)
     // Keep this very short: enough to remove hard control-rate edges while
     // preserving audible ADSR timing and transient definition.
     constexpr double outputSmoothingSeconds = 0.0008;
-    outputSmoother.reset(sampleRateHz, outputSmoothingSeconds);
+    outputSmoothingCoefficient =
+        1.0f - std::exp(-1.0f / static_cast<float>(outputSmoothingSeconds * sampleRateHz));
 }
 
 void AmpEnvelope::setSettings(const EnvelopeSettings& newSettings)
@@ -53,26 +54,41 @@ void AmpEnvelope::setSettings(const EnvelopeSettings& newSettings)
 void AmpEnvelope::noteOn()
 {
     inRelease = false;
-    releaseStartLevel = 0.0f;
+    releaseRawAnchor = 0.0f;
+    releaseLevelAnchor = 0.0f;
     releaseProgress = 0.0f;
     adsr.noteOn();
 }
 
 void AmpEnvelope::noteOff()
 {
-    // juce::ADSR computes its release rate from the level it is at right now,
-    // which is the value it last returned.
-    releaseStartLevel = lastRawAdsrValue;
-    inRelease = releaseStartLevel > 1.0e-6f;
+    // juce::ADSR restarts its linear release from wherever it currently is, so
+    // release progress is measured against that value.
+    releaseRawAnchor = lastRawAdsrValue;
+
+    // Scale the shaped curve from the level the envelope was ACTUALLY producing,
+    // which is no longer the same number as the raw ADSR value once the release
+    // is curve-shaped. Anchoring to the raw value here makes a tail jump back up
+    // to the linear ramp's height.
+    //
+    // This is reachable in normal playing: juce::Synthesiser::noteOff matches
+    // voices by getCurrentlyPlayingNote() regardless of key state, so replaying a
+    // pitch whose previous voice is still releasing delivers a second noteOff to
+    // that releasing voice.
+    releaseLevelAnchor = inRelease ? smoothedOutput : lastRawAdsrValue;
+    releaseProgress = 0.0f;
+    inRelease = releaseRawAnchor > 1.0e-6f && releaseLevelAnchor > 1.0e-6f;
+
     adsr.noteOff();
 }
 
 void AmpEnvelope::reset()
 {
     adsr.reset();
-    outputSmoother.setCurrentAndTargetValue(0.0f);
+    smoothedOutput = 0.0f;
     lastRawAdsrValue = 0.0f;
-    releaseStartLevel = 0.0f;
+    releaseRawAnchor = 0.0f;
+    releaseLevelAnchor = 0.0f;
     releaseProgress = 0.0f;
     inRelease = false;
 }
@@ -95,7 +111,7 @@ float AmpEnvelope::shapeReleaseProgress(float progress)
 
 bool AmpEnvelope::isActive() const
 {
-    return adsr.isActive() || std::abs(outputSmoother.getCurrentValue()) > 1.0e-5f;
+    return adsr.isActive() || std::abs(smoothedOutput) > 1.0e-5f;
 }
 
 float AmpEnvelope::getNextSample()
@@ -113,20 +129,12 @@ float AmpEnvelope::getNextSample()
 
     if (inRelease)
     {
-        if (releaseStartLevel > 1.0e-6f && useLinearRelease)
-        {
-            releaseProgress = juce::jlimit(0.0f, 1.0f, 1.0f - raw / releaseStartLevel);
-        }
-    }
+        // The ADSR's own linear ramp doubles as the release progress clock.
+        releaseProgress = juce::jlimit(0.0f, 1.0f, 1.0f - raw / releaseRawAnchor);
 
-    if (inRelease && !useLinearRelease)
-    {
-        if (releaseStartLevel > 1.0e-6f)
+        if (!useLinearRelease)
         {
-            // The ADSR's linear ramp doubles as the release progress clock.
-            const auto progress = juce::jlimit(0.0f, 1.0f, 1.0f - raw / releaseStartLevel);
-            releaseProgress = progress;
-            shaped = releaseStartLevel * shapeReleaseProgress(progress);
+            shaped = releaseLevelAnchor * shapeReleaseProgress(releaseProgress);
         }
 
         if (!adsr.isActive())
@@ -135,6 +143,6 @@ float AmpEnvelope::getNextSample()
         }
     }
 
-    outputSmoother.setTargetValue(shaped);
-    return outputSmoother.getNextValue();
+    smoothedOutput += (shaped - smoothedOutput) * outputSmoothingCoefficient;
+    return smoothedOutput;
 }

@@ -70,6 +70,7 @@ struct State
     bool legacyPolyphonyLoad { false };    // control: pre-fix key-state load + no attenuation hold
     bool legacyLinearRelease { false };    // control: pre-fix linear AMP ENV release ramp
     bool legacyTailShapeFromEnv { false }; // control: tail filter scheduled off env value
+    int onsetGuardCurve { 0 };  // 0=production, 1=legacy t^2, 2=smoothstep
     bool disableOnsetGuard { false };
     bool disableReleaseTailFilter { false };
     bool freezeVibeReleaseSwitch { false }; // keep held-note vibe path during release
@@ -120,6 +121,15 @@ struct State
     float minPolyGain { 1.0f };
     float maxAmpEnvDelta { 0.0f };
     float maxVoiceGainDelta { 0.0f };
+    // Second difference of the per-voice gain envelope. A corner in the gain
+    // (slope changing abruptly) spikes this, and unlike an audio-domain metric
+    // it is completely independent of which waveform is playing.
+    float maxVoiceGainCurvature { 0.0f };
+    long long worstCurvatureSample { -1 };
+    int worstCurvatureNoteAge { -1 };
+    bool worstCurvatureKeyDown { false };
+    float worstCurvatureGains[3] { 0.0f, 0.0f, 0.0f };
+    float worstCurvatureEnv { 0.0f };
 
     // Lifecycle counters over the capture window.
     int noteStarts { 0 };
@@ -187,6 +197,12 @@ struct State
         minPolyGain = 1.0f;
         maxAmpEnvDelta = 0.0f;
         maxVoiceGainDelta = 0.0f;
+        maxVoiceGainCurvature = 0.0f;
+        worstCurvatureSample = -1;
+        worstCurvatureNoteAge = -1;
+        worstCurvatureKeyDown = false;
+        worstCurvatureGains[0] = worstCurvatureGains[1] = worstCurvatureGains[2] = 0.0f;
+        worstCurvatureEnv = 0.0f;
         noteStarts = 0;
         oscillatorResets = 0;
         hardStops = 0;
@@ -243,6 +259,7 @@ struct State
         legacyPolyphonyLoad = false;
         legacyLinearRelease = false;
         legacyTailShapeFromEnv = false;
+        onsetGuardCurve = 0;
         disableOnsetGuard = false;
         disableReleaseTailFilter = false;
         freezeVibeReleaseSwitch = false;
@@ -302,6 +319,10 @@ struct State
         maxVoiceGainDelta = std::max(maxVoiceGainDelta, std::abs(delta));
     }
 };
+
+// Makes voice start phase reproducible so two runs of the same material are
+// directly comparable. Defined in SynthVoice.cpp.
+void resetNoteStartSequence();
 
 // Single process-wide instance. The offline harness is single-threaded, so no
 // synchronisation is needed here.

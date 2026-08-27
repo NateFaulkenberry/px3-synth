@@ -80,6 +80,8 @@ private:
 
     float diagPrevEnv { 0.0f };
     float diagPrevVoiceGain { 0.0f };
+    float diagPrevVoiceGain2 { 0.0f };
+    int diagVoiceGainHistory { 0 };
     float diagLastVoiceOut { 0.0f };
     bool diagHasPrevEnv { false };
     bool diagHasPrevVoiceGain { false };
