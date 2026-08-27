@@ -552,6 +552,9 @@ private:
     // std::vector built inside processBlock, which heap-allocated on every block
     // that had any releasing voice.
     std::array<SynthVoice*, kPolyphonyVoiceCount> releaseCandidateScratch { };
+    // Voices in pool order, typed. Owned by juce::Synthesiser, not by this
+    // array; populated once at construction alongside addVoice.
+    std::array<SynthVoice*, kPolyphonyVoiceCount> typedVoices { };
 
     std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
     std::atomic<uint32_t> fxOrderRevision { 0u };

@@ -19,9 +19,39 @@ public:
     // Owns its own bypass. Callers always process every sample through every
     // filter instance; whether the filter is in circuit is this class's
     // business, so no caller needs a special case per filter.
-    float processSample(float inputSample);
+    //
+    // A voice runs 4 sources through 2 filter instances, so this is called
+    // 8 times per sample per voice - 262144 calls per block at 64 voices - and
+    // in a patch with the filters off every one of them exists only to hand
+    // back the input. Profiling a 64-voice, filters-off render attributed 32%
+    // of all CPU to this function for exactly that reason.
+    //
+    // The settled-bypass case is therefore tested inline, where it costs a
+    // predictable branch instead of a call. It is not a shortcut: when the
+    // filter is out of circuit, disabled, and has no queued type change, the
+    // out-of-line body below provably returns inputSample and leaves
+    // bypassBlend clamped at zero, so this is the same computation.
+    float processSample(float inputSample)
+    {
+        if (isOutOfCircuit())
+        {
+            return inputSample;
+        }
+
+        return processSampleActive(inputSample);
+    }
+
+    // True when this filter is settled out of circuit: it returns its input
+    // unchanged and holds no state that advancing would alter. A caller whose
+    // input is silent can then skip the whole chain rather than pushing zeros
+    // through it.
+    bool isOutOfCircuit() const noexcept
+    {
+        return bypassBlend <= 0.0f && ! targetSettings.enabled && ! modeChangePending;
+    }
 
 private:
+    float processSampleActive(float inputSample);
     void applyFilter(float cutoffHz, float resonanceQ, int modeIndex);
 
     juce::dsp::IIR::Filter<float> stageA;

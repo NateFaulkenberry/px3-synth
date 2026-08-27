@@ -494,6 +494,11 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         synthVoice->setSubOscillatorSettings(initialSubOsc);
         synthVoice->setOscillatorLayerSettings(initialOscillatorLayers);
         synth.addVoice(synthVoice);
+        // The voice pool is fixed for the processor's lifetime, so the concrete
+        // type is known here once. processBlock walks the voices four times per
+        // block; recovering the type with dynamic_cast each time cost 256 RTTI
+        // lookups per block for a set of pointers that never changes.
+        typedVoices[static_cast<std::size_t>(voice)] = synthVoice;
     }
 
     synth.addSound(new SynthSound());
@@ -657,9 +662,9 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     const auto subOsc = currentSubOscillatorSettings();
     const auto oscillatorLayers = currentOscillatorLayerSettings();
 
-    for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
+    for (auto* voice : typedVoices)
     {
-        if (auto* voice = dynamic_cast<SynthVoice*>(synth.getVoice(voiceIndex)))
+        if (voice != nullptr)
         {
             voice->setAmpEnvelope(ampEnvelope);
             voice->setAmpEnvelopeEnabled(ampEnvelopeEnabled);
@@ -725,9 +730,8 @@ void PX3SynthAudioProcessor::collectModulationEnvelopeValuesFromVoices()
         }
     }
 
-    for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
+    for (auto* voice : typedVoices)
     {
-        auto* voice = dynamic_cast<SynthVoice*>(synth.getVoice(voiceIndex));
         if (voice == nullptr || !voice->isVoiceActive())
         {
             continue;
@@ -908,9 +912,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     const auto vibeTuning = vibeComponent.getTuning();
     const auto vibeBypass = vibeComponent.isBypassed();
     const auto vibeAmount = vibeBypass ? 0.0f : vibeComponent.getEffectiveAmount();
-    for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
+    for (int voiceIndex = 0; voiceIndex < kPolyphonyVoiceCount; ++voiceIndex)
     {
-        if (auto* voice = dynamic_cast<SynthVoice*>(synth.getVoice(voiceIndex)))
+        if (auto* voice = typedVoices[static_cast<std::size_t>(voiceIndex)])
         {
             voice->setAmpEnvelope(ampEnvelope);
             voice->setAmpEnvelopeEnabled(ampEnvelopeEnabled);
@@ -938,9 +942,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         auto releaseCandidateCount = 0;
         auto heldVoicesForBudget = 0;
 
-        for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
+        for (auto* voice : typedVoices)
         {
-            auto* voice = dynamic_cast<SynthVoice*>(synth.getVoice(voiceIndex));
             if (voice == nullptr || !voice->isVoiceActive())
             {
                 continue;
@@ -1066,9 +1069,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     auto activeVoiceEnergyEquivalent = 0.0f;
     auto blockVoicePeak = 0.0f;
     std::array<float, kMixerSourceCount> blockVoiceSourcePeak { { 0.0f, 0.0f, 0.0f, 0.0f } };
-    for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
+    for (auto* voice : typedVoices)
     {
-        auto* voice = dynamic_cast<SynthVoice*>(synth.getVoice(voiceIndex));
         if (voice == nullptr || !voice->isVoiceActive())
         {
             continue;
@@ -1582,75 +1584,69 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     if (blockSamples > 0)
     {
-        auto computeStereoRms = [blockSamples, outputChannels](const juce::AudioBuffer<float>& src)
+        // RMS, peak and the clip count are gathered in a single pass per bus.
+        // Read separately this walked every bus three times, so the meters
+        // touched roughly eighteen buffer-lengths per block whether or not the
+        // editor was open. The reductions are unchanged: same accumulation
+        // order, same double precision for energy.
+        struct BusMeter
         {
+            float rms { 0.0f };
+            float peak { 0.0f };
+            int clipSamples { 0 };
+        };
+
+        auto measureBus = [blockSamples, outputChannels](const juce::AudioBuffer<float>& src)
+        {
+            BusMeter meter;
             const auto chCount = juce::jmin(2, juce::jmin(outputChannels, src.getNumChannels()));
             if (chCount <= 0)
             {
-                return 0.0f;
+                return meter;
             }
 
             double energy = 0.0;
+            auto peak = 0.0f;
+            auto clipped = 0;
             for (int ch = 0; ch < chCount; ++ch)
             {
                 const auto* data = src.getReadPointer(ch);
                 for (int i = 0; i < blockSamples; ++i)
                 {
-                    const auto s = static_cast<double>(data[i]);
+                    const auto value = data[i];
+                    const auto s = static_cast<double>(value);
                     energy += s * s;
+                    const auto magnitude = std::abs(value);
+                    peak = juce::jmax(peak, magnitude);
+                    if (magnitude > 1.0f)
+                    {
+                        ++clipped;
+                    }
                 }
             }
 
             const auto mean = energy / static_cast<double>(chCount * blockSamples);
-            return static_cast<float>(std::sqrt(juce::jmax(0.0, mean)));
+            meter.rms = static_cast<float>(std::sqrt(juce::jmax(0.0, mean)));
+            meter.peak = peak;
+            meter.clipSamples = clipped;
+            return meter;
         };
 
-        auto computeStereoPeak = [blockSamples, outputChannels](const juce::AudioBuffer<float>& src)
-        {
-            const auto chCount = juce::jmin(2, juce::jmin(outputChannels, src.getNumChannels()));
-            if (chCount <= 0)
-            {
-                return 0.0f;
-            }
+        const auto oscillatorMeter = measureBus(oscillatorBusBuffer);
+        const auto dryMeter = measureBus(dryBusBuffer);
+        const auto fxMeter = measureBus(fxBusBuffer);
+        const auto masterMeter = measureBus(masterBusBuffer);
 
-            auto peak = 0.0f;
-            for (int ch = 0; ch < chCount; ++ch)
-            {
-                const auto* data = src.getReadPointer(ch);
-                for (int i = 0; i < blockSamples; ++i)
-                {
-                    peak = juce::jmax(peak, std::abs(data[i]));
-                }
-            }
-
-            return peak;
-        };
-
-        debugOscillatorBusRms.store(computeStereoRms(oscillatorBusBuffer), std::memory_order_relaxed);
-        debugDryBusRms.store(computeStereoRms(dryBusBuffer), std::memory_order_relaxed);
-        debugFxBusRms.store(computeStereoRms(fxBusBuffer), std::memory_order_relaxed);
-        debugMasterBusRms.store(computeStereoRms(masterBusBuffer), std::memory_order_relaxed);
-        debugOscillatorBusPeak.store(computeStereoPeak(oscillatorBusBuffer), std::memory_order_relaxed);
-        debugDryBusPeak.store(computeStereoPeak(dryBusBuffer), std::memory_order_relaxed);
-        debugFxBusPeak.store(computeStereoPeak(fxBusBuffer), std::memory_order_relaxed);
-        const auto masterPeak = computeStereoPeak(masterBusBuffer);
-        debugMasterPreOutputPeak.store(masterPeak, std::memory_order_relaxed);
-        debugMasterBusPeak.store(masterPeak, std::memory_order_relaxed);
-
-        auto masterClipSamples = 0;
-        const auto masterChannels = juce::jmin(2, juce::jmin(outputChannels, masterBusBuffer.getNumChannels()));
-        for (int ch = 0; ch < masterChannels; ++ch)
-        {
-            const auto* data = masterBusBuffer.getReadPointer(ch);
-            for (int i = 0; i < blockSamples; ++i)
-            {
-                if (std::abs(data[i]) > 1.0f)
-                {
-                    ++masterClipSamples;
-                }
-            }
-        }
-        debugMasterClipSamples.store(masterClipSamples, std::memory_order_relaxed);
+        debugOscillatorBusRms.store(oscillatorMeter.rms, std::memory_order_relaxed);
+        debugDryBusRms.store(dryMeter.rms, std::memory_order_relaxed);
+        debugFxBusRms.store(fxMeter.rms, std::memory_order_relaxed);
+        debugMasterBusRms.store(masterMeter.rms, std::memory_order_relaxed);
+        debugOscillatorBusPeak.store(oscillatorMeter.peak, std::memory_order_relaxed);
+        debugDryBusPeak.store(dryMeter.peak, std::memory_order_relaxed);
+        debugFxBusPeak.store(fxMeter.peak, std::memory_order_relaxed);
+        debugMasterPreOutputPeak.store(masterMeter.peak, std::memory_order_relaxed);
+        debugMasterBusPeak.store(masterMeter.peak, std::memory_order_relaxed);
+        debugMasterClipSamples.store(masterMeter.clipSamples, std::memory_order_relaxed);
 
         const auto norm = static_cast<double>(juce::jmax(1, blockSamples)) * 2.0;
         for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)

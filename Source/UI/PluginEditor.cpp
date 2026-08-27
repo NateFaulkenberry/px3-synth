@@ -3395,7 +3395,14 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         const auto decay = anyKeyDown ? 0.968f : 0.928f;
         logoVibrationIntensity *= decay;
 
-        repaint();
+        // Only the logo panel animates here. A bare repaint() invalidated the
+        // whole editor 30 times a second for as long as any key was held, and
+        // a full repaint measured 14.5 ms - 43% of a core - against 0.44 ms for
+        // this region. Nothing outside logoPanelArea changes: the shake and the
+        // glitch offsets are bounded by a few pixels and are drawn inside it,
+        // so the margin below covers the full extent of the movement.
+        constexpr int logoAnimationMarginPx = 8;
+        repaint(logoPanelArea.expanded(logoAnimationMarginPx));
     }
 }
 

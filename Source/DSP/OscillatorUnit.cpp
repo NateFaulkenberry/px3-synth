@@ -20,15 +20,207 @@ inline float softClip(float x)
 
 void OscillatorUnit::setSettings(const OscillatorSettings& settings)
 {
-    oscillatorSettings = settings;
-    oscillatorSettings.modeIndex = px3::clampOscillatorModeIndex(oscillatorSettings.modeIndex);
-    oscillatorSettings.macroA = clamp01(oscillatorSettings.macroA);
-    oscillatorSettings.macroB = clamp01(oscillatorSettings.macroB);
-    oscillatorSettings.macroC = clamp01(oscillatorSettings.macroC);
-    oscillatorSettings.vowelIndex = juce::jlimit(0, 4, oscillatorSettings.vowelIndex);
-    for (auto& h : oscillatorSettings.harmonics)
+    auto clamped = settings;
+    clamped.modeIndex = px3::clampOscillatorModeIndex(clamped.modeIndex);
+    clamped.macroA = clamp01(clamped.macroA);
+    clamped.macroB = clamp01(clamped.macroB);
+    clamped.macroC = clamp01(clamped.macroC);
+    clamped.vowelIndex = juce::jlimit(0, 4, clamped.vowelIndex);
+    for (auto& h : clamped.harmonics)
     {
         h = clamp01(h);
+    }
+
+    // The processor pushes settings to every voice on every block, including
+    // the ones playing nothing, so this runs 192 times per block at full
+    // polyphony. Rebuilding the derived curves unconditionally would move the
+    // per-sample pow cost to a per-block cost rather than removing it; almost
+    // always the settings are simply unchanged.
+    if (derivedValid
+        && clamped.modeIndex == oscillatorSettings.modeIndex
+        && clamped.macroA == oscillatorSettings.macroA
+        && clamped.macroB == oscillatorSettings.macroB
+        && clamped.macroC == oscillatorSettings.macroC
+        && clamped.vowelIndex == oscillatorSettings.vowelIndex
+        && clamped.harmonics == oscillatorSettings.harmonics)
+    {
+        return;
+    }
+
+    oscillatorSettings = clamped;
+    updateDerivedCurves();
+    derivedValid = true;
+}
+
+// Reproduces the original per-sample expressions exactly, in the same order and
+// at the same precision, so the rendered signal is unchanged bit for bit.
+OscillatorUnit::HarmonicSet OscillatorUnit::buildHarmonicSet(const std::array<float, 8>& harmonics,
+                                                            float rolloffBias,
+                                                            float oddEvenBias,
+                                                            float inharmonicity)
+{
+    HarmonicSet set;
+
+    for (int i = 0; i < 8; ++i)
+    {
+        const auto h = static_cast<float>(i + 1);
+        auto amp = harmonics[static_cast<std::size_t>(i)];
+        amp *= std::pow(1.0f / h, rolloffBias);
+
+        const auto isOdd = (i % 2) == 0;
+        const auto oddEven = isOdd ? (1.0f + oddEvenBias) : (1.0f - oddEvenBias * 0.82f);
+        amp *= juce::jmax(0.0f, oddEven);
+
+        set.amplitude[static_cast<std::size_t>(i)] = amp;
+        set.ratio[static_cast<std::size_t>(i)] = h * (1.0f + inharmonicity * 0.03f * h);
+        set.norm += std::abs(amp);
+    }
+
+    return set;
+}
+
+float OscillatorUnit::readHarmonicSum(double currentAngle, const HarmonicSet& set)
+{
+    float sum = 0.0f;
+
+    for (int i = 0; i < 8; ++i)
+    {
+        const auto v = std::sin(currentAngle * static_cast<double>(set.ratio[static_cast<std::size_t>(i)]));
+        sum += set.amplitude[static_cast<std::size_t>(i)] * static_cast<float>(v);
+    }
+
+    return set.norm > 0.0001f ? sum / set.norm : 0.0f;
+}
+
+void OscillatorUnit::updateDerivedCurves()
+{
+    const auto a = oscillatorSettings.macroA;
+    const auto b = oscillatorSettings.macroB;
+    const auto c = oscillatorSettings.macroC;
+
+    derived.superSawDetune = std::pow(a, 1.65f);
+    derived.superSawWidth = std::pow(b, 1.2f);
+    derived.superSawEdgeSoft = 0.58f + 0.42f * (1.0f - derived.superSawWidth);
+    for (std::size_t i = 0; i < superSawDetunes.size(); ++i)
+    {
+        const auto detuneSemitones = superSawDetunes[i] * (0.04f + 16.0f * derived.superSawDetune);
+        derived.superSawRatios[i] = std::pow(2.0, static_cast<double>(detuneSemitones) / 12.0);
+    }
+
+    derived.pwmWidthCurve = std::pow(a, 1.15f);
+
+    derived.additiveRolloff = juce::jmap(std::pow(a, 1.15f), 0.45f, 2.55f);
+    derived.additiveOddEven = juce::jmap(std::pow(b, 1.1f), -0.65f, 0.65f);
+    const auto inharmonicity = juce::jmap(std::pow(c, 1.2f), 0.0f, 1.1f);
+    derived.additiveStatic = buildHarmonicSet(oscillatorSettings.harmonics,
+                                              derived.additiveRolloff,
+                                              derived.additiveOddEven,
+                                              0.0f);
+    derived.additiveDynamic = buildHarmonicSet(oscillatorSettings.harmonics,
+                                               derived.additiveRolloff,
+                                               derived.additiveOddEven,
+                                               inharmonicity);
+
+    {
+        static constexpr std::array<std::array<float, 8>, 5> vowelProfiles { {
+            { 1.0f, 0.62f, 0.42f, 0.24f, 0.15f, 0.09f, 0.06f, 0.03f },
+            { 0.88f, 0.92f, 0.36f, 0.26f, 0.21f, 0.12f, 0.07f, 0.05f },
+            { 0.72f, 0.98f, 0.63f, 0.22f, 0.14f, 0.11f, 0.09f, 0.07f },
+            { 1.0f, 0.54f, 0.31f, 0.47f, 0.21f, 0.16f, 0.10f, 0.07f },
+            { 0.86f, 0.38f, 0.69f, 0.34f, 0.22f, 0.17f, 0.11f, 0.08f }
+        } };
+
+        const auto vowelA = juce::jlimit(0, 4, oscillatorSettings.vowelIndex);
+        const auto morph = a * 4.0f;
+        const auto vowelB = juce::jlimit(0, 4, vowelA + 1);
+        const auto frac = morph - std::floor(morph);
+
+        std::array<float, 8> vowelHarmonics { {} };
+        for (int i = 0; i < 8; ++i)
+        {
+            const auto idx = static_cast<std::size_t>(i);
+            vowelHarmonics[idx] = vowelProfiles[static_cast<std::size_t>(vowelA)][idx]
+                                  + (vowelProfiles[static_cast<std::size_t>(vowelB)][idx]
+                                     - vowelProfiles[static_cast<std::size_t>(vowelA)][idx])
+                                        * frac;
+        }
+
+        derived.formant = buildHarmonicSet(vowelHarmonics, juce::jmap(b, 0.7f, 2.2f), 0.0f, 0.0f);
+    }
+
+    {
+        static constexpr std::array<float, 8> drawbarPreset { 0.92f, 0.72f, 0.46f, 0.36f, 0.27f, 0.18f, 0.13f, 0.10f };
+        const auto tone = std::pow(a, 1.05f);
+        derived.organClick = std::pow(b, 1.2f);
+        derived.organClickDecay = 0.0006f + 0.003f * derived.organClick;
+
+        derived.organ = HarmonicSet {};
+        for (int i = 0; i < 8; ++i)
+        {
+            const auto idx = static_cast<std::size_t>(i);
+            auto amp = drawbarPreset[idx] * (0.6f + oscillatorSettings.harmonics[idx] * 0.8f);
+            amp *= std::pow(1.0f / static_cast<float>(i + 1), juce::jmap(tone, 0.5f, 1.8f));
+            derived.organ.amplitude[idx] = amp;
+            derived.organ.ratio[idx] = static_cast<float>(i + 1);
+            derived.organ.norm += std::abs(amp);
+        }
+    }
+
+    derived.fmRatio = std::pow(2.0f, juce::jmap(std::pow(a, 1.1f), -1.6f, 2.2f));
+    derived.fmIndex = juce::jmap(std::pow(b, 1.35f), 0.0f, 10.0f);
+    derived.fmOutputScale = 0.66f + 0.05f * (1.0f - b);
+
+    derived.hardSyncRatio = juce::jmap(std::pow(a, 1.3f), 1.0f, 11.0f);
+    derived.hardSyncDrive = 1.0f + std::pow(b, 1.15f) * 2.3f;
+
+    derived.karplusDecay = juce::jmap(std::pow(a, 1.85f), 0.90f, 0.99945f);
+    derived.karplusBrightness = juce::jmap(std::pow(b, 1.2f), 0.03f, 0.94f);
+
+    {
+        const auto bitsCurve = std::pow(a, 1.25f);
+        const auto rateCurve = std::pow(b, 1.15f);
+        derived.digitalBitDepth = juce::jlimit(2, 16, static_cast<int>(std::round(juce::jmap(bitsCurve, 2.0f, 16.0f))));
+        derived.digitalHoldSamples = juce::jlimit(1, 64, static_cast<int>(std::round(juce::jmap(rateCurve, 1.0f, 52.0f))));
+        derived.digitalAliasFold = 1.0 + static_cast<double>(juce::jmap(rateCurve, 0.4f, 6.8f));
+        derived.digitalSteps = static_cast<float>(1 << juce::jlimit(1, 20, derived.digitalBitDepth));
+        derived.digitalCrushSteps = static_cast<float>(1 << juce::jlimit(1, 14, derived.digitalBitDepth - 1));
+    }
+
+    derived.physicalDamping = juce::jmap(std::pow(a, 1.6f), 0.9995f, 0.9957f);
+    derived.physicalMaterial = juce::jmap(std::pow(b, 1.2f), 0.85f, 2.7f);
+
+    derived.robTrans = std::pow(a, 0.55f);
+    derived.robBody = std::pow(b, 0.72f);
+    derived.robChaos = std::pow(c, 0.80f);
+
+    derived.px3Morph = std::pow(a, 1.1f);
+    derived.px3Character = std::pow(b, 1.2f);
+    derived.px3Movement = std::pow(c, 1.1f);
+
+    derived.wavetablePos = std::pow(a, 1.1f);
+
+    // Per-mode output trim, previously recomputed after every rendered sample.
+    const auto mode = static_cast<px3::OscillatorMode>(oscillatorSettings.modeIndex);
+    derived.modeGainTrim = 1.0f;
+    if (mode == px3::OscillatorMode::superSaw)
+    {
+        derived.modeGainTrim = juce::jmap(std::pow(a, 1.35f), 1.0f, 0.84f);
+    }
+    else if (mode == px3::OscillatorMode::fm)
+    {
+        derived.modeGainTrim = juce::jmap(std::pow(b, 1.2f), 1.0f, 0.82f);
+    }
+    else if (mode == px3::OscillatorMode::hardSync)
+    {
+        derived.modeGainTrim = juce::jmap(std::pow(b, 1.18f), 1.0f, 0.78f);
+    }
+    else if (mode == px3::OscillatorMode::digital)
+    {
+        derived.modeGainTrim = juce::jmap(std::pow(b, 1.1f), 1.0f, 0.86f);
+    }
+    else if (mode == px3::OscillatorMode::rob || mode == px3::OscillatorMode::px3)
+    {
+        derived.modeGainTrim = juce::jmap(std::pow(c, 1.12f), 1.0f, 0.84f);
     }
 }
 
@@ -119,16 +311,13 @@ float OscillatorUnit::renderPinkNoise(float white)
 
 float OscillatorUnit::renderSuperSaw(double sampleRate, const RenderContext& context)
 {
-    const auto detune = std::pow(oscillatorSettings.macroA, 1.65f);
-    const auto width = std::pow(oscillatorSettings.macroB, 1.2f);
+    const auto width = derived.superSawWidth;
     float sum = 0.0f;
 
     for (std::size_t i = 0; i < superSawAngles.size(); ++i)
     {
         const auto driftHz = superSawDrift[i] * (0.03 + 0.95 * width);
-        const auto detuneSemitones = superSawDetunes[i] * (0.04f + 16.0f * detune);
-        const auto ratio = std::pow(2.0, static_cast<double>(detuneSemitones) / 12.0);
-        const auto freq = juce::jmax(8.0, context.currentFrequencyHz * ratio + driftHz);
+        const auto freq = juce::jmax(8.0, context.currentFrequencyHz * derived.superSawRatios[i] + driftHz);
         const auto delta = juce::MathConstants<double>::twoPi * freq / sampleRate;
 
         superSawAngles[i] += delta;
@@ -139,16 +328,17 @@ float OscillatorUnit::renderSuperSaw(double sampleRate, const RenderContext& con
 
         const auto phase = static_cast<float>(superSawAngles[i] / juce::MathConstants<double>::twoPi);
         const auto saw = phase * 2.0f - 1.0f;
-        const auto edgeSoft = 0.58f + 0.42f * (1.0f - width);
-        sum += softClip(saw * edgeSoft * 1.35f);
+        sum += softClip(saw * derived.superSawEdgeSoft * 1.35f);
     }
 
+    // Left as two multiplies in the original order: folding them into one
+    // cached scale changes the association and with it the last bit.
     return sum * (1.0f / 7.0f) * (0.84f + 0.10f * width);
 }
 
 float OscillatorUnit::renderPwm(const RenderContext& context) const
 {
-    const auto widthCurve = std::pow(oscillatorSettings.macroA, 1.15f);
+    const auto widthCurve = derived.pwmWidthCurve;
     const auto width = juce::jlimit(0.08f,
                                     0.92f,
                                     0.1f + widthCurve * 0.8f + (context.pwmModWheelNorm - 0.5f) * 0.14f);
@@ -156,39 +346,10 @@ float OscillatorUnit::renderPwm(const RenderContext& context) const
     return phase < width ? 1.0f : -1.0f;
 }
 
-float OscillatorUnit::readHarmonicSumFromSettings(double currentAngle,
-                                                  float rolloffBias,
-                                                  float oddEvenBias,
-                                                  float inharmonicity) const
-{
-    float sum = 0.0f;
-    float norm = 0.0f;
-
-    for (int i = 0; i < 8; ++i)
-    {
-        const auto h = static_cast<float>(i + 1);
-        auto amp = oscillatorSettings.harmonics[static_cast<std::size_t>(i)];
-        amp *= std::pow(1.0f / h, rolloffBias);
-
-        const auto isOdd = (i % 2) == 0;
-        const auto oddEven = isOdd ? (1.0f + oddEvenBias) : (1.0f - oddEvenBias * 0.82f);
-        amp *= juce::jmax(0.0f, oddEven);
-
-        const auto ratio = h * (1.0f + inharmonicity * 0.03f * h);
-        const auto v = std::sin(currentAngle * static_cast<double>(ratio));
-        sum += amp * static_cast<float>(v);
-        norm += std::abs(amp);
-    }
-
-    return norm > 0.0001f ? sum / norm : 0.0f;
-}
-
 float OscillatorUnit::renderAdditive(const RenderContext& context, bool dynamic)
 {
-    const auto rolloff = juce::jmap(std::pow(oscillatorSettings.macroA, 1.15f), 0.45f, 2.55f);
-    const auto oddEven = juce::jmap(std::pow(oscillatorSettings.macroB, 1.1f), -0.65f, 0.65f);
-    const auto inh = dynamic ? juce::jmap(std::pow(oscillatorSettings.macroC, 1.2f), 0.0f, 1.1f) : 0.0f;
-    const auto base = readHarmonicSumFromSettings(context.currentAngle, rolloff, oddEven, inh);
+    const auto base = readHarmonicSum(context.currentAngle,
+                                      dynamic ? derived.additiveDynamic : derived.additiveStatic);
 
     if (!dynamic)
     {
@@ -201,8 +362,8 @@ float OscillatorUnit::renderAdditive(const RenderContext& context, bool dynamic)
 
 float OscillatorUnit::renderFm(double sampleRate, const RenderContext& context)
 {
-    const auto ratio = std::pow(2.0f, juce::jmap(std::pow(oscillatorSettings.macroA, 1.1f), -1.6f, 2.2f));
-    const auto index = juce::jmap(std::pow(oscillatorSettings.macroB, 1.35f), 0.0f, 10.0f);
+    const auto ratio = derived.fmRatio;
+    const auto index = derived.fmIndex;
 
     fmModAngle += juce::MathConstants<double>::twoPi * (context.currentFrequencyHz * static_cast<double>(ratio)) / sampleRate;
     if (fmModAngle >= juce::MathConstants<double>::twoPi)
@@ -212,12 +373,12 @@ float OscillatorUnit::renderFm(double sampleRate, const RenderContext& context)
 
     const auto mod = std::sin(fmModAngle) * index;
     const auto sample = std::sin(context.currentAngle + mod);
-    return static_cast<float>(sample) * (0.66f + 0.05f * (1.0f - oscillatorSettings.macroB));
+    return static_cast<float>(sample) * derived.fmOutputScale;
 }
 
 float OscillatorUnit::renderHardSync(double sampleRate, const RenderContext& context)
 {
-    const auto ratio = juce::jmap(std::pow(oscillatorSettings.macroA, 1.3f), 1.0f, 11.0f);
+    const auto ratio = derived.hardSyncRatio;
     syncMasterAngle += juce::MathConstants<double>::twoPi * context.currentFrequencyHz / sampleRate;
 
     if (syncMasterAngle >= juce::MathConstants<double>::twoPi)
@@ -234,15 +395,14 @@ float OscillatorUnit::renderHardSync(double sampleRate, const RenderContext& con
 
     const auto slavePhase = static_cast<float>(syncSlaveAngle / juce::MathConstants<double>::twoPi);
     const auto synced = slavePhase * 2.0f - 1.0f;
-    const auto drive = 1.0f + std::pow(oscillatorSettings.macroB, 1.15f) * 2.3f;
+    const auto drive = derived.hardSyncDrive;
     return softClip(synced * drive) * 0.82f;
 }
 
 float OscillatorUnit::renderKarplus(const RenderContext& context)
 {
-    const auto decayCurve = std::pow(oscillatorSettings.macroA, 1.85f);
-    const auto decay = juce::jmap(decayCurve, 0.90f, 0.99945f);
-    const auto brightness = juce::jmap(std::pow(oscillatorSettings.macroB, 1.2f), 0.03f, 0.94f);
+    const auto decay = derived.karplusDecay;
+    const auto brightness = derived.karplusBrightness;
 
     const auto bufferSamples = static_cast<int>(karplusBuffer.size());
     if (bufferSamples <= 16)
@@ -264,44 +424,27 @@ float OscillatorUnit::renderKarplus(const RenderContext& context)
 
 float OscillatorUnit::renderOrgan(const RenderContext& context)
 {
-    static constexpr std::array<float, 8> drawbarPreset { 0.92f, 0.72f, 0.46f, 0.36f, 0.27f, 0.18f, 0.13f, 0.10f };
-    float sum = 0.0f;
-    float norm = 0.0f;
+    const auto click = derived.organClick;
+    const auto organ = readHarmonicSum(context.currentAngle, derived.organ);
 
-    const auto tone = std::pow(oscillatorSettings.macroA, 1.05f);
-    const auto click = std::pow(oscillatorSettings.macroB, 1.2f);
-
-    for (int i = 0; i < 8; ++i)
-    {
-        const auto harmonic = static_cast<double>(i + 1);
-        auto amp = drawbarPreset[static_cast<std::size_t>(i)] * (0.6f + oscillatorSettings.harmonics[static_cast<std::size_t>(i)] * 0.8f);
-        amp *= std::pow(1.0f / static_cast<float>(i + 1), juce::jmap(tone, 0.5f, 1.8f));
-        sum += amp * static_cast<float>(std::sin(context.currentAngle * harmonic));
-        norm += std::abs(amp);
-    }
-
-    const auto clickEnv = std::exp(-static_cast<float>(context.noteAgeSamples) * (0.0006f + 0.003f * click));
+    const auto clickEnv = std::exp(-static_cast<float>(context.noteAgeSamples) * derived.organClickDecay);
     const auto keyClick = (nextDeterministicNoise() * 0.08f + std::sin(context.currentAngle * 9.0) * 0.05f) * clickEnv * click;
-    const auto organ = norm > 0.0001f ? sum / norm : 0.0f;
     return softClip(static_cast<float>((organ + keyClick) * (1.05f + 0.07f * (1.0f - click))));
 }
 
 float OscillatorUnit::renderDigital(double sampleRate, const RenderContext& context)
 {
-    const auto bitsCurve = std::pow(oscillatorSettings.macroA, 1.25f);
-    const auto rateCurve = std::pow(oscillatorSettings.macroB, 1.15f);
-    const auto bitDepth = juce::jlimit(2, 16, static_cast<int>(std::round(juce::jmap(bitsCurve, 2.0f, 16.0f))));
-    digitalHoldSamples = juce::jlimit(1, 64, static_cast<int>(std::round(juce::jmap(rateCurve, 1.0f, 52.0f))));
+    digitalHoldSamples = derived.digitalHoldSamples;
 
     if (++digitalHoldCounter >= digitalHoldSamples)
     {
         digitalHoldCounter = 0;
         const auto phase = static_cast<float>(context.currentAngle / juce::MathConstants<double>::twoPi);
-        const auto steps = static_cast<float>(1 << juce::jlimit(1, 20, bitDepth));
+        const auto steps = derived.digitalSteps;
         const auto quantizedPhase = std::floor(phase * steps) / juce::jmax(2.0f, steps - 1.0f);
-        const auto aliasFold = 1.0 + static_cast<double>(juce::jmap(rateCurve, 0.4f, 6.8f));
+        const auto aliasFold = derived.digitalAliasFold;
         const auto aliased = std::sin(static_cast<double>(quantizedPhase) * juce::MathConstants<double>::twoPi * aliasFold);
-        const auto crushSteps = static_cast<float>(1 << juce::jlimit(1, 14, bitDepth - 1));
+        const auto crushSteps = derived.digitalCrushSteps;
         digitalHeldSample = std::floor(static_cast<float>(aliased) * crushSteps) / juce::jmax(2.0f, crushSteps);
     }
 
@@ -311,9 +454,8 @@ float OscillatorUnit::renderDigital(double sampleRate, const RenderContext& cont
 
 float OscillatorUnit::renderPhysical(double sampleRate, const RenderContext& context)
 {
-    const auto decayCurve = std::pow(oscillatorSettings.macroA, 1.6f);
-    const auto damping = juce::jmap(decayCurve, 0.9995f, 0.9957f);
-    const auto material = juce::jmap(std::pow(oscillatorSettings.macroB, 1.2f), 0.85f, 2.7f);
+    const auto damping = derived.physicalDamping;
+    const auto material = derived.physicalMaterial;
 
     const std::array<double, 4> ratios { 1.0, 2.32, 3.91, 5.48 };
     float sum = 0.0f;
@@ -337,9 +479,9 @@ float OscillatorUnit::renderPhysical(double sampleRate, const RenderContext& con
 
 float OscillatorUnit::renderRobOsc(double sampleRate, const RenderContext& context)
 {
-    const auto transCurve = std::pow(oscillatorSettings.macroA, 0.55f);
-    const auto bodyCurve = std::pow(oscillatorSettings.macroB, 0.72f);
-    const auto chaosCurve = std::pow(oscillatorSettings.macroC, 0.80f);
+    const auto transCurve = derived.robTrans;
+    const auto bodyCurve = derived.robBody;
+    const auto chaosCurve = derived.robChaos;
     const auto transientDecay = juce::jmap(transCurve, 0.085f, 0.012f);
     const auto transient = std::exp(-static_cast<float>(context.noteAgeSamples) * transientDecay);
     const auto bodyPhase = context.currentAngle * (1.0 + chaosCurve * 1.05 + bodyCurve * 0.45)
@@ -387,9 +529,9 @@ float OscillatorUnit::renderRobOsc(double sampleRate, const RenderContext& conte
 
 float OscillatorUnit::renderPx3(double sampleRate, const RenderContext& context)
 {
-    const auto morph = std::pow(oscillatorSettings.macroA, 1.1f);
-    const auto character = std::pow(oscillatorSettings.macroB, 1.2f);
-    const auto movement = std::pow(oscillatorSettings.macroC, 1.1f);
+    const auto morph = derived.px3Morph;
+    const auto character = derived.px3Character;
+    const auto movement = derived.px3Movement;
 
     const auto fmPart = renderFm(sampleRate, context);
     const auto additivePart = renderAdditive(context, true);
@@ -408,27 +550,27 @@ float OscillatorUnit::renderSample(double sampleRate, const RenderContext& conte
     const auto mode = static_cast<px3::OscillatorMode>(px3::clampOscillatorModeIndex(oscillatorSettings.modeIndex));
     const auto modeIndex = px3::clampOscillatorModeIndex(oscillatorSettings.modeIndex);
     const auto phase = static_cast<float>(context.currentAngle / juce::MathConstants<double>::twoPi);
-    const auto sine = static_cast<float>(std::sin(context.currentAngle));
-    const auto saw = phase * 2.0f - 1.0f;
-    const auto square = phase < 0.5f ? 1.0f : -1.0f;
-    const auto triangle = 1.0f - 4.0f * std::abs(phase - 0.5f);
     const auto external = 0.0f;
 
     float sample = 0.0f;
 
+    // The four basic waveforms are computed inside their own cases rather than
+    // up front. Hoisted out, every mode paid for the sine - a libm call per
+    // sample, per oscillator, per voice - including the sixteen modes that
+    // never read it.
     switch (mode)
     {
         case px3::OscillatorMode::sine:
-            sample = sine;
+            sample = static_cast<float>(std::sin(context.currentAngle));
             break;
         case px3::OscillatorMode::saw:
-            sample = saw;
+            sample = phase * 2.0f - 1.0f;
             break;
         case px3::OscillatorMode::square:
-            sample = square;
+            sample = phase < 0.5f ? 1.0f : -1.0f;
             break;
         case px3::OscillatorMode::triangle:
-            sample = triangle;
+            sample = 1.0f - 4.0f * std::abs(phase - 0.5f);
             break;
         case px3::OscillatorMode::noise:
         {
@@ -458,7 +600,7 @@ float OscillatorUnit::renderSample(double sampleRate, const RenderContext& conte
             break;
         case px3::OscillatorMode::wavetable:
         {
-            const auto pos = std::pow(oscillatorSettings.macroA, 1.1f);
+            const auto pos = derived.wavetablePos;
             const auto warp = std::sin(context.currentAngle * (1.0 + pos * 6.0));
             sample = static_cast<float>(warp) * (0.35f - pos * 0.20f);
             break;
@@ -468,34 +610,12 @@ float OscillatorUnit::renderSample(double sampleRate, const RenderContext& conte
             break;
         case px3::OscillatorMode::formant:
         {
-            static constexpr std::array<std::array<float, 8>, 5> vowelProfiles { {
-                { 1.0f, 0.62f, 0.42f, 0.24f, 0.15f, 0.09f, 0.06f, 0.03f },
-                { 0.88f, 0.92f, 0.36f, 0.26f, 0.21f, 0.12f, 0.07f, 0.05f },
-                { 0.72f, 0.98f, 0.63f, 0.22f, 0.14f, 0.11f, 0.09f, 0.07f },
-                { 1.0f, 0.54f, 0.31f, 0.47f, 0.21f, 0.16f, 0.10f, 0.07f },
-                { 0.86f, 0.38f, 0.69f, 0.34f, 0.22f, 0.17f, 0.11f, 0.08f }
-            } };
-
-            const auto vowelA = juce::jlimit(0, 4, oscillatorSettings.vowelIndex);
-            const auto morph = oscillatorSettings.macroA * 4.0f;
-            const auto vowelB = juce::jlimit(0, 4, vowelA + 1);
-            const auto frac = morph - std::floor(morph);
-
-            auto oldHarm = oscillatorSettings.harmonics;
-            for (int i = 0; i < 8; ++i)
-            {
-                oscillatorSettings.harmonics[static_cast<std::size_t>(i)] = vowelProfiles[static_cast<std::size_t>(vowelA)][static_cast<std::size_t>(i)]
-                                                                            + (vowelProfiles[static_cast<std::size_t>(vowelB)][static_cast<std::size_t>(i)]
-                                                                               - vowelProfiles[static_cast<std::size_t>(vowelA)][static_cast<std::size_t>(i)])
-                                                                                  * frac;
-            }
-
-            sample = readHarmonicSumFromSettings(context.currentAngle,
-                                                 juce::jmap(oscillatorSettings.macroB, 0.7f, 2.2f),
-                                                 0.0f,
-                                                 0.0f);
+            // The vowel interpolation and its harmonic weights depend only on
+            // the vowel index and macro A/B, so they are built once in
+            // updateDerivedCurves. This case previously overwrote the settings'
+            // harmonics array and restored it on every single sample.
+            sample = readHarmonicSum(context.currentAngle, derived.formant);
             sample = softClip(sample * (0.95f + oscillatorSettings.macroB * 0.25f));
-            oscillatorSettings.harmonics = oldHarm;
             break;
         }
         case px3::OscillatorMode::fm:
@@ -586,26 +706,9 @@ float OscillatorUnit::renderSample(double sampleRate, const RenderContext& conte
     const auto centered = macroEnergy - 0.5f;
     modeGain *= 1.0f - slope * centered;
 
-    if (mode == px3::OscillatorMode::superSaw)
-    {
-        modeGain *= juce::jmap(std::pow(oscillatorSettings.macroA, 1.35f), 1.0f, 0.84f);
-    }
-    else if (mode == px3::OscillatorMode::fm)
-    {
-        modeGain *= juce::jmap(std::pow(oscillatorSettings.macroB, 1.2f), 1.0f, 0.82f);
-    }
-    else if (mode == px3::OscillatorMode::hardSync)
-    {
-        modeGain *= juce::jmap(std::pow(oscillatorSettings.macroB, 1.18f), 1.0f, 0.78f);
-    }
-    else if (mode == px3::OscillatorMode::digital)
-    {
-        modeGain *= juce::jmap(std::pow(oscillatorSettings.macroB, 1.1f), 1.0f, 0.86f);
-    }
-    else if (mode == px3::OscillatorMode::rob || mode == px3::OscillatorMode::px3)
-    {
-        modeGain *= juce::jmap(std::pow(oscillatorSettings.macroC, 1.12f), 1.0f, 0.84f);
-    }
+    // Mode-dependent macro trim, precomputed. It is 1.0 for every mode that had
+    // no trim branch, so this multiply is the same value as before.
+    modeGain *= derived.modeGainTrim;
 
     modeGain = juce::jlimit(0.45f, 1.08f, modeGain);
     sample *= modeGain;

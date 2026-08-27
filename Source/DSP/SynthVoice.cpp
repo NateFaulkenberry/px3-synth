@@ -361,6 +361,21 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
     constexpr float kReleaseSilenceThreshold = 1.0e-4f;
 
+    // Each layer's detune is fixed for the block: pitch, coarse and fine come
+    // from oscillatorLayerSettings, which the processor refreshes once per
+    // block. Computed per sample this was three exp2 calls per sample per
+    // voice - 8% of CPU in a 64-voice profile - for three values that cannot
+    // change between samples.
+    std::array<double, kOscillatorSourceCount> sourcePitchRatios { { 1.0, 1.0, 1.0 } };
+    for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
+    {
+        const auto& layer = oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)];
+        const auto semitoneOffset = static_cast<double>(layer.pitchSemitones)
+                                    + static_cast<double>(layer.coarseSemitones)
+                                    + static_cast<double>(layer.fineCents) * 0.01;
+        sourcePitchRatios[static_cast<std::size_t>(oscIndex)] = std::pow(2.0, semitoneOffset / 12.0);
+    }
+
     for (int sample = 0; sample < numSamples; ++sample)
     {
         for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
@@ -541,8 +556,19 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         currentModWheelNorm += (targetModWheelNorm - currentModWheelNorm) * 0.045f;
 
         auto bendSemitones = static_cast<double>(currentPitchBendNorm * pitchBendRangeSemitones);
-        const auto lfo = std::sin(static_cast<double>(sharedVibratoPhaseRadians) + vibratoPhaseInc * static_cast<double>(sample));
-        const auto vibratoSemitones = static_cast<double>(currentModWheelNorm * vibratoMaxDepthSemitones) * lfo;
+
+        // The vibrato LFO is only ever heard through the mod wheel depth. With
+        // the wheel at rest the product is zero whatever the sine returns, so
+        // the sine is skipped rather than computed and multiplied away - it was
+        // a libm call per sample per voice on every patch, played or not.
+        auto vibratoSemitones = 0.0;
+        const auto vibratoDepthSemitones = currentModWheelNorm * vibratoMaxDepthSemitones;
+        if (vibratoDepthSemitones != 0.0f)
+        {
+            const auto lfo = std::sin(static_cast<double>(sharedVibratoPhaseRadians)
+                                      + vibratoPhaseInc * static_cast<double>(sample));
+            vibratoSemitones = static_cast<double>(vibratoDepthSemitones) * lfo;
+        }
 
         if (vibeActive)
         {
@@ -554,7 +580,17 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             bendSemitones += static_cast<double>(juce::jlimit(-60.0f, 60.0f, driftCents) * 0.01f);
         }
 
-        const auto pitchRatio = std::pow(2.0, (bendSemitones + vibratoSemitones) / 12.0);
+        // Bend, vibrato depth and vibe drift are all settled for most of a
+        // block, which makes this exponent identical from sample to sample.
+        // Keyed on the exponent, so any change still recomputes: this returns
+        // the same value the unconditional call would have, never a stale one.
+        const auto pitchExponent = (bendSemitones + vibratoSemitones) / 12.0;
+        if (pitchExponent != lastPitchExponent)
+        {
+            lastPitchExponent = pitchExponent;
+            lastPitchRatio = std::pow(2.0, pitchExponent);
+        }
+        const auto pitchRatio = lastPitchRatio;
 
         currentFrequencyHz = baseFrequencyHz * pitchRatio;
         angleDelta = juce::MathConstants<double>::twoPi * currentFrequencyHz / sampleRate;
@@ -576,10 +612,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         {
             const auto& layer = oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)];
             auto& audibleForCurrentNote = oscillatorAudibleForCurrentNote[static_cast<std::size_t>(oscIndex)];
-            const auto semitoneOffset = static_cast<double>(layer.pitchSemitones)
-                                        + static_cast<double>(layer.coarseSemitones)
-                                        + static_cast<double>(layer.fineCents) * 0.01;
-            const auto sourcePitchRatio = std::pow(2.0, semitoneOffset / 12.0);
+            const auto sourcePitchRatio = sourcePitchRatios[static_cast<std::size_t>(oscIndex)];
             const auto sourceFrequencyHz = currentFrequencyHz * sourcePitchRatio;
             const auto sourceAngleDelta = juce::MathConstants<double>::twoPi * sourceFrequencyHz / sampleRate;
 

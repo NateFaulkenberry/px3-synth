@@ -59,7 +59,7 @@ void VoiceFilter::setCurrentSettingsImmediate(const FilterSettings& settings)
     bypassBlend = targetSettings.enabled ? 1.0f : 0.0f;
 }
 
-float VoiceFilter::processSample(float inputSample)
+float VoiceFilter::processSampleActive(float inputSample)
 {
     if (sampleRate <= 0.0)
     {

@@ -9,6 +9,16 @@ endif()
 
 project(PX3Synth VERSION ${PX3_VERSION} LANGUAGES C CXX)
 
+# Without this, a plain `cmake -S . -B build` leaves CMAKE_BUILD_TYPE empty on
+# single-config generators, which means no optimisation flags at all: JUCE's
+# recommended config flags only add -O3 for Release. A synth built that way is
+# several times slower than the one that ships, and nothing in the output says
+# so. Only applied when the caller has not chosen a configuration.
+if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build configuration" FORCE)
+    message(STATUS "PX3: CMAKE_BUILD_TYPE not set; defaulting to Release")
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -206,6 +216,28 @@ if (PX3_BUILD_DIAGNOSTIC)
             JucePlugin_Name="PX3 Synth"
     )
     target_link_libraries(PX3SmokeTest
+        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp
+        PUBLIC juce::juce_recommended_config_flags)
+endif()
+
+# CPU benchmark, built in the SHIPPING configuration (PX3_DIAGNOSTICS off) so it
+# measures the code the plugin actually runs. The diagnostic taps in PX3Diag add
+# per-sample work to the very loops being timed.
+if (PX3_BUILD_DIAGNOSTIC)
+    juce_add_console_app(PX3Bench PRODUCT_NAME "PX3Bench")
+    juce_generate_juce_header(PX3Bench)
+    target_sources(PX3Bench PRIVATE ${PX3_SHARED_SOURCES} Source/Tools/CpuBenchmark.cpp)
+    target_include_directories(PX3Bench PRIVATE ${PX3_INCLUDE_DIRS})
+    target_compile_definitions(PX3Bench
+        PRIVATE
+            JUCE_WEB_BROWSER=0
+            JUCE_USE_CURL=0
+            JUCE_STANDALONE_APPLICATION=1
+            PX3_DEBUG_PANEL=0
+            PX3_DIAGNOSTICS=0
+            JucePlugin_Name="PX3 Synth"
+    )
+    target_link_libraries(PX3Bench
         PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp
         PUBLIC juce::juce_recommended_config_flags)
 endif()

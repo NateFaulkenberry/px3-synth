@@ -16,6 +16,7 @@
 #include "VoiceFilter.h"
 
 #include <array>
+#include <limits>
 
 inline constexpr int kOscillatorSourceCount = 3;
 inline constexpr int kVoiceMixerSourceCount = 4;
@@ -130,6 +131,14 @@ private:
 
     std::array<OscillatorUnit, kOscillatorSourceCount> oscillatorUnits;
     std::array<double, kOscillatorSourceCount> oscillatorAngles { { 0.0, 0.0, 0.0 } };
+    // Memo for the per-sample pitch-bend/vibrato ratio. The exponent is
+    // constant for the whole block whenever bend, mod wheel and vibe drift are
+    // settled, which is most of the time, so this turns an exp2 per sample per
+    // voice into a compare. Keyed on the exponent itself, so a changing
+    // exponent still recomputes and the result is always the same value the
+    // unconditional call would have produced.
+    double lastPitchExponent { std::numeric_limits<double>::quiet_NaN() };
+    double lastPitchRatio { 1.0 };
     std::array<bool, kOscillatorSourceCount> oscillatorAudibleForCurrentNote { { true, true, true } };
     // The sub follows the same rule as the oscillator layers: bypassing it
     // mid-note retires it for the rest of that note rather than leaving a tail
