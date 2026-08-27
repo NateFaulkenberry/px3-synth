@@ -454,7 +454,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     uiConfigManager.setConfigFile(resolveUiConfigFile());
     loadUiConfig(true);
 
-    backgroundImage = juce::ImageFileFormat::loadFrom(BinaryData::pp_png, BinaryData::pp_pngSize);
+    backgroundImage = juce::ImageFileFormat::loadFrom(BinaryData::ppp_png, BinaryData::ppp_pngSize);
     logoFrame = juce::ImageFileFormat::loadFrom(BinaryData::px3_gif, BinaryData::px3_gifSize);
 
     if (logoFrame.isValid())

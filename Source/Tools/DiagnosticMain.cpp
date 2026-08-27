@@ -11,12 +11,39 @@
 
 #include "PluginProcessor.h"
 #include "OutputCeiling.h"
+#include "VoiceFilter.h"
 #include "PX3Diagnostics.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <string>
 #include <vector>
+
+
+// ---------------------------------------------------------------------------
+// Real-time safety: the audio thread must not allocate.
+//
+// Replacing global operator new/delete lets processBlock be measured directly,
+// rather than inferred by reading headers.
+// ---------------------------------------------------------------------------
+namespace px3rt
+{
+std::atomic<long long> allocationCount { 0 };
+std::atomic<bool> counting { false };
+}
+
+void* operator new(std::size_t size)
+{
+    if (px3rt::counting.load(std::memory_order_relaxed))
+        px3rt::allocationCount.fetch_add(1, std::memory_order_relaxed);
+    if (auto* p = std::malloc(size == 0 ? 1 : size)) return p;
+    throw std::bad_alloc();
+}
+void* operator new[](std::size_t size) { return ::operator new(size); }
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete[](void* p) noexcept { std::free(p); }
+void operator delete(void* p, std::size_t) noexcept { std::free(p); }
+void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
 
 namespace
 {
@@ -454,6 +481,309 @@ void runMode(const ModeOptions& mode, const PatchOptions& patch)
     std::fflush(stdout);
 }
 
+
+
+// ---------------------------------------------------------------------------
+// Filter tests.
+//
+// Part A drives VoiceFilter directly with deterministic signals, so filter DSP
+// is measured in isolation from the voice, envelope and mixer. Magnitude is
+// measured as output RMS / input RMS on a steady sine, after the filter's own
+// internal smoothing has settled.
+// ---------------------------------------------------------------------------
+
+int gFilterPass = 0;
+int gFilterFail = 0;
+
+void filterCheck(const char* name, bool ok, const juce::String& detail)
+{
+    if (ok) ++gFilterPass; else ++gFilterFail;
+    std::printf("    %-56s %s  %s\n", name, ok ? "PASS" : "FAIL", detail.toRawUTF8());
+    std::fflush(stdout);
+}
+
+FilterSettings makeFilterSettings(int mode, float cutoff, float q, bool enabled = true)
+{
+    FilterSettings s;
+    s.enabled = enabled;
+    s.modeIndex = mode;
+    s.cutoffHz = cutoff;
+    s.resonanceQ = q;
+    return s;
+}
+
+// Steady-state magnitude response at one frequency, in dB.
+double filterMagnitudeDb(const FilterSettings& settings, double freqHz, double sampleRate = kSampleRate)
+{
+    VoiceFilter filter;
+    filter.prepare(sampleRate);
+    filter.setCurrentSettingsImmediate(settings);
+
+    const int settleSamples = static_cast<int>(sampleRate * 0.30);
+    const int measureSamples = static_cast<int>(sampleRate * 0.30);
+    const auto increment = juce::MathConstants<double>::twoPi * freqHz / sampleRate;
+
+    double phase = 0.0;
+    double energyIn = 0.0;
+    double energyOut = 0.0;
+
+    for (int i = 0; i < settleSamples + measureSamples; ++i)
+    {
+        const auto x = static_cast<float>(std::sin(phase));
+        phase += increment;
+        const auto y = filter.processSample(x);
+        if (i >= settleSamples)
+        {
+            energyIn += static_cast<double>(x) * static_cast<double>(x);
+            energyOut += static_cast<double>(y) * static_cast<double>(y);
+        }
+    }
+
+    if (energyIn <= 0.0) return -200.0;
+    const auto ratio = std::sqrt(energyOut / energyIn);
+    return ratio > 1.0e-10 ? 20.0 * std::log10(ratio) : -200.0;
+}
+
+// Impulse response: peak, tail decay and finiteness.
+struct ImpulseResult
+{
+    bool finite { true };
+    double peak { 0.0 };
+    double tailRms { 0.0 };
+    double earlyRms { 0.0 };
+};
+
+ImpulseResult filterImpulse(const FilterSettings& settings, double sampleRate = kSampleRate)
+{
+    VoiceFilter filter;
+    filter.prepare(sampleRate);
+    filter.setCurrentSettingsImmediate(settings);
+
+    ImpulseResult r;
+    const int total = static_cast<int>(sampleRate * 0.5);
+    const int tailStart = static_cast<int>(sampleRate * 0.3);
+    double tailEnergy = 0.0;
+    double earlyEnergy = 0.0;
+    long long tailCount = 0;
+    long long earlyCount = 0;
+
+    for (int i = 0; i < total; ++i)
+    {
+        const auto x = i == 0 ? 1.0f : 0.0f;
+        const auto y = filter.processSample(x);
+        if (!std::isfinite(y)) r.finite = false;
+        r.peak = std::max(r.peak, std::abs(static_cast<double>(y)));
+        if (i >= tailStart) { tailEnergy += (double) y * y; ++tailCount; }
+        else if (i > 100)   { earlyEnergy += (double) y * y; ++earlyCount; }
+    }
+    r.tailRms = tailCount > 0 ? std::sqrt(tailEnergy / (double) tailCount) : 0.0;
+    r.earlyRms = earlyCount > 0 ? std::sqrt(earlyEnergy / (double) earlyCount) : 0.0;
+    return r;
+}
+
+// Silence in must give silence out, even at maximum resonance.
+double filterSilenceOutput(const FilterSettings& settings, double sampleRate = kSampleRate)
+{
+    VoiceFilter filter;
+    filter.prepare(sampleRate);
+    filter.setCurrentSettingsImmediate(settings);
+    double peak = 0.0;
+    for (int i = 0; i < static_cast<int>(sampleRate); ++i)
+    {
+        const auto y = filter.processSample(0.0f);
+        if (!std::isfinite(y)) return 1.0e9;
+        peak = std::max(peak, std::abs(static_cast<double>(y)));
+    }
+    return peak;
+}
+
+
+// Part B: filters measured through the real voice, to prove wiring rather than
+// DSP. Measured at the post-filter / pre-voice-gain tap, so the polyphony gain,
+// mixer and output stages cannot contaminate the reading.
+struct FilterSynthConfig
+{
+    bool f1On { true };
+    bool f2On { false };
+    int f1Mode { 0 };
+    int f2Mode { 0 };
+    float f1Cutoff { 1000.0f };
+    float f2Cutoff { 1000.0f };
+    float f1Q { 0.707f };
+    float f2Q { 0.707f };
+    int midiNote { 69 };            // A4 = 440 Hz
+    juce::String modDestination;    // e.g. "filter1Cutoff"
+    float modAmount { 0.0f };
+    bool useEnvelopeSource { false };  // false = LFO1, true = ENV1
+};
+
+double measureVoiceFilterPeak(const FilterSynthConfig& config)
+{
+    px3::diag::resetNoteStartSequence();
+    PX3SynthAudioProcessor processor;
+
+    setParameter(processor, "ampAttack", 0.005f);
+    setParameter(processor, "ampDecay", 0.050f);
+    setParameter(processor, "ampSustain", 1.0f);
+    setParameter(processor, "ampRelease", 0.100f);
+    setParameter(processor, "ampEnvEnabled", 1.0f);
+    setParameter(processor, "vibeAmount", 0.0f);
+    setParameter(processor, "delayEnabled", 0.0f);
+    setParameter(processor, "reverbEnabled", 0.0f);
+    setParameter(processor, "moodEnabled", 0.0f);
+    setParameter(processor, "subOscEnabled", 0.0f);
+    for (int i = 0; i < 3; ++i)
+    {
+        const auto slot = juce::String(i + 1);
+        setParameter(processor, "osc" + slot + "Enabled", i == 0 ? 1.0f : 0.0f);
+        if (auto* m = findParameter(processor, "osc" + slot + "Mode")) m->setValueNotifyingHost(0.0f); // SINE
+    }
+
+    setParameter(processor, "filter1Enabled", config.f1On ? 1.0f : 0.0f);
+    setParameter(processor, "filter2Enabled", config.f2On ? 1.0f : 0.0f);
+    setParameter(processor, "filter1Cutoff", config.f1Cutoff);
+    setParameter(processor, "filter2Cutoff", config.f2Cutoff);
+    setParameter(processor, "filter1Resonance", config.f1Q);
+    setParameter(processor, "filter2Resonance", config.f2Q);
+    if (auto* t1 = findParameter(processor, "filter1Type"))
+        t1->setValueNotifyingHost((float) config.f1Mode / (float) juce::jmax(1, t1->getNumSteps() - 1));
+    if (auto* t2 = findParameter(processor, "filter2Type"))
+        t2->setValueNotifyingHost((float) config.f2Mode / (float) juce::jmax(1, t2->getNumSteps() - 1));
+
+    // Modulation: a static, fully-deflected source so the effective cutoff has a
+    // steady offset that can be measured, rather than an oscillating one.
+    for (int i = 0; i < 3; ++i)
+    {
+        const auto slot = juce::String(i + 1);
+        setParameter(processor, "env" + slot + "Enabled", 0.0f);
+        setParameter(processor, i == 0 ? juce::String("envAmount") : "env" + slot + "Amount", 0.0f);
+        const auto lfoPrefix = i == 0 ? juce::String("lfo") : "lfo" + juce::String(i + 1);
+        setParameter(processor, i == 0 ? juce::String("lfoEnabled") : lfoPrefix + "Enabled", 0.0f);
+        setParameter(processor, i == 0 ? juce::String("lfoAmount") : lfoPrefix + "Amount", 0.0f);
+    }
+    if (config.modDestination.isNotEmpty() && config.modAmount != 0.0f)
+    {
+        if (config.useEnvelopeSource)
+        {
+            setParameter(processor, "env1Enabled", 1.0f);
+            setParameter(processor, "env1Attack", 0.001f);
+            setParameter(processor, "env1Decay", 0.001f);
+            setParameter(processor, "env1Sustain", 1.0f);   // held flat at full
+            setParameter(processor, "env1Release", 0.100f);
+            setParameter(processor, "envAmount", config.modAmount);
+            processor.setEnvelopeAssignmentByParameterId(0, config.modDestination, false);
+        }
+        else
+        {
+            setParameter(processor, "lfoEnabled", 1.0f);
+            setParameter(processor, "lfoFrequency", 0.01f);  // near-DC: effectively a constant offset
+            setParameter(processor, "lfoAmount", config.modAmount);
+            processor.setLfoAssignmentByParameterId(0, config.modDestination, false);
+        }
+    }
+
+    processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+    processor.prepareToPlay(kSampleRate, kBlockSize);
+
+    auto& diag = px3::diag::state();
+    diag.resetResults();
+    diag.resetModes();
+
+    const auto noteOn = static_cast<int>(0.02 * kSampleRate);
+    const auto settle = static_cast<int>(0.50 * kSampleRate);
+    const auto total = static_cast<int>(1.20 * kSampleRate);
+
+    juce::AudioBuffer<float> buffer(2, kBlockSize);
+    auto delivered = false;
+    for (int position = 0; position < total; position += kBlockSize)
+    {
+        diag.capturing = position >= settle;
+        buffer.clear();
+        juce::MidiBuffer midi;
+        if (!delivered && position + kBlockSize > noteOn)
+        {
+            midi.addEvent(juce::MidiMessage::noteOn(1, config.midiNote, 0.9f), juce::jmax(0, noteOn - position));
+            delivered = true;
+        }
+        processor.processBlock(buffer, midi);
+    }
+    diag.capturing = false;
+
+    return static_cast<double>(diag.peak[px3::diag::stageOsc]);
+}
+
+double voiceFilterDb(const FilterSynthConfig& config, double reference)
+{
+    const auto p = measureVoiceFilterPeak(config);
+    return (p > 1.0e-9 && reference > 1.0e-9) ? 20.0 * std::log10(p / reference) : -200.0;
+}
+
+
+// Renders a note and returns the master trace, so two renders can be compared
+// sample for sample. Used to prove a reused voice carries no stale filter state.
+std::vector<float> renderFilterNoteTrace(int midiNote, bool precedeWithOtherNote, int otherNote)
+{
+    px3::diag::resetNoteStartSequence();
+    PX3SynthAudioProcessor processor;
+    setParameter(processor, "ampAttack", 0.005f);
+    setParameter(processor, "ampDecay", 0.050f);
+    setParameter(processor, "ampSustain", 1.0f);
+    setParameter(processor, "ampRelease", 0.050f);
+    setParameter(processor, "delayEnabled", 0.0f);
+    setParameter(processor, "reverbEnabled", 0.0f);
+    setParameter(processor, "moodEnabled", 0.0f);
+    setParameter(processor, "subOscEnabled", 0.0f);
+    setParameter(processor, "vibeAmount", 0.0f);
+    for (int i = 0; i < 3; ++i)
+    {
+        const auto slot = juce::String(i + 1);
+        setParameter(processor, "osc" + slot + "Enabled", i == 0 ? 1.0f : 0.0f);
+        if (auto* m = findParameter(processor, "osc" + slot + "Mode")) m->setValueNotifyingHost(0.0f);
+    }
+    // A resonant low-pass: the most state-retentive configuration available.
+    setParameter(processor, "filter1Enabled", 1.0f);
+    setParameter(processor, "filter1Cutoff", 400.0f);
+    setParameter(processor, "filter1Resonance", 2.2f);
+    setParameter(processor, "filter2Enabled", 0.0f);
+
+    processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+    processor.prepareToPlay(kSampleRate, kBlockSize);
+
+    auto& diag = px3::diag::state();
+    diag.resetResults();
+    diag.resetModes();
+    diag.capturing = true;
+    diag.tracing = true;
+
+    // The measured note always starts at the same absolute sample, whether or
+    // not another note ran first, so the traces are directly comparable.
+    const auto otherOn = static_cast<int>(0.02 * kSampleRate);
+    const auto otherOff = static_cast<int>(0.40 * kSampleRate);
+    const auto targetOn = static_cast<int>(0.80 * kSampleRate);
+    const auto total = static_cast<int>(1.60 * kSampleRate);
+
+    juce::AudioBuffer<float> buffer(2, kBlockSize);
+    for (int position = 0; position < total; position += kBlockSize)
+    {
+        buffer.clear();
+        juce::MidiBuffer midi;
+        auto addAt = [&](int when, const juce::MidiMessage& m)
+        {
+            if (position <= when && position + kBlockSize > when)
+                midi.addEvent(m, juce::jmax(0, when - position));
+        };
+        if (precedeWithOtherNote)
+        {
+            addAt(otherOn, juce::MidiMessage::noteOn(1, otherNote, 0.9f));
+            addAt(otherOff, juce::MidiMessage::noteOff(1, otherNote));
+        }
+        addAt(targetOn, juce::MidiMessage::noteOn(1, midiNote, 0.9f));
+        processor.processBlock(buffer, midi);
+    }
+    diag.capturing = false;
+    diag.tracing = false;
+    return diag.trace[px3::diag::stageMaster];
+}
 
 // ---------------------------------------------------------------------------
 // Mixer test matrix.
@@ -1883,6 +2213,585 @@ int main(int argc, char* argv[])
             }
         }
         return 0;
+    }
+    else if (arg == "rtsafety")
+    {
+        std::printf("\nREAL-TIME SAFETY - allocations inside processBlock\n");
+        std::printf("  the audio thread must not allocate; measured with a replaced global new\n\n");
+
+        auto measure = [](const char* label, bool filtersOn, bool sweepCutoff)
+        {
+            px3::diag::resetNoteStartSequence();
+            PX3SynthAudioProcessor processor;
+            setParameter(processor, "ampAttack", 0.005f);
+            setParameter(processor, "ampSustain", 1.0f);
+            setParameter(processor, "ampRelease", 0.3f);
+            setParameter(processor, "delayEnabled", 0.0f);
+            setParameter(processor, "reverbEnabled", 0.0f);
+            setParameter(processor, "moodEnabled", 0.0f);
+            setParameter(processor, "filter1Enabled", filtersOn ? 1.0f : 0.0f);
+            setParameter(processor, "filter2Enabled", filtersOn ? 1.0f : 0.0f);
+            setParameter(processor, "filter1Cutoff", 1200.0f);
+            setParameter(processor, "filter2Cutoff", 3000.0f);
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+
+            // Warm-up: first blocks legitimately allocate (buffers, voice setup).
+            for (int i = 0; i < 40; ++i)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                if (i == 2) midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
+                if (i == 3) midi.addEvent(juce::MidiMessage::noteOn(1, 64, 0.9f), 0);
+                if (i == 4) midi.addEvent(juce::MidiMessage::noteOn(1, 67, 0.9f), 0);
+                processor.processBlock(buffer, midi);
+            }
+
+            constexpr int measuredBlocks = 200;
+            px3rt::allocationCount.store(0, std::memory_order_relaxed);
+            px3rt::counting.store(true, std::memory_order_relaxed);
+            for (int i = 0; i < measuredBlocks; ++i)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                processor.processBlock(buffer, midi);
+                if (sweepCutoff)
+                {
+                    px3rt::counting.store(false, std::memory_order_relaxed);
+                    setParameter(processor, "filter1Cutoff", 400.0f + 3000.0f * (float) (i % 20) / 20.0f);
+                    px3rt::counting.store(true, std::memory_order_relaxed);
+                }
+            }
+            px3rt::counting.store(false, std::memory_order_relaxed);
+            const auto total = px3rt::allocationCount.load(std::memory_order_relaxed);
+            std::printf("  %-42s %8lld allocations over %d blocks (%.1f per block)  %s\n",
+                        label, total, measuredBlocks, (double) total / measuredBlocks,
+                        total == 0 ? "ok" : "*** ALLOCATING ON THE AUDIO THREAD ***");
+            return total;
+        };
+
+        long long failures = 0;
+        if (measure("3 voices, filters bypassed", false, false) != 0) ++failures;
+        if (measure("3 voices, both filters active", true, false) != 0) ++failures;
+        if (measure("3 voices, filters active + cutoff sweeping", true, true) != 0) ++failures;
+
+        std::printf("\n  %lld failure(s)\n", failures);
+        return static_cast<int>(failures);
+    }
+    else if (arg == "filter")
+    {
+        gFilterPass = 0;
+        gFilterFail = 0;
+        std::printf("\nFILTER AUDIT - PART A: VoiceFilter driven directly\n");
+        std::printf("  magnitude = steady-state output RMS / input RMS on a sine, in dB\n");
+
+        constexpr int LP12 = 0, LP24 = 1, HP12 = 2, HP24 = 3, BP = 4, NOTCH = 5, ALLPASS = 6;
+        const char* modeNames[] = { "LP12", "LP24", "HP12", "HP24", "BandPass", "Notch", "AllPass" };
+
+        // ---- [4] filter types -------------------------------------------
+        std::printf("\n  [4] FILTER TYPE - response at 100 Hz / 1 kHz / 10 kHz, cutoff 1 kHz\n");
+        std::printf("    %-10s %10s %10s %10s\n", "mode", "100Hz", "1kHz", "10kHz");
+        double magAt[7][3];
+        for (int m = 0; m <= ALLPASS; ++m)
+        {
+            const auto s1 = makeFilterSettings(m, 1000.0f, 0.707f);
+            magAt[m][0] = filterMagnitudeDb(s1, 100.0);
+            magAt[m][1] = filterMagnitudeDb(s1, 1000.0);
+            magAt[m][2] = filterMagnitudeDb(s1, 10000.0);
+            std::printf("    %-10s %10.2f %10.2f %10.2f\n", modeNames[m],
+                        magAt[m][0], magAt[m][1], magAt[m][2]);
+        }
+
+        filterCheck("LP12 passes lows, attenuates highs",
+                    magAt[LP12][0] > -1.5 && magAt[LP12][2] < -20.0 && magAt[LP12][2] < magAt[LP12][0],
+                    juce::String("100Hz=") + juce::String(magAt[LP12][0], 2) + " 10kHz=" + juce::String(magAt[LP12][2], 2));
+        filterCheck("LP24 is steeper than LP12 above cutoff",
+                    magAt[LP24][2] < magAt[LP12][2] - 10.0,
+                    juce::String("LP12=") + juce::String(magAt[LP12][2], 2) + " LP24=" + juce::String(magAt[LP24][2], 2));
+        filterCheck("HP12 passes highs, attenuates lows",
+                    magAt[HP12][2] > -1.5 && magAt[HP12][0] < -20.0,
+                    juce::String("100Hz=") + juce::String(magAt[HP12][0], 2) + " 10kHz=" + juce::String(magAt[HP12][2], 2));
+        filterCheck("HP24 is steeper than HP12 below cutoff",
+                    magAt[HP24][0] < magAt[HP12][0] - 10.0,
+                    juce::String("HP12=") + juce::String(magAt[HP12][0], 2) + " HP24=" + juce::String(magAt[HP24][0], 2));
+        filterCheck("BandPass peaks at cutoff, rejects both sides",
+                    magAt[BP][1] > magAt[BP][0] + 10.0 && magAt[BP][1] > magAt[BP][2] + 10.0,
+                    juce::String("100Hz=") + juce::String(magAt[BP][0], 2) + " 1kHz=" + juce::String(magAt[BP][1], 2)
+                        + " 10kHz=" + juce::String(magAt[BP][2], 2));
+        filterCheck("Notch dips at cutoff, passes both sides",
+                    magAt[NOTCH][1] < magAt[NOTCH][0] - 6.0 && magAt[NOTCH][1] < magAt[NOTCH][2] - 6.0,
+                    juce::String("100Hz=") + juce::String(magAt[NOTCH][0], 2) + " 1kHz=" + juce::String(magAt[NOTCH][1], 2)
+                        + " 10kHz=" + juce::String(magAt[NOTCH][2], 2));
+        filterCheck("AllPass is magnitude-flat",
+                    std::abs(magAt[ALLPASS][0]) < 0.5 && std::abs(magAt[ALLPASS][1]) < 0.5
+                        && std::abs(magAt[ALLPASS][2]) < 0.5,
+                    juce::String("100Hz=") + juce::String(magAt[ALLPASS][0], 2) + " 1kHz="
+                        + juce::String(magAt[ALLPASS][1], 2) + " 10kHz=" + juce::String(magAt[ALLPASS][2], 2));
+
+        // ---- [5] cutoff --------------------------------------------------
+        std::printf("\n  [5] CUTOFF - LP12 response at 1 kHz as cutoff moves\n");
+        {
+            const double cutoffs[] = { 200.0, 500.0, 1000.0, 4000.0, 16000.0 };
+            double previous = -1000.0;
+            auto monotonic = true;
+            juce::String detail;
+            for (const auto c : cutoffs)
+            {
+                const auto mag = filterMagnitudeDb(makeFilterSettings(LP12, (float) c, 0.707f), 1000.0);
+                detail << juce::String((int) c) << "Hz:" << juce::String(mag, 1) << "dB  ";
+                if (mag < previous - 0.5) monotonic = false;
+                previous = mag;
+            }
+            filterCheck("raising cutoff monotonically opens a low-pass", monotonic, detail);
+
+            const auto low = filterMagnitudeDb(makeFilterSettings(LP12, 200.0f, 0.707f), 1000.0);
+            const auto high = filterMagnitudeDb(makeFilterSettings(LP12, 16000.0f, 0.707f), 1000.0);
+            filterCheck("cutoff has a large, usable range", high - low > 20.0,
+                        juce::String("span=") + juce::String(high - low, 1) + " dB");
+
+            // -3 dB point should track the cutoff setting
+            for (const auto c : { 500.0, 2000.0, 8000.0 })
+            {
+                const auto atCutoff = filterMagnitudeDb(makeFilterSettings(LP12, (float) c, 0.707f), c);
+                filterCheck((juce::String("LP12 is near -3 dB at its own cutoff (") + juce::String((int) c) + " Hz)").toRawUTF8(),
+                            atCutoff < -1.0 && atCutoff > -6.0,
+                            juce::String(atCutoff, 2) + " dB");
+            }
+        }
+
+        // ---- [6] resonance -----------------------------------------------
+        std::printf("\n  [6] RESONANCE - magnitude at cutoff as Q rises (cutoff 1 kHz)\n");
+        {
+            const float qs[] = { 0.25f, 0.5f, 0.8f, 1.4f, 2.2f };
+            double previous = -1000.0;
+            auto rising = true;
+            juce::String detail;
+            for (const auto q : qs)
+            {
+                const auto mag = filterMagnitudeDb(makeFilterSettings(LP12, 1000.0f, q), 1000.0);
+                detail << "Q" << juce::String(q, 2) << ":" << juce::String(mag, 1) << "dB  ";
+                if (mag < previous - 0.2) rising = false;
+                previous = mag;
+            }
+            filterCheck("resonance raises the level at cutoff, monotonically", rising, detail);
+
+            // cutoff must not move as Q changes
+            const auto lowQfar = filterMagnitudeDb(makeFilterSettings(LP12, 1000.0f, 0.25f), 10000.0);
+            const auto highQfar = filterMagnitudeDb(makeFilterSettings(LP12, 1000.0f, 2.2f), 10000.0);
+            filterCheck("changing Q does not move the cutoff (far-band unchanged)",
+                        std::abs(lowQfar - highQfar) < 3.0,
+                        juce::String("10kHz Q0.25=") + juce::String(lowQfar, 2) + " Q2.2=" + juce::String(highQfar, 2));
+        }
+
+        // ---- [21][22] stability, silence, impulse -------------------------
+        std::printf("\n  [21][22][23] STABILITY, SILENCE, IMPULSE\n");
+        for (int m = 0; m <= ALLPASS; ++m)
+        {
+            for (const auto q : { 0.25f, 2.2f })
+            {
+                for (const auto c : { 80.0f, 18000.0f })
+                {
+                    const auto st = makeFilterSettings(m, c, q);
+                    const auto imp = filterImpulse(st);
+                    const auto silence = filterSilenceOutput(st);
+                    const auto ok = imp.finite && imp.peak < 100.0 && silence < 1.0e-9
+                                    && imp.tailRms <= imp.earlyRms + 1.0e-9;
+                    if (!ok)
+                    {
+                        filterCheck((juce::String(modeNames[m]) + " cutoff " + juce::String((int) c)
+                                     + " Q" + juce::String(q, 2) + " is stable and silent on silence").toRawUTF8(),
+                                    ok,
+                                    juce::String("peak=") + juce::String(imp.peak, 4)
+                                        + " tail=" + juce::String(imp.tailRms, 9)
+                                        + " silence=" + juce::String(silence, 12)
+                                        + (imp.finite ? "" : " NON-FINITE"));
+                    }
+                    else
+                    {
+                        ++gFilterPass;
+                    }
+                }
+            }
+        }
+        std::printf("    all %d mode x Q x cutoff stability/silence/impulse combinations checked\n", 7 * 2 * 2);
+
+        // ---- [20] sample rate independence --------------------------------
+        std::printf("\n  [20] SAMPLE RATE - cutoff mapping must hold across rates\n");
+        for (const auto rate : { 44100.0, 48000.0, 96000.0 })
+        {
+            const auto atCutoff = filterMagnitudeDb(makeFilterSettings(LP12, 1000.0f, 0.707f), 1000.0, rate);
+            const auto below = filterMagnitudeDb(makeFilterSettings(LP12, 1000.0f, 0.707f), 100.0, rate);
+            const auto above = filterMagnitudeDb(makeFilterSettings(LP12, 1000.0f, 0.707f), 10000.0, rate);
+            filterCheck((juce::String("LP12 1 kHz behaves the same at ") + juce::String((int) rate) + " Hz").toRawUTF8(),
+                        atCutoff < -1.0 && atCutoff > -6.0 && below > -1.5 && above < -20.0,
+                        juce::String("100Hz=") + juce::String(below, 2) + " 1kHz=" + juce::String(atCutoff, 2)
+                            + " 10kHz=" + juce::String(above, 2));
+        }
+
+        // ---- [3][27] two instances must not interact ----------------------
+        std::printf("\n  [3][32] TWO INSTANCES ARE INDEPENDENT\n");
+        {
+            const auto aSolo = filterMagnitudeDb(makeFilterSettings(LP12, 500.0f, 2.0f), 1000.0);
+            const auto bSolo = filterMagnitudeDb(makeFilterSettings(HP12, 8000.0f, 0.3f), 1000.0);
+
+            VoiceFilter a, b;
+            a.prepare(kSampleRate);
+            b.prepare(kSampleRate);
+            a.setCurrentSettingsImmediate(makeFilterSettings(LP12, 500.0f, 2.0f));
+            b.setCurrentSettingsImmediate(makeFilterSettings(HP12, 8000.0f, 0.3f));
+
+            const int settle = static_cast<int>(kSampleRate * 0.3);
+            const int measure = static_cast<int>(kSampleRate * 0.3);
+            const auto inc = juce::MathConstants<double>::twoPi * 1000.0 / kSampleRate;
+            double phase = 0.0, eIn = 0.0, eA = 0.0, eB = 0.0;
+            for (int i = 0; i < settle + measure; ++i)
+            {
+                const auto x = static_cast<float>(std::sin(phase));
+                phase += inc;
+                const auto ya = a.processSample(x);
+                const auto yb = b.processSample(x);
+                if (i >= settle) { eIn += (double) x * x; eA += (double) ya * ya; eB += (double) yb * yb; }
+            }
+            const auto aInterleaved = 20.0 * std::log10(std::sqrt(eA / eIn));
+            const auto bInterleaved = 20.0 * std::log10(std::sqrt(eB / eIn));
+            filterCheck("instance A response is unchanged when B runs alongside",
+                        std::abs(aInterleaved - aSolo) < 0.01,
+                        juce::String("solo=") + juce::String(aSolo, 4) + " interleaved=" + juce::String(aInterleaved, 4));
+            filterCheck("instance B response is unchanged when A runs alongside",
+                        std::abs(bInterleaved - bSolo) < 0.01,
+                        juce::String("solo=") + juce::String(bSolo, 4) + " interleaved=" + juce::String(bInterleaved, 4));
+        }
+
+
+        // =============== PART B: through the real voice ===================
+        std::printf("\nFILTER AUDIT - PART B: filters through the voice (wiring)\n");
+
+        FilterSynthConfig openConfig;
+        openConfig.f1On = false;
+        openConfig.f2On = false;
+        const auto unfiltered = measureVoiceFilterPeak(openConfig);
+        std::printf("  reference (both filters bypassed) post-filter peak = %.6f\n", unfiltered);
+        filterCheck("both filters bypassed produces signal", unfiltered > 1.0e-4,
+                    juce::String("peak=") + juce::String(unfiltered, 6));
+
+        // ---- [8] bypass ---------------------------------------------------
+        std::printf("\n  [8] BYPASS - each filter independently\n");
+        {
+            FilterSynthConfig c;
+            // 150 Hz LP against a 440 Hz note: ~-19 dB expected, unambiguous.
+            c.f1On = true;  c.f1Mode = 0; c.f1Cutoff = 150.0f;
+            c.f2On = false; c.f2Mode = 0; c.f2Cutoff = 150.0f;
+            const auto f1Only = voiceFilterDb(c, unfiltered);
+
+            c.f1On = false; c.f2On = true;
+            const auto f2Only = voiceFilterDb(c, unfiltered);
+
+            c.f1On = false; c.f2On = false;
+            const auto neither = voiceFilterDb(c, unfiltered);
+
+            filterCheck("Filter 1 enabled attenuates; bypassed does not",
+                        f1Only < -10.0, juce::String("F1 only=") + juce::String(f1Only, 2) + " dB");
+            filterCheck("Filter 2 enabled attenuates; bypassed does not",
+                        f2Only < -10.0, juce::String("F2 only=") + juce::String(f2Only, 2) + " dB");
+            filterCheck("both bypassed is unity (signal passes untouched)",
+                        std::abs(neither) < 0.01, juce::String(neither, 4) + " dB");
+            filterCheck("Filter 1 and Filter 2 attenuate identically for identical settings",
+                        std::abs(f1Only - f2Only) < 0.5,
+                        juce::String("F1=") + juce::String(f1Only, 2) + " F2=" + juce::String(f2Only, 2));
+        }
+
+        // ---- [9] serial cascade -------------------------------------------
+        std::printf("\n  [9] SERIAL ROUTING - F1 and F2 cascade\n");
+        {
+            FilterSynthConfig c;
+            c.f1On = true; c.f1Mode = 0; c.f1Cutoff = 600.0f; c.f2On = false;
+            const auto onlyF1 = voiceFilterDb(c, unfiltered);
+
+            c.f1On = false; c.f2On = true; c.f2Mode = 0; c.f2Cutoff = 600.0f;
+            const auto onlyF2 = voiceFilterDb(c, unfiltered);
+
+            c.f1On = true; c.f2On = true;
+            const auto both = voiceFilterDb(c, unfiltered);
+
+            filterCheck("cascading both filters sums their attenuation (serial)",
+                        std::abs(both - (onlyF1 + onlyF2)) < 1.0,
+                        juce::String("F1=") + juce::String(onlyF1, 2) + " F2=" + juce::String(onlyF2, 2)
+                            + " both=" + juce::String(both, 2) + " expected="
+                            + juce::String(onlyF1 + onlyF2, 2));
+
+            // LP into HP must band-limit from both sides
+            c.f1On = true; c.f1Mode = 0; c.f1Cutoff = 1200.0f;   // LP12
+            c.f2On = true; c.f2Mode = 2; c.f2Cutoff = 200.0f;    // HP12
+            c.midiNote = 69;                                     // 440 Hz, in the band
+            const auto inBand = voiceFilterDb(c, unfiltered);
+            c.midiNote = 33;                                     // 55 Hz, below the HP
+            FilterSynthConfig ref = openConfig; ref.midiNote = 33;
+            const auto lowRef = measureVoiceFilterPeak(ref);
+            const auto belowBand = voiceFilterDb(c, lowRef);
+            c.midiNote = 105;                                    // 6.6 kHz, above the LP
+            ref.midiNote = 105;
+            const auto highRef = measureVoiceFilterPeak(ref);
+            const auto aboveBand = voiceFilterDb(c, highRef);
+
+            filterCheck("LP1 -> HP2 band-limits from both sides",
+                        inBand > -6.0 && belowBand < -15.0 && aboveBand < -15.0,
+                        juce::String("55Hz=") + juce::String(belowBand, 1) + " 440Hz="
+                            + juce::String(inBand, 1) + " 6.6kHz=" + juce::String(aboveBand, 1));
+        }
+
+        // ---- [3][32] parameter -> correct instance -------------------------
+        std::printf("\n  [3][32] EACH PARAMETER REACHES ONLY ITS OWN FILTER\n");
+        {
+            // With a filter disabled, every one of its parameters must be inert.
+            FilterSynthConfig base;
+            base.f1On = true; base.f1Mode = 0; base.f1Cutoff = 800.0f; base.f1Q = 0.707f;
+            base.f2On = false;
+            const auto reference = measureVoiceFilterPeak(base);
+
+            auto c = base; c.f2Cutoff = 120.0f;
+            const auto f2CutoffMoved = measureVoiceFilterPeak(c);
+            filterCheck("Filter 2 cutoff is inert while Filter 2 is bypassed",
+                        std::abs(f2CutoffMoved - reference) < 1.0e-9,
+                        juce::String("ref=") + juce::String(reference, 8) + " moved=" + juce::String(f2CutoffMoved, 8));
+
+            c = base; c.f2Q = 2.2f;
+            filterCheck("Filter 2 resonance is inert while Filter 2 is bypassed",
+                        std::abs(measureVoiceFilterPeak(c) - reference) < 1.0e-9, "");
+
+            c = base; c.f2Mode = 2;
+            filterCheck("Filter 2 type is inert while Filter 2 is bypassed",
+                        std::abs(measureVoiceFilterPeak(c) - reference) < 1.0e-9, "");
+
+            FilterSynthConfig base2;
+            base2.f1On = false; base2.f2On = true; base2.f2Mode = 0; base2.f2Cutoff = 800.0f;
+            const auto reference2 = measureVoiceFilterPeak(base2);
+
+            c = base2; c.f1Cutoff = 120.0f;
+            filterCheck("Filter 1 cutoff is inert while Filter 1 is bypassed",
+                        std::abs(measureVoiceFilterPeak(c) - reference2) < 1.0e-9, "");
+            c = base2; c.f1Q = 2.2f;
+            filterCheck("Filter 1 resonance is inert while Filter 1 is bypassed",
+                        std::abs(measureVoiceFilterPeak(c) - reference2) < 1.0e-9, "");
+            c = base2; c.f1Mode = 2;
+            filterCheck("Filter 1 type is inert while Filter 1 is bypassed",
+                        std::abs(measureVoiceFilterPeak(c) - reference2) < 1.0e-9, "");
+        }
+
+        // ---- [15][16][17] modulation --------------------------------------
+        std::printf("\n  [15][16][17] MODULATION DESTINATIONS\n");
+        {
+            for (const auto useEnv : { false, true })
+            {
+                const juce::String sourceName = useEnv ? "ENV1" : "LFO1";
+
+                FilterSynthConfig c;
+                // Base cutoff sits on the note so raising and lowering both move
+                // the response measurably; a base far below the note saturates.
+                c.f1On = true; c.f1Mode = 0; c.f1Cutoff = 440.0f; c.f2On = false;
+                c.useEnvelopeSource = useEnv;
+                const auto noMod = measureVoiceFilterPeak(c);
+
+                c.modDestination = "filter1Cutoff"; c.modAmount = 0.0f;
+                filterCheck((sourceName + " -> F1 cutoff with amount 0 changes nothing").toRawUTF8(),
+                            std::abs(measureVoiceFilterPeak(c) - noMod) < 1.0e-9, "");
+
+                c.modAmount = 1.0f;
+                const auto modUp = measureVoiceFilterPeak(c);
+                c.modAmount = -1.0f;
+                const auto modDown = measureVoiceFilterPeak(c);
+                filterCheck((sourceName + " -> F1 cutoff moves F1 in both directions").toRawUTF8(),
+                            modUp > noMod * 1.02 && modDown < noMod * 0.98,
+                            juce::String("none=") + juce::String(noMod, 5) + " +1=" + juce::String(modUp, 5)
+                                + " -1=" + juce::String(modDown, 5));
+
+                // routed at F2 while F2 is bypassed -> must not touch F1
+                c.modDestination = "filter2Cutoff"; c.modAmount = 1.0f;
+                filterCheck((sourceName + " -> F2 cutoff does NOT move F1").toRawUTF8(),
+                            std::abs(measureVoiceFilterPeak(c) - noMod) < 1.0e-9,
+                            juce::String("F1 peak ") + juce::String(noMod, 8) + " -> "
+                                + juce::String(measureVoiceFilterPeak(c), 8));
+
+                // and the mirror: modulate F2 with F1 bypassed
+                FilterSynthConfig d;
+                d.f1On = false; d.f2On = true; d.f2Mode = 0; d.f2Cutoff = 440.0f;
+                d.useEnvelopeSource = useEnv;
+                const auto noMod2 = measureVoiceFilterPeak(d);
+                d.modDestination = "filter2Cutoff"; d.modAmount = 1.0f;
+                const auto mod2 = measureVoiceFilterPeak(d);
+                filterCheck((sourceName + " -> F2 cutoff moves F2").toRawUTF8(),
+                            mod2 > noMod2 * 1.02,
+                            juce::String("none=") + juce::String(noMod2, 5) + " +1=" + juce::String(mod2, 5));
+
+                d.modDestination = "filter1Cutoff";
+                filterCheck((sourceName + " -> F1 cutoff does NOT move F2").toRawUTF8(),
+                            std::abs(measureVoiceFilterPeak(d) - noMod2) < 1.0e-9, "");
+            }
+        }
+
+
+        // ---- [11][12][13] voice state -------------------------------------
+        std::printf("\n  [11][12][13] PER-VOICE STATE, VOICE REUSE, VOICE STEALING\n");
+        {
+            // Tested at the filter, not through the voice: a voice's oscillator
+            // start phase is seeded from a global note counter, so two renders
+            // of "the same" note differ by phase alone and cannot be compared
+            // sample for sample.
+            {
+                const auto settings = makeFilterSettings(0, 400.0f, 2.2f);
+
+                VoiceFilter clean;
+                clean.prepare(kSampleRate);
+                clean.setCurrentSettingsImmediate(settings);
+
+                VoiceFilter dirty;
+                dirty.prepare(kSampleRate);
+                dirty.setCurrentSettingsImmediate(settings);
+                // Drive it hard, then re-initialise exactly as startNote does.
+                for (int i = 0; i < 20000; ++i)
+                {
+                    dirty.processSample(std::sin(static_cast<float>(i) * 0.05f) * 4.0f);
+                }
+                dirty.prepare(kSampleRate);
+                dirty.setCurrentSettingsImmediate(settings);
+
+                auto maxDiff = 0.0f;
+                auto dirtyResidual = 0.0f;
+                for (int i = 0; i < 4000; ++i)
+                {
+                    const auto x = std::sin(static_cast<float>(i) * 0.013f);
+                    const auto a = clean.processSample(x);
+                    const auto b = dirty.processSample(x);
+                    maxDiff = juce::jmax(maxDiff, std::abs(a - b));
+                }
+                VoiceFilter silent;
+                silent.prepare(kSampleRate);
+                silent.setCurrentSettingsImmediate(settings);
+                for (int i = 0; i < 20000; ++i)
+                    silent.processSample(std::sin(static_cast<float>(i) * 0.05f) * 4.0f);
+                silent.prepare(kSampleRate);
+                silent.setCurrentSettingsImmediate(settings);
+                for (int i = 0; i < 4000; ++i)
+                    dirtyResidual = juce::jmax(dirtyResidual, std::abs(silent.processSample(0.0f)));
+
+                filterCheck("re-initialising a filter clears all state (bit-exact)",
+                            maxDiff == 0.0f,
+                            juce::String("max difference vs a fresh filter = ") + juce::String(maxDiff, 9));
+                filterCheck("a re-initialised filter outputs pure silence for silence",
+                            dirtyResidual == 0.0f,
+                            juce::String("residual = ") + juce::String(dirtyResidual, 12));
+            }
+
+            // And through the voice: energy after onset must not depend on what
+            // played before (phase-immune, so it survives the phase seeding).
+            {
+                const auto fresh = renderFilterNoteTrace(81, false, 0);
+                const auto afterOther = renderFilterNoteTrace(81, true, 33);
+                auto rmsOver = [](const std::vector<float>& v, std::size_t from, std::size_t to)
+                {
+                    double e = 0.0; std::size_t n = 0;
+                    for (auto i = from; i < to && i < v.size(); ++i) { e += (double) v[i] * v[i]; ++n; }
+                    return n > 0 ? std::sqrt(e / (double) n) : 0.0;
+                };
+                const auto from = static_cast<std::size_t>(0.82 * kSampleRate);
+                const auto to = static_cast<std::size_t>(1.30 * kSampleRate);
+                const auto a = rmsOver(fresh, from, to);
+                const auto b = rmsOver(afterOther, from, to);
+                const auto rel = std::abs(a - b) / std::max(1.0e-9, std::max(a, b));
+                filterCheck("a reused voice sounds the same as a fresh one (energy)",
+                            rel < 0.02,
+                            juce::String("fresh rms=") + juce::String(a, 6) + " reused rms="
+                                + juce::String(b, 6) + " rel=" + juce::String(rel, 5));
+            }
+
+            // Voice stealing: hammer well past polyphony and require stability.
+            px3::diag::resetNoteStartSequence();
+            PX3SynthAudioProcessor processor;
+            setParameter(processor, "ampAttack", 0.002f);
+            setParameter(processor, "ampSustain", 1.0f);
+            setParameter(processor, "ampRelease", 3.0f);
+            setParameter(processor, "filter1Enabled", 1.0f);
+            setParameter(processor, "filter1Cutoff", 300.0f);
+            setParameter(processor, "filter1Resonance", 2.2f);
+            setParameter(processor, "filter2Enabled", 1.0f);
+            setParameter(processor, "filter2Cutoff", 2000.0f);
+            setParameter(processor, "filter2Resonance", 2.2f);
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            auto finite = true;
+            auto peak = 0.0f;
+            int note = 0;
+            int nextAt = 0;
+            for (int position = 0; position < static_cast<int>(6.0 * kSampleRate); position += kBlockSize)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                while (nextAt < position + kBlockSize && note < 200)
+                {
+                    midi.addEvent(juce::MidiMessage::noteOn(1, 36 + (note * 7) % 48, 0.9f),
+                                  juce::jmax(0, nextAt - position));
+                    nextAt += static_cast<int>(0.025 * kSampleRate);
+                    ++note;
+                }
+                processor.processBlock(buffer, midi);
+                for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                {
+                    const auto* d = buffer.getReadPointer(ch);
+                    for (int i = 0; i < kBlockSize; ++i)
+                    {
+                        if (!std::isfinite(d[i])) finite = false;
+                        peak = juce::jmax(peak, std::abs(d[i]));
+                    }
+                }
+            }
+            filterCheck("200 notes past polyphony with both filters resonant stays finite and bounded",
+                        finite && peak <= 1.0f,
+                        juce::String("peak=") + juce::String(peak, 6) + (finite ? "" : " NON-FINITE"));
+        }
+
+        // ---- [14][19] automation during audio ------------------------------
+        std::printf("\n  [14][19] FILTER AUTOMATION WHILE A NOTE SOUNDS\n");
+        {
+            struct Auto { const char* label; const char* id; float from; float to; int toggles; };
+            const Auto autos[] = {
+                { "filter1 cutoff swept",     "filter1Cutoff",    200.0f, 8000.0f, 0 },
+                { "filter2 cutoff swept",     "filter2Cutoff",    200.0f, 8000.0f, 0 },
+                { "filter1 resonance swept",  "filter1Resonance",  0.25f,   2.2f,  0 },
+                { "filter2 resonance swept",  "filter2Resonance",  0.25f,   2.2f,  0 },
+                { "filter1 bypass toggled",   "filter1Enabled",    0.0f,    1.0f, 12 },
+                { "filter2 bypass toggled",   "filter2Enabled",    0.0f,    1.0f, 12 },
+                { "filter1 type switched",    "filter1Type",       0.0f,    6.0f, 12 },
+                { "filter2 type switched",    "filter2Type",       0.0f,    6.0f, 12 },
+            };
+            for (const auto& a : autos)
+            {
+                const auto r = measureMixerDynamics(a.id, a.from, a.to, a.toggles, true, false);
+                const auto ok = r.transient < 40.0 && r.activePeak > 1.0e-3;
+                filterCheck((juce::String(a.label) + " is stable while playing").toRawUTF8(), ok,
+                            juce::String("transient=") + juce::String(r.transient, 1)
+                                + " peak=" + juce::String(r.activePeak, 4));
+            }
+        }
+
+        // ---- [30] headroom at maximum resonance ----------------------------
+        std::printf("\n  [30] HEADROOM - gain through the filter at maximum resonance\n");
+        {
+            for (const auto q : { 0.25f, 0.707f, 2.2f })
+            {
+                const auto atCutoff = filterMagnitudeDb(makeFilterSettings(0, 1000.0f, q), 1000.0);
+                const auto imp = filterImpulse(makeFilterSettings(0, 1000.0f, q));
+                filterCheck((juce::String("LP12 Q=") + juce::String(q, 3) + " gain is bounded and documented").toRawUTF8(),
+                            atCutoff < 12.0 && imp.finite && imp.peak < 10.0,
+                            juce::String("gain at cutoff=") + juce::String(atCutoff, 2)
+                                + " dB, impulse peak=" + juce::String(imp.peak, 4));
+            }
+        }
+
+        std::printf("\n  %d passed, %d failed\n", gFilterPass, gFilterFail);
+        return gFilterFail;
     }
     else if (arg == "mixermatrix")
     {

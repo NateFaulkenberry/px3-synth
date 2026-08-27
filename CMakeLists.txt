@@ -50,8 +50,8 @@ juce_generate_juce_header(PX3Synth)
 
 juce_add_binary_data(PX3Assets
     SOURCES
-        Source/pp.png
-        Source/px3.gif
+        Source/Assets/ppp.png
+        Source/Assets/px3.gif
 )
 
 set(PX3_SHARED_SOURCES
@@ -166,7 +166,7 @@ if (PX3_BUILD_DIAGNOSTIC)
     juce_add_console_app(PX3Diag PRODUCT_NAME "PX3Diag")
     juce_generate_juce_header(PX3Diag)
 
-    target_sources(PX3Diag PRIVATE ${PX3_SHARED_SOURCES} Tools/DiagnosticMain.cpp)
+    target_sources(PX3Diag PRIVATE ${PX3_SHARED_SOURCES} Source/Tools/DiagnosticMain.cpp)
     target_include_directories(PX3Diag PRIVATE ${PX3_INCLUDE_DIRS})
 
     target_compile_definitions(PX3Diag
@@ -187,6 +187,27 @@ if (PX3_BUILD_DIAGNOSTIC)
         PUBLIC
             juce::juce_recommended_config_flags
     )
+endif()
+
+# Factory-default audio smoke test, built in the SHIPPING configuration
+# (PX3_DIAGNOSTICS off) so it exercises the code the plugin actually runs.
+if (PX3_BUILD_DIAGNOSTIC)
+    juce_add_console_app(PX3SmokeTest PRODUCT_NAME "PX3SmokeTest")
+    juce_generate_juce_header(PX3SmokeTest)
+    target_sources(PX3SmokeTest PRIVATE ${PX3_SHARED_SOURCES} Source/Tools/AudioSmokeTest.cpp)
+    target_include_directories(PX3SmokeTest PRIVATE ${PX3_INCLUDE_DIRS})
+    target_compile_definitions(PX3SmokeTest
+        PRIVATE
+            JUCE_WEB_BROWSER=0
+            JUCE_USE_CURL=0
+            JUCE_STANDALONE_APPLICATION=1
+            PX3_DEBUG_PANEL=0
+            PX3_DIAGNOSTICS=0
+            JucePlugin_Name="PX3 Synth"
+    )
+    target_link_libraries(PX3SmokeTest
+        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp
+        PUBLIC juce::juce_recommended_config_flags)
 endif()
 
 # Ship external UI config alongside built bundles for runtime hot-reloadable styling.

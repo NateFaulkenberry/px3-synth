@@ -782,11 +782,9 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             auto filteredSample = sourceSamples[static_cast<std::size_t>(sourceIndex)];
             for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
             {
-                const auto& settings = filterSettings[static_cast<std::size_t>(filterIndex)];
-                if (!settings.enabled)
-                {
-                    continue;
-                }
+                // Bypass is the filter's own business, so every sample goes
+                // through every instance and enabling/disabling crossfades
+                // instead of switching.
                 filteredSample = sourceFilters[static_cast<std::size_t>(sourceIndex)][static_cast<std::size_t>(filterIndex)].processSample(filteredSample);
                 filteredSample = sanitizeAudioSample(filteredSample);
             }
