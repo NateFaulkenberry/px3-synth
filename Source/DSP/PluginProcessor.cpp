@@ -482,7 +482,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     const auto initialSubOsc = currentSubOscillatorSettings();
     const auto initialOscillatorLayers = currentOscillatorLayerSettings();
 
-    constexpr int kPolyphonyVoiceCount = 64;
     for (int voice = 0; voice < kPolyphonyVoiceCount; ++voice)
     {
         auto* synthVoice = new SynthVoice();
@@ -936,7 +935,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     if (!px3::diag::state().disableReleasePruning)
 #endif
     {
-        std::vector<SynthVoice*> releaseCandidates;
+        auto releaseCandidateCount = 0;
         auto heldVoicesForBudget = 0;
 
         for (int voiceIndex = 0; voiceIndex < synth.getNumVoices(); ++voiceIndex)
@@ -956,7 +955,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                 // Voices already fading out under the budget are on their way
                 // to silence; counting them again would prune still-audible
                 // tails for capacity that is about to free itself.
-                releaseCandidates.push_back(voice);
+                if (releaseCandidateCount < static_cast<int>(releaseCandidateScratch.size()))
+                {
+                    releaseCandidateScratch[static_cast<std::size_t>(releaseCandidateCount++)] = voice;
+                }
             }
         }
 
@@ -971,10 +973,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             // the low-held/high-release zone where residual artifacts persist.
             maxReleaseVoices = 4;
         }
-        if (static_cast<int>(releaseCandidates.size()) > maxReleaseVoices)
+        if (releaseCandidateCount > maxReleaseVoices)
         {
-            std::sort(releaseCandidates.begin(),
-                      releaseCandidates.end(),
+            std::sort(releaseCandidateScratch.begin(),
+                      releaseCandidateScratch.begin() + releaseCandidateCount,
                       [](const SynthVoice* a, const SynthVoice* b)
                       {
                           const auto envA = a->getCurrentAmpEnvelopeValue();
@@ -986,10 +988,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                           return a->getNoteAgeSamples() > b->getNoteAgeSamples();
                       });
 
-            const auto pruneCount = static_cast<int>(releaseCandidates.size()) - maxReleaseVoices;
+            const auto pruneCount = releaseCandidateCount - maxReleaseVoices;
             for (int i = 0; i < pruneCount; ++i)
             {
-                if (auto* voice = releaseCandidates[static_cast<std::size_t>(i)])
+                if (auto* voice = releaseCandidateScratch[static_cast<std::size_t>(i)])
                 {
                     // Fade the tail out over a few ms instead of cutting it at
                     // its current amplitude; a hard stop here is a step

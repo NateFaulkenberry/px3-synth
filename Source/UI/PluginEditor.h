@@ -239,6 +239,10 @@ private:
     float logoVibrationPhase { 0.0f };
     float logoVibrationIntensity { 0.0f };
     double lastAnimationTickSeconds { 0.0 };
+    // UIConfig hot-reload polls the filesystem. The editor timer runs at 30 Hz,
+    // which is far more often than a developer edits the file, so the poll is
+    // throttled independently of the animation tick.
+    double lastUiConfigPollSeconds { 0.0 };
 
     juce::Rectangle<int> headerArea;
     juce::Rectangle<int> controlsArea;

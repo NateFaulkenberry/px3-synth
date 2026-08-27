@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 
+#include <algorithm>
 #include <cmath>
 
 namespace
@@ -31,6 +32,18 @@ void OscillatorUnit::setSettings(const OscillatorSettings& settings)
     }
 }
 
+void OscillatorUnit::prepare(double sampleRate)
+{
+    const auto safeRate = juce::jmax(1.0, sampleRate);
+    const auto required = static_cast<int>(std::ceil(safeRate / kKarplusLowestFrequencyHz)) + 4;
+    if (static_cast<int>(karplusBuffer.size()) != required)
+    {
+        karplusBuffer.assign(static_cast<std::size_t>(required), 0.0f);
+    }
+    karplusWriteIndex = 0;
+    karplusLastSample = 0.0f;
+}
+
 void OscillatorUnit::resetForNote(double sampleRate, double currentFrequencyHz)
 {
     for (std::size_t i = 0; i < superSawAngles.size(); ++i)
@@ -54,14 +67,24 @@ void OscillatorUnit::resetForNote(double sampleRate, double currentFrequencyHz)
     pinkColorState = 0.0f;
 
     const auto safeRate = juce::jmax(1.0, sampleRate);
-    const auto frequency = juce::jmax(20.0, currentFrequencyHz);
-    karplusDelaySamples = juce::jlimit(8,
-                                       karplusBufferSize - 2,
-                                       static_cast<int>(std::round(safeRate / frequency)));
+    const auto frequency = juce::jmax(kKarplusLowestFrequencyHz, currentFrequencyHz);
+    const auto bufferSamples = static_cast<int>(karplusBuffer.size());
+    karplusDelaySamples = bufferSamples > 16
+                              ? juce::jlimit(8,
+                                             bufferSamples - 2,
+                                             static_cast<int>(std::round(safeRate / frequency)))
+                              : 8;
     karplusWriteIndex = 0;
     karplusLastSample = 0.0f;
 
-    for (int i = 0; i < karplusDelaySamples; ++i)
+    // Clear the whole delay line before seeding the excitation. Without this a
+    // reused voice starts its pluck on top of the previous note's residue: the
+    // read tap wraps into never-rewritten samples during the first `delay`
+    // samples, so the attack depended on both the buffer length and whatever
+    // played on that voice before. Clearing makes each note deterministic.
+    std::fill(karplusBuffer.begin(), karplusBuffer.end(), 0.0f);
+
+    for (int i = 0; i < karplusDelaySamples && i < static_cast<int>(karplusBuffer.size()); ++i)
     {
         const auto n = juce::Random::getSystemRandom().nextFloat() * 2.0f - 1.0f;
         karplusBuffer[static_cast<std::size_t>(i)] = n * 0.5f;
@@ -221,7 +244,12 @@ float OscillatorUnit::renderKarplus(const RenderContext& context)
     const auto decay = juce::jmap(decayCurve, 0.90f, 0.99945f);
     const auto brightness = juce::jmap(std::pow(oscillatorSettings.macroB, 1.2f), 0.03f, 0.94f);
 
-    const auto readIndex = (karplusWriteIndex - karplusDelaySamples + karplusBufferSize) % karplusBufferSize;
+    const auto bufferSamples = static_cast<int>(karplusBuffer.size());
+    if (bufferSamples <= 16)
+    {
+        return 0.0f;
+    }
+    const auto readIndex = (karplusWriteIndex - karplusDelaySamples + bufferSamples) % bufferSamples;
     const auto delayed = karplusBuffer[static_cast<std::size_t>(readIndex)];
     const auto filtered = brightness * delayed + (1.0f - brightness) * karplusLastSample;
     karplusLastSample = filtered;
@@ -229,7 +257,7 @@ float OscillatorUnit::renderKarplus(const RenderContext& context)
     const auto excite = context.noteAgeSamples < 8 ? nextDeterministicNoise() * 0.18f : 0.0f;
     const auto writeSample = (filtered + excite) * decay;
     karplusBuffer[static_cast<std::size_t>(karplusWriteIndex)] = writeSample;
-    karplusWriteIndex = (karplusWriteIndex + 1) % karplusBufferSize;
+    karplusWriteIndex = (karplusWriteIndex + 1) % bufferSamples;
 
     return delayed * (1.28f + 0.08f * brightness);
 }

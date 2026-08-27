@@ -206,6 +206,16 @@ void SynthVoice::stopNote(float, bool allowTailOff)
     }
 }
 
+void SynthVoice::setCurrentPlaybackSampleRate(double newRate)
+{
+    juce::SynthesiserVoice::setCurrentPlaybackSampleRate(newRate);
+
+    for (auto& oscillatorUnit : oscillatorUnits)
+    {
+        oscillatorUnit.prepare(newRate);
+    }
+}
+
 void SynthVoice::retireVoice()
 {
     ampEnvelope.reset();

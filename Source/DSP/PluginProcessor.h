@@ -52,6 +52,7 @@ public:
     static constexpr int kLfoSourceCount = 3;
     static constexpr int kEnvelopeSourceCount = 3;
     static constexpr int kMixerSourceCount = 4;
+    static constexpr int kPolyphonyVoiceCount = 64;
     static constexpr int kMixerChannelCount = 5;
 
     enum MixerSourceId
@@ -546,6 +547,11 @@ private:
     // Attenuation hold: drops instantly, recovers slowly, so a decaying release
     // tail cannot lift its own polyphony gain while it is still audible.
     float polyphonyGainHold { 1.0f };
+
+    // Preallocated scratch for the release-tail budget. This used to be a
+    // std::vector built inside processBlock, which heap-allocated on every block
+    // that had any releasing voice.
+    std::array<SynthVoice*, kPolyphonyVoiceCount> releaseCandidateScratch { };
 
     std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
     std::atomic<uint32_t> fxOrderRevision { 0u };

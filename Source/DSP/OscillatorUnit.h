@@ -4,11 +4,20 @@
 #include "OscillatorTypes.h"
 
 #include <array>
+#include <vector>
 #include <cstdint>
 
 class OscillatorUnit
 {
 public:
+    // Lowest note frequency the Karplus delay must represent.
+    static constexpr double kKarplusLowestFrequencyHz = 20.0;
+
+    // Allocates sample-rate dependent storage. Must be called off the audio
+    // thread before any note is rendered; SynthVoice does so from
+    // setCurrentPlaybackSampleRate, which JUCE drives from prepareToPlay.
+    void prepare(double sampleRate);
+
     struct RenderContext
     {
         double currentAngle { 0.0 };
@@ -57,8 +66,12 @@ private:
     double syncMasterAngle { 0.0 };
     double syncSlaveAngle { 0.0 };
 
-    static constexpr int karplusBufferSize = 32768;
-    std::array<float, karplusBufferSize> karplusBuffer {};
+    // Sized from the sample rate rather than fixed: the Karplus delay length is
+    // sampleRate / lowest supported note, and resetForNote floors the note at
+    // kKarplusLowestFrequencyHz, so that product is an exact bound. A fixed
+    // 32768-float array cost 128 KB per oscillator - 24 MB across the voice pool
+    // - to serve a worst case of 2400 samples at 48 kHz.
+    std::vector<float> karplusBuffer;
     int karplusWriteIndex { 0 };
     int karplusDelaySamples { 220 };
     float karplusLastSample { 0.0f };

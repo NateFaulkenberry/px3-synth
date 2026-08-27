@@ -37,6 +37,11 @@ public:
 
     void renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override;
 
+    // JUCE calls this from Synthesiser::setCurrentPlaybackSampleRate, i.e. from
+    // prepareToPlay and never from the audio callback, so it is the correct
+    // place to allocate sample-rate dependent DSP storage.
+    void setCurrentPlaybackSampleRate(double newRate) override;
+
     void setAmpEnvelope(const EnvelopeSettings& settings);
     void setAmpEnvelopeEnabled(bool shouldEnable);
     void setModEnvelopeSettings(const std::array<EnvelopeSettings, 3>& settings,

@@ -12,10 +12,16 @@
 #include "PluginProcessor.h"
 #include "OutputCeiling.h"
 #include "VoiceFilter.h"
+#include "OscillatorUnit.h"
+#include "SubOscillator.h"
+#include "SynthVoice.h"
+#include "EnvelopeGenerator.h"
+#include "AmpEnvelope.h"
 #include "PX3Diagnostics.h"
 
 #include <algorithm>
 #include <cstdio>
+#include <mach/mach.h>
 #include <string>
 #include <vector>
 
@@ -2219,16 +2225,18 @@ int main(int argc, char* argv[])
         std::printf("\nREAL-TIME SAFETY - allocations inside processBlock\n");
         std::printf("  the audio thread must not allocate; measured with a replaced global new\n\n");
 
-        auto measure = [](const char* label, bool filtersOn, bool sweepCutoff)
+        auto measure = [](const char* label, bool filtersOn, bool sweepCutoff,
+                          int voiceCount = 3, bool releaseVoices = false, bool fxOn = false)
         {
             px3::diag::resetNoteStartSequence();
             PX3SynthAudioProcessor processor;
             setParameter(processor, "ampAttack", 0.005f);
             setParameter(processor, "ampSustain", 1.0f);
             setParameter(processor, "ampRelease", 0.3f);
-            setParameter(processor, "delayEnabled", 0.0f);
-            setParameter(processor, "reverbEnabled", 0.0f);
-            setParameter(processor, "moodEnabled", 0.0f);
+            setParameter(processor, "delayEnabled", fxOn ? 1.0f : 0.0f);
+            setParameter(processor, "reverbEnabled", fxOn ? 1.0f : 0.0f);
+            setParameter(processor, "moodEnabled", fxOn ? 1.0f : 0.0f);
+            setParameter(processor, "ampRelease", releaseVoices ? 3.0f : 0.2f);
             setParameter(processor, "filter1Enabled", filtersOn ? 1.0f : 0.0f);
             setParameter(processor, "filter2Enabled", filtersOn ? 1.0f : 0.0f);
             setParameter(processor, "filter1Cutoff", 1200.0f);
@@ -2239,13 +2247,17 @@ int main(int argc, char* argv[])
             juce::AudioBuffer<float> buffer(2, kBlockSize);
 
             // Warm-up: first blocks legitimately allocate (buffers, voice setup).
-            for (int i = 0; i < 40; ++i)
+            // Voices are started and, where asked, released, so that release-tail
+            // handling is exercised during the measured window too.
+            for (int i = 0; i < 80; ++i)
             {
                 buffer.clear();
                 juce::MidiBuffer midi;
-                if (i == 2) midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
-                if (i == 3) midi.addEvent(juce::MidiMessage::noteOn(1, 64, 0.9f), 0);
-                if (i == 4) midi.addEvent(juce::MidiMessage::noteOn(1, 67, 0.9f), 0);
+                for (int v = 0; v < voiceCount; ++v)
+                {
+                    if (i == 2 + v) midi.addEvent(juce::MidiMessage::noteOn(1, 36 + v * 2, 0.9f), 0);
+                    if (releaseVoices && i == 30 + v) midi.addEvent(juce::MidiMessage::noteOff(1, 36 + v * 2), 0);
+                }
                 processor.processBlock(buffer, midi);
             }
 
@@ -2276,9 +2288,288 @@ int main(int argc, char* argv[])
         if (measure("3 voices, filters bypassed", false, false) != 0) ++failures;
         if (measure("3 voices, both filters active", true, false) != 0) ++failures;
         if (measure("3 voices, filters active + cutoff sweeping", true, true) != 0) ++failures;
+        if (measure("3 voices RELEASING (tails active)", true, false, 3, true) != 0) ++failures;
+        if (measure("16 voices RELEASING", true, false, 16, true) != 0) ++failures;
+        if (measure("48 voices RELEASING (past prune budget)", true, false, 48, true) != 0) ++failures;
+        if (measure("48 voices RELEASING + full FX chain", true, false, 48, true, true) != 0) ++failures;
 
         std::printf("\n  %lld failure(s)\n", failures);
         return static_cast<int>(failures);
+    }
+    else if (arg == "soak")
+    {
+        auto residentMB = []
+        {
+            mach_task_basic_info info;
+            mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+            if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t) &info, &count) != KERN_SUCCESS)
+                return -1.0;
+            return (double) info.resident_size / (1024.0 * 1024.0);
+        };
+
+        std::printf("\nLEAK / SOAK TEST\n");
+        std::printf("  resident set size sampled between phases; growth should level off\n\n");
+
+        auto renderNotes = [](PX3SynthAudioProcessor& processor, int blocks, int voices)
+        {
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            int note = 0;
+            for (int i = 0; i < blocks; ++i)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                if (i % 4 == 0 && note < voices)
+                    midi.addEvent(juce::MidiMessage::noteOn(1, 30 + (note++ * 3) % 60, 0.9f), 0);
+                if (i % 4 == 2 && note > 8)
+                    midi.addEvent(juce::MidiMessage::noteOff(1, 30 + ((note - 8) * 3) % 60), 0);
+                processor.processBlock(buffer, midi);
+            }
+        };
+
+        std::printf("  %-46s %10s %10s\n", "phase", "RSS MB", "delta");
+        auto previous = residentMB();
+        std::printf("  %-46s %10.2f %10s\n", "start", previous, "-");
+
+        auto phase = [&](const char* label, auto&& fn)
+        {
+            fn();
+            const auto now = residentMB();
+            std::printf("  %-46s %10.2f %+10.2f\n", label, now, now - previous);
+            previous = now;
+        };
+
+        // Warm the allocator so first-touch growth is not counted as a leak.
+        phase("warm-up: 1 processor, 200 blocks", [&]{
+            PX3SynthAudioProcessor p;
+            p.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            p.prepareToPlay(kSampleRate, kBlockSize);
+            renderNotes(p, 200, 32);
+        });
+
+        phase("50x processor create + destroy", [&]{
+            for (int i = 0; i < 50; ++i)
+            {
+                PX3SynthAudioProcessor p;
+                p.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                p.prepareToPlay(kSampleRate, kBlockSize);
+            }
+        });
+
+        phase("50x processor + render 100 blocks each", [&]{
+            for (int i = 0; i < 50; ++i)
+            {
+                PX3SynthAudioProcessor p;
+                p.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                p.prepareToPlay(kSampleRate, kBlockSize);
+                renderNotes(p, 100, 16);
+            }
+        });
+
+        // Repeat the identical workload: a real leak keeps growing at the same
+        // rate, allocator retention plateaus.
+        phase("50x processor + render (repeat 2)", [&]{
+            for (int i = 0; i < 50; ++i)
+            {
+                PX3SynthAudioProcessor p;
+                p.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                p.prepareToPlay(kSampleRate, kBlockSize);
+                renderNotes(p, 100, 16);
+            }
+        });
+
+        phase("50x processor + render (repeat 3)", [&]{
+            for (int i = 0; i < 50; ++i)
+            {
+                PX3SynthAudioProcessor p;
+                p.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                p.prepareToPlay(kSampleRate, kBlockSize);
+                renderNotes(p, 100, 16);
+            }
+        });
+
+        phase("200x state save + restore round trip", [&]{
+            PX3SynthAudioProcessor p;
+            p.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            p.prepareToPlay(kSampleRate, kBlockSize);
+            for (int i = 0; i < 200; ++i)
+            {
+                juce::MemoryBlock block;
+                p.getStateInformation(block);
+                p.setStateInformation(block.getData(), (int) block.getSize());
+            }
+        });
+
+        phase("200x state round trip (repeat 2)", [&]{
+            PX3SynthAudioProcessor p;
+            p.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            p.prepareToPlay(kSampleRate, kBlockSize);
+            for (int i = 0; i < 200; ++i)
+            {
+                juce::MemoryBlock block;
+                p.getStateInformation(block);
+                p.setStateInformation(block.getData(), (int) block.getSize());
+            }
+        });
+
+        phase("sustained: 20000 blocks at max polyphony", [&]{
+            PX3SynthAudioProcessor p;
+            setParameter(p, "ampRelease", 3.0f);
+            setParameter(p, "filter1Enabled", 1.0f);
+            setParameter(p, "filter2Enabled", 1.0f);
+            p.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            p.prepareToPlay(kSampleRate, kBlockSize);
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            int n = 0;
+            for (int i = 0; i < 20000; ++i)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                if (i % 3 == 0) midi.addEvent(juce::MidiMessage::noteOn(1, 24 + (n++ * 7) % 72, 0.9f), 0);
+                if (i % 3 == 1 && n > 40) midi.addEvent(juce::MidiMessage::noteOff(1, 24 + ((n - 40) * 7) % 72), 0);
+                p.processBlock(buffer, midi);
+            }
+        });
+
+        phase("sustained again (same work, must not grow)", [&]{
+            PX3SynthAudioProcessor p;
+            setParameter(p, "ampRelease", 3.0f);
+            setParameter(p, "filter1Enabled", 1.0f);
+            setParameter(p, "filter2Enabled", 1.0f);
+            p.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            p.prepareToPlay(kSampleRate, kBlockSize);
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            int n = 0;
+            for (int i = 0; i < 20000; ++i)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                if (i % 3 == 0) midi.addEvent(juce::MidiMessage::noteOn(1, 24 + (n++ * 7) % 72, 0.9f), 0);
+                if (i % 3 == 1 && n > 40) midi.addEvent(juce::MidiMessage::noteOff(1, 24 + ((n - 40) * 7) % 72), 0);
+                p.processBlock(buffer, midi);
+            }
+        });
+
+        std::printf("\n  final RSS %.2f MB\n", residentMB());
+        return 0;
+    }
+    else if (arg == "karplus")
+    {
+        std::printf("\nKARPLUS PROBE\n\n");
+        for (const auto note : { 36, 48, 57, 69, 81 })
+        {
+            px3::diag::resetNoteStartSequence();
+            PX3SynthAudioProcessor processor;
+            setParameter(processor, "ampAttack", 0.002f);
+            setParameter(processor, "ampSustain", 1.0f);
+            setParameter(processor, "ampRelease", 0.2f);
+            setParameter(processor, "delayEnabled", 0.0f);
+            setParameter(processor, "reverbEnabled", 0.0f);
+            setParameter(processor, "moodEnabled", 0.0f);
+            setParameter(processor, "subOscEnabled", 0.0f);
+            setParameter(processor, "osc1Enabled", 1.0f);
+            setParameter(processor, "osc2Enabled", 0.0f);
+            setParameter(processor, "osc3Enabled", 0.0f);
+            if (auto* m = findParameter(processor, "osc1Mode"))
+                m->setValueNotifyingHost(13.0f / (float) juce::jmax(1, m->getNumSteps() - 1)); // KARPLUS
+            setParameter(processor, "filter1Enabled", 0.0f);
+            setParameter(processor, "filter2Enabled", 0.0f);
+
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            auto& diag = px3::diag::state();
+            diag.resetResults();
+            diag.resetModes();
+            diag.capturing = true;
+            diag.tracing = true;
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            auto delivered = false;
+            const auto noteOn = static_cast<int>(0.02 * kSampleRate);
+            for (int position = 0; position < static_cast<int>(1.0 * kSampleRate); position += kBlockSize)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                if (!delivered && position + kBlockSize > noteOn)
+                {
+                    midi.addEvent(juce::MidiMessage::noteOn(1, note, 0.9f), juce::jmax(0, noteOn - position));
+                    delivered = true;
+                }
+                processor.processBlock(buffer, midi);
+            }
+            diag.capturing = false;
+            diag.tracing = false;
+
+            const auto& m = diag.trace[px3::diag::stageMaster];
+            auto rmsOver = [&m](double a, double b)
+            {
+                double e = 0.0; long long n = 0;
+                for (auto i = (std::size_t)(a * kSampleRate); i < (std::size_t)(b * kSampleRate) && i < m.size(); ++i)
+                { e += (double) m[i] * m[i]; ++n; }
+                return n > 0 ? std::sqrt(e / (double) n) : 0.0;
+            };
+            const auto expectedDelay = (int) std::round(kSampleRate / juce::MidiMessage::getMidiNoteInHertz(note));
+            std::printf("  note %2d (%7.1f Hz, delay %5d samples) : peak=%.6f  early rms=%.6f  late rms=%.6f\n",
+                        note, juce::MidiMessage::getMidiNoteInHertz(note), expectedDelay,
+                        (double) diag.peak[px3::diag::stageMaster], rmsOver(0.05, 0.20), rmsOver(0.60, 0.95));
+        }
+        return 0;
+    }
+    else if (arg == "memory")
+    {
+        std::printf("\nMEMORY FOOTPRINT MAP\n\n");
+        constexpr int kVoices = 64;
+
+        auto row = [](const char* label, std::size_t bytes, int count)
+        {
+            const auto total = bytes * (std::size_t) count;
+            std::printf("  %-34s %10zu B  x%4d = %10.2f KB\n", label, bytes, count, total / 1024.0);
+            return total;
+        };
+
+        std::printf("  PER-VOICE COMPONENTS\n");
+        const auto oscUnit  = sizeof(OscillatorUnit);
+        const auto vfilter  = sizeof(VoiceFilter);
+        const auto subosc   = sizeof(SubOscillator);
+        const auto ampenv   = sizeof(AmpEnvelope);
+        const auto modenv   = sizeof(EnvelopeGenerator);
+        row("OscillatorUnit", oscUnit, 3);
+        row("VoiceFilter", vfilter, 4 * 2);
+        row("SubOscillator", subosc, 1);
+        row("AmpEnvelope", ampenv, 1);
+        row("EnvelopeGenerator (mod env)", modenv, 3);
+
+        const auto voice = sizeof(SynthVoice);
+        std::printf("\n  SynthVoice total                   %10zu B  = %8.2f KB\n", voice, voice / 1024.0);
+        std::printf("  x %d voices                         %10.2f MB\n\n", kVoices, voice * (double) kVoices / (1024.0 * 1024.0));
+
+        std::printf("  SAMPLE-RATE DEPENDENT HEAP (Karplus delay, per OscillatorUnit)\n");
+        for (const auto rate : { 44100.0, 48000.0, 96000.0, 192000.0 })
+        {
+            const auto samples = (std::size_t) std::ceil(rate / OscillatorUnit::kKarplusLowestFrequencyHz) + 4;
+            const auto bytes = samples * sizeof(float);
+            std::printf("    %7.0f Hz : %6zu samples = %8.2f KB each  x%4d = %7.2f MB total\n",
+                        rate, samples, bytes / 1024.0, 3 * kVoices,
+                        bytes * 3.0 * kVoices / (1024.0 * 1024.0));
+        }
+        {
+            const auto samples = (std::size_t) std::ceil(48000.0 / OscillatorUnit::kKarplusLowestFrequencyHz) + 4;
+            const auto heap = samples * sizeof(float) * 3.0 * kVoices;
+            std::printf("\n  voice pool at 48 kHz: %.2f MB structs + %.2f MB heap = %.2f MB\n\n",
+                        voice * (double) kVoices / (1024.0 * 1024.0),
+                        heap / (1024.0 * 1024.0),
+                        (voice * (double) kVoices + heap) / (1024.0 * 1024.0));
+        }
+
+        std::printf("  PROCESSOR\n");
+        std::printf("  %-34s %10zu B  = %8.2f KB\n", "PX3SynthAudioProcessor object",
+                    sizeof(PX3SynthAudioProcessor), sizeof(PX3SynthAudioProcessor) / 1024.0);
+        const auto busSamples = 512;
+        const auto busChannels = 4;
+        const auto oneBus = (std::size_t) busSamples * busChannels * sizeof(float);
+        std::printf("  %-34s %10zu B  x4 buses = %7.2f KB  (at %d-sample blocks)\n",
+                    "audio bus buffer", oneBus, oneBus * 4 / 1024.0, busSamples);
+        return 0;
     }
     else if (arg == "subosc")
     {

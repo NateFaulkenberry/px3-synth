@@ -1952,6 +1952,21 @@ juce::File PX3SynthAudioProcessorEditor::resolveUiConfigFile() const
 
 void PX3SynthAudioProcessorEditor::loadUiConfig(bool forceReload)
 {
+    // Resolving the path probes several candidate locations and the reload check
+    // stats the file, so an unthrottled call from the 30 Hz timer meant hundreds
+    // of filesystem operations per second per open editor. A hot-reload only has
+    // to feel immediate to a human editing the file.
+    if (!forceReload)
+    {
+        constexpr double pollIntervalSeconds = 0.5;
+        const auto nowSeconds = juce::Time::getMillisecondCounterHiRes() * 0.001;
+        if (lastUiConfigPollSeconds > 0.0 && nowSeconds - lastUiConfigPollSeconds < pollIntervalSeconds)
+        {
+            return;
+        }
+        lastUiConfigPollSeconds = nowSeconds;
+    }
+
     const auto hadConfigBeforeLoad = (uiConfig != nullptr);
     const auto resolvedPath = resolveUiConfigFile();
     if (resolvedPath == juce::File())
