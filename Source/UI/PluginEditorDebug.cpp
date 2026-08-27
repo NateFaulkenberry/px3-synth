@@ -958,8 +958,72 @@ void PX3SynthAudioProcessorEditor::refreshDebugEnvelopeState()
     const auto prePolyPeak = audioProcessor.debugGetOscillatorBusPrePolyPeak();
     const auto prePolyClipSamples = audioProcessor.debugGetOscillatorBusPrePolyClipSamples();
     const auto masterClipSamples = audioProcessor.debugGetMasterClipSamples();
+        const auto oscBusRms = audioProcessor.debugGetOscillatorBusRms();
+        const auto dryBusRms = audioProcessor.debugGetDryBusRms();
+        const auto fxBusRms = audioProcessor.debugGetFxBusRms();
+        const auto masterBusRms = audioProcessor.debugGetMasterBusRms();
+        const auto oscBusPeak = audioProcessor.debugGetOscillatorBusPeak();
+        const auto dryBusPeak = audioProcessor.debugGetDryBusPeak();
+        const auto fxBusPeak = audioProcessor.debugGetFxBusPeak();
+        const auto masterBusPeak = audioProcessor.debugGetMasterBusPeak();
+
+        const auto onsetGuardActive = attackSec < 0.02f;
+        const auto fastAttackNorm = onsetGuardActive
+                                 ? juce::jlimit(0.0f, 1.0f, (0.02f - juce::jmax(0.001f, attackSec)) / 0.019f)
+                                 : 0.0f;
+        const auto onsetGuardSamples = onsetGuardActive
+                                    ? juce::jlimit(8,
+                                                96,
+                                                static_cast<int>(8.0f + 88.0f * fastAttackNorm))
+                                    : 0;
 
     juce::String text;
+        text << "COPY BLOCK (ALL KEY DIAGNOSTICS)\n"
+            << "ampAttackSec=" << juce::String(attackSec, 6)
+            << " ampDecaySec=" << juce::String(decaySec, 6)
+            << " ampSustain=" << juce::String(sustainNorm, 6)
+            << " ampReleaseSec=" << juce::String(releaseSec, 6)
+            << " ampEnabled=" << juce::String(ampEnabled ? 1 : 0)
+            << "\n"
+            << "onsetGuardActive=" << juce::String(onsetGuardActive ? 1 : 0)
+            << " onsetGuardSamples=" << juce::String(onsetGuardSamples)
+            << "\n"
+            << "activeVoices=" << juce::String(activeVoiceCount)
+            << " heldVoices=" << juce::String(heldVoiceCount)
+            << " releasingVoices=" << juce::String(releasingVoiceCount)
+            << " nearSilentReleaseVoices=" << juce::String(nearSilentReleaseVoiceCount)
+            << "\n"
+            << "releaseEnergyEq=" << juce::String(releaseEnergyEq, 6)
+            << " effectiveLoad=" << juce::String(effectiveVoiceLoad, 6)
+            << "\n"
+            << "polyGainTarget=" << juce::String(polyGainTarget, 6)
+            << " polyGainApplied=" << juce::String(polyGain, 6)
+            << " polyGainTailBypass=" << juce::String(tailBypass ? 1 : 0)
+            << " releaseVoicesPruned=" << juce::String(releaseVoicesPruned)
+            << " cpuLoadPct=" << juce::String(cpuLoadPercent, 2)
+            << "\n"
+            << "masterPreOutputPeak=" << juce::String(masterPreOutputPeak, 6)
+            << " masterClipSamples=" << juce::String(masterClipSamples)
+            << " oscPrePolyPeak=" << juce::String(prePolyPeak, 6)
+            << " oscPrePolyClipSamples=" << juce::String(prePolyClipSamples)
+            << "\n"
+            << "busRmsOsc=" << juce::String(oscBusRms, 6)
+            << " busRmsDry=" << juce::String(dryBusRms, 6)
+            << " busRmsFx=" << juce::String(fxBusRms, 6)
+            << " busRmsMaster=" << juce::String(masterBusRms, 6)
+            << "\n"
+            << "busPeakOsc=" << juce::String(oscBusPeak, 6)
+            << " busPeakDry=" << juce::String(dryBusPeak, 6)
+            << " busPeakFx=" << juce::String(fxBusPeak, 6)
+            << " busPeakMaster=" << juce::String(masterBusPeak, 6)
+            << "\n"
+            << "voicePeak=" << juce::String(voicePeak, 6)
+            << " voiceSub=" << juce::String(voiceSubPeak, 6)
+            << " voiceOsc1=" << juce::String(voiceOsc1Peak, 6)
+            << " voiceOsc2=" << juce::String(voiceOsc2Peak, 6)
+            << " voiceOsc3=" << juce::String(voiceOsc3Peak, 6)
+            << "\n\n";
+
     text << "Attack:  " << attackText << "\n"
          << "Decay:   " << decayText << "\n"
          << "Sustain: " << juce::String(sustainNorm, 4) << " (" << juce::String(sustainNorm * 100.0f, 1) << "%)\n"

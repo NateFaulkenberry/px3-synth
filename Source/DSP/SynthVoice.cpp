@@ -429,6 +429,27 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         // AMP STAGE: envelope and voice gain are downstream of filter.
         auto voiceGain = level * env * subtractiveSettings.masterGain;
 
+        // Fast attacks can still produce a tiny startup edge when many voices
+        // overlap; apply a very short, attack-dependent onset guard only while
+        // keys are held. Slow attacks are effectively unchanged.
+        if (isKeyDown())
+        {
+            const auto attackSeconds = juce::jmax(0.001f, envelopeSettings.attackSeconds);
+            if (attackSeconds < 0.02f)
+            {
+                const auto fastAttackNorm = juce::jlimit(0.0f, 1.0f, (0.02f - attackSeconds) / 0.019f);
+                const auto onsetSamples = juce::jlimit(8,
+                                                       96,
+                                                       static_cast<int>(8.0f + 88.0f * fastAttackNorm));
+                const auto onsetPos = juce::jlimit(0.0f,
+                                                   1.0f,
+                                                   static_cast<float>(noteAgeSamples)
+                                                       / static_cast<float>(juce::jmax(1, onsetSamples)));
+                const auto onsetGuard = onsetPos * onsetPos;
+                voiceGain *= onsetGuard;
+            }
+        }
+
         if (vibeActive)
         {
             const auto gainVariation = (vibeVariation.gainOffset * vibeTuning.voiceVariation
@@ -467,7 +488,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             if (!isKeyDown())
             {
                 auto& tailState = releaseSmoothingState[static_cast<std::size_t>(sourceIndex)];
-                const auto tailSmooth = 0.07f + 0.53f * releaseTailShape;
+                const auto tailSmooth = 0.02f + 0.18f * releaseTailShape;
                 tailState += (voicedSample - tailState) * tailSmooth;
                 voicedSample = tailState;
             }

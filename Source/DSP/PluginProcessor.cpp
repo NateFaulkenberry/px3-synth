@@ -887,7 +887,17 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             }
         }
 
-        const auto maxReleaseVoices = heldVoicesForBudget > 0 ? 10 : 8;
+        auto maxReleaseVoices = 8;
+        if (heldVoicesForBudget >= 4)
+        {
+            maxReleaseVoices = 10;
+        }
+        else if (heldVoicesForBudget >= 1)
+        {
+            // Keep held-note feel intact while capping release-tail density in
+            // the low-held/high-release zone where residual artifacts persist.
+            maxReleaseVoices = 4;
+        }
         if (static_cast<int>(releaseCandidates.size()) > maxReleaseVoices)
         {
             std::sort(releaseCandidates.begin(),
@@ -947,6 +957,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     constexpr float kEstimatedMasterFromSource = 2.8f;
     constexpr float kAttenuationStartPeak = 0.30f;
     constexpr float kAttenuationFullPeak = 0.85f;
+    constexpr float kPolyGainUnityDeadband = 0.97f;
     constexpr float kTailOnlyBypassPrePolyPeakThreshold = 0.25f;
     constexpr int kLowHeldBypassMaxHeldVoices = 3;
     constexpr float kLowHeldBypassPrePolyPeakThreshold = 0.19f;
@@ -1012,11 +1023,15 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                                && heldVoiceCount <= kLowHeldBypassMaxHeldVoices
                                && prePolyPeak <= kLowHeldBypassPrePolyPeakThreshold;
     const auto polyphonyBypass = tailOnlyBypass || lowHeldBypass;
-    const auto polyphonyGainTarget = polyphonyBypass
-                                         ? 1.0f
-                                         : juce::jlimit(kPolyphonyGainFloor,
-                                                        1.0f,
-                                                        1.0f - overloadBlend * (1.0f - polyphonyGainFromLoad));
+    auto polyphonyGainTarget = polyphonyBypass
+                                   ? 1.0f
+                                   : juce::jlimit(kPolyphonyGainFloor,
+                                                  1.0f,
+                                                  1.0f - overloadBlend * (1.0f - polyphonyGainFromLoad));
+    if (polyphonyGainTarget >= kPolyGainUnityDeadband)
+    {
+        polyphonyGainTarget = 1.0f;
+    }
     polyphonyGainSmoother.setTargetValue(polyphonyGainTarget);
 
     for (int sample = 0; sample < blockSamples; ++sample)
