@@ -72,6 +72,7 @@ struct State
     bool legacyTailShapeFromEnv { false }; // control: tail filter scheduled off env value
     int onsetGuardCurve { 0 };  // 0=production, 1=legacy t^2, 2=smoothstep
     bool legacyInstantReleaseFilter { false }; // control: release lowpass switched on, not faded in
+    bool legacyUnsmoothedMixer { false };      // control: mixer/master gains applied per block, unsmoothed
     bool disableOnsetGuard { false };
     bool disableReleaseTailFilter { false };
     bool freezeVibeReleaseSwitch { false }; // keep held-note vibe path during release
@@ -172,6 +173,18 @@ struct State
     float maxNoteOffTransientRatio { 0.0f };
     int noteOffTransientEvents { 0 };
     float maxNoteOffSlopeDrop { 0.0f };
+
+    // Mixer control smoothness. These are the gains the mixer multiplies the
+    // audio by; if a fader move reaches the audio as a per-block staircase, the
+    // per-sample step is large at block boundaries and zippers.
+    float prevMixerDryGain[8] { };
+    float prevMixerSendGain[8] { };
+    bool hasPrevMixerGain { false };
+    float maxMixerDryGainStep { 0.0f };
+    float maxMixerSendGainStep { 0.0f };
+    float maxFxReturnGainStep { 0.0f };
+    float prevFxReturnGain { 0.0f };
+    float maxMasterGainStep { 0.0f };
     float maxQuietTransientRatio { 0.0f };
     int quietTransientEvents { 0 };
     long long worstQuietTransientSample { -1 };
@@ -233,6 +246,13 @@ struct State
         maxNoteOffTransientRatio = 0.0f;
         noteOffTransientEvents = 0;
         maxNoteOffSlopeDrop = 0.0f;
+        for (int i = 0; i < 8; ++i) { prevMixerDryGain[i] = 0.0f; prevMixerSendGain[i] = 0.0f; }
+        hasPrevMixerGain = false;
+        maxMixerDryGainStep = 0.0f;
+        maxMixerSendGainStep = 0.0f;
+        maxFxReturnGainStep = 0.0f;
+        prevFxReturnGain = 0.0f;
+        maxMasterGainStep = 0.0f;
         maxQuietTransientRatio = 0.0f;
         quietTransientEvents = 0;
         worstQuietTransientSample = -1;
@@ -273,6 +293,7 @@ struct State
         legacyTailShapeFromEnv = false;
         onsetGuardCurve = 0;
         legacyInstantReleaseFilter = false;
+        legacyUnsmoothedMixer = false;
         disableOnsetGuard = false;
         disableReleaseTailFilter = false;
         freezeVibeReleaseSwitch = false;

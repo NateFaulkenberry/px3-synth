@@ -9,6 +9,7 @@
 #include "Reverb.h"
 #include "SubOscTypes.h"
 #include "SynthSound.h"
+#include "SmoothedGain.h"
 #include "SynthVoice.h"
 #include "Vibe.h"
 
@@ -533,6 +534,14 @@ private:
     std::array<juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear>, kMixerSourceCount> sourceSendGateSmoothers;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> fxReturnGateSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> fxReturnPanSmoother;
+    // Mixer faders, pans and sends are user-facing gains applied per sample, so
+    // they are smoothed per sample rather than stepped once per block.
+    std::array<SmoothedGain, kMixerSourceCount> sourceLevelSmoothers;
+    std::array<SmoothedGain, kMixerSourceCount> sourcePanLeftSmoothers;
+    std::array<SmoothedGain, kMixerSourceCount> sourcePanRightSmoothers;
+    std::array<SmoothedGain, kMixerSourceCount> sourceSendSmoothers;
+    SmoothedGain fxSendGainSmoother;
+    SmoothedGain fxReturnGainSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> polyphonyGainSmoother;
     // Attenuation hold: drops instantly, recovers slowly, so a decaying release
     // tail cannot lift its own polyphony gain while it is still audible.

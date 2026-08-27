@@ -21,6 +21,7 @@ namespace
 {
 bool gLegacyTailShape = false;
 bool gLegacyInstantReleaseFilter = false;
+bool gLegacyUnsmoothedMixer = false;
 
 constexpr double kSampleRate = 48000.0;
 constexpr int kBlockSize = 512;
@@ -231,6 +232,10 @@ struct PatchOptions
     // Gate the note-off transient metric. Only meaningful on waveforms that have
     // no discontinuities of their own; a saw's per-cycle edge swamps it.
     bool gateNoteOffTransient { false };
+    // Sweep a parameter up and back down mid-note, the way dragging a fader does.
+    juce::String automateParamId;
+    float automateFrom { 0.0f };
+    float automateTo { 1.0f };
     bool legacyPolyphonyLoad { false };
     bool legacyLinearRelease { false };
     bool fullPatch { false };   // all sources enabled, master gain up
@@ -670,6 +675,10 @@ void runTailAnalysis(const PatchOptions& patch,
 {
     PX3SynthAudioProcessor processor;
     applyPatch(processor, patch);
+    if (patch.automateParamId.isNotEmpty())
+    {
+        setParameter(processor, patch.automateParamId, patch.automateFrom);
+    }
     processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
     processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -741,6 +750,10 @@ void printTailCurve(const PatchOptions& patch, int voiceCount, const char* label
 {
     PX3SynthAudioProcessor processor;
     applyPatch(processor, patch);
+    if (patch.automateParamId.isNotEmpty())
+    {
+        setParameter(processor, patch.automateParamId, patch.automateFrom);
+    }
     processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
     processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -820,6 +833,10 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
 {
     PX3SynthAudioProcessor processor;
     applyPatch(processor, patch);
+    if (patch.automateParamId.isNotEmpty())
+    {
+        setParameter(processor, patch.automateParamId, patch.automateFrom);
+    }
     processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
     processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -827,6 +844,7 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     auto& diag = px3::diag::state();
     diag.resetResults();
     diag.resetModes();
+    diag.legacyUnsmoothedMixer = gLegacyUnsmoothedMixer;
     diag.legacyHardStopPruning = legacyPruning;
     diag.legacyPolyphonyLoad = patch.legacyPolyphonyLoad;
     diag.legacyLinearRelease = patch.legacyLinearRelease;
@@ -841,6 +859,15 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     std::size_t nextEvent = 0;
     for (int position = 0; position < totalSamples; position += kBlockSize)
     {
+        if (patch.automateParamId.isNotEmpty())
+        {
+            const auto through = juce::jlimit(0.0, 1.0, position / static_cast<double>(juce::jmax(1, totalSamples)));
+            const auto shaped = through < 0.5 ? through * 2.0 : (1.0 - through) * 2.0;
+            setParameter(processor, patch.automateParamId,
+                         patch.automateFrom
+                             + (patch.automateTo - patch.automateFrom) * static_cast<float>(shaped));
+        }
+
         buffer.clear();
         juce::MidiBuffer midi;
         while (nextEvent < events.size() && events[nextEvent].sampleTime < position + kBlockSize)
@@ -876,8 +903,14 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     // Nothing in the release path may switch on at note-off. Measured on smooth
     // waveforms only, where a spike here can only be a discontinuity.
     const auto noteOffClean = !patch.gateNoteOffTransient || diag.maxNoteOffTransientRatio < 6.0f;
+    // No user-facing gain may reach the audio as a per-block staircase. This is
+    // exact and independent of waveform, FX and program material.
+    const auto worstMixerStep = juce::jmax(juce::jmax(diag.maxMixerDryGainStep, diag.maxMixerSendGainStep),
+                                           juce::jmax(diag.maxFxReturnGainStep, diag.maxMasterGainStep));
+    const auto mixerSmooth = worstMixerStep < 0.001f;
     const auto passed = lifecycleClean && retiresAtSilence && noClipping
-                        && noGainPumping && tailFilterSane && gainEnvelopeSmooth && noteOffClean;
+                        && noGainPumping && tailFilterSane && gainEnvelopeSmooth && noteOffClean
+                        && mixerSmooth;
 
     const char* verdict = "PASS";
     if (!lifecycleClean)      verdict = "FAIL(discontinuity)";
@@ -887,8 +920,9 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     else if (!tailFilterSane) verdict = "FAIL(tail-overfiltered)";
     else if (!gainEnvelopeSmooth) verdict = "FAIL(gain-corner)";
     else if (!noteOffClean) verdict = "FAIL(note-off-click)";
+    else if (!mixerSmooth) verdict = "FAIL(mixer-zipper)";
 
-    std::printf("  %-38s %8.4f %8d %9.6f %9.6f %7.1f %9.5f %9.1f  %s\n",
+    std::printf("  %-38s %8.4f %8d %9.6f %9.6f %7.1f %9.5f %7.1f %9.6f  %s\n",
                 name,
                 static_cast<double>(diag.peak[px3::diag::stageMaster]),
                 diag.masterClipSamples,
@@ -897,6 +931,7 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
                 heavyFilterFraction * 100.0,
                 static_cast<double>(diag.maxVoiceGainCurvature),
                 static_cast<double>(diag.maxNoteOffTransientRatio),
+                static_cast<double>(worstMixerStep),
                 verdict);
     if (!gainEnvelopeSmooth)
     {
@@ -919,8 +954,8 @@ int runRegressionSuite(bool legacyPruning)
     std::printf(legacyPruning
                     ? "\nCONTROL SUITE (pre-fix behaviour: pruning uses instantaneous stopNote(false))\n"
                     : "\nREGRESSION SUITE (production path, all diagnostic modes off)\n");
-    std::printf("  %-38s %8s %8s %9s %9s %7s %9s %9s  %s\n",
-                "case", "peak", "clip", "max|dx|", "killLevel", "tailFlt%", "gainCurv", "noteOff", "result");
+    std::printf("  %-38s %8s %8s %9s %9s %7s %9s %7s %9s  %s\n",
+                "case", "peak", "clip", "max|dx|", "killLevel", "tailFlt%", "gainCurv", "noteOff", "mixStep", "result");
 
     auto failures = 0;
     auto check = [&failures, legacyPruning](const char* name, PatchOptions patch)
@@ -1101,6 +1136,38 @@ int runRegressionSuite(bool legacyPruning)
         p.pattern = Pattern::isolatedNotes; p.oscillatorMode = 0;
         p.gateNoteOffTransient = true;
         check("N sine key-release, sustain=0", p);
+    }
+
+    // MixPanel controls swept while notes sustain. Sine, because a zipper on a
+    // fader move has nothing to hide behind on a pure tone.
+    struct MixSweep { const char* label; const char* id; float from; float to; };
+    const MixSweep mixSweeps[] = {
+        { "osc1 fader",     "mix.osc1.level",  0.0f,  1.0f },
+        { "osc1 pan",       "mix.osc1.pan",   -1.0f,  1.0f },
+        { "osc1 fx send",   "mix.osc1.fxSend", 0.0f,  1.0f },
+        { "sub fader",      "mix.sub.level",   0.0f,  1.0f },
+        { "fx send gain",   "fxSendGain",      0.0f,  1.0f },
+        { "fx return gain", "fxReturnGain",    0.0f,  1.0f },
+        { "fx return pan",  "mix.fx.pan",     -1.0f,  1.0f },
+        { "master gain",    "masterGain",      0.0f,  1.0f },
+    };
+    for (const auto& sweep : mixSweeps)
+    {
+        auto p = base;
+        p.attack = 0.005f; p.decay = 0.1f; p.sustain = 1.0f; p.release = 0.4f;
+        p.pattern = Pattern::sustained;
+        p.oscillatorMode = 0;
+        p.automateParamId = sweep.id;
+        p.automateFrom = sweep.from;
+        p.automateTo = sweep.to;
+        check((juce::String("M sweep ") + sweep.label).toRawUTF8(), p);
+    }
+    {
+        auto p = base;
+        p.attack = 0.005f; p.decay = 0.1f; p.sustain = 0.8f; p.release = 1.0f;
+        p.pattern = Pattern::legatoRuns; p.fullPatch = true; p.masterGain = 1.0f;
+        p.automateParamId = "masterGain"; p.automateFrom = 0.2f; p.automateTo = 1.0f;
+        check("M sweep master, full patch + notes", p);
     }
 
     // Everything above runs one oscillator at the default master gain, ~16 dB
@@ -1507,6 +1574,105 @@ int main(int argc, char* argv[])
         }
         return 0;
     }
+    else if (arg == "mixer")
+    {
+        // Slide each mixer control while a note sustains, exactly as dragging a
+        // fader does: the host/UI writes the parameter between blocks.
+        struct Control { const char* label; juce::String id; float from; float to; };
+        struct Sweep { const char* label; bool legacy; bool fixedPoly; bool fxOff; };
+        const Sweep sweeps[] = {
+            { "BEFORE (unsmoothed)",     true,  false, false },
+            { "AFTER  (smoothed)",       false, false, false },
+            { "AFTER, polyGain=1.0",     false, true,  false },
+            { "AFTER, FX off",           false, false, true  },
+            { "BEFORE, FX off",          true,  false, true  },
+        };
+        const Control controls[] = {
+            { "osc1 fader (level)",  "mix.osc1.level", 0.0f,  1.0f },
+            { "osc1 pan",            "mix.osc1.pan",  -1.0f,  1.0f },
+            { "osc1 FX send",        "mix.osc1.fxSend", 0.0f, 1.0f },
+            { "FX send gain",        "fxSendGain",     0.0f,  1.0f },
+            { "FX return gain",      "fxReturnGain",   0.0f,  1.0f },
+            { "FX return pan",       "fxReturnPan",   -1.0f,  1.0f },
+            { "master gain",         "masterGain",     0.0f,  1.0f },
+        };
+
+        std::printf("\nMIXER CONTROL SMOOTHNESS — fader swept while a note sustains\n");
+        std::printf("  dryStep/sendStep/returnStep = largest per-sample jump in the gain the mixer applies\n");
+        std::printf("  transient = worst second-difference spike during the sweep, note onset excluded\n\n");
+        std::printf("  %-22s %10s %10s %11s %11s\n",
+                    "control", "dryStep", "sendStep", "returnStep", "transient");
+
+        for (const auto& sweep : sweeps)
+        {
+        std::printf("\n  --- %s ---\n", sweep.label);
+        for (const auto& control : controls)
+        {
+            PatchOptions p;
+            p.attack = 0.005f;
+            p.decay = 0.100f;
+            p.sustain = 1.0f;
+            p.release = 0.300f;
+            p.oscillatorMode = 0; // SINE: nothing of its own to mask a zipper
+            p.fxEnabled = !sweep.fxOff;
+
+            px3::diag::resetNoteStartSequence();
+            PX3SynthAudioProcessor processor;
+            applyPatch(processor, p);
+            // Park the control at the sweep's starting value BEFORE prepare, so
+            // the smoother initialises there. Otherwise the first block carries
+            // an artificial jump from the parameter's default.
+            setParameter(processor, control.id, control.from);
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            auto& diag = px3::diag::state();
+            diag.resetResults();
+            diag.resetModes();
+            diag.legacyUnsmoothedMixer = sweep.legacy;
+            diag.fixedPolyGain = sweep.fixedPoly;
+            diag.capturing = true;
+
+            const auto noteOn = static_cast<int>(0.05 * kSampleRate);
+            const auto totalSamples = static_cast<int>(3.0 * kSampleRate);
+            const auto sweepStart = static_cast<int>(0.35 * kSampleRate);
+            const auto sweepSamples = static_cast<int>(1.2 * kSampleRate);
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            auto delivered = false;
+            for (int position = 0; position < totalSamples; position += kBlockSize)
+            {
+                // One parameter write per block, which is how a fader drag
+                // actually arrives.
+                const auto through = juce::jlimit(0.0, 1.0,
+                                                  (position - sweepStart) / static_cast<double>(sweepSamples));
+                // Sweep up then back down.
+                const auto shaped = through < 0.5 ? through * 2.0 : (1.0 - through) * 2.0;
+                setParameter(processor, control.id,
+                             control.from + (control.to - control.from) * static_cast<float>(shaped));
+
+                buffer.clear();
+                juce::MidiBuffer midi;
+                if (!delivered && position + kBlockSize > noteOn)
+                {
+                    midi.addEvent(juce::MidiMessage::noteOn(1, 64, 0.9f), juce::jmax(0, noteOn - position));
+                    delivered = true;
+                }
+                processor.processBlock(buffer, midi);
+            }
+            diag.capturing = false;
+
+            std::printf("  %-22s %10.6f %10.6f %11.6f %11.1f\n",
+                        control.label,
+                        static_cast<double>(diag.maxMixerDryGainStep),
+                        static_cast<double>(diag.maxMixerSendGainStep),
+                        static_cast<double>(diag.maxFxReturnGainStep),
+                        static_cast<double>(diag.maxQuietTransientRatio));
+            std::fflush(stdout);
+        }
+        }
+        return 0;
+    }
     else if (arg == "noteoff")
     {
         // The click is reported at the instant of key release, so look there
@@ -1589,6 +1755,12 @@ int main(int argc, char* argv[])
             }
         }
         return 0;
+    }
+    else if (arg == "regress-mixerbug")
+    {
+        // Reproduces the fader zipper: mixer and master gains applied per block.
+        gLegacyUnsmoothedMixer = true;
+        return runRegressionSuite(false);
     }
     else if (arg == "regress-noteoffbug")
     {

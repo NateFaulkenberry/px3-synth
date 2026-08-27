@@ -18,6 +18,17 @@
 
 using namespace px3::processor_internal;
 
+namespace
+{
+// Constant-power pan law, shared by the audio path and by smoother initialisation.
+void panToGainsStatic(float pan, float& leftGain, float& rightGain)
+{
+    const auto angle = (juce::jlimit(-1.0f, 1.0f, pan) + 1.0f) * juce::MathConstants<float>::pi * 0.25f;
+    leftGain = std::cos(angle);
+    rightGain = std::sin(angle);
+}
+}
+
 PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
@@ -574,6 +585,33 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
 
     fxReturnGateSmoother.reset(sampleRate, 0.010);
     fxReturnGateSmoother.setCurrentAndTargetValue(1.0f);
+
+    // Fader/pan/send smoothing. Long enough to kill the block-rate staircase,
+    // short enough that a fader still feels immediate.
+    constexpr double kMixerSmoothingSeconds = 0.015;
+    {
+        for (int i = 0; i < kMixerSourceCount; ++i)
+        {
+            const auto idx = static_cast<std::size_t>(i);
+            sourceLevelSmoothers[idx].prepare(sampleRate, kMixerSmoothingSeconds);
+            sourcePanLeftSmoothers[idx].prepare(sampleRate, kMixerSmoothingSeconds);
+            sourcePanRightSmoothers[idx].prepare(sampleRate, kMixerSmoothingSeconds);
+            sourceSendSmoothers[idx].prepare(sampleRate, kMixerSmoothingSeconds);
+
+            sourceLevelSmoothers[idx].setCurrent(juce::jlimit(0.0f, 1.0f, getMixerLevelParam(i).get()));
+            sourceSendSmoothers[idx].setCurrent(juce::jlimit(0.0f, 1.0f, getMixerSendParam(i).get()));
+
+            float left = 1.0f;
+            float right = 1.0f;
+            panToGainsStatic(juce::jlimit(-1.0f, 1.0f, getMixerPanParam(i).get()), left, right);
+            sourcePanLeftSmoothers[idx].setCurrent(left);
+            sourcePanRightSmoothers[idx].setCurrent(right);
+        }
+    }
+    fxSendGainSmoother.prepare(sampleRate, kMixerSmoothingSeconds);
+    fxReturnGainSmoother.prepare(sampleRate, kMixerSmoothingSeconds);
+    fxSendGainSmoother.setCurrent(fxSendGainParam != nullptr ? juce::jlimit(0.0f, 1.0f, fxSendGainParam->get()) : 1.0f);
+    fxReturnGainSmoother.setCurrent(fxReturnGainParam != nullptr ? juce::jlimit(0.0f, 1.0f, fxReturnGainParam->get()) : 1.0f);
 
     fxReturnPanSmoother.reset(sampleRate, 0.012);
     const auto initialFxPan = fxReturnPanParam != nullptr ? fxReturnPanParam->get() : 0.0f;
@@ -1251,9 +1289,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     auto panToGains = [](float pan, float& leftGain, float& rightGain)
     {
-        const auto angle = (pan + 1.0f) * juce::MathConstants<float>::pi * 0.25f;
-        leftGain = std::cos(angle);
-        rightGain = std::sin(angle);
+        panToGainsStatic(pan, leftGain, rightGain);
     };
 
     std::array<float, kMixerSourceCount> sourcePanLeft { { 1.0f, 1.0f, 1.0f, 1.0f } };
@@ -1293,21 +1329,57 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             const auto sampleValue = oscillatorBusBuffer.getSample(sourceIndex, sample);
             const auto dryGate = sourceDryGateSmoothers[static_cast<std::size_t>(sourceIndex)].getNextValue();
             const auto sendGate = sourceSendGateSmoothers[static_cast<std::size_t>(sourceIndex)].getNextValue();
-            const auto panL = sourcePanLeft[static_cast<std::size_t>(sourceIndex)];
-            const auto panR = sourcePanRight[static_cast<std::size_t>(sourceIndex)];
-            const auto sourceLevel = sourceLevelValues[static_cast<std::size_t>(sourceIndex)];
+            const auto idxSource = static_cast<std::size_t>(sourceIndex);
+            auto panL = sourcePanLeftSmoothers[idxSource].next(sourcePanLeft[idxSource]);
+            auto panR = sourcePanRightSmoothers[idxSource].next(sourcePanRight[idxSource]);
+            auto sourceLevel = sourceLevelSmoothers[idxSource].next(sourceLevelValues[idxSource]);
+#if PX3_DIAGNOSTICS
+            if (diagState.legacyUnsmoothedMixer)
+            {
+                panL = sourcePanLeft[idxSource];
+                panR = sourcePanRight[idxSource];
+                sourceLevel = sourceLevelValues[idxSource];
+            }
+#endif
             const auto sourceDryL = sampleValue * sourceLevel * panL * dryGate;
             const auto sourceDryR = sampleValue * sourceLevel * panR * dryGate;
 
             dryL += sourceDryL;
             dryR += sourceDryR;
 
-            const auto sendGain = sourceSendValues[static_cast<std::size_t>(sourceIndex)] * fxSendGain;
+            auto sendGain = sourceSendSmoothers[idxSource].next(sourceSendValues[idxSource])
+                            * fxSendGainSmoother.next(fxSendGain);
+#if PX3_DIAGNOSTICS
+            if (diagState.legacyUnsmoothedMixer)
+            {
+                sendGain = sourceSendValues[idxSource] * fxSendGain;
+            }
+#endif
             fxInL += sampleValue * panL * sendGain * sendGate;
             fxInR += sampleValue * panR * sendGain * sendGate;
 
             mixerSourceEnergy[static_cast<std::size_t>(sourceIndex)] += static_cast<double>(sourceDryL) * static_cast<double>(sourceDryL)
                                                                          + static_cast<double>(sourceDryR) * static_cast<double>(sourceDryR);
+
+#if PX3_DIAGNOSTICS
+            if (diagState.capturing)
+            {
+                const auto idx = static_cast<std::size_t>(sourceIndex);
+                const auto dryGain = sourceLevel * panL * dryGate;
+                const auto sendGainNow = sendGain * panL * sendGate;
+                if (diagState.hasPrevMixerGain)
+                {
+                    diagState.maxMixerDryGainStep =
+                        juce::jmax(diagState.maxMixerDryGainStep,
+                                   std::abs(dryGain - diagState.prevMixerDryGain[idx]));
+                    diagState.maxMixerSendGainStep =
+                        juce::jmax(diagState.maxMixerSendGainStep,
+                                   std::abs(sendGainNow - diagState.prevMixerSendGain[idx]));
+                }
+                diagState.prevMixerDryGain[idx] = dryGain;
+                diagState.prevMixerSendGain[idx] = sendGainNow;
+            }
+#endif
         }
 
         dryBusBuffer.setSample(0, sample, dryL);
@@ -1348,8 +1420,30 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         float fxPanLeft = 1.0f;
         float fxPanRight = 1.0f;
         panToGains(fxReturnPanSmoother.getNextValue(), fxPanLeft, fxPanRight);
-        const auto fxL = (stageL - fxInL) * fxReturnGain * fxPanLeft * fxReturnGate;
-        const auto fxR = (stageR - fxInR) * fxReturnGain * fxPanRight * fxReturnGate;
+        auto smoothedFxReturnGain = fxReturnGainSmoother.next(fxReturnGain);
+#if PX3_DIAGNOSTICS
+        if (diagState.legacyUnsmoothedMixer)
+        {
+            smoothedFxReturnGain = fxReturnGain;
+        }
+#endif
+#if PX3_DIAGNOSTICS
+        if (diagState.capturing)
+        {
+            const auto returnGainNow = smoothedFxReturnGain * fxPanLeft * fxReturnGate;
+            if (diagState.hasPrevMixerGain)
+            {
+                diagState.maxFxReturnGainStep =
+                    juce::jmax(diagState.maxFxReturnGainStep,
+                               std::abs(returnGainNow - diagState.prevFxReturnGain));
+            }
+            diagState.prevFxReturnGain = returnGainNow;
+            diagState.hasPrevMixerGain = true;
+        }
+#endif
+
+        const auto fxL = (stageL - fxInL) * smoothedFxReturnGain * fxPanLeft * fxReturnGate;
+        const auto fxR = (stageR - fxInR) * smoothedFxReturnGain * fxPanRight * fxReturnGate;
         fxReturnEnergy += static_cast<double>(fxL) * static_cast<double>(fxL)
                   + static_cast<double>(fxR) * static_cast<double>(fxR);
         fxBusBuffer.setSample(0, sample, fxL);

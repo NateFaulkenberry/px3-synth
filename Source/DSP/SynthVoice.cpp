@@ -102,6 +102,15 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     subOscillator.setSettings(subOscillatorSettings);
     subOscillator.resetForNote();
 
+    if (std::abs(sampleRate - masterGainPreparedSampleRate) > 0.5)
+    {
+        masterGainSmoother.prepare(sampleRate, 0.015);
+        masterGainPreparedSampleRate = sampleRate;
+    }
+    // Start at the current value: a new note must not fade in from wherever the
+    // previous note left the smoother.
+    masterGainSmoother.setCurrent(subtractiveSettings.masterGain);
+
     ampEnvelope.setSettings(envelopeSettings);
     ampEnvelope.noteOn();
     for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
@@ -150,6 +159,7 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
         diagHasPrevEnv = false;
         diagHasPrevVoiceGain = false;
         diagVoiceGainHistory = 0;
+        diagHasPrevMasterGain = false;
         diagLastVoiceOut = 0.0f;
     }
 #endif
@@ -632,7 +642,26 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 #else
         const auto ampEnvGainForAudio = env;
 #endif
-        auto voiceGain = level * ampEnvGainForAudio * subtractiveSettings.masterGain;
+        auto smoothedMasterGain = masterGainSmoother.next(subtractiveSettings.masterGain);
+#if PX3_DIAGNOSTICS
+        if (diag.legacyUnsmoothedMixer)
+        {
+            smoothedMasterGain = subtractiveSettings.masterGain;
+        }
+#endif
+#if PX3_DIAGNOSTICS
+        if (diag.capturing)
+        {
+            if (diagHasPrevMasterGain)
+            {
+                diag.maxMasterGainStep = juce::jmax(diag.maxMasterGainStep,
+                                                    std::abs(smoothedMasterGain - diagPrevMasterGain));
+            }
+            diagPrevMasterGain = smoothedMasterGain;
+            diagHasPrevMasterGain = true;
+        }
+#endif
+        auto voiceGain = level * ampEnvGainForAudio * smoothedMasterGain;
 
         // Fast attacks can still produce a tiny startup edge when many voices
         // overlap; apply a very short, attack-dependent onset guard only while

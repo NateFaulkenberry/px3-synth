@@ -5,6 +5,7 @@
 #include "AmpEnvelope.h"
 #include "EnvelopeGenerator.h"
 #include "PX3Diagnostics.h"
+#include "SmoothedGain.h"
 #include "EnvelopeTypes.h"
 #include "FilterTypes.h"
 #include "OscillatorTypes.h"
@@ -87,6 +88,8 @@ private:
     bool diagHasPrevVoiceGain { false };
     bool diagMarkStart { false };
     bool diagMarkNoteOff { false };
+    float diagPrevMasterGain { 0.0f };
+    bool diagHasPrevMasterGain { false };
 #endif
 
     // Cached control settings for this voice. The processor refreshes these
@@ -135,6 +138,10 @@ private:
     int releaseAgeSamples { 0 };
     int fastReleaseTotalSamples { 0 };
     int fastReleaseSamplesRemaining { 0 };
+    // Master gain is a user-facing fader applied per sample inside the voice,
+    // so it needs the same per-sample smoothing the mixer gains get.
+    SmoothedGain masterGainSmoother;
+    double masterGainPreparedSampleRate { 0.0 };
     double ampEnvelopePreparedSampleRate { 0.0 };
     double modEnvelopePreparedSampleRate { 0.0 };
     bool ampEnvelopeEnabled { true };
