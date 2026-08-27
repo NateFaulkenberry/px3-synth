@@ -86,6 +86,7 @@ private:
     bool diagHasPrevEnv { false };
     bool diagHasPrevVoiceGain { false };
     bool diagMarkStart { false };
+    bool diagMarkNoteOff { false };
 #endif
 
     // Cached control settings for this voice. The processor refreshes these
@@ -131,6 +132,7 @@ private:
 
     int noteAgeSamples { 0 };
     int voiceIndex { 0 };
+    int releaseAgeSamples { 0 };
     int fastReleaseTotalSamples { 0 };
     int fastReleaseSamplesRemaining { 0 };
     double ampEnvelopePreparedSampleRate { 0.0 };

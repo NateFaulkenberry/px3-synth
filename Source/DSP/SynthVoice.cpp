@@ -19,6 +19,12 @@ inline float softClip(float x)
 // consuming CPU within a single typical host block.
 constexpr float kFastReleaseSeconds = 0.005f;
 
+// The release lowpass is faded in over this long instead of being switched on
+// at note-off. Switching it on multiplies the waveform's per-sample increment
+// by the filter coefficient in a single sample, which measured as a 52-86%
+// instantaneous slope drop - an audible click at the instant of key release.
+constexpr float kReleaseFilterBlendSeconds = 0.010f;
+
 inline float sanitizeAudioSample(float x)
 {
     if (!std::isfinite(x))
@@ -112,6 +118,7 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
         }
     }
     noteAgeSamples = 0;
+    releaseAgeSamples = 0;
     fastReleaseTotalSamples = 0;
     fastReleaseSamplesRemaining = 0;
     for (auto& oscillatorUnit : oscillatorUnits)
@@ -168,6 +175,10 @@ void SynthVoice::stopNote(float, bool allowTailOff)
         retireVoice();
         return;
     }
+
+#if PX3_DIAGNOSTICS
+    diagMarkNoteOff = true;
+#endif
 
     ampEnvelope.noteOff();
     for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
@@ -255,6 +266,11 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     {
         diag.markLifecycle(startSample);
         diagMarkStart = false;
+    }
+    if (diagMarkNoteOff)
+    {
+        diag.markNoteOff(startSample);
+        diagMarkNoteOff = false;
     }
 #endif
 
@@ -420,6 +436,31 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         }
 #endif
 
+        // Fade the release lowpass in rather than switching it on. At blend 0
+        // the output is bit-for-bit the unfiltered signal, so note-off is
+        // continuous in both value and slope.
+        auto releaseFilterBlend = 0.0f;
+        if (isKeyDown())
+        {
+            releaseAgeSamples = 0;
+        }
+        else
+        {
+            const auto blendSamples = juce::jmax(1, static_cast<int>(kReleaseFilterBlendSeconds
+                                                                     * static_cast<float>(sampleRate)));
+            const auto t = juce::jlimit(0.0f,
+                                        1.0f,
+                                        static_cast<float>(releaseAgeSamples) / static_cast<float>(blendSamples));
+            releaseFilterBlend = t * t * (3.0f - 2.0f * t);
+            ++releaseAgeSamples;
+        }
+#if PX3_DIAGNOSTICS
+        if (diag.legacyInstantReleaseFilter)
+        {
+            releaseFilterBlend = isKeyDown() ? 0.0f : 1.0f;
+        }
+#endif
+
         auto ecoReleaseVoice = !isKeyDown();
 #if PX3_DIAGNOSTICS
         if (diag.freezeVibeReleaseSwitch)
@@ -438,7 +479,13 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             // Release voices can dominate CPU under dense overlap. Keep held
             // voices fully detailed, but run release tails through a cleaner,
             // lighter path to prevent real-time overload artifacts.
-            if (ecoReleaseVoice)
+            //
+            // Crossfade into that lighter path rather than switching to it, for
+            // the same reason as the release lowpass: an instantaneous change of
+            // waveshaping at note-off is a discontinuity at the exact moment the
+            // key is released.
+            const auto detailMix = 1.0f - releaseFilterBlend;
+            if (ecoReleaseVoice && detailMix <= 0.0f)
             {
                 juce::ignoreUnused(noiseScale);
                 return inSample;
@@ -461,7 +508,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                            * (0.0035f + 0.0165f * noiseAmount)
                            * noiseTailScale
                            * juce::jlimit(0.0f, 1.0f, noiseScale);
-            return stageSample;
+            return inSample + (stageSample - inSample) * juce::jlimit(0.0f, 1.0f, detailMix);
         };
 
         currentPitchBendNorm += (targetPitchBendNorm - currentPitchBendNorm) * 0.06f;
@@ -687,13 +734,15 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             diagOscStageSum += filteredSample * perSourceNormalization;
             diagPostEnvStageSum += voicedSample;
 #endif
-            if (vibeActive && !ecoReleaseVoice)
+            const auto vcaDetailMix = juce::jlimit(0.0f, 1.0f, 1.0f - releaseFilterBlend);
+            if (vibeActive && vcaDetailMix > 0.0f)
             {
                 const auto vcaAmount = (vibeTuning.vcaNonlinearity * vibeDepth
                                         + vibeShared.chaos * vibeTuning.correlatedChaos * 0.16f * vibeDepth)
                                        * (0.28f + 0.72f * releaseTailShape);
-                voicedSample = std::tanh(voicedSample * (1.0f + vcaAmount * 3.2f))
-                              * (1.0f / (1.0f + vcaAmount * 0.95f));
+                const auto shapedSample = std::tanh(voicedSample * (1.0f + vcaAmount * 3.2f))
+                                          * (1.0f / (1.0f + vcaAmount * 0.95f));
+                voicedSample += (shapedSample - voicedSample) * vcaDetailMix;
             }
 
 #if PX3_DIAGNOSTICS
@@ -705,7 +754,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                 auto& tailState = releaseSmoothingState[static_cast<std::size_t>(sourceIndex)];
                 const auto tailSmooth = 0.02f + 0.18f * releaseTailShape;
                 tailState += (voicedSample - tailState) * tailSmooth;
-                voicedSample = tailState;
+                voicedSample += (tailState - voicedSample) * releaseFilterBlend;
             }
             else
             {

@@ -37,6 +37,7 @@ void analyseBlock(const float* postPoly, const float* master, int numSamples)
         current[stageMaster] = master[n];
 
         const auto lifecycleHere = s.lifecycleMark[idx] != 0;
+        s.samplesSinceNoteOff = s.noteOffMark[idx] != 0 ? 0 : s.samplesSinceNoteOff + 1;
 
         if (std::abs(current[stageMaster]) > 1.0f)
         {
@@ -60,6 +61,16 @@ void analyseBlock(const float* postPoly, const float* master, int numSamples)
                 if (ratio > 8.0f)
                 {
                     ++s.transientEventCount;
+                }
+
+                // First 3 ms after a key release.
+                if (s.samplesSinceNoteOff < 144)
+                {
+                    s.maxNoteOffTransientRatio = std::max(s.maxNoteOffTransientRatio, ratio);
+                    if (ratio > 8.0f)
+                    {
+                        ++s.noteOffTransientEvents;
+                    }
                 }
 
                 // 50 ms clear of any voice start/stop.

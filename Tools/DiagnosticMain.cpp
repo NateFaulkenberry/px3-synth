@@ -20,6 +20,7 @@
 namespace
 {
 bool gLegacyTailShape = false;
+bool gLegacyInstantReleaseFilter = false;
 
 constexpr double kSampleRate = 48000.0;
 constexpr int kBlockSize = 512;
@@ -227,6 +228,9 @@ struct PatchOptions
     bool pitchModulation { false };
     Pattern pattern { Pattern::rapid };
     int oscillatorMode { -1 };  // -1 = leave at default
+    // Gate the note-off transient metric. Only meaningful on waveforms that have
+    // no discontinuities of their own; a saw's per-cycle edge swamps it.
+    bool gateNoteOffTransient { false };
     bool legacyPolyphonyLoad { false };
     bool legacyLinearRelease { false };
     bool fullPatch { false };   // all sources enabled, master gain up
@@ -827,6 +831,7 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     diag.legacyPolyphonyLoad = patch.legacyPolyphonyLoad;
     diag.legacyLinearRelease = patch.legacyLinearRelease;
     diag.legacyTailShapeFromEnv = gLegacyTailShape;
+    diag.legacyInstantReleaseFilter = gLegacyInstantReleaseFilter;
     diag.capturing = true;
 
     int totalSamples = 0;
@@ -868,8 +873,11 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     // guard switching in or out) spikes this and is audible on waveforms that
     // have no harmonics of their own to mask it.
     const auto gainEnvelopeSmooth = diag.maxVoiceGainCurvature < 0.0025f;
+    // Nothing in the release path may switch on at note-off. Measured on smooth
+    // waveforms only, where a spike here can only be a discontinuity.
+    const auto noteOffClean = !patch.gateNoteOffTransient || diag.maxNoteOffTransientRatio < 6.0f;
     const auto passed = lifecycleClean && retiresAtSilence && noClipping
-                        && noGainPumping && tailFilterSane && gainEnvelopeSmooth;
+                        && noGainPumping && tailFilterSane && gainEnvelopeSmooth && noteOffClean;
 
     const char* verdict = "PASS";
     if (!lifecycleClean)      verdict = "FAIL(discontinuity)";
@@ -878,8 +886,9 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     else if (!noGainPumping)  verdict = "FAIL(gain-step)";
     else if (!tailFilterSane) verdict = "FAIL(tail-overfiltered)";
     else if (!gainEnvelopeSmooth) verdict = "FAIL(gain-corner)";
+    else if (!noteOffClean) verdict = "FAIL(note-off-click)";
 
-    std::printf("  %-38s %8.4f %8d %9.6f %9.6f %7.1f %9.5f %6d  %s\n",
+    std::printf("  %-38s %8.4f %8d %9.6f %9.6f %7.1f %9.5f %9.1f  %s\n",
                 name,
                 static_cast<double>(diag.peak[px3::diag::stageMaster]),
                 diag.masterClipSamples,
@@ -887,7 +896,7 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
                 static_cast<double>(diag.maxTruncationStep),
                 heavyFilterFraction * 100.0,
                 static_cast<double>(diag.maxVoiceGainCurvature),
-                diag.releasePrunes,
+                static_cast<double>(diag.maxNoteOffTransientRatio),
                 verdict);
     if (!gainEnvelopeSmooth)
     {
@@ -910,8 +919,8 @@ int runRegressionSuite(bool legacyPruning)
     std::printf(legacyPruning
                     ? "\nCONTROL SUITE (pre-fix behaviour: pruning uses instantaneous stopNote(false))\n"
                     : "\nREGRESSION SUITE (production path, all diagnostic modes off)\n");
-    std::printf("  %-38s %8s %8s %9s %9s %7s %9s %6s  %s\n",
-                "case", "peak", "clip", "max|dx|", "killLevel", "tailFlt%", "gainCurv", "prunes", "result");
+    std::printf("  %-38s %8s %8s %9s %9s %7s %9s %9s  %s\n",
+                "case", "peak", "clip", "max|dx|", "killLevel", "tailFlt%", "gainCurv", "noteOff", "result");
 
     auto failures = 0;
     auto check = [&failures, legacyPruning](const char* name, PatchOptions patch)
@@ -1058,6 +1067,40 @@ int runRegressionSuite(bool legacyPruning)
         p.attack = 0.001f; p.decay = 0.05f; p.sustain = 0.6f; p.release = 0.010f;
         p.pattern = Pattern::rapid; p.oscillatorMode = 0;
         check("W sine, short A/R, rapid notes", p);
+    }
+
+    // Key release must not change the signal path abruptly. Smooth waveforms
+    // only, at several release lengths, since the reported click was audible at
+    // the very start of the release stage.
+    for (const auto release : { 0.010f, 0.100f, 0.300f, 1.246f, 3.0f })
+    {
+        for (const auto mode : { 0, 3 })   // SINE, TRIANGLE
+        {
+            auto p = base;
+            p.attack = 0.005f; p.decay = 0.1f; p.sustain = 0.8f; p.release = release;
+            p.pattern = Pattern::isolatedNotes;
+            p.oscillatorMode = mode;
+            // Gated on sine only: a triangle's own slope corners raise its floor
+            // enough that the metric no longer separates cleanly. Any release
+            // path discontinuity shows on sine first and most strongly.
+            p.gateNoteOffTransient = (mode == 0);
+            check((juce::String("N ") + (mode == 0 ? "sine" : "tri") + " key-release, rel="
+                   + juce::String(release, 3)).toRawUTF8(), p);
+        }
+    }
+    {
+        auto p = base;
+        p.attack = 0.005f; p.decay = 0.1f; p.sustain = 0.8f; p.release = 0.5f;
+        p.pattern = Pattern::isolatedNotes; p.oscillatorMode = 0;
+        p.vibeAmount = 0.8f; p.gateNoteOffTransient = true;
+        check("N sine key-release, vibe engaged", p);
+    }
+    {
+        auto p = base;
+        p.attack = 0.005f; p.decay = 0.1f; p.sustain = 0.0f; p.release = 0.5f;
+        p.pattern = Pattern::isolatedNotes; p.oscillatorMode = 0;
+        p.gateNoteOffTransient = true;
+        check("N sine key-release, sustain=0", p);
     }
 
     // Everything above runs one oscillator at the default master gain, ~16 dB
@@ -1463,6 +1506,96 @@ int main(int argc, char* argv[])
             }
         }
         return 0;
+    }
+    else if (arg == "noteoff")
+    {
+        // The click is reported at the instant of key release, so look there
+        // directly, across pitch, with the release path's switches isolated.
+        struct Variant { const char* label; bool noTailFilter; bool instantFilter; };
+        const Variant variants[] = {
+            { "before: filter switched on", false, true  },
+            { "after: filter faded in",     false, false },
+            { "no tail filter at all",      true,  false },
+        };
+
+        for (const auto& variant : variants)
+        {
+            PatchOptions p;
+            p.attack = 0.005f;
+            p.decay = 0.100f;
+            p.sustain = 0.800f;
+            p.release = 0.300f;
+            p.pattern = Pattern::isolatedNotes;
+            p.oscillatorMode = 0; // SINE
+            p.fxEnabled = false;
+            p.vibeEnabled = false;
+
+            px3::diag::resetNoteStartSequence();
+            PX3SynthAudioProcessor processor;
+            applyPatch(processor, p);
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            auto& diag = px3::diag::state();
+            diag.resetResults();
+            diag.resetModes();
+            diag.disableReleaseTailFilter = variant.noTailFilter;
+            diag.legacyInstantReleaseFilter = variant.instantFilter;
+            diag.capturing = true;
+            diag.tracing = true;
+
+            int totalSamples = 0;
+            const auto events = buildPattern(p.pattern, kSampleRate, totalSamples);
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            std::size_t nextEvent = 0;
+            for (int position = 0; position < totalSamples; position += kBlockSize)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                while (nextEvent < events.size() && events[nextEvent].sampleTime < position + kBlockSize)
+                {
+                    midi.addEvent(events[nextEvent].message, juce::jmax(0, events[nextEvent].sampleTime - position));
+                    ++nextEvent;
+                }
+                processor.processBlock(buffer, midi);
+            }
+            diag.capturing = false;
+            diag.tracing = false;
+
+            const auto& m = diag.trace[px3::diag::stageMaster];
+            std::printf("\n=== key release, SINE, %s ===\n", variant.label);
+            std::printf("  noteOffTransientRatio=%.1f  events=%d\n",
+                        (double) diag.maxNoteOffTransientRatio, diag.noteOffTransientEvents);
+            std::printf("  %6s %10s %14s %14s %10s\n",
+                        "note", "freq(Hz)", "slopeBefore", "slopeAfter", "slopeDrop");
+
+            for (const auto& e : events)
+            {
+                if (!e.message.isNoteOff()) continue;
+                const auto n = (std::size_t) e.message.getNoteNumber();
+                const auto off = (std::size_t) e.sampleTime;
+                if (off + 4 >= m.size() || off < 4) continue;
+
+                // Waveform slope immediately before and immediately after the
+                // key release. An instantaneous change here is the click.
+                const auto before = m[off - 1] - m[off - 2];
+                const auto after = m[off + 1] - m[off];
+                const auto drop = std::abs(before) > 1.0e-9f
+                                      ? 100.0 * (1.0 - std::abs(after) / std::abs(before)) : 0.0;
+                std::printf("  %6d %10.1f %14.7f %14.7f %9.1f%%\n",
+                            (int) n,
+                            (double) juce::MidiMessage::getMidiNoteInHertz((int) n),
+                            (double) before, (double) after, drop);
+            }
+        }
+        return 0;
+    }
+    else if (arg == "regress-noteoffbug")
+    {
+        // Reproduces the key-release click: release path switched on at note-off
+        // instead of faded in.
+        gLegacyInstantReleaseFilter = true;
+        return runRegressionSuite(false);
     }
     else if (arg == "regress-tailbug")
     {

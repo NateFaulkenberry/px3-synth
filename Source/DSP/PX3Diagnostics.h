@@ -71,6 +71,7 @@ struct State
     bool legacyLinearRelease { false };    // control: pre-fix linear AMP ENV release ramp
     bool legacyTailShapeFromEnv { false }; // control: tail filter scheduled off env value
     int onsetGuardCurve { 0 };  // 0=production, 1=legacy t^2, 2=smoothstep
+    bool legacyInstantReleaseFilter { false }; // control: release lowpass switched on, not faded in
     bool disableOnsetGuard { false };
     bool disableReleaseTailFilter { false };
     bool freezeVibeReleaseSwitch { false }; // keep held-note vibe path during release
@@ -83,6 +84,7 @@ struct State
     // Per-block accumulators filled by the voices (indexed by sample in block).
     std::vector<float> voiceStage[stageCount];
     std::vector<unsigned char> lifecycleMark; // 1 = voice start/stop happened here
+    std::vector<unsigned char> noteOffMark;   // 1 = a key was released here
     std::vector<float> postPolySum;           // oscillator bus summed after poly gain
     std::vector<float> blockEnv;              // per-sample AMP ENV of the last voice rendered
     std::vector<float> blockPolyGain;         // per-sample polyphony gain
@@ -164,6 +166,12 @@ struct State
     // sees artifacts that happen in the middle of a sustaining tail rather than
     // the legitimate transient of a note attack.
     int samplesSinceLifecycle { 1 << 30 };
+    // Scored only in the first few ms after a key release, which is where an
+    // instantaneous switch in the release path shows up.
+    int samplesSinceNoteOff { 1 << 30 };
+    float maxNoteOffTransientRatio { 0.0f };
+    int noteOffTransientEvents { 0 };
+    float maxNoteOffSlopeDrop { 0.0f };
     float maxQuietTransientRatio { 0.0f };
     int quietTransientEvents { 0 };
     long long worstQuietTransientSample { -1 };
@@ -221,6 +229,10 @@ struct State
         maxTransientRatio = 0.0f;
         transientEventCount = 0;
         samplesSinceLifecycle = 1 << 30;
+        samplesSinceNoteOff = 1 << 30;
+        maxNoteOffTransientRatio = 0.0f;
+        noteOffTransientEvents = 0;
+        maxNoteOffSlopeDrop = 0.0f;
         maxQuietTransientRatio = 0.0f;
         quietTransientEvents = 0;
         worstQuietTransientSample = -1;
@@ -260,6 +272,7 @@ struct State
         legacyLinearRelease = false;
         legacyTailShapeFromEnv = false;
         onsetGuardCurve = 0;
+        legacyInstantReleaseFilter = false;
         disableOnsetGuard = false;
         disableReleaseTailFilter = false;
         freezeVibeReleaseSwitch = false;
@@ -272,6 +285,7 @@ struct State
             buffer.assign(static_cast<std::size_t>(numSamples), 0.0f);
         }
         lifecycleMark.assign(static_cast<std::size_t>(numSamples), 0);
+        noteOffMark.assign(static_cast<std::size_t>(numSamples), 0);
         blockEnv.assign(static_cast<std::size_t>(numSamples), 0.0f);
         blockPolyGain.assign(static_cast<std::size_t>(numSamples), 1.0f);
     }
@@ -298,6 +312,14 @@ struct State
         if (sampleIndex >= 0 && static_cast<std::size_t>(sampleIndex) < buffer.size())
         {
             buffer[static_cast<std::size_t>(sampleIndex)] += value;
+        }
+    }
+
+    void markNoteOff(int sampleIndex)
+    {
+        if (sampleIndex >= 0 && static_cast<std::size_t>(sampleIndex) < noteOffMark.size())
+        {
+            noteOffMark[static_cast<std::size_t>(sampleIndex)] = 1;
         }
     }
 
