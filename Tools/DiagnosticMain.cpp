@@ -10,6 +10,7 @@
 #include <JuceHeader.h>
 
 #include "PluginProcessor.h"
+#include "OutputCeiling.h"
 #include "PX3Diagnostics.h"
 
 #include <algorithm>
@@ -240,8 +241,6 @@ struct PatchOptions
     bool legacyLinearRelease { false };
     bool fullPatch { false };   // all sources enabled, master gain up
     bool fadersAtUnity { false }; // additionally push every channel fader to 0 dB
-    // Records the headroom ceiling rather than asserting it stays clean.
-    bool documentsHeadroomCeiling { false };
     float masterGain { 0.6f };
 };
 
@@ -896,7 +895,7 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     const auto retiresAtSilence = diag.maxTruncationStep < 0.002f;
     // Sample-delta metrics cannot see clipping or gain pumping, which sound
     // like the same class of artifact to a listener.
-    const auto noClipping = patch.documentsHeadroomCeiling || diag.masterClipSamples == 0;
+    const auto noClipping = diag.masterClipSamples == 0;
     const auto noGainPumping = true; // reported, not gated: pre-existing behaviour
     // The release lowpass must stay mostly disengaged over a tail. If this
     // climbs, some release-dependent schedule has drifted out of step with the
@@ -915,7 +914,8 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     // No user-facing gain may reach the audio as a per-block staircase. This is
     // exact and independent of waveform, FX and program material.
     const auto worstMixerStep = juce::jmax(juce::jmax(diag.maxMixerDryGainStep, diag.maxMixerSendGainStep),
-                                           juce::jmax(diag.maxFxReturnGainStep, diag.maxMasterGainStep));
+                                           juce::jmax(juce::jmax(diag.maxFxReturnGainStep, diag.maxMasterGainStep),
+                                                      diag.maxSourceNormalisationStep));
     const auto mixerSmooth = worstMixerStep < 0.001f;
     const auto passed = lifecycleClean && retiresAtSilence && noClipping
                         && noGainPumping && tailFilterSane && gainEnvelopeSmooth && noteOffClean
@@ -1147,6 +1147,25 @@ int runRegressionSuite(bool legacyPruning)
         check("N sine key-release, sustain=0", p);
     }
 
+    {
+        // Harder still: everything at unity plus heavy FX and vibe, to confirm
+        // the ceiling holds rather than merely being close.
+        auto p = base; p.fullPatch = true; p.fadersAtUnity = true; p.masterGain = 1.0f;
+        p.release = 4.0f; p.pattern = Pattern::stutter; p.sustain = 1.0f;
+        p.vibeAmount = 1.0f; p.modEnvelopes = true; p.lfoModulation = true; p.pitchModulation = true;
+        check("24 overdrive: unity faders + stutter", p);
+    }
+
+    {
+        // Enabling an oscillator mid-note changes the per-source normalisation,
+        // which multiplies every source. Toggle it while a note sustains.
+        auto p = base;
+        p.attack = 0.005f; p.decay = 0.1f; p.sustain = 1.0f; p.release = 0.4f;
+        p.pattern = Pattern::sustained; p.oscillatorMode = 0;
+        p.automateParamId = "osc2Enabled"; p.automateFrom = 0.0f; p.automateTo = 1.0f;
+        check("T toggle osc2 during sustain", p);
+    }
+
     // MixPanel controls swept while notes sustain. Sine, because a zipper on a
     // fader move has nothing to hide behind on a pure tone.
     struct MixSweep { const char* label; const char* id; float from; float to; };
@@ -1207,10 +1226,9 @@ int runRegressionSuite(bool legacyPruning)
         // Headroom limit: every fader at 0 dB and master at max, on top of the
         // fixed output boost. Reported so the ceiling is visible, not hidden.
         auto p = base; p.fullPatch = true; p.fadersAtUnity = true; p.masterGain = 1.0f;
-        p.documentsHeadroomCeiling = true;
         p.release = 3.0f; p.pattern = Pattern::denseChords;
         p.vibeAmount = 0.7f; p.modEnvelopes = true; p.lfoModulation = true;
-        check("23 all faders 0dB+master max (ceiling)", p);
+        check("23 all faders 0dB + master max", p);
     }
 
     std::printf("\n  %d failure(s)\n", failures);
@@ -1591,6 +1609,125 @@ int main(int argc, char* argv[])
             }
         }
         return 0;
+    }
+    else if (arg == "ceiling")
+    {
+        auto render = [](bool ceilingOff, bool unityFaders, Pattern pattern, float vibe)
+        {
+            PatchOptions p;
+            p.attack = 0.005f; p.decay = 0.1f; p.sustain = 1.0f; p.release = 1.0f;
+            p.pattern = pattern; p.oscillatorMode = 0;
+            p.fullPatch = unityFaders; p.fadersAtUnity = unityFaders;
+            p.masterGain = unityFaders ? 1.0f : 0.6f;
+            p.vibeAmount = vibe;
+
+            px3::diag::resetNoteStartSequence();
+            PX3SynthAudioProcessor processor;
+            applyPatch(processor, p);
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            auto& d = px3::diag::state();
+            d.resetResults();
+            d.resetModes();
+            d.disableOutputCeiling = ceilingOff;
+            d.capturing = true;
+            d.tracing = true;
+
+            int totalSamples = 0;
+            const auto events = buildPattern(p.pattern, kSampleRate, totalSamples);
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            std::size_t nextEvent = 0;
+            for (int position = 0; position < totalSamples; position += kBlockSize)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                while (nextEvent < events.size() && events[nextEvent].sampleTime < position + kBlockSize)
+                {
+                    midi.addEvent(events[nextEvent].message, juce::jmax(0, events[nextEvent].sampleTime - position));
+                    ++nextEvent;
+                }
+                processor.processBlock(buffer, midi);
+            }
+            d.capturing = false;
+            d.tracing = false;
+            return d.trace[px3::diag::stageMaster];
+        };
+
+        auto failures = 0;
+        std::printf("\nOUTPUT CEILING\n");
+        std::printf("  knee at %.2f: identity below, asymptotic to full scale above\n\n", 0.90);
+
+        std::printf("  curve, tested exhaustively over the input domain\n");
+        {
+            auto identityViolations = 0;
+            auto overshoot = 0;
+            auto nonMonotonic = 0;
+            auto previous = -2.0f;
+            auto maxOutput = 0.0f;
+
+            // 4 million points from 0 to +4x full scale, and the negative half.
+            constexpr int steps = 4000000;
+            for (int i = 0; i <= steps; ++i)
+            {
+                const auto x = 4.0f * static_cast<float>(i) / static_cast<float>(steps);
+                const auto y = px3::applyOutputCeiling(x);
+                const auto yNeg = px3::applyOutputCeiling(-x);
+
+                if (x <= px3::kOutputCeilingKnee && y != x) ++identityViolations;
+                // Clipping means exceeding full scale; reaching it exactly does not.
+                if (y > 1.0f || yNeg < -1.0f) ++overshoot;
+                if (y < previous) ++nonMonotonic;
+                if (yNeg != -y) ++identityViolations;   // must be odd-symmetric
+                previous = y;
+                maxOutput = std::max(maxOutput, y);
+            }
+
+            // Slope continuity at the knee.
+            constexpr float h = 1.0e-4f;
+            const auto slopeBelow = (px3::applyOutputCeiling(px3::kOutputCeilingKnee)
+                                     - px3::applyOutputCeiling(px3::kOutputCeilingKnee - h)) / h;
+            const auto slopeAbove = (px3::applyOutputCeiling(px3::kOutputCeilingKnee + h)
+                                     - px3::applyOutputCeiling(px3::kOutputCeilingKnee)) / h;
+            const auto slopeJump = std::abs(slopeAbove - slopeBelow);
+
+            const auto ok = identityViolations == 0 && overshoot == 0 && nonMonotonic == 0
+                            && slopeJump < 0.01f;
+            if (!ok) ++failures;
+            std::printf("    identity below knee: %s (%d violations over %d points)\n",
+                        identityViolations == 0 ? "exact" : "BROKEN", identityViolations, steps);
+            std::printf("    never exceeds full scale: max out %.8f at 4x input, %d overshoots\n",
+                        (double) maxOutput, overshoot);
+            std::printf("    monotonic: %s   slope jump at knee: %.5f  %s\n",
+                        nonMonotonic == 0 ? "yes" : "NO", (double) slopeJump, ok ? "ok" : "FAIL");
+        }
+
+        std::printf("\n  hard ceiling under overdrive (peak must stay below 1.0)\n");
+        struct Case { const char* label; Pattern pattern; float vibe; };
+        const Case cases[] = {
+            { "unity faders + dense chords", Pattern::denseChords, 0.7f },
+            { "unity faders + stutter",      Pattern::stutter,     1.0f },
+            { "unity faders + legato",       Pattern::legatoRuns,  1.0f },
+        };
+        for (const auto& c : cases)
+        {
+            const auto off = render(true, true, c.pattern, c.vibe);
+            const auto on = render(false, true, c.pattern, c.vibe);
+            auto peakOff = 0.0f;
+            auto peakOn = 0.0f;
+            auto clipsOff = 0;
+            auto clipsOn = 0;
+            for (const auto v : off) { peakOff = std::max(peakOff, std::abs(v)); if (std::abs(v) > 1.0f) ++clipsOff; }
+            for (const auto v : on)  { peakOn  = std::max(peakOn,  std::abs(v)); if (std::abs(v) > 1.0f) ++clipsOn; }
+            const auto ok = clipsOn == 0 && peakOn < 1.0f;
+            if (!ok) ++failures;
+            std::printf("    %-28s  without %.4f (%d clipped) -> with %.4f (%d clipped)  %s\n",
+                        c.label, (double) peakOff, clipsOff, (double) peakOn, clipsOn,
+                        ok ? "ok" : "STILL CLIPS");
+        }
+
+        std::printf("\n  %d failure(s)\n", failures);
+        return failures;
     }
     else if (arg == "persistence")
     {

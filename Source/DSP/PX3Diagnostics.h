@@ -74,6 +74,7 @@ struct State
     bool legacyInstantReleaseFilter { false }; // control: release lowpass switched on, not faded in
     bool legacyUnsmoothedMixer { false };      // control: mixer/master gains applied per block, unsmoothed
     bool disableOutputBoost { false };         // control: removes the fixed output boost
+    bool disableOutputCeiling { false };       // control: removes the output ceiling
     bool disableOnsetGuard { false };
     bool disableReleaseTailFilter { false };
     bool freezeVibeReleaseSwitch { false }; // keep held-note vibe path during release
@@ -186,6 +187,7 @@ struct State
     float maxFxReturnGainStep { 0.0f };
     float prevFxReturnGain { 0.0f };
     float maxMasterGainStep { 0.0f };
+    float maxSourceNormalisationStep { 0.0f };
     float maxQuietTransientRatio { 0.0f };
     int quietTransientEvents { 0 };
     long long worstQuietTransientSample { -1 };
@@ -254,6 +256,7 @@ struct State
         maxFxReturnGainStep = 0.0f;
         prevFxReturnGain = 0.0f;
         maxMasterGainStep = 0.0f;
+        maxSourceNormalisationStep = 0.0f;
         maxQuietTransientRatio = 0.0f;
         quietTransientEvents = 0;
         worstQuietTransientSample = -1;
@@ -296,6 +299,7 @@ struct State
         legacyInstantReleaseFilter = false;
         legacyUnsmoothedMixer = false;
         disableOutputBoost = false;
+        disableOutputCeiling = false;
         disableOnsetGuard = false;
         disableReleaseTailFilter = false;
         freezeVibeReleaseSwitch = false;

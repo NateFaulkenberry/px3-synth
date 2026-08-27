@@ -6,6 +6,7 @@
 #include "SubOscMode.h"
 
 #include "PluginEditor.h"
+#include "OutputCeiling.h"
 #include "PX3Diagnostics.h"
 
 #include <algorithm>
@@ -1326,7 +1327,14 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     {
         outputBoostGain = 1.0f;
     }
+    const auto ceilingEnabled = !diagState.disableOutputCeiling;
+#else
+    constexpr auto ceilingEnabled = true;
 #endif
+    const auto applyCeiling = [&](float value)
+    {
+        return ceilingEnabled ? px3::applyOutputCeiling(value) : value;
+    };
 
     const auto blockPhaseAdvance = juce::MathConstants<float>::twoPi * vibratoRateHz
                                    * (static_cast<float>(blockSamples) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));
@@ -1479,10 +1487,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         // MASTER BUS: DRY + FX return, then the fixed output boost. Applied here
         // so the debug meters and clip counters see the level that actually
         // leaves the plugin.
-        masterBusBuffer.setSample(0, sample, (dryL + fxL) * outputBoostGain);
+        masterBusBuffer.setSample(0, sample, applyCeiling((dryL + fxL) * outputBoostGain));
         if (outputChannels > 1)
         {
-            masterBusBuffer.setSample(1, sample, (dryR + fxR) * outputBoostGain);
+            masterBusBuffer.setSample(1, sample, applyCeiling((dryR + fxR) * outputBoostGain));
         }
     }
 

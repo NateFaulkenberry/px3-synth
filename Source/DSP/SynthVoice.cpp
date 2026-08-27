@@ -105,8 +105,12 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     if (std::abs(sampleRate - masterGainPreparedSampleRate) > 0.5)
     {
         masterGainSmoother.prepare(sampleRate, 0.015);
+        vibeGainSmoother.prepare(sampleRate, 0.010);
+        sourceNormalisationSmoother.prepare(sampleRate, 0.015);
         masterGainPreparedSampleRate = sampleRate;
     }
+    vibeGainPrimed = false;
+    sourceNormalisationPrimed = false;
     // Start at the current value: a new note must not fade in from wherever the
     // previous note left the smoother.
     masterGainSmoother.setCurrent(subtractiveSettings.masterGain);
@@ -160,6 +164,7 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
         diagHasPrevVoiceGain = false;
         diagVoiceGainHistory = 0;
         diagHasPrevMasterGain = false;
+        diagHasPrevSourceNorm = false;
         diagLastVoiceOut = 0.0f;
     }
 #endif
@@ -708,13 +713,41 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             const auto gainVariation = (vibeVariation.gainOffset * vibeTuning.voiceVariation
                                         + vibeShared.psu * vibeTuning.psuMovement * 0.12f
                                         + vibeShared.temperature * vibeTuning.temperatureDrift * 0.10f) * vibeDepth;
-            voiceGain *= (1.0f + gainVariation);
+            const auto vibeGainTarget = 1.0f + gainVariation;
+            if (!vibeGainPrimed)
+            {
+                // Start at the current value so a note does not swell in.
+                vibeGainSmoother.setCurrent(vibeGainTarget);
+                vibeGainPrimed = true;
+            }
+            voiceGain *= vibeGainSmoother.next(vibeGainTarget);
             voiceGain = juce::jlimit(0.0f, 2.0f, voiceGain);
         }
 
         voiceGain *= fastReleaseGain;
 
+        auto smoothedNormalisation = perSourceNormalization;
+        if (!sourceNormalisationPrimed)
+        {
+            sourceNormalisationSmoother.setCurrent(perSourceNormalization);
+            sourceNormalisationPrimed = true;
+        }
+        else
+        {
+            smoothedNormalisation = sourceNormalisationSmoother.next(perSourceNormalization);
+        }
+
 #if PX3_DIAGNOSTICS
+        if (diag.capturing)
+        {
+            if (diagHasPrevSourceNorm)
+            {
+                diag.maxSourceNormalisationStep = juce::jmax(diag.maxSourceNormalisationStep,
+                                                             std::abs(smoothedNormalisation - diagPrevSourceNorm));
+            }
+            diagPrevSourceNorm = smoothedNormalisation;
+            diagHasPrevSourceNorm = true;
+        }
         if (diagHasPrevVoiceGain)
         {
             diag.noteVoiceGainDelta(voiceGain - diagPrevVoiceGain);
@@ -758,9 +791,9 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                 filteredSample = sanitizeAudioSample(filteredSample);
             }
 
-            auto voicedSample = filteredSample * voiceGain * perSourceNormalization;
+            auto voicedSample = filteredSample * voiceGain * smoothedNormalisation;
 #if PX3_DIAGNOSTICS
-            diagOscStageSum += filteredSample * perSourceNormalization;
+            diagOscStageSum += filteredSample * smoothedNormalisation;
             diagPostEnvStageSum += voicedSample;
 #endif
             const auto vcaDetailMix = juce::jlimit(0.0f, 1.0f, 1.0f - releaseFilterBlend);

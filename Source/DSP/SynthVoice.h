@@ -141,6 +141,19 @@ private:
     // Master gain is a user-facing fader applied per sample inside the voice,
     // so it needs the same per-sample smoothing the mixer gains get.
     SmoothedGain masterGainSmoother;
+    // Vibe's shared drift state is refreshed once per block, so the gain
+    // variation it produces has to be smoothed per sample like any other
+    // block-rate control that multiplies the audio.
+    SmoothedGain vibeGainSmoother;
+    bool vibeGainPrimed { false };
+    // Enabling or disabling a source changes the per-source normalisation, which
+    // multiplies every source. Unsmoothed that is a -3 dB step mid-note.
+    SmoothedGain sourceNormalisationSmoother;
+    bool sourceNormalisationPrimed { false };
+#if PX3_DIAGNOSTICS
+    float diagPrevSourceNorm { 0.0f };
+    bool diagHasPrevSourceNorm { false };
+#endif
     double masterGainPreparedSampleRate { 0.0 };
     double ampEnvelopePreparedSampleRate { 0.0 };
     double modEnvelopePreparedSampleRate { 0.0 };
