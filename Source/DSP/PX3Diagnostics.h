@@ -73,6 +73,7 @@ struct State
     int onsetGuardCurve { 0 };  // 0=production, 1=legacy t^2, 2=smoothstep
     bool legacyInstantReleaseFilter { false }; // control: release lowpass switched on, not faded in
     bool legacyUnsmoothedMixer { false };      // control: mixer/master gains applied per block, unsmoothed
+    bool disableOutputBoost { false };         // control: removes the fixed output boost
     bool disableOnsetGuard { false };
     bool disableReleaseTailFilter { false };
     bool freezeVibeReleaseSwitch { false }; // keep held-note vibe path during release
@@ -294,6 +295,7 @@ struct State
         onsetGuardCurve = 0;
         legacyInstantReleaseFilter = false;
         legacyUnsmoothedMixer = false;
+        disableOutputBoost = false;
         disableOnsetGuard = false;
         disableReleaseTailFilter = false;
         freezeVibeReleaseSwitch = false;

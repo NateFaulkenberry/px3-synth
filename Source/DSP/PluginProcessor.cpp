@@ -20,6 +20,16 @@ using namespace px3::processor_internal;
 
 namespace
 {
+// Mixer channels default to -4 dB rather than unity so a freshly loaded plugin
+// has headroom for modulation to push into. This is only the parameter default:
+// every saved session and preset writes an explicit mix.*.level / fxReturnGain
+// value, so restoring one always overrides this.
+constexpr float kDefaultChannelHeadroomDb = -4.0f;
+
+// Fixed output boost applied to the whole synth after the master mix, so the
+// instrument is louder without moving the user-facing master gain default.
+constexpr float kOutputBoostDb = 6.0f;
+
 // Constant-power pan law, shared by the audio path and by smoother initialisation.
 void panToGainsStatic(float pan, float& leftGain, float& rightGain)
 {
@@ -223,7 +233,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     delayTimeParam = new juce::AudioParameterFloat("delayTime", "Delay Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
     delayFeedbackParam = new juce::AudioParameterFloat("delayFeedback", "Delay Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.38f);
     fxSendGainParam = new juce::AudioParameterFloat("fxSendGain", "FX Send", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
-    fxReturnGainParam = new juce::AudioParameterFloat("fxReturnGain", "FX Return", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    fxReturnGainParam = new juce::AudioParameterFloat("fxReturnGain",
+                                                       "FX Return",
+                                                       juce::NormalisableRange<float>(0.0f, 1.0f),
+                                                       juce::Decibels::decibelsToGain(kDefaultChannelHeadroomDb));
     static constexpr std::array<const char*, kMixerSourceCount> mixerIds { { "sub", "osc1", "osc2", "osc3" } };
     static constexpr std::array<const char*, kMixerSourceCount> mixerNames { { "Sub", "Osc 1", "Osc 2", "Osc 3" } };
     for (int i = 0; i < kMixerSourceCount; ++i)
@@ -237,7 +250,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         mixerLevelParams[static_cast<std::size_t>(i)] = new juce::AudioParameterFloat("mix." + sourceId + ".level",
                                                 sourceName + " Level",
                                                 juce::NormalisableRange<float>(0.0f, 1.0f),
-                                                1.0f);
+                                                juce::Decibels::decibelsToGain(kDefaultChannelHeadroomDb));
         mixerSendParams[static_cast<std::size_t>(i)] = new juce::AudioParameterFloat("mix." + sourceId + ".fxSend",
                                                                                        sourceName + " FX Send",
                                                                                        juce::NormalisableRange<float>(0.0f, 1.0f),
@@ -1022,7 +1035,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     // deliberately longer than a musical release so a decaying tail cannot lift
     // its own gain back up while it is still audible.
     constexpr float kPolyphonyLoadReleaseSeconds = 2.5f;
-    constexpr float kEstimatedMasterFromSource = 2.8f;
+    // Scaled by the output boost so this still predicts the peak that actually
+    // reaches the output, and the overload protection engages at the same
+    // fraction of full scale as before.
+    const auto kEstimatedMasterFromSource = 2.8f * juce::Decibels::decibelsToGain(kOutputBoostDb);
     constexpr float kAttenuationStartPeak = 0.30f;
     constexpr float kAttenuationFullPeak = 0.85f;
     constexpr float kPolyGainUnityDeadband = 0.97f;
@@ -1304,6 +1320,14 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     std::array<double, kMixerSourceCount> mixerSourceEnergy { { 0.0, 0.0, 0.0, 0.0 } };
     double fxReturnEnergy = 0.0;
 
+    auto outputBoostGain = juce::Decibels::decibelsToGain(kOutputBoostDb);
+#if PX3_DIAGNOSTICS
+    if (diagState.disableOutputBoost)
+    {
+        outputBoostGain = 1.0f;
+    }
+#endif
+
     const auto blockPhaseAdvance = juce::MathConstants<float>::twoPi * vibratoRateHz
                                    * (static_cast<float>(blockSamples) / static_cast<float>(juce::jmax(1.0, currentSampleRateHz)));
     vibratoPhaseRadians += blockPhaseAdvance;
@@ -1452,11 +1476,13 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             fxBusBuffer.setSample(1, sample, fxR);
         }
 
-        // MASTER BUS: DRY + FX return.
-        masterBusBuffer.setSample(0, sample, dryL + fxL);
+        // MASTER BUS: DRY + FX return, then the fixed output boost. Applied here
+        // so the debug meters and clip counters see the level that actually
+        // leaves the plugin.
+        masterBusBuffer.setSample(0, sample, (dryL + fxL) * outputBoostGain);
         if (outputChannels > 1)
         {
-            masterBusBuffer.setSample(1, sample, dryR + fxR);
+            masterBusBuffer.setSample(1, sample, (dryR + fxR) * outputBoostGain);
         }
     }
 

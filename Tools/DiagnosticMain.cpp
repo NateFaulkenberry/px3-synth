@@ -239,6 +239,9 @@ struct PatchOptions
     bool legacyPolyphonyLoad { false };
     bool legacyLinearRelease { false };
     bool fullPatch { false };   // all sources enabled, master gain up
+    bool fadersAtUnity { false }; // additionally push every channel fader to 0 dB
+    // Records the headroom ceiling rather than asserting it stays clean.
+    bool documentsHeadroomCeiling { false };
     float masterGain { 0.6f };
 };
 
@@ -280,10 +283,16 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
         setParameter(processor, "osc2Enabled", 1.0f);
         setParameter(processor, "osc3Enabled", 1.0f);
         setParameter(processor, "subOscEnabled", 1.0f);
+    }
+    if (patch.fadersAtUnity)
+    {
+        // Deliberately overrides the -4 dB channel defaults: the worst case a
+        // user can reach by pushing every fader to 0 dB.
         for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
         {
             setParameter(processor, juce::String("mix.") + id + ".level", 1.0f);
         }
+        setParameter(processor, "fxReturnGain", 1.0f);
     }
 
     for (int envIndex = 0; envIndex < 3; ++envIndex)
@@ -887,7 +896,7 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     const auto retiresAtSilence = diag.maxTruncationStep < 0.002f;
     // Sample-delta metrics cannot see clipping or gain pumping, which sound
     // like the same class of artifact to a listener.
-    const auto noClipping = diag.masterClipSamples == 0;
+    const auto noClipping = patch.documentsHeadroomCeiling || diag.masterClipSamples == 0;
     const auto noGainPumping = true; // reported, not gated: pre-existing behaviour
     // The release lowpass must stay mostly disengaged over a tail. If this
     // climbs, some release-dependent schedule has drifted out of step with the
@@ -1193,6 +1202,15 @@ int runRegressionSuite(bool legacyPruning)
         p.release = 3.0f; p.pattern = Pattern::denseChords;
         p.vibeAmount = 0.7f; p.modEnvelopes = true; p.lfoModulation = true;
         check("22 full patch, everything on", p);
+    }
+    {
+        // Headroom limit: every fader at 0 dB and master at max, on top of the
+        // fixed output boost. Reported so the ceiling is visible, not hidden.
+        auto p = base; p.fullPatch = true; p.fadersAtUnity = true; p.masterGain = 1.0f;
+        p.documentsHeadroomCeiling = true;
+        p.release = 3.0f; p.pattern = Pattern::denseChords;
+        p.vibeAmount = 0.7f; p.modEnvelopes = true; p.lfoModulation = true;
+        check("23 all faders 0dB+master max (ceiling)", p);
     }
 
     std::printf("\n  %d failure(s)\n", failures);
@@ -1573,6 +1591,149 @@ int main(int argc, char* argv[])
             }
         }
         return 0;
+    }
+    else if (arg == "persistence")
+    {
+        // Changing a parameter default must not disturb anything already saved.
+        // Round-trip real values through the DAW state path and the preset path.
+        struct Check { juce::String id; float value; };
+        const Check checks[] = {
+            { "mix.sub.level",   0.9123f }, { "mix.osc1.level",  0.1077f },
+            { "mix.osc2.level",  0.5000f }, { "mix.osc3.level",  0.7700f },
+            { "mix.sub.pan",    -0.4200f }, { "mix.osc1.fxSend", 0.3300f },
+            { "fxReturnGain",    0.2500f }, { "mix.fx.pan",      0.6100f },
+            { "masterGain",      0.4200f },
+        };
+
+        auto failures = 0;
+        const auto expectedDefault = juce::Decibels::decibelsToGain(-4.0f);
+
+        std::printf("\nPERSISTENCE — parameter defaults vs saved state\n\n");
+        std::printf("  fresh-instance defaults (should be -4 dB = %.6f)\n", (double) expectedDefault);
+        {
+            PX3SynthAudioProcessor fresh;
+            for (const auto* id : { "mix.sub.level", "mix.osc1.level", "mix.osc2.level",
+                                    "mix.osc3.level", "fxReturnGain" })
+            {
+                auto* param = findParameter(fresh, id);
+                const auto value = param != nullptr ? param->convertFrom0to1(param->getValue()) : -1.0f;
+                const auto db = juce::Decibels::gainToDecibels(value);
+                const auto ok = std::abs(value - expectedDefault) < 1.0e-4f;
+                if (!ok) ++failures;
+                std::printf("    %-18s %.6f  (%+.2f dB)  %s\n", id, (double) value, (double) db,
+                            ok ? "ok" : "WRONG");
+            }
+        }
+
+        std::printf("\n  saved session round-trip (values must survive exactly)\n");
+        juce::MemoryBlock savedState;
+        {
+            PX3SynthAudioProcessor source;
+            for (const auto& check : checks)
+            {
+                setParameter(source, check.id, check.value);
+            }
+            source.getStateInformation(savedState);
+        }
+        {
+            PX3SynthAudioProcessor restored;
+            restored.setStateInformation(savedState.getData(), static_cast<int>(savedState.getSize()));
+            for (const auto& check : checks)
+            {
+                auto* param = findParameter(restored, check.id);
+                const auto value = param != nullptr ? param->convertFrom0to1(param->getValue()) : -999.0f;
+                const auto ok = std::abs(value - check.value) < 1.0e-3f;
+                if (!ok) ++failures;
+                std::printf("    %-18s saved %.4f -> restored %.4f  %s\n",
+                            check.id.toRawUTF8(), (double) check.value, (double) value,
+                            ok ? "ok" : "LOST");
+            }
+        }
+
+        std::printf("\n  a saved 0 dB fader must NOT be pulled to the new default\n");
+        {
+            juce::MemoryBlock unityState;
+            {
+                PX3SynthAudioProcessor source;
+                for (const auto* id : { "mix.sub.level", "mix.osc1.level", "mix.osc2.level",
+                                        "mix.osc3.level", "fxReturnGain" })
+                {
+                    setParameter(source, id, 1.0f);
+                }
+                source.getStateInformation(unityState);
+            }
+            PX3SynthAudioProcessor restored;
+            restored.setStateInformation(unityState.getData(), static_cast<int>(unityState.getSize()));
+            for (const auto* id : { "mix.sub.level", "mix.osc1.level", "mix.osc2.level",
+                                    "mix.osc3.level", "fxReturnGain" })
+            {
+                auto* param = findParameter(restored, id);
+                const auto value = param != nullptr ? param->convertFrom0to1(param->getValue()) : -1.0f;
+                const auto ok = std::abs(value - 1.0f) < 1.0e-4f;
+                if (!ok) ++failures;
+                std::printf("    %-18s %.6f (%+.2f dB)  %s\n", id, (double) value,
+                            (double) juce::Decibels::gainToDecibels(value),
+                            ok ? "ok - preset wins" : "WRONG - default overrode it");
+            }
+        }
+
+        std::printf("\n  measured output boost (identical settings, boost on vs off)\n");
+        {
+            auto renderRms = [](bool boostOff)
+            {
+                PatchOptions p;
+                p.attack = 0.005f; p.decay = 0.1f; p.sustain = 1.0f; p.release = 0.3f;
+                p.pattern = Pattern::sustained; p.oscillatorMode = 0; p.fxEnabled = false;
+
+                px3::diag::resetNoteStartSequence();
+                PX3SynthAudioProcessor processor;
+                applyPatch(processor, p);
+                processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                processor.prepareToPlay(kSampleRate, kBlockSize);
+
+                auto& d = px3::diag::state();
+                d.resetResults();
+                d.resetModes();
+                d.disableOutputBoost = boostOff;
+                d.capturing = true;
+                d.tracing = true;
+
+                int totalSamples = 0;
+                const auto events = buildPattern(p.pattern, kSampleRate, totalSamples);
+                juce::AudioBuffer<float> buffer(2, kBlockSize);
+                std::size_t nextEvent = 0;
+                for (int position = 0; position < totalSamples; position += kBlockSize)
+                {
+                    buffer.clear();
+                    juce::MidiBuffer midi;
+                    while (nextEvent < events.size() && events[nextEvent].sampleTime < position + kBlockSize)
+                    {
+                        midi.addEvent(events[nextEvent].message, juce::jmax(0, events[nextEvent].sampleTime - position));
+                        ++nextEvent;
+                    }
+                    processor.processBlock(buffer, midi);
+                }
+                d.capturing = false;
+                d.tracing = false;
+
+                double energy = 0.0;
+                const auto& m = d.trace[px3::diag::stageMaster];
+                for (const auto v : m) { energy += static_cast<double>(v) * static_cast<double>(v); }
+                const auto count = m.empty() ? std::size_t{1} : m.size();
+                return std::sqrt(energy / static_cast<double>(count));
+            };
+
+            const auto without = renderRms(true);
+            const auto with = renderRms(false);
+            const auto db = 20.0 * std::log10(juce::jmax(1.0e-12, with / juce::jmax(1.0e-12, without)));
+            const auto ok = std::abs(db - 6.0) < 0.1;
+            if (!ok) ++failures;
+            std::printf("    rms without boost %.6f, with boost %.6f  ->  %+.3f dB  %s\n",
+                        without, with, db, ok ? "ok" : "WRONG");
+        }
+
+        std::printf("\n  %d failure(s)\n", failures);
+        return failures;
     }
     else if (arg == "mixer")
     {
