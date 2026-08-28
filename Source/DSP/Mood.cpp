@@ -414,18 +414,15 @@ Mood::Frame Mood::renderLoopTape(float spread)
 
     const auto loopStart = static_cast<float>(historyWritePos) - loopSamples;
 
-    // The forward head, and a second head running the same loop backwards.
-    const auto forwardPos = loopStart + loopReadPos;
-    const auto reversePos = loopStart + (loopSamples - loopReadPos);
-
+    // The forward head, plus a second head running the same loop backwards on
+    // the LEFT channel only - that is the mode's specified stereo behaviour, so
+    // the reverse head is never read on the right and is not computed there.
     const auto fade = spliceFadeFor(loopSamples);
     const auto forwardOffset = loopReadPos;
     const auto reverseOffset = loopSamples - loopReadPos;
     const auto forwardL = readSpliced(historyBuffer[0], loopStart, forwardOffset, loopSamples, fade);
     const auto forwardR = readSpliced(historyBuffer[1], loopStart, forwardOffset, loopSamples, fade);
     const auto reverseL = readSpliced(historyBuffer[0], loopStart, reverseOffset, loopSamples, fade);
-    const auto reverseR = readSpliced(historyBuffer[1], loopStart, reverseOffset, loopSamples, fade);
-    juce::ignoreUnused(forwardPos, reversePos);
 
     Frame out;
     out.l = forwardL + (reverseL - forwardL) * spread;
