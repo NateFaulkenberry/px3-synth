@@ -417,6 +417,18 @@ void MixerLevelMeter::setLevel(float linearLevel)
         level = normalized;
     }
 
+    // Snap to silence rather than approaching it.
+    //
+    // An exponential fall never actually reaches zero, and the first segment
+    // lights for ANY level above zero - so a note that ended a minute ago would
+    // leave one green lamp on forever. Below half a segment there is nothing
+    // left to show, so the meter reads empty.
+    const auto silenceFloor = 0.5f / static_cast<float>(juce::jmax(1, style.segmentCount));
+    if (normalized <= 0.0f && level < silenceFloor)
+    {
+        level = 0.0f;
+    }
+
     // Peak hold and the clip lamp advance every call, not only when the level
     // moves - they are time based, so an unchanged level still has to age them.
     if (normalized >= peakLevel)
@@ -431,6 +443,10 @@ void MixerLevelMeter::setLevel(float linearLevel)
     else
     {
         peakLevel = juce::jmax(normalized, peakLevel - style.peakFallPerFrame);
+        if (normalized <= 0.0f && peakLevel < silenceFloor)
+        {
+            peakLevel = 0.0f;
+        }
     }
 
     if (normalized >= kClipThreshold)

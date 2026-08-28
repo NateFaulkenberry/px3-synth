@@ -18,6 +18,7 @@
 #include "../DSP/AmpEnvelope.h"
 #include "../UI/Card.h"
 #include "../UI/CardInner.h"
+#include "../UI/MixerControls.h"
 #include "../UI/UIConfig.h"
 #include "../DSP/Delay.h"
 #include "../DSP/EnvelopeGenerator.h"
@@ -4735,6 +4736,41 @@ void testCardInner()
                   && power.getWidth() == 25 && power.getHeight() == 25 && rowsUntouched,
               "power at " + power.toString() + ", row 1 still "
                   + juce::String(inner.rowContent(0).getHeight()) + "px at the content top");
+    }
+
+    // ---- Level meter -------------------------------------------------------
+    {
+        // A meter must actually reach empty when the signal stops.
+        //
+        // Its fall is exponential, so it approaches zero without arriving, and
+        // the first segment lights for ANY level above zero - which left one
+        // green lamp on indefinitely after a note ended.
+        MixerLevelMeter meter;
+
+        // Ring it up to full, then feed silence.
+        for (int i = 0; i < 60; ++i)
+        {
+            meter.setLevel(1.0f);
+        }
+
+        auto framesToSilence = -1;
+        for (int i = 0; i < 600; ++i)
+        {
+            meter.setLevel(0.0f);
+            if (meter.displayLevelForTest() <= 0.0f)
+            {
+                framesToSilence = i;
+                break;
+            }
+        }
+
+        // At 30 Hz, 600 frames is 20 seconds - far longer than any meter should
+        // take, so this only fails if it never gets there at all.
+        check("Meter_ClearsCompletelyWhenTheSignalStops",
+              framesToSilence >= 0,
+              framesToSilence >= 0
+                  ? "empty after " + juce::String(framesToSilence) + " frames of silence"
+                  : "still lit after 600 frames");
     }
 
     // ---- Keyword spellings -------------------------------------------------

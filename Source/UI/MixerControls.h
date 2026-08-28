@@ -168,6 +168,9 @@ public:
     };
 
     void setLevel(float linearLevel);
+    // What the bar is currently showing. Exposed so a test can assert the meter
+    // reaches empty rather than merely looking empty.
+    float displayLevelForTest() const noexcept { return level; }
     void applyStyle(const Style& styleIn);
     void paint(juce::Graphics& g) override;
 

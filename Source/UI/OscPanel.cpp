@@ -187,15 +187,18 @@ void OscPanel::resized()
     const auto gapMargin = flexStyle.gapMargin();
     const auto gapWidth = gapMargin.left + gapMargin.right;
 
-    // Each card wants `itemWidth`, capped to an equal share so they still fit
-    // when the window is narrow. On a wide window they stay at their preferred
-    // width and justifyContent decides what happens to the slack - which is
-    // what makes `space-between` mean something here.
-    const auto preferred = uiConfig != nullptr ? uiConfig->getFloat("panels.osc.itemWidth", 300.0f) : 300.0f;
+    // `itemWidth` 0 means "share the row equally", which is the default and the
+    // only mode in which `gap` decides the spacing.
+    //
+    // With a fixed width the cards are narrower than the row on a wide window,
+    // and justifyContent then distributes the leftover space between them -
+    // which swamps the gap entirely. That is why editing `gap` appeared to do
+    // nothing: space-between was setting the spacing, not the gap.
+    const auto preferred = uiConfig != nullptr ? uiConfig->getFloat("panels.osc.itemWidth", 0.0f) : 0.0f;
     const auto laidOutWidth = static_cast<float>(panelArea.getWidth()) + gapWidth;
     const auto share = juce::jmax(1.0f, (laidOutWidth - gapWidth * static_cast<float>(cardCount))
                                             / static_cast<float>(cardCount));
-    const auto itemWidth = juce::jmin(juce::jmax(1.0f, preferred), share);
+    const auto itemWidth = preferred > 0.0f ? juce::jmin(preferred, share) : share;
 
     auto box = flexStyle.toFlexBox();
     for (int i = 0; i < cardCount; ++i)
