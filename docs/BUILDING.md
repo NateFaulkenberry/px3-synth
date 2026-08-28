@@ -69,7 +69,7 @@ Produces, under `dist/`:
 | Artifact | Notes |
 | --- | --- |
 | `PX3-v<version>.pkg` | Installer with a format-selection step (AU / VST3 / Standalone) |
-| `PX3-Uninstaller.pkg` | Uninstaller, intentionally unversioned |
+| `PX3 Uninstaller.app` | Uninstaller, intentionally unversioned |
 | `P(X3)-v<version>-macOS-arm64.zip` | Bundles plus a copy of the uninstaller |
 | `PX3-v<version>-macOS/` | The unarchived staging directory |
 

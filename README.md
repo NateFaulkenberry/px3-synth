@@ -105,13 +105,19 @@ Example output artifact:
 
 ### Uninstaller
 
-An uninstaller package is generated on every release build:
+An uninstaller **application** is generated on every release build:
 
-- `dist/PX3-Uninstaller.pkg`
+- `dist/PX3 Uninstaller.app`
 
-It is deliberately **not versioned** — it removes whatever P(X3) is present
-regardless of which release installed it, so the same file ships with every
-release.
+It is deliberately an application rather than a `.pkg`. The macOS Installer
+always shows install-style UI — a Destination Select pane, an Installation Type
+pane and an "Install" button — and none of that can be relabelled from a
+Distribution file, so an uninstaller shipped as a package reads as an installer
+whatever the panes say. Owning the app means owning every word the user sees,
+and it gets the system's own authorisation prompt instead of an installer's.
+
+It is also not versioned — it removes whatever P(X3) is present regardless of
+which release installed it.
 
 Running it completely removes P(X3) **for every user account on the machine**:
 

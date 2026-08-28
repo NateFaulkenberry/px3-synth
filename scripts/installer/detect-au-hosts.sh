@@ -41,7 +41,11 @@ fi
 # reading Info.plist works even when the caller is root in the installer's own
 # context, where LaunchServices may not see the user session at all.
 running_bundle_ids() {
-    if [ -n "${PX3_FAKE_BUNDLE_IDS:-}" ]; then
+    # Tested for being SET, not for being non-empty: an empty value means
+    # "simulate nothing running", which is a case the tests need. Checking for
+    # non-empty made that case fall through to scanning real processes, so the
+    # suite passed or failed depending on what happened to be open.
+    if [ "${PX3_FAKE_BUNDLE_IDS+set}" = "set" ]; then
         printf '%s\n' "${PX3_FAKE_BUNDLE_IDS}" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -v '^$'
         return
     fi
