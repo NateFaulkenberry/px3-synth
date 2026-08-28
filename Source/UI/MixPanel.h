@@ -38,12 +38,15 @@ private:
         MixerLevelMeter meter;
         MuteButton mute;
         SoloButton solo;
+        PhaseButton phase;
         FaderSlider fader;
         juce::Label valueLabel;
-        juce::Slider pan;
+        PanKnob pan;
         juce::Label panLabel;
+        juce::Label panValueLabel;
         juce::Slider send;
         juce::Label sendLabel;
+        juce::Label sendValueLabel;
         std::unique_ptr<MixerChannelComponent> component;
         bool hasSend { true };
     };
@@ -52,6 +55,7 @@ private:
     void applyConfigToChannels();
     void timerCallback() override;
     void refreshMeterValues();
+    void refreshKnobReadouts(ChannelWidgets& channel);
     static juce::String linearGainToDbText(float linearGain);
     static MixerToggleButton::Style buttonStyleFromConfig(const std::shared_ptr<const UIConfig>& uiConfig,
                                                            const juce::String& pathPrefix,

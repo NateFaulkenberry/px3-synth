@@ -7,6 +7,11 @@ MixerChannelComponent::MixerChannelComponent(Controls controlsIn)
 {
 }
 
+juce::Colour MixerChannelComponent::cardAccentColour() const
+{
+    return card.style().border.colour;
+}
+
 void MixerChannelComponent::setCardStyleKey(juce::String key)
 {
     if (cardStyleKey != key)
@@ -40,21 +45,32 @@ void MixerChannelComponent::refreshCardStyle()
 
 void MixerChannelComponent::paint(juce::Graphics& g)
 {
-    // Frame only. The channel's title is still its own Label, so no title is
-    // passed here - two titles would be worse than none.
-    card.draw(g, {});
+    // The card draws the title, exactly as it does on every other component, so
+    // the channel name picks up the shared title style and position instead of
+    // being a Label the strip positions itself.
+    const auto title = controls.title != nullptr ? controls.title->getText() : juce::String();
+    card.draw(g, title);
 }
 
 void MixerChannelComponent::resized()
 {
     refreshCardStyle();
 
-    auto area = getLocalBounds();
+    // Inside the card's content box, not the raw component bounds. Using the
+    // latter is why the meter and the mute/solo row sat flush against the
+    // strip's edge while every other card kept its padding.
+    auto area = card.contentBelowTitle().toNearestInt();
 
+    // The card's title sits directly above this box, so the first row needs a
+    // gap of its own or the meter reads as attached to the name.
+    area.removeFromTop(titleGap);
+
+    // The title label is retired: the card renders the name now. It is kept as
+    // the text's home so MixPanel still sets it in one place.
     if (controls.title != nullptr)
     {
-        controls.title->setBounds(area.removeFromTop(18));
-        area.removeFromTop(sectionSpacing);
+        controls.title->setVisible(false);
+        controls.title->setBounds({});
     }
 
     if (controls.stereoTag != nullptr && controls.stereoTag->isVisible())
@@ -71,20 +87,43 @@ void MixerChannelComponent::resized()
 
     if (controls.mute != nullptr && controls.solo != nullptr)
     {
-        auto buttonsRow = area.removeFromTop(18);
-        const auto buttonWidth = (buttonsRow.getWidth() - buttonGap) / 2;
+        // MUTE | SOLO | PHASE, sharing the row evenly. Phase is narrower in its
+        // legend but not in its target: a symbol is harder to hit than a word,
+        // so it gets the same width as the others.
+        auto buttonsRow = area.removeFromTop(42);
+        const auto slots = controls.phase != nullptr ? 3 : 2;
+        const auto buttonWidth = (buttonsRow.getWidth() - buttonGap * (slots - 1)) / slots;
+
         controls.mute->setBounds(buttonsRow.removeFromLeft(buttonWidth));
         buttonsRow.removeFromLeft(buttonGap);
-        controls.solo->setBounds(buttonsRow);
+
+        if (controls.phase != nullptr)
+        {
+            controls.solo->setBounds(buttonsRow.removeFromLeft(buttonWidth));
+            buttonsRow.removeFromLeft(buttonGap);
+            controls.phase->setBounds(buttonsRow);
+        }
+        else
+        {
+            controls.solo->setBounds(buttonsRow);
+        }
+
         area.removeFromTop(sectionSpacing);
     }
 
     if (controls.fader != nullptr)
     {
         const auto valueHeight = (controls.valueLabel != nullptr && controls.valueLabel->isVisible()) ? footerLabelHeight : 0;
-        const auto faderHeight = juce::jmax(70, area.getHeight() - valueHeight - 2 * (footerLabelHeight + sectionSpacing + 22));
+        // Two footer rows per knob column now - the name and the value - so the
+        // fader gives back the extra row rather than pushing the knobs off.
+        const auto faderHeight = juce::jmax(70, area.getHeight() - valueHeight
+                                                    - 3 * (footerLabelHeight + sectionSpacing)
+                                                    - 2 * 22);
         controls.fader->setBounds(area.removeFromTop(faderHeight));
-        area.removeFromTop(sectionSpacing);
+        // The readout belongs to the fader, so it sits tight under it rather
+        // than a full section away - the fader's own trackPadding already
+        // leaves a visual gap below the last tick.
+        area.removeFromTop(faderValueSpacing);
     }
 
     if (controls.valueLabel != nullptr && controls.valueLabel->isVisible())
@@ -94,7 +133,9 @@ void MixerChannelComponent::resized()
     }
 
     const int knobSize = 46;
-    const int knobGap = buttonGap;
+    // Wider than the mute/solo gap: two round controls sitting shoulder to
+    // shoulder need more air between them than two rectangles do.
+    const int knobGap = buttonGap + 10;
     const int labelSlotWidth = juce::jmax(knobSize, 36);
 
     if (controls.hasSend && controls.pan != nullptr && controls.send != nullptr)
@@ -102,6 +143,7 @@ void MixerChannelComponent::resized()
         if (controls.panLabel != nullptr || controls.sendLabel != nullptr)
         {
             auto labelsRow = area.removeFromTop(footerLabelHeight);
+            area.removeFromTop(2);
             const auto labelsWidth = 2 * labelSlotWidth + knobGap;
             auto centeredLabels = labelsRow.withSizeKeepingCentre(labelsWidth, footerLabelHeight);
 
@@ -128,6 +170,19 @@ void MixerChannelComponent::resized()
         centeredKnobs.removeFromLeft(knobGap);
         auto sendSlot = centeredKnobs.removeFromLeft(labelSlotWidth);
         controls.send->setBounds(sendSlot.withSizeKeepingCentre(knobSize, knobSize));
+
+        // A readout under each knob, matching every other knob in the plugin.
+        auto valuesRow = area.removeFromTop(footerLabelHeight);
+        auto centeredValues = valuesRow.withSizeKeepingCentre(knobsWidth, footerLabelHeight);
+        if (controls.panValueLabel != nullptr)
+        {
+            controls.panValueLabel->setBounds(centeredValues.removeFromLeft(labelSlotWidth));
+        }
+        centeredValues.removeFromLeft(knobGap);
+        if (controls.sendValueLabel != nullptr)
+        {
+            controls.sendValueLabel->setBounds(centeredValues.removeFromLeft(labelSlotWidth));
+        }
     }
     else
     {
@@ -142,6 +197,17 @@ void MixerChannelComponent::resized()
         {
             auto panRow = area.removeFromTop(knobSize);
             controls.pan->setBounds(panRow.withSizeKeepingCentre(knobSize, knobSize));
+        }
+
+        if (controls.panValueLabel != nullptr)
+        {
+            auto panValueRow = area.removeFromTop(footerLabelHeight);
+            controls.panValueLabel->setBounds(panValueRow.withSizeKeepingCentre(labelSlotWidth, footerLabelHeight));
+        }
+
+        if (controls.sendValueLabel != nullptr)
+        {
+            controls.sendValueLabel->setBounds({});
         }
 
         if (controls.sendLabel != nullptr)

@@ -35,11 +35,13 @@ MixPanel::MixPanel(PX3SynthAudioProcessor& processorIn,
             sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerSendParam(sourceIndex), channel->send, nullptr));
             buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getMixerMuteParam(sourceIndex), channel->mute, nullptr));
             buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getMixerSoloParam(sourceIndex), channel->solo, nullptr));
+            buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getMixerPhaseInvertParam(sourceIndex), channel->phase, nullptr));
         }
 
         sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getFxReturnPanParam(), fxChannel.pan, nullptr));
         buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getFxReturnMuteParam(), fxChannel.mute, nullptr));
         buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getFxReturnSoloParam(), fxChannel.solo, nullptr));
+        buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getFxReturnPhaseInvertParam(), fxChannel.phase, nullptr));
 
         applyConfigToChannels();
         startTimerHz(30);
@@ -184,6 +186,16 @@ void MixPanel::configureChannelWidgets(ChannelWidgets& channel,
     channel.panLabel.setFont(juce::FontOptions(9.5f));
     channel.panLabel.setInterceptsMouseClicks(false, false);
 
+    // Readouts under the pan and send knobs, styled like the fader's dB text.
+    for (auto* valueLabel : { &channel.panValueLabel, &channel.sendValueLabel })
+    {
+        valueLabel->setJustificationType(juce::Justification::centred);
+        valueLabel->setColour(juce::Label::textColourId, juce::Colour::fromRGB(214, 214, 224));
+        valueLabel->setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+        valueLabel->setFont(juce::FontOptions(9.5f));
+        valueLabel->setInterceptsMouseClicks(false, false);
+    }
+
     channel.sendLabel.setText("SEND", juce::dontSendNotification);
     channel.sendLabel.setJustificationType(juce::Justification::centred);
     channel.sendLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(220, 226, 236));
@@ -206,6 +218,8 @@ void MixPanel::configureChannelWidgets(ChannelWidgets& channel,
     channel.pan.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     channel.pan.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     channel.pan.setRange(-1.0, 1.0, 0.0);
+    channel.pan.setCentreDetent(0.14);
+    channel.pan.setExtremeDetent(0.06);
     channel.pan.setDoubleClickReturnValue(true, 0.0);
     channel.pan.getProperties().set("isMixerPanKnob", true);
     if (knobLookAndFeel != nullptr)
@@ -228,17 +242,21 @@ void MixPanel::configureChannelWidgets(ChannelWidgets& channel,
                                           &channel.meter,
                                           &channel.mute,
                                           &channel.solo,
+                                          &channel.phase,
                                           &channel.fader,
                                           &channel.valueLabel,
                                           &channel.pan,
                                           &channel.panLabel,
+                                          &channel.panValueLabel,
                                           &channel.send,
                                           &channel.sendLabel,
+                                          &channel.sendValueLabel,
                                           &channel.stereoTag,
                                           hasSend });
 
     addAndMakeVisible(*channel.component);
     channel.component->addAndMakeVisible(channel.title);
+    channel.component->addAndMakeVisible(channel.phase);
     channel.component->addAndMakeVisible(channel.stereoTag);
     channel.component->addAndMakeVisible(channel.meter);
     channel.component->addAndMakeVisible(channel.mute);
@@ -247,27 +265,38 @@ void MixPanel::configureChannelWidgets(ChannelWidgets& channel,
     channel.component->addAndMakeVisible(channel.valueLabel);
     channel.component->addAndMakeVisible(channel.pan);
     channel.component->addAndMakeVisible(channel.panLabel);
+    channel.component->addAndMakeVisible(channel.panValueLabel);
     channel.component->addAndMakeVisible(channel.send);
     channel.component->addAndMakeVisible(channel.sendLabel);
+    channel.component->addAndMakeVisible(channel.sendValueLabel);
 }
 
 void MixPanel::applyConfigToChannels()
 {
-    // The channel cards need the config to resolve their style, and the style
-    // key identifies which block they read. One block for all five today - they
-    // are instances of one component with no reason to differ yet.
-    for (auto* channel : { &subChannel, &osc1Channel, &osc2Channel, &osc3Channel, &fxChannel })
+    // Each channel reads its own style block, so it can wear the colours of the
+    // thing it controls: the sub oscillator, the three oscillators, and the FX
+    // return - which takes the Delay card's scheme.
+    const std::array<std::pair<ChannelWidgets*, const char*>, 5> styledChannels { {
+        { &subChannel, "mixerSub" },
+        { &osc1Channel, "mixerOsc1" },
+        { &osc2Channel, "mixerOsc2" },
+        { &osc3Channel, "mixerOsc3" },
+        { &fxChannel, "mixerFx" },
+    } };
+
+    for (const auto& entry : styledChannels)
     {
-        if (channel->component != nullptr)
+        if (entry.first->component != nullptr)
         {
-            channel->component->setCardStyleKey("mixerChannel");
-            channel->component->setUIConfig(uiConfig);
+            entry.first->component->setCardStyleKey(entry.second);
+            entry.first->component->setUIConfig(uiConfig);
         }
     }
 
     const auto faderStyle = FaderStyle::fromUIConfig(uiConfig, "mix.fader");
     const auto muteStyle = buttonStyleFromConfig(uiConfig, "mix.mute", MixerToggleButton::Style());
     const auto soloStyle = buttonStyleFromConfig(uiConfig, "mix.solo", MixerToggleButton::Style());
+    const auto phaseStyle = buttonStyleFromConfig(uiConfig, "mix.phase", MixerToggleButton::Style());
     const auto titleSize = uiConfig != nullptr ? uiConfig->getFloat("mix.channel.titleSize", 11.5f) : 11.5f;
     const auto labelSize = uiConfig != nullptr ? uiConfig->getFloat("mix.channel.labelSize", 9.5f) : 9.5f;
     MixerLevelMeter::Style meterStyle;
@@ -288,9 +317,18 @@ void MixPanel::applyConfigToChannels()
             continue;
         }
 
-        channel->fader.applyStyle(faderStyle);
+        // The fader wears its channel's identity: the accent tints the filled
+        // travel and the cap's indicator line.
+        auto channelFaderStyle = faderStyle;
+        if (channel->component != nullptr)
+        {
+            channelFaderStyle.accentColour = channel->component->cardAccentColour();
+            channelFaderStyle.trackColour = channelFaderStyle.accentColour.withAlpha(0.80f);
+        }
+        channel->fader.applyStyle(channelFaderStyle);
         channel->mute.applyStyle(muteStyle);
         channel->solo.applyStyle(soloStyle);
+        channel->phase.applyStyle(phaseStyle);
         channel->title.setFont(juce::FontOptions(titleSize));
         channel->panLabel.setFont(juce::FontOptions(labelSize));
         channel->sendLabel.setFont(juce::FontOptions(labelSize));
@@ -308,11 +346,30 @@ void MixPanel::refreshMeterValues()
         {
             channel->meter.setLevel(processor.debugGetMixerSourceRms(sourceIndex));
             channel->valueLabel.setText(linearGainToDbText(static_cast<float>(channel->fader.getValue())), juce::dontSendNotification);
+            refreshKnobReadouts(*channel);
         }
     }
 
     fxChannel.meter.setLevel(processor.debugGetFxReturnRms());
     fxChannel.valueLabel.setText(linearGainToDbText(static_cast<float>(fxChannel.fader.getValue())), juce::dontSendNotification);
+    refreshKnobReadouts(fxChannel);
+}
+
+void MixPanel::refreshKnobReadouts(ChannelWidgets& channel)
+{
+    // Pan reads as a side and a percentage - "L42", "C", "R08" - because "-0.42"
+    // says nothing about which speaker it favours.
+    const auto pan = static_cast<float>(channel.pan.getValue());
+    const auto panPercent = juce::roundToInt(std::abs(pan) * 100.0f);
+    const auto panText = panPercent == 0 ? juce::String("C")
+                                         : (pan < 0.0f ? "L" : "R") + juce::String(panPercent);
+    channel.panValueLabel.setText(panText, juce::dontSendNotification);
+
+    if (channel.hasSend)
+    {
+        const auto sendPercent = juce::roundToInt(juce::jlimit(0.0, 1.0, channel.send.getValue()) * 100.0);
+        channel.sendValueLabel.setText(juce::String(sendPercent) + "%", juce::dontSendNotification);
+    }
 }
 
 juce::String MixPanel::linearGainToDbText(float linearGain)

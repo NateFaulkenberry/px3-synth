@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "BypassButton.h"
+#include "MixerControls.h"
 #include "ToggleChipButton.h"
 #include "ChipLabel.h"
 
@@ -250,6 +251,10 @@ private:
     juce::Rectangle<int> panelViewportArea;
     juce::Rectangle<int> topMenuStripArea;
     juce::Rectangle<int> logoPanelArea;
+    // Where a click actually opens the site. Narrower than the panel on the
+    // right, so a near-miss aimed at the first section button does not open a
+    // browser instead.
+    juce::Rectangle<int> logoClickArea;
     juce::Rectangle<int> topMenuSectionButtonsArea;
     juce::Rectangle<int> topMenuPresetClusterArea;
     juce::Rectangle<int> topMenuMenuButtonArea;
@@ -276,25 +281,25 @@ private:
     juce::Point<int> fxDragStartPoint;
     bool fxDragHasMoved { false };
 
-    juce::Slider oscSineKnob;
-    juce::Slider oscSawKnob;
-    juce::Slider oscSquareKnob;
-    juce::Slider osc2SineKnob;
-    juce::Slider osc2SawKnob;
-    juce::Slider osc2SquareKnob;
-    juce::Slider osc3SineKnob;
-    juce::Slider osc3SawKnob;
-    juce::Slider osc3SquareKnob;
-    juce::ComboBox oscModeBox;
+    juce::Slider osc1MacroAKnob;
+    juce::Slider osc1MacroBKnob;
+    juce::Slider osc1MacroCKnob;
+    juce::Slider osc2MacroAKnob;
+    juce::Slider osc2MacroBKnob;
+    juce::Slider osc2MacroCKnob;
+    juce::Slider osc3MacroAKnob;
+    juce::Slider osc3MacroBKnob;
+    juce::Slider osc3MacroCKnob;
+    juce::ComboBox osc1ModeBox;
     juce::ComboBox osc2ModeBox;
     juce::ComboBox osc3ModeBox;
-    KnobLabel oscModeLabel;
+    KnobLabel osc1ModeLabel;
     KnobLabel osc2ModeLabel;
     KnobLabel osc3ModeLabel;
-    juce::ComboBox oscVowelBox;
+    juce::ComboBox osc1VowelBox;
     juce::ComboBox osc2VowelBox;
     juce::ComboBox osc3VowelBox;
-    KnobLabel oscVowelLabel;
+    KnobLabel osc1VowelLabel;
     KnobLabel osc2VowelLabel;
     KnobLabel osc3VowelLabel;
     juce::Slider cutoffKnob;
@@ -309,11 +314,11 @@ private:
     juce::Slider releaseKnob;
     juce::Slider gainKnob;
     juce::Slider lfoFrequencyKnob;
-    juce::Slider lfoAmountKnob;
-    juce::Slider subOscPitchKnob;
-    juce::Slider osc1PitchKnob;
-    juce::Slider osc2PitchKnob;
-    juce::Slider osc3PitchKnob;
+    PanKnob lfoAmountKnob;
+    PanKnob subOscPitchKnob;
+    PanKnob osc1PitchKnob;
+    PanKnob osc2PitchKnob;
+    PanKnob osc3PitchKnob;
     juce::ComboBox lfoWaveformBox;
     juce::ComboBox subOscOctaveBox;
     juce::ComboBox subOscWaveformBox;
@@ -328,15 +333,15 @@ private:
     px3::ui::BypassButton osc3EnabledButton;
     px3::ui::BypassButton subOscEnabledButton;
 
-    KnobLabel oscSineLabel;
-    KnobLabel oscSawLabel;
-    KnobLabel oscSquareLabel;
-    KnobLabel osc2SineLabel;
-    KnobLabel osc2SawLabel;
-    KnobLabel osc2SquareLabel;
-    KnobLabel osc3SineLabel;
-    KnobLabel osc3SawLabel;
-    KnobLabel osc3SquareLabel;
+    KnobLabel osc1MacroALabel;
+    KnobLabel osc1MacroBLabel;
+    KnobLabel osc1MacroCLabel;
+    KnobLabel osc2MacroALabel;
+    KnobLabel osc2MacroBLabel;
+    KnobLabel osc2MacroCLabel;
+    KnobLabel osc3MacroALabel;
+    KnobLabel osc3MacroBLabel;
+    KnobLabel osc3MacroCLabel;
     KnobLabel cutoffLabel;
     KnobLabel resonanceLabel;
     KnobLabel filter1TypeLabel;

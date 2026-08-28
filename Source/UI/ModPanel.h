@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "BypassButton.h"
+#include "MixerControls.h"
 #include "ChipLabel.h"
 
 #include <array>
@@ -52,11 +53,16 @@ private:
         juce::Slider rateKnob;
         px3::ui::ChipLabel rateLabel;
         juce::Label rateValueLabel;
-        juce::Slider amountKnob;
+        PanKnob amountKnob;
         px3::ui::ChipLabel amountLabel;
         juce::Label amountValueLabel;
         juce::ComboBox waveformBox;
         px3::ui::ChipLabel waveformLabel;
+        // The assignment last written to assignBox. Refresh runs at 30 Hz, and
+        // writing a combo box unconditionally from a timer is only harmless for
+        // as long as nothing downstream reacts to the write - which is not a
+        // property worth relying on.
+        int lastAssignmentIndex { -1 };
         std::unique_ptr<juce::ButtonParameterAttachment> enabledAttachment;
         std::unique_ptr<juce::SliderParameterAttachment> rateAttachment;
         std::unique_ptr<juce::SliderParameterAttachment> amountAttachment;
@@ -69,9 +75,14 @@ private:
         px3::ui::BypassButton enabledButton;
         px3::ui::ChipLabel assignLabel;
         juce::ComboBox assignBox;
-        juce::Slider amountKnob;
+        PanKnob amountKnob;
         px3::ui::ChipLabel amountLabel;
         juce::Label amountValueLabel;
+        // The assignment last written to assignBox. Refresh runs at 30 Hz, and
+        // writing a combo box unconditionally from a timer is only harmless for
+        // as long as nothing downstream reacts to the write - which is not a
+        // property worth relying on.
+        int lastAssignmentIndex { -1 };
         std::unique_ptr<juce::ButtonParameterAttachment> enabledAttachment;
         std::unique_ptr<juce::SliderParameterAttachment> amountAttachment;
         std::unique_ptr<EnvelopeComponent> component;

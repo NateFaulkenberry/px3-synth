@@ -8,6 +8,51 @@
 
 class UIConfig;
 
+// A section tab in the top menu bar.
+//
+// Drawn as a flush, full-height panel rather than a rounded button: an LED
+// above a bold caps legend, with a hairline seam on its right edge. Adjacent
+// tabs butt together with no gap, so the row reads as one strip of hardware
+// instead of six separate controls floating in a bar.
+class TopMenuTabButton final : public juce::TextButton
+{
+public:
+    // Colours for the tab face. These come from UIConfig, so the strip stays
+    // configurable now that the tab paints itself rather than going through
+    // JUCE's TextButton colour IDs.
+    struct Style
+    {
+        juce::Colour face { juce::Colour::fromRGB(30, 32, 37) };
+        juce::Colour faceActive { juce::Colour::fromRGB(46, 49, 56) };
+        juce::Colour text { juce::Colour::fromRGB(186, 190, 198) };
+        juce::Colour textActive { juce::Colour::fromRGB(245, 247, 250) };
+        juce::Colour seam { juce::Colour::fromRGBA(0, 0, 0, 150) };
+    };
+
+    explicit TopMenuTabButton(const juce::String& name);
+
+    void applyStyle(const Style& styleIn);
+
+    // Lights the LED and tints the active face. Each section passes the colour
+    // of the panel it opens.
+    void setAccentColour(juce::Colour colour);
+    // The last tab in a row has no neighbour to be separated from.
+    void setShowSeam(bool shouldShow);
+    // A tab that opens a menu rather than selecting a panel has no on/off state
+    // to report, so it wears the same face with no lamp on it.
+    void setShowLed(bool shouldShow);
+
+private:
+    void paintButton(juce::Graphics& g,
+                     bool shouldDrawButtonAsHighlighted,
+                     bool shouldDrawButtonAsDown) override;
+
+    Style style;
+    juce::Colour accent { juce::Colour::fromRGB(74, 153, 255) };
+    bool showSeam { true };
+    bool showLed { true };
+};
+
 class TopMenuBar final : public juce::Component
 {
 public:
@@ -31,22 +76,22 @@ public:
     juce::TextButton& getPresetMenuButton();
 
 private:
-    void configureTopMenuSectionButton(juce::TextButton& button,
+    void configureTopMenuSectionButton(TopMenuTabButton& button,
                                        const juce::String& text,
                                        int sectionIndex);
 
-    juce::TextButton presetPrevButton;
-    juce::TextButton presetNameButton;
-    juce::TextButton presetNextButton;
-    juce::TextButton presetMenuButton;
-    juce::TextButton topMenuOscButton;
-    juce::TextButton topMenuModButton;
-    juce::TextButton topMenuAmpButton;
-    juce::TextButton topMenuFltButton;
-    juce::TextButton topMenuFxButton;
-    juce::TextButton topMenuMixButton;
+    TopMenuTabButton presetPrevButton { "" };
+    TopMenuTabButton presetNameButton { "" };
+    TopMenuTabButton presetNextButton { "" };
+    TopMenuTabButton presetMenuButton { "MENU" };
+    TopMenuTabButton topMenuOscButton { "OSC" };
+    TopMenuTabButton topMenuModButton { "MOD" };
+    TopMenuTabButton topMenuAmpButton { "AMP" };
+    TopMenuTabButton topMenuFltButton { "FLT" };
+    TopMenuTabButton topMenuFxButton { "FX" };
+    TopMenuTabButton topMenuMixButton { "MIX" };
 
-    std::array<juce::TextButton*, 6> topMenuSectionButtons {
+    std::array<TopMenuTabButton*, 6> topMenuSectionButtons {
         { &topMenuOscButton, &topMenuModButton, &topMenuAmpButton, &topMenuFltButton, &topMenuFxButton, &topMenuMixButton }
     };
 

@@ -89,6 +89,8 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
     bundle.waveformLabel.setInterceptsMouseClicks(true, false);
     bundle.waveformLabel.setTooltip("Waveform");
 
+    bundle.amountKnob.setCentreDetent(0.06);
+    bundle.amountKnob.setExtremeDetent(0.0);
     bundle.amountLabel.setText("AMOUNT", juce::dontSendNotification);
     bundle.amountLabel.setJustificationType(juce::Justification::centred);
     bundle.amountLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
@@ -141,7 +143,8 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
     {
         bundle.assignBox.addItem(assignments[i], i + 1);
     }
-    bundle.assignBox.setSelectedId(processor.getLfoAssignmentIndex(lfoIndex) + 1, juce::dontSendNotification);
+    bundle.lastAssignmentIndex = processor.getLfoAssignmentIndex(lfoIndex);
+    bundle.assignBox.setSelectedId(bundle.lastAssignmentIndex + 1, juce::dontSendNotification);
 
     bundle.assignBox.onChange = [this, lfoIndex, &bundle]()
     {
@@ -199,6 +202,8 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
     bundle.assignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.assignBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
 
+    bundle.amountKnob.setCentreDetent(0.06);
+    bundle.amountKnob.setExtremeDetent(0.0);
     bundle.amountLabel.setText("AMOUNT", juce::dontSendNotification);
     bundle.amountLabel.setJustificationType(juce::Justification::centred);
     bundle.amountLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
@@ -225,7 +230,8 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
     {
         bundle.assignBox.addItem(assignments[i], i + 1);
     }
-    bundle.assignBox.setSelectedId(processor.getEnvelopeAssignmentIndex(envIndex) + 1, juce::dontSendNotification);
+    bundle.lastAssignmentIndex = processor.getEnvelopeAssignmentIndex(envIndex);
+    bundle.assignBox.setSelectedId(bundle.lastAssignmentIndex + 1, juce::dontSendNotification);
 
     bundle.assignBox.onChange = [this, envIndex, &bundle]()
     {
@@ -385,7 +391,13 @@ void ModPanel::refreshFromParameters()
         auto& bundle = envelopes[static_cast<std::size_t>(i)];
         if (bundle.component != nullptr)
         {
-            bundle.assignBox.setSelectedId(processor.getEnvelopeAssignmentIndex(envIndex) + 1, juce::dontSendNotification);
+            const auto assignment = processor.getEnvelopeAssignmentIndex(envIndex);
+            if (assignment != bundle.lastAssignmentIndex)
+            {
+                bundle.lastAssignmentIndex = assignment;
+                bundle.assignBox.setSelectedId(assignment + 1, juce::dontSendNotification);
+            }
+
             bundle.component->refreshFromParameters();
         }
     }
@@ -409,7 +421,13 @@ void ModPanel::refreshLfoFromParameters(bool enabled, float rateHz, int waveform
         auto& bundle = extraLfos[static_cast<std::size_t>(i)];
         if (bundle.component != nullptr)
         {
-            bundle.assignBox.setSelectedId(processor.getLfoAssignmentIndex(lfoIndex) + 1, juce::dontSendNotification);
+            const auto assignment = processor.getLfoAssignmentIndex(lfoIndex);
+            if (assignment != bundle.lastAssignmentIndex)
+            {
+                bundle.lastAssignmentIndex = assignment;
+                bundle.assignBox.setSelectedId(assignment + 1, juce::dontSendNotification);
+            }
+
             bundle.component->refreshFromParameters(processor.getLfoEnabledParam(lfoIndex).get(),
                                                     processor.getLfoFrequencyParam(lfoIndex).get(),
                                                     processor.getLfoAmountParam(lfoIndex).get(),

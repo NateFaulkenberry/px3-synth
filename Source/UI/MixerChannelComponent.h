@@ -17,12 +17,15 @@ public:
         juce::Component* meter { nullptr };
         juce::Button* mute { nullptr };
         juce::Button* solo { nullptr };
+        juce::Button* phase { nullptr };
         juce::Slider* fader { nullptr };
         juce::Label* valueLabel { nullptr };
         juce::Slider* pan { nullptr };
         juce::Label* panLabel { nullptr };
+        juce::Label* panValueLabel { nullptr };
         juce::Slider* send { nullptr };
         juce::Label* sendLabel { nullptr };
+        juce::Label* sendValueLabel { nullptr };
         juce::Label* stereoTag { nullptr };
         bool hasSend { true };
     };
@@ -36,6 +39,8 @@ public:
     // title is intentionally left empty here - moving the title off the Label
     // belongs to the phase that reworks mixer internals.
     void setCardStyleKey(juce::String key);
+    // This channel's identity colour, so its fader and meter can match the card.
+    juce::Colour cardAccentColour() const;
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
 
@@ -49,7 +54,12 @@ private:
     std::shared_ptr<const UIConfig> uiConfig;
     juce::String cardStyleKey { "mixerChannel" };
     px3::ui::CardHost card;
-    int sectionSpacing { 6 };
+    int sectionSpacing { 10 };
+    // Below the card title, before the first row.
+    int titleGap { 6 };
+    // Fader to its own dB readout: tighter than a section break, because the
+    // two are one control.
+    int faderValueSpacing { 0 };
     int buttonGap { 4 };
     int footerLabelHeight { 12 };
     int meterHeight { 12 };

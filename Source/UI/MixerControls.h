@@ -6,6 +6,14 @@
 
 class UIConfig;
 
+// A fixed speckle of light and dark dots over a shape, giving painted metal and
+// moulded plastic a bit of grain instead of a flat fill.
+//
+// The pattern is derived from the pixel coordinates, not from a random source,
+// so it is identical on every repaint. A per-frame random would shimmer at the
+// UI's 30 Hz refresh, which reads as a rendering fault rather than as texture.
+void paintSurfaceNoise(juce::Graphics& g, juce::Rectangle<float> area, float amount);
+
 struct FaderStyle
 {
     float trackWidth { 4.0f };
@@ -18,6 +26,13 @@ struct FaderStyle
     juce::Colour thumbColour { juce::Colour::fromRGB(230, 236, 246) };
     juce::Colour disabledColour { juce::Colour::fromRGBA(120, 120, 120, 120) };
     juce::Colour hoverColour { juce::Colour::fromRGBA(240, 246, 255, 220) };
+    // Tints the filled part of the track and the cap's indicator line. Each
+    // channel passes its own card identity here, so a fader matches the source
+    // it controls.
+    juce::Colour accentColour { juce::Colour::fromRGB(130, 190, 255) };
+    // Scale ticks either side of the track, as a console fader has. 0 hides
+    // them.
+    int tickCount { 9 };
 
     static FaderStyle fromUIConfig(const std::shared_ptr<const UIConfig>& uiConfig, const juce::String& pathPrefix);
 };
@@ -40,6 +55,27 @@ public:
 
 private:
     FaderStyle style;
+};
+
+// A pan knob with detents at centre and at both extremes.
+//
+// Centre, hard left and hard right are the three positions people actually aim
+// for and the hardest to land exactly with a rotary drag. Centre gets the wider
+// catch because it is the one used most. The snap applies only while dragging:
+// a typed or automated value is left exactly as given.
+class PanKnob final : public juce::Slider
+{
+public:
+    PanKnob();
+
+    void setCentreDetent(double range);
+    void setExtremeDetent(double range);
+
+private:
+    double snapValue(double attemptedValue, DragMode dragMode) override;
+
+    double snapRange { 0.14 };
+    double extremeSnapRange { 0.06 };
 };
 
 class FaderSlider final : public juce::Slider
@@ -93,6 +129,15 @@ public:
     SoloButton();
 };
 
+// Polarity flip. The legend is the classic slashed-O used on consoles for phase
+// inversion - it is a symbol rather than a word because it has to fit in the
+// same button as MUTE and SOLO.
+class PhaseButton final : public MixerToggleButton
+{
+public:
+    PhaseButton();
+};
+
 class MixerLevelMeter final : public juce::Component
 {
 public:
@@ -104,6 +149,22 @@ public:
         juce::Colour highColour { juce::Colour::fromRGBA(230, 196, 90, 230) };
         juce::Colour clipColour { juce::Colour::fromRGBA(230, 90, 90, 230) };
         juce::Colour borderColour { juce::Colour::fromRGBA(220, 224, 236, 90) };
+        // Number of LED segments in the ladder. A real console meter is a strip
+        // of discrete lamps, not a continuous bar, and the segment count is what
+        // sets how coarse it reads.
+        int segmentCount { 22 };
+        // How long a peak marker hangs before it starts falling back, in
+        // 30 Hz frames, and how fast it falls once it does.
+        int peakHoldFrames { 30 };
+        float peakFallPerFrame { 0.012f };
+        // Frames the clip lamp stays lit after the last over.
+        int clipHoldFrames { 45 };
+        // Meter ballistics, per 30 Hz frame. Rising fast and falling slowly is
+        // what every hardware meter does: it makes level readable instead of
+        // flickering, because the eye cannot track a bar that follows RMS
+        // sample for sample.
+        float riseCoefficient { 0.55f };
+        float fallCoefficient { 0.14f };
     };
 
     void setLevel(float linearLevel);
@@ -111,6 +172,21 @@ public:
     void paint(juce::Graphics& g) override;
 
 private:
+    // What the bar shows: the incoming level put through the ballistics above.
+    // The peak marker deliberately tracks the RAW value instead, so a transient
+    // still registers even though the bar is too slow to reach it.
     float level { 0.0f };
+    // Peak hold: the highest recent level, which hangs and then falls. Reading a
+    // transient off a bar that follows the signal exactly is impossible - the
+    // peak is gone before the eye catches it.
+    float peakLevel { 0.0f };
+    int peakHoldCounter { 0 };
+    int clipHoldCounter { 0 };
+    // What the last repaint actually drew. The ballistics converge and then sit
+    // still, so without this the meter would repaint 30 times a second per
+    // channel to draw an identical picture.
+    float paintedLevel { -1.0f };
+    float paintedPeak { -1.0f };
+    int paintedClip { -1 };
     Style style;
 };

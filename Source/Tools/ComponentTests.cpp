@@ -3982,6 +3982,83 @@ void testCardInner()
                                  : problems.joinIntoString("; "));
     }
 
+    // ---- Top menu bar ------------------------------------------------------
+    {
+        // The bar's section buttons fill their row: equal shares of the width
+        // and its full height. They are the plugin's primary navigation, so
+        // they take the strip rather than floating in a band inside it.
+        const auto config = configFrom(R"({"topMenu":{"sections":{"flex":{
+            "direction":"row","justifyContent":"space-between","alignItems":"stretch","gap":6}}}})");
+
+        const juce::Rectangle<int> row { 0, 0, 300, 40 };
+        const auto flexStyle = px3::ui::FlexStyle::readLayered(config.get(), { "topMenu.sections.flex" }, {});
+        auto box = flexStyle.toFlexBox();
+        const auto gap = flexStyle.gapMargin();
+
+        constexpr int count = 6;
+        // Mirrors TopMenuBar: the row is widened by half a gap on each side so
+        // the outer half-margins fall outside it and the buttons sit flush.
+        const auto laidOutWidth = static_cast<float>(row.getWidth()) + gap.left + gap.right;
+        const std::vector<float> natural((std::size_t) count, laidOutWidth / static_cast<float>(count));
+        const auto widths = px3::ui::fitRowItemWidths(natural, gap.left + gap.right, laidOutWidth);
+        for (const auto w : widths)
+        {
+            auto item = juce::FlexItem(w, static_cast<float>(row.getHeight())).withMargin(gap);
+            item.flexGrow = 1.0f;
+            box.items.add(item);
+        }
+        box.performLayout(row.toFloat().expanded(gap.left, 0.0f));
+
+        juce::StringArray problems;
+        juce::Rectangle<float> union_;
+        for (int i = 0; i < count; ++i)
+        {
+            const auto b = box.items.getReference(i).currentBounds;
+            union_ = union_.isEmpty() ? b : union_.getUnion(b);
+
+            if (std::abs(b.getHeight() - static_cast<float>(row.getHeight())) > 1.0f)
+            {
+                problems.add("button " + juce::String(i) + " is "
+                             + fmt(b.getHeight(), 1) + "px tall, not the row's "
+                             + juce::String(row.getHeight()));
+            }
+            if (i > 0)
+            {
+                const auto prev = box.items.getReference(i - 1).currentBounds;
+                if (std::abs(b.getWidth() - prev.getWidth()) > 1.5f)
+                {
+                    problems.add("buttons " + juce::String(i - 1) + "/" + juce::String(i)
+                                 + " differ in width");
+                }
+            }
+        }
+
+        // And they span the row, rather than leaving it part-filled.
+        if (union_.getWidth() < static_cast<float>(row.getWidth()) - 2.0f)
+        {
+            problems.add("buttons span only " + fmt(union_.getWidth(), 1)
+                         + " of " + juce::String(row.getWidth()) + "px");
+        }
+
+        check("TopMenu_SectionButtonsFillTheirRow",
+              problems.isEmpty(),
+              problems.isEmpty() ? "6 equal buttons, full height, spanning the row"
+                                 : problems.joinIntoString("; "));
+    }
+
+    {
+        // rowHeight 0 means "fill the bar". That is what lets the buttons take
+        // the strip's whole height instead of a fixed band inside it.
+        const auto config = configFrom(R"({"topMenu":{"layout":{"rowHeight":0}}})");
+        const auto rowHeight = config->getInt("topMenu.layout.rowHeight", 32);
+        const juce::Rectangle<int> bar { 0, 0, 600, 44 };
+        const auto row = rowHeight > 0 ? bar.withSizeKeepingCentre(bar.getWidth(), rowHeight) : bar;
+
+        check("TopMenu_ZeroRowHeightFillsTheBar",
+              rowHeight == 0 && row == bar,
+              "rowHeight 0 -> row is the full bar (" + row.toString() + ")");
+    }
+
     // ---- The power slot ----------------------------------------------------
     {
         // The power toggle is pinned to cardInner's corner and is NOT part of

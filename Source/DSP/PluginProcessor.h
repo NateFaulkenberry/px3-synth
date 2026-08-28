@@ -158,6 +158,10 @@ public:
     juce::AudioParameterFloat& getMixerPanParam(int sourceIndex) const;
     juce::AudioParameterFloat& getMixerSendParam(int sourceIndex) const;
     juce::AudioParameterBool& getMixerMuteParam(int sourceIndex) const;
+    // Polarity flip for a mixer channel. Inverting one source against another
+    // is how you hear whether they are fighting each other.
+    juce::AudioParameterBool& getMixerPhaseInvertParam(int sourceIndex) const;
+    juce::AudioParameterBool& getFxReturnPhaseInvertParam() const;
     juce::AudioParameterBool& getMixerSoloParam(int sourceIndex) const;
     juce::AudioParameterBool& getFxReturnMuteParam() const;
     juce::AudioParameterBool& getFxReturnSoloParam() const;
@@ -397,6 +401,8 @@ private:
     std::array<juce::AudioParameterFloat*, kMixerSourceCount> mixerPanParams { { nullptr, nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kMixerSourceCount> mixerSendParams { { nullptr, nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterBool*, kMixerSourceCount> mixerMuteParams { { nullptr, nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterBool*, kMixerSourceCount> mixerPhaseInvertParams { { nullptr, nullptr, nullptr, nullptr } };
+    juce::AudioParameterBool* fxReturnPhaseInvertParam { nullptr };
     std::array<juce::AudioParameterBool*, kMixerSourceCount> mixerSoloParams { { nullptr, nullptr, nullptr, nullptr } };
     juce::AudioParameterBool* fxReturnMuteParam { nullptr };
     juce::AudioParameterBool* fxReturnSoloParam { nullptr };
@@ -526,6 +532,12 @@ private:
     // Mixer faders, pans and sends are user-facing gains applied per sample, so
     // they are smoothed per sample rather than stepped once per block.
     std::array<SmoothedGain, kMixerSourceCount> sourceLevelSmoothers;
+    // Polarity is smoothed from +1 to -1 rather than switched. A hard sign flip
+    // is a step discontinuity in the middle of a waveform, which is a click;
+    // ramping through zero costs a few milliseconds of dip instead.
+    std::array<SmoothedGain, kMixerSourceCount> sourcePhaseSmoothers;
+    std::array<float, kMixerSourceCount> sourcePhaseValues { { 1.0f, 1.0f, 1.0f, 1.0f } };
+    SmoothedGain fxReturnPhaseSmoother;
     std::array<SmoothedGain, kMixerSourceCount> sourcePanLeftSmoothers;
     std::array<SmoothedGain, kMixerSourceCount> sourcePanRightSmoothers;
     std::array<SmoothedGain, kMixerSourceCount> sourceSendSmoothers;

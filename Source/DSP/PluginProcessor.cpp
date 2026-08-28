@@ -269,9 +269,13 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         mixerSoloParams[static_cast<std::size_t>(i)] = new juce::AudioParameterBool("mix." + sourceId + ".solo",
                                                                                       sourceName + " Solo",
                                                                                       false);
+        mixerPhaseInvertParams[static_cast<std::size_t>(i)] = new juce::AudioParameterBool("mix." + sourceId + ".phase",
+                                                                                            sourceName + " Phase Invert",
+                                                                                            false);
     }
     fxReturnMuteParam = new juce::AudioParameterBool("mix.fx.mute", "FX Return Mute", false);
     fxReturnSoloParam = new juce::AudioParameterBool("mix.fx.solo", "FX Return Solo", false);
+    fxReturnPhaseInvertParam = new juce::AudioParameterBool("mix.fx.phase", "FX Return Phase Invert", false);
     fxReturnPanParam = new juce::AudioParameterFloat("mix.fx.pan", "FX Return Pan", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
     reverbAmountParam = new juce::AudioParameterFloat("reverbAmount", "Reverb", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     reverbEnabledParam = new juce::AudioParameterBool("reverbEnabled", "Reverb Enabled", true);
@@ -422,9 +426,11 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(mixerPanParams[static_cast<std::size_t>(i)]);
         addParameter(mixerSendParams[static_cast<std::size_t>(i)]);
         addParameter(mixerMuteParams[static_cast<std::size_t>(i)]);
+        addParameter(mixerPhaseInvertParams[static_cast<std::size_t>(i)]);
         addParameter(mixerSoloParams[static_cast<std::size_t>(i)]);
     }
     addParameter(fxReturnMuteParam);
+    addParameter(fxReturnPhaseInvertParam);
     addParameter(fxReturnSoloParam);
     addParameter(fxReturnPanParam);
     addParameter(reverbAmountParam);
@@ -625,6 +631,8 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
             sourceSendSmoothers[idx].prepare(sampleRate, kMixerSmoothingSeconds);
 
             sourceLevelSmoothers[idx].setCurrent(juce::jlimit(0.0f, 1.0f, getMixerLevelParam(i).get()));
+            sourcePhaseSmoothers[idx].prepare(sampleRate, kMixerSmoothingSeconds);
+            sourcePhaseSmoothers[idx].setCurrent(getMixerPhaseInvertParam(i).get() ? -1.0f : 1.0f);
             sourceSendSmoothers[idx].setCurrent(juce::jlimit(0.0f, 1.0f, getMixerSendParam(i).get()));
 
             float left = 1.0f;
@@ -635,6 +643,8 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
         }
     }
     fxSendGainSmoother.prepare(sampleRate, kMixerSmoothingSeconds);
+    fxReturnPhaseSmoother.prepare(sampleRate, kMixerSmoothingSeconds);
+    fxReturnPhaseSmoother.setCurrent(fxReturnPhaseInvertParam != nullptr && fxReturnPhaseInvertParam->get() ? -1.0f : 1.0f);
     fxReturnGainSmoother.prepare(sampleRate, kMixerSmoothingSeconds);
     fxSendGainSmoother.setCurrent(fxSendGainParam != nullptr ? juce::jlimit(0.0f, 1.0f, fxSendGainParam->get()) : 1.0f);
     fxReturnGainSmoother.setCurrent(fxReturnGainParam != nullptr ? juce::jlimit(0.0f, 1.0f, fxReturnGainParam->get()) : 1.0f);
@@ -1295,6 +1305,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     std::array<float, kMixerSourceCount> sourceSendValues { { 0.0f, 0.0f, 0.0f, 0.0f } };
     for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
     {
+        sourcePhaseValues[static_cast<std::size_t>(sourceIndex)] =
+            getMixerPhaseInvertParam(sourceIndex).get() ? -1.0f : 1.0f;
+
         auto& levelParam = getMixerLevelParam(sourceIndex);
         auto& panParam = getMixerPanParam(sourceIndex);
         auto& sendParam = getMixerSendParam(sourceIndex);
@@ -1394,7 +1407,11 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
         for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)
         {
-            const auto sampleValue = oscillatorBusBuffer.getSample(sourceIndex, sample);
+            const auto idxPhase = static_cast<std::size_t>(sourceIndex);
+            // Polarity first, so the flip reaches the dry path and the FX send
+            // alike - it is a property of the channel, not of one destination.
+            const auto sampleValue = oscillatorBusBuffer.getSample(sourceIndex, sample)
+                                     * sourcePhaseSmoothers[idxPhase].next(sourcePhaseValues[idxPhase]);
             const auto dryGate = sourceDryGateSmoothers[static_cast<std::size_t>(sourceIndex)].next();
             const auto sendGate = sourceSendGateSmoothers[static_cast<std::size_t>(sourceIndex)].next();
             const auto idxSource = static_cast<std::size_t>(sourceIndex);
@@ -1512,7 +1529,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         float fxPanLeft = 1.0f;
         float fxPanRight = 1.0f;
         panToGains(fxReturnPanSmoother.getNextValue(), fxPanLeft, fxPanRight);
-        auto smoothedFxReturnGain = fxReturnGainSmoother.next(fxReturnGain);
+        const auto fxPhaseTarget = (fxReturnPhaseInvertParam != nullptr && fxReturnPhaseInvertParam->get()) ? -1.0f : 1.0f;
+        auto smoothedFxReturnGain = fxReturnGainSmoother.next(fxReturnGain)
+                                    * fxReturnPhaseSmoother.next(fxPhaseTarget);
 #if PX3_DIAGNOSTICS
         if (diagState.legacyUnsmoothedMixer)
         {

@@ -222,6 +222,17 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getMixerSendParam(int sourceI
     const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);
     return *mixerSendParams[static_cast<std::size_t>(idx)];
 }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getMixerPhaseInvertParam(int sourceIndex) const
+{
+    const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);
+    return *mixerPhaseInvertParams[static_cast<std::size_t>(idx)];
+}
+
+juce::AudioParameterBool& PX3SynthAudioProcessor::getFxReturnPhaseInvertParam() const
+{
+    return *fxReturnPhaseInvertParam;
+}
+
 juce::AudioParameterBool& PX3SynthAudioProcessor::getMixerMuteParam(int sourceIndex) const
 {
     const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);

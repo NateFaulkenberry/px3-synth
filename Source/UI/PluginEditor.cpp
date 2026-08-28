@@ -243,6 +243,31 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
         }
     }
 
+    if (isMixerPanKnob)
+    {
+        // Scale ticks outside the knob, in the same spirit as the fader's:
+        // hard left, centre, hard right. Angles use the pointer's convention -
+        // 0 is straight up, positive is clockwise.
+        const auto knobRadius = bounds.getWidth() * 0.5f;
+        const auto tickInner = knobRadius + 3.0f;
+        const auto tickOuter = tickInner + 8.0f;
+
+        for (const auto tickAngle : { -juce::MathConstants<float>::halfPi,
+                                      0.0f,
+                                      juce::MathConstants<float>::halfPi })
+        {
+            const auto isCentre = std::abs(tickAngle) < 0.001f;
+            const auto sn = std::sin(tickAngle);
+            const auto cs = std::cos(tickAngle);
+            g.setColour(juce::Colour::fromRGBA(255, 255, 255, isCentre ? 96 : 52));
+            g.drawLine(center.x + sn * tickInner,
+                       center.y - cs * tickInner,
+                       center.x + sn * tickOuter,
+                       center.y - cs * tickOuter,
+                       isCentre ? 1.6f : 1.1f);
+        }
+    }
+
     float indicatorAngle = angle;
     if (isMixerPanKnob)
     {
@@ -460,15 +485,15 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     };
 
     knobBindings = {
-        KnobBinding { &oscSineKnob, &oscSineLabel, nullptr },
-        KnobBinding { &oscSawKnob, &oscSawLabel, nullptr },
-        KnobBinding { &oscSquareKnob, &oscSquareLabel, nullptr },
-        KnobBinding { &osc2SineKnob, &osc2SineLabel, nullptr },
-        KnobBinding { &osc2SawKnob, &osc2SawLabel, nullptr },
-        KnobBinding { &osc2SquareKnob, &osc2SquareLabel, nullptr },
-        KnobBinding { &osc3SineKnob, &osc3SineLabel, nullptr },
-        KnobBinding { &osc3SawKnob, &osc3SawLabel, nullptr },
-        KnobBinding { &osc3SquareKnob, &osc3SquareLabel, nullptr },
+        KnobBinding { &osc1MacroAKnob, &osc1MacroALabel, nullptr },
+        KnobBinding { &osc1MacroBKnob, &osc1MacroBLabel, nullptr },
+        KnobBinding { &osc1MacroCKnob, &osc1MacroCLabel, nullptr },
+        KnobBinding { &osc2MacroAKnob, &osc2MacroALabel, nullptr },
+        KnobBinding { &osc2MacroBKnob, &osc2MacroBLabel, nullptr },
+        KnobBinding { &osc2MacroCKnob, &osc2MacroCLabel, nullptr },
+        KnobBinding { &osc3MacroAKnob, &osc3MacroALabel, nullptr },
+        KnobBinding { &osc3MacroBKnob, &osc3MacroBLabel, nullptr },
+        KnobBinding { &osc3MacroCKnob, &osc3MacroCLabel, nullptr },
         KnobBinding { &osc1PitchKnob, &osc1PitchLabel, nullptr },
         KnobBinding { &osc2PitchKnob, &osc2PitchLabel, nullptr },
         KnobBinding { &osc3PitchKnob, &osc3PitchLabel, nullptr },
@@ -509,7 +534,11 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureKnob(knobBindings[20], "Release", audioProcessor.getReleaseParam());
     configureKnob(knobBindings[21], "RATE", audioProcessor.getLfoFrequencyParam());
     configureKnob(knobBindings[22], "AMOUNT", audioProcessor.getLfoAmountParam());
-    configureKnob(knobBindings[23], "Master", audioProcessor.getMasterGainParam());
+    // Amount runs -100%..+100%, so zero is dead centre and worth a detent. The
+    // extremes are not: unlike pan, full depth is not a position people aim at.
+    lfoAmountKnob.setCentreDetent(0.06);
+    lfoAmountKnob.setExtremeDetent(0.0);
+    configureKnob(knobBindings[23], "MASTER", audioProcessor.getMasterGainParam());
 
     const auto formatPitchCents = [](double semitoneValue)
     {
@@ -521,10 +550,17 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         return juce::String(cents) + " c";
     };
 
-    const auto configurePitchReadout = [&](juce::Slider& pitchKnob, juce::Label& valueLabel)
+    const auto configurePitchReadout = [&](PanKnob& pitchKnob, juce::Label& valueLabel)
     {
         pitchKnob.getProperties().set("isMixerPanKnob", true);
         pitchKnob.setRange(-0.24, 0.24, 0.01);
+
+        // The same detents the mixer pan knobs have, scaled to this knob's much
+        // narrower range: dead centre is the value people want most, and the
+        // two extremes are edges worth landing on exactly.
+        constexpr double pitchSpan = 0.48;
+        pitchKnob.setCentreDetent(pitchSpan * 0.07);
+        pitchKnob.setExtremeDetent(pitchSpan * 0.03);
 
         valueLabel.setJustificationType(juce::Justification::centred);
         valueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(214, 214, 224));
@@ -559,15 +595,15 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         refresh();
     };
 
-    configureMacroReadout(oscSineKnob, osc1MacroAValueLabel);
-    configureMacroReadout(oscSawKnob, osc1MacroBValueLabel);
-    configureMacroReadout(oscSquareKnob, osc1MacroCValueLabel);
-    configureMacroReadout(osc2SineKnob, osc2MacroAValueLabel);
-    configureMacroReadout(osc2SawKnob, osc2MacroBValueLabel);
-    configureMacroReadout(osc2SquareKnob, osc2MacroCValueLabel);
-    configureMacroReadout(osc3SineKnob, osc3MacroAValueLabel);
-    configureMacroReadout(osc3SawKnob, osc3MacroBValueLabel);
-    configureMacroReadout(osc3SquareKnob, osc3MacroCValueLabel);
+    configureMacroReadout(osc1MacroAKnob, osc1MacroAValueLabel);
+    configureMacroReadout(osc1MacroBKnob, osc1MacroBValueLabel);
+    configureMacroReadout(osc1MacroCKnob, osc1MacroCValueLabel);
+    configureMacroReadout(osc2MacroAKnob, osc2MacroAValueLabel);
+    configureMacroReadout(osc2MacroBKnob, osc2MacroBValueLabel);
+    configureMacroReadout(osc2MacroCKnob, osc2MacroCValueLabel);
+    configureMacroReadout(osc3MacroAKnob, osc3MacroAValueLabel);
+    configureMacroReadout(osc3MacroBKnob, osc3MacroBValueLabel);
+    configureMacroReadout(osc3MacroCKnob, osc3MacroCValueLabel);
 
     configurePitchReadout(osc1PitchKnob, osc1PitchValueLabel);
     configurePitchReadout(osc2PitchKnob, osc2PitchValueLabel);
@@ -742,15 +778,15 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     };
 
     // OSC macro labels can become long in some modes; use a slightly smaller font.
-    oscSineLabel.setFont(juce::FontOptions(11.0f));
-    oscSawLabel.setFont(juce::FontOptions(11.0f));
-    oscSquareLabel.setFont(juce::FontOptions(11.0f));
-    osc2SineLabel.setFont(juce::FontOptions(11.0f));
-    osc2SawLabel.setFont(juce::FontOptions(11.0f));
-    osc2SquareLabel.setFont(juce::FontOptions(11.0f));
-    osc3SineLabel.setFont(juce::FontOptions(11.0f));
-    osc3SawLabel.setFont(juce::FontOptions(11.0f));
-    osc3SquareLabel.setFont(juce::FontOptions(11.0f));
+    osc1MacroALabel.setFont(juce::FontOptions(11.0f));
+    osc1MacroBLabel.setFont(juce::FontOptions(11.0f));
+    osc1MacroCLabel.setFont(juce::FontOptions(11.0f));
+    osc2MacroALabel.setFont(juce::FontOptions(11.0f));
+    osc2MacroBLabel.setFont(juce::FontOptions(11.0f));
+    osc2MacroCLabel.setFont(juce::FontOptions(11.0f));
+    osc3MacroALabel.setFont(juce::FontOptions(11.0f));
+    osc3MacroBLabel.setFont(juce::FontOptions(11.0f));
+    osc3MacroCLabel.setFont(juce::FontOptions(11.0f));
     osc1PitchLabel.setFont(juce::FontOptions(11.0f));
     osc2PitchLabel.setFont(juce::FontOptions(11.0f));
     osc3PitchLabel.setFont(juce::FontOptions(11.0f));
@@ -862,7 +898,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         enableLabelHoverOverlay(vowelLabel, "Vowel");
     };
 
-    configureOscSelector(0, oscModeBox, oscModeLabel, oscVowelBox, oscVowelLabel);
+    configureOscSelector(0, osc1ModeBox, osc1ModeLabel, osc1VowelBox, osc1VowelLabel);
     configureOscSelector(1, osc2ModeBox, osc2ModeLabel, osc2VowelBox, osc2VowelLabel);
     configureOscSelector(2, osc3ModeBox, osc3ModeLabel, osc3VowelBox, osc3VowelLabel);
 
@@ -1013,30 +1049,30 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           osc1PitchKnob,
                                           osc1PitchLabel,
                                           osc1PitchValueLabel,
-                                          oscSineKnob,
-                                          oscSawKnob,
-                                          oscSquareKnob,
+                                          osc1MacroAKnob,
+                                          osc1MacroBKnob,
+                                          osc1MacroCKnob,
                                           osc1EnabledButton,
-                                          oscSineLabel,
-                                          oscSawLabel,
-                                          oscSquareLabel,
+                                          osc1MacroALabel,
+                                          osc1MacroBLabel,
+                                          osc1MacroCLabel,
                                           osc1MacroAValueLabel,
                                           osc1MacroBValueLabel,
                                           osc1MacroCValueLabel,
-                                          oscModeBox,
-                                          oscModeLabel,
-                                          oscVowelBox,
-                                          oscVowelLabel,
+                                          osc1ModeBox,
+                                          osc1ModeLabel,
+                                          osc1VowelBox,
+                                          osc1VowelLabel,
                                           osc2PitchKnob,
                                           osc2PitchLabel,
                                           osc2PitchValueLabel,
-                                          osc2SineKnob,
-                                          osc2SawKnob,
-                                          osc2SquareKnob,
+                                          osc2MacroAKnob,
+                                          osc2MacroBKnob,
+                                          osc2MacroCKnob,
                                           osc2EnabledButton,
-                                          osc2SineLabel,
-                                          osc2SawLabel,
-                                          osc2SquareLabel,
+                                          osc2MacroALabel,
+                                          osc2MacroBLabel,
+                                          osc2MacroCLabel,
                                           osc2MacroAValueLabel,
                                           osc2MacroBValueLabel,
                                           osc2MacroCValueLabel,
@@ -1047,13 +1083,13 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           osc3PitchKnob,
                                           osc3PitchLabel,
                                           osc3PitchValueLabel,
-                                          osc3SineKnob,
-                                          osc3SawKnob,
-                                          osc3SquareKnob,
+                                          osc3MacroAKnob,
+                                          osc3MacroBKnob,
+                                          osc3MacroCKnob,
                                           osc3EnabledButton,
-                                          osc3SineLabel,
-                                          osc3SawLabel,
-                                          osc3SquareLabel,
+                                          osc3MacroALabel,
+                                          osc3MacroBLabel,
+                                          osc3MacroCLabel,
                                           osc3MacroAValueLabel,
                                           osc3MacroBValueLabel,
                                           osc3MacroCValueLabel,
@@ -1183,8 +1219,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachSlider(audioProcessor.getReverbAmountParam(), reverbKnob);
     attachComboBox(audioProcessor.getFilterTypeParam(0), filterTypeBox);
     attachComboBox(audioProcessor.getFilterTypeParam(1), filter2TypeBox);
-    attachComboBox(audioProcessor.getOscillatorModeParam(0), oscModeBox);
-    attachComboBox(audioProcessor.getOscillatorVowelParam(0), oscVowelBox);
+    attachComboBox(audioProcessor.getOscillatorModeParam(0), osc1ModeBox);
+    attachComboBox(audioProcessor.getOscillatorVowelParam(0), osc1VowelBox);
     attachComboBox(audioProcessor.getOscillatorModeParam(1), osc2ModeBox);
     attachComboBox(audioProcessor.getOscillatorVowelParam(1), osc2VowelBox);
     attachComboBox(audioProcessor.getOscillatorModeParam(2), osc3ModeBox);
@@ -1466,33 +1502,6 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
     const auto stripRadius = uiConfig != nullptr ? uiConfig->getFloat("editor.topStrip.cornerRadius", 12.0f) : 12.0f;
     g.fillAll(bg);
 
-    g.setColour(uiConfig != nullptr
-                    ? uiConfig->getColour("editor.topStrip.fillColour", juce::Colour::fromRGB(0x1A, 0x1A, 0x1A))
-                    : juce::Colour::fromRGB(0x1A, 0x1A, 0x1A));
-    g.fillRoundedRectangle(topMenuStripArea.toFloat(), stripRadius);
-    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 44));
-    g.drawRoundedRectangle(topMenuStripArea.toFloat(), stripRadius, 1.0f);
-    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 30));
-    g.drawLine(static_cast<float>(logoPanelArea.getRight() + 6),
-               static_cast<float>(topMenuStripArea.getY() + 10),
-               static_cast<float>(logoPanelArea.getRight() + 6),
-               static_cast<float>(topMenuStripArea.getBottom() - 10),
-               1.0f);
-    g.drawLine(static_cast<float>(topMenuPresetClusterArea.getRight() + 6),
-               static_cast<float>(topMenuStripArea.getY() + 10),
-               static_cast<float>(topMenuPresetClusterArea.getRight() + 6),
-               static_cast<float>(topMenuStripArea.getBottom() - 10),
-               1.0f);
-    g.drawLine(static_cast<float>(topMenuSectionButtonsArea.getRight() + 4),
-               static_cast<float>(topMenuStripArea.getY() + 10),
-               static_cast<float>(topMenuSectionButtonsArea.getRight() + 4),
-               static_cast<float>(topMenuStripArea.getBottom() - 10),
-               1.0f);
-    g.drawLine(static_cast<float>(topMenuMenuButtonArea.getX() - 5),
-               static_cast<float>(topMenuStripArea.getY() + 10),
-               static_cast<float>(topMenuMenuButtonArea.getX() - 5),
-               static_cast<float>(topMenuStripArea.getBottom() - 10),
-               1.0f);
 
     if (backgroundImage.isValid())
     {
@@ -1510,20 +1519,33 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
         g.fillAll();
     }
 
+    // The strip is filled AFTER the background image, not before it. Drawn
+    // first, the image simply covered it - which is why only the logo panel,
+    // the one piece painted after the image, had any background at all.
+    //
+    // One fill for the whole strip: there used to be an outline and four
+    // vertical dividers marking the boundaries between logo, sections, presets
+    // and menu, and with the sections butted together there is nothing left to
+    // mark.
     g.setColour(uiConfig != nullptr
-                    ? uiConfig->getColour("editor.logo.fillColour", juce::Colour::fromRGB(0x1A, 0x1A, 0x1A))
+                    ? uiConfig->getColour("editor.topStrip.fillColour", juce::Colour::fromRGB(0x1A, 0x1A, 0x1A))
                     : juce::Colour::fromRGB(0x1A, 0x1A, 0x1A));
-    g.fillRoundedRectangle(logoPanelArea.toFloat(), stripRadius);
+    g.fillRoundedRectangle(topMenuStripArea.toFloat(), stripRadius);
 
     if (logoFrame.isValid())
     {
-                const auto subtitleHeight = 18.0f;
-                const auto subtitleGap = 4.0f;
-                const auto logoSize = static_cast<float>(juce::jlimit(80, 120, logoPanelArea.getHeight() - 46));
-                const auto contentHeight = logoSize + subtitleGap + subtitleHeight;
+                // The version line used to sit under the logo; it is a menu item
+                // now, so the logo has the panel to itself.
+                // The 46px reserve was room for the version subtitle. With that
+                // gone the logo fills the panel, which is what lets a shorter
+                // header still show it at a sensible size.
+                const auto logoSize = static_cast<float>(juce::jlimit(40, 120, logoPanelArea.getHeight() - 12));
+                const auto contentHeight = logoSize;
+                // Exactly centred. The +2 nudge here compensated for the version
+                // subtitle sitting below the logo; with that gone it just left
+                // the logo hanging low in the panel.
                 const auto contentTop = static_cast<float>(logoPanelArea.getY())
-                                                                + (static_cast<float>(logoPanelArea.getHeight()) - contentHeight) * 0.5f
-                                                                + 2.0f;
+                                                                + (static_cast<float>(logoPanelArea.getHeight()) - contentHeight) * 0.5f;
 
                 const auto logoArea = juce::Rectangle<float>(static_cast<float>(logoPanelArea.getX()),
                                                                                                          contentTop,
@@ -1563,18 +1585,6 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
                                    transform.translated(offsetX, offsetY * 0.45f));
             g.setOpacity(1.0f);
         }
-
-                g.setColour(uiConfig != nullptr
-                                ? uiConfig->getColour("editor.logo.subtitle.colour", juce::Colour::fromRGB(232, 232, 232))
-                                : juce::Colour::fromRGB(232, 232, 232));
-                g.setFont(juce::FontOptions(uiConfig != nullptr
-                                                ? uiConfig->getFloat("editor.logo.subtitle.fontSize", 14.0f)
-                                                : 14.0f));
-                const auto subtitleArea = juce::Rectangle<int>(logoPanelArea.getX() + 10,
-                                                                                                             static_cast<int>(std::round(logoArea.getBottom() + subtitleGap - 2.0f)),
-                                                                                                             logoPanelArea.getWidth() - 20,
-                                                                                                             static_cast<int>(subtitleHeight));
-                g.drawText("Synth v" + px3::version::string(), subtitleArea, juce::Justification::centred);
     }
 
     // The FX section cards are painted by FxPanel itself - see
@@ -1683,14 +1693,24 @@ void PX3SynthAudioProcessorEditor::resized()
     headerArea = bounds.removeFromTop(headerHeight);
     topMenuStripArea = headerArea;
 
-    auto topStripContent = topMenuStripArea.reduced(8, 8);
+    // How far the bar's contents sit inside the strip. The tabs are meant to
+    // read as part of the bar rather than as buttons placed on it, so this is
+    // deliberately small.
+    const auto stripPadX = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.stripPadX", 3) : 3;
+    const auto stripPadY = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.stripPadY", 3) : 3;
+    auto topStripContent = topMenuStripArea.reduced(stripPadX, stripPadY);
     const auto logoWidth = uiConfig != nullptr ? uiConfig->getInt("editor.layout.logoPanelWidth", 150) : 150;
     logoPanelArea = topStripContent.removeFromLeft(logoWidth);
-    topStripContent.removeFromLeft(10);
+
+    // The logo is drawn across its whole panel but only opens the site from the
+    // left of it. The right edge butts against the OSC button now that the
+    // sections are flush, and losing the panel you meant to click because a
+    // browser opened is a bad trade.
+    const auto logoClickInset = uiConfig != nullptr ? uiConfig->getInt("editor.layout.logoClickInsetRight", 18) : 18;
+    logoClickArea = logoPanelArea.withTrimmedRight(juce::jlimit(0, logoPanelArea.getWidth() / 2, logoClickInset));
 
     const auto gainWidth = uiConfig != nullptr ? uiConfig->getInt("editor.layout.gainPanelWidth", 100) : 100;
     topMenuGainArea = topStripContent.removeFromRight(gainWidth);
-    topStripContent.removeFromRight(10);
 
     headerPlaceholderArea = topStripContent;
     if (topMenuBar != nullptr)
@@ -1704,11 +1724,24 @@ void PX3SynthAudioProcessorEditor::resized()
         presetBarArea = topMenuPresetClusterArea;
     }
 
+    // Knob and label as one group: the label sits directly under the knob
+    // rather than pinned to the bottom of the area, which left a gap that grew
+    // with the header height.
     auto gainArea = topMenuGainArea.reduced(9, 4);
-    const auto gainKnobSize = juce::jlimit(46, 60, juce::jmin(gainArea.getWidth() - 6, gainArea.getHeight() - 22));
+    const auto gainLabelHeight = 14;
+    const auto gainLabelGap = uiConfig != nullptr ? uiConfig->getInt("editor.layout.gainLabelGap", 2) : 2;
+    const auto gainKnobSize = juce::jlimit(46, 60,
+                                           juce::jmin(gainArea.getWidth() - 6,
+                                                      gainArea.getHeight() - gainLabelHeight - gainLabelGap));
+    const auto gainGroupHeight = gainKnobSize + gainLabelGap + gainLabelHeight;
+    const auto gainGroupTop = gainArea.getCentreY() - gainGroupHeight / 2;
+
     gainKnob.setBounds(juce::Rectangle<int>(gainKnobSize, gainKnobSize)
-                           .withCentre({ gainArea.getCentreX(), gainArea.getY() + gainKnobSize / 2 + 4 }));
-    gainLabel.setBounds(gainArea.getX(), gainArea.getBottom() - 16, gainArea.getWidth(), 14);
+                           .withCentre({ gainArea.getCentreX(), gainGroupTop + gainKnobSize / 2 }));
+    gainLabel.setBounds(gainArea.getX(),
+                        gainGroupTop + gainKnobSize + gainLabelGap,
+                        gainArea.getWidth(),
+                        gainLabelHeight);
 
     bounds.removeFromTop(sectionGap);
 
@@ -1726,7 +1759,11 @@ void PX3SynthAudioProcessorEditor::resized()
     pianoKeyboard.setBounds(keyboardRow);
     // midiStatusLabel.setBounds(midiStatusArea.withTrimmedLeft(180).withTrimmedRight(180));
 
-    panelViewportArea = controlsArea.reduced(8, 8);
+    // Vertical inset only. The horizontal 8 here was the reason the cards sat
+    // inboard of the top nav: the header strip is drawn at the full width of
+    // `bounds`, so any extra horizontal reduce on the panel area misaligns the
+    // two edges.
+    panelViewportArea = controlsArea.reduced(0, 8);
     // panels.osc: a declared height wins over the editor's allocation, and
     // overflowY decides whether the panel scrolls when its content is taller
     // than the space it has.
@@ -1987,10 +2024,10 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
         uiConfig->applyComboStyle(comboStyle, vibeTypeBox);
         uiConfig->applyComboStyle(comboStyle, filterTypeBox);
         uiConfig->applyComboStyle(comboStyle, filter2TypeBox);
-        uiConfig->applyComboStyle(comboStyle, oscModeBox);
+        uiConfig->applyComboStyle(comboStyle, osc1ModeBox);
         uiConfig->applyComboStyle(comboStyle, osc2ModeBox);
         uiConfig->applyComboStyle(comboStyle, osc3ModeBox);
-        uiConfig->applyComboStyle(comboStyle, oscVowelBox);
+        uiConfig->applyComboStyle(comboStyle, osc1VowelBox);
         uiConfig->applyComboStyle(comboStyle, osc2VowelBox);
         uiConfig->applyComboStyle(comboStyle, osc3VowelBox);
         uiConfig->applyComboStyle(comboStyle, delayAlgoBox);
@@ -2032,7 +2069,7 @@ void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
     }
 
     logoClickArmed = false;
-    if (logoPanelArea.contains(point))
+    if (logoClickArea.contains(point))
     {
         logoClickArmed = true;
         logoMouseDownPoint = point;
@@ -2160,7 +2197,7 @@ void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
     if (logoClickArmed)
     {
         logoClickArmed = false;
-        if (logoPanelArea.contains(point))
+        if (logoClickArea.contains(point))
         {
             juce::URL("https://px3px3.com").launchInDefaultBrowser();
         }
@@ -2646,7 +2683,10 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
         favorite,
         import,
         exportPreset,
-        debug
+        debug,
+        // Never dispatched: the item carrying it is disabled, so it is a label
+        // in the menu rather than a command.
+        versionInfo
     };
 
     juce::PopupMenu menu;
@@ -2663,6 +2703,11 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
 #if PX3_DEBUG_PANEL
     menu.addSeparator();
     menu.addItem(MenuItemId::debug, "Debug");
+
+    // Disabled, so it reads as information rather than as something to click.
+    // This is where the version lives now that the logo panel does not show it.
+    menu.addSeparator();
+    menu.addItem(MenuItemId::versionInfo, "P(X3) Synth v" + px3::version::string(), false, false);
 #endif
 
     if (topMenuBar == nullptr)
@@ -2896,8 +2941,8 @@ void PX3SynthAudioProcessorEditor::refreshOscillatorModeUI()
 
         if (oscIndex == 0)
         {
-            modeBox = &oscModeBox;
-            vowelBox = &oscVowelBox;
+            modeBox = &osc1ModeBox;
+            vowelBox = &osc1VowelBox;
         }
         else if (oscIndex == 1)
         {
