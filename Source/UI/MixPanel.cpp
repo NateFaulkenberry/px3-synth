@@ -13,19 +13,23 @@ MixPanel::MixPanel(PX3SynthAudioProcessor& processorIn,
                    juce::Colour panelAccent)
         : processor(processorIn),
             knobLookAndFeel(knobLookAndFeelIn),
-            channels { { &subChannel, &osc1Channel, &osc2Channel, &osc3Channel, &fxChannel } },
+            channels { { &subChannel, &osc1Channel, &osc2Channel, &osc3Channel, &dryChannel, &fxChannel } },
             accent(panelAccent)
 {
         configureChannelWidgets(subChannel, "SUB", true, false);
         configureChannelWidgets(osc1Channel, "OSC 1", true, false);
         configureChannelWidgets(osc2Channel, "OSC 2", true, false);
         configureChannelWidgets(osc3Channel, "OSC 3", true, false);
+        // No FX send on the dry bus: it is what the sends feed away from, so a
+        // send here would route the dry path into the FX chain it bypasses.
+        configureChannelWidgets(dryChannel, "DRY", false, true);
         configureChannelWidgets(fxChannel, "FX", false, true);
 
         sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerLevelParam(0), subChannel.fader, nullptr));
         sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerLevelParam(1), osc1Channel.fader, nullptr));
         sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerLevelParam(2), osc2Channel.fader, nullptr));
         sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerLevelParam(3), osc3Channel.fader, nullptr));
+        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getDryBusGainParam(), dryChannel.fader, nullptr));
         sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getFxReturnGainParam(), fxChannel.fader, nullptr));
 
         for (int sourceIndex = 0; sourceIndex < PX3SynthAudioProcessor::kMixerSourceCount; ++sourceIndex)
@@ -37,6 +41,11 @@ MixPanel::MixPanel(PX3SynthAudioProcessor& processorIn,
             buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getMixerSoloParam(sourceIndex), channel->solo, nullptr));
             buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getMixerPhaseInvertParam(sourceIndex), channel->phase, nullptr));
         }
+
+        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getDryBusPanParam(), dryChannel.pan, nullptr));
+        buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getDryBusMuteParam(), dryChannel.mute, nullptr));
+        buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getDryBusSoloParam(), dryChannel.solo, nullptr));
+        buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getDryBusPhaseInvertParam(), dryChannel.phase, nullptr));
 
         sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getFxReturnPanParam(), fxChannel.pan, nullptr));
         buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getFxReturnMuteParam(), fxChannel.mute, nullptr));
@@ -276,11 +285,12 @@ void MixPanel::applyConfigToChannels()
     // Each channel reads its own style block, so it can wear the colours of the
     // thing it controls: the sub oscillator, the three oscillators, and the FX
     // return - which takes the Delay card's scheme.
-    const std::array<std::pair<ChannelWidgets*, const char*>, 5> styledChannels { {
+    const std::array<std::pair<ChannelWidgets*, const char*>, 6> styledChannels { {
         { &subChannel, "mixerSub" },
         { &osc1Channel, "mixerOsc1" },
         { &osc2Channel, "mixerOsc2" },
         { &osc3Channel, "mixerOsc3" },
+        { &dryChannel, "mixerDry" },
         { &fxChannel, "mixerFx" },
     } };
 
@@ -310,20 +320,37 @@ void MixPanel::applyConfigToChannels()
         meterStyle.borderColour = uiConfig->getColour("mix.meter.borderColour", meterStyle.borderColour);
     }
 
-    for (auto* channel : channels)
+    for (std::size_t index = 0; index < channels.size(); ++index)
     {
+        auto* channel = channels[index];
         if (channel == nullptr)
         {
             continue;
         }
 
-        // The fader wears its channel's identity: the accent tints the filled
-        // travel and the cap's indicator line.
+        // The fader keeps the colour of the SOURCE it controls, read from that
+        // source's own card - not from the channel strip's card, which now
+        // wears the mixer's scheme. Taking it from the strip would have turned
+        // every fader white along with the cards.
         auto channelFaderStyle = faderStyle;
-        if (channel->component != nullptr)
+        if (uiConfig != nullptr)
         {
-            channelFaderStyle.accentColour = channel->component->cardAccentColour();
-            channelFaderStyle.trackColour = channelFaderStyle.accentColour.withAlpha(0.80f);
+            static const std::array<const char*, 6> sourceCards { {
+                "cards.subOsc.border.color",
+                "cards.osc1.border.color",
+                "cards.osc2.border.color",
+                "cards.osc3.border.color",
+                "cards.delay.border.color",   // the dry bus takes the FX scheme
+                "cards.delay.border.color",   // and so does the FX return
+            } };
+
+            const auto slot = index;
+            if (slot < sourceCards.size())
+            {
+                channelFaderStyle.accentColour =
+                    uiConfig->getColour(sourceCards[slot], channelFaderStyle.accentColour);
+                channelFaderStyle.trackColour = channelFaderStyle.accentColour.withAlpha(0.80f);
+            }
         }
         channel->fader.applyStyle(channelFaderStyle);
         channel->mute.applyStyle(muteStyle);
@@ -347,8 +374,22 @@ void MixPanel::refreshMeterValues()
             channel->meter.setLevel(processor.debugGetMixerSourceRms(sourceIndex));
             channel->valueLabel.setText(linearGainToDbText(static_cast<float>(channel->fader.getValue())), juce::dontSendNotification);
             refreshKnobReadouts(*channel);
+
+            // Sub Osc is source 0 and the three oscillators follow it, matching
+            // the mixer's own source order.
+            if (channel->component != nullptr)
+            {
+                const auto sourceOn = sourceIndex == 0
+                                          ? processor.getSubOscEnabledParam().get()
+                                          : processor.getOscillatorEnabledParam(sourceIndex - 1).get();
+                channel->component->setSourceActive(sourceOn);
+            }
         }
     }
+
+    dryChannel.meter.setLevel(processor.debugGetDryBusRms());
+    dryChannel.valueLabel.setText(linearGainToDbText(static_cast<float>(dryChannel.fader.getValue())), juce::dontSendNotification);
+    refreshKnobReadouts(dryChannel);
 
     fxChannel.meter.setLevel(processor.debugGetFxReturnRms());
     fxChannel.valueLabel.setText(linearGainToDbText(static_cast<float>(fxChannel.fader.getValue())), juce::dontSendNotification);

@@ -130,6 +130,17 @@ public:
     juce::AudioParameterFloat& getFilterCutoffParam(int filterIndex) const;
     juce::AudioParameterFloat& getFilterResonanceParam(int filterIndex) const;
     juce::AudioParameterChoice& getFilterTypeParam(int filterIndex) const;
+
+    // Comb mode's controls. Musical terms - a pitch and a decay time - rather
+    // than the loop's delay length and feedback gain, which mean different
+    // things at every tuning.
+    juce::AudioParameterFloat& getFilterCombTuneParam(int filterIndex) const;
+    juce::AudioParameterFloat& getFilterCombDecayParam(int filterIndex) const;
+    juce::AudioParameterFloat& getFilterCombDampingParam(int filterIndex) const;
+    juce::AudioParameterFloat& getFilterCombDispersionParam(int filterIndex) const;
+    juce::AudioParameterFloat& getFilterCombDriveParam(int filterIndex) const;
+    juce::AudioParameterFloat& getFilterCombMixParam(int filterIndex) const;
+    juce::AudioParameterBool& getFilterCombInvertParam(int filterIndex) const;
     juce::AudioParameterFloat& getAttackParam() const;
     juce::AudioParameterFloat& getEnvelopeAttackParam(int envIndex) const;
     juce::AudioParameterFloat& getDecayParam() const;
@@ -162,6 +173,17 @@ public:
     // is how you hear whether they are fighting each other.
     juce::AudioParameterBool& getMixerPhaseInvertParam(int sourceIndex) const;
     juce::AudioParameterBool& getFxReturnPhaseInvertParam() const;
+
+    // The dry bus as a mixer channel of its own: the summed sources before the
+    // FX return is added. Previously the dry path had no control at all, so the
+    // only way to change the balance between dry and wet was to move every
+    // source fader.
+    juce::AudioParameterFloat& getDryBusGainParam() const;
+    juce::AudioParameterFloat& getDryBusPanParam() const;
+    juce::AudioParameterBool& getDryBusMuteParam() const;
+    juce::AudioParameterBool& getDryBusSoloParam() const;
+    juce::AudioParameterBool& getDryBusPhaseInvertParam() const;
+    bool dryBusAudible(bool anySolo, bool anySourceSolo, bool drySolo) const;
     juce::AudioParameterBool& getMixerSoloParam(int sourceIndex) const;
     juce::AudioParameterBool& getFxReturnMuteParam() const;
     juce::AudioParameterBool& getFxReturnSoloParam() const;
@@ -373,6 +395,13 @@ private:
     std::array<juce::AudioParameterBool*, kFilterInstanceCount> filterEnabledParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCutoffParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterResonanceParams { { nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCombTuneParams { { nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCombDecayParams { { nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCombDampingParams { { nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCombDispersionParams { { nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCombDriveParams { { nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCombMixParams { { nullptr, nullptr } };
+    std::array<juce::AudioParameterBool*, kFilterInstanceCount> filterCombInvertParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterChoice*, kFilterInstanceCount> filterTypeParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> attackParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> decayParams { { nullptr, nullptr, nullptr } };
@@ -403,6 +432,11 @@ private:
     std::array<juce::AudioParameterBool*, kMixerSourceCount> mixerMuteParams { { nullptr, nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterBool*, kMixerSourceCount> mixerPhaseInvertParams { { nullptr, nullptr, nullptr, nullptr } };
     juce::AudioParameterBool* fxReturnPhaseInvertParam { nullptr };
+    juce::AudioParameterFloat* dryBusGainParam { nullptr };
+    juce::AudioParameterFloat* dryBusPanParam { nullptr };
+    juce::AudioParameterBool* dryBusMuteParam { nullptr };
+    juce::AudioParameterBool* dryBusSoloParam { nullptr };
+    juce::AudioParameterBool* dryBusPhaseInvertParam { nullptr };
     std::array<juce::AudioParameterBool*, kMixerSourceCount> mixerSoloParams { { nullptr, nullptr, nullptr, nullptr } };
     juce::AudioParameterBool* fxReturnMuteParam { nullptr };
     juce::AudioParameterBool* fxReturnSoloParam { nullptr };
@@ -538,6 +572,10 @@ private:
     std::array<SmoothedGain, kMixerSourceCount> sourcePhaseSmoothers;
     std::array<float, kMixerSourceCount> sourcePhaseValues { { 1.0f, 1.0f, 1.0f, 1.0f } };
     SmoothedGain fxReturnPhaseSmoother;
+    SmoothedGain dryBusGainSmoother;
+    SmoothedGain dryBusPhaseSmoother;
+    SmoothedGate dryBusGateSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> dryBusPanSmoother;
     std::array<SmoothedGain, kMixerSourceCount> sourcePanLeftSmoothers;
     std::array<SmoothedGain, kMixerSourceCount> sourcePanRightSmoothers;
     std::array<SmoothedGain, kMixerSourceCount> sourceSendSmoothers;

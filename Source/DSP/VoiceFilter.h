@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 
+#include "CombResonator.h"
 #include "FilterMode.h"
 #include "FilterTypes.h"
 
@@ -56,6 +57,9 @@ private:
 
     juce::dsp::IIR::Filter<float> stageA;
     juce::dsp::IIR::Filter<float> stageB;
+    // The comb is a different kind of filter, not another biquad response, so
+    // it gets its own unit rather than being forced through the IIR stages.
+    px3::CombResonator comb;
 
     FilterSettings targetSettings;
     FilterSettings currentSettings;

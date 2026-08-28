@@ -222,6 +222,49 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getMixerSendParam(int sourceI
     const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);
     return *mixerSendParams[static_cast<std::size_t>(idx)];
 }
+namespace
+{
+int clampFilterIndex(int filterIndex)
+{
+    return juce::jlimit(0, kFilterInstanceCount - 1, filterIndex);
+}
+}
+
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterCombTuneParam(int filterIndex) const
+{
+    return *filterCombTuneParams[static_cast<std::size_t>(clampFilterIndex(filterIndex))];
+}
+
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterCombDecayParam(int filterIndex) const
+{
+    return *filterCombDecayParams[static_cast<std::size_t>(clampFilterIndex(filterIndex))];
+}
+
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterCombDampingParam(int filterIndex) const
+{
+    return *filterCombDampingParams[static_cast<std::size_t>(clampFilterIndex(filterIndex))];
+}
+
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterCombDispersionParam(int filterIndex) const
+{
+    return *filterCombDispersionParams[static_cast<std::size_t>(clampFilterIndex(filterIndex))];
+}
+
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterCombDriveParam(int filterIndex) const
+{
+    return *filterCombDriveParams[static_cast<std::size_t>(clampFilterIndex(filterIndex))];
+}
+
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterCombMixParam(int filterIndex) const
+{
+    return *filterCombMixParams[static_cast<std::size_t>(clampFilterIndex(filterIndex))];
+}
+
+juce::AudioParameterBool& PX3SynthAudioProcessor::getFilterCombInvertParam(int filterIndex) const
+{
+    return *filterCombInvertParams[static_cast<std::size_t>(clampFilterIndex(filterIndex))];
+}
+
 juce::AudioParameterBool& PX3SynthAudioProcessor::getMixerPhaseInvertParam(int sourceIndex) const
 {
     const auto idx = juce::jlimit(0, kMixerSourceCount - 1, sourceIndex);
@@ -451,6 +494,49 @@ bool PX3SynthAudioProcessor::sourceSendAudible(int sourceIndex, bool anySolo, bo
     }
 
     return fxSolo;
+}
+
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDryBusGainParam() const
+{
+    return *dryBusGainParam;
+}
+
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDryBusPanParam() const
+{
+    return *dryBusPanParam;
+}
+
+juce::AudioParameterBool& PX3SynthAudioProcessor::getDryBusMuteParam() const
+{
+    return *dryBusMuteParam;
+}
+
+juce::AudioParameterBool& PX3SynthAudioProcessor::getDryBusSoloParam() const
+{
+    return *dryBusSoloParam;
+}
+
+juce::AudioParameterBool& PX3SynthAudioProcessor::getDryBusPhaseInvertParam() const
+{
+    return *dryBusPhaseInvertParam;
+}
+
+bool PX3SynthAudioProcessor::dryBusAudible(bool anySolo, bool anySourceSolo, bool drySolo) const
+{
+    if (dryBusMuteParam != nullptr && dryBusMuteParam->get())
+    {
+        return false;
+    }
+
+    if (!anySolo)
+    {
+        return true;
+    }
+
+    // Soloing a SOURCE has to leave the dry bus open, or the solo would mute
+    // the very path the soloed source is heard through. The dry channel is
+    // silenced by a solo only when something else is soloed and it is not.
+    return drySolo || anySourceSolo;
 }
 
 bool PX3SynthAudioProcessor::fxReturnAudible(bool anySolo, bool anySourceSolo, bool fxSolo) const

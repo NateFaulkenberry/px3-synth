@@ -28,7 +28,8 @@
       "sectionGap": 4,
       "logoPanelWidth": 150,
       "gainPanelWidth": 100,
-      "logoClickInsetRight": 18
+      "logoClickInsetRight": 18,
+      "scrollTail": 30
     },
     "logo": {
       "boost": 0.55,
@@ -51,8 +52,8 @@
       "text": "#BABEC6",
       "textActive": "#F5F7FA",
       "seam": "#00000096",
-      "inset": "#E2E8F028",
-      "insetActive": "#F0F5FC5A"
+      "inset": "#CBD1D828",
+      "insetActive": "#D8DCE35A"
     },
     "layout": {
       "rowHeight": 0,
@@ -268,7 +269,7 @@
       "visual": {
         "cardCornerRadius": 8,
         "outerStrokeThickness": 1.2,
-        "outerStrokeColour": "#DCE8FC",
+        "outerStrokeColour": "#BA70FF",
         "outerStrokeAlphaEnabled": 88,
         "outerStrokeAlphaDisabled": 66,
         "graph": {
@@ -287,7 +288,7 @@
       "visual": {
         "cardCornerRadius": 8,
         "outerStrokeThickness": 1.2,
-        "outerStrokeColour": "#DCE8FC",
+        "outerStrokeColour": "#BA70FF",
         "outerStrokeAlphaEnabled": 88,
         "outerStrokeAlphaDisabled": 66,
         "graph": {
@@ -306,7 +307,7 @@
       "visual": {
         "cardCornerRadius": 8,
         "outerStrokeThickness": 1.2,
-        "outerStrokeColour": "#DCE8FC",
+        "outerStrokeColour": "#BA70FF",
         "outerStrokeAlphaEnabled": 88,
         "outerStrokeAlphaDisabled": 66,
         "graph": {
@@ -441,16 +442,16 @@
     },
     "subOsc": {
       "border": {
-        "color": "#2E63C4",
+        "color": "#1F5CFF",
         "opacity": 0.35
       },
       "background": {
-        "color": "#2E63C4",
+        "color": "#1F5CFF",
         "opacity": 0.1
       },
       "gloss": {
         "topFill": {
-          "color": "#4A82E8",
+          "color": "#4E82FF",
           "opacity": 0.1
         },
         "bottomFill": {
@@ -459,7 +460,7 @@
         }
       },
       "title": {
-        "color": "#C8DBFF"
+        "color": "#BFD4FF"
       },
       "cardInner": {
         "margin": 0,
@@ -1367,15 +1368,15 @@
             }
           },
           "row1": {
-            "height": "18%",
+            "height": "14%",
             "gap": 8
           },
           "row2": {
-            "height": "40%",
+            "height": "56%",
             "gap": 10
           },
           "row3": {
-            "height": "42%",
+            "height": "30%",
             "padding": 4
           }
         }
@@ -1385,12 +1386,12 @@
       "margin": 2,
       "padding": 10,
       "background": {
-        "color": "#2E63C4",
+        "color": "#EDF1F7",
         "opacity": 0.06
       },
       "gloss": {
         "topFill": {
-          "color": "#4A82E8",
+          "color": "#FFFFFF",
           "opacity": 0.05
         },
         "bottomFill": {
@@ -1399,11 +1400,11 @@
         }
       },
       "border": {
-        "color": "#2E63C4",
+        "color": "#EDF1F7",
         "opacity": 0.28
       },
       "title": {
-        "color": "#C8DBFF"
+        "color": "#F7FAFF"
       },
       "cardInner": {
         "margin": 0,
@@ -1439,12 +1440,12 @@
       "margin": 2,
       "padding": 10,
       "background": {
-        "color": "#68C2FF",
+        "color": "#EDF1F7",
         "opacity": 0.06
       },
       "gloss": {
         "topFill": {
-          "color": "#93D6FF",
+          "color": "#FFFFFF",
           "opacity": 0.05
         },
         "bottomFill": {
@@ -1453,11 +1454,11 @@
         }
       },
       "border": {
-        "color": "#68C2FF",
+        "color": "#EDF1F7",
         "opacity": 0.28
       },
       "title": {
-        "color": "#DCF0FF"
+        "color": "#F7FAFF"
       },
       "cardInner": {
         "margin": 0,
@@ -1493,12 +1494,12 @@
       "margin": 2,
       "padding": 10,
       "background": {
-        "color": "#68C2FF",
+        "color": "#EDF1F7",
         "opacity": 0.06
       },
       "gloss": {
         "topFill": {
-          "color": "#93D6FF",
+          "color": "#FFFFFF",
           "opacity": 0.05
         },
         "bottomFill": {
@@ -1507,11 +1508,11 @@
         }
       },
       "border": {
-        "color": "#68C2FF",
+        "color": "#EDF1F7",
         "opacity": 0.28
       },
       "title": {
-        "color": "#DCF0FF"
+        "color": "#F7FAFF"
       },
       "cardInner": {
         "margin": 0,
@@ -1547,12 +1548,12 @@
       "margin": 2,
       "padding": 10,
       "background": {
-        "color": "#68C2FF",
+        "color": "#EDF1F7",
         "opacity": 0.06
       },
       "gloss": {
         "topFill": {
-          "color": "#93D6FF",
+          "color": "#FFFFFF",
           "opacity": 0.05
         },
         "bottomFill": {
@@ -1561,11 +1562,11 @@
         }
       },
       "border": {
-        "color": "#68C2FF",
+        "color": "#EDF1F7",
         "opacity": 0.28
       },
       "title": {
-        "color": "#DCF0FF"
+        "color": "#F7FAFF"
       },
       "cardInner": {
         "margin": 0,
@@ -1601,12 +1602,12 @@
       "margin": 2,
       "padding": 10,
       "background": {
-        "color": "#FFC66E",
+        "color": "#EDF1F7",
         "opacity": 0.06
       },
       "gloss": {
         "topFill": {
-          "color": "#FFD9A0",
+          "color": "#FFFFFF",
           "opacity": 0.05
         },
         "bottomFill": {
@@ -1615,11 +1616,65 @@
         }
       },
       "border": {
-        "color": "#FFC66E",
+        "color": "#EDF1F7",
         "opacity": 0.28
       },
       "title": {
-        "color": "#FFEBCB"
+        "color": "#F7FAFF"
+      },
+      "cardInner": {
+        "margin": 0,
+        "padding": 10,
+        "display": "flex",
+        "direction": "column",
+        "wrap": "nowrap",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "alignContent": "center",
+        "gap": 4,
+        "power": {
+          "x": 0,
+          "y": 0,
+          "size": 0
+        },
+        "rows": {
+          "default": {
+            "margin": 0,
+            "padding": 0,
+            "display": "flex",
+            "direction": "row",
+            "wrap": "nowrap",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "alignContent": "center",
+            "gap": 6
+          }
+        }
+      }
+    },
+    "mixerDry": {
+      "margin": 2,
+      "padding": 10,
+      "background": {
+        "color": "#EDF1F7",
+        "opacity": 0.06
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#FFFFFF",
+          "opacity": 0.05
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.04
+        }
+      },
+      "border": {
+        "color": "#EDF1F7",
+        "opacity": 0.28
+      },
+      "title": {
+        "color": "#F7FAFF"
       },
       "cardInner": {
         "margin": 0,

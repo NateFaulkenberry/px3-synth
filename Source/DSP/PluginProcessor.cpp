@@ -1,4 +1,6 @@
 #include "PluginProcessor.h"
+
+#include "CombResonator.h"
 #include "PluginProcessorInternals.h"
 #include "FilterMode.h"
 #include "LfoMode.h"
@@ -166,6 +168,51 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             labelPrefix + "Type",
             px3::filterModeChoices(),
             defaultMode);
+
+        // ---- comb mode ----------------------------------------------------
+        // Tune is skewed so the lower half of the knob covers the octaves that
+        // matter musically; a linear 50 Hz - 8 kHz sweep would spend most of
+        // its travel above the range anyone tunes a resonator to.
+        filterCombTuneParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
+            idPrefix + "CombTune",
+            labelPrefix + "Comb Tune",
+            juce::NormalisableRange<float>(px3::CombResonator::kMinTuneHz,
+                                           px3::CombResonator::kMaxTuneHz,
+                                           0.01f,
+                                           0.3f),
+            220.0f);
+        filterCombDecayParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
+            idPrefix + "CombDecay",
+            labelPrefix + "Comb Decay",
+            juce::NormalisableRange<float>(px3::CombResonator::kMinDecaySeconds,
+                                           px3::CombResonator::kMaxDecaySeconds,
+                                           0.001f,
+                                           0.35f),
+            0.6f);
+        filterCombDampingParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
+            idPrefix + "CombDamping",
+            labelPrefix + "Comb Damping",
+            juce::NormalisableRange<float>(0.0f, 1.0f),
+            0.25f);
+        filterCombDispersionParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
+            idPrefix + "CombDispersion",
+            labelPrefix + "Comb Dispersion",
+            juce::NormalisableRange<float>(0.0f, 1.0f),
+            0.0f);
+        filterCombDriveParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
+            idPrefix + "CombDrive",
+            labelPrefix + "Comb Drive",
+            juce::NormalisableRange<float>(0.0f, 1.0f),
+            0.0f);
+        filterCombMixParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
+            idPrefix + "CombMix",
+            labelPrefix + "Comb Mix",
+            juce::NormalisableRange<float>(0.0f, 1.0f),
+            1.0f);
+        filterCombInvertParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterBool(
+            idPrefix + "CombInvert",
+            labelPrefix + "Comb Invert",
+            false);
     }
     attackParam = new juce::AudioParameterFloat("ampAttack",
                                                  "Amp Attack",
@@ -276,6 +323,21 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     fxReturnMuteParam = new juce::AudioParameterBool("mix.fx.mute", "FX Return Mute", false);
     fxReturnSoloParam = new juce::AudioParameterBool("mix.fx.solo", "FX Return Solo", false);
     fxReturnPhaseInvertParam = new juce::AudioParameterBool("mix.fx.phase", "FX Return Phase Invert", false);
+
+    // The dry bus. Its gain range matches a source channel's so the two read
+    // the same on the fader, and it defaults to unity - the dry path behaves
+    // exactly as it did before this channel existed until someone moves it.
+    dryBusGainParam = new juce::AudioParameterFloat("mix.dry.level",
+                                                    "Dry Level",
+                                                    juce::NormalisableRange<float>(0.0f, px3::processor_internal::channelFaderMaxGain()),
+                                                    1.0f);
+    dryBusPanParam = new juce::AudioParameterFloat("mix.dry.pan",
+                                                   "Dry Pan",
+                                                   juce::NormalisableRange<float>(-1.0f, 1.0f),
+                                                   0.0f);
+    dryBusMuteParam = new juce::AudioParameterBool("mix.dry.mute", "Dry Mute", false);
+    dryBusSoloParam = new juce::AudioParameterBool("mix.dry.solo", "Dry Solo", false);
+    dryBusPhaseInvertParam = new juce::AudioParameterBool("mix.dry.phase", "Dry Phase Invert", false);
     fxReturnPanParam = new juce::AudioParameterFloat("mix.fx.pan", "FX Return Pan", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
     reverbAmountParam = new juce::AudioParameterFloat("reverbAmount", "Reverb", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     reverbEnabledParam = new juce::AudioParameterBool("reverbEnabled", "Reverb Enabled", true);
@@ -392,6 +454,16 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(filterCutoffParams[static_cast<std::size_t>(filterIndex)]);
         addParameter(filterResonanceParams[static_cast<std::size_t>(filterIndex)]);
         addParameter(filterTypeParams[static_cast<std::size_t>(filterIndex)]);
+        // Registered like every other parameter, which is what puts them in the
+        // DAW's automation list, the session state and preset files - all of
+        // which iterate getParameters().
+        addParameter(filterCombTuneParams[static_cast<std::size_t>(filterIndex)]);
+        addParameter(filterCombDecayParams[static_cast<std::size_t>(filterIndex)]);
+        addParameter(filterCombDampingParams[static_cast<std::size_t>(filterIndex)]);
+        addParameter(filterCombDispersionParams[static_cast<std::size_t>(filterIndex)]);
+        addParameter(filterCombDriveParams[static_cast<std::size_t>(filterIndex)]);
+        addParameter(filterCombMixParams[static_cast<std::size_t>(filterIndex)]);
+        addParameter(filterCombInvertParams[static_cast<std::size_t>(filterIndex)]);
     }
     addParameter(attackParam);
     addParameter(decayParam);
@@ -431,6 +503,11 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     }
     addParameter(fxReturnMuteParam);
     addParameter(fxReturnPhaseInvertParam);
+    addParameter(dryBusGainParam);
+    addParameter(dryBusPanParam);
+    addParameter(dryBusMuteParam);
+    addParameter(dryBusSoloParam);
+    addParameter(dryBusPhaseInvertParam);
     addParameter(fxReturnSoloParam);
     addParameter(fxReturnPanParam);
     addParameter(reverbAmountParam);
@@ -643,6 +720,19 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
         }
     }
     fxSendGainSmoother.prepare(sampleRate, kMixerSmoothingSeconds);
+    dryBusGainSmoother.prepare(sampleRate, kMixerSmoothingSeconds);
+    dryBusGainSmoother.setCurrent(dryBusGainParam != nullptr ? dryBusGainParam->get() : 1.0f);
+    dryBusPhaseSmoother.prepare(sampleRate, kMixerSmoothingSeconds);
+    dryBusPhaseSmoother.setCurrent(dryBusPhaseInvertParam != nullptr && dryBusPhaseInvertParam->get() ? -1.0f : 1.0f);
+    dryBusGateSmoother.prepare(sampleRate, 0.010);
+    dryBusGateSmoother.setCurrent(dryBusAudible(anyChannelSoloed(),
+                                                anySourceSoloed(),
+                                                dryBusSoloParam != nullptr && dryBusSoloParam->get()));
+    dryBusPanSmoother.reset(sampleRate, 0.012);
+    dryBusPanSmoother.setCurrentAndTargetValue(dryBusPanParam != nullptr
+                                                   ? juce::jlimit(-1.0f, 1.0f, dryBusPanParam->get())
+                                                   : 0.0f);
+
     fxReturnPhaseSmoother.prepare(sampleRate, kMixerSmoothingSeconds);
     fxReturnPhaseSmoother.setCurrent(fxReturnPhaseInvertParam != nullptr && fxReturnPhaseInvertParam->get() ? -1.0f : 1.0f);
     fxReturnGainSmoother.prepare(sampleRate, kMixerSmoothingSeconds);
@@ -1341,6 +1431,12 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     }
     fxReturnGateSmoother.setTarget(fxReturnAudible(anySolo, anySourceSolo, fxSolo));
 
+    const auto drySolo = dryBusSoloParam != nullptr && dryBusSoloParam->get();
+    dryBusGateSmoother.setTarget(dryBusAudible(anySolo, anySourceSolo, drySolo));
+    dryBusPanSmoother.setTargetValue(dryBusPanParam != nullptr
+                                         ? juce::jlimit(-1.0f, 1.0f, dryBusPanParam->get())
+                                         : 0.0f);
+
     auto panToGains = [](float pan, float& leftGain, float& rightGain)
     {
         panToGainsStatic(pan, leftGain, rightGain);
@@ -1489,6 +1585,37 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                 diagState.prevMixerSendGain[idx] = sendGainNow;
             }
 #endif
+        }
+
+        // ---- DRY CHANNEL --------------------------------------------------
+        // The dry bus gets the same treatment a source channel does - level,
+        // pan, polarity, mute/solo - applied to the sum rather than to each
+        // source. Its pan is a bus pan: it moves the already-panned mix, which
+        // is what a mixer's dry return does.
+        {
+            const auto dryGain = dryBusGainSmoother.next(dryBusGainParam != nullptr ? dryBusGainParam->get() : 1.0f);
+            const auto dryPhase = dryBusPhaseSmoother.next(
+                (dryBusPhaseInvertParam != nullptr && dryBusPhaseInvertParam->get()) ? -1.0f : 1.0f);
+            const auto dryGate = dryBusGateSmoother.next();
+
+            float dryPanLeft = 1.0f;
+            float dryPanRight = 1.0f;
+            panToGains(dryBusPanSmoother.getNextValue(), dryPanLeft, dryPanRight);
+
+            // Normalised so centre is unity.
+            //
+            // panToGains is an equal-power law, which puts 0.707 on each side at
+            // centre. That is right for a SOURCE, where the two halves sum to
+            // constant power as it moves across the field. Applied to the dry
+            // bus it would drop the whole dry path 3 dB the moment this channel
+            // existed - which is exactly what the mixer headroom tests caught.
+            constexpr auto centreGain = juce::MathConstants<float>::sqrt2;
+            dryPanLeft *= centreGain;
+            dryPanRight *= centreGain;
+
+            const auto dryScale = dryGain * dryPhase * dryGate;
+            dryL *= dryScale * dryPanLeft;
+            dryR *= dryScale * dryPanRight;
         }
 
         dryBusBuffer.setSample(0, sample, dryL);

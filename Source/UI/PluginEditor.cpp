@@ -538,7 +538,61 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     // extremes are not: unlike pan, full depth is not a position people aim at.
     lfoAmountKnob.setCentreDetent(0.06);
     lfoAmountKnob.setExtremeDetent(0.0);
+    // ---- comb mode -------------------------------------------------------
+    // Configured directly rather than through knobBindings: the bindings array
+    // is indexed by hand at every call site, so growing it by twelve would mean
+    // renumbering every entry after it.
+    for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
+    {
+        const auto slot = static_cast<std::size_t>(filterIndex);
+
+        const auto setupCombKnob = [this](juce::Slider& knob,
+                                          KnobLabel& label,
+                                          const juce::String& text,
+                                          juce::AudioParameterFloat& parameter)
+        {
+            knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            knob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+            const auto& range = parameter.getNormalisableRange();
+            knob.setRange(range.start, range.end);
+            knob.setLookAndFeel(&knobLookAndFeel);
+            knob.setTooltip(text);
+
+            label.setText(text, juce::dontSendNotification);
+            label.setJustificationType(juce::Justification::centred);
+            label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+            label.setFont(juce::FontOptions(11.5f));
+            label.setInterceptsMouseClicks(false, false);
+
+            attachSlider(parameter, knob);
+        };
+
+        setupCombKnob(combTuneKnobs[slot], combTuneLabels[slot], "TUNE",
+                      audioProcessor.getFilterCombTuneParam(filterIndex));
+        setupCombKnob(combDecayKnobs[slot], combDecayLabels[slot], "DECAY",
+                      audioProcessor.getFilterCombDecayParam(filterIndex));
+        setupCombKnob(combDampingKnobs[slot], combDampingLabels[slot], "DAMP",
+                      audioProcessor.getFilterCombDampingParam(filterIndex));
+        setupCombKnob(combDispersionKnobs[slot], combDispersionLabels[slot], "DISPERSE",
+                      audioProcessor.getFilterCombDispersionParam(filterIndex));
+        setupCombKnob(combDriveKnobs[slot], combDriveLabels[slot], "DRIVE",
+                      audioProcessor.getFilterCombDriveParam(filterIndex));
+        setupCombKnob(combMixKnobs[slot], combMixLabels[slot], "MIX",
+                      audioProcessor.getFilterCombMixParam(filterIndex));
+
+        // Polarity is a two-state choice, so it is a switch rather than a knob
+        // - the same chip Mood's Freeze uses.
+        auto& invert = combInvertButtons[slot];
+        invert.setButtonText("PHASE +");
+        invert.setStateLabels("PHASE -", "PHASE +");
+        invert.setTooltip("Invert the resonator's feedback polarity");
+        attachButton(audioProcessor.getFilterCombInvertParam(filterIndex), invert);
+    }
+
     configureKnob(knobBindings[23], "MASTER", audioProcessor.getMasterGainParam());
+    // The caption is gone from the layout, so the name lives on the knob.
+    gainKnob.setTooltip("Master gain");
+    gainLabel.setVisible(false);
 
     const auto formatPitchCents = [](double semitoneValue)
     {
@@ -1122,10 +1176,26 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           std::array<juce::Label*, kFilterInstanceCount> { { &resonanceLabel, &resonance2Label } },
                                           std::array<juce::ComboBox*, kFilterInstanceCount> { { &filterTypeBox, &filter2TypeBox } },
                                           std::array<juce::Label*, kFilterInstanceCount> { { &filter1TypeLabel, &filter2TypeLabel } },
+                                          std::array<juce::Slider*, kFilterInstanceCount> { { &combTuneKnobs[0], &combTuneKnobs[1] } },
+                                          std::array<juce::Slider*, kFilterInstanceCount> { { &combDecayKnobs[0], &combDecayKnobs[1] } },
+                                          std::array<juce::Slider*, kFilterInstanceCount> { { &combDampingKnobs[0], &combDampingKnobs[1] } },
+                                          std::array<juce::Slider*, kFilterInstanceCount> { { &combDispersionKnobs[0], &combDispersionKnobs[1] } },
+                                          std::array<juce::Slider*, kFilterInstanceCount> { { &combDriveKnobs[0], &combDriveKnobs[1] } },
+                                          std::array<juce::Slider*, kFilterInstanceCount> { { &combMixKnobs[0], &combMixKnobs[1] } },
+                                          std::array<juce::Button*, kFilterInstanceCount> { { &combInvertButtons[0], &combInvertButtons[1] } },
+                                          std::array<juce::Label*, kFilterInstanceCount> { { &combTuneLabels[0], &combTuneLabels[1] } },
+                                          std::array<juce::Label*, kFilterInstanceCount> { { &combDecayLabels[0], &combDecayLabels[1] } },
+                                          std::array<juce::Label*, kFilterInstanceCount> { { &combDampingLabels[0], &combDampingLabels[1] } },
+                                          std::array<juce::Label*, kFilterInstanceCount> { { &combDispersionLabels[0], &combDispersionLabels[1] } },
+                                          std::array<juce::Label*, kFilterInstanceCount> { { &combDriveLabels[0], &combDriveLabels[1] } },
+                                          std::array<juce::Label*, kFilterInstanceCount> { { &combMixLabels[0], &combMixLabels[1] } },
                                           std::array<juce::AudioParameterBool*, kFilterInstanceCount> { { &audioProcessor.getFilterEnabledParam(0), &audioProcessor.getFilterEnabledParam(1) } },
                                           std::array<juce::AudioParameterFloat*, kFilterInstanceCount> { { &audioProcessor.getFilterCutoffParam(0), &audioProcessor.getFilterCutoffParam(1) } },
                                           std::array<juce::AudioParameterFloat*, kFilterInstanceCount> { { &audioProcessor.getFilterResonanceParam(0), &audioProcessor.getFilterResonanceParam(1) } },
                                           std::array<juce::AudioParameterChoice*, kFilterInstanceCount> { { &audioProcessor.getFilterTypeParam(0), &audioProcessor.getFilterTypeParam(1) } },
+                                          std::array<juce::AudioParameterFloat*, kFilterInstanceCount> { { &audioProcessor.getFilterCombTuneParam(0), &audioProcessor.getFilterCombTuneParam(1) } },
+                                          std::array<juce::AudioParameterFloat*, kFilterInstanceCount> { { &audioProcessor.getFilterCombDecayParam(0), &audioProcessor.getFilterCombDecayParam(1) } },
+                                          std::array<juce::AudioParameterFloat*, kFilterInstanceCount> { { &audioProcessor.getFilterCombDampingParam(0), &audioProcessor.getFilterCombDampingParam(1) } },
                                           kGroupAccents[1]);
     fxPanel = std::make_unique<FxPanel>(robBypassButton,
                                         vibeAmountKnob,
@@ -1805,20 +1875,16 @@ void PX3SynthAudioProcessorEditor::resized()
     // rather than pinned to the bottom of the area, which left a gap that grew
     // with the header height.
     auto gainArea = topMenuGainArea.reduced(9, 4);
-    const auto gainLabelHeight = 14;
-    const auto gainLabelGap = uiConfig != nullptr ? uiConfig->getInt("editor.layout.gainLabelGap", 2) : 2;
+    // The knob stands alone: no caption, and its name is on hover instead. The
+    // top bar is the tightest space in the interface, and a permanent label
+    // under a control whose function is obvious costs more than it explains.
     const auto gainKnobSize = juce::jlimit(46, 60,
                                            juce::jmin(gainArea.getWidth() - 6,
-                                                      gainArea.getHeight() - gainLabelHeight - gainLabelGap));
-    const auto gainGroupHeight = gainKnobSize + gainLabelGap + gainLabelHeight;
-    const auto gainGroupTop = gainArea.getCentreY() - gainGroupHeight / 2;
+                                                      gainArea.getHeight() - 4));
 
     gainKnob.setBounds(juce::Rectangle<int>(gainKnobSize, gainKnobSize)
-                           .withCentre({ gainArea.getCentreX(), gainGroupTop + gainKnobSize / 2 }));
-    gainLabel.setBounds(gainArea.getX(),
-                        gainGroupTop + gainKnobSize + gainLabelGap,
-                        gainArea.getWidth(),
-                        gainLabelHeight);
+                           .withCentre(gainArea.getCentre()));
+    gainLabel.setBounds({});
 
     bounds.removeFromTop(sectionGap);
 
@@ -1860,8 +1926,12 @@ void PX3SynthAudioProcessorEditor::resized()
         // The viewed component keeps its declared height even when that exceeds
         // the viewport - that is what there is to scroll. Without scrolling it
         // matches the viewport exactly, so nothing can be clipped away.
+        // A scrolling panel gets a tail of empty space past its last row, so
+        // the bottom card can be scrolled clear of the viewport edge instead of
+        // stopping flush against it.
+        const auto scrollTail = uiConfig != nullptr ? uiConfig->getInt("editor.layout.scrollTail", 30) : 30;
         const auto contentHeight = panelStyle.scrollVertically && panelStyle.height > 0
-                                       ? juce::jmax(panelStyle.height, oscArea.getHeight())
+                                       ? juce::jmax(panelStyle.height, oscArea.getHeight()) + scrollTail
                                        : oscPanelViewport.getMaximumVisibleHeight();
         const auto oscGutter = oscPanelViewport.isVerticalScrollBarShown() ? kScrollBarGutter : 0;
         oscPanel->setSize(juce::jmax(1, oscPanelViewport.getMaximumVisibleWidth() - oscGutter),
@@ -3257,7 +3327,8 @@ void PX3SynthAudioProcessorEditor::layoutModPanel()
         const auto gutter = modPanelViewport.isVerticalScrollBarShown() ? kScrollBarGutter : 0;
         const auto available = juce::jmax(1, modPanelViewport.getMaximumVisibleWidth() - gutter);
         const auto contentWidth = juce::jmax(available, preferredWidth);
-        const auto contentHeight = preferredHeight;
+        const auto scrollTail = uiConfig != nullptr ? uiConfig->getInt("editor.layout.scrollTail", 30) : 30;
+        const auto contentHeight = preferredHeight + scrollTail;
         modPanel->setBounds(0, 0, contentWidth, contentHeight);
         modPanel->resized();
     }

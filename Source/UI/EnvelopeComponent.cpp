@@ -811,6 +811,11 @@ void EnvelopeComponent::layoutCardInner()
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
 
+    // The ADSR curve and its handles take the card's identity colour, like the
+    // wave graphs elsewhere. Without this the graph kept the accent passed at
+    // construction and stayed green after the mod envelopes went purple.
+    accent = card.style().border.colour;
+
     // The power glyph lights in this card's own identity colour.
 
     if (auto* power = dynamic_cast<px3::ui::BypassButton*>(&enabledButton))

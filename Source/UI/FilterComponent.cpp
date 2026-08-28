@@ -1,5 +1,7 @@
 #include "FilterComponent.h"
 
+#include "../DSP/FilterMode.h"
+
 #include "BypassButton.h"
 
 #include "UIConfig.h"
@@ -87,6 +89,16 @@ juce::Rectangle<int> FilterComponent::rowBounds(int index) const
 juce::FlexBox FilterComponent::rowFlex(int index) const
 {
     return inner.rowFlex(index);
+}
+
+void FilterComponent::setCombParameters(juce::AudioParameterFloat& tune,
+                                        juce::AudioParameterFloat& decay,
+                                        juce::AudioParameterFloat& damping)
+{
+    combTune = &tune;
+    combDecay = &decay;
+    combDamping = &damping;
+    repaint();
 }
 
 juce::Rectangle<int> FilterComponent::powerBounds() const
@@ -192,7 +204,60 @@ void FilterComponent::paint(juce::Graphics& g)
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 36));
     g.drawLine(left, midY, right, midY, 1.0f);
 
-    const auto idx = juce::jlimit(0, 6, mode.getIndex());
+    const auto idx = juce::jlimit(0, px3::filterModeMaxIndex, mode.getIndex());
+
+    // ---- comb -------------------------------------------------------------
+    // The comb's response is a series of peaks at multiples of its tuning, not
+    // a single corner, so it gets its own curve rather than being forced
+    // through the biquad shapes below. Drawing it from the real parameters is
+    // the point: the graph is how you see what Tune and Decay are doing.
+    if (px3::isCombMode(idx) && combTune != nullptr && combDecay != nullptr && combDamping != nullptr)
+    {
+        // The graph's horizontal axis is the same logarithmic sweep the biquad
+        // curves use, so a comb tooth and a cutoff corner at the same frequency
+        // land in the same place.
+        const auto tuneHz = combTune->get();
+        const auto decay = combDecay->get();
+        const auto damping = juce::jlimit(0.0f, 1.0f, combDamping->get());
+
+        // Feedback gain from decay, the same rule the resonator uses - a longer
+        // decay is a higher gain, which is a sharper, taller tooth.
+        const auto loopSeconds = 1.0f / juce::jmax(1.0f, tuneHz);
+        const auto gain = juce::jlimit(0.0f, 0.995f,
+                                       std::pow(10.0f, -3.0f * loopSeconds / juce::jmax(0.02f, decay)));
+
+        juce::Path combPath;
+        combPath.startNewSubPath(left, bottom);
+
+        const auto graphWidth = juce::jmax(1.0f, right - left);
+        for (int s = 0; s <= 220; ++s)
+        {
+            const auto t = static_cast<float>(s) / 220.0f;
+            // 20 Hz to 20 kHz, logarithmically.
+            const auto hz = 20.0f * std::pow(1000.0f, t);
+
+            // |1 / (1 - g e^-jwD)| normalised: peaks where hz is a multiple of
+            // the tuning, troughs between. Damping rolls the peaks off with
+            // frequency, which is what the damping control does to the tail.
+            const auto phase = juce::MathConstants<float>::twoPi * hz / juce::jmax(1.0f, tuneHz);
+            const auto rolloff = 1.0f - damping * juce::jlimit(0.0f, 1.0f, hz / 8000.0f);
+            const auto effectiveGain = juce::jlimit(0.0f, 0.995f, gain * rolloff);
+
+            const auto denom = 1.0f + effectiveGain * effectiveGain
+                               - 2.0f * effectiveGain * std::cos(phase);
+            const auto magnitude = 1.0f / std::sqrt(juce::jmax(1.0e-4f, denom));
+
+            // Compressed, so a near-self-oscillating tooth stays on the graph.
+            const auto shaped = juce::jlimit(0.0f, 1.0f, std::log10(1.0f + magnitude) * 0.62f);
+            combPath.lineTo(left + t * graphWidth, bottom - shaped * (bottom - top));
+        }
+
+        g.setColour(effectiveAccent.withAlpha(currentEnabled ? 0.95f : 0.45f));
+        g.strokePath(combPath, juce::PathStrokeType(1.2f, juce::PathStrokeType::curved,
+                                                    juce::PathStrokeType::rounded));
+        return;
+    }
+
     const auto cutoffPos = juce::jlimit(0.08f, 0.92f, cutoffNorm());
     const auto resBoost = juce::jlimit(0.0f, 1.0f, resonanceNorm());
 

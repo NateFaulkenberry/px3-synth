@@ -48,6 +48,24 @@ std::array<FilterSettings, kFilterInstanceCount> PX3SynthAudioProcessor::current
             &resonanceParam,
             static_cast<juce::RangedAudioParameter&>(resonanceParam).getValue()));
         settings.modeIndex = modeParam.getIndex();
+
+        // Comb controls take the same modulation path as cutoff and resonance,
+        // so they are modulation destinations for free rather than through a
+        // second mechanism.
+        const auto modulated = [this](juce::AudioParameterFloat& param)
+        {
+            return param.convertFrom0to1(applyModulationToNormalizedValue(
+                &param,
+                static_cast<juce::RangedAudioParameter&>(param).getValue()));
+        };
+
+        settings.comb.tuneHz = modulated(getFilterCombTuneParam(filterIndex));
+        settings.comb.decaySeconds = modulated(getFilterCombDecayParam(filterIndex));
+        settings.comb.damping = modulated(getFilterCombDampingParam(filterIndex));
+        settings.comb.dispersion = modulated(getFilterCombDispersionParam(filterIndex));
+        settings.comb.drive = modulated(getFilterCombDriveParam(filterIndex));
+        settings.comb.mix = modulated(getFilterCombMixParam(filterIndex));
+        settings.comb.invertPolarity = getFilterCombInvertParam(filterIndex).get();
     }
 
     return filterSettings;

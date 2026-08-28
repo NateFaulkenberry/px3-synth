@@ -14,6 +14,8 @@ void VoiceFilter::prepare(double newSampleRate)
     constexpr float bypassBlendSeconds = 0.008f;
     bypassBlendStep = 1.0f / static_cast<float>(juce::jmax(1.0, sampleRate * bypassBlendSeconds));
 
+    comb.prepare(sampleRate);
+
     reset();
     setCurrentSettingsImmediate(currentSettings);
 }
@@ -22,6 +24,7 @@ void VoiceFilter::reset()
 {
     stageA.reset();
     stageB.reset();
+    comb.reset();
     filterUpdateCounter = 0;
     modeChangePending = false;
 }
@@ -48,6 +51,8 @@ void VoiceFilter::setTargetSettings(const FilterSettings& settings)
 
 void VoiceFilter::setCurrentSettingsImmediate(const FilterSettings& settings)
 {
+    comb.setCurrentSettingsImmediate(settings.comb);
+
     setTargetSettings(settings);
     currentSettings = targetSettings;
     modeChangePending = false;
@@ -82,6 +87,7 @@ float VoiceFilter::processSampleActive(float inputSample)
             currentSettings.resonanceQ = targetSettings.resonanceQ;
             stageA.reset();
             stageB.reset();
+            comb.reset();
             applyFilter(currentSettings.cutoffHz, currentSettings.resonanceQ, currentSettings.modeIndex);
             filterUpdateCounter = 0;
             modeChangePending = false;
@@ -94,14 +100,25 @@ float VoiceFilter::processSampleActive(float inputSample)
     currentSettings.cutoffHz += (targetSettings.cutoffHz - currentSettings.cutoffHz) * coeff;
     currentSettings.resonanceQ += (targetSettings.resonanceQ - currentSettings.resonanceQ) * coeff;
 
+    const auto mode = static_cast<px3::FilterMode>(px3::clampFilterModeIndex(currentSettings.modeIndex));
+
+    if (mode == px3::FilterMode::comb)
+    {
+        // The comb does its own per-sample smoothing of every loop parameter,
+        // so the settings go straight through rather than being smoothed twice.
+        comb.setTargetSettings(targetSettings.comb);
+
+        const auto combOut = comb.processSample(inputSample);
+        const auto combBlend = bypassBlend * bypassBlend * (3.0f - 2.0f * bypassBlend);
+        return inputSample + (combOut - inputSample) * combBlend;
+    }
+
     if ((filterUpdateCounter++ & 0x07) == 0)
     {
         applyFilter(currentSettings.cutoffHz,
                 currentSettings.resonanceQ,
                 currentSettings.modeIndex);
     }
-
-    const auto mode = static_cast<px3::FilterMode>(px3::clampFilterModeIndex(currentSettings.modeIndex));
 
     auto output = stageA.processSample(inputSample);
     if (mode == px3::FilterMode::lp24 || mode == px3::FilterMode::hp24)

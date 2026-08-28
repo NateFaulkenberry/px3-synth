@@ -1014,6 +1014,91 @@ void testOscillators()
             }
             return render(processor, 48000, { { 2000, true, 57, 0.9f } }).rmsOver(24000, 46000);
         };
+    // ---- dry channel -------------------------------------------------------
+    {
+        // The dry bus is a mixer channel of its own now: the summed sources
+        // before the FX return joins them. These check that its controls do
+        // what a channel's controls do, and - just as importantly - that the
+        // channel existing changes nothing until it is touched.
+        const auto renderDry = [](std::function<void(PX3SynthAudioProcessor&)> configure)
+        {
+            PX3SynthAudioProcessor processor;
+            setParam(processor, "osc1Enabled", 1.0f);
+            setParam(processor, "osc2Enabled", 0.0f);
+            setParam(processor, "osc3Enabled", 0.0f);
+            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "vibeEnabled", 0.0f);
+            setParam(processor, "reverbEnabled", 0.0f);
+            setParam(processor, "delayEnabled", 0.0f);
+            setParam(processor, "moodEnabled", 0.0f);
+            setParam(processor, "filter1Enabled", 0.0f);
+            setParam(processor, "filter2Enabled", 0.0f);
+            setParam(processor, "ampSustain", 1.0f);
+            setChoice(processor, "osc1Mode", 0);
+            configure(processor);
+            return render(processor, 48000, { { 2000, true, 57, 0.9f } }).rmsOver(24000, 46000);
+        };
+
+        const auto atDefault = renderDry([](PX3SynthAudioProcessor&) {});
+        const auto halved = renderDry([](PX3SynthAudioProcessor& p) {
+            setParam(p, "mix.dry.level", 0.5f);
+        });
+        const auto muted = renderDry([](PX3SynthAudioProcessor& p) {
+            setParam(p, "mix.dry.mute", 1.0f);
+        });
+
+        check("Mixer_DryLevelScalesTheDryPath",
+              atDefault > 1.0e-4f && std::abs(halved - atDefault * 0.5f) < atDefault * 0.12f,
+              "default " + fmt(atDefault, 5) + " -> half " + fmt(halved, 5));
+
+        check("Mixer_DryMuteSilencesTheDryPath",
+              muted < atDefault * 0.02f,
+              "muted rms " + fmt(muted, 6) + " against " + fmt(atDefault, 5));
+
+        // Polarity is only audible against something else, so it is measured
+        // with the FX return live: flipping the dry bus against a wet path that
+        // came from it makes the two partially cancel. On its own a sign flip
+        // changes nothing an RMS meter can see.
+        const auto renderWithWet = [](bool invertDry)
+        {
+            PX3SynthAudioProcessor processor;
+            setParam(processor, "osc1Enabled", 1.0f);
+            setParam(processor, "osc2Enabled", 0.0f);
+            setParam(processor, "osc3Enabled", 0.0f);
+            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "ampSustain", 1.0f);
+            setChoice(processor, "osc1Mode", 0);
+            setParam(processor, "filter1Enabled", 0.0f);
+            setParam(processor, "filter2Enabled", 0.0f);
+            setParam(processor, "vibeEnabled", 0.0f);
+            setParam(processor, "delayEnabled", 0.0f);
+            setParam(processor, "moodEnabled", 0.0f);
+            // Reverb passes the dry signal through with enough direct content
+            // that the two paths can cancel.
+            setParam(processor, "reverbEnabled", 1.0f);
+            setParam(processor, "reverbAmount", 1.0f);
+            setParam(processor, "mix.dry.phase", invertDry ? 1.0f : 0.0f);
+            return render(processor, 48000, { { 2000, true, 57, 0.9f } }).rmsOver(24000, 46000);
+        };
+
+        const auto inPhase = renderWithWet(false);
+        const auto outOfPhase = renderWithWet(true);
+
+        check("Mixer_DryPolarityChangesTheSumAgainstTheWetPath",
+              inPhase > 1.0e-4f && std::abs(outOfPhase - inPhase) > inPhase * 0.05f,
+              "in phase " + fmt(inPhase, 5) + " vs inverted " + fmt(outOfPhase, 5));
+
+        // Soloing a source must leave the dry bus open, or the solo would mute
+        // the path the soloed source is heard through.
+        const auto soloedSource = renderDry([](PX3SynthAudioProcessor& p) {
+            setParam(p, "mix.osc1.solo", 1.0f);
+        });
+
+        check("Mixer_SoloingASourceLeavesTheDryBusOpen",
+              soloedSource > atDefault * 0.5f,
+              "soloed-source rms " + fmt(soloedSource, 5) + " against " + fmt(atDefault, 5));
+    }
+
         check("Mixer_HeadroomMoveLeftDefaultLevelUnchanged",
               nearly(renderDefaultPatch(false), 0.127851, 0.0005),
               "default patch rms " + fmt(renderDefaultPatch(false), 6) + " (was 0.127851)");
@@ -3162,6 +3247,572 @@ void testReverb()
 // system's failure mode was properties that existed and did nothing, so a test
 // that only proves a key is present would be testing the wrong thing.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Comb resonator
+// ---------------------------------------------------------------------------
+//
+// The comb is tested through px3::CombResonator directly rather than through a
+// voice. Its contract is about pitch, decay time and stability, and measuring
+// those through four sources, two filter slots and an amp envelope would mean
+// measuring the envelope as much as the resonator.
+
+namespace
+{
+// Rings the resonator with a short burst and returns the tail, which is what
+// every measurement below is made on. A burst rather than a single impulse: one
+// sample excites the loop so weakly at short delays that the tail is hard to
+// measure without also measuring the noise floor.
+std::vector<float> ringComb(const px3::CombSettings& settings,
+                            int tailSamples,
+                            double sampleRate = kSampleRate,
+                            int burstSamples = 64)
+{
+    px3::CombResonator comb;
+    comb.prepare(sampleRate);
+    comb.setCurrentSettingsImmediate(settings);
+
+    std::vector<float> out;
+    out.reserve(static_cast<std::size_t>(tailSamples));
+
+    juce::Random random { 20260828 };
+    for (int i = 0; i < tailSamples; ++i)
+    {
+        const auto excite = i < burstSamples ? (random.nextFloat() * 2.0f - 1.0f) * 0.7f : 0.0f;
+        out.push_back(comb.processSample(excite));
+    }
+    return out;
+}
+
+double rmsOver(const std::vector<float>& signal, int from, int count)
+{
+    const auto first = juce::jlimit(0, static_cast<int>(signal.size()), from);
+    const auto last = juce::jlimit(first, static_cast<int>(signal.size()), first + count);
+    if (last <= first) return 0.0;
+
+    double sum = 0.0;
+    for (int i = first; i < last; ++i)
+    {
+        sum += static_cast<double>(signal[static_cast<std::size_t>(i)])
+             * static_cast<double>(signal[static_cast<std::size_t>(i)]);
+    }
+    return std::sqrt(sum / static_cast<double>(last - first));
+}
+
+// Energy above roughly a quarter of Nyquist, via a one-pole highpass. Used to
+// show that damping removes highs faster than it removes the fundamental.
+double highFrequencyRms(const std::vector<float>& signal, int from, int count)
+{
+    const auto first = juce::jlimit(0, static_cast<int>(signal.size()), from);
+    const auto last = juce::jlimit(first, static_cast<int>(signal.size()), first + count);
+    if (last <= first + 1) return 0.0;
+
+    double sum = 0.0;
+    float prev = signal[static_cast<std::size_t>(first)];
+    for (int i = first + 1; i < last; ++i)
+    {
+        const auto x = signal[static_cast<std::size_t>(i)];
+        const auto hp = static_cast<double>(x - prev);
+        prev = x;
+        sum += hp * hp;
+    }
+    return std::sqrt(sum / static_cast<double>(last - first - 1));
+}
+
+// Largest single-sample step relative to the signal's level around it.
+//
+// A raw step size cannot identify a click, because a loud passage legitimately
+// steps further than a quiet one - comparing the two just finds whichever part
+// of the tail is loudest. Dividing by the local RMS asks the question that
+// actually matters: is this sample far out of line with its neighbours?
+double worstLocalStepRatio(const std::vector<float>& signal, int from)
+{
+    constexpr int window = 256;
+    const auto first = juce::jmax(from, window);
+    double worst = 0.0;
+
+    for (int i = first; i < static_cast<int>(signal.size()); ++i)
+    {
+        double sum = 0.0;
+        for (int k = i - window; k < i; ++k)
+        {
+            sum += static_cast<double>(signal[static_cast<std::size_t>(k)])
+                 * static_cast<double>(signal[static_cast<std::size_t>(k)]);
+        }
+        const auto localRms = std::sqrt(sum / static_cast<double>(window));
+        if (localRms < 1.0e-5)
+        {
+            continue;   // silence: any step here is numerically meaningless
+        }
+
+        const auto step = std::abs(static_cast<double>(signal[static_cast<std::size_t>(i)])
+                                   - static_cast<double>(signal[static_cast<std::size_t>(i - 1)]));
+        worst = juce::jmax(worst, step / localRms);
+    }
+    return worst;
+}
+
+bool allFinite(const std::vector<float>& signal)
+{
+    for (const auto x : signal)
+    {
+        if (! std::isfinite(x)) return false;
+    }
+    return true;
+}
+} // namespace
+
+void testComb()
+{
+    suite("COMB");
+
+    // ---- tuning ------------------------------------------------------------
+    {
+        // The resonance has to land on the requested pitch, and stay there
+        // across the range. A comb whose delay is rounded to whole samples
+        // drifts sharp as the pitch rises, because one sample is a larger
+        // fraction of a shorter period - which is the whole reason for
+        // interpolating the delay.
+        struct Case { float tune; double tolerancePercent; };
+        const std::array<Case, 5> cases { {
+            { 55.0f, 2.0 }, { 110.0f, 2.0 }, { 220.0f, 2.0 }, { 440.0f, 2.0 }, { 880.0f, 3.0 },
+        } };
+
+        juce::StringArray problems;
+        for (const auto& c : cases)
+        {
+            px3::CombSettings settings;
+            settings.tuneHz = c.tune;
+            settings.decaySeconds = 2.0f;
+            settings.damping = 0.05f;
+            settings.mix = 1.0f;
+
+            const auto tail = ringComb(settings, 48000);
+            const auto measured = estimateFrequency(tail, 4000, 32000,
+                                                    c.tune * 0.5, c.tune * 2.0);
+            const auto errorPercent = std::abs(measured - c.tune) / c.tune * 100.0;
+            if (errorPercent > c.tolerancePercent)
+            {
+                problems.add(juce::String(c.tune, 0) + "Hz -> " + fmt((float) measured, 1)
+                             + "Hz (" + fmt((float) errorPercent, 2) + "% off)");
+            }
+        }
+
+        check("Comb_TracksRequestedPitch",
+              problems.isEmpty(),
+              problems.isEmpty() ? "55-880 Hz all within tolerance"
+                                 : problems.joinIntoString("; "));
+    }
+
+    // ---- decay -------------------------------------------------------------
+    {
+        // Decay is a time, not a feedback number, so a longer setting must ring
+        // longer - and the same setting must mean roughly the same duration at
+        // different pitches. That second property is what a raw feedback
+        // control cannot provide: the loop runs eight times more often at
+        // 880 Hz than at 110 Hz.
+        const auto measureDecay = [](float tune, float decay)
+        {
+            px3::CombSettings settings;
+            settings.tuneHz = tune;
+            settings.decaySeconds = decay;
+            settings.damping = 0.0f;
+            settings.mix = 1.0f;
+
+            const auto tail = ringComb(settings, static_cast<int>(kSampleRate * 4.0));
+            const auto reference = rmsOver(tail, 2000, 4000);
+            if (reference <= 1.0e-6) return -1.0;
+
+            // Where the tail falls 60 dB below the level just after the burst.
+            for (int i = 2000; i + 2000 < static_cast<int>(tail.size()); i += 500)
+            {
+                if (rmsOver(tail, i, 2000) < reference * 0.001)
+                {
+                    return static_cast<double>(i) / kSampleRate;
+                }
+            }
+            return static_cast<double>(tail.size()) / kSampleRate;
+        };
+
+        const auto shortDecay = measureDecay(220.0f, 0.25f);
+        const auto longDecay = measureDecay(220.0f, 2.0f);
+        const auto lowPitch = measureDecay(110.0f, 1.0f);
+        const auto highPitch = measureDecay(880.0f, 1.0f);
+
+        const auto ordered = longDecay > shortDecay * 2.0;
+        // Within a factor of two across three octaves. Not exact: the damping
+        // compensation and the loop-gain ceiling both bite differently at the
+        // extremes.
+        const auto pitchIndependent = lowPitch > 0.0 && highPitch > 0.0
+                                      && juce::jmax(lowPitch, highPitch)
+                                             < juce::jmin(lowPitch, highPitch) * 2.0;
+
+        check("Comb_DecayIsATimeNotAFeedbackNumber",
+              ordered && pitchIndependent,
+              "0.25s -> " + fmt((float) shortDecay, 2) + "s, 2.0s -> " + fmt((float) longDecay, 2)
+                  + "s; at 1.0s: 110Hz " + fmt((float) lowPitch, 2)
+                  + "s vs 880Hz " + fmt((float) highPitch, 2) + "s");
+    }
+
+    // ---- damping -----------------------------------------------------------
+    {
+        // Damping belongs in the feedback loop, so highs die faster than the
+        // fundamental. Placed after the output tap it would only equalise, and
+        // the ratio measured here would not move.
+        px3::CombSettings bright;
+        bright.tuneHz = 220.0f;
+        bright.decaySeconds = 1.5f;
+        bright.damping = 0.0f;
+
+        auto damped = bright;
+        damped.damping = 0.85f;
+
+        const auto brightTail = ringComb(bright, 40000);
+        const auto dampedTail = ringComb(damped, 40000);
+
+        // High-frequency energy as a share of total, late in the tail. A share
+        // rather than an absolute, so this measures spectral tilt rather than
+        // the fact that a damped tail is also quieter.
+        const auto brightShare = highFrequencyRms(brightTail, 20000, 12000)
+                                 / juce::jmax(1.0e-9, rmsOver(brightTail, 20000, 12000));
+        const auto dampedShare = highFrequencyRms(dampedTail, 20000, 12000)
+                                 / juce::jmax(1.0e-9, rmsOver(dampedTail, 20000, 12000));
+
+        check("Comb_DampingDarkensTheTailNotJustQuietensIt",
+              dampedShare < brightShare * 0.8,
+              "HF share: bright " + fmt((float) brightShare, 3)
+                  + " vs damped " + fmt((float) dampedShare, 3));
+    }
+
+    // ---- polarity ----------------------------------------------------------
+    {
+        // Negative feedback puts the resonance on odd harmonics of half the
+        // tuning, so the same delay length rings an octave down. That is a
+        // different timbre, not a sign detail, which is why it is exposed.
+        px3::CombSettings positive;
+        positive.tuneHz = 300.0f;
+        positive.decaySeconds = 2.0f;
+        positive.damping = 0.02f;
+
+        auto negative = positive;
+        negative.invertPolarity = true;
+
+        const auto positiveHz = estimateFrequency(ringComb(positive, 48000), 4000, 32000, 60.0, 900.0);
+        const auto negativeHz = estimateFrequency(ringComb(negative, 48000), 4000, 32000, 60.0, 900.0);
+
+        check("Comb_InvertedPolarityResonatesAnOctaveLower",
+              positiveHz > 0.0 && negativeHz > 0.0
+                  && std::abs(negativeHz - positiveHz * 0.5) < positiveHz * 0.12,
+              "positive " + fmt((float) positiveHz, 1) + "Hz, inverted "
+                  + fmt((float) negativeHz, 1) + "Hz");
+    }
+
+    // ---- mix ---------------------------------------------------------------
+    {
+        px3::CombSettings settings;
+        settings.tuneHz = 200.0f;
+        settings.decaySeconds = 1.0f;
+        settings.mix = 0.0f;
+
+        px3::CombResonator comb;
+        comb.prepare(kSampleRate);
+        comb.setCurrentSettingsImmediate(settings);
+
+        auto matchesDry = true;
+        juce::Random random { 7 };
+        for (int i = 0; i < 4000; ++i)
+        {
+            const auto in = random.nextFloat() * 2.0f - 1.0f;
+            if (std::abs(comb.processSample(in) - in) > 1.0e-4f)
+            {
+                matchesDry = false;
+                break;
+            }
+        }
+
+        check("Comb_ZeroMixIsExactlyDry",
+              matchesDry,
+              "mix 0 returns the input unchanged");
+    }
+
+    // ---- stability ---------------------------------------------------------
+    {
+        // Every extreme of every control, including the combinations that would
+        // run away in a naive design: maximum decay with maximum drive is a
+        // loop gain at its ceiling being pushed into the saturator.
+        juce::StringArray problems;
+
+        const std::array<float, 4> tunes { { px3::CombResonator::kMinTuneHz, 100.0f, 1000.0f,
+                                             px3::CombResonator::kMaxTuneHz } };
+        const std::array<float, 2> decays { { px3::CombResonator::kMinDecaySeconds,
+                                              px3::CombResonator::kMaxDecaySeconds } };
+        const std::array<float, 2> dampings { { 0.0f, 1.0f } };
+        const std::array<float, 2> dispersions { { 0.0f, 1.0f } };
+        const std::array<float, 2> drives { { 0.0f, 1.0f } };
+        const std::array<bool, 2> polarities { { false, true } };
+
+        for (const auto tune : tunes)
+        for (const auto decay : decays)
+        for (const auto damping : dampings)
+        for (const auto dispersion : dispersions)
+        for (const auto drive : drives)
+        for (const auto invert : polarities)
+        {
+            px3::CombSettings settings;
+            settings.tuneHz = tune;
+            settings.decaySeconds = decay;
+            settings.damping = damping;
+            settings.dispersion = dispersion;
+            settings.drive = drive;
+            settings.invertPolarity = invert;
+
+            px3::CombResonator comb;
+            comb.prepare(kSampleRate);
+            comb.setCurrentSettingsImmediate(settings);
+
+            float peak = 0.0f;
+            juce::Random random { 99 };
+            for (int i = 0; i < 24000; ++i)
+            {
+                // Hot input: full scale, which is what a self-oscillating loop
+                // would be pushed by in the worst case.
+                const auto in = i < 2000 ? (random.nextFloat() * 2.0f - 1.0f) : 0.0f;
+                const auto out = comb.processSample(in);
+                if (! std::isfinite(out))
+                {
+                    problems.add("non-finite at tune " + juce::String(tune, 0));
+                    break;
+                }
+                peak = juce::jmax(peak, std::abs(out));
+            }
+
+            if (peak > 12.0f)
+            {
+                problems.add("runaway to " + fmt(peak, 1) + " at tune " + juce::String(tune, 0)
+                             + " decay " + fmt(decay, 2) + " drive " + fmt(drive, 1));
+            }
+        }
+
+        check("Comb_StableAcrossEveryParameterExtreme",
+              problems.isEmpty(),
+              problems.isEmpty() ? juce::String(tunes.size() * decays.size() * dampings.size()
+                                                * dispersions.size() * drives.size() * polarities.size())
+                                       + " combinations, all finite and bounded"
+                                 : problems.joinIntoString("; "));
+    }
+
+    // ---- modulation --------------------------------------------------------
+    {
+        // Tune is a modulation destination, so sweeping it must not step. The
+        // delay length is smoothed per sample precisely so that the read
+        // pointer cannot jump to an unrelated part of the line, which is a
+        // click rather than a pitch change.
+        px3::CombResonator comb;
+        comb.prepare(kSampleRate);
+
+        // The sweep's own value at i = 0, so the resonator starts where the
+        // modulation starts. Initialising it elsewhere would make the first
+        // instants a jump to the sweep rather than the sweep itself, and that
+        // transient is a property of the test, not of modulating Tune.
+        const auto sweptTuneAt = [](int i)
+        {
+            return 200.0f + 1800.0f * (0.5f + 0.5f * std::sin(static_cast<float>(i) * 0.00026f));
+        };
+
+        px3::CombSettings settings;
+        settings.tuneHz = sweptTuneAt(0);
+        settings.decaySeconds = 1.0f;
+        settings.mix = 1.0f;
+        comb.setCurrentSettingsImmediate(settings);
+
+        std::vector<float> out;
+        juce::Random random { 31 };
+        float previous = 0.0f;
+        float largestStep = 0.0f;
+        int largestStepIndex = -1;
+
+        for (int i = 0; i < 40000; ++i)
+        {
+            // A full-range sweep every half second, far faster than an LFO
+            // would move it.
+            settings.tuneHz = sweptTuneAt(i);
+            comb.setTargetSettings(settings);
+
+            const auto in = i < 1000 ? (random.nextFloat() * 2.0f - 1.0f) * 0.5f : 0.0f;
+            const auto value = comb.processSample(in);
+            out.push_back(value);
+
+            if (i > 1200)
+            {
+                const auto step = std::abs(value - previous);
+                if (step > largestStep)
+                {
+                    largestStep = step;
+                    largestStepIndex = i;
+                }
+            }
+            previous = value;
+        }
+
+        // Measured against a static run at the top of the sweep, in units of
+        // local level. Modulating the delay resamples the line - shortening it
+        // speeds playback up, exactly as a tape does - so the swept signal is
+        // legitimately steeper. What it must not be is DISCONTINUOUS, and a
+        // step far out of line with its own neighbourhood is what that means.
+        px3::CombResonator staticComb;
+        staticComb.prepare(kSampleRate);
+        px3::CombSettings top = settings;
+        top.tuneHz = 2000.0f;
+        staticComb.setCurrentSettingsImmediate(top);
+
+        std::vector<float> staticOut;
+        staticOut.reserve(out.size());
+        juce::Random staticRandom { 31 };
+        for (int i = 0; i < 40000; ++i)
+        {
+            const auto in = i < 1000 ? (staticRandom.nextFloat() * 2.0f - 1.0f) * 0.5f : 0.0f;
+            staticOut.push_back(staticComb.processSample(in));
+        }
+
+        const auto sweptRatio = worstLocalStepRatio(out, 1200);
+        const auto staticRatio = worstLocalStepRatio(staticOut, 1200);
+
+        check("Comb_TuneSweepsWithoutDiscontinuities",
+              allFinite(out) && sweptRatio < staticRatio * 2.0,
+              "worst step / local level: swept " + fmt((float) sweptRatio, 2)
+                  + " vs static " + fmt((float) staticRatio, 2)
+                  + " (largest raw step " + fmt(largestStep, 4) + " at sample "
+                  + juce::String(largestStepIndex) + ")");
+    }
+
+    // ---- sample rate -------------------------------------------------------
+    {
+        // Tuning is derived from the sample rate, so the same setting has to
+        // produce the same pitch at any rate.
+        px3::CombSettings settings;
+        settings.tuneHz = 330.0f;
+        settings.decaySeconds = 1.5f;
+        settings.damping = 0.05f;
+
+        // estimateFrequency works in kSampleRate, so a tail rendered at another
+        // rate reads scaled by the ratio between them. Both measurements are
+        // corrected - missing this on the 44.1k one made a correctly tuned
+        // resonator look 8% sharp.
+        const auto measureAt = [&settings](double rate, int tailSamples, int from, int window,
+                                           double minHz, double maxHz)
+        {
+            const auto tail = ringComb(settings, tailSamples, rate);
+            const auto raw = estimateFrequency(tail, from, window, minHz, maxHz);
+            return raw * (rate / kSampleRate);
+        };
+
+        const auto at44 = measureAt(44100.0, 40000, 4000, 24000, 140.0, 640.0);
+        const auto at96 = measureAt(96000.0, 80000, 8000, 48000, 60.0, 400.0);
+
+        check("Comb_TuningSurvivesSampleRateChanges",
+              std::abs(at44 - 330.0) < 12.0 && std::abs(at96 - 330.0) < 15.0,
+              "44.1k -> " + fmt((float) at44, 1) + "Hz, 96k -> " + fmt((float) at96, 1) + "Hz");
+    }
+
+    // ---- reaching the instrument -------------------------------------------
+    {
+        // Everything above tests the resonator in isolation. This checks the
+        // whole path: selecting Comb on a filter, playing a note, and hearing
+        // the comb's tuning in the output rather than the note's own pitch.
+        // A resonator that works perfectly but is never reached is not a
+        // feature.
+        const auto renderWithMode = [](int modeIndex, float combTune)
+        {
+            PX3SynthAudioProcessor processor;
+            setParam(processor, "osc1Enabled", 1.0f);
+            setParam(processor, "osc2Enabled", 0.0f);
+            setParam(processor, "osc3Enabled", 0.0f);
+            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "vibeEnabled", 0.0f);
+            setParam(processor, "reverbEnabled", 0.0f);
+            setParam(processor, "delayEnabled", 0.0f);
+            setParam(processor, "moodEnabled", 0.0f);
+            setParam(processor, "ampSustain", 1.0f);
+            // Noise in, so the comb's resonance is what shapes the output
+            // rather than the oscillator's own harmonics.
+            setChoice(processor, "osc1Mode", 4);
+
+            setParam(processor, "filter1Enabled", 1.0f);
+            setParam(processor, "filter2Enabled", 0.0f);
+            setChoice(processor, "filter1Type", modeIndex);
+            setParam(processor, "filter1CombTune", combTune);
+            setParam(processor, "filter1CombDecay", 1.2f);
+            setParam(processor, "filter1CombDamping", 0.15f);
+            setParam(processor, "filter1CombDispersion", 0.0f);
+            setParam(processor, "filter1CombDrive", 0.0f);
+            setParam(processor, "filter1CombMix", 1.0f);
+
+            return render(processor, 64000, { { 1000, true, 45, 0.9f } });
+        };
+
+        const auto combbed = renderWithMode(static_cast<int>(px3::FilterMode::comb), 330.0f);
+        const auto measured = estimateFrequency(combbed.left, 20000, 40000, 150.0, 700.0);
+
+        check("Comb_ReachesTheInstrumentThroughFilterMode",
+              std::abs(measured - 330.0) < 33.0,
+              "noise through a comb tuned to 330Hz resonates at " + fmt((float) measured, 1) + "Hz");
+
+        // And selecting a different mode must not leave the comb in circuit.
+        const auto lowpassed = renderWithMode(0, 330.0f);
+        const auto lowpassHz = estimateFrequency(lowpassed.left, 20000, 40000, 150.0, 700.0);
+
+        check("Comb_IsOnlyInCircuitInCombMode",
+              std::abs(lowpassHz - 330.0) > 20.0 || lowpassed.rmsOver(20000, 40000) < 1.0e-4f,
+              "the same patch in LP12 resonates at " + fmt((float) lowpassHz, 1)
+                  + "Hz rather than the comb's 330Hz");
+    }
+
+    // ---- voice independence ------------------------------------------------
+    {
+        // The synth holds one resonator per source per filter slot per voice.
+        // They must not share state: a resonator still ringing from one note
+        // must not colour another.
+        px3::CombSettings settings;
+        settings.tuneHz = 220.0f;
+        settings.decaySeconds = 2.0f;
+
+        px3::CombResonator a;
+        px3::CombResonator b;
+        a.prepare(kSampleRate);
+        b.prepare(kSampleRate);
+        a.setCurrentSettingsImmediate(settings);
+        b.setCurrentSettingsImmediate(settings);
+
+        // Ring A only.
+        juce::Random random { 5 };
+        for (int i = 0; i < 8000; ++i)
+        {
+            a.processSample(i < 500 ? (random.nextFloat() * 2.0f - 1.0f) : 0.0f);
+        }
+
+        // B has seen nothing, so it must still be silent.
+        double bEnergy = 0.0;
+        for (int i = 0; i < 4000; ++i)
+        {
+            const auto out = b.processSample(0.0f);
+            bEnergy += std::abs(static_cast<double>(out));
+        }
+
+        // And a reset must clear A's tail completely.
+        a.reset();
+        double aAfterReset = 0.0;
+        for (int i = 0; i < 4000; ++i)
+        {
+            aAfterReset += std::abs(static_cast<double>(a.processSample(0.0f)));
+        }
+
+        check("Comb_ResonatorsAreIndependentAndResetClears",
+              bEnergy < 1.0e-6 && aAfterReset < 1.0e-6,
+              "untouched resonator energy " + fmt((float) bEnergy, 6)
+                  + ", after reset " + fmt((float) aAfterReset, 6));
+    }
+}
+
 void testCardStyle()
 {
     suite("CARD STYLE");
@@ -5815,9 +6466,28 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
         setParam(processor, juce::String("filter") + slot + "Enabled", 1.0f);
         setParam(processor, juce::String("filter") + slot + "Cutoff", slot[0] == '1' ? 733.0f : 4211.0f);
         setParam(processor, juce::String("filter") + slot + "Resonance", slot[0] == '1' ? 1.73f : 0.41f);
+
+        // The comb's controls go through the same round trip as everything
+        // else, so the state test above covers them without a second mechanism.
+        setParam(processor, juce::String("filter") + slot + "CombTune", slot[0] == '1' ? 143.5f : 671.25f);
+        setParam(processor, juce::String("filter") + slot + "CombDecay", slot[0] == '1' ? 2.35f : 0.44f);
+        setParam(processor, juce::String("filter") + slot + "CombDamping", slot[0] == '1' ? 0.62f : 0.11f);
+        setParam(processor, juce::String("filter") + slot + "CombDispersion", slot[0] == '1' ? 0.37f : 0.83f);
+        setParam(processor, juce::String("filter") + slot + "CombDrive", slot[0] == '1' ? 0.29f : 0.71f);
+        setParam(processor, juce::String("filter") + slot + "CombMix", slot[0] == '1' ? 0.66f : 0.24f);
+        setParam(processor, juce::String("filter") + slot + "CombInvert", slot[0] == '1' ? 1.0f : 0.0f);
     }
+    // The dry bus is a channel like any other, so the round trip has to carry
+    // it too.
+    setParam(processor, "mix.dry.level", 0.63f);
+    setParam(processor, "mix.dry.pan", -0.42f);
+    setParam(processor, "mix.dry.mute", 0.0f);
+    setParam(processor, "mix.dry.solo", 1.0f);
+    setParam(processor, "mix.dry.phase", 1.0f);
+
     setChoice(processor, "filter1Type", 4);
-    setChoice(processor, "filter2Type", 2);
+    // Comb, so the mode itself is part of what the round trip has to restore.
+    setChoice(processor, "filter2Type", static_cast<int>(px3::FilterMode::comb));
 
     for (int envIndex = 0; envIndex < 3; ++envIndex)
     {
@@ -5921,6 +6591,63 @@ std::vector<std::pair<juce::String, float>> snapshotParameters(PX3SynthAudioProc
 void testPresets()
 {
     suite("PRESET / STATE");
+
+    // The comb's parameters specifically. The round trip below already compares
+    // every parameter, but a failure there names one index out of hundreds;
+    // this says which control was lost.
+    {
+        PX3SynthAudioProcessor processor;
+        applyUnusualConfiguration(processor);
+
+        const std::array<juce::String, 7> combIds { {
+            "CombTune", "CombDecay", "CombDamping", "CombDispersion",
+            "CombDrive", "CombMix", "CombInvert",
+        } };
+
+        std::vector<std::pair<juce::String, float>> before;
+        for (int filterIndex = 1; filterIndex <= kFilterInstanceCount; ++filterIndex)
+        {
+            for (const auto& id : combIds)
+            {
+                const auto full = "filter" + juce::String(filterIndex) + id;
+                if (auto* param = findParameter(processor, full))
+                {
+                    before.push_back({ full, param->getValue() });
+                }
+            }
+        }
+
+        juce::MemoryBlock state;
+        processor.getStateInformation(state);
+
+        PX3SynthAudioProcessor restored;
+        restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        juce::StringArray lost;
+        for (const auto& entry : before)
+        {
+            auto* param = findParameter(restored, entry.first);
+            if (param == nullptr)
+            {
+                lost.add(entry.first + " (missing)");
+            }
+            else if (std::abs(param->getValue() - entry.second) > 1.0e-5f)
+            {
+                lost.add(entry.first);
+            }
+        }
+
+        check("Preset_CombParametersSurviveTheRoundTrip",
+              lost.isEmpty() && before.size() == combIds.size() * kFilterInstanceCount,
+              lost.isEmpty() ? juce::String(static_cast<int>(before.size()))
+                                   + " comb parameters restored exactly"
+                             : "lost: " + lost.joinIntoString(", "));
+
+        check("Preset_CombModeSurvivesTheRoundTrip",
+              restored.getFilterTypeParam(1).getIndex() == static_cast<int>(px3::FilterMode::comb),
+              "filter 2 restored as mode index "
+                  + juce::String(restored.getFilterTypeParam(1).getIndex()));
+    }
 
     // Full DAW-session round trip: save, reset to defaults, restore, compare
     // every parameter.
@@ -7332,6 +8059,7 @@ int main(int argc, char* argv[])
     if (wants("lfo")) testLfo();
     if (wants("vibe")) testVibe();
     if (wants("reverb")) testReverb();
+    if (wants("comb")) testComb();
     if (wants("cardstyle")) testCardStyle();
     if (wants("cardinner")) testCardInner();
     if (wants("delay")) testDelay();

@@ -7,6 +7,40 @@ MixerChannelComponent::MixerChannelComponent(Controls controlsIn)
 {
 }
 
+void MixerChannelComponent::setSourceActive(bool active)
+{
+    if (sourceActive == active)
+    {
+        return;
+    }
+
+    sourceActive = active;
+
+    for (auto* component : { controls.meter, static_cast<juce::Component*>(controls.mute),
+                             static_cast<juce::Component*>(controls.solo),
+                             static_cast<juce::Component*>(controls.phase),
+                             static_cast<juce::Component*>(controls.fader),
+                             static_cast<juce::Component*>(controls.pan),
+                             static_cast<juce::Component*>(controls.send) })
+    {
+        if (component != nullptr)
+        {
+            component->setEnabled(active);
+        }
+    }
+
+    for (auto* label : { controls.valueLabel, controls.panLabel, controls.panValueLabel,
+                         controls.sendLabel, controls.sendValueLabel, controls.stereoTag })
+    {
+        if (label != nullptr)
+        {
+            label->setEnabled(active);
+        }
+    }
+
+    repaint();
+}
+
 juce::Colour MixerChannelComponent::cardAccentColour() const
 {
     return card.style().border.colour;
@@ -49,7 +83,16 @@ void MixerChannelComponent::paint(juce::Graphics& g)
     // the channel name picks up the shared title style and position instead of
     // being a Label the strip positions itself.
     const auto title = controls.title != nullptr ? controls.title->getText() : juce::String();
-    card.draw(g, title);
+
+    // Greyscale when the source is off, exactly as its own card does.
+    if (sourceActive)
+    {
+        card.draw(g, title);
+    }
+    else
+    {
+        card.drawInactive(g, title);
+    }
 }
 
 void MixerChannelComponent::resized()

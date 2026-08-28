@@ -37,6 +37,12 @@ public:
     juce::Rectangle<int> powerBounds() const;
     // Which filter this is: drives the card's style block and its title.
     void setInstanceIndex(int oneBasedIndex);
+    // The comb's parameters, so the response graph can draw its teeth. Passed
+    // rather than read from a processor: this component holds parameter
+    // references, not a processor.
+    void setCombParameters(juce::AudioParameterFloat& tune,
+                           juce::AudioParameterFloat& decay,
+                           juce::AudioParameterFloat& damping);
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
     void refreshFromParameters();
 
@@ -56,6 +62,11 @@ private:
     juce::AudioParameterFloat& cutoff;
     juce::AudioParameterFloat& resonance;
     juce::AudioParameterChoice& mode;
+    // Comb mode's shape comes from its own controls, not from cutoff and
+    // resonance, so the graph needs them to draw anything meaningful.
+    juce::AudioParameterFloat* combTune { nullptr };
+    juce::AudioParameterFloat* combDecay { nullptr };
+    juce::AudioParameterFloat* combDamping { nullptr };
     juce::AudioParameterBool& enabled;
     juce::String instanceLabel;
     juce::Colour accent;

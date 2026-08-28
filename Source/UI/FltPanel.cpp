@@ -3,6 +3,8 @@
 #include "BypassButton.h"
 #include "CardInner.h"
 
+#include "../DSP/FilterMode.h"
+
 #include "UIConfig.h"
 
 #include <array>
@@ -31,10 +33,28 @@ FltPanel::FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabled
                    std::array<juce::Label*, kFilterInstanceCount> resonanceLabelsIn,
                    std::array<juce::ComboBox*, kFilterInstanceCount> filterTypeBoxesIn,
                    std::array<juce::Label*, kFilterInstanceCount> filterTypeLabelsIn,
+                   std::array<juce::Slider*, kFilterInstanceCount> combTuneKnobsIn,
+                   std::array<juce::Slider*, kFilterInstanceCount> combDecayKnobsIn,
+                   std::array<juce::Slider*, kFilterInstanceCount> combDampingKnobsIn,
+                   std::array<juce::Slider*, kFilterInstanceCount> combDispersionKnobsIn,
+                   std::array<juce::Slider*, kFilterInstanceCount> combDriveKnobsIn,
+                   std::array<juce::Slider*, kFilterInstanceCount> combMixKnobsIn,
+                   std::array<juce::Button*, kFilterInstanceCount> combInvertButtonsIn,
+                   std::array<juce::Label*, kFilterInstanceCount> combTuneLabelsIn,
+                   std::array<juce::Label*, kFilterInstanceCount> combDecayLabelsIn,
+                   std::array<juce::Label*, kFilterInstanceCount> combDampingLabelsIn,
+                   std::array<juce::Label*, kFilterInstanceCount> combDispersionLabelsIn,
+                   std::array<juce::Label*, kFilterInstanceCount> combDriveLabelsIn,
+                   std::array<juce::Label*, kFilterInstanceCount> combMixLabelsIn,
                                      std::array<juce::AudioParameterBool*, kFilterInstanceCount> enabledParams,
                    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> cutoffParams,
                    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> resonanceParams,
                    std::array<juce::AudioParameterChoice*, kFilterInstanceCount> filterTypeParams,
+                   // The comb parameters the response graph draws from. The
+                   // knobs alone cannot serve: the graph needs the values.
+                   std::array<juce::AudioParameterFloat*, kFilterInstanceCount> combTuneParamsIn,
+                   std::array<juce::AudioParameterFloat*, kFilterInstanceCount> combDecayParamsIn,
+                   std::array<juce::AudioParameterFloat*, kFilterInstanceCount> combDampingParamsIn,
                    juce::Colour panelAccent)
         : enabledButtons(enabledButtonsIn),
             cutoffKnobs(cutoffKnobsIn),
@@ -42,6 +62,22 @@ FltPanel::FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabled
       resonanceKnobs(resonanceKnobsIn),
       resonanceLabels(resonanceLabelsIn),
       filterTypeBoxes(filterTypeBoxesIn),
+      combTuneParams(combTuneParamsIn),
+      combDecayParams(combDecayParamsIn),
+      combDampingParams(combDampingParamsIn),
+      combTuneKnobs(combTuneKnobsIn),
+      combDecayKnobs(combDecayKnobsIn),
+      combDampingKnobs(combDampingKnobsIn),
+      combDispersionKnobs(combDispersionKnobsIn),
+      combDriveKnobs(combDriveKnobsIn),
+      combMixKnobs(combMixKnobsIn),
+      combInvertButtons(combInvertButtonsIn),
+      combTuneLabels(combTuneLabelsIn),
+      combDecayLabels(combDecayLabelsIn),
+      combDampingLabels(combDampingLabelsIn),
+      combDispersionLabels(combDispersionLabelsIn),
+      combDriveLabels(combDriveLabelsIn),
+      combMixLabels(combMixLabelsIn),
       filterTypeLabels(filterTypeLabelsIn),
       accent(panelAccent)
 {
@@ -55,6 +91,26 @@ FltPanel::FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabled
         filterTypeBoxes[static_cast<std::size_t>(filterIndex)]->setLookAndFeel(&filterComboLookAndFeel);
         addAndMakeVisible(*filterTypeBoxes[static_cast<std::size_t>(filterIndex)]);
         addAndMakeVisible(*filterTypeLabels[static_cast<std::size_t>(filterIndex)]);
+
+        for (auto* knob : { combTuneKnobs[static_cast<std::size_t>(filterIndex)],
+                            combDecayKnobs[static_cast<std::size_t>(filterIndex)],
+                            combDampingKnobs[static_cast<std::size_t>(filterIndex)],
+                            combDispersionKnobs[static_cast<std::size_t>(filterIndex)],
+                            combDriveKnobs[static_cast<std::size_t>(filterIndex)],
+                            combMixKnobs[static_cast<std::size_t>(filterIndex)] })
+        {
+            addAndMakeVisible(*knob);
+        }
+        for (auto* label : { combTuneLabels[static_cast<std::size_t>(filterIndex)],
+                             combDecayLabels[static_cast<std::size_t>(filterIndex)],
+                             combDampingLabels[static_cast<std::size_t>(filterIndex)],
+                             combDispersionLabels[static_cast<std::size_t>(filterIndex)],
+                             combDriveLabels[static_cast<std::size_t>(filterIndex)],
+                             combMixLabels[static_cast<std::size_t>(filterIndex)] })
+        {
+            addAndMakeVisible(*label);
+        }
+        addAndMakeVisible(*combInvertButtons[static_cast<std::size_t>(filterIndex)]);
 
                 const auto idx = static_cast<std::size_t>(filterIndex);
                 cutoffLabelBaseColours[idx] = cutoffLabels[idx]->findColour(juce::Label::textColourId);
@@ -71,6 +127,10 @@ FltPanel::FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabled
             "Filter " + juce::String(filterIndex + 1),
             panelAccent);
         addAndMakeVisible(*filterComponents[static_cast<std::size_t>(filterIndex)]);
+        filterComponents[static_cast<std::size_t>(filterIndex)]->setCombParameters(
+            *combTuneParams[static_cast<std::size_t>(filterIndex)],
+            *combDecayParams[static_cast<std::size_t>(filterIndex)],
+            *combDampingParams[static_cast<std::size_t>(filterIndex)]);
         filterComponents[static_cast<std::size_t>(filterIndex)]->toBack();
         filterComponents[static_cast<std::size_t>(filterIndex)]->onBackgroundClick =
             [this, filterIndex]
@@ -190,38 +250,114 @@ void FltPanel::resized()
                                        filterComponent->rowControl(0));
         }
 
-        // Row 2: the filter's knobs. Driven off a list rather than two hard
-        // coded cells, so adding a parameter later is one entry here and not a
-        // layout rewrite - the widths scale to fit however many there are.
+        // Row 2: whichever set of knobs the current mode uses.
+        //
+        // The comb is not a biquad response, so it does not have a cutoff or a
+        // resonance - it has a pitch, a decay and a set of resonator controls.
+        // Showing both sets at once would mean four dead knobs in every mode,
+        // so the row carries one set or the other and the mode decides.
         {
-            const std::array<std::pair<juce::Label*, juce::Slider*>, 2> knobs { {
-                { cutoffLabels[idx], cutoffKnobs[idx] },
-                { resonanceLabels[idx], resonanceKnobs[idx] },
-            } };
+            const auto combMode = px3::isCombMode(
+                filterTypeBoxes[idx] != nullptr ? filterTypeBoxes[idx]->getSelectedItemIndex() : 0);
 
-            auto flex = filterComponent->rowFlex(1);
-            const auto gapMargin = filterComponent->rowGap(1);
-            const auto row = toPanel(filterComponent->rowBounds(1));
-            const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
-
-            // Same natural width and cap as the LFO knobs, so the two cards
-            // read as one family.
-            const std::vector<float> natural(knobs.size(), 84.0f);
-            const auto widths = px3::ui::fitRowItemWidths(natural,
-                                                          gapMargin.left + gapMargin.right,
-                                                          static_cast<float>(juce::jmax(1, row.getWidth())));
-            for (const auto width : widths)
+            std::vector<std::pair<juce::Label*, juce::Slider*>> knobs;
+            if (combMode)
             {
-                flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gapMargin));
+                knobs = { { combTuneLabels[idx], combTuneKnobs[idx] },
+                          { combDecayLabels[idx], combDecayKnobs[idx] },
+                          { combDampingLabels[idx], combDampingKnobs[idx] },
+                          { combDispersionLabels[idx], combDispersionKnobs[idx] },
+                          { combDriveLabels[idx], combDriveKnobs[idx] },
+                          { combMixLabels[idx], combMixKnobs[idx] } };
             }
-            flex.performLayout(row.toFloat());
-
-            for (std::size_t i = 0; i < knobs.size(); ++i)
+            else
             {
-                px3::ui::layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
-                                               { knobs[i].first, knobs[i].second, nullptr,
-                                                 ControlShape::square, 16, 0, 84 },
-                                               filterComponent->rowControl(1));
+                knobs = { { cutoffLabels[idx], cutoffKnobs[idx] },
+                          { resonanceLabels[idx], resonanceKnobs[idx] } };
+            }
+
+            // Everything not in use is hidden rather than merely moved away:
+            // a hidden control is skipped by the layout and cannot be tabbed to
+            // or clicked through.
+            const auto show = [](juce::Component* component, bool visible)
+            {
+                if (component != nullptr)
+                {
+                    component->setVisible(visible);
+                }
+            };
+            show(cutoffKnobs[idx], ! combMode);
+            show(cutoffLabels[idx], ! combMode);
+            show(resonanceKnobs[idx], ! combMode);
+            show(resonanceLabels[idx], ! combMode);
+            for (auto* c : { static_cast<juce::Component*>(combTuneKnobs[idx]),
+                             static_cast<juce::Component*>(combDecayKnobs[idx]),
+                             static_cast<juce::Component*>(combDampingKnobs[idx]),
+                             static_cast<juce::Component*>(combDispersionKnobs[idx]),
+                             static_cast<juce::Component*>(combDriveKnobs[idx]),
+                             static_cast<juce::Component*>(combMixKnobs[idx]),
+                             static_cast<juce::Component*>(combTuneLabels[idx]),
+                             static_cast<juce::Component*>(combDecayLabels[idx]),
+                             static_cast<juce::Component*>(combDampingLabels[idx]),
+                             static_cast<juce::Component*>(combDispersionLabels[idx]),
+                             static_cast<juce::Component*>(combDriveLabels[idx]),
+                             static_cast<juce::Component*>(combMixLabels[idx]),
+                             static_cast<juce::Component*>(combInvertButtons[idx]) })
+            {
+                show(c, combMode);
+            }
+
+            const auto gapMargin = filterComponent->rowGap(1);
+            auto row = toPanel(filterComponent->rowBounds(1));
+
+            // The comb's six knobs go in two rows of three with the polarity
+            // switch above them, centred. A single wrapping row would put the
+            // switch wherever the wrap happened to leave it, which reads as an
+            // afterthought rather than as the header it is.
+            if (combMode && combInvertButtons[idx] != nullptr)
+            {
+                constexpr int switchHeight = 20;
+                constexpr int switchWidth = 96;
+                constexpr int switchGap = 6;
+
+                auto switchRow = row.removeFromTop(switchHeight);
+                combInvertButtons[idx]->setBounds(
+                    juce::Rectangle<int>(switchWidth, switchHeight).withCentre(switchRow.getCentre()));
+                row.removeFromTop(switchGap);
+            }
+
+            const auto perRow = combMode ? 3 : static_cast<int>(knobs.size());
+            const auto rowCount = juce::jmax(1, (static_cast<int>(knobs.size()) + perRow - 1) / perRow);
+            const auto knobRowHeight = juce::jmax(1, row.getHeight() / rowCount);
+            const auto knobCap = combMode ? 52 : 84;
+
+            for (int line = 0; line < rowCount; ++line)
+            {
+                auto lineArea = row.removeFromTop(knobRowHeight);
+                const auto firstInLine = static_cast<std::size_t>(line * perRow);
+                const auto countInLine = juce::jmin(static_cast<std::size_t>(perRow),
+                                                    knobs.size() - firstInLine);
+
+                auto flex = filterComponent->rowFlex(1);
+                const std::vector<float> natural(countInLine, 84.0f);
+                const auto widths = px3::ui::fitRowItemWidths(natural,
+                                                              gapMargin.left + gapMargin.right,
+                                                              static_cast<float>(juce::jmax(1, lineArea.getWidth())));
+                for (const auto width : widths)
+                {
+                    flex.items.add(juce::FlexItem(width, static_cast<float>(lineArea.getHeight()))
+                                       .withMargin(gapMargin));
+                }
+                flex.performLayout(lineArea.toFloat());
+
+                for (std::size_t i = 0; i < countInLine; ++i)
+                {
+                    const auto& entry = knobs[firstInLine + i];
+                    px3::ui::layoutLabelledControl(
+                        flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
+                        { entry.first, entry.second, nullptr, ControlShape::square, 16, 0, knobCap },
+                        filterComponent->rowControl(1));
+                }
             }
         }
 
@@ -240,6 +376,18 @@ void FltPanel::refreshFromParameters()
     {
         const auto idx = static_cast<std::size_t>(filterIndex);
         const auto isEnabled = enabledButtons[idx]->getToggleState();
+
+        // Relayout only when the mode actually changes. This runs at 30 Hz, and
+        // laying the panel out on every tick to redo an identical arrangement
+        // would be pure waste.
+        const auto modeNow = filterTypeBoxes[idx] != nullptr
+                                 ? filterTypeBoxes[idx]->getSelectedItemIndex()
+                                 : 0;
+        if (modeNow != lastLaidOutModes[idx])
+        {
+            lastLaidOutModes[idx] = modeNow;
+            resized();
+        }
 
         filterTypeBoxes[idx]->setEnabled(isEnabled);
         // The caption greys out with the control it names, like every other

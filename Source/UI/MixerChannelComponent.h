@@ -41,6 +41,10 @@ public:
     void setCardStyleKey(juce::String key);
     // This channel's identity colour, so its fader and meter can match the card.
     juce::Colour cardAccentColour() const;
+    // Whether the source this channel controls is switched on. A bypassed
+    // oscillator's channel greys out and stops responding, the same as the
+    // oscillator's own card does - a live fader on a silent source is a lie.
+    void setSourceActive(bool active);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
 
@@ -54,6 +58,7 @@ private:
     std::shared_ptr<const UIConfig> uiConfig;
     juce::String cardStyleKey { "mixerChannel" };
     px3::ui::CardHost card;
+    bool sourceActive { true };
     int sectionSpacing { 10 };
     // Below the card title, before the first row.
     int titleGap { 6 };

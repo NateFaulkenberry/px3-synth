@@ -306,6 +306,24 @@ private:
     juce::Slider resonanceKnob;
     juce::ComboBox filterTypeBox;
     juce::Slider cutoff2Knob;
+
+    // Comb mode's controls, one set per filter. Declared as arrays because
+    // there is nothing per-instance about them beyond which parameter they
+    // attach to, and two hand-written copies of seven controls is how the rest
+    // of this file grew names like oscSineKnob.
+    std::array<juce::Slider, kFilterInstanceCount> combTuneKnobs;
+    std::array<juce::Slider, kFilterInstanceCount> combDecayKnobs;
+    std::array<juce::Slider, kFilterInstanceCount> combDampingKnobs;
+    std::array<juce::Slider, kFilterInstanceCount> combDispersionKnobs;
+    std::array<juce::Slider, kFilterInstanceCount> combDriveKnobs;
+    std::array<juce::Slider, kFilterInstanceCount> combMixKnobs;
+    std::array<px3::ui::ToggleChipButton, kFilterInstanceCount> combInvertButtons;
+    std::array<KnobLabel, kFilterInstanceCount> combTuneLabels;
+    std::array<KnobLabel, kFilterInstanceCount> combDecayLabels;
+    std::array<KnobLabel, kFilterInstanceCount> combDampingLabels;
+    std::array<KnobLabel, kFilterInstanceCount> combDispersionLabels;
+    std::array<KnobLabel, kFilterInstanceCount> combDriveLabels;
+    std::array<KnobLabel, kFilterInstanceCount> combMixLabels;
     juce::Slider resonance2Knob;
     juce::ComboBox filter2TypeBox;
     juce::Slider attackKnob;

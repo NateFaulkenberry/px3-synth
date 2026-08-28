@@ -67,8 +67,12 @@ private:
     ChannelWidgets osc1Channel;
     ChannelWidgets osc2Channel;
     ChannelWidgets osc3Channel;
+    ChannelWidgets dryChannel;
     ChannelWidgets fxChannel;
-    std::array<ChannelWidgets*, 5> channels;
+    // Six strips: the four sources, the dry bus, then the FX return. The dry
+    // channel sits between them because that is where it sits in the signal
+    // path - the sources sum into it, and it meets the FX return after.
+    std::array<ChannelWidgets*, 6> channels;
 
     std::vector<std::unique_ptr<juce::SliderParameterAttachment>> sliderAttachments;
     std::vector<std::unique_ptr<juce::ButtonParameterAttachment>> buttonAttachments;
