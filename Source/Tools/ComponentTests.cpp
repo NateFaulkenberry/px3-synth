@@ -5281,6 +5281,98 @@ int main(int argc, char* argv[])
         return 0;
     }
 
+    if (filter == "moodartifacts")
+    {
+        std::printf("\nMOOD DISCONTINUITY SCAN\n");
+        std::printf("  Feeds a steady tone and looks for sample-to-sample jumps that the\n");
+        std::printf("  signal itself cannot explain. A read pointer that wraps without a\n");
+        std::printf("  crossfade produces one of these once per loop, slice or window.\n\n");
+
+        static const char* loopNames[] = { "ENV", "TAPE", "STRETCH" };
+        static const char* wetNames[] = { "REVERB", "DELAY", "SLIP" };
+
+        auto scan = [](int loopMode, int wetMode, float routing)
+        {
+            Mood mood;
+            mood.prepare(kSampleRate);
+            mood.reset();
+            MoodSettings s;
+            s.enabled = true;
+            s.mix = 1.0f;
+            s.loopModeIndex = loopMode;
+            s.wetModeIndex = wetMode;
+            s.routing = routing;
+            s.clock = 1.0f;          // full rate: any stepping here is not the clock
+            s.degrade = 0.0f;        // and not the lo-fi control either
+            s.spread = 0.5f;
+            s.feedback = 0.4f;
+            s.loopLength = 0.35f;
+            s.loopModify = 0.62f;
+            s.wetTime = 0.4f;
+            s.wetModify = 0.45f;
+            mood.updateForBlock(s);
+
+            const auto total = static_cast<int>(kSampleRate * 6.0);
+            std::vector<float> out;
+            out.reserve(static_cast<std::size_t>(total));
+            for (int i = 0; i < total; ++i)
+            {
+                const auto in = std::sin(juce::MathConstants<float>::twoPi * 220.0f
+                                         * static_cast<float>(i) / static_cast<float>(kSampleRate)) * 0.5f;
+                float l = 0.0f, r = 0.0f;
+                mood.processSampleFrame(in, in, l, r);
+                out.push_back(l);
+            }
+
+            // A 220 Hz sine at 0.5 moves at most 0.5*2*pi*220/48000 = 0.0144 per
+            // sample. Anything far above that is a discontinuity, not programme.
+            const auto from = static_cast<int>(kSampleRate * 2.0);
+            double worst = 0.0;
+            int jumps = 0;
+            std::vector<int> positions;
+            for (int i = from + 1; i < total; ++i)
+            {
+                const auto d = std::abs(static_cast<double>(out[static_cast<std::size_t>(i)]
+                                                            - out[static_cast<std::size_t>(i - 1)]));
+                worst = juce::jmax(worst, d);
+                if (d > 0.05)
+                {
+                    ++jumps;
+                    if (positions.size() < 6) positions.push_back(i);
+                }
+            }
+            // Spacing between jumps tells us which wrap is responsible.
+            double spacingMs = 0.0;
+            if (positions.size() >= 2)
+            {
+                spacingMs = (positions[1] - positions[0]) * 1000.0 / kSampleRate;
+            }
+            return std::make_tuple(worst, jumps, spacingMs);
+        };
+
+        std::printf("  routing = micro-looper only (isolates the loop channel)\n");
+        std::printf("  loop      wet        worst step   jumps>0.05   spacing ms\n");
+        for (int loopMode = 0; loopMode < 3; ++loopMode)
+        {
+            const auto [worst, jumps, spacing] = scan(loopMode, 1, 1.0f);
+            std::printf("    %-8s %-9s  %9.5f  %10d  %9.1f%s\n",
+                        loopNames[loopMode], "(bypassed)", worst, jumps, spacing,
+                        jumps > 0 ? "   <-- discontinuities" : "");
+        }
+
+        std::printf("\n  routing = input only (isolates the wet channel)\n");
+        std::printf("  loop      wet        worst step   jumps>0.05   spacing ms\n");
+        for (int wetMode = 0; wetMode < 3; ++wetMode)
+        {
+            const auto [worst, jumps, spacing] = scan(1, wetMode, 0.0f);
+            std::printf("    %-8s %-9s  %9.5f  %10d  %9.1f%s\n",
+                        "(n/a)", wetNames[wetMode], worst, jumps, spacing,
+                        jumps > 0 ? "   <-- discontinuities" : "");
+        }
+        std::printf("\n");
+        return 0;
+    }
+
     if (filter == "moodmetrics")
     {
         std::printf("\nMOOD CHARACTERISATION (driven on the Mood class)\n");

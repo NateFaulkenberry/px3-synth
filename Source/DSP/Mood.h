@@ -67,6 +67,16 @@ private:
     static Frame panStereo(float mono, float position);
 
     float readInterp(const std::vector<float>& line, float pos) const;
+    // Reads a looping playhead with a short crossfade across the splice. A
+    // pointer that simply wraps steps from the end of the loop to its start,
+    // and that step is a click once per loop.
+    float readSpliced(const std::vector<float>& line,
+                      float startAbs,
+                      float pos,
+                      float loopLength,
+                      float fadeLength) const;
+    // Length of that crossfade, in internal samples, for a given loop length.
+    float spliceFadeFor(float loopLength) const;
     float readAllpass(int channel, int stage, float x, float g);
 
     void writeHistory(float l, float r);
@@ -123,6 +133,16 @@ private:
     float envPanDirection { 1.0f };
     bool envGateOpen { false };
     int envSliceHoldSamples { 0 };
+    // The captured slice gets its own storage. Holding a position in the
+    // circular history cannot work: the write head keeps running and laps the
+    // region being held, so a long hold reads audio that is being overwritten
+    // underneath it.
+    std::array<std::vector<float>, 2> envSliceBuffer;
+    int envSliceLength { 0 };
+    int envSliceWritePos { 0 };
+    float envSliceOrigin { 0.0f };
+    float envSliceReadPos { 0.0f };
+    float envSliceBlend { 0.0f };
     int stretchSpawnCounter { 0 };
     float stretchPanPhase { 0.0f };
 

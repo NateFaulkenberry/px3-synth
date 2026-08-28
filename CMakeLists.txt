@@ -41,7 +41,22 @@ FetchContent_Declare(
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 FetchContent_MakeAvailable(juce)
 
+# App icon. Generated from Source/Assets/px3.gif by scripts/make-app-icon.mjs
+# and committed, so an ordinary build does not need node or sharp. Passed to
+# JUCE only when it is actually present, so a fresh checkout without it still
+# configures.
+set(PX3_ICON_FILE "${CMAKE_SOURCE_DIR}/Source/Assets/px3-icon.png" CACHE FILEPATH
+    "PNG used as the application/plugin icon")
+set(PX3_ICON_ARGS "")
+if (EXISTS "${PX3_ICON_FILE}")
+    set(PX3_ICON_ARGS ICON_BIG "${PX3_ICON_FILE}")
+    message(STATUS "PX3 app icon: ${PX3_ICON_FILE}")
+else()
+    message(STATUS "PX3 app icon: none (run scripts/make-app-icon.mjs to generate one)")
+endif()
+
 juce_add_plugin(PX3Synth
+    ${PX3_ICON_ARGS}
     COMPANY_NAME "PX3"
     BUNDLE_ID "com.px3.px3synth"
     IS_SYNTH TRUE

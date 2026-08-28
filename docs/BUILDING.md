@@ -58,6 +58,50 @@ Explicitly disable forced rebuild (default):
 ./scripts/run-standalone.sh --build false
 ```
 
+## Release Packaging
+
+```bash
+./scripts/build-release.sh
+```
+
+Produces, under `dist/`:
+
+| Artifact | Notes |
+| --- | --- |
+| `PX3-v<version>.pkg` | Installer with a format-selection step (AU / VST3 / Standalone) |
+| `PX3-Uninstaller.pkg` | Uninstaller, intentionally unversioned |
+| `P(X3)-v<version>-macOS-arm64.zip` | Bundles plus a copy of the uninstaller |
+| `PX3-v<version>-macOS/` | The unarchived staging directory |
+
+Flags:
+
+```bash
+./scripts/build-release.sh --sign                # codesign the bundles
+./scripts/build-release.sh --debug true          # enable the in-plugin debug panel
+./scripts/build-release.sh --no-uninstaller      # skip the uninstaller package
+```
+
+The installer is built as three component packages joined by an explicit
+`Distribution.xml` with `customize="always"`, which is what makes the
+Installation Type pane appear. Each format is an independently selectable choice
+with its own description and install location.
+
+The uninstaller is a payload-free package whose postinstall script runs as root.
+It walks every home directory under `/Users` rather than relying on `$HOME`,
+because presets live per-user and the script's own `$HOME` is root's. It removes
+plug-ins, the standalone app, the entire preset library (factory and user),
+preferences, caches, logs, Audio Unit caches and installer receipts.
+
+Its `safe_remove` helper refuses empty, short, malformed or top-level paths
+before calling `rm -rf`, since every path it acts on is built from variables and
+an empty one would otherwise be catastrophic.
+
+The release script validates both packages after building: that the component
+packages exist and carry their payloads, that the Distribution actually contains
+the format choices and the customize pane, that the uninstaller contains its
+postinstall script and its warning screen, and that the generated script parses
+as valid bash.
+
 ## Developer Test Executables
 
 Alongside the plugin, four console executables are configured by CMake. They are

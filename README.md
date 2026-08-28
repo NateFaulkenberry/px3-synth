@@ -84,23 +84,68 @@ Run:
 ./scripts/build-release.sh
 ```
 
-This command builds the release plugin formats and also creates a native macOS installer package.
+This builds the release plugin formats and creates two native macOS packages: an
+installer and an uninstaller.
 
-The installer currently includes:
+### Installer
 
-- Audio Unit (AU)
-- VST3
+The installer presents an **Installation Type** step where you choose which
+formats to install. All three are selected by default and each can be
+deselected:
+
+| Format | Destination |
+| --- | --- |
+| Audio Unit (AU) | `/Library/Audio/Plug-Ins/Components/` |
+| VST3 | `/Library/Audio/Plug-Ins/VST3/` |
+| Standalone application | `/Applications/` |
 
 Example output artifact:
 
-- dist/PX3-v0.1.0.pkg
+- `dist/PX3-v0.2.1.pkg`
 
-Installer plugin destinations:
+### Uninstaller
 
-- /Library/Audio/Plug-Ins/Components/
-- /Library/Audio/Plug-Ins/VST3/
+An uninstaller package is generated on every release build:
 
-The installer flow is intentionally simple in this phase. Developer ID installer signing and notarization can be added later in the release pipeline.
+- `dist/PX3-Uninstaller.pkg`
+
+It is deliberately **not versioned** — it removes whatever P(X3) is present
+regardless of which release installed it, so the same file ships with every
+release.
+
+Running it completely removes P(X3) **for every user account on the machine**:
+
+- AU and VST3 plug-ins, from both system and per-user plug-in folders
+- The standalone application
+- **All presets — factory and user — plus favourites and settings**, at
+  `~/Library/Application Support/P(X3)/`
+- Preferences, caches, logs and crash reports
+- Audio Unit caches, so P(X3) disappears from host plug-in lists rather than
+  lingering as a broken entry
+- Installer receipts, so a later install is not skipped as already-present
+
+The installer UI warns explicitly that saved user presets are deleted and cannot
+be recovered. A log of everything removed is written to `/tmp/px3-uninstall.log`.
+
+To skip building it:
+
+```bash
+./scripts/build-release.sh --no-uninstaller
+```
+
+For a developer-machine uninstall that does not involve a package, use
+`./scripts/uninstall-local.sh` instead.
+
+### Installer branding
+
+Both packages show the P(X3) logo in the bottom-left corner of the Installer
+window. The image is taken from `Source/Assets/px3-installer.png` if present,
+otherwise generated at build time from `Source/Assets/px3.gif` (converted to PNG
+and scaled, since the Installer renders a still image). If neither exists the
+packages simply build without a background.
+
+Signing: Developer ID installer signing is applied when `DEVELOPER_ID_INSTALLER`
+is set. Notarization can be added later in the release pipeline.
 
 ## Debug Mode
 

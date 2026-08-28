@@ -96,6 +96,11 @@ void Mood::prepare(double sampleRate)
     wetBuffer[0].assign(static_cast<std::size_t>(wetSize), 0.0f);
     wetBuffer[1].assign(static_cast<std::size_t>(wetSize), 0.0f);
 
+    // Longest slice ENV can capture, plus headroom.
+    const auto maxSliceSamples = juce::jmax(64, static_cast<int>(std::round(sampleRateHz * 0.45)));
+    envSliceBuffer[0].assign(static_cast<std::size_t>(maxSliceSamples), 0.0f);
+    envSliceBuffer[1].assign(static_cast<std::size_t>(maxSliceSamples), 0.0f);
+
     const auto scale = static_cast<float>(sampleRateHz / 48000.0);
     for (int channel = 0; channel < 2; ++channel)
     {
@@ -133,6 +138,12 @@ void Mood::reset()
     envPanDirection = 1.0f;
     envGateOpen = false;
     envSliceHoldSamples = 0;
+    envSliceLength = 0;
+    envSliceWritePos = 0;
+    envSliceOrigin = 0.0f;
+    envSliceReadPos = 0.0f;
+    envSliceBlend = 0.0f;
+    for (auto& line : envSliceBuffer) std::fill(line.begin(), line.end(), 0.0f);
     stretchSpawnCounter = 0;
     stretchPanPhase = 0.0f;
     slipReadPos = 0.0f;
@@ -234,6 +245,47 @@ float Mood::readInterp(const std::vector<float>& line, float pos) const
     const auto c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
     const auto c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
     return ((c3 * frac + c2) * frac + c1) * frac + c0;
+}
+
+// Blends the last `fadeLength` samples of the loop into its beginning, so that
+// when the pointer wraps the signal is already where it is about to land. Read
+// pointers running backwards pass through the same region, so one splice covers
+// both directions.
+//
+// The crossfade is equal-gain rather than equal-power. The two sides of a
+// splice are different parts of the recording and therefore uncorrelated, which
+// is the case where equal-power sums above unity - and this output is recycled
+// into the loop, so anything above unity accumulates.
+float Mood::readSpliced(const std::vector<float>& line,
+                        float startAbs,
+                        float pos,
+                        float loopLength,
+                        float fadeLength) const
+{
+    const auto here = readInterp(line, startAbs + pos);
+    if (fadeLength <= 1.0f || loopLength <= fadeLength * 2.0f)
+    {
+        return here;
+    }
+
+    const auto fadeBegins = loopLength - fadeLength;
+    if (pos < fadeBegins)
+    {
+        return here;
+    }
+
+    const auto t = juce::jlimit(0.0f, 1.0f, (pos - fadeBegins) / fadeLength);
+    const auto wrapped = readInterp(line, startAbs + pos - loopLength);
+    return here * (1.0f - t) + wrapped * t;
+}
+
+float Mood::spliceFadeFor(float loopLength) const
+{
+    // Long enough to remove the step, short enough not to smear a rhythmic
+    // loop, and never more than a quarter of the loop itself so that very short
+    // slices are still recognisable rather than being all crossfade.
+    const auto preferred = 0.006f * static_cast<float>(internalSampleRate);
+    return juce::jmin(preferred, loopLength * 0.25f);
 }
 
 float Mood::readAllpass(int channel, int stage, float x, float g)
@@ -366,10 +418,14 @@ Mood::Frame Mood::renderLoopTape(float spread)
     const auto forwardPos = loopStart + loopReadPos;
     const auto reversePos = loopStart + (loopSamples - loopReadPos);
 
-    const auto forwardL = readInterp(historyBuffer[0], forwardPos);
-    const auto forwardR = readInterp(historyBuffer[1], forwardPos);
-    const auto reverseL = readInterp(historyBuffer[0], reversePos);
-    const auto reverseR = readInterp(historyBuffer[1], reversePos);
+    const auto fade = spliceFadeFor(loopSamples);
+    const auto forwardOffset = loopReadPos;
+    const auto reverseOffset = loopSamples - loopReadPos;
+    const auto forwardL = readSpliced(historyBuffer[0], loopStart, forwardOffset, loopSamples, fade);
+    const auto forwardR = readSpliced(historyBuffer[1], loopStart, forwardOffset, loopSamples, fade);
+    const auto reverseL = readSpliced(historyBuffer[0], loopStart, reverseOffset, loopSamples, fade);
+    const auto reverseR = readSpliced(historyBuffer[1], loopStart, reverseOffset, loopSamples, fade);
+    juce::ignoreUnused(forwardPos, reversePos);
 
     Frame out;
     out.l = forwardL + (reverseL - forwardL) * spread;
@@ -409,22 +465,54 @@ Mood::Frame Mood::renderLoopEnv(float inL, float inR, float spread)
     const auto threshold = juce::jmap(currentSettings.loopModify, 0.14f, 0.002f);
     envGateOpen = envFollower > threshold;
 
-    if (envGateOpen && envSliceHoldSamples <= 0)
+    // A rolling copy of the most recent audio, written one sample per step and
+    // simply STOPPED while the gate is open. The slice is then frozen without
+    // anything being copied at the moment it is captured.
+    //
+    // Capturing on the rising edge instead means memcpy-ing up to twenty
+    // thousand frames inside one sample's worth of processing, which is a
+    // dropout on the audio thread however cheap it looks written down.
+    const auto capacity = static_cast<int>(envSliceBuffer[0].size());
+    if (capacity > 0 && ! envGateOpen)
     {
-        envSliceHoldSamples = sliceSamples;
-        loopHeldReadPos = loopReadPos;
+        envSliceBuffer[0][static_cast<std::size_t>(envSliceWritePos)] = inL;
+        envSliceBuffer[1][static_cast<std::size_t>(envSliceWritePos)] = inR;
+        envSliceWritePos = (envSliceWritePos + 1) % capacity;
     }
 
-    if (envSliceHoldSamples > 0)
+    if (envGateOpen && envSliceBlend <= 0.001f && capacity > 0)
     {
-        loopReadPos = loopHeldReadPos;
-        --envSliceHoldSamples;
+        envSliceLength = juce::jlimit(32, capacity - 4, sliceSamples);
+        envSliceOrigin = static_cast<float>(envSliceWritePos - envSliceLength);
+        envSliceReadPos = 0.0f;
     }
+
+    // Blend between live playback and the captured slice rather than switching,
+    // so the gate opening and closing is not itself a step.
+    const auto blendRate = onePoleCoeff(90.0f, static_cast<float>(internalSampleRate));
+    envSliceBlend += ((envGateOpen ? 1.0f : 0.0f) - envSliceBlend) * blendRate;
 
     const auto loopStart = static_cast<float>(historyWritePos) - static_cast<float>(sliceSamples * 2);
-    const auto readAbs = loopStart + loopReadPos;
-    const auto l = readInterp(historyBuffer[0], readAbs);
-    const auto r = readInterp(historyBuffer[1], readAbs);
+    const auto sliceLength = static_cast<float>(sliceSamples);
+    const auto fade = spliceFadeFor(sliceLength);
+    auto l = readSpliced(historyBuffer[0], loopStart, loopReadPos, sliceLength, fade);
+    auto r = readSpliced(historyBuffer[1], loopStart, loopReadPos, sliceLength, fade);
+
+    if (envSliceBlend > 0.001f && envSliceLength > 0)
+    {
+        const auto held = static_cast<float>(envSliceLength);
+        const auto heldFade = spliceFadeFor(held);
+        const auto sl = readSpliced(envSliceBuffer[0], envSliceOrigin, envSliceReadPos, held, heldFade);
+        const auto sr = readSpliced(envSliceBuffer[1], envSliceOrigin, envSliceReadPos, held, heldFade);
+        l += (sl - l) * envSliceBlend;
+        r += (sr - r) * envSliceBlend;
+
+        envSliceReadPos += 1.0f;
+        if (envSliceReadPos >= held)
+        {
+            envSliceReadPos -= held;
+        }
+    }
 
     loopReadPos += 1.0f;
     if (loopReadPos >= static_cast<float>(sliceSamples))
@@ -768,9 +856,10 @@ Mood::Frame Mood::renderWetSlip(float inL, float inR, float spread)
     }
     speed = juce::jlimit(-4.0f, 4.0f, speed);
 
-    const auto readAbs = static_cast<float>(wetWritePos) - windowSamples + slipReadPos;
-    const auto l = readInterp(wetBuffer[0], readAbs);
-    const auto r = readInterp(wetBuffer[1], readAbs);
+    const auto windowStart = static_cast<float>(wetWritePos) - windowSamples;
+    const auto fade = spliceFadeFor(windowSamples);
+    const auto l = readSpliced(wetBuffer[0], windowStart, slipReadPos, windowSamples, fade);
+    const auto r = readSpliced(wetBuffer[1], windowStart, slipReadPos, windowSamples, fade);
 
     slipReadPos += speed;
     while (slipReadPos < 0.0f) slipReadPos += windowSamples;

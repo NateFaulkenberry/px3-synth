@@ -10,3 +10,6 @@
 
 # Notes
 notes.txt
+
+# Local build tooling (sharp for icon generation)
+.tools/
