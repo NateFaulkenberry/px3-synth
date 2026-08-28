@@ -142,6 +142,32 @@
         "padX": 0,
         "padY": 0
       }
+    },
+    "signalFlow": {
+      "height": 46,
+      "gapBelow": 8,
+      "nodeGap": 26,
+      "minNodeWidth": 48,
+      "insetX": 4,
+      "insetY": 6,
+      "cornerRadius": 6,
+      "reflowRate": 0.35,
+      "fontSize": 11,
+      "accentBarHeight": 3,
+      "hoverBrighten": 0.14,
+      "dragBrighten": 0.28,
+      "inactiveSaturation": 0.12,
+      "nodeColour": "#1E2025",
+      "textColour": "#EEF1F6",
+      "inactiveTextColour": "#969AA2",
+      "connectorColour": "#FFFFFF3C",
+      "borderColour": "#FFFFFF2D",
+      "dropHighlightColour": "#FFFFFF1A"
+    },
+    "grid": {
+      "columns": 4,
+      "gap": 8,
+      "rowHeight": 300
     }
   },
   "osc": {

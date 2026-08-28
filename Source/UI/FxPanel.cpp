@@ -1,5 +1,7 @@
 #include "FxPanel.h"
 
+#include "FxChainLayout.h"
+
 FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
                  juce::Slider& vibeAmountKnob,
                       juce::ComboBox& vibeTypeBox,
@@ -51,6 +53,26 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
                  juce::Colour panelAccent)
     : accent(panelAccent)
 {
+    addAndMakeVisible(signalFlow);
+    gridViewport.setViewedComponent(&gridContent, false);
+    gridViewport.setScrollBarsShown(true, false);
+    gridViewport.setScrollBarThickness(10);
+    addAndMakeVisible(gridViewport);
+
+    // Reported upward. The panel never writes the order itself - it is handed
+    // one and displays it.
+    signalFlow.onOrderChanged = [this](const std::vector<int>& order)
+    {
+        if (order.size() != chainOrder.size() || onChainOrderChanged == nullptr)
+        {
+            return;
+        }
+
+        std::array<int, 4> next {};
+        std::copy(order.begin(), order.end(), next.begin());
+        onChainOrderChanged(next);
+    };
+
     vibeUiComponent = std::make_unique<VibeComponent>(vibeBypass,
                                                         vibeAmountKnob,
                                                         vibeTypeBox,
@@ -104,10 +126,14 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
                                                         reverbTypeLabel,
                                                         juce::Colour::fromRGB(128, 208, 255));
 
-    addAndMakeVisible(*vibeUiComponent);
-    addAndMakeVisible(*delayPanelComponent);
-    addAndMakeVisible(*moodComponent);
-    addAndMakeVisible(*reverbComponent);
+    // The cards belong to the scrolling content, not to the panel: the strip
+    // above them must stay put while the grid scrolls.
+    gridContent.addAndMakeVisible(*vibeUiComponent);
+    gridContent.addAndMakeVisible(*delayPanelComponent);
+    gridContent.addAndMakeVisible(*moodComponent);
+    gridContent.addAndMakeVisible(*reverbComponent);
+
+    refreshSignalFlowNodes();
 }
 
 // The four FX section cards are drawn by the components themselves - see
@@ -129,29 +155,135 @@ void FxPanel::paint(juce::Graphics& g)
     g.drawRoundedRectangle(area, radius, 1.0f);
 }
 
-void FxPanel::setSectionBounds(const juce::Rectangle<int>& vibeBounds,
-                               const juce::Rectangle<int>& delayBounds,
-                               const juce::Rectangle<int>& moodBounds,
-                               const juce::Rectangle<int>& reverbBounds)
+void FxPanel::setChainOrder(const std::array<int, 4>& order)
 {
-    if (vibeUiComponent != nullptr)
+    chainOrder = order;
+    refreshSignalFlowNodes();
+    resized();
+}
+
+void FxPanel::setSectionActive(int sectionId, bool active)
+{
+    const auto slot = static_cast<std::size_t>(juce::jlimit(0, 3, sectionId));
+    if (sectionActive[slot] == active)
     {
-        vibeUiComponent->setBounds(vibeBounds);
+        return;
     }
 
-    if (delayPanelComponent != nullptr)
+    sectionActive[slot] = active;
+    signalFlow.setNodeActive(sectionId, active);
+}
+
+void FxPanel::refreshSignalFlowNodes()
+{
+    // Built from the order the panel was given, so the strip and the grid are
+    // two readings of one list rather than two lists that have to be kept in
+    // step.
+    std::vector<px3::ui::FxSignalFlow::Node> flowNodes;
+    flowNodes.reserve(chainOrder.size());
+
+    for (const auto sectionId : chainOrder)
     {
-        delayPanelComponent->setBounds(delayBounds);
+        const auto slot = static_cast<std::size_t>(juce::jlimit(0, 3, sectionId));
+        flowNodes.push_back({ sectionId,
+                              sectionName(sectionId),
+                              sectionAccent(sectionId),
+                              sectionActive[slot] });
     }
 
-    if (moodComponent != nullptr)
+    signalFlow.setNodes(std::move(flowNodes));
+}
+
+juce::String FxPanel::sectionName(int sectionId)
+{
+    switch (sectionId)
     {
-        moodComponent->setBounds(moodBounds);
+        case 0:  return "VIBE";
+        case 1:  return "DELAY";
+        case 2:  return "REVERB";
+        case 3:  return "MOOD";
+        default: break;
+    }
+    return "FX";
+}
+
+juce::Colour FxPanel::sectionAccent(int sectionId) const
+{
+    // Read from the same card blocks the FX cards use, so a node and its card
+    // are the same colour without either being told about the other.
+    if (uiConfig == nullptr)
+    {
+        return accent;
     }
 
-    if (reverbComponent != nullptr)
+    switch (sectionId)
     {
-        reverbComponent->setBounds(reverbBounds);
+        case 0:  return uiConfig->getColour("cards.vibe.border.color", accent);
+        case 1:  return uiConfig->getColour("cards.delay.border.color", accent);
+        case 2:  return uiConfig->getColour("cards.reverb.border.color", accent);
+        case 3:  return uiConfig->getColour("cards.mood.border.color", accent);
+        default: break;
+    }
+    return accent;
+}
+
+juce::Component* FxPanel::componentForSection(int sectionId) const
+{
+    switch (sectionId)
+    {
+        case 0:  return vibeUiComponent.get();
+        case 1:  return delayPanelComponent.get();
+        case 2:  return reverbComponent.get();
+        case 3:  return moodComponent.get();
+        default: break;
+    }
+    return nullptr;
+}
+
+void FxPanel::resized()
+{
+    const auto padX = uiConfig != nullptr ? uiConfig->getInt("fx.panel.layout.padX", 0) : 0;
+    const auto padY = uiConfig != nullptr ? uiConfig->getInt("fx.panel.layout.padY", 0) : 0;
+    auto area = getLocalBounds().reduced(padX, padY);
+
+    // The strip is fixed at the top and outside the viewport: it is how the
+    // chain is reordered, so scrolling through a long grid must not take it
+    // away.
+    const auto stripHeight = uiConfig != nullptr ? uiConfig->getInt("fx.signalFlow.height", 46) : 46;
+    signalFlow.setBounds(area.removeFromTop(stripHeight));
+
+    const auto stripGap = uiConfig != nullptr ? uiConfig->getInt("fx.signalFlow.gapBelow", 8) : 8;
+    area.removeFromTop(stripGap);
+
+    gridViewport.setBounds(area);
+
+    // ---- the grid ---------------------------------------------------------
+    // A wrapping grid whose cell order IS the chain order, so the grid is a
+    // second reading of the strip rather than a second list to keep in step.
+    const auto columns = uiConfig != nullptr ? uiConfig->getInt("fx.grid.columns", 4) : 4;
+    const auto gap = uiConfig != nullptr ? uiConfig->getInt("fx.grid.gap", 8) : 8;
+    const auto rowHeight = uiConfig != nullptr ? uiConfig->getInt("fx.grid.rowHeight", 300) : 300;
+
+    const auto count = static_cast<int>(chainOrder.size());
+    const auto neededHeight = px3::ui::fxGridContentHeight(count, columns, gap, rowHeight);
+
+    // The scrollbar takes width from the cells, so whether it is needed has to
+    // be decided before they are measured - otherwise the first layout sizes
+    // cells for a bar that then appears and overlaps them.
+    const auto needsScrollBar = neededHeight > gridViewport.getHeight();
+    const auto gutter = needsScrollBar ? gridViewport.getScrollBarThickness() + 4 : 0;
+    const auto contentWidth = juce::jmax(1, gridViewport.getWidth() - gutter);
+
+    gridContent.setBounds(0, 0, contentWidth, juce::jmax(gridViewport.getHeight(), neededHeight));
+
+    const auto cells = px3::ui::fxGridCells(contentWidth, count, columns, gap, rowHeight);
+
+    for (int i = 0; i < count && i < static_cast<int>(cells.size()); ++i)
+    {
+        if (auto* component = componentForSection(chainOrder[static_cast<std::size_t>(i)]))
+        {
+            component->setBounds(cells[static_cast<std::size_t>(i)]);
+        }
     }
 }
 
@@ -180,11 +312,17 @@ void FxPanel::setActive(bool vibeEnabled,
     {
         reverbComponent->setActive(reverbEnabled);
     }
+
+    setSectionActive(0, vibeEnabled);
+    setSectionActive(1, delayEnabled);
+    setSectionActive(2, reverbEnabled);
+    setSectionActive(3, moodEnabled);
 }
 
 void FxPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+    signalFlow.setUIConfig(uiConfig);
 
     if (vibeUiComponent != nullptr)
     {

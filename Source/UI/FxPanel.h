@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "FxSignalFlow.h"
+
 #include "DelayComponent.h"
 #include "MoodComponent.h"
 #include "ReverbComponent.h"
@@ -63,10 +65,16 @@ public:
 
     void paint(juce::Graphics& g) override;
 
-    void setSectionBounds(const juce::Rectangle<int>& vibeBounds,
-                          const juce::Rectangle<int>& delayBounds,
-                          const juce::Rectangle<int>& moodBounds,
-                          const juce::Rectangle<int>& reverbBounds);
+    // The chain order to display. The panel lays its cards out in this order
+    // and hands the same order to the signal-flow strip, so the two views
+    // cannot disagree - they are the same list read twice.
+    void setChainOrder(const std::array<int, 4>& order);
+    void setSectionActive(int sectionId, bool active);
+
+    // Raised when the user drags the strip into a new order. The panel does not
+    // apply it: the editor writes it to the processor, which feeds it back
+    // through setChainOrder.
+    std::function<void(const std::array<int, 4>&)> onChainOrderChanged;
 
     void setActive(bool vibeEnabled,
                    bool delayEnabled,
@@ -75,12 +83,27 @@ public:
                    bool reverbEnabled);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
+    void resized() override;
+
 private:
+    void refreshSignalFlowNodes();
+    juce::Component* componentForSection(int sectionId) const;
+    juce::Colour sectionAccent(int sectionId) const;
+    static juce::String sectionName(int sectionId);
+
     std::unique_ptr<VibeComponent> vibeUiComponent;
     std::unique_ptr<DelayComponent> delayPanelComponent;
     std::unique_ptr<MoodComponent> moodComponent;
     std::unique_ptr<ReverbComponent> reverbComponent;
 
     juce::Colour accent;
+
+    // The strip lives above the cards and never scrolls with them: it is the
+    // ordering control, so it has to stay reachable however far the grid runs.
+    px3::ui::FxSignalFlow signalFlow;
+    juce::Viewport gridViewport;
+    juce::Component gridContent;
+    std::array<int, 4> chainOrder { { 0, 1, 3, 2 } };
+    std::array<bool, 4> sectionActive { { true, true, true, true } };
     std::shared_ptr<const UIConfig> uiConfig;
 };

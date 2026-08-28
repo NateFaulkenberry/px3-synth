@@ -18,6 +18,9 @@
 #include "../DSP/AmpEnvelope.h"
 #include "../UI/Card.h"
 #include "../UI/CardInner.h"
+#include "../UI/FxChainLayout.h"
+#include "../UI/FxSignalFlow.h"
+#include "../UI/UIConfigManager.h"
 #include "../UI/MixerControls.h"
 #include "../UI/UIConfig.h"
 #include "../DSP/Delay.h"
@@ -7421,6 +7424,272 @@ void testIntegration()
         }
     }
 }
+
+void testFxChain()
+{
+    suite("FX CHAIN");
+
+    using namespace px3::ui;
+
+    auto asVector = [](const std::array<int, 4>& order)
+    {
+        return std::vector<int>(order.begin(), order.end());
+    };
+    auto asText = [](const std::vector<int>& order)
+    {
+        juce::String text;
+        for (const auto entry : order)
+        {
+            text << juce::String(entry) << " ";
+        }
+        return text.trim();
+    };
+
+    // ---- reordering --------------------------------------------------------
+    {
+        const std::vector<int> start { 0, 1, 3, 2 };
+
+        const auto forward = moveChainEntry(start, 0, 2);
+        check("FxChain_MoveForwardSlidesThePassedEntriesBack",
+              forward == std::vector<int>({ 1, 3, 0, 2 }),
+              "0 1 3 2, move index 0 -> 2 gives " + asText(forward));
+
+        const auto backward = moveChainEntry(start, 3, 0);
+        check("FxChain_MoveBackwardSlidesThePassedEntriesForward",
+              backward == std::vector<int>({ 2, 0, 1, 3 }),
+              "0 1 3 2, move index 3 -> 0 gives " + asText(backward));
+
+        check("FxChain_MoveToItsOwnIndexIsANoOp",
+              moveChainEntry(start, 2, 2) == start, "");
+
+        // A drag that ends outside the strip must not silently reorder into
+        // whatever index clamping would have produced.
+        check("FxChain_OutOfRangeMoveLeavesTheOrderAlone",
+              moveChainEntry(start, -1, 2) == start && moveChainEntry(start, 1, 9) == start, "");
+
+        // Every move is a permutation: no effect can be lost or duplicated.
+        auto isPermutation = [&start](const std::vector<int>& order)
+        {
+            auto a = order;
+            auto b = start;
+            std::sort(a.begin(), a.end());
+            std::sort(b.begin(), b.end());
+            return a == b;
+        };
+
+        auto permutationHolds = true;
+        for (int from = 0; from < 4; ++from)
+        {
+            for (int to = 0; to < 4; ++to)
+            {
+                permutationHolds = permutationHolds && isPermutation(moveChainEntry(start, from, to));
+            }
+        }
+        check("FxChain_EveryMoveIsAPermutation", permutationHolds,
+              "all 16 from/to pairs preserve the set of effects");
+    }
+
+    // ---- signal-flow slots -------------------------------------------------
+    {
+        const juce::Rectangle<float> area { 0.0f, 0.0f, 424.0f, 34.0f };
+        const auto slots = signalFlowSlots(area, 4, 26, 48);
+
+        check("FxChain_SlotsSpanTheStripWithGapsBetween",
+              slots.size() == 4
+                  && juce::approximatelyEqual(slots[0].getWidth(), 86.5f)
+                  && juce::approximatelyEqual(slots[1].getX(), 112.5f)
+                  && juce::approximatelyEqual(slots[3].getRight(), 424.0f),
+              "424 wide, 3 gaps of 26 -> 4 nodes of "
+                  + juce::String(slots.empty() ? 0.0f : slots[0].getWidth(), 1));
+
+        const auto narrow = signalFlowSlots({ 0.0f, 0.0f, 100.0f, 34.0f }, 4, 26, 48);
+        check("FxChain_SlotsNeverGoBelowTheMinimumWidth",
+              narrow.size() == 4 && narrow[0].getWidth() >= 48.0f,
+              "100px for 4 nodes -> width " + juce::String(narrow.empty() ? 0.0f : narrow[0].getWidth(), 1));
+
+        check("FxChain_NoNodesMeansNoSlots",
+              signalFlowSlots(area, 0, 26, 48).empty(), "");
+
+        // Insertion follows slot centres, so a node swaps at the halfway point.
+        check("FxChain_InsertionIndexTracksSlotCentres",
+              insertionIndexForCentre(slots, 0.0f) == 0
+                  && insertionIndexForCentre(slots, slots[1].getCentreX() + 1.0f) == 1
+                  && insertionIndexForCentre(slots, slots[1].getCentreX() - 1.0f) == 0
+                  && insertionIndexForCentre(slots, 9999.0f) == 3,
+              "");
+    }
+
+    // ---- the wrapping grid -------------------------------------------------
+    {
+        const auto cells = fxGridCells(800, 4, 4, 8, 300);
+        check("FxChain_GridPlacesFourEffectsOnOneRow",
+              cells.size() == 4
+                  && cells[0].getY() == 0 && cells[3].getY() == 0
+                  && cells[0].getWidth() == 194 && cells[3].getRight() == 800,
+              "800 wide, 4 columns, 8px gaps -> cell width "
+                  + juce::String(cells.empty() ? 0 : cells[0].getWidth()));
+
+        const auto wrapped = fxGridCells(800, 6, 4, 8, 300);
+        check("FxChain_GridWrapsPastTheColumnCount",
+              wrapped.size() == 6
+                  && wrapped[3].getY() == 0
+                  && wrapped[4].getY() == 308
+                  && wrapped[4].getX() == wrapped[0].getX(),
+              "6 effects in 4 columns -> row 2 starts at y "
+                  + juce::String(wrapped.size() > 4 ? wrapped[4].getY() : -1));
+
+        // The grid must survive counts it was not designed around, because the
+        // effect list is meant to grow without the layout being revisited.
+        auto scalesCleanly = true;
+        for (int count = 0; count <= 9; ++count)
+        {
+            const auto scaled = fxGridCells(800, count, 4, 8, 300);
+            scalesCleanly = scalesCleanly && static_cast<int>(scaled.size()) == count;
+            for (const auto& cell : scaled)
+            {
+                scalesCleanly = scalesCleanly && cell.getX() >= 0 && cell.getRight() <= 800;
+            }
+        }
+        check("FxChain_GridHandlesZeroThroughNineEffects", scalesCleanly,
+              "cells stay inside the content width at every count");
+
+        check("FxChain_GridContentHeightGrowsARowAtATime",
+              fxGridContentHeight(0, 4, 8, 300) == 0
+                  && fxGridContentHeight(4, 4, 8, 300) == 300
+                  && fxGridContentHeight(5, 4, 8, 300) == 608
+                  && fxGridContentHeight(8, 4, 8, 300) == 608,
+              "5 effects need two rows: "
+                  + juce::String(fxGridContentHeight(5, 4, 8, 300)) + "px");
+
+        // Scrolling exists precisely when the content is taller than the view.
+        check("FxChain_ContentTallerThanTheViewportIsWhatScrolls",
+              fxGridContentHeight(8, 4, 8, 300) > 400 && fxGridContentHeight(4, 4, 8, 300) <= 400,
+              "");
+
+        check("FxChain_SingleColumnIsAVerticalStack",
+              fxGridCells(300, 3, 1, 8, 200).size() == 3
+                  && fxGridCells(300, 3, 1, 8, 200)[2].getY() == 416
+                  && fxGridCells(300, 3, 1, 8, 200)[2].getWidth() == 300,
+              "");
+
+        check("FxChain_ZeroColumnsIsTreatedAsOne",
+              fxGridCells(300, 2, 0, 8, 200).size() == 2
+                  && fxGridCells(300, 2, 0, 8, 200)[1].getY() == 208,
+              "a bad config must not divide by zero");
+    }
+
+    // ---- the strip's style is real configuration ---------------------------
+    {
+        juce::String error;
+        const auto config = UIConfig::fromJsonText(R"({"fx":{"signalFlow":{
+            "nodeGap":40,"minNodeWidth":10,"insetX":12,"insetY":9,"cornerRadius":3,
+            "reflowRate":0.5,"fontSize":17,"accentBarHeight":6,"hoverBrighten":0.4,
+            "dragBrighten":0.6,"inactiveSaturation":0.5,
+            "nodeColour":"#101112","textColour":"#ABCDEF","inactiveTextColour":"#123456",
+            "connectorColour":"#FF000080","borderColour":"#00FF0040","dropHighlightColour":"#0000FF20"}}})",
+                                                 error);
+
+        FxSignalFlow strip;
+        strip.setUIConfig(config);
+        const auto& style = strip.style();
+
+        check("FxChain_SignalFlowStyleComesFromConfig",
+              style.nodeGap == 40 && style.minNodeWidth == 10 && style.insetX == 12 && style.insetY == 9
+                  && juce::approximatelyEqual(style.cornerRadius, 3.0f)
+                  && juce::approximatelyEqual(style.reflowRate, 0.5f)
+                  && juce::approximatelyEqual(style.fontSize, 17.0f)
+                  && juce::approximatelyEqual(style.accentBarHeight, 6.0f)
+                  && juce::approximatelyEqual(style.hoverBrighten, 0.4f)
+                  && juce::approximatelyEqual(style.dragBrighten, 0.6f)
+                  && juce::approximatelyEqual(style.inactiveSaturation, 0.5f)
+                  && style.nodeColour == juce::Colour::fromRGB(0x10, 0x11, 0x12)
+                  && style.textColour == juce::Colour::fromRGB(0xAB, 0xCD, 0xEF)
+                  && style.inactiveTextColour == juce::Colour::fromRGB(0x12, 0x34, 0x56)
+                  && style.connectorColour == juce::Colour::fromRGBA(0xFF, 0x00, 0x00, 0x80)
+                  && style.borderColour == juce::Colour::fromRGBA(0x00, 0xFF, 0x00, 0x40)
+                  && style.dropHighlightColour == juce::Colour::fromRGBA(0x00, 0x00, 0xFF, 0x20),
+              "all 17 fx.signalFlow properties reach the style");
+
+        // The inset and gap are not decoration: they have to move the slots.
+        strip.setNodes({ { 0, "A", juce::Colours::red, true },
+                         { 1, "B", juce::Colours::green, true } });
+        strip.setBounds(0, 0, 200, 40);
+        strip.resized();
+
+        const auto& slots = strip.slotBounds();
+        check("FxChain_SignalFlowStyleMovesTheSlots",
+              slots.size() == 2
+                  && juce::approximatelyEqual(slots[0].getX(), 12.0f)
+                  && juce::approximatelyEqual(slots[0].getY(), 9.0f)
+                  && juce::approximatelyEqual(slots[1].getX(), slots[0].getRight() + 40.0f),
+              "insetX 12, insetY 9, nodeGap 40 -> first slot at "
+                  + juce::String(slots.empty() ? -1.0f : slots[0].getX(), 1));
+    }
+
+    // ---- the shipping config parses and is complete ------------------------
+    {
+        // Read from the file the plugin actually ships, so a property that
+        // exists only in a test literal cannot pass for a real one.
+        UIConfigManager manager;
+        manager.setConfigFile(juce::File::getCurrentWorkingDirectory()
+                                  .getChildFile("Source/UI/UIConfig.json"));
+        manager.loadInitial();
+        const auto config = manager.getConfig();
+        check("FxChain_ShippingConfigDefinesTheStripAndGrid",
+              config != nullptr
+                  && config->getInt("fx.signalFlow.height", -1) > 0
+                  && config->getInt("fx.signalFlow.nodeGap", -1) > 0
+                  && config->getInt("fx.grid.columns", -1) == 4
+                  && config->getInt("fx.grid.rowHeight", -1) > 0,
+              "");
+    }
+
+    // ---- the processor is the authority ------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+
+        const std::array<int, 4> reordered { { 2, 0, 3, 1 } };
+        processor.setFxProcessingOrder(reordered);
+
+        check("FxChain_ProcessorKeepsTheOrderItWasGiven",
+              processor.getFxProcessingOrder() == reordered,
+              asText(asVector(processor.getFxProcessingOrder())));
+
+        juce::MemoryBlock state;
+        processor.getStateInformation(state);
+
+        PX3SynthAudioProcessor restored;
+        restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        check("FxChain_OrderSurvivesADawSession",
+              restored.getFxProcessingOrder() == reordered,
+              "restored " + asText(asVector(restored.getFxProcessingOrder())));
+    }
+
+    {
+        // Reordering must not change what the chain does to silence, and every
+        // order must still produce audio: a bad permutation that dropped a
+        // stage would otherwise pass unnoticed.
+        std::array<int, 4> order { { 0, 1, 3, 2 } };
+        auto ordersProduceAudio = true;
+        juce::String detail;
+
+        for (int rotation = 0; rotation < 4; ++rotation)
+        {
+            PX3SynthAudioProcessor processor;
+            processor.setFxProcessingOrder(order);
+            const auto capture = render(processor, 24000, { { 1000, true, 60, 0.9f } });
+            const auto rms = capture.rms();
+            ordersProduceAudio = ordersProduceAudio && rms > 1.0e-4f && std::isfinite(rms);
+            detail << asText(asVector(order)) << " rms " << juce::String(rms, 5) << "  ";
+
+            const auto rotated = moveChainEntry(asVector(order), 0, 3);
+            std::copy(rotated.begin(), rotated.end(), order.begin());
+        }
+
+        check("FxChain_EveryOrderStillRendersAudio", ordersProduceAudio, detail);
+    }
+}
 } // namespace
 
 int main(int argc, char* argv[])
@@ -8098,6 +8367,7 @@ int main(int argc, char* argv[])
     if (wants("comb")) testComb();
     if (wants("cardstyle")) testCardStyle();
     if (wants("cardinner")) testCardInner();
+    if (wants("fxchain")) testFxChain();
     if (wants("delay")) testDelay();
     if (wants("mood")) testMood();
     if (wants("fx")) testEffectIndependence();

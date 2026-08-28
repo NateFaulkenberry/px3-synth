@@ -128,12 +128,6 @@ private:
     void layoutModPanel();
     void layoutFxPanel();
     void layoutMixPanel();
-    void updateFxSectionTargets(const juce::Rectangle<int>& topArea, int topGap);
-    void layoutFxSectionsFromCurrentAreas();
-    void animateFxSections();
-    int indexForFxSection(int sectionId) const;
-    int fxSectionAtPoint(juce::Point<int> point) const;
-    void moveFxSectionToSlot(int sectionId, int slotIndex);
     void commitFxOrderToProcessor(const juce::String& source = "USER",
                                   const juce::String& reason = "UI_COMMIT",
                                   int fromIndex = -1,
@@ -262,24 +256,18 @@ private:
     juce::Rectangle<int> headerPlaceholderArea;
     juce::Rectangle<int> presetBarArea;
     juce::Rectangle<int> robSectionArea;
-    juce::Rectangle<int> isaacSectionArea;
-    juce::Rectangle<int> moodSectionArea;
-    juce::Rectangle<int> reverbSectionArea;
-    juce::Rectangle<int> topSpareSectionArea;
     juce::Rectangle<int> midiStatusArea;
     juce::Rectangle<int> performanceControlsArea;
-    std::array<juce::Rectangle<int>, kFxSectionCount> fxSectionSlots {};
-    std::array<juce::Rectangle<float>, kFxSectionCount> fxSectionCurrentAreas {};
-    std::array<juce::Rectangle<float>, kFxSectionCount> fxSectionTargetAreas {};
+    // The one authoritative UI-side chain order. The signal-flow strip edits it,
+    // the FX grid and the processor both follow it.
     std::array<int, kFxSectionCount> fxSectionOrder { { 0, 1, 3, 2 } };
-    bool fxSectionsInitialized { false };
-    int draggingFxSection { -1 };
-    float draggingSectionOffsetX { 0.0f };
+    void applyFxChainOrder(const std::array<int, kFxSectionCount>& order,
+                           const juce::String& source,
+                           const juce::String& reason,
+                           int fromIndex,
+                           int toIndex);
     bool logoClickArmed { false };
     juce::Point<int> logoMouseDownPoint;
-    int pressedFxSection { -1 };
-    juce::Point<int> fxDragStartPoint;
-    bool fxDragHasMoved { false };
 
     juce::Slider osc1MacroAKnob;
     juce::Slider osc1MacroBKnob;

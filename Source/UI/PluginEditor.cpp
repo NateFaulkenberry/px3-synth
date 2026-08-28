@@ -1263,7 +1263,11 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     addAndMakeVisible(*fltPanel);
     addAndMakeVisible(*fxPanel);
     addAndMakeVisible(*mixPanel);
-    fxPanel->addMouseListener(this, true);
+    fxPanel->onChainOrderChanged = [this](const std::array<int, kFxSectionCount>& order)
+    {
+        applyFxChainOrder(order, "USER", "USER_DRAG_END", -1, -1);
+    };
+    fxPanel->setChainOrder(fxSectionOrder);
 
     for (auto& binding : knobBindings)
     {
@@ -1521,11 +1525,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
 {
     stopTimer();
-
-    if (fxPanel != nullptr)
-    {
-        fxPanel->removeMouseListener(this);
-    }
 
     // Panels hold child components that reference editor-owned controls.
     // Tear panels down first to avoid shutdown-order lifetime hazards.
@@ -2226,33 +2225,6 @@ void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
         return;
     }
 
-    if (!isPanelVisible(kSectionFx))
-    {
-        return;
-    }
-
-    const auto sectionId = fxSectionAtPoint(point);
-    if (sectionId < 0)
-    {
-        return;
-    }
-
-    if (auto* eventComponent = event.eventComponent)
-    {
-        if (dynamic_cast<juce::Slider*>(eventComponent) != nullptr
-            || dynamic_cast<juce::ComboBox*>(eventComponent) != nullptr
-            || dynamic_cast<juce::Button*>(eventComponent) != nullptr)
-        {
-            return;
-        }
-    }
-
-    draggingFxSection = sectionId;
-    pressedFxSection = sectionId;
-    fxDragStartPoint = point;
-    fxDragHasMoved = false;
-    const auto localPoint = point - fxPanel->getPosition();
-    draggingSectionOffsetX = static_cast<float>(localPoint.x) - fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)].getX();
 }
 
 void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
@@ -2284,52 +2256,6 @@ void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
         return;
     }
 
-    if (draggingFxSection < 0)
-    {
-        return;
-    }
-
-    if (!isPanelVisible(kSectionFx))
-    {
-        return;
-    }
-
-    const auto localPoint = point - fxPanel->getPosition();
-    if (!fxDragHasMoved)
-    {
-        if (point.getDistanceFrom(fxDragStartPoint) < 4)
-        {
-            return;
-        }
-        fxDragHasMoved = true;
-    }
-
-    auto area = fxSectionCurrentAreas[static_cast<std::size_t>(draggingFxSection)];
-    const auto minX = static_cast<float>(fxSectionSlots[0].getX());
-    const auto maxX = static_cast<float>(fxSectionSlots[kFxSectionCount - 1].getRight() - fxSectionSlots[kFxSectionCount - 1].getWidth());
-    auto newX = static_cast<float>(localPoint.x) - draggingSectionOffsetX;
-    newX = juce::jlimit(minX, maxX, newX);
-    area.setX(newX);
-    area.setY(fxSectionTargetAreas[static_cast<std::size_t>(draggingFxSection)].getY());
-    fxSectionCurrentAreas[static_cast<std::size_t>(draggingFxSection)] = area;
-
-    const auto centerX = area.getCentreX();
-    int targetSlot = 0;
-    float bestDistance = std::numeric_limits<float>::max();
-    for (int slot = 0; slot < kFxSectionCount; ++slot)
-    {
-        const auto slotCenterX = static_cast<float>(fxSectionSlots[static_cast<std::size_t>(slot)].getCentreX());
-        const auto distance = std::abs(centerX - slotCenterX);
-        if (distance < bestDistance)
-        {
-            bestDistance = distance;
-            targetSlot = slot;
-        }
-    }
-
-    moveFxSectionToSlot(draggingFxSection, targetSlot);
-    layoutFxSectionsFromCurrentAreas();
-    repaint(fxPanel->getBounds());
 }
 
 void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
@@ -2354,191 +2280,24 @@ void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
         return;
     }
 
-    if (draggingFxSection < 0)
-    {
-        return;
-    }
-
-    if (!isPanelVisible(kSectionFx))
-    {
-        draggingFxSection = -1;
-        pressedFxSection = -1;
-        fxDragHasMoved = false;
-        return;
-    }
-
-    // The FX title bar used to be a hidden toggle: clicking the top 24px of a
-    // section flipped its bypass. The whole card background does that now, in
-    // every component and by one shared rule, so keeping this would toggle
-    // twice for a click that landed in both - which is to say, no toggle at all.
-
-    fxSectionCurrentAreas[static_cast<std::size_t>(draggingFxSection)] =
-        fxSectionTargetAreas[static_cast<std::size_t>(draggingFxSection)];
-    draggingFxSection = -1;
-    pressedFxSection = -1;
-    fxDragHasMoved = false;
-    commitFxOrderToProcessor("USER", "USER_DRAG_END", -1, -1);
-    layoutFxSectionsFromCurrentAreas();
-    repaint(fxPanel->getBounds());
 }
 
-void PX3SynthAudioProcessorEditor::updateFxSectionTargets(const juce::Rectangle<int>& topArea, int topGap)
+
+
+
+
+void PX3SynthAudioProcessorEditor::applyFxChainOrder(const std::array<int, kFxSectionCount>& order,
+                                                     const juce::String& source,
+                                                     const juce::String& reason,
+                                                     int fromIndex,
+                                                     int toIndex)
 {
-    auto layoutArea = topArea;
-    const auto sectionWidth = juce::jmax(108, (layoutArea.getWidth() - (topGap * 3)) / 4);
-
-    for (int i = 0; i < kFxSectionCount; ++i)
-    {
-        fxSectionSlots[static_cast<std::size_t>(i)] = layoutArea.removeFromLeft(sectionWidth);
-        layoutArea.removeFromLeft(topGap);
-    }
-    topSpareSectionArea = layoutArea;
-
-    for (int stage = 0; stage < kFxSectionCount; ++stage)
-    {
-        const auto slotIndex = indexForFxSection(stage);
-        if (slotIndex >= 0)
-        {
-            fxSectionTargetAreas[static_cast<std::size_t>(stage)] =
-                fxSectionSlots[static_cast<std::size_t>(slotIndex)].toFloat();
-        }
-    }
-
-    if (!fxSectionsInitialized)
-    {
-        fxSectionCurrentAreas = fxSectionTargetAreas;
-        fxSectionsInitialized = true;
-    }
-}
-
-void PX3SynthAudioProcessorEditor::layoutFxSectionsFromCurrentAreas()
-{
-    robSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionDrive)].toNearestInt();
-    isaacSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionDelay)].toNearestInt();
-    moodSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionMood)].toNearestInt();
-    reverbSectionArea = fxSectionCurrentAreas[static_cast<std::size_t>(kFxSectionReverb)].toNearestInt();
+    fxSectionOrder = order;
+    commitFxOrderToProcessor(source, reason, fromIndex, toIndex);
 
     if (fxPanel != nullptr)
     {
-        fxPanel->setSectionBounds(robSectionArea, isaacSectionArea, moodSectionArea, reverbSectionArea);
-    }
-}
-
-void PX3SynthAudioProcessorEditor::animateFxSections()
-{
-    if (!fxSectionsInitialized)
-    {
-        return;
-    }
-
-    bool changed = false;
-    for (int sectionId = 0; sectionId < kFxSectionCount; ++sectionId)
-    {
-        if (sectionId == draggingFxSection)
-        {
-            continue;
-        }
-
-        auto current = fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)];
-        const auto target = fxSectionTargetAreas[static_cast<std::size_t>(sectionId)];
-        current = current.transformedBy(juce::AffineTransform::translation((target.getX() - current.getX()) * 0.30f,
-                                                                            (target.getY() - current.getY()) * 0.30f));
-        current.setSize(target.getWidth(), target.getHeight());
-
-        const auto dx = std::abs(current.getX() - target.getX());
-        const auto dy = std::abs(current.getY() - target.getY());
-        if (dx < 0.45f && dy < 0.45f)
-        {
-            current = target;
-        }
-
-        if (current != fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)])
-        {
-            fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)] = current;
-            changed = true;
-        }
-    }
-
-    if (changed)
-    {
-        layoutFxSectionsFromCurrentAreas();
-        repaint(fxPanel->getBounds());
-    }
-}
-
-int PX3SynthAudioProcessorEditor::indexForFxSection(int sectionId) const
-{
-    for (int i = 0; i < kFxSectionCount; ++i)
-    {
-        if (fxSectionOrder[static_cast<std::size_t>(i)] == sectionId)
-        {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
-int PX3SynthAudioProcessorEditor::fxSectionAtPoint(juce::Point<int> point) const
-{
-    if (!isPanelVisible(kSectionFx))
-    {
-        return -1;
-    }
-
-    const auto localPoint = point - fxPanel->getPosition();
-    for (int sectionId = 0; sectionId < kFxSectionCount; ++sectionId)
-    {
-        if (fxSectionCurrentAreas[static_cast<std::size_t>(sectionId)].toNearestInt().contains(localPoint))
-        {
-            return sectionId;
-        }
-    }
-
-    return -1;
-}
-
-void PX3SynthAudioProcessorEditor::moveFxSectionToSlot(int sectionId, int slotIndex)
-{
-    const auto fromIndex = indexForFxSection(sectionId);
-    const auto toIndex = juce::jlimit(0, kFxSectionCount - 1, slotIndex);
-    if (fromIndex < 0 || fromIndex == toIndex)
-    {
-        return;
-    }
-
-    auto reordered = fxSectionOrder;
-    const auto section = reordered[static_cast<std::size_t>(fromIndex)];
-
-    if (fromIndex < toIndex)
-    {
-        for (int i = fromIndex; i < toIndex; ++i)
-        {
-            reordered[static_cast<std::size_t>(i)] = reordered[static_cast<std::size_t>(i + 1)];
-        }
-    }
-    else
-    {
-        for (int i = fromIndex; i > toIndex; --i)
-        {
-            reordered[static_cast<std::size_t>(i)] = reordered[static_cast<std::size_t>(i - 1)];
-        }
-    }
-
-    reordered[static_cast<std::size_t>(toIndex)] = section;
-    fxSectionOrder = reordered;
-
-    // Persist order immediately as slots change so host/project state always tracks UI order.
-    commitFxOrderToProcessor("USER", "USER_DRAG", fromIndex, toIndex);
-
-    for (int stage = 0; stage < kFxSectionCount; ++stage)
-    {
-        const auto slot = indexForFxSection(stage);
-        if (slot >= 0)
-        {
-            fxSectionTargetAreas[static_cast<std::size_t>(stage)] =
-                fxSectionSlots[static_cast<std::size_t>(slot)].toFloat();
-        }
+        fxPanel->setChainOrder(fxSectionOrder);
     }
 }
 
@@ -3183,8 +2942,6 @@ void PX3SynthAudioProcessorEditor::refreshGranularModeUI()
     delayFeedbackKnob.setTooltip("FEEDBACK");
     delayTimeLabel.setTooltip(delayTimeLabel.getText());
     delayTimeKnob.setTooltip(delayTimeLabel.getText());
-
-    repaint(isaacSectionArea);
 }
 
 void PX3SynthAudioProcessorEditor::refreshLfoAssignmentUI()
@@ -3263,19 +3020,6 @@ bool PX3SynthAudioProcessorEditor::isPanelVisible(int sectionIndex) const
 
 void PX3SynthAudioProcessorEditor::updatePanelVisibility()
 {
-    // Leaving the FX panel mid-drag would otherwise strand draggingFxSection:
-    // animateFxSections() skips the dragged section by design, so it would
-    // never return to its slot and would sit wherever the pointer left it.
-    if (draggingFxSection >= 0 && ! isPanelVisible(kSectionFx))
-    {
-        fxSectionCurrentAreas[static_cast<std::size_t>(draggingFxSection)] =
-            fxSectionTargetAreas[static_cast<std::size_t>(draggingFxSection)];
-        draggingFxSection = -1;
-        pressedFxSection = -1;
-        fxDragHasMoved = false;
-        layoutFxSectionsFromCurrentAreas();
-    }
-
     oscPanelViewport.setVisible(isPanelVisible(kSectionOsc));
     if (oscPanel != nullptr)
     {
@@ -3336,11 +3080,12 @@ void PX3SynthAudioProcessorEditor::layoutModPanel()
 
 void PX3SynthAudioProcessorEditor::layoutFxPanel()
 {
-    const auto padX = uiConfig != nullptr ? uiConfig->getInt("fx.panel.layout.padX", 12) : 12;
-    const auto padY = uiConfig != nullptr ? uiConfig->getInt("fx.panel.layout.padY", 10) : 10;
-    auto panelArea = fxPanel->getLocalBounds().reduced(padX, padY);
-    updateFxSectionTargets(panelArea, 12);
-    layoutFxSectionsFromCurrentAreas();
+    // The panel lays itself out. It owns the signal-flow strip, the viewport
+    // and the grid, so the editor's only job is to hand it the chain order.
+    if (fxPanel != nullptr)
+    {
+        fxPanel->resized();
+    }
 }
 
 void PX3SynthAudioProcessorEditor::layoutMixPanel()
@@ -3383,31 +3128,24 @@ void PX3SynthAudioProcessorEditor::timerCallback()
 
     // Timer drives non-audio UI synchronization only. DSP state is never
     // computed here; this keeps audio-thread responsibilities isolated.
-    if (isPanelVisible(kSectionFx) && draggingFxSection < 0)
+    // The processor can reorder the chain without the UI (preset load, host
+    // automation), so the strip and grid follow it back.
+    if (isPanelVisible(kSectionFx))
     {
         const auto processorOrder = audioProcessor.getFxProcessingOrder();
         if (processorOrder != fxSectionOrder)
         {
             fxSectionOrder = processorOrder;
-            for (int stage = 0; stage < kFxSectionCount; ++stage)
+
+            if (fxPanel != nullptr)
             {
-                const auto slot = indexForFxSection(stage);
-                if (slot >= 0)
-                {
-                    fxSectionTargetAreas[static_cast<std::size_t>(stage)] =
-                        fxSectionSlots[static_cast<std::size_t>(slot)].toFloat();
-                    fxSectionCurrentAreas[static_cast<std::size_t>(stage)] =
-                        fxSectionTargetAreas[static_cast<std::size_t>(stage)];
-                }
+                fxPanel->setChainOrder(fxSectionOrder);
             }
-            layoutFxSectionsFromCurrentAreas();
-            repaint(fxPanel->getBounds());
         }
     }
 
     if (isPanelVisible(kSectionFx))
     {
-        animateFxSections();
         refreshGranularModeUI();
         refreshFxBypassUI();
     }

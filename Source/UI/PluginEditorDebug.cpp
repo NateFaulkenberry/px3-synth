@@ -270,7 +270,7 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
         juce::String report;
         audioProcessor.debugRestoreLastSerializedState(report);
         debugSnapshotText.setText(report, juce::dontSendNotification);
-        fxSectionOrder = audioProcessor.getFxProcessingOrder();
+        applyFxChainOrder(audioProcessor.getFxProcessingOrder(), "DEBUG_PANEL", "RESTORE_SERIALIZED", -1, -1);
         resized();
         refreshDebugPanel(true);
     };
@@ -1374,18 +1374,7 @@ void PX3SynthAudioProcessorEditor::debugApplyModuleOrder(const std::array<int, 4
                                                              int fromIndex,
                                                              int toIndex)
 {
-    fxSectionOrder = order;
-    for (int stage = 0; stage < 4; ++stage)
-    {
-        const auto slot = indexForFxSection(stage);
-        if (slot >= 0)
-        {
-            fxSectionTargetAreas[static_cast<std::size_t>(stage)] = fxSectionSlots[static_cast<std::size_t>(slot)].toFloat();
-            fxSectionCurrentAreas[static_cast<std::size_t>(stage)] = fxSectionTargetAreas[static_cast<std::size_t>(stage)];
-        }
-    }
-    layoutFxSectionsFromCurrentAreas();
-    commitFxOrderToProcessor("DEBUG_PANEL", reason, fromIndex, toIndex);
+    applyFxChainOrder(order, "DEBUG_PANEL", reason, fromIndex, toIndex);
     refreshDebugPanel(false);
     repaint();
 }
