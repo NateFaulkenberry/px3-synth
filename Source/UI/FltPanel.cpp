@@ -2,6 +2,7 @@
 
 #include "BypassButton.h"
 #include "CardInner.h"
+#include "ToggleChipButton.h"
 
 #include "../DSP/FilterMode.h"
 
@@ -226,6 +227,21 @@ void FltPanel::resized()
             {
                 power->setAccentColour(identity);
             }
+        }
+
+        // The polarity switch gets its own red rather than the card's.
+        //
+        // Taking the card identity put a lit chip at the same brightness as the
+        // card frame around it, so the two competed. A deeper red still reads
+        // as part of the filter but sits behind its frame.
+        if (auto* chip = dynamic_cast<px3::ui::ToggleChipButton*>(
+                combInvertButtons[static_cast<std::size_t>(filterIndex)]))
+        {
+            const auto phaseColour = uiConfig != nullptr
+                                         ? uiConfig->getColour("flt.combPhase.activeColour",
+                                                               juce::Colour::fromRGB(0x8E, 0x24, 0x2C))
+                                         : juce::Colour::fromRGB(0x8E, 0x24, 0x2C);
+            chip->setAccentColour(phaseColour);
         }
 
 

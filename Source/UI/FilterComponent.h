@@ -67,6 +67,12 @@ private:
     juce::AudioParameterFloat* combTune { nullptr };
     juce::AudioParameterFloat* combDecay { nullptr };
     juce::AudioParameterFloat* combDamping { nullptr };
+    // Last drawn comb values. The graph is drawn from these parameters, so a
+    // change to one has to trigger a repaint - watching only cutoff and
+    // resonance left the curve stale while a comb knob was being turned.
+    float lastCombTune { -1.0f };
+    float lastCombDecay { -1.0f };
+    float lastCombDamping { -1.0f };
     juce::AudioParameterBool& enabled;
     juce::String instanceLabel;
     juce::Colour accent;

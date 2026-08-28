@@ -128,15 +128,27 @@ void FilterComponent::refreshFromParameters()
     const auto nextRes = resonance.get();
     const auto nextEnabled = enabled.get();
 
+    // The comb draws its curve from its own parameters, so they belong in the
+    // change test alongside cutoff and resonance.
+    const auto nextCombTune = combTune != nullptr ? combTune->get() : 0.0f;
+    const auto nextCombDecay = combDecay != nullptr ? combDecay->get() : 0.0f;
+    const auto nextCombDamping = combDamping != nullptr ? combDamping->get() : 0.0f;
+
     if (nextMode != lastModeIndex
         || std::abs(nextCutoff - lastCutoff) > 0.0001f
         || std::abs(nextRes - lastResonance) > 0.0001f
+        || std::abs(nextCombTune - lastCombTune) > 0.0001f
+        || std::abs(nextCombDecay - lastCombDecay) > 0.0001f
+        || std::abs(nextCombDamping - lastCombDamping) > 0.0001f
         || nextEnabled != currentEnabled)
     {
         currentEnabled = nextEnabled;
         lastModeIndex = nextMode;
         lastCutoff = nextCutoff;
         lastResonance = nextRes;
+        lastCombTune = nextCombTune;
+        lastCombDecay = nextCombDecay;
+        lastCombDamping = nextCombDamping;
         repaint();
     }
 }

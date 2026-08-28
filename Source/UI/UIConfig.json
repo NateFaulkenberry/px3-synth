@@ -164,16 +164,19 @@
         "padX": 0,
         "padY": 0
       }
+    },
+    "combPhase": {
+      "activeColour": "#8E242C"
     }
   },
   "mix": {
     "panel": {
-      "fillAlpha": 0.14,
-      "strokeAlpha": 0.5,
-      "cornerRadius": 10,
+      "fillAlpha": 0,
+      "strokeAlpha": 0,
+      "cornerRadius": 0,
       "layout": {
         "padX": 0,
-        "padY": 10
+        "padY": 0
       }
     },
     "channel": {
