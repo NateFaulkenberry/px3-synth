@@ -502,8 +502,16 @@ Mood::Frame Mood::renderLoopEnv(float inL, float inR, float spread)
     {
         const auto held = static_cast<float>(envSliceLength);
         const auto heldFade = spliceFadeFor(held);
+        // The right channel reads the held slice a few milliseconds later as
+        // SPREAD comes up. Panning on its own cannot widen a mono source - both
+        // channels still carry the same signal, only at different levels - so
+        // the stutter needs an actual difference between the two sides, and a
+        // small time offset within the repeating slice is one the material
+        // supports without sounding like an effect.
+        const auto offset = spread * 0.005f * static_cast<float>(internalSampleRate);
+        const auto rightPos = std::fmod(envSliceReadPos + offset, held);
         const auto sl = readSpliced(envSliceBuffer[0], envSliceOrigin, envSliceReadPos, held, heldFade);
-        const auto sr = readSpliced(envSliceBuffer[1], envSliceOrigin, envSliceReadPos, held, heldFade);
+        const auto sr = readSpliced(envSliceBuffer[1], envSliceOrigin, rightPos, held, heldFade);
         l += (sl - l) * envSliceBlend;
         r += (sr - r) * envSliceBlend;
 
@@ -550,10 +558,19 @@ Mood::Frame Mood::renderLoopEnv(float inL, float inR, float spread)
         return plain;
     }
 
+    // Panned and widened, with the level compensated so widening does not also
+    // raise it. Scaling both channels equally leaves the side-to-mid ratio
+    // untouched, so the compensation costs nothing but the extra peak.
     const auto position = envPanDirection * (2.0f * envPanPhase - 1.0f);
-    const auto panned = panStereo(0.5f * (l + r), position);
-    return { plain.l + (panned.l - plain.l) * spread,
-             plain.r + (panned.r - plain.r) * spread };
+    const auto mid = 0.5f * (l + r);
+    const auto side = 0.5f * (l - r);
+    const auto panned = panStereo(mid, position);
+    const auto sideGain = 1.0f + spread * 0.9f;
+    const auto compensation = 1.0f / (1.0f + spread * 0.30f);
+    const auto wideL = (panned.l + side * sideGain) * compensation;
+    const auto wideR = (panned.r - side * sideGain) * compensation;
+    return { plain.l + (wideL - plain.l) * spread,
+             plain.r + (wideR - plain.r) * spread };
 }
 
 void Mood::maybeSpawnStretchGrain(float spread)
