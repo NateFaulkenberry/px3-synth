@@ -77,6 +77,26 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Refuse to run a build that is going to fail on permissions, and say exactly
+# why. CMake's own error for this is "Could not open file for write in copy
+# operation ... Permission denied", which points at a .plist and gives no hint
+# that the cause is ownership - and the natural next move, retrying under sudo,
+# makes it permanent by leaving more of the tree root-owned.
+BLOCKED=$(find "${REPO_ROOT}/build" -maxdepth 6 -name "*.app" -type d ! -user "$(id -un)" 2>/dev/null || true)
+if [[ -n "${BLOCKED}" ]]; then
+  echo "ERROR: build artifacts in the way are owned by another user, so the build cannot replace them:"
+  printf '%s\n' "${BLOCKED}" | sed "s|${REPO_ROOT}/|  |"
+  echo
+  echo "These are almost always left behind by a build that was run under sudo."
+  echo "Move them aside - this needs no sudo, because you own the parent directory:"
+  printf '%s\n' "${BLOCKED}" | while IFS= read -r blocked; do
+    echo "  mv \"${blocked}\" \"${blocked}.old\""
+  done
+  echo
+  echo "Do not re-run the build with sudo: that is what created them."
+  exit 1
+fi
+
 if [[ -n "${DEBUG_FLAG}" ]]; then
   cmake -S "${REPO_ROOT}" -B "${REPO_ROOT}/build" -DPX3_DEBUG_PANEL="${DEBUG_FLAG}"
 fi
