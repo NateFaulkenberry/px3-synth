@@ -273,6 +273,25 @@ cards.<type>.cardInner.rows.default
 Anything a block omits falls back to the C++ defaults in `CardInnerStyle`, not
 to another card — so a missing block still lays out, as three equal rows.
 
+### Accepted values
+
+| Property | Values |
+| --- | --- |
+| `display` | `flex`, `none` |
+| `direction` | `row`, `row-reverse`, `column`, `column-reverse` |
+| `wrap` | `nowrap`, `wrap` |
+| `justifyContent` | `flex-start`, `flex-end`, `center`, `space-between`, `space-around` |
+| `alignItems` / `alignContent` | `flex-start`, `flex-end`, `center`, `stretch` |
+
+Spellings are normalised before matching — lowercased, with hyphens and
+underscores removed — so `flex-start`, `flexStart` and `flex_start` are the same
+value, as are `center` and `centre`. Prefer the CSS spelling in the table.
+
+An unrecognised value falls back to the default rather than failing, which is
+silent by design in a release build; a debug build logs
+`UIConfig: unrecognised justifyContent value "..." - ignored` so a typo is
+visible while you are editing.
+
 ### Rules worth being precise about
 
 **Row height is a percentage of the cardInner content height** — after
@@ -306,6 +325,50 @@ makes two lines twice as tall as the row. `px3::ui::wrappedLineCount()` works ou
 the line count from the natural widths and the gap; divide the row height by it.
 Delay's row 3 (five controls) and Mood's row 3 (nine knobs) both rely on this.
 
+### The control block — inside one cell
+
+The row decides where each **cell** goes; `control` decides what happens **inside**
+one. It is declared per row:
+
+```jsonc
+"row1": {
+  "height": "26%",
+  "gap": 6,                       // between CELLS - ON | OCT | WAVE
+  "control": {
+    "direction": "column",        // column: label above. row: label beside.
+    "justifyContent": "center",
+    "alignItems": "center",
+    "gap": 3,                     // between LABEL, CONTROL and READOUT
+    "labelHeight": "auto",
+    "readoutHeight": "auto",
+    "size": "auto"
+  }
+}
+```
+
+The two `gap`s are different things, and confusing them is the easy mistake: the
+row's gap separates one labelled control from the next, the control's gap
+separates a label from the control it names.
+
+**Why this exists.** The stack used to be hand-rolled — label pinned to the top of
+the cell, readout pinned to the bottom, control centred in whatever was left. So
+the distance between a label and its control was not a value anywhere; it was
+leftover space, and it grew with the row height. On a 195px row with a 14px label
+and a 22px checkbox, that left ~80px of air above and below the control.
+
+**`justifyContent: "space-between"` reproduces that old spread exactly** — label
+at the top, readout at the bottom, control between — so defaulting to `center`
+loses nothing. Both are pinned by tests.
+
+**`"auto"` means "whatever the component asked for".** The component still says
+its knob should never exceed 56px, or that this label wants 14px; config values of
+`auto` defer to that. A pixel or percentage overrides it, with percentages
+measured against the cell's shorter side. That default is what let this be
+introduced without every control in the plugin changing size.
+
+`ControlShape` stays in code, not config: a knob is round and a dropdown is not,
+and that follows from what the control *is*, not from how it is styled.
+
 ### Placing controls
 
 `cardInner` decides where the rows are. The component fills them, because the
@@ -324,7 +387,8 @@ flex.performLayout(inner.rowContent(0).toFloat());
 ```
 
 `px3::ui::layoutLabelledControl()` then places one cell's label, control and
-readout. It takes a `ControlShape`, and getting that wrong is not subtle:
+readout, given the row's control style. It takes a `ControlShape`, and getting
+that wrong is not subtle:
 
 | | |
 | --- | --- |

@@ -32,6 +32,7 @@ public:
     juce::Rectangle<int> rowBounds(int index) const;
     juce::FlexBox rowFlex(int index) const;
     juce::FlexItem::Margin rowGap(int index) const;
+    const px3::ui::ControlStyle& rowControl(int index) const;
     // Which filter this is: drives the card's style block and its title.
     void setInstanceIndex(int oneBasedIndex);
     void setPanelContentBounds(juce::Rectangle<int> panelContent);

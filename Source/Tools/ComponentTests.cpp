@@ -3875,6 +3875,38 @@ void testCardInner()
               "two 40px items with gap 20 -> " + fmt(separation, 1) + "px apart");
     }
 
+    // ---- Keyword spellings -------------------------------------------------
+    {
+        // "flex-start" is the CSS spelling and the one to reach for. But every
+        // property NAME here is camelCase, so "flexStart" is the natural guess
+        // for a value, and it used to fall back silently. All spellings that
+        // differ only by case or separators resolve to the same thing.
+        auto justifyFor = [&](const char* spelling)
+        {
+            const juce::String json = juce::String(R"({"cards":{"probe":{"cardInner":{"rows":{"row1":{"justifyContent":")")
+                                    + spelling + R"("}}}}}})";
+            juce::String error;
+            auto config = UIConfig::fromJsonText(json, error);
+            CardInner inner;
+            inner.setStylePath("cards.probe.cardInner");
+            inner.setConfig(std::move(config));
+            inner.setRowCount(1);
+            inner.layout({ 0, 0, 200, 100 });
+            return inner.style().rows[0].flex.justifyContent;
+        };
+
+        const auto kebab = justifyFor("flex-start");
+        const auto camel = justifyFor("flexStart");
+        const auto snake = justifyFor("flex_start");
+        const auto bare  = justifyFor("start");
+        const auto typo  = justifyFor("flexstrat");
+
+        check("CardInner_KeywordSpellingsAreEquivalent",
+              kebab == JustifyContent::start && camel == kebab && snake == kebab && bare == kebab
+                  && typo == JustifyContent::centre,
+              "flex-start / flexStart / flex_start / start all agree; an unknown value falls back");
+    }
+
     // ---- Wrapping rows -----------------------------------------------------
     {
         // Delay's row 3 has five controls and Mood's has nine. They wrap, and
@@ -3944,10 +3976,11 @@ void testCardInner()
         dropdown.setVisible(true);
 
         const juce::Rectangle<int> cell { 0, 0, 120, 60 };
-        px3::ui::layoutLabelledControl(cell, nullptr, &knob, nullptr, 0, 0,
-                                       px3::ui::ControlShape::square, 0);
-        px3::ui::layoutLabelledControl(cell, nullptr, &dropdown, nullptr, 0, 0,
-                                       px3::ui::ControlShape::stretch, 24);
+        const px3::ui::ControlStyle style;
+        px3::ui::layoutLabelledControl(cell, { nullptr, &knob, nullptr,
+                                               px3::ui::ControlShape::square, 0, 0, 0 }, style);
+        px3::ui::layoutLabelledControl(cell, { nullptr, &dropdown, nullptr,
+                                               px3::ui::ControlShape::stretch, 0, 0, 24 }, style);
 
         check("CardInner_ControlShapeDecidesKnobVersusDropdown",
               knob.getWidth() == 60 && knob.getHeight() == 60
@@ -3956,23 +3989,60 @@ void testCardInner()
     }
 
     {
-        // Label above, readout below, control in what is left - the shape the
-        // existing knobs already have, which this must not change.
+        // Label above, control, readout below - stacked as a GROUP and centred,
+        // not label-pinned-top and readout-pinned-bottom. The distance between
+        // a label and its control is now `control.gap`, a value, rather than
+        // whatever space happened to be left over.
         juce::Component label, knob, readout;
         label.setVisible(true);
         knob.setVisible(true);
         readout.setVisible(true);
 
-        px3::ui::layoutLabelledControl({ 0, 0, 100, 100 }, &label, &knob, &readout, 16, 14,
-                                       px3::ui::ControlShape::square, 0);
+        px3::ui::ControlStyle tight;
+        tight.gap = 4.0f;
 
-        check("CardInner_LabelledControlStacksLabelKnobReadout",
-              label.getBounds() == juce::Rectangle<int>(0, 0, 100, 16)
-                  && readout.getBounds() == juce::Rectangle<int>(0, 86, 100, 14)
-                  && knob.getBounds() == juce::Rectangle<int>(15, 16, 70, 70),
-              "label " + label.getBounds().toString() + ", knob " + knob.getBounds().toString()
-                  + ", readout " + readout.getBounds().toString());
+        px3::ui::layoutLabelledControl({ 0, 0, 100, 100 },
+                                       { &label, &knob, &readout,
+                                         px3::ui::ControlShape::square, 16, 14, 30 },
+                                       tight);
+
+        const auto labelToKnob = knob.getY() - label.getBottom();
+        const auto knobToReadout = readout.getY() - knob.getBottom();
+        const auto group = label.getBounds().getUnion(readout.getBounds());
+        const auto centred = std::abs(group.getCentreY() - 50) <= 1;
+
+        check("CardInner_ControlGapIsAValueNotLeftoverSpace",
+              labelToKnob == 4 && knobToReadout == 4 && centred
+                  && knob.getWidth() == 30 && knob.getHeight() == 30,
+              "gaps " + juce::String(labelToKnob) + "/" + juce::String(knobToReadout)
+                  + "px, group centred at " + juce::String(group.getCentreY()));
     }
+
+    {
+        // space-between reproduces the old spread exactly - label at the top,
+        // readout at the bottom, control between - so nothing was lost by
+        // defaulting to centred.
+        juce::Component label, knob, readout;
+        label.setVisible(true);
+        knob.setVisible(true);
+        readout.setVisible(true);
+
+        px3::ui::ControlStyle spread;
+        spread.gap = 0.0f;
+        spread.justifyContent = px3::ui::JustifyContent::spaceBetween;
+
+        px3::ui::layoutLabelledControl({ 0, 0, 100, 100 },
+                                       { &label, &knob, &readout,
+                                         px3::ui::ControlShape::square, 16, 14, 30 },
+                                       spread);
+
+        check("CardInner_SpaceBetweenReproducesTheOldSpread",
+              label.getY() == 0 && readout.getBottom() == 100
+                  && knob.getY() > label.getBottom() && knob.getBottom() < readout.getY(),
+              "label at " + juce::String(label.getY()) + ", knob at " + juce::String(knob.getY())
+                  + ", readout ends at " + juce::String(readout.getBottom()));
+    }
+
 
     // ---- No dead properties ------------------------------------------------
     {
@@ -3989,8 +4059,11 @@ void testCardInner()
             "wrap":"nowrap","justifyContent":"center","alignItems":"center","alignContent":"center","gap":4,
             "rows":{"row1":{"height":"20%","margin":1,"padding":1,"display":"flex","direction":"row",
                             "wrap":"nowrap","justifyContent":"center","alignItems":"center",
-                            "alignContent":"center","gap":3},
-                    "row2":{"height":"20%"},"row3":{"height":"20%"}})";
+                            "alignContent":"center","gap":3,
+                            "control":{"direction":"column","justifyContent":"center",
+                                       "alignItems":"center","gap":4,
+                                       "labelHeight":8,"readoutHeight":9,"size":11}},
+                    "row2":{"height":"20%"},"row3":{"height":"20%"}}})";
 
         auto fingerprint = [&](const juce::String& innerJson)
         {
@@ -4015,6 +4088,18 @@ void testCardInner()
             for (int i = 0; i < 3; ++i)
             {
                 out += "|" + inner.rowContent(i).toString() + "|" + describe(style.rows[(size_t) i].flex);
+
+            // The control style is layout too, and it reaches the screen through
+            // layoutLabelledControl - so the fingerprint has to lay a cell out.
+            const auto& cs = style.rows[(size_t) i].control;
+            juce::Component label, control, readout;
+            label.setVisible(true); control.setVisible(true); readout.setVisible(true);
+            px3::ui::layoutLabelledControl(inner.rowContent(i),
+                                           { &label, &control, &readout,
+                                             px3::ui::ControlShape::square, 12, 12, 0 },
+                                           cs);
+            out += "|" + label.getBounds().toString() + "/" + control.getBounds().toString()
+                 + "/" + readout.getBounds().toString();
             }
             return out;
         };
@@ -4043,13 +4128,33 @@ void testCardInner()
             { "row.alignItems",     R"("alignItems":"stretch")" },
             { "row.alignContent",   R"("alignContent":"flex-start")" },
             { "row.gap",            R"("gap":18)" },
+            { "control.direction",      R"("direction":"row")" },
+            { "control.justifyContent", R"("justifyContent":"flex-start")" },
+            { "control.alignItems",     R"("alignItems":"flex-end")" },
+            { "control.gap",            R"("gap":15)" },
+            { "control.labelHeight",    R"("labelHeight":21)" },
+            { "control.readoutHeight",  R"("readoutHeight":23)" },
+            { "control.size",           R"("size":19)" },
         };
 
         juce::StringArray inert;
         for (const auto& probe : probes)
         {
             juce::String variant = baseInner;
-            if (probe.first.startsWith("row."))
+            if (probe.first.startsWith("control."))
+            {
+                const auto key = probe.first.fromFirstOccurrenceOf(".", false, false);
+                const auto blockStart = variant.indexOf("\"control\"");
+                const auto keyStart = variant.indexOf(blockStart, "\"" + key + "\":");
+                const auto keyEnd = variant.indexOfAnyOf(",}", keyStart, false);
+                if (blockStart < 0 || keyStart < 0 || keyEnd < 0)
+                {
+                    inert.add(probe.first + " (probe did not match)");
+                    continue;
+                }
+                variant = variant.substring(0, keyStart) + probe.second + variant.substring(keyEnd);
+            }
+            else if (probe.first.startsWith("row."))
             {
                 // Replace the value inside row1 only, so a row property is not
                 // confused with the cardInner property of the same name.

@@ -127,8 +127,9 @@ void DelayComponent::resized()
         flex.performLayout(row.toFloat());
 
         px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
-                                       nullptr, &amountKnob, &amountLabel,
-                                       0, 18, ControlShape::square, 80);
+                                       { nullptr, &amountKnob, &amountLabel,
+                                         ControlShape::square, 0, 18, 80 },
+                                       inner.rowControl(1));
     }
 
     // Row 3: five controls in one wrapping row - the two small knobs and the
@@ -154,16 +155,26 @@ void DelayComponent::resized()
         flex.performLayout(row.toFloat());
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
-        px3::ui::layoutLabelledControl(cell(0), nullptr, &timeKnob, &timeLabel,
-                                       0, 16, ControlShape::square, 44);
-        px3::ui::layoutLabelledControl(cell(1), nullptr, &feedbackKnob, &feedbackLabel,
-                                       0, 16, ControlShape::square, 44);
-        px3::ui::layoutLabelledControl(cell(2), &syncLabel, &syncBox, nullptr,
-                                       14, 0, ControlShape::stretch, 22);
-        px3::ui::layoutLabelledControl(cell(3), &algorithmLabel, &algorithmBox, nullptr,
-                                       14, 0, ControlShape::stretch, 22);
-        px3::ui::layoutLabelledControl(cell(4), &modeLabel, &modeBox, nullptr,
-                                       14, 0, ControlShape::stretch, 22);
+        px3::ui::layoutLabelledControl(cell(0),
+                                       { nullptr, &timeKnob, &timeLabel,
+                                         ControlShape::square, 0, 16, 44 },
+                                       inner.rowControl(2));
+        px3::ui::layoutLabelledControl(cell(1),
+                                       { nullptr, &feedbackKnob, &feedbackLabel,
+                                         ControlShape::square, 0, 16, 44 },
+                                       inner.rowControl(2));
+        px3::ui::layoutLabelledControl(cell(2),
+                                       { &syncLabel, &syncBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 22 },
+                                       inner.rowControl(2));
+        px3::ui::layoutLabelledControl(cell(3),
+                                       { &algorithmLabel, &algorithmBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 22 },
+                                       inner.rowControl(2));
+        px3::ui::layoutLabelledControl(cell(4),
+                                       { &modeLabel, &modeBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 22 },
+                                       inner.rowControl(2));
     }
 }
 

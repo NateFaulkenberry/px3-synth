@@ -191,12 +191,18 @@ void LfoComponent::resized()
         flex.performLayout(row.toFloat());
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
-        px3::ui::layoutLabelledControl(cell(0), &enabledLabel, &enabledButton, nullptr,
-                                       14, 0, ControlShape::square, 22);
-        px3::ui::layoutLabelledControl(cell(1), &assignLabel, &assignBox, nullptr,
-                                       14, 0, ControlShape::stretch, 24);
-        px3::ui::layoutLabelledControl(cell(2), &waveformLabel, &waveformBox, nullptr,
-                                       14, 0, ControlShape::stretch, 24);
+        px3::ui::layoutLabelledControl(cell(0),
+                                       { &enabledLabel, &enabledButton, nullptr,
+                                         ControlShape::square, 14, 0, 22 },
+                                       inner.rowControl(0));
+        px3::ui::layoutLabelledControl(cell(1),
+                                       { &assignLabel, &assignBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 24 },
+                                       inner.rowControl(0));
+        px3::ui::layoutLabelledControl(cell(2),
+                                       { &waveformLabel, &waveformBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 24 },
+                                       inner.rowControl(0));
     }
 
     // Row 2: rate and amount. Both are knob-plus-readout with no label above -
@@ -217,10 +223,14 @@ void LfoComponent::resized()
         flex.performLayout(row.toFloat());
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
-        px3::ui::layoutLabelledControl(cell(0), nullptr, &rateKnob, &rateValueLabel,
-                                       0, 20, ControlShape::square, 84);
-        px3::ui::layoutLabelledControl(cell(1), nullptr, &amountKnob, &amountValueLabel,
-                                       0, 20, ControlShape::square, 84);
+        px3::ui::layoutLabelledControl(cell(0),
+                                       { nullptr, &rateKnob, &rateValueLabel,
+                                         ControlShape::square, 0, 20, 84 },
+                                       inner.rowControl(1));
+        px3::ui::layoutLabelledControl(cell(1),
+                                       { nullptr, &amountKnob, &amountValueLabel,
+                                         ControlShape::square, 0, 20, 84 },
+                                       inner.rowControl(1));
 
         rateLabel.setBounds(0, 0, 0, 0);
         amountLabel.setBounds(0, 0, 0, 0);

@@ -150,14 +150,20 @@ void OscillatorComponent::resized()
         flex.performLayout(row.toFloat());
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
-        px3::ui::layoutLabelledControl(cell(0), &enabledLabel, &enabledButton, nullptr,
-                                       14, 0, ControlShape::square, 22);
-        px3::ui::layoutLabelledControl(cell(1), &modeLabel, &modeBox, nullptr,
-                                       14, 0, ControlShape::stretch, 24);
+        px3::ui::layoutLabelledControl(cell(0),
+                                       { &enabledLabel, &enabledButton, nullptr,
+                                         ControlShape::square, 14, 0, 22 },
+                                       inner.rowControl(0));
+        px3::ui::layoutLabelledControl(cell(1),
+                                       { &modeLabel, &modeBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 24 },
+                                       inner.rowControl(0));
         if (showVowel)
         {
-            px3::ui::layoutLabelledControl(cell(2), &vowelLabel, &vowelBox, nullptr,
-                                           14, 0, ControlShape::stretch, 24);
+            px3::ui::layoutLabelledControl(cell(2),
+                                       { &vowelLabel, &vowelBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 24 },
+                                       inner.rowControl(0));
         }
         else
         {
@@ -195,15 +201,18 @@ void OscillatorComponent::resized()
         flex.performLayout(row.toFloat());
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
-        px3::ui::layoutLabelledControl(cell(0), &pitchLabel, &pitch, &pitchValueLabel,
-                                       16, 16, ControlShape::square, 56);
+        px3::ui::layoutLabelledControl(cell(0),
+                                       { &pitchLabel, &pitch, &pitchValueLabel,
+                                         ControlShape::square, 16, 16, 56 },
+                                       inner.rowControl(1));
 
         for (std::size_t i = 0; i < visibleMacros.size(); ++i)
         {
             const auto index = static_cast<std::size_t>(visibleMacros[i]);
             px3::ui::layoutLabelledControl(cell(static_cast<int>(i) + 1),
-                                           macroLabels[index], macroSliders[index], nullptr,
-                                           18, 0, ControlShape::square, 86);
+                                       { macroLabels[index], macroSliders[index], nullptr,
+                                         ControlShape::square, 18, 0, 86 },
+                                       inner.rowControl(1));
         }
     }
 

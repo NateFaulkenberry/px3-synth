@@ -54,6 +54,11 @@ juce::FlexBox FilterComponent::rowFlex(int index) const
     return inner.rowFlex(index);
 }
 
+const px3::ui::ControlStyle& FilterComponent::rowControl(int index) const
+{
+    return inner.rowControl(index);
+}
+
 juce::FlexItem::Margin FilterComponent::rowGap(int index) const
 {
     return inner.rowGap(index);

@@ -720,6 +720,19 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureOscEnabledControl(osc1EnabledLabel, osc1EnabledButton);
     configureOscEnabledControl(osc2EnabledLabel, osc2EnabledButton);
     configureOscEnabledControl(osc3EnabledLabel, osc3EnabledButton);
+    // The filter type dropdown had no caption; the other dropdowns in the
+    // plugin all name themselves.
+    const auto configureDropdownLabel = [](juce::Label& label, const juce::String& text)
+    {
+        label.setText(text, juce::dontSendNotification);
+        label.setJustificationType(juce::Justification::centred);
+        label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+        label.setFont(juce::FontOptions(11.5f));
+        label.setInterceptsMouseClicks(false, false);
+    };
+    configureDropdownLabel(filter1TypeLabel, "Type");
+    configureDropdownLabel(filter2TypeLabel, "Type");
+
     configureOscEnabledControl(filter1EnabledLabel, filter1EnabledButton);
     configureOscEnabledControl(filter2EnabledLabel, filter2EnabledButton);
 
@@ -1061,6 +1074,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           std::array<juce::Slider*, kFilterInstanceCount> { { &resonanceKnob, &resonance2Knob } },
                                           std::array<juce::Label*, kFilterInstanceCount> { { &resonanceLabel, &resonance2Label } },
                                           std::array<juce::ComboBox*, kFilterInstanceCount> { { &filterTypeBox, &filter2TypeBox } },
+                                          std::array<juce::Label*, kFilterInstanceCount> { { &filter1TypeLabel, &filter2TypeLabel } },
                                           std::array<juce::AudioParameterBool*, kFilterInstanceCount> { { &audioProcessor.getFilterEnabledParam(0), &audioProcessor.getFilterEnabledParam(1) } },
                                           std::array<juce::AudioParameterFloat*, kFilterInstanceCount> { { &audioProcessor.getFilterCutoffParam(0), &audioProcessor.getFilterCutoffParam(1) } },
                                           std::array<juce::AudioParameterFloat*, kFilterInstanceCount> { { &audioProcessor.getFilterResonanceParam(0), &audioProcessor.getFilterResonanceParam(1) } },

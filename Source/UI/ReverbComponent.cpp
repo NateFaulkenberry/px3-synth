@@ -90,8 +90,9 @@ void ReverbComponent::resized()
         flex.performLayout(row.toFloat());
 
         px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
-                                       nullptr, &amountKnob, &amountLabel,
-                                       0, 22, ControlShape::square, 82);
+                                       { nullptr, &amountKnob, &amountLabel,
+                                         ControlShape::square, 0, 22, 82 },
+                                       inner.rowControl(1));
     }
 
     // Row 3: the type dropdown with its label.
@@ -106,8 +107,9 @@ void ReverbComponent::resized()
         flex.performLayout(row.toFloat());
 
         px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
-                                       &typeLabel, &typeBox, nullptr,
-                                       14, 0, ControlShape::stretch, 24);
+                                       { &typeLabel, &typeBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 24 },
+                                       inner.rowControl(2));
     }
 }
 

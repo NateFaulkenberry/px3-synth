@@ -59,6 +59,39 @@ struct FlexStyle
     juce::FlexItem::Margin gapMargin() const;
 };
 
+// How one cell stacks its label, control and readout.
+//
+// This is the layer below the row: the row decides where each CELL goes, this
+// decides what happens inside one. Before it existed the stack was hand-rolled -
+// label pinned to the top, readout to the bottom, control centred in whatever
+// was left - so the distance between a label and its control was leftover space
+// rather than a value anyone could set.
+//
+// `justifyContent: "space-between"` reproduces that old spread exactly, so
+// nothing is lost by defaulting to "center".
+struct ControlStyle
+{
+    // column: label above the control. row: label beside it.
+    FlexDirection direction { FlexDirection::column };
+    JustifyContent justifyContent { JustifyContent::centre };
+    AlignItems alignItems { AlignItems::centre };
+    // Between the label, the control and the readout - NOT between cells; that
+    // is the row's own `gap`.
+    float gap { 4.0f };
+
+    // Each defaults to "auto", meaning "whatever the component asked for".
+    // A pixel or percentage value overrides it. Percentages are of the cell's
+    // shorter side. Keeping auto as the default is what lets this be introduced
+    // without every control in the plugin changing size.
+    Dimension labelHeight;
+    Dimension readoutHeight;
+    Dimension size;
+
+    static ControlStyle readLayered(const UIConfig* config,
+                                    const juce::StringArray& pathsMostSpecificFirst,
+                                    const ControlStyle& fallback);
+};
+
 struct RowStyle
 {
     // A percentage of the cardInner CONTENT height - not of the card, the
@@ -67,6 +100,7 @@ struct RowStyle
     Insets margin;
     Insets padding;
     FlexStyle flex;
+    ControlStyle control;
 };
 
 struct CardInnerStyle
@@ -114,6 +148,8 @@ public:
     juce::FlexBox rowFlex(int index) const;
     // The margin that realises that row's `gap` for each of its items.
     juce::FlexItem::Margin rowGap(int index) const;
+    // How that row's cells stack their label, control and readout.
+    const ControlStyle& rowControl(int index) const;
 
     const CardInnerStyle& style() const { return cached; }
 
@@ -163,13 +199,23 @@ juce::String cardTypeKey(const juce::String& styleKey);
 // lines fill the row instead of overflowing it.
 int wrappedLineCount(const std::vector<float>& itemWidths, float gap, float rowWidth);
 
+// One cell's contents, plus the sizes the COMPONENT wants. Config values of
+// "auto" fall back to these, so a component that knows its knob should never
+// exceed 56px keeps saying so.
+struct LabelledControl
+{
+    juce::Component* label { nullptr };
+    juce::Component* control { nullptr };
+    juce::Component* readout { nullptr };
+    ControlShape shape { ControlShape::square };
+    int labelHeight { 0 };
+    int readoutHeight { 0 };
+    // 0 means uncapped: as large as the cell allows.
+    int maxControlSize { 0 };
+};
+
 void layoutLabelledControl(juce::Rectangle<int> area,
-                           juce::Component* label,
-                           juce::Component* control,
-                           juce::Component* readout,
-                           int labelHeight = 16,
-                           int readoutHeight = 14,
-                           ControlShape shape = ControlShape::square,
-                           int maxControlSize = 0);
+                           const LabelledControl& parts,
+                           const ControlStyle& style);
 
 } // namespace px3::ui

@@ -214,12 +214,18 @@ void MoodComponent::resized()
         flex.performLayout(row.toFloat());
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
-        px3::ui::layoutLabelledControl(cell(0), &wetModeLabel, &wetModeBox, nullptr,
-                                       14, 0, ControlShape::stretch, 22);
-        px3::ui::layoutLabelledControl(cell(1), &loopModeLabel, &loopModeBox, nullptr,
-                                       14, 0, ControlShape::stretch, 22);
-        px3::ui::layoutLabelledControl(cell(2), &routingLabel, &routingBox, nullptr,
-                                       14, 0, ControlShape::stretch, 22);
+        px3::ui::layoutLabelledControl(cell(0),
+                                       { &wetModeLabel, &wetModeBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 22 },
+                                       inner.rowControl(1));
+        px3::ui::layoutLabelledControl(cell(1),
+                                       { &loopModeLabel, &loopModeBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 22 },
+                                       inner.rowControl(1));
+        px3::ui::layoutLabelledControl(cell(2),
+                                       { &routingLabel, &routingBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 22 },
+                                       inner.rowControl(1));
     }
 
     // Row 3: all nine knobs in one wrapping row. This replaces a hand-built
@@ -259,8 +265,9 @@ void MoodComponent::resized()
         for (std::size_t i = 0; i < knobs.size(); ++i)
         {
             px3::ui::layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
-                                           nullptr, knobs[i].first, knobs[i].second,
-                                           0, 16, ControlShape::square, 64);
+                                       { nullptr, knobs[i].first, knobs[i].second,
+                                         ControlShape::square, 0, 16, 64 },
+                                       inner.rowControl(2));
         }
     }
 }

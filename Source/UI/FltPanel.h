@@ -20,6 +20,7 @@ public:
              std::array<juce::Slider*, kFilterInstanceCount> resonanceKnobs,
              std::array<juce::Label*, kFilterInstanceCount> resonanceLabels,
              std::array<juce::ComboBox*, kFilterInstanceCount> filterTypeBoxes,
+             std::array<juce::Label*, kFilterInstanceCount> filterTypeLabels,
              std::array<juce::AudioParameterBool*, kFilterInstanceCount> enabledParams,
              std::array<juce::AudioParameterFloat*, kFilterInstanceCount> cutoffParams,
              std::array<juce::AudioParameterFloat*, kFilterInstanceCount> resonanceParams,
@@ -47,6 +48,7 @@ private:
     std::array<juce::Slider*, kFilterInstanceCount> resonanceKnobs;
     std::array<juce::Label*, kFilterInstanceCount> resonanceLabels;
     std::array<juce::ComboBox*, kFilterInstanceCount> filterTypeBoxes;
+    std::array<juce::Label*, kFilterInstanceCount> filterTypeLabels;
     std::array<juce::Colour, kFilterInstanceCount> cutoffLabelBaseColours;
     std::array<juce::Colour, kFilterInstanceCount> resonanceLabelBaseColours;
     std::array<juce::Colour, kFilterInstanceCount> filterTypeBoxBaseBgColours;

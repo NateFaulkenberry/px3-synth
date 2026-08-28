@@ -88,8 +88,9 @@ void VibeComponent::resized()
         // Knob only - the "AMOUNT" caption was removed; the card title and the
         // knob's own tooltip already say what it is.
         px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
-                                       nullptr, &amountKnob, nullptr,
-                                       0, 0, ControlShape::square, 82);
+                                       { nullptr, &amountKnob, nullptr,
+                                         ControlShape::square, 0, 0, 82 },
+                                       inner.rowControl(1));
     }
 
     // Row 3: the type dropdown with its label.
@@ -104,8 +105,9 @@ void VibeComponent::resized()
         flex.performLayout(row.toFloat());
 
         px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
-                                       &typeLabel, &typeBox, nullptr,
-                                       14, 0, ControlShape::stretch, 24);
+                                       { &typeLabel, &typeBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 24 },
+                                       inner.rowControl(2));
     }
 }
 

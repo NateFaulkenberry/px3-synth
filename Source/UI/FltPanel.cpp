@@ -21,6 +21,7 @@ FltPanel::FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabled
                    std::array<juce::Slider*, kFilterInstanceCount> resonanceKnobsIn,
                    std::array<juce::Label*, kFilterInstanceCount> resonanceLabelsIn,
                    std::array<juce::ComboBox*, kFilterInstanceCount> filterTypeBoxesIn,
+                   std::array<juce::Label*, kFilterInstanceCount> filterTypeLabelsIn,
                                      std::array<juce::AudioParameterBool*, kFilterInstanceCount> enabledParams,
                    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> cutoffParams,
                    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> resonanceParams,
@@ -33,6 +34,7 @@ FltPanel::FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabled
       resonanceKnobs(resonanceKnobsIn),
       resonanceLabels(resonanceLabelsIn),
       filterTypeBoxes(filterTypeBoxesIn),
+      filterTypeLabels(filterTypeLabelsIn),
       accent(panelAccent)
 {
     for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
@@ -45,6 +47,7 @@ FltPanel::FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabled
         addAndMakeVisible(*resonanceLabels[static_cast<std::size_t>(filterIndex)]);
         filterTypeBoxes[static_cast<std::size_t>(filterIndex)]->setLookAndFeel(&filterComboLookAndFeel);
         addAndMakeVisible(*filterTypeBoxes[static_cast<std::size_t>(filterIndex)]);
+        addAndMakeVisible(*filterTypeLabels[static_cast<std::size_t>(filterIndex)]);
 
                 const auto idx = static_cast<std::size_t>(filterIndex);
                 cutoffLabelBaseColours[idx] = cutoffLabels[idx]->findColour(juce::Label::textColourId);
@@ -149,10 +152,14 @@ void FltPanel::resized()
             flex.performLayout(row.toFloat());
 
             const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
-            px3::ui::layoutLabelledControl(cell(0), enabledLabels[idx], enabledButtons[idx], nullptr,
-                                           14, 0, ControlShape::square, 22);
-            px3::ui::layoutLabelledControl(cell(1), nullptr, filterTypeBoxes[idx], nullptr,
-                                           0, 0, ControlShape::stretch, 24);
+            px3::ui::layoutLabelledControl(cell(0),
+                                       { enabledLabels[idx], enabledButtons[idx], nullptr,
+                                         ControlShape::square, 14, 0, 22 },
+                                       filterComponent->rowControl(0));
+            px3::ui::layoutLabelledControl(cell(1),
+                                       { filterTypeLabels[idx], filterTypeBoxes[idx], nullptr,
+                                         ControlShape::stretch, 14, 0, 24 },
+                                       filterComponent->rowControl(0));
         }
 
         // Row 2: cutoff and resonance, each with its existing label above.
@@ -171,10 +178,14 @@ void FltPanel::resized()
             flex.performLayout(row.toFloat());
 
             const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
-            px3::ui::layoutLabelledControl(cell(0), cutoffLabels[idx], cutoffKnobs[idx], nullptr,
-                                           18, 0, ControlShape::square, 110);
-            px3::ui::layoutLabelledControl(cell(1), resonanceLabels[idx], resonanceKnobs[idx], nullptr,
-                                           18, 0, ControlShape::square, 110);
+            px3::ui::layoutLabelledControl(cell(0),
+                                       { cutoffLabels[idx], cutoffKnobs[idx], nullptr,
+                                         ControlShape::square, 18, 0, 110 },
+                                       filterComponent->rowControl(1));
+            px3::ui::layoutLabelledControl(cell(1),
+                                       { resonanceLabels[idx], resonanceKnobs[idx], nullptr,
+                                         ControlShape::square, 18, 0, 110 },
+                                       filterComponent->rowControl(1));
         }
 
         // Row 3 is the response graph, which the component draws.
@@ -194,6 +205,9 @@ void FltPanel::refreshFromParameters()
         const auto isEnabled = enabledButtons[idx]->getToggleState();
 
         filterTypeBoxes[idx]->setEnabled(isEnabled);
+        // The caption greys out with the control it names, like every other
+        // label on this panel.
+        filterTypeLabels[idx]->setEnabled(isEnabled);
         filterTypeBoxes[idx]->setColour(juce::ComboBox::backgroundColourId,
                                         isEnabled ? filterTypeBoxBaseBgColours[idx] : disabledComboBgColour);
         filterTypeBoxes[idx]->setColour(juce::ComboBox::textColourId,

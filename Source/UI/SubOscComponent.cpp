@@ -128,12 +128,18 @@ void SubOscComponent::resized()
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
         using px3::ui::ControlShape;
-        px3::ui::layoutLabelledControl(cell(0), &enabledLabel, &enabledButton, nullptr,
-                                       14, 0, ControlShape::square, 22);
-        px3::ui::layoutLabelledControl(cell(1), &octaveLabel, &octaveBox, nullptr,
-                                       14, 0, ControlShape::stretch, 24);
-        px3::ui::layoutLabelledControl(cell(2), &waveformLabel, &waveformBox, nullptr,
-                                       14, 0, ControlShape::stretch, 24);
+        px3::ui::layoutLabelledControl(cell(0),
+                                       { &enabledLabel, &enabledButton, nullptr,
+                                         ControlShape::square, 14, 0, 22 },
+                                       inner.rowControl(0));
+        px3::ui::layoutLabelledControl(cell(1),
+                                       { &octaveLabel, &octaveBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 24 },
+                                       inner.rowControl(0));
+        px3::ui::layoutLabelledControl(cell(2),
+                                       { &waveformLabel, &waveformBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 24 },
+                                       inner.rowControl(0));
     }
 
     // Row 2: the pitch knob, which keeps its existing label and value readout.
@@ -146,8 +152,9 @@ void SubOscComponent::resized()
         flex.performLayout(row.toFloat());
 
         px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
-                                       &pitchLabel, &pitch, &pitchValueLabel, 16, 16,
-                                       px3::ui::ControlShape::square, 56);
+                                       { &pitchLabel, &pitch, &pitchValueLabel,
+                                         px3::ui::ControlShape::square, 16, 16, 56 },
+                                       inner.rowControl(1));
     }
 
     // Row 3 is the wave table, drawn in paint() rather than being a child

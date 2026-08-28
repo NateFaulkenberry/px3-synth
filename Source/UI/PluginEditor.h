@@ -341,9 +341,11 @@ private:
     KnobLabel cutoffLabel;
     KnobLabel resonanceLabel;
     KnobLabel filter1EnabledLabel;
+    KnobLabel filter1TypeLabel;
     KnobLabel cutoff2Label;
     KnobLabel resonance2Label;
     KnobLabel filter2EnabledLabel;
+    KnobLabel filter2TypeLabel;
     KnobLabel attackLabel;
     KnobLabel decayLabel;
     KnobLabel sustainLabel;

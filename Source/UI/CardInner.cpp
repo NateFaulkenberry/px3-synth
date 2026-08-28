@@ -37,44 +37,115 @@ juce::var readLayered(const UIConfig* config,
     return {};
 }
 
+// Keyword spellings are normalised before matching: lowercased, with hyphens
+// and underscores removed. Every property NAME in this schema is camelCase, so
+// "flexStart" is the natural thing to write for a value - and requiring
+// "flex-start" instead is a trap that fails silently. All three spellings work.
+juce::String normaliseKeyword(const juce::String& text)
+{
+    return text.trim().toLowerCase().removeCharacters("-_");
+}
+
+// An unrecognised keyword falls back, which used to be invisible: a typo just
+// left the property doing nothing. In a debug build it now says so.
+void warnUnknownKeyword(const char* property, const juce::String& text)
+{
+    juce::ignoreUnused(property, text);
+    DBG("UIConfig: unrecognised " << property << " value \"" << text << "\" - ignored");
+}
+
+juce::FlexBox::Direction toFlexDirection(FlexDirection d)
+{
+    switch (d)
+    {
+        case FlexDirection::rowReverse:    return juce::FlexBox::Direction::rowReverse;
+        case FlexDirection::column:        return juce::FlexBox::Direction::column;
+        case FlexDirection::columnReverse: return juce::FlexBox::Direction::columnReverse;
+        case FlexDirection::row:           break;
+    }
+    return juce::FlexBox::Direction::row;
+}
+
+juce::FlexBox::JustifyContent toFlexJustify(JustifyContent j)
+{
+    switch (j)
+    {
+        case JustifyContent::start:        return juce::FlexBox::JustifyContent::flexStart;
+        case JustifyContent::end:          return juce::FlexBox::JustifyContent::flexEnd;
+        case JustifyContent::spaceBetween: return juce::FlexBox::JustifyContent::spaceBetween;
+        case JustifyContent::spaceAround:  return juce::FlexBox::JustifyContent::spaceAround;
+        case JustifyContent::centre:       break;
+    }
+    return juce::FlexBox::JustifyContent::center;
+}
+
+juce::FlexBox::AlignItems toFlexAlign(AlignItems a)
+{
+    switch (a)
+    {
+        case AlignItems::start:   return juce::FlexBox::AlignItems::flexStart;
+        case AlignItems::end:     return juce::FlexBox::AlignItems::flexEnd;
+        case AlignItems::stretch: return juce::FlexBox::AlignItems::stretch;
+        case AlignItems::centre:  break;
+    }
+    return juce::FlexBox::AlignItems::center;
+}
+
+juce::FlexBox::AlignContent toFlexAlignContent(AlignItems a)
+{
+    switch (a)
+    {
+        case AlignItems::start:   return juce::FlexBox::AlignContent::flexStart;
+        case AlignItems::end:     return juce::FlexBox::AlignContent::flexEnd;
+        case AlignItems::stretch: return juce::FlexBox::AlignContent::stretch;
+        case AlignItems::centre:  break;
+    }
+    return juce::FlexBox::AlignContent::center;
+}
+
 FlexDirection parseDirection(const juce::String& text, FlexDirection fallback)
 {
-    const auto t = text.trim().toLowerCase();
-    if (t == "row")            return FlexDirection::row;
-    if (t == "row-reverse")    return FlexDirection::rowReverse;
-    if (t == "column")         return FlexDirection::column;
-    if (t == "column-reverse") return FlexDirection::columnReverse;
+    const auto t = normaliseKeyword(text);
+    if (t == "row")           return FlexDirection::row;
+    if (t == "rowreverse")    return FlexDirection::rowReverse;
+    if (t == "column")        return FlexDirection::column;
+    if (t == "columnreverse") return FlexDirection::columnReverse;
+    warnUnknownKeyword("direction", text);
     return fallback;
 }
 
 FlexWrapMode parseWrap(const juce::String& text, FlexWrapMode fallback)
 {
-    const auto t = text.trim().toLowerCase();
-    if (t == "nowrap" || t == "no-wrap") return FlexWrapMode::noWrap;
-    if (t == "wrap")                     return FlexWrapMode::wrap;
+    const auto t = normaliseKeyword(text);
+    if (t == "nowrap") return FlexWrapMode::noWrap;
+    if (t == "wrap")   return FlexWrapMode::wrap;
+    warnUnknownKeyword("wrap", text);
     return fallback;
 }
 
 JustifyContent parseJustify(const juce::String& text, JustifyContent fallback)
 {
-    const auto t = text.trim().toLowerCase();
-    if (t == "flex-start" || t == "start")  return JustifyContent::start;
-    if (t == "flex-end" || t == "end")      return JustifyContent::end;
-    if (t == "center" || t == "centre")     return JustifyContent::centre;
-    if (t == "space-between")               return JustifyContent::spaceBetween;
-    if (t == "space-around")                return JustifyContent::spaceAround;
+    const auto t = normaliseKeyword(text);
+    if (t == "flexstart" || t == "start")  return JustifyContent::start;
+    if (t == "flexend" || t == "end")      return JustifyContent::end;
+    if (t == "center" || t == "centre")    return JustifyContent::centre;
+    if (t == "spacebetween")               return JustifyContent::spaceBetween;
+    if (t == "spacearound")                return JustifyContent::spaceAround;
+    warnUnknownKeyword("justifyContent", text);
     return fallback;
 }
 
 AlignItems parseAlign(const juce::String& text, AlignItems fallback)
 {
-    const auto t = text.trim().toLowerCase();
-    if (t == "flex-start" || t == "start") return AlignItems::start;
-    if (t == "flex-end" || t == "end")     return AlignItems::end;
-    if (t == "center" || t == "centre")    return AlignItems::centre;
-    if (t == "stretch")                    return AlignItems::stretch;
+    const auto t = normaliseKeyword(text);
+    if (t == "flexstart" || t == "start") return AlignItems::start;
+    if (t == "flexend" || t == "end")     return AlignItems::end;
+    if (t == "center" || t == "centre")   return AlignItems::centre;
+    if (t == "stretch")                   return AlignItems::stretch;
+    warnUnknownKeyword("alignItems", text);
     return fallback;
 }
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -97,7 +168,7 @@ FlexStyle FlexStyle::readLayered(const UIConfig* config,
     };
 
     if (const auto v = value("display"); ! v.isVoid())
-        style.display = ! v.toString().trim().equalsIgnoreCase("none");
+        style.display = normaliseKeyword(v.toString()) != "none";
     if (const auto v = value("direction"); ! v.isVoid())
         style.direction = parseDirection(v.toString(), fallback.direction);
     if (const auto v = value("wrap"); ! v.isVoid())
@@ -114,46 +185,46 @@ FlexStyle FlexStyle::readLayered(const UIConfig* config,
     return style;
 }
 
+ControlStyle ControlStyle::readLayered(const UIConfig* config,
+                                       const juce::StringArray& pathsMostSpecificFirst,
+                                       const ControlStyle& fallback)
+{
+    ControlStyle style = fallback;
+    if (config == nullptr)
+    {
+        return style;
+    }
+
+    const auto value = [&](const char* key)
+    {
+        return px3::ui::readLayered(config, pathsMostSpecificFirst, key);
+    };
+
+    if (const auto v = value("direction"); ! v.isVoid())
+        style.direction = parseDirection(v.toString(), fallback.direction);
+    if (const auto v = value("justifyContent"); ! v.isVoid())
+        style.justifyContent = parseJustify(v.toString(), fallback.justifyContent);
+    if (const auto v = value("alignItems"); ! v.isVoid())
+        style.alignItems = parseAlign(v.toString(), fallback.alignItems);
+    if (const auto v = value("gap"); ! v.isVoid())
+        style.gap = juce::jmax(0.0f, static_cast<float>(v));
+
+    style.labelHeight = Dimension::parse(value("labelHeight"), style.labelHeight);
+    style.readoutHeight = Dimension::parse(value("readoutHeight"), style.readoutHeight);
+    style.size = Dimension::parse(value("size"), style.size);
+
+    return style;
+}
+
 juce::FlexBox FlexStyle::toFlexBox() const
 {
     juce::FlexBox box;
-
-    switch (direction)
-    {
-        case FlexDirection::row:           box.flexDirection = juce::FlexBox::Direction::row; break;
-        case FlexDirection::rowReverse:    box.flexDirection = juce::FlexBox::Direction::rowReverse; break;
-        case FlexDirection::column:        box.flexDirection = juce::FlexBox::Direction::column; break;
-        case FlexDirection::columnReverse: box.flexDirection = juce::FlexBox::Direction::columnReverse; break;
-    }
-
+    box.flexDirection = toFlexDirection(direction);
     box.flexWrap = (wrap == FlexWrapMode::wrap) ? juce::FlexBox::Wrap::wrap
                                                 : juce::FlexBox::Wrap::noWrap;
-
-    switch (justifyContent)
-    {
-        case JustifyContent::start:        box.justifyContent = juce::FlexBox::JustifyContent::flexStart; break;
-        case JustifyContent::end:          box.justifyContent = juce::FlexBox::JustifyContent::flexEnd; break;
-        case JustifyContent::centre:       box.justifyContent = juce::FlexBox::JustifyContent::center; break;
-        case JustifyContent::spaceBetween: box.justifyContent = juce::FlexBox::JustifyContent::spaceBetween; break;
-        case JustifyContent::spaceAround:  box.justifyContent = juce::FlexBox::JustifyContent::spaceAround; break;
-    }
-
-    switch (alignItems)
-    {
-        case AlignItems::start:   box.alignItems = juce::FlexBox::AlignItems::flexStart; break;
-        case AlignItems::end:     box.alignItems = juce::FlexBox::AlignItems::flexEnd; break;
-        case AlignItems::centre:  box.alignItems = juce::FlexBox::AlignItems::center; break;
-        case AlignItems::stretch: box.alignItems = juce::FlexBox::AlignItems::stretch; break;
-    }
-
-    switch (alignContent)
-    {
-        case AlignItems::start:   box.alignContent = juce::FlexBox::AlignContent::flexStart; break;
-        case AlignItems::end:     box.alignContent = juce::FlexBox::AlignContent::flexEnd; break;
-        case AlignItems::centre:  box.alignContent = juce::FlexBox::AlignContent::center; break;
-        case AlignItems::stretch: box.alignContent = juce::FlexBox::AlignContent::stretch; break;
-    }
-
+    box.justifyContent = toFlexJustify(justifyContent);
+    box.alignItems = toFlexAlign(alignItems);
+    box.alignContent = toFlexAlignContent(alignContent);
     return box;
 }
 
@@ -213,6 +284,13 @@ CardInnerStyle CardInnerStyle::fromConfig(const UIConfig* config,
             merged.margin = Insets::parse(readLayered(config, paths, "margin"), merged.margin);
             merged.padding = Insets::parse(readLayered(config, paths, "padding"), merged.padding);
             merged.flex = FlexStyle::readLayered(config, paths, merged.flex);
+
+            juce::StringArray controlPaths;
+            for (const auto& path : paths)
+            {
+                controlPaths.add(path + ".control");
+            }
+            merged.control = ControlStyle::readLayered(config, controlPaths, merged.control);
             row = merged;
         }
         style.rows.push_back(row);
@@ -353,6 +431,16 @@ juce::FlexBox CardInner::rowFlex(int index) const
     return cached.rows[static_cast<std::size_t>(index)].flex.toFlexBox();
 }
 
+const ControlStyle& CardInner::rowControl(int index) const
+{
+    static const ControlStyle fallback;
+    if (index < 0 || index >= static_cast<int>(cached.rows.size()))
+    {
+        return fallback;
+    }
+    return cached.rows[static_cast<std::size_t>(index)].control;
+}
+
 juce::FlexItem::Margin CardInner::rowGap(int index) const
 {
     if (index < 0 || index >= static_cast<int>(cached.rows.size()))
@@ -405,45 +493,106 @@ int wrappedLineCount(const std::vector<float>& itemWidths, float gap, float rowW
 }
 
 void layoutLabelledControl(juce::Rectangle<int> area,
-                           juce::Component* label,
-                           juce::Component* control,
-                           juce::Component* readout,
-                           int labelHeight,
-                           int readoutHeight,
-                           ControlShape shape,
-                           int maxControlSize)
+                           const LabelledControl& parts,
+                           const ControlStyle& style)
 {
-    auto remaining = area;
+    const auto showLabel = parts.label != nullptr && parts.label->isVisible();
+    const auto showReadout = parts.readout != nullptr && parts.readout->isVisible();
 
-    if (label != nullptr && label->isVisible())
-    {
-        label->setBounds(remaining.removeFromTop(juce::jmin(labelHeight, remaining.getHeight())));
-    }
-    if (readout != nullptr && readout->isVisible())
-    {
-        readout->setBounds(remaining.removeFromBottom(juce::jmin(readoutHeight, remaining.getHeight())));
-    }
-    if (control != nullptr)
-    {
-        const auto cap = maxControlSize > 0 ? maxControlSize : std::numeric_limits<int>::max();
+    const auto cellWidth = static_cast<float>(juce::jmax(0, area.getWidth()));
+    const auto cellHeight = static_cast<float>(juce::jmax(0, area.getHeight()));
+    const auto shorterSide = juce::jmin(cellWidth, cellHeight);
 
-        if (shape == ControlShape::stretch)
-        {
-            // Full width at a capped height: a dropdown that grew as tall as
-            // its cell would look nothing like the ones it replaced.
-            const auto height = juce::jmax(0, juce::jmin(remaining.getHeight(), cap));
-            control->setBounds(juce::Rectangle<int>(remaining.getWidth(), height)
-                                   .withCentre(remaining.getCentre()));
-        }
-        else
-        {
-            // Square and centred: knobs are round, and letting one stretch to
-            // the cell would change how every existing knob looks.
-            const auto side = juce::jmax(0, juce::jmin(juce::jmin(remaining.getWidth(),
-                                                                  remaining.getHeight()), cap));
-            control->setBounds(juce::Rectangle<int>(side, side).withCentre(remaining.getCentre()));
-        }
+    // "auto" means "whatever the component asked for". Anything else overrides
+    // it, with percentages measured against the cell's shorter side.
+    const auto resolveOrRequested = [shorterSide](const Dimension& dim, int requested)
+    {
+        return dim.isAuto() ? static_cast<float>(requested)
+                            : juce::jmax(0.0f, dim.resolve(shorterSide, static_cast<float>(requested)));
+    };
+
+    const auto labelHeight = showLabel ? resolveOrRequested(style.labelHeight, parts.labelHeight) : 0.0f;
+    const auto readoutHeight = showReadout ? resolveOrRequested(style.readoutHeight, parts.readoutHeight) : 0.0f;
+
+    const auto stacksVertically = style.direction == FlexDirection::column
+                               || style.direction == FlexDirection::columnReverse;
+
+    // The control takes what the label and readout leave, unless config gives
+    // it an explicit size. This is what keeps a knob round and a dropdown not.
+    const auto gapCount = static_cast<float>((showLabel ? 1 : 0) + (showReadout ? 1 : 0));
+    const auto consumed = labelHeight + readoutHeight + style.gap * gapCount;
+    const auto freeHeight = juce::jmax(0.0f, cellHeight - (stacksVertically ? consumed : 0.0f));
+
+    const auto cap = parts.maxControlSize > 0 ? static_cast<float>(parts.maxControlSize)
+                                              : std::numeric_limits<float>::max();
+
+    float controlWidth = 0.0f;
+    float controlHeight = 0.0f;
+
+    if (parts.shape == ControlShape::stretch)
+    {
+        // Full width, capped height: a dropdown as tall as its cell would look
+        // nothing like the ones it replaced.
+        controlWidth = cellWidth;
+        controlHeight = style.size.isAuto() ? juce::jmin(freeHeight, cap)
+                                            : juce::jmax(0.0f, style.size.resolve(shorterSide, cap));
+        controlHeight = juce::jmin(controlHeight, freeHeight);
     }
+    else
+    {
+        const auto side = style.size.isAuto()
+                              ? juce::jmin(juce::jmin(cellWidth, freeHeight), cap)
+                              : juce::jmax(0.0f, style.size.resolve(shorterSide, cap));
+        controlWidth = juce::jmin(side, cellWidth);
+        controlHeight = juce::jmin(side, freeHeight);
+    }
+
+    // Laid out by FlexBox, like everything else here, so justifyContent and
+    // alignItems mean what they mean everywhere else in this system.
+    juce::FlexBox box;
+    box.flexDirection = toFlexDirection(style.direction);
+    box.flexWrap = juce::FlexBox::Wrap::noWrap;
+    box.justifyContent = toFlexJustify(style.justifyContent);
+    box.alignItems = toFlexAlign(style.alignItems);
+    box.alignContent = juce::FlexBox::AlignContent::center;
+
+    const auto half = style.gap * 0.5f;
+    const auto gapMargin = stacksVertically ? juce::FlexItem::Margin(half, 0.0f, half, 0.0f)
+                                            : juce::FlexItem::Margin(0.0f, half, 0.0f, half);
+
+    int labelIndex = -1;
+    int controlIndex = -1;
+    int readoutIndex = -1;
+
+    if (showLabel)
+    {
+        labelIndex = box.items.size();
+        box.items.add(juce::FlexItem(cellWidth, labelHeight).withMargin(gapMargin));
+    }
+    if (parts.control != nullptr)
+    {
+        controlIndex = box.items.size();
+        box.items.add(juce::FlexItem(controlWidth, controlHeight).withMargin(gapMargin));
+    }
+    if (showReadout)
+    {
+        readoutIndex = box.items.size();
+        box.items.add(juce::FlexItem(cellWidth, readoutHeight).withMargin(gapMargin));
+    }
+
+    box.performLayout(area.toFloat());
+
+    const auto place = [&box](int index, juce::Component* component)
+    {
+        if (index >= 0 && component != nullptr)
+        {
+            component->setBounds(box.items.getReference(index).currentBounds.toNearestInt());
+        }
+    };
+
+    place(labelIndex, parts.label);
+    place(controlIndex, parts.control);
+    place(readoutIndex, parts.readout);
 }
 
 } // namespace px3::ui
