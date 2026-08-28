@@ -502,7 +502,7 @@ What it adds:
 Level behaviour:
 
 - The stage is deliberately level-neutral: the worst level change across the whole
-  WARMTH range is about 1.2 dB. Turning VIBE up adds harmonic content and movement,
+  AMOUNT range is about 1.2 dB. Turning VIBE up adds harmonic content and movement,
   not volume.
 
 VIBE is an original texture system, not a hardware emulation claim. The `sin()`
