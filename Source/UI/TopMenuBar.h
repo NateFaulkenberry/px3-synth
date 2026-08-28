@@ -27,6 +27,10 @@ public:
         juce::Colour text { juce::Colour::fromRGB(186, 190, 198) };
         juce::Colour textActive { juce::Colour::fromRGB(245, 247, 250) };
         juce::Colour seam { juce::Colour::fromRGBA(0, 0, 0, 150) };
+        // A hairline drawn one pixel inside the face, so each control reads as
+        // its own key in the strip without a heavy outline around it.
+        juce::Colour inset { juce::Colour::fromRGBA(226, 232, 240, 40) };
+        juce::Colour insetActive { juce::Colour::fromRGBA(240, 245, 252, 90) };
     };
 
     explicit TopMenuTabButton(const juce::String& name);

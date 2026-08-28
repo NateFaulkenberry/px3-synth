@@ -192,8 +192,8 @@ void OscPanel::resized()
     // width and justifyContent decides what happens to the slack - which is
     // what makes `space-between` mean something here.
     const auto preferred = uiConfig != nullptr ? uiConfig->getFloat("panels.osc.itemWidth", 300.0f) : 300.0f;
-    const auto share = juce::jmax(1.0f, (static_cast<float>(panelArea.getWidth())
-                                         - gapWidth * static_cast<float>(cardCount))
+    const auto laidOutWidth = static_cast<float>(panelArea.getWidth()) + gapWidth;
+    const auto share = juce::jmax(1.0f, (laidOutWidth - gapWidth * static_cast<float>(cardCount))
                                             / static_cast<float>(cardCount));
     const auto itemWidth = juce::jmin(juce::jmax(1.0f, preferred), share);
 
@@ -203,7 +203,10 @@ void OscPanel::resized()
         box.items.add(juce::FlexItem(itemWidth, static_cast<float>(panelArea.getHeight()))
                           .withMargin(gapMargin));
     }
-    box.performLayout(panelArea.toFloat());
+    // Laid out into the area widened by half a gap on each side, so the outer
+    // half-margins fall outside it and the first and last cards sit flush with
+    // the panel edge - which is what lines them up with the top nav.
+    box.performLayout(panelArea.toFloat().expanded(gapMargin.left, 0.0f));
 
     const auto slot = [&box](int i) { return box.items.getReference(i).currentBounds.toNearestInt(); };
 

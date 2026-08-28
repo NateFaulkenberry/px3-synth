@@ -280,6 +280,22 @@ void FltPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
 
+    // Re-read the type boxes' colours now that the config has styled them.
+    //
+    // These were captured once in the constructor - before any styling ran - and
+    // then written back on every refresh, which pinned the two filter dropdowns
+    // to JUCE's defaults and made them the only combos in the plugin that
+    // ignored UIConfig.
+    for (std::size_t idx = 0; idx < filterTypeBoxes.size(); ++idx)
+    {
+        if (auto* box = filterTypeBoxes[idx])
+        {
+            filterTypeBoxBaseBgColours[idx] = box->findColour(juce::ComboBox::backgroundColourId);
+            filterTypeBoxBaseTextColours[idx] = box->findColour(juce::ComboBox::textColourId);
+            filterTypeBoxBaseOutlineColours[idx] = box->findColour(juce::ComboBox::outlineColourId);
+        }
+    }
+
     for (auto& filterComponent : filterComponents)
     {
         if (filterComponent != nullptr)

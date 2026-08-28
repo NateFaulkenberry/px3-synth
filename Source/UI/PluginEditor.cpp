@@ -1532,6 +1532,65 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
                     : juce::Colour::fromRGB(0x1A, 0x1A, 0x1A));
     g.fillRoundedRectangle(topMenuStripArea.toFloat(), stripRadius);
 
+    // The logo and master gain sections get the same hairline the tabs carry,
+    // so every block in the bar is framed alike. Rounded here rather than
+    // square because these two sit at the strip's rounded ends - a square
+    // outline would cut across the corner.
+    {
+        const auto insetColour = uiConfig != nullptr
+                                     ? uiConfig->getColour("topMenu.tabStyle.inset",
+                                                           juce::Colour::fromRGBA(226, 232, 240, 40))
+                                     : juce::Colour::fromRGBA(226, 232, 240, 40);
+        const auto defaultRadius = juce::jmax(0.0f, stripRadius - 1.0f);
+
+        // Per-corner radii for the INSET hairline itself - this is the only
+        // border these two sections have. Nothing here fills, so changing a
+        // radius moves the outline and leaves the background untouched. A
+        // section that butts against the tabs can be square on that side and
+        // follow the strip's rounding on the other.
+        const auto strokeSection = [&](const juce::Rectangle<int>& section, const juce::String& path)
+        {
+            if (section.isEmpty())
+            {
+                return;
+            }
+
+            const auto radiusFor = [&](const char* corner)
+            {
+                return uiConfig != nullptr ? uiConfig->getFloat(path + "." + corner, defaultRadius)
+                                           : defaultRadius;
+            };
+
+            const auto area = section.toFloat().reduced(1.0f);
+            const auto tl = juce::jmax(0.0f, radiusFor("topLeft"));
+            const auto tr = juce::jmax(0.0f, radiusFor("topRight"));
+            const auto br = juce::jmax(0.0f, radiusFor("bottomRight"));
+            const auto bl = juce::jmax(0.0f, radiusFor("bottomLeft"));
+
+            juce::Path outline;
+            outline.startNewSubPath(area.getX() + tl, area.getY());
+            outline.lineTo(area.getRight() - tr, area.getY());
+            if (tr > 0.0f) outline.addArc(area.getRight() - tr * 2.0f, area.getY(), tr * 2.0f, tr * 2.0f,
+                                          0.0f, juce::MathConstants<float>::halfPi, false);
+            outline.lineTo(area.getRight(), area.getBottom() - br);
+            if (br > 0.0f) outline.addArc(area.getRight() - br * 2.0f, area.getBottom() - br * 2.0f, br * 2.0f, br * 2.0f,
+                                          juce::MathConstants<float>::halfPi, juce::MathConstants<float>::pi, false);
+            outline.lineTo(area.getX() + bl, area.getBottom());
+            if (bl > 0.0f) outline.addArc(area.getX(), area.getBottom() - bl * 2.0f, bl * 2.0f, bl * 2.0f,
+                                          juce::MathConstants<float>::pi, juce::MathConstants<float>::pi * 1.5f, false);
+            outline.lineTo(area.getX(), area.getY() + tl);
+            if (tl > 0.0f) outline.addArc(area.getX(), area.getY(), tl * 2.0f, tl * 2.0f,
+                                          juce::MathConstants<float>::pi * 1.5f, juce::MathConstants<float>::twoPi, false);
+            outline.closeSubPath();
+
+            g.strokePath(outline, juce::PathStrokeType(1.0f));
+        };
+
+        g.setColour(insetColour);
+        strokeSection(logoPanelArea, "topMenu.logoSection.inset.cornerRadius");
+        strokeSection(topMenuGainArea, "topMenu.gainSection.inset.cornerRadius");
+    }
+
     if (logoFrame.isValid())
     {
                 // The version line used to sit under the logo; it is a menu item
@@ -1539,28 +1598,46 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
                 // The 46px reserve was room for the version subtitle. With that
                 // gone the logo fills the panel, which is what lets a shorter
                 // header still show it at a sensible size.
-                const auto logoSize = static_cast<float>(juce::jlimit(40, 120, logoPanelArea.getHeight() - 12));
-                const auto contentHeight = logoSize;
-                // Exactly centred. The +2 nudge here compensated for the version
-                // subtitle sitting below the logo; with that gone it just left
-                // the logo hanging low in the panel.
-                const auto contentTop = static_cast<float>(logoPanelArea.getY())
-                                                                + (static_cast<float>(logoPanelArea.getHeight()) - contentHeight) * 0.5f;
-
-                const auto logoArea = juce::Rectangle<float>(static_cast<float>(logoPanelArea.getX()),
-                                                                                                         contentTop,
-                                                                                                         static_cast<float>(logoPanelArea.getWidth()),
-                                                                                                         logoSize)
-                                                                    .withSizeKeepingCentre(logoSize, logoSize);
+                // How much shorter than its panel the logo sits - its breathing
+                // room inside the section.
+                const auto logoInset = uiConfig != nullptr ? uiConfig->getInt("editor.logo.heightInset", 20) : 20;
+                const auto logoSize = static_cast<float>(juce::jlimit(40, 120, logoPanelArea.getHeight() - logoInset));
+                // Centred on the panel outright, rather than derived from a content
+                // height and a top offset. One expression, so changing the size
+                // cannot move it off centre.
+                const auto logoArea = juce::Rectangle<float>(logoSize, logoSize)
+                                          .withCentre(logoPanelArea.toFloat().getCentre());
         const auto vibration = juce::jlimit(0.0f, 1.0f, logoVibrationIntensity);
         const auto shakePx = vibration * 3.2f;
         const auto shakeX = std::sin(logoVibrationPhase * 5.7f) * shakePx;
         const auto shakeY = std::cos(logoVibrationPhase * 7.9f + 0.8f) * (shakePx * 0.85f);
+        // The logo is thin white strokes on transparency. Scaled down with the
+        // default resampler those strokes average toward the transparent pixels
+        // beside them and the whole mark reads dimmer - which is why it looked
+        // darker once the header shrank.
+        g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
+
         auto transform = juce::AffineTransform::scale(logoArea.getWidth() / static_cast<float>(logoFrame.getWidth()),
                                                       logoArea.getHeight() / static_cast<float>(logoFrame.getHeight()))
                              .translated(logoArea.getX(), logoArea.getY());
         transform = transform.translated(shakeX, shakeY);
         g.drawImageTransformed(logoFrame, transform);
+
+        // The GIF decoder hands back frame 0, which is one of the darker frames
+        // in the loop - so the logo at rest reads dimmer than it does mid
+        // animation, when the glitch masks are adding light on top of it.
+        //
+        // Redrawing the same frame builds up the alpha of its anti-aliased
+        // strokes, which is what brightens them: a thin stroke at 40% alpha
+        // becomes 64% after a second pass. Cheaper and truer to the artwork
+        // than tinting it.
+        const auto logoBoost = uiConfig != nullptr ? uiConfig->getFloat("editor.logo.boost", 0.55f) : 0.55f;
+        if (logoBoost > 0.0f)
+        {
+            g.setOpacity(juce::jlimit(0.0f, 1.0f, logoBoost));
+            g.drawImageTransformed(logoFrame, transform);
+            g.setOpacity(1.0f);
+        }
 
         if (logoVibrationIntensity > 0.01f
             && logoGlitchMaskR.isValid()
@@ -1751,7 +1828,10 @@ void PX3SynthAudioProcessorEditor::resized()
     // midiStatusArea = bounds.removeFromBottom(statusHeight);
     // bounds.removeFromBottom(sectionGap);
 
-    auto keyboardRow = bounds.reduced(4, 0);
+    // No horizontal inset: the header, the panels and the keyboard all derive
+    // from the same `bounds`, and a 4px reduce here was the only thing making
+    // the keyboard start and end inboard of the other two.
+    auto keyboardRow = bounds;
     const auto perfWidth = juce::jlimit(112, 190, keyboardRow.getWidth() / 8);
     performanceControlsArea = keyboardRow.removeFromLeft(perfWidth);
 

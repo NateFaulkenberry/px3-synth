@@ -247,8 +247,8 @@ void MixerToggleButton::paintButton(juce::Graphics& g, bool shouldDrawButtonAsHi
     // A soft white wash rather than a dark plastic face: light at the top,
     // falling away down the cap. Shallow on purpose - the sheen above does the
     // shaping, and a steep ramp here reads as a bevel instead of a surface.
-    auto top = juce::Colour::fromRGB(126, 130, 140);
-    auto bottom = juce::Colour::fromRGB(84, 88, 97);
+    auto top = juce::Colour::fromRGB(189, 195, 210);
+    auto bottom = juce::Colour::fromRGB(126, 132, 145);
     if (!enabled)
     {
         top = style.disabledColour.brighter(0.12f);

@@ -54,11 +54,10 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
         face = face.brighter(0.14f);
     }
 
-    // A shallow top-down gradient, so the face has a little relief without
-    // reading as a bevelled button.
-    juce::ColourGradient body(face.brighter(0.10f), area.getX(), area.getY(),
-                              face.darker(0.10f), area.getX(), area.getBottom(), false);
-    g.setGradientFill(body);
+    // Flat, not graded: the tabs sit on the bar's own colour, so any vertical
+    // ramp here reads as a button laid on top of the bar rather than as part
+    // of it. The LED, the lit top edge and the brighter inset carry state.
+    g.setColour(face);
     g.fillRect(area);
 
     // A lit top edge marks the selected tab, the way a selected panel does.
@@ -67,6 +66,11 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
         g.setColour(accent);
         g.fillRect(area.withHeight(2.0f));
     }
+
+    // A hairline one pixel in from the edge. Inset rather than on the boundary
+    // so butted neighbours do not draw two lines against each other.
+    g.setColour(on ? style.insetActive : style.inset);
+    g.drawRect(area.reduced(1.0f), 1.0f);
 
     // ---- LED ---------------------------------------------------------------
     const auto ledDiameter = juce::jmin(7.0f, area.getHeight() * 0.16f);
@@ -367,6 +371,8 @@ void TopMenuBar::setUIConfig(std::shared_ptr<const UIConfig> configIn)
         tabStyle.text = uiConfig->getColour("topMenu.tabStyle.text", tabStyle.text);
         tabStyle.textActive = uiConfig->getColour("topMenu.tabStyle.textActive", tabStyle.textActive);
         tabStyle.seam = uiConfig->getColour("topMenu.tabStyle.seam", tabStyle.seam);
+        tabStyle.inset = uiConfig->getColour("topMenu.tabStyle.inset", tabStyle.inset);
+        tabStyle.insetActive = uiConfig->getColour("topMenu.tabStyle.insetActive", tabStyle.insetActive);
     }
 
     for (auto* button : topMenuSectionButtons)
