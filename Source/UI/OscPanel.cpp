@@ -1,11 +1,12 @@
 #include "OscPanel.h"
 
+#include "CardInner.h"
+
 #include "UIConfig.h"
 
 #include <cmath>
 
 OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
-                   juce::Label& subEnabledLabel,
                    juce::Slider& subPitchKnob,
                    juce::Label& subPitchLabel,
                    juce::Label& subPitchValueLabel,
@@ -20,7 +21,6 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                    juce::Slider& osc1MacroB,
                    juce::Slider& osc1MacroC,
                    juce::ToggleButton& osc1EnabledButton,
-                   juce::Label& osc1EnabledLabel,
                    juce::Label& osc1MacroALabel,
                    juce::Label& osc1MacroBLabel,
                    juce::Label& osc1MacroCLabel,
@@ -35,7 +35,6 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                    juce::Slider& osc2MacroB,
                    juce::Slider& osc2MacroC,
                    juce::ToggleButton& osc2EnabledButton,
-                   juce::Label& osc2EnabledLabel,
                    juce::Label& osc2MacroALabel,
                    juce::Label& osc2MacroBLabel,
                    juce::Label& osc2MacroCLabel,
@@ -50,7 +49,6 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                    juce::Slider& osc3MacroB,
                    juce::Slider& osc3MacroC,
                    juce::ToggleButton& osc3EnabledButton,
-                   juce::Label& osc3EnabledLabel,
                    juce::Label& osc3MacroALabel,
                    juce::Label& osc3MacroBLabel,
                    juce::Label& osc3MacroCLabel,
@@ -65,7 +63,6 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                     oscHeaderAccent(oscAccent)
 {
     subOscComponent = std::make_unique<SubOscComponent>(subEnabledButton,
-                                                        subEnabledLabel,
                                                         subPitchKnob,
                                                         subPitchLabel,
                                                         subPitchValueLabel,
@@ -77,7 +74,6 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
     addAndMakeVisible(*subOscComponent);
 
     oscillatorComponents[0] = std::make_unique<OscillatorComponent>(osc1EnabledButton,
-                                                                     osc1EnabledLabel,
                                                                      osc1PitchKnob,
                                                                      osc1PitchLabel,
                                                                      osc1PitchValueLabel,
@@ -93,7 +89,6 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                                                                      osc1VowelLabel,
                                                                      oscAccent);
     oscillatorComponents[1] = std::make_unique<OscillatorComponent>(osc2EnabledButton,
-                                                                     osc2EnabledLabel,
                                                                      osc2PitchKnob,
                                                                      osc2PitchLabel,
                                                                      osc2PitchValueLabel,
@@ -109,7 +104,6 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                                                                      osc2VowelLabel,
                                                                      oscAccent);
     oscillatorComponents[2] = std::make_unique<OscillatorComponent>(osc3EnabledButton,
-                                                                     osc3EnabledLabel,
                                                                      osc3PitchKnob,
                                                                      osc3PitchLabel,
                                                                      osc3PitchValueLabel,
@@ -158,18 +152,42 @@ void OscPanel::resized()
     const auto padY = uiConfig != nullptr ? uiConfig->getInt("osc.panel.layout.padY", 10) : 10;
     auto panelArea = getLocalBounds().reduced(padX, padY);
 
-    constexpr int columnCount = 5;
-    constexpr int gap = 8;
-    const auto totalGap = gap * (columnCount - 1);
-    const auto columnWidth = juce::jmax(1, (panelArea.getWidth() - totalGap) / columnCount);
+    // Laid out by FlexBox rather than by hand. The old arithmetic divided the
+    // panel into FIVE columns for four cards - the fifth was dead space on the
+    // right - and each card then narrowed itself again with its own `width`.
+    // One row of four items replaces both.
+    const px3::ui::FlexStyle fallback { true,
+                                        px3::ui::FlexDirection::row,
+                                        px3::ui::FlexWrapMode::noWrap,
+                                        px3::ui::JustifyContent::spaceBetween,
+                                        px3::ui::AlignItems::stretch,
+                                        px3::ui::AlignItems::centre,
+                                        8.0f };
+    const auto flexStyle = px3::ui::FlexStyle::readLayered(uiConfig.get(), { "panels.osc.flex" }, fallback);
 
-    juce::Rectangle<int> columns[columnCount];
-    auto cursor = panelArea.getX();
-    for (int i = 0; i < columnCount; ++i)
+    constexpr int cardCount = 4;
+    const auto gapMargin = flexStyle.gapMargin();
+    const auto gapWidth = gapMargin.left + gapMargin.right;
+
+    // Each card wants `itemWidth`, capped to an equal share so they still fit
+    // when the window is narrow. On a wide window they stay at their preferred
+    // width and justifyContent decides what happens to the slack - which is
+    // what makes `space-between` mean something here.
+    const auto preferred = uiConfig != nullptr ? uiConfig->getFloat("panels.osc.itemWidth", 300.0f) : 300.0f;
+    const auto share = juce::jmax(1.0f, (static_cast<float>(panelArea.getWidth())
+                                         - gapWidth * static_cast<float>(cardCount))
+                                            / static_cast<float>(cardCount));
+    const auto itemWidth = juce::jmin(juce::jmax(1.0f, preferred), share);
+
+    auto box = flexStyle.toFlexBox();
+    for (int i = 0; i < cardCount; ++i)
     {
-        columns[i] = { cursor, panelArea.getY(), columnWidth, panelArea.getHeight() };
-        cursor += columnWidth + gap;
+        box.items.add(juce::FlexItem(itemWidth, static_cast<float>(panelArea.getHeight()))
+                          .withMargin(gapMargin));
     }
+    box.performLayout(panelArea.toFloat());
+
+    const auto slot = [&box](int i) { return box.items.getReference(i).currentBounds.toNearestInt(); };
 
     // Percentage card dimensions resolve against this box, so every card is
     // told what it is. Without it a card would have to guess, and "50%" would
@@ -177,7 +195,7 @@ void OscPanel::resized()
     if (subOscComponent != nullptr)
     {
         subOscComponent->setPanelContentBounds(panelArea);
-        subOscComponent->setBounds(columns[0].reduced(2, 2));
+        subOscComponent->setBounds(slot(0));
     }
 
     for (int oscIndex = 0; oscIndex < static_cast<int>(oscillatorComponents.size()); ++oscIndex)
@@ -186,10 +204,9 @@ void OscPanel::resized()
         {
             component->setInstanceIndex(oscIndex + 1);
             component->setPanelContentBounds(panelArea);
-            component->setBounds(columns[oscIndex + 1].reduced(2, 2));
+            component->setBounds(slot(oscIndex + 1));
         }
     }
-
 }
 
 void OscPanel::refreshOscillatorFromParameters(int oscIndex, bool enabled, int modeIndex, int vowelIndex)

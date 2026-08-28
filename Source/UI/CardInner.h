@@ -103,6 +103,20 @@ struct RowStyle
     ControlStyle control;
 };
 
+// The power toggle's slot: a fixed square pinned to cardInner's top-left
+// corner, deliberately OUTSIDE the flex flow.
+//
+// It sits outside because it is not one control among a row's controls - it is
+// the card's own switch, and it should stay put when the row beside it gains or
+// loses items. `x` and `y` offset it from that corner and may be negative, so
+// it can be nudged over the card's padding if a card wants it tighter in.
+struct PowerStyle
+{
+    float x { 0.0f };
+    float y { 0.0f };
+    float size { 25.0f };
+};
+
 struct CardInnerStyle
 {
     Insets margin;
@@ -110,6 +124,7 @@ struct CardInnerStyle
     // Column by default: the standard structure is three stacked rows.
     FlexStyle flex { true, FlexDirection::column, FlexWrapMode::noWrap,
                      JustifyContent::centre, AlignItems::centre, AlignItems::centre, 0.0f };
+    PowerStyle power;
     std::vector<RowStyle> rows;
 
     static CardInnerStyle fromConfig(const UIConfig* config,
@@ -140,6 +155,10 @@ public:
     // The cardInner content box: inside its own margin and padding. Rows are
     // laid out in here and percentages are measured against it.
     juce::Rectangle<int> content() const { return innerContent; }
+
+    // Where the power toggle goes: pinned to the top-left of the cardInner
+    // content box, offset by the configured x/y. Not part of any row.
+    juce::Rectangle<int> powerBounds() const;
 
     int rowCount() const { return static_cast<int>(rowContentBounds.size()); }
     // A row's content box: inside that row's own margin and padding.
@@ -190,6 +209,16 @@ enum class ControlShape
 // type, so the three oscillators cannot drift apart from one another.
 juce::String cardTypeKey(const juce::String& styleKey);
 
+// Widths for a non-wrapping row of fixed-size cells that must fit inside it.
+//
+// Each cell gets its natural width, and if the total - gaps included - exceeds
+// the row, every cell is scaled by the same factor. This is the same rule row
+// heights follow, and for the same reason: FlexBox will not shrink items whose
+// size is set explicitly, so a row of fixed cells silently overflows instead.
+std::vector<float> fitRowItemWidths(const std::vector<float>& naturalWidths,
+                                    float gap,
+                                    float rowWidth);
+
 // How many lines a wrapping row will break its items into, given their natural
 // widths and the gap between them.
 //
@@ -209,6 +238,10 @@ struct LabelledControl
     juce::Component* readout { nullptr };
     ControlShape shape { ControlShape::square };
     int labelHeight { 0 };
+    // A non-zero readoutHeight reserves the space whether or not this cell has
+    // a readout. That is what lets a row mix cells that have one with cells
+    // that do not and still have every knob land at the same height: without
+    // it, each cell centres a different-height group and the knobs drift apart.
     int readoutHeight { 0 };
     // 0 means uncapped: as large as the cell allows.
     int maxControlSize { 0 };

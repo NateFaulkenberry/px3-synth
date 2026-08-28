@@ -1,5 +1,6 @@
 #include "OscillatorComponent.h"
 
+#include "BypassButton.h"
 #include "CardInner.h"
 
 #include "UIConfig.h"
@@ -8,7 +9,6 @@
 #include <vector>
 
 OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
-                                                                                                             juce::Label& enabledLabelIn,
                                                                                                              juce::Slider& pitchIn,
                                                                                                              juce::Label& pitchLabelIn,
                                                                                                              juce::Label& pitchValueLabelIn,
@@ -24,7 +24,6 @@ OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
                                                                                                              juce::Label& vowelLabelIn,
                                                                                                              juce::Colour accentIn)
         : enabledButton(enabledButtonIn),
-            enabledLabel(enabledLabelIn),
             pitch(pitchIn),
             pitchLabel(pitchLabelIn),
             pitchValueLabel(pitchValueLabelIn),
@@ -40,8 +39,11 @@ OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
       vowelLabel(vowelLabelIn),
       accent(accentIn)
 {
+    // The card background toggles this section, so the pointer says it is
+    // clickable. Child controls carry their own cursors.
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+
         addAndMakeVisible(enabledButton);
-        addAndMakeVisible(enabledLabel);
     addAndMakeVisible(pitch);
     addAndMakeVisible(pitchLabel);
     addAndMakeVisible(pitchValueLabel);
@@ -120,13 +122,28 @@ void OscillatorComponent::resized()
     card.setStyleKey("osc" + juce::String(instanceIndex));
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
+    // The wave graph is drawn in this card's identity colour, so a card
+    // recoloured in UIConfig recolours its graph with it rather than
+    // keeping a group accent baked in at construction.
+    accent = card.style().border.colour;
+
 
     // Per component TYPE, not per instance: osc1, osc2 and osc3 share one
     // layout definition and cannot drift apart.
+    // The power glyph lights in this card's own identity colour.
+    if (auto* power = dynamic_cast<px3::ui::BypassButton*>(&enabledButton))
+    {
+        power->setAccentColour(card.style().border.colour);
+    }
+
     inner.setStylePath("cards.osc.cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(3);
     inner.layout(card.contentBelowTitle());
+
+    // The power toggle is pinned to cardInner's corner, outside the flex flow,
+    // so it stays put no matter what the first row contains.
+    enabledButton.setBounds(inner.powerBounds());
 
     using px3::ui::ControlShape;
 
@@ -141,26 +158,24 @@ void OscillatorComponent::resized()
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
         const auto showVowel = vowelBox.isVisible();
 
-        flex.items.add(juce::FlexItem(46.0f, cellHeight).withMargin(gap));
-        flex.items.add(juce::FlexItem(showVowel ? 84.0f : 116.0f, cellHeight).withMargin(gap));
-        if (showVowel)
+        const std::vector<float> natural = showVowel ? std::vector<float> { 84.0f, 84.0f }
+                                                     : std::vector<float> { 116.0f };
+        const auto widths = px3::ui::fitRowItemWidths(natural, gap.left + gap.right,
+                                                      static_cast<float>(juce::jmax(1, row.getWidth())));
+        for (const auto width : widths)
         {
-            flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap));
+            flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gap));
         }
         flex.performLayout(row.toFloat());
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
         px3::ui::layoutLabelledControl(cell(0),
-                                       { &enabledLabel, &enabledButton, nullptr,
-                                         ControlShape::square, 14, 0, 22 },
-                                       inner.rowControl(0));
-        px3::ui::layoutLabelledControl(cell(1),
                                        { &modeLabel, &modeBox, nullptr,
                                          ControlShape::stretch, 14, 0, 24 },
                                        inner.rowControl(0));
         if (showVowel)
         {
-            px3::ui::layoutLabelledControl(cell(2),
+            px3::ui::layoutLabelledControl(cell(1),
                                        { &vowelLabel, &vowelBox, nullptr,
                                          ControlShape::stretch, 14, 0, 24 },
                                        inner.rowControl(0));
@@ -184,18 +199,26 @@ void OscillatorComponent::resized()
         const std::array<juce::Slider*, 3> macroSliders { &macroA, &macroB, &macroC };
         const std::array<juce::Label*, 3> macroLabels { &macroALabel, &macroBLabel, &macroCLabel };
 
-        flex.items.add(juce::FlexItem(72.0f, cellHeight).withMargin(gap));
-
         std::vector<int> visibleMacros;
         for (int i = 0; i < 3; ++i)
         {
             if (macroSliders[static_cast<std::size_t>(i)]->isVisible())
             {
                 visibleMacros.push_back(i);
-                auto item = juce::FlexItem(60.0f, cellHeight).withMargin(gap);
-                item.flexGrow = 1.0f;
-                flex.items.add(item);
             }
+        }
+
+        // Pitch, then one cell per visible macro. Scaled to fit: the widest
+        // modes show three macros, and pitch plus three natural cells is wider
+        // than the row - which FlexBox would have let overflow rather than
+        // shrink, because their sizes are set explicitly.
+        std::vector<float> natural { 72.0f };
+        natural.insert(natural.end(), visibleMacros.size(), 60.0f);
+        const auto widths = px3::ui::fitRowItemWidths(natural, gap.left + gap.right,
+                                                      static_cast<float>(juce::jmax(1, row.getWidth())));
+        for (const auto width : widths)
+        {
+            flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gap));
         }
 
         flex.performLayout(row.toFloat());
@@ -210,14 +233,48 @@ void OscillatorComponent::resized()
         {
             const auto index = static_cast<std::size_t>(visibleMacros[i]);
             px3::ui::layoutLabelledControl(cell(static_cast<int>(i) + 1),
+                                       // Same cap as the pitch knob, so a mode with a
+                                       // single macro - NOISE and PINK NOISE both show
+                                       // only COLOR - does not render it larger than
+                                       // the pitch knob beside it.
+                                       // Same label and readout heights as the pitch
+                                       // knob, so the two line up: the pitch cell has a
+                                       // value readout and a macro cell does not.
                                        { macroLabels[index], macroSliders[index], nullptr,
-                                         ControlShape::square, 18, 0, 86 },
+                                         ControlShape::square, 16, 16, 56 },
                                        inner.rowControl(1));
         }
     }
 
     // Row 3 is the wave graph, which paint() draws rather than a child
     // component owning it.
+}
+
+void OscillatorComponent::mouseUp(const juce::MouseEvent& event)
+{
+    // Clicking the card's background toggles its power, the same as clicking
+    // the button. No tooltip here: the whole card is not a control, and a card
+    // that explained itself on hover would be noise.
+    // The wave graph is a display, not a switch: it shows no pointer and it
+    // takes no click, so the two agree.
+    if (inner.rowContent(2).contains(event.getPosition()))
+    {
+        return;
+    }
+
+    if (px3::ui::isCardBackgroundToggleClick(event))
+    {
+        enabledButton.setToggleState(! enabledButton.getToggleState(), juce::sendNotification);
+    }
+}
+
+void OscillatorComponent::mouseMove(const juce::MouseEvent& event)
+{
+    // The wave graph is a display, not a control, so it does not take the
+    // pointer that marks the rest of the card as clickable.
+    setMouseCursor(inner.rowContent(2).contains(event.getPosition())
+                       ? juce::MouseCursor::NormalCursor
+                       : juce::MouseCursor::PointingHandCursor);
 }
 
 void OscillatorComponent::setInstanceIndex(int oneBasedIndex)
@@ -436,7 +493,7 @@ void OscillatorComponent::applyModeUi()
         { "", "", "", 0, false },
         { "COLOR", "", "", 1, false },
         { "COLOR", "", "", 1, false },
-        { "DETUNE", "SPREAD", "", 2, false },
+        { "SPREAD", "", "", 1, false },
         { "WIDTH", "", "", 1, false },
         { "POSITION", "", "", 1, false },
         { "TILT", "ODD/EVEN", "ROLL", 3, false },

@@ -243,6 +243,7 @@ CardStyle CardStyle::fromConfig(const UIConfig* config,
     style.disabled.saturation = juce::jlimit(0.0f, 1.0f,
                                              reader.number("disabled.saturation", fallback.disabled.saturation));
     style.disabled.dim = juce::jlimit(0.0f, 1.0f, reader.number("disabled.dim", fallback.disabled.dim));
+    style.disabled.darken = juce::jlimit(0.0f, 1.0f, reader.number("disabled.darken", fallback.disabled.darken));
 
     return style;
 }
@@ -278,11 +279,16 @@ CardStyle CardStyle::disabledVariant() const
     CardStyle result = *this;
     const auto saturation = juce::jlimit(0.0f, 1.0f, disabled.saturation);
     const auto dim = juce::jlimit(0.0f, 1.0f, disabled.dim);
+    const auto darken = juce::jlimit(0.0f, 1.0f, disabled.darken);
 
     // Saturation is removed from every layer, not just the border and title.
     // Leaving the background or the gloss coloured made a bypassed card still
     // read as "blue" or "orange", which defeats the point of greying it out.
-    const auto grey = [saturation](juce::Colour c) { return c.withSaturation(saturation); };
+    const auto grey = [saturation, darken](juce::Colour c)
+    {
+        return c.withSaturation(saturation)
+                .withBrightness(juce::jlimit(0.0f, 1.0f, c.getBrightness() * (1.0f - darken)));
+    };
 
     result.border.colour = grey(result.border.colour);
     result.border.opacity *= dim;

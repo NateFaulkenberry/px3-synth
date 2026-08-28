@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "BypassButton.h"
+#include "ToggleChipButton.h"
 #include "ChipLabel.h"
 
 #include <array>
@@ -317,34 +319,29 @@ private:
     juce::ComboBox subOscWaveformBox;
     juce::ComboBox lfoAssignBox;
     juce::ComboBox envAssignBox;
-    juce::ToggleButton lfoBypassButton;
-    juce::ToggleButton envBypassButton;
-    juce::ToggleButton filter1EnabledButton;
-    juce::ToggleButton filter2EnabledButton;
-    juce::ToggleButton osc1EnabledButton;
-    juce::ToggleButton osc2EnabledButton;
-    juce::ToggleButton osc3EnabledButton;
-    juce::ToggleButton subOscEnabledButton;
+    px3::ui::BypassButton lfoBypassButton;
+    px3::ui::BypassButton envBypassButton;
+    px3::ui::BypassButton filter1EnabledButton;
+    px3::ui::BypassButton filter2EnabledButton;
+    px3::ui::BypassButton osc1EnabledButton;
+    px3::ui::BypassButton osc2EnabledButton;
+    px3::ui::BypassButton osc3EnabledButton;
+    px3::ui::BypassButton subOscEnabledButton;
 
     KnobLabel oscSineLabel;
     KnobLabel oscSawLabel;
     KnobLabel oscSquareLabel;
-    KnobLabel osc1EnabledLabel;
     KnobLabel osc2SineLabel;
     KnobLabel osc2SawLabel;
     KnobLabel osc2SquareLabel;
-    KnobLabel osc2EnabledLabel;
     KnobLabel osc3SineLabel;
     KnobLabel osc3SawLabel;
     KnobLabel osc3SquareLabel;
-    KnobLabel osc3EnabledLabel;
     KnobLabel cutoffLabel;
     KnobLabel resonanceLabel;
-    KnobLabel filter1EnabledLabel;
     KnobLabel filter1TypeLabel;
     KnobLabel cutoff2Label;
     KnobLabel resonance2Label;
-    KnobLabel filter2EnabledLabel;
     KnobLabel filter2TypeLabel;
     KnobLabel attackLabel;
     KnobLabel decayLabel;
@@ -364,9 +361,6 @@ private:
     juce::Label osc3PitchValueLabel;
     KnobLabel subOscOctaveLabel;
     KnobLabel subOscWaveformLabel;
-    KnobLabel subOscEnabledLabel;
-    KnobLabel lfoBypassLabel;
-    KnobLabel envBypassLabel;
     KnobLabel envAssignLabel;
     juce::Label lfoFrequencyValueLabel;
     juce::Label lfoAmountValueLabel;
@@ -379,6 +373,10 @@ private:
     // height and vertical scrolling. The viewport is always present; when the
     // panel is not scrolling it simply shows it at full size, which avoids
     // re-parenting the panel every time the config changes.
+    // Space between a scrolling panel's content and its scrollbar. Without it
+    // the cards sit flush against the bar, which reads as a rendering fault.
+    static constexpr int kScrollBarGutter = 8;
+
     juce::Viewport oscPanelViewport;
     juce::Viewport modPanelViewport;
     std::unique_ptr<AmpPanel> ampPanel;
@@ -406,8 +404,8 @@ private:
     KnobLabel reverbLabel;
     juce::ComboBox reverbTypeBox;
     KnobLabel reverbTypeLabel;
-    juce::ToggleButton moodBypassButton;
-    juce::ToggleButton moodFreezeButton;
+    px3::ui::BypassButton moodBypassButton;
+    px3::ui::ToggleChipButton moodFreezeButton;
     juce::Slider moodMixKnob;
     KnobLabel moodMixLabel;
     juce::Slider moodClockKnob;
@@ -432,9 +430,9 @@ private:
     KnobLabel moodWetModeLabel;
     juce::ComboBox moodLoopModeBox;
     KnobLabel moodLoopModeLabel;
-    juce::ToggleButton robBypassButton;
-    juce::ToggleButton delayBypassButton;
-    juce::ToggleButton reverbBypassButton;
+    px3::ui::BypassButton robBypassButton;
+    px3::ui::BypassButton delayBypassButton;
+    px3::ui::BypassButton reverbBypassButton;
 
     PresetManager presetManager;
     std::vector<PresetManager::PresetRecord> presetFiltered;

@@ -1,5 +1,6 @@
 #include "EnvelopeComponent.h"
 
+#include "BypassButton.h"
 #include "CardInner.h"
 
 #include "UIConfig.h"
@@ -12,7 +13,6 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
                                                                          juce::AudioParameterFloat& releaseIn,
                                                                          juce::AudioParameterBool& enabledIn,
                                                                          juce::ToggleButton& enabledButtonIn,
-                                                                         juce::Label& enabledLabelIn,
                                                                          juce::Label& assignLabelIn,
                                                                          juce::ComboBox& assignBoxIn,
                                                                          juce::Slider* amountKnobIn,
@@ -26,7 +26,6 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
             release(releaseIn),
             enabled(enabledIn),
             enabledButton(enabledButtonIn),
-            enabledLabel(enabledLabelIn),
             assignLabel(assignLabelIn),
             assignBox(assignBoxIn),
             amountKnob(amountKnobIn),
@@ -41,7 +40,6 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
         cardTitle = cardStyleKey.toUpperCase().replace("ENV", "ENV ");
 
         addAndMakeVisible(enabledButton);
-        addAndMakeVisible(enabledLabel);
         addAndMakeVisible(assignLabel);
         addAndMakeVisible(assignBox);
         if (amountKnob != nullptr)
@@ -50,14 +48,13 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
         }
         if (amountLabel != nullptr)
         {
-            amountLabel->setVisible(false);
+            addAndMakeVisible(*amountLabel);
         }
         if (amountValueLabel != nullptr)
         {
             baseAmountValueTextColour = amountValueLabel->findColour(juce::Label::textColourId);
             addAndMakeVisible(*amountValueLabel);
         }
-        baseEnabledLabelTextColour = enabledLabel.findColour(juce::Label::textColourId);
         setMouseCursor(juce::MouseCursor::NormalCursor);
     refreshFromParameters();
 }
@@ -71,20 +68,6 @@ void EnvelopeComponent::setAccentColour(juce::Colour accentIn)
 void EnvelopeComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
-
-    if (enabledLabel.isVisible())
-    {
-        const auto pref = configPrefix + ".visual.";
-
-        const auto textColour = uiConfig != nullptr ? uiConfig->getColour(pref + "onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
-                                                    : juce::Colour::fromRGB(232, 232, 232);
-        const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat(pref + "onLabel.fontSize", 11.5f) : 11.5f;
-        const auto text = uiConfig != nullptr ? uiConfig->getString(pref + "onLabel.text", "ON") : juce::String("ON");
-        enabledLabel.setText(text, juce::dontSendNotification);
-        enabledLabel.setColour(juce::Label::textColourId, textColour);
-        enabledLabel.setFont(juce::FontOptions(fontSize));
-        baseEnabledLabelTextColour = textColour;
-    }
 
     // As above: cardInner's rows come from resized(), so a reload has to redo
     // the layout or the graph and the controls stay where the old config put
@@ -133,15 +116,12 @@ void EnvelopeComponent::refreshFromParameters()
             const auto amountPrefix = amountPercent > 0 ? juce::String("+") : juce::String();
             amountValueLabel->setText(amountPrefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
         }
-        enabledLabel.setColour(juce::Label::textColourId,
-                               currentEnabled ? baseEnabledLabelTextColour : juce::Colour::fromRGB(176, 176, 176));
         if (!currentEnabled)
         {
             hoverHandle = DragHandle::none;
             dragHandle = DragHandle::none;
             draggingSustainSegment = false;
         }
-        setMouseCursor(juce::MouseCursor::NormalCursor);
         repaint();
     }
 }
@@ -217,9 +197,20 @@ void EnvelopeComponent::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour::fromRGBA(210, 210, 210, 75));
     g.setFont(juce::FontOptions(9.0f));
-    g.drawText("100%", juce::Rectangle<int>(static_cast<int>(geom.left) - 34, static_cast<int>(geom.top) - 6, 32, 12), juce::Justification::centredRight);
-    g.drawText("50%", juce::Rectangle<int>(static_cast<int>(geom.left) - 34, static_cast<int>((geom.top + geom.bottom) * 0.5f) - 6, 32, 12), juce::Justification::centredRight);
-    g.drawText("0%", juce::Rectangle<int>(static_cast<int>(geom.left) - 34, static_cast<int>(geom.bottom) - 6, 32, 12), juce::Justification::centredRight);
+    // Inside the graph, not beside it. These used to be drawn 34px to the LEFT
+    // of the graph box, which put them outside the row entirely and over the
+    // card behind it - and it stopped the graph from using its full width.
+    const auto marker = [&g, &geom](const char* text, float y)
+    {
+        g.drawText(text,
+                   juce::Rectangle<int>(static_cast<int>(geom.left) + 4,
+                                        static_cast<int>(y) - 6,
+                                        34, 12),
+                   juce::Justification::centredLeft);
+    };
+    marker("100%", geom.top + 6.0f);
+    marker("50%", (geom.top + geom.bottom) * 0.5f);
+    marker("0%", geom.bottom - 6.0f);
 
     juce::Path envPath;
     envPath.startNewSubPath(geom.start);
@@ -271,36 +262,18 @@ void EnvelopeComponent::setCardIdentity(juce::String styleKey, juce::String titl
     repaint();
 }
 
-juce::Rectangle<int> EnvelopeComponent::computeCardBounds() const
-{
-    auto cardArea = getLocalBounds().reduced(6, 6);
-
-    const auto widthPercent = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".layout.cardWidthPercent", 0.0f) : 0.0f;
-    if (widthPercent > 0.0f)
-    {
-        const auto clampedPercent = juce::jlimit(0.1f, 1.0f, widthPercent);
-        const auto cardWidth = juce::jlimit(120,
-                                            cardArea.getWidth(),
-                                            static_cast<int>(std::lround(static_cast<float>(cardArea.getWidth()) * clampedPercent)));
-        return cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
-    }
-
-    const auto targetCardWidth = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".layout.cardTargetWidth", 300) : 300;
-    const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
-    return cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
-}
 
 void EnvelopeComponent::mouseMove(const juce::MouseEvent& event)
 {
+    hoverHandle = currentEnabled ? pickHandle(event.position, computeGeometry())
+                                 : DragHandle::none;
+    updateCursorFor(event.position);
+
     if (!currentEnabled)
     {
-        setMouseCursor(juce::MouseCursor::NormalCursor);
         return;
     }
 
-    hoverHandle = pickHandle(event.position, computeGeometry());
-    setMouseCursor(hoverHandle != DragHandle::none ? juce::MouseCursor::PointingHandCursor
-                                                    : juce::MouseCursor::NormalCursor);
     repaint();
 }
 
@@ -327,7 +300,7 @@ void EnvelopeComponent::mouseDown(const juce::MouseEvent& event)
     draggingSustainSegment = false;
     if (dragHandle == DragHandle::none)
     {
-        setMouseCursor(juce::MouseCursor::NormalCursor);
+        updateCursorFor(event.position);
         return;
     }
 
@@ -379,8 +352,22 @@ void EnvelopeComponent::mouseDrag(const juce::MouseEvent& event)
     applyDragPosition(event.position, computeGeometry());
 }
 
-void EnvelopeComponent::mouseUp(const juce::MouseEvent&)
+void EnvelopeComponent::mouseUp(const juce::MouseEvent& event)
 {
+    // Clicking the card background toggles power - but only away from the
+    // graph, which is draggable, and never on AMP ENV, which is declared
+    // alwaysEnabled and has no meaningful off state.
+    const auto forceEnabled = uiConfig != nullptr
+                                  ? uiConfig->getBool(configPrefix + ".behavior.alwaysEnabled", false)
+                                  : false;
+    const auto onGraph = inner.rowContent(inner.rowCount() - 1).contains(event.getPosition());
+
+    if (! forceEnabled && dragHandle == DragHandle::none && ! onGraph
+        && px3::ui::isCardBackgroundToggleClick(event))
+    {
+        enabledButton.setToggleState(! enabledButton.getToggleState(), juce::sendNotification);
+    }
+
     if (dragHandle == DragHandle::attack)
     {
         attack.endChangeGesture();
@@ -397,8 +384,7 @@ void EnvelopeComponent::mouseUp(const juce::MouseEvent&)
 
     dragHandle = DragHandle::none;
     draggingSustainSegment = false;
-    setMouseCursor(hoverHandle != DragHandle::none ? juce::MouseCursor::PointingHandCursor
-                                                    : juce::MouseCursor::NormalCursor);
+    updateCursorFor(event.position);
     repaint();
 }
 
@@ -758,16 +744,11 @@ void EnvelopeComponent::resized()
         const auto row = inner.rowContent(0);
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-        flex.items.add(juce::FlexItem(44.0f, cellHeight).withMargin(gap));
         flex.items.add(juce::FlexItem(116.0f, cellHeight).withMargin(gap));
         flex.performLayout(row.toFloat());
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
         px3::ui::layoutLabelledControl(cell(0),
-                                       { &enabledLabel, &enabledButton, nullptr,
-                                         ControlShape::square, 14, 0, 22 },
-                                       inner.rowControl(0));
-        px3::ui::layoutLabelledControl(cell(1),
                                        { &assignLabel, &assignBox, nullptr,
                                          ControlShape::stretch, 14, 0, 24 },
                                        inner.rowControl(0));
@@ -785,11 +766,12 @@ void EnvelopeComponent::resized()
                            .withMargin(gap));
         flex.performLayout(row.toFloat());
 
+        // Same label height, readout height and cap as the LFO knobs, so the
+        // two card families read as one family.
         px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
-                                       { nullptr, amountKnob, amountValueLabel,
-                                         ControlShape::square, 0, 20, 84 },
+                                       { amountLabel, amountKnob, amountValueLabel,
+                                         ControlShape::square, 16, 20, 84 },
                                        inner.rowControl(1));
-        amountLabel->setBounds(0, 0, 0, 0);
     }
 
     // Row 3 is the ADSR graph. computeGeometry() reads its bounds, which is
@@ -801,14 +783,51 @@ bool EnvelopeComponent::isFullHeightGraph() const
     return uiConfig != nullptr && uiConfig->getBool(configPrefix + ".behavior.fullHeightGraph", false);
 }
 
+void EnvelopeComponent::updateCursorFor(juce::Point<float> position)
+{
+    const auto graph = inner.rowContent(inner.rowCount() - 1);
+
+    if (graph.contains(position.toInt()))
+    {
+        // Inside the graph only the segment lines and their points are
+        // draggable. The field behind them does nothing, so it takes the plain
+        // arrow rather than claiming to be interactive.
+        const auto handle = currentEnabled ? pickHandle(position, computeGeometry())
+                                           : DragHandle::none;
+        setMouseCursor(handle != DragHandle::none ? juce::MouseCursor::PointingHandCursor
+                                                  : juce::MouseCursor::NormalCursor);
+        return;
+    }
+
+    // Outside the graph: a mod envelope's card background toggles its bypass,
+    // but AMP ENV is declared alwaysEnabled and has nothing to toggle.
+    setMouseCursor(isFullHeightGraph() ? juce::MouseCursor::NormalCursor
+                                       : juce::MouseCursor::PointingHandCursor);
+}
+
 void EnvelopeComponent::layoutCardInner()
 {
     card.setStyleKey(cardStyleKey);
     card.setConfig(uiConfig);
-    card.layout(computeCardBounds());
+    card.layout(getLocalBounds());
+
+    // The power glyph lights in this card's own identity colour.
+
+    if (auto* power = dynamic_cast<px3::ui::BypassButton*>(&enabledButton))
+
+    {
+
+        power->setAccentColour(card.style().border.colour);
+
+    }
+
 
     inner.setStylePath("cards." + px3::ui::cardTypeKey(cardStyleKey) + ".cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(isFullHeightGraph() ? 1 : 3);
     inner.layout(card.contentBelowTitle());
+
+    // The power toggle is pinned to cardInner's corner, outside the flex flow,
+    // so it stays put no matter what the first row contains.
+    enabledButton.setBounds(inner.powerBounds());
 }

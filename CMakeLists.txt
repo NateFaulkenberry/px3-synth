@@ -94,6 +94,8 @@ set(PX3_SHARED_SOURCES
         Source/UI/TopMenuBar.cpp
         Source/UI/DelayComponent.cpp
         Source/UI/Card.cpp
+        Source/UI/BypassButton.cpp
+        Source/UI/ToggleChipButton.cpp
         Source/UI/CardInner.cpp
         Source/UI/MoodComponent.cpp
         Source/UI/EnvelopeComponent.cpp

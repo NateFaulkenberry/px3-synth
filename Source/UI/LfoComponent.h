@@ -15,7 +15,6 @@ class LfoComponent final : public juce::Component
 {
 public:
     LfoComponent(juce::ToggleButton& enabledButtonIn,
-                        juce::Label& enabledLabelIn,
                         juce::Label& assignLabelIn,
                         juce::ComboBox& assignBoxIn,
                         juce::Slider& rateKnobIn,
@@ -38,6 +37,8 @@ public:
     void advanceAnimation(float deltaPhase);
 
     void resized() override;
+    void mouseUp(const juce::MouseEvent& event) override;
+    void mouseMove(const juce::MouseEvent& event) override;
     void paint(juce::Graphics& g) override;
 
 private:
@@ -50,7 +51,6 @@ private:
     };
 
     juce::ToggleButton& enabledButton;
-    juce::Label& enabledLabel;
     juce::Slider& rateKnob;
     juce::Label& rateLabel;
     juce::Label& rateValueLabel;

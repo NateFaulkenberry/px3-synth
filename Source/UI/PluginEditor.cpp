@@ -499,16 +499,16 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureKnob(knobBindings[10], "TUNE", audioProcessor.getOscillatorPitchParam(1));
     configureKnob(knobBindings[11], "TUNE", audioProcessor.getOscillatorPitchParam(2));
     configureKnob(knobBindings[12], "TUNE", audioProcessor.getSubOscPitchParam());
-    configureKnob(knobBindings[13], "Cutoff", audioProcessor.getFilterCutoffParam(0));
-    configureKnob(knobBindings[14], "Reso", audioProcessor.getFilterResonanceParam(0));
-    configureKnob(knobBindings[15], "Cutoff", audioProcessor.getFilterCutoffParam(1));
-    configureKnob(knobBindings[16], "Reso", audioProcessor.getFilterResonanceParam(1));
+    configureKnob(knobBindings[13], "CUTOFF", audioProcessor.getFilterCutoffParam(0));
+    configureKnob(knobBindings[14], "RESONANCE", audioProcessor.getFilterResonanceParam(0));
+    configureKnob(knobBindings[15], "CUTOFF", audioProcessor.getFilterCutoffParam(1));
+    configureKnob(knobBindings[16], "RESONANCE", audioProcessor.getFilterResonanceParam(1));
     configureKnob(knobBindings[17], "Attack", audioProcessor.getAttackParam());
     configureKnob(knobBindings[18], "Decay", audioProcessor.getDecayParam());
     configureKnob(knobBindings[19], "Sustain", audioProcessor.getSustainParam());
     configureKnob(knobBindings[20], "Release", audioProcessor.getReleaseParam());
-    configureKnob(knobBindings[21], "Freq", audioProcessor.getLfoFrequencyParam());
-    configureKnob(knobBindings[22], "Amount", audioProcessor.getLfoAmountParam());
+    configureKnob(knobBindings[21], "RATE", audioProcessor.getLfoFrequencyParam());
+    configureKnob(knobBindings[22], "AMOUNT", audioProcessor.getLfoAmountParam());
     configureKnob(knobBindings[23], "Master", audioProcessor.getMasterGainParam());
 
     const auto formatPitchCents = [](double semitoneValue)
@@ -610,34 +610,22 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     lfoWaveformLabel.setFont(juce::FontOptions(11.5f));
     enableLabelHoverOverlay(lfoWaveformLabel, "Waveform");
 
-    lfoAssignLabel.setText("Assign", juce::dontSendNotification);
+    lfoAssignLabel.setText("ASSIGN", juce::dontSendNotification);
     lfoAssignLabel.setJustificationType(juce::Justification::centred);
     lfoAssignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     lfoAssignLabel.setFont(juce::FontOptions(11.5f));
     enableLabelHoverOverlay(lfoAssignLabel, "LFO Assignment");
 
-    envAssignLabel.setText("Assign", juce::dontSendNotification);
+    envAssignLabel.setText("ASSIGN", juce::dontSendNotification);
     envAssignLabel.setJustificationType(juce::Justification::centred);
     envAssignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     envAssignLabel.setFont(juce::FontOptions(11.5f));
     enableLabelHoverOverlay(envAssignLabel, "Envelope Assignment");
 
-    envBypassLabel.setText("ON", juce::dontSendNotification);
-    envBypassLabel.setJustificationType(juce::Justification::centredLeft);
-    envBypassLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    envBypassLabel.setFont(juce::FontOptions(11.5f));
-    envBypassLabel.setInterceptsMouseClicks(false, false);
-
     envBypassButton.setButtonText("");
     envBypassButton.setClickingTogglesState(true);
     envBypassButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
     envBypassButton.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
-
-    lfoBypassLabel.setText("ON", juce::dontSendNotification);
-    lfoBypassLabel.setJustificationType(juce::Justification::centredLeft);
-    lfoBypassLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    lfoBypassLabel.setFont(juce::FontOptions(11.5f));
-    lfoBypassLabel.setInterceptsMouseClicks(false, false);
 
     lfoBypassButton.setButtonText("");
     lfoBypassButton.setClickingTogglesState(true);
@@ -692,34 +680,14 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     subOscWaveformLabel.setFont(juce::FontOptions(11.5f));
     enableLabelHoverOverlay(subOscWaveformLabel, "Waveform");
 
-    subOscEnabledLabel.setText("ON", juce::dontSendNotification);
-    subOscEnabledLabel.setJustificationType(juce::Justification::centredLeft);
-    subOscEnabledLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    subOscEnabledLabel.setFont(juce::FontOptions(11.5f));
-    subOscEnabledLabel.setInterceptsMouseClicks(false, false);
-
     subOscEnabledButton.setButtonText("");
     subOscEnabledButton.setClickingTogglesState(true);
     subOscEnabledButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
     subOscEnabledButton.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
 
-    const auto configureOscEnabledControl = [](juce::Label& label, juce::ToggleButton& button)
-    {
-        label.setText("ON", juce::dontSendNotification);
-        label.setJustificationType(juce::Justification::centredLeft);
-        label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-        label.setFont(juce::FontOptions(11.5f));
-        label.setInterceptsMouseClicks(false, false);
-
-        button.setButtonText("");
-        button.setClickingTogglesState(true);
-        button.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
-        button.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
-    };
-
-    configureOscEnabledControl(osc1EnabledLabel, osc1EnabledButton);
-    configureOscEnabledControl(osc2EnabledLabel, osc2EnabledButton);
-    configureOscEnabledControl(osc3EnabledLabel, osc3EnabledButton);
+    osc1EnabledButton.setClickingTogglesState(true);
+    osc2EnabledButton.setClickingTogglesState(true);
+    osc3EnabledButton.setClickingTogglesState(true);
     // The filter type dropdown had no caption; the other dropdowns in the
     // plugin all name themselves.
     const auto configureDropdownLabel = [](juce::Label& label, const juce::String& text)
@@ -730,11 +698,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         label.setFont(juce::FontOptions(11.5f));
         label.setInterceptsMouseClicks(false, false);
     };
-    configureDropdownLabel(filter1TypeLabel, "Type");
-    configureDropdownLabel(filter2TypeLabel, "Type");
-
-    configureOscEnabledControl(filter1EnabledLabel, filter1EnabledButton);
-    configureOscEnabledControl(filter2EnabledLabel, filter2EnabledButton);
+    configureDropdownLabel(filter1TypeLabel, "TYPE");
+    configureDropdownLabel(filter2TypeLabel, "TYPE");
+    filter1EnabledButton.setClickingTogglesState(true);
+    filter2EnabledButton.setClickingTogglesState(true);
 
     filter1EnabledButton.onClick = [this]()
     {
@@ -880,7 +847,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     delayAlgoBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     delayAlgoBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     delayAlgoBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
-    delayAlgoLabel.setText("ALGO", juce::dontSendNotification);
+    delayAlgoLabel.setText("TYPE", juce::dontSendNotification);
     delayAlgoLabel.setJustificationType(juce::Justification::centred);
     delayAlgoLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     delayAlgoLabel.setFont(juce::FontOptions(11.5f));
@@ -928,7 +895,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     reverbTypeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     reverbTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     reverbTypeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
-    reverbTypeLabel.setText("ALGO", juce::dontSendNotification);
+    reverbTypeLabel.setText("TYPE", juce::dontSendNotification);
     reverbTypeLabel.setJustificationType(juce::Justification::centred);
     reverbTypeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     reverbTypeLabel.setFont(juce::FontOptions(11.5f));
@@ -979,23 +946,34 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     moodLoopModeLabel.setFont(juce::FontOptions(11.5f));
     enableLabelHoverOverlay(moodLoopModeLabel, "Loop Mode");
 
-    const auto configureBypassButton = [](juce::ToggleButton& button)
+    // Freeze is not a power toggle: it is a labelled chip that carries its own
+    // text and shows its state by filling.
+    moodFreezeButton.setButtonText("FREEZE OFF");
+    moodFreezeButton.setStateLabels("FREEZE ON", "FREEZE OFF");
+    moodFreezeButton.setTooltip("Freeze the Mood loop");
+
+    // Only the section name here - the hover text needs it. Each card tints its
+    // own button from its own identity colour, so there is one source for that
+    // and it survives a UIConfig reload.
+    const auto namePower = [](px3::ui::BypassButton& button, const juce::String& section)
     {
-        button.setButtonText("");
-        button.setTooltip("Bypass");
-        button.setClickingTogglesState(true);
-        button.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
-        button.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
+        button.setSectionName(section);
     };
 
-    configureBypassButton(robBypassButton);
-    configureBypassButton(delayBypassButton);
-    configureBypassButton(moodBypassButton);
-    configureBypassButton(moodFreezeButton);
-    configureBypassButton(reverbBypassButton);
+    namePower(subOscEnabledButton, "Sub Osc");
+    namePower(osc1EnabledButton, "Osc 1");
+    namePower(osc2EnabledButton, "Osc 2");
+    namePower(osc3EnabledButton, "Osc 3");
+    namePower(filter1EnabledButton, "Filter 1");
+    namePower(filter2EnabledButton, "Filter 2");
+    namePower(lfoBypassButton, "LFO 1");
+    namePower(envBypassButton, "ENV 1");
+    namePower(robBypassButton, "Vibe");
+    namePower(delayBypassButton, "Delay");
+    namePower(moodBypassButton, "Mood");
+    namePower(reverbBypassButton, "Reverb");
 
     oscPanel = std::make_unique<OscPanel>(subOscEnabledButton,
-                                          subOscEnabledLabel,
                                           subOscPitchKnob,
                                           subOscPitchLabel,
                                           subOscPitchValueLabel,
@@ -1010,7 +988,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           oscSawKnob,
                                           oscSquareKnob,
                                           osc1EnabledButton,
-                                          osc1EnabledLabel,
                                           oscSineLabel,
                                           oscSawLabel,
                                           oscSquareLabel,
@@ -1025,7 +1002,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           osc2SawKnob,
                                           osc2SquareKnob,
                                           osc2EnabledButton,
-                                          osc2EnabledLabel,
                                           osc2SineLabel,
                                           osc2SawLabel,
                                           osc2SquareLabel,
@@ -1040,7 +1016,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           osc3SawKnob,
                                           osc3SquareKnob,
                                           osc3EnabledButton,
-                                          osc3EnabledLabel,
                                           osc3SineLabel,
                                           osc3SawLabel,
                                           osc3SquareLabel,
@@ -1052,7 +1027,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           kGroupAccents[0]);
     modPanel = std::make_unique<ModPanel>(audioProcessor,
                                           lfoBypassButton,
-                                          lfoBypassLabel,
                                           lfoAssignLabel,
                                           lfoAssignBox,
                                           lfoFrequencyKnob,
@@ -1068,7 +1042,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           kGroupAccents[3]);
     ampPanel = std::make_unique<AmpPanel>(audioProcessor, kGroupAccents[2]);
     fltPanel = std::make_unique<FltPanel>(std::array<juce::ToggleButton*, kFilterInstanceCount> { { &filter1EnabledButton, &filter2EnabledButton } },
-                                          std::array<juce::Label*, kFilterInstanceCount> { { &filter1EnabledLabel, &filter2EnabledLabel } },
                                           std::array<juce::Slider*, kFilterInstanceCount> { { &cutoffKnob, &cutoff2Knob } },
                                           std::array<juce::Label*, kFilterInstanceCount> { { &cutoffLabel, &cutoff2Label } },
                                           std::array<juce::Slider*, kFilterInstanceCount> { { &resonanceKnob, &resonance2Knob } },
@@ -1735,7 +1708,9 @@ void PX3SynthAudioProcessorEditor::resized()
         const auto contentHeight = panelStyle.scrollVertically && panelStyle.height > 0
                                        ? juce::jmax(panelStyle.height, oscArea.getHeight())
                                        : oscPanelViewport.getMaximumVisibleHeight();
-        oscPanel->setSize(oscPanelViewport.getMaximumVisibleWidth(), contentHeight);
+        const auto oscGutter = oscPanelViewport.isVerticalScrollBarShown() ? kScrollBarGutter : 0;
+        oscPanel->setSize(juce::jmax(1, oscPanelViewport.getMaximumVisibleWidth() - oscGutter),
+                          contentHeight);
     }
     modPanelViewport.setBounds(panelViewportArea);
     ampPanel->setBounds(panelViewportArea);
@@ -2167,54 +2142,10 @@ void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
         return;
     }
 
-    const auto releasePoint = point - fxPanel->getPosition();
-    const auto isHeaderClick = !fxDragHasMoved && pressedFxSection >= 0;
-    if (isHeaderClick)
-    {
-        const auto sectionBounds = fxSectionCurrentAreas[static_cast<std::size_t>(pressedFxSection)].toNearestInt();
-        const auto headerBounds = sectionBounds.withHeight(24);
-        if (headerBounds.contains(releasePoint))
-        {
-            switch (pressedFxSection)
-            {
-                case kFxSectionDrive:
-                {
-                    auto& p = audioProcessor.getVibeEnabledParam();
-                    p.beginChangeGesture();
-                    p.setValueNotifyingHost(p.convertTo0to1(!p.get()));
-                    p.endChangeGesture();
-                    break;
-                }
-                case kFxSectionDelay:
-                {
-                    auto& p = audioProcessor.getDelayEnabledParam();
-                    p.beginChangeGesture();
-                    p.setValueNotifyingHost(p.convertTo0to1(!p.get()));
-                    p.endChangeGesture();
-                    break;
-                }
-                case kFxSectionReverb:
-                {
-                    auto& p = audioProcessor.getReverbEnabledParam();
-                    p.beginChangeGesture();
-                    p.setValueNotifyingHost(p.convertTo0to1(!p.get()));
-                    p.endChangeGesture();
-                    break;
-                }
-                case kFxSectionMood:
-                {
-                    auto& p = audioProcessor.getMoodEnabledParam();
-                    p.beginChangeGesture();
-                    p.setValueNotifyingHost(p.convertTo0to1(!p.get()));
-                    p.endChangeGesture();
-                    break;
-                }
-                default:
-                    break;
-            }
-            refreshFxBypassUI();
-        }
-    }
+    // The FX title bar used to be a hidden toggle: clicking the top 24px of a
+    // section flipped its bypass. The whole card background does that now, in
+    // every component and by one shared rule, so keeping this would toggle
+    // twice for a click that landed in both - which is to say, no toggle at all.
 
     fxSectionCurrentAreas[static_cast<std::size_t>(draggingFxSection)] =
         fxSectionTargetAreas[static_cast<std::size_t>(draggingFxSection)];
@@ -3158,7 +3089,11 @@ void PX3SynthAudioProcessorEditor::layoutModPanel()
     {
         const auto preferredWidth = modPanel->getPreferredContentWidth();
         const auto preferredHeight = modPanel->getPreferredContentHeight();
-        const auto contentWidth = juce::jmax(modPanelViewport.getWidth(), preferredWidth);
+        // A scrolling panel's content stops short of the scrollbar. getWidth()
+        // includes the bar, so sizing to it put the cards underneath it.
+        const auto gutter = modPanelViewport.isVerticalScrollBarShown() ? kScrollBarGutter : 0;
+        const auto available = juce::jmax(1, modPanelViewport.getMaximumVisibleWidth() - gutter);
+        const auto contentWidth = juce::jmax(available, preferredWidth);
         const auto contentHeight = preferredHeight;
         modPanel->setBounds(0, 0, contentWidth, contentHeight);
         modPanel->resized();

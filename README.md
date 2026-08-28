@@ -426,8 +426,7 @@ Macro mapping by mode:
 - NOISE/PINK NOISE
   - A = COLOR (dark->bright noise color).
 - SUPER SAW
-  - A = DETUNE.
-  - B = SPREAD/width/drift feel.
+  - A = SPREAD (how far apart the stacked saws sit, plus their drift and edge feel).
 - PWM
   - A = WIDTH.
 - WAVETABLE

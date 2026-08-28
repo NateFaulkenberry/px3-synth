@@ -325,6 +325,33 @@ makes two lines twice as tall as the row. `px3::ui::wrappedLineCount()` works ou
 the line count from the natural widths and the gap; divide the row height by it.
 Delay's row 3 (five controls) and Mood's row 3 (nine knobs) both rely on this.
 
+### The power slot — outside the flex flow
+
+Every card's power toggle is pinned to the top-left of `cardInner`, deliberately
+**not** part of any row:
+
+```jsonc
+"cardInner": {
+  "power": { "x": 0, "y": 0, "size": 25 },
+  "rows": { ... }
+}
+```
+
+`x` and `y` offset it from the cardInner content corner and may be negative, so
+it can be pulled back over the padding. `size` is the square side; `0` removes it
+(AMP ENV, which is declared `alwaysEnabled` and has no off state).
+
+It sits outside the flow because it is not one control among a row's controls —
+it is the card's own switch. Keeping it there means it stays put when a row gains
+or loses items, and a row never has to reserve space for it. Vibe, Reverb and
+Delay are two-row cards for exactly that reason: the row that used to hold only
+the toggle no longer exists.
+
+**Clicking the card background toggles the same parameter.** One shared rule,
+`px3::ui::isCardBackgroundToggleClick`, excludes drags — so dragging a knob past
+its cell edge, or dragging an FX card to reorder, cannot flip a bypass. ENV
+additionally excludes its graph, which is draggable.
+
 ### The control block — inside one cell
 
 The row decides where each **cell** goes; `control` decides what happens **inside**

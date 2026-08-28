@@ -1,5 +1,6 @@
 #include "LfoComponent.h"
 
+#include "BypassButton.h"
 #include "CardInner.h"
 
 #include "LfoMode.h"
@@ -11,12 +12,20 @@ juce::PopupMenu::Options LfoComponent::WaveformComboLookAndFeel::getOptionsForCo
                                                                                                   juce::Label& label)
 {
     auto options = juce::LookAndFeel_V4::getOptionsForComboBoxPopupMenu(box, label);
-    return options.withParentComponent(box.getParentComponent())
+    // Parented to the EDITOR, not to the combo's immediate parent.
+    //
+    // A menu hosted inside a component is clipped to that component's bounds.
+    // The immediate parent here is one card, which is often shorter than the
+    // menu - so the lower items were drawn clipped and could not be clicked,
+    // which is why selecting an item sometimes appeared to do nothing and took
+    // several attempts. The editor is large enough to hold the whole menu, and
+    // keeping it in-window still suits hosts that dislike desktop-level popups.
+    auto* host = box.getTopLevelComponent();
+    return options.withParentComponent(host != nullptr ? host : box.getParentComponent())
                   .withPreferredPopupDirection(juce::PopupMenu::Options::PopupDirection::upwards);
 }
 
 LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
-                                                     juce::Label& enabledLabelIn,
                                                      juce::Label& assignLabelIn,
                                                      juce::ComboBox& assignBoxIn,
                                                      juce::Slider& rateKnobIn,
@@ -30,7 +39,6 @@ LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
                                                      juce::Colour accentIn,
                                                      const juce::String& configPrefixIn)
         : enabledButton(enabledButtonIn),
-            enabledLabel(enabledLabelIn),
             rateKnob(rateKnobIn),
       rateLabel(rateLabelIn),
       rateValueLabel(rateValueLabelIn),
@@ -44,16 +52,19 @@ LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
     accent(accentIn),
     configPrefix(configPrefixIn)
 {
+    // The card background toggles this section, so the pointer says it is
+    // clickable. Child controls carry their own cursors.
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+
         addAndMakeVisible(enabledButton);
-        addAndMakeVisible(enabledLabel);
     baseRateValueTextColour = rateValueLabel.findColour(juce::Label::textColourId);
     baseAmountValueTextColour = amountValueLabel.findColour(juce::Label::textColourId);
     addAndMakeVisible(rateKnob);
     addAndMakeVisible(rateLabel);
     addAndMakeVisible(rateValueLabel);
     addAndMakeVisible(amountKnob);
+    addAndMakeVisible(amountLabel);
     addAndMakeVisible(amountValueLabel);
-    amountLabel.setVisible(false);
     assignBox.setLookAndFeel(&waveformComboLookAndFeel);
     addAndMakeVisible(assignLabel);
     addAndMakeVisible(assignBox);
@@ -78,15 +89,6 @@ void LfoComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
 
-    const auto pref = configPrefix + ".visual.";
-
-    const auto textColour = uiConfig != nullptr ? uiConfig->getColour(pref + "onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
-                                                : juce::Colour::fromRGB(232, 232, 232);
-    const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat(pref + "onLabel.fontSize", 11.5f) : 11.5f;
-    const auto text = uiConfig != nullptr ? uiConfig->getString(pref + "onLabel.text", "ON") : juce::String("ON");
-    enabledLabel.setText(text, juce::dontSendNotification);
-    enabledLabel.setColour(juce::Label::textColourId, textColour);
-    enabledLabel.setFont(juce::FontOptions(fontSize));
 
     // Re-run the layout, not just the paint: cardInner parses its rows in
     // resized(), so a repaint alone would draw the new colours into the old
@@ -170,11 +172,31 @@ void LfoComponent::resized()
     card.setStyleKey(configPrefix.fromLastOccurrenceOf(".", false, false));
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
+    // The wave graph is drawn in this card's identity colour, so a card
+    // recoloured in UIConfig recolours its graph with it rather than
+    // keeping a group accent baked in at construction.
+    accent = card.style().border.colour;
+
+
+    // The power glyph lights in this card's own identity colour.
+
+    if (auto* power = dynamic_cast<px3::ui::BypassButton*>(&enabledButton))
+
+    {
+
+        power->setAccentColour(card.style().border.colour);
+
+    }
+
 
     inner.setStylePath("cards.lfo.cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(3);
     inner.layout(card.contentBelowTitle());
+
+    // The power toggle is pinned to cardInner's corner, outside the flex flow,
+    // so it stays put no matter what the first row contains.
+    enabledButton.setBounds(inner.powerBounds());
 
     using px3::ui::ControlShape;
 
@@ -185,29 +207,25 @@ void LfoComponent::resized()
         const auto row = inner.rowContent(0);
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-        flex.items.add(juce::FlexItem(44.0f, cellHeight).withMargin(gap));
         flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap));
         flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap));
         flex.performLayout(row.toFloat());
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
         px3::ui::layoutLabelledControl(cell(0),
-                                       { &enabledLabel, &enabledButton, nullptr,
-                                         ControlShape::square, 14, 0, 22 },
-                                       inner.rowControl(0));
-        px3::ui::layoutLabelledControl(cell(1),
                                        { &assignLabel, &assignBox, nullptr,
                                          ControlShape::stretch, 14, 0, 24 },
                                        inner.rowControl(0));
-        px3::ui::layoutLabelledControl(cell(2),
+        px3::ui::layoutLabelledControl(cell(1),
                                        { &waveformLabel, &waveformBox, nullptr,
                                          ControlShape::stretch, 14, 0, 24 },
                                        inner.rowControl(0));
     }
 
-    // Row 2: rate and amount. Both are knob-plus-readout with no label above -
-    // that is how they render today, and the spec is explicit that a control
-    // which has no label must not acquire one here.
+    // Row 2: rate and amount, each name-knob-value. Both cells declare the same
+    // label height, readout height and cap, which is what makes the two knobs
+    // come out the same size - a hidden label on one of them was enough to make
+    // them differ.
     {
         auto flex = inner.rowFlex(1);
         const auto gap = inner.rowGap(1);
@@ -223,20 +241,46 @@ void LfoComponent::resized()
         flex.performLayout(row.toFloat());
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+        // Name above, knob, value below. The names used to be hidden, which left
+        // two unlabelled knobs telling you only "0.54 Hz" and "+100%".
         px3::ui::layoutLabelledControl(cell(0),
-                                       { nullptr, &rateKnob, &rateValueLabel,
-                                         ControlShape::square, 0, 20, 84 },
+                                       { &rateLabel, &rateKnob, &rateValueLabel,
+                                         ControlShape::square, 16, 20, 84 },
                                        inner.rowControl(1));
         px3::ui::layoutLabelledControl(cell(1),
-                                       { nullptr, &amountKnob, &amountValueLabel,
-                                         ControlShape::square, 0, 20, 84 },
+                                       { &amountLabel, &amountKnob, &amountValueLabel,
+                                         ControlShape::square, 16, 20, 84 },
                                        inner.rowControl(1));
-
-        rateLabel.setBounds(0, 0, 0, 0);
-        amountLabel.setBounds(0, 0, 0, 0);
     }
 
     // Row 3 is the wave graph, drawn by paint().
+}
+
+void LfoComponent::mouseUp(const juce::MouseEvent& event)
+{
+    // Clicking the card's background toggles its power, the same as clicking
+    // the button. No tooltip here: the whole card is not a control, and a card
+    // that explained itself on hover would be noise.
+    // The wave graph is a display, not a switch: it shows no pointer and it
+    // takes no click, so the two agree.
+    if (inner.rowContent(2).contains(event.getPosition()))
+    {
+        return;
+    }
+
+    if (px3::ui::isCardBackgroundToggleClick(event))
+    {
+        enabledButton.setToggleState(! enabledButton.getToggleState(), juce::sendNotification);
+    }
+}
+
+void LfoComponent::mouseMove(const juce::MouseEvent& event)
+{
+    // The wave graph is a display, not a control, so it does not take the
+    // pointer that marks the rest of the card as clickable.
+    setMouseCursor(inner.rowContent(2).contains(event.getPosition())
+                       ? juce::MouseCursor::NormalCursor
+                       : juce::MouseCursor::PointingHandCursor);
 }
 
 void LfoComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)

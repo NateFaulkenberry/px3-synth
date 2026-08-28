@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 
+#include "BypassButton.h"
 #include "ChipLabel.h"
 
 #include <array>
@@ -18,7 +19,6 @@ class ModPanel final : public juce::Component
 public:
     ModPanel(PX3SynthAudioProcessor& processorIn,
              juce::ToggleButton& lfoEnabledButton,
-             juce::Label& lfoEnabledLabel,
              juce::Label& lfoAssignLabel,
              juce::ComboBox& lfoAssignBox,
              juce::Slider& lfoRateKnob,
@@ -46,15 +46,14 @@ public:
 private:
     struct LfoBundle
     {
-        juce::ToggleButton enabledButton;
-        px3::ui::ChipLabel enabledLabel;
+        px3::ui::BypassButton enabledButton;
         px3::ui::ChipLabel assignLabel;
         juce::ComboBox assignBox;
         juce::Slider rateKnob;
-        juce::Label rateLabel;
+        px3::ui::ChipLabel rateLabel;
         juce::Label rateValueLabel;
         juce::Slider amountKnob;
-        juce::Label amountLabel;
+        px3::ui::ChipLabel amountLabel;
         juce::Label amountValueLabel;
         juce::ComboBox waveformBox;
         px3::ui::ChipLabel waveformLabel;
@@ -67,12 +66,11 @@ private:
 
     struct EnvBundle
     {
-        juce::ToggleButton enabledButton;
-        px3::ui::ChipLabel enabledLabel;
+        px3::ui::BypassButton enabledButton;
         px3::ui::ChipLabel assignLabel;
         juce::ComboBox assignBox;
         juce::Slider amountKnob;
-        juce::Label amountLabel;
+        px3::ui::ChipLabel amountLabel;
         juce::Label amountValueLabel;
         std::unique_ptr<juce::ButtonParameterAttachment> enabledAttachment;
         std::unique_ptr<juce::SliderParameterAttachment> amountAttachment;

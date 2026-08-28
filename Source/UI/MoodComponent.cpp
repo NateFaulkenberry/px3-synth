@@ -1,5 +1,7 @@
 #include "MoodComponent.h"
 
+#include "BypassButton.h"
+#include "ToggleChipButton.h"
 #include "CardInner.h"
 
 #include <array>
@@ -61,6 +63,10 @@ MoodComponent::MoodComponent(juce::ToggleButton& enabledButtonIn,
       loopModeLabel(loopModeLabelIn),
       accent(accentIn)
 {
+    // The card background toggles this section, so the pointer says it is
+    // clickable. Child controls carry their own cursors.
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+
     addAndMakeVisible(enabledButton);
     // Restored. It was already attached to the freeze parameter in
     // PluginEditor - only the call that put it on screen was commented out - so
@@ -164,10 +170,30 @@ void MoodComponent::resized()
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
 
+    // The power glyph lights in this card's own identity colour.
+
+    if (auto* power = dynamic_cast<px3::ui::BypassButton*>(&enabledButton))
+    {
+        power->setAccentColour(card.style().border.colour);
+    }
+
+    // The Freeze chip lights in the same identity colour as the card it sits
+    // on, so an engaged Freeze reads as part of Mood rather than as a stray
+    // control from somewhere else.
+    if (auto* chip = dynamic_cast<px3::ui::ToggleChipButton*>(&freezeButton))
+    {
+        chip->setAccentColour(card.style().border.colour);
+    }
+
+
     inner.setStylePath("cards.mood.cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(3);
     inner.layout(card.contentBelowTitle());
+
+    // The power toggle is pinned to cardInner's corner, outside the flex flow,
+    // so it stays put no matter what the first row contains.
+    enabledButton.setBounds(inner.powerBounds());
 
     using px3::ui::ControlShape;
 
@@ -178,17 +204,15 @@ void MoodComponent::resized()
         const auto row = inner.rowContent(0);
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-        flex.items.add(juce::FlexItem(24.0f, cellHeight).withMargin(gap));
-        flex.items.add(juce::FlexItem(26.0f, cellHeight).withMargin(gap));
-        flex.items.add(juce::FlexItem(24.0f, cellHeight).withMargin(gap));
-        flex.items.add(juce::FlexItem(46.0f, cellHeight).withMargin(gap));
+        flex.items.add(juce::FlexItem(98.0f, cellHeight).withMargin(gap));
         flex.performLayout(row.toFloat());
 
-        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
-        enabledButton.setBounds(juce::Rectangle<int>(22, 22).withCentre(cell(0).getCentre()));
-        onLabelBounds = cell(1);
-        freezeButton.setBounds(juce::Rectangle<int>(22, 22).withCentre(cell(2).getCentre()));
-        freezeLabelBounds = cell(3);
+        // One chip that draws its own label, so there is nothing beside it to
+        // miss and nothing to keep in step with it.
+        px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
+                                       { nullptr, &freezeButton, nullptr,
+                                         ControlShape::stretch, 0, 0, 22 },
+                                       inner.rowControl(0));
     }
 
     // Row 2: the wet and loop mode dropdowns, plus routing. Routing is not in
@@ -272,6 +296,18 @@ void MoodComponent::resized()
     }
 }
 
+void MoodComponent::mouseUp(const juce::MouseEvent& event)
+{
+
+    // Clicking the card's background toggles its power, the same as clicking
+    // the button. No tooltip here: the whole card is not a control, and a card
+    // that explained itself on hover would be noise.
+    if (px3::ui::isCardBackgroundToggleClick(event))
+    {
+        enabledButton.setToggleState(! enabledButton.getToggleState(), juce::sendNotification);
+    }
+}
+
 void MoodComponent::paint(juce::Graphics& g)
 {
     // Card and title are owned here, not by FxPanel. Because the card follows
@@ -290,13 +326,4 @@ void MoodComponent::paint(juce::Graphics& g)
         card.drawInactive(g, "MOOD");
     }
 
-    const auto textColour = uiConfig != nullptr
-                                ? uiConfig->getColour("fx.mood.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
-                                : juce::Colour::fromRGB(232, 232, 232);
-    const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat("fx.mood.visual.onLabel.fontSize", 11.5f) : 11.5f;
-    // Both captions come from row 1, beside the buttons they name.
-    g.setColour(textColour.withAlpha(isActive ? 1.0f : 0.6f));
-    g.setFont(juce::FontOptions(fontSize));
-    g.drawText("ON", onLabelBounds, juce::Justification::centredLeft, false);
-    g.drawText("Freeze", freezeLabelBounds, juce::Justification::centredLeft, false);
 }

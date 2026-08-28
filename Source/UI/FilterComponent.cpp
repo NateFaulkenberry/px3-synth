@@ -1,5 +1,7 @@
 #include "FilterComponent.h"
 
+#include "BypassButton.h"
+
 #include "UIConfig.h"
 
 #include <cmath>
@@ -17,6 +19,10 @@ FilterComponent::FilterComponent(juce::AudioParameterFloat& cutoffIn,
     instanceLabel(instanceLabelIn),
       accent(accentIn)
 {
+    // The card background toggles this section, so the pointer says it is
+    // clickable. Child controls carry their own cursors.
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+
     refreshFromParameters();
 }
 
@@ -32,11 +38,40 @@ void FilterComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     repaint();
 }
 
+void FilterComponent::mouseUp(const juce::MouseEvent& event)
+{
+    // The response graph is a display, not a switch - same rule as the other
+    // cards' wave graphs.
+    if (inner.rowContent(2).contains(event.getPosition()))
+    {
+        return;
+    }
+
+    if (px3::ui::isCardBackgroundToggleClick(event) && onBackgroundClick != nullptr)
+    {
+        onBackgroundClick();
+    }
+}
+
+void FilterComponent::mouseMove(const juce::MouseEvent& event)
+{
+    // The wave graph is a display, not a control, so it does not take the
+    // pointer that marks the rest of the card as clickable.
+    setMouseCursor(inner.rowContent(2).contains(event.getPosition())
+                       ? juce::MouseCursor::NormalCursor
+                       : juce::MouseCursor::PointingHandCursor);
+}
+
 void FilterComponent::layoutCardInner()
 {
     card.setStyleKey("filter" + juce::String(instanceIndex));
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
+    // The wave graph is drawn in this card's identity colour, so a card
+    // recoloured in UIConfig recolours its graph with it rather than
+    // keeping a group accent baked in at construction.
+    accent = card.style().border.colour;
+
 
     inner.setStylePath("cards.filter.cardInner");
     inner.setConfig(uiConfig);
@@ -52,6 +87,16 @@ juce::Rectangle<int> FilterComponent::rowBounds(int index) const
 juce::FlexBox FilterComponent::rowFlex(int index) const
 {
     return inner.rowFlex(index);
+}
+
+juce::Rectangle<int> FilterComponent::powerBounds() const
+{
+    return inner.powerBounds();
+}
+
+juce::Colour FilterComponent::cardAccentColour() const
+{
+    return card.style().border.colour;
 }
 
 const px3::ui::ControlStyle& FilterComponent::rowControl(int index) const

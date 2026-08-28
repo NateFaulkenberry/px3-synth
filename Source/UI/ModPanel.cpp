@@ -6,7 +6,6 @@
 
 ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
                    juce::ToggleButton& lfoEnabledButton,
-                   juce::Label& lfoEnabledLabel,
                    juce::Label& lfoAssignLabel,
                    juce::ComboBox& lfoAssignBox,
                    juce::Slider& lfoRateKnob,
@@ -26,7 +25,6 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
         lfoKnobLookAndFeel(sharedLfoKnobLookAndFeel)
 {
     lfoComponent = std::make_unique<LfoComponent>(lfoEnabledButton,
-                                                  lfoEnabledLabel,
                                                   lfoAssignLabel,
                                                   lfoAssignBox,
                                                   lfoRateKnob,
@@ -39,9 +37,9 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
                                                   lfoWaveformLabel,
                                                   lfoAccent);
 
-    // Match additional LFO cards: no explicit "Freq" chip label under the knob.
-    lfoRateLabel.setText("", juce::dontSendNotification);
-    lfoRateLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+    // LFO 1's rate label is left exactly as configureKnob set it. This used to
+    // blank the text to match the other LFO cards, which had no rate label at
+    // the time; they do now, so blanking it made LFO 1 the odd one out.
 
     addAndMakeVisible(*lfoComponent);
 
@@ -62,20 +60,16 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
 
 void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
 {
-    bundle.enabledLabel.setText("ON", juce::dontSendNotification);
-    bundle.enabledLabel.setJustificationType(juce::Justification::centredLeft);
-    bundle.enabledLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    bundle.enabledLabel.setFont(juce::FontOptions(11.5f));
-    bundle.enabledLabel.setInterceptsMouseClicks(false, false);
+    bundle.enabledButton.setSectionName("LFO " + juce::String(lfoIndex + 1));
 
-    bundle.assignLabel.setText("Assign", juce::dontSendNotification);
+    bundle.assignLabel.setText("ASSIGN", juce::dontSendNotification);
     bundle.assignLabel.setJustificationType(juce::Justification::centred);
     bundle.assignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.assignLabel.setFont(juce::FontOptions(11.5f));
     bundle.assignLabel.setInterceptsMouseClicks(true, false);
     bundle.assignLabel.setTooltip("LFO Assignment");
 
-    bundle.rateLabel.setText("", juce::dontSendNotification);
+    bundle.rateLabel.setText("RATE", juce::dontSendNotification);
     bundle.rateLabel.setJustificationType(juce::Justification::centred);
     bundle.rateLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.rateLabel.setFont(juce::FontOptions(13.0f));
@@ -108,10 +102,6 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
     bundle.amountValueLabel.setFont(juce::FontOptions(11.0f));
     bundle.amountValueLabel.setInterceptsMouseClicks(false, false);
 
-    bundle.enabledButton.setButtonText("");
-    bundle.enabledButton.setClickingTogglesState(true);
-    bundle.enabledButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
-    bundle.enabledButton.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
 
     bundle.assignBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     bundle.assignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
@@ -179,7 +169,6 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
     bundle.waveformAttachment = std::make_unique<juce::ComboBoxParameterAttachment>(processor.getLfoWaveformParam(lfoIndex), bundle.waveformBox, nullptr);
 
     bundle.component = std::make_unique<LfoComponent>(bundle.enabledButton,
-                                                      bundle.enabledLabel,
                                                       bundle.assignLabel,
                                                       bundle.assignBox,
                                                       bundle.rateKnob,
@@ -196,23 +185,15 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
 
 void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
 {
-    bundle.enabledLabel.setText("ON", juce::dontSendNotification);
-    bundle.enabledLabel.setJustificationType(juce::Justification::centredLeft);
-    bundle.enabledLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    bundle.enabledLabel.setFont(juce::FontOptions(11.5f));
-    bundle.enabledLabel.setInterceptsMouseClicks(false, false);
+    bundle.enabledButton.setSectionName("ENV " + juce::String(envIndex + 1));
 
-    bundle.assignLabel.setText("Assign", juce::dontSendNotification);
+    bundle.assignLabel.setText("ASSIGN", juce::dontSendNotification);
     bundle.assignLabel.setJustificationType(juce::Justification::centred);
     bundle.assignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.assignLabel.setFont(juce::FontOptions(11.5f));
     bundle.assignLabel.setInterceptsMouseClicks(true, false);
     bundle.assignLabel.setTooltip("Envelope Assignment");
 
-    bundle.enabledButton.setButtonText("");
-    bundle.enabledButton.setClickingTogglesState(true);
-    bundle.enabledButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
-    bundle.enabledButton.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
 
     bundle.assignBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     bundle.assignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
@@ -269,7 +250,6 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
                                                            processor.getEnvelopeReleaseParam(envIndex),
                                                            processor.getEnvelopeEnabledParam(envIndex),
                                                            bundle.enabledButton,
-                                                           bundle.enabledLabel,
                                                            bundle.assignLabel,
                                                            bundle.assignBox,
                                                            &bundle.amountKnob,

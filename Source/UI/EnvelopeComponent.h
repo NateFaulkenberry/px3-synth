@@ -19,7 +19,6 @@ public:
                       juce::AudioParameterFloat& releaseIn,
                       juce::AudioParameterBool& enabledIn,
                       juce::ToggleButton& enabledButtonIn,
-                      juce::Label& enabledLabelIn,
                       juce::Label& assignLabelIn,
                       juce::ComboBox& assignBoxIn,
                       juce::Slider* amountKnobIn,
@@ -47,7 +46,7 @@ public:
     void mouseExit(const juce::MouseEvent&) override;
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
-    void mouseUp(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent& event) override;
     void mouseDoubleClick(const juce::MouseEvent& event) override;
 
 private:
@@ -79,8 +78,12 @@ private:
     static float clamp01(float v);
     static float timeToVisualNorm(float seconds, float minValue, float maxValue);
     static float visualNormToTime(float norm, float minValue, float maxValue);
-    juce::Rectangle<int> computeCardBounds() const;
     bool isFullHeightGraph() const;
+    // AMP ENV's card background does nothing - it is declared alwaysEnabled, so
+    // there is no bypass to toggle - and a pointer over dead space is a lie.
+    // Only its graph gets the pointer. The mod envelopes toggle on a background
+    // click, so their whole card gets it.
+    void updateCursorFor(juce::Point<float> position);
     void layoutCardInner();
     Geometry computeGeometry() const;
     static float distSq(juce::Point<float> a, juce::Point<float> b);
@@ -102,7 +105,6 @@ private:
     juce::AudioParameterFloat& release;
     juce::AudioParameterBool& enabled;
     juce::ToggleButton& enabledButton;
-    juce::Label& enabledLabel;
     juce::Label& assignLabel;
     juce::ComboBox& assignBox;
     juce::Slider* amountKnob { nullptr };
@@ -122,7 +124,6 @@ private:
     float lastSustain { -1.0f };
     float lastRelease { -1.0f };
     bool currentEnabled { true };
-    juce::Colour baseEnabledLabelTextColour;
     juce::String configPrefix;
     juce::String cardStyleKey;
     juce::String cardTitle;

@@ -33,12 +33,20 @@ public:
     juce::FlexBox rowFlex(int index) const;
     juce::FlexItem::Margin rowGap(int index) const;
     const px3::ui::ControlStyle& rowControl(int index) const;
+    juce::Colour cardAccentColour() const;
+    juce::Rectangle<int> powerBounds() const;
     // Which filter this is: drives the card's style block and its title.
     void setInstanceIndex(int oneBasedIndex);
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
     void refreshFromParameters();
 
     void paint(juce::Graphics& g) override;
+    void mouseUp(const juce::MouseEvent& event) override;
+    void mouseMove(const juce::MouseEvent& event) override;
+
+    // Called when the card background is clicked. FltPanel owns this filter's
+    // power button, so it performs the toggle.
+    std::function<void()> onBackgroundClick;
 
 private:
     static float clamp01(float value);

@@ -1,5 +1,6 @@
 #include "SubOscComponent.h"
 
+#include "BypassButton.h"
 #include "CardInner.h"
 
 #include "SubOscMode.h"
@@ -8,7 +9,6 @@
 #include <cmath>
 
 SubOscComponent::SubOscComponent(juce::ToggleButton& enabledButtonIn,
-                                               juce::Label& enabledLabelIn,
                                                                                              juce::Slider& pitchIn,
                                                                                              juce::Label& pitchLabelIn,
                                                                                              juce::Label& pitchValueLabelIn,
@@ -18,7 +18,6 @@ SubOscComponent::SubOscComponent(juce::ToggleButton& enabledButtonIn,
                                                juce::Label& waveformLabelIn,
                                                juce::Colour accentIn)
     : enabledButton(enabledButtonIn),
-      enabledLabel(enabledLabelIn),
             pitch(pitchIn),
             pitchLabel(pitchLabelIn),
         pitchValueLabel(pitchValueLabelIn),
@@ -28,8 +27,11 @@ SubOscComponent::SubOscComponent(juce::ToggleButton& enabledButtonIn,
       waveformLabel(waveformLabelIn),
       accent(accentIn)
 {
+    // The card background toggles this section, so the pointer says it is
+    // clickable. Child controls carry their own cursors.
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+
     addAndMakeVisible(enabledButton);
-    addAndMakeVisible(enabledLabel);
     addAndMakeVisible(pitch);
     addAndMakeVisible(pitchLabel);
     addAndMakeVisible(pitchValueLabel);
@@ -106,11 +108,31 @@ void SubOscComponent::resized()
     card.setStyleKey("subOsc");
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
+    // The wave graph is drawn in this card's identity colour, so a card
+    // recoloured in UIConfig recolours its graph with it rather than
+    // keeping a group accent baked in at construction.
+    accent = card.style().border.colour;
+
+
+    // The power glyph lights in this card's own identity colour.
+
+    if (auto* power = dynamic_cast<px3::ui::BypassButton*>(&enabledButton))
+
+    {
+
+        power->setAccentColour(card.style().border.colour);
+
+    }
+
 
     inner.setStylePath("cards.subOsc.cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(3);
     inner.layout(card.contentBelowTitle());
+
+    // The power toggle is pinned to cardInner's corner, outside the flex flow,
+    // so it stays put no matter what the first row contains.
+    enabledButton.setBounds(inner.powerBounds());
 
     // Row 1: bypass, octave and wave, each as a label-over-control pair. The
     // row's flex settings decide where they sit; this only says how big each
@@ -121,7 +143,6 @@ void SubOscComponent::resized()
         const auto row = inner.rowContent(0);
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-        flex.items.add(juce::FlexItem(46.0f, cellHeight).withMargin(gap));
         flex.items.add(juce::FlexItem(76.0f, cellHeight).withMargin(gap));
         flex.items.add(juce::FlexItem(76.0f, cellHeight).withMargin(gap));
         flex.performLayout(row.toFloat());
@@ -129,14 +150,10 @@ void SubOscComponent::resized()
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
         using px3::ui::ControlShape;
         px3::ui::layoutLabelledControl(cell(0),
-                                       { &enabledLabel, &enabledButton, nullptr,
-                                         ControlShape::square, 14, 0, 22 },
-                                       inner.rowControl(0));
-        px3::ui::layoutLabelledControl(cell(1),
                                        { &octaveLabel, &octaveBox, nullptr,
                                          ControlShape::stretch, 14, 0, 24 },
                                        inner.rowControl(0));
-        px3::ui::layoutLabelledControl(cell(2),
+        px3::ui::layoutLabelledControl(cell(1),
                                        { &waveformLabel, &waveformBox, nullptr,
                                          ControlShape::stretch, 14, 0, 24 },
                                        inner.rowControl(0));
@@ -159,6 +176,33 @@ void SubOscComponent::resized()
 
     // Row 3 is the wave table, drawn in paint() rather than being a child
     // component, so it only needs its bounds - see waveTableBounds.
+}
+
+void SubOscComponent::mouseUp(const juce::MouseEvent& event)
+{
+    // Clicking the card's background toggles its power, the same as clicking
+    // the button. No tooltip here: the whole card is not a control, and a card
+    // that explained itself on hover would be noise.
+    // The wave graph is a display, not a switch: it shows no pointer and it
+    // takes no click, so the two agree.
+    if (inner.rowContent(2).contains(event.getPosition()))
+    {
+        return;
+    }
+
+    if (px3::ui::isCardBackgroundToggleClick(event))
+    {
+        enabledButton.setToggleState(! enabledButton.getToggleState(), juce::sendNotification);
+    }
+}
+
+void SubOscComponent::mouseMove(const juce::MouseEvent& event)
+{
+    // The wave graph is a display, not a control, so it does not take the
+    // pointer that marks the rest of the card as clickable.
+    setMouseCursor(inner.rowContent(2).contains(event.getPosition())
+                       ? juce::MouseCursor::NormalCursor
+                       : juce::MouseCursor::PointingHandCursor);
 }
 
 void SubOscComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)

@@ -1,5 +1,6 @@
 #include "FltPanel.h"
 
+#include "BypassButton.h"
 #include "CardInner.h"
 
 #include "UIConfig.h"
@@ -10,12 +11,20 @@ juce::PopupMenu::Options FltPanel::FilterComboLookAndFeel::getOptionsForComboBox
                                                                                             juce::Label& label)
 {
     auto options = juce::LookAndFeel_V4::getOptionsForComboBoxPopupMenu(box, label);
-    return options.withParentComponent(box.getParentComponent())
+    // Parented to the EDITOR, not to the combo's immediate parent.
+    //
+    // A menu hosted inside a component is clipped to that component's bounds.
+    // The immediate parent here is one card, which is often shorter than the
+    // menu - so the lower items were drawn clipped and could not be clicked,
+    // which is why selecting an item sometimes appeared to do nothing and took
+    // several attempts. The editor is large enough to hold the whole menu, and
+    // keeping it in-window still suits hosts that dislike desktop-level popups.
+    auto* host = box.getTopLevelComponent();
+    return options.withParentComponent(host != nullptr ? host : box.getParentComponent())
                   .withPreferredPopupDirection(juce::PopupMenu::Options::PopupDirection::upwards);
 }
 
 FltPanel::FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabledButtonsIn,
-                                     std::array<juce::Label*, kFilterInstanceCount> enabledLabelsIn,
                                      std::array<juce::Slider*, kFilterInstanceCount> cutoffKnobsIn,
                    std::array<juce::Label*, kFilterInstanceCount> cutoffLabelsIn,
                    std::array<juce::Slider*, kFilterInstanceCount> resonanceKnobsIn,
@@ -28,7 +37,6 @@ FltPanel::FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabled
                    std::array<juce::AudioParameterChoice*, kFilterInstanceCount> filterTypeParams,
                    juce::Colour panelAccent)
         : enabledButtons(enabledButtonsIn),
-            enabledLabels(enabledLabelsIn),
             cutoffKnobs(cutoffKnobsIn),
       cutoffLabels(cutoffLabelsIn),
       resonanceKnobs(resonanceKnobsIn),
@@ -40,7 +48,6 @@ FltPanel::FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabled
     for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
     {
                 addAndMakeVisible(*enabledButtons[static_cast<std::size_t>(filterIndex)]);
-                addAndMakeVisible(*enabledLabels[static_cast<std::size_t>(filterIndex)]);
         addAndMakeVisible(*cutoffKnobs[static_cast<std::size_t>(filterIndex)]);
         addAndMakeVisible(*cutoffLabels[static_cast<std::size_t>(filterIndex)]);
         addAndMakeVisible(*resonanceKnobs[static_cast<std::size_t>(filterIndex)]);
@@ -65,6 +72,15 @@ FltPanel::FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabled
             panelAccent);
         addAndMakeVisible(*filterComponents[static_cast<std::size_t>(filterIndex)]);
         filterComponents[static_cast<std::size_t>(filterIndex)]->toBack();
+        filterComponents[static_cast<std::size_t>(filterIndex)]->onBackgroundClick =
+            [this, filterIndex]
+            {
+                auto* button = enabledButtons[static_cast<std::size_t>(filterIndex)];
+                if (button != nullptr)
+                {
+                    button->setToggleState(! button->getToggleState(), juce::sendNotification);
+                }
+            };
     }
 
     refreshFromParameters();
@@ -132,60 +148,101 @@ void FltPanel::resized()
         // hands back row rectangles; the panel only translates them, because
         // these controls are its own children rather than the component's.
         filterComponent->layoutCardInner();
+
         const auto toPanel = [&filterArea](juce::Rectangle<int> r)
         {
             return r.translated(filterArea.getX(), filterArea.getY());
         };
 
+        // Pinned to the cardInner corner, outside the flex flow. The panel owns
+        // the button, so it does the placing; the component supplies the slot.
+        const auto identity = filterComponent->cardAccentColour();
+
+        if (auto* button = enabledButtons[static_cast<std::size_t>(filterIndex)])
+        {
+            button->setBounds(toPanel(filterComponent->powerBounds()));
+
+            if (auto* power = dynamic_cast<px3::ui::BypassButton*>(button))
+            {
+                power->setAccentColour(identity);
+            }
+        }
+
+        // The type dropdown wears the card's identity colour rather than the
+        // shared combo style. These are the BASE colours, not the live ones:
+        // refreshFromParameters swaps between these and the disabled set, so
+        // writing the box directly here would be undone on the next tick.
+        {
+            const auto slot = static_cast<std::size_t>(filterIndex);
+            filterTypeBoxBaseBgColours[slot] = identity.withSaturation(0.55f).withBrightness(0.15f);
+            filterTypeBoxBaseTextColours[slot] = identity.brighter(0.85f);
+            filterTypeBoxBaseOutlineColours[slot] = identity.withAlpha(0.55f);
+
+            if (auto* box = filterTypeBoxes[slot])
+            {
+                if (box->isEnabled())
+                {
+                    box->setColour(juce::ComboBox::backgroundColourId, filterTypeBoxBaseBgColours[slot]);
+                    box->setColour(juce::ComboBox::textColourId, filterTypeBoxBaseTextColours[slot]);
+                    box->setColour(juce::ComboBox::outlineColourId, filterTypeBoxBaseOutlineColours[slot]);
+                }
+            }
+        }
+
         const auto idx = static_cast<std::size_t>(filterIndex);
         using px3::ui::ControlShape;
 
-        // Row 1: bypass and filter type.
+        // Row 1: the filter type dropdown. The power toggle used to share this
+        // row and is pinned to the cardInner corner now.
         {
             auto flex = filterComponent->rowFlex(0);
             const auto gapMargin = filterComponent->rowGap(0);
             const auto row = toPanel(filterComponent->rowBounds(0));
             const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-            flex.items.add(juce::FlexItem(44.0f, cellHeight).withMargin(gapMargin));
             flex.items.add(juce::FlexItem(116.0f, cellHeight).withMargin(gapMargin));
             flex.performLayout(row.toFloat());
 
             const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
             px3::ui::layoutLabelledControl(cell(0),
-                                       { enabledLabels[idx], enabledButtons[idx], nullptr,
-                                         ControlShape::square, 14, 0, 22 },
-                                       filterComponent->rowControl(0));
-            px3::ui::layoutLabelledControl(cell(1),
                                        { filterTypeLabels[idx], filterTypeBoxes[idx], nullptr,
                                          ControlShape::stretch, 14, 0, 24 },
                                        filterComponent->rowControl(0));
         }
 
-        // Row 2: cutoff and resonance, each with its existing label above.
+        // Row 2: the filter's knobs. Driven off a list rather than two hard
+        // coded cells, so adding a parameter later is one entry here and not a
+        // layout rewrite - the widths scale to fit however many there are.
         {
+            const std::array<std::pair<juce::Label*, juce::Slider*>, 2> knobs { {
+                { cutoffLabels[idx], cutoffKnobs[idx] },
+                { resonanceLabels[idx], resonanceKnobs[idx] },
+            } };
+
             auto flex = filterComponent->rowFlex(1);
             const auto gapMargin = filterComponent->rowGap(1);
             const auto row = toPanel(filterComponent->rowBounds(1));
             const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-            for (int i = 0; i < 2; ++i)
+            // Same natural width and cap as the LFO knobs, so the two cards
+            // read as one family.
+            const std::vector<float> natural(knobs.size(), 84.0f);
+            const auto widths = px3::ui::fitRowItemWidths(natural,
+                                                          gapMargin.left + gapMargin.right,
+                                                          static_cast<float>(juce::jmax(1, row.getWidth())));
+            for (const auto width : widths)
             {
-                auto item = juce::FlexItem(110.0f, cellHeight).withMargin(gapMargin);
-                item.flexGrow = 1.0f;
-                flex.items.add(item);
+                flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gapMargin));
             }
             flex.performLayout(row.toFloat());
 
-            const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
-            px3::ui::layoutLabelledControl(cell(0),
-                                       { cutoffLabels[idx], cutoffKnobs[idx], nullptr,
-                                         ControlShape::square, 18, 0, 110 },
-                                       filterComponent->rowControl(1));
-            px3::ui::layoutLabelledControl(cell(1),
-                                       { resonanceLabels[idx], resonanceKnobs[idx], nullptr,
-                                         ControlShape::square, 18, 0, 110 },
-                                       filterComponent->rowControl(1));
+            for (std::size_t i = 0; i < knobs.size(); ++i)
+            {
+                px3::ui::layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
+                                               { knobs[i].first, knobs[i].second, nullptr,
+                                                 ControlShape::square, 16, 0, 84 },
+                                               filterComponent->rowControl(1));
+            }
         }
 
         // Row 3 is the response graph, which the component draws.

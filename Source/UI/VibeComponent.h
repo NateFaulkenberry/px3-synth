@@ -23,6 +23,7 @@ public:
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
     void resized() override;
+    void mouseUp(const juce::MouseEvent& event) override;
     void paint(juce::Graphics& g) override;
 
 private:
@@ -32,11 +33,6 @@ private:
     juce::Label& typeLabel;
     px3::ui::CardHost card;
     px3::ui::CardInner inner;
-    // Where paint() draws the "ON" text. It sits beside the bypass button
-    // in row 1, so the layout decides it - it used to be an absolute rect
-    // from UIConfig, which would have left the word behind when the button
-    // moved into the row.
-    juce::Rectangle<int> onLabelBounds;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
     bool isActive { true };

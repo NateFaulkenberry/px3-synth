@@ -16,7 +16,6 @@ class OscillatorComponent final : public juce::Component
 {
 public:
     OscillatorComponent(juce::ToggleButton& enabledButtonIn,
-                        juce::Label& enabledLabelIn,
                         juce::Slider& pitchIn,
                         juce::Label& pitchLabelIn,
                         juce::Label& pitchValueLabelIn,
@@ -44,6 +43,8 @@ public:
     void advanceAnimation(float deltaPhase);
 
     void resized() override;
+    void mouseUp(const juce::MouseEvent& event) override;
+    void mouseMove(const juce::MouseEvent& event) override;
     void paint(juce::Graphics& g) override;
 
 private:
@@ -51,7 +52,6 @@ private:
     void applyEnabledUi();
 
     juce::ToggleButton& enabledButton;
-    juce::Label& enabledLabel;
     juce::Slider& pitch;
     juce::Label& pitchLabel;
     juce::Label& pitchValueLabel;

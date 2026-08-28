@@ -32,6 +32,7 @@ public:
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
     void resized() override;
+    void mouseUp(const juce::MouseEvent& event) override;
     void paint(juce::Graphics& g) override;
 
 private:
@@ -50,8 +51,6 @@ private:
     juce::Label& feedbackLabel;
     px3::ui::CardHost card;
     px3::ui::CardInner inner;
-    // Where paint() draws the "ON" text - beside the bypass button in row 1.
-    juce::Rectangle<int> onLabelBounds;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
     bool isActive { true };

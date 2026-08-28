@@ -14,7 +14,6 @@ class OscPanel final : public juce::Component
 {
 public:
     OscPanel(juce::ToggleButton& subEnabledButton,
-             juce::Label& subEnabledLabel,
              juce::Slider& subPitchKnob,
              juce::Label& subPitchLabel,
              juce::Label& subPitchValueLabel,
@@ -29,7 +28,6 @@ public:
              juce::Slider& osc1MacroB,
              juce::Slider& osc1MacroC,
              juce::ToggleButton& osc1EnabledButton,
-             juce::Label& osc1EnabledLabel,
              juce::Label& osc1MacroALabel,
              juce::Label& osc1MacroBLabel,
              juce::Label& osc1MacroCLabel,
@@ -44,7 +42,6 @@ public:
              juce::Slider& osc2MacroB,
              juce::Slider& osc2MacroC,
              juce::ToggleButton& osc2EnabledButton,
-             juce::Label& osc2EnabledLabel,
              juce::Label& osc2MacroALabel,
              juce::Label& osc2MacroBLabel,
              juce::Label& osc2MacroCLabel,
@@ -59,7 +56,6 @@ public:
              juce::Slider& osc3MacroB,
              juce::Slider& osc3MacroC,
              juce::ToggleButton& osc3EnabledButton,
-             juce::Label& osc3EnabledLabel,
              juce::Label& osc3MacroALabel,
              juce::Label& osc3MacroBLabel,
              juce::Label& osc3MacroCLabel,

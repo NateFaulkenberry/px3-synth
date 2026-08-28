@@ -51,7 +51,7 @@ private:
 
     struct DerivedCurves
     {
-        float superSawDetune { 0.0f };
+        float superSawSpread { 0.0f };
         float superSawWidth { 0.0f };
         float superSawEdgeSoft { 1.0f };
         // Kept as double: the original computed pow(2.0, ...) in double and
@@ -129,7 +129,7 @@ private:
     bool derivedValid { false };
 
     std::array<double, 7> superSawAngles { { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 } };
-    std::array<float, 7> superSawDetunes { { -0.22f, -0.14f, -0.07f, 0.0f, 0.07f, 0.14f, 0.22f } };
+    std::array<float, 7> superSawOffsets { { -0.22f, -0.14f, -0.07f, 0.0f, 0.07f, 0.14f, 0.22f } };
     std::array<float, 7> superSawDrift { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
 
     std::array<float, 7> pinkState { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };

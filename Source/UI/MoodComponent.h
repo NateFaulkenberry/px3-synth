@@ -45,6 +45,7 @@ public:
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
     void resized() override;
+    void mouseUp(const juce::MouseEvent& event) override;
     void paint(juce::Graphics& g) override;
 
 private:
@@ -79,9 +80,6 @@ private:
 
     px3::ui::CardHost card;
     px3::ui::CardInner inner;
-    // Where paint() draws the two row-1 captions, beside their buttons.
-    juce::Rectangle<int> onLabelBounds;
-    juce::Rectangle<int> freezeLabelBounds;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
     bool isActive { true };

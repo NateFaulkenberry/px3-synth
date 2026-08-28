@@ -258,6 +258,14 @@ CardInnerStyle CardInnerStyle::fromConfig(const UIConfig* config,
         style.margin = Insets::parse(config->getValue(stylePath + ".margin"), style.margin);
         style.padding = Insets::parse(config->getValue(stylePath + ".padding"), style.padding);
         style.flex = FlexStyle::readLayered(config, { stylePath }, style.flex);
+
+        const auto powerPath = stylePath + ".power";
+        if (const auto v = config->getValue(powerPath + ".x"); ! v.isVoid())
+            style.power.x = static_cast<float>(v);
+        if (const auto v = config->getValue(powerPath + ".y"); ! v.isVoid())
+            style.power.y = static_cast<float>(v);
+        if (const auto v = config->getValue(powerPath + ".size"); ! v.isVoid())
+            style.power.size = juce::jmax(0.0f, static_cast<float>(v));
     }
 
     // Rows share a default block so a card only declares the ones that differ.
@@ -265,7 +273,8 @@ CardInnerStyle CardInnerStyle::fromConfig(const UIConfig* config,
                                  {}, {},
                                  FlexStyle { true, FlexDirection::row, FlexWrapMode::noWrap,
                                              JustifyContent::centre, AlignItems::centre,
-                                             AlignItems::centre, 0.0f } };
+                                             AlignItems::centre, 0.0f },
+                                 ControlStyle {} };
 
     for (int i = 0; i < rowCount; ++i)
     {
@@ -413,6 +422,14 @@ void CardInner::layout(juce::Rectangle<int> cardContent)
     }
 }
 
+juce::Rectangle<int> CardInner::powerBounds() const
+{
+    const auto side = juce::roundToInt(cached.power.size);
+    return juce::Rectangle<int>(innerContent.getX() + juce::roundToInt(cached.power.x),
+                                innerContent.getY() + juce::roundToInt(cached.power.y),
+                                side, side);
+}
+
 juce::Rectangle<int> CardInner::rowContent(int index) const
 {
     if (index < 0 || index >= static_cast<int>(rowContentBounds.size()))
@@ -465,6 +482,38 @@ juce::String cardTypeKey(const juce::String& styleKey)
     return type.isEmpty() ? styleKey : type;
 }
 
+std::vector<float> fitRowItemWidths(const std::vector<float>& naturalWidths,
+                                   float gap,
+                                   float rowWidth)
+{
+    std::vector<float> widths = naturalWidths;
+    if (widths.empty())
+    {
+        return widths;
+    }
+
+    // Each cell consumes its width plus the gap, which is realised as half a
+    // margin on each side.
+    const auto gapTotal = gap * static_cast<float>(widths.size());
+    const auto usable = juce::jmax(0.0f, rowWidth - gapTotal);
+
+    float requested = 0.0f;
+    for (const auto w : widths)
+    {
+        requested += w;
+    }
+
+    if (requested > usable && requested > 0.0f)
+    {
+        const auto scale = usable / requested;
+        for (auto& w : widths)
+        {
+            w *= scale;
+        }
+    }
+    return widths;
+}
+
 int wrappedLineCount(const std::vector<float>& itemWidths, float gap, float rowWidth)
 {
     if (rowWidth <= 0.0f || itemWidths.empty())
@@ -498,6 +547,9 @@ void layoutLabelledControl(juce::Rectangle<int> area,
 {
     const auto showLabel = parts.label != nullptr && parts.label->isVisible();
     const auto showReadout = parts.readout != nullptr && parts.readout->isVisible();
+    // Space is kept for a readout that was asked for but is not there, so cells
+    // with and without one still line up.
+    const auto reserveReadout = showReadout || parts.readoutHeight > 0;
 
     const auto cellWidth = static_cast<float>(juce::jmax(0, area.getWidth()));
     const auto cellHeight = static_cast<float>(juce::jmax(0, area.getHeight()));
@@ -512,14 +564,14 @@ void layoutLabelledControl(juce::Rectangle<int> area,
     };
 
     const auto labelHeight = showLabel ? resolveOrRequested(style.labelHeight, parts.labelHeight) : 0.0f;
-    const auto readoutHeight = showReadout ? resolveOrRequested(style.readoutHeight, parts.readoutHeight) : 0.0f;
+    const auto readoutHeight = reserveReadout ? resolveOrRequested(style.readoutHeight, parts.readoutHeight) : 0.0f;
 
     const auto stacksVertically = style.direction == FlexDirection::column
                                || style.direction == FlexDirection::columnReverse;
 
     // The control takes what the label and readout leave, unless config gives
     // it an explicit size. This is what keeps a knob round and a dropdown not.
-    const auto gapCount = static_cast<float>((showLabel ? 1 : 0) + (showReadout ? 1 : 0));
+    const auto gapCount = static_cast<float>((showLabel ? 1 : 0) + (reserveReadout ? 1 : 0));
     const auto consumed = labelHeight + readoutHeight + style.gap * gapCount;
     const auto freeHeight = juce::jmax(0.0f, cellHeight - (stacksVertically ? consumed : 0.0f));
 
@@ -574,9 +626,10 @@ void layoutLabelledControl(juce::Rectangle<int> area,
         controlIndex = box.items.size();
         box.items.add(juce::FlexItem(controlWidth, controlHeight).withMargin(gapMargin));
     }
-    if (showReadout)
+    if (reserveReadout)
     {
-        readoutIndex = box.items.size();
+        // Added even with no component to place: the item holds the space.
+        readoutIndex = showReadout ? box.items.size() : -1;
         box.items.add(juce::FlexItem(cellWidth, readoutHeight).withMargin(gapMargin));
     }
 

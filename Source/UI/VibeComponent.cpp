@@ -1,5 +1,6 @@
 #include "VibeComponent.h"
 
+#include "BypassButton.h"
 #include "CardInner.h"
 
 #include "UIConfig.h"
@@ -15,6 +16,10 @@ VibeComponent::VibeComponent(juce::ToggleButton& enabledButtonIn,
       typeLabel(typeLabelIn),
       accent(accentIn)
 {
+    // The card background toggles this section, so the pointer says it is
+    // clickable. Child controls carry their own cursors.
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+
     addAndMakeVisible(enabledButton);
     addAndMakeVisible(amountKnob);
     addAndMakeVisible(typeBox);
@@ -52,34 +57,34 @@ void VibeComponent::resized()
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
 
+    // The power glyph lights in this card's own identity colour.
+
+    if (auto* power = dynamic_cast<px3::ui::BypassButton*>(&enabledButton))
+
+    {
+
+        power->setAccentColour(card.style().border.colour);
+
+    }
+
+
     inner.setStylePath("cards.vibe.cardInner");
     inner.setConfig(uiConfig);
-    inner.setRowCount(3);
+    inner.setRowCount(2);
     inner.layout(card.contentBelowTitle());
+
+    // The power toggle is pinned to cardInner's corner, outside the flex flow,
+    // so it stays put no matter what the first row contains.
+    enabledButton.setBounds(inner.powerBounds());
 
     using px3::ui::ControlShape;
 
-    // Row 1: the bypass button, with the painted "ON" text beside it.
+
+    // Row 1: the amount knob and its existing label underneath.
     {
         auto flex = inner.rowFlex(0);
         const auto gap = inner.rowGap(0);
         const auto row = inner.rowContent(0);
-        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
-
-        flex.items.add(juce::FlexItem(24.0f, cellHeight).withMargin(gap));
-        flex.items.add(juce::FlexItem(26.0f, cellHeight).withMargin(gap));
-        flex.performLayout(row.toFloat());
-
-        const auto buttonCell = flex.items.getReference(0).currentBounds.toNearestInt();
-        enabledButton.setBounds(juce::Rectangle<int>(22, 22).withCentre(buttonCell.getCentre()));
-        onLabelBounds = flex.items.getReference(1).currentBounds.toNearestInt();
-    }
-
-    // Row 2: the amount knob and its existing label underneath.
-    {
-        auto flex = inner.rowFlex(1);
-        const auto gap = inner.rowGap(1);
-        const auto row = inner.rowContent(1);
 
         flex.items.add(juce::FlexItem(104.0f, static_cast<float>(juce::jmax(1, row.getHeight())))
                            .withMargin(gap));
@@ -90,14 +95,14 @@ void VibeComponent::resized()
         px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
                                        { nullptr, &amountKnob, nullptr,
                                          ControlShape::square, 0, 0, 82 },
-                                       inner.rowControl(1));
+                                       inner.rowControl(0));
     }
 
-    // Row 3: the type dropdown with its label.
+    // Row 2: the type dropdown with its label.
     {
-        auto flex = inner.rowFlex(2);
-        const auto gap = inner.rowGap(2);
-        const auto row = inner.rowContent(2);
+        auto flex = inner.rowFlex(1);
+        const auto gap = inner.rowGap(1);
+        const auto row = inner.rowContent(1);
 
         flex.items.add(juce::FlexItem(static_cast<float>(juce::jmax(1, row.getWidth())),
                                       static_cast<float>(juce::jmax(1, row.getHeight())))
@@ -107,7 +112,18 @@ void VibeComponent::resized()
         px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
                                        { &typeLabel, &typeBox, nullptr,
                                          ControlShape::stretch, 14, 0, 24 },
-                                       inner.rowControl(2));
+                                       inner.rowControl(1));
+    }
+}
+
+void VibeComponent::mouseUp(const juce::MouseEvent& event)
+{
+    // Clicking the card's background toggles its power, the same as clicking
+    // the button. No tooltip here: the whole card is not a control, and a card
+    // that explained itself on hover would be noise.
+    if (px3::ui::isCardBackgroundToggleClick(event))
+    {
+        enabledButton.setToggleState(! enabledButton.getToggleState(), juce::sendNotification);
     }
 }
 
@@ -129,14 +145,4 @@ void VibeComponent::paint(juce::Graphics& g)
         card.drawInactive(g, "VIBE");
     }
 
-    const auto textColour = uiConfig != nullptr
-                                ? uiConfig->getColour("fx.vibe.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
-                                : juce::Colour::fromRGB(232, 232, 232);
-    const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat("fx.vibe.visual.onLabel.fontSize", 11.5f) : 11.5f;
-    // Beside the button, wherever row 1 put it.
-    const auto textBounds = onLabelBounds;
-
-    g.setColour(textColour.withAlpha(isActive ? 1.0f : 0.6f));
-    g.setFont(juce::FontOptions(fontSize));
-    g.drawText("ON", textBounds, juce::Justification::centredLeft, false);
 }

@@ -98,13 +98,18 @@ void OscillatorUnit::updateDerivedCurves()
     const auto b = oscillatorSettings.macroB;
     const auto c = oscillatorSettings.macroC;
 
-    derived.superSawDetune = std::pow(a, 1.65f);
-    derived.superSawWidth = std::pow(b, 1.2f);
+    // SPREAD is the whole supersaw control: it sets how far apart the stacked
+    // saws sit AND how much they drift. There used to be a separate DETUNE
+    // macro for the spacing, which is what "spread" already means. Both read
+    // macro A, because the UI shows a mode's macros in slot order and SPREAD is
+    // now supersaw's first and only one.
+    derived.superSawSpread = std::pow(a, 1.65f);
+    derived.superSawWidth = std::pow(a, 1.2f);
     derived.superSawEdgeSoft = 0.58f + 0.42f * (1.0f - derived.superSawWidth);
-    for (std::size_t i = 0; i < superSawDetunes.size(); ++i)
+    for (std::size_t i = 0; i < superSawOffsets.size(); ++i)
     {
-        const auto detuneSemitones = superSawDetunes[i] * (0.04f + 16.0f * derived.superSawDetune);
-        derived.superSawRatios[i] = std::pow(2.0, static_cast<double>(detuneSemitones) / 12.0);
+        const auto spreadSemitones = superSawOffsets[i] * (0.04f + 16.0f * derived.superSawSpread);
+        derived.superSawRatios[i] = std::pow(2.0, static_cast<double>(spreadSemitones) / 12.0);
     }
 
     derived.pwmWidthCurve = std::pow(a, 1.15f);

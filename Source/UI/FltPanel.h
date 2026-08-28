@@ -14,7 +14,6 @@ class FltPanel final : public juce::Component
 {
 public:
     FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabledButtons,
-             std::array<juce::Label*, kFilterInstanceCount> enabledLabels,
              std::array<juce::Slider*, kFilterInstanceCount> cutoffKnobs,
              std::array<juce::Label*, kFilterInstanceCount> cutoffLabels,
              std::array<juce::Slider*, kFilterInstanceCount> resonanceKnobs,
@@ -42,7 +41,6 @@ private:
     };
 
     std::array<juce::ToggleButton*, kFilterInstanceCount> enabledButtons;
-    std::array<juce::Label*, kFilterInstanceCount> enabledLabels;
     std::array<juce::Slider*, kFilterInstanceCount> cutoffKnobs;
     std::array<juce::Label*, kFilterInstanceCount> cutoffLabels;
     std::array<juce::Slider*, kFilterInstanceCount> resonanceKnobs;

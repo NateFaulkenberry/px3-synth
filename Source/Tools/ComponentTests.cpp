@@ -3590,21 +3590,32 @@ void testCardStyle()
     }
 
     {
-        // Both properties are configurable and both are read.
+        // All three properties are configurable and all three are read.
         juce::String error;
         auto config = UIConfig::fromJsonText(R"({"cards":{
-            "defaults":{"disabled":{"saturation":0.0,"dim":0.75}},
-            "partial":{"disabled":{"saturation":0.6,"dim":0.9}}}})", error);
+            "defaults":{"disabled":{"saturation":0.0,"dim":0.75,"darken":0.45}},
+            "partial":{"disabled":{"saturation":0.6,"dim":0.9,"darken":0.2}}}})", error);
 
         const auto base = CardStyle::fromConfig(config.get(), "cards.defaults", "cards.defaults");
         const auto partial = CardStyle::fromConfig(config.get(), "cards.defaults", "cards.partial");
 
+        // And darken must actually darken: a white card has no saturation to
+        // remove, so without it a bypassed Sub Osc stayed bright white.
+        CardStyle white;
+        white.border.colour = juce::Colours::white;
+        white.disabled = base.disabled;
+        const auto bypassed = white.disabledVariant();
+
         check("CardStyle_DisabledAppearanceIsConfigurable",
               juce::approximatelyEqual(base.disabled.saturation, 0.0f)
                   && juce::approximatelyEqual(base.disabled.dim, 0.75f)
+                  && juce::approximatelyEqual(base.disabled.darken, 0.45f)
                   && juce::approximatelyEqual(partial.disabled.saturation, 0.6f)
-                  && juce::approximatelyEqual(partial.disabled.dim, 0.9f),
-              "defaults 0.0/0.75, override 0.6/0.9");
+                  && juce::approximatelyEqual(partial.disabled.dim, 0.9f)
+                  && juce::approximatelyEqual(partial.disabled.darken, 0.2f)
+                  && bypassed.border.colour.getBrightness() < 0.6f,
+              "defaults 0.0/0.75/0.45, override 0.6/0.9/0.2; white bypasses to brightness "
+                  + fmt(bypassed.border.colour.getBrightness(), 2));
     }
 
     // ---- Live reload --------------------------------------------------------
@@ -3875,6 +3886,129 @@ void testCardInner()
               "two 40px items with gap 20 -> " + fmt(separation, 1) + "px apart");
     }
 
+    // ---- Oscillator row 2, every mode --------------------------------------
+    {
+        // The oscillator's macro knobs change count with the mode: 0 for the
+        // plain waveforms, 1 for NOISE / PINK NOISE / SUPER SAW / PWM /
+        // WAVETABLE, 2 or 3 for the rest. Whatever the count, every knob has to
+        // be laid out BY the row - inside its bounds, not overlapping a
+        // neighbour, and never larger than the pitch knob it sits beside.
+        //
+        // This mirrors OscillatorComponent::resized()'s row 2 exactly.
+        const auto config = configFrom(R"({"cards":{"probe":{"cardInner":{
+            "margin":0,"padding":4,"gap":2,
+            "rows":{"row1":{"height":"22%"},"row2":{"height":"36%","gap":4},
+                    "row3":{"height":"42%"}}}}}})");
+
+        juce::StringArray problems;
+        for (int macroCount = 0; macroCount <= 3; ++macroCount)
+        {
+            CardInner inner;
+            inner.setStylePath("cards.probe.cardInner");
+            inner.setConfig(config);
+            inner.setRowCount(3);
+            inner.layout({ 0, 0, 232, 300 });
+
+            auto flex = inner.rowFlex(1);
+            const auto gap = inner.rowGap(1);
+            const auto row = inner.rowContent(1);
+            const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
+
+            std::vector<float> natural { 72.0f };
+            natural.insert(natural.end(), (std::size_t) macroCount, 60.0f);
+            const auto widths = px3::ui::fitRowItemWidths(natural, gap.left + gap.right,
+                                                          static_cast<float>(juce::jmax(1, row.getWidth())));
+            for (const auto width : widths)
+            {
+                flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gap));
+            }
+            flex.performLayout(row.toFloat());
+
+            juce::Component pitch;
+            pitch.setVisible(true);
+            std::vector<std::unique_ptr<juce::Component>> macros;
+
+            const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+            px3::ui::layoutLabelledControl(cell(0), { nullptr, &pitch, nullptr,
+                                                      px3::ui::ControlShape::square, 16, 16, 56 },
+                                           inner.rowControl(1));
+
+            for (int i = 0; i < macroCount; ++i)
+            {
+                auto knob = std::make_unique<juce::Component>();
+                knob->setVisible(true);
+                px3::ui::layoutLabelledControl(cell(i + 1), { nullptr, knob.get(), nullptr,
+                                                              px3::ui::ControlShape::square, 18, 0, 56 },
+                                               inner.rowControl(1));
+                macros.push_back(std::move(knob));
+            }
+
+            const auto label = "macros=" + juce::String(macroCount);
+
+            if (! row.contains(pitch.getBounds()))
+            {
+                problems.add(label + " pitch outside the row");
+            }
+            for (std::size_t i = 0; i < macros.size(); ++i)
+            {
+                const auto b = macros[i]->getBounds();
+                if (! row.contains(b))
+                {
+                    problems.add(label + " macro " + juce::String((int) i) + " outside the row");
+                }
+                if (b.getWidth() > pitch.getWidth())
+                {
+                    problems.add(label + " macro " + juce::String((int) i) + " bigger than pitch ("
+                                 + juce::String(b.getWidth()) + " > " + juce::String(pitch.getWidth()) + ")");
+                }
+                if (b.intersects(pitch.getBounds()))
+                {
+                    problems.add(label + " macro " + juce::String((int) i) + " overlaps pitch");
+                }
+                for (std::size_t j = i + 1; j < macros.size(); ++j)
+                {
+                    if (b.intersects(macros[j]->getBounds()))
+                    {
+                        problems.add(label + " macros " + juce::String((int) i) + "/"
+                                     + juce::String((int) j) + " overlap");
+                    }
+                }
+            }
+        }
+
+        check("CardInner_OscillatorRowHoldsEveryMacroCount",
+              problems.isEmpty(),
+              problems.isEmpty() ? "0-3 macros all inside the row, no overlaps, none larger than pitch"
+                                 : problems.joinIntoString("; "));
+    }
+
+    // ---- The power slot ----------------------------------------------------
+    {
+        // The power toggle is pinned to cardInner's corner and is NOT part of
+        // any row: it must not move when a row's contents change, and it must
+        // not consume row space.
+        const auto config = configFrom(R"({"cards":{"probe":{"cardInner":{
+            "margin":0,"padding":10,"gap":0,
+            "power":{"x":-4,"y":-2,"size":25},
+            "rows":{"row1":{"height":"50%"},"row2":{"height":"50%"}}}}}})");
+        CardInner inner;
+        inner.setStylePath("cards.probe.cardInner");
+        inner.setConfig(config);
+        inner.setRowCount(2);
+        inner.layout({ 0, 0, 200, 300 });
+
+        const auto power = inner.powerBounds();
+        const auto content = inner.content();
+        const auto rowsUntouched = inner.rowContent(0).getHeight() == 140
+                                && inner.rowContent(0).getY() == content.getY();
+
+        check("CardInner_PowerSlotIsOutsideTheFlexFlow",
+              power.getX() == content.getX() - 4 && power.getY() == content.getY() - 2
+                  && power.getWidth() == 25 && power.getHeight() == 25 && rowsUntouched,
+              "power at " + power.toString() + ", row 1 still "
+                  + juce::String(inner.rowContent(0).getHeight()) + "px at the content top");
+    }
+
     // ---- Keyword spellings -------------------------------------------------
     {
         // "flex-start" is the CSS spelling and the one to reach for. But every
@@ -4055,7 +4189,8 @@ void testCardInner()
         // cardInner's point of view - `alignItems` on a column of full-width
         // rows cannot move them, exactly as in CSS, but it is still handed to
         // components through rowFlex() and they do use it.
-        const juce::String baseInner = R"("margin":2,"padding":3,"display":"flex","direction":"column",
+        const juce::String baseInner = R"("power":{"x":1,"y":2,"size":20},
+            "margin":2,"padding":3,"display":"flex","direction":"column",
             "wrap":"nowrap","justifyContent":"center","alignItems":"center","alignContent":"center","gap":4,
             "rows":{"row1":{"height":"20%","margin":1,"padding":1,"display":"flex","direction":"row",
                             "wrap":"nowrap","justifyContent":"center","alignItems":"center",
@@ -4075,7 +4210,7 @@ void testCardInner()
             inner.setRowCount(3);
             inner.layout({ 0, 0, 240, 300 });
 
-            juce::String out = inner.content().toString();
+            juce::String out = inner.content().toString() + "|" + inner.powerBounds().toString();
             const auto& style = inner.style();
             const auto describe = [](const px3::ui::FlexStyle& f)
             {
@@ -4135,13 +4270,29 @@ void testCardInner()
             { "control.labelHeight",    R"("labelHeight":21)" },
             { "control.readoutHeight",  R"("readoutHeight":23)" },
             { "control.size",           R"("size":19)" },
+            { "power.x",    R"("x":13)" },
+            { "power.y",    R"("y":14)" },
+            { "power.size", R"("size":31)" },
         };
 
         juce::StringArray inert;
         for (const auto& probe : probes)
         {
             juce::String variant = baseInner;
-            if (probe.first.startsWith("control."))
+            if (probe.first.startsWith("power."))
+            {
+                const auto key = probe.first.fromFirstOccurrenceOf(".", false, false);
+                const auto blockStart = variant.indexOf("\"power\"");
+                const auto keyStart = variant.indexOf(blockStart, "\"" + key + "\":");
+                const auto keyEnd = variant.indexOfAnyOf(",}", keyStart, false);
+                if (blockStart < 0 || keyStart < 0 || keyEnd < 0)
+                {
+                    inert.add(probe.first + " (probe did not match)");
+                    continue;
+                }
+                variant = variant.substring(0, keyStart) + probe.second + variant.substring(keyEnd);
+            }
+            else if (probe.first.startsWith("control."))
             {
                 const auto key = probe.first.fromFirstOccurrenceOf(".", false, false);
                 const auto blockStart = variant.indexOf("\"control\"");

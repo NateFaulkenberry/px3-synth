@@ -1,5 +1,6 @@
 #include "DelayComponent.h"
 
+#include "BypassButton.h"
 #include "CardInner.h"
 
 #include "UIConfig.h"
@@ -33,6 +34,10 @@ DelayComponent::DelayComponent(juce::ToggleButton& enabledButtonIn,
       feedbackLabel(feedbackLabelIn),
       accent(accentIn)
 {
+    // The card background toggles this section, so the pointer says it is
+    // clickable. Child controls carry their own cursors.
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+
     addAndMakeVisible(enabledButton);
     addAndMakeVisible(amountKnob);
     addAndMakeVisible(amountLabel);
@@ -93,34 +98,34 @@ void DelayComponent::resized()
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
 
+    // The power glyph lights in this card's own identity colour.
+
+    if (auto* power = dynamic_cast<px3::ui::BypassButton*>(&enabledButton))
+
+    {
+
+        power->setAccentColour(card.style().border.colour);
+
+    }
+
+
     inner.setStylePath("cards.delay.cardInner");
     inner.setConfig(uiConfig);
-    inner.setRowCount(3);
+    inner.setRowCount(2);
     inner.layout(card.contentBelowTitle());
+
+    // The power toggle is pinned to cardInner's corner, outside the flex flow,
+    // so it stays put no matter what the first row contains.
+    enabledButton.setBounds(inner.powerBounds());
 
     using px3::ui::ControlShape;
 
-    // Row 1: the bypass button and the painted "ON" text beside it.
+
+    // Row 1: the amount knob with its label below.
     {
         auto flex = inner.rowFlex(0);
         const auto gap = inner.rowGap(0);
         const auto row = inner.rowContent(0);
-        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
-
-        flex.items.add(juce::FlexItem(24.0f, cellHeight).withMargin(gap));
-        flex.items.add(juce::FlexItem(26.0f, cellHeight).withMargin(gap));
-        flex.performLayout(row.toFloat());
-
-        enabledButton.setBounds(juce::Rectangle<int>(22, 22)
-                                    .withCentre(flex.items.getReference(0).currentBounds.toNearestInt().getCentre()));
-        onLabelBounds = flex.items.getReference(1).currentBounds.toNearestInt();
-    }
-
-    // Row 2: the amount knob with its label below.
-    {
-        auto flex = inner.rowFlex(1);
-        const auto gap = inner.rowGap(1);
-        const auto row = inner.rowContent(1);
 
         flex.items.add(juce::FlexItem(100.0f, static_cast<float>(juce::jmax(1, row.getHeight())))
                            .withMargin(gap));
@@ -129,16 +134,16 @@ void DelayComponent::resized()
         px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
                                        { nullptr, &amountKnob, &amountLabel,
                                          ControlShape::square, 0, 18, 80 },
-                                       inner.rowControl(1));
+                                       inner.rowControl(0));
     }
 
-    // Row 3: five controls in one wrapping row - the two small knobs and the
+    // Row 2: five controls in one wrapping row - the two small knobs and the
     // three dropdowns. The spec is explicit that this must not become a fourth
     // row; the row wraps instead, and how it wraps is UIConfig's business.
     {
-        auto flex = inner.rowFlex(2);
-        const auto gap = inner.rowGap(2);
-        const auto row = inner.rowContent(2);
+        auto flex = inner.rowFlex(1);
+        const auto gap = inner.rowGap(1);
+        const auto row = inner.rowContent(1);
         const auto rowWidth = static_cast<float>(juce::jmax(1, row.getWidth()));
 
         const std::vector<float> widths { 60.0f, 60.0f, 104.0f, 104.0f, 104.0f };
@@ -158,23 +163,34 @@ void DelayComponent::resized()
         px3::ui::layoutLabelledControl(cell(0),
                                        { nullptr, &timeKnob, &timeLabel,
                                          ControlShape::square, 0, 16, 44 },
-                                       inner.rowControl(2));
+                                       inner.rowControl(1));
         px3::ui::layoutLabelledControl(cell(1),
                                        { nullptr, &feedbackKnob, &feedbackLabel,
                                          ControlShape::square, 0, 16, 44 },
-                                       inner.rowControl(2));
+                                       inner.rowControl(1));
         px3::ui::layoutLabelledControl(cell(2),
                                        { &syncLabel, &syncBox, nullptr,
                                          ControlShape::stretch, 14, 0, 22 },
-                                       inner.rowControl(2));
+                                       inner.rowControl(1));
         px3::ui::layoutLabelledControl(cell(3),
                                        { &algorithmLabel, &algorithmBox, nullptr,
                                          ControlShape::stretch, 14, 0, 22 },
-                                       inner.rowControl(2));
+                                       inner.rowControl(1));
         px3::ui::layoutLabelledControl(cell(4),
                                        { &modeLabel, &modeBox, nullptr,
                                          ControlShape::stretch, 14, 0, 22 },
-                                       inner.rowControl(2));
+                                       inner.rowControl(1));
+    }
+}
+
+void DelayComponent::mouseUp(const juce::MouseEvent& event)
+{
+    // Clicking the card's background toggles its power, the same as clicking
+    // the button. No tooltip here: the whole card is not a control, and a card
+    // that explained itself on hover would be noise.
+    if (px3::ui::isCardBackgroundToggleClick(event))
+    {
+        enabledButton.setToggleState(! enabledButton.getToggleState(), juce::sendNotification);
     }
 }
 
@@ -196,14 +212,4 @@ void DelayComponent::paint(juce::Graphics& g)
         card.drawInactive(g, "DELAY");
     }
 
-    const auto textColour = uiConfig != nullptr
-                                ? uiConfig->getColour("fx.delay.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
-                                : juce::Colour::fromRGB(232, 232, 232);
-    const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat("fx.delay.visual.onLabel.fontSize", 11.5f) : 11.5f;
-    // Beside the button, wherever row 1 put it.
-    const auto textBounds = onLabelBounds;
-
-    g.setColour(textColour.withAlpha(isActive ? 1.0f : 0.6f));
-    g.setFont(juce::FontOptions(fontSize));
-    g.drawText("ON", textBounds, juce::Justification::centredLeft, false);
 }

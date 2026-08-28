@@ -119,6 +119,11 @@ struct DisabledStyle
     // Multiplies every layer's opacity, so a bypassed card recedes as well as
     // desaturating. 1.0 leaves the card at full strength in grey.
     float dim { 0.75f };
+    // Multiplies every layer's BRIGHTNESS. Opacity alone was not enough: a pale
+    // card - Sub Osc is white - has no saturation to remove, and dimming it just
+    // makes it faint rather than obviously off. 0 leaves brightness untouched,
+    // 1 takes it to black.
+    float darken { 0.45f };
 };
 
 struct CardStyle
