@@ -1,5 +1,7 @@
 #include "FltPanel.h"
 
+#include "CardInner.h"
+
 #include "UIConfig.h"
 
 #include <array>
@@ -111,41 +113,71 @@ void FltPanel::resized()
                                                columnWidth,
                                                panelArea.getHeight()).reduced(2, 0);
 
-        auto contentArea = filterArea.reduced(8, 8);
-
-        auto enabledRow = contentArea.removeFromTop(24);
-        enabledLabels[static_cast<std::size_t>(filterIndex)]->setBounds(enabledRow.removeFromLeft(56));
-        enabledButtons[static_cast<std::size_t>(filterIndex)]->setBounds(enabledRow.removeFromLeft(40).reduced(2, 2));
-
-        contentArea.removeFromTop(6);
-
-        auto row = contentArea.removeFromTop(24);
-        filterTypeBoxes[static_cast<std::size_t>(filterIndex)]->setBounds(row.reduced(2, 1));
-        contentArea.removeFromTop(8);
-
-        auto responseArea = contentArea;
-        auto knobBand = responseArea.removeFromTop(120);
-        const auto knobSize = juce::jlimit(56, 110, juce::jmin((knobBand.getWidth() - 24) / 2, knobBand.getHeight() - 24));
-
-        auto leftKnob = juce::Rectangle<int>(knobSize, knobSize)
-                            .withCentre({ knobBand.getX() + knobBand.getWidth() / 4, knobBand.getCentreY() + 8 });
-        auto rightKnob = juce::Rectangle<int>(knobSize, knobSize)
-                             .withCentre({ knobBand.getX() + (knobBand.getWidth() * 3) / 4, knobBand.getCentreY() + 8 });
-
-        cutoffLabels[static_cast<std::size_t>(filterIndex)]->setBounds(juce::Rectangle<int>(leftKnob.getX(), leftKnob.getY() - 20, leftKnob.getWidth(), 18));
-        cutoffKnobs[static_cast<std::size_t>(filterIndex)]->setBounds(leftKnob);
-        resonanceLabels[static_cast<std::size_t>(filterIndex)]->setBounds(juce::Rectangle<int>(rightKnob.getX(), rightKnob.getY() - 20, rightKnob.getWidth(), 18));
-        resonanceKnobs[static_cast<std::size_t>(filterIndex)]->setBounds(rightKnob);
-
         auto& filterComponent = filterComponents[static_cast<std::size_t>(filterIndex)];
-        if (filterComponent != nullptr)
+        if (filterComponent == nullptr)
         {
-            filterComponent->setInstanceIndex(filterIndex + 1);
-            filterComponent->setPanelContentBounds(panelArea);
-            filterComponent->setBounds(filterArea);
-            filterComponent->setGraphBounds(responseArea.withTrimmedLeft(8).withTrimmedRight(8).reduced(0, 4)
-                                                .translated(-filterArea.getX(), -filterArea.getY()));
+            continue;
         }
+
+        filterComponent->setInstanceIndex(filterIndex + 1);
+        filterComponent->setPanelContentBounds(panelArea);
+        filterComponent->setBounds(filterArea);
+
+        // The panel used to lay out the card's interior itself - a 24px enabled
+        // row, a 6px gap, a 24px type row, a 120px knob band - in parallel with
+        // the card the component drew. The component owns that geometry now and
+        // hands back row rectangles; the panel only translates them, because
+        // these controls are its own children rather than the component's.
+        filterComponent->layoutCardInner();
+        const auto toPanel = [&filterArea](juce::Rectangle<int> r)
+        {
+            return r.translated(filterArea.getX(), filterArea.getY());
+        };
+
+        const auto idx = static_cast<std::size_t>(filterIndex);
+        using px3::ui::ControlShape;
+
+        // Row 1: bypass and filter type.
+        {
+            auto flex = filterComponent->rowFlex(0);
+            const auto gapMargin = filterComponent->rowGap(0);
+            const auto row = toPanel(filterComponent->rowBounds(0));
+            const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
+
+            flex.items.add(juce::FlexItem(44.0f, cellHeight).withMargin(gapMargin));
+            flex.items.add(juce::FlexItem(116.0f, cellHeight).withMargin(gapMargin));
+            flex.performLayout(row.toFloat());
+
+            const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+            px3::ui::layoutLabelledControl(cell(0), enabledLabels[idx], enabledButtons[idx], nullptr,
+                                           14, 0, ControlShape::square, 22);
+            px3::ui::layoutLabelledControl(cell(1), nullptr, filterTypeBoxes[idx], nullptr,
+                                           0, 0, ControlShape::stretch, 24);
+        }
+
+        // Row 2: cutoff and resonance, each with its existing label above.
+        {
+            auto flex = filterComponent->rowFlex(1);
+            const auto gapMargin = filterComponent->rowGap(1);
+            const auto row = toPanel(filterComponent->rowBounds(1));
+            const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
+
+            for (int i = 0; i < 2; ++i)
+            {
+                auto item = juce::FlexItem(110.0f, cellHeight).withMargin(gapMargin);
+                item.flexGrow = 1.0f;
+                flex.items.add(item);
+            }
+            flex.performLayout(row.toFloat());
+
+            const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+            px3::ui::layoutLabelledControl(cell(0), cutoffLabels[idx], cutoffKnobs[idx], nullptr,
+                                           18, 0, ControlShape::square, 110);
+            px3::ui::layoutLabelledControl(cell(1), resonanceLabels[idx], resonanceKnobs[idx], nullptr,
+                                           18, 0, ControlShape::square, 110);
+        }
+
+        // Row 3 is the response graph, which the component draws.
     }
 }
 

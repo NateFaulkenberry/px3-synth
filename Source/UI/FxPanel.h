@@ -13,7 +13,6 @@ class FxPanel final : public juce::Component
 public:
     FxPanel(juce::ToggleButton& vibeBypass,
             juce::Slider& vibeAmountKnob,
-            juce::Label& vibeAmountLabel,
             juce::ComboBox& vibeTypeBox,
             juce::Label& vibeTypeLabel,
             juce::ToggleButton& delayBypass,

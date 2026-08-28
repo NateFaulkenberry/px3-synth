@@ -61,6 +61,11 @@ AmpEnvelopeComponent::AmpEnvelopeComponent(PX3SynthAudioProcessor& processorIn, 
     assignBox.setVisible(false);
     assignBox.setEnabled(false);
 
+    // "amp.env" would derive the key "env" and the title "ENV", and cards.env
+    // does not exist - so the graph fell back to cards.defaults for both its
+    // frame and its row heights. It carries the AMP ENV identity instead.
+    envelopeGraph->setCardIdentity("ampEnv", "AMP ENV");
+
     addAndMakeVisible(*envelopeGraph);
 }
 
@@ -74,32 +79,19 @@ void AmpEnvelopeComponent::resized()
 
 void AmpEnvelopeComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
 {
-    card.setPanelContentBounds(panelContent);
+    // This component draws nothing itself. It hosts the envelope graph, which
+    // owns the one card - drawing a second one here is what put a generic ENV
+    // card inside the AMP ENV card.
+    if (envelopeGraph != nullptr)
+    {
+        envelopeGraph->setPanelContentBounds(panelContent);
+    }
     repaint();
 }
 
-void AmpEnvelopeComponent::paint(juce::Graphics& g)
-{
-    // "AMP ENV" is this component's own content. AmpPanel used to draw it into
-    // these bounds; the card owns it now, like every other component.
-    card.layout(getLocalBounds());
-
-    // Greys out when the amp envelope is bypassed, like every other card.
-    if (processor.getAmpEnvEnabledParam().get())
-    {
-        card.draw(g, "AMP ENV");
-    }
-    else
-    {
-        card.drawInactive(g, "AMP ENV");
-    }
-}
 
 void AmpEnvelopeComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
-    card.setStyleKey("ampEnv");
-    card.setConfig(configIn);
-
     if (configIn != nullptr)
     {
         const auto comboStyle = configIn->getObject("styles.combos.default");
@@ -118,7 +110,5 @@ void AmpEnvelopeComponent::refreshFromParameters()
     {
         envelopeGraph->refreshFromParameters();
     }
-    // The card's greyscale state follows the bypass parameter, so it has to be
-    // repainted when that parameter changes.
     repaint();
 }

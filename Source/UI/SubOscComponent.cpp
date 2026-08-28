@@ -1,5 +1,7 @@
 #include "SubOscComponent.h"
 
+#include "CardInner.h"
+
 #include "SubOscMode.h"
 #include "UIConfig.h"
 
@@ -101,55 +103,55 @@ void SubOscComponent::advanceAnimation(float deltaPhase)
 
 void SubOscComponent::resized()
 {
-    // One place decides the card geometry, and paint() reads the same result.
-    // Previously resized() and paint() each re-derived it from a hard-coded
-    // 300px width, so any change had to be made in both or they drifted apart.
     card.setStyleKey("subOsc");
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
 
-    auto area = card.contentBelowTitle();
+    inner.setKeys("cards.defaults.cardInner", "cards.subOsc.cardInner");
+    inner.setConfig(uiConfig);
+    inner.setRowCount(3);
+    inner.layout(card.contentBelowTitle());
 
-    auto enabledRow = area.removeFromTop(24);
-    enabledLabel.setBounds(enabledRow.removeFromLeft(56));
-    enabledButton.setBounds(enabledRow.removeFromLeft(40).reduced(2, 2));
+    // Row 1: bypass, octave and wave, each as a label-over-control pair. The
+    // row's flex settings decide where they sit; this only says how big each
+    // one wants to be, which is what keeps the controls looking as they did.
+    {
+        auto flex = inner.rowFlex(0);
+        const auto gap = inner.rowGap(0);
+        const auto row = inner.rowContent(0);
+        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-    area.removeFromTop(6);
+        flex.items.add(juce::FlexItem(46.0f, cellHeight).withMargin(gap));
+        flex.items.add(juce::FlexItem(76.0f, cellHeight).withMargin(gap));
+        flex.items.add(juce::FlexItem(76.0f, cellHeight).withMargin(gap));
+        flex.performLayout(row.toFloat());
 
-    auto octaveRow = area.removeFromTop(24);
-    octaveLabel.setBounds(octaveRow.removeFromLeft(56));
-    octaveBox.setBounds(octaveRow.reduced(2, 1));
+        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+        using px3::ui::ControlShape;
+        px3::ui::layoutLabelledControl(cell(0), &enabledLabel, &enabledButton, nullptr,
+                                       14, 0, ControlShape::square, 22);
+        px3::ui::layoutLabelledControl(cell(1), &octaveLabel, &octaveBox, nullptr,
+                                       14, 0, ControlShape::stretch, 24);
+        px3::ui::layoutLabelledControl(cell(2), &waveformLabel, &waveformBox, nullptr,
+                                       14, 0, ControlShape::stretch, 24);
+    }
 
-    area.removeFromTop(6);
+    // Row 2: the pitch knob, which keeps its existing label and value readout.
+    {
+        auto flex = inner.rowFlex(1);
+        const auto gap = inner.rowGap(1);
+        const auto row = inner.rowContent(1);
 
-    auto waveformRow = area.removeFromTop(24);
-    waveformLabel.setBounds(waveformRow.removeFromLeft(56));
-    waveformBox.setBounds(waveformRow.reduced(2, 1));
+        flex.items.add(juce::FlexItem(96.0f, static_cast<float>(juce::jmax(1, row.getHeight()))).withMargin(gap));
+        flex.performLayout(row.toFloat());
 
-    area.removeFromTop(2);
+        px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
+                                       &pitchLabel, &pitch, &pitchValueLabel, 16, 16,
+                                       px3::ui::ControlShape::square, 56);
+    }
 
-    auto pitchLabelRow = area.removeFromTop(18);
-    pitchLabel.setBounds(pitchLabelRow.withSizeKeepingCentre(58, 18));
-
-    area.removeFromTop(2);
-
-    auto pitchRow = area.removeFromTop(54);
-    pitch.setBounds(pitchRow.withSizeKeepingCentre(50, 50));
-
-    area.removeFromTop(2);
-
-    auto pitchValueRow = area.removeFromTop(16);
-    pitchValueLabel.setBounds(pitchValueRow.withSizeKeepingCentre(84, 16));
-
-    area.removeFromTop(8);
-
-    auto graphArea = area;
-    const auto requestedGraphHeight = static_cast<int>(juce::jmax(80, getLocalBounds().reduced(20, 14).getHeight() - 220));
-    const auto maxGraphHeight = juce::jmax(80, graphArea.getHeight() - 24);
-    const auto graphHeight = juce::jmin(requestedGraphHeight, maxGraphHeight);
-
-    graphArea.removeFromBottom(graphHeight);
-    graphArea.removeFromBottom(10);
+    // Row 3 is the wave table, drawn in paint() rather than being a child
+    // component, so it only needs its bounds - see waveTableBounds.
 }
 
 void SubOscComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
@@ -178,26 +180,10 @@ void SubOscComponent::paint(juce::Graphics& g)
         card.drawInactive(g, "SUB OSC");
     }
 
-    auto graphLayout = card.content();
-    graphLayout.removeFromTop(24.0f);
-    graphLayout.removeFromTop(6.0f);
-    graphLayout.removeFromTop(24.0f);
-    graphLayout.removeFromTop(6.0f);
-    graphLayout.removeFromTop(24.0f);
-    graphLayout.removeFromTop(8.0f);
-    graphLayout.removeFromTop(2.0f);
-    graphLayout.removeFromTop(18.0f);
-    graphLayout.removeFromTop(2.0f);
-    graphLayout.removeFromTop(54.0f);
-    graphLayout.removeFromTop(2.0f);
-    graphLayout.removeFromTop(16.0f);
-    graphLayout.removeFromTop(8.0f);
-
-    const auto requestedGraphHeight = static_cast<float>(juce::jmax(80, getLocalBounds().reduced(20, 14).getHeight() - 220));
-    const auto maxGraphHeight = juce::jmax(80.0f, graphLayout.getHeight() - 24.0f);
-    const auto graphHeight = juce::jmin(requestedGraphHeight, maxGraphHeight);
-    graphLayout.removeFromBottom(10.0f);
-    auto graph = graphLayout.removeFromBottom(graphHeight).reduced(0.0f, 2.0f);
+    // The wave table occupies row 3. It used to be found by replaying the same
+    // removeFromTop sequence resized() used, which meant two copies of one
+    // layout that had to be kept in step by hand.
+    auto graph = inner.rowContent(2).toFloat();
 
     if (graph.getWidth() < 40.0f || graph.getHeight() < 20.0f)
     {

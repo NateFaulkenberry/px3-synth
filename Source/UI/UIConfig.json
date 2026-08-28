@@ -1,915 +1,1163 @@
 {
-    "palette": {
-        "bgBase": "#1A1A1A",
-        "bgTopStrip": "#1A1A1A",
-        "logoFill": "#1A1A1A",
-        "logoText": "#E8E8E8",
-        "comboBg": "#222222D2",
-        "comboText": "#E8E8E8",
-        "comboOutline": "#FFFFFF69",
-        "buttonBg": "#282828D2",
-        "buttonOn": "#447CB4DC",
-        "buttonText": "#E8E8E8",
-        "sectionButtonOn": "#528CC4DC",
-        "sectionButtonTextOn": "#F5F5F5",
-        "topFillColour": "#CCCCCC"
+  "palette": {
+    "bgBase": "#1A1A1A",
+    "bgTopStrip": "#1A1A1A",
+    "logoFill": "#1A1A1A",
+    "logoText": "#E8E8E8",
+    "comboBg": "#222222D2",
+    "comboText": "#E8E8E8",
+    "comboOutline": "#FFFFFF69",
+    "buttonBg": "#282828D2",
+    "buttonOn": "#447CB4DC",
+    "buttonText": "#E8E8E8",
+    "sectionButtonOn": "#528CC4DC",
+    "sectionButtonTextOn": "#F5F5F5",
+    "topFillColour": "#CCCCCC"
+  },
+  "editor": {
+    "background": {
+      "baseColour": "$bgBase",
+      "imageDarkness": 150
     },
-    "editor": {
-        "background": {
-            "baseColour": "$bgBase",
-            "imageDarkness": 150
-        },
-        "topStrip": {
-            "fillColour": "$bgTopStrip",
-            "cornerRadius": 12
-        },
-        "logo": {
-            "fillColour": "$logoFill",
-            "subtitle": {
-                "colour": "$logoText",
-                "fontSize": 14
-            }
-        },
-        "layout": {
-            "headerHeight": 120,
-            "sectionGap": 10,
-            "logoPanelWidth": 150,
-            "gainPanelWidth": 100
-        }
+    "topStrip": {
+      "fillColour": "$bgTopStrip",
+      "cornerRadius": 12
     },
-    "topMenu": {
-        "layout": {
-            "rowHeight": 32,
-            "sectionGap": 6,
-            "sectionMinWidth": 282,
-            "sectionMaxWidth": 390,
-            "presetClusterMenuWidth": 94,
-            "prevNextWidth": 26,
-            "presetHorizontalPad": 5,
-            "presetSmallGap": 8,
-            "menuButtonMinWidth": 64,
-            "menuButtonMaxWidth": 78,
-            "menuButtonInset": 16
-        },
-        "buttons": {
-            "sectionAmp": {}
-        }
+    "logo": {
+      "fillColour": "$logoFill",
+      "subtitle": {
+        "colour": "$logoText",
+        "fontSize": 14
+      }
     },
-    "styles": {
-        "buttons": {
-            "topMenuPreset": {
-                "buttonColour": "$buttonBg",
-                "buttonOnColour": "$buttonOn",
-                "textColour": "$buttonText",
-                "textOnColour": "$buttonText"
-            },
-            "topMenuSection": {
-                "buttonColour": "$buttonBg",
-                "buttonOnColour": "$sectionButtonOn",
-                "textColour": "$buttonText",
-                "textOnColour": "$sectionButtonTextOn"
-            }
-        },
-        "combos": {
-            "default": {
-                "backgroundColour": "$comboBg",
-                "textColour": "$comboText",
-                "outlineColour": "$comboOutline"
-            }
-        }
-    },
-    "fx": {
-        "panel": {
-            "fillAlpha": 0,
-            "strokeAlpha": 0,
-            "cornerRadius": 10,
-            "layout": {
-                "padX": 0,
-                "padY": 0
-            }
-        },
-        "vibe": {
-            "layout": {
-                "padX": 10,
-                "padY": 8
-            },
-            "visual": {
-                "onLabel": {
-                    "fontSize": 11.5,
-                    "textColour": "#E8E8E8",
-                    "bounds": {
-                        "x": 36,
-                        "y": 11,
-                        "width": 24,
-                        "height": 14
-                    }
-                }
-            }
-        },
-        "delay": {
-            "layout": {
-                "padX": 10,
-                "padY": 8
-            },
-            "visual": {
-                "onLabel": {
-                    "fontSize": 11.5,
-                    "textColour": "#E8E8E8",
-                    "bounds": {
-                        "x": 36,
-                        "y": 11,
-                        "width": 24,
-                        "height": 14
-                    }
-                }
-            }
-        },
-        "mood": {
-            "layout": {
-                "padX": 10,
-                "padY": 8
-            },
-            "visual": {
-                "onLabel": {
-                    "fontSize": 11.5,
-                    "textColour": "#E8E8E8",
-                    "bounds": {
-                        "x": 36,
-                        "y": 11,
-                        "width": 24,
-                        "height": 14
-                    }
-                }
-            }
-        },
-        "reverb": {
-            "layout": {
-                "padX": 10,
-                "padY": 8
-            },
-            "visual": {
-                "onLabel": {
-                    "fontSize": 11.5,
-                    "textColour": "#E8E8E8",
-                    "bounds": {
-                        "x": 36,
-                        "y": 11,
-                        "width": 24,
-                        "height": 14
-                    }
-                }
-            }
-        }
-    },
-    "osc": {
-        "panel": {
-            "fillAlpha": 0,
-            "strokeAlpha": 0,
-            "cornerRadius": 0,
-            "layout": {
-                "padX": 0,
-                "padY": 0
-            }
-        }
-    },
-    "flt": {
-        "panel": {
-            "fillAlpha": 0,
-            "strokeAlpha": 0,
-            "cornerRadius": 10,
-            "layout": {
-                "padX": 0,
-                "padY": 0
-            }
-        }
-    },
-    "mix": {
-        "panel": {
-            "fillAlpha": 0.14,
-            "strokeAlpha": 0.5,
-            "cornerRadius": 10,
-            "layout": {
-                "padX": 10,
-                "padY": 10
-            }
-        },
-        "channel": {
-            "width": 84,
-            "spacing": 8,
-            "titleSize": 11.5,
-            "labelSize": 9.5
-        },
-        "fader": {
-            "trackWidth": 4,
-            "thumbWidth": 25,
-            "thumbHeight": 20,
-            "cornerRadius": 2,
-            "trackPadding": 6,
-            "trackColour": "#82BEFFCC",
-            "trackBackgroundColour": "#1A1C20BE",
-            "thumbColour": "#E6ECF6",
-            "disabledColour": "#78787878",
-            "hoverColour": "#F0F6FFDD"
-        },
-        "mute": {
-            "size": {
-                "width": 42,
-                "height": 18
-            },
-            "cornerRadius": 4,
-            "textSize": 9.5,
-            "textColour": "#E8E8E8",
-            "normalColour": "#2C2E34D2",
-            "hoverColour": "#42464FE6",
-            "activeColour": "#E05A5AE0",
-            "pressedColour": "#F06A6AE0",
-            "disabledColour": "#22222288",
-            "borderColour": "#DCE0EC78"
-        },
-        "solo": {
-            "size": {
-                "width": 42,
-                "height": 18
-            },
-            "cornerRadius": 4,
-            "textSize": 9.5,
-            "textColour": "#E8E8E8",
-            "normalColour": "#2C2E34D2",
-            "hoverColour": "#42464FE6",
-            "activeColour": "#4C88CAE0",
-            "pressedColour": "#60A4EEE0",
-            "disabledColour": "#22222288",
-            "borderColour": "#DCE0EC78"
-        },
-        "meter": {
-            "cornerRadius": 2,
-            "backgroundColour": "#121418B4",
-            "fillColour": "#78D28CDC",
-            "highColour": "#E6C45AE6",
-            "clipColour": "#E65A5AE6",
-            "borderColour": "#DCE0EC5A"
-        }
-    },
-    "mod": {
-        "panel": {
-            "fillAlpha": 0,
-            "strokeAlpha": 0,
-            "cornerRadius": 0,
-            "layout": {
-                "padX": 0,
-                "padY": 0
-            }
-        },
-        "grid": {
-            "colGap": 8,
-            "rowGap": 10,
-            "minColWidth": 280,
-            "minLfoHeight": 300,
-            "minEnvHeight": 280
-        },
-        "lfo1": {
-            "visual": {
-                "onLabel": {
-                    "fontSize": 11.5,
-                    "textColour": "#E8E8E8",
-                    "width": 52
-                }
-            }
-        },
-        "lfo2": {
-            "visual": {
-                "onLabel": {
-                    "fontSize": 11.5,
-                    "textColour": "#E8E8E8",
-                    "width": 52
-                }
-            }
-        },
-        "lfo3": {
-            "visual": {
-                "onLabel": {
-                    "fontSize": 11.5,
-                    "textColour": "#E8E8E8",
-                    "width": 52
-                }
-            }
-        },
-        "env1": {
-            "visual": {
-                "cardCornerRadius": 8,
-                "outerStrokeThickness": 1.2,
-                "outerStrokeColour": "#DCE8FC",
-                "outerStrokeAlphaEnabled": 88,
-                "outerStrokeAlphaDisabled": 66,
-                "graph": {
-                    "cornerRadius": 7,
-                    "fillColour": "#0E0E12",
-                    "fillAlpha": 170,
-                    "strokeThickness": 1,
-                    "strokeColourEnabled": "#49DE79",
-                    "strokeAlphaEnabled": 82,
-                    "strokeColourDisabled": "#888888",
-                    "strokeAlphaDisabled": 62
-                },
-                "onLabel": {
-                    "fontSize": 11.5,
-                    "textColour": "#E8E8E8",
-                    "width": 52
-                }
-            }
-        },
-        "env2": {
-            "visual": {
-                "cardCornerRadius": 8,
-                "outerStrokeThickness": 1.2,
-                "outerStrokeColour": "#DCE8FC",
-                "outerStrokeAlphaEnabled": 88,
-                "outerStrokeAlphaDisabled": 66,
-                "graph": {
-                    "cornerRadius": 7,
-                    "fillColour": "#0E0E12",
-                    "fillAlpha": 170,
-                    "strokeThickness": 1,
-                    "strokeColourEnabled": "#49DE79",
-                    "strokeAlphaEnabled": 82,
-                    "strokeColourDisabled": "#888888",
-                    "strokeAlphaDisabled": 62
-                },
-                "onLabel": {
-                    "fontSize": 11.5,
-                    "textColour": "#E8E8E8",
-                    "width": 52
-                }
-            }
-        },
-        "env3": {
-            "visual": {
-                "cardCornerRadius": 8,
-                "outerStrokeThickness": 1.2,
-                "outerStrokeColour": "#DCE8FC",
-                "outerStrokeAlphaEnabled": 88,
-                "outerStrokeAlphaDisabled": 66,
-                "graph": {
-                    "cornerRadius": 7,
-                    "fillColour": "#0E0E12",
-                    "fillAlpha": 170,
-                    "strokeThickness": 1,
-                    "strokeColourEnabled": "#49DE79",
-                    "strokeAlphaEnabled": 82,
-                    "strokeColourDisabled": "#888888",
-                    "strokeAlphaDisabled": 62
-                },
-                "onLabel": {
-                    "fontSize": 11.5,
-                    "textColour": "#E8E8E8",
-                    "width": 52
-                }
-            }
-        },
-        "lfo": {
-            "visual": {
-                "onLabel": {
-                    "fontSize": 11.5,
-                    "textColour": "#E8E8E8",
-                    "bounds": {
-                        "x": 14,
-                        "y": 11,
-                        "width": 24,
-                        "height": 14
-                    }
-                }
-            }
-        },
-        "env": {
-            "visual": {
-                "cardCornerRadius": 8,
-                "outerStrokeThickness": 1.2,
-                "outerStrokeColour": "#DCE8FC",
-                "outerStrokeAlphaEnabled": 88,
-                "outerStrokeAlphaDisabled": 66,
-                "graph": {
-                    "cornerRadius": 7,
-                    "fillColour": "#0E0E12",
-                    "fillAlpha": 170,
-                    "strokeThickness": 1,
-                    "strokeColourEnabled": "#49DE79",
-                    "strokeAlphaEnabled": 82,
-                    "strokeColourDisabled": "#888888",
-                    "strokeAlphaDisabled": 62
-                },
-                "onLabel": {
-                    "fontSize": 11.5,
-                    "textColour": "#E8E8E8",
-                    "width": 52
-                }
-            }
-        }
-    },
-    "amp": {
-        "panel": {
-            "fillAlpha": 0,
-            "strokeAlpha": 0,
-            "cornerRadius": 0,
-            "layout": {
-                "padX": 0,
-                "padY": 0
-            }
-        },
-        "env": {
-            "behavior": {
-                "alwaysEnabled": true,
-                "fullHeightGraph": true
-            },
-            "layout": {
-                "cardWidthPercent": 0.6,
-                "maxWidth": 360,
-                "maxHeight": 340
-            },
-            "visual": {
-                "cardCornerRadius": 8,
-                "outerStrokeThickness": 1.2,
-                "outerStrokeColour": "#DCE8FC",
-                "outerStrokeAlphaEnabled": 88,
-                "outerStrokeAlphaDisabled": 66,
-                "graph": {
-                    "cornerRadius": 7,
-                    "fillColour": "#0E0E12",
-                    "fillAlpha": 170,
-                    "strokeThickness": 1,
-                    "strokeColourEnabled": "#49DE79",
-                    "strokeAlphaEnabled": 82,
-                    "strokeColourDisabled": "#888888",
-                    "strokeAlphaDisabled": 62
-                }
-            }
-        }
-    },
-    "panels": {
-        "osc": {
-            "height": 0,
-            "overflowY": "hidden"
-        }
-    },
-    "cards": {
-        "defaults": {
-            "width": "auto",
-            "height": "auto",
-            "margin": 6,
-            "padding": 10,
-            "border": {
-                "enabled": true,
-                "width": 1.2,
-                "color": "#DCE8FC",
-                "opacity": 0.35,
-                "radius": 8
-            },
-            "background": {
-                "color": "#68C2FF",
-                "opacity": 0.1
-            },
-            "gloss": {
-                "margin": 6,
-                "split": 0.5,
-                "topFill": {
-                    "color": "#68C2FF",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.07
-                }
-            },
-            "title": {
-                "fontSize": 11,
-                "color": "#DCE8FC",
-                "align": "center",
-                "y": 0,
-                "height": 14
-            },
-            "disabled": {
-                "saturation": 0,
-                "dim": 0.75
-            }
-        },
-        "subOsc": {
-            "border": {
-                "color": "#3FBFC9",
-                "opacity": 0.35
-            },
-            "background": {
-                "color": "#3FBFC9",
-                "opacity": 0.1
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#3FBFC9",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#DDF6F8"
-            },
-            "width": 300
-        },
-        "osc1": {
-            "border": {
-                "color": "#4A99FF",
-                "opacity": 0.35
-            },
-            "background": {
-                "color": "#4A99FF",
-                "opacity": 0.1
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#4A99FF",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#DCE8FC"
-            },
-            "width": 300
-        },
-        "osc2": {
-            "border": {
-                "color": "#4A99FF",
-                "opacity": 0.35
-            },
-            "background": {
-                "color": "#4A99FF",
-                "opacity": 0.1
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#4A99FF",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#DCE8FC"
-            },
-            "width": 300
-        },
-        "osc3": {
-            "border": {
-                "color": "#4A99FF",
-                "opacity": 0.35
-            },
-            "background": {
-                "color": "#4A99FF",
-                "opacity": 0.1
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#4A99FF",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#DCE8FC"
-            },
-            "width": 300
-        },
-        "mixerChannel": {
-            "margin": 2,
-            "padding": 6,
-            "background": {
-                "color": "#68C2FF",
-                "opacity": 0.06
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#68C2FF",
-                    "opacity": 0.05
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.04
-                }
-            },
-            "border": {
-                "color": "#8FA8C8",
-                "opacity": 0.28
-            },
-            "title": {
-                "color": "#DCE8FC"
-            }
-        },
-        "filter1": {
-            "border": {
-                "color": "#FF5858",
-                "opacity": 0.35
-            },
-            "background": {
-                "color": "#FF5858",
-                "opacity": 0.1
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#FF5858",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#FFE0E0"
-            }
-        },
-        "filter2": {
-            "border": {
-                "color": "#FF5858",
-                "opacity": 0.35
-            },
-            "background": {
-                "color": "#FF5858",
-                "opacity": 0.1
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#FF5858",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#FFE0E0"
-            }
-        },
-        "vibe": {
-            "border": {
-                "color": "#68C2FF",
-                "opacity": 0.71
-            },
-            "background": {
-                "color": "#68C2FF",
-                "opacity": 0.137
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#68C2FF",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#F0F5FF"
-            }
-        },
-        "delay": {
-            "border": {
-                "color": "#FFC66E",
-                "opacity": 0.71
-            },
-            "background": {
-                "color": "#FFC66E",
-                "opacity": 0.137
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#FFC66E",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#FAF4E0"
-            }
-        },
-        "mood": {
-            "border": {
-                "color": "#EEB678",
-                "opacity": 0.71
-            },
-            "background": {
-                "color": "#EEB678",
-                "opacity": 0.137
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#EEB678",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#FFF0D6"
-            }
-        },
-        "reverb": {
-            "border": {
-                "color": "#80D0FF",
-                "opacity": 0.59
-            },
-            "background": {
-                "color": "#80D0FF",
-                "opacity": 0.118
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#80D0FF",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#E0F5FF"
-            }
-        },
-        "lfo1": {
-            "border": {
-                "color": "#BA70FF",
-                "opacity": 0.35
-            },
-            "background": {
-                "color": "#BA70FF",
-                "opacity": 0.1
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#BA70FF",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#EEDCFF"
-            }
-        },
-        "env1": {
-            "border": {
-                "color": "#49DE79",
-                "opacity": 0.35
-            },
-            "background": {
-                "color": "#49DE79",
-                "opacity": 0.1
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#49DE79",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#D9F7E3"
-            }
-        },
-        "lfo2": {
-            "border": {
-                "color": "#BA70FF",
-                "opacity": 0.35
-            },
-            "background": {
-                "color": "#BA70FF",
-                "opacity": 0.1
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#BA70FF",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#EEDCFF"
-            }
-        },
-        "env2": {
-            "border": {
-                "color": "#49DE79",
-                "opacity": 0.35
-            },
-            "background": {
-                "color": "#49DE79",
-                "opacity": 0.1
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#49DE79",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#D9F7E3"
-            }
-        },
-        "lfo3": {
-            "border": {
-                "color": "#BA70FF",
-                "opacity": 0.35
-            },
-            "background": {
-                "color": "#BA70FF",
-                "opacity": 0.1
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#BA70FF",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#EEDCFF"
-            }
-        },
-        "env3": {
-            "border": {
-                "color": "#49DE79",
-                "opacity": 0.35
-            },
-            "background": {
-                "color": "#49DE79",
-                "opacity": 0.1
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#49DE79",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#D9F7E3"
-            }
-        },
-        "ampEnv": {
-            "border": {
-                "color": "#49DE79",
-                "opacity": 0.35
-            },
-            "background": {
-                "color": "#49DE79",
-                "opacity": 0.1
-            },
-            "gloss": {
-                "topFill": {
-                    "color": "#49DE79",
-                    "opacity": 0.1
-                },
-                "bottomFill": {
-                    "color": "#000000",
-                    "opacity": 0.06
-                }
-            },
-            "title": {
-                "color": "#D9F7E3"
-            }
-        }
+    "layout": {
+      "headerHeight": 120,
+      "sectionGap": 10,
+      "logoPanelWidth": 150,
+      "gainPanelWidth": 100
     }
+  },
+  "topMenu": {
+    "layout": {
+      "rowHeight": 32,
+      "sectionGap": 6,
+      "sectionMinWidth": 282,
+      "sectionMaxWidth": 390,
+      "presetClusterMenuWidth": 94,
+      "prevNextWidth": 26,
+      "presetHorizontalPad": 5,
+      "presetSmallGap": 8,
+      "menuButtonMinWidth": 64,
+      "menuButtonMaxWidth": 78,
+      "menuButtonInset": 16
+    },
+    "buttons": {
+      "sectionAmp": {}
+    }
+  },
+  "styles": {
+    "buttons": {
+      "topMenuPreset": {
+        "buttonColour": "$buttonBg",
+        "buttonOnColour": "$buttonOn",
+        "textColour": "$buttonText",
+        "textOnColour": "$buttonText"
+      },
+      "topMenuSection": {
+        "buttonColour": "$buttonBg",
+        "buttonOnColour": "$sectionButtonOn",
+        "textColour": "$buttonText",
+        "textOnColour": "$sectionButtonTextOn"
+      }
+    },
+    "combos": {
+      "default": {
+        "backgroundColour": "$comboBg",
+        "textColour": "$comboText",
+        "outlineColour": "$comboOutline"
+      }
+    }
+  },
+  "fx": {
+    "panel": {
+      "fillAlpha": 0,
+      "strokeAlpha": 0,
+      "cornerRadius": 10,
+      "layout": {
+        "padX": 0,
+        "padY": 0
+      }
+    },
+    "vibe": {
+      "visual": {
+        "onLabel": {
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8"
+        }
+      }
+    },
+    "delay": {
+      "visual": {
+        "onLabel": {
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8"
+        }
+      }
+    },
+    "mood": {
+      "visual": {
+        "onLabel": {
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8"
+        }
+      }
+    },
+    "reverb": {
+      "visual": {
+        "onLabel": {
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8"
+        }
+      }
+    }
+  },
+  "osc": {
+    "panel": {
+      "fillAlpha": 0,
+      "strokeAlpha": 0,
+      "cornerRadius": 0,
+      "layout": {
+        "padX": 0,
+        "padY": 0
+      }
+    }
+  },
+  "flt": {
+    "panel": {
+      "fillAlpha": 0,
+      "strokeAlpha": 0,
+      "cornerRadius": 10,
+      "layout": {
+        "padX": 0,
+        "padY": 0
+      }
+    }
+  },
+  "mix": {
+    "panel": {
+      "fillAlpha": 0.14,
+      "strokeAlpha": 0.5,
+      "cornerRadius": 10,
+      "layout": {
+        "padX": 10,
+        "padY": 10
+      }
+    },
+    "channel": {
+      "width": 84,
+      "spacing": 8,
+      "titleSize": 11.5,
+      "labelSize": 9.5
+    },
+    "fader": {
+      "trackWidth": 4,
+      "thumbWidth": 25,
+      "thumbHeight": 20,
+      "cornerRadius": 2,
+      "trackPadding": 6,
+      "trackColour": "#82BEFFCC",
+      "trackBackgroundColour": "#1A1C20BE",
+      "thumbColour": "#E6ECF6",
+      "disabledColour": "#78787878",
+      "hoverColour": "#F0F6FFDD"
+    },
+    "mute": {
+      "size": {
+        "width": 42,
+        "height": 18
+      },
+      "cornerRadius": 4,
+      "textSize": 9.5,
+      "textColour": "#E8E8E8",
+      "normalColour": "#2C2E34D2",
+      "hoverColour": "#42464FE6",
+      "activeColour": "#E05A5AE0",
+      "pressedColour": "#F06A6AE0",
+      "disabledColour": "#22222288",
+      "borderColour": "#DCE0EC78"
+    },
+    "solo": {
+      "size": {
+        "width": 42,
+        "height": 18
+      },
+      "cornerRadius": 4,
+      "textSize": 9.5,
+      "textColour": "#E8E8E8",
+      "normalColour": "#2C2E34D2",
+      "hoverColour": "#42464FE6",
+      "activeColour": "#4C88CAE0",
+      "pressedColour": "#60A4EEE0",
+      "disabledColour": "#22222288",
+      "borderColour": "#DCE0EC78"
+    },
+    "meter": {
+      "cornerRadius": 2,
+      "backgroundColour": "#121418B4",
+      "fillColour": "#78D28CDC",
+      "highColour": "#E6C45AE6",
+      "clipColour": "#E65A5AE6",
+      "borderColour": "#DCE0EC5A"
+    }
+  },
+  "mod": {
+    "panel": {
+      "fillAlpha": 0,
+      "strokeAlpha": 0,
+      "cornerRadius": 0,
+      "layout": {
+        "padX": 0,
+        "padY": 0
+      }
+    },
+    "grid": {
+      "colGap": 8,
+      "rowGap": 10,
+      "minColWidth": 280,
+      "minLfoHeight": 300,
+      "minEnvHeight": 280
+    },
+    "lfo1": {
+      "visual": {
+        "onLabel": {
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8"
+        }
+      }
+    },
+    "lfo2": {
+      "visual": {
+        "onLabel": {
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8"
+        }
+      }
+    },
+    "lfo3": {
+      "visual": {
+        "onLabel": {
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8"
+        }
+      }
+    },
+    "env1": {
+      "visual": {
+        "cardCornerRadius": 8,
+        "outerStrokeThickness": 1.2,
+        "outerStrokeColour": "#DCE8FC",
+        "outerStrokeAlphaEnabled": 88,
+        "outerStrokeAlphaDisabled": 66,
+        "graph": {
+          "cornerRadius": 7,
+          "fillColour": "#0E0E12",
+          "fillAlpha": 170,
+          "strokeThickness": 1,
+          "strokeColourEnabled": "#49DE79",
+          "strokeAlphaEnabled": 82,
+          "strokeColourDisabled": "#888888",
+          "strokeAlphaDisabled": 62
+        },
+        "onLabel": {
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8"
+        }
+      }
+    },
+    "env2": {
+      "visual": {
+        "cardCornerRadius": 8,
+        "outerStrokeThickness": 1.2,
+        "outerStrokeColour": "#DCE8FC",
+        "outerStrokeAlphaEnabled": 88,
+        "outerStrokeAlphaDisabled": 66,
+        "graph": {
+          "cornerRadius": 7,
+          "fillColour": "#0E0E12",
+          "fillAlpha": 170,
+          "strokeThickness": 1,
+          "strokeColourEnabled": "#49DE79",
+          "strokeAlphaEnabled": 82,
+          "strokeColourDisabled": "#888888",
+          "strokeAlphaDisabled": 62
+        },
+        "onLabel": {
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8"
+        }
+      }
+    },
+    "env3": {
+      "visual": {
+        "cardCornerRadius": 8,
+        "outerStrokeThickness": 1.2,
+        "outerStrokeColour": "#DCE8FC",
+        "outerStrokeAlphaEnabled": 88,
+        "outerStrokeAlphaDisabled": 66,
+        "graph": {
+          "cornerRadius": 7,
+          "fillColour": "#0E0E12",
+          "fillAlpha": 170,
+          "strokeThickness": 1,
+          "strokeColourEnabled": "#49DE79",
+          "strokeAlphaEnabled": 82,
+          "strokeColourDisabled": "#888888",
+          "strokeAlphaDisabled": 62
+        },
+        "onLabel": {
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8"
+        }
+      }
+    },
+    "lfo": {
+      "visual": {
+        "onLabel": {
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8",
+          "bounds": {
+            "x": 14,
+            "y": 11,
+            "width": 24,
+            "height": 14
+          }
+        }
+      }
+    },
+    "env": {
+      "visual": {
+        "cardCornerRadius": 8,
+        "outerStrokeThickness": 1.2,
+        "outerStrokeColour": "#DCE8FC",
+        "outerStrokeAlphaEnabled": 88,
+        "outerStrokeAlphaDisabled": 66,
+        "graph": {
+          "cornerRadius": 7,
+          "fillColour": "#0E0E12",
+          "fillAlpha": 170,
+          "strokeThickness": 1,
+          "strokeColourEnabled": "#49DE79",
+          "strokeAlphaEnabled": 82,
+          "strokeColourDisabled": "#888888",
+          "strokeAlphaDisabled": 62
+        },
+        "onLabel": {
+          "fontSize": 11.5,
+          "textColour": "#E8E8E8"
+        }
+      }
+    }
+  },
+  "amp": {
+    "panel": {
+      "fillAlpha": 0,
+      "strokeAlpha": 0,
+      "cornerRadius": 0,
+      "layout": {
+        "padX": 0,
+        "padY": 0
+      }
+    },
+    "env": {
+      "behavior": {
+        "alwaysEnabled": true,
+        "fullHeightGraph": true
+      },
+      "layout": {
+        "cardWidthPercent": 0.6,
+        "maxWidth": 360,
+        "maxHeight": 340
+      },
+      "visual": {
+        "cardCornerRadius": 8,
+        "outerStrokeThickness": 1.2,
+        "outerStrokeColour": "#DCE8FC",
+        "outerStrokeAlphaEnabled": 88,
+        "outerStrokeAlphaDisabled": 66,
+        "graph": {
+          "cornerRadius": 7,
+          "fillColour": "#0E0E12",
+          "fillAlpha": 170,
+          "strokeThickness": 1,
+          "strokeColourEnabled": "#49DE79",
+          "strokeAlphaEnabled": 82,
+          "strokeColourDisabled": "#888888",
+          "strokeAlphaDisabled": 62
+        }
+      }
+    }
+  },
+  "panels": {
+    "osc": {
+      "height": 0,
+      "overflowY": "hidden"
+    }
+  },
+  "cards": {
+    "defaults": {
+      "width": "auto",
+      "height": "auto",
+      "margin": 6,
+      "padding": 10,
+      "border": {
+        "enabled": true,
+        "width": 1.2,
+        "color": "#DCE8FC",
+        "opacity": 0.35,
+        "radius": 8
+      },
+      "background": {
+        "color": "#68C2FF",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "margin": 6,
+        "split": 0.5,
+        "topFill": {
+          "color": "#68C2FF",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.07
+        }
+      },
+      "title": {
+        "fontSize": 11,
+        "color": "#DCE8FC",
+        "align": "center",
+        "y": 0,
+        "height": 14
+      },
+      "disabled": {
+        "saturation": 0,
+        "dim": 0.75
+      },
+      "cardInner": {
+        "margin": 0,
+        "padding": 4,
+        "display": "flex",
+        "direction": "column",
+        "wrap": "nowrap",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "alignContent": "center",
+        "gap": 2,
+        "rows": {
+          "default": {
+            "margin": 0,
+            "padding": 0,
+            "display": "flex",
+            "direction": "row",
+            "wrap": "nowrap",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "alignContent": "center",
+            "gap": 6
+          },
+          "row1": {
+            "height": "26%"
+          },
+          "row2": {
+            "height": "30%"
+          },
+          "row3": {
+            "height": "44%"
+          }
+        }
+      }
+    },
+    "subOsc": {
+      "border": {
+        "color": "#3FBFC9",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#3FBFC9",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#3FBFC9",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#DDF6F8"
+      },
+      "width": 300,
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "26%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "32%"
+          },
+          "row3": {
+            "height": "42%",
+            "padding": 2
+          }
+        }
+      }
+    },
+    "osc1": {
+      "border": {
+        "color": "#4A99FF",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#4A99FF",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#4A99FF",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#DCE8FC"
+      },
+      "width": 300,
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "22%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "36%",
+            "gap": 4
+          },
+          "row3": {
+            "height": "42%",
+            "padding": 2
+          }
+        }
+      }
+    },
+    "osc2": {
+      "border": {
+        "color": "#4A99FF",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#4A99FF",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#4A99FF",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#DCE8FC"
+      },
+      "width": 300,
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "22%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "36%",
+            "gap": 4
+          },
+          "row3": {
+            "height": "42%",
+            "padding": 2
+          }
+        }
+      }
+    },
+    "osc3": {
+      "border": {
+        "color": "#4A99FF",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#4A99FF",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#4A99FF",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#DCE8FC"
+      },
+      "width": 300,
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "22%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "36%",
+            "gap": 4
+          },
+          "row3": {
+            "height": "42%",
+            "padding": 2
+          }
+        }
+      }
+    },
+    "mixerChannel": {
+      "margin": 2,
+      "padding": 6,
+      "background": {
+        "color": "#68C2FF",
+        "opacity": 0.06
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#68C2FF",
+          "opacity": 0.05
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.04
+        }
+      },
+      "border": {
+        "color": "#8FA8C8",
+        "opacity": 0.28
+      },
+      "title": {
+        "color": "#DCE8FC"
+      }
+    },
+    "filter1": {
+      "border": {
+        "color": "#FF5858",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#FF5858",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#FF5858",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#FFE0E0"
+      },
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "18%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "40%",
+            "gap": 10
+          },
+          "row3": {
+            "height": "42%",
+            "padding": 4
+          }
+        }
+      }
+    },
+    "filter2": {
+      "border": {
+        "color": "#FF5858",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#FF5858",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#FF5858",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#FFE0E0"
+      },
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "18%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "40%",
+            "gap": 10
+          },
+          "row3": {
+            "height": "42%",
+            "padding": 4
+          }
+        }
+      }
+    },
+    "vibe": {
+      "border": {
+        "color": "#68C2FF",
+        "opacity": 0.71
+      },
+      "background": {
+        "color": "#68C2FF",
+        "opacity": 0.137
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#68C2FF",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#F0F5FF"
+      },
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "18%",
+            "gap": 4
+          },
+          "row2": {
+            "height": "50%"
+          },
+          "row3": {
+            "height": "32%"
+          }
+        }
+      }
+    },
+    "delay": {
+      "border": {
+        "color": "#FFC66E",
+        "opacity": 0.71
+      },
+      "background": {
+        "color": "#FFC66E",
+        "opacity": 0.137
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#FFC66E",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#FAF4E0"
+      },
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "14%",
+            "gap": 4
+          },
+          "row2": {
+            "height": "38%"
+          },
+          "row3": {
+            "height": "48%",
+            "wrap": "wrap",
+            "gap": 6,
+            "justifyContent": "center",
+            "alignContent": "center"
+          }
+        }
+      }
+    },
+    "mood": {
+      "border": {
+        "color": "#EEB678",
+        "opacity": 0.71
+      },
+      "background": {
+        "color": "#EEB678",
+        "opacity": 0.137
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#EEB678",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#FFF0D6"
+      },
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "12%",
+            "gap": 4
+          },
+          "row2": {
+            "height": "20%",
+            "wrap": "wrap",
+            "gap": 6
+          },
+          "row3": {
+            "height": "68%",
+            "wrap": "wrap",
+            "gap": 6,
+            "justifyContent": "center",
+            "alignContent": "center"
+          }
+        }
+      }
+    },
+    "reverb": {
+      "border": {
+        "color": "#80D0FF",
+        "opacity": 0.59
+      },
+      "background": {
+        "color": "#80D0FF",
+        "opacity": 0.118
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#80D0FF",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#E0F5FF"
+      },
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "18%",
+            "gap": 4
+          },
+          "row2": {
+            "height": "50%"
+          },
+          "row3": {
+            "height": "32%"
+          }
+        }
+      }
+    },
+    "lfo1": {
+      "border": {
+        "color": "#BA70FF",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#BA70FF",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#BA70FF",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#EEDCFF"
+      },
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "22%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "36%",
+            "gap": 10
+          },
+          "row3": {
+            "height": "42%",
+            "padding": 2
+          }
+        }
+      }
+    },
+    "env1": {
+      "border": {
+        "color": "#49DE79",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#49DE79",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#49DE79",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#D9F7E3"
+      },
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "20%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "28%"
+          },
+          "row3": {
+            "height": "52%",
+            "padding": 2
+          }
+        }
+      }
+    },
+    "lfo2": {
+      "border": {
+        "color": "#BA70FF",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#BA70FF",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#BA70FF",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#EEDCFF"
+      },
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "22%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "36%",
+            "gap": 10
+          },
+          "row3": {
+            "height": "42%",
+            "padding": 2
+          }
+        }
+      }
+    },
+    "env2": {
+      "border": {
+        "color": "#49DE79",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#49DE79",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#49DE79",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#D9F7E3"
+      },
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "20%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "28%"
+          },
+          "row3": {
+            "height": "52%",
+            "padding": 2
+          }
+        }
+      }
+    },
+    "lfo3": {
+      "border": {
+        "color": "#BA70FF",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#BA70FF",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#BA70FF",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#EEDCFF"
+      },
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "22%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "36%",
+            "gap": 10
+          },
+          "row3": {
+            "height": "42%",
+            "padding": 2
+          }
+        }
+      }
+    },
+    "env3": {
+      "border": {
+        "color": "#49DE79",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#49DE79",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#49DE79",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#D9F7E3"
+      },
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "20%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "28%"
+          },
+          "row3": {
+            "height": "52%",
+            "padding": 2
+          }
+        }
+      }
+    },
+    "ampEnv": {
+      "border": {
+        "color": "#49DE79",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#49DE79",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#49DE79",
+          "opacity": 0.1
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0.06
+        }
+      },
+      "title": {
+        "color": "#D9F7E3"
+      },
+      "cardInner": {
+        "rows": {
+          "row1": {
+            "height": "100%",
+            "padding": 2
+          }
+        }
+      }
+    }
+  }
 }

@@ -1,5 +1,7 @@
 #include "ReverbComponent.h"
 
+#include "CardInner.h"
+
 #include "UIConfig.h"
 
 ReverbComponent::ReverbComponent(juce::ToggleButton& enabledButtonIn,
@@ -42,28 +44,71 @@ void ReverbComponent::setActive(bool enabled)
 void ReverbComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+    // cardInner parses its rows in resized(), so a live reload has to redo
+    // the layout as well as the paint.
+    resized();
     repaint();
 }
 
 void ReverbComponent::resized()
 {
-    const auto padX = uiConfig != nullptr ? uiConfig->getInt("fx.reverb.layout.padX", 10) : 10;
-    const auto padY = uiConfig != nullptr ? uiConfig->getInt("fx.reverb.layout.padY", 8) : 8;
-    auto area = getLocalBounds().reduced(padX, padY);
+    card.setStyleKey("reverb");
+    card.setConfig(uiConfig);
+    card.layout(getLocalBounds());
 
-    auto top = area.removeFromTop(22);
-    enabledButton.setBounds(top.removeFromLeft(22));
+    inner.setKeys("cards.defaults.cardInner", "cards.reverb.cardInner");
+    inner.setConfig(uiConfig);
+    inner.setRowCount(3);
+    inner.layout(card.contentBelowTitle());
 
-    area.removeFromTop(4);
-    auto bottom = area.removeFromBottom(24);
-    typeLabel.setBounds(bottom.removeFromLeft(56));
-    typeBox.setBounds(bottom.reduced(2, 1));
+    using px3::ui::ControlShape;
 
-    area.removeFromTop(4);
-    const auto labelArea = area.removeFromBottom(22);
-    const auto knobSize = juce::jmin(82, juce::jmin(area.getWidth(), area.getHeight()));
-    amountKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(area.getCentre()));
-    amountLabel.setBounds(labelArea);
+    // Row 1: the bypass button, with the painted "ON" text beside it.
+    {
+        auto flex = inner.rowFlex(0);
+        const auto gap = inner.rowGap(0);
+        const auto row = inner.rowContent(0);
+        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
+
+        flex.items.add(juce::FlexItem(24.0f, cellHeight).withMargin(gap));
+        flex.items.add(juce::FlexItem(26.0f, cellHeight).withMargin(gap));
+        flex.performLayout(row.toFloat());
+
+        const auto buttonCell = flex.items.getReference(0).currentBounds.toNearestInt();
+        enabledButton.setBounds(juce::Rectangle<int>(22, 22).withCentre(buttonCell.getCentre()));
+        onLabelBounds = flex.items.getReference(1).currentBounds.toNearestInt();
+    }
+
+    // Row 2: the amount knob and its existing label underneath.
+    {
+        auto flex = inner.rowFlex(1);
+        const auto gap = inner.rowGap(1);
+        const auto row = inner.rowContent(1);
+
+        flex.items.add(juce::FlexItem(104.0f, static_cast<float>(juce::jmax(1, row.getHeight())))
+                           .withMargin(gap));
+        flex.performLayout(row.toFloat());
+
+        px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
+                                       nullptr, &amountKnob, &amountLabel,
+                                       0, 22, ControlShape::square, 82);
+    }
+
+    // Row 3: the type dropdown with its label.
+    {
+        auto flex = inner.rowFlex(2);
+        const auto gap = inner.rowGap(2);
+        const auto row = inner.rowContent(2);
+
+        flex.items.add(juce::FlexItem(static_cast<float>(juce::jmax(1, row.getWidth())),
+                                      static_cast<float>(juce::jmax(1, row.getHeight())))
+                           .withMargin(gap));
+        flex.performLayout(row.toFloat());
+
+        px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
+                                       &typeLabel, &typeBox, nullptr,
+                                       14, 0, ControlShape::stretch, 24);
+    }
 }
 
 void ReverbComponent::paint(juce::Graphics& g)
@@ -88,9 +133,8 @@ void ReverbComponent::paint(juce::Graphics& g)
                                 ? uiConfig->getColour("fx.reverb.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
                                 : juce::Colour::fromRGB(232, 232, 232);
     const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat("fx.reverb.visual.onLabel.fontSize", 11.5f) : 11.5f;
-    const auto textBounds = uiConfig != nullptr
-                                ? uiConfig->getRect("fx.reverb.visual.onLabel.bounds", getLocalBounds(), { 36, 11, 24, 14 })
-                                : juce::Rectangle<int>(36, 11, 24, 14);
+    // Beside the button, wherever row 1 put it.
+    const auto textBounds = onLabelBounds;
 
     g.setColour(textColour.withAlpha(isActive ? 1.0f : 0.6f));
     g.setFont(juce::FontOptions(fontSize));

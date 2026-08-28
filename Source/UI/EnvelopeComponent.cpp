@@ -1,5 +1,7 @@
 #include "EnvelopeComponent.h"
 
+#include "CardInner.h"
+
 #include "UIConfig.h"
 
 #include <cmath>
@@ -33,6 +35,11 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
             accent(accentIn),
             configPrefix(configPrefixIn)
 {
+        // The mod envelopes' card key and title come straight from their
+        // config prefix; AMP ENV calls setCardIdentity to override both.
+        cardStyleKey = configPrefix.fromLastOccurrenceOf(".", false, false);
+        cardTitle = cardStyleKey.toUpperCase().replace("ENV", "ENV ");
+
         addAndMakeVisible(enabledButton);
         addAndMakeVisible(enabledLabel);
         addAndMakeVisible(assignLabel);
@@ -79,6 +86,10 @@ void EnvelopeComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
         baseEnabledLabelTextColour = textColour;
     }
 
+    // As above: cardInner's rows come from resized(), so a reload has to redo
+    // the layout or the graph and the controls stay where the old config put
+    // them.
+    resized();
     repaint();
 }
 
@@ -143,10 +154,10 @@ void EnvelopeComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
 
 void EnvelopeComponent::paint(juce::Graphics& g)
 {
-    // Card and title owned here rather than by ModPanel.
-    card.setStyleKey(configPrefix.fromLastOccurrenceOf(".", false, false));
-    card.setConfig(uiConfig);
-    card.layout(computeCardBounds());
+    // Card and title owned here rather than by ModPanel. This is the same
+    // layout call resized() makes, so the drawn graph and the draggable graph
+    // are guaranteed to come from one set of bounds.
+    layoutCardInner();
 
     const auto cardBounds = card.bounds();
     if (cardBounds.isEmpty())
@@ -154,8 +165,7 @@ void EnvelopeComponent::paint(juce::Graphics& g)
         return;
     }
 
-    const auto title = configPrefix.fromLastOccurrenceOf(".", false, false)
-                           .toUpperCase().replace("ENV", "ENV ");
+    const auto title = cardTitle;
     if (currentEnabled)
     {
         card.draw(g, title);
@@ -251,6 +261,14 @@ void EnvelopeComponent::paint(juce::Graphics& g)
         g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
         g.drawText(text, bubble.toNearestInt(), juce::Justification::centred);
     }
+}
+
+void EnvelopeComponent::setCardIdentity(juce::String styleKey, juce::String title)
+{
+    cardStyleKey = std::move(styleKey);
+    cardTitle = std::move(title);
+    resized();
+    repaint();
 }
 
 juce::Rectangle<int> EnvelopeComponent::computeCardBounds() const
@@ -447,27 +465,11 @@ float EnvelopeComponent::visualNormToTime(float norm, float minValue, float maxV
 EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
 {
     Geometry geom;
-    auto cardArea = computeCardBounds();
-    const auto fullHeightGraph = uiConfig != nullptr ? uiConfig->getBool(configPrefix + ".behavior.fullHeightGraph", false) : false;
-    auto graphLayout = cardArea.toFloat().reduced(10.0f, 10.0f);
-    if (fullHeightGraph)
-    {
-        graphLayout.removeFromTop(12.0f);
-        graphLayout.removeFromBottom(6.0f);
-    }
-    else
-    {
-        graphLayout.removeFromTop(24.0f);
-        graphLayout.removeFromTop(6.0f);
-        graphLayout.removeFromTop(24.0f);
-        graphLayout.removeFromTop(6.0f);
-        graphLayout.removeFromTop(8.0f);
-        if (amountKnob != nullptr)
-        {
-            graphLayout.removeFromTop(44.0f);
-            graphLayout.removeFromTop(6.0f);
-        }
-    }
+    // The graph is the last row of cardInner - the only row, for AMP ENV.
+    // Deriving it here a second time, by replaying the same sequence of
+    // removeFromTop calls resized() used, is what let the drawn graph and the
+    // draggable graph disagree.
+    const auto graphLayout = inner.rowContent(inner.rowCount() - 1).toFloat();
 
     geom.left = graphLayout.getX() + 6.0f;
     geom.right = graphLayout.getRight() - 6.0f;
@@ -737,29 +739,71 @@ void EnvelopeComponent::applyDragPosition(juce::Point<float> mousePos,
 
 void EnvelopeComponent::resized()
 {
-    auto cardArea = getLocalBounds().reduced(6, 6);
-    constexpr int targetCardWidth = 300;
-    const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
-    cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
-    auto area = cardArea.reduced(10, 10);
-    auto enabledRow = area.removeFromTop(24);
-    const auto labelWidth = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".visual.onLabel.width", 52) : 52;
-    enabledLabel.setBounds(enabledRow.removeFromLeft(labelWidth));
-    enabledButton.setBounds(enabledRow.removeFromLeft(40).reduced(2, 2));
+    layoutCardInner();
 
-    area.removeFromTop(6);
-    auto assignRow = area.removeFromTop(24);
-    assignLabel.setBounds(assignRow.removeFromLeft(52));
-    assignBox.setBounds(assignRow.reduced(2, 1));
+    // AMP ENV is the deliberate exception: one full-size graph, no rows of
+    // controls, so there is nothing to place here. `fullHeightGraph` is the
+    // switch that already distinguished it, and it still is.
+    if (isFullHeightGraph())
+    {
+        return;
+    }
 
+    using px3::ui::ControlShape;
+
+    // Row 1: bypass and assign.
+    {
+        auto flex = inner.rowFlex(0);
+        const auto gap = inner.rowGap(0);
+        const auto row = inner.rowContent(0);
+        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
+
+        flex.items.add(juce::FlexItem(44.0f, cellHeight).withMargin(gap));
+        flex.items.add(juce::FlexItem(116.0f, cellHeight).withMargin(gap));
+        flex.performLayout(row.toFloat());
+
+        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+        px3::ui::layoutLabelledControl(cell(0), &enabledLabel, &enabledButton, nullptr,
+                                       14, 0, ControlShape::square, 22);
+        px3::ui::layoutLabelledControl(cell(1), &assignLabel, &assignBox, nullptr,
+                                       14, 0, ControlShape::stretch, 24);
+    }
+
+    // Row 2: the amount knob, which the mod envelopes have and AMP ENV does
+    // not. It is knob-plus-readout with no label above, as it renders today.
     if (amountKnob != nullptr && amountLabel != nullptr && amountValueLabel != nullptr)
     {
-        area.removeFromTop(6);
-        auto amountArea = area.removeFromTop(44);
-        auto amountValueRow = amountArea.removeFromBottom(20);
-        amountValueLabel->setBounds(amountValueRow.reduced(2, 0));
-        const auto amountKnobSize = juce::jlimit(44, 84, juce::jmin(amountArea.getWidth() - 16, amountArea.getHeight()));
-        amountKnob->setBounds(juce::Rectangle<int>(amountKnobSize, amountKnobSize).withCentre(amountArea.getCentre()));
+        auto flex = inner.rowFlex(1);
+        const auto gap = inner.rowGap(1);
+        const auto row = inner.rowContent(1);
+
+        flex.items.add(juce::FlexItem(84.0f, static_cast<float>(juce::jmax(1, row.getHeight())))
+                           .withMargin(gap));
+        flex.performLayout(row.toFloat());
+
+        px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
+                                       nullptr, amountKnob, amountValueLabel,
+                                       0, 20, ControlShape::square, 84);
         amountLabel->setBounds(0, 0, 0, 0);
     }
+
+    // Row 3 is the ADSR graph. computeGeometry() reads its bounds, which is
+    // what keeps the drawing and the mouse hit-testing in agreement.
+}
+
+bool EnvelopeComponent::isFullHeightGraph() const
+{
+    return uiConfig != nullptr && uiConfig->getBool(configPrefix + ".behavior.fullHeightGraph", false);
+}
+
+void EnvelopeComponent::layoutCardInner()
+{
+    card.setStyleKey(cardStyleKey);
+    card.setConfig(uiConfig);
+    card.layout(computeCardBounds());
+
+    inner.setKeys("cards.defaults.cardInner", "cards." + cardStyleKey + ".cardInner");
+    inner.setConfig(uiConfig);
+    inner.setRowCount(isFullHeightGraph() ? 1 : 3);
+    inner.layout(card.contentBelowTitle());
 }

@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "Card.h"
+#include "CardInner.h"
 
 #include <memory>
 
@@ -73,4 +74,5 @@ private:
     juce::Colour baseAmountValueTextColour;
     juce::String configPrefix;
     px3::ui::CardHost card;
+    px3::ui::CardInner inner;
 };

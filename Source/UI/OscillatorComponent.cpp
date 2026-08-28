@@ -1,5 +1,7 @@
 #include "OscillatorComponent.h"
 
+#include "CardInner.h"
+
 #include "UIConfig.h"
 
 #include <cmath>
@@ -119,51 +121,92 @@ void OscillatorComponent::resized()
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
 
-    auto area = card.contentBelowTitle();
+    inner.setKeys("cards.defaults.cardInner", "cards.osc" + juce::String(instanceIndex) + ".cardInner");
+    inner.setConfig(uiConfig);
+    inner.setRowCount(3);
+    inner.layout(card.contentBelowTitle());
 
-    auto enabledRow = area.removeFromTop(24);
-    enabledLabel.setBounds(enabledRow.removeFromLeft(56));
-    enabledButton.setBounds(enabledRow.removeFromLeft(40).reduced(2, 2));
+    using px3::ui::ControlShape;
 
-    area.removeFromTop(6);
-
-    auto modeRow = area.removeFromTop(24);
-    modeLabel.setBounds(modeRow.removeFromLeft(56));
-    modeBox.setBounds(modeRow.reduced(2, 1));
-
-    area.removeFromTop(6);
-
-    if (vowelBox.isVisible())
+    // Row 1: bypass and mode, plus the vowel selector on the modes that have
+    // one. Visibility is behaviour, not style, so a hidden vowel box drops out
+    // of the row here rather than through a `display` property in UIConfig -
+    // and the two remaining controls take the width back.
     {
-        auto vowelRow = area.removeFromTop(24);
-        vowelLabel.setBounds(vowelRow.removeFromLeft(56));
-        vowelBox.setBounds(vowelRow.reduced(2, 1));
-        area.removeFromTop(8);
+        auto flex = inner.rowFlex(0);
+        const auto gap = inner.rowGap(0);
+        const auto row = inner.rowContent(0);
+        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
+        const auto showVowel = vowelBox.isVisible();
+
+        flex.items.add(juce::FlexItem(46.0f, cellHeight).withMargin(gap));
+        flex.items.add(juce::FlexItem(showVowel ? 84.0f : 116.0f, cellHeight).withMargin(gap));
+        if (showVowel)
+        {
+            flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap));
+        }
+        flex.performLayout(row.toFloat());
+
+        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+        px3::ui::layoutLabelledControl(cell(0), &enabledLabel, &enabledButton, nullptr,
+                                       14, 0, ControlShape::square, 22);
+        px3::ui::layoutLabelledControl(cell(1), &modeLabel, &modeBox, nullptr,
+                                       14, 0, ControlShape::stretch, 24);
+        if (showVowel)
+        {
+            px3::ui::layoutLabelledControl(cell(2), &vowelLabel, &vowelBox, nullptr,
+                                           14, 0, ControlShape::stretch, 24);
+        }
+        else
+        {
+            vowelLabel.setBounds(0, 0, 0, 0);
+            vowelBox.setBounds(0, 0, 0, 0);
+        }
     }
-    else
+
+    // Row 2: the pitch knob and whichever macro knobs the current mode uses.
+    // The macros share the space left over, which is what the hand-rolled
+    // even-split this component used to do by hand.
     {
-        vowelLabel.setBounds(0, 0, 0, 0);
-        vowelBox.setBounds(0, 0, 0, 0);
+        auto flex = inner.rowFlex(1);
+        const auto gap = inner.rowGap(1);
+        const auto row = inner.rowContent(1);
+        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
+
+        const std::array<juce::Slider*, 3> macroSliders { &macroA, &macroB, &macroC };
+        const std::array<juce::Label*, 3> macroLabels { &macroALabel, &macroBLabel, &macroCLabel };
+
+        flex.items.add(juce::FlexItem(72.0f, cellHeight).withMargin(gap));
+
+        std::vector<int> visibleMacros;
+        for (int i = 0; i < 3; ++i)
+        {
+            if (macroSliders[static_cast<std::size_t>(i)]->isVisible())
+            {
+                visibleMacros.push_back(i);
+                auto item = juce::FlexItem(60.0f, cellHeight).withMargin(gap);
+                item.flexGrow = 1.0f;
+                flex.items.add(item);
+            }
+        }
+
+        flex.performLayout(row.toFloat());
+
+        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+        px3::ui::layoutLabelledControl(cell(0), &pitchLabel, &pitch, &pitchValueLabel,
+                                       16, 16, ControlShape::square, 56);
+
+        for (std::size_t i = 0; i < visibleMacros.size(); ++i)
+        {
+            const auto index = static_cast<std::size_t>(visibleMacros[i]);
+            px3::ui::layoutLabelledControl(cell(static_cast<int>(i) + 1),
+                                           macroLabels[index], macroSliders[index], nullptr,
+                                           18, 0, ControlShape::square, 86);
+        }
     }
 
-    area.removeFromTop(2);
-    auto pitchLabelRow = area.removeFromTop(18);
-    pitchLabel.setBounds(pitchLabelRow.withSizeKeepingCentre(58, 18));
-    area.removeFromTop(2);
-    auto pitchRow = area.removeFromTop(54);
-    pitch.setBounds(pitchRow.withSizeKeepingCentre(50, 50));
-    area.removeFromTop(2);
-    auto pitchValueRow = area.removeFromTop(16);
-    pitchValueLabel.setBounds(pitchValueRow.withSizeKeepingCentre(84, 16));
-    area.removeFromTop(8);
-
-    const auto requestedGraphHeight = juce::jmax(40, getLocalBounds().reduced(20, 14).getHeight() - 152);
-    const auto maxGraphHeight = juce::jmax(40, area.getHeight() - 70);
-    const auto graphHeight = juce::jmin(requestedGraphHeight, maxGraphHeight);
-    area.removeFromBottom(graphHeight);
-    area.removeFromBottom(10);
-
-    layoutMacroControls(area);
+    // Row 3 is the wave graph, which paint() draws rather than a child
+    // component owning it.
 }
 
 void OscillatorComponent::setInstanceIndex(int oneBasedIndex)
@@ -201,30 +244,10 @@ void OscillatorComponent::paint(juce::Graphics& g)
         card.drawInactive(g, title);
     }
 
-    auto graphLayout = card.content();
-    graphLayout.removeFromTop(24.0f);
-    graphLayout.removeFromTop(6.0f);
-    graphLayout.removeFromTop(24.0f);
-    graphLayout.removeFromTop(6.0f);
-    if (vowelBox.isVisible())
-    {
-        graphLayout.removeFromTop(24.0f);
-        graphLayout.removeFromTop(8.0f);
-    }
-
-    graphLayout.removeFromTop(2.0f);
-    graphLayout.removeFromTop(18.0f);
-    graphLayout.removeFromTop(2.0f);
-    graphLayout.removeFromTop(54.0f);
-    graphLayout.removeFromTop(2.0f);
-    graphLayout.removeFromTop(16.0f);
-    graphLayout.removeFromTop(8.0f);
-
-    const auto requestedGraphHeight = static_cast<float>(juce::jmax(40, getLocalBounds().reduced(20, 14).getHeight() - 152));
-    const auto maxGraphHeight = juce::jmax(40.0f, graphLayout.getHeight() - 70.0f);
-    const auto graphHeight = juce::jmin(requestedGraphHeight, maxGraphHeight);
-    graphLayout.removeFromBottom(10.0f);
-    auto graph = graphLayout.removeFromBottom(graphHeight).reduced(0.0f, 2.0f);
+    // The graph is row 3. This used to re-derive the whole vertical stack that
+    // resized() had just walked, including the vowel-box branch, which meant
+    // two copies of one layout kept in step by hand.
+    const auto graph = inner.rowContent(2).toFloat().reduced(0.0f, 2.0f);
 
     if (graph.getWidth() <= 40 || graph.getHeight() <= 24)
     {
@@ -466,50 +489,3 @@ void OscillatorComponent::applyEnabledUi()
     repaint();
 }
 
-void OscillatorComponent::layoutMacroControls(const juce::Rectangle<int>& area)
-{
-    auto knobArea = area.reduced(2, 0);
-
-    const std::array<juce::Slider*, 3> sliders { &macroA, &macroB, &macroC };
-    const std::array<juce::Label*, 3> labels { &macroALabel, &macroBLabel, &macroCLabel };
-
-    std::vector<int> visibleIndices;
-    for (int i = 0; i < 3; ++i)
-    {
-        if (sliders[static_cast<std::size_t>(i)]->isVisible())
-        {
-            visibleIndices.push_back(i);
-        }
-    }
-
-    if (visibleIndices.empty())
-    {
-        return;
-    }
-
-    auto labelRow = knobArea.removeFromTop(20);
-    knobArea.removeFromTop(6);
-
-    const auto visibleCount = static_cast<int>(visibleIndices.size());
-    const auto cellWidth = juce::jmax(1, knobArea.getWidth() / visibleCount);
-
-    for (int i = 0; i < visibleCount; ++i)
-    {
-        const auto index = visibleIndices[static_cast<std::size_t>(i)];
-        auto labelCell = juce::Rectangle<int>(labelRow.getX() + i * cellWidth,
-                                              labelRow.getY(),
-                                              (i == visibleCount - 1) ? (labelRow.getRight() - (labelRow.getX() + i * cellWidth)) : cellWidth,
-                                              labelRow.getHeight());
-        auto knobCell = juce::Rectangle<int>(knobArea.getX() + i * cellWidth,
-                                             knobArea.getY(),
-                                             (i == visibleCount - 1) ? (knobArea.getRight() - (knobArea.getX() + i * cellWidth)) : cellWidth,
-                                             knobArea.getHeight());
-
-        labels[static_cast<std::size_t>(index)]->setBounds(labelCell.reduced(2, 0));
-
-        const auto knobSize = juce::jlimit(40,
-                                           86,
-                                           juce::jmin(knobCell.getWidth() - 10, knobCell.getHeight() - 4));
-        sliders[static_cast<std::size_t>(index)]->setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(knobCell.getCentre()));
-    }
-}

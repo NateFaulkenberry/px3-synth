@@ -371,9 +371,7 @@ void PX3SynthAudioProcessorEditor::configureKnob(KnobBinding& binding,
 }
 
 void PX3SynthAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
-                                                           KnobLabel& label,
-                                                           const juce::String& labelText,
-                                                           juce::AudioParameterFloat& parameter)
+                                                       juce::AudioParameterFloat& parameter)
 {
     slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
@@ -382,6 +380,16 @@ void PX3SynthAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
 
     slider.setLookAndFeel(&knobLookAndFeel);
 
+    addAndMakeVisible(slider);
+}
+
+void PX3SynthAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
+                                                           KnobLabel& label,
+                                                           const juce::String& labelText,
+                                                           juce::AudioParameterFloat& parameter)
+{
+    configureEffectKnob(slider, parameter);
+
     label.setText(labelText, juce::dontSendNotification);
     label.setJustificationType(juce::Justification::centred);
     label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
@@ -389,7 +397,6 @@ void PX3SynthAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
     label.setInterceptsMouseClicks(true, false);
     label.setTooltip(labelText);
 
-    addAndMakeVisible(slider);
     addAndMakeVisible(label);
 }
 
@@ -764,7 +771,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     osc3PitchLabel.setFont(juce::FontOptions(11.0f));
     subOscPitchLabel.setFont(juce::FontOptions(11.0f));
 
-    configureEffectKnob(vibeAmountKnob, vibeAmountLabel, "AMOUNT", audioProcessor.getVibeAmountParam());
+    configureEffectKnob(vibeAmountKnob, audioProcessor.getVibeAmountParam());
     configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "", audioProcessor.getDelayAmountParam());
     configureEffectKnob(delayTimeKnob, delayTimeLabel, "TIME", audioProcessor.getDelayTimeParam());
     configureEffectKnob(delayFeedbackKnob, delayFeedbackLabel, "FEEDBACK", audioProcessor.getDelayFeedbackParam());
@@ -1085,7 +1092,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           kGroupAccents[1]);
     fxPanel = std::make_unique<FxPanel>(robBypassButton,
                                         vibeAmountKnob,
-                                        vibeAmountLabel,
                                         vibeTypeBox,
                                         vibeTypeLabel,
                                         delayBypassButton,

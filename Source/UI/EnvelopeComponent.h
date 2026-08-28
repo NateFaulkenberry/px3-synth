@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "Card.h"
+#include "CardInner.h"
 
 #include <memory>
 
@@ -29,6 +30,13 @@ public:
 
     void setAccentColour(juce::Colour accentIn);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
+
+    // The card key and title this component draws under. They default to the
+    // last segment of configPrefix - "env1", "ENV 1" - which is right for the
+    // mod envelopes. AMP ENV overrides them, because there the graph is hosted
+    // inside AmpEnvelopeComponent and "amp.env" would derive "env".
+    void setCardIdentity(juce::String styleKey, juce::String title);
+
     // The parent panel content box: reference for percentage dimensions.
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
     void refreshFromParameters();
@@ -72,6 +80,8 @@ private:
     static float timeToVisualNorm(float seconds, float minValue, float maxValue);
     static float visualNormToTime(float norm, float minValue, float maxValue);
     juce::Rectangle<int> computeCardBounds() const;
+    bool isFullHeightGraph() const;
+    void layoutCardInner();
     Geometry computeGeometry() const;
     static float distSq(juce::Point<float> a, juce::Point<float> b);
     static float distToSegmentSq(juce::Point<float> p, juce::Point<float> a, juce::Point<float> b);
@@ -114,5 +124,8 @@ private:
     bool currentEnabled { true };
     juce::Colour baseEnabledLabelTextColour;
     juce::String configPrefix;
+    juce::String cardStyleKey;
+    juce::String cardTitle;
     px3::ui::CardHost card;
+    px3::ui::CardInner inner;
 };

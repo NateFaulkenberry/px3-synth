@@ -97,6 +97,8 @@ private:
     };
 
     void configureKnob(KnobBinding& binding, const juce::String& labelText, juce::AudioParameterFloat& parameter);
+    // Vibe's amount knob has no caption, so it configures the slider half only.
+    void configureEffectKnob(juce::Slider& slider, juce::AudioParameterFloat& parameter);
     void configureEffectKnob(juce::Slider& slider,
                              KnobLabel& label,
                              const juce::String& labelText,
@@ -385,7 +387,6 @@ private:
     std::unique_ptr<TopMenuBar> topMenuBar;
 
     juce::Slider vibeAmountKnob;
-    KnobLabel vibeAmountLabel;
     juce::ComboBox vibeTypeBox;
     KnobLabel vibeTypeLabel;
     juce::Slider isaacTextureKnob;

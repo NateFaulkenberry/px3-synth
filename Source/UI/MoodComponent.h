@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "Card.h"
+#include "CardInner.h"
 
 #include <memory>
 
@@ -77,6 +78,10 @@ private:
     juce::Label& loopModeLabel;
 
     px3::ui::CardHost card;
+    px3::ui::CardInner inner;
+    // Where paint() draws the two row-1 captions, beside their buttons.
+    juce::Rectangle<int> onLabelBounds;
+    juce::Rectangle<int> freezeLabelBounds;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
     bool isActive { true };

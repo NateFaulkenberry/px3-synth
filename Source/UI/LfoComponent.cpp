@@ -1,5 +1,7 @@
 #include "LfoComponent.h"
 
+#include "CardInner.h"
+
 #include "LfoMode.h"
 #include "UIConfig.h"
 
@@ -86,6 +88,10 @@ void LfoComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     enabledLabel.setColour(juce::Label::textColourId, textColour);
     enabledLabel.setFont(juce::FontOptions(fontSize));
 
+    // Re-run the layout, not just the paint: cardInner parses its rows in
+    // resized(), so a repaint alone would draw the new colours into the old
+    // geometry.
+    resized();
     repaint();
 }
 
@@ -156,55 +162,72 @@ void LfoComponent::advanceAnimation(float deltaSeconds)
 
 void LfoComponent::resized()
 {
-    auto cardArea = getLocalBounds().reduced(6, 6);
-    constexpr int targetCardWidth = 300;
-    const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
-    cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
-    auto area = cardArea.reduced(10, 10);
+    // resized() used to derive its own card rectangle - reduced(6,6), clamped
+    // to 300px, reduced(10,10) - in parallel with the one paint() asked the
+    // CardHost for. Two independent ideas of where the card was is exactly the
+    // dependency that stopped cardInner working here, so the layout now comes
+    // from the card, as it already did for Sub Osc and Osc.
+    card.setStyleKey(configPrefix.fromLastOccurrenceOf(".", false, false));
+    card.setConfig(uiConfig);
+    card.layout(getLocalBounds());
 
-    auto enabledRow = area.removeFromTop(24);
-    const auto labelWidth = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".visual.onLabel.width", 52) : 52;
-    enabledLabel.setBounds(enabledRow.removeFromLeft(labelWidth));
-    enabledButton.setBounds(enabledRow.removeFromLeft(40).reduced(2, 2));
+    inner.setKeys("cards.defaults.cardInner",
+                  "cards." + configPrefix.fromLastOccurrenceOf(".", false, false) + ".cardInner");
+    inner.setConfig(uiConfig);
+    inner.setRowCount(3);
+    inner.layout(card.contentBelowTitle());
 
-    area.removeFromTop(6);
+    using px3::ui::ControlShape;
 
-    auto assignRow = area.removeFromTop(24);
-    assignLabel.setBounds(assignRow.removeFromLeft(52));
-    assignBox.setBounds(assignRow.reduced(2, 1));
-
-    area.removeFromTop(6);
-
-    auto top = area.removeFromTop(24);
-    waveformLabel.setBounds(top.removeFromLeft(78));
-    waveformBox.setBounds(top.reduced(2, 1));
-
-    area.removeFromTop(8);
-
-    area.removeFromBottom(96);
-    area.removeFromBottom(10);
-
-    auto controlRow = area;
-    const auto rowGap = 10;
-    auto left = controlRow.removeFromLeft((controlRow.getWidth() - rowGap) / 2);
-    controlRow.removeFromLeft(rowGap);
-    auto right = controlRow;
-
-    auto layoutKnobColumn = [](juce::Rectangle<int> column,
-                               juce::Slider& knob,
-                               juce::Label& valueLabel)
+    // Row 1: bypass, assign and wave type.
     {
-        auto valueRow = column.removeFromBottom(20);
-        valueLabel.setBounds(valueRow.reduced(2, 0));
-        column.removeFromBottom(4);
-        const auto knobSize = juce::jlimit(44, 84, juce::jmin(column.getWidth() - 16, column.getHeight()));
-        knob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(column.getCentre()));
-    };
+        auto flex = inner.rowFlex(0);
+        const auto gap = inner.rowGap(0);
+        const auto row = inner.rowContent(0);
+        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-    layoutKnobColumn(left, rateKnob, rateValueLabel);
-    layoutKnobColumn(right, amountKnob, amountValueLabel);
-    rateLabel.setBounds(0, 0, 0, 0);
-    amountLabel.setBounds(0, 0, 0, 0);
+        flex.items.add(juce::FlexItem(44.0f, cellHeight).withMargin(gap));
+        flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap));
+        flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap));
+        flex.performLayout(row.toFloat());
+
+        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+        px3::ui::layoutLabelledControl(cell(0), &enabledLabel, &enabledButton, nullptr,
+                                       14, 0, ControlShape::square, 22);
+        px3::ui::layoutLabelledControl(cell(1), &assignLabel, &assignBox, nullptr,
+                                       14, 0, ControlShape::stretch, 24);
+        px3::ui::layoutLabelledControl(cell(2), &waveformLabel, &waveformBox, nullptr,
+                                       14, 0, ControlShape::stretch, 24);
+    }
+
+    // Row 2: rate and amount. Both are knob-plus-readout with no label above -
+    // that is how they render today, and the spec is explicit that a control
+    // which has no label must not acquire one here.
+    {
+        auto flex = inner.rowFlex(1);
+        const auto gap = inner.rowGap(1);
+        const auto row = inner.rowContent(1);
+        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
+
+        for (int i = 0; i < 2; ++i)
+        {
+            auto item = juce::FlexItem(84.0f, cellHeight).withMargin(gap);
+            item.flexGrow = 1.0f;
+            flex.items.add(item);
+        }
+        flex.performLayout(row.toFloat());
+
+        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+        px3::ui::layoutLabelledControl(cell(0), nullptr, &rateKnob, &rateValueLabel,
+                                       0, 20, ControlShape::square, 84);
+        px3::ui::layoutLabelledControl(cell(1), nullptr, &amountKnob, &amountValueLabel,
+                                       0, 20, ControlShape::square, 84);
+
+        rateLabel.setBounds(0, 0, 0, 0);
+        amountLabel.setBounds(0, 0, 0, 0);
+    }
+
+    // Row 3 is the wave graph, drawn by paint().
 }
 
 void LfoComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
@@ -233,19 +256,12 @@ void LfoComponent::paint(juce::Graphics& g)
         card.drawInactive(g, title);
     }
 
-    const auto cardBounds = card.bounds();
     const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
     juce::ignoreUnused(effectiveAccent);
 
-    auto graphLayout = cardBounds.reduced(10.0f, 10.0f);
-    graphLayout.removeFromTop(24.0f);
-    graphLayout.removeFromTop(6.0f);
-    graphLayout.removeFromTop(24.0f);
-    graphLayout.removeFromTop(6.0f);
-    graphLayout.removeFromTop(8.0f);
-    graphLayout.removeFromBottom(10.0f);
-
-    auto graph = graphLayout.removeFromBottom(96.0f).reduced(0.0f, 2.0f);
+    // The graph is row 3. It used to be found by replaying resized()'s stack of
+    // removeFromTop calls against a separately-derived card rectangle.
+    const auto graph = inner.rowContent(2).toFloat().reduced(0.0f, 2.0f);
 
     if (graph.getWidth() < 40.0f || graph.getHeight() < 20.0f)
     {

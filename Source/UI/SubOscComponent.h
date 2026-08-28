@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "Card.h"
+#include "CardInner.h"
 
 #include <memory>
 
@@ -51,6 +52,7 @@ private:
     // Where the card ended up, so resized() and paint() agree without either
     // one re-deriving the geometry.
     px3::ui::CardHost card;
+    px3::ui::CardInner inner;
 
     bool currentEnabled { false };
     int currentWaveformIndex { 0 };

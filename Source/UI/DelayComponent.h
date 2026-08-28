@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "Card.h"
+#include "CardInner.h"
 
 #include <memory>
 
@@ -48,6 +49,9 @@ private:
     juce::Slider& feedbackKnob;
     juce::Label& feedbackLabel;
     px3::ui::CardHost card;
+    px3::ui::CardInner inner;
+    // Where paint() draws the "ON" text - beside the bypass button in row 1.
+    juce::Rectangle<int> onLabelBounds;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
     bool isActive { true };

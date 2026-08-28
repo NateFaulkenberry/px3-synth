@@ -88,6 +88,7 @@ ownership mistake that left stale FX outlines behind when panels were swapped.
 | | |
 | --- | --- |
 | `Source/UI/Card.h` / `Card.cpp` | The model, parsing, geometry resolution, rendering |
+| `Source/UI/CardInner.h` / `CardInner.cpp` | The layout *inside* a card — rows, flex, control placement |
 | `UIConfig.json` → `panels`, `cards` | Style and layout only. No UI text. |
 | Component code | Its own semantic content — the title string, its controls |
 
@@ -98,8 +99,8 @@ what the title says.
 ## Adding a card
 
 1. Give the component `setUIConfig`, `setPanelContentBounds`, and a style key.
-2. In `resized()`: resolve the style and the card box, lay controls out inside
-   `cardStyle.contentBounds(cardBounds)`.
+2. In `resized()`: lay out the card, then `cardInner` inside
+   `card.contentBelowTitle()`, then place the controls into its rows.
 3. In `paint()`: call `px3::ui::drawCard(g, cardBounds, style, title)`.
 4. Add a block under `cards` declaring only what differs from `defaults`.
 
@@ -182,6 +183,9 @@ Every major component now renders through the same Card:
 | `reverb` | Reverb | cyan `#80D0FF` |
 | `mixerChannel` | Mixer channels | neutral `#8FA8C8` |
 
+All of them lay their interiors out through `cardInner` as well — see below —
+except `mixerChannel`, whose faders are not a three-row structure.
+
 Each block carries a complete colour identity — border, background, both gloss
 fills and title — so a component's palette is one local edit. The FX accents are
 carried over unchanged from the colours the editor used to paint, so the FX rack
@@ -204,8 +208,126 @@ Zero text values remain. Every title (`"OSC 1"`, `"SUB OSC"`, `"AMP ENV"`,
 spaced, what colour, how opaque, how rounded, how bordered, how the gloss looks
 and how the title looks — and nothing else.
 
+## cardInner — the layout inside a card
+
+The card owns the frame; `cardInner` owns what is inside it. The hierarchy is
+explicit, and every percentage is resolved against exactly one level of it:
+
+```
+Panel → Card → cardInner → Row → controls
+```
+
+A standard card has three rows. `AMP ENV` is the deliberate exception: one row
+that fills `cardInner`, because it contains a single full-size ADSR graph and
+three rows would be meaningless there.
+
+### Schema
+
+```jsonc
+"cardInner": {
+  "margin": 0, "padding": 4,          // independent of the Card's own
+  "display": "flex",                  // or "none"
+  "direction": "column",              // row | rowReverse | column | columnReverse
+  "wrap": "nowrap",
+  "justifyContent": "center",         // start | end | center | spaceBetween | spaceAround
+  "alignItems": "center",             // start | end | center | stretch
+  "alignContent": "center",
+  "gap": 2,
+  "rows": {
+    "default": { /* every row property; the base every row starts from */ },
+    "row1": { "height": "26%", "gap": 8 },
+    "row2": { "height": "30%" },
+    "row3": { "height": "44%", "padding": 2 }
+  }
+}
+```
+
+A row takes the same properties as `cardInner` plus `height`. Lookup is layered,
+most specific first:
+
+```
+cards.<component>.cardInner.rows.rowN
+cards.defaults.cardInner.rows.rowN
+cards.defaults.cardInner.rows.default
+```
+
+### Rules worth being precise about
+
+**Row height is a percentage of the cardInner content height** — after
+`cardInner`'s own margin and padding, and of nothing else. Not the card, not the
+panel, not the previous row.
+
+**Row width is not configurable.** A row spans `cardInner` by definition.
+
+**Rows that total more than 100% are scaled down, not overflowed.** The heights
+are resolved here rather than left to FlexBox's shrinking, which does not apply
+to explicitly sized items. If the total — including the space the gaps consume —
+exceeds what is available, every row is scaled by the same factor. Rows totalling
+less than 100% simply leave space, positioned by `justifyContent`.
+
+**`display: "none"` removes a row from the layout.** It gets no height and no
+gap, and the rows around it close up. They do not grow to absorb the space,
+exactly as in CSS.
+
+**A wrapping row's items must be sized for the number of lines they will take.**
+FlexBox derives line height from the items, so giving each the full row height
+makes two lines twice as tall as the row. `px3::ui::wrappedLineCount()` works out
+the line count from the natural widths and the gap; divide the row height by it.
+Delay's row 3 (five controls) and Mood's row 3 (nine knobs) both rely on this.
+
+### Placing controls
+
+`cardInner` decides where the rows are. The component fills them, because the
+component owns its controls — that split is the whole point.
+
+```cpp
+inner.setKeys("cards.defaults.cardInner", "cards.subOsc.cardInner");
+inner.setConfig(uiConfig);
+inner.setRowCount(3);
+inner.layout(card.contentBelowTitle());
+
+auto flex = inner.rowFlex(0);            // pre-configured from the row's style
+const auto gap = inner.rowGap(0);
+flex.items.add(juce::FlexItem(46.0f, cellHeight).withMargin(gap));
+flex.performLayout(inner.rowContent(0).toFloat());
+```
+
+`px3::ui::layoutLabelledControl()` then places one cell's label, control and
+readout. It takes a `ControlShape`, and getting that wrong is not subtle:
+
+| | |
+| --- | --- |
+| `ControlShape::square` | Knobs and tick boxes — the largest centred square that fits |
+| `ControlShape::stretch` | Dropdowns and buttons — full width, capped height, centred |
+
+Pass only the parts a control actually has. A knob with no label today must not
+acquire one here: this phase changes layout, not what a control displays.
+
+### Live reload
+
+`cardInner` parses its rows in `resized()`, so `setUIConfig` must call `resized()`
+and not merely `repaint()`. LFO, ENV, Vibe, Reverb, Delay and Mood each needed
+that added — without it a reload draws new colours into the old geometry. This is
+the same class of bug the `CardStyleCache` fixed for card styles.
+
+### What this replaced
+
+Every migrated component previously derived its interior layout twice: once in
+`resized()` to place controls, and again in `paint()` — by replaying the same
+sequence of `removeFromTop` calls — to find the graph. Keeping the two copies in
+step was manual. Three components went further and derived their own card
+rectangle independently of the one `CardHost` had already resolved, and `Filter`'s
+interior was laid out by `FltPanel` rather than by the component at all.
+
+`FilterComponent` is still the one component that does not own its controls —
+they are `FltPanel`'s children, not its own. It exposes `rowBounds()`, `rowFlex()`
+and `rowGap()`, and the panel translates them into its own coordinates. That is
+the smallest change that let the geometry become declarative without moving
+control ownership, which is a separate concern.
+
 ## Still to come
 
-Card *internals* — knobs, graphs, dropdowns, faders — are deliberately not
-modelled yet. The split between "the frame" and "what is inside the frame" is
-what will let that be added without disturbing any of this.
+Control *styling* — `KnobStyle`, `GraphStyle`, `DropdownStyle`, `ButtonStyle` —
+is deliberately not modelled yet. `cardInner` places controls; it does not draw
+them. That split is what will let styling be added without disturbing any of the
+layout above.

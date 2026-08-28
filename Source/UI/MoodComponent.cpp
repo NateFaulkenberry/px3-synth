@@ -1,5 +1,9 @@
 #include "MoodComponent.h"
 
+#include "CardInner.h"
+
+#include <array>
+
 #include "UIConfig.h"
 
 MoodComponent::MoodComponent(juce::ToggleButton& enabledButtonIn,
@@ -58,8 +62,10 @@ MoodComponent::MoodComponent(juce::ToggleButton& enabledButtonIn,
       accent(accentIn)
 {
     addAndMakeVisible(enabledButton);
-    // TODO: maybe restore this at some point
-    // addAndMakeVisible(freezeButton);
+    // Restored. It was already attached to the freeze parameter in
+    // PluginEditor - only the call that put it on screen was commented out - so
+    // showing it reconnects the existing control rather than adding a new one.
+    addAndMakeVisible(freezeButton);
 
     addAndMakeVisible(mixKnob);
     addAndMakeVisible(mixLabel);
@@ -97,6 +103,11 @@ void MoodComponent::setAccentColour(juce::Colour accentIn)
 void MoodComponent::setActive(bool enabled)
 {
     isActive = enabled;
+
+    // Freeze follows bypass like every other control. It was absent from this
+    // list only because the button was not on screen; now that it is, leaving
+    // it out would make it the one live control on a bypassed card.
+    freezeButton.setEnabled(enabled);
 
     mixKnob.setEnabled(enabled);
     clockKnob.setEnabled(enabled);
@@ -141,84 +152,117 @@ void MoodComponent::setActive(bool enabled)
 void MoodComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+    // cardInner parses its rows in resized(), so a live reload has to redo
+    // the layout as well as the paint.
+    resized();
     repaint();
 }
 
 void MoodComponent::resized()
 {
-    const auto padX = uiConfig != nullptr ? uiConfig->getInt("fx.mood.layout.padX", 10) : 10;
-    const auto padY = uiConfig != nullptr ? uiConfig->getInt("fx.mood.layout.padY", 8) : 8;
-    auto area = getLocalBounds().reduced(padX, padY);
+    card.setStyleKey("mood");
+    card.setConfig(uiConfig);
+    card.layout(getLocalBounds());
 
-    auto header = area.removeFromTop(24);
-    enabledButton.setBounds(header.removeFromLeft(22));
-    freezeButton.setBounds(header.removeFromLeft(48));
+    inner.setKeys("cards.defaults.cardInner", "cards.mood.cardInner");
+    inner.setConfig(uiConfig);
+    inner.setRowCount(3);
+    inner.layout(card.contentBelowTitle());
 
-    area.removeFromTop(2);
+    using px3::ui::ControlShape;
 
-    auto modeRow = area.removeFromTop(24);
-    auto modeLeft = modeRow.removeFromLeft(modeRow.getWidth() / 2);
-    auto modeRight = modeRow;
-
-    wetModeLabel.setBounds(modeLeft.removeFromLeft(42));
-    wetModeBox.setBounds(modeLeft.reduced(2, 1));
-
-    loopModeLabel.setBounds(modeRight.removeFromLeft(42));
-    loopModeBox.setBounds(modeRight.reduced(2, 1));
-
-    area.removeFromTop(4);
-
-    auto routingRow = area.removeFromTop(24);
-    routingLabel.setBounds(routingRow.removeFromLeft(58));
-    routingBox.setBounds(routingRow.reduced(2, 1));
-
-    area.removeFromTop(6);
-
-    constexpr int labelHeight = 16;
-    constexpr int rowGap = 6;
-    constexpr int colGap = 6;
-
-    auto grid = area;
-    const auto rowHeight = juce::jmax(40, (grid.getHeight() - 2 * rowGap) / 3);
-    auto row1 = grid.removeFromTop(rowHeight);
-    grid.removeFromTop(rowGap);
-    auto row2 = grid.removeFromTop(rowHeight);
-    grid.removeFromTop(rowGap);
-    auto row3 = grid;
-
-    const auto placeKnobRow = [](juce::Rectangle<int> row,
-                                                     juce::Slider& knobA,
-                                                     juce::Label& labelA,
-                                                     juce::Slider& knobB,
-                                                     juce::Label& labelB,
-                                                     juce::Slider& knobC,
-                                                     juce::Label& labelC)
+    // Row 1: bypass and freeze, each with its caption painted beside it.
     {
-        auto left = row.removeFromLeft((row.getWidth() - 2 * colGap) / 3);
-        row.removeFromLeft(colGap);
-        auto mid = row.removeFromLeft((row.getWidth() - colGap) / 2);
-        row.removeFromLeft(colGap);
-        auto right = row;
+        auto flex = inner.rowFlex(0);
+        const auto gap = inner.rowGap(0);
+        const auto row = inner.rowContent(0);
+        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-        const auto placeCell = [](juce::Rectangle<int> cell, juce::Slider& knob, juce::Label& label)
+        flex.items.add(juce::FlexItem(24.0f, cellHeight).withMargin(gap));
+        flex.items.add(juce::FlexItem(26.0f, cellHeight).withMargin(gap));
+        flex.items.add(juce::FlexItem(24.0f, cellHeight).withMargin(gap));
+        flex.items.add(juce::FlexItem(46.0f, cellHeight).withMargin(gap));
+        flex.performLayout(row.toFloat());
+
+        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+        enabledButton.setBounds(juce::Rectangle<int>(22, 22).withCentre(cell(0).getCentre()));
+        onLabelBounds = cell(1);
+        freezeButton.setBounds(juce::Rectangle<int>(22, 22).withCentre(cell(2).getCentre()));
+        freezeLabelBounds = cell(3);
+    }
+
+    // Row 2: the wet and loop mode dropdowns, plus routing. Routing is not in
+    // the spec's list for this row, but it is a real control that has to live
+    // somewhere, and it is a dropdown like the other two.
+    {
+        auto flex = inner.rowFlex(1);
+        const auto gap = inner.rowGap(1);
+        const auto row = inner.rowContent(1);
+        const auto rowWidth = static_cast<float>(juce::jmax(1, row.getWidth()));
+
+        const std::vector<float> widths { 96.0f, 96.0f, 96.0f };
+        const auto gapWidth = gap.left + gap.right;
+        const auto lines = px3::ui::wrappedLineCount(widths, gapWidth, rowWidth);
+        const auto cellHeight = juce::jmax(1.0f,
+                                           static_cast<float>(row.getHeight()) / static_cast<float>(lines)
+                                               - (gap.top + gap.bottom));
+
+        for (const auto width : widths)
         {
-            auto labelArea = cell.removeFromBottom(labelHeight);
-            auto knobArea = cell;
-            const auto knobSize = juce::jlimit(30,
-                                               64,
-                                               juce::jmin(knobArea.getWidth() - 2, knobArea.getHeight() - 2));
-            knob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(knobArea.getCentre()));
-            label.setBounds(labelArea);
-        };
+            flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gap));
+        }
+        flex.performLayout(row.toFloat());
 
-        placeCell(left, knobA, labelA);
-        placeCell(mid, knobB, labelB);
-        placeCell(right, knobC, labelC);
-    };
+        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+        px3::ui::layoutLabelledControl(cell(0), &wetModeLabel, &wetModeBox, nullptr,
+                                       14, 0, ControlShape::stretch, 22);
+        px3::ui::layoutLabelledControl(cell(1), &loopModeLabel, &loopModeBox, nullptr,
+                                       14, 0, ControlShape::stretch, 22);
+        px3::ui::layoutLabelledControl(cell(2), &routingLabel, &routingBox, nullptr,
+                                       14, 0, ControlShape::stretch, 22);
+    }
 
-    placeKnobRow(row1, wetTimeKnob, wetTimeLabel, wetModifyKnob, wetModifyLabel, loopLengthKnob, loopLengthLabel);
-    placeKnobRow(row2, loopModifyKnob, loopModifyLabel, feedbackKnob, feedbackLabel, spreadKnob, spreadLabel);
-    placeKnobRow(row3, clockKnob, clockLabel, mixKnob, mixLabel, degradeKnob, degradeLabel);
+    // Row 3: all nine knobs in one wrapping row. This replaces a hand-built
+    // 3x3 grid; the row wraps into however many lines the width allows, which
+    // is what makes the arrangement follow the card rather than a fixed shape.
+    {
+        auto flex = inner.rowFlex(2);
+        const auto gap = inner.rowGap(2);
+        const auto row = inner.rowContent(2);
+        const auto rowWidth = static_cast<float>(juce::jmax(1, row.getWidth()));
+
+        const std::array<std::pair<juce::Slider*, juce::Label*>, 9> knobs { {
+            { &wetTimeKnob, &wetTimeLabel },
+            { &wetModifyKnob, &wetModifyLabel },
+            { &loopLengthKnob, &loopLengthLabel },
+            { &loopModifyKnob, &loopModifyLabel },
+            { &feedbackKnob, &feedbackLabel },
+            { &spreadKnob, &spreadLabel },
+            { &clockKnob, &clockLabel },
+            { &mixKnob, &mixLabel },
+            { &degradeKnob, &degradeLabel },
+        } };
+
+        const std::vector<float> widths(knobs.size(), 64.0f);
+        const auto gapWidth = gap.left + gap.right;
+        const auto lines = px3::ui::wrappedLineCount(widths, gapWidth, rowWidth);
+        const auto cellHeight = juce::jmax(1.0f,
+                                           static_cast<float>(row.getHeight()) / static_cast<float>(lines)
+                                               - (gap.top + gap.bottom));
+
+        for (const auto width : widths)
+        {
+            flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gap));
+        }
+        flex.performLayout(row.toFloat());
+
+        for (std::size_t i = 0; i < knobs.size(); ++i)
+        {
+            px3::ui::layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
+                                           nullptr, knobs[i].first, knobs[i].second,
+                                           0, 16, ControlShape::square, 64);
+        }
+    }
 }
 
 void MoodComponent::paint(juce::Graphics& g)
@@ -243,11 +287,9 @@ void MoodComponent::paint(juce::Graphics& g)
                                 ? uiConfig->getColour("fx.mood.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
                                 : juce::Colour::fromRGB(232, 232, 232);
     const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat("fx.mood.visual.onLabel.fontSize", 11.5f) : 11.5f;
-    const auto textBounds = uiConfig != nullptr
-                                ? uiConfig->getRect("fx.mood.visual.onLabel.bounds", getLocalBounds(), { 36, 11, 24, 14 })
-                                : juce::Rectangle<int>(36, 11, 24, 14);
-
+    // Both captions come from row 1, beside the buttons they name.
     g.setColour(textColour.withAlpha(isActive ? 1.0f : 0.6f));
     g.setFont(juce::FontOptions(fontSize));
-    g.drawText("ON", textBounds, juce::Justification::centredLeft, false);
+    g.drawText("ON", onLabelBounds, juce::Justification::centredLeft, false);
+    g.drawText("Freeze", freezeLabelBounds, juce::Justification::centredLeft, false);
 }

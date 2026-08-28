@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "Card.h"
+#include "CardInner.h"
 
 #include <array>
 #include <memory>
@@ -47,7 +48,6 @@ public:
 
 private:
     void applyModeUi();
-    void layoutMacroControls(const juce::Rectangle<int>& area);
     void applyEnabledUi();
 
     juce::ToggleButton& enabledButton;
@@ -66,6 +66,7 @@ private:
     juce::ComboBox& vowelBox;
     juce::Label& vowelLabel;
     px3::ui::CardHost card;
+    px3::ui::CardInner inner;
     int instanceIndex { 1 };
 
     juce::Colour accent;

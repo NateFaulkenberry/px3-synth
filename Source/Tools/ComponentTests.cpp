@@ -17,6 +17,7 @@
 #include "../DSP/PluginProcessorInternals.h"
 #include "../DSP/AmpEnvelope.h"
 #include "../UI/Card.h"
+#include "../UI/CardInner.h"
 #include "../UI/UIConfig.h"
 #include "../DSP/Delay.h"
 #include "../DSP/EnvelopeGenerator.h"
@@ -3696,6 +3697,462 @@ void testCardStyle()
     }
 }
 
+// ---------------------------------------------------------------------------
+// cardInner / row layout
+//
+// The percentage chain is the thing most likely to be got wrong, so it is
+// tested against exact arithmetic at every level:
+//
+//     Card content -> cardInner (margin, padding) -> row (% of cardInner)
+//
+// A row height must never be measured against the panel, the card before
+// padding, or the previous row.
+// ---------------------------------------------------------------------------
+void testCardInner()
+{
+    suite("CARD INNER");
+
+    using namespace px3::ui;
+
+    auto configFrom = [](const char* json)
+    {
+        juce::String error;
+        return UIConfig::fromJsonText(json, error);
+    };
+
+    // ---- The percentage chain ---------------------------------------------
+    {
+        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+            "margin":0,"padding":0,"direction":"column","gap":0,
+            "rows":{"default":{"height":"33%"},
+                    "row1":{"height":"30%"},"row2":{"height":"30%"},"row3":{"height":"40%"}}}},
+            "probe":{}}})");
+
+        CardInner inner;
+        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setConfig(config);
+        inner.setRowCount(3);
+        inner.layout({ 0, 0, 200, 400 });
+
+        const auto r1 = inner.rowContent(0);
+        const auto r2 = inner.rowContent(1);
+        const auto r3 = inner.rowContent(2);
+
+        check("CardInner_RowHeightIsPercentOfCardInner",
+              r1.getHeight() == 120 && r2.getHeight() == 120 && r3.getHeight() == 160,
+              "cardInner 400px tall, rows 30/30/40% -> " + juce::String(r1.getHeight()) + ", "
+                  + juce::String(r2.getHeight()) + ", " + juce::String(r3.getHeight()));
+    }
+
+    {
+        // Margin and padding shrink what the percentages are measured against.
+        // 400 - (10+10 margin) - (20+20 padding) = 340, and 50% of that is 170.
+        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+            "margin":10,"padding":20,"direction":"column","gap":0,
+            "rows":{"row1":{"height":"50%"},"row2":{"height":"50%"}}}},"probe":{}}})");
+
+        CardInner inner;
+        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setConfig(config);
+        inner.setRowCount(2);
+        inner.layout({ 0, 0, 200, 400 });
+
+        check("CardInner_PercentIsMeasuredAfterMarginAndPadding",
+              inner.content().getHeight() == 340 && inner.rowContent(0).getHeight() == 170,
+              "content height " + juce::String(inner.content().getHeight())
+                  + ", 50% row = " + juce::String(inner.rowContent(0).getHeight()));
+    }
+
+    {
+        // A row spans cardInner's width; it is never a percentage of anything.
+        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+            "margin":0,"padding":{"top":0,"right":15,"bottom":0,"left":15},
+            "rows":{"row1":{"height":"100%"}}}},"probe":{}}})");
+
+        CardInner inner;
+        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setConfig(config);
+        inner.setRowCount(1);
+        inner.layout({ 0, 0, 300, 100 });
+
+        check("CardInner_RowSpansTheFullInnerWidth",
+              inner.rowContent(0).getWidth() == 270 && inner.content().getWidth() == 270,
+              "card 300 wide, 15px side padding -> row width "
+                  + juce::String(inner.rowContent(0).getWidth()));
+    }
+
+    {
+        // Row margin and padding are the row's own, independent of cardInner's.
+        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+            "margin":0,"padding":0,
+            "rows":{"row1":{"height":"100%","margin":5,"padding":10}}}},"probe":{}}})");
+
+        CardInner inner;
+        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setConfig(config);
+        inner.setRowCount(1);
+        inner.layout({ 0, 0, 200, 100 });
+
+        // 200 - (5+5) - (10+10) = 170 wide; 100 - 10 - 20 = 70 tall.
+        const auto row = inner.rowContent(0);
+        check("CardInner_RowMarginAndPaddingAreIndependent",
+              row.getWidth() == 170 && row.getHeight() == 70,
+              "row content " + juce::String(row.getWidth()) + " x " + juce::String(row.getHeight()));
+    }
+
+    {
+        // Rows totalling more than 100% shrink proportionally rather than
+        // overflowing the card - documented behaviour, so it is pinned.
+        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+            "margin":0,"padding":0,
+            "rows":{"row1":{"height":"80%"},"row2":{"height":"80%"}}}},"probe":{}}})");
+
+        CardInner inner;
+        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setConfig(config);
+        inner.setRowCount(2);
+        inner.layout({ 0, 0, 200, 400 });
+
+        const auto total = inner.rowContent(0).getHeight() + inner.rowContent(1).getHeight();
+        check("CardInner_OverlongRowsShrinkInsteadOfOverflowing",
+              total <= 400,
+              "two 80% rows in 400px -> " + juce::String(total) + "px total");
+    }
+
+    // ---- Flex properties reach FlexBox -------------------------------------
+    {
+        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+            "rows":{"row1":{"direction":"column","wrap":"wrap",
+                            "justifyContent":"space-between","alignItems":"flex-start",
+                            "alignContent":"flex-end","gap":8}}}},"probe":{}}})");
+
+        CardInner inner;
+        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setConfig(config);
+        inner.setRowCount(1);
+        inner.layout({ 0, 0, 200, 100 });
+
+        const auto box = inner.rowFlex(0);
+        const auto gap = inner.rowGap(0);
+
+        check("CardInner_FlexPropertiesReachFlexBox",
+              box.flexDirection == juce::FlexBox::Direction::column
+                  && box.flexWrap == juce::FlexBox::Wrap::wrap
+                  && box.justifyContent == juce::FlexBox::JustifyContent::spaceBetween
+                  && box.alignItems == juce::FlexBox::AlignItems::flexStart
+                  && box.alignContent == juce::FlexBox::AlignContent::flexEnd
+                  && juce::approximatelyEqual(gap.top + gap.bottom, 8.0f),
+              "direction, wrap, justify, alignItems, alignContent and gap all applied");
+    }
+
+    {
+        // Gap must actually separate items, not merely parse.
+        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+            "rows":{"row1":{"height":"100%","direction":"row","justifyContent":"flex-start","gap":20}}}},
+            "probe":{}}})");
+
+        CardInner inner;
+        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setConfig(config);
+        inner.setRowCount(1);
+        inner.layout({ 0, 0, 300, 100 });
+
+        auto box = inner.rowFlex(0);
+        const auto gapMargin = inner.rowGap(0);
+        box.items.add(juce::FlexItem(40.0f, 40.0f).withMargin(gapMargin));
+        box.items.add(juce::FlexItem(40.0f, 40.0f).withMargin(gapMargin));
+        box.performLayout(inner.rowContent(0).toFloat());
+
+        const auto first = box.items.getReference(0).currentBounds;
+        const auto second = box.items.getReference(1).currentBounds;
+        const auto separation = second.getX() - first.getRight();
+
+        check("CardInner_GapSeparatesAdjacentItems",
+              juce::approximatelyEqual(separation, 20.0f),
+              "two 40px items with gap 20 -> " + fmt(separation, 1) + "px apart");
+    }
+
+    // ---- Wrapping rows -----------------------------------------------------
+    {
+        // Delay's row 3 has five controls and Mood's has nine. They wrap, and
+        // the wrapped lines have to fit the row: FlexBox takes its line height
+        // from the items, so sizing them against the full row height makes two
+        // lines twice as tall as the row that holds them.
+        const std::vector<float> five { 60.0f, 60.0f, 104.0f, 104.0f, 104.0f };
+
+        const auto oneLine = px3::ui::wrappedLineCount(five, 6.0f, 500.0f);
+        const auto twoLines = px3::ui::wrappedLineCount(five, 6.0f, 280.0f);
+        const auto narrow = px3::ui::wrappedLineCount(five, 6.0f, 110.0f);
+        const auto degenerate = px3::ui::wrappedLineCount(five, 6.0f, 0.0f);
+
+        check("CardInner_WrappedRowsCountTheirLines",
+              oneLine == 1 && twoLines == 2 && narrow == 5 && degenerate == 1,
+              "500px -> " + juce::String(oneLine) + " line, 280px -> " + juce::String(twoLines)
+                  + ", 110px -> " + juce::String(narrow) + ", 0px -> " + juce::String(degenerate));
+    }
+
+    {
+        // A wrapped row must not spill out of the bounds it was given. This is
+        // the property the line count exists to guarantee.
+        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+            "margin":0,"padding":0,"gap":0,
+            "rows":{"row1":{"height":"100%","wrap":"wrap","gap":6}}}},"probe":{}}})");
+        CardInner inner;
+        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setConfig(config);
+        inner.setRowCount(1);
+        inner.layout({ 0, 0, 280, 200 });
+
+        const auto row = inner.rowContent(0);
+        auto flex = inner.rowFlex(0);
+        const auto gap = inner.rowGap(0);
+        const std::vector<float> widths(9, 64.0f);
+        const auto lines = px3::ui::wrappedLineCount(widths, gap.left + gap.right,
+                                                     static_cast<float>(row.getWidth()));
+        const auto cellHeight = juce::jmax(1.0f,
+                                           static_cast<float>(row.getHeight()) / static_cast<float>(lines)
+                                               - (gap.top + gap.bottom));
+        for (const auto w : widths)
+        {
+            flex.items.add(juce::FlexItem(w, cellHeight).withMargin(gap));
+        }
+        flex.performLayout(row.toFloat());
+
+        juce::Rectangle<float> union_;
+        for (int i = 0; i < flex.items.size(); ++i)
+        {
+            union_ = union_.isEmpty() ? flex.items.getReference(i).currentBounds
+                                      : union_.getUnion(flex.items.getReference(i).currentBounds);
+        }
+
+        check("CardInner_WrappedRowStaysInsideItsBounds",
+              lines > 1 && row.toFloat().contains(union_),
+              juce::String(lines) + " lines, items span " + fmt(union_.getHeight(), 1)
+                  + "px inside a " + juce::String(row.getHeight()) + "px row");
+    }
+
+    // ---- Control shapes ----------------------------------------------------
+    {
+        // A knob is round and a dropdown is not. Laying both out with one rule
+        // turns every combo box in the plugin into a square.
+        juce::Component knob;
+        juce::Component dropdown;
+        knob.setVisible(true);
+        dropdown.setVisible(true);
+
+        const juce::Rectangle<int> cell { 0, 0, 120, 60 };
+        px3::ui::layoutLabelledControl(cell, nullptr, &knob, nullptr, 0, 0,
+                                       px3::ui::ControlShape::square, 0);
+        px3::ui::layoutLabelledControl(cell, nullptr, &dropdown, nullptr, 0, 0,
+                                       px3::ui::ControlShape::stretch, 24);
+
+        check("CardInner_ControlShapeDecidesKnobVersusDropdown",
+              knob.getWidth() == 60 && knob.getHeight() == 60
+                  && dropdown.getWidth() == 120 && dropdown.getHeight() == 24,
+              "knob " + knob.getBounds().toString() + ", dropdown " + dropdown.getBounds().toString());
+    }
+
+    {
+        // Label above, readout below, control in what is left - the shape the
+        // existing knobs already have, which this must not change.
+        juce::Component label, knob, readout;
+        label.setVisible(true);
+        knob.setVisible(true);
+        readout.setVisible(true);
+
+        px3::ui::layoutLabelledControl({ 0, 0, 100, 100 }, &label, &knob, &readout, 16, 14,
+                                       px3::ui::ControlShape::square, 0);
+
+        check("CardInner_LabelledControlStacksLabelKnobReadout",
+              label.getBounds() == juce::Rectangle<int>(0, 0, 100, 16)
+                  && readout.getBounds() == juce::Rectangle<int>(0, 86, 100, 14)
+                  && knob.getBounds() == juce::Rectangle<int>(15, 16, 70, 70),
+              "label " + label.getBounds().toString() + ", knob " + knob.getBounds().toString()
+                  + ", readout " + readout.getBounds().toString());
+    }
+
+    // ---- No dead properties ------------------------------------------------
+    {
+        // Same rule the Card is held to: every property UIConfig.json exposes
+        // has to change something. A property that parses but does nothing is a
+        // lie told to whoever edits the file next.
+        //
+        // The fingerprint covers both the resolved geometry and the parsed
+        // style, because some properties are genuinely style-only from
+        // cardInner's point of view - `alignItems` on a column of full-width
+        // rows cannot move them, exactly as in CSS, but it is still handed to
+        // components through rowFlex() and they do use it.
+        const juce::String baseInner = R"("margin":2,"padding":3,"display":"flex","direction":"column",
+            "wrap":"nowrap","justifyContent":"center","alignItems":"center","alignContent":"center","gap":4,
+            "rows":{"row1":{"height":"20%","margin":1,"padding":1,"display":"flex","direction":"row",
+                            "wrap":"nowrap","justifyContent":"center","alignItems":"center",
+                            "alignContent":"center","gap":3},
+                    "row2":{"height":"20%"},"row3":{"height":"20%"}})";
+
+        auto fingerprint = [&](const juce::String& innerJson)
+        {
+            const auto config = configFrom((R"({"cards":{"defaults":{"cardInner":{)"
+                                            + innerJson + R"(}},"probe":{}}})").toRawUTF8());
+            CardInner inner;
+            inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+            inner.setConfig(config);
+            inner.setRowCount(3);
+            inner.layout({ 0, 0, 240, 300 });
+
+            juce::String out = inner.content().toString();
+            const auto& style = inner.style();
+            const auto describe = [](const px3::ui::FlexStyle& f)
+            {
+                return juce::String(f.display ? 1 : 0) + "/" + juce::String((int) f.direction)
+                     + "/" + juce::String((int) f.wrap) + "/" + juce::String((int) f.justifyContent)
+                     + "/" + juce::String((int) f.alignItems) + "/" + juce::String((int) f.alignContent)
+                     + "/" + fmt(f.gap, 2);
+            };
+            out += "|" + describe(style.flex);
+            for (int i = 0; i < 3; ++i)
+            {
+                out += "|" + inner.rowContent(i).toString() + "|" + describe(style.rows[(size_t) i].flex);
+            }
+            return out;
+        };
+
+        const auto base = fingerprint(baseInner);
+
+        // Each entry replaces one property with a different value. If the
+        // fingerprint does not move, that property is inert.
+        const std::vector<std::pair<juce::String, juce::String>> probes {
+            { "margin",             R"("margin":12)" },
+            { "padding",            R"("padding":14)" },
+            { "display",            R"("display":"none")" },
+            { "direction",          R"("direction":"row")" },
+            { "wrap",               R"("wrap":"wrap")" },
+            { "justifyContent",     R"("justifyContent":"flex-start")" },
+            { "alignItems",         R"("alignItems":"stretch")" },
+            { "alignContent",       R"("alignContent":"flex-end")" },
+            { "gap",                R"("gap":20)" },
+            { "row.height",         R"("height":"45%")" },
+            { "row.margin",         R"("margin":9)" },
+            { "row.padding",        R"("padding":9)" },
+            { "row.display",        R"("display":"none")" },
+            { "row.direction",      R"("direction":"column")" },
+            { "row.wrap",           R"("wrap":"wrap")" },
+            { "row.justifyContent", R"("justifyContent":"flex-end")" },
+            { "row.alignItems",     R"("alignItems":"stretch")" },
+            { "row.alignContent",   R"("alignContent":"flex-start")" },
+            { "row.gap",            R"("gap":18)" },
+        };
+
+        juce::StringArray inert;
+        for (const auto& probe : probes)
+        {
+            juce::String variant = baseInner;
+            if (probe.first.startsWith("row."))
+            {
+                // Replace the value inside row1 only, so a row property is not
+                // confused with the cardInner property of the same name.
+                const auto key = probe.first.fromFirstOccurrenceOf(".", false, false);
+                const auto rowStart = variant.indexOf("\"row1\"");
+                const auto keyStart = variant.indexOf(rowStart, "\"" + key + "\":");
+                const auto keyEnd = variant.indexOfAnyOf(",}", keyStart, false);
+                if (keyStart < 0 || keyEnd < 0)
+                {
+                    inert.add(probe.first + " (probe did not match)");
+                    continue;
+                }
+                variant = variant.substring(0, keyStart) + probe.second + variant.substring(keyEnd);
+            }
+            else
+            {
+                const auto keyStart = variant.indexOf("\"" + probe.first + "\":");
+                const auto keyEnd = variant.indexOfAnyOf(",", keyStart, false);
+                variant = variant.substring(0, keyStart) + probe.second + variant.substring(keyEnd);
+            }
+
+            if (fingerprint(variant) == base)
+            {
+                inert.add(probe.first);
+            }
+        }
+
+        check("CardInner_EveryPropertyChangesTheLayout",
+              inert.isEmpty(),
+              inert.isEmpty() ? juce::String(probes.size()) + " properties all have an effect"
+                              : "inert: " + inert.joinIntoString(", "));
+    }
+
+    // ---- display: none -----------------------------------------------------
+    {
+        // A hidden row must leave the layout entirely, not merely draw nothing:
+        // it takes up no height and no gap, and its neighbours end up adjacent.
+        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+            "margin":0,"padding":0,"gap":0,
+            "rows":{"row1":{"height":"25%"},
+                    "row2":{"height":"50%","display":"none"},
+                    "row3":{"height":"25%"}}}},"probe":{}}})");
+        CardInner inner;
+        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setConfig(config);
+        inner.setRowCount(3);
+        inner.layout({ 0, 0, 200, 400 });
+
+        const auto hidden = inner.rowContent(1).getHeight();
+        const auto first = inner.rowContent(0).getHeight();
+        const auto third = inner.rowContent(2).getHeight();
+
+        check("CardInner_DisplayNoneRemovesTheRowFromTheLayout",
+              hidden == 0 && first == 100 && third == 100
+                  && inner.rowContent(2).getY() == inner.rowContent(0).getBottom(),
+              "hidden row " + juce::String(hidden) + "px, neighbours "
+                  + juce::String(first) + "/" + juce::String(third)
+                  + "px and adjacent");
+    }
+
+    // ---- Defaults ----------------------------------------------------------
+    {
+        // A card that declares no cardInner block must still lay out.
+        const auto config = configFrom(R"({"cards":{"defaults":{},"probe":{}}})");
+        CardInner inner;
+        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setConfig(config);
+        inner.setRowCount(3);
+        inner.layout({ 0, 0, 200, 300 });
+
+        const auto box = inner.style().flex;
+        const auto rowsFillTheCard = inner.rowContent(0).getHeight() > 0
+                                  && inner.rowContent(2).getHeight() > 0;
+        check("CardInner_DefaultsProduceAUsableLayout",
+              box.direction == FlexDirection::column && rowsFillTheCard
+                  && inner.content().getHeight() == 300,
+              "column by default, three rows of "
+                  + juce::String(inner.rowContent(0).getHeight()) + "px in an undeclared card");
+    }
+
+    {
+        // Reload semantics, same rule as the Card: a new UIConfig re-parses.
+        auto make = [&](const char* h1) {
+            juce::String error;
+            const juce::String json = juce::String(R"({"cards":{"defaults":{"cardInner":{
+                "margin":0,"padding":0,"rows":{"row1":{"height":")") + h1 + R"("},"row2":{"height":"10%"}}}},"probe":{}}})";
+            return UIConfig::fromJsonText(json, error);
+        };
+
+        CardInner inner;
+        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setRowCount(2);
+
+        inner.setConfig(make("20%"));
+        inner.layout({ 0, 0, 100, 400 });
+        const auto before = inner.rowContent(0).getHeight();
+
+        inner.setConfig(make("60%"));
+        const auto after = inner.rowContent(0).getHeight();
+
+        check("CardInner_ReloadingTheConfigChangesTheLayout",
+              before == 80 && after == 240,
+              "row 1 height " + juce::String(before) + " -> " + juce::String(after) + "px");
+    }
+}
+
 void testDelay()
 {
     suite("DELAY");
@@ -6540,6 +6997,7 @@ int main(int argc, char* argv[])
     if (wants("vibe")) testVibe();
     if (wants("reverb")) testReverb();
     if (wants("cardstyle")) testCardStyle();
+    if (wants("cardinner")) testCardInner();
     if (wants("delay")) testDelay();
     if (wants("mood")) testMood();
     if (wants("fx")) testEffectIndependence();

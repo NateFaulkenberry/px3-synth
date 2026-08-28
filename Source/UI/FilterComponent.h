@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "Card.h"
+#include "CardInner.h"
 
 #include <memory>
 
@@ -22,7 +23,15 @@ public:
 
     void setAccentColour(juce::Colour accentIn);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
-    void setGraphBounds(juce::Rectangle<int> boundsIn);
+    // The filter's controls belong to FltPanel, not to this component - they
+    // are its siblings. So this lays out the card and its rows and hands the
+    // panel the row rectangles, in this component's own coordinates, instead of
+    // the panel computing an interior layout that has to match what is drawn
+    // here. Row 3 is the response graph, which this component draws itself.
+    void layoutCardInner();
+    juce::Rectangle<int> rowBounds(int index) const;
+    juce::FlexBox rowFlex(int index) const;
+    juce::FlexItem::Margin rowGap(int index) const;
     // Which filter this is: drives the card's style block and its title.
     void setInstanceIndex(int oneBasedIndex);
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
@@ -42,8 +51,8 @@ private:
     juce::String instanceLabel;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
-    juce::Rectangle<int> graphBounds;
     px3::ui::CardHost card;
+    px3::ui::CardInner inner;
     int instanceIndex { 1 };
 
     bool currentEnabled { true };

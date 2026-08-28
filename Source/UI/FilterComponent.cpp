@@ -32,10 +32,32 @@ void FilterComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     repaint();
 }
 
-void FilterComponent::setGraphBounds(juce::Rectangle<int> boundsIn)
+void FilterComponent::layoutCardInner()
 {
-    graphBounds = boundsIn;
-    repaint();
+    card.setStyleKey("filter" + juce::String(instanceIndex));
+    card.setConfig(uiConfig);
+    card.layout(getLocalBounds());
+
+    inner.setKeys("cards.defaults.cardInner",
+                  "cards.filter" + juce::String(instanceIndex) + ".cardInner");
+    inner.setConfig(uiConfig);
+    inner.setRowCount(3);
+    inner.layout(card.contentBelowTitle());
+}
+
+juce::Rectangle<int> FilterComponent::rowBounds(int index) const
+{
+    return inner.rowContent(index);
+}
+
+juce::FlexBox FilterComponent::rowFlex(int index) const
+{
+    return inner.rowFlex(index);
+}
+
+juce::FlexItem::Margin FilterComponent::rowGap(int index) const
+{
+    return inner.rowGap(index);
 }
 
 void FilterComponent::refreshFromParameters()
@@ -80,9 +102,7 @@ void FilterComponent::paint(juce::Graphics& g)
     // The card and its title belong here. FltPanel used to draw the title from
     // the panel, into this component's bounds - the same parent-owns-child's-
     // pixels mistake that left stale outlines behind elsewhere.
-    card.setStyleKey("filter" + juce::String(instanceIndex));
-    card.setConfig(uiConfig);
-    card.layout(getLocalBounds());
+    layoutCardInner();
 
     const auto title = "FILTER " + juce::String(instanceIndex);
     if (currentEnabled)
@@ -97,7 +117,8 @@ void FilterComponent::paint(juce::Graphics& g)
     const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
     juce::ignoreUnused(effectiveAccent);
 
-    auto graphRect = graphBounds.isEmpty() ? getLocalBounds().toFloat().reduced(2.0f) : graphBounds.toFloat();
+    const auto graphRow = rowBounds(2);
+    auto graphRect = graphRow.isEmpty() ? getLocalBounds().toFloat().reduced(2.0f) : graphRow.toFloat();
     if (graphRect.getWidth() < 12.0f || graphRect.getHeight() < 12.0f)
     {
         return;

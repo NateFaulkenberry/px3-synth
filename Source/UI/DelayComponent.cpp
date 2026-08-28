@@ -1,5 +1,7 @@
 #include "DelayComponent.h"
 
+#include "CardInner.h"
+
 #include "UIConfig.h"
 
 DelayComponent::DelayComponent(juce::ToggleButton& enabledButtonIn,
@@ -79,63 +81,90 @@ void DelayComponent::setActive(bool enabled, bool granularModeSelectable)
 void DelayComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+    // cardInner parses its rows in resized(), so a live reload has to redo
+    // the layout as well as the paint.
+    resized();
     repaint();
 }
 
 void DelayComponent::resized()
 {
-    const auto padX = uiConfig != nullptr ? uiConfig->getInt("fx.delay.layout.padX", 10) : 10;
-    const auto padY = uiConfig != nullptr ? uiConfig->getInt("fx.delay.layout.padY", 8) : 8;
-    auto area = getLocalBounds().reduced(padX, padY);
+    card.setStyleKey("delay");
+    card.setConfig(uiConfig);
+    card.layout(getLocalBounds());
 
-    auto top = area.removeFromTop(24);
-    enabledButton.setBounds(top.removeFromLeft(22));
+    inner.setKeys("cards.defaults.cardInner", "cards.delay.cardInner");
+    inner.setConfig(uiConfig);
+    inner.setRowCount(3);
+    inner.layout(card.contentBelowTitle());
 
-    auto controls = area.removeFromBottom(120);
-    auto rowMode = controls.removeFromBottom(22);
-    controls.removeFromBottom(2);
-    auto rowAlgo = controls.removeFromBottom(22);
-    auto rowSync = controls.removeFromBottom(22);
-    controls.removeFromBottom(2);
-    auto miniArea = controls;
+    using px3::ui::ControlShape;
 
-    auto leftMini = miniArea.removeFromLeft(miniArea.getWidth() / 2).reduced(2, 0);
-    auto rightMini = miniArea.reduced(2, 0);
+    // Row 1: the bypass button and the painted "ON" text beside it.
+    {
+        auto flex = inner.rowFlex(0);
+        const auto gap = inner.rowGap(0);
+        const auto row = inner.rowContent(0);
+        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-    auto leftLabelArea = leftMini.removeFromBottom(16);
-    auto rightLabelArea = rightMini.removeFromBottom(16);
+        flex.items.add(juce::FlexItem(24.0f, cellHeight).withMargin(gap));
+        flex.items.add(juce::FlexItem(26.0f, cellHeight).withMargin(gap));
+        flex.performLayout(row.toFloat());
 
-    const auto miniKnobSize = juce::jlimit(30,
-                                           44,
-                                           juce::jmin(leftMini.getWidth(), juce::jmin(leftMini.getHeight(), rightMini.getHeight())));
-    const auto leftKnobBounds = juce::Rectangle<int>(miniKnobSize, miniKnobSize).withCentre(leftMini.getCentre());
-    const auto rightKnobBounds = juce::Rectangle<int>(miniKnobSize, miniKnobSize).withCentre(rightMini.getCentre());
-    timeKnob.setBounds(leftKnobBounds);
-    feedbackKnob.setBounds(rightKnobBounds);
+        enabledButton.setBounds(juce::Rectangle<int>(22, 22)
+                                    .withCentre(flex.items.getReference(0).currentBounds.toNearestInt().getCentre()));
+        onLabelBounds = flex.items.getReference(1).currentBounds.toNearestInt();
+    }
 
-    constexpr int miniLabelHeight = 16;
-    const auto leftLabelWidth = leftMini.getWidth();
-    const auto rightLabelWidth = rightMini.getWidth();
-    timeLabel.setBounds(juce::Rectangle<int>(leftLabelWidth, miniLabelHeight)
-                            .withCentre({ leftKnobBounds.getCentreX(), leftLabelArea.getCentreY() }));
-    feedbackLabel.setBounds(juce::Rectangle<int>(rightLabelWidth, miniLabelHeight)
-                                .withCentre({ rightKnobBounds.getCentreX(), rightLabelArea.getCentreY() }));
+    // Row 2: the amount knob with its label below.
+    {
+        auto flex = inner.rowFlex(1);
+        const auto gap = inner.rowGap(1);
+        const auto row = inner.rowContent(1);
 
-    auto algoLabelArea = rowAlgo.removeFromLeft(56);
-    algorithmLabel.setBounds(algoLabelArea);
-    algorithmBox.setBounds(rowAlgo.reduced(2, 1));
+        flex.items.add(juce::FlexItem(100.0f, static_cast<float>(juce::jmax(1, row.getHeight())))
+                           .withMargin(gap));
+        flex.performLayout(row.toFloat());
 
-    auto syncLabelArea = rowSync.removeFromLeft(56);
-    syncLabel.setBounds(syncLabelArea);
-    syncBox.setBounds(rowSync.reduced(2, 1));
+        px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
+                                       nullptr, &amountKnob, &amountLabel,
+                                       0, 18, ControlShape::square, 80);
+    }
 
-    auto modeLabelArea = rowMode.removeFromLeft(56);
-    modeLabel.setBounds(modeLabelArea);
-    modeBox.setBounds(rowMode.reduced(2, 1));
+    // Row 3: five controls in one wrapping row - the two small knobs and the
+    // three dropdowns. The spec is explicit that this must not become a fourth
+    // row; the row wraps instead, and how it wraps is UIConfig's business.
+    {
+        auto flex = inner.rowFlex(2);
+        const auto gap = inner.rowGap(2);
+        const auto row = inner.rowContent(2);
+        const auto rowWidth = static_cast<float>(juce::jmax(1, row.getWidth()));
 
-    const auto knobSize = juce::jmin(80, juce::jmin(area.getWidth(), area.getHeight()));
-    amountKnob.setBounds(juce::Rectangle<int>(knobSize, knobSize).withCentre(area.getCentre()));
-    amountLabel.setBounds(juce::Rectangle<int>(area.getX(), area.getBottom() - 18, area.getWidth(), 16));
+        const std::vector<float> widths { 60.0f, 60.0f, 104.0f, 104.0f, 104.0f };
+        const auto gapWidth = gap.left + gap.right;
+        const auto lines = px3::ui::wrappedLineCount(widths, gapWidth, rowWidth);
+        const auto cellHeight = juce::jmax(1.0f,
+                                           static_cast<float>(row.getHeight()) / static_cast<float>(lines)
+                                               - (gap.top + gap.bottom));
+
+        for (const auto width : widths)
+        {
+            flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gap));
+        }
+        flex.performLayout(row.toFloat());
+
+        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+        px3::ui::layoutLabelledControl(cell(0), nullptr, &timeKnob, &timeLabel,
+                                       0, 16, ControlShape::square, 44);
+        px3::ui::layoutLabelledControl(cell(1), nullptr, &feedbackKnob, &feedbackLabel,
+                                       0, 16, ControlShape::square, 44);
+        px3::ui::layoutLabelledControl(cell(2), &syncLabel, &syncBox, nullptr,
+                                       14, 0, ControlShape::stretch, 22);
+        px3::ui::layoutLabelledControl(cell(3), &algorithmLabel, &algorithmBox, nullptr,
+                                       14, 0, ControlShape::stretch, 22);
+        px3::ui::layoutLabelledControl(cell(4), &modeLabel, &modeBox, nullptr,
+                                       14, 0, ControlShape::stretch, 22);
+    }
 }
 
 void DelayComponent::paint(juce::Graphics& g)
@@ -160,9 +189,8 @@ void DelayComponent::paint(juce::Graphics& g)
                                 ? uiConfig->getColour("fx.delay.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
                                 : juce::Colour::fromRGB(232, 232, 232);
     const auto fontSize = uiConfig != nullptr ? uiConfig->getFloat("fx.delay.visual.onLabel.fontSize", 11.5f) : 11.5f;
-    const auto textBounds = uiConfig != nullptr
-                                ? uiConfig->getRect("fx.delay.visual.onLabel.bounds", getLocalBounds(), { 36, 11, 24, 14 })
-                                : juce::Rectangle<int>(36, 11, 24, 14);
+    // Beside the button, wherever row 1 put it.
+    const auto textBounds = onLabelBounds;
 
     g.setColour(textColour.withAlpha(isActive ? 1.0f : 0.6f));
     g.setFont(juce::FontOptions(fontSize));
