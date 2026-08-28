@@ -10,7 +10,7 @@ For developer architecture, maintenance map, and release workflow, see `DEVELOPM
 
 ## What You Get
 
-- 16-voice poly synth engine.
+- 64-voice poly synth engine.
 - 20 oscillator modes (classic + experimental + PX3).
 - Three macro knobs whose meaning changes by oscillator mode.
 - Dedicated SUB + OSC1/OSC2/OSC3 source channels.
@@ -18,6 +18,7 @@ For developer architecture, maintenance map, and release workflow, see `DEVELOPM
 - Three LFO modulation sources with assignable destinations.
 - Four FX blocks with bypass and drag/drop processing order.
 - Mixer channel controls: level, pan, send, mute, solo, per-channel meter.
+- Mixer faders show the real gain of each channel; the -4 dB of modulation headroom lives on the sources themselves, not hidden inside the fader.
 - Explicit internal audio bus routing: OSCILLATOR STEMS -> DRY BUS + FX SEND BUS -> FX CHAIN -> FX RETURN -> MASTER.
 - FX return controls: level, pan, mute, solo.
 - Clickable 88-key keyboard (A0-C8) with medium click velocity.
@@ -236,6 +237,21 @@ Bus architecture notes:
 - FX BUS stores return-only contribution relative to the sent signal.
 - MASTER BUS is the final sum and the source for post-block reverb compensation.
 
+## Mixer Gain Structure
+
+- Every source (SUB, OSC1, OSC2, OSC3) and the FX return defaults to -4 dB, giving
+  each channel headroom for modulation without the mix clipping.
+- That trim lives **on the sources themselves**, not inside the fader. A mixer
+  fader at unity means unity: what the strip shows is the channel's actual gain.
+- Because the trim is a default rather than a hidden offset, presets and DAW
+  sessions store and restore whatever the fader was actually set to. Loading a
+  preset never re-applies the default over the top of a saved value.
+- The fader range extends above unity by the same 4 dB, so a channel can still be
+  pushed back to its full pre-trim level.
+- The trim value and the fader's maximum come from one shared constant in
+  `Source/DSP/PluginProcessorInternals.h`, so the source side and the fader range
+  cannot drift apart.
+
 ## Mixer Solo Rules
 
 Mixer solo behavior is intentionally explicit:
@@ -443,6 +459,11 @@ Bypass semantics:
 - Checked = enabled (not bypassed).
 - Unchecked = bypassed.
 
+Bypassing an FX block clears its internal buffers, so re-enabling it starts silent
+rather than releasing the tail of whatever was playing when it was switched off.
+Delay clears immediately; Reverb and Mood clear once their fade to silence
+completes, so the bypass itself never clicks.
+
 Header behavior:
 
 - Clicking section header toggles its bypass.
@@ -452,19 +473,47 @@ Header behavior:
 
 Controls:
 
-- WARMTH knob: effect amount.
+- AMOUNT knob: effect amount.
+- TYPE dropdown: Warm, Hot, Cool, Vintage, Clean, LoFi.
 
 What it does:
 
-- Global analog-imperfection amount control distributed through per-voice behavior.
-- Adds correlated drift, subtle saturation, asymmetry, filter movement, PSU/temperature motion, and noise.
-- VIBE is an original texture system, not a hardware emulation claim.
+VIBE is a per-voice analog-imperfection layer rather than an effect on the mix. It
+runs inside each voice, per source, *before* the four sources are summed - N
+saturated signals summed does not equal their sum saturated once, and that
+difference is the point.
+
+What it adds:
+
+- **Independent per-voice drift.** Every voice has its own drift rate (0.020-0.095 Hz),
+  its own random walk, and its own thermal phase. Voices do not drift together;
+  that independence is what thickens a held chord rather than sounding like vibrato.
+  Measured movement is about 3.2 cents with an inter-voice correlation near zero.
+- **Console-style saturation** using a `sin()` fold rather than `tanh()`, which
+  reaches a hard ceiling and produces a different harmonic series.
+- **Program-dependent PSU sag.** The supply sags because the amplifier is drawing
+  current, so the sag follows the actual oscillator-bus level.
+- **Pink (1/f) noise**, not white - analog hiss falls at roughly 3 dB/octave.
+- **A coupling capacitor per source**, because asymmetric distortion makes DC by
+  definition and DC inside a signal path eats headroom.
+- **A chaotic (Lorenz) component** integrated at a fixed timestep, so its rate does
+  not change with the host's buffer size.
+
+Level behaviour:
+
+- The stage is deliberately level-neutral: the worst level change across the whole
+  WARMTH range is about 1.2 dB. Turning VIBE up adds harmonic content and movement,
+  not volume.
+
+VIBE is an original texture system, not a hardware emulation claim. The `sin()`
+saturation is credited to Airwindows in `THIRD_PARTY_NOTICES.md`.
 
 ### Delay
 
 Controls:
 
-- Main amount knob (center knob in delay card): granular-delay amount/mix driver.
+- AMOUNT knob (center knob in delay card): delay amount/mix driver. At zero the
+  block is a wire.
 - ALGO dropdown:
   - Granular
   - Tape
@@ -484,11 +533,57 @@ Controls:
   - 1/8T
   - 1/16
   - 1/16T
+- GRANULAR MODE dropdown (applies to the Granular algorithm):
+  - CLASSIC
+  - CLOUD
+  - SHIMMER
+  - RHYTHMIC
 
 What it does:
 
-- Granular algorithm spawns windowed grains from delay memory.
-- Other algorithms use classic delay reads with per-mode coloration and feedback topology.
+Every algorithm reads its delay line with four-point cubic interpolation. Linear
+interpolation suppresses its imaging products by only about 26 dB and its gain
+droops with the fractional part, so a read pointer that is moving - which is every
+algorithm here - would get a lowpass that wobbles in step with the motion.
+
+- **Granular** spawns windowed grains from delay memory, with four sub-modes
+  (CLASSIC, CLOUD, SHIMMER, RHYTHMIC) selected by the GRANULAR MODE dropdown.
+  Grains read from a point in the stereo field rather than from a mono sum.
+- **Tape** models the transport rather than imitating it: wow, flutter and scrape
+  as separate speed-error mechanisms at decades-apart rates, a head bump from the
+  record/playback gap geometry, cumulative high-frequency gap loss per pass, and
+  magnetic hysteresis in the saturation.
+- **Analog/BBD** models a 4096-stage bucket-brigade chip. The stage count is fixed
+  and the clock is whatever produces the wanted delay, so **bandwidth is locked to
+  delay time**: short settings are bright, long settings are dark and grainy. It
+  also has the companding (compress in, expand out) those chips need, and the
+  anti-alias and reconstruction filters that go with it. Its TIME control stops at
+  620 ms because a real chip runs out of stages - that ceiling is the model, not a
+  clamp.
+- **Ping-Pong** sums the input to one side and hands each repeat to the other
+  channel, so the echoes genuinely alternate in time.
+- **Stereo** runs two lines at a musical two-thirds ratio with light cross-coupling.
+- **Modulated** slides its read pointers under three modulators at incommensurate
+  rates, opposed between the channels.
+- **Diffusion** puts a Schroeder allpass chain in the feedback path, so each repeat
+  smears a little more than the last and the echoes dissolve into a wash.
+
+FEEDBACK behaviour:
+
+- FEEDBACK sets a decay **time**, not a per-repeat coefficient. The coefficient is
+  derived from the delay length so that the same knob position means the same decay
+  whether the delay is 20 ms or 2 seconds. As a raw coefficient it did not: 0.98 per
+  repeat is a 30-second decay at 100 ms and an eleven-minute one at 2 seconds.
+- The top of the control is a long but finite decay, not a drone.
+
+Other behaviour:
+
+- At zero AMOUNT the delay is a wire - bit-identical to its input.
+- Changing TIME crossfades between delay positions on the digital algorithms, so
+  existing echoes do not pitch-bend. Tape and Modulated slide the pointer instead,
+  because the pitch movement is the effect in those two.
+- Bypassing the block clears the delay lines, so re-enabling it does not replay a
+  tail from before it was switched off.
 
 ### Reverb
 
@@ -503,11 +598,115 @@ Controls:
 
 What it does:
 
-- ROOM: compact early-reflection style space with tighter decay behavior.
-- PLATE: denser plate-style diffusion with a brighter, smoother tail.
-- HALL: larger multi-line hall network with wider, longer ambience.
-- CLOUD: expansive modulated diffusion mode with cloud feedback/diffusion shaping.
-- Shared post-processing across modes includes stereo width shaping, wet DC filtering, gentle peak control/saturation at high wet levels, and output compensation to keep loudness more stable as INTENSITY rises.
+- **ROOM**: an explicit nine-tap early-reflection pattern per channel, with
+  different times per ear, feeding a feedback delay network at roughly 30-175 ms.
+- **PLATE**: a full Dattorro plate (JAES 45/9, 1997) - four input diffusers, a
+  figure-of-eight recirculating tank with modulated allpasses, and the canonical
+  seven-tap-per-channel output pickup.
+- **HALL**: a Jot/zita-style eight-line feedback delay network with an allpass
+  inside each loop, Hadamard mixing, and per-line damping, scaled to ~37-231 ms.
+- **CLOUD**: the same network scaled much longer (~75-488 ms) for expansive,
+  modulated wash.
+
+Three properties are what make these sound like spaces rather than metal:
+
+- Per-line feedback gain is **delay-compensated** (Jot's rule), so short and long
+  lines decay at the same rate in time rather than the same rate per pass.
+- The feedback matrix is **orthogonal** (Hadamard), so it is energy-preserving.
+- Delay lengths are **mutually incommensurate** and there is input diffusion ahead
+  of the network, without which an impulse arrives as a burst of discrete taps.
+
+Also:
+
+- Early reflections are same-sign on both channels. Anti-phase measures wider but
+  cancels when the mix is summed to mono.
+- Shared post-processing includes stereo width shaping, wet DC filtering, gentle
+  peak control at high wet levels, and output compensation so loudness stays stable
+  as INTENSITY rises.
+- Bypassing the block clears the delay lines once the amount fade reaches zero, so
+  re-enabling it does not release the tail of whatever was playing when it was
+  switched off.
+
+### Mood
+
+Mood is a two-channel micro-looper and spatial-effects module: an always-listening
+looper and a suite of real-time spatial effects that can process the input, the
+loop, or both. It is inspired by the MOOD pedal by Chase Bliss Audio - behaviour
+only, no code; see `THIRD_PARTY_NOTICES.md`.
+
+Shared controls (UI labels in brackets where they differ):
+
+- MIX: balance between input and Mood.
+- CLOCK: Mood's internal sample rate (see below).
+- ROUTING dropdown: what the wet channel is fed.
+  - `DRY->WET` - the input only.
+  - `LOOP->WET` - the micro-loop only.
+  - `PARALLEL` - both.
+- FEEDBACK: how much of the loop and wet channel is recycled back into the loop.
+  At the top it piles material up the way a looper does.
+- SPREAD: how much per-mode stereo treatment is applied (see below).
+- DEGRADE: progressive lo-fi - bit reduction, sample-rate reduction, a rising
+  noise floor and asymmetric drive. Applied to what is written back into the loop,
+  so it compounds pass over pass rather than sitting as a fixed layer on the output.
+- FREEZE: stops the looper recording and repeats what it has indefinitely.
+
+Wet channel (MODE dropdown):
+
+The wet channel's two knobs are labelled WET TIME and WET MOD in the UI; the
+micro-looper's are LOOP LEN and LOOP MOD.
+
+- `REVERB` - WET TIME sets decay and size together; WET MOD sets smear, from
+  multi-tap delay at minimum to full reverb at maximum.
+- `DELAY` - WET TIME sets the delay time and crossfades between times, so changing
+  it does not pitch-bend echoes already in flight; WET MOD sets feedback, and at
+  maximum the repeats hold rather than decay.
+- `SLIP` - an auto-sampler. WET TIME sets the sampling window; WET MOD sets
+  playback speed and direction in semitone steps, from an octave down through
+  neutral to an octave up, in either direction.
+
+Micro-looper channel (MODE dropdown):
+
+- `ENV` - LOOP LEN sets slice size; LOOP MOD sets detector sensitivity. The loop
+  runs until the input crosses the threshold, then the current slice repeats until
+  the input falls back below it.
+- `TAPE` - LOOP LEN shrinks the loop; LOOP MOD sets speed and direction in
+  harmonised steps (quarter, half, unity and double speed, in each direction).
+- `STRETCH` - LOOP LEN sets slice size; LOOP MOD sets direction and stretch
+  amount, with the loop frozen at the centre of the knob.
+
+CLOCK - the control that ties the two channels together:
+
+CLOCK is Mood's internal sample rate. It sets the length and resolution of the
+loops and the quality and time of the wet effects at the same time, and it moves in
+semitone steps across three octaves. Because audio captured at one rate and played
+back at another changes speed and pitch together, dropping the clock an octave
+half-speeds the micro-loop *and* the wet channel. Low settings introduce the
+aliasing and downsampling that go with a low sample rate - that grit is the control
+working, not an artifact. A side effect worth knowing: Mood costs less CPU at lower
+clock settings, because the whole engine runs clock-divided.
+
+SPREAD - each mode makes stereo its own way:
+
+With SPREAD down, the incoming stereo image is preserved: a source panned to one
+side comes out on that side. With SPREAD up, each mode alters the image in its own
+way rather than simply mixing the channels into each other.
+
+- REVERB - reflections are placed differently per channel, with anti-symmetric
+  cross-feed so the two sides carry genuinely different signals.
+- DELAY - ping-pong; echoes alternate between the channels, mirroring the panning
+  depth of what went in.
+- SLIP - smooth panning plus widening.
+- ENV - the incoming image is held until the detector fires, then the held slice
+  traverses the field, alternating direction on each opening. Speed follows
+  LOOP LEN.
+- TAPE - the right channel plays the loop forward and the left plays the same loop
+  in reverse.
+- STRETCH - the grain cloud drifts slowly from side to side.
+
+Other behaviour:
+
+- Bypassing the block clears the loop and wet buffers, so re-enabling it does not
+  replay an old loop.
 
 ## Performance + Keyboard
 
@@ -599,7 +798,7 @@ runtime orchestration path.
   - Builds the assignable destination list from supported float parameters.
 - `currentLfoSignalForBlock`
   - Generates the current block LFO signal and tracks debug phase/value state.
-- `applyLfoToNormalizedValue`
+- `applyModulationToNormalizedValue`
   - Applies normalized base + depth * signal and clamps to [0, 1].
 
 ### Voice + Synthesis
@@ -619,14 +818,28 @@ Notable mode helpers:
 
 ### FX + Ordering
 
-- `processDelayAlgorithmSample`
-  - Delay algorithm switch and per-sample processing.
-- `processIsaacGranularSample` / `spawnIsaacGrain`
-  - Granular-delay grain lifecycle.
-- `processReverbSampleFrame`
-  - Reverb frame processing.
+Each FX block is its own component class with the same four-call interface -
+`prepare`, `reset`, `updateForBlock`, `processSampleFrame` - so the processor does
+not need to know anything about their internals:
+
+- `Source/DSP/Vibe.*` and `Source/DSP/VibeEngine.*`
+  - Vibe's shared per-block state. The per-sample application lives inside
+    `SynthVoice`, because Vibe is a per-voice stage rather than a bus effect.
+- `Source/DSP/Delay.*`
+  - `processDelayAlgorithmSample` switches between the seven algorithms;
+    `processIsaacGranularSample` / `spawnIsaacGrain` handle the granular grain
+    lifecycle.
+- `Source/DSP/Reverb.*`
+  - `processFdn8` is the shared feedback delay network behind ROOM, HALL and
+    CLOUD; the Dattorro plate is separate.
+- `Source/DSP/Mood.*`
+  - `processInternalStep` runs the clock-divided engine; the loop and wet modes
+    are `renderLoop*` and `renderWet*`.
 - `getFxProcessingOrder` / `setFxProcessingOrder`
   - Sanitized user order storage and retrieval.
+
+`Source/DSP/PluginProcessorEffects.cpp` is now an empty placeholder - the effect
+implementations were extracted into the component classes above.
 
 ### Editor/UI Wiring
 

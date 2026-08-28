@@ -58,6 +58,46 @@ Explicitly disable forced rebuild (default):
 ./scripts/run-standalone.sh --build false
 ```
 
+## Developer Test Executables
+
+Alongside the plugin, four console executables are configured by CMake. They are
+the regression gate and the measurement tools; see the Testing And Measurement
+section of `DEVELOPMENT.md` for what each mode reports.
+
+```bash
+cmake -B build/diag -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build/diag --target PX3Tests PX3Diag PX3Bench
+
+# component regression suite (optionally filtered to one suite)
+build/diag/PX3Tests_artefacts/RelWithDebInfo/PX3Tests
+build/diag/PX3Tests_artefacts/RelWithDebInfo/PX3Tests delay
+
+# real-time safety: allocations on the audio thread
+build/diag/PX3Diag_artefacts/RelWithDebInfo/PX3Diag rtsafety
+
+# memory footprint breakdown
+build/diag/PX3Diag_artefacts/RelWithDebInfo/PX3Diag memory
+
+# CPU benchmark across representative scenarios
+build/diag/PX3Bench_artefacts/RelWithDebInfo/PX3Bench
+```
+
+Note: `PX3_DIAGNOSTICS` is enabled only for `PX3Diag`. `PX3Tests`, `PX3Bench` and
+`PX3SmokeTest` build with it off so they exercise the shipping code path.
+
+Before proposing a DSP change, the useful sequence is: run the relevant
+measurement mode to get a baseline, make the change, run it again, and keep or
+revert on the numbers.
+
+Sanitiser and Debug configurations are worth running for DSP work:
+
+```bash
+cmake -B build/asan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+      -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined"
+cmake --build build/asan --target PX3Tests
+build/asan/PX3Tests_artefacts/RelWithDebInfo/PX3Tests
+```
+
 ## UIConfig JSON During Development
 
 UI styling/layout is driven by `Source/UI/UIConfig.json`.

@@ -36,11 +36,32 @@ Bus architecture rule:
 - Do not allocate bus storage in the audio callback.
 - LFO remains modulation-only and is never mixed into audio buses.
 
+Gain structure rule:
+
+- The -4 dB of per-channel modulation headroom lives on the **sources**, not
+  inside the mixer faders. A fader at unity is unity, and the strip shows the
+  channel's real gain.
+- `kSourceHeadroomDb`, `sourceHeadroomGain()` and `channelFaderMaxGain()` in
+  `Source/DSP/PluginProcessorInternals.h` are the single source of truth. The
+  source-side trim and the fader's maximum are derived from the same constant so
+  they cannot disagree.
+- Defaults must never be re-applied over restored state. The trim is a parameter
+  default, so a preset or DAW session that saved a different fader value gets that
+  value back untouched.
+
 ## Source Layout
 
 Main code lives in Source/
 
 - `Source/DSP/`: processor lifecycle, parameter definitions, voice/sound DSP (`PluginProcessor.*`, `SynthVoice.*`, `SynthSound.*`)
+  - FX components, each a self-contained class with the same
+    `prepare` / `reset` / `updateForBlock` / `processSampleFrame` interface:
+    `Vibe.*` + `VibeEngine.*`, `Delay.*`, `Reverb.*`, `Mood.*`
+  - Voice-level building blocks: `OscillatorUnit.*`, `SubOscillator.*`,
+    `VoiceFilter.*`, `AmpEnvelope.*`, `EnvelopeGenerator.*`, `LfoGenerator.*`
+  - Shared internals: `PluginProcessorInternals.h` (gain-structure constants,
+    choice lists), `SmoothedGain.h`, `OutputCeiling.h`
+- `Source/Tools/`: developer executables (see Testing And Measurement below)
 - `Source/UI/`: editor surface + UI components (`PluginEditor.*`, `PerformanceControls.*`, `PianoKeyboard.*`)
 - `Source/Preset/`: preset read/write/import/export and metadata (`PresetManager.*`)
 - `Source/Core/`: shared lightweight data/types (`PX3Version.h`)
@@ -71,6 +92,15 @@ Developer note: oscillator/sub pitch controls
    - Included automatically through parameter tree serialization.
    - Additional explicit sub-osc subtree persistence/backfill is handled in `Source/DSP/PluginProcessorState.cpp`.
 
+Want to change an FX algorithm?
+- VIBE: `Source/DSP/VibeEngine.cpp` for the shared per-block state,
+  `Source/DSP/SynthVoice.cpp` (`applyVibeSourceStage`) for the per-sample stage.
+  Vibe is a per-voice effect, not a bus effect - it runs per source before the
+  four sources are summed.
+- DELAY: `Source/DSP/Delay.cpp`
+- REVERB: `Source/DSP/Reverb.cpp`
+- MOOD: `Source/DSP/Mood.cpp`
+
 Want to change internal bus routing stages?
 - `Source/DSP/PluginProcessor.cpp` (`prepareToPlay`, `processBlock`)
 
@@ -91,7 +121,8 @@ Want to change envelope/filter defaults/ranges?
 - envelope/filter usage in `Source/DSP/SynthVoice.cpp`
 
 Want to change LFO behavior?
-- `currentLfoSignalForBlock()` and `applyLfoToNormalizedValue()` in `Source/DSP/PluginProcessor.cpp`
+- `currentLfoSignalForBlock()` in `Source/DSP/PluginProcessor.cpp`
+- `applyModulationToNormalizedValue()` in `Source/DSP/PluginProcessorParameters.cpp`
 
 Want to change ADSR graph UI?
 - `EnvelopeGraphComponent` in `Source/UI/PluginEditor.cpp`
@@ -152,6 +183,93 @@ Debug performance HUD metric semantics:
 - CPU metric is intentionally smoothed for readability; do not treat it as a peak detector.
 - RAM metric is an estimate only: process RSS divided by active PX3 processor instances.
 - RAM estimate is closest in standalone single-instance use; in DAWs it is shared-process apportionment.
+
+## Testing And Measurement
+
+Four developer executables are built alongside the plugin. All are console apps
+under `Source/Tools/` and are configured by CMake automatically.
+
+| Target | What it is for |
+| --- | --- |
+| `PX3Tests` | Component correctness suite - the main regression gate |
+| `PX3Diag` | Signal-path isolation, real-time safety, memory and soak diagnostics |
+| `PX3Bench` | CPU benchmark across representative scenarios |
+| `PX3SmokeTest` | Minimal end-to-end render check |
+
+Build and run:
+
+```bash
+cmake -B build/diag -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build/diag --target PX3Tests
+build/diag/PX3Tests_artefacts/RelWithDebInfo/PX3Tests
+```
+
+`PX3Tests` takes an optional suite filter: `subosc`, `osc`, `ampenv`, `modenv`,
+`lfo`, `vibe`, `reverb`, `delay`, `mood`, `fx`, `preset`, `integration`.
+
+It also has measurement modes that print characterisation tables rather than
+pass/fail results. These exist so that "sounds better" can be argued from numbers:
+
+- `probe` - general parameter sweeps
+- `gainstage` - level through each stage of the chain
+- `vibemetrics` - per-voice drift correlation, DC offset, level neutrality
+- `reverbmetrics` - echo density, spectral flatness, decay nonlinearity, RT60
+- `delaymetrics` - echo times, zero-amount transparency, stability, sample-rate consistency
+- `delaystress` - control sweeps followed by silence, to catch tails that never decay
+- `moodmetrics` - per-mode stereo behaviour, clock transposition, degrade response
+
+Important: `PX3_DIAGNOSTICS` is 1 only for `PX3Diag`. `PX3Tests`, `PX3Bench` and
+`PX3SmokeTest` build with it at 0 so they measure the shipping code path.
+
+### Writing DSP Tests - Lessons Worth Keeping
+
+Most of the time lost on this codebase has gone to bad measurements, not bad code.
+Several "bugs" turned out to be faults in the instrument:
+
+- **Match the instrument to the quantity.** A pitch or length control cannot be
+  measured by RMS. A control that is deliberately level-neutral cannot be measured
+  by level. Vibe's amount is measured by harmonic content added to a sine, because
+  a sine has none of its own.
+- **Ratios need a denominator with something in it.** A sub-30 Hz energy share
+  measured in a near-silent window swung between 0.06 and 0.31 run to run purely
+  from grain-spawn randomness. Measure on sustained input.
+- **Some things can only be measured against state.** Mood's CLOCK preserves pitch
+  when the clock is held constant, by definition - capture, freeze, *then* move it.
+- **Static-parameter tests miss a whole class of fault.** Three delay bugs only
+  appeared while a control was moving. `delaystress` exists for that.
+- **Prefer standard measures to hand-rolled ones.** A hand-rolled decay-ripple
+  metric gave a different answer depending on where its window started and made a
+  working reverb algorithm look broken. ISO 3382 decay-curve nonlinearity did not.
+- **`juce::Random::setSeed()` is a silent no-op on the system Random.** Anything
+  using `getSystemRandom()` varies run to run; average over several renders.
+- **`juce::Synthesiser` retargets an existing voice** when the same pitch is played
+  twice, so multi-voice behaviour must be measured on the engine directly.
+
+### DSP Invariants Worth Knowing
+
+- **Any gain-adding stage inside a feedback loop must be normalised**, or the
+  feedback coefficient is not the loop gain. Two separate delay runaways came from
+  this: an un-normalised head bump, and a hysteresis bias term with a DC gain of
+  1/(1-k).
+- **A state-variable filter's bandpass output peaks at Q, not unity.** Normalising
+  as though it were unity leaves Q times more gain in the loop than budgeted.
+- **A compander's two halves must be inverses.** A 2:1 compressor produces `x^0.5`,
+  so the expander gain must be linear in the envelope. Square roots on both sides
+  give a round trip of `x^0.75`, and a sub-linear loop gain has a stable non-zero
+  attractor - it converges on a permanent tone regardless of input.
+- **Feedback should set a decay time, not a per-repeat coefficient**, or the same
+  knob position means wildly different decays at different delay lengths. Use
+  Jot's rule: `g = 10^(-3*delaySeconds/decaySeconds)`.
+- **Noise must never be injected unconditionally into a feedback path.** It
+  accumulates to `noise/(1-g)` and stays there. Gate it by signal envelope.
+- **Bypass must clear buffers**, or re-enabling replays a stale tail. Clear after
+  any fade-to-silence completes so the bypass itself does not click.
+- **Panning does not decorrelate.** Two channels carrying the same mono signal at
+  different levels still measure as correlated. Cross-feed must be anti-symmetric
+  to produce genuinely different signals.
+- **Mid/side widening must be level-compensated.** Scaling both channels equally
+  leaves the side-to-mid ratio - the actual width - untouched, so compensation
+  costs nothing but the extra peak.
 
 ## Threading Notes
 
