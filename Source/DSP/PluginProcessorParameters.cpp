@@ -10,58 +10,6 @@ using namespace px3::processor_internal;
 //==============================================================================
 // Parameter Access And Routing
 //==============================================================================
-float PX3SynthAudioProcessor::applyLfoToNormalizedValue(juce::RangedAudioParameter* parameter,
-                                                             float baseNormalized,
-                                                             float lfoSignal,
-                                                             float* outBaseNormalized,
-                                                             float* outEffectiveNormalized) const
-{
-    // `base` is the host-visible parameter value (automation/presets/state).
-    // `effective` is the transient DSP value after modulation. We never write
-    // `effective` back into parameters so DAW automation lanes stay deterministic.
-    const auto base = clamp01(baseNormalized);
-    auto effective = base;
-
-    if (parameter == nullptr)
-    {
-        if (outBaseNormalized != nullptr)
-        {
-            *outBaseNormalized = base;
-        }
-        if (outEffectiveNormalized != nullptr)
-        {
-            *outEffectiveNormalized = effective;
-        }
-        return effective;
-    }
-
-    const auto assignment = juce::jlimit(0,
-                                         juce::jmax(0, static_cast<int>(lfoAssignableTargets.size()) - 1),
-                                         lfoAssignmentAtomic(0).load(std::memory_order_relaxed));
-
-    if (assignment > 0 && assignment < static_cast<int>(lfoAssignableTargets.size()))
-    {
-        const auto& target = lfoAssignableTargets[static_cast<std::size_t>(assignment)];
-        const auto sameId = target.parameterId.equalsIgnoreCase(parameter->getParameterID());
-        const auto samePointer = (target.parameter == parameter);
-        if (sameId || samePointer)
-        {
-            effective = clamp01(base + target.normalizedDepth * lfoSignal);
-        }
-    }
-
-    if (outBaseNormalized != nullptr)
-    {
-        *outBaseNormalized = base;
-    }
-    if (outEffectiveNormalized != nullptr)
-    {
-        *outEffectiveNormalized = effective;
-    }
-
-    return effective;
-}
-
 float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudioParameter* parameter,
                                                                float baseNormalized,
                                                                float* outBaseNormalized,
@@ -146,11 +94,6 @@ juce::AudioParameterBool& PX3SynthAudioProcessor::getOscillatorEnabledParam(int 
     const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
     return *oscEnabledParams[static_cast<std::size_t>(idx)];
 }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorLevelParam(int oscIndex) const
-{
-    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
-    return *oscLevelParams[static_cast<std::size_t>(idx)];
-}
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorCoarseParam(int oscIndex) const
 {
     const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
@@ -198,7 +141,6 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorHarmonicParam(in
     return *oscHarmonicParams[static_cast<std::size_t>(oscIdx)][static_cast<std::size_t>(harmIdx)];
 }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getSubOscEnabledParam() const { return *subOscEnabledParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getSubOscLevelParam() const { return *subOscLevelParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getSubOscPitchParam() const { return *subOscPitchParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getSubOscOctaveParam() const { return *subOscOctaveParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getSubOscWaveformParam() const { return *subOscWaveformParam; }
@@ -297,7 +239,6 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getReverbAmountParam() const 
 juce::AudioParameterBool& PX3SynthAudioProcessor::getReverbEnabledParam() const { return *reverbEnabledParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getReverbAlgorithmParam() const { return *reverbAlgorithmParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getMoodEnabledParam() const { return *moodEnabledParam; }
-juce::AudioParameterBool& PX3SynthAudioProcessor::getMoodTrueBypassParam() const { return *moodTrueBypassParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getMoodFreezeParam() const { return *moodFreezeParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getMoodMixParam() const { return *moodMixParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getMoodClockParam() const { return *moodClockParam; }
@@ -311,7 +252,6 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getMoodDegradeParam() const {
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getMoodRoutingParam() const { return *moodRoutingParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getMoodWetModeParam() const { return *moodWetModeParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getMoodLoopModeParam() const { return *moodLoopModeParam; }
-juce::AudioParameterInt& PX3SynthAudioProcessor::getPitchBendRangeParam() const { return *pitchBendRangeParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getLfoEnabledParam() const { return getLfoEnabledParam(0); }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getLfoEnabledParam(int lfoIndex) const
 {
@@ -645,8 +585,10 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
     lfoAssignableTargets.push_back({ "none", "None", nullptr, 0.0f });
     lfoAssignmentDisplayNames.add("None");
 
-    // Canonical source-level destinations must route to mixer params because
-    // legacy osc/sub level params are not in the active DSP level path.
+    // Source levels are exposed to modulation under stable canonical IDs that
+    // are deliberately NOT the IDs of the mixer parameters they drive. Presets
+    // store an assignment by name, so these names are part of the saved format
+    // and must not be renamed to follow the mixer parameter IDs.
     const auto addCanonicalTarget = [this](const juce::String& canonicalId,
                                            const juce::String& displayName,
                                            juce::RangedAudioParameter& runtimeParam)
@@ -693,10 +635,6 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
                              || id.containsIgnoreCase("env3Sustain")
                              || id.containsIgnoreCase("env3Release")
                              || id.containsIgnoreCase("env3Enabled")
-               || id.equalsIgnoreCase("osc1Level")
-               || id.equalsIgnoreCase("osc2Level")
-               || id.equalsIgnoreCase("osc3Level")
-               || id.equalsIgnoreCase("subOscLevel")
                || id.equalsIgnoreCase("pitchBendRange");
     };
 

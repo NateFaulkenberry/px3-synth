@@ -25,12 +25,8 @@ public:
     juce::Rectangle<int> getRect(const juce::String& path,
                                  const juce::Rectangle<int>& parent,
                                  const juce::Rectangle<int>& fallback) const;
-
-    void applyLabelStyle(const juce::var& style, juce::Label& label) const;
     void applyTextButtonStyle(const juce::var& style, juce::TextButton& button) const;
-    void applyToggleStyle(const juce::var& style, juce::ToggleButton& button) const;
     void applyComboStyle(const juce::var& style, juce::ComboBox& comboBox) const;
-    void applySliderStyle(const juce::var& style, juce::Slider& slider) const;
 
 private:
     explicit UIConfig(juce::var rootIn, juce::String warningIn);

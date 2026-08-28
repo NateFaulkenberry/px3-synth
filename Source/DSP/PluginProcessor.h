@@ -113,7 +113,6 @@ public:
     MidiStatus copyMidiStatus() const;
 
     juce::AudioParameterBool& getOscillatorEnabledParam(int oscIndex) const;
-    juce::AudioParameterFloat& getOscillatorLevelParam(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorCoarseParam(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorFineParam(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorPitchParam(int oscIndex) const;
@@ -124,7 +123,6 @@ public:
     juce::AudioParameterChoice& getOscillatorVowelParam(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorHarmonicParam(int oscIndex, int harmonicIndex) const;
     juce::AudioParameterBool& getSubOscEnabledParam() const;
-    juce::AudioParameterFloat& getSubOscLevelParam() const;
     juce::AudioParameterFloat& getSubOscPitchParam() const;
     juce::AudioParameterChoice& getSubOscOctaveParam() const;
     juce::AudioParameterChoice& getSubOscWaveformParam() const;
@@ -168,7 +166,6 @@ public:
     juce::AudioParameterBool& getReverbEnabledParam() const;
     juce::AudioParameterChoice& getReverbAlgorithmParam() const;
     juce::AudioParameterBool& getMoodEnabledParam() const;
-    juce::AudioParameterBool& getMoodTrueBypassParam() const;
     juce::AudioParameterBool& getMoodFreezeParam() const;
     juce::AudioParameterFloat& getMoodMixParam() const;
     juce::AudioParameterFloat& getMoodClockParam() const;
@@ -182,7 +179,6 @@ public:
     juce::AudioParameterChoice& getMoodRoutingParam() const;
     juce::AudioParameterChoice& getMoodWetModeParam() const;
     juce::AudioParameterChoice& getMoodLoopModeParam() const;
-    juce::AudioParameterInt& getPitchBendRangeParam() const;
     juce::AudioParameterBool& getLfoEnabledParam() const;
     juce::AudioParameterBool& getLfoEnabledParam(int lfoIndex) const;
     juce::AudioParameterFloat& getLfoFrequencyParam() const;
@@ -346,11 +342,6 @@ private:
                                     const juce::String& parameterId,
                                     bool notifyHost,
                                     const juce::String& sourceName);
-    float applyLfoToNormalizedValue(juce::RangedAudioParameter* parameter,
-                                    float baseNormalized,
-                                    float lfoSignal,
-                                    float* outBaseNormalized = nullptr,
-                                    float* outEffectiveNormalized = nullptr) const;
     float applyModulationToNormalizedValue(juce::RangedAudioParameter* parameter,
                                            float baseNormalized,
                                            float* outBaseNormalized = nullptr,
@@ -362,7 +353,6 @@ private:
     juce::Synthesiser synth;
 
     std::array<juce::AudioParameterBool*, kOscillatorSourceCount> oscEnabledParams { { nullptr, nullptr, nullptr } };
-    std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscLevelParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscCoarseParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscFineParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscPitchParams { { nullptr, nullptr, nullptr } };
@@ -373,7 +363,6 @@ private:
     std::array<juce::AudioParameterChoice*, kOscillatorSourceCount> oscVowelParams { { nullptr, nullptr, nullptr } };
     std::array<std::array<juce::AudioParameterFloat*, 8>, kOscillatorSourceCount> oscHarmonicParams { { { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } }, { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } }, { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } } } };
     juce::AudioParameterBool* subOscEnabledParam { nullptr };
-    juce::AudioParameterFloat* subOscLevelParam { nullptr };
     juce::AudioParameterFloat* subOscPitchParam { nullptr };
     juce::AudioParameterChoice* subOscOctaveParam { nullptr };
     juce::AudioParameterChoice* subOscWaveformParam { nullptr };
@@ -416,7 +405,6 @@ private:
     juce::AudioParameterBool* reverbEnabledParam { nullptr };
     juce::AudioParameterChoice* reverbAlgorithmParam { nullptr };
     juce::AudioParameterBool* moodEnabledParam { nullptr };
-    juce::AudioParameterBool* moodTrueBypassParam { nullptr };
     juce::AudioParameterBool* moodFreezeParam { nullptr };
     juce::AudioParameterFloat* moodMixParam { nullptr };
     juce::AudioParameterFloat* moodClockParam { nullptr };

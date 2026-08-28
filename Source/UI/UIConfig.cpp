@@ -392,48 +392,6 @@ juce::Font UIConfig::parseFont(const juce::var& style,
     return font;
 }
 
-void UIConfig::applyLabelStyle(const juce::var& style, juce::Label& label) const
-{
-    if (auto* obj = style.getDynamicObject())
-    {
-        if (obj->hasProperty("text"))
-        {
-            label.setText(obj->getProperty("text").toString(), juce::dontSendNotification);
-        }
-
-        label.setColour(juce::Label::textColourId,
-                        obj->hasProperty("textColour")
-                            ? parseColourValue(obj->getProperty("textColour"), palette, label.findColour(juce::Label::textColourId))
-                            : label.findColour(juce::Label::textColourId));
-
-        label.setColour(juce::Label::backgroundColourId,
-                        obj->hasProperty("backgroundColour")
-                            ? parseColourValue(obj->getProperty("backgroundColour"), palette, label.findColour(juce::Label::backgroundColourId))
-                            : label.findColour(juce::Label::backgroundColourId));
-
-        label.setFont(parseFont(style,
-                                label.getFont().getTypefaceName(),
-                                label.getFont().getHeight(),
-                                label.getFont().isBold(),
-                                label.getFont().isItalic()));
-
-        if (obj->hasProperty("alignment"))
-        {
-            label.setJustificationType(parseJustification(obj->getProperty("alignment").toString(), label.getJustificationType()));
-        }
-
-        if (obj->hasProperty("visible"))
-        {
-            label.setVisible(static_cast<bool>(obj->getProperty("visible")));
-        }
-
-        if (obj->hasProperty("enabled"))
-        {
-            label.setEnabled(static_cast<bool>(obj->getProperty("enabled")));
-        }
-    }
-}
-
 void UIConfig::applyTextButtonStyle(const juce::var& style, juce::TextButton& button) const
 {
     if (auto* obj = style.getDynamicObject())
@@ -469,29 +427,6 @@ void UIConfig::applyTextButtonStyle(const juce::var& style, juce::TextButton& bu
     }
 }
 
-void UIConfig::applyToggleStyle(const juce::var& style, juce::ToggleButton& button) const
-{
-    if (auto* obj = style.getDynamicObject())
-    {
-        if (obj->hasProperty("text"))
-        {
-            button.setButtonText(obj->getProperty("text").toString());
-        }
-
-        if (obj->hasProperty("tickColour"))
-        {
-            button.setColour(juce::ToggleButton::tickColourId,
-                             parseColourValue(obj->getProperty("tickColour"), palette, button.findColour(juce::ToggleButton::tickColourId)));
-        }
-
-        if (obj->hasProperty("textColour"))
-        {
-            button.setColour(juce::ToggleButton::textColourId,
-                             parseColourValue(obj->getProperty("textColour"), palette, button.findColour(juce::ToggleButton::textColourId)));
-        }
-    }
-}
-
 void UIConfig::applyComboStyle(const juce::var& style, juce::ComboBox& comboBox) const
 {
     if (auto* obj = style.getDynamicObject())
@@ -512,42 +447,6 @@ void UIConfig::applyComboStyle(const juce::var& style, juce::ComboBox& comboBox)
         {
             comboBox.setColour(juce::ComboBox::outlineColourId,
                                parseColourValue(obj->getProperty("outlineColour"), palette, comboBox.findColour(juce::ComboBox::outlineColourId)));
-        }
-    }
-}
-
-void UIConfig::applySliderStyle(const juce::var& style, juce::Slider& slider) const
-{
-    if (auto* obj = style.getDynamicObject())
-    {
-        if (obj->hasProperty("thumbColour"))
-        {
-            slider.setColour(juce::Slider::thumbColourId,
-                             parseColourValue(obj->getProperty("thumbColour"), palette, slider.findColour(juce::Slider::thumbColourId)));
-        }
-
-        if (obj->hasProperty("trackColour"))
-        {
-            slider.setColour(juce::Slider::trackColourId,
-                             parseColourValue(obj->getProperty("trackColour"), palette, slider.findColour(juce::Slider::trackColourId)));
-        }
-
-        if (obj->hasProperty("backgroundColour"))
-        {
-            slider.setColour(juce::Slider::backgroundColourId,
-                             parseColourValue(obj->getProperty("backgroundColour"), palette, slider.findColour(juce::Slider::backgroundColourId)));
-        }
-
-        if (obj->hasProperty("fillColour"))
-        {
-            slider.setColour(juce::Slider::rotarySliderFillColourId,
-                             parseColourValue(obj->getProperty("fillColour"), palette, slider.findColour(juce::Slider::rotarySliderFillColourId)));
-        }
-
-        if (obj->hasProperty("outlineColour"))
-        {
-            slider.setColour(juce::Slider::rotarySliderOutlineColourId,
-                             parseColourValue(obj->getProperty("outlineColour"), palette, slider.findColour(juce::Slider::rotarySliderOutlineColourId)));
         }
     }
 }

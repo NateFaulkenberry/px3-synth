@@ -278,9 +278,7 @@
       "layout": {
         "padX": 0,
         "padY": 0
-      },
-      "background": "#0A120A9B",
-      "outline": "#66BB6690"
+      }
     },
     "grid": {
       "colGap": 8,
@@ -490,7 +488,6 @@
       "layout": {
         "cardWidthPercent": 0.6,
         "maxWidth": 360,
-        "minHeight": 250,
         "maxHeight": 340
       },
       "visual": {

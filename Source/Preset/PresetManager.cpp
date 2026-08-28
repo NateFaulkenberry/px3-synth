@@ -8,7 +8,6 @@ namespace
 constexpr auto presetRootName = "Presets";
 constexpr auto factoryRootName = "Factory";
 constexpr auto userRootName = "User";
-constexpr auto assetsRootName = "Assets";
 constexpr auto settingsRootName = "Settings";
 constexpr auto favoritesFileName = "favorites.xml";
 
@@ -644,7 +643,6 @@ juce::File PresetManager::getRootDir() const
 juce::File PresetManager::getPresetRootDir() const { return getRootDir().getChildFile(presetRootName); }
 juce::File PresetManager::getFactoryPresetRootDir() const { return getPresetRootDir().getChildFile(factoryRootName); }
 juce::File PresetManager::getUserPresetRootDir() const { return getPresetRootDir().getChildFile(userRootName); }
-juce::File PresetManager::getAssetsRootDir() const { return getRootDir().getChildFile(assetsRootName); }
 juce::File PresetManager::getSettingsDir() const { return getRootDir().getChildFile(settingsRootName); }
 
 juce::String PresetManager::sanitizeFileName(const juce::String& input)
@@ -678,26 +676,6 @@ juce::String PresetManager::canonicalPresetId(const juce::File& baseDir, const j
 {
     auto relative = presetFile.getRelativePathFrom(baseDir).replaceCharacter('\\', '/');
     return relative.trim();
-}
-
-juce::String PresetManager::computeFileHash(const juce::File& file)
-{
-    if (!file.existsAsFile())
-    {
-        return {};
-    }
-
-    juce::FileInputStream in(file);
-    if (!in.openedOk())
-    {
-        return {};
-    }
-
-    juce::MemoryBlock block;
-    in.readIntoMemoryBlock(block);
-    juce::int64 hashSeed = static_cast<juce::int64>(file.hashCode64());
-    hashSeed ^= static_cast<juce::int64>(block.getSize() * 1315423911ULL);
-    return juce::String::toHexString(hashSeed);
 }
 
 bool PresetManager::ensureDirectoryLayout(juce::String& error) const

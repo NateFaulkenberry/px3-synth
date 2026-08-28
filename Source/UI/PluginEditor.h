@@ -155,14 +155,12 @@ private:
                           int height,
                           bool rowIsSelected) override;
     void selectedRowsChanged(int lastRowSelected) override;
-    static juce::String noteNameForMidi(int midiNote);
     void timerCallback() override;
     juce::File resolveUiConfigFile() const;
     void loadUiConfig(bool forceReload);
     void applyUiConfig();
 
     static juce::String fxModuleIdFromSection(int sectionId);
-    static int fxSectionFromModuleId(const juce::String& moduleId);
 
     static constexpr int kFxSectionCount = 4;
 
@@ -306,18 +304,13 @@ private:
     juce::Slider decayKnob;
     juce::Slider sustainKnob;
     juce::Slider releaseKnob;
-    juce::Slider envAmountKnob;
     juce::Slider gainKnob;
     juce::Slider lfoFrequencyKnob;
     juce::Slider lfoAmountKnob;
-    juce::Slider subOscLevelKnob;
     juce::Slider subOscPitchKnob;
     juce::Slider osc1PitchKnob;
     juce::Slider osc2PitchKnob;
     juce::Slider osc3PitchKnob;
-    juce::Slider osc1LevelFader;
-    juce::Slider osc2LevelFader;
-    juce::Slider osc3LevelFader;
     juce::ComboBox lfoWaveformBox;
     juce::ComboBox subOscOctaveBox;
     juce::ComboBox subOscWaveformBox;
@@ -346,11 +339,9 @@ private:
     KnobLabel osc3EnabledLabel;
     KnobLabel cutoffLabel;
     KnobLabel resonanceLabel;
-    KnobLabel filterTypeLabel;
     KnobLabel filter1EnabledLabel;
     KnobLabel cutoff2Label;
     KnobLabel resonance2Label;
-    KnobLabel filter2TypeLabel;
     KnobLabel filter2EnabledLabel;
     KnobLabel attackLabel;
     KnobLabel decayLabel;
@@ -360,7 +351,6 @@ private:
     KnobLabel lfoFrequencyLabel;
     KnobLabel lfoAmountLabel;
     KnobLabel lfoWaveformLabel;
-    KnobLabel subOscLevelLabel;
     KnobLabel subOscPitchLabel;
     KnobLabel osc1PitchLabel;
     KnobLabel osc2PitchLabel;
@@ -369,15 +359,11 @@ private:
     juce::Label osc1PitchValueLabel;
     juce::Label osc2PitchValueLabel;
     juce::Label osc3PitchValueLabel;
-    KnobLabel osc1LevelLabel;
-    KnobLabel osc2LevelLabel;
-    KnobLabel osc3LevelLabel;
     KnobLabel subOscOctaveLabel;
     KnobLabel subOscWaveformLabel;
     KnobLabel subOscEnabledLabel;
     KnobLabel lfoBypassLabel;
     KnobLabel envBypassLabel;
-    KnobLabel envAmountLabel;
     KnobLabel envAssignLabel;
     juce::Label lfoFrequencyValueLabel;
     juce::Label lfoAmountValueLabel;

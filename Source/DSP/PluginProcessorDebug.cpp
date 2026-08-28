@@ -270,7 +270,6 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     const auto envelopeAssignmentMatches = serializedEnvelopeAssignment.equalsIgnoreCase(getEnvelopeAssignmentParameterId());
 
     auto serializedSubOscEnabled = subOscEnabledParam->get();
-    auto serializedSubOscLevel = subOscLevelParam->get();
     auto serializedSubOscOctave = subOscOctaveParam->getIndex();
     auto serializedSubOscWaveform = subOscWaveformParam->getIndex();
     if (const auto subOscState = state.getChildWithName(kSubOscStateId); subOscState.isValid())
@@ -278,10 +277,6 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
         if (subOscState.hasProperty(kSubOscEnabledId))
         {
             serializedSubOscEnabled = static_cast<bool>(subOscState[kSubOscEnabledId]);
-        }
-        if (subOscState.hasProperty(kSubOscLevelId))
-        {
-            serializedSubOscLevel = juce::jlimit(0.0f, 1.0f, static_cast<float>(subOscState[kSubOscLevelId]));
         }
         if (subOscState.hasProperty(kSubOscOctaveId))
         {
@@ -294,7 +289,6 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     }
 
     const auto subOscEnabledMatches = serializedSubOscEnabled == subOscEnabledParam->get();
-    const auto subOscLevelMatches = std::abs(serializedSubOscLevel - subOscLevelParam->get()) <= 0.0005f;
     const auto subOscOctaveMatches = serializedSubOscOctave == subOscOctaveParam->getIndex();
     const auto subOscWaveformMatches = serializedSubOscWaveform == subOscWaveformParam->getIndex();
 
@@ -322,7 +316,6 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
                    && assignmentMatches
                    && envelopeAssignmentMatches
                    && subOscEnabledMatches
-                   && subOscLevelMatches
                    && subOscOctaveMatches
                    && subOscWaveformMatches
                    && attackMatches
@@ -345,8 +338,6 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
              "envAssignmentSerialized=" + serializedEnvelopeAssignment + "\n"
              "subOscEnabledCurrent=" + juce::String(subOscEnabledParam->get() ? 1 : 0) + "\n"
              "subOscEnabledSerialized=" + juce::String(serializedSubOscEnabled ? 1 : 0) + "\n"
-             "subOscLevelCurrent=" + juce::String(subOscLevelParam->get(), 4) + "\n"
-             "subOscLevelSerialized=" + juce::String(serializedSubOscLevel, 4) + "\n"
              "subOscOctaveCurrent=" + juce::String(subOscOctaveParam->getIndex()) + "\n"
              "subOscOctaveSerialized=" + juce::String(serializedSubOscOctave) + "\n"
              "subOscWaveformCurrent=" + juce::String(subOscWaveformParam->getIndex()) + "\n"

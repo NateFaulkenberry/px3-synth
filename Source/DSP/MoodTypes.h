@@ -3,7 +3,6 @@
 struct MoodSettings
 {
     bool enabled { true };
-    bool trueBypass { false };
     bool freeze { false };
 
     float mix { 0.35f };

@@ -340,7 +340,6 @@ void makePlainPatch(PX3SynthAudioProcessor& processor)
     for (const auto* slot : { "1", "2", "3" })
     {
         setChoice(processor, juce::String("osc") + slot + "Mode", 0); // SINE
-        setParam(processor, juce::String("osc") + slot + "Level", 1.0f);
         setParam(processor, juce::String("osc") + slot + "Coarse", 0.0f);
         setParam(processor, juce::String("osc") + slot + "Fine", 0.0f);
         setParam(processor, juce::String("osc") + slot + "Pitch", 0.0f);
@@ -606,7 +605,6 @@ void testSubOscillator()
         makePlainPatch(processor);
         setParam(processor, "osc1Enabled", 0.0f);
         setParam(processor, "subOscEnabled", 1.0f);
-        setParam(processor, "subOscLevel", 1.0f);
         setChoice(processor, "subOscOctave", 0);
         setChoice(processor, "subOscWaveform", 0);
         const auto capture = render(processor, 48000, { { 2000, true, 69, 0.9f } });
@@ -885,23 +883,29 @@ void testOscillators()
                   + ", sub (disabled) " + fmt(three.debugGetMixerSourceRms(0), 6));
     }
 
-    // Contract pin: oscNLevel / subOscLevel are host-visible parameters that are
-    // deliberately NOT in the DSP level path - currentOscillatorLayerSettings
-    // and currentSubOscillatorSettings both hardcode level to 1.0, and the
-    // mixer channel is the single gain stage. This test exists so that anyone
-    // who "fixes" the orphan by wiring it back in has to confront the fact that
-    // doing so introduces a second gain stage.
+    // The mixer channel is the single gain stage for a source. Separate
+    // oscNLevel / subOscLevel parameters once existed alongside it, hardcoded
+    // to 1.0 in the voice and therefore inert while still being host-visible
+    // and saved into every preset; they were removed rather than wired in,
+    // because wiring them in would have introduced a second gain stage. The
+    // like-named MODULATION destinations are unaffected - they are canonical
+    // IDs routed to the mixer params, covered by the ENV/LFO destination tests.
     {
-        PX3SynthAudioProcessor quiet, loud;
-        makePlainPatch(quiet);
-        makePlainPatch(loud);
-        setParam(quiet, "osc1Level", 0.1f);
-        setParam(loud, "osc1Level", 1.0f);
-        const auto quietRms = render(quiet, 32000, { { 2000, true, 57, 0.9f } }).rms();
-        const auto loudRms = render(loud, 32000, { { 2000, true, 57, 0.9f } }).rms();
-        check("Osc1Level_IsIntentionallyInertBecauseMixerIsTheGainStage",
-              nearly(quietRms, loudRms, loudRms * 0.05),
-              "osc1Level 0.1 -> " + fmt(quietRms, 6) + ", 1.0 -> " + fmt(loudRms, 6));
+        PX3SynthAudioProcessor processor;
+        juce::StringArray offenders;
+        for (auto* parameter : processor.getParameters())
+        {
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+            {
+                for (const auto* id : { "osc1Level", "osc2Level", "osc3Level", "subOscLevel" })
+                {
+                    if (ranged->paramID.equalsIgnoreCase(id)) offenders.add(ranged->paramID);
+                }
+            }
+        }
+        check("Oscillators_NoOrphanedSourceLevelParametersAreExposed", offenders.isEmpty(),
+              offenders.isEmpty() ? "the mixer channel is the only source gain stage"
+                                  : "still exposed: " + offenders.joinIntoString(", "));
     }
 
     // The mixer channel level is the gain stage that must work.
@@ -1342,6 +1346,59 @@ void testModEnvelopes()
               "neutral " + fmt(neutral, 5) + " -> negative " + fmt(negative, 5));
     }
 
+    // The source-level modulation destinations are CANONICAL IDs, not the
+    // parameters that share their names. "subOscLevel" and "oscNLevel" as
+    // destinations route to the corresponding mixer channel level, which is the
+    // only gain stage in the source path. These pin that routing so it survives
+    // any future cleanup of the like-named parameters.
+    {
+        auto renderSubLevelModulation = [](float amount)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setParam(processor, "osc1Enabled", 0.0f);
+            setParam(processor, "subOscEnabled", 1.0f);
+            setParam(processor, "mix.sub.level", 0.5f);
+            setParam(processor, "env2Enabled", 1.0f);
+            setParam(processor, "env2Attack", 0.005f);
+            setParam(processor, "env2Decay", 0.005f);
+            setParam(processor, "env2Sustain", 1.0f);
+            setParam(processor, "env2Amount", amount);
+            const auto assigned = processor.setEnvelopeAssignmentByParameterId(1, "subOscLevel", false);
+            juce::ignoreUnused(assigned);
+            return render(processor, 40000, { { 2000, true, 57, 0.9f } }).rmsOver(20000, 38000);
+        };
+        const auto neutral = renderSubLevelModulation(0.0f);
+        const auto boosted = renderSubLevelModulation(1.0f);
+        check("Modulation_SubOscLevelCanonicalTargetRoutesToMixerChannel",
+              neutral > 1.0e-4 && boosted > neutral * 1.05,
+              "sub level modulation " + fmt(neutral, 5) + " -> " + fmt(boosted, 5));
+    }
+
+    {
+        // A canonical destination is persisted by NAME, so a round trip has to
+        // restore it and it has to still modulate afterwards.
+        PX3SynthAudioProcessor source;
+        makePlainPatch(source);
+        source.setEnvelopeAssignmentByParameterId(1, "osc1Level", false);
+        source.setLfoAssignmentByParameterId(0, "subOscLevel", false);
+        const auto envAssignment = source.getEnvelopeAssignmentParameterId(1);
+        const auto lfoAssignment = source.getLfoAssignmentParameterId(0);
+
+        juce::MemoryBlock state;
+        source.getStateInformation(state);
+        PX3SynthAudioProcessor restored;
+        restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        check("Preset_SourceLevelModulationAssignmentsSurviveRoundTrip",
+              restored.getEnvelopeAssignmentParameterId(1).equalsIgnoreCase(envAssignment)
+                  && restored.getLfoAssignmentParameterId(0).equalsIgnoreCase(lfoAssignment)
+                  && envAssignment.equalsIgnoreCase("osc1Level")
+                  && lfoAssignment.equalsIgnoreCase("subOscLevel"),
+              "env2 -> " + restored.getEnvelopeAssignmentParameterId(1)
+                  + ", lfo1 -> " + restored.getLfoAssignmentParameterId(0));
+    }
+
     // Independence between the three envelopes, measured through their effects.
     {
         auto renderEnv1ToCutoff = [](const std::function<void(PX3SynthAudioProcessor&)>& tweak)
@@ -1776,6 +1833,318 @@ void testVibe()
 }
 
 //==============================================================================
+// REVERB QUALITY METRICS
+//==============================================================================
+// "Sounds natural" has to be measurable or it is just an opinion. These are the
+// standard objective measures for reverberation quality:
+//
+//  - Normalised echo density (Abel & Huang, AES 2006). The fraction of impulse
+//    response samples exceeding one standard deviation, divided by the value a
+//    Gaussian process gives (erfc(1/sqrt2) = 0.3173). It approaches 1.0 as the
+//    response becomes fully diffuse. A sparse, "ping-y" early response reads
+//    well below 1; a natural room reaches ~1 within a few tens of milliseconds.
+//  - Spectral flatness of the late tail. Isolated resonant modes - the metallic
+//    or ringing quality - show up as a low geometric-to-arithmetic mean ratio.
+//  - Decay ripple. A natural tail decays smoothly and monotonically in dB;
+//    flutter between delay lines shows up as ripple around the best-fit line.
+//  - Inter-channel correlation of the tail. A wide natural reverb decorrelates
+//    the two channels; a mono-ish tail sits near 1.0.
+struct ReverbMetrics
+{
+    double echoDensityAt20ms { 0.0 };
+    double echoDensityAt50ms { 0.0 };
+    double echoDensityAt150ms { 0.0 };
+    double spectralFlatness { 0.0 };
+    double decayRippleDb { 0.0 };
+    double lateRippleDb { 0.0 };
+    double interChannelCorrelation { 0.0 };
+    double rt60Seconds { 0.0 };
+    double peak { 0.0 };
+    double channelBalanceDb { 0.0 };
+    bool finite { true };
+};
+
+// Fraction of samples beyond one standard deviation, normalised by the Gaussian
+// expectation so that 1.0 means "as diffuse as noise".
+double normalisedEchoDensity(const std::vector<float>& ir, int centreSample, int windowSamples)
+{
+    const auto half = windowSamples / 2;
+    const auto first = juce::jmax(0, centreSample - half);
+    const auto last = juce::jmin(static_cast<int>(ir.size()), centreSample + half);
+    if (last - first < 32) return 0.0;
+
+    double mean = 0.0;
+    for (int i = first; i < last; ++i) mean += ir[static_cast<std::size_t>(i)];
+    mean /= static_cast<double>(last - first);
+
+    double variance = 0.0;
+    for (int i = first; i < last; ++i)
+    {
+        const auto d = ir[static_cast<std::size_t>(i)] - mean;
+        variance += d * d;
+    }
+    const auto sigma = std::sqrt(variance / static_cast<double>(last - first));
+    if (sigma < 1.0e-12) return 0.0;
+
+    int beyond = 0;
+    for (int i = first; i < last; ++i)
+    {
+        if (std::abs(ir[static_cast<std::size_t>(i)] - mean) > sigma) ++beyond;
+    }
+    constexpr double gaussianExpectation = 0.3173;
+    return static_cast<double>(beyond) / (gaussianExpectation * static_cast<double>(last - first));
+}
+
+double spectralFlatnessOf(const std::vector<float>& ir, int fromSample, int fftOrder = 12)
+{
+    const auto size = 1 << fftOrder;
+    if (fromSample + size > static_cast<int>(ir.size())) return 0.0;
+
+    juce::dsp::FFT fft(fftOrder);
+    std::vector<float> data(static_cast<std::size_t>(size) * 2, 0.0f);
+    for (int i = 0; i < size; ++i)
+    {
+        // Hann window so leakage does not masquerade as flatness.
+        const auto w = 0.5f - 0.5f * std::cos(juce::MathConstants<float>::twoPi
+                                              * static_cast<float>(i) / static_cast<float>(size - 1));
+        data[static_cast<std::size_t>(i)] = ir[static_cast<std::size_t>(fromSample + i)] * w;
+    }
+    fft.performFrequencyOnlyForwardTransform(data.data());
+
+    double logSum = 0.0, linSum = 0.0;
+    int count = 0;
+    // Ignore DC and the very top of the band, where windowing dominates.
+    for (int bin = 4; bin < size / 2 - 4; ++bin)
+    {
+        const auto power = static_cast<double>(data[static_cast<std::size_t>(bin)]) * data[static_cast<std::size_t>(bin)]
+                           + 1.0e-20;
+        logSum += std::log(power);
+        linSum += power;
+        ++count;
+    }
+    if (count == 0) return 0.0;
+    const auto geometric = std::exp(logSum / count);
+    const auto arithmetic = linSum / count;
+    return arithmetic > 0.0 ? geometric / arithmetic : 0.0;
+}
+
+// Max deviation (dB) of the smoothed decay envelope from its best-fit straight
+// line, over the region where the tail is still well above the noise floor.
+double decayRippleDb(const std::vector<float>& ir, int fromSample, int toSample)
+{
+    constexpr int windowSamples = 512;
+    std::vector<double> times, levels;
+    for (int start = fromSample; start + windowSamples < toSample; start += windowSamples)
+    {
+        double energy = 0.0;
+        for (int i = 0; i < windowSamples; ++i)
+        {
+            const auto v = static_cast<double>(ir[static_cast<std::size_t>(start + i)]);
+            energy += v * v;
+        }
+        const auto rms = std::sqrt(energy / windowSamples);
+        if (rms < 1.0e-9) break;
+        times.push_back(static_cast<double>(start));
+        levels.push_back(20.0 * std::log10(rms));
+    }
+    if (times.size() < 6) return 1.0e9;
+
+    // Least-squares line through the dB envelope.
+    double sx = 0, sy = 0, sxx = 0, sxy = 0;
+    const auto n = static_cast<double>(times.size());
+    for (std::size_t i = 0; i < times.size(); ++i)
+    {
+        sx += times[i]; sy += levels[i];
+        sxx += times[i] * times[i]; sxy += times[i] * levels[i];
+    }
+    const auto denom = n * sxx - sx * sx;
+    if (std::abs(denom) < 1.0e-12) return 1.0e9;
+    const auto slope = (n * sxy - sx * sy) / denom;
+    const auto intercept = (sy - slope * sx) / n;
+
+    double worst = 0.0;
+    for (std::size_t i = 0; i < times.size(); ++i)
+    {
+        worst = juce::jmax(worst, std::abs(levels[i] - (slope * times[i] + intercept)));
+    }
+    return worst;
+}
+
+double interChannelCorrelation(const std::vector<float>& left,
+                              const std::vector<float>& right,
+                              int fromSample,
+                              int toSample)
+{
+    double sl = 0, sr = 0, sll = 0, srr = 0, slr = 0;
+    const auto last = juce::jmin(toSample, juce::jmin(static_cast<int>(left.size()), static_cast<int>(right.size())));
+    const auto count = last - fromSample;
+    if (count <= 0) return 0.0;
+    for (int i = fromSample; i < last; ++i)
+    {
+        const auto a = static_cast<double>(left[static_cast<std::size_t>(i)]);
+        const auto b = static_cast<double>(right[static_cast<std::size_t>(i)]);
+        sl += a; sr += b; sll += a * a; srr += b * b; slr += a * b;
+    }
+    const auto n = static_cast<double>(count);
+    const auto cov = slr / n - (sl / n) * (sr / n);
+    const auto vl = sll / n - (sl / n) * (sl / n);
+    const auto vr = srr / n - (sr / n) * (sr / n);
+    const auto denom = std::sqrt(juce::jmax(1.0e-24, vl * vr));
+    return cov / denom;
+}
+
+// Reverberation time from the Schroeder backward integration curve, measured
+// over the -5 dB to -35 dB span and extrapolated to 60 dB (T30).
+double measureRt60(const std::vector<float>& ir)
+{
+    std::vector<double> schroeder(ir.size(), 0.0);
+    double running = 0.0;
+    for (int i = static_cast<int>(ir.size()) - 1; i >= 0; --i)
+    {
+        const auto v = static_cast<double>(ir[static_cast<std::size_t>(i)]);
+        running += v * v;
+        schroeder[static_cast<std::size_t>(i)] = running;
+    }
+    if (schroeder[0] <= 0.0) return 0.0;
+    const auto ref = 10.0 * std::log10(schroeder[0]);
+
+    int at5 = -1, at35 = -1;
+    for (std::size_t i = 0; i < schroeder.size(); ++i)
+    {
+        if (schroeder[i] <= 0.0) break;
+        const auto db = 10.0 * std::log10(schroeder[i]) - ref;
+        if (at5 < 0 && db <= -5.0) at5 = static_cast<int>(i);
+        if (at35 < 0 && db <= -35.0) { at35 = static_cast<int>(i); break; }
+    }
+    if (at5 < 0 || at35 <= at5) return 0.0;
+    const auto seconds = static_cast<double>(at35 - at5) / kSampleRate;
+    return seconds * 2.0; // -30 dB span extrapolated to -60 dB
+}
+
+// ISO 3382 style: deviation of the energy decay curve from a straight line
+// over the -5 dB to -35 dB span, in dB.
+double decayCurveNonlinearityDb(const std::vector<float>& ir)
+{
+    std::vector<double> schroeder(ir.size(), 0.0);
+    double running = 0.0;
+    for (int i = static_cast<int>(ir.size()) - 1; i >= 0; --i)
+    {
+        const auto v = static_cast<double>(ir[static_cast<std::size_t>(i)]);
+        running += v * v;
+        schroeder[static_cast<std::size_t>(i)] = running;
+    }
+    if (schroeder[0] <= 0.0) return 1.0e9;
+    const auto ref = 10.0 * std::log10(schroeder[0]);
+
+    std::vector<double> xs, ys;
+    for (std::size_t i = 0; i < schroeder.size(); i += 64)
+    {
+        if (schroeder[i] <= 0.0) break;
+        const auto db = 10.0 * std::log10(schroeder[i]) - ref;
+        if (db > -5.0) continue;
+        if (db < -35.0) break;
+        xs.push_back(static_cast<double>(i));
+        ys.push_back(db);
+    }
+    if (xs.size() < 8) return 1.0e9;
+
+    double sx = 0, sy = 0, sxx = 0, sxy = 0;
+    const auto n = static_cast<double>(xs.size());
+    for (std::size_t i = 0; i < xs.size(); ++i)
+    {
+        sx += xs[i]; sy += ys[i]; sxx += xs[i] * xs[i]; sxy += xs[i] * ys[i];
+    }
+    const auto denom = n * sxx - sx * sx;
+    if (std::abs(denom) < 1.0e-12) return 1.0e9;
+    const auto slope = (n * sxy - sx * sy) / denom;
+    const auto intercept = (sy - slope * sx) / n;
+
+    double worst = 0.0;
+    for (std::size_t i = 0; i < xs.size(); ++i)
+    {
+        worst = juce::jmax(worst, std::abs(ys[i] - (slope * xs[i] + intercept)));
+    }
+    return worst;
+}
+
+// Renders a stereo impulse response straight from the Reverb class, fully wet,
+// so the measurements describe the algorithm rather than the dry/wet mix.
+ReverbMetrics measureReverb(const ReverbSettings& settings, int totalSamples = 192000)
+{
+    ::Reverb reverb;
+    reverb.prepare(kSampleRate);
+    reverb.reset();
+    auto wetSettings = settings;
+    wetSettings.enabled = true;
+    wetSettings.amount = 1.0f;
+    reverb.updateForBlock(wetSettings, totalSamples);
+
+    std::vector<float> left, right;
+    left.reserve(static_cast<std::size_t>(totalSamples));
+    right.reserve(static_cast<std::size_t>(totalSamples));
+
+    // The amount smoother needs to reach unity before the impulse, or the
+    // measured onset is a fade rather than the algorithm's own build-up.
+    for (int i = 0; i < 4096; ++i)
+    {
+        float l = 0.0f, r = 0.0f;
+        reverb.processSampleFrame(0.0f, 0.0f, l, r);
+    }
+
+    for (int i = 0; i < totalSamples; ++i)
+    {
+        const auto input = i == 0 ? 1.0f : 0.0f;
+        float l = 0.0f, r = 0.0f;
+        reverb.processSampleFrame(input, input, l, r);
+        left.push_back(l);
+        right.push_back(r);
+    }
+
+    ReverbMetrics m;
+    const auto ir_span_limit = static_cast<double>(totalSamples) - static_cast<double>(kSampleRate) * 0.15;
+    for (const auto v : left) { if (! std::isfinite(v)) m.finite = false; m.peak = juce::jmax(m.peak, std::abs(static_cast<double>(v))); }
+    for (const auto v : right) { if (! std::isfinite(v)) m.finite = false; m.peak = juce::jmax(m.peak, std::abs(static_cast<double>(v))); }
+
+    const auto ms = [](double milliseconds) { return static_cast<int>(milliseconds * 0.001 * kSampleRate); };
+    m.echoDensityAt20ms = normalisedEchoDensity(left, ms(20), ms(20));
+    m.echoDensityAt50ms = normalisedEchoDensity(left, ms(50), ms(20));
+    m.echoDensityAt150ms = normalisedEchoDensity(left, ms(150), ms(40));
+    m.spectralFlatness = spectralFlatnessOf(left, ms(200));
+    m.decayRippleDb = decayRippleDb(left, ms(60), ms(1200));
+    m.interChannelCorrelation = interChannelCorrelation(left, right, ms(100), ms(1000));
+    m.rt60Seconds = measureRt60(left);
+
+    // Decay-curve nonlinearity, as ISO 3382 defines it for measured rooms: fit
+    // a straight line to the Schroeder energy-decay curve over the -5 dB to
+    // -35 dB span and report the worst deviation from it. A smooth exponential
+    // decay is a straight line on that curve; flutter and lurching show up as
+    // curvature. This replaced a hand-rolled ripple measure whose answer
+    // depended on where the window happened to start relative to the onset.
+    m.lateRippleDb = decayCurveNonlinearityDb(left);
+
+    // Energy balance between the channels for an identical mono input. A
+    // decorrelated reverb must still be level-balanced, or panning a source one
+    // way makes its reverb appear on the other.
+    {
+        double energyL = 0.0, energyR = 0.0;
+        for (const auto v : left) energyL += static_cast<double>(v) * v;
+        for (const auto v : right) energyR += static_cast<double>(v) * v;
+        m.channelBalanceDb = 10.0 * std::log10(juce::jmax(1.0e-20, energyL)
+                                               / juce::jmax(1.0e-20, energyR));
+    }
+
+    return m;
+}
+
+void reportReverbMetrics(const char* label, const ReverbMetrics& m)
+{
+    std::printf("  %-26s ED20 %5.2f  ED50 %5.2f  ED150 %5.2f  flat %6.4f  lateRipple %5.2fdB  corr %+5.2f  bal %+5.2fdB  rt60 %5.2fs\n",
+                label, m.echoDensityAt20ms, m.echoDensityAt50ms, m.echoDensityAt150ms,
+                m.spectralFlatness, m.lateRippleDb, m.interChannelCorrelation, m.channelBalanceDb, m.rt60Seconds);
+    std::fflush(stdout);
+}
+
+//==============================================================================
 // PHASE 9 - REVERB
 //==============================================================================
 void testReverb()
@@ -1904,6 +2273,9 @@ void testReverb()
             return reference > 1.0e-18 ? std::sqrt(difference / reference) : 0.0;
         };
 
+        // Tonal controls only. DECAY sets a TIME and is covered by the
+        // reverberation-time tests above, which measure it directly instead of
+        // inferring it from tail energy over a fixed window.
         struct ParamCase
         {
             const char* name;
@@ -1914,10 +2286,8 @@ void testReverb()
             { "Size",           0, [](ReverbSettings& s) { s.size = 0.0f; },           [](ReverbSettings& s) { s.size = 1.0f; } },
             { "Damping",        0, [](ReverbSettings& s) { s.damping = 0.0f; },        [](ReverbSettings& s) { s.damping = 1.0f; } },
             { "Width",          0, [](ReverbSettings& s) { s.width = 0.0f; },          [](ReverbSettings& s) { s.width = 1.0f; } },
-            { "Decay",          1, [](ReverbSettings& s) { s.decay = 0.0f; },          [](ReverbSettings& s) { s.decay = 1.0f; } },
             { "ModDepth",       1, [](ReverbSettings& s) { s.modDepth = 0.0f; },       [](ReverbSettings& s) { s.modDepth = 1.0f; } },
-            { "DecayOnHall",    2, [](ReverbSettings& s) { s.decay = 0.0f; },          [](ReverbSettings& s) { s.decay = 1.0f; } },
-            { "CloudFeedback",  3, [](ReverbSettings& s) { s.cloudFeedback = 0.0f; },  [](ReverbSettings& s) { s.cloudFeedback = 1.0f; } },
+
             { "CloudDiffusion", 3, [](ReverbSettings& s) { s.cloudDiffusion = 0.0f; }, [](ReverbSettings& s) { s.cloudDiffusion = 1.0f; } },
         };
 
@@ -1931,6 +2301,24 @@ void testReverb()
                   difference > 0.02,
                   "tail differs by " + fmt(100.0 * difference, 2) + "% between min and max");
         }
+    }
+
+    // CLOUD FEEDBACK sets the tail length, which is measured over a window long
+    // enough to contain it rather than the short one used for tonal controls.
+    {
+        auto cloudTail = [&runReverb, base](float feedback)
+        {
+            auto settings = base;
+            settings.algorithmIndex = 3;
+            settings.decay = 0.9f;
+            settings.cloudFeedback = feedback;
+            const auto capture = runReverb(settings, 480, 480000);
+            return capture.rmsOver(240000, 470000);
+        };
+        const auto tight = cloudTail(0.0f);
+        const auto endless = cloudTail(1.0f);
+        check("Reverb_CloudFeedback_ExtendsTheTail", endless > tight * 4.0,
+              "feedback 0 late rms " + fmt(tight, 8) + ", feedback 1 " + fmt(endless, 8));
     }
 
     // Pre-delay shifts the wet signal in TIME, which an energy measure over a
@@ -1965,23 +2353,88 @@ void testReverb()
                   + " samples, at 1.0 = " + juce::String(maximum) + " samples");
     }
 
-    // Contract pin: with the default algorithm, four of the reverb's controls
-    // are inert because juce::Reverb does not expose them. This is recorded so
-    // the behaviour is a known property rather than a surprise.
+    // Every algorithm must respond to DECAY. Algorithm 0 used to wrap
+    // juce::Reverb, which has no decay control at all, so the knob was inert on
+    // the default algorithm; it is now a room network with its own decay time.
+    // Measured as reverberation time by Schroeder backward integration, which
+    // is what the control actually claims to set.
     {
-        auto signature = [&runReverb, base](const std::function<void(ReverbSettings&)>& tweak)
+        for (int algorithm = 0; algorithm < 4; ++algorithm)
+        {
+            auto rt60For = [algorithm](float decay)
+            {
+                ReverbSettings settings;
+                settings.algorithmIndex = algorithm;
+                settings.decay = decay;
+                settings.size = 0.6f;
+                settings.damping = 0.45f;
+                settings.preDelay = 0.0f;
+                if (algorithm == 3) settings.cloudFeedback = 1.0f;
+                // Cloud reaches tens of seconds, and Schroeder integration over
+                // a truncated response underestimates badly, so it gets a
+                // capture long enough to contain its own tail.
+                const auto captureSamples = algorithm == 3 ? 960000 : 192000;
+                return measureReverb(settings, captureSamples).rt60Seconds;
+            };
+            const auto shortTail = rt60For(0.2f);
+            const auto longTail = rt60For(0.9f);
+            check((juce::String("Reverb_Algorithm") + juce::String(algorithm)
+                   + "_DecayControlsReverberationTime").toRawUTF8(),
+                  longTail > shortTail * 1.5 && shortTail > 0.05,
+                  "decay 0.2 -> " + fmt(shortTail, 2) + " s, 0.9 -> " + fmt(longTail, 2) + " s");
+        }
+    }
+
+    // CLOUD FEEDBACK sets the tail length, which is measured over a window long
+    // enough to contain it rather than the short one used for tonal controls.
+    {
+        auto cloudTail = [&runReverb, base](float feedback)
         {
             auto settings = base;
-            settings.algorithmIndex = 0;
-            tweak(settings);
-            return runReverb(settings, 480, 48000).rmsOver(2400, 36000);
+            settings.algorithmIndex = 3;
+            settings.decay = 0.9f;
+            settings.cloudFeedback = feedback;
+            const auto capture = runReverb(settings, 480, 480000);
+            return capture.rmsOver(240000, 470000);
         };
-        const auto decayLow = signature([](ReverbSettings& s) { s.decay = 0.0f; });
-        const auto decayHigh = signature([](ReverbSettings& s) { s.decay = 1.0f; });
-        check("Reverb_Algorithm0_DecayAndCloudControlsAreInertByDesign",
-              nearly(decayLow, decayHigh, 1.0e-9),
-              "algorithm 0 wraps juce::Reverb, which has no decay control");
+        const auto tight = cloudTail(0.0f);
+        const auto endless = cloudTail(1.0f);
+        check("Reverb_CloudFeedback_ExtendsTheTail", endless > tight * 4.0,
+              "feedback 0 late rms " + fmt(tight, 8) + ", feedback 1 " + fmt(endless, 8));
     }
+
+    // Pre-delay shifts the wet signal in TIME, which an energy measure over a
+    // wide window cannot see. Measured as the onset of the wet signal instead.
+    {
+        // processSampleFrame returns dry + wet together, and subtracting a
+        // disabled run does not isolate the wet either, because disabling also
+        // removes the dry attenuation. Instead the input is a short burst that
+        // is over by sample 64, so anything found after that is reverberation:
+        // the pre-delay is the length of the silence between the two.
+        auto wetOnsetSample = [&runReverb, base](float preDelay)
+        {
+            auto settings = base;
+            settings.preDelay = preDelay;
+            const auto capture = runReverb(settings, 64, 96000);
+            for (std::size_t i = 200; i < capture.left.size(); ++i)
+            {
+                if (std::abs(capture.left[i]) > 1.0e-4f) return static_cast<int>(i);
+            }
+            return -1;
+        };
+        const auto none = wetOnsetSample(0.0f);
+        const auto half = wetOnsetSample(0.5f);
+        const auto maximum = wetOnsetSample(1.0f);
+        check("Reverb_PreDelayDelaysTheWetOnset", none >= 0 && half > none + 1000,
+              "onset at preDelay 0 = " + juce::String(none)
+                  + " samples, at 0.5 = " + juce::String(half) + " samples");
+        // The top of the range must be the longest pre-delay, not a wrap back to
+        // none: the requested delay must fit inside the allocated line.
+        check("Reverb_MaximumPreDelayIsLongerThanHalf", maximum > half,
+              "onset at preDelay 0.5 = " + juce::String(half)
+                  + " samples, at 1.0 = " + juce::String(maximum) + " samples");
+    }
+
 
     // Width is a stereo control: at width 0 the channels must be closer
     // together than at width 1.
@@ -2002,6 +2455,45 @@ void testReverb()
         const auto wide = stereoSpread(1.0f);
         check("Reverb_WidthControlsStereoSpread", wide > narrow,
               "width 0 spread " + fmt(narrow, 8) + ", width 1 spread " + fmt(wide, 8));
+    }
+
+    // Quality floors. These are the measures that separate a reverb from a
+    // resonant delay, and they are pinned so that a future change cannot
+    // quietly reintroduce the sparse, ringing behaviour the algorithms had
+    // before: echo density that FELL over time, 25-40 dB of decay ripple, and
+    // spectral flatness two orders of magnitude below a stock Freeverb.
+    {
+        static const char* algorithmNames[] = { "Room", "Plate", "Hall", "Cloud" };
+        for (int algorithm = 0; algorithm < 4; ++algorithm)
+        {
+            ReverbSettings settings;
+            settings.algorithmIndex = algorithm;
+            settings.decay = 0.6f;
+            settings.size = 0.6f;
+            settings.damping = 0.45f;
+            settings.preDelay = 0.0f;
+            const auto m = measureReverb(settings);
+            const auto name = juce::String(algorithmNames[algorithm]);
+
+            check(("Reverb" + name + "_BecomesDiffuse").toRawUTF8(),
+                  m.echoDensityAt150ms > 0.45,
+                  "normalised echo density at 150 ms = " + fmt(m.echoDensityAt150ms, 3));
+            check(("Reverb" + name + "_EchoDensityGrowsRatherThanFalls").toRawUTF8(),
+                  m.echoDensityAt150ms > m.echoDensityAt20ms,
+                  "20 ms " + fmt(m.echoDensityAt20ms, 3) + " -> 150 ms " + fmt(m.echoDensityAt150ms, 3));
+            check(("Reverb" + name + "_TailIsNotMetallic").toRawUTF8(),
+                  m.spectralFlatness > 0.02,
+                  "spectral flatness of the late tail = " + fmt(m.spectralFlatness, 4));
+            check(("Reverb" + name + "_DecayIsSmoothlyExponential").toRawUTF8(),
+                  m.lateRippleDb < 8.0,
+                  "decay curve nonlinearity = " + fmt(m.lateRippleDb, 2) + " dB");
+            check(("Reverb" + name + "_IsStereoButMonoSafe").toRawUTF8(),
+                  std::abs(m.interChannelCorrelation) < 0.75,
+                  "inter-channel correlation = " + fmt(m.interChannelCorrelation, 3));
+            check(("Reverb" + name + "_ImpulseResponseIsClean").toRawUTF8(),
+                  m.finite && m.peak < 4.0,
+                  "peak " + fmt(m.peak, 4));
+        }
     }
 
     // Every algorithm must render and stay stable.
@@ -2069,24 +2561,22 @@ void testMood()
               "dc " + fmt(capture.dcOffset(), 7));
     }
 
-    // Bypass. The bypass that works is `enabled`: MoodSettings also carries a
-    // trueBypass flag, but Mood never reads it and the processor hardcodes it
-    // to false, so it is an orphaned control rather than a second bypass. This
-    // pins that, so a future reader is not misled into relying on it.
+    // `enabled` is the one and only bypass. A second control, moodTrueBypass,
+    // used to be exposed to the host and saved into every preset while Mood
+    // never read it; it was removed rather than implemented. This guards
+    // against it being reintroduced as an inert control.
     {
-        auto withFlag = base;
-        withFlag.trueBypass = true;
-        auto withoutFlag = base;
-        withoutFlag.trueBypass = false;
-        const auto flagged = runMood(withFlag, 4800, 24000);
-        const auto plain = runMood(withoutFlag, 4800, 24000);
-        bool identical = flagged.left.size() == plain.left.size();
-        for (std::size_t i = 0; identical && i < flagged.left.size(); ++i)
+        PX3SynthAudioProcessor processor;
+        bool found = false;
+        for (auto* parameter : processor.getParameters())
         {
-            if (flagged.left[i] != plain.left[i]) identical = false;
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+            {
+                if (ranged->paramID.equalsIgnoreCase("moodTrueBypass")) found = true;
+            }
         }
-        check("Mood_TrueBypassFlagIsNotImplementedAndHasNoEffect", identical,
-              "output identical with trueBypass true and false; `enabled` is the bypass");
+        check("Mood_NoOrphanedTrueBypassParameterIsExposed", ! found,
+              "the host must not be offered a bypass that does nothing");
     }
 
     // Freeze must stop new material entering the history buffer.
@@ -2416,11 +2906,17 @@ void testEffectIndependence()
         check("MixerPan_CentreSourceIsBalanced", std::abs(dryCentre) < 0.02,
               "left/right balance " + fmt(dryCentre, 4));
 
-        // Listening to the FX return alone, with the source panned hard left.
-        // The send is centred by design, so the return must NOT lean left.
+        // Listening to the FX return alone. The send is centred by design, so
+        // panning the source must not move the return: the test is that the
+        // balance does not FOLLOW the pan. An absolute-balance test would
+        // instead be measuring the reverb algorithm's own stereo pattern, which
+        // is deliberately asymmetric and is not what this is about.
         const auto wetWithLeftSource = balance(renderPanned(-1.0f, 0.0f, true, true));
-        check("FxSend_IsNotSteeredBySourceDryPan", std::abs(wetWithLeftSource) < 0.15,
-              "FX-return-only balance with source panned hard left " + fmt(wetWithLeftSource, 4));
+        const auto wetWithRightSource = balance(renderPanned(1.0f, 0.0f, true, true));
+        check("FxSend_IsNotSteeredBySourceDryPan",
+              std::abs(wetWithLeftSource - wetWithRightSource) < 0.10,
+              "FX-return-only balance: source hard left " + fmt(wetWithLeftSource, 4)
+                  + ", hard right " + fmt(wetWithRightSource, 4));
 
         // The FX return has its own pan.
         const auto returnLeft = balance(renderPanned(0.0f, -1.0f, true, true));
@@ -2826,6 +3322,51 @@ void testPresets()
                 juce::AudioProcessor::copyXmlToBinary(*xml, block);
                 survivesPayload("Preset_HostileValuesAreClampedOrRejectedSafely",
                                 block.getData(), static_cast<int>(block.getSize()));
+            }
+        }
+
+        // A preset saved before moodTrueBypass was removed still carries that
+        // property. Loading one must apply everything else normally and simply
+        // ignore the retired entry - this is the compatibility question the
+        // removal turns on, so it is tested directly rather than inferred from
+        // the generic unknown-property case.
+        {
+            PX3SynthAudioProcessor source;
+            applyUnusualConfiguration(source);
+            auto tree = source.createParameterStateTree();
+            tree.setProperty("moodTrueBypass", 1.0, nullptr);
+            const auto expected = snapshotParameters(source);
+
+            if (auto xml = tree.createXml())
+            {
+                juce::MemoryBlock block;
+                juce::AudioProcessor::copyXmlToBinary(*xml, block);
+
+                PX3SynthAudioProcessor target;
+                target.setStateInformation(block.getData(), static_cast<int>(block.getSize()));
+                const auto actual = snapshotParameters(target);
+
+                int mismatches = 0;
+                juce::String firstMismatch;
+                for (std::size_t i = 0; i < expected.size(); ++i)
+                {
+                    if (std::abs(expected[i].second - actual[i].second) > 1.0e-5f)
+                    {
+                        ++mismatches;
+                        if (firstMismatch.isEmpty())
+                        {
+                            firstMismatch = expected[i].first + " " + fmt(expected[i].second, 6)
+                                            + " -> " + fmt(actual[i].second, 6);
+                        }
+                    }
+                }
+                check("Preset_SavedBeforeTrueBypassRemovalStillLoadsCompletely",
+                      mismatches == 0,
+                      mismatches == 0
+                          ? juce::String("retired moodTrueBypass entry ignored, all ")
+                                + juce::String(static_cast<int>(expected.size()))
+                                + " live parameters restored"
+                          : juce::String(mismatches) + " mismatched, first: " + firstMismatch);
             }
         }
 
@@ -3355,18 +3896,45 @@ int main(int argc, char* argv[])
     std::printf("\nPX3 COMPONENT TESTS  (%.0f Hz, %d-sample blocks, shipping build)\n",
                 kSampleRate, kBlockSize);
 
+    if (filter == "reverbmetrics")
+    {
+        // Baseline characterisation of every algorithm at a few settings.
+        std::printf("\nREVERB QUALITY METRICS (fully wet impulse response)\n");
+        std::printf("  ED = normalised echo density (1.0 = fully diffuse)\n");
+        std::printf("  flat = spectral flatness of the late tail (higher = less metallic)\n");
+        std::printf("  ripple = deviation from a smooth exponential decay\n");
+        std::printf("  corr = inter-channel correlation (lower = wider)\n\n");
+        static const char* names[] = { "0 ROOM", "1 PLATE", "2 HALL", "3 CLOUD" };
+        for (int algorithm = 0; algorithm < 4; ++algorithm)
+        {
+            for (const auto decay : { 0.35f, 0.75f })
+            {
+                ReverbSettings s;
+                s.algorithmIndex = algorithm;
+                s.decay = decay;
+                s.size = 0.6f;
+                s.damping = 0.45f;
+                s.preDelay = 0.0f;
+                const auto m = measureReverb(s);
+                reportReverbMetrics((juce::String(names[algorithm]) + " decay " + juce::String(decay, 2)).toRawUTF8(), m);
+            }
+        }
+        std::printf("\n");
+        return 0;
+    }
+
     if (filter == "probe")
     {
         // Diagnostic probe, not an assertion: prints the level at each stage so
         // an unexpected measurement can be attributed to a stage rather than
         // guessed at.
         std::printf("\n  %-10s %12s %12s %12s %12s\n",
-                    "osc1Level", "masterRms", "oscBusRms", "polyGain", "srcRms");
+                    "mix.osc1.level", "masterRms", "oscBusRms", "polyGain", "srcRms");
         for (const auto level : { 0.125f, 0.25f, 0.5f, 1.0f })
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setParam(processor, "osc1Level", level);
+            setParam(processor, "mix.osc1.level", level);
             const auto capture = render(processor, 48000, { { 2000, true, 57, 0.9f } });
             std::printf("  %-10.3f %12.6f %12.6f %12.6f %12.6f\n",
                         level, capture.rms(),

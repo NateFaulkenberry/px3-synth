@@ -17,8 +17,8 @@ SubOscSettings PX3SynthAudioProcessor::currentSubOscillatorSettings() const
 {
     SubOscSettings settings;
     settings.enabled = subOscEnabledParam != nullptr && subOscEnabledParam->get();
-    // Source generation level is fixed at unity; mixer-stage source level is
-    // now authoritative for channel balancing and pre-fader send behavior.
+    // The sub generates at unity and the mixer channel is the single gain
+    // stage, which is what keeps the FX send pre-fader.
     settings.level = 1.0f;
     settings.pitchSemitones = subOscPitchParam->convertFrom0to1(applyModulationToNormalizedValue(subOscPitchParam,
                                                                                                    static_cast<juce::RangedAudioParameter*>(subOscPitchParam)->getValue()));
@@ -62,8 +62,8 @@ std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcess
         auto& settings = layer.oscillator;
 
         layer.enabled = getOscillatorEnabledParam(oscIndex).get();
-        // Source generation level is fixed at unity; mixer-stage source level
-        // is the single gain stage for user-facing channel levels.
+        // Oscillators generate at unity and the mixer channel is the single
+        // gain stage, which is what keeps the FX send pre-fader.
         layer.level = 1.0f;
         layer.pitchSemitones = getOscillatorPitchParam(oscIndex).convertFrom0to1(
             applyModulationToNormalizedValue(&getOscillatorPitchParam(oscIndex),
@@ -218,7 +218,6 @@ MoodSettings PX3SynthAudioProcessor::currentMoodSettings() const
 {
     MoodSettings settings;
     settings.enabled = moodEnabledParam != nullptr && moodEnabledParam->get();
-    settings.trueBypass = false;
     settings.freeze = moodFreezeParam != nullptr && moodFreezeParam->get();
 
     settings.mix = moodMixParam->convertFrom0to1(applyModulationToNormalizedValue(moodMixParam,

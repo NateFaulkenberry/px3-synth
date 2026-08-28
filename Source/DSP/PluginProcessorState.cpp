@@ -141,7 +141,6 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
 
     juce::ValueTree subOscState(kSubOscStateId);
     subOscState.setProperty(kSubOscEnabledId, subOscEnabledParam->get(), nullptr);
-    subOscState.setProperty(kSubOscLevelId, subOscLevelParam->get(), nullptr);
     subOscState.setProperty(kSubOscPitchId, subOscPitchParam->get(), nullptr);
     subOscState.setProperty(kSubOscOctaveId, subOscOctaveParam->getIndex(), nullptr);
     subOscState.setProperty(kSubOscWaveformId, subOscWaveformParam->getIndex(), nullptr);
@@ -350,12 +349,6 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         if (subOscState.hasProperty(kSubOscEnabledId) && subOscEnabledParam != nullptr)
         {
             subOscEnabledParam->setValueNotifyingHost(static_cast<bool>(subOscState[kSubOscEnabledId]) ? 1.0f : 0.0f);
-        }
-
-        if (subOscState.hasProperty(kSubOscLevelId) && subOscLevelParam != nullptr)
-        {
-            const auto level = juce::jlimit(0.0f, 1.0f, static_cast<float>(subOscState[kSubOscLevelId]));
-            subOscLevelParam->setValueNotifyingHost(subOscLevelParam->convertTo0to1(level));
         }
 
         if (subOscState.hasProperty(kSubOscPitchId) && subOscPitchParam != nullptr)

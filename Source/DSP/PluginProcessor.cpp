@@ -64,10 +64,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         oscEnabledParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterBool(idPrefix + "Enabled",
                                                                                               labelPrefix + "Enabled",
                                                                                               oscIndex == 0);
-        oscLevelParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(idPrefix + "Level",
-                                                                                             labelPrefix + "Level",
-                                                                                             juce::NormalisableRange<float>(0.0f, 1.0f),
-                                                                                             1.0f);
         oscCoarseParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(idPrefix + "Coarse",
                                                                                               labelPrefix + "Coarse",
                                                                                               juce::NormalisableRange<float>(-24.0f, 24.0f, 1.0f),
@@ -118,7 +114,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         } };
     }
     subOscEnabledParam = new juce::AudioParameterBool("subOscEnabled", "Sub Osc Enabled", false);
-    subOscLevelParam = new juce::AudioParameterFloat("subOscLevel", "Sub Osc Level", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     subOscPitchParam = new juce::AudioParameterFloat(
         juce::ParameterID("subOscPitch", 1),
         "Sub Osc Pitch",
@@ -277,7 +272,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                            juce::StringArray { "ROOM", "PLATE", "HALL", "CLOUD" },
                                                            0);
     moodEnabledParam = new juce::AudioParameterBool("moodEnabled", "Mood Enabled", true);
-    moodTrueBypassParam = new juce::AudioParameterBool("moodTrueBypass", "Mood True Bypass", false);
     moodFreezeParam = new juce::AudioParameterBool("moodFreeze", "Mood Freeze", false);
     moodMixParam = new juce::AudioParameterFloat("moodMix", "Mood Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
     moodClockParam = new juce::AudioParameterFloat("moodClock", "Mood Clock", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
@@ -362,7 +356,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
     {
         addParameter(oscEnabledParams[static_cast<std::size_t>(oscIndex)]);
-        addParameter(oscLevelParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscCoarseParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscFineParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscPitchParams[static_cast<std::size_t>(oscIndex)]);
@@ -378,7 +371,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         }
     }
     addParameter(subOscEnabledParam);
-    addParameter(subOscLevelParam);
     addParameter(subOscPitchParam);
     addParameter(subOscOctaveParam);
     addParameter(subOscWaveformParam);
@@ -431,7 +423,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(reverbEnabledParam);
     addParameter(reverbAlgorithmParam);
     addParameter(moodEnabledParam);
-    addParameter(moodTrueBypassParam);
     addParameter(moodFreezeParam);
     addParameter(moodMixParam);
     addParameter(moodClockParam);

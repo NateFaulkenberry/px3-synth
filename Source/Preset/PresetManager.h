@@ -86,7 +86,6 @@ public:
     juce::File getPresetRootDir() const;
     juce::File getFactoryPresetRootDir() const;
     juce::File getUserPresetRootDir() const;
-    juce::File getAssetsRootDir() const;
     juce::File getSettingsDir() const;
 
 private:
@@ -98,7 +97,6 @@ private:
     static juce::String sanitizeFileName(const juce::String& input);
     static juce::String normalizeCategory(const juce::String& category);
     static juce::String canonicalPresetId(const juce::File& baseDir, const juce::File& presetFile);
-    static juce::String computeFileHash(const juce::File& file);
 
     bool ensureDirectoryLayout(juce::String& error) const;
     bool ensureFactoryPresetLibrary(juce::String& error);

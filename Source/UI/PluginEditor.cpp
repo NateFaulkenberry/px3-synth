@@ -51,27 +51,6 @@ juce::String moduleIdFromSectionId(int sectionId)
     }
 }
 
-int sectionIdFromModuleId(const juce::String& moduleId)
-{
-    if (moduleId.equalsIgnoreCase("delay"))
-    {
-        return kFxSectionDelay;
-    }
-    if (moduleId.equalsIgnoreCase("reverb"))
-    {
-        return kFxSectionReverb;
-    }
-    if (moduleId.equalsIgnoreCase("mood"))
-    {
-        return kFxSectionMood;
-    }
-    if (moduleId.equalsIgnoreCase("harmonicDrive"))
-    {
-        return kFxSectionDrive;
-    }
-    return -1;
-}
-
 void enableLabelHoverOverlay(juce::Label& label, const juce::String& tooltipText = {})
 {
     label.setInterceptsMouseClicks(true, false);
@@ -358,27 +337,9 @@ void PX3SynthAudioProcessorEditor::KnobLabel::paint(juce::Graphics& g)
                true);
 }
 
-juce::String PX3SynthAudioProcessorEditor::noteNameForMidi(int midiNote)
-{
-    static constexpr const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-
-    if (midiNote < 0 || midiNote > 127)
-    {
-        return "-";
-    }
-
-    const auto octave = (midiNote / 12) - 1;
-    return juce::String(names[midiNote % 12]) + juce::String(octave);
-}
-
 juce::String PX3SynthAudioProcessorEditor::fxModuleIdFromSection(int sectionId)
 {
     return moduleIdFromSectionId(sectionId);
-}
-
-int PX3SynthAudioProcessorEditor::fxSectionFromModuleId(const juce::String& moduleId)
-{
-    return sectionIdFromModuleId(moduleId);
 }
 
 void PX3SynthAudioProcessorEditor::configureKnob(KnobBinding& binding,
@@ -715,20 +676,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         const auto selected = juce::jmax(0, lfoAssignBox.getSelectedId() - 1);
         audioProcessor.setLfoAssignmentIndex(selected);
     };
-
-    const auto configureMixFader = [](juce::Slider& slider)
-    {
-        slider.setSliderStyle(juce::Slider::LinearVertical);
-        slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-        slider.setRange(0.0, 1.0, 0.0);
-        slider.setDoubleClickReturnValue(true, 1.0);
-        slider.setScrollWheelEnabled(false);
-    };
-
-    configureMixFader(subOscLevelKnob);
-    configureMixFader(osc1LevelFader);
-    configureMixFader(osc2LevelFader);
-    configureMixFader(osc3LevelFader);
 
     auto& subOscOctaveParam = audioProcessor.getSubOscOctaveParam();
     for (int i = 0; i < subOscOctaveParam.choices.size(); ++i)
