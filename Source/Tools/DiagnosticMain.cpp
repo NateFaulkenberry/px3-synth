@@ -3935,10 +3935,13 @@ int main(int argc, char* argv[])
         };
 
         auto failures = 0;
-        const auto expectedDefault = juce::Decibels::decibelsToGain(-4.0f);
+        // Faders default to UNITY. The 4 dB of modulation headroom lives on the
+        // source, not on the fader, so a fresh instance reads 0 dB on every
+        // channel rather than looking as though it had been pulled down.
+        const auto expectedDefault = 1.0f;
 
         std::printf("\nPERSISTENCE — parameter defaults vs saved state\n\n");
-        std::printf("  fresh-instance defaults (should be -4 dB = %.6f)\n", (double) expectedDefault);
+        std::printf("  fresh-instance defaults (should be unity = %.6f, 0 dB)\n", (double) expectedDefault);
         {
             PX3SynthAudioProcessor fresh;
             for (const auto* id : { "mix.sub.level", "mix.osc1.level", "mix.osc2.level",

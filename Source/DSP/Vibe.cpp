@@ -10,7 +10,7 @@ void Vibe::prepare(double sampleRate, int voiceCount, uint32_t seed)
     applyTypeProfile(0);
 }
 
-void Vibe::updateForBlock(const VibeSettings& settings, int numSamples)
+void Vibe::updateForBlock(const VibeSettings& settings, int numSamples, float load)
 {
     applyTypeProfile(settings.typeIndex);
 
@@ -39,7 +39,7 @@ void Vibe::updateForBlock(const VibeSettings& settings, int numSamples)
     const auto amount = juce::jlimit(0.0f, 1.0f, settings.globalAmount);
     lastGlobalAmount.store(amount, std::memory_order_relaxed);
     engine.setGlobalAmount(amount);
-    engine.advance(numSamples);
+    engine.advance(numSamples, load);
 }
 
 void Vibe::setSeed(uint32_t seed)

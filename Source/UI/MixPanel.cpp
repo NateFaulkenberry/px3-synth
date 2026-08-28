@@ -1,5 +1,7 @@
 #include "MixPanel.h"
 
+#include "PluginProcessorInternals.h"
+
 #include "PluginProcessor.h"
 #include "UIConfig.h"
 
@@ -194,7 +196,10 @@ void MixPanel::configureChannelWidgets(ChannelWidgets& channel,
     channel.valueLabel.setFont(juce::FontOptions(9.5f));
     channel.valueLabel.setInterceptsMouseClicks(false, false);
 
-    channel.fader.setRange(0.0, 1.0, 0.0);
+    // The sources are trimmed 4 dB at generation, so the fader runs to +4 dB
+    // and a channel can still be driven to full scale. Double-click returns to
+    // 0 dB, which is the default and reads as unity on the label.
+    channel.fader.setRange(0.0, static_cast<double>(px3::processor_internal::channelFaderMaxGain()), 0.0);
     channel.fader.setDoubleClickReturnValue(true, 1.0);
 
     channel.pan.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);

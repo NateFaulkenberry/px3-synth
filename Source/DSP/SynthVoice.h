@@ -145,6 +145,15 @@ private:
     // that resumes when it is switched back on.
     bool subAudibleForCurrentNote { true };
     std::array<float, kVoiceMixerSourceCount> releaseSmoothingState { { 0.0f, 0.0f, 0.0f, 0.0f } };
+    // Coupling capacitor per source. Asymmetric distortion produces DC by
+    // definition - a squared term has a non-zero mean - and real circuits block
+    // it with a series capacitor rather than letting it eat headroom.
+    std::array<float, kVoiceMixerSourceCount> vibeCouplingX1 { { 0.0f, 0.0f, 0.0f, 0.0f } };
+    std::array<float, kVoiceMixerSourceCount> vibeCouplingY1 { { 0.0f, 0.0f, 0.0f, 0.0f } };
+    float vibeCouplingCoeff { 0.999f };
+    // Pink-weighted noise state. Analog hiss falls at roughly 3 dB/octave;
+    // flat white noise is the giveaway of a digital source.
+    std::array<float, 3> vibePinkState { { 0.0f, 0.0f, 0.0f } };
     SubOscillator subOscillator;
 
     float currentAmpEnvelopeValue { 0.0f };

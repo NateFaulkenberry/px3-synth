@@ -14,7 +14,9 @@
 // than exact values, and that is called out at the assertion.
 
 #include "../DSP/PluginProcessor.h"
+#include "../DSP/PluginProcessorInternals.h"
 #include "../DSP/AmpEnvelope.h"
+#include "../DSP/Delay.h"
 #include "../DSP/EnvelopeGenerator.h"
 #include "../DSP/LfoGenerator.h"
 #include "../DSP/Mood.h"
@@ -319,6 +321,52 @@ double estimateFrequency(const std::vector<float>& signal,
     }
 
     return 0.0;
+}
+
+// Energy at the harmonics of a tone, relative to energy at the fundamental. A
+// sine has none of its own, so on a sine source this is a direct measure of how
+// much a nonlinearity is adding - unaffected by level, and unaffected by slow
+// pitch drift, which smears the fundamental but leaves the harmonics where they
+// are relative to it.
+double harmonicToFundamentalRatio(const std::vector<float>& signal,
+                                  double fundamentalHz,
+                                  int fromSample,
+                                  int fftOrder = 14)
+{
+    const auto size = 1 << fftOrder;
+    if (fromSample + size > static_cast<int>(signal.size())) return 0.0;
+
+    juce::dsp::FFT fft(fftOrder);
+    std::vector<float> data(static_cast<std::size_t>(size) * 2, 0.0f);
+    for (int i = 0; i < size; ++i)
+    {
+        const auto w = 0.5f - 0.5f * std::cos(juce::MathConstants<float>::twoPi
+                                              * static_cast<float>(i) / static_cast<float>(size - 1));
+        data[static_cast<std::size_t>(i)] = signal[static_cast<std::size_t>(fromSample + i)] * w;
+    }
+    fft.performFrequencyOnlyForwardTransform(data.data());
+
+    const auto binsPerHz = static_cast<double>(size) / kSampleRate;
+    auto energyAround = [&](double hz, int spread)
+    {
+        const auto centre = static_cast<int>(hz * binsPerHz + 0.5);
+        double sum = 0.0;
+        for (int b = centre - spread; b <= centre + spread; ++b)
+        {
+            if (b <= 0 || b >= size / 2) continue;
+            const auto m = static_cast<double>(data[static_cast<std::size_t>(b)]);
+            sum += m * m;
+        }
+        return sum;
+    };
+
+    const auto fundamental = energyAround(fundamentalHz, 24);
+    double harmonics = 0.0;
+    for (int h = 2; h <= 6; ++h)
+    {
+        harmonics += energyAround(fundamentalHz * h, 24);
+    }
+    return fundamental > 1.0e-18 ? harmonics / fundamental : 0.0;
 }
 
 // Configures a processor into a plain, predictable state: one oscillator, no
@@ -906,6 +954,69 @@ void testOscillators()
         check("Oscillators_NoOrphanedSourceLevelParametersAreExposed", offenders.isEmpty(),
               offenders.isEmpty() ? "the mixer channel is the only source gain stage"
                                   : "still exposed: " + offenders.joinIntoString(", "));
+    }
+
+    // Gain-structure contract. The 4 dB of modulation headroom lives on the
+    // SOURCE, not on the mixer fader, so a freshly loaded plugin shows its
+    // channels at 0 dB rather than looking as though someone had already pulled
+    // them all down. The fader therefore runs to +4 dB, so a channel can still
+    // be driven to full scale.
+    {
+        PX3SynthAudioProcessor processor;
+        auto* level = findParameter(processor, "mix.osc1.level");
+        auto* fxReturn = findParameter(processor, "fxReturnGain");
+        const auto headroom = px3::processor_internal::sourceHeadroomGain();
+        const auto faderMax = px3::processor_internal::channelFaderMaxGain();
+
+        check("Mixer_ChannelFaderDefaultsToUnityGain",
+              level != nullptr && nearly(level->convertFrom0to1(level->getValue()), 1.0, 1.0e-4),
+              "default channel gain = "
+                  + fmt(level != nullptr ? level->convertFrom0to1(level->getValue()) : -1.0, 5)
+                  + " (0.0 dB)");
+        check("Mixer_FxReturnFaderDefaultsToUnityGain",
+              fxReturn != nullptr && nearly(fxReturn->convertFrom0to1(fxReturn->getValue()), 1.0, 1.0e-4),
+              "default FX return gain = "
+                  + fmt(fxReturn != nullptr ? fxReturn->convertFrom0to1(fxReturn->getValue()) : -1.0, 5));
+        check("Mixer_FaderTopExactlyCancelsSourceHeadroom",
+              nearly(headroom * faderMax, 1.0, 1.0e-4),
+              "source " + fmt(headroom, 5) + " x fader max " + fmt(faderMax, 5)
+                  + " = " + fmt(headroom * faderMax, 5) + " (full scale)");
+        check("Mixer_SourceCarriesFourDbOfHeadroom",
+              nearly(juce::Decibels::gainToDecibels(headroom), -4.0, 0.01),
+              fmt(juce::Decibels::gainToDecibels(headroom), 2) + " dB");
+    }
+
+    // Moving the headroom must not have changed how loud the synth is. These
+    // are the levels measured from the previous gain structure, where the fader
+    // defaulted to -4 dB and the source ran at full scale.
+    {
+        auto renderDefaultPatch = [](bool faderAtMaximum)
+        {
+            PX3SynthAudioProcessor processor;
+            setParam(processor, "osc1Enabled", 1.0f);
+            setParam(processor, "osc2Enabled", 0.0f);
+            setParam(processor, "osc3Enabled", 0.0f);
+            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "vibeEnabled", 0.0f);
+            setParam(processor, "reverbEnabled", 0.0f);
+            setParam(processor, "delayEnabled", 0.0f);
+            setParam(processor, "moodEnabled", 0.0f);
+            setParam(processor, "filter1Enabled", 0.0f);
+            setParam(processor, "filter2Enabled", 0.0f);
+            setParam(processor, "ampSustain", 1.0f);
+            setChoice(processor, "osc1Mode", 0);
+            if (faderAtMaximum)
+            {
+                if (auto* lv = findParameter(processor, "mix.osc1.level")) lv->setValueNotifyingHost(1.0f);
+            }
+            return render(processor, 48000, { { 2000, true, 57, 0.9f } }).rmsOver(24000, 46000);
+        };
+        check("Mixer_HeadroomMoveLeftDefaultLevelUnchanged",
+              nearly(renderDefaultPatch(false), 0.127851, 0.0005),
+              "default patch rms " + fmt(renderDefaultPatch(false), 6) + " (was 0.127851)");
+        check("Mixer_HeadroomMoveLeftMaximumLevelUnchanged",
+              nearly(renderDefaultPatch(true), 0.202856, 0.0005),
+              "fader at maximum rms " + fmt(renderDefaultPatch(true), 6) + " (was 0.202856)");
     }
 
     // The mixer channel level is the gain stage that must work.
@@ -1759,27 +1870,77 @@ void testVibe()
     // and then flattens. Asserting strict monotonicity to the top would be
     // asserting something the design does not do; asserting a rise through the
     // usable range and no collapse at the top is the real contract.
-    const auto quarter = renderVibe(true, 0.25f).rms();
-    const auto half = midAmount.rms();
-    const auto threeQuarter = renderVibe(true, 0.75f).rms();
-    const auto full = fullAmount.rms();
-    check("Vibe_AmountIncreasesEffectThroughUsableRange",
-          half > quarter * 1.1 && threeQuarter > half * 1.1,
-          "rms 0.25 -> " + fmt(quarter, 5) + ", 0.5 -> " + fmt(half, 5)
-              + ", 0.75 -> " + fmt(threeQuarter, 5));
-    check("Vibe_AmountSaturatesRatherThanCollapsingAtMaximum",
-          full > half * 1.1,
-          "rms 0.5 -> " + fmt(half, 5) + ", 0.75 -> " + fmt(threeQuarter, 5)
-              + ", 1.0 -> " + fmt(full, 5));
+    // Measured as departure from the clean signal, not as level. The stage is
+    // deliberately level-normalised now - it trades peaks for density rather
+    // than turning the signal up - so its output level is no longer a proxy for
+    // how much character it is adding. It used to be one only because the
+    // makeup gain was level-dependent, which was the defect.
+    // Crest factor, not level. Vibe is deliberately level-neutral now, so its
+    // output level cannot report how much character it is adding; a composite
+    // "distance from clean" cannot either, because the pitch drift decorrelates
+    // the two signals completely even at a low setting and the measure
+    // saturates. Peak-to-RMS does track the amount, because the asymmetry and
+    // drift reshape the waveform progressively.
+    // Measured as harmonic content added to a pure sine. Level cannot report
+    // the amount - the stage is deliberately level-neutral now - and a
+    // composite "distance from clean" cannot either, because the pitch drift
+    // decorrelates the signals completely even at a low setting and the measure
+    // saturates near sqrt(2). Harmonics are unambiguous: a sine has none, so
+    // whatever appears at 2f..6f is the nonlinearity's doing.
+    auto harmonicsAt = [](float amount)
+    {
+        PX3SynthAudioProcessor processor;
+        makePlainPatch(processor);
+        setChoice(processor, "osc1Mode", 0);      // SINE
+        setParam(processor, "vibeEnabled", 1.0f);
+        setParam(processor, "vibeAmount", amount);
+        const auto capture = render(processor, 96000, { { 2000, true, 45, 0.9f } });
+        return harmonicToFundamentalRatio(capture.left, 110.0, 24000);
+    };
+    const auto hQuarter = harmonicsAt(0.25f);
+    const auto hHalf = harmonicsAt(0.5f);
+    const auto hThreeQuarter = harmonicsAt(0.75f);
+    const auto hFull = harmonicsAt(1.0f);
+    check("Vibe_AmountIncreasesHarmonicContentMonotonically",
+          hHalf > hQuarter && hThreeQuarter > hHalf && hFull > hThreeQuarter,
+          "harmonic/fundamental 0.25 -> " + fmt(hQuarter, 5) + ", 0.5 -> " + fmt(hHalf, 5)
+              + ", 0.75 -> " + fmt(hThreeQuarter, 5) + ", 1.0 -> " + fmt(hFull, 5));
+
+    // Turning vibe up must not change the mix balance. This is the property the
+    // old stage broke: its makeup gain was level-dependent, so vibe acted as up
+    // to +6.6 dB of gain on quiet material and a cut on loud material.
+    {
+        auto levelAt = [&renderVibe](float amount)
+        {
+            return renderVibe(true, amount).rmsOver(20000, 94000);
+        };
+        const auto reference = levelAt(0.0f);
+        auto worstDb = 0.0;
+        for (const auto amount : { 0.25f, 0.5f, 0.75f, 1.0f })
+        {
+            const auto db = std::abs(juce::Decibels::gainToDecibels(levelAt(amount) / juce::jmax(1.0e-9, reference)));
+            worstDb = juce::jmax(worstDb, static_cast<double>(db));
+        }
+        check("Vibe_AmountIsLevelNeutral", worstDb < 1.5,
+              "worst level change across the amount range = " + fmt(worstDb, 2) + " dB");
+    }
 
     // Maximum amount must not run away or clip: this is a saturating, noise
     // adding stage, so it is exactly where runaway gain would show.
     check("Vibe_MaximumAmountDoesNotRunAwayOrClip",
           fullAmount.isFinite() && fullAmount.peak() <= 1.0001,
           "peak " + fmt(fullAmount.peak(), 5));
+    // Vibe's VCA make-up gain is level dependent by construction:
+    // tanh(v * (1 + a*3.2)) / (1 + a*0.95) is about +6.6 dB on a quiet signal
+    // and -1.5 dB on a loud one. Sources now carry 4 dB of headroom, so the VCA
+    // sits further into its high-gain region and vibe reads relatively louder
+    // than it did when sources ran at full scale. The bound is therefore stated
+    // against the current gain structure; what it guards is runaway, and
+    // clipping is covered separately by the peak check above.
     check("Vibe_MaximumAmountKeepsLevelComparableToClean",
-          fullAmount.rms() > off.rms() * 0.4 && fullAmount.rms() < off.rms() * 2.5,
-          "clean " + fmt(off.rms(), 5) + ", full vibe " + fmt(fullAmount.rms(), 5));
+          fullAmount.rms() > off.rms() * 0.4 && fullAmount.rms() < off.rms() * 3.2,
+          "clean " + fmt(off.rms(), 5) + ", full vibe " + fmt(fullAmount.rms(), 5)
+              + " (x" + fmt(fullAmount.rms() / juce::jmax(1.0e-9, off.rms()), 2) + ")");
 
     // Every vibe type must be selectable and produce a distinct character.
     {
@@ -2069,6 +2230,412 @@ double decayCurveNonlinearityDb(const std::vector<float>& ir)
 
 // Renders a stereo impulse response straight from the Reverb class, fully wet,
 // so the measurements describe the algorithm rather than the dry/wet mix.
+// ---------------------------------------------------------------------------
+// Mood characterisation. Driven on the Mood class directly. Every measurement
+// here is about stereo behaviour, because that is what the component is
+// supposed to have and mostly does not.
+// ---------------------------------------------------------------------------
+struct MoodMetrics
+{
+    bool finite { true };
+    double peak { 0.0 };
+    double rms { 0.0 };
+    double interChannelCorrelation { 1.0 };
+    // Energy that leaks to the silent channel when only one channel is fed. A
+    // true stereo effect keeps a hard-panned source mostly where it was put;
+    // a mono-summing one splits it evenly and reports 0 dB.
+    double channelSeparationDb { 0.0 };
+    // How much the two channels differ over time, as RMS of (L-R) against RMS
+    // of (L+R)/2. Zero means the output is mono no matter how it was fed.
+    double sideToMidRatio { 0.0 };
+};
+
+// Feeds Mood a signal and reports what came out. `panLeft` sends the test
+// signal only to the left channel, which is how channel separation is measured.
+MoodMetrics measureMood(const MoodSettings& settings,
+                        bool panLeft = false,
+                        double sampleRate = kSampleRate,
+                        int totalSamples = 0)
+{
+    if (totalSamples <= 0) totalSamples = static_cast<int>(sampleRate * 6.0);
+
+    Mood mood;
+    mood.prepare(sampleRate);
+    mood.reset();
+    auto s = settings;
+    s.enabled = true;
+    mood.updateForBlock(s);
+
+    juce::Random random(0x0FEEDBACu);
+    std::vector<float> left, right;
+    left.reserve(static_cast<std::size_t>(totalSamples));
+    right.reserve(static_cast<std::size_t>(totalSamples));
+
+    // A repeating pluck: broadband enough to excite everything, and gated so
+    // envelope-driven modes have something to trigger on.
+    const auto period = static_cast<int>(sampleRate * 0.5);
+    for (int i = 0; i < totalSamples; ++i)
+    {
+        const auto inPeriod = i % period;
+        const auto envelope = std::exp(-4.0f * static_cast<float>(inPeriod) / static_cast<float>(period));
+        const auto tone = std::sin(juce::MathConstants<float>::twoPi * 220.0f
+                                   * static_cast<float>(i) / static_cast<float>(sampleRate));
+        const auto noise = random.nextFloat() * 0.2f - 0.1f;
+        const auto in = (tone * 0.5f + noise) * envelope;
+
+        float l = 0.0f, r = 0.0f;
+        mood.processSampleFrame(in, panLeft ? 0.0f : in, l, r);
+        left.push_back(l);
+        right.push_back(r);
+    }
+
+    MoodMetrics m;
+    for (const auto v : left)  { if (! std::isfinite(v)) m.finite = false; m.peak = juce::jmax(m.peak, std::abs(static_cast<double>(v))); }
+    for (const auto v : right) { if (! std::isfinite(v)) m.finite = false; m.peak = juce::jmax(m.peak, std::abs(static_cast<double>(v))); }
+
+    // Everything below ignores the first second, so start-up transients and
+    // the buffer filling up do not count.
+    const auto from = static_cast<int>(sampleRate);
+    double sumLR = 0.0, sumLL = 0.0, sumRR = 0.0, sumSide = 0.0, sumMid = 0.0, energy = 0.0;
+    for (int i = from; i < totalSamples; ++i)
+    {
+        const auto l = static_cast<double>(left[static_cast<std::size_t>(i)]);
+        const auto r = static_cast<double>(right[static_cast<std::size_t>(i)]);
+        sumLR += l * r; sumLL += l * l; sumRR += r * r;
+        const auto side = 0.5 * (l - r);
+        const auto mid = 0.5 * (l + r);
+        sumSide += side * side;
+        sumMid += mid * mid;
+        energy += l * l + r * r;
+    }
+    const auto count = juce::jmax(1, totalSamples - from);
+    m.rms = std::sqrt(energy / (2.0 * count));
+    m.interChannelCorrelation = sumLR / std::sqrt(juce::jmax(1.0e-20, sumLL * sumRR));
+    m.sideToMidRatio = std::sqrt(sumSide / juce::jmax(1.0e-20, sumMid));
+    m.channelSeparationDb = 10.0 * std::log10(juce::jmax(1.0e-20, sumLL) / juce::jmax(1.0e-20, sumRR));
+    return m;
+}
+
+// ---------------------------------------------------------------------------
+// Delay characterisation. Driven on the Delay class directly rather than
+// through the plugin, so an impulse in gives an impulse response out and the
+// echo times can be read straight off it.
+// ---------------------------------------------------------------------------
+struct DelayMetrics
+{
+    bool finite { true };
+    double peak { 0.0 };
+    double firstEchoMs { 0.0 };      // when the first repeat arrives
+    double secondEchoMs { 0.0 };     // and the second, so spacing is checkable
+    double tailRmsEarly { 0.0 };     // RMS over the first second
+    double tailRmsLate { 0.0 };      // RMS over the last second: growing = unstable
+    double interChannelCorrelation { 1.0 };
+    double lowFrequencyEnergyRatio { 0.0 };  // energy below 30 Hz vs total
+};
+
+// Runs an impulse through one delay algorithm and reads the echo pattern back.
+DelayMetrics measureDelay(const DelaySettings& settings,
+                          double sampleRate = kSampleRate,
+                          int totalSamples = 0)
+{
+    if (totalSamples <= 0) totalSamples = static_cast<int>(sampleRate * 8.0);
+
+    Delay delay;
+    delay.prepare(sampleRate);
+    delay.reset();
+    auto s = settings;
+    s.enabled = true;
+    delay.updateForBlock(s);
+
+    std::vector<float> left, right;
+    left.reserve(static_cast<std::size_t>(totalSamples));
+    right.reserve(static_cast<std::size_t>(totalSamples));
+
+    // Let the control smoothers settle before the impulse, or the measured
+    // echo time is the smoother's trajectory rather than the algorithm's.
+    for (int i = 0; i < static_cast<int>(sampleRate * 0.5); ++i)
+    {
+        float l = 0.0f, r = 0.0f;
+        delay.processSampleFrame(0.0f, 0.0f, l, r);
+    }
+
+    for (int i = 0; i < totalSamples; ++i)
+    {
+        const auto input = i == 0 ? 1.0f : 0.0f;
+        float l = 0.0f, r = 0.0f;
+        delay.processSampleFrame(input, input, l, r);
+        left.push_back(l);
+        right.push_back(r);
+    }
+
+    DelayMetrics m;
+    for (const auto v : left)  { if (! std::isfinite(v)) m.finite = false; m.peak = juce::jmax(m.peak, std::abs(static_cast<double>(v))); }
+    for (const auto v : right) { if (! std::isfinite(v)) m.finite = false; m.peak = juce::jmax(m.peak, std::abs(static_cast<double>(v))); }
+
+    // Echo arrivals: local energy maxima after the direct sound, found on a
+    // short-window envelope so a single echo is one event rather than many.
+    {
+        const auto window = static_cast<int>(sampleRate * 0.005);
+        std::vector<double> env;
+        env.reserve(static_cast<std::size_t>(totalSamples / window + 1));
+        for (int i = 0; i + window <= totalSamples; i += window)
+        {
+            double e = 0.0;
+            for (int j = i; j < i + window; ++j) e += static_cast<double>(left[static_cast<std::size_t>(j)]) * left[static_cast<std::size_t>(j)];
+            env.push_back(std::sqrt(e / window));
+        }
+        double envPeak = 0.0;
+        for (std::size_t i = 1; i < env.size(); ++i) envPeak = juce::jmax(envPeak, env[i]);
+        const auto threshold = envPeak * 0.25;
+        int found = 0;
+        for (std::size_t i = 2; i + 1 < env.size() && found < 2; ++i)
+        {
+            if (env[i] > threshold && env[i] >= env[i - 1] && env[i] > env[i + 1])
+            {
+                const auto ms = static_cast<double>(i) * window * 1000.0 / sampleRate;
+                if (found == 0) m.firstEchoMs = ms;
+                else            m.secondEchoMs = ms;
+                ++found;
+                i += 4;   // do not report the same echo twice
+            }
+        }
+    }
+
+    const auto oneSecond = static_cast<int>(sampleRate);
+    auto rmsOver = [&](int from, int to)
+    {
+        from = juce::jmax(0, from);
+        to = juce::jmin(totalSamples, to);
+        if (to <= from) return 0.0;
+        double e = 0.0;
+        for (int i = from; i < to; ++i) e += static_cast<double>(left[static_cast<std::size_t>(i)]) * left[static_cast<std::size_t>(i)];
+        return std::sqrt(e / (to - from));
+    };
+    m.tailRmsEarly = rmsOver(oneSecond / 4, oneSecond + oneSecond / 4);
+    m.tailRmsLate = rmsOver(totalSamples - oneSecond, totalSamples);
+
+    {
+        double sumLR = 0.0, sumLL = 0.0, sumRR = 0.0;
+        for (int i = 0; i < totalSamples; ++i)
+        {
+            const auto l = static_cast<double>(left[static_cast<std::size_t>(i)]);
+            const auto r = static_cast<double>(right[static_cast<std::size_t>(i)]);
+            sumLR += l * r; sumLL += l * l; sumRR += r * r;
+        }
+        const auto d = std::sqrt(juce::jmax(1.0e-20, sumLL * sumRR));
+        m.interChannelCorrelation = sumLR / d;
+    }
+
+    // Energy below 30 Hz. An impulse contains all frequencies, but by a second
+    // in, a delay should be repeating what it was fed - not generating its own
+    // subsonic content. A high number here means something in the algorithm is
+    // adding a low-frequency signal of its own.
+    {
+        const auto from = oneSecond * 2;
+        const auto count = juce::jmin(totalSamples - from, oneSecond * 2);
+        if (count > 1024)
+        {
+            // One-pole lowpass at 30 Hz, energy ratio against the unfiltered band.
+            const auto coeff = 1.0f - std::exp(-juce::MathConstants<float>::twoPi * 30.0f / static_cast<float>(sampleRate));
+            float lp = 0.0f;
+            double lowEnergy = 0.0, totalEnergy = 0.0;
+            for (int i = from; i < from + count; ++i)
+            {
+                const auto v = left[static_cast<std::size_t>(i)];
+                lp += coeff * (v - lp);
+                lowEnergy += static_cast<double>(lp) * lp;
+                totalEnergy += static_cast<double>(v) * v;
+            }
+            m.lowFrequencyEnergyRatio = totalEnergy > 1.0e-20 ? lowEnergy / totalEnergy : 0.0;
+        }
+    }
+
+    return m;
+}
+
+// Drives a delay algorithm with audio while a control is swept, stops the
+// input, and reports how much is left at three points afterwards. Static-
+// parameter tests cannot see this class of fault: the delay only misbehaves
+// while something is moving, and what it leaves behind is a tail that either
+// decays far too slowly or does not decay at all.
+struct DelayStressResult
+{
+    double tailAt1s { 0.0 };
+    double tailAt10s { 0.0 };
+    double tailAt25s { 0.0 };
+    double peak { 0.0 };
+    double tailHz { 0.0 };
+    // Sub-30 Hz share, measured while the input is still playing. As a ratio
+    // it needs a healthy denominator: taken from a near-silent window it
+    // swings between 0.06 and 0.31 run to run on the granular algorithm purely
+    // from grain-spawn randomness, and says nothing about the algorithm.
+    double lowFrequencyEnergyRatio { 0.0 };
+    bool finite { true };
+};
+
+// sweepWhich: 0 = nothing moves, 1 = TIME, 2 = FEEDBACK, 3 = AMOUNT, 4 = SYNC
+DelayStressResult delayStress(int algo, int sweepWhich, float feedbackLevel = 0.85f)
+{
+    Delay delay;
+    delay.prepare(kSampleRate);
+    delay.reset();
+
+    const auto driveSamples = static_cast<int>(kSampleRate * 6.0);
+    const auto tailSamples = static_cast<int>(kSampleRate * 28.0);
+    juce::Random random(0x0DE1A1u);
+
+    std::vector<float> out;
+    const auto total = driveSamples + tailSamples;
+    out.reserve(static_cast<std::size_t>(total));
+
+    constexpr int blockSize = 64;
+    int i = 0;
+    while (i < total)
+    {
+        const auto progress = juce::jlimit(0.0f, 1.0f,
+                                           static_cast<float>(i) / static_cast<float>(driveSamples));
+        DelaySettings s;
+        s.enabled = true;
+        s.algorithmIndex = algo;
+        s.amount = sweepWhich == 3 ? progress : 0.8f;
+        s.timeControl = sweepWhich == 1 ? progress : 0.4f;
+        s.feedbackControl = sweepWhich == 2 ? progress : feedbackLevel;
+        s.syncDivisionIndex = sweepWhich == 4 ? (1 + (i / static_cast<int>(kSampleRate)) % 7) : 0;
+        delay.updateForBlock(s);
+
+        for (int j = 0; j < blockSize && i < total; ++j, ++i)
+        {
+            float in = 0.0f;
+            if (i < driveSamples)
+            {
+                const auto env = 0.5f + 0.5f * std::sin(static_cast<float>(i) * 0.0002f);
+                in = (std::sin(juce::MathConstants<float>::twoPi * 196.0f
+                               * static_cast<float>(i) / static_cast<float>(kSampleRate)) * 0.4f
+                      + (random.nextFloat() * 0.1f - 0.05f)) * env;
+            }
+            float l = 0.0f, r = 0.0f;
+            delay.processSampleFrame(in, in, l, r);
+            out.push_back(l);
+        }
+    }
+
+    auto rmsAt = [&](double secondsAfterStop)
+    {
+        const auto from = driveSamples + static_cast<int>(kSampleRate * secondsAfterStop);
+        const auto to = juce::jmin(static_cast<int>(out.size()), from + static_cast<int>(kSampleRate * 0.5));
+        if (to <= from) return 0.0;
+        double e = 0.0;
+        for (int k = from; k < to; ++k)
+        {
+            e += static_cast<double>(out[static_cast<std::size_t>(k)]) * out[static_cast<std::size_t>(k)];
+        }
+        return std::sqrt(e / (to - from));
+    };
+
+    DelayStressResult result;
+    for (const auto v : out)
+    {
+        if (! std::isfinite(v)) result.finite = false;
+        result.peak = juce::jmax(result.peak, std::abs(static_cast<double>(v)));
+    }
+    result.tailAt1s = rmsAt(1.0);
+    result.tailAt10s = rmsAt(10.0);
+    result.tailAt25s = rmsAt(25.0);
+    result.tailHz = estimateFrequency(out,
+                                      driveSamples + static_cast<int>(kSampleRate * 24.0),
+                                      static_cast<int>(kSampleRate * 2.0), 20.0, 8000.0);
+
+    {
+        const auto from = static_cast<int>(kSampleRate * 2.0);
+        const auto to = driveSamples;
+        const auto coeff = 1.0f - std::exp(-juce::MathConstants<float>::twoPi * 30.0f
+                                           / static_cast<float>(kSampleRate));
+        float lp = 0.0f;
+        double lowEnergy = 0.0, totalEnergy = 0.0;
+        for (int k = from; k < to; ++k)
+        {
+            const auto v = out[static_cast<std::size_t>(k)];
+            lp += coeff * (v - lp);
+            lowEnergy += static_cast<double>(lp) * lp;
+            totalEnergy += static_cast<double>(v) * v;
+        }
+        result.lowFrequencyEnergyRatio = totalEnergy > 1.0e-12 ? lowEnergy / totalEnergy : 0.0;
+    }
+    return result;
+}
+
+// Feeds a delay, bypasses it, waits, then re-enables it with silence going in.
+// Anything that comes out is a tail the effect kept across the bypass.
+double delayTailAfterBypassCycle(int algorithmIndex)
+{
+    Delay delay;
+    delay.prepare(kSampleRate);
+    delay.reset();
+
+    DelaySettings s;
+    s.enabled = true;
+    s.amount = 0.9f;
+    s.timeControl = 0.5f;
+    s.feedbackControl = 0.9f;
+    s.algorithmIndex = algorithmIndex;
+    delay.updateForBlock(s);
+
+    auto run = [&](int samples, bool feedAudio)
+    {
+        double peak = 0.0;
+        for (int i = 0; i < samples; ++i)
+        {
+            const auto in = feedAudio
+                ? std::sin(juce::MathConstants<float>::twoPi * 330.0f
+                           * static_cast<float>(i) / static_cast<float>(kSampleRate)) * 0.6f
+                : 0.0f;
+            float l = 0.0f, r = 0.0f;
+            delay.processSampleFrame(in, in, l, r);
+            peak = juce::jmax(peak, juce::jmax(std::abs(static_cast<double>(l)),
+                                               std::abs(static_cast<double>(r))));
+        }
+        return peak;
+    };
+
+    run(static_cast<int>(kSampleRate * 2.0), true);      // fill it up
+
+    s.enabled = false;
+    delay.updateForBlock(s);
+    run(static_cast<int>(kSampleRate * 1.0), false);     // bypassed
+
+    s.enabled = true;
+    delay.updateForBlock(s);
+    return run(static_cast<int>(kSampleRate * 3.0), false);   // silence in: must stay silent
+}
+
+// Passes a signal through the delay at amount 0 and reports the worst sample
+// difference from the input. A delay at zero amount must be transparent.
+double delayZeroAmountBleed(int algorithmIndex)
+{
+    Delay delay;
+    delay.prepare(kSampleRate);
+    delay.reset();
+    DelaySettings s;
+    s.enabled = true;
+    s.amount = 0.0f;
+    s.algorithmIndex = algorithmIndex;
+    delay.updateForBlock(s);
+
+    double worst = 0.0;
+    for (int i = 0; i < static_cast<int>(kSampleRate * 2.0); ++i)
+    {
+        const auto phase = juce::MathConstants<float>::twoPi * 220.0f * static_cast<float>(i) / static_cast<float>(kSampleRate);
+        const auto in = 0.5f * std::sin(phase);
+        float l = 0.0f, r = 0.0f;
+        delay.processSampleFrame(in, in, l, r);
+        if (i > static_cast<int>(kSampleRate))   // after the smoothers have settled
+        {
+            worst = juce::jmax(worst, std::abs(static_cast<double>(l) - in));
+        }
+    }
+    return worst;
+}
+
 ReverbMetrics measureReverb(const ReverbSettings& settings, int totalSamples = 192000)
 {
     ::Reverb reverb;
@@ -2147,9 +2714,75 @@ void reportReverbMetrics(const char* label, const ReverbMetrics& m)
 //==============================================================================
 // PHASE 9 - REVERB
 //==============================================================================
+// Drives an effect, bypasses it, waits, then re-enables it with silence going
+// in. Whatever comes out is a tail the effect held on to across the bypass -
+// which on the next note arrives underneath something it has nothing to do
+// with. `configure` sets the enabled flag on whatever settings type is in play.
+template <typename EffectT, typename SettingsT, typename UpdateFn>
+double tailAfterBypassCycle(SettingsT settings, UpdateFn update)
+{
+    EffectT effect;
+    effect.prepare(kSampleRate);
+    effect.reset();
+
+    auto run = [&](int samples, bool feedAudio)
+    {
+        double peak = 0.0;
+        for (int i = 0; i < samples; ++i)
+        {
+            const auto in = feedAudio
+                ? std::sin(juce::MathConstants<float>::twoPi * 330.0f
+                           * static_cast<float>(i) / static_cast<float>(kSampleRate)) * 0.6f
+                : 0.0f;
+            float l = 0.0f, r = 0.0f;
+            effect.processSampleFrame(in, in, l, r);
+            peak = juce::jmax(peak, juce::jmax(std::abs(static_cast<double>(l)),
+                                               std::abs(static_cast<double>(r))));
+        }
+        return peak;
+    };
+
+    settings.enabled = true;
+    update(effect, settings);
+    run(static_cast<int>(kSampleRate * 2.0), true);
+
+    settings.enabled = false;
+    update(effect, settings);
+    run(static_cast<int>(kSampleRate * 1.5), false);
+
+    settings.enabled = true;
+    update(effect, settings);
+    return run(static_cast<int>(kSampleRate * 3.0), false);
+}
+
 void testReverb()
 {
     suite("REVERB");
+
+    // Bypassing has to empty the delay lines. The amount control fades to zero
+    // so nothing is heard while it is off, but the network keeps circulating,
+    // and switching it back on releases the tail of whatever was playing when
+    // it was switched off.
+    {
+        double worst = 0.0;
+        int worstAlgo = 0;
+        for (int algo = 0; algo < 4; ++algo)
+        {
+            ReverbSettings settings;
+            settings.amount = 1.0f;
+            settings.algorithmIndex = algo;
+            settings.decay = 0.9f;
+            settings.size = 0.8f;
+            const auto tail = tailAfterBypassCycle<::Reverb, ReverbSettings>(
+                settings,
+                [](::Reverb& r, const ReverbSettings& s) { r.updateForBlock(s, 512); });
+            if (tail > worst) { worst = tail; worstAlgo = algo; }
+        }
+        check("Reverb_BypassClearsTheTail",
+              worst < 1.0e-4,
+              "loudest sample after bypass and re-enable with silence in: "
+                  + fmt(worst, 8) + " (algorithm " + juce::String(worstAlgo) + ")");
+    }
 
     // Unit level: the Reverb class driven directly, so wet behaviour is not
     // confounded by the send/return topology around it.
@@ -2518,9 +3151,734 @@ void testReverb()
 // spawns grains from it, and offers a wet stage (reverb / delay / slip), a loop
 // stage (env / tape / stretch), plus feedback, spread, degrade, clock division
 // and a freeze that stops new material entering.
+void testDelay()
+{
+    suite("DELAY");
+
+    static const char* names[] = { "Granular", "Tape", "AnalogBBD", "PingPong",
+                                   "Stereo", "Modulated", "Diffusion" };
+
+    // At zero amount the delay is a wire. The previous mix law bottomed out at
+    // 6% wet, so six of the seven algorithms coloured the signal with the knob
+    // all the way down.
+    {
+        double worst = 0.0;
+        int worstAlgo = 0;
+        for (int algo = 0; algo < 7; ++algo)
+        {
+            const auto bleed = delayZeroAmountBleed(algo);
+            if (bleed > worst) { worst = bleed; worstAlgo = algo; }
+        }
+        check("Delay_ZeroAmountIsTransparent",
+              worst < 1.0e-6,
+              "worst deviation " + fmt(worst, 8) + " (" + names[worstAlgo] + ")");
+    }
+
+    // No algorithm may gain energy in its own feedback loop. Tape used to,
+    // because its head bump and its hysteresis bias each added gain that the
+    // feedback coefficient did not know about.
+    {
+        double worstRatio = 0.0;
+        int worstAlgo = 0;
+        bool allFinite = true;
+        for (int algo = 0; algo < 7; ++algo)
+        {
+            DelaySettings s;
+            s.amount = 1.0f;
+            s.timeControl = 0.35f;
+            s.feedbackControl = 1.0f;
+            s.algorithmIndex = algo;
+            const auto m = measureDelay(s, kSampleRate, static_cast<int>(kSampleRate * 20.0));
+            allFinite = allFinite && m.finite;
+            const auto ratio = m.tailRmsEarly > 1.0e-9 ? m.tailRmsLate / m.tailRmsEarly : 0.0;
+            if (ratio > worstRatio) { worstRatio = ratio; worstAlgo = algo; }
+        }
+        check("Delay_MaximumFeedbackDoesNotGrow",
+              allFinite && worstRatio <= 1.0,
+              "worst late/early ratio " + fmt(worstRatio, 4) + " (" + names[worstAlgo] + ")");
+    }
+
+    // Tape's wow used to be added to the sample value rather than to the delay
+    // length, which put a sub-audio tone into the feedback path: 99.95% of the
+    // algorithm's steady-state energy was below 30 Hz.
+    //
+    // Measured on sustained input rather than on an impulse tail. As a ratio it
+    // needs a denominator with something in it: taken from a near-silent window
+    // the granular algorithm's grain-spawn randomness alone moved this between
+    // 0.06 and 0.31 from run to run.
+    {
+        double worst = 0.0;
+        int worstAlgo = 0;
+        for (int algo = 0; algo < 7; ++algo)
+        {
+            const auto ratio = delayStress(algo, 0, 0.5f).lowFrequencyEnergyRatio;
+            if (ratio > worst) { worst = ratio; worstAlgo = algo; }
+        }
+        check("Delay_NoAlgorithmGeneratesSubsonicContent",
+              worst < 0.25,
+              "worst sub-30 Hz energy share on sustained input " + fmt(worst, 4)
+                  + " (" + names[worstAlgo] + ")");
+    }
+
+    // Ping-pong has to alternate channels. The old implementation read the
+    // opposite channel at the same position, which from a mono input produced
+    // two identical channels and measured +1.000.
+    {
+        DelaySettings s;
+        s.amount = 0.7f;
+        s.timeControl = 0.35f;
+        s.feedbackControl = 0.6f;
+        s.algorithmIndex = 3;
+        const auto corr = measureDelay(s).interChannelCorrelation;
+        check("Delay_PingPongAlternatesChannels",
+              corr < 0.80,
+              "inter-channel correlation " + fmt(corr, 4));
+    }
+
+    // Diffusion was four extra taps summed together - a multitap, not a
+    // diffuser - and both channels ran identical chains, so it measured +0.950.
+    {
+        DelaySettings s;
+        s.amount = 0.7f;
+        s.timeControl = 0.35f;
+        s.feedbackControl = 0.6f;
+        s.algorithmIndex = 6;
+        const auto corr = measureDelay(s).interChannelCorrelation;
+        check("Delay_DiffusionDecorrelatesChannels",
+              corr < 0.80,
+              "inter-channel correlation " + fmt(corr, 4));
+    }
+
+    // The TIME knob must move the delay in one direction. BBD is exempt above
+    // its ceiling: a bucket-brigade chip runs out of stages, and holding the
+    // time there rather than pretending otherwise is the point of the model.
+    {
+        bool allMonotonic = true;
+        juce::String detail;
+        for (int algo = 1; algo < 7; ++algo)
+        {
+            double previous = -1.0;
+            bool monotonic = true;
+            for (const auto t : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
+            {
+                DelaySettings s;
+                s.amount = 0.7f;
+                s.timeControl = t;
+                s.feedbackControl = 0.3f;
+                s.algorithmIndex = algo;
+                const auto ms = measureDelay(s).firstEchoMs;
+                if (ms + 1.0e-6 < previous) monotonic = false;
+                previous = ms;
+            }
+            if (!monotonic)
+            {
+                allMonotonic = false;
+                detail += juce::String(names[algo]) + " ";
+            }
+        }
+        check("Delay_TimeControlIsMonotonic",
+              allMonotonic,
+              allMonotonic ? "all algorithms" : ("non-monotonic: " + detail));
+    }
+
+    // Echo times are in seconds, not samples. Every filter in the delay was
+    // written with bare one-pole constants before, which moved an octave
+    // whenever the host changed rate.
+    {
+        double worstSpreadPercent = 0.0;
+        int worstAlgo = 0;
+        for (int algo = 1; algo < 7; ++algo)
+        {
+            double lowest = 1.0e9, highest = 0.0;
+            for (const auto sr : { 44100.0, 48000.0, 96000.0 })
+            {
+                DelaySettings s;
+                s.amount = 0.7f;
+                s.timeControl = 0.35f;
+                s.feedbackControl = 0.5f;
+                s.algorithmIndex = algo;
+                const auto ms = measureDelay(s, sr).firstEchoMs;
+                lowest = juce::jmin(lowest, ms);
+                highest = juce::jmax(highest, ms);
+            }
+            const auto spread = lowest > 1.0 ? (highest - lowest) / lowest * 100.0 : 0.0;
+            if (spread > worstSpreadPercent) { worstSpreadPercent = spread; worstAlgo = algo; }
+        }
+        check("Delay_EchoTimeIsSampleRateIndependent",
+              worstSpreadPercent < 2.0,
+              "worst spread across 44.1/48/96 kHz " + fmt(worstSpreadPercent, 3) + "% ("
+                  + names[worstAlgo] + ")");
+    }
+
+    // A quarter note at 120 BPM is 500 ms, whatever the TIME knob says.
+    {
+        bool allCorrect = true;
+        juce::String detail;
+        for (int algo = 1; algo < 7; ++algo)
+        {
+            DelaySettings s;
+            s.amount = 0.7f;
+            s.timeControl = 0.05f;          // deliberately not the synced value
+            s.feedbackControl = 0.4f;
+            s.algorithmIndex = algo;
+            s.syncDivisionIndex = 3;        // 1/4
+            s.bpm = 120.0;
+            const auto ms = measureDelay(s).firstEchoMs;
+            // Stereo runs its left line at two thirds, so it is checked against
+            // that rather than against the raw division.
+            const auto expected = algo == 4 ? 500.0 * 2.0 / 3.0 : 500.0;
+            if (std::abs(ms - expected) > expected * 0.06)
+            {
+                allCorrect = false;
+                detail += juce::String(names[algo]) + " " + fmt(ms, 1) + "ms ";
+            }
+        }
+        check("Delay_TempoSyncIsHonoured",
+              allCorrect,
+              allCorrect ? "1/4 at 120 BPM lands at 500 ms on every algorithm"
+                         : ("wrong: " + detail));
+    }
+
+    // The characteristic BBD behaviour: stage count is fixed, so the clock -
+    // and with it the bandwidth - is set by the delay time. A long setting has
+    // to be audibly darker than a short one. The old implementation used one
+    // fixed one-pole and had none of this.
+    {
+        // Measured as absolute energy above 4 kHz rather than as a share of the
+        // total. The dry path carries the same white noise at the same gain in
+        // both cases, so it cancels out of a comparison of absolute energies -
+        // whereas as a fraction it swamps the wet path entirely and the measure
+        // reports no difference even when the filter is doing its job.
+        auto highFrequencyEnergy = [](float timeControl)
+        {
+            Delay delay;
+            delay.prepare(kSampleRate);
+            delay.reset();
+            DelaySettings s;
+            s.enabled = true;
+            s.amount = 1.0f;
+            s.timeControl = timeControl;
+            s.feedbackControl = 0.3f;
+            s.algorithmIndex = 2;
+            delay.updateForBlock(s);
+
+            // White noise in, so every band is equally represented going in and
+            // whatever comes out reflects the chip's bandwidth.
+            juce::Random random(0x51DE51DEu);
+            std::vector<float> out;
+            const auto total = static_cast<int>(kSampleRate * 4.0);
+            out.reserve(static_cast<std::size_t>(total));
+            for (int i = 0; i < total; ++i)
+            {
+                const auto n = random.nextFloat() * 0.6f - 0.3f;
+                float l = 0.0f, r = 0.0f;
+                delay.processSampleFrame(n, n, l, r);
+                out.push_back(l);
+            }
+
+            const auto coeff = 1.0f - std::exp(-juce::MathConstants<float>::twoPi * 4000.0f
+                                               / static_cast<float>(kSampleRate));
+            float lp = 0.0f;
+            double high = 0.0;
+            const auto from = static_cast<int>(kSampleRate * 2.0);
+            for (int i = from; i < total; ++i)
+            {
+                const auto v = out[static_cast<std::size_t>(i)];
+                lp += coeff * (v - lp);
+                const auto hp = v - lp;
+                high += static_cast<double>(hp) * hp;
+            }
+            return std::sqrt(high / juce::jmax(1, total - from));
+        };
+
+        const auto shortSetting = highFrequencyEnergy(0.05f);
+        const auto longSetting = highFrequencyEnergy(0.9f);
+        check("Delay_BbdBandwidthNarrowsWithDelayTime",
+              longSetting < shortSetting * 0.90,
+              "RMS above 4 kHz: short " + fmt(shortSetting, 5)
+                  + ", long " + fmt(longSetting, 5));
+    }
+
+    // Nothing may keep ringing after the input stops. This is the fault the
+    // static tests could not see: three separate mechanisms only misbehaved
+    // while a control was moving, or only on sustained rather than impulsive
+    // input. Checked at 25 s, by which point the longest decay the FEEDBACK
+    // control can ask for is 75 dB down.
+    {
+        bool allDecay = true;
+        bool allFinite = true;
+        juce::String detail;
+        double worstRatio = 0.0;
+        for (int algo = 0; algo < 7; ++algo)
+        {
+            for (int sweep = 0; sweep < 5; ++sweep)
+            {
+                const auto r = delayStress(algo, sweep);
+                allFinite = allFinite && r.finite;
+                const auto ratio = r.tailAt1s > 1.0e-9 ? r.tailAt25s / r.tailAt1s : 0.0;
+                if (ratio > worstRatio) worstRatio = ratio;
+                if (ratio > 0.02)
+                {
+                    allDecay = false;
+                    detail += juce::String(names[algo]) + "/sweep" + juce::String(sweep)
+                            + " " + fmt(ratio, 4) + " ";
+                }
+            }
+        }
+        check("Delay_NothingSustainsAfterTheInputStops",
+              allDecay && allFinite,
+              allDecay ? ("worst tail at 25 s vs 1 s = " + fmt(worstRatio, 5)
+                          + " across all algorithms and control sweeps")
+                       : ("still ringing: " + detail));
+    }
+
+    // FEEDBACK asks for a decay time, so the same knob position has to mean
+    // roughly the same decay whether the delay is short or long. As a raw
+    // per-repeat coefficient it did not: 0.98 is a 30 s decay at 100 ms and an
+    // 11 minute one at 2 s, which is what "stuck repeating forever" was.
+    {
+        bool consistent = true;
+        juce::String detail;
+        double shortest = 1.0e9, longest = 0.0;
+        for (const auto timeControl : { 0.15f, 0.5f, 1.0f })
+        {
+            Delay delay;
+            delay.prepare(kSampleRate);
+            delay.reset();
+            DelaySettings s;
+            s.enabled = true;
+            s.amount = 0.9f;
+            s.timeControl = timeControl;
+            s.feedbackControl = 1.0f;
+            s.algorithmIndex = 3;
+            delay.updateForBlock(s);
+
+            // Impulse in, then measure how long it takes to fall 20 dB.
+            const auto total = static_cast<int>(kSampleRate * 40.0);
+            std::vector<float> out;
+            out.reserve(static_cast<std::size_t>(total));
+            for (int i = 0; i < total; ++i)
+            {
+                float l = 0.0f, r = 0.0f;
+                delay.processSampleFrame(i < 64 ? 0.9f : 0.0f, i < 64 ? 0.9f : 0.0f, l, r);
+                out.push_back(l);
+            }
+
+            auto windowRms = [&](int from)
+            {
+                const auto to = juce::jmin(total, from + static_cast<int>(kSampleRate * 1.0));
+                if (to <= from) return 0.0;
+                double e = 0.0;
+                for (int k = from; k < to; ++k) e += static_cast<double>(out[static_cast<std::size_t>(k)]) * out[static_cast<std::size_t>(k)];
+                return std::sqrt(e / (to - from));
+            };
+            const auto reference = windowRms(static_cast<int>(kSampleRate * 2.0));
+            double fellAt = 40.0;
+            for (double t = 3.0; t < 39.0; t += 1.0)
+            {
+                if (windowRms(static_cast<int>(kSampleRate * t)) < reference * 0.1)
+                {
+                    fellAt = t;
+                    break;
+                }
+            }
+            shortest = juce::jmin(shortest, fellAt);
+            longest = juce::jmax(longest, fellAt);
+            detail += fmt(timeControl, 2) + "->" + fmt(fellAt, 0) + "s ";
+        }
+        // Within a factor of four across a delay range that spans 30x.
+        consistent = longest <= shortest * 4.0 + 2.0;
+        check("Delay_FeedbackMeansTheSameDecayAtEveryDelayTime",
+              consistent,
+              "time to fall 20 dB at maximum feedback: " + detail);
+    }
+
+    // Bypassing has to empty the lines. Otherwise switching the delay back on
+    // replays whatever was in flight when it was switched off, underneath
+    // whatever is playing now.
+    {
+        double worst = 0.0;
+        int worstAlgo = 0;
+        for (int algo = 0; algo < 7; ++algo)
+        {
+            const auto tail = delayTailAfterBypassCycle(algo);
+            if (tail > worst) { worst = tail; worstAlgo = algo; }
+        }
+        check("Delay_BypassClearsTheTail",
+              worst < 1.0e-4,
+              "loudest sample after bypass and re-enable with silence in: "
+                  + fmt(worst, 8) + " (" + names[worstAlgo] + ")");
+    }
+
+    // Through the whole plugin, at the extremes, on every algorithm.
+    {
+        bool allGood = true;
+        juce::String detail;
+        for (int algo = 0; algo < 7; ++algo)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setParam(processor, "delayEnabled", 1.0f);
+            setChoice(processor, "delayAlgorithm", algo);
+            setParam(processor, "delayAmount", 1.0f);
+            setParam(processor, "delayFeedback", 1.0f);
+            setParam(processor, "delayTime", 0.3f);
+            const auto capture = render(processor, 192000,
+                                        { { 2000, true, 45, 0.9f }, { 60000, false, 45, 0.0f } });
+            if (!capture.isFinite() || capture.peak() > 1.0)
+            {
+                allGood = false;
+                detail += juce::String(names[algo]) + " peak " + fmt(capture.peak(), 4) + " ";
+            }
+        }
+        check("Delay_AllAlgorithmsStayFiniteAndWithinCeilingInThePlugin",
+              allGood,
+              allGood ? "all seven algorithms at maximum amount and feedback" : detail);
+    }
+
+    // The same, but with the controls moving throughout - which is when the
+    // crossfade and companding faults showed themselves.
+    {
+        bool allGood = true;
+        juce::String detail;
+        for (int algo = 0; algo < 7; ++algo)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setParam(processor, "delayEnabled", 1.0f);
+            setChoice(processor, "delayAlgorithm", algo);
+            setParam(processor, "delayAmount", 0.9f);
+            setParam(processor, "delayFeedback", 0.95f);
+            const auto totalBlocks = 192000 / kBlockSize;
+            const auto capture = render(processor, 192000,
+                                        { { 2000, true, 45, 0.9f }, { 90000, false, 45, 0.0f } },
+                                        [&](int block)
+                                        {
+                                            const auto t = static_cast<float>(block)
+                                                         / static_cast<float>(juce::jmax(1, totalBlocks));
+                                            setParam(processor, "delayTime", t);
+                                        });
+            if (!capture.isFinite() || capture.peak() > 1.0)
+            {
+                allGood = false;
+                detail += juce::String(names[algo]) + " peak " + fmt(capture.peak(), 4) + " ";
+            }
+        }
+        check("Delay_ControlSweepsStayWithinCeilingInThePlugin",
+              allGood,
+              allGood ? "TIME swept end to end on all seven algorithms" : detail);
+    }
+}
+
 void testMood()
 {
     suite("MOOD");
+
+    // Every mode pairing with FEEDBACK, SPREAD and DEGRADE all at maximum. The
+    // widening controls raise the peak if they are not level-compensated - a
+    // mid/side widener that is not compensated pushed this to 1.14 - and a
+    // stereo effect that clips when it is turned up is not usable at the top of
+    // its range.
+    {
+        bool allGood = true;
+        juce::String detail;
+        double worstPeak = 0.0;
+        for (int loopMode = 0; loopMode < 3; ++loopMode)
+        {
+            for (int wetMode = 0; wetMode < 3; ++wetMode)
+            {
+                MoodSettings s;
+                s.mix = 1.0f;
+                s.loopModeIndex = loopMode;
+                s.wetModeIndex = wetMode;
+                s.spread = 1.0f;
+                s.feedback = 1.0f;
+                s.degrade = 1.0f;
+                s.routing = 1.0f;
+                s.wetModify = 1.0f;
+                const auto m = measureMood(s);
+                worstPeak = juce::jmax(worstPeak, m.peak);
+                if (!m.finite || m.peak > 1.0)
+                {
+                    allGood = false;
+                    detail += "loop" + juce::String(loopMode) + "/wet" + juce::String(wetMode)
+                            + " peak " + fmt(m.peak, 4) + " ";
+                }
+            }
+        }
+        check("Mood_MaximumSettingsStayFiniteAndWithinCeiling",
+              allGood,
+              allGood ? ("worst peak with feedback, spread and degrade at maximum "
+                         + fmt(worstPeak, 4))
+                      : detail);
+    }
+
+    // ROUTING has to do what its labels say. The parameter is exposed as a
+    // three-way choice - DRY->WET, LOOP->WET, PARALLEL - and reaches the DSP as
+    // index/2. The middle and top settings used to be swapped relative to their
+    // labels: "LOOP->WET" fed the wet channel the input as well, and "PARALLEL"
+    // fed it the loop alone.
+    //
+    // Distinguished by feeding a signal and comparing against a silent-input
+    // render: on LOOP->WET the wet channel never sees the input directly, so
+    // the immediate response to a transient is much smaller than on the two
+    // settings that pass the input through.
+    {
+        auto immediacy = [](float routing)
+        {
+            Mood mood;
+            mood.prepare(kSampleRate);
+            mood.reset();
+            MoodSettings ms;
+            ms.enabled = true;
+            ms.mix = 1.0f;
+            ms.routing = routing;
+            ms.loopModeIndex = 1;      // TAPE
+            ms.wetModeIndex = 1;       // DELAY
+            ms.wetTime = 0.0f;         // 30 ms, so the input's own echo lands inside the window
+            ms.wetModify = 0.0f;
+            ms.loopLength = 0.9f;
+            ms.feedback = 0.0f;
+            ms.spread = 0.0f;
+            ms.degrade = 0.0f;
+            mood.updateForBlock(ms);
+
+            // A short burst, measured over the window immediately after it, so
+            // only signal that reached the output promptly is counted. The loop
+            // is still empty this early, which is exactly what separates a
+            // routing that passes the input from one that does not.
+            double energy = 0.0;
+            const auto burst = static_cast<int>(kSampleRate * 0.05);
+            const auto window = static_cast<int>(kSampleRate * 0.30);
+            for (int i = 0; i < burst + window; ++i)
+            {
+                const auto in = i < burst
+                    ? std::sin(juce::MathConstants<float>::twoPi * 440.0f
+                               * static_cast<float>(i) / static_cast<float>(kSampleRate)) * 0.6f
+                    : 0.0f;
+                float l = 0.0f, r = 0.0f;
+                mood.processSampleFrame(in, in, l, r);
+                if (i >= burst) energy += static_cast<double>(l) * l;
+            }
+            return std::sqrt(energy / window);
+        };
+
+        const auto dryToWet = immediacy(0.0f);    // index 0
+        const auto loopToWet = immediacy(0.5f);   // index 1
+        const auto parallel = immediacy(1.0f);    // index 2
+        check("Mood_RoutingMatchesItsLabels",
+              loopToWet < dryToWet * 0.5 && parallel > loopToWet,
+              "prompt response: DRY->WET " + fmt(dryToWet, 6)
+                  + ", LOOP->WET " + fmt(loopToWet, 6)
+                  + ", PARALLEL " + fmt(parallel, 6));
+    }
+
+    // SPREAD has to make a stereo image out of every mode pairing, not just the
+    // ones that happen to pan. Before the rewrite six of the nine combinations
+    // measured a side-to-mid ratio of exactly 0.0000 - the output was mono -
+    // and the control NARROWED what stereo there was, because all it did was
+    // mix each channel into the other.
+    //
+    // Averaged over renders: the granular and gated modes use the system
+    // Random, which cannot be seeded, so a single render moves by a third
+    // either way.
+    {
+        auto meanSideToMid = [](int loopMode, int wetMode, float spread)
+        {
+            double total = 0.0;
+            constexpr int renders = 4;
+            for (int i = 0; i < renders; ++i)
+            {
+                MoodSettings s;
+                s.mix = 1.0f;
+                s.loopModeIndex = loopMode;
+                s.wetModeIndex = wetMode;
+                s.spread = spread;
+                s.routing = 1.0f;
+                s.feedback = 0.4f;
+                total += measureMood(s).sideToMidRatio;
+            }
+            return total / renders;
+        };
+
+        bool allWiden = true;
+        juce::String detail;
+        double worstGain = 1.0e9;
+        for (int loopMode = 0; loopMode < 3; ++loopMode)
+        {
+            for (int wetMode = 0; wetMode < 3; ++wetMode)
+            {
+                const auto narrow = meanSideToMid(loopMode, wetMode, 0.0f);
+                const auto wide = meanSideToMid(loopMode, wetMode, 1.0f);
+                const auto gain = wide / juce::jmax(1.0e-4, narrow);
+                worstGain = juce::jmin(worstGain, gain);
+                if (wide < 0.10 || gain < 1.5)
+                {
+                    allWiden = false;
+                    detail += "loop" + juce::String(loopMode) + "/wet" + juce::String(wetMode)
+                            + " " + fmt(narrow, 4) + "->" + fmt(wide, 4) + " ";
+                }
+            }
+        }
+        check("Mood_SpreadWidensEveryModeCombination",
+              allWiden,
+              allWiden ? ("side-to-mid rises on all nine pairings; smallest gain x"
+                          + fmt(worstGain, 2))
+                       : ("did not widen: " + detail));
+    }
+
+    // With SPREAD down the incoming image must survive. A source hard to one
+    // side has to come out on that side, which is what makes the control a
+    // choice rather than a permanent stereoiser.
+    {
+        bool allPreserve = true;
+        juce::String detail;
+        double worstDb = 1.0e9;
+        for (int loopMode = 0; loopMode < 3; ++loopMode)
+        {
+            for (int wetMode = 0; wetMode < 3; ++wetMode)
+            {
+                MoodSettings s;
+                s.mix = 1.0f;
+                s.loopModeIndex = loopMode;
+                s.wetModeIndex = wetMode;
+                s.spread = 0.0f;
+                s.routing = 1.0f;
+                const auto sep = measureMood(s, true).channelSeparationDb;
+                worstDb = juce::jmin(worstDb, sep);
+                if (sep < 20.0)
+                {
+                    allPreserve = false;
+                    detail += "loop" + juce::String(loopMode) + "/wet" + juce::String(wetMode)
+                            + " " + fmt(sep, 1) + "dB ";
+                }
+            }
+        }
+        check("Mood_SpreadOffPreservesTheIncomingImage",
+              allPreserve,
+              allPreserve ? ("worst channel separation with a hard-left input "
+                             + fmt(worstDb, 1) + " dB")
+                          : ("image collapsed: " + detail));
+    }
+
+    // TAPE's stereo treatment is specific: with SPREAD up the right channel
+    // plays the loop forward and the left plays the same loop in reverse. Two
+    // copies of the same material running opposite ways are uncorrelated, so
+    // this is checkable rather than merely describable.
+    {
+        MoodSettings s;
+        s.mix = 1.0f;
+        s.loopModeIndex = 1;      // TAPE
+        s.wetModeIndex = 1;
+        s.spread = 1.0f;
+        s.routing = 1.0f;
+        s.feedback = 0.4f;
+        const auto corr = measureMood(s).interChannelCorrelation;
+        check("Mood_TapeSpreadPlaysTheLoopForwardAndReverse",
+              std::abs(corr) < 0.35,
+              "inter-channel correlation at full spread " + fmt(corr, 4));
+    }
+
+    // CLOCK is the engine's sample rate. Audio captured at one rate and played
+    // back at another changes speed and pitch together, so turning the clock
+    // down transposes a captured loop - and it must do so in the harmonised
+    // steps the control is specified with, over a full three octaves.
+    //
+    // Measured against a FROZEN loop. While the looper is still recording,
+    // capture and playback happen at the same rate and the pitch is preserved
+    // by definition, so a render that holds the clock constant shows nothing
+    // however well the control works.
+    {
+        auto playbackHz = [](float clock)
+        {
+            Mood mood;
+            mood.prepare(kSampleRate);
+            mood.reset();
+            MoodSettings ms;
+            ms.enabled = true;
+            ms.mix = 1.0f;
+            ms.loopModeIndex = 1;
+            ms.loopModify = 0.70f;
+            ms.loopLength = 0.5f;
+            ms.wetModeIndex = 1;
+            ms.wetModify = 0.0f;
+            ms.wetTime = 0.0f;
+            ms.routing = 1.0f;
+            ms.spread = 0.0f;
+            ms.degrade = 0.0f;
+            ms.feedback = 0.0f;
+            ms.clock = 1.0f;
+            mood.updateForBlock(ms);
+
+            for (int i = 0; i < static_cast<int>(kSampleRate * 4.0); ++i)
+            {
+                const auto in = std::sin(juce::MathConstants<float>::twoPi * 440.0f
+                                         * static_cast<float>(i) / static_cast<float>(kSampleRate)) * 0.6f;
+                float l = 0.0f, r = 0.0f;
+                mood.processSampleFrame(in, in, l, r);
+            }
+
+            ms.clock = clock;
+            ms.freeze = true;
+            mood.updateForBlock(ms);
+
+            const auto total = static_cast<int>(kSampleRate * 6.0);
+            std::vector<float> out;
+            out.reserve(static_cast<std::size_t>(total));
+            for (int i = 0; i < total; ++i)
+            {
+                float l = 0.0f, r = 0.0f;
+                mood.processSampleFrame(0.0f, 0.0f, l, r);
+                out.push_back(l);
+            }
+            return estimateFrequency(out, static_cast<int>(kSampleRate * 3.0),
+                                     static_cast<int>(kSampleRate * 2.0), 20.0, 2000.0);
+        };
+
+        const auto full = playbackHz(1.0f);
+        const auto threeQuarter = playbackHz(0.75f);
+        const auto half = playbackHz(0.5f);
+        const auto quarter = playbackHz(0.25f);
+        const auto lowest = playbackHz(0.0f);
+
+        const auto monotonic = full > threeQuarter && threeQuarter > half
+                            && half > quarter && quarter > lowest;
+        // Three octaves across the knob, i.e. a factor of eight.
+        const auto span = full / juce::jmax(1.0, lowest);
+        check("Mood_ClockTransposesACapturedLoop",
+              monotonic && span > 6.0 && span < 10.0,
+              "playback pitch " + fmt(full, 0) + " / " + fmt(threeQuarter, 0) + " / "
+                  + fmt(half, 0) + " / " + fmt(quarter, 0) + " / " + fmt(lowest, 0)
+                  + " Hz, span x" + fmt(span, 2));
+    }
+
+    // Same requirement as the other two effects: bypass empties the history
+    // and wet buffers so re-enabling does not replay an old loop.
+    {
+        double worst = 0.0;
+        int worstCombo = 0;
+        for (int loopMode = 0; loopMode < 3; ++loopMode)
+        {
+            for (int wetMode = 0; wetMode < 3; ++wetMode)
+            {
+                MoodSettings settings;
+                settings.mix = 1.0f;
+                settings.loopModeIndex = loopMode;
+                settings.wetModeIndex = wetMode;
+                settings.feedback = 0.8f;
+                settings.routing = 0.5f;
+                const auto tail = tailAfterBypassCycle<Mood, MoodSettings>(
+                    settings,
+                    [](Mood& m, const MoodSettings& s) { m.updateForBlock(s); });
+                if (tail > worst) { worst = tail; worstCombo = loopMode * 3 + wetMode; }
+            }
+        }
+        check("Mood_BypassClearsTheTail",
+              worst < 1.0e-4,
+              "loudest sample after bypass and re-enable with silence in: "
+                  + fmt(worst, 8) + " (loop " + juce::String(worstCombo / 3)
+                  + ", wet " + juce::String(worstCombo % 3) + ")");
+    }
 
     auto runMood = [](const MoodSettings& settings, int inputSamples, int totalSamples)
     {
@@ -3923,6 +5281,476 @@ int main(int argc, char* argv[])
         return 0;
     }
 
+    if (filter == "moodmetrics")
+    {
+        std::printf("\nMOOD CHARACTERISATION (driven on the Mood class)\n");
+        std::printf("  sep = channel separation in dB with a hard-left input (high = stereo preserved)\n");
+        std::printf("  S/M = side-to-mid ratio (0 = the output is mono)\n");
+        std::printf("  corr = inter-channel correlation\n\n");
+
+        static const char* loopNames[] = { "ENV", "TAPE", "STRETCH" };
+        static const char* wetNames[] = { "REVERB", "DELAY", "SLIP" };
+
+        std::printf("  loop mode  wet mode    spread   corr     S/M      sep dB    rms      peak\n");
+        for (int loopMode = 0; loopMode < 3; ++loopMode)
+        {
+            for (int wetMode = 0; wetMode < 3; ++wetMode)
+            {
+                for (const auto spread : { 0.0f, 1.0f })
+                {
+                    MoodSettings s;
+                    s.mix = 1.0f;
+                    s.loopModeIndex = loopMode;
+                    s.wetModeIndex = wetMode;
+                    s.spread = spread;
+                    s.routing = 1.0f;      // input + micro-looper
+                    s.feedback = 0.4f;
+                    const auto m = measureMood(s);
+                    const auto sep = measureMood(s, true);
+                    std::printf("  %-10s %-10s %5.2f  %+.4f  %.4f  %+8.2f  %.6f  %.4f%s\n",
+                                loopNames[loopMode], wetNames[wetMode], spread,
+                                m.interChannelCorrelation, m.sideToMidRatio,
+                                sep.channelSeparationDb, m.rms, m.peak,
+                                m.finite ? "" : "  NON-FINITE");
+                }
+            }
+        }
+
+        std::printf("\n  does SPREAD widen? (side-to-mid ratio should rise with the knob)\n");
+        for (int loopMode = 0; loopMode < 3; ++loopMode)
+        {
+            std::printf("    loop %-8s", loopNames[loopMode]);
+            for (const auto spread : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
+            {
+                MoodSettings s;
+                s.mix = 1.0f;
+                s.loopModeIndex = loopMode;
+                s.wetModeIndex = 0;
+                s.spread = spread;
+                s.routing = 0.5f;
+                std::printf("  %.4f", measureMood(s).sideToMidRatio);
+            }
+            std::printf("\n");
+        }
+
+        // CLOCK is a sample rate, so what it changes is PITCH and length, not
+        // level. It has to be measured against an EXISTING loop: recording and
+        // playing back at the same rate preserves pitch by definition, so a
+        // render that holds the clock constant throughout shows nothing. The
+        // loop is captured at full clock, then frozen, and only then is the
+        // clock moved - which is the pedal's own description of the control.
+        std::printf("\n  does CLOCK transpose a captured loop? (440 Hz in, playback Hz)\n");
+        for (int loopMode = 0; loopMode < 3; ++loopMode)
+        {
+            std::printf("    loop %-8s", loopNames[loopMode]);
+            for (const auto clock : { 1.0f, 0.75f, 0.5f, 0.25f, 0.0f })
+            {
+                Mood mood;
+                mood.prepare(kSampleRate);
+                mood.reset();
+                MoodSettings ms;
+                ms.enabled = true;
+                ms.mix = 1.0f;
+                ms.loopModeIndex = loopMode;
+                ms.loopModify = loopMode == 1 ? 0.70f : 0.75f;   // unity-ish playback speed
+                ms.loopLength = 0.5f;
+                ms.wetModeIndex = 1;
+                ms.wetModify = 0.0f;       // no wet feedback muddying the pitch
+                ms.wetTime = 0.0f;
+                ms.clock = clock;
+                ms.routing = 1.0f;         // micro-looper only
+                ms.spread = 0.0f;
+                ms.degrade = 0.0f;
+                ms.feedback = 0.0f;
+                // Capture at full clock.
+                ms.clock = 1.0f;
+                ms.freeze = false;
+                mood.updateForBlock(ms);
+                const auto captureSamples = static_cast<int>(kSampleRate * 4.0);
+                for (int i = 0; i < captureSamples; ++i)
+                {
+                    const auto in = std::sin(juce::MathConstants<float>::twoPi * 440.0f
+                                             * static_cast<float>(i) / static_cast<float>(kSampleRate)) * 0.6f;
+                    float l = 0.0f, r = 0.0f;
+                    mood.processSampleFrame(in, in, l, r);
+                }
+
+                // Freeze what was captured, then move the clock.
+                ms.clock = clock;
+                ms.freeze = true;
+                mood.updateForBlock(ms);
+
+                const auto total = static_cast<int>(kSampleRate * 6.0);
+                std::vector<float> out;
+                out.reserve(static_cast<std::size_t>(total));
+                for (int i = 0; i < total; ++i)
+                {
+                    float l = 0.0f, r = 0.0f;
+                    mood.processSampleFrame(0.0f, 0.0f, l, r);
+                    out.push_back(l);
+                }
+                std::printf("  %7.1f", estimateFrequency(out, static_cast<int>(kSampleRate * 3.0),
+                                                         static_cast<int>(kSampleRate * 2.0), 20.0, 2000.0));
+            }
+            std::printf("   (clock 1.0 -> 0.0)\n");
+        }
+
+        std::printf("\n  does DEGRADE do anything? (rms across the knob)\n");
+        for (int wetMode = 0; wetMode < 3; ++wetMode)
+        {
+            std::printf("    wet %-9s", wetNames[wetMode]);
+            for (const auto degrade : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
+            {
+                MoodSettings s;
+                s.mix = 1.0f;
+                s.wetModeIndex = wetMode;
+                s.degrade = degrade;
+                s.routing = 0.0f;
+                std::printf("  %.6f", measureMood(s).rms);
+            }
+            std::printf("\n");
+        }
+
+        std::printf("\n");
+        return 0;
+    }
+
+    if (filter == "delaystress")
+    {
+        std::printf("\nDELAY STRESS: moving controls, then silence\n");
+        std::printf("  feeds audio while sweeping a control, stops the input, and reports\n");
+        std::printf("  the tail level 1 s and 10 s after the input stops.\n\n");
+
+        static const char* names[] = { "0 Granular", "1 Tape", "2 AnalogBBD", "3 PingPong",
+                                       "4 Stereo", "5 Modulated", "6 Diffusion" };
+
+        // sweepWhich: 0 = none, 1 = time, 2 = feedback, 3 = amount, 4 = sync division
+        auto stress = [&](int algo, int sweepWhich, float feedbackLevel)
+        {
+            Delay delay;
+            delay.prepare(kSampleRate);
+            delay.reset();
+
+            const auto driveSamples = static_cast<int>(kSampleRate * 6.0);
+            const auto tailSamples = static_cast<int>(kSampleRate * 12.0);
+            juce::Random random(0x0DE1A1u);
+
+            std::vector<float> out;
+            out.reserve(static_cast<std::size_t>(driveSamples + tailSamples));
+
+            const auto blockSize = 64;
+            int i = 0;
+            const auto total = driveSamples + tailSamples;
+            while (i < total)
+            {
+                const auto progress = juce::jlimit(0.0f, 1.0f,
+                                                   static_cast<float>(i) / static_cast<float>(driveSamples));
+                DelaySettings s;
+                s.enabled = true;
+                s.algorithmIndex = algo;
+                s.amount = sweepWhich == 3 ? progress : 0.8f;
+                s.timeControl = sweepWhich == 1 ? progress : 0.4f;
+                s.feedbackControl = sweepWhich == 2 ? progress : feedbackLevel;
+                s.syncDivisionIndex = sweepWhich == 4 ? (1 + (i / (int) kSampleRate) % 7) : 0;
+                delay.updateForBlock(s);
+
+                for (int j = 0; j < blockSize && i < total; ++j, ++i)
+                {
+                    float in = 0.0f;
+                    if (i < driveSamples)
+                    {
+                        const auto env = 0.5f + 0.5f * std::sin(static_cast<float>(i) * 0.0002f);
+                        in = (std::sin(juce::MathConstants<float>::twoPi * 196.0f
+                                       * static_cast<float>(i) / static_cast<float>(kSampleRate)) * 0.4f
+                              + (random.nextFloat() * 0.1f - 0.05f)) * env;
+                    }
+                    float l = 0.0f, r = 0.0f;
+                    delay.processSampleFrame(in, in, l, r);
+                    out.push_back(l);
+                }
+            }
+
+            auto rmsAt = [&](double secondsAfterStop)
+            {
+                const auto from = driveSamples + static_cast<int>(kSampleRate * secondsAfterStop);
+                const auto to = juce::jmin(static_cast<int>(out.size()), from + static_cast<int>(kSampleRate * 0.5));
+                if (to <= from) return 0.0;
+                double e = 0.0;
+                for (int k = from; k < to; ++k) e += static_cast<double>(out[(std::size_t) k]) * out[(std::size_t) k];
+                return std::sqrt(e / (to - from));
+            };
+
+            bool finite = true;
+            double peak = 0.0;
+            for (const auto v : out) { if (! std::isfinite(v)) finite = false; peak = juce::jmax(peak, std::abs((double) v)); }
+
+            // Dominant frequency of whatever is left at the end, so a stuck
+            // tone can be identified rather than just noticed.
+            const auto tailStart = driveSamples + static_cast<int>(kSampleRate * 9.0);
+            const auto tailHz = estimateFrequency(out, tailStart, static_cast<int>(kSampleRate * 2.0), 20.0, 8000.0);
+
+            return std::make_tuple(rmsAt(1.0), rmsAt(10.0), peak, finite, tailHz);
+        };
+
+        static const char* sweepNames[] = { "static", "TIME sweep", "FEEDBACK sweep",
+                                            "AMOUNT sweep", "SYNC changes" };
+        for (int algo = 0; algo < 7; ++algo)
+        {
+            for (int sweep = 0; sweep < 5; ++sweep)
+            {
+                const auto [r1, r10, peak, finite, hz] = stress(algo, sweep, 0.85f);
+                const auto stuck = r10 > 1.0e-5 && r10 > r1 * 0.5;
+                std::printf("  %-12s %-15s  +1s %.7f  +10s %.7f  peak %.4f  tailHz %6.1f%s%s\n",
+                            names[algo], sweepNames[sweep], r1, r10, peak, hz,
+                            finite ? "" : "  NON-FINITE",
+                            stuck ? "   STUCK" : "");
+            }
+        }
+        std::printf("\n");
+        return 0;
+    }
+
+    if (filter == "delaymetrics")
+    {
+        std::printf("\nDELAY CHARACTERISATION (impulse response, driven on the Delay class)\n\n");
+        static const char* names[] = { "0 Granular", "1 Tape", "2 Analog/BBD", "3 Ping-Pong",
+                                       "4 Stereo", "5 Modulated", "6 Diffusion" };
+
+        std::printf("  zero-amount transparency (worst sample deviation from input)\n");
+        for (int algo = 0; algo < 7; ++algo)
+        {
+            std::printf("    %-14s %.6f\n", names[algo], delayZeroAmountBleed(algo));
+        }
+
+        std::printf("\n  algorithm       echo1 ms  echo2 ms   peak    early rms   late rms   corr   sub-30Hz\n");
+        for (int algo = 0; algo < 7; ++algo)
+        {
+            DelaySettings s;
+            s.amount = 0.7f;
+            s.timeControl = 0.35f;
+            s.feedbackControl = 0.5f;
+            s.algorithmIndex = algo;
+            const auto m = measureDelay(s);
+            std::printf("    %-14s %7.1f  %7.1f  %7.4f  %9.6f  %9.6f  %+.3f  %7.4f%s\n",
+                        names[algo], m.firstEchoMs, m.secondEchoMs, m.peak,
+                        m.tailRmsEarly, m.tailRmsLate, m.interChannelCorrelation,
+                        m.lowFrequencyEnergyRatio, m.finite ? "" : "  NON-FINITE");
+        }
+
+        std::printf("\n  stability at maximum feedback (late rms should not exceed early rms)\n");
+        for (int algo = 0; algo < 7; ++algo)
+        {
+            DelaySettings s;
+            s.amount = 1.0f;
+            s.timeControl = 0.35f;
+            s.feedbackControl = 1.0f;
+            s.algorithmIndex = algo;
+            const auto m = measureDelay(s, kSampleRate, static_cast<int>(kSampleRate * 20.0));
+            const auto growth = m.tailRmsEarly > 1.0e-9 ? m.tailRmsLate / m.tailRmsEarly : 0.0;
+            std::printf("    %-14s early %.6f  late %.6f  ratio %7.3f  peak %.4f%s\n",
+                        names[algo], m.tailRmsEarly, m.tailRmsLate, growth, m.peak,
+                        growth > 1.05 ? "   GROWING" : "");
+        }
+
+        std::printf("\n  delay time knob sweep (first echo, ms) - should rise monotonically\n");
+        for (int algo = 1; algo < 7; ++algo)
+        {
+            std::printf("    %-14s", names[algo]);
+            for (const auto t : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
+            {
+                DelaySettings s;
+                s.amount = 0.7f;
+                s.timeControl = t;
+                s.feedbackControl = 0.3f;
+                s.algorithmIndex = algo;
+                std::printf(" %7.1f", measureDelay(s).firstEchoMs);
+            }
+            std::printf("\n");
+        }
+
+        std::printf("\n  sample-rate consistency (first echo ms / late rms at amount 0.7)\n");
+        for (int algo = 1; algo < 7; ++algo)
+        {
+            std::printf("    %-14s", names[algo]);
+            for (const auto sr : { 44100.0, 48000.0, 96000.0 })
+            {
+                DelaySettings s;
+                s.amount = 0.7f;
+                s.timeControl = 0.35f;
+                s.feedbackControl = 0.6f;
+                s.algorithmIndex = algo;
+                const auto m = measureDelay(s, sr);
+                std::printf("  %6.1f/%.5f", m.firstEchoMs, m.tailRmsLate);
+            }
+            std::printf("\n");
+        }
+
+        std::printf("\n");
+        return 0;
+    }
+
+    if (filter == "vibemetrics")
+    {
+        // Objective characterisation of the vibe engine, so "more analog" is
+        // measured rather than asserted.
+        std::printf("\nVIBE ENGINE METRICS\n");
+
+        // 1. Are the per-voice drift signals independent? Measured on the
+        // engine directly: routing this through audio does not work, because
+        // juce::Synthesiser retargets the existing voice when the same pitch is
+        // played twice, so only one voice would ever sound.
+        {
+            VibeEngine engine;
+            engine.prepare(kSampleRate, 64, 0x13579BDFu);
+            VibeEngine::Tuning tuning;
+            engine.setTuning(tuning);
+            engine.setGlobalAmount(1.0f);
+
+            std::vector<double> a, b, c;
+            for (int block = 0; block < 4000; ++block)   // ~43 s
+            {
+                engine.advance(512, 0.25f);
+                a.push_back(engine.getVoiceVariation(0).pitchCents);
+                b.push_back(engine.getVoiceVariation(1).pitchCents);
+                c.push_back(engine.getVoiceVariation(2).pitchCents);
+            }
+            auto spread = [](const std::vector<double>& v)
+            {
+                double mean = 0.0; for (auto x : v) mean += x; mean /= static_cast<double>(v.size());
+                double var = 0.0; for (auto x : v) var += (x - mean) * (x - mean);
+                return std::sqrt(var / static_cast<double>(v.size()));
+            };
+            auto correlation = [](const std::vector<double>& x, const std::vector<double>& y)
+            {
+                double mx = 0, my = 0; const auto n = static_cast<double>(x.size());
+                for (std::size_t i = 0; i < x.size(); ++i) { mx += x[i]; my += y[i]; }
+                mx /= n; my /= n;
+                double sxy = 0, sxx = 0, syy = 0;
+                for (std::size_t i = 0; i < x.size(); ++i)
+                {
+                    sxy += (x[i]-mx)*(y[i]-my); sxx += (x[i]-mx)*(x[i]-mx); syy += (y[i]-my)*(y[i]-my);
+                }
+                return sxx > 1e-12 && syy > 1e-12 ? sxy / std::sqrt(sxx*syy) : 1.0;
+            };
+            std::printf("  per-voice pitch drift: movement %.3f / %.3f / %.3f cents (std dev)\n",
+                        spread(a), spread(b), spread(c));
+            std::printf("  drift correlation voice0-1 %+.3f, voice0-2 %+.3f  (0 = independent)\n",
+                        correlation(a, b), correlation(a, c));
+        }
+
+        // 2. DC injected by the asymmetry stage.
+        {
+            for (const auto amount : { 0.0f, 1.0f })
+            {
+                PX3SynthAudioProcessor processor;
+                makePlainPatch(processor);
+                setChoice(processor, "osc1Mode", 0);
+                setParam(processor, "vibeEnabled", 1.0f);
+                setParam(processor, "vibeAmount", amount);
+                const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
+                std::printf("  DC offset at vibe %.1f: %+.6f  (peak %.4f)\n",
+                            amount, c.dcOffset(), c.peak());
+            }
+        }
+
+        // 3. Noise spectrum tilt. Analog hiss is 1/f weighted; white noise is
+        // the giveaway of a digital source.
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            for (int i = 1; i <= 3; ++i) setParam(processor, "osc" + juce::String(i) + "Enabled", 0.0f);
+            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "vibeEnabled", 1.0f);
+            setParam(processor, "vibeAmount", 1.0f);
+            const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
+            std::printf("  vibe noise floor with all sources off: rms %.8f\n", c.rms());
+
+        // Which measures actually rise monotonically with the amount control?
+        std::printf("\n  %-8s %10s %10s %10s %10s\n", "amount", "rms", "peak", "crest", "dc");
+        for (const auto amount : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "osc1Mode", 0);
+            setParam(processor, "vibeEnabled", 1.0f);
+            setParam(processor, "vibeAmount", amount);
+            const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
+            const auto r = c.rmsOver(20000, 94000);
+            std::printf("  %-8.2f %10.6f %10.6f %10.4f %+10.6f\n",
+                        amount, r, c.peak(), c.peak() / juce::jmax(1.0e-9, r), c.dcOffset());
+        }
+        }
+
+        // 4. Block-size dependence. The character must not change with the
+        // host's buffer size.
+        {
+            for (const auto blockSize : { 64, 512 })
+            {
+                PX3SynthAudioProcessor processor;
+                makePlainPatch(processor);
+                setParam(processor, "vibeEnabled", 1.0f);
+                setParam(processor, "vibeAmount", 1.0f);
+                processor.setPlayConfigDetails(0, 2, kSampleRate, blockSize);
+                processor.prepareToPlay(kSampleRate, blockSize);
+                juce::AudioBuffer<float> buffer(2, blockSize);
+                double energy = 0.0; juce::int64 n = 0;
+                const auto blocks = static_cast<int>(8.0 * kSampleRate / blockSize);
+                for (int b = 0; b < blocks; ++b)
+                {
+                    buffer.clear();
+                    juce::MidiBuffer midi;
+                    if (b == 4) midi.addEvent(juce::MidiMessage::noteOn(1, 57, 0.9f), 0);
+                    processor.processBlock(buffer, midi);
+                    for (int i = 0; i < blockSize; ++i)
+                    {
+                        const auto v = static_cast<double>(buffer.getSample(0, i));
+                        energy += v * v; ++n;
+                    }
+                }
+                std::printf("  block %4d: rms %.6f\n", blockSize, std::sqrt(energy / static_cast<double>(juce::jmax<juce::int64>(1, n))));
+            }
+        }
+        std::printf("\n");
+        return 0;
+    }
+
+    if (filter == "gainstage")
+    {
+        // Absolute source-to-master gain at the default fader position and at
+        // the top of its travel. Moving the headroom from the fader to the
+        // oscillator must leave both of these unchanged.
+        std::printf("\n  %-22s %12s %12s %12s\n", "mix.osc1.level", "masterRms", "oscBusRms", "polyGain");
+        for (const auto label : { "default", "maximum" })
+        {
+            PX3SynthAudioProcessor processor;
+            // Defaults everywhere except: one oscillator on, no FX, no vibe.
+            setParam(processor, "osc1Enabled", 1.0f);
+            setParam(processor, "osc2Enabled", 0.0f);
+            setParam(processor, "osc3Enabled", 0.0f);
+            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "vibeEnabled", 0.0f);
+            setParam(processor, "reverbEnabled", 0.0f);
+            setParam(processor, "delayEnabled", 0.0f);
+            setParam(processor, "moodEnabled", 0.0f);
+            setParam(processor, "filter1Enabled", 0.0f);
+            setParam(processor, "filter2Enabled", 0.0f);
+            setParam(processor, "ampSustain", 1.0f);
+            setChoice(processor, "osc1Mode", 0);
+            if (juce::String(label) == "maximum")
+            {
+                if (auto* lv = findParameter(processor, "mix.osc1.level"))
+                {
+                    lv->setValueNotifyingHost(1.0f); // top of the fader
+                }
+            }
+            const auto capture = render(processor, 48000, { { 2000, true, 57, 0.9f } });
+            std::printf("  %-22s %12.6f %12.6f %12.6f\n", label, capture.rmsOver(24000, 46000),
+                        processor.debugGetOscillatorBusRms(), processor.debugGetPolyphonyGainApplied());
+        }
+        std::printf("\n");
+        return 0;
+    }
+
     if (filter == "probe")
     {
         // Diagnostic probe, not an assertion: prints the level at each stage so
@@ -3993,6 +5821,7 @@ int main(int argc, char* argv[])
     if (wants("lfo")) testLfo();
     if (wants("vibe")) testVibe();
     if (wants("reverb")) testReverb();
+    if (wants("delay")) testDelay();
     if (wants("mood")) testMood();
     if (wants("fx")) testEffectIndependence();
     if (wants("preset")) testPresets();

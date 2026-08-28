@@ -21,15 +21,23 @@ using namespace px3::processor_internal;
 
 namespace
 {
-// Mixer channels default to -4 dB rather than unity so a freshly loaded plugin
-// has headroom for modulation to push into. This is only the parameter default:
-// every saved session and preset writes an explicit mix.*.level / fxReturnGain
-// value, so restoring one always overrides this.
-constexpr float kDefaultChannelHeadroomDb = -4.0f;
+// Sources generate 4 dB below full scale so there is headroom for modulation to
+// push into. The trim lives HERE, at the source, rather than on the mixer
+// faders: a fader is a readout of the channel's gain, and starting it at -4 dB
+// made a freshly loaded plugin look as though someone had already pulled every
+// channel down.
+// (The trim value itself lives in PluginProcessorInternals.h so the source side
+// and the fader range cannot disagree.)
+//
+// Because the sources are trimmed, the faders run to +4 dB rather than stopping
+// at unity, so a channel can still be driven to full scale. Fader at its default
+// of 0 dB reproduces the old default level exactly, and fader at the top
+// reproduces the old maximum exactly - the headroom moved, the gain did not.
 
 // Fixed output boost applied to the whole synth after the master mix, so the
 // instrument is louder without moving the user-facing master gain default.
 constexpr float kOutputBoostDb = 6.0f;
+
 
 // Pan-law gain at centre. The FX send is taken pre-pan and placed centrally, so
 // this is the fixed per-side gain it uses.
@@ -235,8 +243,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     fxSendGainParam = new juce::AudioParameterFloat("fxSendGain", "FX Send", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
     fxReturnGainParam = new juce::AudioParameterFloat("fxReturnGain",
                                                        "FX Return",
-                                                       juce::NormalisableRange<float>(0.0f, 1.0f),
-                                                       juce::Decibels::decibelsToGain(kDefaultChannelHeadroomDb));
+                                                       juce::NormalisableRange<float>(0.0f, px3::processor_internal::channelFaderMaxGain()),
+                                                       1.0f);
     static constexpr std::array<const char*, kMixerSourceCount> mixerIds { { "sub", "osc1", "osc2", "osc3" } };
     static constexpr std::array<const char*, kMixerSourceCount> mixerNames { { "Sub", "Osc 1", "Osc 2", "Osc 3" } };
     for (int i = 0; i < kMixerSourceCount; ++i)
@@ -249,8 +257,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                                                       0.0f);
         mixerLevelParams[static_cast<std::size_t>(i)] = new juce::AudioParameterFloat("mix." + sourceId + ".level",
                                                 sourceName + " Level",
-                                                juce::NormalisableRange<float>(0.0f, 1.0f),
-                                                juce::Decibels::decibelsToGain(kDefaultChannelHeadroomDb));
+                                                juce::NormalisableRange<float>(0.0f, px3::processor_internal::channelFaderMaxGain()),
+                                                1.0f);
         mixerSendParams[static_cast<std::size_t>(i)] = new juce::AudioParameterFloat("mix." + sourceId + ".fxSend",
                                                                                        sourceName + " FX Send",
                                                                                        juce::NormalisableRange<float>(0.0f, 1.0f),
@@ -898,7 +906,12 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     const auto subtractive = currentSubtractiveSettings();
     const auto subOsc = currentSubOscillatorSettings();
     const auto oscillatorLayers = currentOscillatorLayerSettings();
-    vibeComponent.updateForBlock(currentVibeSettings(), buffer.getNumSamples());
+    // The previous block's source level drives the supply sag. One block of
+    // delay is what a real reservoir capacitor does anyway - it responds to
+    // current already drawn, not current about to be drawn.
+    const auto vibeLoad = juce::jlimit(0.0f, 1.0f,
+                                       debugOscillatorBusRms.load(std::memory_order_relaxed) * 3.0f);
+    vibeComponent.updateForBlock(currentVibeSettings(), buffer.getNumSamples(), vibeLoad);
     const auto vibeShared = vibeComponent.getSharedState();
     const auto vibeTuning = vibeComponent.getTuning();
     const auto vibeBypass = vibeComponent.isBypassed();
@@ -1119,15 +1132,22 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     }
     polyphonyGainFromLoad = juce::jlimit(kPolyphonyGainFloor, 1.0f, polyphonyGainFromLoad);
 
-    const auto predictedMasterPeak = prePolyPeak * kEstimatedMasterFromSource;
+    // The polyphony gain's thresholds are calibrated against a source running at
+    // full scale. Sources are now trimmed by the headroom amount, so the peak is
+    // referred back to full scale before the thresholds are applied - otherwise
+    // moving the trim upstream would silently recalibrate the overload
+    // protection and it would stop engaging (measured: it did exactly that, and
+    // the synth came out 3.4 dB louder).
+    const auto calibratedPeak = prePolyPeak / juce::jmax(1.0e-6f, px3::processor_internal::sourceHeadroomGain());
+    const auto predictedMasterPeak = calibratedPeak * kEstimatedMasterFromSource;
     const auto overloadBlend = juce::jlimit(0.0f,
                                             1.0f,
                                             (predictedMasterPeak - kAttenuationStartPeak)
                                                 / juce::jmax(1.0e-5f, (kAttenuationFullPeak - kAttenuationStartPeak)));
-    const auto tailOnlyBypass = heldVoiceCount == 0 && prePolyPeak <= kTailOnlyBypassPrePolyPeakThreshold;
+    const auto tailOnlyBypass = heldVoiceCount == 0 && calibratedPeak <= kTailOnlyBypassPrePolyPeakThreshold;
     const auto lowHeldBypass = heldVoiceCount > 0
                                && heldVoiceCount <= kLowHeldBypassMaxHeldVoices
-                               && prePolyPeak <= kLowHeldBypassPrePolyPeakThreshold;
+                               && calibratedPeak <= kLowHeldBypassPrePolyPeakThreshold;
     const auto polyphonyBypass = tailOnlyBypass || lowHeldBypass;
     auto polyphonyGainTarget = polyphonyBypass
                                    ? 1.0f
@@ -1256,7 +1276,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                                 : 1.0f;
     const auto fxReturnGain = fxReturnGainParam != nullptr
                                   ? juce::jlimit(0.0f,
-                                                 1.0f,
+                                                 px3::processor_internal::channelFaderMaxGain(),
                                                  fxReturnGainParam->convertFrom0to1(applyModulationToNormalizedValue(
                                                      fxReturnGainParam,
                                                      static_cast<juce::RangedAudioParameter*>(fxReturnGainParam)->getValue())))
@@ -1280,7 +1300,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         auto& sendParam = getMixerSendParam(sourceIndex);
 
         sourceLevelValues[static_cast<std::size_t>(sourceIndex)] = juce::jlimit(0.0f,
-                                                                                 1.0f,
+                                                                                 px3::processor_internal::channelFaderMaxGain(),
                                                                                  levelParam.convertFrom0to1(applyModulationToNormalizedValue(
                                                                                      &levelParam,
                                                                                      static_cast<juce::RangedAudioParameter&>(levelParam).getValue())));
@@ -1514,8 +1534,11 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
 #endif
 
-        const auto fxL = (stageL - fxInL) * smoothedFxReturnGain * fxPanLeft * fxReturnGate;
-        const auto fxR = (stageR - fxInR) * smoothedFxReturnGain * fxPanRight * fxReturnGate;
+        // The FX return carries the same source-side headroom as the
+        // oscillators, so its fader is a true gain readout too.
+        const auto fxHeadroom = px3::processor_internal::sourceHeadroomGain();
+        const auto fxL = (stageL - fxInL) * fxHeadroom * smoothedFxReturnGain * fxPanLeft * fxReturnGate;
+        const auto fxR = (stageR - fxInR) * fxHeadroom * smoothedFxReturnGain * fxPanRight * fxReturnGate;
         fxReturnEnergy += static_cast<double>(fxL) * static_cast<double>(fxL)
                   + static_cast<double>(fxR) * static_cast<double>(fxR);
 

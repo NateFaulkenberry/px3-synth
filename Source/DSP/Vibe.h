@@ -13,7 +13,7 @@ class Vibe
 {
 public:
     void prepare(double sampleRate, int voiceCount, uint32_t seed);
-    void updateForBlock(const VibeSettings& settings, int numSamples);
+    void updateForBlock(const VibeSettings& settings, int numSamples, float load);
 
     void setSeed(uint32_t seed);
     uint32_t getSeed() const;

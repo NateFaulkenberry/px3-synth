@@ -54,7 +54,10 @@ public:
     float getGlobalAmount() const { return globalAmount; }
     float getEffectiveAmount() const;
 
-    void advance(int samples);
+    // `load` is the previous block's source level, 0..1. A real supply rail
+    // droops in proportion to the current the circuit draws, so the sag has to
+    // see the signal; without it the "PSU movement" is just a free-running LFO.
+    void advance(int samples, float load);
     const SharedState& getSharedState() const { return shared; }
     VoiceVariation getVoiceVariation(int voiceIndex) const;
 
@@ -87,6 +90,30 @@ private:
     float chaosY { 0.0f };
     float chaosZ { 0.0f };
 
-    std::array<VoiceVariation, 32> voiceVariations {};
+    // Per-voice drift. Real polysynth voices drift INDEPENDENTLY - that
+    // divergence is what makes a stacked chord thicken over time. A single
+    // shared drift signal moves every voice in lockstep and cannot do that,
+    // however deep it is set.
+    struct VoiceDrift
+    {
+        float phase { 0.0f };
+        float rateHz { 0.03f };
+        float walk { 0.0f };
+        float walkTarget { 0.0f };
+        float thermalPhase { 0.0f };
+        float thermalRateHz { 0.011f };
+    };
+
+    // One entry per voice in the pool. Sized 32 previously, while the synth
+    // runs 64 voices, so the upper half of the pool received no variation.
+    static constexpr int kMaxVoices = 64;
+    std::array<VoiceVariation, kMaxVoices> voiceVariations {};
+    std::array<VoiceVariation, kMaxVoices> voiceStatic {};
+    std::array<VoiceDrift, kMaxVoices> voiceDrift {};
     int preparedVoiceCount { 16 };
+
+    // Reservoir behaviour: droops quickly under load, recovers slowly.
+    float chaosStepAccumulator { 0.0f };
+    float psuSag { 0.0f };
+    float loadFollower { 0.0f };
 };

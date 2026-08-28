@@ -363,6 +363,10 @@ void ::Reverb::updateForBlock(const ReverbSettings& settings, int numSamples)
 {
     currentSettings.amount = clamp01(settings.amount);
     currentSettings.enabled = settings.enabled;
+    if (settings.enabled)
+    {
+        bypassCleared = false;
+    }
     currentSettings.algorithmIndex = juce::jlimit(0, 3, settings.algorithmIndex);
     currentSettings.size = clamp01(settings.size);
     currentSettings.decay = clamp01(settings.decay);
@@ -400,6 +404,17 @@ void ::Reverb::processSampleFrame(float inL, float inR, float& outL, float& outR
 
     wetSlewState[0] += 0.04f * (0.0f - wetSlewState[0]);
     wetSlewState[1] += 0.04f * (0.0f - wetSlewState[1]);
+
+    // The amount fade has reached zero, so the delay lines can be emptied
+    // without any of it being heard. Left full, they hold the tail of whatever
+    // was playing when the reverb was switched off, and switching it back on
+    // replays that tail underneath whatever is playing now.
+    if (! currentSettings.enabled && ! bypassCleared)
+    {
+        reset();
+        bypassCleared = true;
+    }
+
     outL = inL;
     outR = inR;
 }

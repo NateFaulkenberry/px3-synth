@@ -107,6 +107,8 @@ private:
 
     double sampleRateHz { 44100.0 };
     int blockSampleCount { 0 };
+    // Latches so the clear on bypass runs once, after the fade reaches zero.
+    bool bypassCleared { false };
     float amountSmoothed { 0.0f };
     float amountSmoothingCoeff { 0.0f };
     float outputCompGain { 1.0f };

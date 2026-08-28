@@ -12,6 +12,22 @@
 
 namespace px3::processor_internal
 {
+// Sources generate this far below full scale so modulation has somewhere to go.
+// Declared once and shared, so the source trim and the mixer fader range cannot
+// drift apart: the fader tops out at exactly the reciprocal of this, which is
+// what keeps a channel able to reach full scale.
+inline constexpr float kSourceHeadroomDb = -4.0f;
+
+inline float sourceHeadroomGain()
+{
+    return juce::Decibels::decibelsToGain(kSourceHeadroomDb);
+}
+
+inline float channelFaderMaxGain()
+{
+    return juce::Decibels::decibelsToGain(-kSourceHeadroomDb);
+}
+
 inline constexpr int kCurrentStateVersion = 11;
 
 inline const juce::Identifier kStateTypeId("PX3_STATE");
