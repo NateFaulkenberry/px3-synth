@@ -384,7 +384,7 @@
     "osc": {
       "height": 0,
       "overflowY": "hidden",
-      "itemWidth": 300,
+      "itemWidth": 0,
       "flex": {
         "display": "flex",
         "direction": "row",
@@ -392,7 +392,7 @@
         "justifyContent": "space-between",
         "alignItems": "stretch",
         "alignContent": "center",
-        "gap": 8
+        "gap": 2
       }
     }
   },
@@ -443,7 +443,7 @@
     "subOsc": {
       "border": {
         "color": "#1F5CFF",
-        "opacity": 0.35
+        "opacity": 0.7
       },
       "background": {
         "color": "#1F5CFF",
@@ -533,7 +533,7 @@
     "osc1": {
       "border": {
         "color": "#68C2FF",
-        "opacity": 0.35
+        "opacity": 0.5
       },
       "background": {
         "color": "#68C2FF",
@@ -556,7 +556,7 @@
     "osc2": {
       "border": {
         "color": "#68C2FF",
-        "opacity": 0.35
+        "opacity": 0.5
       },
       "background": {
         "color": "#68C2FF",
@@ -579,7 +579,7 @@
     "osc3": {
       "border": {
         "color": "#68C2FF",
-        "opacity": 0.35
+        "opacity": 0.5
       },
       "background": {
         "color": "#68C2FF",
