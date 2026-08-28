@@ -540,6 +540,35 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
         valueLabel.setText(formatPitchCents(pitchKnob.getValue()), juce::dontSendNotification);
     };
 
+    // Macro readouts. The macros are 0..1 normalised, so they read as a
+    // percentage - the same way the LFO and ENV amount knobs already do.
+    const auto configureMacroReadout = [](juce::Slider& knob, juce::Label& valueLabel)
+    {
+        valueLabel.setJustificationType(juce::Justification::centred);
+        valueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(214, 214, 224));
+        valueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+        valueLabel.setFont(juce::FontOptions(11.0f));
+        valueLabel.setInterceptsMouseClicks(false, false);
+
+        const auto refresh = [&knob, &valueLabel]()
+        {
+            const auto percent = juce::roundToInt(juce::jlimit(0.0, 1.0, knob.getValue()) * 100.0);
+            valueLabel.setText(juce::String(percent) + "%", juce::dontSendNotification);
+        };
+        knob.onValueChange = refresh;
+        refresh();
+    };
+
+    configureMacroReadout(oscSineKnob, osc1MacroAValueLabel);
+    configureMacroReadout(oscSawKnob, osc1MacroBValueLabel);
+    configureMacroReadout(oscSquareKnob, osc1MacroCValueLabel);
+    configureMacroReadout(osc2SineKnob, osc2MacroAValueLabel);
+    configureMacroReadout(osc2SawKnob, osc2MacroBValueLabel);
+    configureMacroReadout(osc2SquareKnob, osc2MacroCValueLabel);
+    configureMacroReadout(osc3SineKnob, osc3MacroAValueLabel);
+    configureMacroReadout(osc3SawKnob, osc3MacroBValueLabel);
+    configureMacroReadout(osc3SquareKnob, osc3MacroCValueLabel);
+
     configurePitchReadout(osc1PitchKnob, osc1PitchValueLabel);
     configurePitchReadout(osc2PitchKnob, osc2PitchValueLabel);
     configurePitchReadout(osc3PitchKnob, osc3PitchValueLabel);
@@ -991,6 +1020,9 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           oscSineLabel,
                                           oscSawLabel,
                                           oscSquareLabel,
+                                          osc1MacroAValueLabel,
+                                          osc1MacroBValueLabel,
+                                          osc1MacroCValueLabel,
                                           oscModeBox,
                                           oscModeLabel,
                                           oscVowelBox,
@@ -1005,6 +1037,9 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           osc2SineLabel,
                                           osc2SawLabel,
                                           osc2SquareLabel,
+                                          osc2MacroAValueLabel,
+                                          osc2MacroBValueLabel,
+                                          osc2MacroCValueLabel,
                                           osc2ModeBox,
                                           osc2ModeLabel,
                                           osc2VowelBox,
@@ -1019,6 +1054,9 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           osc3SineLabel,
                                           osc3SawLabel,
                                           osc3SquareLabel,
+                                          osc3MacroAValueLabel,
+                                          osc3MacroBValueLabel,
+                                          osc3MacroCValueLabel,
                                           osc3ModeBox,
                                           osc3ModeLabel,
                                           osc3VowelBox,

@@ -168,26 +168,6 @@ void FltPanel::resized()
             }
         }
 
-        // The type dropdown wears the card's identity colour rather than the
-        // shared combo style. These are the BASE colours, not the live ones:
-        // refreshFromParameters swaps between these and the disabled set, so
-        // writing the box directly here would be undone on the next tick.
-        {
-            const auto slot = static_cast<std::size_t>(filterIndex);
-            filterTypeBoxBaseBgColours[slot] = identity.withSaturation(0.55f).withBrightness(0.15f);
-            filterTypeBoxBaseTextColours[slot] = identity.brighter(0.85f);
-            filterTypeBoxBaseOutlineColours[slot] = identity.withAlpha(0.55f);
-
-            if (auto* box = filterTypeBoxes[slot])
-            {
-                if (box->isEnabled())
-                {
-                    box->setColour(juce::ComboBox::backgroundColourId, filterTypeBoxBaseBgColours[slot]);
-                    box->setColour(juce::ComboBox::textColourId, filterTypeBoxBaseTextColours[slot]);
-                    box->setColour(juce::ComboBox::outlineColourId, filterTypeBoxBaseOutlineColours[slot]);
-                }
-            }
-        }
 
         const auto idx = static_cast<std::size_t>(filterIndex);
         using px3::ui::ControlShape;

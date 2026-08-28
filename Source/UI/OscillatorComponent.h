@@ -25,6 +25,9 @@ public:
                         juce::Label& macroALabelIn,
                         juce::Label& macroBLabelIn,
                         juce::Label& macroCLabelIn,
+                        juce::Label& macroAValueLabelIn,
+                        juce::Label& macroBValueLabelIn,
+                        juce::Label& macroCValueLabelIn,
                         juce::ComboBox& modeBoxIn,
                         juce::Label& modeLabelIn,
                         juce::ComboBox& vowelBoxIn,
@@ -61,6 +64,9 @@ private:
     juce::Label& macroALabel;
     juce::Label& macroBLabel;
     juce::Label& macroCLabel;
+    juce::Label& macroAValueLabel;
+    juce::Label& macroBValueLabel;
+    juce::Label& macroCValueLabel;
     juce::ComboBox& modeBox;
     juce::Label& modeLabel;
     juce::ComboBox& vowelBox;

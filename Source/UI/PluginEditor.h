@@ -357,6 +357,18 @@ private:
     KnobLabel osc3PitchLabel;
     juce::Label subOscPitchValueLabel;
     juce::Label osc1PitchValueLabel;
+    // One readout per macro knob. Every other knob in the plugin shows the
+    // value it is setting; the oscillator macros were the only ones that did
+    // not, in any mode.
+    juce::Label osc1MacroAValueLabel;
+    juce::Label osc1MacroBValueLabel;
+    juce::Label osc1MacroCValueLabel;
+    juce::Label osc2MacroAValueLabel;
+    juce::Label osc2MacroBValueLabel;
+    juce::Label osc2MacroCValueLabel;
+    juce::Label osc3MacroAValueLabel;
+    juce::Label osc3MacroBValueLabel;
+    juce::Label osc3MacroCValueLabel;
     juce::Label osc2PitchValueLabel;
     juce::Label osc3PitchValueLabel;
     KnobLabel subOscOctaveLabel;

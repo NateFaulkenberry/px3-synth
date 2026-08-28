@@ -18,6 +18,9 @@ OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
                                                                                                              juce::Label& macroALabelIn,
                                                                                                              juce::Label& macroBLabelIn,
                                                                                                              juce::Label& macroCLabelIn,
+                        juce::Label& macroAValueLabelIn,
+                        juce::Label& macroBValueLabelIn,
+                        juce::Label& macroCValueLabelIn,
                                                                                                              juce::ComboBox& modeBoxIn,
                                                                                                              juce::Label& modeLabelIn,
                                                                                                              juce::ComboBox& vowelBoxIn,
@@ -33,6 +36,9 @@ OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
       macroALabel(macroALabelIn),
       macroBLabel(macroBLabelIn),
       macroCLabel(macroCLabelIn),
+      macroAValueLabel(macroAValueLabelIn),
+      macroBValueLabel(macroBValueLabelIn),
+      macroCValueLabel(macroCValueLabelIn),
       modeBox(modeBoxIn),
       modeLabel(modeLabelIn),
       vowelBox(vowelBoxIn),
@@ -53,6 +59,9 @@ OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
     addAndMakeVisible(macroALabel);
     addAndMakeVisible(macroBLabel);
     addAndMakeVisible(macroCLabel);
+    addAndMakeVisible(macroAValueLabel);
+    addAndMakeVisible(macroBValueLabel);
+    addAndMakeVisible(macroCValueLabel);
     addAndMakeVisible(modeBox);
     addAndMakeVisible(modeLabel);
     addAndMakeVisible(vowelBox);
@@ -198,6 +207,7 @@ void OscillatorComponent::resized()
 
         const std::array<juce::Slider*, 3> macroSliders { &macroA, &macroB, &macroC };
         const std::array<juce::Label*, 3> macroLabels { &macroALabel, &macroBLabel, &macroCLabel };
+        const std::array<juce::Label*, 3> macroValues { &macroAValueLabel, &macroBValueLabel, &macroCValueLabel };
 
         std::vector<int> visibleMacros;
         for (int i = 0; i < 3; ++i)
@@ -240,7 +250,7 @@ void OscillatorComponent::resized()
                                        // Same label and readout heights as the pitch
                                        // knob, so the two line up: the pitch cell has a
                                        // value readout and a macro cell does not.
-                                       { macroLabels[index], macroSliders[index], nullptr,
+                                       { macroLabels[index], macroSliders[index], macroValues[index],
                                          ControlShape::square, 16, 16, 56 },
                                        inner.rowControl(1));
         }
@@ -355,6 +365,11 @@ void OscillatorComponent::paint(juce::Graphics& g)
     {
         const auto t = static_cast<float>(s) / 72.0f;
         const auto samplePhase = t * juce::MathConstants<float>::twoPi + phase;
+        // The same position as samplePhase, wrapped into 0..1. The shapers that
+        // work in normalised time rather than radians use this, so they scroll
+        // with the rest instead of standing still.
+        const auto sampleT = samplePhase / juce::MathConstants<float>::twoPi
+                             - std::floor(samplePhase / juce::MathConstants<float>::twoPi);
         float y = 0.0f;
 
         switch (modeIndex)
@@ -363,13 +378,13 @@ void OscillatorComponent::paint(juce::Graphics& g)
                 y = std::sin(samplePhase);
                 break;
             case 1:
-                y = 2.0f * t - 1.0f;
+                y = 2.0f * sampleT - 1.0f;
                 break;
             case 2:
                 y = std::sin(samplePhase) >= 0.0f ? 1.0f : -1.0f;
                 break;
             case 3:
-                y = 1.0f - 4.0f * std::abs(t - 0.5f);
+                y = 1.0f - 4.0f * std::abs(sampleT - 0.5f);
                 break;
             case 4:
             case 5:
@@ -388,7 +403,7 @@ void OscillatorComponent::paint(juce::Graphics& g)
             case 7:
             {
                 const auto widthNorm = juce::jlimit(0.1f, 0.9f, 0.1f + macroAValue * 0.8f);
-                y = t < widthNorm ? 1.0f : -1.0f;
+                y = sampleT < widthNorm ? 1.0f : -1.0f;
                 break;
             }
             case 8:
@@ -513,6 +528,7 @@ void OscillatorComponent::applyModeUi()
 
     const std::array<juce::Slider*, 3> sliders { &macroA, &macroB, &macroC };
     const std::array<juce::Label*, 3> labels { &macroALabel, &macroBLabel, &macroCLabel };
+    const std::array<juce::Label*, 3> values { &macroAValueLabel, &macroBValueLabel, &macroCValueLabel };
     const std::array<const char*, 3> texts { ui.a, ui.b, ui.c };
 
     for (int i = 0; i < 3; ++i)
@@ -520,6 +536,7 @@ void OscillatorComponent::applyModeUi()
         const auto show = i < ui.count;
         sliders[static_cast<std::size_t>(i)]->setVisible(show);
         labels[static_cast<std::size_t>(i)]->setVisible(show);
+        values[static_cast<std::size_t>(i)]->setVisible(show);
         labels[static_cast<std::size_t>(i)]->setText(show ? texts[static_cast<std::size_t>(i)] : "", juce::dontSendNotification);
         const auto tooltipText = show ? juce::String(texts[static_cast<std::size_t>(i)]) : juce::String();
         labels[static_cast<std::size_t>(i)]->setTooltip(tooltipText);
