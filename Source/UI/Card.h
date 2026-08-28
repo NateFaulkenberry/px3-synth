@@ -85,6 +85,15 @@ struct GlossStyle
     // Where the top fill ends and the bottom fill begins, as a fraction of the
     // gloss box height. Without this the two fills could only ever be halves.
     float split { 0.5f };
+    // Corner rounding for each fill's OUTER corners - the top fill's top two
+    // and the bottom fill's bottom two. The edges where the two meet at the
+    // split stay square, because they abut.
+    //
+    // "auto" follows the card's own border radius less the gloss margin, which
+    // keeps the gloss concentric with the border. A pixel or percentage value
+    // overrides that; a percentage is of the fill's shorter side, as in CSS.
+    Dimension topRadius;
+    Dimension bottomRadius;
     Fill topFill;
     Fill bottomFill;
 };

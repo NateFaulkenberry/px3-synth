@@ -242,14 +242,36 @@ three rows would be meaningless there.
 }
 ```
 
-A row takes the same properties as `cardInner` plus `height`. Lookup is layered,
-most specific first:
+### cardInner is defined per component TYPE
+
+There is **no `cards.defaults.cardInner`**. A layout block belongs to a component
+type, and every instance of that type shares it:
+
+| Block | Used by |
+| --- | --- |
+| `cards.subOsc.cardInner` | Sub Osc |
+| `cards.osc.cardInner` | Osc 1, 2 and 3 |
+| `cards.lfo.cardInner` | LFO 1, 2 and 3 |
+| `cards.env.cardInner` | ENV 1, 2 and 3 |
+| `cards.ampEnv.cardInner` | AMP ENV |
+| `cards.filter.cardInner` | Filter 1 and 2 |
+| `cards.vibe` `cards.delay` `cards.reverb` `cards.mood` | one each |
+
+The type is the style key with any trailing instance number stripped —
+`px3::ui::cardTypeKey()`, so `"osc2"` → `"osc"`. *Colours* stay per instance
+(`cards.osc2.border`); only the layout is shared. The three oscillators cannot
+drift apart from one another, and no card inherits another card's layout.
+
+Each block is self-contained. Lookup within one is two layers, most specific
+first:
 
 ```
-cards.<component>.cardInner.rows.rowN
-cards.defaults.cardInner.rows.rowN
-cards.defaults.cardInner.rows.default
+cards.<type>.cardInner.rows.rowN
+cards.<type>.cardInner.rows.default
 ```
+
+Anything a block omits falls back to the C++ defaults in `CardInnerStyle`, not
+to another card — so a missing block still lays out, as three equal rows.
 
 ### Rules worth being precise about
 
@@ -264,6 +286,15 @@ are resolved here rather than left to FlexBox's shrinking, which does not apply
 to explicitly sized items. If the total — including the space the gaps consume —
 exceeds what is available, every row is scaled by the same factor. Rows totalling
 less than 100% simply leave space, positioned by `justifyContent`.
+
+**Gloss corners are configurable per fill.** `gloss.topRadius` rounds the top
+fill's *top* two corners and `gloss.bottomRadius` the bottom fill's *bottom*
+two; the edges where the two meet at the split stay square, because they abut.
+Both default to `"auto"`, which follows the card's border radius less the gloss
+margin so the gloss stays concentric with the border. A pixel or percentage
+value overrides that — a percentage is of that fill's shorter side, as in CSS —
+and each is capped at half the shorter side so a corner can never fold back on
+itself.
 
 **`display: "none"` removes a row from the layout.** It gets no height and no
 gap, and the rows around it close up. They do not grow to absorb the space,
@@ -281,7 +312,7 @@ Delay's row 3 (five controls) and Mood's row 3 (nine knobs) both rely on this.
 component owns its controls — that split is the whole point.
 
 ```cpp
-inner.setKeys("cards.defaults.cardInner", "cards.subOsc.cardInner");
+inner.setStylePath("cards.subOsc.cardInner");
 inner.setConfig(uiConfig);
 inner.setRowCount(3);
 inner.layout(card.contentBelowTitle());

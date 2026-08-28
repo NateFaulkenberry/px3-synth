@@ -802,7 +802,7 @@ void EnvelopeComponent::layoutCardInner()
     card.setConfig(uiConfig);
     card.layout(computeCardBounds());
 
-    inner.setKeys("cards.defaults.cardInner", "cards." + cardStyleKey + ".cardInner");
+    inner.setStylePath("cards." + px3::ui::cardTypeKey(cardStyleKey) + ".cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(isFullHeightGraph() ? 1 : 3);
     inner.layout(card.contentBelowTitle());

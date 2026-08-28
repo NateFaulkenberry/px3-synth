@@ -82,7 +82,7 @@
     "panel": {
       "fillAlpha": 0,
       "strokeAlpha": 0,
-      "cornerRadius": 10,
+      "cornerRadius": 0,
       "layout": {
         "padX": 0,
         "padY": 0
@@ -423,6 +423,8 @@
       "gloss": {
         "margin": 6,
         "split": 0.5,
+        "topRadius": "auto",
+        "bottomRadius": "auto",
         "topFill": {
           "color": "#68C2FF",
           "opacity": 0.1
@@ -442,39 +444,6 @@
       "disabled": {
         "saturation": 0,
         "dim": 0.75
-      },
-      "cardInner": {
-        "margin": 0,
-        "padding": 4,
-        "display": "flex",
-        "direction": "column",
-        "wrap": "nowrap",
-        "justifyContent": "center",
-        "alignItems": "center",
-        "alignContent": "center",
-        "gap": 2,
-        "rows": {
-          "default": {
-            "margin": 0,
-            "padding": 0,
-            "display": "flex",
-            "direction": "row",
-            "wrap": "nowrap",
-            "justifyContent": "center",
-            "alignItems": "center",
-            "alignContent": "center",
-            "gap": 6
-          },
-          "row1": {
-            "height": "26%"
-          },
-          "row2": {
-            "height": "30%"
-          },
-          "row3": {
-            "height": "44%"
-          }
-        }
       }
     },
     "subOsc": {
@@ -501,7 +470,27 @@
       },
       "width": 300,
       "cardInner": {
+        "margin": 0,
+        "padding": 4,
+        "display": "flex",
+        "direction": "column",
+        "wrap": "nowrap",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "alignContent": "center",
+        "gap": 2,
         "rows": {
+          "default": {
+            "margin": 0,
+            "padding": 0,
+            "display": "flex",
+            "direction": "row",
+            "wrap": "nowrap",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "alignContent": "center",
+            "gap": 6
+          },
           "row1": {
             "height": "26%",
             "gap": 8
@@ -538,23 +527,7 @@
       "title": {
         "color": "#DCE8FC"
       },
-      "width": 300,
-      "cardInner": {
-        "rows": {
-          "row1": {
-            "height": "22%",
-            "gap": 8
-          },
-          "row2": {
-            "height": "36%",
-            "gap": 4
-          },
-          "row3": {
-            "height": "42%",
-            "padding": 2
-          }
-        }
-      }
+      "width": 300
     },
     "osc2": {
       "border": {
@@ -578,23 +551,7 @@
       "title": {
         "color": "#DCE8FC"
       },
-      "width": 300,
-      "cardInner": {
-        "rows": {
-          "row1": {
-            "height": "22%",
-            "gap": 8
-          },
-          "row2": {
-            "height": "36%",
-            "gap": 4
-          },
-          "row3": {
-            "height": "42%",
-            "padding": 2
-          }
-        }
-      }
+      "width": 300
     },
     "osc3": {
       "border": {
@@ -618,23 +575,7 @@
       "title": {
         "color": "#DCE8FC"
       },
-      "width": 300,
-      "cardInner": {
-        "rows": {
-          "row1": {
-            "height": "22%",
-            "gap": 8
-          },
-          "row2": {
-            "height": "36%",
-            "gap": 4
-          },
-          "row3": {
-            "height": "42%",
-            "padding": 2
-          }
-        }
-      }
+      "width": 300
     },
     "mixerChannel": {
       "margin": 2,
@@ -682,22 +623,6 @@
       },
       "title": {
         "color": "#FFE0E0"
-      },
-      "cardInner": {
-        "rows": {
-          "row1": {
-            "height": "18%",
-            "gap": 8
-          },
-          "row2": {
-            "height": "40%",
-            "gap": 10
-          },
-          "row3": {
-            "height": "42%",
-            "padding": 4
-          }
-        }
       }
     },
     "filter2": {
@@ -721,22 +646,6 @@
       },
       "title": {
         "color": "#FFE0E0"
-      },
-      "cardInner": {
-        "rows": {
-          "row1": {
-            "height": "18%",
-            "gap": 8
-          },
-          "row2": {
-            "height": "40%",
-            "gap": 10
-          },
-          "row3": {
-            "height": "42%",
-            "padding": 4
-          }
-        }
       }
     },
     "vibe": {
@@ -762,7 +671,27 @@
         "color": "#F0F5FF"
       },
       "cardInner": {
+        "margin": 0,
+        "padding": 4,
+        "display": "flex",
+        "direction": "column",
+        "wrap": "nowrap",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "alignContent": "center",
+        "gap": 2,
         "rows": {
+          "default": {
+            "margin": 0,
+            "padding": 0,
+            "display": "flex",
+            "direction": "row",
+            "wrap": "nowrap",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "alignContent": "center",
+            "gap": 6
+          },
           "row1": {
             "height": "18%",
             "gap": 4
@@ -799,7 +728,27 @@
         "color": "#FAF4E0"
       },
       "cardInner": {
+        "margin": 0,
+        "padding": 4,
+        "display": "flex",
+        "direction": "column",
+        "wrap": "nowrap",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "alignContent": "center",
+        "gap": 2,
         "rows": {
+          "default": {
+            "margin": 0,
+            "padding": 0,
+            "display": "flex",
+            "direction": "row",
+            "wrap": "nowrap",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "alignContent": "center",
+            "gap": 6
+          },
           "row1": {
             "height": "14%",
             "gap": 4
@@ -840,7 +789,27 @@
         "color": "#FFF0D6"
       },
       "cardInner": {
+        "margin": 0,
+        "padding": 4,
+        "display": "flex",
+        "direction": "column",
+        "wrap": "nowrap",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "alignContent": "center",
+        "gap": 2,
         "rows": {
+          "default": {
+            "margin": 0,
+            "padding": 0,
+            "display": "flex",
+            "direction": "row",
+            "wrap": "nowrap",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "alignContent": "center",
+            "gap": 6
+          },
           "row1": {
             "height": "12%",
             "gap": 4
@@ -883,7 +852,27 @@
         "color": "#E0F5FF"
       },
       "cardInner": {
+        "margin": 0,
+        "padding": 4,
+        "display": "flex",
+        "direction": "column",
+        "wrap": "nowrap",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "alignContent": "center",
+        "gap": 2,
         "rows": {
+          "default": {
+            "margin": 0,
+            "padding": 0,
+            "display": "flex",
+            "direction": "row",
+            "wrap": "nowrap",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "alignContent": "center",
+            "gap": 6
+          },
           "row1": {
             "height": "18%",
             "gap": 4
@@ -918,22 +907,6 @@
       },
       "title": {
         "color": "#EEDCFF"
-      },
-      "cardInner": {
-        "rows": {
-          "row1": {
-            "height": "22%",
-            "gap": 8
-          },
-          "row2": {
-            "height": "36%",
-            "gap": 10
-          },
-          "row3": {
-            "height": "42%",
-            "padding": 2
-          }
-        }
       }
     },
     "env1": {
@@ -957,21 +930,6 @@
       },
       "title": {
         "color": "#D9F7E3"
-      },
-      "cardInner": {
-        "rows": {
-          "row1": {
-            "height": "20%",
-            "gap": 8
-          },
-          "row2": {
-            "height": "28%"
-          },
-          "row3": {
-            "height": "52%",
-            "padding": 2
-          }
-        }
       }
     },
     "lfo2": {
@@ -995,22 +953,6 @@
       },
       "title": {
         "color": "#EEDCFF"
-      },
-      "cardInner": {
-        "rows": {
-          "row1": {
-            "height": "22%",
-            "gap": 8
-          },
-          "row2": {
-            "height": "36%",
-            "gap": 10
-          },
-          "row3": {
-            "height": "42%",
-            "padding": 2
-          }
-        }
       }
     },
     "env2": {
@@ -1034,21 +976,6 @@
       },
       "title": {
         "color": "#D9F7E3"
-      },
-      "cardInner": {
-        "rows": {
-          "row1": {
-            "height": "20%",
-            "gap": 8
-          },
-          "row2": {
-            "height": "28%"
-          },
-          "row3": {
-            "height": "52%",
-            "padding": 2
-          }
-        }
       }
     },
     "lfo3": {
@@ -1072,22 +999,6 @@
       },
       "title": {
         "color": "#EEDCFF"
-      },
-      "cardInner": {
-        "rows": {
-          "row1": {
-            "height": "22%",
-            "gap": 8
-          },
-          "row2": {
-            "height": "36%",
-            "gap": 10
-          },
-          "row3": {
-            "height": "42%",
-            "padding": 2
-          }
-        }
       }
     },
     "env3": {
@@ -1111,21 +1022,6 @@
       },
       "title": {
         "color": "#D9F7E3"
-      },
-      "cardInner": {
-        "rows": {
-          "row1": {
-            "height": "20%",
-            "gap": 8
-          },
-          "row2": {
-            "height": "28%"
-          },
-          "row3": {
-            "height": "52%",
-            "padding": 2
-          }
-        }
       }
     },
     "ampEnv": {
@@ -1151,10 +1047,181 @@
         "color": "#D9F7E3"
       },
       "cardInner": {
+        "margin": 0,
+        "padding": 4,
+        "display": "flex",
+        "direction": "column",
+        "wrap": "nowrap",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "alignContent": "center",
+        "gap": 2,
         "rows": {
+          "default": {
+            "margin": 0,
+            "padding": 0,
+            "display": "flex",
+            "direction": "row",
+            "wrap": "nowrap",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "alignContent": "center",
+            "gap": 6
+          },
           "row1": {
             "height": "100%",
             "padding": 2
+          }
+        }
+      }
+    },
+    "osc": {
+      "cardInner": {
+        "margin": 0,
+        "padding": 4,
+        "display": "flex",
+        "direction": "column",
+        "wrap": "nowrap",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "alignContent": "center",
+        "gap": 2,
+        "rows": {
+          "default": {
+            "margin": 0,
+            "padding": 0,
+            "display": "flex",
+            "direction": "row",
+            "wrap": "nowrap",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "alignContent": "center",
+            "gap": 6
+          },
+          "row1": {
+            "height": "22%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "36%",
+            "gap": 4
+          },
+          "row3": {
+            "height": "42%",
+            "padding": 2
+          }
+        }
+      }
+    },
+    "lfo": {
+      "cardInner": {
+        "margin": 0,
+        "padding": 4,
+        "display": "flex",
+        "direction": "column",
+        "wrap": "nowrap",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "alignContent": "center",
+        "gap": 2,
+        "rows": {
+          "default": {
+            "margin": 0,
+            "padding": 0,
+            "display": "flex",
+            "direction": "row",
+            "wrap": "nowrap",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "alignContent": "center",
+            "gap": 6
+          },
+          "row1": {
+            "height": "22%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "36%",
+            "gap": 10
+          },
+          "row3": {
+            "height": "42%",
+            "padding": 2
+          }
+        }
+      }
+    },
+    "env": {
+      "cardInner": {
+        "margin": 0,
+        "padding": 4,
+        "display": "flex",
+        "direction": "column",
+        "wrap": "nowrap",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "alignContent": "center",
+        "gap": 2,
+        "rows": {
+          "default": {
+            "margin": 0,
+            "padding": 0,
+            "display": "flex",
+            "direction": "row",
+            "wrap": "nowrap",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "alignContent": "center",
+            "gap": 6
+          },
+          "row1": {
+            "height": "20%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "28%"
+          },
+          "row3": {
+            "height": "52%",
+            "padding": 2
+          }
+        }
+      }
+    },
+    "filter": {
+      "cardInner": {
+        "margin": 0,
+        "padding": 4,
+        "display": "flex",
+        "direction": "column",
+        "wrap": "nowrap",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "alignContent": "center",
+        "gap": 2,
+        "rows": {
+          "default": {
+            "margin": 0,
+            "padding": 0,
+            "display": "flex",
+            "direction": "row",
+            "wrap": "nowrap",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "alignContent": "center",
+            "gap": 6
+          },
+          "row1": {
+            "height": "18%",
+            "gap": 8
+          },
+          "row2": {
+            "height": "40%",
+            "gap": 10
+          },
+          "row3": {
+            "height": "42%",
+            "padding": 4
           }
         }
       }

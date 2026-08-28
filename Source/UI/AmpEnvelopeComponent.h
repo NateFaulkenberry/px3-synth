@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "ChipLabel.h"
+
 #include <memory>
 
 #include "EnvelopeComponent.h"
@@ -24,8 +26,8 @@ private:
     PX3SynthAudioProcessor& processor;
 
     juce::ToggleButton enabledButton;
-    juce::Label enabledLabel;
-    juce::Label assignLabel;
+    px3::ui::ChipLabel enabledLabel;
+    px3::ui::ChipLabel assignLabel;
     juce::ComboBox assignBox;
 
     std::unique_ptr<EnvelopeComponent> envelopeGraph;

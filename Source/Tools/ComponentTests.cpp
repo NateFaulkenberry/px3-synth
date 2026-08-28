@@ -3471,6 +3471,10 @@ void testCardStyle()
               [](const CardStyle& s) { return static_cast<double>(s.gloss.margin); } },
             { "gloss.split",       R"({"gloss":{"split":0.25}})",
               [](const CardStyle& s) { return static_cast<double>(s.gloss.split); } },
+            { "gloss.topRadius",   R"({"gloss":{"topRadius":17}})",
+              [](const CardStyle& s) { return static_cast<double>(s.gloss.topRadius.resolve(100.0f, 0.0f)); } },
+            { "gloss.bottomRadius",R"({"gloss":{"bottomRadius":19}})",
+              [](const CardStyle& s) { return static_cast<double>(s.gloss.bottomRadius.resolve(100.0f, 0.0f)); } },
             { "gloss.topFill.color",     R"({"gloss":{"topFill":{"color":"#123456"}}})",
               [](const CardStyle& s) { return static_cast<double>(s.gloss.topFill.colour.getARGB()); } },
             { "gloss.topFill.opacity",   R"({"gloss":{"topFill":{"opacity":0.5}}})",
@@ -3722,14 +3726,13 @@ void testCardInner()
 
     // ---- The percentage chain ---------------------------------------------
     {
-        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+        const auto config = configFrom(R"({"cards":{"probe":{"cardInner":{
             "margin":0,"padding":0,"direction":"column","gap":0,
             "rows":{"default":{"height":"33%"},
-                    "row1":{"height":"30%"},"row2":{"height":"30%"},"row3":{"height":"40%"}}}},
-            "probe":{}}})");
+                    "row1":{"height":"30%"},"row2":{"height":"30%"},"row3":{"height":"40%"}}}}}})");
 
         CardInner inner;
-        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setStylePath("cards.probe.cardInner");
         inner.setConfig(config);
         inner.setRowCount(3);
         inner.layout({ 0, 0, 200, 400 });
@@ -3747,12 +3750,12 @@ void testCardInner()
     {
         // Margin and padding shrink what the percentages are measured against.
         // 400 - (10+10 margin) - (20+20 padding) = 340, and 50% of that is 170.
-        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+        const auto config = configFrom(R"({"cards":{"probe":{"cardInner":{
             "margin":10,"padding":20,"direction":"column","gap":0,
-            "rows":{"row1":{"height":"50%"},"row2":{"height":"50%"}}}},"probe":{}}})");
+            "rows":{"row1":{"height":"50%"},"row2":{"height":"50%"}}}}}})");
 
         CardInner inner;
-        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setStylePath("cards.probe.cardInner");
         inner.setConfig(config);
         inner.setRowCount(2);
         inner.layout({ 0, 0, 200, 400 });
@@ -3765,12 +3768,12 @@ void testCardInner()
 
     {
         // A row spans cardInner's width; it is never a percentage of anything.
-        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+        const auto config = configFrom(R"({"cards":{"probe":{"cardInner":{
             "margin":0,"padding":{"top":0,"right":15,"bottom":0,"left":15},
-            "rows":{"row1":{"height":"100%"}}}},"probe":{}}})");
+            "rows":{"row1":{"height":"100%"}}}}}})");
 
         CardInner inner;
-        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setStylePath("cards.probe.cardInner");
         inner.setConfig(config);
         inner.setRowCount(1);
         inner.layout({ 0, 0, 300, 100 });
@@ -3783,12 +3786,12 @@ void testCardInner()
 
     {
         // Row margin and padding are the row's own, independent of cardInner's.
-        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+        const auto config = configFrom(R"({"cards":{"probe":{"cardInner":{
             "margin":0,"padding":0,
-            "rows":{"row1":{"height":"100%","margin":5,"padding":10}}}},"probe":{}}})");
+            "rows":{"row1":{"height":"100%","margin":5,"padding":10}}}}}})");
 
         CardInner inner;
-        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setStylePath("cards.probe.cardInner");
         inner.setConfig(config);
         inner.setRowCount(1);
         inner.layout({ 0, 0, 200, 100 });
@@ -3803,12 +3806,12 @@ void testCardInner()
     {
         // Rows totalling more than 100% shrink proportionally rather than
         // overflowing the card - documented behaviour, so it is pinned.
-        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+        const auto config = configFrom(R"({"cards":{"probe":{"cardInner":{
             "margin":0,"padding":0,
-            "rows":{"row1":{"height":"80%"},"row2":{"height":"80%"}}}},"probe":{}}})");
+            "rows":{"row1":{"height":"80%"},"row2":{"height":"80%"}}}}}})");
 
         CardInner inner;
-        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setStylePath("cards.probe.cardInner");
         inner.setConfig(config);
         inner.setRowCount(2);
         inner.layout({ 0, 0, 200, 400 });
@@ -3821,13 +3824,13 @@ void testCardInner()
 
     // ---- Flex properties reach FlexBox -------------------------------------
     {
-        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+        const auto config = configFrom(R"({"cards":{"probe":{"cardInner":{
             "rows":{"row1":{"direction":"column","wrap":"wrap",
                             "justifyContent":"space-between","alignItems":"flex-start",
-                            "alignContent":"flex-end","gap":8}}}},"probe":{}}})");
+                            "alignContent":"flex-end","gap":8}}}}}})");
 
         CardInner inner;
-        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setStylePath("cards.probe.cardInner");
         inner.setConfig(config);
         inner.setRowCount(1);
         inner.layout({ 0, 0, 200, 100 });
@@ -3847,12 +3850,12 @@ void testCardInner()
 
     {
         // Gap must actually separate items, not merely parse.
-        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
-            "rows":{"row1":{"height":"100%","direction":"row","justifyContent":"flex-start","gap":20}}}},
-            "probe":{}}})");
+        const auto config = configFrom(R"({"cards":{"probe":{"cardInner":{
+            "margin":0,"padding":0,
+            "rows":{"row1":{"height":"100%","gap":20}}}}}})");
 
         CardInner inner;
-        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setStylePath("cards.probe.cardInner");
         inner.setConfig(config);
         inner.setRowCount(1);
         inner.layout({ 0, 0, 300, 100 });
@@ -3894,11 +3897,11 @@ void testCardInner()
     {
         // A wrapped row must not spill out of the bounds it was given. This is
         // the property the line count exists to guarantee.
-        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+        const auto config = configFrom(R"({"cards":{"probe":{"cardInner":{
             "margin":0,"padding":0,"gap":0,
-            "rows":{"row1":{"height":"100%","wrap":"wrap","gap":6}}}},"probe":{}}})");
+            "rows":{"row1":{"height":"100%","wrap":"wrap","gap":6}}}}}})");
         CardInner inner;
-        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setStylePath("cards.probe.cardInner");
         inner.setConfig(config);
         inner.setRowCount(1);
         inner.layout({ 0, 0, 280, 200 });
@@ -3991,10 +3994,10 @@ void testCardInner()
 
         auto fingerprint = [&](const juce::String& innerJson)
         {
-            const auto config = configFrom((R"({"cards":{"defaults":{"cardInner":{)"
-                                            + innerJson + R"(}},"probe":{}}})").toRawUTF8());
+            const auto config = configFrom((R"({"cards":{"probe":{"cardInner":{)"
+                                            + innerJson + R"(}}}})").toRawUTF8());
             CardInner inner;
-            inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+            inner.setStylePath("cards.probe.cardInner");
             inner.setConfig(config);
             inner.setRowCount(3);
             inner.layout({ 0, 0, 240, 300 });
@@ -4084,13 +4087,13 @@ void testCardInner()
     {
         // A hidden row must leave the layout entirely, not merely draw nothing:
         // it takes up no height and no gap, and its neighbours end up adjacent.
-        const auto config = configFrom(R"({"cards":{"defaults":{"cardInner":{
+        const auto config = configFrom(R"({"cards":{"probe":{"cardInner":{
             "margin":0,"padding":0,"gap":0,
             "rows":{"row1":{"height":"25%"},
                     "row2":{"height":"50%","display":"none"},
-                    "row3":{"height":"25%"}}}},"probe":{}}})");
+                    "row3":{"height":"25%"}}}}}})");
         CardInner inner;
-        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setStylePath("cards.probe.cardInner");
         inner.setConfig(config);
         inner.setRowCount(3);
         inner.layout({ 0, 0, 200, 400 });
@@ -4110,9 +4113,9 @@ void testCardInner()
     // ---- Defaults ----------------------------------------------------------
     {
         // A card that declares no cardInner block must still lay out.
-        const auto config = configFrom(R"({"cards":{"defaults":{},"probe":{}}})");
+        const auto config = configFrom(R"({"cards":{"probe":{}}})");
         CardInner inner;
-        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setStylePath("cards.probe.cardInner");
         inner.setConfig(config);
         inner.setRowCount(3);
         inner.layout({ 0, 0, 200, 300 });
@@ -4131,13 +4134,13 @@ void testCardInner()
         // Reload semantics, same rule as the Card: a new UIConfig re-parses.
         auto make = [&](const char* h1) {
             juce::String error;
-            const juce::String json = juce::String(R"({"cards":{"defaults":{"cardInner":{
-                "margin":0,"padding":0,"rows":{"row1":{"height":")") + h1 + R"("},"row2":{"height":"10%"}}}},"probe":{}}})";
+            const juce::String json = juce::String(R"({"cards":{"probe":{"cardInner":{
+                "margin":0,"padding":0,"rows":{"row1":{"height":")") + h1 + R"("},"row2":{"height":"10%"}}}}}})";
             return UIConfig::fromJsonText(json, error);
         };
 
         CardInner inner;
-        inner.setKeys("cards.defaults.cardInner", "cards.probe.cardInner");
+        inner.setStylePath("cards.probe.cardInner");
         inner.setRowCount(2);
 
         inner.setConfig(make("20%"));

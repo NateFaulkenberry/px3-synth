@@ -38,8 +38,7 @@ void FilterComponent::layoutCardInner()
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
 
-    inner.setKeys("cards.defaults.cardInner",
-                  "cards.filter" + juce::String(instanceIndex) + ".cardInner");
+    inner.setStylePath("cards.filter.cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(3);
     inner.layout(card.contentBelowTitle());

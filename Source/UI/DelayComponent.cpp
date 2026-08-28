@@ -93,7 +93,7 @@ void DelayComponent::resized()
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
 
-    inner.setKeys("cards.defaults.cardInner", "cards.delay.cardInner");
+    inner.setStylePath("cards.delay.cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(3);
     inner.layout(card.contentBelowTitle());

@@ -229,6 +229,8 @@ CardStyle CardStyle::fromConfig(const UIConfig* config,
 
     style.gloss.margin = juce::jmax(0.0f, reader.number("gloss.margin", fallback.gloss.margin));
     style.gloss.split = juce::jlimit(0.0f, 1.0f, reader.number("gloss.split", fallback.gloss.split));
+    style.gloss.topRadius = Dimension::parse(reader.raw("gloss.topRadius"), fallback.gloss.topRadius);
+    style.gloss.bottomRadius = Dimension::parse(reader.raw("gloss.bottomRadius"), fallback.gloss.bottomRadius);
     style.gloss.topFill = reader.fill("gloss.topFill", fallback.gloss.topFill);
     style.gloss.bottomFill = reader.fill("gloss.bottomFill", fallback.gloss.bottomFill);
 
@@ -450,17 +452,27 @@ void drawCard(juce::Graphics& g,
     const auto glossBox = cardBounds.reduced(style.gloss.margin);
     if (glossBox.getWidth() > 0.0f && glossBox.getHeight() > 0.0f)
     {
-        // The gloss follows the card's corner rounding, less its own margin, so
-        // it stays concentric rather than poking into the rounded corners.
-        const auto glossRadius = juce::jmax(0.0f, radius - style.gloss.margin);
+        // "auto" keeps the gloss concentric with the border: the card's radius
+        // less the gloss margin. Either fill can override it.
+        const auto autoRadius = juce::jmax(0.0f, radius - style.gloss.margin);
         const auto splitY = glossBox.getY() + glossBox.getHeight() * style.gloss.split;
+
+        // A radius larger than half the shorter side would fold the corner
+        // back on itself, so each is capped at what the fill can actually take.
+        const auto resolveRadius = [autoRadius](const Dimension& dim, juce::Rectangle<float> fill)
+        {
+            const auto shorter = juce::jmin(fill.getWidth(), fill.getHeight());
+            const auto value = dim.isAuto() ? autoRadius : dim.resolve(shorter, autoRadius);
+            return juce::jlimit(0.0f, juce::jmax(0.0f, shorter * 0.5f), value);
+        };
 
         if (style.gloss.topFill.opacity > 0.0f && splitY > glossBox.getY())
         {
             const auto top = glossBox.withBottom(splitY);
+            const auto r = resolveRadius(style.gloss.topRadius, top);
             juce::Path path;
             path.addRoundedRectangle(top.getX(), top.getY(), top.getWidth(), top.getHeight(),
-                                     glossRadius, glossRadius, true, true, false, false);
+                                     r, r, true, true, false, false);
             g.setColour(style.gloss.topFill.effective());
             g.fillPath(path);
         }
@@ -468,9 +480,10 @@ void drawCard(juce::Graphics& g,
         if (style.gloss.bottomFill.opacity > 0.0f && splitY < glossBox.getBottom())
         {
             const auto bottom = glossBox.withTop(splitY);
+            const auto r = resolveRadius(style.gloss.bottomRadius, bottom);
             juce::Path path;
             path.addRoundedRectangle(bottom.getX(), bottom.getY(), bottom.getWidth(), bottom.getHeight(),
-                                     glossRadius, glossRadius, false, false, true, true);
+                                     r, r, false, false, true, true);
             g.setColour(style.gloss.bottomFill.effective());
             g.fillPath(path);
         }

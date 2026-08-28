@@ -56,7 +56,7 @@ void ReverbComponent::resized()
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
 
-    inner.setKeys("cards.defaults.cardInner", "cards.reverb.cardInner");
+    inner.setStylePath("cards.reverb.cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(3);
     inner.layout(card.contentBelowTitle());

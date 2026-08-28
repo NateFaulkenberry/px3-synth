@@ -121,7 +121,9 @@ void OscillatorComponent::resized()
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
 
-    inner.setKeys("cards.defaults.cardInner", "cards.osc" + juce::String(instanceIndex) + ".cardInner");
+    // Per component TYPE, not per instance: osc1, osc2 and osc3 share one
+    // layout definition and cannot drift apart.
+    inner.setStylePath("cards.osc.cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(3);
     inner.layout(card.contentBelowTitle());

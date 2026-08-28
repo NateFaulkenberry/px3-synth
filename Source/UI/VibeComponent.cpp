@@ -52,7 +52,7 @@ void VibeComponent::resized()
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
 
-    inner.setKeys("cards.defaults.cardInner", "cards.vibe.cardInner");
+    inner.setStylePath("cards.vibe.cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(3);
     inner.layout(card.contentBelowTitle());

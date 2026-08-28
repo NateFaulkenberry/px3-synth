@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "ChipLabel.h"
+
 #include <array>
 #include <memory>
 
@@ -45,8 +47,8 @@ private:
     struct LfoBundle
     {
         juce::ToggleButton enabledButton;
-        juce::Label enabledLabel;
-        juce::Label assignLabel;
+        px3::ui::ChipLabel enabledLabel;
+        px3::ui::ChipLabel assignLabel;
         juce::ComboBox assignBox;
         juce::Slider rateKnob;
         juce::Label rateLabel;
@@ -55,7 +57,7 @@ private:
         juce::Label amountLabel;
         juce::Label amountValueLabel;
         juce::ComboBox waveformBox;
-        juce::Label waveformLabel;
+        px3::ui::ChipLabel waveformLabel;
         std::unique_ptr<juce::ButtonParameterAttachment> enabledAttachment;
         std::unique_ptr<juce::SliderParameterAttachment> rateAttachment;
         std::unique_ptr<juce::SliderParameterAttachment> amountAttachment;
@@ -66,8 +68,8 @@ private:
     struct EnvBundle
     {
         juce::ToggleButton enabledButton;
-        juce::Label enabledLabel;
-        juce::Label assignLabel;
+        px3::ui::ChipLabel enabledLabel;
+        px3::ui::ChipLabel assignLabel;
         juce::ComboBox assignBox;
         juce::Slider amountKnob;
         juce::Label amountLabel;

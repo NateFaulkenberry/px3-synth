@@ -171,8 +171,7 @@ void LfoComponent::resized()
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
 
-    inner.setKeys("cards.defaults.cardInner",
-                  "cards." + configPrefix.fromLastOccurrenceOf(".", false, false) + ".cardInner");
+    inner.setStylePath("cards.lfo.cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(3);
     inner.layout(card.contentBelowTitle());

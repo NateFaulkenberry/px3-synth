@@ -107,7 +107,7 @@ void SubOscComponent::resized()
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
 
-    inner.setKeys("cards.defaults.cardInner", "cards.subOsc.cardInner");
+    inner.setStylePath("cards.subOsc.cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(3);
     inner.layout(card.contentBelowTitle());

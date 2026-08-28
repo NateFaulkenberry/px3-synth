@@ -37,14 +37,6 @@ juce::var readLayered(const UIConfig* config,
     return {};
 }
 
-juce::var readWithDefaults(const UIConfig* config,
-                           const juce::String& defaultsPath,
-                           const juce::String& stylePath,
-                           const juce::String& key)
-{
-    return readLayered(config, { stylePath, defaultsPath }, key);
-}
-
 FlexDirection parseDirection(const juce::String& text, FlexDirection fallback)
 {
     const auto t = text.trim().toLowerCase();
@@ -88,14 +80,6 @@ AlignItems parseAlign(const juce::String& text, AlignItems fallback)
 // ---------------------------------------------------------------------------
 // FlexStyle
 // ---------------------------------------------------------------------------
-
-FlexStyle FlexStyle::read(const UIConfig* config,
-                          const juce::String& defaultsPath,
-                          const juce::String& stylePath,
-                          const FlexStyle& fallback)
-{
-    return readLayered(config, { stylePath, defaultsPath }, fallback);
-}
 
 FlexStyle FlexStyle::readLayered(const UIConfig* config,
                                  const juce::StringArray& pathsMostSpecificFirst,
@@ -192,7 +176,6 @@ juce::FlexItem::Margin FlexStyle::gapMargin() const
 // ---------------------------------------------------------------------------
 
 CardInnerStyle CardInnerStyle::fromConfig(const UIConfig* config,
-                                          const juce::String& defaultsPath,
                                           const juce::String& stylePath,
                                           int rowCount)
 {
@@ -201,9 +184,9 @@ CardInnerStyle CardInnerStyle::fromConfig(const UIConfig* config,
 
     if (config != nullptr)
     {
-        style.margin = Insets::parse(readWithDefaults(config, defaultsPath, stylePath, "margin"), style.margin);
-        style.padding = Insets::parse(readWithDefaults(config, defaultsPath, stylePath, "padding"), style.padding);
-        style.flex = FlexStyle::read(config, defaultsPath, stylePath, style.flex);
+        style.margin = Insets::parse(config->getValue(stylePath + ".margin"), style.margin);
+        style.padding = Insets::parse(config->getValue(stylePath + ".padding"), style.padding);
+        style.flex = FlexStyle::readLayered(config, { stylePath }, style.flex);
     }
 
     // Rows share a default block so a card only declares the ones that differ.
@@ -218,13 +201,11 @@ CardInnerStyle CardInnerStyle::fromConfig(const UIConfig* config,
         RowStyle row = rowFallback;
         if (config != nullptr)
         {
-            // Most specific first: this card's row N, then the shared default
-            // for row N, then the shared default for any row.
-            const auto rowKey = ".rows.row" + juce::String(i + 1);
+            // This type's row N, then this type's own default row. A card
+            // never falls back to another card's layout.
             const juce::StringArray paths {
-                stylePath + rowKey,
-                defaultsPath + rowKey,
-                defaultsPath + ".rows.default",
+                stylePath + ".rows.row" + juce::String(i + 1),
+                stylePath + ".rows.default",
             };
 
             auto merged = rowFallback;
@@ -244,12 +225,11 @@ CardInnerStyle CardInnerStyle::fromConfig(const UIConfig* config,
 // CardInner
 // ---------------------------------------------------------------------------
 
-void CardInner::setKeys(juce::String defaultsPathIn, juce::String stylePathIn)
+void CardInner::setStylePath(juce::String path)
 {
-    if (defaultsPath != defaultsPathIn || stylePath != stylePathIn)
+    if (stylePath != path)
     {
-        defaultsPath = std::move(defaultsPathIn);
-        stylePath = std::move(stylePathIn);
+        stylePath = std::move(path);
         hasParsed = false;
         layout(lastCardContent);
     }
@@ -279,7 +259,7 @@ void CardInner::refresh()
     // UIConfig object, so a changed pointer is a changed file.
     if (! hasParsed || parsedFrom != config.get() || parsedStylePath != stylePath)
     {
-        cached = CardInnerStyle::fromConfig(config.get(), defaultsPath, stylePath, rows);
+        cached = CardInnerStyle::fromConfig(config.get(), stylePath, rows);
         parsedFrom = config.get();
         parsedStylePath = stylePath;
         hasParsed = true;
@@ -383,6 +363,19 @@ juce::FlexItem::Margin CardInner::rowGap(int index) const
 }
 
 // ---------------------------------------------------------------------------
+
+juce::String cardTypeKey(const juce::String& styleKey)
+{
+    // Strip a trailing instance number. Every per-instance key in this UI is
+    // "<type><n>", and the ones that are not - "subOsc", "ampEnv",
+    // "mixerChannel" - have no trailing digit to strip.
+    auto type = styleKey;
+    while (type.isNotEmpty() && juce::CharacterFunctions::isDigit(type.getLastCharacter()))
+    {
+        type = type.dropLastCharacters(1);
+    }
+    return type.isEmpty() ? styleKey : type;
+}
 
 int wrappedLineCount(const std::vector<float>& itemWidths, float gap, float rowWidth)
 {

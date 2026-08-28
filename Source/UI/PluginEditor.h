@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "ChipLabel.h"
+
 #include <array>
 #include <map>
 #include <vector>
@@ -66,11 +68,8 @@ private:
                               juce::Slider& slider) override;
     };
 
-    class KnobLabel final : public juce::Label
-    {
-    public:
-        void paint(juce::Graphics& g) override;
-    };
+    // The shared chip rendering, under the name the editor already uses.
+    using KnobLabel = px3::ui::ChipLabel;
 
     class PresetBrowserPanelComponent final : public juce::Component
     {

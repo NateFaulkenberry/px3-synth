@@ -314,30 +314,6 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
     g.fillEllipse(center.x - 3.1f, center.y - 3.1f, 6.2f, 6.2f);
 }
 
-void PX3SynthAudioProcessorEditor::KnobLabel::paint(juce::Graphics& g)
-{
-    if (getText().isEmpty())
-    {
-        return;
-    }
-
-    const auto compactLabel = static_cast<bool>(getProperties().getWithDefault("compactLabel", false));
-    const auto horizontalPadding = compactLabel ? 4.0f : 8.0f;
-    auto area = getLocalBounds().toFloat().reduced(2.0f, 1.0f);
-
-    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 54));
-    g.fillRoundedRectangle(area, 7.0f);
-
-    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 96));
-    g.drawRoundedRectangle(area, 7.0f, 1.0f);
-
-    g.setColour(findColour(juce::Label::textColourId));
-    g.setFont(getFont());
-    g.drawText(getText(),
-               area.reduced(horizontalPadding, 0.0f).toNearestInt(),
-               juce::Justification::centred,
-               true);
-}
 
 juce::String PX3SynthAudioProcessorEditor::fxModuleIdFromSection(int sectionId)
 {

@@ -49,11 +49,6 @@ struct FlexStyle
     // FlexBox has no gap property, so it is applied as a margin on each item.
     float gap { 0.0f };
 
-    static FlexStyle read(const UIConfig* config,
-                          const juce::String& defaultsPath,
-                          const juce::String& stylePath,
-                          const FlexStyle& fallback);
-    // Rows need more than two layers, so the general form is exposed.
     static FlexStyle readLayered(const UIConfig* config,
                                  const juce::StringArray& pathsMostSpecificFirst,
                                  const FlexStyle& fallback);
@@ -84,7 +79,6 @@ struct CardInnerStyle
     std::vector<RowStyle> rows;
 
     static CardInnerStyle fromConfig(const UIConfig* config,
-                                     const juce::String& defaultsPath,
                                      const juce::String& stylePath,
                                      int rowCount);
 };
@@ -98,7 +92,10 @@ struct CardInnerStyle
 class CardInner
 {
 public:
-    void setKeys(juce::String defaultsPath, juce::String stylePath);
+    // The single block this layout is read from, e.g. "cards.osc.cardInner".
+    // There is no global fallback: cardInner is defined per component TYPE, so
+    // every oscillator shares one layout and no card inherits another's.
+    void setStylePath(juce::String path);
     void setConfig(std::shared_ptr<const UIConfig> config);
     void setRowCount(int count);
 
@@ -124,7 +121,6 @@ private:
     void refresh();
 
     std::shared_ptr<const UIConfig> config;
-    juce::String defaultsPath { "cards.defaults.cardInner" };
     juce::String stylePath;
     int rows { 3 };
 
@@ -152,6 +148,11 @@ enum class ControlShape
     square,  // knobs and tick boxes: the largest centred square that fits
     stretch, // dropdowns and buttons: full width, capped height, centred
 };
+
+// The card TYPE a per-instance style key belongs to: "osc2" -> "osc",
+// "filter1" -> "filter", "subOsc" -> "subOsc". cardInner is configured per
+// type, so the three oscillators cannot drift apart from one another.
+juce::String cardTypeKey(const juce::String& styleKey);
 
 // How many lines a wrapping row will break its items into, given their natural
 // widths and the gap between them.

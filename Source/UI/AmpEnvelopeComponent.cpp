@@ -5,25 +5,17 @@
 AmpEnvelopeComponent::AmpEnvelopeComponent(PX3SynthAudioProcessor& processorIn, juce::Colour accentIn)
     : processor(processorIn)
 {
-    const auto applyChipLabelStyle = [](juce::Label& label)
-    {
-        label.setColour(juce::Label::backgroundColourId, juce::Colour::fromRGBA(255, 255, 255, 54));
-        label.setColour(juce::Label::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 96));
-    };
-
     enabledLabel.setText("ON", juce::dontSendNotification);
     enabledLabel.setJustificationType(juce::Justification::centredLeft);
     enabledLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     enabledLabel.setFont(juce::FontOptions(11.5f));
     enabledLabel.setInterceptsMouseClicks(false, false);
-    applyChipLabelStyle(enabledLabel);
 
     assignLabel.setText("AMP", juce::dontSendNotification);
     assignLabel.setJustificationType(juce::Justification::centred);
     assignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     assignLabel.setFont(juce::FontOptions(11.5f));
     assignLabel.setInterceptsMouseClicks(false, false);
-    applyChipLabelStyle(assignLabel);
 
     enabledButton.setButtonText("");
     enabledButton.setClickingTogglesState(true);
