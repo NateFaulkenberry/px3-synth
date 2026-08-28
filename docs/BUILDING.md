@@ -102,6 +102,61 @@ the format choices and the customize pane, that the uninstaller contains its
 postinstall script and its warning screen, and that the generated script parses
 as valid bash.
 
+## App Icon
+
+The icon is generated from `Source/Assets/px3.gif` by `scripts/make-app-icon.mjs`
+and committed, so an ordinary build needs neither node nor sharp. CMake passes it
+to JUCE as `ICON_BIG` when it exists, which puts it in the standalone app and
+both plug-in bundles.
+
+The wordmark is roughly 3:1, so laid horizontally it wastes most of a square
+canvas. It is rotated 45 degrees anticlockwise onto the diagonal - the longest
+line a square has - which lets it sit about 6% larger and fill the frame far
+better. It is scaled, never cropped, and the rest of the canvas is filled with
+the logo's own background colour, sampled from the artwork rather than assumed so
+the two meet without a seam.
+
+To regenerate (for example after changing the artwork):
+
+```bash
+npm install --prefix .tools sharp     # once; .tools/ is gitignored
+node scripts/make-app-icon.mjs
+```
+
+Options: `--source <gif>`, `--out-dir <dir>`, `--angle <degrees>` (negative is
+anticlockwise). `scripts/build-release.sh` re-runs this automatically when the
+tooling is present, and falls back to the committed PNG when it is not - a
+release never fails for want of node.
+
+## Blocking Installs While A Host Is Running
+
+Both packages refuse to run while a DAW or the P(X3) standalone is open. A host
+with the plug-in loaded holds the bundle open, so replacing it underneath leaves
+the host running stale code, and the uninstaller has the same problem in reverse.
+
+Around twenty hosts are detected (Logic Pro, GarageBand, MainStage, Ableton Live,
+Pro Tools, Cubase, Nuendo, Studio One, REAPER, Bitwig, FL Studio, Digital
+Performer, Reason, Ardour, Waveform, LUNA, Renoise, Maschine, plug-in validation
+hosts, and the P(X3) standalone). The list lives in one place in
+`scripts/build-release.sh` as two index-aligned arrays, which generate both the
+shell checker and the Installer's JavaScript so the names and exit codes cannot
+drift apart.
+
+There are two gates, deliberately:
+
+- `installation-check` in the Distribution runs before anything happens and names
+  the offending application - "Quit Logic Pro first".
+- A `preinstall` script in every component package, which runs regardless of what
+  the Installer's JavaScript context supports.
+
+One trap worth knowing: **`productbuild --resources` only copies the resources its
+Distribution actually references.** A helper that only the JavaScript calls is
+silently dropped, and the check then finds nothing and passes. The release script
+puts it back by expanding the product, adding the file, and re-flattening - and
+then *verifies* it is present, because a check that silently no-ops is worse than
+no check. Flattening discards signatures, so signing moved to a `productsign`
+pass afterwards.
+
 ## Developer Test Executables
 
 Alongside the plugin, four console executables are configured by CMake. They are

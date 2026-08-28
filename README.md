@@ -136,6 +136,20 @@ To skip building it:
 For a developer-machine uninstall that does not involve a package, use
 `./scripts/uninstall-local.sh` instead.
 
+### App icon
+
+The application and plug-in icon is generated from `Source/Assets/px3.gif`. The
+wordmark is rotated 45 degrees onto the diagonal so it fills the square without
+being cropped, and the rest of the tile uses the logo's own background colour.
+See `docs/BUILDING.md` to regenerate it.
+
+### Running-host check
+
+Both the installer and the uninstaller refuse to run while a DAW or the P(X3)
+standalone is open, and name the application to quit. A host with the plug-in
+loaded holds the bundle open, so replacing or removing it underneath leaves the
+host running stale code.
+
 ### Installer branding
 
 Both packages show the P(X3) logo in the bottom-left corner of the Installer
