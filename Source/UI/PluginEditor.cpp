@@ -1565,63 +1565,12 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
                 g.drawText("Synth v" + px3::version::string(), subtitleArea, juce::Justification::centred);
     }
 
-    if (isPanelVisible(kSectionFx))
-    {
-        const auto fxOffset = fxPanel->getPosition();
-        const auto robArea = robSectionArea.translated(fxOffset.x, fxOffset.y);
-        const auto delayArea = isaacSectionArea.translated(fxOffset.x, fxOffset.y);
-        const auto moodArea = moodSectionArea.translated(fxOffset.x, fxOffset.y);
-        const auto revArea = reverbSectionArea.translated(fxOffset.x, fxOffset.y);
-        const auto vibeEnabled = audioProcessor.getVibeEnabledParam().get();
-        const auto delayEnabled = audioProcessor.getDelayEnabledParam().get();
-        const auto moodEnabled = audioProcessor.getMoodEnabledParam().get();
-        const auto reverbEnabled = audioProcessor.getReverbEnabledParam().get();
+    // The FX section cards are painted by FxPanel itself - see
+    // FxPanel::paintSectionCards. They live inside that panel's rectangle, and
+    // six panels share that rectangle and are swapped by visibility, so
+    // decoration painted from here was not tied to the panel's lifetime and
+    // could survive a switch to another panel as stale outlines.
 
-        g.setColour(vibeEnabled ? juce::Colour::fromRGBA(104, 194, 255, 35)
-                       : juce::Colour::fromRGBA(120, 120, 120, 30));
-        g.fillRoundedRectangle(robArea.toFloat(), 10.0f);
-        g.setColour(vibeEnabled ? juce::Colour::fromRGBA(104, 194, 255, 180)
-                       : juce::Colour::fromRGBA(150, 150, 150, 130));
-        g.drawRoundedRectangle(robArea.toFloat(), 10.0f, 1.0f);
-
-        g.setColour(delayEnabled ? juce::Colour::fromRGBA(255, 198, 110, 35)
-                     : juce::Colour::fromRGBA(120, 120, 120, 30));
-        g.fillRoundedRectangle(delayArea.toFloat(), 10.0f);
-        g.setColour(delayEnabled ? juce::Colour::fromRGBA(255, 198, 110, 180)
-                     : juce::Colour::fromRGBA(150, 150, 150, 130));
-        g.drawRoundedRectangle(delayArea.toFloat(), 10.0f, 1.0f);
-
-        g.setColour(reverbEnabled ? juce::Colour::fromRGBA(128, 208, 255, 30)
-                      : juce::Colour::fromRGBA(120, 120, 120, 30));
-        g.fillRoundedRectangle(revArea.toFloat(), 10.0f);
-        g.setColour(reverbEnabled ? juce::Colour::fromRGBA(128, 208, 255, 150)
-                      : juce::Colour::fromRGBA(150, 150, 150, 130));
-        g.drawRoundedRectangle(revArea.toFloat(), 10.0f, 1.0f);
-
-        g.setColour(vibeEnabled ? juce::Colour::fromRGB(240, 245, 255)
-                       : juce::Colour::fromRGB(170, 170, 170));
-        g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
-        g.drawText("VIBE", robArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
-
-        g.setColour(delayEnabled ? juce::Colour::fromRGB(250, 244, 224)
-                     : juce::Colour::fromRGB(170, 170, 170));
-        g.drawText("DELAY", delayArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
-
-        g.setColour(moodEnabled ? juce::Colour::fromRGBA(238, 182, 120, 35)
-                : juce::Colour::fromRGBA(120, 120, 120, 30));
-        g.fillRoundedRectangle(moodArea.toFloat(), 10.0f);
-        g.setColour(moodEnabled ? juce::Colour::fromRGBA(238, 182, 120, 180)
-                : juce::Colour::fromRGBA(150, 150, 150, 130));
-        g.drawRoundedRectangle(moodArea.toFloat(), 10.0f, 1.0f);
-
-        g.setColour(moodEnabled ? juce::Colour::fromRGB(255, 240, 214)
-                : juce::Colour::fromRGB(170, 170, 170));
-        g.drawText("MOOD", moodArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
-
-        g.setColour(reverbEnabled ? juce::Colour::fromRGB(224, 245, 255)
-                      : juce::Colour::fromRGB(170, 170, 170));
-        g.drawText("REVERB", revArea.withTrimmedTop(5).withHeight(18), juce::Justification::centred);
-    }
 
     if (performanceControlsArea.getWidth() > 0 && pianoKeyboard.getBounds().getWidth() > 0)
     {
@@ -2795,6 +2744,26 @@ void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex
 
     updatePanelVisibility();
 
+    // The six panels are stacked in the same rectangle and swapped by
+    // visibility, and paint() draws the FX section cards into that rectangle
+    // itself rather than leaving them to a child - see the isPanelVisible
+    // (kSectionFx) block. Those pixels belong to the editor, so nothing about
+    // hiding fxPanel is guaranteed to clear them: Component::setVisible only
+    // invalidates when the flag actually changes, and it invalidates the
+    // child's bounds, not whatever the parent painted underneath.
+    //
+    // Repainting the shared area explicitly removes that whole class of
+    // leftover. It costs one repaint per menu click, which is not a rate worth
+    // optimising.
+    if (! panelViewportArea.isEmpty())
+    {
+        repaint(panelViewportArea);
+    }
+    else
+    {
+        repaint();
+    }
+
     if (clamped == kSectionOsc)
     {
         refreshOscillatorModeUI();
@@ -3109,6 +3078,19 @@ bool PX3SynthAudioProcessorEditor::isPanelVisible(int sectionIndex) const
 
 void PX3SynthAudioProcessorEditor::updatePanelVisibility()
 {
+    // Leaving the FX panel mid-drag would otherwise strand draggingFxSection:
+    // animateFxSections() skips the dragged section by design, so it would
+    // never return to its slot and would sit wherever the pointer left it.
+    if (draggingFxSection >= 0 && ! isPanelVisible(kSectionFx))
+    {
+        fxSectionCurrentAreas[static_cast<std::size_t>(draggingFxSection)] =
+            fxSectionTargetAreas[static_cast<std::size_t>(draggingFxSection)];
+        draggingFxSection = -1;
+        pressedFxSection = -1;
+        fxDragHasMoved = false;
+        layoutFxSectionsFromCurrentAreas();
+    }
+
     oscPanel->setVisible(isPanelVisible(kSectionOsc));
     modPanelViewport.setVisible(isPanelVisible(kSectionMod));
     if (modPanel != nullptr)

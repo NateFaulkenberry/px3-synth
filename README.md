@@ -143,12 +143,48 @@ wordmark is rotated 45 degrees onto the diagonal so it fills the square without
 being cropped, and the rest of the tile uses the logo's own background colour.
 See `docs/BUILDING.md` to regenerate it.
 
+### Supported DAWs and hosts
+
+P(X3) ships as an Audio Unit, VST3 and a standalone application, so it loads in
+any host supporting those formats. The installer and uninstaller additionally
+recognise the following Audio Unit hosts by bundle identifier, and will ask you
+to close them before installing or removing the plug-in:
+
+| Host | Host |
+| --- | --- |
+| Logic Pro | Reason |
+| GarageBand | LUNA |
+| MainStage | Ardour |
+| Ableton Live | Waveform |
+| Pro Tools | Renoise |
+| Cubase | Maschine |
+| Nuendo | AU Lab |
+| Studio One | Gig Performer |
+| REAPER | Vienna Ensemble Pro |
+| Bitwig Studio | Plogue Bidule |
+| FL Studio | Digital Performer |
+
+The list lives in `scripts/installer/au-hosts.tsv` and is the only place host
+identifiers are defined. Adding a host is a one-line edit there.
+
+Samplitude and Sequoia are Windows-only products and so have no macOS bundle
+identifier to match.
+
 ### Running-host check
 
-Both the installer and the uninstaller refuse to run while a DAW or the P(X3)
-standalone is open, and name the application to quit. A host with the plug-in
-loaded holds the bundle open, so replacing or removing it underneath leaves the
-host running stale code.
+Both the installer and the uninstaller refuse to run while one of the hosts
+above, or the P(X3) standalone, is open. A host with the plug-in loaded holds
+the bundle open, so replacing or removing it underneath leaves that host running
+stale code.
+
+Applications are identified by **bundle identifier**, read from each running
+application's own `Info.plist` - not by process name. Ordinary audio software
+(Spotify, browsers, QuickTime, conferencing apps) and macOS audio services
+(`coreaudiod`, `AudioComponentRegistrar`, `auval`) do not trigger it.
+
+The check runs twice: once when the installer opens, and again immediately
+before the plug-in is written or removed, so a DAW opened while the installer
+sits waiting is still caught.
 
 ### Installer branding
 

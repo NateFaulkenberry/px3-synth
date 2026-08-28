@@ -130,34 +130,96 @@ release never fails for want of node.
 
 ## Blocking Installs While A Host Is Running
 
-Both packages refuse to run while a DAW or the P(X3) standalone is open. A host
-with the plug-in loaded holds the bundle open, so replacing it underneath leaves
-the host running stale code, and the uninstaller has the same problem in reverse.
+Both packages refuse to run while a known Audio Unit host is open, and name the
+applications to close. A host with the plug-in loaded holds the bundle open, so
+replacing it underneath leaves that host running stale code.
 
-Around twenty hosts are detected (Logic Pro, GarageBand, MainStage, Ableton Live,
-Pro Tools, Cubase, Nuendo, Studio One, REAPER, Bitwig, FL Studio, Digital
-Performer, Reason, Ardour, Waveform, LUNA, Renoise, Maschine, plug-in validation
-hosts, and the P(X3) standalone). The list lives in one place in
-`scripts/build-release.sh` as two index-aligned arrays, which generate both the
-shell checker and the Installer's JavaScript so the names and exit codes cannot
-drift apart.
+**Applications are identified by bundle identifier**, read from each running
+application's own `Info.plist`. The single source of truth is
+`scripts/installer/au-hosts.tsv`; identifiers appear nowhere else. Adding a host
+is a one-line edit there.
 
-There are two gates, deliberately:
+```bash
+scripts/installer/au-hosts.tsv               # the host database
+scripts/installer/detect-au-hosts.sh         # the detector, shared by both packages
+scripts/installer/test-au-host-detection.sh  # 36 regression tests
+```
 
-- `installation-check` in the Distribution runs before anything happens and names
-  the offending application - "Quit Logic Pro first".
-- A `preinstall` script in every component package, which runs regardless of what
-  the Installer's JavaScript context supports.
+The detector only considers processes running from inside a `.app` bundle, which
+excludes every daemon and system service by construction. It reads bundle
+identifiers from two independent sources and unions them: walking the process
+table and reading `Info.plist` (works as root, where LaunchServices may not see
+the user's session), and `lsappinfo`.
 
-One trap worth knowing: **`productbuild --resources` only copies the resources its
+Diagnostics, for when a host is not recognised:
+
+```bash
+./scripts/installer/detect-au-hosts.sh --list      # running apps and their bundle IDs
+./scripts/installer/detect-au-hosts.sh --database  # the hosts being matched against
+```
+
+Testing hook: set `PX3_FAKE_BUNDLE_IDS` to a comma-separated list to exercise the
+classification without launching anything.
+
+```bash
+PX3_FAKE_BUNDLE_IDS="com.apple.logic10" ./scripts/installer/detect-au-hosts.sh
+./scripts/installer/test-au-host-detection.sh
+```
+
+### Why it is not a process-name search
+
+The previous implementation matched process names from `ps -A`, and blocked the
+installer whenever `auval` was running. macOS runs `auval` **by itself** after
+any Audio Unit is installed, so the installer blocked itself moments after a
+successful install. Process names are also not identity: "Live", "Reason",
+"LUNA" and "Waveform" are ordinary words, and `ps -A` lists daemons and other
+users' processes that could never host a plug-in.
+
+### Two gates, and when they run
+
+- `installation-check` in the Distribution runs before anything happens and
+  names the running hosts in the dialog. Because the Installer's JavaScript can
+  only read an exit code from `system.run`, the detector also writes the host
+  names to `/tmp/px3-running-au-hosts.plist`, which the JavaScript reads back
+  with `system.files.plistAtPath` - that is what lets the dialog say "Logic Pro"
+  rather than "an audio application".
+- A `preinstall` script in every component package, which runs immediately
+  before the payload is written. This is the check that catches a DAW opened
+  while the installer sat waiting.
+
+### Known limitation
+
+This answers "is a known plugin host running?", not "does any process on this
+machine have PX3Synth.component loaded?". It cannot prove the latter. A host
+using out-of-process plug-in hosting (Logic's `AUHostingServiceXPC`, for
+example) runs the plug-in in a helper whose bundle identifier is not the host's.
+A curated known-host check is still the right trade for a commercial installer:
+the alternative - blocking whenever any audio-related process exists - is what
+produced the false positives this replaced.
+
+One packaging trap: **`productbuild --resources` only copies the resources its
 Distribution actually references.** A helper that only the JavaScript calls is
-silently dropped, and the check then finds nothing and passes. The release script
-puts it back by expanding the product, adding the file, and re-flattening - and
-then *verifies* it is present, because a check that silently no-ops is worse than
-no check. Flattening discards signatures, so signing moved to a `productsign`
-pass afterwards.
+silently dropped, the check then finds nothing, and it passes. The release
+script puts the files back by expanding the product, injecting them, and
+re-flattening - and then *verifies* they are present, because a check that
+silently no-ops is worse than no check. Flattening discards signatures, so
+signing happens in a `productsign` pass afterwards.
 
-## Developer Test Executables
+## Memory Benchmark
+
+`scripts/memory-benchmark.sh` measures process-level memory against real
+processor instances in a Release build. See `docs/MEMORY-BENCHMARK.md`.
+
+```bash
+./scripts/memory-benchmark.sh --instances 16
+./scripts/memory-benchmark.sh --save-baseline
+./scripts/memory-benchmark.sh --compare-baseline    # exits 2 on regression
+```
+
+Complements `PX3Diag memory`, which reports static per-object sizes and cannot
+see allocator overhead or fragmentation.
+
+## Developer Test Executables## Developer Test Executables
 
 Alongside the plugin, four console executables are configured by CMake. They are
 the regression gate and the measurement tools; see the Testing And Measurement

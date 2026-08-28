@@ -1,0 +1,60 @@
+# PX3 - known macOS Audio Unit hosts.
+#
+# SINGLE SOURCE OF TRUTH. The installer, the uninstaller and the tests all read
+# this file; bundle identifiers are not written anywhere else.
+#
+# The plugin being protected is PX3Synth.component, an Audio Unit INSTRUMENT, so
+# this lists applications that can load AU instruments and therefore could have
+# the bundle open. It is deliberately NOT a list of "audio applications":
+# matching on process names or audio-related keywords is what produced false
+# positives, most notably `auval`, which macOS runs by itself after any Audio
+# Unit is installed.
+#
+# Format, tab separated:
+#   displayName <TAB> formats <TAB> bundleIds (comma separated) <TAB> verification
+#
+# verification:
+#   local    - read from the application's own Info.plist on a machine we tested
+#   public   - the vendor's published/long-standing identifier
+#
+# Identifiers are matched case-insensitively and by exact string. Several
+# vendors ship version-specific identifiers, so more than one may be listed.
+# Add new hosts here and nowhere else.
+
+Logic Pro	AU	com.apple.logic10	local
+GarageBand	AU	com.apple.garageband10	local
+MainStage	AU	com.apple.mainstage3,com.apple.mainstage4	public
+LUNA	AU	com.uaudio.luna	local
+Ableton Live	AU	com.ableton.live	public
+Pro Tools	AU	com.avid.ProTools	public
+Cubase	AU	com.steinberg.cubase,com.steinberg.cubase11,com.steinberg.cubase12,com.steinberg.cubase13,com.steinberg.cubase14	public
+Nuendo	AU	com.steinberg.nuendo,com.steinberg.nuendo12,com.steinberg.nuendo13	public
+Studio One	AU	com.presonus.studioone,com.presonus.studioone5,com.presonus.studioone6,com.presonus.studioone7	public
+REAPER	AU	com.cockos.reaper	public
+Bitwig Studio	AU	com.bitwig.BitwigStudio	public
+FL Studio	AU	com.image-line.flstudio	public
+Digital Performer	AU	com.motu.DigitalPerformer,com.motu.dp11	public
+Reason	AU	com.propellerheads.reason,com.reasonstudios.reason	public
+Ardour	AU	org.ardour.Ardour	public
+Waveform	AU	com.tracktion.waveform	public
+Renoise	AU	com.renoise.Renoise	public
+Maschine	AU	com.native-instruments.Maschine2	public
+AU Lab	AU	com.apple.audio.AULab	public
+Gig Performer	AU	com.gigperformer.GigPerformer	public
+Vienna Ensemble Pro	AU	com.vsl.viennaensemblepro,com.vsl.VEPro7	public
+Plogue Bidule	AU	com.plogue.bidule	public
+PX3 Synth (standalone)	Standalone	com.px3.px3synth	local
+
+# Deliberately NOT listed, and why:
+#
+#   auval, pluginval, AudioPluginHost
+#       Validation tools. macOS launches `auval` on its own after an Audio Unit
+#       is installed, so treating it as a host blocked the installer moments
+#       after a successful install. This was the original false positive.
+#   AudioComponentRegistrar, coreaudiod, audiomxd, and other CoreAudio daemons
+#       System services. They never load a plugin into a user session.
+#   Spotify, QuickTime Player, browsers, conferencing apps, media players
+#       Play audio; cannot host an Audio Unit instrument.
+#   Samplitude, Sequoia
+#       Windows-only products. They have no macOS bundle identifier, so no
+#       identifier is invented for them here.

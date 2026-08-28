@@ -13,3 +13,6 @@ notes.txt
 
 # Local build tooling (sharp for icon generation)
 .tools/
+
+# Memory benchmark results
+.benchmarks/

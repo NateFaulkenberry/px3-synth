@@ -256,6 +256,29 @@ if (PX3_BUILD_DIAGNOSTIC)
         PUBLIC juce::juce_recommended_config_flags)
 endif()
 
+# Offline memory benchmark. Measures process-level memory against real
+# processor instances, in the SHIPPING configuration, so the numbers describe
+# the code that ships. Complements `PX3Diag memory`, which reports static
+# per-object sizes and cannot see allocator overhead or fragmentation.
+if (PX3_BUILD_DIAGNOSTIC)
+    juce_add_console_app(PX3MemBench PRODUCT_NAME "PX3MemBench")
+    juce_generate_juce_header(PX3MemBench)
+    target_sources(PX3MemBench PRIVATE ${PX3_SHARED_SOURCES} Source/Tools/MemoryBenchmark.cpp)
+    target_include_directories(PX3MemBench PRIVATE ${PX3_INCLUDE_DIRS})
+    target_compile_definitions(PX3MemBench
+        PRIVATE
+            JUCE_WEB_BROWSER=0
+            JUCE_USE_CURL=0
+            JUCE_STANDALONE_APPLICATION=1
+            PX3_DEBUG_PANEL=0
+            PX3_DIAGNOSTICS=0
+            JucePlugin_Name="PX3 Synth"
+    )
+    target_link_libraries(PX3MemBench
+        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp
+        PUBLIC juce::juce_recommended_config_flags)
+endif()
+
 # CPU benchmark, built in the SHIPPING configuration (PX3_DIAGNOSTICS off) so it
 # measures the code the plugin actually runs. The diagnostic taps in PX3Diag add
 # per-sample work to the very loops being timed.
