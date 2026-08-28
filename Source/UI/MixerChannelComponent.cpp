@@ -1,12 +1,54 @@
 #include "MixerChannelComponent.h"
 
+#include "UIConfig.h"
+
 MixerChannelComponent::MixerChannelComponent(Controls controlsIn)
     : controls(std::move(controlsIn))
 {
 }
 
+void MixerChannelComponent::setCardStyleKey(juce::String key)
+{
+    if (cardStyleKey != key)
+    {
+        cardStyleKey = std::move(key);
+        refreshCardStyle();
+        repaint();
+    }
+}
+
+void MixerChannelComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
+{
+    uiConfig = std::move(configIn);
+    refreshCardStyle();
+    resized();
+    repaint();
+}
+
+void MixerChannelComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
+{
+    card.setPanelContentBounds(panelContent);
+    repaint();
+}
+
+void MixerChannelComponent::refreshCardStyle()
+{
+    card.setStyleKey(cardStyleKey);
+    card.setConfig(uiConfig);
+    card.layout(getLocalBounds());
+}
+
+void MixerChannelComponent::paint(juce::Graphics& g)
+{
+    // Frame only. The channel's title is still its own Label, so no title is
+    // passed here - two titles would be worse than none.
+    card.draw(g, {});
+}
+
 void MixerChannelComponent::resized()
 {
+    refreshCardStyle();
+
     auto area = getLocalBounds();
 
     if (controls.title != nullptr)

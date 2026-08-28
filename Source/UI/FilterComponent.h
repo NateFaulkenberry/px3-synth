@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "Card.h"
+
 #include <memory>
 
 class UIConfig;
@@ -21,6 +23,9 @@ public:
     void setAccentColour(juce::Colour accentIn);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void setGraphBounds(juce::Rectangle<int> boundsIn);
+    // Which filter this is: drives the card's style block and its title.
+    void setInstanceIndex(int oneBasedIndex);
+    void setPanelContentBounds(juce::Rectangle<int> panelContent);
     void refreshFromParameters();
 
     void paint(juce::Graphics& g) override;
@@ -38,6 +43,8 @@ private:
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
     juce::Rectangle<int> graphBounds;
+    px3::ui::CardHost card;
+    int instanceIndex { 1 };
 
     bool currentEnabled { true };
     int lastModeIndex { -1 };

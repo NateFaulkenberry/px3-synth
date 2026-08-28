@@ -1,6 +1,5 @@
 #include "DelayComponent.h"
 
-#include "ComponentCardDrawing.h"
 #include "UIConfig.h"
 
 DelayComponent::DelayComponent(juce::ToggleButton& enabledButtonIn,
@@ -141,26 +140,21 @@ void DelayComponent::resized()
 
 void DelayComponent::paint(juce::Graphics& g)
 {
-    const auto borderPad = uiConfig != nullptr ? uiConfig->getFloat("fx.delay.visual.borderPadding", 6.0f) : 6.0f;
-    const auto radius = uiConfig != nullptr ? uiConfig->getFloat("fx.delay.visual.cornerRadius", 8.0f) : 8.0f;
-    const auto bgTintAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.delay.visual.bgTintAlpha", 0.08f) : 0.08f;
-    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.delay.visual.topFillAlpha", 0.10f) : 0.10f;
-    auto bounds = getLocalBounds().toFloat();
-    const auto fillColour = isActive ? accent : juce::Colour::fromRGBA(120, 120, 120, 180);
-    const auto bgTintColour = uiConfig != nullptr ? uiConfig->getColour("fx.delay.visual.bgTintColour", fillColour)
-                                                  : fillColour;
-    const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("fx.delay.visual.topFillColour", fillColour)
-                                                   : fillColour;
-    px3::ui::ComponentCardStyle cardStyle;
-    cardStyle.borderPadding = borderPad;
-    cardStyle.cornerRadius = radius;
-    cardStyle.fillInset = 0.0f;
-    cardStyle.backgroundColour = bgTintColour;
-    cardStyle.backgroundAlpha = bgTintAlpha;
-    cardStyle.topFillColour = topFillColour;
-    cardStyle.topFillAlpha = topFillAlpha;
-    cardStyle.topFillHeightRatio = 0.5f;
-    px3::ui::drawComponentCard(g, bounds, cardStyle);
+    // Card and title are owned here, not by FxPanel. Because the card follows
+    // this component's bounds, drag-and-drop reordering moves it automatically -
+    // the panel no longer has to paint anything at the dragged position.
+    card.setStyleKey("delay");
+    card.setConfig(uiConfig);
+    card.layout(getLocalBounds());
+
+    if (isActive)
+    {
+        card.draw(g, "DELAY");
+    }
+    else
+    {
+        card.drawInactive(g, "DELAY");
+    }
 
     const auto textColour = uiConfig != nullptr
                                 ? uiConfig->getColour("fx.delay.visual.onLabel.textColour", juce::Colour::fromRGB(232, 232, 232))
@@ -169,9 +163,8 @@ void DelayComponent::paint(juce::Graphics& g)
     const auto textBounds = uiConfig != nullptr
                                 ? uiConfig->getRect("fx.delay.visual.onLabel.bounds", getLocalBounds(), { 36, 11, 24, 14 })
                                 : juce::Rectangle<int>(36, 11, 24, 14);
-    const auto text = uiConfig != nullptr ? uiConfig->getString("fx.delay.visual.onLabel.text", "ON") : juce::String("ON");
 
     g.setColour(textColour.withAlpha(isActive ? 1.0f : 0.6f));
     g.setFont(juce::FontOptions(fontSize));
-    g.drawText(text, textBounds, juce::Justification::centredLeft, false);
+    g.drawText("ON", textBounds, juce::Justification::centredLeft, false);
 }

@@ -32,24 +32,6 @@ void AmpPanel::paint(juce::Graphics& g)
     g.drawRoundedRectangle(area, panelRadius, 1.0f);
 }
 
-void AmpPanel::paintOverChildren(juce::Graphics& g)
-{
-    if (ampEnvelopeComponent == nullptr)
-    {
-        return;
-    }
-
-    const auto title = uiConfig != nullptr ? uiConfig->getString("amp.env.title.text", "AMP ENV") : juce::String("AMP ENV");
-    const auto titleFont = uiConfig != nullptr ? uiConfig->getFloat("amp.panel.cardTitle.fontSize", 11.0f) : 11.0f;
-
-    g.setColour(accent.brighter(0.2f));
-    g.setFont(juce::FontOptions(titleFont, juce::Font::bold));
-    g.drawText(title,
-               ampEnvelopeComponent->getBounds().removeFromTop(14),
-               juce::Justification::centredTop,
-               true);
-}
-
 void AmpPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);

@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "Card.h"
+
 #include <array>
 #include <memory>
 
@@ -30,6 +32,12 @@ public:
                         juce::Colour accentIn);
 
     void setAccentColour(juce::Colour accentIn);
+    // Which oscillator this instance is. Drives both the card's title, which is
+    // the component's own content, and which style block it reads - so Osc 1,
+    // 2 and 3 share one implementation and can still be styled independently.
+    void setInstanceIndex(int oneBasedIndex);
+    // The panel's content box: the only reference for percentage dimensions.
+    void setPanelContentBounds(juce::Rectangle<int> panelContent);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void refreshFromParameters(bool enabled, int modeIndex, int vowelIndex);
     void advanceAnimation(float deltaPhase);
@@ -57,6 +65,9 @@ private:
     juce::Label& modeLabel;
     juce::ComboBox& vowelBox;
     juce::Label& vowelLabel;
+    px3::ui::CardHost card;
+    int instanceIndex { 1 };
+
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
     bool currentEnabled { true };

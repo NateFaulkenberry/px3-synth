@@ -139,7 +139,6 @@ void OscPanel::paint(juce::Graphics& g)
     const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.fillAlpha", 0.14f) : 0.14f;
     const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.strokeAlpha", 0.75f) : 0.75f;
     const auto panelRadius = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.cornerRadius", 10.0f) : 10.0f;
-    const auto cardTitleFontSize = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.cardTitle.fontSize", 11.0f) : 11.0f;
 
     const auto area = getLocalBounds().toFloat().reduced(2.0f);
     g.setColour(accent.withAlpha(fillAlpha));
@@ -148,26 +147,9 @@ void OscPanel::paint(juce::Graphics& g)
     g.setColour(accent.withAlpha(strokeAlpha));
     g.drawRoundedRectangle(area, panelRadius, 1.0f);
 
-    const auto drawCardTitle = [&g, cardTitleFontSize](const juce::String& text, juce::Rectangle<int> bounds, juce::Colour colour)
-    {
-        g.setColour(colour.brighter(0.2f));
-        g.setFont(juce::FontOptions(cardTitleFontSize, juce::Font::bold));
-        g.drawText(text, bounds.removeFromTop(14), juce::Justification::centredTop, true);
-    };
-
-    if (subOscComponent != nullptr)
-    {
-        drawCardTitle("Sub Osc", subOscComponent->getBounds(), subHeaderAccent);
-    }
-    for (int oscIndex = 0; oscIndex < static_cast<int>(oscillatorComponents.size()); ++oscIndex)
-    {
-        if (oscillatorComponents[static_cast<std::size_t>(oscIndex)] != nullptr)
-        {
-            drawCardTitle("Osc " + juce::String(oscIndex + 1),
-                          oscillatorComponents[static_cast<std::size_t>(oscIndex)]->getBounds(),
-                          oscHeaderAccent);
-        }
-    }
+    // Card titles are drawn by the cards themselves - see px3::ui::drawCard.
+    // Painting them here meant the panel wrote into its children's bounds,
+    // which is how a title could survive the component it belonged to.
 }
 
 void OscPanel::resized()
@@ -189,16 +171,22 @@ void OscPanel::resized()
         cursor += columnWidth + gap;
     }
 
+    // Percentage card dimensions resolve against this box, so every card is
+    // told what it is. Without it a card would have to guess, and "50%" would
+    // quietly mean something different in each column.
     if (subOscComponent != nullptr)
     {
+        subOscComponent->setPanelContentBounds(panelArea);
         subOscComponent->setBounds(columns[0].reduced(2, 2));
     }
 
     for (int oscIndex = 0; oscIndex < static_cast<int>(oscillatorComponents.size()); ++oscIndex)
     {
-        if (oscillatorComponents[static_cast<std::size_t>(oscIndex)] != nullptr)
+        if (auto* component = oscillatorComponents[static_cast<std::size_t>(oscIndex)].get())
         {
-            oscillatorComponents[static_cast<std::size_t>(oscIndex)]->setBounds(columns[oscIndex + 1].reduced(2, 2));
+            component->setInstanceIndex(oscIndex + 1);
+            component->setPanelContentBounds(panelArea);
+            component->setBounds(columns[oscIndex + 1].reduced(2, 2));
         }
     }
 

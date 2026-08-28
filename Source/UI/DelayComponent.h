@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "Card.h"
+
 #include <memory>
 
 class UIConfig;
@@ -45,6 +47,7 @@ private:
     juce::Label& timeLabel;
     juce::Slider& feedbackKnob;
     juce::Label& feedbackLabel;
+    px3::ui::CardHost card;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
     bool isActive { true };

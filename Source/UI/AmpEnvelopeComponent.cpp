@@ -72,8 +72,34 @@ void AmpEnvelopeComponent::resized()
     }
 }
 
+void AmpEnvelopeComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
+{
+    card.setPanelContentBounds(panelContent);
+    repaint();
+}
+
+void AmpEnvelopeComponent::paint(juce::Graphics& g)
+{
+    // "AMP ENV" is this component's own content. AmpPanel used to draw it into
+    // these bounds; the card owns it now, like every other component.
+    card.layout(getLocalBounds());
+
+    // Greys out when the amp envelope is bypassed, like every other card.
+    if (processor.getAmpEnvEnabledParam().get())
+    {
+        card.draw(g, "AMP ENV");
+    }
+    else
+    {
+        card.drawInactive(g, "AMP ENV");
+    }
+}
+
 void AmpEnvelopeComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
+    card.setStyleKey("ampEnv");
+    card.setConfig(configIn);
+
     if (configIn != nullptr)
     {
         const auto comboStyle = configIn->getObject("styles.combos.default");
@@ -92,4 +118,7 @@ void AmpEnvelopeComponent::refreshFromParameters()
     {
         envelopeGraph->refreshFromParameters();
     }
+    // The card's greyscale state follows the bypass parameter, so it has to be
+    // repainted when that parameter changes.
+    repaint();
 }

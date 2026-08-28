@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "Card.h"
+
 #include <memory>
 
 class UIConfig;
@@ -29,6 +31,7 @@ private:
     juce::Label& amountLabel;
     juce::ComboBox& typeBox;
     juce::Label& typeLabel;
+    px3::ui::CardHost card;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
     bool isActive { true };

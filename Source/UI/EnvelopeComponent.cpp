@@ -1,6 +1,5 @@
 #include "EnvelopeComponent.h"
 
-#include "ComponentCardDrawing.h"
 #include "UIConfig.h"
 
 #include <cmath>
@@ -136,45 +135,38 @@ void EnvelopeComponent::refreshFromParameters()
     }
 }
 
+void EnvelopeComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
+{
+    card.setPanelContentBounds(panelContent);
+    repaint();
+}
+
 void EnvelopeComponent::paint(juce::Graphics& g)
 {
-    const auto card = computeCardBounds();
-    const auto cardBounds = card.toFloat();
+    // Card and title owned here rather than by ModPanel.
+    card.setStyleKey(configPrefix.fromLastOccurrenceOf(".", false, false));
+    card.setConfig(uiConfig);
+    card.layout(computeCardBounds());
+
+    const auto cardBounds = card.bounds();
     if (cardBounds.isEmpty())
     {
         return;
     }
 
-    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
-    const auto bgTintAlpha = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.bgTintAlpha", 0.10f) : 0.10f;
-    const auto enabledBgTintColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.bgTintColour", effectiveAccent)
-                                                         : effectiveAccent;
-    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.topFillAlpha", 0.10f) : 0.10f;
-    const auto enabledTopFillColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.topFillColour", effectiveAccent)
-                                                          : effectiveAccent;
-    const auto cardCornerRadius = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.cardCornerRadius", 8.0f) : 8.0f;
-    const auto outerStrokeThickness = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.outerStrokeThickness", 1.2f) : 1.2f;
-    const auto outerStrokeColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.outerStrokeColour", juce::Colour::fromRGB(220, 232, 252))
-                                                       : juce::Colour::fromRGB(220, 232, 252);
-    const auto outerStrokeAlphaEnabled = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".visual.outerStrokeAlphaEnabled", 88) : 88;
-    const auto outerStrokeAlphaDisabled = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".visual.outerStrokeAlphaDisabled", 66) : 66;
-    const auto bgTintColour = currentEnabled ? enabledBgTintColour : juce::Colour::fromRGB(112, 112, 112);
-    const auto topFillColour = currentEnabled ? enabledTopFillColour : juce::Colour::fromRGB(136, 136, 136);
+    const auto title = configPrefix.fromLastOccurrenceOf(".", false, false)
+                           .toUpperCase().replace("ENV", "ENV ");
+    if (currentEnabled)
+    {
+        card.draw(g, title);
+    }
+    else
+    {
+        card.drawInactive(g, title);
+    }
 
-    px3::ui::ComponentCardStyle cardStyle;
-    cardStyle.borderPadding = 0.0f;
-    cardStyle.cornerRadius = cardCornerRadius;
-    cardStyle.fillInset = 6.0f;
-    cardStyle.backgroundColour = bgTintColour;
-    cardStyle.backgroundAlpha = bgTintAlpha;
-    cardStyle.topFillColour = topFillColour;
-    cardStyle.topFillAlpha = topFillAlpha;
-    cardStyle.topFillHeightRatio = 0.5f;
-    cardStyle.drawOutline = true;
-    cardStyle.outlineColour = outerStrokeColour;
-    cardStyle.outlineAlpha = static_cast<float>(currentEnabled ? outerStrokeAlphaEnabled : outerStrokeAlphaDisabled) / 255.0f;
-    cardStyle.outlineThickness = outerStrokeThickness;
-    px3::ui::drawComponentCard(g, cardBounds, cardStyle);
+    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+    juce::ignoreUnused(effectiveAccent);
 
     const auto geom = computeGeometry();
     const auto graphArea = juce::Rectangle<float>(geom.left - 6.0f,
@@ -263,21 +255,21 @@ void EnvelopeComponent::paint(juce::Graphics& g)
 
 juce::Rectangle<int> EnvelopeComponent::computeCardBounds() const
 {
-    auto card = getLocalBounds().reduced(6, 6);
+    auto cardArea = getLocalBounds().reduced(6, 6);
 
     const auto widthPercent = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".layout.cardWidthPercent", 0.0f) : 0.0f;
     if (widthPercent > 0.0f)
     {
         const auto clampedPercent = juce::jlimit(0.1f, 1.0f, widthPercent);
         const auto cardWidth = juce::jlimit(120,
-                                            card.getWidth(),
-                                            static_cast<int>(std::lround(static_cast<float>(card.getWidth()) * clampedPercent)));
-        return card.withSizeKeepingCentre(cardWidth, card.getHeight());
+                                            cardArea.getWidth(),
+                                            static_cast<int>(std::lround(static_cast<float>(cardArea.getWidth()) * clampedPercent)));
+        return cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
     }
 
     const auto targetCardWidth = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".layout.cardTargetWidth", 300) : 300;
-    const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
-    return card.withSizeKeepingCentre(cardWidth, card.getHeight());
+    const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
+    return cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
 }
 
 void EnvelopeComponent::mouseMove(const juce::MouseEvent& event)
@@ -455,9 +447,9 @@ float EnvelopeComponent::visualNormToTime(float norm, float minValue, float maxV
 EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
 {
     Geometry geom;
-    auto card = computeCardBounds();
+    auto cardArea = computeCardBounds();
     const auto fullHeightGraph = uiConfig != nullptr ? uiConfig->getBool(configPrefix + ".behavior.fullHeightGraph", false) : false;
-    auto graphLayout = card.toFloat().reduced(10.0f, 10.0f);
+    auto graphLayout = cardArea.toFloat().reduced(10.0f, 10.0f);
     if (fullHeightGraph)
     {
         graphLayout.removeFromTop(12.0f);

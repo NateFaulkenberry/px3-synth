@@ -105,6 +105,7 @@ void MixPanel::resized()
             --remainder;
         }
         const auto width = baseWidth + extra;
+        channel->component->setPanelContentBounds(area);
         channel->component->setBounds(x, area.getY(), width, area.getHeight());
         x += width + gap;
     }
@@ -252,6 +253,18 @@ void MixPanel::configureChannelWidgets(ChannelWidgets& channel,
 
 void MixPanel::applyConfigToChannels()
 {
+    // The channel cards need the config to resolve their style, and the style
+    // key identifies which block they read. One block for all five today - they
+    // are instances of one component with no reason to differ yet.
+    for (auto* channel : { &subChannel, &osc1Channel, &osc2Channel, &osc3Channel, &fxChannel })
+    {
+        if (channel->component != nullptr)
+        {
+            channel->component->setCardStyleKey("mixerChannel");
+            channel->component->setUIConfig(uiConfig);
+        }
+    }
+
     const auto faderStyle = FaderStyle::fromUIConfig(uiConfig, "mix.fader");
     const auto muteStyle = buttonStyleFromConfig(uiConfig, "mix.mute", MixerToggleButton::Style());
     const auto soloStyle = buttonStyleFromConfig(uiConfig, "mix.solo", MixerToggleButton::Style());

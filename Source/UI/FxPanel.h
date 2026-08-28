@@ -77,23 +77,6 @@ public:
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
 private:
-    // The section cards are drawn here rather than by the editor. They occupy
-    // this panel's area, and a parent that paints into an area owned by a child
-    // it shows and hides has no way to guarantee those pixels are cleared when
-    // the child goes away - which is exactly how stale outlines survived a
-    // panel switch.
-    void paintSectionCards(juce::Graphics& g) const;
-
-    juce::Rectangle<int> vibeSectionArea;
-    juce::Rectangle<int> delaySectionArea;
-    juce::Rectangle<int> moodSectionArea;
-    juce::Rectangle<int> reverbSectionArea;
-
-    bool vibeSectionEnabled { true };
-    bool delaySectionEnabled { true };
-    bool moodSectionEnabled { true };
-    bool reverbSectionEnabled { true };
-
     std::unique_ptr<VibeComponent> vibeUiComponent;
     std::unique_ptr<DelayComponent> delayPanelComponent;
     std::unique_ptr<MoodComponent> moodComponent;

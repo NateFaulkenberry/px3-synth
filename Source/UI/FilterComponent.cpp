@@ -58,41 +58,44 @@ void FilterComponent::refreshFromParameters()
     }
 }
 
+void FilterComponent::setInstanceIndex(int oneBasedIndex)
+{
+    const auto clamped = juce::jlimit(1, 8, oneBasedIndex);
+    if (instanceIndex != clamped)
+    {
+        instanceIndex = clamped;
+        card.setStyleKey("filter" + juce::String(instanceIndex));
+        repaint();
+    }
+}
+
+void FilterComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
+{
+    card.setPanelContentBounds(panelContent);
+    repaint();
+}
+
 void FilterComponent::paint(juce::Graphics& g)
 {
-    const auto cardFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.card.fillAlpha", 0.10f) : 0.10f;
-    const auto cardTopFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.card.topFillAlpha", 0.10f) : 0.10f;
-    const auto cardRadius = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.card.cornerRadius", 8.0f) : 8.0f;
-    const auto cardStrokeThickness = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.card.strokeThickness", 1.2f) : 1.2f;
-    const auto cardStrokeColour = uiConfig != nullptr
-                                      ? uiConfig->getColour("flt.panel.card.strokeColour", juce::Colour::fromRGBA(220, 232, 252, 88))
-                                      : juce::Colour::fromRGBA(220, 232, 252, 88);
-    const auto cardTopFillColour = uiConfig != nullptr ? uiConfig->getColour("flt.panel.card.topFillColour", accent)
-                                                       : accent;
-    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
-    const auto effectiveCardTopFill = currentEnabled ? cardTopFillColour : juce::Colour::fromRGB(136, 136, 136);
-    const auto effectiveCardStroke = currentEnabled ? cardStrokeColour : juce::Colour::fromRGBA(168, 168, 168, 90);
+    // The card and its title belong here. FltPanel used to draw the title from
+    // the panel, into this component's bounds - the same parent-owns-child's-
+    // pixels mistake that left stale outlines behind elsewhere.
+    card.setStyleKey("filter" + juce::String(instanceIndex));
+    card.setConfig(uiConfig);
+    card.layout(getLocalBounds());
 
-    const auto cardBounds = getLocalBounds().toFloat();
-    g.setColour(effectiveAccent.withAlpha(cardFillAlpha));
-    g.fillRoundedRectangle(cardBounds, cardRadius);
-    g.setColour(effectiveCardTopFill.withAlpha(cardTopFillAlpha));
-    juce::Path topFill;
-    const auto topFillBounds = cardBounds.reduced(6.0f);
-    const auto topHalf = topFillBounds.withTrimmedBottom(topFillBounds.getHeight() * 0.5f);
-    topFill.addRoundedRectangle(topHalf.getX(),
-                                topHalf.getY(),
-                                topHalf.getWidth(),
-                                topHalf.getHeight(),
-                                cardRadius,
-                                cardRadius,
-                                true,
-                                true,
-                                false,
-                                false);
-    g.fillPath(topFill);
-    g.setColour(effectiveCardStroke);
-    g.drawRoundedRectangle(cardBounds, cardRadius, cardStrokeThickness);
+    const auto title = "FILTER " + juce::String(instanceIndex);
+    if (currentEnabled)
+    {
+        card.draw(g, title);
+    }
+    else
+    {
+        card.drawInactive(g, title);
+    }
+
+    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+    juce::ignoreUnused(effectiveAccent);
 
     auto graphRect = graphBounds.isEmpty() ? getLocalBounds().toFloat().reduced(2.0f) : graphBounds.toFloat();
     if (graphRect.getWidth() < 12.0f || graphRect.getHeight() < 12.0f)

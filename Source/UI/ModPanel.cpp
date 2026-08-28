@@ -310,39 +310,6 @@ void ModPanel::paint(juce::Graphics& g)
 
 }
 
-void ModPanel::paintOverChildren(juce::Graphics& g)
-{
-    const auto cardTitleFontSize = uiConfig != nullptr ? uiConfig->getFloat("mod.panel.cardTitle.fontSize", 11.0f) : 11.0f;
-    const auto drawCardTitle = [&g, cardTitleFontSize](const juce::String& text, juce::Rectangle<int> bounds, juce::Colour colour)
-    {
-        g.setColour(colour.brighter(0.2f));
-        g.setFont(juce::FontOptions(cardTitleFontSize, juce::Font::bold));
-        g.drawText(text, bounds.removeFromTop(14), juce::Justification::centredTop, true);
-    };
-
-    if (lfoComponent != nullptr)
-    {
-        const auto lfo1Title = uiConfig != nullptr ? uiConfig->getString("mod.lfo1.title.text", "LFO 1") : juce::String("LFO 1");
-        drawCardTitle(lfo1Title, lfoComponent->getBounds(), lfoHeaderAccent);
-    }
-    for (int i = 0; i < static_cast<int>(extraLfos.size()); ++i)
-    {
-        const auto lfoTitle = uiConfig != nullptr
-                                  ? uiConfig->getString("mod.lfo" + juce::String(i + 2) + ".title.text", "LFO " + juce::String(i + 2))
-                                  : juce::String("LFO ") + juce::String(i + 2);
-        drawCardTitle(lfoTitle, extraLfos[static_cast<std::size_t>(i)].component->getBounds(), lfoHeaderAccent);
-    }
-
-    for (int i = 0; i < static_cast<int>(envelopes.size()); ++i)
-    {
-        const auto envNumber = i + 1;
-        const auto envTitle = uiConfig != nullptr
-                                  ? uiConfig->getString("mod.env" + juce::String(envNumber) + ".title.text", "ENV " + juce::String(envNumber))
-                                  : juce::String("ENV ") + juce::String(envNumber);
-        drawCardTitle(envTitle, envelopes[static_cast<std::size_t>(i)].component->getBounds(), accent);
-    }
-}
-
 void ModPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);

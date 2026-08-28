@@ -15,7 +15,6 @@ public:
     AmpPanel(PX3SynthAudioProcessor& processorIn, juce::Colour panelAccent);
 
     void paint(juce::Graphics& g) override;
-    void paintOverChildren(juce::Graphics& g) override;
     void resized() override;
 
     void refreshFromParameters();

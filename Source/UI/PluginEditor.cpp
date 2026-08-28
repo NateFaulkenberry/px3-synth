@@ -1,5 +1,7 @@
 #include "PluginEditor.h"
 
+#include "Card.h"
+
 #include "BinaryData.h"
 #include "PX3Version.h"
 #include "UIConfig.h"
@@ -1135,7 +1137,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           &knobLookAndFeel,
                                           juce::Colour::fromRGB(212, 212, 212));
 
-    addAndMakeVisible(*oscPanel);
+    oscPanelViewport.setViewedComponent(oscPanel.get(), false);
+    oscPanelViewport.setScrollBarThickness(10);
+    oscPanelViewport.setSingleStepSizes(16, 24);
+    addAndMakeVisible(oscPanelViewport);
     modPanelViewport.setViewedComponent(modPanel.get(), false);
     modPanelViewport.setScrollBarsShown(true, false);
     modPanelViewport.setScrollBarThickness(10);
@@ -1715,7 +1720,27 @@ void PX3SynthAudioProcessorEditor::resized()
     // midiStatusLabel.setBounds(midiStatusArea.withTrimmedLeft(180).withTrimmedRight(180));
 
     panelViewportArea = controlsArea.reduced(8, 8);
-    oscPanel->setBounds(panelViewportArea);
+    // panels.osc: a declared height wins over the editor's allocation, and
+    // overflowY decides whether the panel scrolls when its content is taller
+    // than the space it has.
+    {
+        const auto panelStyle = px3::ui::PanelStyle::fromConfig(uiConfig.get(), "panels.osc");
+        auto oscArea = panelViewportArea;
+        if (panelStyle.height > 0)
+        {
+            oscArea = oscArea.withHeight(juce::jmin(panelStyle.height, panelViewportArea.getHeight()));
+        }
+        oscPanelViewport.setBounds(oscArea);
+        oscPanelViewport.setScrollBarsShown(panelStyle.scrollVertically, false);
+
+        // The viewed component keeps its declared height even when that exceeds
+        // the viewport - that is what there is to scroll. Without scrolling it
+        // matches the viewport exactly, so nothing can be clipped away.
+        const auto contentHeight = panelStyle.scrollVertically && panelStyle.height > 0
+                                       ? juce::jmax(panelStyle.height, oscArea.getHeight())
+                                       : oscPanelViewport.getMaximumVisibleHeight();
+        oscPanel->setSize(oscPanelViewport.getMaximumVisibleWidth(), contentHeight);
+    }
     modPanelViewport.setBounds(panelViewportArea);
     ampPanel->setBounds(panelViewportArea);
     fltPanel->setBounds(panelViewportArea);
@@ -3091,7 +3116,11 @@ void PX3SynthAudioProcessorEditor::updatePanelVisibility()
         layoutFxSectionsFromCurrentAreas();
     }
 
-    oscPanel->setVisible(isPanelVisible(kSectionOsc));
+    oscPanelViewport.setVisible(isPanelVisible(kSectionOsc));
+    if (oscPanel != nullptr)
+    {
+        oscPanel->setVisible(true);
+    }
     modPanelViewport.setVisible(isPanelVisible(kSectionMod));
     if (modPanel != nullptr)
     {

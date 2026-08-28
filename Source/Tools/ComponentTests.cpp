@@ -16,6 +16,8 @@
 #include "../DSP/PluginProcessor.h"
 #include "../DSP/PluginProcessorInternals.h"
 #include "../DSP/AmpEnvelope.h"
+#include "../UI/Card.h"
+#include "../UI/UIConfig.h"
 #include "../DSP/Delay.h"
 #include "../DSP/EnvelopeGenerator.h"
 #include "../DSP/LfoGenerator.h"
@@ -3151,6 +3153,549 @@ void testReverb()
 // spawns grains from it, and offers a wet stage (reverb / delay / slip), a loop
 // stage (env / tape / stretch), plus feedback, spread, degrade, clock division
 // and a freeze that stops new material entering.
+// ---------------------------------------------------------------------------
+// Card / Panel style system
+//
+// These test that a parsed property actually reaches the geometry or the
+// rendering state - not that the JSON contains a key. The previous styling
+// system's failure mode was properties that existed and did nothing, so a test
+// that only proves a key is present would be testing the wrong thing.
+// ---------------------------------------------------------------------------
+void testCardStyle()
+{
+    suite("CARD STYLE");
+
+    using namespace px3::ui;
+
+    auto configFrom = [](const char* json)
+    {
+        juce::String error;
+        return UIConfig::fromJsonText(json, error);
+    };
+
+    // ---- Dimension parsing -------------------------------------------------
+    {
+        const auto px = Dimension::parse(juce::var(300), {});
+        const auto pxString = Dimension::parse(juce::var("300px"), {});
+        const auto bare = Dimension::parse(juce::var("300"), {});
+        const auto pct = Dimension::parse(juce::var("33%"), {});
+        const auto autoValue = Dimension::parse(juce::var("auto"), { Dimension::Unit::pixels, 5.0f });
+
+        const auto ok = px.unit == Dimension::Unit::pixels && juce::approximatelyEqual(px.value, 300.0f)
+                     && pxString.unit == Dimension::Unit::pixels && juce::approximatelyEqual(pxString.value, 300.0f)
+                     && bare.unit == Dimension::Unit::pixels && juce::approximatelyEqual(bare.value, 300.0f)
+                     && pct.unit == Dimension::Unit::percent && juce::approximatelyEqual(pct.value, 33.0f)
+                     && autoValue.isAuto();
+        check("CardStyle_DimensionParsesPixelsAndPercent",
+              ok,
+              "300, \"300px\", \"300\", \"33%\" and \"auto\" all parse to the right unit");
+    }
+
+    // Percentage resolution against a known panel extent is the property most
+    // likely to be got wrong, so it is checked against exact arithmetic.
+    {
+        const Dimension full { Dimension::Unit::percent, 100.0f };
+        const Dimension half { Dimension::Unit::percent, 50.0f };
+        const Dimension quarter { Dimension::Unit::percent, 25.0f };
+
+        const auto a = full.resolve(400.0f, 999.0f);
+        const auto b = half.resolve(400.0f, 999.0f);
+        const auto c = quarter.resolve(400.0f, 999.0f);
+
+        check("CardStyle_PercentResolvesAgainstPanelExtent",
+              juce::approximatelyEqual(a, 400.0f)
+                  && juce::approximatelyEqual(b, 200.0f)
+                  && juce::approximatelyEqual(c, 100.0f),
+              "panel 400px -> 100% = " + fmt(a, 1) + ", 50% = " + fmt(b, 1)
+                  + ", 25% = " + fmt(c, 1));
+    }
+
+    {
+        const Dimension autoValue {};
+        const Dimension pixels { Dimension::Unit::pixels, 120.0f };
+        check("CardStyle_AutoUsesAvailableSpaceAndPixelsIgnoreIt",
+              juce::approximatelyEqual(autoValue.resolve(400.0f, 250.0f), 250.0f)
+                  && juce::approximatelyEqual(pixels.resolve(400.0f, 250.0f), 120.0f),
+              "auto -> available (250), pixels -> literal (120)");
+    }
+
+    // ---- Invalid input must not crash or produce nonsense ------------------
+    {
+        const Dimension fallback { Dimension::Unit::pixels, 42.0f };
+        const auto garbage = Dimension::parse(juce::var("banana"), fallback);
+        const auto negative = Dimension::parse(juce::var(-50), fallback);
+        const auto negativePct = Dimension::parse(juce::var("-20%"), fallback);
+        const auto empty = Dimension::parse(juce::var(), fallback);
+
+        check("CardStyle_InvalidDimensionsFallBackInsteadOfBreaking",
+              garbage.unit == Dimension::Unit::pixels && juce::approximatelyEqual(garbage.value, 42.0f)
+                  && juce::approximatelyEqual(negative.value, 42.0f)
+                  && juce::approximatelyEqual(negativePct.value, 42.0f)
+                  && juce::approximatelyEqual(empty.value, 42.0f),
+              "\"banana\", -50, \"-20%\" and a missing value all keep the fallback");
+    }
+
+    // ---- Insets ------------------------------------------------------------
+    {
+        const auto uniform = Insets::parse(juce::var(8), {});
+        auto* object = new juce::DynamicObject();
+        object->setProperty("top", 1);
+        object->setProperty("right", 2);
+        object->setProperty("bottom", 3);
+        object->setProperty("left", 4);
+        const auto perSide = Insets::parse(juce::var(object), {});
+
+        const auto shrunk = perSide.shrink({ 0.0f, 0.0f, 100.0f, 100.0f });
+        check("CardStyle_InsetsParseUniformAndPerSide",
+              juce::approximatelyEqual(uniform.top, 8.0f) && juce::approximatelyEqual(uniform.left, 8.0f)
+                  && juce::approximatelyEqual(perSide.top, 1.0f) && juce::approximatelyEqual(perSide.left, 4.0f)
+                  && juce::approximatelyEqual(shrunk.getX(), 4.0f)
+                  && juce::approximatelyEqual(shrunk.getWidth(), 94.0f),
+              "8 -> all sides; {1,2,3,4} -> per side; shrink moves x to 4 and width to 94");
+    }
+
+    {
+        // Padding larger than the card must collapse the content box, never
+        // invert it - a negative rectangle silently breaks every layout downstream.
+        const Insets huge { 500.0f, 500.0f, 500.0f, 500.0f };
+        const auto collapsed = huge.shrink({ 0.0f, 0.0f, 100.0f, 100.0f });
+        check("CardStyle_OversizedInsetsCollapseRatherThanInvert",
+              collapsed.getWidth() >= 0.0f && collapsed.getHeight() >= 0.0f,
+              "content box " + fmt(collapsed.getWidth(), 1) + " x " + fmt(collapsed.getHeight(), 1));
+    }
+
+    // ---- Bounds resolution -------------------------------------------------
+    // The critical requirement: a percentage height is a percentage of the
+    // parent PANEL's available height, not of the slot, the sibling, or the
+    // card's own bounds.
+    {
+        CardStyle style;
+        style.width = { Dimension::Unit::percent, 50.0f };
+        style.height = { Dimension::Unit::percent, 50.0f };
+
+        const juce::Rectangle<float> panel { 0.0f, 0.0f, 1000.0f, 400.0f };
+        const juce::Rectangle<float> slot { 0.0f, 0.0f, 1000.0f, 400.0f };
+        const auto resolved = style.resolveBounds(slot, panel);
+
+        check("CardStyle_PercentHeightIsPercentOfThePanel",
+              juce::approximatelyEqual(resolved.getHeight(), 200.0f)
+                  && juce::approximatelyEqual(resolved.getWidth(), 500.0f),
+              "panel 1000x400, card 50%/50% -> " + fmt(resolved.getWidth(), 1)
+                  + " x " + fmt(resolved.getHeight(), 1));
+    }
+
+    {
+        // The slot is deliberately smaller than the panel here. A card asking
+        // for 50% of the panel would exceed its slot, so it is clamped - but
+        // the percentage is still measured against the panel, which is what
+        // stops "50%" meaning something different in every column.
+        CardStyle style;
+        style.height = { Dimension::Unit::percent, 50.0f };
+
+        // The slot is deliberately TALLER than the panel, so the two references
+        // give different answers: 50% of the panel is 200, 50% of the slot
+        // would be 400. Sharing a height between them would make this test
+        // unable to tell which one was used.
+        const juce::Rectangle<float> panel { 0.0f, 0.0f, 1000.0f, 400.0f };
+        const juce::Rectangle<float> tallSlot { 0.0f, 0.0f, 200.0f, 800.0f };
+        const auto resolved = style.resolveBounds(tallSlot, panel);
+
+        check("CardStyle_PercentIgnoresTheSlotAsAReference",
+              juce::approximatelyEqual(resolved.getHeight(), 200.0f),
+              "panel 400 / slot 800, card 50% -> " + fmt(resolved.getHeight(), 1)
+                  + " (400 would mean it referenced the slot)");
+    }
+
+    {
+        // Margin is outside the card: it reduces the box before sizing.
+        CardStyle style;
+        style.margin = { 10.0f, 10.0f, 10.0f, 10.0f };
+        const juce::Rectangle<float> panel { 0.0f, 0.0f, 400.0f, 400.0f };
+        const auto resolved = style.resolveBounds({ 0.0f, 0.0f, 400.0f, 400.0f }, panel);
+        check("CardStyle_MarginShrinksTheCardFromItsSlot",
+              juce::approximatelyEqual(resolved.getWidth(), 380.0f)
+                  && juce::approximatelyEqual(resolved.getHeight(), 380.0f),
+              "400px slot with 10px margin -> " + fmt(resolved.getWidth(), 1) + "px card");
+    }
+
+    {
+        // Padding is inside the card: it reduces the content box, not the card.
+        CardStyle style;
+        style.padding = { 12.0f, 12.0f, 12.0f, 12.0f };
+        const juce::Rectangle<float> card { 0.0f, 0.0f, 200.0f, 100.0f };
+        const auto content = style.contentBounds(card);
+        check("CardStyle_PaddingShrinksContentNotTheCard",
+              juce::approximatelyEqual(content.getWidth(), 176.0f)
+                  && juce::approximatelyEqual(content.getX(), 12.0f),
+              "200px card with 12px padding -> content x=" + fmt(content.getX(), 1)
+                  + " w=" + fmt(content.getWidth(), 1));
+    }
+
+    // ---- Parsing a real config --------------------------------------------
+    {
+        const auto config = configFrom(R"({
+            "cards": {
+                "defaults": {
+                    "width": "auto", "height": "auto",
+                    "margin": 4, "padding": 10,
+                    "border":     { "enabled": true, "width": 1.2, "color": "#DCE8FC", "opacity": 0.35, "radius": 8 },
+                    "background": { "color": "#101018", "opacity": 0.10 },
+                    "gloss":      { "margin": 6, "split": 0.5,
+                                    "topFill":    { "color": "#FFFFFF", "opacity": 0.10 },
+                                    "bottomFill": { "color": "#000000", "opacity": 0.06 } },
+                    "title":      { "fontSize": 11, "color": "#DCE8FC", "align": "center", "y": 0, "height": 14 }
+                },
+                "subOsc": { "width": "33%", "border": { "radius": 14 }, "title": { "y": -3, "fontSize": 13 } }
+            }
+        })");
+
+        const auto style = CardStyle::fromConfig(config.get(), "cards.defaults", "cards.subOsc");
+
+        const auto inherited = juce::approximatelyEqual(style.border.width, 1.2f)
+                            && juce::approximatelyEqual(style.gloss.margin, 6.0f)
+                            && juce::approximatelyEqual(style.padding.top, 10.0f);
+        const auto overridden = style.width.unit == Dimension::Unit::percent
+                             && juce::approximatelyEqual(style.width.value, 33.0f)
+                             && juce::approximatelyEqual(style.border.radius, 14.0f)
+                             && juce::approximatelyEqual(style.title.y, -3.0f)
+                             && juce::approximatelyEqual(style.title.fontSize, 13.0f);
+
+        check("CardStyle_OverridesLayerOverDefaults",
+              inherited && overridden,
+              "subOsc overrides width/radius/title, inherits border width, gloss margin and padding");
+    }
+
+    {
+        // A card that declares nothing must still be fully styled.
+        const auto config = configFrom(R"({ "cards": { "defaults": {}, "bare": {} } })");
+        const CardStyle expected;
+        const auto style = CardStyle::fromConfig(config.get(), "cards.defaults", "cards.bare");
+        check("CardStyle_MissingPropertiesUseDefaults",
+              juce::approximatelyEqual(style.border.radius, expected.border.radius)
+                  && juce::approximatelyEqual(style.gloss.split, expected.gloss.split)
+                  && juce::approximatelyEqual(style.title.fontSize, expected.title.fontSize)
+                  && style.width.isAuto(),
+              "an empty card style parses to the built-in defaults");
+    }
+
+    {
+        // Malformed values must not crash and must not produce absurd geometry.
+        const auto config = configFrom(R"({
+            "cards": { "defaults": {}, "broken": {
+                "width": "banana", "height": true,
+                "border": { "width": -5, "opacity": 9, "radius": -3 },
+                "gloss":  { "split": 4 },
+                "title":  { "fontSize": -20, "align": "sideways" }
+            } }
+        })");
+        const auto style = CardStyle::fromConfig(config.get(), "cards.defaults", "cards.broken");
+        const auto sane = style.border.width >= 0.0f
+                       && style.border.opacity >= 0.0f && style.border.opacity <= 1.0f
+                       && style.border.radius >= 0.0f
+                       && style.gloss.split >= 0.0f && style.gloss.split <= 1.0f
+                       && style.title.fontSize > 0.0f;
+        check("CardStyle_InvalidValuesAreClampedNotPropagated",
+              sane,
+              "border width " + fmt(style.border.width, 2) + ", opacity " + fmt(style.border.opacity, 2)
+                  + ", gloss split " + fmt(style.gloss.split, 2)
+                  + ", title size " + fmt(style.title.fontSize, 1));
+    }
+
+    // ---- Every property must change something -------------------------------
+    //
+    // This is the test that matters. The old styling system's failure was
+    // properties that parsed fine and then affected nothing, so proving a key
+    // exists proves nothing. Each property below is changed on its own and the
+    // resolved style or geometry is required to differ - which is the same
+    // thing live-reloading the file does.
+    {
+        const juce::String base = R"({"cards":{"defaults":{
+            "width":"auto","height":"auto","margin":6,"padding":10,
+            "border":{"enabled":true,"width":1.2,"color":"#DCE8FC","opacity":0.35,"radius":8},
+            "background":{"color":"#68C2FF","opacity":0.10},
+            "gloss":{"margin":6,"split":0.5,
+                     "topFill":{"color":"#68C2FF","opacity":0.10},
+                     "bottomFill":{"color":"#000000","opacity":0.06}},
+            "title":{"fontSize":11,"color":"#DCE8FC","align":"center","y":0,"height":14}
+        },"probe":{}}})";
+
+        auto styleFor = [&](const juce::String& probeJson)
+        {
+            juce::String error;
+            auto json = base;
+            json = json.replace("\"probe\":{}", "\"probe\":" + probeJson);
+            auto config = UIConfig::fromJsonText(json, error);
+            return CardStyle::fromConfig(config.get(), "cards.defaults", "cards.probe");
+        };
+
+        const auto baseline = styleFor("{}");
+        // The slot is large enough that the probe values below resolve inside
+        // it. A value that exceeds the slot is capped by design - that case is
+        // covered separately by CardStyle_CardNeverExceedsItsSlot.
+        const juce::Rectangle<float> panel { 0.0f, 0.0f, 600.0f, 400.0f };
+        const juce::Rectangle<float> slot { 0.0f, 0.0f, 560.0f, 380.0f };
+
+        struct Probe
+        {
+            const char* name;
+            const char* json;
+            // Returns something that must differ from the baseline's value.
+            std::function<double(const CardStyle&)> observe;
+        };
+
+        const std::vector<Probe> probes = {
+            { "width",             R"({"width":"50%"})",
+              [&](const CardStyle& s) { return s.resolveBounds(slot, panel).getWidth(); } },
+            { "height",            R"({"height":"25%"})",
+              [&](const CardStyle& s) { return s.resolveBounds(slot, panel).getHeight(); } },
+            { "margin",            R"({"margin":20})",
+              [&](const CardStyle& s) { return s.resolveBounds(slot, panel).getWidth(); } },
+            { "padding",           R"({"padding":24})",
+              [&](const CardStyle& s) { return s.contentBounds({ 0.0f, 0.0f, 200.0f, 100.0f }).getWidth(); } },
+            { "border.enabled",    R"({"border":{"enabled":false}})",
+              [](const CardStyle& s) { return s.border.enabled ? 1.0 : 0.0; } },
+            { "border.width",      R"({"border":{"width":4}})",
+              [](const CardStyle& s) { return static_cast<double>(s.border.width); } },
+            { "border.color",      R"({"border":{"color":"#FF0000"}})",
+              [](const CardStyle& s) { return static_cast<double>(s.border.colour.getARGB()); } },
+            { "border.opacity",    R"({"border":{"opacity":0.9}})",
+              [](const CardStyle& s) { return static_cast<double>(s.border.opacity); } },
+            { "border.radius",     R"({"border":{"radius":20}})",
+              [](const CardStyle& s) { return static_cast<double>(s.border.radius); } },
+            { "background.color",  R"({"background":{"color":"#00FF00"}})",
+              [](const CardStyle& s) { return static_cast<double>(s.background.colour.getARGB()); } },
+            { "background.opacity",R"({"background":{"opacity":0.8}})",
+              [](const CardStyle& s) { return static_cast<double>(s.background.opacity); } },
+            { "gloss.margin",      R"({"gloss":{"margin":18}})",
+              [](const CardStyle& s) { return static_cast<double>(s.gloss.margin); } },
+            { "gloss.split",       R"({"gloss":{"split":0.25}})",
+              [](const CardStyle& s) { return static_cast<double>(s.gloss.split); } },
+            { "gloss.topFill.color",     R"({"gloss":{"topFill":{"color":"#123456"}}})",
+              [](const CardStyle& s) { return static_cast<double>(s.gloss.topFill.colour.getARGB()); } },
+            { "gloss.topFill.opacity",   R"({"gloss":{"topFill":{"opacity":0.5}}})",
+              [](const CardStyle& s) { return static_cast<double>(s.gloss.topFill.opacity); } },
+            { "gloss.bottomFill.color",  R"({"gloss":{"bottomFill":{"color":"#654321"}}})",
+              [](const CardStyle& s) { return static_cast<double>(s.gloss.bottomFill.colour.getARGB()); } },
+            { "gloss.bottomFill.opacity",R"({"gloss":{"bottomFill":{"opacity":0.4}}})",
+              [](const CardStyle& s) { return static_cast<double>(s.gloss.bottomFill.opacity); } },
+            { "title.fontSize",    R"({"title":{"fontSize":22}})",
+              [](const CardStyle& s) { return static_cast<double>(s.title.fontSize); } },
+            { "title.color",       R"({"title":{"color":"#ABCDEF"}})",
+              [](const CardStyle& s) { return static_cast<double>(s.title.colour.getARGB()); } },
+            { "title.align",       R"({"title":{"align":"left"}})",
+              [](const CardStyle& s) { return static_cast<double>(s.title.align.getFlags()); } },
+            { "title.y",           R"({"title":{"y":-6}})",
+              [](const CardStyle& s) { return static_cast<double>(s.title.y); } },
+            { "title.height",      R"({"title":{"height":30}})",
+              [](const CardStyle& s) { return static_cast<double>(s.title.height); } },
+        };
+
+        juce::String inert;
+        int changed = 0;
+        for (const auto& probe : probes)
+        {
+            const auto before = probe.observe(baseline);
+            const auto after = probe.observe(styleFor(probe.json));
+            if (std::abs(after - before) < 1.0e-6)
+            {
+                inert += juce::String(probe.name) + " ";
+            }
+            else
+            {
+                ++changed;
+            }
+        }
+
+        check("CardStyle_EveryPropertyChangesTheResolvedStyle",
+              inert.isEmpty(),
+              inert.isEmpty()
+                  ? (juce::String(changed) + " of " + juce::String(static_cast<int>(probes.size()))
+                     + " properties each change the style or geometry when edited")
+                  : ("these parsed but changed nothing: " + inert));
+    }
+
+    {
+        // The cap is a rule, so it is tested like one. A card asking for more
+        // than its slot gets the slot, and is not allowed to overflow into the
+        // column beside it.
+        CardStyle style;
+        style.width = { Dimension::Unit::percent, 90.0f };
+        const juce::Rectangle<float> panel { 0.0f, 0.0f, 600.0f, 400.0f };
+        const juce::Rectangle<float> narrowSlot { 0.0f, 0.0f, 200.0f, 400.0f };
+        const auto resolved = style.resolveBounds(narrowSlot, panel);
+        check("CardStyle_CardNeverExceedsItsSlot",
+              resolved.getWidth() <= narrowSlot.getWidth() + 0.001f,
+              "90% of a 600px panel is 540px, capped to the 200px slot -> "
+                  + fmt(resolved.getWidth(), 1) + "px");
+    }
+
+    // ---- Bypassed cards go greyscale ---------------------------------------
+    {
+        // Every layer must desaturate, not just the ones that are easy to spot.
+        // A bypassed card whose background or gloss kept its hue still reads as
+        // "the blue one", which defeats the purpose of greying it out.
+        CardStyle style;
+        style.border.colour = juce::Colour::fromRGB(0x4A, 0x99, 0xFF);
+        style.background.colour = juce::Colour::fromRGB(0x4A, 0x99, 0xFF);
+        style.gloss.topFill.colour = juce::Colour::fromRGB(0xFF, 0xC6, 0x6E);
+        style.gloss.bottomFill.colour = juce::Colour::fromRGB(0xEE, 0xB6, 0x78);
+        style.title.colour = juce::Colour::fromRGB(0xDC, 0xE8, 0xFC);
+        style.disabled.saturation = 0.0f;
+        style.disabled.dim = 0.5f;
+
+        const auto off = style.disabledVariant();
+
+        const auto saturations = {
+            off.border.colour.getSaturation(),
+            off.background.colour.getSaturation(),
+            off.gloss.topFill.colour.getSaturation(),
+            off.gloss.bottomFill.colour.getSaturation(),
+            off.title.colour.getSaturation(),
+        };
+        auto allGrey = true;
+        for (const auto value : saturations)
+        {
+            if (value > 0.001f) allGrey = false;
+        }
+
+        const auto dimmed = juce::approximatelyEqual(off.border.opacity, style.border.opacity * 0.5f)
+                         && juce::approximatelyEqual(off.background.opacity, style.background.opacity * 0.5f)
+                         && juce::approximatelyEqual(off.gloss.topFill.opacity, style.gloss.topFill.opacity * 0.5f)
+                         && juce::approximatelyEqual(off.gloss.bottomFill.opacity, style.gloss.bottomFill.opacity * 0.5f)
+                         && off.title.colour.getFloatAlpha() < style.title.colour.getFloatAlpha();
+
+        check("CardStyle_BypassedCardIsGreyscaleOnEveryLayer",
+              allGrey && dimmed,
+              allGrey ? "border, background, both gloss fills and title all desaturate and dim"
+                      : "a layer kept its hue when bypassed");
+    }
+
+    {
+        // The active style must be untouched: disabledVariant returns a copy,
+        // so toggling bypass cannot permanently grey a card out.
+        CardStyle style;
+        style.border.colour = juce::Colour::fromRGB(0x4A, 0x99, 0xFF);
+        const auto before = style.border.colour.getSaturation();
+        const auto off = style.disabledVariant();
+        juce::ignoreUnused(off);
+        check("CardStyle_DisabledVariantDoesNotMutateTheActiveStyle",
+              juce::approximatelyEqual(style.border.colour.getSaturation(), before)
+                  && before > 0.001f,
+              "active border saturation still " + fmt(style.border.colour.getSaturation(), 3));
+    }
+
+    {
+        // Both properties are configurable and both are read.
+        juce::String error;
+        auto config = UIConfig::fromJsonText(R"({"cards":{
+            "defaults":{"disabled":{"saturation":0.0,"dim":0.75}},
+            "partial":{"disabled":{"saturation":0.6,"dim":0.9}}}})", error);
+
+        const auto base = CardStyle::fromConfig(config.get(), "cards.defaults", "cards.defaults");
+        const auto partial = CardStyle::fromConfig(config.get(), "cards.defaults", "cards.partial");
+
+        check("CardStyle_DisabledAppearanceIsConfigurable",
+              juce::approximatelyEqual(base.disabled.saturation, 0.0f)
+                  && juce::approximatelyEqual(base.disabled.dim, 0.75f)
+                  && juce::approximatelyEqual(partial.disabled.saturation, 0.6f)
+                  && juce::approximatelyEqual(partial.disabled.dim, 0.9f),
+              "defaults 0.0/0.75, override 0.6/0.9");
+    }
+
+    // ---- Live reload --------------------------------------------------------
+    //
+    // Regression test for a real bug: components parsed their style in
+    // resized(), and a config reload only called repaint(). The reload stored
+    // the new config and then painted using the style parsed from the old one,
+    // so editing UIConfig.json appeared to do nothing at all.
+    //
+    // The cache re-parses when the config object changes, which is what a
+    // reload always produces, so this is the behaviour that must hold.
+    {
+        auto make = [](const char* radius, const char* fontSize)
+        {
+            juce::String error;
+            const juce::String json = juce::String(R"({"cards":{"defaults":{
+                "border":{"radius":)") + radius + R"(},"title":{"fontSize":)" + fontSize + R"(}},
+                "probe":{}}})";
+            return UIConfig::fromJsonText(json, error);
+        };
+
+        CardStyleCache cache;
+        cache.setKeys("cards.defaults", "cards.probe");
+
+        cache.setConfig(make("8", "11"));
+        const auto firstRadius = cache.style().border.radius;
+        const auto firstFont = cache.style().title.fontSize;
+
+        // The file is edited and reloaded: a NEW UIConfig object arrives.
+        cache.setConfig(make("24", "19"));
+        const auto secondRadius = cache.style().border.radius;
+        const auto secondFont = cache.style().title.fontSize;
+
+        check("CardStyle_ReloadingTheConfigChangesTheStyle",
+              juce::approximatelyEqual(firstRadius, 8.0f)
+                  && juce::approximatelyEqual(secondRadius, 24.0f)
+                  && juce::approximatelyEqual(firstFont, 11.0f)
+                  && juce::approximatelyEqual(secondFont, 19.0f),
+              "radius " + fmt(firstRadius, 1) + " -> " + fmt(secondRadius, 1)
+                  + ", title " + fmt(firstFont, 1) + " -> " + fmt(secondFont, 1));
+    }
+
+    {
+        // Changing which block a card reads must also take effect - this is how
+        // Osc 1/2/3 pick up their own styles from one implementation.
+        juce::String error;
+        auto config = UIConfig::fromJsonText(R"({"cards":{
+            "defaults":{"border":{"radius":8}},
+            "osc1":{"border":{"radius":10}},
+            "osc2":{"border":{"radius":30}}}})", error);
+
+        CardStyleCache cache;
+        cache.setConfig(config);
+        cache.setKeys("cards.defaults", "cards.osc1");
+        const auto one = cache.style().border.radius;
+        cache.setKeys("cards.defaults", "cards.osc2");
+        const auto two = cache.style().border.radius;
+
+        check("CardStyle_ChangingTheStyleKeyReParses",
+              juce::approximatelyEqual(one, 10.0f) && juce::approximatelyEqual(two, 30.0f),
+              "osc1 radius " + fmt(one, 1) + ", osc2 radius " + fmt(two, 1));
+    }
+
+    // ---- Panel -------------------------------------------------------------
+    {
+        const auto config = configFrom(R"({
+            "panels": {
+                "osc": { "height": 300, "overflowY": "auto" },
+                "flt": { "height": 180, "overflowY": "hidden" },
+                "odd": { "overflowY": "sideways" }
+            }
+        })");
+
+        const auto osc = PanelStyle::fromConfig(config.get(), "panels.osc");
+        const auto flt = PanelStyle::fromConfig(config.get(), "panels.flt");
+        const auto odd = PanelStyle::fromConfig(config.get(), "panels.odd");
+
+        check("PanelStyle_HeightAndOverflowParse",
+              osc.height == 300 && osc.scrollVertically
+                  && flt.height == 180 && ! flt.scrollVertically
+                  && ! odd.scrollVertically,
+              "osc 300/auto, flt 180/hidden, and an unrecognised overflow does not enable scrolling");
+    }
+
+    {
+        // Panels are independent: one panel's height must not leak into another.
+        const auto config = configFrom(R"({ "panels": { "a": { "height": 100 }, "b": { "height": 500 } } })");
+        const auto a = PanelStyle::fromConfig(config.get(), "panels.a");
+        const auto b = PanelStyle::fromConfig(config.get(), "panels.b");
+        const auto missing = PanelStyle::fromConfig(config.get(), "panels.nope");
+        check("PanelStyle_PanelsAreIndependent",
+              a.height == 100 && b.height == 500 && missing.height == 0,
+              "a=100, b=500, an undeclared panel keeps the default (editor-allocated)");
+    }
+}
+
 void testDelay()
 {
     suite("DELAY");
@@ -5994,6 +6539,7 @@ int main(int argc, char* argv[])
     if (wants("lfo")) testLfo();
     if (wants("vibe")) testVibe();
     if (wants("reverb")) testReverb();
+    if (wants("cardstyle")) testCardStyle();
     if (wants("delay")) testDelay();
     if (wants("mood")) testMood();
     if (wants("fx")) testEffectIndependence();

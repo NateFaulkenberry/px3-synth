@@ -112,76 +112,16 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
     addAndMakeVisible(*reverbComponent);
 }
 
-// Draws the four FX section cards.
-//
-// These used to be painted by the editor, into this panel's rectangle. Six
-// panels are stacked in that rectangle and swapped by visibility, so decoration
-// painted by the parent is not tied to any child's lifetime: hiding this panel
-// invalidates this panel's bounds, but nothing guarantees the parent's own
-// pixels underneath are redrawn. Owning the drawing here makes a leftover card
-// outline impossible rather than merely unlikely.
-void FxPanel::paintSectionCards(juce::Graphics& g) const
-{
-    struct Card
-    {
-        const juce::Rectangle<int>& area;
-        bool enabled;
-        juce::Colour fill;
-        juce::Colour outline;
-        juce::Colour text;
-        const char* label;
-    };
-
-    const Card cards[] = {
-        { vibeSectionArea,   vibeSectionEnabled,
-          juce::Colour::fromRGBA(104, 194, 255, 35), juce::Colour::fromRGBA(104, 194, 255, 180),
-          juce::Colour::fromRGB(240, 245, 255), "VIBE" },
-        { delaySectionArea,  delaySectionEnabled,
-          juce::Colour::fromRGBA(255, 198, 110, 35), juce::Colour::fromRGBA(255, 198, 110, 180),
-          juce::Colour::fromRGB(250, 244, 224), "DELAY" },
-        { moodSectionArea,   moodSectionEnabled,
-          juce::Colour::fromRGBA(238, 182, 120, 35), juce::Colour::fromRGBA(238, 182, 120, 180),
-          juce::Colour::fromRGB(255, 240, 214), "MOOD" },
-        { reverbSectionArea, reverbSectionEnabled,
-          juce::Colour::fromRGBA(128, 208, 255, 30), juce::Colour::fromRGBA(128, 208, 255, 150),
-          juce::Colour::fromRGB(224, 245, 255), "REVERB" },
-    };
-
-    static const auto disabledFill = juce::Colour::fromRGBA(120, 120, 120, 30);
-    static const auto disabledOutline = juce::Colour::fromRGBA(150, 150, 150, 130);
-    static const auto disabledText = juce::Colour::fromRGB(170, 170, 170);
-
-    g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
-
-    for (const auto& card : cards)
-    {
-        if (card.area.isEmpty())
-        {
-            continue;
-        }
-
-        const auto bounds = card.area.toFloat();
-        g.setColour(card.enabled ? card.fill : disabledFill);
-        g.fillRoundedRectangle(bounds, 10.0f);
-        g.setColour(card.enabled ? card.outline : disabledOutline);
-        g.drawRoundedRectangle(bounds, 10.0f, 1.0f);
-
-        g.setColour(card.enabled ? card.text : disabledText);
-        g.drawText(card.label, card.area.withTrimmedTop(5).withHeight(18),
-                   juce::Justification::centred);
-    }
-}
-
+// The four FX section cards are drawn by the components themselves - see
+// VibeComponent::paint and its siblings. They were briefly drawn here, moved out
+// of the editor; owning them in each component is a step further and is what
+// makes drag-and-drop reordering free, because a card that follows its own
+// component's bounds needs no separate bookkeeping when the order changes.
 void FxPanel::paint(juce::Graphics& g)
 {
     const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.fillAlpha", 0.14f) : 0.14f;
     const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.strokeAlpha", 0.75f) : 0.75f;
     const auto radius = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.cornerRadius", 10.0f) : 10.0f;
-
-    // Cards first, then the panel wash over them - the same order, and so the
-    // same appearance, as when the editor painted the cards and this panel's
-    // translucent background then tinted them.
-    paintSectionCards(g);
 
     const auto area = getLocalBounds().toFloat().reduced(2.0f);
     g.setColour(accent.withAlpha(fillAlpha));
@@ -196,19 +136,6 @@ void FxPanel::setSectionBounds(const juce::Rectangle<int>& vibeBounds,
                                const juce::Rectangle<int>& moodBounds,
                                const juce::Rectangle<int>& reverbBounds)
 {
-    // Kept so paint() can draw the cards behind these components. They arrive
-    // in this panel's coordinates, which is what makes owning the drawing here
-    // straightforward.
-    if (vibeSectionArea != vibeBounds || delaySectionArea != delayBounds
-        || moodSectionArea != moodBounds || reverbSectionArea != reverbBounds)
-    {
-        vibeSectionArea = vibeBounds;
-        delaySectionArea = delayBounds;
-        moodSectionArea = moodBounds;
-        reverbSectionArea = reverbBounds;
-        repaint();
-    }
-
     if (vibeUiComponent != nullptr)
     {
         vibeUiComponent->setBounds(vibeBounds);
@@ -236,16 +163,6 @@ void FxPanel::setActive(bool vibeEnabled,
                         bool moodEnabled,
                         bool reverbEnabled)
 {
-    if (vibeSectionEnabled != vibeEnabled || delaySectionEnabled != delayEnabled
-        || moodSectionEnabled != moodEnabled || reverbSectionEnabled != reverbEnabled)
-    {
-        vibeSectionEnabled = vibeEnabled;
-        delaySectionEnabled = delayEnabled;
-        moodSectionEnabled = moodEnabled;
-        reverbSectionEnabled = reverbEnabled;
-        repaint();
-    }
-
     if (vibeUiComponent != nullptr)
     {
         vibeUiComponent->setActive(vibeEnabled);

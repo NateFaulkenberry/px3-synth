@@ -1,6 +1,5 @@
 #include "LfoComponent.h"
 
-#include "ComponentCardDrawing.h"
 #include "LfoMode.h"
 #include "UIConfig.h"
 
@@ -208,37 +207,35 @@ void LfoComponent::resized()
     amountLabel.setBounds(0, 0, 0, 0);
 }
 
+void LfoComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
+{
+    card.setPanelContentBounds(panelContent);
+    repaint();
+}
+
 void LfoComponent::paint(juce::Graphics& g)
 {
-    auto card = getLocalBounds().reduced(6, 6);
-    constexpr int targetCardWidth = 300;
-    const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
-    card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
-    const auto cardBounds = card.toFloat();
-    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
-    const auto bgTintAlpha = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.bgTintAlpha", 0.10f) : 0.10f;
-    const auto enabledBgTintColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.bgTintColour", effectiveAccent)
-                                                         : effectiveAccent;
-    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.topFillAlpha", 0.10f) : 0.10f;
-    const auto enabledTopFillColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.topFillColour", effectiveAccent)
-                                                          : effectiveAccent;
-    const auto bgTintColour = currentEnabled ? enabledBgTintColour : juce::Colour::fromRGB(112, 112, 112);
-    const auto topFillColour = currentEnabled ? enabledTopFillColour : juce::Colour::fromRGB(136, 136, 136);
+    // The card and its title live here. ModPanel used to draw the title into
+    // this component's bounds, which is the parent-owns-child's-pixels pattern
+    // this refactor removes everywhere it appears.
+    card.setStyleKey(configPrefix.fromLastOccurrenceOf(".", false, false));
+    card.setConfig(uiConfig);
+    card.layout(getLocalBounds());
 
-    px3::ui::ComponentCardStyle cardStyle;
-    cardStyle.borderPadding = 0.0f;
-    cardStyle.cornerRadius = 8.0f;
-    cardStyle.fillInset = 6.0f;
-    cardStyle.backgroundColour = bgTintColour;
-    cardStyle.backgroundAlpha = bgTintAlpha;
-    cardStyle.topFillColour = topFillColour;
-    cardStyle.topFillAlpha = topFillAlpha;
-    cardStyle.topFillHeightRatio = 0.5f;
-    cardStyle.drawOutline = true;
-    cardStyle.outlineColour = juce::Colour::fromRGB(220, 232, 252);
-    cardStyle.outlineAlpha = static_cast<float>(currentEnabled ? 88 : 66) / 255.0f;
-    cardStyle.outlineThickness = 1.2f;
-    px3::ui::drawComponentCard(g, cardBounds, cardStyle);
+    const auto title = configPrefix.fromLastOccurrenceOf(".", false, false)
+                           .toUpperCase().replace("LFO", "LFO ");
+    if (currentEnabled)
+    {
+        card.draw(g, title);
+    }
+    else
+    {
+        card.drawInactive(g, title);
+    }
+
+    const auto cardBounds = card.bounds();
+    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+    juce::ignoreUnused(effectiveAccent);
 
     auto graphLayout = cardBounds.reduced(10.0f, 10.0f);
     graphLayout.removeFromTop(24.0f);

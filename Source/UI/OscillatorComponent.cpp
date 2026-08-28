@@ -1,6 +1,5 @@
 #include "OscillatorComponent.h"
 
-#include "ComponentCardDrawing.h"
 #include "UIConfig.h"
 
 #include <cmath>
@@ -68,6 +67,8 @@ void OscillatorComponent::setAccentColour(juce::Colour accentIn)
 void OscillatorComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+    card.setConfig(uiConfig);
+    resized();
     repaint();
 }
 
@@ -112,11 +113,13 @@ void OscillatorComponent::advanceAnimation(float deltaPhase)
 
 void OscillatorComponent::resized()
 {
-    auto cardArea = getLocalBounds().reduced(6, 6);
-    constexpr int targetCardWidth = 300;
-    const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
-    cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
-    auto area = cardArea.reduced(10, 10);
+    // Per-instance style block, so "cards.osc2" can differ from "cards.osc1"
+    // while both run this same code.
+    card.setStyleKey("osc" + juce::String(instanceIndex));
+    card.setConfig(uiConfig);
+    card.layout(getLocalBounds());
+
+    auto area = card.contentBelowTitle();
 
     auto enabledRow = area.removeFromTop(24);
     enabledLabel.setBounds(enabledRow.removeFromLeft(56));
@@ -163,37 +166,42 @@ void OscillatorComponent::resized()
     layoutMacroControls(area);
 }
 
+void OscillatorComponent::setInstanceIndex(int oneBasedIndex)
+{
+    const auto clamped = juce::jlimit(1, 8, oneBasedIndex);
+    if (instanceIndex != clamped)
+    {
+        instanceIndex = clamped;
+        resized();
+        repaint();
+    }
+}
+
+void OscillatorComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
+{
+    card.setPanelContentBounds(panelContent);
+    resized();
+    repaint();
+}
+
 void OscillatorComponent::paint(juce::Graphics& g)
 {
-    auto card = getLocalBounds().reduced(6, 6);
-    constexpr int targetCardWidth = 300;
-    const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
-    card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
-    const auto cardBounds = card.toFloat();
+    // Same card implementation as Sub Osc, differing only in configuration and
+    // in what the component puts inside it. The title is the component's own
+    // content and is drawn by the card, not by the parent panel.
     const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
-    const auto bgTintAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.oscillator.visual.bgTintAlpha", 0.10f) : 0.10f;
-    const auto bgTintColour = uiConfig != nullptr ? uiConfig->getColour("osc.oscillator.visual.bgTintColour", effectiveAccent)
-                                                  : effectiveAccent;
-    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.oscillator.visual.topFillAlpha", 0.10f) : 0.10f;
-    const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("osc.oscillator.visual.topFillColour", effectiveAccent)
-                                                   : effectiveAccent;
 
-    px3::ui::ComponentCardStyle cardStyle;
-    cardStyle.borderPadding = 0.0f;
-    cardStyle.cornerRadius = 8.0f;
-    cardStyle.fillInset = 6.0f;
-    cardStyle.backgroundColour = bgTintColour;
-    cardStyle.backgroundAlpha = bgTintAlpha;
-    cardStyle.topFillColour = topFillColour;
-    cardStyle.topFillAlpha = topFillAlpha;
-    cardStyle.topFillHeightRatio = 0.5f;
-    cardStyle.drawOutline = true;
-    cardStyle.outlineColour = juce::Colour::fromRGB(220, 232, 252);
-    cardStyle.outlineAlpha = static_cast<float>(currentEnabled ? 88 : 66) / 255.0f;
-    cardStyle.outlineThickness = 1.2f;
-    px3::ui::drawComponentCard(g, cardBounds, cardStyle);
+    const auto title = "OSC " + juce::String(instanceIndex);
+    if (currentEnabled)
+    {
+        card.draw(g, title);
+    }
+    else
+    {
+        card.drawInactive(g, title);
+    }
 
-    auto graphLayout = cardBounds.reduced(10.0f, 10.0f);
+    auto graphLayout = card.content();
     graphLayout.removeFromTop(24.0f);
     graphLayout.removeFromTop(6.0f);
     graphLayout.removeFromTop(24.0f);

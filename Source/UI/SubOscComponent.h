@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "Card.h"
+
 #include <memory>
 
 class UIConfig;
@@ -22,6 +24,9 @@ public:
 
     void setAccentColour(juce::Colour accentIn);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
+    // The panel's content box. Percentage card dimensions are resolved against
+    // this and nothing else, so the component has to be told what it is.
+    void setPanelContentBounds(juce::Rectangle<int> panelContent);
     void refreshFromParameters(bool enabled, int octaveIndex, int waveformIndex);
     void advanceAnimation(float deltaPhase);
 
@@ -42,6 +47,10 @@ private:
     juce::Label& waveformLabel;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
+
+    // Where the card ended up, so resized() and paint() agree without either
+    // one re-deriving the geometry.
+    px3::ui::CardHost card;
 
     bool currentEnabled { false };
     int currentWaveformIndex { 0 };

@@ -1,6 +1,5 @@
 #include "SubOscComponent.h"
 
-#include "ComponentCardDrawing.h"
 #include "SubOscMode.h"
 #include "UIConfig.h"
 
@@ -47,6 +46,8 @@ void SubOscComponent::setAccentColour(juce::Colour accentIn)
 void SubOscComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+    card.setConfig(uiConfig);
+    resized();
     repaint();
 }
 
@@ -100,11 +101,14 @@ void SubOscComponent::advanceAnimation(float deltaPhase)
 
 void SubOscComponent::resized()
 {
-    auto cardArea = getLocalBounds().reduced(6, 6);
-    constexpr int targetCardWidth = 300;
-    const auto cardWidth = juce::jmin(targetCardWidth, cardArea.getWidth());
-    cardArea = cardArea.withSizeKeepingCentre(cardWidth, cardArea.getHeight());
-    auto area = cardArea.reduced(10, 10);
+    // One place decides the card geometry, and paint() reads the same result.
+    // Previously resized() and paint() each re-derived it from a hard-coded
+    // 300px width, so any change had to be made in both or they drifted apart.
+    card.setStyleKey("subOsc");
+    card.setConfig(uiConfig);
+    card.layout(getLocalBounds());
+
+    auto area = card.contentBelowTitle();
 
     auto enabledRow = area.removeFromTop(24);
     enabledLabel.setBounds(enabledRow.removeFromLeft(56));
@@ -148,38 +152,33 @@ void SubOscComponent::resized()
     graphArea.removeFromBottom(10);
 }
 
+void SubOscComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
+{
+    card.setPanelContentBounds(panelContent);
+    resized();
+    repaint();
+}
+
 void SubOscComponent::paint(juce::Graphics& g)
 {
-    auto card = getLocalBounds().reduced(6, 6);
-    constexpr int targetCardWidth = 300;
-    const auto cardWidth = juce::jmin(targetCardWidth, card.getWidth());
-    card = card.withSizeKeepingCentre(cardWidth, card.getHeight());
-    const auto cardBounds = card.toFloat();
-
+    // The card owns its own frame and its own title. The title used to be drawn
+    // by OscPanel using this component's bounds - a parent painting into a
+    // child's area, which is the same ownership mistake that left stale
+    // outlines behind when panels were swapped.
     const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
-    const auto bgTintAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.subOsc.visual.bgTintAlpha", 0.10f) : 0.10f;
-    const auto bgTintColour = uiConfig != nullptr ? uiConfig->getColour("osc.subOsc.visual.bgTintColour", effectiveAccent)
-                                                  : effectiveAccent;
-    const auto topFillAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.subOsc.visual.topFillAlpha", 0.10f) : 0.10f;
-    const auto topFillColour = uiConfig != nullptr ? uiConfig->getColour("osc.subOsc.visual.topFillColour", effectiveAccent)
-                                                   : effectiveAccent;
 
-    px3::ui::ComponentCardStyle cardStyle;
-    cardStyle.borderPadding = 0.0f;
-    cardStyle.cornerRadius = 8.0f;
-    cardStyle.fillInset = 6.0f;
-    cardStyle.backgroundColour = bgTintColour;
-    cardStyle.backgroundAlpha = bgTintAlpha;
-    cardStyle.topFillColour = topFillColour;
-    cardStyle.topFillAlpha = topFillAlpha;
-    cardStyle.topFillHeightRatio = 0.5f;
-    cardStyle.drawOutline = true;
-    cardStyle.outlineColour = juce::Colour::fromRGB(220, 232, 252);
-    cardStyle.outlineAlpha = static_cast<float>(currentEnabled ? 88 : 66) / 255.0f;
-    cardStyle.outlineThickness = 1.2f;
-    px3::ui::drawComponentCard(g, cardBounds, cardStyle);
+    // Enabled state is runtime, not style, so it modulates the parsed style
+    // rather than living in the configuration.
+    if (currentEnabled)
+    {
+        card.draw(g, "SUB OSC");
+    }
+    else
+    {
+        card.drawInactive(g, "SUB OSC");
+    }
 
-    auto graphLayout = cardBounds.reduced(10.0f, 10.0f);
+    auto graphLayout = card.content();
     graphLayout.removeFromTop(24.0f);
     graphLayout.removeFromTop(6.0f);
     graphLayout.removeFromTop(24.0f);

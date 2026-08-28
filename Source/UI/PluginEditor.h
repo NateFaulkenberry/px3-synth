@@ -372,6 +372,11 @@ private:
     KnobLabel midiStatusLabel;
     std::unique_ptr<OscPanel> oscPanel;
     std::unique_ptr<ModPanel> modPanel;
+    // The OSC panel is hosted in a viewport so panels.osc can declare a fixed
+    // height and vertical scrolling. The viewport is always present; when the
+    // panel is not scrolling it simply shows it at full size, which avoids
+    // re-parenting the panel every time the config changes.
+    juce::Viewport oscPanelViewport;
     juce::Viewport modPanelViewport;
     std::unique_ptr<AmpPanel> ampPanel;
     std::unique_ptr<FltPanel> fltPanel;

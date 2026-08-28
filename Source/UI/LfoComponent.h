@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "Card.h"
+
 #include <memory>
 
 class UIConfig;
@@ -29,6 +31,8 @@ public:
 
     void setAccentColour(juce::Colour accentIn);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
+    // The parent panel content box: reference for percentage dimensions.
+    void setPanelContentBounds(juce::Rectangle<int> panelContent);
     void refreshFromParameters(bool enabled, float rateHz, float amount, int waveformIndex);
     void advanceAnimation(float deltaPhase);
 
@@ -68,4 +72,5 @@ private:
     juce::Colour baseRateValueTextColour;
     juce::Colour baseAmountValueTextColour;
     juce::String configPrefix;
+    px3::ui::CardHost card;
 };
