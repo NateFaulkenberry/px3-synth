@@ -1,6 +1,9 @@
 #pragma once
 
 #include "../DSP/FxChain.h"
+#include "FxCardComponent.h"
+
+#include <map>
 
 #include <JuceHeader.h>
 
@@ -71,6 +74,12 @@ public:
     // and hands the same order to the signal-flow strip, so the two views
     // cannot disagree - they are the same list read twice.
     void setChainOrder(const px3::FxOrder& order);
+
+    // Cards that own their own controls are handed over whole, rather than
+    // having every knob passed through this constructor. The panel parents them
+    // into the scrolling grid and places them by chain order like the rest.
+    void addCard(int sectionId, std::unique_ptr<px3::ui::FxCardComponent> card);
+    px3::ui::FxCardComponent* cardForSection(int sectionId) const;
     void setSectionActive(int sectionId, bool active);
 
     // Raised when the user drags the strip into a new order. The panel does not
@@ -106,6 +115,7 @@ private:
     juce::Viewport gridViewport;
     juce::Component gridContent;
     px3::FxOrder chainOrder { px3::kDefaultFxOrder };
-    std::array<bool, 4> sectionActive { { true, true, true, true } };
+    std::map<int, std::unique_ptr<px3::ui::FxCardComponent>> ownedCards;
+    std::array<bool, px3::kFxStageCount> sectionActive { {} };
     std::shared_ptr<const UIConfig> uiConfig;
 };

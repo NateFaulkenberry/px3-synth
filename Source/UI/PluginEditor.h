@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../DSP/FxChain.h"
+#include "FxCardComponent.h"
 
 #include <JuceHeader.h>
 
@@ -114,6 +115,9 @@ private:
     void refreshOscillatorModeUI();
     void refreshGranularModeUI();
     void refreshFxBypassUI();
+    // Builds an FX card that owns its controls, attaches every parameter it
+    // declares, and hands it to the panel. One per new-generation FX.
+    void buildDoomCard();
     void refreshLfoAssignmentUI();
     void refreshEnvelopeAssignmentUI();
     void refreshLfoFrequencyLabel();
@@ -409,6 +413,9 @@ private:
     std::unique_ptr<AmpPanel> ampPanel;
     std::unique_ptr<FltPanel> fltPanel;
     std::unique_ptr<FxPanel> fxPanel;
+    // Not owned here - the panel takes them. Kept as raw pointers so the
+    // refresh passes can reach their controls.
+    px3::ui::FxCardComponent* doomCard { nullptr };
     std::unique_ptr<MixPanel> mixPanel;
     std::unique_ptr<TopMenuBar> topMenuBar;
 

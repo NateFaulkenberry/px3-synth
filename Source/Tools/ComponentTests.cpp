@@ -20,6 +20,7 @@
 #include "../UI/CardInner.h"
 #include "../DSP/Doom.h"
 #include "../DSP/FxChain.h"
+#include "../UI/FxCardComponent.h"
 #include "../UI/FxChainLayout.h"
 #include "../UI/FxSignalFlow.h"
 #include "../UI/UIConfigManager.h"
@@ -8880,6 +8881,97 @@ void testDoom()
               maxDeviation < 1.0e-5f && worstStep < 0.2f,
               "deviation from dry " + juce::String(maxDeviation, 8) + ", worst step "
                   + juce::String(worstStep, 5));
+    }
+
+    // ---- the card ----------------------------------------------------------
+    {
+        // The card owns 24 controls and attaches every one. A typo in an id
+        // would leave a control silently unattached, which is invisible until
+        // someone turns it and nothing happens - so it is checked here.
+        px3::ui::FxCardComponent card("doom", "DOOM");
+        card.addKnobRow({ { "a", "A", "" }, { "b", "B", "" } });
+        card.addChoiceRow({ { "c", "C", "", juce::StringArray { "X", "Y" } } });
+        card.addToggleRow({ { "d", "ON", "OFF", "" } });
+        card.addFeatureKnobRow({ "e", "E", "" });
+        card.setBounds(0, 0, 300, 400);
+        card.resized();
+
+        check("FxCard_LooksUpEveryControlItDeclares",
+              card.knob("a") != nullptr && card.knob("b") != nullptr
+                  && card.choice("c") != nullptr && card.toggle("d") != nullptr
+                  && card.knob("e") != nullptr,
+              "");
+
+        check("FxCard_ReturnsNullForAnIdItDoesNotHave",
+              card.knob("nope") == nullptr && card.choice("nope") == nullptr
+                  && card.toggle("nope") == nullptr,
+              "an unattached control must be a null here, not a silent no-op");
+
+        check("FxCard_LaysEveryControlInsideItself",
+              card.getLocalBounds().contains(card.knob("a")->getBounds())
+                  && card.getLocalBounds().contains(card.choice("c")->getBounds())
+                  && card.getLocalBounds().contains(card.toggle("d")->getBounds())
+                  && card.getLocalBounds().contains(card.knob("e")->getBounds()),
+              "");
+
+        // The feature knob is the macro the rest of the card feeds; it has to
+        // actually be drawn larger than the ordinary ones.
+        check("FxCard_FeatureKnobIsLargerThanTheRest",
+              card.knob("e")->getWidth() > card.knob("a")->getWidth(),
+              "feature " + juce::String(card.knob("e")->getWidth()) + "px, ordinary "
+                  + juce::String(card.knob("a")->getWidth()) + "px");
+
+        card.setActive(false);
+        check("FxCard_BypassDisablesEveryControl",
+              ! card.knob("a")->isEnabled() && ! card.choice("c")->isEnabled()
+                  && ! card.toggle("d")->isEnabled(),
+              "");
+    }
+
+    {
+        // Styling comes from UIConfig, so a card block is real configuration
+        // rather than a set of properties nothing reads.
+        juce::String error;
+        const auto config = UIConfig::fromJsonText(R"({"cards":{"doom":{"controls":{
+            "knobSize":40,"featureKnobSize":120,"choiceWidth":50,"toggleWidth":60}}}})",
+                                                   error);
+
+        px3::ui::FxCardComponent styled("doom", "DOOM");
+        styled.addKnobRow({ { "a", "A", "" } });
+        styled.addFeatureKnobRow({ "b", "B", "" });
+        styled.setUIConfig(config);
+        styled.setBounds(0, 0, 400, 400);
+        styled.resized();
+
+        px3::ui::FxCardComponent plain("doom", "DOOM");
+        plain.addKnobRow({ { "a", "A", "" } });
+        plain.addFeatureKnobRow({ "b", "B", "" });
+        plain.setBounds(0, 0, 400, 400);
+        plain.resized();
+
+        check("FxCard_ControlSizesComeFromUIConfig",
+              styled.knob("a")->getWidth() != plain.knob("a")->getWidth()
+                  && styled.knob("b")->getWidth() != plain.knob("b")->getWidth(),
+              "configured " + juce::String(styled.knob("a")->getWidth()) + "px vs default "
+                  + juce::String(plain.knob("a")->getWidth()) + "px");
+    }
+
+    {
+        // The shipping config has to define DOOM's card, or it falls back to
+        // defaults and looks like nothing else in the plugin.
+        UIConfigManager manager;
+        manager.setConfigFile(juce::File::getCurrentWorkingDirectory()
+                                  .getChildFile("Source/UI/UIConfig.json"));
+        manager.loadInitial();
+        const auto config = manager.getConfig();
+
+        check("Doom_ShippingConfigStylesTheCard",
+              config != nullptr
+                  && config->getColour("cards.doom.border.color", juce::Colours::black)
+                         != juce::Colours::black
+                  && config->getFloat("cards.doom.controls.knobSize", -1.0f) > 0.0f
+                  && config->getInt("cards.doom.cardInner.padding", -1) >= 0,
+              "");
     }
 
     // ---- integration: state, presets, ordering -----------------------------

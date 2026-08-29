@@ -1,0 +1,465 @@
+#include "FxCardComponent.h"
+
+#include "UIConfig.h"
+
+#include <algorithm>
+
+namespace px3::ui
+{
+namespace
+{
+// Defaults only. Every one of these is overridable per card through
+// cards.<key>.controls in UIConfig.json - see setUIConfig.
+constexpr float kDefaultKnobCell = 62.0f;
+constexpr float kDefaultFeatureKnobCell = 108.0f;
+constexpr float kDefaultChoiceCell = 92.0f;
+constexpr float kDefaultToggleCell = 96.0f;
+constexpr int kDefaultLabelHeight = 14;
+constexpr int kDefaultReadoutHeight = 16;
+constexpr int kDefaultControlHeight = 22;
+} // namespace
+
+FxCardComponent::FxCardComponent(juce::String styleKeyIn, juce::String titleIn)
+    : styleKey(std::move(styleKeyIn)), title(std::move(titleIn))
+{
+    // The card background toggles this section, so the pointer says it is
+    // clickable. Child controls carry their own cursors.
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+
+    bypass.setSectionName(title);
+    addAndMakeVisible(bypass);
+}
+
+FxCardComponent::~FxCardComponent()
+{
+    // The knobs' look and feel belongs to the editor and outlives nothing here,
+    // but JUCE requires it be cleared before the LookAndFeel is destroyed.
+    for (auto& entry : knobs)
+    {
+        entry.knob->setLookAndFeel(nullptr);
+    }
+}
+
+// ============================================================================
+// declaration
+// ============================================================================
+
+void FxCardComponent::addToggleRow(std::vector<ToggleSpec> specs)
+{
+    Row row { RowKind::toggles, {} };
+
+    for (auto& spec : specs)
+    {
+        auto button = std::make_unique<ToggleChipButton>();
+        button->setStateLabels(spec.onText, spec.offText);
+        button->setButtonText(spec.offText);
+        button->setTooltip(spec.tooltip);
+        button->setMouseCursor(juce::MouseCursor::PointingHandCursor);
+        addAndMakeVisible(*button);
+
+        row.ids.push_back(spec.id);
+        toggles.push_back({ spec.id, std::move(button) });
+    }
+
+    rows.push_back(std::move(row));
+}
+
+void FxCardComponent::addChoiceRow(std::vector<ChoiceSpec> specs)
+{
+    Row row { RowKind::choices, {} };
+
+    for (auto& spec : specs)
+    {
+        auto box = std::make_unique<juce::ComboBox>();
+        for (int i = 0; i < spec.choices.size(); ++i)
+        {
+            box->addItem(spec.choices[i], i + 1);
+        }
+        box->setSelectedItemIndex(0, juce::dontSendNotification);
+        box->setTooltip(spec.tooltip);
+        addAndMakeVisible(*box);
+
+        auto label = std::make_unique<ChipLabel>();
+        label->setText(spec.label, juce::dontSendNotification);
+        label->setJustificationType(juce::Justification::centred);
+        label->setFont(juce::FontOptions(11.5f));
+        label->setTooltip(spec.tooltip);
+        addAndMakeVisible(*label);
+
+        row.ids.push_back(spec.id);
+        choices.push_back({ spec.id, std::move(box), std::move(label) });
+    }
+
+    rows.push_back(std::move(row));
+}
+
+void FxCardComponent::addKnobRow(std::vector<KnobSpec> specs)
+{
+    Row row { RowKind::knobs, {} };
+
+    for (auto& spec : specs)
+    {
+        auto knob = std::make_unique<juce::Slider>();
+        knob->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        knob->setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        knob->setTooltip(spec.tooltip);
+        addAndMakeVisible(*knob);
+
+        auto label = std::make_unique<ChipLabel>();
+        label->setText(spec.label, juce::dontSendNotification);
+        label->setJustificationType(juce::Justification::centred);
+        label->setFont(juce::FontOptions(11.5f));
+        label->setInterceptsMouseClicks(true, false);
+        label->setTooltip(spec.tooltip);
+        addAndMakeVisible(*label);
+
+        row.ids.push_back(spec.id);
+        knobs.push_back({ spec.id, std::move(knob), std::move(label) });
+    }
+
+    rows.push_back(std::move(row));
+}
+
+void FxCardComponent::addFeatureKnobRow(KnobSpec spec)
+{
+    addKnobRow({ std::move(spec) });
+    rows.back().kind = RowKind::featureKnob;
+}
+
+// ============================================================================
+// lookup
+// ============================================================================
+
+juce::Slider* FxCardComponent::knob(const juce::String& id) const
+{
+    const auto it = std::find_if(knobs.begin(), knobs.end(),
+                                 [&id](const KnobEntry& e) { return e.id == id; });
+    return it != knobs.end() ? it->knob.get() : nullptr;
+}
+
+juce::Label* FxCardComponent::knobLabel(const juce::String& id) const
+{
+    const auto it = std::find_if(knobs.begin(), knobs.end(),
+                                 [&id](const KnobEntry& e) { return e.id == id; });
+    return it != knobs.end() ? it->label.get() : nullptr;
+}
+
+juce::ComboBox* FxCardComponent::choice(const juce::String& id) const
+{
+    const auto it = std::find_if(choices.begin(), choices.end(),
+                                 [&id](const ChoiceEntry& e) { return e.id == id; });
+    return it != choices.end() ? it->box.get() : nullptr;
+}
+
+juce::ToggleButton* FxCardComponent::toggle(const juce::String& id) const
+{
+    const auto it = std::find_if(toggles.begin(), toggles.end(),
+                                 [&id](const ToggleEntry& e) { return e.id == id; });
+    return it != toggles.end() ? it->button.get() : nullptr;
+}
+
+std::vector<juce::Slider*> FxCardComponent::allKnobs() const
+{
+    std::vector<juce::Slider*> result;
+    result.reserve(knobs.size());
+    for (const auto& entry : knobs)
+    {
+        result.push_back(entry.knob.get());
+    }
+    return result;
+}
+
+std::vector<juce::Label*> FxCardComponent::allKnobLabels() const
+{
+    std::vector<juce::Label*> result;
+    result.reserve(knobs.size());
+    for (const auto& entry : knobs)
+    {
+        result.push_back(entry.label.get());
+    }
+    return result;
+}
+
+std::vector<juce::ComboBox*> FxCardComponent::allChoices() const
+{
+    std::vector<juce::ComboBox*> result;
+    result.reserve(choices.size());
+    for (const auto& entry : choices)
+    {
+        result.push_back(entry.box.get());
+    }
+    return result;
+}
+
+// ============================================================================
+// state
+// ============================================================================
+
+void FxCardComponent::setAccentColour(juce::Colour colour)
+{
+    accent = colour;
+    repaint();
+}
+
+void FxCardComponent::setActive(bool enabled)
+{
+    isActive = enabled;
+
+    for (auto& entry : knobs)
+    {
+        entry.knob->setEnabled(enabled);
+        // The same grey-out every other bypassed card uses, so a disabled DOOM
+        // knob looks like a disabled Mood knob.
+        entry.knob->getProperties().set("psychedelicBypassGray", ! enabled);
+    }
+    for (auto& entry : choices)
+    {
+        entry.box->setEnabled(enabled);
+    }
+    for (auto& entry : toggles)
+    {
+        entry.button->setEnabled(enabled);
+    }
+
+    repaint();
+}
+
+void FxCardComponent::setUIConfig(std::shared_ptr<const UIConfig> config)
+{
+    uiConfig = std::move(config);
+
+    if (uiConfig != nullptr)
+    {
+        // Dropdowns take the same background as the top menu's active buttons,
+        // which is where every other box in the plugin gets it.
+        const auto boxBackground = uiConfig->getColour("cards." + styleKey + ".controls.boxBackground",
+                                                       juce::Colour::fromRGBA(34, 34, 34, 210));
+        const auto boxText = uiConfig->getColour("cards." + styleKey + ".controls.boxText",
+                                                 juce::Colour::fromRGB(232, 232, 232));
+        const auto boxOutline = uiConfig->getColour("cards." + styleKey + ".controls.boxOutline",
+                                                    juce::Colour::fromRGBA(255, 255, 255, 105));
+        const auto labelColour = uiConfig->getColour("cards." + styleKey + ".controls.labelColour",
+                                                     juce::Colour::fromRGB(232, 232, 232));
+        const auto labelFont = uiConfig->getFloat("cards." + styleKey + ".controls.labelFontSize", 11.5f);
+
+        for (auto& entry : choices)
+        {
+            entry.box->setColour(juce::ComboBox::backgroundColourId, boxBackground);
+            entry.box->setColour(juce::ComboBox::textColourId, boxText);
+            entry.box->setColour(juce::ComboBox::outlineColourId, boxOutline);
+            entry.label->setColour(juce::Label::textColourId, labelColour);
+            entry.label->setFont(juce::FontOptions(labelFont));
+        }
+        for (auto& entry : knobs)
+        {
+            entry.label->setColour(juce::Label::textColourId, labelColour);
+            entry.label->setFont(juce::FontOptions(labelFont));
+        }
+    }
+
+    // cardInner parses its rows in resized(), so a live config reload has to
+    // redo the layout as well as the paint.
+    resized();
+    repaint();
+}
+
+// ============================================================================
+// layout
+// ============================================================================
+
+void FxCardComponent::layoutToggleRow(int rowIndex, const Row& row)
+{
+    auto flex = inner.rowFlex(rowIndex);
+    const auto gap = inner.rowGap(rowIndex);
+    const auto content = inner.rowContent(rowIndex);
+    const auto rowWidth = static_cast<float>(juce::jmax(1, content.getWidth()));
+
+    const auto cellWidth = uiConfig != nullptr
+                               ? uiConfig->getFloat("cards." + styleKey + ".controls.toggleWidth", kDefaultToggleCell)
+                               : kDefaultToggleCell;
+    const auto controlHeight = uiConfig != nullptr
+                                   ? uiConfig->getInt("cards." + styleKey + ".controls.toggleHeight", kDefaultControlHeight)
+                                   : kDefaultControlHeight;
+
+    const std::vector<float> widths(row.ids.size(), cellWidth);
+    const auto gapWidth = gap.left + gap.right;
+    const auto lines = wrappedLineCount(widths, gapWidth, rowWidth);
+    const auto cellHeight = juce::jmax(1.0f,
+                                       static_cast<float>(content.getHeight()) / static_cast<float>(lines)
+                                           - (gap.top + gap.bottom));
+
+    for (const auto width : widths)
+    {
+        flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gap));
+    }
+    flex.performLayout(content.toFloat());
+
+    for (std::size_t i = 0; i < row.ids.size(); ++i)
+    {
+        auto* button = toggle(row.ids[i]);
+        if (button == nullptr)
+        {
+            continue;
+        }
+        // The chip draws its own caption, so there is nothing beside it to keep
+        // in step with it.
+        layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
+                              { nullptr, button, nullptr, ControlShape::stretch, 0, 0, controlHeight },
+                              inner.rowControl(rowIndex));
+    }
+}
+
+void FxCardComponent::layoutChoiceRow(int rowIndex, const Row& row)
+{
+    auto flex = inner.rowFlex(rowIndex);
+    const auto gap = inner.rowGap(rowIndex);
+    const auto content = inner.rowContent(rowIndex);
+    const auto rowWidth = static_cast<float>(juce::jmax(1, content.getWidth()));
+
+    const auto cellWidth = uiConfig != nullptr
+                               ? uiConfig->getFloat("cards." + styleKey + ".controls.choiceWidth", kDefaultChoiceCell)
+                               : kDefaultChoiceCell;
+    const auto labelHeight = uiConfig != nullptr
+                                 ? uiConfig->getInt("cards." + styleKey + ".controls.labelHeight", kDefaultLabelHeight)
+                                 : kDefaultLabelHeight;
+    const auto controlHeight = uiConfig != nullptr
+                                   ? uiConfig->getInt("cards." + styleKey + ".controls.choiceHeight", kDefaultControlHeight)
+                                   : kDefaultControlHeight;
+
+    const std::vector<float> widths(row.ids.size(), cellWidth);
+    const auto gapWidth = gap.left + gap.right;
+    const auto lines = wrappedLineCount(widths, gapWidth, rowWidth);
+    const auto cellHeight = juce::jmax(1.0f,
+                                       static_cast<float>(content.getHeight()) / static_cast<float>(lines)
+                                           - (gap.top + gap.bottom));
+
+    for (const auto width : widths)
+    {
+        flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gap));
+    }
+    flex.performLayout(content.toFloat());
+
+    for (std::size_t i = 0; i < row.ids.size(); ++i)
+    {
+        const auto it = std::find_if(choices.begin(), choices.end(),
+                                     [&row, i](const ChoiceEntry& e) { return e.id == row.ids[i]; });
+        if (it == choices.end())
+        {
+            continue;
+        }
+        layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
+                              { it->label.get(), it->box.get(), nullptr,
+                                ControlShape::stretch, labelHeight, 0, controlHeight },
+                              inner.rowControl(rowIndex));
+    }
+}
+
+void FxCardComponent::layoutKnobRow(int rowIndex, const Row& row, bool feature)
+{
+    auto flex = inner.rowFlex(rowIndex);
+    const auto gap = inner.rowGap(rowIndex);
+    const auto content = inner.rowContent(rowIndex);
+    const auto rowWidth = static_cast<float>(juce::jmax(1, content.getWidth()));
+
+    const auto key = feature ? ".controls.featureKnobSize" : ".controls.knobSize";
+    const auto fallback = feature ? kDefaultFeatureKnobCell : kDefaultKnobCell;
+    const auto cellWidth = uiConfig != nullptr
+                               ? uiConfig->getFloat("cards." + styleKey + key, fallback)
+                               : fallback;
+    const auto readoutHeight = uiConfig != nullptr
+                                   ? uiConfig->getInt("cards." + styleKey + ".controls.readoutHeight", kDefaultReadoutHeight)
+                                   : kDefaultReadoutHeight;
+
+    const std::vector<float> widths(row.ids.size(), cellWidth);
+    const auto gapWidth = gap.left + gap.right;
+    const auto lines = wrappedLineCount(widths, gapWidth, rowWidth);
+    const auto cellHeight = juce::jmax(1.0f,
+                                       static_cast<float>(content.getHeight()) / static_cast<float>(lines)
+                                           - (gap.top + gap.bottom));
+
+    for (const auto width : widths)
+    {
+        flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gap));
+    }
+    flex.performLayout(content.toFloat());
+
+    for (std::size_t i = 0; i < row.ids.size(); ++i)
+    {
+        const auto it = std::find_if(knobs.begin(), knobs.end(),
+                                     [&row, i](const KnobEntry& e) { return e.id == row.ids[i]; });
+        if (it == knobs.end())
+        {
+            continue;
+        }
+        // Square, so a knob stays a circle. Only dropdowns stretch.
+        layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
+                              { nullptr, it->knob.get(), it->label.get(),
+                                ControlShape::square, 0, readoutHeight, static_cast<int>(cellWidth) },
+                              inner.rowControl(rowIndex));
+    }
+}
+
+void FxCardComponent::resized()
+{
+    card.setStyleKey(styleKey);
+    card.setConfig(uiConfig);
+    card.layout(getLocalBounds());
+
+    // The power glyph and every chip light in this card's own identity colour,
+    // so an engaged control reads as part of this card.
+    bypass.setAccentColour(card.style().border.colour);
+    for (auto& entry : toggles)
+    {
+        entry.button->setAccentColour(card.style().border.colour);
+    }
+
+    inner.setStylePath("cards." + styleKey + ".cardInner");
+    inner.setConfig(uiConfig);
+    inner.setRowCount(static_cast<int>(rows.size()));
+    inner.layout(card.contentBelowTitle());
+
+    // Pinned to cardInner's corner, outside the flex flow, so it stays put no
+    // matter what the first row contains.
+    bypass.setBounds(inner.powerBounds());
+
+    for (std::size_t i = 0; i < rows.size(); ++i)
+    {
+        const auto index = static_cast<int>(i);
+        switch (rows[i].kind)
+        {
+            case RowKind::toggles:     layoutToggleRow(index, rows[i]); break;
+            case RowKind::choices:     layoutChoiceRow(index, rows[i]); break;
+            case RowKind::featureKnob: layoutKnobRow(index, rows[i], true); break;
+            case RowKind::knobs:       layoutKnobRow(index, rows[i], false); break;
+        }
+    }
+}
+
+void FxCardComponent::paint(juce::Graphics& g)
+{
+    card.setStyleKey(styleKey);
+    card.setConfig(uiConfig);
+    card.layout(getLocalBounds());
+
+    if (isActive)
+    {
+        card.draw(g, title);
+    }
+    else
+    {
+        card.drawInactive(g, title);
+    }
+}
+
+void FxCardComponent::mouseUp(const juce::MouseEvent& event)
+{
+    // Clicking the card's background toggles its power, the same as clicking
+    // the button. No tooltip: the whole card is not a control, and a card that
+    // explained itself on hover would be noise.
+    if (isCardBackgroundToggleClick(event))
+    {
+        bypass.setToggleState(! bypass.getToggleState(), juce::sendNotification);
+    }
+}
+
+} // namespace px3::ui

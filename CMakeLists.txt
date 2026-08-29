@@ -102,6 +102,7 @@ set(PX3_SHARED_SOURCES
         Source/UI/BypassButton.cpp
         Source/UI/ToggleChipButton.cpp
         Source/UI/CardInner.cpp
+        Source/UI/FxCardComponent.cpp
         Source/UI/MoodComponent.cpp
         Source/UI/EnvelopeComponent.cpp
         Source/UI/FilterComponent.cpp

@@ -1263,6 +1263,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     addAndMakeVisible(*fltPanel);
     addAndMakeVisible(*fxPanel);
     addAndMakeVisible(*mixPanel);
+    buildDoomCard();
+
     fxPanel->onChainOrderChanged = [this](const px3::FxOrder& order)
     {
         applyFxChainOrder(order, "USER", "USER_DRAG_END", -1, -1);
@@ -3114,6 +3116,129 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
     {
         fxPanel->setActive(vibeEnabled, delayEnabled, granularModeSelectable, moodEnabled, reverbEnabled);
     }
+
+    // Cards that own their controls grey themselves out; the panel is told
+    // separately so the signal-flow node dims with them.
+    const auto doomEnabled = audioProcessor.getDoomEnabledParam().get();
+    if (doomCard != nullptr)
+    {
+        doomCard->bypassButton().setToggleState(doomEnabled, juce::dontSendNotification);
+        doomCard->setActive(doomEnabled);
+    }
+    if (fxPanel != nullptr)
+    {
+        fxPanel->setSectionActive(px3::fxStageDoom, doomEnabled);
+    }
+}
+
+void PX3SynthAudioProcessorEditor::buildDoomCard()
+{
+    auto card = std::make_unique<px3::ui::FxCardComponent>("doom", "DOOM");
+
+    // Two channels, so two rows of state before the knobs: which channel is
+    // running, and the three global switches.
+    card->addToggleRow({ { "loopActive", "LOOPER ON", "LOOPER LISTENING",
+                           "Play the captured micro-loop, or keep listening" },
+                         { "wetActive", "WET ON", "WET OFF", "Engage the wet channel" },
+                         { "freeze", "FREEZE ON", "FREEZE OFF",
+                           "Freeze the wet channel and repeat it" } });
+
+    card->addToggleRow({ { "loopHalf", "HALF ON", "HALF OFF", "Halve the micro-loop length" },
+                         { "clockSmooth", "SMOOTH ON", "SMOOTH OFF",
+                           "Sweep the clock continuously instead of in harmonised steps" },
+                         { "crossSource", "CROSS: CHANNEL", "CROSS: INPUT",
+                           "Modulate from your playing, or let each channel modulate the other" } });
+
+    card->addChoiceRow({ { "loopMode", "LOOP", "Micro-looper mode",
+                           audioProcessor.getDoomLoopModeParam().choices },
+                         { "wetMode", "WET", "Wet channel mode",
+                           audioProcessor.getDoomWetModeParam().choices },
+                         { "routing", "ROUTE", "What the wet channel processes",
+                           audioProcessor.getDoomRoutingParam().choices } });
+
+    card->addKnobRow({ { "clock", "CLOCK", "Engine sample rate: loop length, pitch and wet time at once" },
+                       { "loopLength", "LENGTH", "Micro-looper length (mode dependent)" },
+                       { "loopModify", "MODIFY", "Micro-looper character (mode dependent)" },
+                       { "wetTime", "TIME", "Wet channel time (mode dependent)" },
+                       { "wetModify", "SHAPE", "Wet channel character (mode dependent)" },
+                       { "balance", "BALANCE", "Micro-looper against wet channel" } });
+
+    card->addKnobRow({ { "cross", "CROSS", "Signal-dependent interference in pitch and loudness" },
+                       { "glue", "GLUE", "End of chain saturator, then destroyer" },
+                       { "eq", "EQ", "Tilt: left removes highs, right removes lows" },
+                       { "overdub", "OVERDUB", "Record onto the micro-loop" },
+                       { "fade", "FADE", "How much of the loop survives each lap while overdubbing" },
+                       { "blend", "BLEND", "Clean micro-loop blended past the wet channel" },
+                       { "spread", "SPREAD", "Stereo processing depth" } });
+
+    card->addFeatureKnobRow({ "mix", "MIX", "Dry against DOOM" });
+
+    // Attaching by id rather than by reference: the card owns the controls, and
+    // a typo here is a null dereference at startup rather than a control that
+    // silently does nothing.
+    struct KnobAttachment { const char* id; juce::AudioParameterFloat* parameter; };
+    const std::array<KnobAttachment, 14> knobAttachments { {
+        { "mix", &audioProcessor.getDoomMixParam() },
+        { "clock", &audioProcessor.getDoomClockParam() },
+        { "loopLength", &audioProcessor.getDoomLoopLengthParam() },
+        { "loopModify", &audioProcessor.getDoomLoopModifyParam() },
+        { "overdub", &audioProcessor.getDoomOverdubParam() },
+        { "fade", &audioProcessor.getDoomFadeParam() },
+        { "wetTime", &audioProcessor.getDoomWetTimeParam() },
+        { "wetModify", &audioProcessor.getDoomWetModifyParam() },
+        { "cross", &audioProcessor.getDoomCrossParam() },
+        { "glue", &audioProcessor.getDoomGlueParam() },
+        { "eq", &audioProcessor.getDoomEqParam() },
+        { "balance", &audioProcessor.getDoomBalanceParam() },
+        { "blend", &audioProcessor.getDoomBlendParam() },
+        { "spread", &audioProcessor.getDoomSpreadParam() },
+    } };
+
+    for (const auto& attachment : knobAttachments)
+    {
+        auto* slider = card->knob(attachment.id);
+        jassert(slider != nullptr);
+        const auto& range = attachment.parameter->getNormalisableRange();
+        slider->setRange(range.start, range.end);
+        slider->setLookAndFeel(&knobLookAndFeel);
+        attachSlider(*attachment.parameter, *slider);
+    }
+
+    struct ChoiceAttachment { const char* id; juce::RangedAudioParameter* parameter; };
+    const std::array<ChoiceAttachment, 3> choiceAttachments { {
+        { "loopMode", &audioProcessor.getDoomLoopModeParam() },
+        { "wetMode", &audioProcessor.getDoomWetModeParam() },
+        { "routing", &audioProcessor.getDoomRoutingParam() },
+    } };
+
+    for (const auto& attachment : choiceAttachments)
+    {
+        auto* box = card->choice(attachment.id);
+        jassert(box != nullptr);
+        attachComboBox(*attachment.parameter, *box);
+    }
+
+    struct ToggleAttachment { const char* id; juce::RangedAudioParameter* parameter; };
+    const std::array<ToggleAttachment, 6> toggleAttachments { {
+        { "loopActive", &audioProcessor.getDoomLoopActiveParam() },
+        { "wetActive", &audioProcessor.getDoomWetActiveParam() },
+        { "freeze", &audioProcessor.getDoomFreezeParam() },
+        { "loopHalf", &audioProcessor.getDoomLoopHalfParam() },
+        { "clockSmooth", &audioProcessor.getDoomClockSmoothParam() },
+        { "crossSource", &audioProcessor.getDoomCrossSourceParam() },
+    } };
+
+    for (const auto& attachment : toggleAttachments)
+    {
+        auto* button = card->toggle(attachment.id);
+        jassert(button != nullptr);
+        attachButton(*attachment.parameter, *button);
+    }
+
+    attachButton(audioProcessor.getDoomEnabledParam(), card->bypassButton());
+
+    doomCard = card.get();
+    fxPanel->addCard(px3::fxStageDoom, std::move(card));
 }
 
 void PX3SynthAudioProcessorEditor::timerCallback()
