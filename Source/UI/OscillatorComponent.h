@@ -44,6 +44,10 @@ public:
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void refreshFromParameters(bool enabled, int modeIndex, int vowelIndex);
     void advanceAnimation(float deltaPhase);
+    // The animation clock. Exposed so a test can assert it only ever moves
+    // forwards: the drawn shape is a continuous function of it, so a phase that
+    // never jumps is a curve that never jumps.
+    double animationPhase() const noexcept { return phase; }
 
     void resized() override;
     void mouseUp(const juce::MouseEvent& event) override;
@@ -79,6 +83,12 @@ private:
     std::shared_ptr<const UIConfig> uiConfig;
     bool currentEnabled { true };
 
-    float phase { 0.0f };
+    // Double, and deliberately NOT wrapped at 2pi. Wrapping is only invisible
+    // for a shape built from whole multiples of the phase; SUPER SAW, WAVETABLE,
+    // FORMANT, FM and the rest use fractional multipliers, so subtracting 2pi
+    // moved each partial by a part-cycle and the curve jumped every ~2.3s. A
+    // free-running phase is also the truer picture: detuned partials really do
+    // beat against each other over time.
+    double phase { 0.0 };
     int lastModeIndex { -1 };
 };

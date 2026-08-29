@@ -116,9 +116,12 @@ void OscillatorComponent::advanceAnimation(float deltaPhase)
     }
 
     phase += deltaPhase;
-    if (phase > juce::MathConstants<float>::twoPi)
+
+    // No 2pi wrap: see the note on `phase`. The only reduction is a safety net
+    // against unbounded growth, and at 0.09 rad a tick it is some years away.
+    if (phase > 1.0e9)
     {
-        phase -= juce::MathConstants<float>::twoPi;
+        phase = std::fmod(phase, juce::MathConstants<double>::twoPi);
     }
 
     repaint();
@@ -364,13 +367,16 @@ void OscillatorComponent::paint(juce::Graphics& g)
     for (int s = 0; s <= 72; ++s)
     {
         const auto t = static_cast<float>(s) / 72.0f;
-        const auto samplePhase = t * juce::MathConstants<float>::twoPi + phase;
+        // Double all the way through the shape: at a phase of a few hundred
+        // thousand radians a float argument to sin() only resolves about
+        // 0.015 rad, which shows up as the curve stepping.
+        const double samplePhase = static_cast<double>(t) * juce::MathConstants<double>::twoPi + phase;
         // The same position as samplePhase, wrapped into 0..1. The shapers that
         // work in normalised time rather than radians use this, so they scroll
         // with the rest instead of standing still.
-        const auto sampleT = samplePhase / juce::MathConstants<float>::twoPi
-                             - std::floor(samplePhase / juce::MathConstants<float>::twoPi);
-        float y = 0.0f;
+        const auto sampleT = samplePhase / juce::MathConstants<double>::twoPi
+                             - std::floor(samplePhase / juce::MathConstants<double>::twoPi);
+        double y = 0.0;
 
         switch (modeIndex)
         {
@@ -378,13 +384,13 @@ void OscillatorComponent::paint(juce::Graphics& g)
                 y = std::sin(samplePhase);
                 break;
             case 1:
-                y = 2.0f * sampleT - 1.0f;
+                y = 2.0 * sampleT - 1.0;
                 break;
             case 2:
-                y = std::sin(samplePhase) >= 0.0f ? 1.0f : -1.0f;
+                y = std::sin(samplePhase) >= 0.0 ? 1.0 : -1.0;
                 break;
             case 3:
-                y = 1.0f - 4.0f * std::abs(sampleT - 0.5f);
+                y = 1.0 - 4.0 * std::abs(sampleT - 0.5);
                 break;
             case 4:
             case 5:
@@ -403,7 +409,7 @@ void OscillatorComponent::paint(juce::Graphics& g)
             case 7:
             {
                 const auto widthNorm = juce::jlimit(0.1f, 0.9f, 0.1f + macroAValue * 0.8f);
-                y = sampleT < widthNorm ? 1.0f : -1.0f;
+                y = sampleT < static_cast<double>(widthNorm) ? 1.0 : -1.0;
                 break;
             }
             case 8:
@@ -421,7 +427,7 @@ void OscillatorComponent::paint(juce::Graphics& g)
                 y = std::sin(samplePhase + std::sin(samplePhase * (1.0f + macroAValue * 4.0f)) * (macroBValue * 3.0f));
                 break;
             case 12:
-                y = std::sin(std::fmod(samplePhase * (1.0f + macroAValue * 6.0f), juce::MathConstants<float>::twoPi));
+                y = std::sin(std::fmod(samplePhase * (1.0 + macroAValue * 6.0), juce::MathConstants<double>::twoPi));
                 break;
             case 13:
             case 15:
@@ -444,9 +450,9 @@ void OscillatorComponent::paint(juce::Graphics& g)
                 break;
         }
 
-        y = juce::jlimit(-1.0f, 1.0f, y);
+        y = juce::jlimit(-1.0, 1.0, y);
         const auto px = left + t * width;
-        const auto py = mid - y * (height * 0.40f);
+        const auto py = mid - static_cast<float>(y) * (height * 0.40f);
         if (s == 0)
         {
             wave.startNewSubPath(px, py);

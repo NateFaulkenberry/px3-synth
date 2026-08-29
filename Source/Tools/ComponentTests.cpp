@@ -29,6 +29,7 @@
 #include "../UI/FxChainLayout.h"
 #include "../UI/PianoKeyboard.h"
 #include "../UI/TopMenuBar.h"
+#include "../UI/OscillatorComponent.h"
 #include "../UI/FxPanel.h"
 #include "../UI/FxSignalFlow.h"
 #include "../UI/UIConfigManager.h"
@@ -12789,6 +12790,49 @@ void testEditorLifecycle()
               amountLabels >= 3 && laidOut == amountLabels,
               juce::String(amountLabels) + " AMOUNT captions, " + juce::String(laidOut)
                   + " laid out and visible: " + detail);
+    }
+
+    {
+        // The mode visual scrolls by advancing a phase, and that phase used to
+        // be wrapped with "phase -= 2pi". A wrap is only invisible when the
+        // drawn shape is built from WHOLE multiples of the phase. SUPER SAW,
+        // WAVETABLE, FORMANT, FM, KARPLUS, DIGITAL and the rest are built from
+        // fractional multipliers - sin(samplePhase * (1 + macro * 4)) and the
+        // like - so subtracting 2pi moved each partial by a part-cycle and the
+        // curve visibly jumped. At 0.09 rad per tick that was every ~70 frames,
+        // a bit over two seconds.
+        //
+        // The phase free-runs now, so the test is simply that it never goes
+        // backwards: the shape is a continuous function of it.
+        juce::ToggleButton bypass;
+        juce::Slider pitch, macroA, macroB, macroC;
+        juce::ComboBox modeBox, vowelBox;
+        juce::Label pitchLabel, pitchValue, laA, laB, laC, lvA, lvB, lvC,
+                    modeLabel, vowelLabel;
+        OscillatorComponent osc(bypass, pitch, pitchLabel, pitchValue,
+                                macroA, macroB, macroC,
+                                laA, laB, laC, lvA, lvB, lvC,
+                                modeBox, modeLabel, vowelBox, vowelLabel,
+                                juce::Colour::fromRGB(120, 200, 255));
+        osc.setBounds(0, 0, 300, 300);
+
+        auto worstStepBack = 0.0;
+        auto previous = osc.animationPhase();
+
+        // Well past where the old wrap would have fired, several times over.
+        for (int frame = 0; frame < 400; ++frame)
+        {
+            osc.advanceAnimation(0.09f);
+            const auto now = osc.animationPhase();
+            worstStepBack = juce::jmax(worstStepBack, previous - now);
+            previous = now;
+        }
+
+        check("OscVisual_AnimationPhaseNeverJumpsBackwards",
+              worstStepBack <= 0.0 && previous > juce::MathConstants<double>::twoPi * 5.0,
+              "after 400 frames phase = " + fmt(previous, 2)
+                  + " rad (over " + fmt(previous / juce::MathConstants<double>::twoPi, 1)
+                  + " cycles), worst backwards step " + fmt(worstStepBack, 6));
     }
 
     {
