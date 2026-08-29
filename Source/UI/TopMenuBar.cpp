@@ -159,11 +159,18 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
         // The name takes a band at the top and the subtitles take EVERYTHING
         // below it, down to the bottom edge, rather than a fixed strip with
         // slack under it.
+        // The name row is taken off the top and the detail row off the bottom,
+        // so either can be pinned and the other given what is left.
+        const auto nameHeight = content.nameRowHeight > 0.0f
+                                    ? juce::jmin(content.nameRowHeight, legendArea.getHeight() - 4.0f)
+                                    : juce::jmin(legendArea.getHeight() * 0.58f, 19.0f);
+        const auto nameBand = legendArea.removeFromTop(juce::jmax(4.0f, nameHeight));
+
         const auto detailHeight = content.detailRowHeight > 0.0f
-                                      ? juce::jmin(content.detailRowHeight, legendArea.getHeight() * 0.8f)
-                                      : legendArea.getHeight() - juce::jmin(legendArea.getHeight() * 0.58f, 19.0f);
-        subtitleArea = legendArea.removeFromBottom(juce::jmax(4.0f, detailHeight));
-        const auto nameBand = legendArea;
+                                      ? juce::jmin(content.detailRowHeight, legendArea.getHeight())
+                                      : legendArea.getHeight();
+        subtitleArea = legendArea.removeFromTop(juce::jmax(4.0f, detailHeight));
+        legendArea = nameBand;
 
         legendFontSize = content.nameFontSize > 0.0f
                              ? content.nameFontSize
@@ -213,8 +220,9 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
         // the name above and the chip's edge below.
         const auto divider = leftCell.getRight();
         g.setColour(legend.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, content.dividerAlpha)));
-        g.fillRect(juce::Rectangle<float>(divider, subtitleArea.getY() + 1.0f,
-                                          1.0f, juce::jmax(1.0f, subtitleArea.getHeight() - 2.0f)));
+        const auto inset = juce::jlimit(0.0f, subtitleArea.getHeight() * 0.45f, content.dividerInset);
+        g.fillRect(juce::Rectangle<float>(divider, subtitleArea.getY() + inset,
+                                          1.0f, juce::jmax(1.0f, subtitleArea.getHeight() - inset * 2.0f)));
     }
 
     // The seam between neighbours. One line on the right only, so butted tabs
@@ -523,7 +531,9 @@ void TopMenuBar::setUIConfig(std::shared_ptr<const UIConfig> configIn)
         contentStyle.paddingRight = uiConfig->getFloat(path + "paddingRight", contentStyle.paddingRight);
         contentStyle.nameFontSize = uiConfig->getFloat(path + "nameFontSize", contentStyle.nameFontSize);
         contentStyle.detailFontSize = uiConfig->getFloat(path + "detailFontSize", contentStyle.detailFontSize);
+        contentStyle.nameRowHeight = uiConfig->getFloat(path + "nameRowHeight", contentStyle.nameRowHeight);
         contentStyle.detailRowHeight = uiConfig->getFloat(path + "detailRowHeight", contentStyle.detailRowHeight);
+        contentStyle.dividerInset = uiConfig->getFloat(path + "dividerInset", contentStyle.dividerInset);
         contentStyle.dividerAlpha = uiConfig->getFloat(path + "dividerAlpha", contentStyle.dividerAlpha);
     }
     presetNameButton.setContentStyle(contentStyle);

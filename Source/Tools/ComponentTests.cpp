@@ -30,6 +30,8 @@
 #include "../UI/PianoKeyboard.h"
 #include "../UI/TopMenuBar.h"
 #include "../UI/FilterComponent.h"
+#include <set>
+
 #include "../DSP/FilterResponse.h"
 #include "../DSP/VoiceFilter.h"
 #include "../UI/OscillatorComponent.h"
@@ -12227,6 +12229,86 @@ void testFactoryPresets()
 {
     suite("FACTORY PRESETS");
 
+    {
+        // Every effect defaults to ENABLED, and a factory preset starts from
+        // the plugin's defaults and only overrides what it lists - so a preset
+        // that says nothing about the FX ships with all eight of them running.
+        // Every one of the twenty did. The descriptions had always promised
+        // otherwise ("nothing else in the way", "nothing exotic"); the state
+        // did not match them.
+        //
+        // Computed the way PresetManager computes it: defaults, then the
+        // definition's overrides. A preset that stops naming its effects fails
+        // here rather than quietly turning them all back on.
+        PX3SynthAudioProcessor processor;
+
+        auto defaultOf = [&processor](const juce::String& id)
+        {
+            for (auto* parameter : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                {
+                    if (ranged->getParameterID() == id)
+                    {
+                        return ranged->convertFrom0to1(ranged->getDefaultValue()) > 0.5f;
+                    }
+                }
+            }
+            return false;
+        };
+
+        static const std::array<const char*, 8> kFx {
+            { "vibe", "delay", "reverb", "mood", "doom", "lucy", "chorus", "spread" } };
+
+        std::vector<juce::String> signatures;
+        juce::StringArray tooMany;
+        std::set<juce::String> everUsed;
+        auto mostOn = 0;
+
+        for (const auto& def : px3::presets::factoryPresets())
+        {
+            juce::String signature;
+            auto onCount = 0;
+
+            for (const auto* fx : kFx)
+            {
+                const auto id = juce::String(fx) + juce::String("Enabled");
+                auto on = defaultOf(id);
+                for (const auto& [paramId, value] : def.params)
+                {
+                    if (id == paramId) on = value > 0.5f;
+                }
+
+                signature << (on ? '1' : '0');
+                if (on)
+                {
+                    ++onCount;
+                    everUsed.insert(fx);
+                }
+            }
+
+            mostOn = juce::jmax(mostOn, onCount);
+            if (onCount > 4) tooMany.add(juce::String(def.name) + " (" + juce::String(onCount) + ")");
+            signatures.push_back(signature);
+        }
+
+        const std::set<juce::String> distinct { signatures.begin(), signatures.end() };
+
+        check("Presets_NoneOfThemTurnOnEveryEffect", tooMany.isEmpty(),
+              tooMany.isEmpty() ? "the busiest preset runs " + juce::String(mostOn) + " of 8 effects"
+                                : "more than four effects: " + tooMany.joinIntoString(", "));
+
+        check("Presets_TheirEffectChoicesActuallyDiffer",
+              static_cast<int>(distinct.size()) >= 14,
+              juce::String(static_cast<int>(distinct.size())) + " distinct effect combinations across "
+                  + juce::String(static_cast<int>(signatures.size())) + " presets");
+
+        check("Presets_EveryEffectIsShownOffBySomething",
+              static_cast<int>(everUsed.size()) == static_cast<int>(kFx.size()),
+              juce::String(static_cast<int>(everUsed.size())) + " of " + juce::String((int) kFx.size())
+                  + " effects appear in at least one preset");
+    }
+
     const auto presets = px3::presets::factoryPresets();
 
     check("Presets_LibraryIsNotEmpty", presets.size() >= 16,
@@ -13056,8 +13138,21 @@ void testEditorLifecycle()
         }
         {
             auto style = base;
-            style.detailRowHeight = 22.0f;
-            if (inkRows(style).ink == plain.ink) inert.add("detailRowHeight");
+            style.nameRowHeight = 22.0f;
+            const auto tall = inkRows(style);
+            detail << "nameRowHeight: last ink row " << plain.lastRow << " -> " << tall.lastRow << "  ";
+            if (tall.lastRow == plain.lastRow && tall.ink == plain.ink) inert.add("nameRowHeight");
+        }
+        {
+            auto style = base;
+            style.detailRowHeight = 8.0f;
+            const auto short_ = inkRows(style);
+            if (short_.lastRow == plain.lastRow && short_.ink == plain.ink) inert.add("detailRowHeight");
+        }
+        {
+            auto style = base;
+            style.dividerInset = 6.0f;
+            if (inkRows(style).ink >= plain.ink) inert.add("dividerInset");
         }
         {
             auto style = base;
@@ -13080,7 +13175,7 @@ void testEditorLifecycle()
         }
 
         check("TopMenu_EveryPresetTabPropertyChangesTheLayout", inert.isEmpty(),
-              inert.isEmpty() ? detail + "(all 8 properties measurably change the face)"
+              inert.isEmpty() ? detail + "(all 10 properties measurably change the face)"
                               : "inert: " + inert.joinIntoString(", "));
     }
 }

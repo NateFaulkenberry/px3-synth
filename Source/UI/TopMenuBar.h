@@ -72,9 +72,16 @@ public:
         // 0 = derived from the band the text sits in.
         float nameFontSize { 0.0f };
         float detailFontSize { 0.0f };
-        // 0 = the second line takes 58% of what is left under the name.
+        // Row heights, in pixels. 0 = derive: the name takes 58% of the face and
+        // the details take the rest. Setting either one fixes that row and
+        // leaves the other with the remainder; setting both fixes the split and
+        // any space left over falls to the bottom.
+        float nameRowHeight { 0.0f };
         float detailRowHeight { 0.0f };
         float dividerAlpha { 1.0f };
+        // Vertical inset on the divider, so it can be shorter than the row it
+        // sits in rather than running its full height.
+        float dividerInset { 1.0f };
     };
 
     void setContentStyle(const ContentStyle& styleIn);

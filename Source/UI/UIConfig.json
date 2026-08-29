@@ -53,8 +53,10 @@
       "paddingRight": 6,
       "nameFontSize": 0,
       "detailFontSize": 0,
+      "nameRowHeight": 0,
       "detailRowHeight": 0,
-      "dividerAlpha": 1.0
+      "dividerAlpha": 1.0,
+      "dividerInset": 1
     },
     "tabStyle": {
       "face": "$bgTopStrip",
