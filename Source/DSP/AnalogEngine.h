@@ -67,10 +67,20 @@ public:
     struct Tuning
     {
         // ---- the invertible core -------------------------------------------
-        float channelDrive { 1.00f };      // pre-gain into the forward transfer
-        float busDrive { 1.00f };          // pre-gain into the inverse transfer
-        float masterDrive { 0.85f };       // output stage sits further from the knee
-        float fxBusTrim { 0.70f };         // the send is a quieter subset of the sources
+        // ONE drive for the channel and the buses that invert it.
+        //
+        // They have to be equal or the pair does not invert: the channel
+        // computes g(d*x)/d and the bus computes g-1(b*y)/b, and those only
+        // cancel when b == d. Giving them separate constants looked like extra
+        // control and was actually a way to silently break the whole premise -
+        // measured at 4.3% THD on a single channel where it should be zero.
+        float pairDrive { 1.00f };
+        float masterDrive { 0.85f };       // the master is forward, so it is free
+        // Scales how much of the FX bus stage is mixed in, NOT its drive. The
+        // send is a quieter subset of the sources and wants a lighter touch,
+        // but trimming its drive would break invertibility on the FX path the
+        // same way separate drives broke it on the dry path.
+        float fxBusTrim { 0.70f };
         float curveBlend { 0.25f };        // 0 = pure sine pair, 1 = the |x|-weighted pair
 
         // ---- colour ---------------------------------------------------------
@@ -88,7 +98,14 @@ public:
         // user parameter: the brief allows only the profile choice to be
         // user-facing at this stage.
         float engineAmount { 1.00f };
+        // Per-profile makeup, applied per STAGE. The colour stages lose level -
+        // the bandwidth limit most of all - and an A/B is meaningless if one
+        // side is quieter. Per stage rather than once at the end, because the
+        // number of stages a signal passes through varies with the path.
+        float outputTrim { 1.00f };
     };
+
+    AnalogEngine();
 
     void prepare(double sampleRate, int channelCount);
     void reset();

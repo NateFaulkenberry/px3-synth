@@ -121,6 +121,25 @@ Want to change the factory presets?
   parameter's range, every preset renders audio without clipping or NaNs, every
   effect is showcased somewhere, and that the library is not a volume ride.
 
+Want to change AnalogEngine?
+- `Source/DSP/AnalogEngine.*`. Read `docs/ANALOG_ENGINE_ARCHITECTURE.md` first -
+  the stage ordering is not stylistic, and three separate bugs came from getting
+  it wrong.
+- The premise: the channel runs a forward transfer, the buses run its exact
+  inverse, so ONE channel is transparent and the character comes from summing.
+  Two rules keep that true, and both were violated at some point:
+  **the channel and bus drives must be equal**, and **nothing may filter between
+  the forward and inverse transfer** - colour goes before the transfer on the
+  forward side and after it on the inverse side.
+- Its tuning constants are internal. They live in `AnalogEngine::Tuning`, reach
+  the runtime only through the debug console, and are never serialised. A test
+  asserts they do not appear in saved state.
+- `PX3Tests analog` measures the architecture rather than asserting it: transfer
+  invertibility, single-channel THD, accumulation across 1/2/4/8 channels,
+  profile separation, THD versus level and frequency, aliasing at 1x against 4x,
+  DC, and the Vibe interaction. Current numbers are in
+  `docs/ANALOG_ENGINE_TUNING.md`.
+
 Want to change an FX algorithm?
 - VIBE: `Source/DSP/VibeEngine.cpp` for the shared per-block state,
   `Source/DSP/SynthVoice.cpp` (`applyVibeSourceStage`) for the per-sample stage.
@@ -309,8 +328,8 @@ build/diag/PX3Tests_artefacts/RelWithDebInfo/PX3Tests
 
 `PX3Tests` takes an optional suite filter: `subosc`, `osc`, `ampenv`, `modenv`,
 `lfo`, `vibe`, `reverb`, `comb`, `delay`, `mood`, `doom`, `lucy`, `chorus`,
-`spread`, `cardstyle`, `cardinner`, `fxchain`, `fx`, `preset`, `factorypresets`,
-`integration`.
+`spread`, `analog`, `cardstyle`, `cardinner`, `fxchain`, `fx`, `preset`,
+`factorypresets`, `editor`, `integration`.
 
 The four newest FX suites each carry the measurement that IS their design brief,
 so a refactor that quietly breaks the premise fails rather than passing quietly:

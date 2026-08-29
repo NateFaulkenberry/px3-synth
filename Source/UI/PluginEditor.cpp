@@ -128,6 +128,9 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
 
     const auto psychedelicEnabled = static_cast<bool>(slider.getProperties().getWithDefault("psychedelicFx", false));
     const auto psychedelicGrayscale = static_cast<bool>(slider.getProperties().getWithDefault("psychedelicBypassGray", false));
+    // DOOM's ring runs the complementary half of the wheel at a lower value, so
+    // it reads as the same effect inverted rather than as a different one.
+    const auto psychedelicInverted = static_cast<bool>(slider.getProperties().getWithDefault("psychedelicInverted", false));
     const auto knobBypassed = static_cast<bool>(slider.getProperties().getWithDefault("knobBypassed", false));
     const auto renderGrayscale = psychedelicGrayscale || knobBypassed;
     const auto psychedelicAmount = juce::jlimit(0.0f, 1.0f, sliderPos);
@@ -208,7 +211,12 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
         for (int seg = 0; seg < 24; ++seg)
         {
             const auto segNorm = static_cast<float>(seg) / 24.0f;
-            const auto hue = std::fmod(segNorm + t * 0.12f, 1.0f);
+            auto hue = std::fmod(segNorm + t * 0.12f, 1.0f);
+            if (psychedelicInverted)
+            {
+                hue = std::fmod(hue + 0.5f, 1.0f);
+            }
+            const auto ringValue = psychedelicInverted ? 0.62f : 1.0f;
             const auto grayValue = juce::jmap(segNorm, 0.62f, 0.94f);
             const auto start = segNorm * juce::MathConstants<float>::twoPi;
             const auto span = juce::MathConstants<float>::twoPi / 24.0f * 0.88f;
@@ -226,7 +234,7 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
             const auto glowAlpha = juce::jlimit(0.0f, 0.65f, 0.06f + glow * 0.34f);
             g.setColour(renderGrayscale
                             ? juce::Colour::fromFloatRGBA(grayValue, grayValue, grayValue, glowAlpha)
-                            : juce::Colour::fromHSV(hue, 0.90f, 1.0f, glowAlpha));
+                            : juce::Colour::fromHSV(hue, 0.90f, ringValue, glowAlpha));
             g.strokePath(arc,
                          juce::PathStrokeType(5.4f,
                                               juce::PathStrokeType::curved,
@@ -235,7 +243,7 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
             const auto borderAlpha = juce::jlimit(0.0f, 0.95f, 0.25f + glow * 0.62f);
             g.setColour(renderGrayscale
                             ? juce::Colour::fromFloatRGBA(grayValue, grayValue, grayValue, borderAlpha)
-                            : juce::Colour::fromHSV(hue, 0.98f, 1.0f, borderAlpha));
+                            : juce::Colour::fromHSV(hue, 0.98f, ringValue, borderAlpha));
             g.strokePath(arc,
                          juce::PathStrokeType(3.0f,
                                               juce::PathStrokeType::curved,
@@ -3178,24 +3186,21 @@ void PX3SynthAudioProcessorEditor::buildDoomCard()
 
     // Two channels, so two rows of state before the knobs: which channel is
     // running, and the three global switches.
-    card->addToggleRow({ { "loopActive", "LOOPER ON", "LOOPER LISTENING",
-                           "Play the captured micro-loop, or keep listening" },
+    // Four state toggles on one line, then the three mode selectors on one
+    // line. Labels are short because the card is one of four across the grid -
+    // at this width a longer caption wraps the row onto a second line.
+    card->addToggleRow({ { "loopActive", "LOOPER", "LISTEN", "Play the captured micro-loop, or keep listening" },
                          { "wetActive", "WET ON", "WET OFF", "Engage the wet channel" },
-                         { "freeze", "FREEZE ON", "FREEZE OFF",
-                           "Freeze the wet channel and repeat it" } });
-
-    card->addToggleRow({ { "loopHalf", "HALF ON", "HALF OFF", "Halve the micro-loop length" },
-                         { "clockSmooth", "SMOOTH ON", "SMOOTH OFF",
-                           "Sweep the clock continuously instead of in harmonised steps" },
-                         { "crossSource", "CROSS: CHANNEL", "CROSS: INPUT",
-                           "Modulate from your playing, or let each channel modulate the other" } });
+                         { "loopHalf", "HALF", "FULL", "Halve the micro-loop length" },
+                         { "clockSmooth", "SMOOTH", "STEPPED",
+                           "Sweep the clock continuously instead of in harmonised steps" } });
 
     card->addChoiceRow({ { "loopMode", "LOOP", "Micro-looper mode",
                            audioProcessor.getDoomLoopModeParam().choices },
-                         { "wetMode", "WET", "Wet channel mode",
-                           audioProcessor.getDoomWetModeParam().choices },
                          { "routing", "ROUTE", "What the wet channel processes",
-                           audioProcessor.getDoomRoutingParam().choices } });
+                           audioProcessor.getDoomRoutingParam().choices },
+                         { "wetMode", "WET", "Wet channel mode",
+                           audioProcessor.getDoomWetModeParam().choices } });
 
     card->addKnobRow({ { "clock", "CLOCK", "Engine sample rate: loop length, pitch and wet time at once" },
                        { "loopLength", "LENGTH", "Micro-looper length (mode dependent)" },
@@ -3213,6 +3218,10 @@ void PX3SynthAudioProcessorEditor::buildDoomCard()
                        { "spread", "SPREAD", "Stereo processing depth" } });
 
     card->addFeatureKnobRow({ "mix", "MIX", "Dry against DOOM" });
+
+    card->addToggleRow({ { "freeze", "FROZEN", "FREEZE", "Freeze the wet channel and repeat it" },
+                         { "crossSource", "X: CHANNEL", "X: INPUT",
+                           "Modulate from your playing, or let each channel modulate the other" } });
 
     // Attaching by id rather than by reference: the card owns the controls, and
     // a typo here is a null dereference at startup rather than a control that
@@ -3278,6 +3287,13 @@ void PX3SynthAudioProcessorEditor::buildDoomCard()
 
     attachButton(audioProcessor.getDoomEnabledParam(), card->bypassButton());
 
+    // The macro knob wears the rainbow ring, the same as VIBE's amount.
+    if (auto* knob = card->knob("mix"))
+    {
+        knob->getProperties().set("psychedelicFx", true);
+        knob->getProperties().set("psychedelicInverted", true);
+    }
+
     doomCard = card.get();
     fxPanel->addCard(px3::fxStageDoom, std::move(card));
 }
@@ -3286,24 +3302,20 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
 {
     auto card = std::make_unique<px3::ui::FxCardComponent>("lucy", "LUCY");
 
-    card->addToggleRow({ { "freeze", "FREEZE ON", "FREEZE OFF", "Freeze the spectrum" },
+    card->addToggleRow({ { "freeze", "FROZEN", "FREEZE", "Freeze the spectrum" },
                          { "freezeSlushy", "SLUSHY", "SOLID",
                            "Let the freeze keep updating from what you play" },
-                         { "gate", "GATE ON", "GATE OFF", "Silence anything below the cutoff" } });
-
-    card->addToggleRow({ { "verbPost", "VERB POST", "VERB PRE",
+                         { "verbPost", "V-POST", "V-PRE",
                            "Reverb after the chain, or in front of it feeding the loss" },
-                         { "filterInvert", "REJECT", "BAND PASS",
-                           "Keep the band, or keep everything but the band" },
-                         { "slow", "SLOW ON", "SLOW OFF",
-                           "Bigger, darker, slower, and with more latency" } });
+                         { "filterInvert", "REJECT", "PASS",
+                           "Keep the band, or keep everything but the band" } });
 
     card->addChoiceRow({ { "mode", "MODE", "Loss mode",
                            audioProcessor.getLucyModeParam().choices },
-                         { "packets", "PACKETS", "Packet corruption mode",
-                           audioProcessor.getLucyPacketsParam().choices },
                          { "slope", "SLOPE", "Filter slope",
-                           audioProcessor.getLucySlopeParam().choices } });
+                           audioProcessor.getLucySlopeParam().choices },
+                         { "packets", "PACKETS", "Packet corruption mode",
+                           audioProcessor.getLucyPacketsParam().choices } });
 
     card->addKnobRow({ { "loss", "LOSS", "Depth of the loss and packet effects, and which frequencies they reach" },
                        { "speed", "SPEED", "How fast the loss, packets and freeze update" },
@@ -3321,6 +3333,10 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
                        { "spread", "SPREAD", "Packet alternation and reverb width" } });
 
     card->addFeatureKnobRow({ "global", "GLOBAL", "Overall amount of processing" });
+
+    card->addToggleRow({ { "gate", "GATE ON", "GATE OFF", "Silence anything below the cutoff" },
+                         { "slow", "SLOW ON", "SLOW OFF",
+                           "Bigger, darker, slower, and with more latency" } });
 
     struct KnobAttachment { const char* id; juce::AudioParameterFloat* parameter; };
     const std::array<KnobAttachment, 14> knobAttachments { {
@@ -3383,6 +3399,12 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
 
     attachButton(audioProcessor.getLucyEnabledParam(), card->bypassButton());
 
+    // The macro knob wears the rainbow ring, the same as VIBE's amount.
+    if (auto* knob = card->knob("global"))
+    {
+        knob->getProperties().set("psychedelicFx", true);
+    }
+
     lucyCard = card.get();
     fxPanel->addCard(px3::fxStageLucy, std::move(card));
 }
@@ -3434,6 +3456,12 @@ void PX3SynthAudioProcessorEditor::buildChorusCard()
     attachComboBox(audioProcessor.getChorusModeParam(), *card->choice("mode"));
     attachButton(audioProcessor.getChorusEnabledParam(), card->bypassButton());
 
+    // The macro knob wears the rainbow ring, the same as VIBE's amount.
+    if (auto* knob = card->knob("amount"))
+    {
+        knob->getProperties().set("psychedelicFx", true);
+    }
+
     chorusCard = card.get();
     fxPanel->addCard(px3::fxStageChorus, std::move(card));
 }
@@ -3484,6 +3512,12 @@ void PX3SynthAudioProcessorEditor::buildStereoSpreadCard()
 
     attachComboBox(audioProcessor.getSpreadModeParam(), *card->choice("mode"));
     attachButton(audioProcessor.getSpreadEnabledParam(), card->bypassButton());
+
+    // The macro knob wears the rainbow ring, the same as VIBE's amount.
+    if (auto* knob = card->knob("amount"))
+    {
+        knob->getProperties().set("psychedelicFx", true);
+    }
 
     spreadCard = card.get();
     fxPanel->addCard(px3::fxStageStereoSpread, std::move(card));

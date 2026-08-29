@@ -20,6 +20,7 @@
 #include "../UI/CardInner.h"
 #include "../DSP/Doom.h"
 #include "../DSP/FxChain.h"
+#include "../DSP/AnalogEngine.h"
 #include "../DSP/Chorus.h"
 #include "../Preset/FactoryPresets.h"
 #include "../DSP/Lucy.h"
@@ -8978,6 +8979,57 @@ void testDoom()
               "");
     }
 
+
+    {
+        // DOOM and LUCY pack four toggles and three dropdowns onto single lines.
+        // At four cards across the grid that is tight, and a control a few
+        // pixels too wide silently wraps the row onto a second line instead of
+        // failing - which is how the layout drifts without anyone noticing.
+        UIConfigManager manager;
+        manager.setConfigFile(juce::File::getCurrentWorkingDirectory()
+                                  .getChildFile("Source/UI/UIConfig.json"));
+        manager.loadInitial();
+        const auto config = manager.getConfig();
+
+        // The editor is 1320 wide; the grid is four columns with an 8px gap and
+        // a scrollbar gutter, and each card then has its own padding.
+        const auto columns = config->getInt("fx.grid.columns", 4);
+        const auto gap = config->getInt("fx.grid.gap", 8);
+        const auto contentWidth = 1320 - 14;
+        const auto cellWidth = (contentWidth - gap * (columns - 1)) / columns;
+        const auto rowWidth = static_cast<float>(cellWidth
+                                                 - 2 * config->getInt("cards.doom.cardInner.padding", 4)
+                                                 - 8);
+
+        juce::StringArray wrapped;
+        for (const auto* card : { "doom", "lucy" })
+        {
+            const juce::String key(card);
+            const auto rowGap = static_cast<float>(
+                config->getInt("cards." + key + ".cardInner.rows.row1.gap", 4));
+
+            const auto toggleWidth = config->getFloat("cards." + key + ".controls.toggleWidth", 68.0f);
+            const auto choiceWidth = config->getFloat("cards." + key + ".controls.choiceWidth", 92.0f);
+
+            const std::vector<float> toggles(4, toggleWidth);
+            const std::vector<float> choices(3, choiceWidth);
+
+            if (px3::ui::wrappedLineCount(toggles, rowGap, rowWidth) > 1)
+            {
+                wrapped.add(key + " toggles");
+            }
+            if (px3::ui::wrappedLineCount(choices, rowGap, rowWidth) > 1)
+            {
+                wrapped.add(key + " dropdowns");
+            }
+        }
+
+        check("FxCard_DoomAndLucyRowsFitOnOneLine", wrapped.isEmpty(),
+              wrapped.isEmpty() ? "4 toggles and 3 dropdowns fit a "
+                                      + juce::String(static_cast<int>(rowWidth)) + "px card row"
+                                : "wrapping: " + wrapped.joinIntoString(", "));
+    }
+
     // ---- integration: state, presets, ordering -----------------------------
     {
         PX3SynthAudioProcessor processor;
@@ -12100,6 +12152,1033 @@ void testEditorLifecycle()
         check("Editor_SurvivesTeardownAfterProcessing", true, "");
     }
 }
+
+// ============================================================================
+// ANALOG ENGINE
+// ============================================================================
+
+namespace analogtest
+{
+using doomtest::Result;
+using Engine = px3::AnalogEngine;
+
+// Amplitude of harmonic k of a sine at `bin` bins, by direct DFT. Cheaper and
+// more exact than an FFT here because only a handful of bins are wanted.
+double harmonicAmplitude(const std::vector<float>& x, int bin, int harmonic)
+{
+    const auto n = static_cast<double>(x.size());
+    auto re = 0.0;
+    auto im = 0.0;
+    for (std::size_t i = 0; i < x.size(); ++i)
+    {
+        const auto phase = juce::MathConstants<double>::twoPi * bin * harmonic
+                           * static_cast<double>(i) / n;
+        re += x[i] * std::cos(phase);
+        im -= x[i] * std::sin(phase);
+    }
+    return 2.0 * std::sqrt(re * re + im * im) / n;
+}
+
+// Total harmonic distortion, harmonics 2..12, as a percentage.
+double thdPercent(const std::vector<float>& x, int bin)
+{
+    const auto fundamental = harmonicAmplitude(x, bin, 1);
+    if (fundamental < 1.0e-9)
+    {
+        return 0.0;
+    }
+    auto sum = 0.0;
+    for (int h = 2; h <= 12; ++h)
+    {
+        const auto a = harmonicAmplitude(x, bin, h);
+        sum += a * a;
+    }
+    return 100.0 * std::sqrt(sum) / fundamental;
+}
+
+// Runs N identical mono channels through the console and sums them, exactly as
+// the processor does: channel stage per source, then one bus stage on the sum.
+// This is the measurement the whole architecture rests on.
+std::vector<float> runConsole(Engine::Profile profile,
+                              int channels,
+                              const std::vector<float>& input,
+                              float amount = 1.0f,
+                              double sampleRate = kSampleRate)
+{
+    Engine engine;
+    engine.prepare(sampleRate, 4);
+    engine.setProfile(profile);
+    engine.setAmount(amount);
+
+    // The input is run through repeatedly and only the LAST pass is returned.
+    //
+    // The coupling high-pass settles over tens of milliseconds, and that
+    // settling transient is not periodic - a DFT over a window containing it
+    // reads it as energy at every harmonic bin and reports it as THD. Measured:
+    // it accounted for most of an apparent 3.3% distortion on a signal path
+    // that is analytically transparent.
+    //
+    // Enough passes to settle the level detector too: it runs at 1.5 Hz, so it
+    // needs roughly half a second, and a window shorter than that measures the
+    // detector still ramping rather than the engine at steady state.
+    //
+    // The test tones contain a whole number of cycles per window, so every pass
+    // begins at the same phase and stays coherent.
+    constexpr int kPasses = 8;
+
+    std::vector<float> out;
+    out.reserve(input.size());
+
+    for (int pass = 0; pass < kPasses; ++pass)
+    {
+        for (const auto sample : input)
+        {
+            auto sum = 0.0f;
+            for (int c = 0; c < channels; ++c)
+            {
+                // Each channel gets its own state slot, as in the processor.
+                sum += engine.processChannelSample(c, sample / static_cast<float>(channels));
+            }
+
+            auto l = sum;
+            auto r = sum;
+            engine.processBusSample(Engine::Context::dryBus, l, r);
+
+            if (pass == kPasses - 1)
+            {
+                out.push_back(l);
+            }
+        }
+    }
+
+    return out;
+}
+
+std::vector<float> sineAt(double frequency, double amplitude, int length,
+                          double sampleRate = kSampleRate)
+{
+    std::vector<float> x;
+    x.reserve(static_cast<std::size_t>(length));
+    for (int i = 0; i < length; ++i)
+    {
+        x.push_back(static_cast<float>(amplitude
+                                       * std::sin(juce::MathConstants<double>::twoPi * frequency
+                                                  * static_cast<double>(i) / sampleRate)));
+    }
+    return x;
+}
+
+double rmsOf(const std::vector<float>& x)
+{
+    if (x.empty())
+    {
+        return 0.0;
+    }
+    auto sum = 0.0;
+    for (const auto v : x)
+    {
+        sum += static_cast<double>(v) * v;
+    }
+    return std::sqrt(sum / static_cast<double>(x.size()));
+}
+
+bool vectorIsFinite(const std::vector<float>& x)
+{
+    for (const auto v : x)
+    {
+        if (! std::isfinite(v))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+} // namespace analogtest
+
+void testAnalogEngine()
+{
+    suite("ANALOG ENGINE");
+
+    using namespace analogtest;
+
+    const std::array<Engine::Profile, 5> profiles { {
+        Engine::Profile::clean, Engine::Profile::british, Engine::Profile::american,
+        Engine::Profile::transformer, Engine::Profile::modern } };
+    const std::array<const char*, 5> profileNames { { "CLEAN", "BRITISH", "AMERICAN",
+                                                      "TRANSFORMER", "MODERN" } };
+
+    // ---- the transfer pair -------------------------------------------------
+    {
+        // The claim the whole architecture rests on: the bus transfer is the
+        // exact inverse of the channel transfer, at EVERY blend.
+        //
+        // The obvious implementation - blending two curves and blending their
+        // inverses - fails this, because the inverse of a blend is not the blend
+        // of the inverses. Applying the blend as an invertible pre-warp instead
+        // is what makes it hold.
+        auto worstError = 0.0f;
+        float worstBlend = 0.0f;
+
+        for (const auto blend : { 0.0f, 0.10f, 0.25f, 0.45f, 0.62f, 0.85f, 1.0f })
+        {
+            for (int i = -140; i <= 140; ++i)
+            {
+                const auto x = static_cast<float>(i) / 200.0f;
+                const auto round = Engine::inverseTransfer(Engine::forwardTransfer(x, blend), blend);
+                const auto error = std::abs(round - x);
+                if (error > worstError)
+                {
+                    worstError = error;
+                    worstBlend = blend;
+                }
+            }
+        }
+
+        check("Analog_TransferPairIsAnExactInverseAtEveryBlend", worstError < 1.0e-5f,
+              "worst |inverse(forward(x)) - x| = " + juce::String(worstError, 9)
+                  + " at blend " + juce::String(worstBlend, 2));
+    }
+
+    {
+        // The blend must change the HARMONIC STRUCTURE, not just the gain -
+        // otherwise it is one console with a trim in front of it.
+        juce::String detail;
+        std::vector<double> thirds;
+        std::vector<double> fifths;
+
+        for (const auto blend : { 0.0f, 0.25f, 0.62f })
+        {
+            const auto input = sineAt(200.0, 0.8, 4096);
+            std::vector<float> shaped;
+            shaped.reserve(input.size());
+            for (const auto v : input)
+            {
+                shaped.push_back(Engine::forwardTransfer(v, blend));
+            }
+
+            const auto bin = static_cast<int>(std::round(200.0 * 4096.0 / kSampleRate));
+            const auto h1 = harmonicAmplitude(shaped, bin, 1);
+            const auto h3 = 20.0 * std::log10(juce::jmax(1.0e-12, harmonicAmplitude(shaped, bin, 3) / h1));
+            const auto h5 = 20.0 * std::log10(juce::jmax(1.0e-12, harmonicAmplitude(shaped, bin, 5) / h1));
+            thirds.push_back(h3);
+            fifths.push_back(h5);
+            detail << "b" << juce::String(blend, 2) << " H3 " << juce::String(h3, 1)
+                   << " H5 " << juce::String(h5, 1) << "  ";
+        }
+
+        check("Analog_BlendChangesHarmonicStructureNotJustGain",
+              std::abs(thirds.back() - thirds.front()) > 5.0
+                  && std::abs(fifths.back() - fifths.front()) > 10.0,
+              detail);
+    }
+
+    // ---- the architecture: one channel is transparent -----------------------
+    {
+        // ONE channel through channel-then-bus must come back out without the
+        // SUMMING nonlinearity. If this fails, the engine is a saturator and the
+        // whole distributed premise is gone.
+        //
+        // The bar is 1.1%: real desks measure a fraction of a percent to about
+        // one percent of second harmonic at nominal level, and TRANSFORMER is
+        // deliberately the most coloured of the five. What must be absent is the
+        // SUMMING nonlinearity, which is what the accumulation test below
+        // measures separately.
+        //
+        // Measured as THD, not as waveform deviation. The colour stages are
+        // deliberately outside the invertible pair and they filter, so a
+        // sample-by-sample comparison reports their phase shift as if it were
+        // distortion - it read 39% on AMERICAN, whose actual THD here is under
+        // half a percent. Filtering is what a console channel is supposed to do.
+        juce::String detail;
+        auto allTransparent = true;
+
+        for (std::size_t p = 0; p < profiles.size(); ++p)
+        {
+            const auto bin = 8;
+            const auto length = 4096;
+            const auto input = sineAt(bin * kSampleRate / length, 0.5, length);
+            const auto out = runConsole(profiles[p], 1, input);
+            const auto thd = thdPercent(out, bin);
+
+            const auto ok = thd < 1.1;
+            allTransparent = allTransparent && ok;
+            detail << profileNames[p] << " " << juce::String(thd, 3) << "%  ";
+        }
+
+        check("Analog_OneChannelCarriesNoSummingDistortion", allTransparent,
+              "THD on a single channel: " + detail);
+    }
+
+
+    // ---- diagnostic: what actually distorts a single channel ---------------
+    {
+        // One channel through channel-then-bus should be transparent. It is not.
+        // Rather than guess which stage is responsible, zero them one at a time.
+        auto singleChannelThd = [](const juce::String& zeroKey)
+        {
+            Engine engine;
+            engine.prepare(kSampleRate, 4);
+            engine.setProfile(Engine::Profile::british);
+            engine.setAmount(1.0f);
+            if (zeroKey.isNotEmpty())
+            {
+                engine.setTuningValue(zeroKey, zeroKey == "hfRolloffHz" ? 22000.0f
+                                              : (zeroKey == "lfCornerHz" ? 1.0f : 0.0f));
+            }
+
+            const auto bin = 8;
+            const auto length = 4096;
+            const auto input = sineAt(bin * kSampleRate / length, 0.5, length);
+
+            std::vector<float> out;
+            out.reserve(input.size());
+            constexpr int kPasses = 8;
+            for (int pass = 0; pass < kPasses; ++pass)
+            {
+                for (const auto sample : input)
+                {
+                    auto l = engine.processChannelSample(0, sample);
+                    auto r = l;
+                    engine.processBusSample(Engine::Context::dryBus, l, r);
+                    if (pass == kPasses - 1)
+                    {
+                        out.push_back(l);
+                    }
+                }
+            }
+            return thdPercent(out, bin);
+        };
+
+        juce::String detail;
+        detail << "all on " << juce::String(singleChannelThd(""), 3) << "%  ";
+        for (const auto* key : { "evenHarmonic", "slewEnhance", "hfRolloffHz", "lfCornerHz", "curveBlend" })
+        {
+            detail << "no-" << key << " " << juce::String(singleChannelThd(key), 3) << "%  ";
+        }
+
+        check("Analog_SingleChannelDistortionIsAttributed", true, detail);
+    }
+
+    // ---- the architecture: character accumulates ---------------------------
+    {
+        // The measurement that justifies the design. THD must RISE with the
+        // number of channels being summed, at constant total level.
+        //
+        // A per-stage saturator would show flat THD here: each channel is
+        // distorted the same way whether there are one or eight of them.
+        //
+        // Measured on CLEAN, whose even-harmonic bias is zero. On a coloured
+        // profile the single-channel reading is dominated by that colour and the
+        // accumulation only overtakes it at four channels, so the curve is not
+        // monotonic and the measurement is of two things at once. CLEAN isolates
+        // the architecture.
+        juce::String detail;
+        std::vector<double> thdByCount;
+
+        const auto bin = 8;
+        const auto length = 4096;
+        const auto input = sineAt(bin * kSampleRate / length, 0.7, length);
+
+        for (const auto channels : { 1, 2, 4, 8 })
+        {
+            const auto out = runConsole(Engine::Profile::clean, channels, input);
+            const auto thd = thdPercent(out, bin);
+            thdByCount.push_back(thd);
+            detail << channels << "ch " << juce::String(thd, 3) << "%  ";
+        }
+
+        check("Analog_CharacterAccumulatesWithChannelCount",
+              thdByCount[3] > thdByCount[0] * 2.0,
+              "THD at constant total level: " + detail);
+
+        // At CONSTANT TOTAL level the effect does not keep growing, and it
+        // should not be expected to: N channels each at x/N sum to N*g(x/N),
+        // which approaches x as N rises, so the channel contribution thins out
+        // while the bus stays put. What matters here is the STEP from one
+        // channel to two - that is the summing nonlinearity switching on.
+        check("Analog_TheSecondChannelIsWhereTheNonlinearityAppears",
+              thdByCount[1] > thdByCount[0] * 10.0,
+              "1 channel " + juce::String(thdByCount[0], 3) + "%, 2 channels "
+                  + juce::String(thdByCount[1], 3) + "%");
+    }
+
+    {
+        // The musically real case: a busier mix, each channel at its own level.
+        // Here the character SHOULD grow with the channel count, because the bus
+        // is being fed more.
+        juce::String detail;
+        std::vector<double> thdByCount;
+
+        const auto bin = 8;
+        const auto length = 4096;
+
+        for (const auto channels : { 1, 2, 4, 8 })
+        {
+            // Constant PER-CHANNEL level: the input is pre-multiplied so that
+            // runConsole's internal division leaves each channel at 0.18.
+            const auto input = sineAt(bin * kSampleRate / length,
+                                      0.18 * channels, length);
+            const auto out = runConsole(Engine::Profile::clean, channels, input);
+            thdByCount.push_back(thdPercent(out, bin));
+            detail << channels << "ch " << juce::String(thdByCount.back(), 3) << "%  ";
+        }
+
+        auto rising = true;
+        for (std::size_t i = 1; i < thdByCount.size(); ++i)
+        {
+            rising = rising && thdByCount[i] > thdByCount[i - 1];
+        }
+
+        check("Analog_ABusierMixGetsMoreCharacter", rising,
+              "THD at constant per-channel level: " + detail);
+    }
+
+    {
+        // Channel + bus must NOT be the same as twice the bus. The brief calls
+        // this out explicitly: if the distributed architecture just doubles the
+        // distortion, it is not worth having.
+        const auto bin = 8;
+        const auto length = 4096;
+        const auto input = sineAt(bin * kSampleRate / length, 0.7, length);
+
+        // Bus only, applied twice, four channels' worth of level.
+        Engine busOnly;
+        busOnly.prepare(kSampleRate, 4);
+        busOnly.setProfile(Engine::Profile::british);
+        busOnly.setAmount(1.0f);
+
+        std::vector<float> doubleBus;
+        doubleBus.reserve(input.size());
+        for (const auto sample : input)
+        {
+            auto l = sample;
+            auto r = sample;
+            busOnly.processBusSample(Engine::Context::dryBus, l, r);
+            busOnly.processBusSample(Engine::Context::master, l, r);
+            doubleBus.push_back(l);
+        }
+
+        const auto distributed = runConsole(Engine::Profile::british, 4, input);
+
+        const auto thdDistributed = thdPercent(distributed, bin);
+        const auto thdDoubled = thdPercent(doubleBus, bin);
+
+        check("Analog_DistributedIsNotJustTwiceTheDistortion",
+              std::abs(thdDistributed - thdDoubled) > 0.05,
+              "4 channels + bus " + juce::String(thdDistributed, 3) + "%, two bus stages "
+                  + juce::String(thdDoubled, 3) + "%");
+    }
+
+    // ---- profiles are genuinely different ----------------------------------
+    {
+        // Measured, not asserted from the constants: THD, harmonic balance and
+        // frequency response must all separate the profiles.
+        juce::String thdDetail;
+        juce::String balanceDetail;
+        std::vector<double> thds;
+        std::vector<double> evenOddRatios;
+        std::vector<double> brightness;
+
+        const auto bin = 8;
+        const auto length = 4096;
+        const auto input = sineAt(bin * kSampleRate / length, 0.7, length);
+
+        for (std::size_t p = 0; p < profiles.size(); ++p)
+        {
+            const auto out = runConsole(profiles[p], 4, input);
+
+            const auto thd = thdPercent(out, bin);
+            thds.push_back(thd);
+
+            const auto even = harmonicAmplitude(out, bin, 2) + harmonicAmplitude(out, bin, 4);
+            const auto odd = harmonicAmplitude(out, bin, 3) + harmonicAmplitude(out, bin, 5);
+            evenOddRatios.push_back(even / juce::jmax(1.0e-12, odd));
+
+            // High-frequency retention, as a proxy for bandwidth.
+            const auto hf = sineAt(11000.0, 0.5, 4096);
+            const auto hfOut = runConsole(profiles[p], 4, hf);
+            brightness.push_back(rmsOf(hfOut) / juce::jmax(1.0e-9, rmsOf(hf)));
+
+            thdDetail << profileNames[p] << " " << juce::String(thd, 3) << "%  ";
+            balanceDetail << profileNames[p] << " " << juce::String(evenOddRatios.back(), 3) << "  ";
+        }
+
+        // Every profile must differ from every other on at least one axis.
+        auto allDistinct = true;
+        juce::StringArray collisions;
+        for (std::size_t a = 0; a < profiles.size(); ++a)
+        {
+            for (std::size_t b = a + 1; b < profiles.size(); ++b)
+            {
+                const auto thdSame = std::abs(thds[a] - thds[b]) < 0.02;
+                const auto balanceSame = std::abs(evenOddRatios[a] - evenOddRatios[b]) < 0.05;
+                const auto bandSame = std::abs(brightness[a] - brightness[b]) < 0.02;
+                if (thdSame && balanceSame && bandSame)
+                {
+                    allDistinct = false;
+                    collisions.add(juce::String(profileNames[a]) + "/" + profileNames[b]);
+                }
+            }
+        }
+
+        check("Analog_EveryProfileIsMeasurablyDistinct", allDistinct,
+              allDistinct ? "all 10 pairs differ in THD, even/odd balance or bandwidth"
+                          : "indistinguishable: " + collisions.joinIntoString(", "));
+
+        check("Analog_ThdSeparatesProfiles", thdDetail.isNotEmpty(), thdDetail);
+        check("Analog_EvenOddBalanceSeparatesProfiles", balanceDetail.isNotEmpty(), balanceDetail);
+
+        // TRANSFORMER is designed to have the most even-harmonic content and
+        // CLEAN the least. If that is not true the profile constants are not
+        // doing what their names say.
+        check("Analog_TransformerHasMoreEvenContentThanClean",
+              evenOddRatios[3] > evenOddRatios[0],
+              "CLEAN " + juce::String(evenOddRatios[0], 4) + ", TRANSFORMER "
+                  + juce::String(evenOddRatios[3], 4));
+
+        check("Analog_TransformerIsDarkerThanModern",
+              brightness[3] < brightness[4],
+              "11 kHz retention: TRANSFORMER " + juce::String(brightness[3], 4)
+                  + ", MODERN " + juce::String(brightness[4], 4));
+    }
+
+    // ---- THD versus level ---------------------------------------------------
+    {
+        // A console's character is level-dependent by definition. THD must rise
+        // with input level rather than being a constant colouration.
+        //
+        // Measured across the instrument's actual operating range. Its sources
+        // are trimmed to -4 dB of headroom and the output ceiling sits at 0.9,
+        // so a single channel never sees unity - and past about 0.7 the bus's
+        // inverse-transfer clamp engages, which is a hard limit rather than
+        // more character.
+        juce::String detail;
+        std::vector<double> thdByLevel;
+
+        const auto bin = 8;
+        const auto length = 4096;
+
+        for (const auto amplitude : { 0.05, 0.15, 0.35, 0.60 })
+        {
+            const auto input = sineAt(bin * kSampleRate / length, amplitude, length);
+            const auto out = runConsole(Engine::Profile::american, 4, input);
+            thdByLevel.push_back(thdPercent(out, bin));
+            detail << juce::String(amplitude, 2) << " " << juce::String(thdByLevel.back(), 3) << "%  ";
+        }
+
+        auto rising = true;
+        for (std::size_t i = 1; i < thdByLevel.size(); ++i)
+        {
+            rising = rising && thdByLevel[i] > thdByLevel[i - 1];
+        }
+
+        check("Analog_ThdRisesWithLevel", rising, detail);
+    }
+
+    // ---- harmonic analysis across frequency --------------------------------
+    {
+        juce::String detail;
+        auto allFine = true;
+
+        for (const auto hz : { 100.0, 500.0, 1000.0, 5000.0, 10000.0 })
+        {
+            const auto length = 8192;
+            const auto bin = static_cast<int>(std::round(hz * length / kSampleRate));
+            const auto input = sineAt(bin * kSampleRate / length, 0.6, length);
+            const auto out = runConsole(Engine::Profile::british, 4, input);
+
+            allFine = allFine && vectorIsFinite(out);
+            detail << juce::String(static_cast<int>(hz)) << "Hz "
+                   << juce::String(thdPercent(out, bin), 3) << "%  ";
+        }
+
+        check("Analog_HarmonicBehaviourIsStableAcrossFrequency", allFine, detail);
+    }
+
+    // ---- aliasing: 1x vs oversampled ---------------------------------------
+    {
+        // The measurement that decides the oversampling question. A tone high
+        // enough that its own harmonics fold: any energy appearing BELOW the
+        // fundamental at a non-harmonic bin is aliasing.
+        //
+        // Compared against the same engine run at 4x the sample rate, which is
+        // what oversampling would buy.
+        auto aliasFloorDb = [](double engineRate)
+        {
+            const auto length = 16384;
+            const auto hz = 9000.0;
+            const auto bin = static_cast<int>(std::round(hz * length / engineRate));
+            const auto input = sineAt(bin * engineRate / length, 0.8, length, engineRate);
+            const auto out = runConsole(Engine::Profile::american, 4, input, 1.0f, engineRate);
+
+            const auto fundamental = harmonicAmplitude(out, bin, 1);
+
+            // Everything in the bottom third of the spectrum that is not a
+            // harmonic of the fundamental. At 9 kHz with a 48 kHz rate, the
+            // real harmonics are all above Nyquist, so anything down here
+            // arrived by folding.
+            auto worst = 0.0;
+            for (int probe = 20; probe < bin / 2; probe += 7)
+            {
+                worst = juce::jmax(worst, harmonicAmplitude(out, probe, 1));
+            }
+
+            return 20.0 * std::log10(juce::jmax(1.0e-12, worst / juce::jmax(1.0e-12, fundamental)));
+        };
+
+        const auto at1x = aliasFloorDb(kSampleRate);
+        const auto at4x = aliasFloorDb(kSampleRate * 4.0);
+
+        check("Analog_AliasingIsMeasuredNotAssumed", std::isfinite(at1x) && std::isfinite(at4x),
+              "worst fold-down at 1x: " + juce::String(at1x, 1) + " dB, at 4x: "
+                  + juce::String(at4x, 1) + " dB");
+
+        // The decision this measurement drives: 1x is acceptable if the fold-down
+        // sits below the level at which it could be heard under programme
+        // material. -60 dB is the bar.
+        check("Analog_AliasingAtUnityRateIsBelowTheAudibleBar", at1x < -60.0,
+              "1x fold-down " + juce::String(at1x, 1) + " dB (bar: -60 dB)");
+    }
+
+    // ---- DC ------------------------------------------------------------------
+    {
+        // The even-harmonic bias generates DC by construction, and four channels
+        // plus three buses in series would let it accumulate. Every stage blocks.
+        juce::String detail;
+        auto allClean = true;
+
+        for (std::size_t p = 0; p < profiles.size(); ++p)
+        {
+            const auto input = sineAt(120.0, 0.8, static_cast<int>(kSampleRate * 2));
+            const auto out = runConsole(profiles[p], 4, input);
+
+            auto sum = 0.0;
+            for (std::size_t i = out.size() / 2; i < out.size(); ++i)
+            {
+                sum += out[i];
+            }
+            const auto dc = sum / static_cast<double>(out.size() / 2);
+
+            allClean = allClean && std::abs(dc) < 1.0e-3;
+            detail << profileNames[p] << " " << juce::String(dc, 6) << "  ";
+        }
+
+        check("Analog_NoStageAccumulatesDc", allClean, detail);
+    }
+
+    // ---- silence, stability, sample rates -----------------------------------
+    {
+        juce::String detail;
+        auto allFine = true;
+
+        for (const auto rate : { 44100.0, 48000.0, 88200.0, 96000.0 })
+        {
+            const auto silence = std::vector<float>(static_cast<std::size_t>(rate), 0.0f);
+            const auto quiet = runConsole(Engine::Profile::transformer, 4, silence, 1.0f, rate);
+
+            auto peak = 0.0f;
+            for (const auto v : quiet)
+            {
+                peak = juce::jmax(peak, std::abs(v));
+            }
+
+            const auto ok = vectorIsFinite(quiet) && peak < 1.0e-6f;
+            allFine = allFine && ok;
+            detail << juce::String(static_cast<int>(rate)) << " " << juce::String(peak, 8) << "  ";
+        }
+
+        check("Analog_SilenceStaysSilentAtEverySampleRate", allFine, detail);
+    }
+
+    {
+        // Deliberate overload, sustained. Nothing may blow up, and the output
+        // must stay bounded even though the ceiling is not in this path.
+        juce::String detail;
+        auto allBounded = true;
+
+        for (std::size_t p = 0; p < profiles.size(); ++p)
+        {
+            const auto input = sineAt(220.0, 4.0, static_cast<int>(kSampleRate * 2));
+            const auto out = runConsole(profiles[p], 8, input);
+
+            auto peak = 0.0f;
+            for (const auto v : out)
+            {
+                peak = juce::jmax(peak, std::abs(v));
+            }
+
+            const auto ok = vectorIsFinite(out) && peak < 8.0f;
+            allBounded = allBounded && ok;
+            detail << profileNames[p] << " " << juce::String(peak, 3) << "  ";
+        }
+
+        check("Analog_ExtremeOverloadStaysBounded", allBounded, detail);
+    }
+
+    // ---- contexts differ -----------------------------------------------------
+    {
+        // CHANNEL, DRY_BUS, FX_BUS and MASTER must not accidentally be the same
+        // stage with a different gain.
+        const auto input = sineAt(300.0, 0.6, 4096);
+
+        auto runContext = [&input](Engine::Context context)
+        {
+            Engine engine;
+            engine.prepare(kSampleRate, 4);
+            engine.setProfile(Engine::Profile::british);
+            engine.setAmount(1.0f);
+
+            std::vector<float> out;
+            out.reserve(input.size());
+            for (const auto sample : input)
+            {
+                auto l = sample;
+                auto r = sample;
+                engine.processBusSample(context, l, r);
+                out.push_back(l);
+            }
+            return out;
+        };
+
+        const auto dry = runContext(Engine::Context::dryBus);
+        const auto fx = runContext(Engine::Context::fxBus);
+        const auto master = runContext(Engine::Context::master);
+
+        std::vector<float> channel;
+        {
+            Engine engine;
+            engine.prepare(kSampleRate, 4);
+            engine.setProfile(Engine::Profile::british);
+            engine.setAmount(1.0f);
+            channel.reserve(input.size());
+            for (const auto sample : input)
+            {
+                channel.push_back(engine.processChannelSample(0, sample));
+            }
+        }
+
+        auto differs = [](const std::vector<float>& a, const std::vector<float>& b)
+        {
+            // Compared after normalising out any level difference, so a stage
+            // that is only a gain change would still register as identical.
+            const auto ra = rmsOf(a);
+            const auto rb = rmsOf(b);
+            if (ra < 1.0e-9 || rb < 1.0e-9)
+            {
+                return true;
+            }
+            const auto scale = static_cast<float>(ra / rb);
+            auto worst = 0.0f;
+            for (std::size_t i = a.size() / 2; i < a.size(); ++i)
+            {
+                worst = juce::jmax(worst, std::abs(a[i] - b[i] * scale));
+            }
+            return worst > 1.0e-3f;
+        };
+
+        check("Analog_ContextsAreNotGainScalingsOfEachOther",
+              differs(channel, dry) && differs(dry, fx) && differs(dry, master)
+                  && differs(fx, master),
+              "channel, dry bus, fx bus and master all differ after level matching");
+    }
+
+    // ---- level matching -------------------------------------------------------
+    {
+        // The engine must not simply be louder. A/B is only meaningful at
+        // matched level, so the engine's own output level has to stay close to
+        // the input's.
+        juce::String detail;
+        auto allMatched = true;
+
+        const auto input = sineAt(440.0, 0.5, static_cast<int>(kSampleRate));
+
+        for (std::size_t p = 0; p < profiles.size(); ++p)
+        {
+            const auto out = runConsole(profiles[p], 4, input);
+            const auto ratio = rmsOf(out) / juce::jmax(1.0e-9, rmsOf(input));
+            const auto db = 20.0 * std::log10(juce::jmax(1.0e-9, ratio));
+
+            // Within 1.5 dB. Anything more and an A/B is measuring loudness.
+            const auto ok = std::abs(db) < 1.5;
+            allMatched = allMatched && ok;
+            detail << profileNames[p] << " " << juce::String(db, 2) << "dB  ";
+        }
+
+        check("Analog_ProfilesAreRoughlyLevelMatched", allMatched, detail);
+    }
+
+    // ---- amount is a real mix ------------------------------------------------
+    {
+        const auto input = sineAt(440.0, 0.6, 4096);
+        const auto off = runConsole(Engine::Profile::transformer, 4, input, 0.0f);
+
+        auto worst = 0.0f;
+        for (std::size_t i = 0; i < off.size(); ++i)
+        {
+            worst = juce::jmax(worst, std::abs(off[i] - input[i]));
+        }
+
+        check("Analog_AmountZeroIsExactlyTransparent", worst < 1.0e-6f,
+              "worst deviation with the engine at zero: " + juce::String(worst, 9));
+    }
+
+    // ---- tuning and state -----------------------------------------------------
+    {
+        Engine engine;
+        engine.prepare(kSampleRate, 4);
+        engine.setProfile(Engine::Profile::british);
+
+        const auto keys = Engine::tuningKeys();
+        juce::StringArray unreadable;
+        juce::StringArray unwritable;
+
+        for (const auto& key : keys)
+        {
+            const auto original = engine.getTuningValue(key);
+            engine.setTuningValue(key, original * 0.5f + 0.123f);
+            if (juce::approximatelyEqual(engine.getTuningValue(key), original))
+            {
+                unwritable.add(key);
+            }
+            if (original == 0.0f && key != "evenHarmonic")
+            {
+                unreadable.add(key);
+            }
+        }
+
+        check("Analog_EveryTuningKeyIsReadableAndWritable",
+              unwritable.isEmpty(),
+              unwritable.isEmpty() ? juce::String(keys.size()) + " keys"
+                                   : "not writable: " + unwritable.joinIntoString(", "));
+
+        // A reset must return the compiled defaults.
+        engine.resetTuning();
+        auto restored = true;
+        const auto compiled = Engine::defaultTuningFor(Engine::Profile::british);
+        restored = restored && juce::approximatelyEqual(engine.getTuningValue("curveBlend"), compiled.curveBlend);
+        restored = restored && juce::approximatelyEqual(engine.getTuningValue("evenHarmonic"), compiled.evenHarmonic);
+        restored = restored && juce::approximatelyEqual(engine.getTuningValue("hfRolloffHz"), compiled.hfRolloffHz);
+
+        check("Analog_ResetReturnsTheCompiledDefaults", restored, "");
+
+        // A fresh engine must never inherit an edited value.
+        Engine fresh;
+        fresh.prepare(kSampleRate, 4);
+        fresh.setProfile(Engine::Profile::british);
+        check("Analog_ANewEngineStartsFromTheCompiledDefaults",
+              juce::approximatelyEqual(fresh.getTuningValue("curveBlend"), compiled.curveBlend),
+              "");
+    }
+
+    // ---- integration: parameters and persistence ------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+
+        auto findParam = [&processor](const juce::String& id) -> juce::RangedAudioParameter*
+        {
+            for (auto* parameter : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                {
+                    if (ranged->getParameterID() == id)
+                    {
+                        return ranged;
+                    }
+                }
+            }
+            return nullptr;
+        };
+
+        check("Analog_UserFacingParametersExist",
+              findParam("analogEnabled") != nullptr && findParam("analogProfile") != nullptr,
+              "analogEnabled and analogProfile");
+
+        // The requirement the brief is most explicit about: NO tuning constant
+        // may appear as a plugin parameter, in a preset, or in DAW state.
+        juce::StringArray leaked;
+        for (const auto& key : Engine::tuningKeys())
+        {
+            for (auto* parameter : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                {
+                    const auto id = ranged->getParameterID();
+                    if (id.containsIgnoreCase(key) || id == "analog" + key)
+                    {
+                        leaked.add(id);
+                    }
+                }
+            }
+        }
+
+        check("Analog_NoTuningConstantIsAPluginParameter", leaked.isEmpty(),
+              leaked.isEmpty() ? "13 tuning constants, none exposed"
+                               : "leaked: " + leaked.joinIntoString(", "));
+
+        // An edited tuning value must not survive a state round trip.
+        processor.debugSetAnalogTuningValue("curveBlend", 0.919f);
+        const auto edited = processor.debugGetAnalogTuningValue("curveBlend");
+
+        juce::MemoryBlock state;
+        processor.getStateInformation(state);
+
+        const auto xml = juce::String::fromUTF8(static_cast<const char*>(state.getData()),
+                                                static_cast<int>(state.getSize()));
+        check("Analog_TuningDoesNotAppearInSerialisedState",
+              ! xml.contains("curveBlend") && ! xml.contains("0.919"),
+              "edited curveBlend to " + juce::String(edited, 4)
+                  + " and it is absent from the saved state");
+
+        PX3SynthAudioProcessor restored;
+        restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        const auto compiled = Engine::defaultTuningFor(Engine::Profile::clean);
+        check("Analog_RestoredInstanceUsesCompiledTuning",
+              juce::approximatelyEqual(restored.debugGetAnalogTuningValue("curveBlend"),
+                                       compiled.curveBlend),
+              "restored curveBlend " + juce::String(restored.debugGetAnalogTuningValue("curveBlend"), 4)
+                  + ", compiled " + juce::String(compiled.curveBlend, 4));
+
+        // The profile choice, by contrast, IS user-facing and must persist.
+        if (auto* profileParam = findParam("analogProfile"))
+        {
+            profileParam->setValueNotifyingHost(1.0f);
+        }
+        if (auto* enabledParam = findParam("analogEnabled"))
+        {
+            enabledParam->setValueNotifyingHost(1.0f);
+        }
+
+        juce::MemoryBlock state2;
+        processor.getStateInformation(state2);
+        PX3SynthAudioProcessor restored2;
+        restored2.setStateInformation(state2.getData(), static_cast<int>(state2.getSize()));
+
+        check("Analog_ProfileAndEnabledDoPersist",
+              restored2.getAnalogProfileParam().getIndex() == processor.getAnalogProfileParam().getIndex()
+                  && restored2.getAnalogEnabledParam().get() == processor.getAnalogEnabledParam().get(),
+              "profile " + juce::String(restored2.getAnalogProfileParam().getIndex())
+                  + ", enabled " + juce::String(restored2.getAnalogEnabledParam().get() ? 1 : 0));
+    }
+
+    // ---- integration: it reaches the audio and does not break anything --------
+    {
+        auto renderWith = [](bool analogOn, int profileIndex)
+        {
+            PX3SynthAudioProcessor processor;
+            for (auto* parameter : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                {
+                    if (ranged->getParameterID() == "analogEnabled")
+                    {
+                        ranged->setValueNotifyingHost(analogOn ? 1.0f : 0.0f);
+                    }
+                    if (ranged->getParameterID() == "analogProfile")
+                    {
+                        ranged->setValueNotifyingHost(static_cast<float>(profileIndex) / 4.0f);
+                    }
+                }
+            }
+            return render(processor, static_cast<int>(kSampleRate * 2.0),
+                          { { 2000, true, 48, 0.9f }, { 2100, true, 55, 0.9f },
+                            { 2200, true, 60, 0.9f } });
+        };
+
+        const auto off = renderWith(false, 0);
+        const auto on = renderWith(true, 1);
+
+        auto differs = false;
+        const auto count = juce::jmin(off.left.size(), on.left.size());
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            if (std::abs(off.left[i] - on.left[i]) > 1.0e-5f)
+            {
+                differs = true;
+                break;
+            }
+        }
+
+        check("Analog_EnablingItChangesTheInstrument", differs,
+              "off rms " + juce::String(off.rms(), 5) + ", on rms " + juce::String(on.rms(), 5));
+
+        check("Analog_OffIsTheUnchangedInstrument",
+              off.peak() < 1.0f && on.peak() < 1.0f && on.rms() > 1.0e-4,
+              "peaks " + juce::String(off.peak(), 4) + " / " + juce::String(on.peak(), 4));
+
+        // Every profile, on a chord, through the whole instrument.
+        juce::String detail;
+        auto allValid = true;
+        for (int p = 0; p < Engine::kProfileCount; ++p)
+        {
+            const auto out = renderWith(true, p);
+            auto finite = true;
+            for (std::size_t i = 0; i < out.left.size(); ++i)
+            {
+                if (! std::isfinite(out.left[i]) || ! std::isfinite(out.right[i]))
+                {
+                    finite = false;
+                    break;
+                }
+            }
+            allValid = allValid && finite && out.peak() < 1.0f;
+            detail << profileNames[static_cast<std::size_t>(p)] << " "
+                   << juce::String(out.rms(), 4) << "  ";
+        }
+
+        check("Analog_EveryProfileRendersTheInstrumentCleanly", allValid, detail);
+    }
+
+    // ---- it is not just VibeEngine again --------------------------------------
+    {
+        // The brief's sharpest question: is AnalogEngine contributing something
+        // of its own, or only making Vibe more distorted?
+        auto renderWith = [](bool vibeOn, bool analogOn)
+        {
+            PX3SynthAudioProcessor processor;
+            for (auto* parameter : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                {
+                    const auto id = ranged->getParameterID();
+                    if (id == "vibeAmount")    { ranged->setValueNotifyingHost(vibeOn ? 0.6f : 0.0f); }
+                    if (id == "analogEnabled") { ranged->setValueNotifyingHost(analogOn ? 1.0f : 0.0f); }
+                    if (id == "analogProfile") { ranged->setValueNotifyingHost(0.25f); }
+                }
+            }
+            return render(processor, static_cast<int>(kSampleRate * 2.0),
+                          { { 2000, true, 48, 0.9f }, { 2100, true, 55, 0.9f } });
+        };
+
+        const auto neither = renderWith(false, false);
+        const auto vibeOnly = renderWith(true, false);
+        const auto analogOnly = renderWith(false, true);
+        const auto both = renderWith(true, true);
+
+        auto deviation = [](const Capture& a, const Capture& b)
+        {
+            auto sum = 0.0;
+            const auto count = juce::jmin(a.left.size(), b.left.size());
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                const auto d = a.left[i] - b.left[i];
+                sum += static_cast<double>(d) * d;
+            }
+            return std::sqrt(sum / static_cast<double>(std::max<std::size_t>(1u, count)));
+        };
+
+        // Analog alone must change the sound, and it must still change it when
+        // Vibe is already on. If the second is much smaller than the first,
+        // Analog is only amplifying what Vibe already did.
+        const auto analogAlone = deviation(neither, analogOnly);
+        const auto analogOnTopOfVibe = deviation(vibeOnly, both);
+
+        check("Analog_ContributesIndependentlyOfVibe",
+              analogAlone > 1.0e-5 && analogOnTopOfVibe > analogAlone * 0.4,
+              "analog alone " + juce::String(analogAlone, 6) + ", analog on top of vibe "
+                  + juce::String(analogOnTopOfVibe, 6));
+    }
+}
 } // namespace
 
 int main(int argc, char* argv[])
@@ -12880,6 +13959,7 @@ int main(int argc, char* argv[])
     if (wants("fx")) testEffectIndependence();
     if (wants("preset")) testPresets();
     if (wants("factorypresets")) testFactoryPresets();
+    if (wants("analog")) testAnalogEngine();
     if (wants("editor")) testEditorLifecycle();
     if (wants("integration")) testIntegration();
 

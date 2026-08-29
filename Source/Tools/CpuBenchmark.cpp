@@ -81,6 +81,7 @@ struct Scenario
     bool vibe { false };
     bool fx { false };
     bool newFx { false };            // doom + lucy + chorus + stereo spread
+    bool analog { false };           // the console engine, all four contexts
     bool mixerAutomation { false }; // level/pan/send automated every block
     bool voiceStealing { false };   // retrigger faster than voices can retire
     bool rapidTrigger { false };    // constant note-on/note-off during measurement
@@ -152,6 +153,11 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     setParameter(processor, "lucyGlobal", scenario.newFx ? 0.5f : 0.0f);
     setParameter(processor, "chorusAmount", scenario.newFx ? 0.6f : 0.0f);
     setParameter(processor, "spreadAmount", scenario.newFx ? 0.6f : 0.0f);
+
+    // AnalogEngine runs at four channel stages plus three bus stages, so it is
+    // measured with the rest of the console rather than as an effect.
+    setParameter(processor, "analogEnabled", scenario.analog ? 1.0f : 0.0f);
+    setParameter(processor, "analogProfile", scenario.analog ? 0.25f : 0.0f);
 
     for (int envIndex = 0; envIndex < 3; ++envIndex)
     {
@@ -300,29 +306,30 @@ Timing measure(const Scenario& scenario)
 }
 
 const Scenario kScenarios[] = {
-    { "idle (no voices)",              0, false , false , false , false , false , false , false , false , false , false , false , false , -1 },
-    { "1 voice",                       1, false , false , false , false , false , false , false , false , false , false , false , false , -1 },
-    { "4 voices",                      4, false , false , false , false , false , false , false , false , false , false , false , false , -1 },
-    { "8 voices",                      8, false , false , false , false , false , false , false , false , false , false , false , false , -1 },
-    { "16 voices (typical)",           16, false , false , false , false , false , false , false , false , false , false , false , false , -1 },
-    { "64 voices (max)",               64, false , false , false , false , false , false , false , false , false , false , false , false , -1 },
-    { "64 voices + long release",      64, true  , false , false , false , false , false , false , false , false , false , false , false , -1 },
-    { "16 voices, all 4 sources",      16, false , true  , false , false , false , false , false , false , false , false , false , false , -1 },
-    { "16 voices + filters",           16, false , true  , true  , false , false , false , false , false , false , false , false , false , -1 },
-    { "16 voices + filter sweep",      16, false , true  , true  , true  , false , false , false , false , false , false , false , false , -1 },
-    { "16 voices + mod envelopes",     16, false , true  , false , false , true  , false , false , false , false , false , false , false , -1 },
-    { "16 voices + LFOs",              16, false , true  , false , false , false , true  , false , false , false , false , false , false , -1 },
-    { "16 voices + vibe",              16, false , true  , false , false , false , false , true  , false , false , false , false , false , -1 },
-    { "16 voices + FX chain",          16, false , true  , false , false , false , false , false , true  , true  , false , false , false , -1 },
-    { "16 voices + mixer automation",  16, false , true  , false , false , false , false , false , false , false , true  , false , false , -1 },
-    { "16 voices, EVERYTHING on",      16, false , true  , true  , true  , true  , true  , true  , true  , true  , true  , false , false , -1 },
-    { "64 voices, EVERYTHING on",      64, true  , true  , true  , true  , true  , true  , true  , true  , true  , true  , false , false , -1 },
-    { "rapid triggering",              16, false , true  , true  , false , false , false , false , true  , true  , false , false , true  , -1 },
-    { "voice stealing stress",         64, true  , true  , true  , false , false , false , false , true  , true  , false , true  , false , -1 },
-    { "16 voices, SINE",               16, false , true  , true  , false , false , false , false , false , false , false , false , false , 0 },
-    { "16 voices, SUPERSAW",           16, false , true  , true  , false , false , false , false , false , false , false , false , false , 6 },
-    { "16 voices + new FX only",       16, false , true  , false , false , false , false , false , false , true  , false , false , false , -1 },
-    { "16 voices, PX3",                16, false , true  , true  , false , false , false , false , false , false , false , false , false , 19 },
+    { "idle (no voices)",              0, false , false , false , false , false , false , false , false , false , false , false , false , false , -1 },
+    { "1 voice",                       1, false , false , false , false , false , false , false , false , false , false , false , false , false , -1 },
+    { "4 voices",                      4, false , false , false , false , false , false , false , false , false , false , false , false , false , -1 },
+    { "8 voices",                      8, false , false , false , false , false , false , false , false , false , false , false , false , false , -1 },
+    { "16 voices (typical)",           16, false , false , false , false , false , false , false , false , false , false , false , false , false , -1 },
+    { "64 voices (max)",               64, false , false , false , false , false , false , false , false , false , false , false , false , false , -1 },
+    { "64 voices + long release",      64, true  , false , false , false , false , false , false , false , false , false , false , false , false , -1 },
+    { "16 voices, all 4 sources",      16, false , true  , false , false , false , false , false , false , false , false , false , false , false , -1 },
+    { "16 voices + filters",           16, false , true  , true  , false , false , false , false , false , false , false , false , false , false , -1 },
+    { "16 voices + filter sweep",      16, false , true  , true  , true  , false , false , false , false , false , false , false , false , false , -1 },
+    { "16 voices + mod envelopes",     16, false , true  , false , false , true  , false , false , false , false , false , false , false , false , -1 },
+    { "16 voices + LFOs",              16, false , true  , false , false , false , true  , false , false , false , false , false , false , false , -1 },
+    { "16 voices + vibe",              16, false , true  , false , false , false , false , true  , false , false , false , false , false , false , -1 },
+    { "16 voices + FX chain",          16, false , true  , false , false , false , false , false , true  , true  , true  , false , false , false , -1 },
+    { "16 voices + mixer automation",  16, false , true  , false , false , false , false , false , false , false , false , true  , false , false , -1 },
+    { "16 voices, EVERYTHING on",      16, false , true  , true  , true  , true  , true  , true  , true  , true  , true  , true  , false , false , -1 },
+    { "64 voices, EVERYTHING on",      64, true  , true  , true  , true  , true  , true  , true  , true  , true  , true  , true  , false , false , -1 },
+    { "rapid triggering",              16, false , true  , true  , false , false , false , false , true  , true  , true  , false , false , true  , -1 },
+    { "voice stealing stress",         64, true  , true  , true  , false , false , false , false , true  , true  , true  , false , true  , false , -1 },
+    { "16 voices, SINE",               16, false , true  , true  , false , false , false , false , false , false , false , false , false , false , 0 },
+    { "16 voices, SUPERSAW",           16, false , true  , true  , false , false , false , false , false , false , false , false , false , false , 6 },
+    { "16 voices + new FX only",       16, false , true  , false , false , false , false , false , false , true  , true  , false , false , false , -1 },
+    { "16 voices + analog only",       16, false , true  , false , false , false , false , false , false , false , true  , false , false , false , -1 },
+    { "16 voices, PX3",                16, false , true  , true  , false , false , false , false , false , false , false , false , false , false , 19 },
 };
 
 // ---------------------------------------------------------------------------
@@ -511,7 +518,7 @@ int runFingerprints()
     for (int mode = 0; mode < 20; ++mode)
     {
         Scenario scenario { "", 4, false, true, false, false, false, false, false,
-                            false, false, false, false, false, mode };
+                            false, false, false, false, false, false, mode };
         report(juce::String("osc mode ") + kModeNames[mode], scenario);
     }
 
@@ -522,24 +529,24 @@ int runFingerprints()
     };
 
     const Variant variants[] = {
-        { "1 voice, default",       { "", 1, false, false, false, false, false, false, false, false, false, false, false, false, -1 } },
-        { "8 voices, default",      { "", 8, false, false, false, false, false, false, false, false, false, false, false, false, -1 } },
-        { "32 voices, all sources", { "", 32, false, true, false, false, false, false, false, false, false, false, false, false, -1 } },
-        { "long release tails",     { "", 16, true, true, false, false, false, false, false, false, false, false, false, false, -1 } },
-        { "filters active",         { "", 8, false, true, true, false, false, false, false, false, false, false, false, false, -1 } },
-        { "filter cutoff sweep",    { "", 8, false, true, true, true, false, false, false, false, false, false, false, false, -1 } },
-        { "mod envelopes",          { "", 8, false, true, false, false, true, false, false, false, false, false, false, false, -1 } },
-        { "LFOs",                   { "", 8, false, true, false, false, false, true, false, false, false, false, false, false, -1 } },
-        { "vibe",                   { "", 8, false, true, false, false, false, false, true, false, false, false, false, false, -1 } },
-        { "FX chain",               { "", 8, false, true, false, false, false, false, false, true, true, false, false, false, -1 } },
-        { "mixer automation",       { "", 8, false, true, false, false, false, false, false, false, false, true, false, false, -1 } },
-        { "everything on",          { "", 16, true, true, true, true, true, true, true, true, true, true, false, false, -1 } },
-        { "voice stealing",         { "", 64, true, true, true, false, false, false, false, true, true, false, true, false, -1 } },
+        { "1 voice, default",       { "", 1, false, false, false, false, false, false, false, false, false, false, false, false, false, -1 } },
+        { "8 voices, default",      { "", 8, false, false, false, false, false, false, false, false, false, false, false, false, false, -1 } },
+        { "32 voices, all sources", { "", 32, false, true, false, false, false, false, false, false, false, false, false, false, false, -1 } },
+        { "long release tails",     { "", 16, true, true, false, false, false, false, false, false, false, false, false, false, false, -1 } },
+        { "filters active",         { "", 8, false, true, true, false, false, false, false, false, false, false, false, false, false, -1 } },
+        { "filter cutoff sweep",    { "", 8, false, true, true, true, false, false, false, false, false, false, false, false, false, -1 } },
+        { "mod envelopes",          { "", 8, false, true, false, false, true, false, false, false, false, false, false, false, false, -1 } },
+        { "LFOs",                   { "", 8, false, true, false, false, false, true, false, false, false, false, false, false, false, -1 } },
+        { "vibe",                   { "", 8, false, true, false, false, false, false, true, false, false, false, false, false, false, -1 } },
+        { "FX chain",               { "", 8, false, true, false, false, false, false, false, true, true, true, false, false, false, -1 } },
+        { "mixer automation",       { "", 8, false, true, false, false, false, false, false, false, false, false, true, false, false, -1 } },
+        { "everything on",          { "", 16, true, true, true, true, true, true, true, true, true, true, true, false, false, -1 } },
+        { "voice stealing",         { "", 64, true, true, true, false, false, false, false, true, true, true, false, true, false, -1 } },
         // FX-free twins of the two combined-path configs above, so the same
         // routing is still covered by an exact bitwise comparison.
-        { "everything on, no FX",   { "", 16, true, true, true, true, true, true, true, false, false, true, false, false, -1 } },
-        { "voice stealing, no FX",  { "", 64, true, true, true, false, false, false, false, false, false, false, true, false, -1 } },
-        { "rapid retrigger, no FX", { "", 16, false, true, true, false, false, false, false, false, false, false, false, true, -1 } },
+        { "everything on, no FX",   { "", 16, true, true, true, true, true, true, true, false, false, false, true, false, false, -1 } },
+        { "voice stealing, no FX",  { "", 64, true, true, true, false, false, false, false, false, false, false, false, true, false, -1 } },
+        { "rapid retrigger, no FX", { "", 16, false, true, true, false, false, false, false, false, false, false, false, false, true, -1 } },
     };
 
     for (const auto& variant : variants)
@@ -639,8 +646,8 @@ int main(int argc, char* argv[])
         // The fingerprint is only evidence if it repeats. Voice start draws from
         // the shared system Random, so this checks that seeding actually pins
         // the sequence rather than assuming it does.
-        const Scenario superSaw { "", 4, false, true, false, false, false, false, false, false, false, false, false, false, 6 };
-        const Scenario physical { "", 4, false, true, false, false, false, false, false, false, false, false, false, false, 16 };
+        const Scenario superSaw { "", 4, false, true, false, false, false, false, false, false, false, false, false, false, false, 6 };
+        const Scenario physical { "", 4, false, true, false, false, false, false, false, false, false, false, false, false, false, 16 };
         for (int repeat = 0; repeat < 3; ++repeat)
         {
             const auto a = fingerprint(superSaw);

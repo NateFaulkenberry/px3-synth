@@ -14,6 +14,14 @@ constexpr float kForwardClamp = juce::MathConstants<float>::halfPi;
 constexpr float kInverseClamp = 0.9999f;
 } // namespace
 
+AnalogEngine::AnalogEngine()
+{
+    // Without this the tuning holds the struct's inline defaults rather than
+    // the active profile's, until prepare() happens to run. Measured: a
+    // restored processor reported curveBlend 0.25 where CLEAN compiles 0.10.
+    resetTuning();
+}
+
 juce::StringArray AnalogEngine::profileNames()
 {
     return { "CLEAN", "BRITISH", "AMERICAN", "TRANSFORMER", "MODERN" };
@@ -21,9 +29,10 @@ juce::StringArray AnalogEngine::profileNames()
 
 juce::StringArray AnalogEngine::tuningKeys()
 {
-    return { "channelDrive", "busDrive", "masterDrive", "fxBusTrim", "curveBlend",
+    return { "pairDrive", "masterDrive", "fxBusTrim", "curveBlend",
              "evenHarmonic", "slewEnhance", "hfRolloffHz", "hfLevelDependence",
-             "lfCornerHz", "lfLevelTrim", "dcBlockHz", "headroom", "engineAmount" };
+             "lfCornerHz", "lfLevelTrim", "dcBlockHz", "headroom", "engineAmount",
+             "outputTrim" };
 }
 
 // ============================================================================
@@ -93,34 +102,34 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             // This profile exists to prove the architecture - if CLEAN still
             // does something audible on a busy mix, the character really is
             // coming from accumulation rather than from colour.
-            t.channelDrive = 0.85f;
-            t.busDrive = 0.85f;
+            t.pairDrive = 0.85f;
             t.masterDrive = 0.70f;
             t.curveBlend = 0.10f;
             t.evenHarmonic = 0.0f;
-            t.slewEnhance = 0.12f;
+            t.slewEnhance = 0.06f;
             t.hfRolloffHz = 21000.0f;
             t.hfLevelDependence = 0.10f;
             t.lfCornerHz = 6.0f;
             t.lfLevelTrim = 0.05f;
             t.headroom = 1.15f;
+            t.outputTrim = 1.0060f;   // -0.11 dB measured
             break;
 
         case Profile::british:
             // Discrete, transformer-coupled. Even-harmonic bias for the warmth,
             // a real coupling-capacitor corner, and the top rolled off enough to
             // hear. Slew is moderate - these desks are not fast.
-            t.channelDrive = 1.05f;
-            t.busDrive = 1.00f;
+            t.pairDrive = 1.05f;
             t.masterDrive = 0.88f;
             t.curveBlend = 0.30f;
-            t.evenHarmonic = 0.085f;
-            t.slewEnhance = 0.40f;
+            t.evenHarmonic = 0.022f;
+            t.slewEnhance = 0.18f;
             t.hfRolloffHz = 16000.0f;
             t.hfLevelDependence = 0.38f;
             t.lfCornerHz = 18.0f;
             t.lfLevelTrim = 0.28f;
             t.headroom = 0.95f;
+            t.outputTrim = 1.0498f;   // -0.77 dB measured
             break;
 
         case Profile::american:
@@ -128,51 +137,51 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             // the harmonic weight on odd orders - forward rather than warm. The
             // heaviest pre-warp of any profile, which is where the harder onset
             // and the extra 5th-harmonic content come from.
-            t.channelDrive = 1.15f;
-            t.busDrive = 1.10f;
+            t.pairDrive = 1.15f;
             t.masterDrive = 0.92f;
             t.curveBlend = 0.62f;
-            t.evenHarmonic = 0.030f;
-            t.slewEnhance = 0.62f;
+            t.evenHarmonic = 0.004f;
+            t.slewEnhance = 0.28f;
             t.hfRolloffHz = 18500.0f;
             t.hfLevelDependence = 0.22f;
             t.lfCornerHz = 14.0f;
             t.lfLevelTrim = 0.12f;
             t.headroom = 0.90f;
+            t.outputTrim = 1.1928f;   // -2.41 dB measured
             break;
 
         case Profile::transformer:
             // Transformer-heavy. The most even-harmonic content, the most
             // level-dependent low end, and the most restricted bandwidth. This
             // is the profile that changes tone rather than just density.
-            t.channelDrive = 1.10f;
-            t.busDrive = 1.05f;
+            t.pairDrive = 1.10f;
             t.masterDrive = 0.95f;
             t.curveBlend = 0.20f;
-            t.evenHarmonic = 0.135f;
-            t.slewEnhance = 0.30f;
+            t.evenHarmonic = 0.030f;
+            t.slewEnhance = 0.14f;
             t.hfRolloffHz = 13500.0f;
             t.hfLevelDependence = 0.52f;
             t.lfCornerHz = 26.0f;
             t.lfLevelTrim = 0.45f;
             t.headroom = 0.88f;
+            t.outputTrim = 1.0234f;   // -0.39 dB measured
             break;
 
         case Profile::modern:
             // Later clean VCA large-format. The most headroom, the fastest
             // recovery, the least colour - but a distinctly harder edge than
             // CLEAN when it finally does reach the knee.
-            t.channelDrive = 0.90f;
-            t.busDrive = 0.90f;
+            t.pairDrive = 0.90f;
             t.masterDrive = 0.75f;
             t.curveBlend = 0.45f;
-            t.evenHarmonic = 0.012f;
-            t.slewEnhance = 0.20f;
+            t.evenHarmonic = 0.008f;
+            t.slewEnhance = 0.10f;
             t.hfRolloffHz = 20000.0f;
             t.hfLevelDependence = 0.14f;
             t.lfCornerHz = 8.0f;
             t.lfLevelTrim = 0.08f;
             t.headroom = 1.25f;
+            t.outputTrim = 1.0781f;   // -1.14 dB measured
             break;
     }
 
@@ -265,8 +274,7 @@ void AnalogEngine::refreshAmount() noexcept
 
 void AnalogEngine::setTuningValue(const juce::String& key, float value)
 {
-    if (key == "channelDrive")           { tuning.channelDrive = juce::jlimit(0.0f, 3.0f, value); }
-    else if (key == "busDrive")          { tuning.busDrive = juce::jlimit(0.0f, 3.0f, value); }
+    if (key == "pairDrive")              { tuning.pairDrive = juce::jlimit(0.0f, 3.0f, value); }
     else if (key == "masterDrive")       { tuning.masterDrive = juce::jlimit(0.0f, 3.0f, value); }
     else if (key == "fxBusTrim")         { tuning.fxBusTrim = juce::jlimit(0.0f, 2.0f, value); }
     else if (key == "curveBlend")        { tuning.curveBlend = juce::jlimit(0.0f, 1.0f, value); }
@@ -279,12 +287,12 @@ void AnalogEngine::setTuningValue(const juce::String& key, float value)
     else if (key == "dcBlockHz")         { tuning.dcBlockHz = juce::jlimit(0.1f, 50.0f, value); }
     else if (key == "headroom")          { tuning.headroom = juce::jlimit(0.25f, 3.0f, value); }
     else if (key == "engineAmount")      { tuning.engineAmount = juce::jlimit(0.0f, 1.0f, value); refreshAmount(); }
+    else if (key == "outputTrim")        { tuning.outputTrim = juce::jlimit(0.25f, 4.0f, value); }
 }
 
 float AnalogEngine::getTuningValue(const juce::String& key) const
 {
-    if (key == "channelDrive")           { return tuning.channelDrive; }
-    if (key == "busDrive")               { return tuning.busDrive; }
+    if (key == "pairDrive")              { return tuning.pairDrive; }
     if (key == "masterDrive")            { return tuning.masterDrive; }
     if (key == "fxBusTrim")              { return tuning.fxBusTrim; }
     if (key == "curveBlend")             { return tuning.curveBlend; }
@@ -297,6 +305,7 @@ float AnalogEngine::getTuningValue(const juce::String& key) const
     if (key == "dcBlockHz")              { return tuning.dcBlockHz; }
     if (key == "headroom")               { return tuning.headroom; }
     if (key == "engineAmount")           { return tuning.engineAmount; }
+    if (key == "outputTrim")             { return tuning.outputTrim; }
     return 0.0f;
 }
 
@@ -311,29 +320,69 @@ float AnalogEngine::processStage(StageState& state,
 {
     const auto rate = static_cast<float>(sampleRateHz);
 
-    // A slow envelope of this stage's own level. Everything level-dependent
-    // below reads it, which is what makes the frequency response change with
-    // how hard the stage is being driven rather than only with the knob.
-    const auto envCoeff = onePoleCoeff(18.0f, rate);
+    // An envelope of this stage's own level, tracking PROGRAMME level rather
+    // than the waveform. Everything level-dependent below reads it, which is
+    // what makes the frequency response change with how hard the stage is being
+    // driven rather than only with a knob.
+    //
+    // The rate is load-bearing. Fast enough to follow the waveform, a modulated
+    // filter corner becomes an amplitude modulator: at 18 Hz it produced 3% THD
+    // on a path the architecture guarantees is transparent. A transformer's
+    // low-frequency behaviour responds to flux over many cycles, not within one.
+    const auto envCoeff = onePoleCoeff(1.5f, rate);
     state.envelope += (std::abs(input) - state.envelope) * envCoeff;
     const auto drivenBy = juce::jlimit(0.0f, 1.0f, state.envelope * 2.0f);
 
+    // ---- the colour group ---------------------------------------------------
+    // Everything here is the desk's TONE rather than its summing behaviour, and
+    // where it sits relative to the transfer is not a detail.
+    //
+    // It has to be OUTSIDE the invertible pair. Filtering between the forward
+    // and inverse transfers breaks the cancellation - g-1(HP(g(x))) is not
+    // HP(x) - which is a nonlinearity that appears on a single channel, exactly
+    // where the architecture promises none. Measured at 2.3% THD before this
+    // was ordered correctly.
+    //
+    // So: the channel runs colour BEFORE its forward transfer, and the bus runs
+    // colour AFTER its inverse transfer. The composite is then
+    // g-1(g(colour(x))) = colour(x), and colour is linear filtering, so it adds
+    // no harmonics of its own.
+    auto applyColour = [&](float x)
+    {
+        // Coupling capacitor. The corner moves up with level on the
+        // transformer-ish profiles, which is what a transformer does as it
+        // approaches saturation: it loses low end.
+        if (context != Context::fxBus)
+        {
+            const auto corner = tuning.lfCornerHz * (1.0f + drivenBy * tuning.lfLevelTrim * 3.0f);
+            const auto lfCoeff = onePoleCoeff(corner, rate);
+            state.lfState += (x - state.lfState) * lfCoeff;
+            x -= state.lfState;
+        }
+
+        // Bandwidth. Not a generic low-pass bolted on the end: the corner falls
+        // as the stage is driven, which is what a real amplifier's slew-limited
+        // bandwidth does.
+        {
+            const auto corner = tuning.hfRolloffHz
+                                * (1.0f - drivenBy * tuning.hfLevelDependence * 0.55f);
+            const auto hfCoeff = onePoleCoeff(juce::jmax(1000.0f, corner), rate);
+            state.hfState += (x - state.hfState) * hfCoeff;
+            x = state.hfState;
+        }
+
+        return x;
+    };
+
     auto x = input;
 
-    // ---- coupling capacitor -------------------------------------------------
-    // A real stage is AC coupled. The corner moves up with level on the
-    // transformer-ish profiles, which is the level-dependent LF behaviour a
-    // transformer actually has - it loses low end as it approaches saturation.
-    if (context != Context::fxBus)
+    if (forward)
     {
-        const auto corner = tuning.lfCornerHz * (1.0f + drivenBy * tuning.lfLevelTrim * 3.0f);
-        const auto lfCoeff = onePoleCoeff(corner, rate);
-        state.lfState += (x - state.lfState) * lfCoeff;
-        x -= state.lfState;
+        x = applyColour(x);
     }
 
     // ---- slew ----------------------------------------------------------------
-    // The channel ENHANCES slew and the bus cuts it back, the same way the
+    // The channel enhances slew and the bus cuts it back, the same way the
     // transfer pair works: arcsine one side, sine the other. A stage that only
     // ever softened transients would make everything duller the more of it you
     // used; this way the pair has a transient personality without a net loss.
@@ -342,9 +391,8 @@ float AnalogEngine::processStage(StageState& state,
         auto difference = juce::jlimit(-1.0f, 1.0f, x - state.lastSample);
         state.lastSample = x;
 
-        const auto shaped = forward
-                                ? std::asin(difference * 0.999f)
-                                : std::sin(difference);
+        const auto shaped = forward ? std::asin(difference * 0.999f)
+                                    : std::sin(difference);
         const auto blended = difference + (shaped - difference) * tuning.slewEnhance;
 
         // The slew stage integrates, so it can walk off into DC. The servo pulls
@@ -358,15 +406,11 @@ float AnalogEngine::processStage(StageState& state,
     }
 
     // ---- drive into the transfer ---------------------------------------------
-    auto drive = 1.0f;
-    switch (context)
-    {
-        case Context::channel: drive = tuning.channelDrive; break;
-        case Context::dryBus:  drive = tuning.busDrive; break;
-        case Context::fxBus:   drive = tuning.busDrive * tuning.fxBusTrim; break;
-        case Context::master:  drive = tuning.masterDrive; break;
-    }
-    drive /= juce::jmax(0.05f, tuning.headroom);
+    // The channel and the buses that invert it share one drive, so the pair
+    // cancels. Only the master, which is a forward output stage rather than half
+    // of a pair, gets its own.
+    const auto drive = (context == Context::master ? tuning.masterDrive : tuning.pairDrive)
+                       / juce::jmax(0.05f, tuning.headroom);
 
     x *= drive;
 
@@ -374,15 +418,25 @@ float AnalogEngine::processStage(StageState& state,
     // A purely odd transfer produces only odd harmonics, and odd harmonics alone
     // read as hard rather than warm. A small squared term is the 2nd harmonic.
     //
-    // This is deliberately applied OUTSIDE the invertible pair: it is colour,
-    // and inverting it would cancel exactly the thing it was added for. It is
-    // kept small because it is also the one part of the model that breaks the
-    // single-channel transparency guarantee.
-    if (tuning.evenHarmonic > 0.0f && context != Context::dryBus)
+    // "Small" is load-bearing. At the values this started with, the bias alone
+    // produced 6.75% second harmonic on a single channel. Real desks measure a
+    // fraction of a percent at nominal level.
+    //
+    // Applied on the forward side only, so it is colour rather than something
+    // the bus tries and fails to undo.
+    if (tuning.evenHarmonic > 0.0f && forward)
     {
         const auto bias = context == Context::master ? tuning.evenHarmonic * 0.5f
                                                      : tuning.evenHarmonic;
-        x += bias * x * std::abs(x);
+        // x*x, NOT x*|x|. The latter is half-wave symmetric - f(t+pi) = -f(t) -
+        // so its Fourier series contains only ODD harmonics, and an
+        // "even-harmonic bias" built from it produces no even harmonics
+        // whatsoever. Measured: H2 was zero to four decimal places.
+        //
+        // The squared term is asymmetric and does generate a second harmonic.
+        // It also generates DC, which is exactly what the DC blocker downstream
+        // is for, and is what a real asymmetric stage does.
+        x += bias * x * x;
     }
 
     // ---- the transfer --------------------------------------------------------
@@ -391,22 +445,22 @@ float AnalogEngine::processStage(StageState& state,
 
     x /= juce::jmax(0.05f, drive);
 
-    // ---- bandwidth -----------------------------------------------------------
-    // Not a generic low-pass bolted on the end: the corner falls as the stage is
-    // driven, which is what a real amplifier's slew-limited bandwidth does. On
-    // the transformer profile this is a large part of the character.
+    if (! forward)
     {
-        const auto corner = tuning.hfRolloffHz
-                            * (1.0f - drivenBy * tuning.hfLevelDependence * 0.55f);
-        const auto hfCoeff = onePoleCoeff(juce::jmax(1000.0f, corner), rate);
-        state.hfState += (x - state.hfState) * hfCoeff;
-        x = state.hfState;
+        x = applyColour(x);
     }
 
     // ---- DC block ------------------------------------------------------------
-    // Every nonlinear stage here can generate DC - the even-harmonic term does so
-    // by definition - and four channels plus three buses in series would let it
-    // accumulate. Blocked per stage rather than once at the end.
+    // The even-harmonic term generates DC by definition, and four channels plus
+    // three buses in series would let it accumulate.
+    //
+    // Blocked on the INVERSE side and at the master only. On the forward side it
+    // would be one more filter sitting between the channel's transfer and the
+    // bus's inverse, which is the same mistake as putting the colour there -
+    // measured at an extra 1.1% THD on a single AMERICAN channel. The channel's
+    // DC passes to the bus, which blocks it, and the channel's own input is
+    // already high-passed by its coupling stage.
+    if (! forward || context == Context::master)
     {
         const auto r = 1.0f - (juce::MathConstants<float>::twoPi * tuning.dcBlockHz / rate);
         const auto out = x - state.dcPrev + r * state.dcState;
@@ -415,7 +469,7 @@ float AnalogEngine::processStage(StageState& state,
         x = out;
     }
 
-    return sanitize(x);
+    return sanitize(x * tuning.outputTrim);
 }
 
 // ============================================================================
@@ -481,8 +535,14 @@ void AnalogEngine::processBusSample(Context context, float& left, float& right)
     const auto shapedL = processStage(state[0], left, context, forward);
     const auto shapedR = processStage(state[1], right, context, forward);
 
-    left = sanitize(left + (shapedL - left) * wet);
-    right = sanitize(right + (shapedR - right) * wet);
+    // The FX bus gets a lighter touch by mixing in less of the stage, not by
+    // driving it less: trimming its drive would break invertibility on the FX
+    // path exactly the way separate channel and bus drives broke it on the dry
+    // path.
+    const auto stageWet = context == Context::fxBus ? wet * tuning.fxBusTrim : wet;
+
+    left = sanitize(left + (shapedL - left) * stageWet);
+    right = sanitize(right + (shapedR - right) * stageWet);
 }
 
 } // namespace px3

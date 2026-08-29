@@ -2247,6 +2247,11 @@ int main(int argc, char* argv[])
             setParameter(processor, "doomLoopActive", fxOn ? 1.0f : 0.0f);
             setParameter(processor, "lucyFreeze", fxOn ? 1.0f : 0.0f);
 
+            // AnalogEngine adds four channel stages and three bus stages inside
+            // the per-sample loop, so it belongs in the allocation check.
+            setParameter(processor, "analogEnabled", fxOn ? 1.0f : 0.0f);
+            setParameter(processor, "analogProfile", fxOn ? 0.25f : 0.0f);
+
             setParameter(processor, "ampRelease", releaseVoices ? 3.0f : 0.2f);
             setParameter(processor, "filter1Enabled", filtersOn ? 1.0f : 0.0f);
             setParameter(processor, "filter2Enabled", filtersOn ? 1.0f : 0.0f);
@@ -2303,7 +2308,7 @@ int main(int argc, char* argv[])
         if (measure("16 voices RELEASING", true, false, 16, true) != 0) ++failures;
         if (measure("48 voices RELEASING (past prune budget)", true, false, 48, true) != 0) ++failures;
         if (measure("48 voices RELEASING + full FX chain", true, false, 48, true, true) != 0) ++failures;
-        if (measure("48 voices + all 8 FX, looper and freeze on", true, true, 48, true, true) != 0) ++failures;
+        if (measure("48 voices + all 8 FX + analog console", true, true, 48, true, true) != 0) ++failures;
 
         std::printf("\n  %lld failure(s)\n", failures);
         return static_cast<int>(failures);
