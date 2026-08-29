@@ -34,6 +34,7 @@
 #include <chrono>
 #include <set>
 
+#include "../DSP/BusInsertChain.h"
 #include "../DSP/FilterResponse.h"
 #include "../DSP/VoiceFilter.h"
 #include "../UI/OscillatorComponent.h"
@@ -14084,6 +14085,424 @@ double filterGainDbAt(int mode, float cutoff, float q, double hz)
 
 // ---- TEMPORARY: REAL PRESET CLICK HUNT --------------------------------------
 
+
+
+// Output level of a steady tone through the compressor, measured over a window
+// that starts at `fromSeconds`. Output rather than the meter: the meter has VU
+// ballistics on purpose - about 300 ms to full deflection - so an early meter
+// reading is mostly meter lag and says nothing about the gain element.
+double compressorOutputDb(px3::CompRatio ratio,
+                          float inputDb,
+                          double fromSeconds,
+                          double windowSeconds = 0.02,
+                          float mix = 1.0f)
+{
+    px3::FetCompressor comp;
+    comp.prepare(kSampleRate);
+
+    px3::CompressorSettings s;
+    s.enabled = true;
+    s.ratio = ratio;
+    s.attack = 0.6f;
+    s.release = 0.5f;
+    s.mix = mix;
+    comp.setSettings(s);
+
+    const auto amp = juce::Decibels::decibelsToGain(inputDb);
+    const auto from = static_cast<int>(kSampleRate * fromSeconds);
+    const auto until = from + static_cast<int>(kSampleRate * windowSeconds);
+
+    double sum = 0.0;
+    int count = 0;
+    for (int i = 0; i < until; ++i)
+    {
+        auto l = amp * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * 220.0 * i / kSampleRate));
+        auto r = l;
+        comp.processSample(l, r);
+        if (i >= from) { sum += static_cast<double>(l) * l; ++count; }
+    }
+
+    return juce::Decibels::gainToDecibels(
+        std::sqrt(sum / juce::jmax(1, count)) * juce::MathConstants<double>::sqrt2, -120.0);
+}
+
+double eqGainDb(const px3::EqSettings& settings, double hz)
+{
+    px3::ParametricEQ eq;
+    eq.prepare(kSampleRate);
+    eq.setSettings(settings);
+
+    const auto total = static_cast<int>(kSampleRate * 0.5);
+    const auto from = static_cast<int>(kSampleRate * 0.3);
+    double sumIn = 0.0, sumOut = 0.0;
+    for (int i = 0; i < total; ++i)
+    {
+        auto l = static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * hz * i / kSampleRate));
+        auto r = l;
+        const auto in = l;
+        eq.processSample(l, r);
+        if (i >= from) { sumIn += static_cast<double>(in) * in; sumOut += static_cast<double>(l) * l; }
+    }
+    return juce::Decibels::gainToDecibels(std::sqrt(sumOut / juce::jmax(1.0e-12, sumIn)), -120.0);
+}
+
+void testBusInserts()
+{
+    suite("BUS EQ");
+
+    // ---- neutral is a wire -------------------------------------------------
+    {
+        px3::EqSettings flat;
+        flat.enabled = true;
+        auto worst = 0.0;
+        for (const auto hz : { 40.0, 120.0, 500.0, 2000.0, 8000.0, 15000.0 })
+        {
+            worst = juce::jmax(worst, std::abs(eqGainDb(flat, hz)));
+        }
+        check("BusEq_FlatIsExactlyUnity", worst < 0.02,
+              "worst deviation across 40 Hz to 15 kHz: " + fmt(worst, 4) + " dB");
+    }
+
+    // ---- the bands do what they are named ----------------------------------
+    {
+        px3::EqSettings s;
+        s.enabled = true;
+        s.bands[1] = { px3::EqBandType::bell, 1000.0f, 6.0f, 1.0f };
+        const auto centre = eqGainDb(s, 1000.0);
+        const auto away = eqGainDb(s, 100.0);
+        check("BusEq_BellBoostsWhereItSaysAndNotElsewhere",
+              std::abs(centre - 6.0) < 0.2 && std::abs(away) < 0.5,
+              "1 kHz " + fmt(centre, 2) + " dB, 100 Hz " + fmt(away, 2) + " dB");
+    }
+    {
+        px3::EqSettings s;
+        s.enabled = true;
+        s.bands[1] = { px3::EqBandType::bell, 1000.0f, -12.0f, 2.0f };
+        const auto centre = eqGainDb(s, 1000.0);
+        check("BusEq_BellCutsAsDeeplyAsItBoosts", std::abs(centre + 12.0) < 0.3,
+              "1 kHz " + fmt(centre, 2) + " dB");
+    }
+    {
+        // An RBJ shelf reaches HALF its gain at the corner frequency and the
+        // full amount well past it. That is the definition, not an error.
+        px3::EqSettings s;
+        s.enabled = true;
+        s.bands[0] = { px3::EqBandType::lowShelf, 100.0f, 6.0f, 0.707f };
+        const auto below = eqGainDb(s, 25.0);
+        const auto corner = eqGainDb(s, 100.0);
+        const auto above = eqGainDb(s, 2000.0);
+        check("BusEq_LowShelfLiftsTheBottomAndLeavesTheTopAlone",
+              below > 5.4 && std::abs(corner - 3.0) < 0.4 && std::abs(above) < 0.1,
+              "25 Hz " + fmt(below, 2) + ", corner " + fmt(corner, 2) + ", 2 kHz " + fmt(above, 2));
+    }
+    {
+        px3::EqSettings s;
+        s.enabled = true;
+        s.bands[3] = { px3::EqBandType::highShelf, 8000.0f, 6.0f, 0.707f };
+        check("BusEq_HighShelfLiftsTheTopAndLeavesTheBottomAlone",
+              eqGainDb(s, 16000.0) > 5.0 && std::abs(eqGainDb(s, 200.0)) < 0.1,
+              "16 kHz " + fmt(eqGainDb(s, 16000.0), 2) + ", 200 Hz " + fmt(eqGainDb(s, 200.0), 2));
+    }
+    {
+        // The outer bands switch to pass filters, which is the move an FX
+        // return actually needs.
+        px3::EqSettings s;
+        s.enabled = true;
+        s.bands[0] = { px3::EqBandType::highPass, 200.0f, 0.0f, 0.707f };
+        const auto corner = eqGainDb(s, 200.0);
+        const auto octaveBelow = eqGainDb(s, 100.0);
+        check("BusEq_HighPassIsMinusThreeAtItsCornerAndTwelvePerOctave",
+              std::abs(corner + 3.0) < 0.5 && std::abs(octaveBelow - corner + 12.0) < 3.0,
+              "200 Hz " + fmt(corner, 1) + " dB, 100 Hz " + fmt(octaveBelow, 1) + " dB");
+    }
+
+    // ---- proportional Q ----------------------------------------------------
+    {
+        // RBJ defines a peaking filter's bandwidth at the HALF-GAIN point, so
+        // the curve scales with gain rather than keeping a fixed width in
+        // hertz. A gentle move is therefore broad and a large one is focused,
+        // which is what a bus wants; a constant-Q filter would make a 2 dB
+        // move as narrow as a 12 dB one.
+        auto skirtFraction = [](float gainDb)
+        {
+            px3::EqSettings s;
+            s.enabled = true;
+            s.bands[1] = { px3::EqBandType::bell, 1000.0f, gainDb, 1.0f };
+            return eqGainDb(s, 1414.0) / juce::jmax(0.001, eqGainDb(s, 1000.0));
+        };
+        const auto gentle = skirtFraction(3.0f);
+        const auto large = skirtFraction(12.0f);
+        check("BusEq_TheCurveScalesWithGainRatherThanKeepingAFixedWidth",
+              gentle > 0.5 && large < gentle,
+              "half an octave out holds " + fmt(gentle * 100.0, 0) + "% of a 3 dB boost and "
+                  + fmt(large * 100.0, 0) + "% of a 12 dB one");
+    }
+
+    // ---- stability ---------------------------------------------------------
+    {
+        juce::StringArray broken;
+        for (const auto rate : { 44100.0, 48000.0, 96000.0, 192000.0 })
+        {
+            for (const auto hz : { 20.0f, 20000.0f })
+            {
+                for (const auto gain : { -18.0f, 18.0f })
+                {
+                    for (const auto q : { 0.3f, 8.0f })
+                    {
+                        px3::ParametricEQ eq;
+                        eq.prepare(rate);
+                        // ONE band at a time. Stacking four +18 dB bands at
+                        // the same frequency is +72 dB, and a large peak there
+                        // is arithmetic rather than instability - the first
+                        // version of this test failed on exactly that.
+                        px3::EqSettings s;
+                        s.enabled = true;
+                        s.bands[1] = { px3::EqBandType::bell, hz, gain, q };
+                        eq.setSettings(s);
+
+                        auto peak = 0.0f;
+                        auto finite = true;
+                        juce::Random random(7);
+                        for (int i = 0; i < 20000; ++i)
+                        {
+                            auto l = random.nextFloat() - 0.5f;
+                            auto r = random.nextFloat() - 0.5f;
+                            eq.processSample(l, r);
+                            finite = finite && std::isfinite(l) && std::isfinite(r);
+                            peak = juce::jmax(peak, std::abs(l));
+                        }
+                        if (! finite || peak > 100.0f)
+                        {
+                            broken.add(juce::String(rate / 1000.0, 1) + "k " + fmt(hz, 0) + "Hz "
+                                       + fmt(gain, 0) + "dB Q" + fmt(q, 1));
+                        }
+                    }
+                }
+            }
+        }
+        check("BusEq_StaysFiniteAtEveryExtreme", broken.isEmpty(),
+              broken.isEmpty() ? "4 sample rates x extreme frequency, gain and Q all stable"
+                               : broken.joinIntoString(", "));
+    }
+
+    // ---- no zipper ---------------------------------------------------------
+    {
+        // Coefficients are rebuilt from SMOOTHED parameters rather than being
+        // interpolated between two coefficient sets - interpolated coefficients
+        // can pass through unstable intermediate states.
+        px3::ParametricEQ eq;
+        eq.prepare(kSampleRate);
+        px3::EqSettings s;
+        s.enabled = true;
+
+        std::vector<float> out;
+        for (int i = 0; i < 96000; ++i)
+        {
+            // Sweep a bell end to end while it runs.
+            const auto t = static_cast<float>(i) / 96000.0f;
+            s.bands[1] = { px3::EqBandType::bell,
+                           juce::jmap(t, 80.0f, 12000.0f),
+                           juce::jmap(t, -15.0f, 15.0f),
+                           juce::jmap(t, 0.4f, 6.0f) };
+            eq.setSettings(s);
+
+            auto l = 0.4f * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * 440.0 * i / kSampleRate));
+            auto r = l;
+            eq.processSample(l, r);
+            out.push_back(l);
+        }
+
+        auto worst = 0.0;
+        constexpr int window = 64;
+        for (int i = window; i + window < static_cast<int>(out.size()); ++i)
+        {
+            const auto jump = std::abs(static_cast<double>(out[(std::size_t) i]) - out[(std::size_t)(i - 1)]);
+            double sum = 0.0;
+            int count = 0;
+            for (int k = i - window; k < i + window; ++k)
+            {
+                if (k == i || k == i - 1) continue;
+                const auto d = static_cast<double>(out[(std::size_t) k]) - out[(std::size_t)(k - 1)];
+                sum += d * d;
+                ++count;
+            }
+            const auto reference = std::sqrt(sum / juce::jmax(1, count));
+            if (reference < 1.0e-6) continue;
+            worst = juce::jmax(worst, jump / reference);
+        }
+
+        check("BusEq_SweepingEveryControlDoesNotStep", worst < 4.0,
+              "frequency, gain and Q swept end to end: worst jump is " + fmt(worst, 1)
+                  + "x the local slope");
+    }
+
+    suite("BUS COMPRESSOR");
+
+    // ---- below the threshold it is a wire ----------------------------------
+    {
+        // The FET gain element is normalised by its DRIVE. Normalising by
+        // tanh(drive) instead left 1/tanh(1) = +2.37 dB of gain on everything,
+        // measured as -40 dB in coming out at -37.63.
+        const auto quiet = compressorOutputDb(px3::CompRatio::fourToOne, -40.0f, 0.9);
+        check("BusComp_BelowThresholdItIsAWire", std::abs(quiet + 40.0) < 0.3,
+              "-40 dB in comes out at " + fmt(quiet, 2) + " dB");
+    }
+
+    // ---- the ratios are ordered and behave ---------------------------------
+    {
+        juce::String detail;
+        auto ordered = true;
+        auto previous = 1.0e9;
+        static const char* names[] = { "4:1", "8:1", "12:1", "20:1", "ALL" };
+        for (int r = 0; r < 5; ++r)
+        {
+            const auto out = compressorOutputDb(static_cast<px3::CompRatio>(r), 0.0f, 0.9);
+            detail << names[r] << " " << fmt(out, 2) << "  ";
+            ordered = ordered && out < previous;
+            previous = out;
+        }
+        check("BusComp_HigherRatiosReduceMore", ordered,
+              "0 dB in, output per ratio: " + detail);
+    }
+
+    // ---- all buttons is a different circuit, not ratio = 20 ----------------
+    {
+        // In the hardware the ratio buttons apply a BIAS to the detector
+        // diodes, so all four engaged is a bias state no single button
+        // produces. The documented behaviour is that the unit compresses at
+        // the selected ratio ON the transient and the ratio RISES afterwards.
+        const auto allEarly = compressorOutputDb(px3::CompRatio::allButtons, 0.0f, 0.03);
+        const auto allLate = compressorOutputDb(px3::CompRatio::allButtons, 0.0f, 2.0);
+        const auto fixedEarly = compressorOutputDb(px3::CompRatio::twentyToOne, 0.0f, 0.03);
+        const auto fixedLate = compressorOutputDb(px3::CompRatio::twentyToOne, 0.0f, 2.0);
+
+        const auto allCreep = allEarly - allLate;
+        const auto fixedCreep = fixedEarly - fixedLate;
+
+        check("BusComp_AllButtonsKeepsTighteningAfterTheTransient",
+              allCreep > fixedCreep + 0.5 && allLate < fixedLate,
+              "ALL settles " + fmt(allCreep, 2) + " dB further after onset against 20:1's "
+                  + fmt(fixedCreep, 2) + " dB, ending at " + fmt(allLate, 2)
+                  + " vs " + fmt(fixedLate, 2));
+    }
+
+    // ---- the mix knob ------------------------------------------------------
+    {
+        // Parallel compression: 0 is the untouched bus, 1 is fully compressed.
+        // The compressor has this and the EQ does not - blending a compressed
+        // signal against its own dry is standard practice for glue, and
+        // blending an EQ against its own dry is just a smaller EQ move.
+        const auto dry = compressorOutputDb(px3::CompRatio::twentyToOne, 0.0f, 0.9, 0.02, 0.0f);
+        const auto half = compressorOutputDb(px3::CompRatio::twentyToOne, 0.0f, 0.9, 0.02, 0.5f);
+        const auto wet = compressorOutputDb(px3::CompRatio::twentyToOne, 0.0f, 0.9, 0.02, 1.0f);
+
+        check("BusComp_MixBlendsFromUntouchedToFullyCompressed",
+              std::abs(dry) < 0.2 && half < dry - 0.5 && wet < half - 0.5,
+              "mix 0 " + fmt(dry, 2) + " dB (untouched), 0.5 " + fmt(half, 2)
+                  + " dB, 1.0 " + fmt(wet, 2) + " dB");
+    }
+
+    // ---- timing ------------------------------------------------------------
+    {
+        // Fully clockwise is FASTEST on the hardware, and the parameter is
+        // stored that way.
+        auto reductionAfter = [](float attack, double seconds)
+        {
+            px3::FetCompressor comp;
+            comp.prepare(kSampleRate);
+            px3::CompressorSettings s;
+            s.enabled = true;
+            s.ratio = px3::CompRatio::twentyToOne;
+            s.attack = attack;
+            s.release = 0.5f;
+            comp.setSettings(s);
+
+            const auto until = static_cast<int>(kSampleRate * seconds);
+            auto quietest = 1.0f;
+            for (int i = 0; i < until; ++i)
+            {
+                auto l = 0.9f * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * 1000.0 * i / kSampleRate));
+                auto r = l;
+                const auto in = std::abs(l);
+                comp.processSample(l, r);
+                if (in > 0.5f) quietest = juce::jmin(quietest, std::abs(l) / juce::jmax(1.0e-6f, in));
+            }
+            return juce::Decibels::gainToDecibels(quietest, -120.0f);
+        };
+
+        const auto fast = reductionAfter(1.0f, 0.01);
+        const auto slow = reductionAfter(0.0f, 0.01);
+        check("BusComp_FastAttackGrabsSoonerThanSlow", fast < slow - 1.0,
+              "10 ms in, fastest attack has reached " + fmt(fast, 1)
+                  + " dB and slowest " + fmt(slow, 1) + " dB");
+    }
+
+    // ---- edge cases --------------------------------------------------------
+    {
+        juce::StringArray broken;
+        for (const auto level : { 0.0f, 1.0e-7f, 0.5f, 4.0f })
+        {
+            for (int r = 0; r < 5; ++r)
+            {
+                px3::FetCompressor comp;
+                comp.prepare(kSampleRate);
+                px3::CompressorSettings s;
+                s.enabled = true;
+                s.ratio = static_cast<px3::CompRatio>(r);
+                s.inputDb = 24.0f;
+                s.attack = 1.0f;
+                s.release = 1.0f;
+                comp.setSettings(s);
+
+                auto finite = true;
+                auto peak = 0.0f;
+                juce::Random random(11);
+                for (int i = 0; i < 40000; ++i)
+                {
+                    // Silence, denormal-scale, normal and hot, plus transients.
+                    auto l = level * (random.nextFloat() - 0.5f);
+                    if (i % 4000 == 0) l = level * 4.0f;
+                    auto r2 = l;
+                    comp.processSample(l, r2);
+                    finite = finite && std::isfinite(l) && std::isfinite(r2);
+                    peak = juce::jmax(peak, std::abs(l));
+                }
+                if (! finite || peak > 64.0f) broken.add(fmt(level, 7) + " r" + juce::String(r));
+            }
+        }
+        check("BusComp_StaysFiniteFromSilenceToOverload", broken.isEmpty(),
+              broken.isEmpty() ? "silence, denormal, normal and hot input across all five ratios"
+                               : broken.joinIntoString(", "));
+    }
+
+    // ---- no DC accumulation ------------------------------------------------
+    {
+        // The FET stage is deliberately asymmetric - that is where the second
+        // harmonic comes from - so it generates DC by construction and the
+        // transformer stage has to not let it accumulate.
+        px3::FetCompressor comp;
+        comp.prepare(kSampleRate);
+        px3::CompressorSettings s;
+        s.enabled = true;
+        s.ratio = px3::CompRatio::allButtons;
+        s.inputDb = 18.0f;
+        comp.setSettings(s);
+
+        double sum = 0.0;
+        int count = 0;
+        for (int i = 0; i < 200000; ++i)
+        {
+            auto l = 0.7f * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * 110.0 * i / kSampleRate));
+            auto r = l;
+            comp.processSample(l, r);
+            if (i > 100000) { sum += l; ++count; }
+        }
+        const auto dc = sum / juce::jmax(1, count);
+        check("BusComp_DoesNotAccumulateDc", std::abs(dc) < 0.002,
+              "mean output over the second half: " + fmt(dc, 6));
+    }
+}
+
 void testFilters()
 {
     suite("FILTERS");
@@ -16497,6 +16916,7 @@ int main(int argc, char* argv[])
     if (wants("fx")) testEffectIndependence();
     if (wants("preset")) testPresets();
     if (wants("factorypresets")) testFactoryPresets();
+    if (wants("businserts")) testBusInserts();
     if (wants("filters")) testFilters();
     if (wants("oscrichness")) testOscillatorModeRichness();
     if (wants("analog")) testAnalogEngine();
