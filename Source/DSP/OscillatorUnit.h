@@ -42,10 +42,16 @@ private:
     // 30% of all CPU to powf alone. The macros are refreshed once per block, so
     // these are recomputed in setSettings and only when the settings actually
     // differ, which makes a held note cost nothing at all here.
+    // Nine partials, not eight, because a Hammond has nine drawbars and two of
+    // them - the 16' sub at half the fundamental and the 5 1/3' quint at one
+    // and a half times it - are not whole harmonics at all. They are most of
+    // what makes the instrument sound like itself.
+    static constexpr int kHarmonicCount = 9;
+
     struct HarmonicSet
     {
-        std::array<float, 8> amplitude { {} };
-        std::array<float, 8> ratio { {} };
+        std::array<float, kHarmonicCount> amplitude { {} };
+        std::array<float, kHarmonicCount> ratio { {} };
         float norm { 0.0f };
     };
 
@@ -65,7 +71,21 @@ private:
         float additiveOddEven { 0.0f };
         HarmonicSet additiveStatic;   // inharmonicity fixed at zero
         HarmonicSet additiveDynamic;  // inharmonicity driven by macro C
-        HarmonicSet formant;
+        // FORMANT is not a harmonic set. A formant is a resonance of the vocal
+        // tract, so it sits at a FIXED frequency in hertz and does not move
+        // with the note - that is exactly what makes a vowel stay the same
+        // vowel as you play up the keyboard. Held as resonator coefficients,
+        // rebuilt only when the vowel, the macros or the sample rate change.
+        struct FormantBank
+        {
+            std::array<float, 3> a { {} };   // input coefficient per resonator
+            std::array<float, 3> b { {} };   // y[n-1]
+            std::array<float, 3> c { {} };   // y[n-2]
+            std::array<float, 3> gain { {} };
+        };
+        FormantBank formant;
+        float formantSourceCoeff { 0.02f };
+        float formantTrim { 1.0f };
         HarmonicSet organ;
 
         float fmRatio { 1.0f };
@@ -109,7 +129,9 @@ private:
                                         float rolloffBias,
                                         float oddEvenBias,
                                         float inharmonicity);
+    static float normaliseHarmonicSet(float energy);
     static float readHarmonicSum(double currentAngle, const HarmonicSet& set);
+    float renderFormant(double sampleRate, const RenderContext& context);
 
     float renderPinkNoise(float white);
     float renderSuperSaw(double sampleRate, const RenderContext& context);
@@ -127,6 +149,9 @@ private:
     OscillatorSettings oscillatorSettings;
     DerivedCurves derived;
     bool derivedValid { false };
+    // The formant resonators are designed in hertz, so their coefficients need
+    // the sample rate at the point the curves are built rather than at render.
+    double preparedSampleRate { 44100.0 };
 
     std::array<double, 7> superSawAngles { { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 } };
     std::array<float, 7> superSawOffsets { { -0.22f, -0.14f, -0.07f, 0.0f, 0.07f, 0.14f, 0.22f } };
@@ -157,4 +182,9 @@ private:
 
     std::array<double, 4> physicalPhase { { 0.0, 0.0, 0.0, 0.0 } };
     std::array<float, 4> physicalState { { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+    // Two-pole state per formant resonator.
+    float formantSourceState { 0.0f };
+    std::array<float, 3> formantY1 { { 0.0f, 0.0f, 0.0f } };
+    std::array<float, 3> formantY2 { { 0.0f, 0.0f, 0.0f } };
 };

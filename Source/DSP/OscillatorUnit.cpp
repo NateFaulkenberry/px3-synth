@@ -54,12 +54,24 @@ void OscillatorUnit::setSettings(const OscillatorSettings& settings)
 
 // Reproduces the original per-sample expressions exactly, in the same order and
 // at the same precision, so the rendered signal is unchanged bit for bit.
+// Sines at different frequencies do not line up at their peaks, so the sum of
+// the magnitudes is a bound that never occurs. Normalising by it made a rich
+// registration quieter than a sparse one - the opposite of what adding partials
+// should do. Root-sum-square is the level the sum actually has, with a little
+// headroom left for the peaks that do coincide.
+float OscillatorUnit::normaliseHarmonicSet(float energy)
+{
+    return std::sqrt(juce::jmax(1.0e-8f, energy)) * 1.35f;
+}
+
 OscillatorUnit::HarmonicSet OscillatorUnit::buildHarmonicSet(const std::array<float, 8>& harmonics,
                                                             float rolloffBias,
                                                             float oddEvenBias,
                                                             float inharmonicity)
 {
     HarmonicSet set;
+
+    auto energy = 0.0f;
 
     for (int i = 0; i < 8; ++i)
     {
@@ -73,9 +85,10 @@ OscillatorUnit::HarmonicSet OscillatorUnit::buildHarmonicSet(const std::array<fl
 
         set.amplitude[static_cast<std::size_t>(i)] = amp;
         set.ratio[static_cast<std::size_t>(i)] = h * (1.0f + inharmonicity * 0.03f * h);
-        set.norm += std::abs(amp);
+        energy += amp * amp;
     }
 
+    set.norm = normaliseHarmonicSet(energy);
     return set;
 }
 
@@ -83,12 +96,18 @@ float OscillatorUnit::readHarmonicSum(double currentAngle, const HarmonicSet& se
 {
     float sum = 0.0f;
 
-    for (int i = 0; i < 8; ++i)
+    for (int i = 0; i < kHarmonicCount; ++i)
     {
         const auto v = std::sin(currentAngle * static_cast<double>(set.ratio[static_cast<std::size_t>(i)]));
         sum += set.amplitude[static_cast<std::size_t>(i)] * static_cast<float>(v);
     }
 
+    // `norm` is an RMS-style figure, not the sum of the magnitudes. Dividing by
+    // the sum was what made every harmonic mode collapse towards a sine: sines
+    // at unrelated phases do not add to their peaks, so the sum is a worst case
+    // that never happens, and the more partials a registration had the quieter
+    // and flatter it got. Measured, ORGAN and ADDITIVE both sat within 10 dB of
+    // a pure sine.
     return set.norm > 0.0001f ? sum / set.norm : 0.0f;
 }
 
@@ -114,7 +133,12 @@ void OscillatorUnit::updateDerivedCurves()
 
     derived.pwmWidthCurve = std::pow(a, 1.15f);
 
-    derived.additiveRolloff = juce::jmap(std::pow(a, 1.15f), 0.45f, 2.55f);
+    // The top of this range used to be 2.55, which puts the 8th harmonic 45 dB
+    // down: opening macro A all the way turned ADDITIVE - and ISAAC, which
+    // shares the curve - into a sine. Measured at -23.9 dB of overtones against
+    // a sine's -24.6. The knob still runs bright to mellow, it just no longer
+    // runs all the way to nothing.
+    derived.additiveRolloff = juce::jmap(std::pow(a, 1.15f), 0.25f, 1.15f);
     derived.additiveOddEven = juce::jmap(std::pow(b, 1.1f), -0.65f, 0.65f);
     const auto inharmonicity = juce::jmap(std::pow(c, 1.2f), 0.0f, 1.1f);
     derived.additiveStatic = buildHarmonicSet(oscillatorSettings.harmonics,
@@ -127,48 +151,129 @@ void OscillatorUnit::updateDerivedCurves()
                                                inharmonicity);
 
     {
-        static constexpr std::array<std::array<float, 8>, 5> vowelProfiles { {
-            { 1.0f, 0.62f, 0.42f, 0.24f, 0.15f, 0.09f, 0.06f, 0.03f },
-            { 0.88f, 0.92f, 0.36f, 0.26f, 0.21f, 0.12f, 0.07f, 0.05f },
-            { 0.72f, 0.98f, 0.63f, 0.22f, 0.14f, 0.11f, 0.09f, 0.07f },
-            { 1.0f, 0.54f, 0.31f, 0.47f, 0.21f, 0.16f, 0.10f, 0.07f },
-            { 0.86f, 0.38f, 0.69f, 0.34f, 0.22f, 0.17f, 0.11f, 0.08f }
+        // Measured formant frequencies for the five cardinal vowels, in hertz,
+        // with the bandwidth of each resonance and its relative level. These are
+        // the standard values the speech-synthesis literature uses for an adult
+        // male tract (Peterson & Barney / Klatt); the bandwidths widen with
+        // frequency the way real ones do.
+        //
+        // The previous implementation stored fixed amplitudes for harmonics
+        // 1..8 instead. That cannot be a vowel: a formant is a resonance of the
+        // tract, so it stays at the same frequency whatever note is played,
+        // which is what makes an "ah" still an "ah" an octave up. Weighting
+        // harmonics instead pinned the spectral peak to the note, so it moved
+        // with pitch and read as a dull static timbre. It measured 2 to 3
+        // audible partials, within a few dB of a sine.
+        struct Vowel { float f1, f2, f3, b1, b2, b3, a1, a2, a3; };
+        static constexpr std::array<Vowel, 5> kVowels { {
+            //  F1     F2     F3     B1     B2     B3    A1    A2     A3
+            {  730.f, 1090.f, 2440.f,  70.f, 110.f, 170.f, 1.0f, 0.50f, 0.28f },  // AH
+            {  530.f, 1840.f, 2480.f,  60.f, 100.f, 160.f, 1.0f, 0.45f, 0.30f },  // EH
+            {  270.f, 2290.f, 3010.f,  55.f, 100.f, 180.f, 1.0f, 0.35f, 0.25f },  // EE
+            {  570.f,  840.f, 2410.f,  70.f,  95.f, 160.f, 1.0f, 0.55f, 0.18f },  // OH
+            {  300.f,  870.f, 2240.f,  55.f,  90.f, 160.f, 1.0f, 0.40f, 0.14f },  // OO
         } };
 
-        const auto vowelA = juce::jlimit(0, 4, oscillatorSettings.vowelIndex);
-        const auto morph = a * 4.0f;
-        const auto vowelB = juce::jlimit(0, 4, vowelA + 1);
-        const auto frac = morph - std::floor(morph);
+        // Macro A glides between vowels. Interpolating the FREQUENCIES is what
+        // makes that a vowel glide rather than a crossfade of two timbres.
+        const auto morph = juce::jlimit(0.0f, 1.0f, a) * 4.0f;
+        const auto lower = juce::jlimit(0, 4, static_cast<int>(std::floor(morph)));
+        const auto upper = juce::jlimit(0, 4, lower + 1);
+        const auto frac = morph - static_cast<float>(lower);
 
-        std::array<float, 8> vowelHarmonics { {} };
-        for (int i = 0; i < 8; ++i)
+        const auto& v0 = kVowels[static_cast<std::size_t>(
+            juce::jlimit(0, 4, oscillatorSettings.vowelIndex))];
+        const auto& v1 = kVowels[static_cast<std::size_t>(upper)];
+        const auto& vLow = kVowels[static_cast<std::size_t>(lower)];
+        juce::ignoreUnused(vLow);
+
+        const auto mix = [frac](float from, float to) { return from + (to - from) * frac; };
+
+        // Macro B is the tract LENGTH: shifting every formant together is what
+        // takes a voice from large to small, and it is the one control that
+        // stays musical across the whole range.
+        const auto shift = juce::jmap(juce::jlimit(0.0f, 1.0f, b), 0.72f, 1.55f);
+
+        const std::array<float, 3> freq {
+            mix(v0.f1, v1.f1) * shift, mix(v0.f2, v1.f2) * shift, mix(v0.f3, v1.f3) * shift };
+        const std::array<float, 3> bw {
+            mix(v0.b1, v1.b1), mix(v0.b2, v1.b2), mix(v0.b3, v1.b3) };
+        const std::array<float, 3> amp {
+            mix(v0.a1, v1.a1), mix(v0.a2, v1.a2), mix(v0.a3, v1.a3) };
+
+        const auto rate = static_cast<float>(juce::jmax(1000.0, preparedSampleRate));
+
+        // One-pole tilt on the excitation, fixed in hertz so it does not move
+        // with the note.
+        const auto tiltHz = 260.0f;
+        derived.formantSourceCoeff =
+            juce::jlimit(0.0005f, 0.9f, 1.0f - std::exp(-juce::MathConstants<float>::twoPi * tiltHz / rate));
+        derived.formantTrim = 2.2f;
+
+        for (int i = 0; i < 3; ++i)
         {
             const auto idx = static_cast<std::size_t>(i);
-            vowelHarmonics[idx] = vowelProfiles[static_cast<std::size_t>(vowelA)][idx]
-                                  + (vowelProfiles[static_cast<std::size_t>(vowelB)][idx]
-                                     - vowelProfiles[static_cast<std::size_t>(vowelA)][idx])
-                                        * frac;
+            // The standard two-pole resonator: a pole pair at the formant
+            // frequency whose radius sets the bandwidth. One biquad per
+            // formant, run in parallel and summed.
+            const auto f = juce::jlimit(20.0f, rate * 0.45f, freq[idx]);
+            const auto r = std::exp(-juce::MathConstants<float>::pi * bw[idx] / rate);
+            const auto cosw = std::cos(juce::MathConstants<float>::twoPi * f / rate);
+
+            derived.formant.b[idx] = 2.0f * r * cosw;
+            derived.formant.c[idx] = -r * r;
+            // Normalised so each resonator peaks at unity rather than at a gain
+            // that swings with its bandwidth - otherwise the vowel's balance
+            // changes as the tract is resized.
+            derived.formant.a[idx] = (1.0f - r) * std::sqrt(1.0f - 2.0f * r * cosw + r * r);
+            // Alternating sign, as parallel formant synthesisers have always
+            // done: in phase, the skirts of neighbouring resonators cancel in
+            // the valleys between them and hollow the vowel out.
+            derived.formant.gain[idx] = (i == 1 ? -amp[idx] : amp[idx]);
         }
 
-        derived.formant = buildHarmonicSet(vowelHarmonics, juce::jmap(b, 0.7f, 2.2f), 0.0f, 0.0f);
     }
 
     {
-        static constexpr std::array<float, 8> drawbarPreset { 0.92f, 0.72f, 0.46f, 0.36f, 0.27f, 0.18f, 0.13f, 0.10f };
-        const auto tone = std::pow(a, 1.05f);
+        // The nine Hammond drawbar footages, as pitch ratios against the note:
+        // 16', 5 1/3', 8', 4', 2 2/3', 2', 1 3/5', 1 1/3', 1'. The sub at 0.5
+        // and the quint at 1.5 are not harmonics of the note, and they are a
+        // large part of why the instrument sounds like an organ and not like a
+        // stack of sines. The old table used 1..8 - plain integer harmonics -
+        // and then applied pow(1/h, up to 1.8) on top, which put the 8th
+        // partial 41 dB down and left the fundamental alone: measured, it was
+        // within 10 dB of a sine and got THINNER as the macro opened.
+        static constexpr std::array<float, kHarmonicCount> kDrawbarRatios {
+            0.5f, 1.5f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 8.0f };
+
+        // Two registrations, crossfaded by macro A - which is what an organist
+        // actually changes. Mellow is the classic 88 8000 000 flutes; bright
+        // pulls the upper drawbars out for the full 88 8888 888.
+        static constexpr std::array<float, kHarmonicCount> kMellow {
+            0.85f, 0.30f, 1.00f, 0.55f, 0.16f, 0.10f, 0.05f, 0.04f, 0.03f };
+        static constexpr std::array<float, kHarmonicCount> kBright {
+            0.80f, 0.70f, 1.00f, 0.85f, 0.72f, 0.66f, 0.55f, 0.50f, 0.45f };
+
+        const auto tone = juce::jlimit(0.0f, 1.0f, a);
         derived.organClick = std::pow(b, 1.2f);
         derived.organClickDecay = 0.0006f + 0.003f * derived.organClick;
 
         derived.organ = HarmonicSet {};
-        for (int i = 0; i < 8; ++i)
+        auto energy = 0.0f;
+        for (int i = 0; i < kHarmonicCount; ++i)
         {
             const auto idx = static_cast<std::size_t>(i);
-            auto amp = drawbarPreset[idx] * (0.6f + oscillatorSettings.harmonics[idx] * 0.8f);
-            amp *= std::pow(1.0f / static_cast<float>(i + 1), juce::jmap(tone, 0.5f, 1.8f));
+            const auto drawbar = kMellow[idx] + (kBright[idx] - kMellow[idx]) * tone;
+            // The per-oscillator harmonic sliders still trim the registration,
+            // but they can no longer silence it: a drawbar at rest is a real
+            // registration, not an empty one.
+            const auto trim = i < 8 ? (0.55f + oscillatorSettings.harmonics[idx] * 0.75f) : 1.0f;
+            const auto amp = drawbar * trim;
             derived.organ.amplitude[idx] = amp;
-            derived.organ.ratio[idx] = static_cast<float>(i + 1);
-            derived.organ.norm += std::abs(amp);
+            derived.organ.ratio[idx] = kDrawbarRatios[idx];
+            energy += amp * amp;
         }
+        derived.organ.norm = normaliseHarmonicSet(energy);
     }
 
     derived.fmRatio = std::pow(2.0f, juce::jmap(std::pow(a, 1.1f), -1.6f, 2.2f));
@@ -232,6 +337,11 @@ void OscillatorUnit::updateDerivedCurves()
 void OscillatorUnit::prepare(double sampleRate)
 {
     const auto safeRate = juce::jmax(1.0, sampleRate);
+    if (! juce::approximatelyEqual(preparedSampleRate, safeRate))
+    {
+        preparedSampleRate = safeRate;
+        derivedValid = false;   // the formant resonators are designed in hertz
+    }
     const auto required = static_cast<int>(std::ceil(safeRate / kKarplusLowestFrequencyHz)) + 4;
     if (static_cast<int>(karplusBuffer.size()) != required)
     {
@@ -304,6 +414,11 @@ void OscillatorUnit::resetForNote(double sampleRate, double currentFrequencyHz)
         physicalState[i] = juce::Random::getSystemRandom().nextFloat() * 2.0f - 1.0f;
         physicalPhase[i] = juce::Random::getSystemRandom().nextDouble() * juce::MathConstants<double>::twoPi;
     }
+    // A resonator carrying the tail of the previous note would start the new
+    // one mid-vowel.
+    formantY1.fill(0.0f);
+    formantY2.fill(0.0f);
+    formantSourceState = 0.0f;
 }
 
 float OscillatorUnit::nextDeterministicNoise()
@@ -437,6 +552,59 @@ float OscillatorUnit::renderKarplus(const RenderContext& context)
     karplusWriteIndex = (karplusWriteIndex + 1) % bufferSamples;
 
     return delayed * (1.28f + 0.08f * brightness);
+}
+
+float OscillatorUnit::renderFormant(double sampleRate, const RenderContext& context)
+{
+    // The excitation is a band-limited impulse train: flat up to its highest
+    // harmonic and silent above it, so it can drive a 3 kHz formant without
+    // aliasing. A harmonic set could not - eight harmonics of a low note do not
+    // reach F2, let alone F3, so there was nothing at those frequencies for a
+    // resonance to find even in principle.
+    //
+    // Closed form rather than a summed series: sin(N*x/2) / (N*sin(x/2)) is the
+    // Dirichlet kernel, N equal-amplitude harmonics for the price of two sines.
+    const auto rate = juce::jmax(1000.0, sampleRate);
+    const auto f0 = juce::jmax(20.0, context.currentFrequencyHz);
+    auto harmonics = static_cast<int>(rate * 0.45 / f0);
+    harmonics = juce::jlimit(1, 400, harmonics);
+    // Odd, so the kernel is symmetric about the pulse and carries no DC step.
+    if ((harmonics % 2) == 0) --harmonics;
+    const auto n = static_cast<double>(juce::jmax(1, harmonics));
+
+    const auto half = context.currentAngle * 0.5;
+    const auto denominator = std::sin(half);
+    // Deliberately NOT divided by n. The kernel with the 1/n in it has each
+    // harmonic at about 2/n, so a low note - which needs the most harmonics to
+    // reach F3 without aliasing - excited the resonators with almost nothing
+    // and the mode rendered at an RMS of 0.003. Dropping the 1/n gives every
+    // harmonic unit amplitude whatever the pitch, which is also what keeps the
+    // vowel at a steady level across the keyboard.
+    const auto raw = std::abs(denominator) < 1.0e-7
+                         ? n
+                         : std::sin(n * half) / denominator;
+
+    // A real glottal source is not flat - it falls steeply with frequency, and
+    // a flat one makes F2 and F3 shout over F1. This is the -12 dB/octave tilt
+    // the speech literature models, applied as a one-pole on the excitation.
+    formantSourceState += (static_cast<float>(raw) - formantSourceState) * derived.formantSourceCoeff;
+    const auto pulse = formantSourceState;
+
+    auto out = 0.0f;
+    for (int i = 0; i < 3; ++i)
+    {
+        const auto idx = static_cast<std::size_t>(i);
+        const auto y = derived.formant.a[idx] * pulse
+                       + derived.formant.b[idx] * formantY1[idx]
+                       + derived.formant.c[idx] * formantY2[idx];
+        formantY2[idx] = formantY1[idx];
+        formantY1[idx] = std::isfinite(y) ? y : 0.0f;
+        out += derived.formant.gain[idx] * formantY1[idx];
+    }
+
+    // The resonators are individually normalised, so the sum needs a single
+    // trim rather than a per-vowel one.
+    return softClip(out * derived.formantTrim);
 }
 
 float OscillatorUnit::renderOrgan(const RenderContext& context)
@@ -626,15 +794,8 @@ float OscillatorUnit::renderSample(double sampleRate, const RenderContext& conte
             sample = renderAdditive(context, false);
             break;
         case px3::OscillatorMode::formant:
-        {
-            // The vowel interpolation and its harmonic weights depend only on
-            // the vowel index and macro A/B, so they are built once in
-            // updateDerivedCurves. This case previously overwrote the settings'
-            // harmonics array and restored it on every single sample.
-            sample = readHarmonicSum(context.currentAngle, derived.formant);
-            sample = softClip(sample * (0.95f + oscillatorSettings.macroB * 0.25f));
+            sample = renderFormant(sampleRate, context);
             break;
-        }
         case px3::OscillatorMode::fm:
             sample = renderFm(sampleRate, context);
             break;

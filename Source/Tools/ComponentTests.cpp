@@ -13161,6 +13161,170 @@ bool vectorIsFinite(const std::vector<float>& x)
 
 
 
+
+
+// Overtone energy above the fundamental, in dB relative to it, for one mode at
+// one macro setting. A mode that is "basically a sine" scores about the same as
+// a sine does.
+double modeOvertonesDb(int mode, float macro)
+{
+    PX3SynthAudioProcessor processor;
+    makePlainPatch(processor);
+    setChoice(processor, "osc1Mode", mode);
+    setParam(processor, "osc1MacroA", macro);
+    setParam(processor, "osc1MacroB", macro);
+    setParam(processor, "osc1MacroC", macro);
+    const auto cap = render(processor, 96000, { { 2000, true, 45, 0.9f } });
+
+    constexpr int order = 15;
+    const auto size = 1 << order;
+    juce::dsp::FFT fft(order);
+    std::vector<float> data(static_cast<std::size_t>(size) * 2, 0.0f);
+    for (int i = 0; i < size; ++i)
+    {
+        const auto w = 0.5f - 0.5f * std::cos(juce::MathConstants<float>::twoPi
+                                              * static_cast<float>(i) / static_cast<float>(size - 1));
+        data[static_cast<std::size_t>(i)] = cap.left[static_cast<std::size_t>(40000 + i)] * w;
+    }
+    fft.performFrequencyOnlyForwardTransform(data.data());
+
+    // Everything that is not the fundamental, harmonic or not. Summing only the
+    // multiples of f0 was a broken meter: FM runs a ratio of about 1.126 at mid
+    // macro, so its sidebands are inharmonic and fall between those bins - it
+    // scored -37 dB, thinner than a sine, while actually being full of content.
+    const auto binsPerHz = static_cast<double>(size) / kSampleRate;
+    const auto fundamentalBin = static_cast<int>(110.0 * binsPerHz + 0.5);
+    const auto skirt = static_cast<int>(30.0 * binsPerHz + 0.5);
+    const auto lastBin = juce::jmin(size / 2, static_cast<int>(18000.0 * binsPerHz));
+
+    double f0 = 0.0;
+    double rest = 0.0;
+    for (int b = static_cast<int>(20.0 * binsPerHz); b < lastBin; ++b)
+    {
+        const auto e = static_cast<double>(data[static_cast<std::size_t>(b)])
+                       * data[static_cast<std::size_t>(b)];
+        if (std::abs(b - fundamentalBin) <= skirt)
+        {
+            f0 += e;
+        }
+        else
+        {
+            rest += e;
+        }
+    }
+
+    return juce::Decibels::gainToDecibels(std::sqrt(rest / juce::jmax(1.0e-12, f0)), -120.0);
+}
+
+void testOscillatorModeRichness()
+{
+    suite("OSCILLATOR RICHNESS");
+
+    static const char* names[] = {
+        "SINE","SAW","SQUARE","TRIANGLE","NOISE","PINK","SUPERSAW","PWM","WAVETABLE",
+        "ADDITIVE","FORMANT","FM","HARDSYNC","KARPLUS","ORGAN","DIGITAL","PHYSICAL",
+        "ROB","ISAAC","PX3" };
+
+    // SINE is the reference. SAW is here as a sanity check on the measurement -
+    // if a saw ever scored near a sine the meter would be broken, not the saw.
+    const auto sineDb = modeOvertonesDb(0, 0.5f);
+    const auto sawDb = modeOvertonesDb(1, 0.5f);
+
+    check("OscRichness_TheMeterSeparatesASineFromASaw", sawDb - sineDb > 15.0,
+          "sine " + fmt(sineDb, 1) + " dB, saw " + fmt(sawDb, 1) + " dB");
+
+    // Every mode that is meant to have a harmonic character has to be audibly
+    // richer than a sine at BOTH ends of its macro range. Several were not:
+    // ORGAN measured within 10 dB of a sine and got thinner as the macro
+    // opened, because its partials were plain integers 1..8 crushed by
+    // pow(1/h, 1.8); ADDITIVE and ISAAC ran a rolloff to 2.55, which puts the
+    // 8th harmonic 45 dB down; FORMANT weighted harmonics instead of resonating
+    // at fixed frequencies, so it had two or three audible partials.
+    //
+    // SINE and TRIANGLE are excluded because they are correctly near-pure - a
+    // triangle's third harmonic is a ninth of its fundamental by definition.
+    // NOISE and PINK have no harmonic series to measure.
+    juce::String detail;
+    juce::StringArray thin;
+
+    for (int mode = 0; mode < 20; ++mode)
+    {
+        if (mode == 0 || mode == 3 || mode == 4 || mode == 5) continue;
+
+        const auto quiet = modeOvertonesDb(mode, 0.5f);
+        const auto loud = modeOvertonesDb(mode, 1.0f);
+        const auto worst = juce::jmin(quiet, loud);
+
+        detail << names[mode] << " " << fmt(worst, 1) << "  ";
+        if (worst - sineDb < 6.0)
+        {
+            thin.add(juce::String(names[mode]) + " at " + fmt(worst, 1) + " dB vs sine "
+                     + fmt(sineDb, 1));
+        }
+    }
+
+    check("OscRichness_NoHarmonicModeCollapsesToASine", thin.isEmpty(),
+          thin.isEmpty() ? "worst-case overtones per mode: " + detail
+                         : thin.joinIntoString("; "));
+
+    // A formant is a resonance of the vocal tract, so it sits at a FIXED
+    // frequency and does not move with the note - that is what makes an "ah"
+    // still an "ah" an octave up. The old implementation weighted harmonics of
+    // the note, so its spectral peak tracked pitch exactly.
+    {
+        auto peakHz = [](int midiNote)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "osc1Mode", 10);
+            setParam(processor, "osc1MacroA", 0.0f);
+            setParam(processor, "osc1MacroB", 0.5f);
+            const auto cap = render(processor, 96000, { { 2000, true, midiNote, 0.9f } });
+
+            constexpr int order = 15;
+            const auto size = 1 << order;
+            juce::dsp::FFT fft(order);
+            std::vector<float> data(static_cast<std::size_t>(size) * 2, 0.0f);
+            for (int i = 0; i < size; ++i)
+            {
+                const auto w = 0.5f - 0.5f * std::cos(juce::MathConstants<float>::twoPi
+                                                      * static_cast<float>(i) / static_cast<float>(size - 1));
+                data[static_cast<std::size_t>(i)] = cap.left[static_cast<std::size_t>(40000 + i)] * w;
+            }
+            fft.performFrequencyOnlyForwardTransform(data.data());
+
+            auto bestBin = 1;
+            auto best = 0.0f;
+            for (int b = 2; b < size / 2; ++b)
+            {
+                if (data[static_cast<std::size_t>(b)] > best)
+                {
+                    best = data[static_cast<std::size_t>(b)];
+                    bestBin = b;
+                }
+            }
+            return static_cast<double>(bestBin) * kSampleRate / size;
+        };
+
+        juce::String peaks;
+        auto lowest = 1.0e9;
+        auto highest = 0.0;
+        for (const auto note : { 33, 45, 57, 69 })   // 55 Hz to 440 Hz, four octaves
+        {
+            const auto hz = peakHz(note);
+            lowest = juce::jmin(lowest, hz);
+            highest = juce::jmax(highest, hz);
+            peaks << juce::String(note) << ":" << fmt(hz, 0) << "Hz  ";
+        }
+
+        // The note itself spans four octaves - 16x. The peak must not.
+        check("OscRichness_FormantsStayPutWhileThePitchMoves",
+              highest / juce::jmax(1.0, lowest) < 1.3,
+              "spectral peak across four octaves of fundamental: " + peaks
+                  + "(spread " + fmt(highest / juce::jmax(1.0, lowest), 2) + "x)");
+    }
+}
+
 void testAnalogEngine()
 {
     suite("ANALOG ENGINE");
@@ -15137,6 +15301,7 @@ int main(int argc, char* argv[])
     if (wants("fx")) testEffectIndependence();
     if (wants("preset")) testPresets();
     if (wants("factorypresets")) testFactoryPresets();
+    if (wants("oscrichness")) testOscillatorModeRichness();
     if (wants("analog")) testAnalogEngine();
     if (wants("editor")) testEditorLifecycle();
     if (wants("integration")) testIntegration();
