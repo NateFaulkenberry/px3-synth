@@ -352,6 +352,18 @@ void FxCardComponent::layoutChoiceRow(int rowIndex, const Row& row)
     {
         cellWidth = juce::jmax(16.0f, rowWidth / static_cast<float>(maxColumns) - 2.0f * gap.left);
     }
+
+    // A ceiling on top of that. maxColumns alone stretches each box to fill its
+    // share of the row, which on a wide card makes a three-item dropdown row
+    // look like three banners; this caps them and lets the row's justifyContent
+    // place the slack.
+    const auto maxWidth = uiConfig != nullptr
+                              ? uiConfig->getFloat("cards." + styleKey + ".controls.choiceMaxWidth", 0.0f)
+                              : 0.0f;
+    if (maxWidth > 0.0f)
+    {
+        cellWidth = juce::jmin(cellWidth, maxWidth);
+    }
     const auto labelHeight = uiConfig != nullptr
                                  ? uiConfig->getInt("cards." + styleKey + ".controls.labelHeight", kDefaultLabelHeight)
                                  : kDefaultLabelHeight;

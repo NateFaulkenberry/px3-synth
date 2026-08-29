@@ -8980,6 +8980,82 @@ void testDoom()
     }
 
 
+
+    {
+        // Where does the vertical space in the top block actually go? Built at
+        // the real card size with the real config, then the laid-out bounds are
+        // printed rather than reasoned about.
+        UIConfigManager manager;
+        manager.setConfigFile(juce::File::getCurrentWorkingDirectory()
+                                  .getChildFile("Source/UI/UIConfig.json"));
+        manager.loadInitial();
+        const auto config = manager.getConfig();
+
+        px3::ui::FxCardComponent card("doom", "DOOM");
+        card.addToggleRow({ { "a", "A", "A", "" }, { "b", "B", "B", "" }, { "c", "C", "C", "" },
+                            { "d", "D", "D", "" }, { "e", "E", "E", "" }, { "f", "F", "F", "" } });
+        card.addChoiceRow({ { "g", "G", "", juce::StringArray { "1", "2" } },
+                            { "h", "H", "", juce::StringArray { "1", "2" } },
+                            { "i", "I", "", juce::StringArray { "1", "2" } } });
+        card.addKnobRow({ { "k1", "K", "" }, { "k2", "K", "" } });
+        card.addKnobRow({ { "k3", "K", "" }, { "k4", "K", "" } });
+        card.addFeatureKnobRow({ "m", "M", "" });
+        card.setUIConfig(config);
+
+        const auto cellWidth = (1320 - 14 - 8 * 3) / 4;
+        card.setBounds(0, 0, cellWidth, config->getInt("fx.grid.rowHeight", 400));
+        card.resized();
+
+        juce::String detail;
+        detail << "\n      chips line1 y=" << card.toggle("a")->getY()
+               << " h=" << card.toggle("a")->getHeight();
+        detail << "\n      chips line2 y=" << card.toggle("d")->getY()
+               << " h=" << card.toggle("d")->getHeight();
+        detail << "\n      dropdown    y=" << card.choice("g")->getY()
+               << " h=" << card.choice("g")->getHeight();
+
+        const auto line1Bottom = card.toggle("a")->getBottom();
+        const auto line2Top = card.toggle("d")->getY();
+        const auto line2Bottom = card.toggle("d")->getBottom();
+        const auto choiceTop = card.choice("g")->getY();
+
+        detail << "\n      gap line1->line2 = " << (line2Top - line1Bottom) << "px";
+        detail << "\n      gap line2->dropdown = " << (choiceTop - line2Bottom) << "px";
+
+        // And the rows themselves, so the slack can be attributed rather than
+        // inferred from where the controls ended up.
+        {
+            px3::ui::CardHost host;
+            host.setStyleKey("doom");
+            host.setConfig(config);
+            host.layout(card.getLocalBounds());
+
+            px3::ui::CardInner probe;
+            probe.setStylePath("cards.doom.cardInner");
+            probe.setConfig(config);
+            probe.setRowCount(5);
+            probe.layout(host.contentBelowTitle());
+
+            detail << "\n      contentBelowTitle h=" << host.contentBelowTitle().getHeight();
+            for (int i = 0; i < 3; ++i)
+            {
+                const auto r = probe.rowContent(i);
+                detail << "\n      row" << (i + 1) << " y=" << r.getY() << " h=" << r.getHeight();
+            }
+        }
+
+        // Pinned, not just printed. These two rows carry fixed-height controls,
+        // so they are sized in PIXELS rather than as a percentage - a percentage
+        // leaves slack that shows up as vertical gap, and it was 16px between
+        // the chip lines and 50px above the dropdowns before that change.
+        //
+        // The remaining gap above the dropdowns is mostly their own 12px label,
+        // which is a real element rather than slack.
+        check("FxCard_TopBlockIsVerticallyTight",
+              (line2Top - line1Bottom) <= 4 && (choiceTop - line2Bottom) <= 28,
+              detail);
+    }
+
     {
         // DOOM and LUCY cap their toggle row at three across and put three
         // dropdowns on one line. Both are pinned here because a control a few
@@ -9029,16 +9105,37 @@ void testDoom()
                 const auto choiceGap = static_cast<float>(
                     config->getInt("cards." + key + ".cardInner.rows.row2.gap", 3));
                 const auto choiceColumns = config->getInt("cards." + key + ".controls.choiceMaxColumns", 0);
-                const auto choiceWidth = choiceColumns > 0
-                                             ? juce::jmax(16.0f, rowWidth / static_cast<float>(choiceColumns)
-                                                                     - 2.0f * choiceGap)
-                                             : config->getFloat("cards." + key + ".controls.choiceWidth", 92.0f);
+                auto choiceWidth = choiceColumns > 0
+                                       ? juce::jmax(16.0f, rowWidth / static_cast<float>(choiceColumns)
+                                                               - 2.0f * choiceGap)
+                                       : config->getFloat("cards." + key + ".controls.choiceWidth", 92.0f);
+
+                // The ceiling, if one is set. It only ever narrows the box, so
+                // a capped row still fits wherever the uncapped one did.
+                const auto choiceMaxWidth = config->getFloat("cards." + key + ".controls.choiceMaxWidth", 0.0f);
+                if (choiceMaxWidth > 0.0f)
+                {
+                    choiceWidth = juce::jmin(choiceWidth, choiceMaxWidth);
+                }
                 const std::vector<float> choices(3, choiceWidth);
                 if (px3::ui::wrappedLineCount(choices, choiceGap * 2.0f, rowWidth) > 1)
                 {
                     wrapped.add(key + " dropdowns @" + juce::String(editorWidth));
                 }
             }
+        }
+
+        {
+            // The cap has to bite at a wide card, or it is a property that
+            // exists in the config and changes nothing.
+            const auto wideRow = static_cast<float>((1800 - 14 - 8 * 3) / 4 - 2 * 4 - 8);
+            const auto uncapped = wideRow / 3.0f - 2.0f * 3.0f;
+            const auto cap = config->getFloat("cards.doom.controls.choiceMaxWidth", 0.0f);
+
+            check("FxCard_ChoiceMaxWidthActuallyCapsAWideCard",
+                  cap > 0.0f && cap < uncapped,
+                  "at an 1800px editor a dropdown would be "
+                      + juce::String(uncapped, 1) + "px, capped to " + juce::String(cap, 1));
         }
 
         check("FxCard_DoomAndLucyRowsHoldTheirShapeAtAnyWidth", wrapped.isEmpty(),
