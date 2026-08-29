@@ -53,6 +53,12 @@ public:
     // the thing you read first.
     void setSubtitles(const juce::String& left, const juce::String& right);
 
+    // Wears the ACTIVE text colour whether or not it is toggled on. The preset
+    // tab is not a section tab - it never reports an on state - so without this
+    // it was permanently drawn in the dimmed colour the unselected sections
+    // use, which is not what it is: it is showing you what is loaded.
+    void setAlwaysActiveText(bool shouldBeActive);
+
 private:
     void paintButton(juce::Graphics& g,
                      bool shouldDrawButtonAsHighlighted,
@@ -64,6 +70,7 @@ private:
     bool showLed { true };
     juce::String subtitleLeft;
     juce::String subtitleRight;
+    bool alwaysActiveText { false };
 };
 
 class TopMenuBar final : public juce::Component

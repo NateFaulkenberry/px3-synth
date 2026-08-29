@@ -12593,42 +12593,6 @@ void testEditorLifecycle()
         editor.reset();
     }
 
-    {
-        PX3SynthAudioProcessor processor;
-        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
-        editor->setSize(1320, 798);
-        editor->setVisible(true);
-
-        TopMenuBar* menu = nullptr;
-        std::function<void(juce::Component&)> walk = [&](juce::Component& c)
-        {
-            if (auto* m = dynamic_cast<TopMenuBar*>(&c)) menu = m;
-            for (auto* child : c.getChildren()) walk(*child);
-        };
-        walk(*editor);
-
-        if (menu != nullptr)
-        {
-            auto& b = menu->getPresetNameButton();
-            menu->setPresetName("REESE UNDERTOW");
-            menu->setPresetDetails("BASS", "P(X3)");
-
-            const auto img = b.createComponentSnapshot(b.getLocalBounds());
-            std::printf("\nPRESET BUTTON %dx%d\n", img.getWidth(), img.getHeight());
-            const auto ref = img.getPixelAt(2, img.getHeight() / 2);
-            for (int y = 0; y < img.getHeight(); ++y)
-            {
-                std::printf("  ");
-                for (int x = 0; x < img.getWidth(); x += 3)
-                {
-                    const auto d = std::abs(img.getPixelAt(x, y).getBrightness() - ref.getBrightness());
-                    std::printf("%c", d > 0.30f ? '#' : (d > 0.12f ? '+' : (d > 0.05f ? '.' : ' ')));
-                }
-                std::printf("|\n");
-            }
-            std::printf("\n");
-        }
-    }
 
 
     {

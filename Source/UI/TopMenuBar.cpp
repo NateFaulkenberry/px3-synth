@@ -47,6 +47,17 @@ void TopMenuTabButton::setSubtitles(const juce::String& left, const juce::String
     repaint();
 }
 
+void TopMenuTabButton::setAlwaysActiveText(bool shouldBeActive)
+{
+    if (alwaysActiveText == shouldBeActive)
+    {
+        return;
+    }
+
+    alwaysActiveText = shouldBeActive;
+    repaint();
+}
+
 void TopMenuTabButton::paintButton(juce::Graphics& g,
                                    bool shouldDrawButtonAsHighlighted,
                                    bool shouldDrawButtonAsDown)
@@ -108,7 +119,7 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
     }
 
     // ---- legend ------------------------------------------------------------
-    const auto legend = on ? style.textActive : style.text;
+    const auto legend = (on || alwaysActiveText) ? style.textActive : style.text;
 
     // With no lamp above it the legend centres in the whole face instead of the
     // band beneath one.
@@ -129,10 +140,16 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
 
     if (hasSubtitle)
     {
-        subtitleArea = legendArea.removeFromBottom(
-            juce::jlimit(10.0f, 13.0f, legendArea.getHeight() * 0.38f));
-        legendFontSize = juce::jmin(13.0f, legendArea.getHeight() * 0.60f);
-        subtitleFontSize = juce::jmin(9.5f, subtitleArea.getHeight() * 0.75f);
+        // The name takes a band at the top and the subtitles take EVERYTHING
+        // below it, down to the bottom edge, rather than a fixed strip with
+        // slack under it.
+        const auto nameBand = legendArea.removeFromTop(
+            juce::jmin(legendArea.getHeight() * 0.58f, 19.0f));
+        subtitleArea = legendArea;
+        legendArea = nameBand;
+
+        legendFontSize = juce::jmin(13.0f, nameBand.getHeight() * 0.68f);
+        subtitleFontSize = juce::jmin(10.0f, subtitleArea.getHeight() * 0.66f);
     }
 
     g.setColour(legend);
@@ -147,19 +164,23 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
         g.setColour(legend);
         g.setFont(juce::FontOptions(subtitleFontSize));
 
-        // Half the width each, so a long category cannot push the author off
-        // the right-hand edge - each is fitted into its own half instead. The
-        // minimum scale is high because there is ample width here: a subtitle
-        // that has to shrink much is already too small to read.
-        const auto inset = subtitleArea.reduced(6.0f, 0.0f);
-        const auto half = inset.getWidth() * 0.5f;
+        // Two equal columns, each centred in its own. A long category cannot
+        // push the author off the right-hand edge: it is fitted into its own
+        // column instead. The minimum scale is high because there is ample
+        // width here - a subtitle that has to shrink much is already too small
+        // to read.
+        juce::FlexBox columns;
+        columns.flexDirection = juce::FlexBox::Direction::row;
+        columns.items.add(juce::FlexItem().withFlex(1.0f));
+        columns.items.add(juce::FlexItem().withFlex(1.0f));
+        columns.performLayout(subtitleArea.reduced(6.0f, 0.0f));
 
         g.drawFittedText(subtitleLeft.toUpperCase(),
-                         inset.withWidth(half).toNearestInt(),
-                         juce::Justification::centredLeft, 1, 0.9f);
+                         columns.items.getReference(0).currentBounds.toNearestInt(),
+                         juce::Justification::centred, 1, 0.9f);
         g.drawFittedText(subtitleRight.toUpperCase(),
-                         inset.withTrimmedLeft(half).toNearestInt(),
-                         juce::Justification::centredRight, 1, 0.9f);
+                         columns.items.getReference(1).currentBounds.toNearestInt(),
+                         juce::Justification::centred, 1, 0.9f);
     }
 
     // The seam between neighbours. One line on the right only, so butted tabs
@@ -183,6 +204,9 @@ TopMenuBar::TopMenuBar()
     // Butted together with no gaps, so a hairline seam is what keeps them
     // readable as separate controls. The last one has nothing to its right.
     presetPrevButton.setShowSeam(true);
+    // The preset tab is showing you what is loaded, not offering an unselected
+    // choice, so it wears the active text colour permanently.
+    presetNameButton.setAlwaysActiveText(true);
     presetNameButton.setShowSeam(true);
     presetNextButton.setShowSeam(false);
     presetMenuButton.setShowSeam(false);
