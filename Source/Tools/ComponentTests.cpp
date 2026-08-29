@@ -12783,8 +12783,16 @@ void testEditorLifecycle()
             auto* menu = menuOf(*editor);
             if (menu != nullptr && menu->getPresetNextButton().onClick != nullptr)
             {
-                menu->getPresetNextButton().onClick();
-                loadedName = menu->getPresetNameButton().getButtonText();
+                // The arrows step through everything the browser lists, and
+                // "- INIT -" is its first row - so the first press lands there.
+                // This test is about carrying a real preset's identity across a
+                // window, and INIT has no category or author to carry.
+                for (int press = 0; press < 4; ++press)
+                {
+                    menu->getPresetNextButton().onClick();
+                    loadedName = menu->getPresetNameButton().getButtonText();
+                    if (loadedName != "- INIT -") break;
+                }
             }
         }
 
@@ -12799,7 +12807,7 @@ void testEditorLifecycle()
                                                   : juce::String();
 
         check("Editor_ReopeningKeepsThePresetNameCategoryAndAuthor",
-              loadedName.isNotEmpty() && loadedName != "INIT"
+              loadedName.isNotEmpty() && loadedName != "- INIT -"
                   && reopenedName == loadedName
                   && carried.valid && carried.category.isNotEmpty(),
               "loaded '" + loadedName + "', reopened '" + reopenedName
@@ -13328,6 +13336,39 @@ void testEditorLifecycle()
               "20px -> prev " + juce::String(narrow.prev) + " next " + juce::String(narrow.next)
                   + " name " + juce::String(narrow.name) + ";  51px -> prev " + juce::String(wide.prev)
                   + " next " + juce::String(wide.next) + " name " + juce::String(wide.name));
+    }
+
+    {
+        // The arrows step through everything the browser lists, INIT included.
+        // They briefly skipped it - it is the default state, and landing on it
+        // mid-audition drops the instrument back to nothing - but that made the
+        // arrows disagree with the list they are stepping through.
+        PX3SynthAudioProcessor processor;
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        editor->setSize(1320, 798);
+        editor->setVisible(true);
+
+        TopMenuBar* menu = nullptr;
+        std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+        {
+            if (auto* m = dynamic_cast<TopMenuBar*>(&c)) menu = m;
+            for (auto* child : c.getChildren()) walk(*child);
+        };
+        walk(*editor);
+
+        juce::StringArray visited;
+        if (menu != nullptr && menu->getPresetNextButton().onClick != nullptr)
+        {
+            for (int press = 0; press < 3; ++press)
+            {
+                menu->getPresetNextButton().onClick();
+                visited.add(menu->getPresetNameButton().getButtonText());
+            }
+        }
+
+        check("TopMenu_TheArrowsStepOntoInitToo",
+              visited.size() == 3 && visited[0] == "- INIT -" && visited[1] != "- INIT -",
+              "first three presses: " + visited.joinIntoString(" -> "));
     }
 }
 
