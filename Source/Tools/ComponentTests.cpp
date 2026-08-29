@@ -13219,6 +13219,41 @@ void testEditorLifecycle()
               inert.isEmpty() ? detail + "(every property measurably changes the face)"
                               : "inert: " + inert.joinIntoString(", "));
     }
+
+    {
+        // topMenu.layout.prevNextWidth sizes the two arrows either side of the
+        // preset name. Pinned because the name button takes whatever they
+        // leave, so a change here is easy to make and easy to have silently
+        // stop working.
+        auto arrowWidth = [](int configured)
+        {
+            const juce::String json = juce::String(R"({"topMenu":{"layout":{"prevNextWidth":)")
+                                      + juce::String(configured) + R"(}}})";
+            juce::String error;
+            const auto config = UIConfig::fromJsonText(json, error);
+
+            TopMenuBar bar;
+            bar.setUIConfig(config);
+            bar.setBounds(0, 0, 1280, 40);
+            bar.resized();
+
+            struct R { int prev; int next; int name; };
+            return R { bar.getPresetPrevButton().getWidth(),
+                       bar.getPresetNextButton().getWidth(),
+                       bar.getPresetNameButton().getWidth() };
+        };
+
+        const auto narrow = arrowWidth(20);
+        const auto wide = arrowWidth(51);
+
+        check("TopMenu_ArrowWidthComesFromConfig",
+              narrow.prev == 20 && narrow.next == 20
+                  && wide.prev == 51 && wide.next == 51
+                  && wide.name < narrow.name,
+              "20px -> prev " + juce::String(narrow.prev) + " next " + juce::String(narrow.next)
+                  + " name " + juce::String(narrow.name) + ";  51px -> prev " + juce::String(wide.prev)
+                  + " next " + juce::String(wide.next) + " name " + juce::String(wide.name));
+    }
 }
 
 // ============================================================================

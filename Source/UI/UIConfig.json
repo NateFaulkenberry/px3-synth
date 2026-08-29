@@ -49,10 +49,10 @@
     "presetTab": {
       "padding": 0,
       "rows": {
-        "row1": { "height": "58%", "padding": 0, "fontSize": 0 },
-        "row2": { "height": "42%", "padding": 0, "fontSize": 0 }
+        "row1": { "height": "45%", "paddingTop": 20, "fontSize": 14 },
+        "row2": { "height": "42%", "padding": 5, "fontSize": 10 }
       },
-      "divider": { "width": 1, "inset": 1, "alpha": 1.0 },
+      "divider": { "width": 1, "inset": 6, "alpha": 0.5 },
       "showLabels": true,
       "detailUppercase": true,
       "nameBold": true,
@@ -73,7 +73,7 @@
       "sectionMinWidth": 282,
       "sectionMaxWidth": 390,
       "presetClusterMenuWidth": 94,
-      "prevNextWidth": 41,
+      "prevNextWidth": 51,
       "presetHorizontalPad": 0,
       "presetSmallGap": 0,
       "menuButtonMinWidth": 64,
