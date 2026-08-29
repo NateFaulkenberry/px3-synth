@@ -54,6 +54,15 @@ inline const juce::Identifier kSubOscPitchId("pitch");
 inline const juce::Identifier kSubOscOctaveId("octave");
 inline const juce::Identifier kSubOscWaveformId("waveform");
 inline const juce::Identifier kTopMenuViewId("topMenuView");
+// Which preset the editor last loaded. UI session state like topMenuView: the
+// processor never reads it, and it is stripped from preset FILES - a preset
+// naming itself would be circular. It exists because the editor is rebuilt
+// every time the window is reopened, and without it the tab fell back to INIT
+// over a patch that had not changed.
+inline const juce::Identifier kLoadedPresetNameId("loadedPresetName");
+inline const juce::Identifier kLoadedPresetCategoryId("loadedPresetCategory");
+inline const juce::Identifier kLoadedPresetAuthorId("loadedPresetAuthor");
+inline const juce::Identifier kLoadedPresetPathId("loadedPresetPath");
 inline const juce::Identifier kVibeStateId("VIBE");
 inline const juce::Identifier kVibeBypassId("bypass");
 inline const juce::Identifier kVibeSeedId("seed");

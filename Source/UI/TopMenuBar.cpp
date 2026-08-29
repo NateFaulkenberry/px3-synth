@@ -502,6 +502,11 @@ juce::TextButton& TopMenuBar::getPresetNameButton()
     return presetNameButton;
 }
 
+juce::TextButton& TopMenuBar::getPresetNextButton()
+{
+    return presetNextButton;
+}
+
 void TopMenuBar::configureTopMenuSectionButton(TopMenuTabButton& button,
                                                const juce::String& text,
                                                int sectionIndex)

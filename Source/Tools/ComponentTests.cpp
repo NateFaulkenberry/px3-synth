@@ -12593,6 +12593,67 @@ void testEditorLifecycle()
         editor.reset();
     }
 
+    {
+        // The editor is destroyed and rebuilt every time the plugin window is
+        // closed and reopened, and it was the only thing that knew which preset
+        // was loaded - so a reopened window showed INIT, with no category and
+        // no author, over a patch that had not changed at all. The identity now
+        // rides in the processor's state alongside topMenuView.
+        PX3SynthAudioProcessor processor;
+
+        auto menuOf = [](juce::AudioProcessorEditor& e)
+        {
+            TopMenuBar* menu = nullptr;
+            std::function<void(juce::Component&)> w = [&](juce::Component& c)
+            {
+                if (auto* m = dynamic_cast<TopMenuBar*>(&c)) menu = m;
+                for (auto* ch : c.getChildren()) w(*ch);
+            };
+            w(e);
+            return menu;
+        };
+
+        juce::String loadedName;
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+            editor->setSize(1320, 798);
+            editor->setVisible(true);
+
+            auto* menu = menuOf(*editor);
+            if (menu != nullptr && menu->getPresetNextButton().onClick != nullptr)
+            {
+                menu->getPresetNextButton().onClick();
+                loadedName = menu->getPresetNameButton().getButtonText();
+            }
+        }
+
+        // A second editor over the same processor: the window reopening.
+        std::unique_ptr<juce::AudioProcessorEditor> reopened(processor.createEditor());
+        reopened->setSize(1320, 798);
+        reopened->setVisible(true);
+        auto* menu = menuOf(*reopened);
+
+        const auto carried = processor.getLoadedPreset();
+        const auto reopenedName = menu != nullptr ? menu->getPresetNameButton().getButtonText()
+                                                  : juce::String();
+
+        check("Editor_ReopeningKeepsThePresetNameCategoryAndAuthor",
+              loadedName.isNotEmpty() && loadedName != "INIT"
+                  && reopenedName == loadedName
+                  && carried.valid && carried.category.isNotEmpty(),
+              "loaded '" + loadedName + "', reopened '" + reopenedName
+                  + "', carried category '" + carried.category
+                  + "' author '" + carried.author + "'");
+
+        // The identity is session state, not part of the sound: a preset file
+        // that named itself would still claim the old name after a save-as.
+        const auto presetTree = processor.createPresetStateTree();
+        check("Preset_FilesDoNotCarryTheLoadedPresetIdentity",
+              ! presetTree.hasProperty(px3::processor_internal::kLoadedPresetNameId)
+                  && ! presetTree.hasProperty(px3::processor_internal::kLoadedPresetAuthorId),
+              "createPresetStateTree strips the session's preset identity");
+    }
+
 
 
     {

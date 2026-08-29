@@ -413,6 +413,21 @@ public:
     int getTopMenuViewIndex() const;
     void setTopMenuViewIndex(int index, bool notifyHost = true);
 
+    // The preset the editor last loaded. The processor does not use any of it;
+    // it is carried here purely so it survives in DAW state, because the editor
+    // is destroyed and rebuilt every time the window is closed and reopened.
+    struct LoadedPreset
+    {
+        juce::String name;
+        juce::String category;
+        juce::String author;
+        juce::String filePath;
+        bool valid { false };
+    };
+
+    LoadedPreset getLoadedPreset() const;
+    void setLoadedPreset(const LoadedPreset& preset);
+
     juce::ValueTree createParameterStateTree() const;
     juce::ValueTree createPresetStateTree() const;
     bool applyParameterStateTree(const juce::ValueTree& state,
@@ -678,6 +693,10 @@ private:
     std::atomic<float> pitchBendActivity { 0.0f };
     std::atomic<float> modWheelActivity { 0.0f };
     std::atomic<int> topMenuViewIndex { 0 };
+    // Guarded because the host may serialise state off the message thread while
+    // the editor is writing this from it.
+    mutable std::mutex loadedPresetMutex;
+    LoadedPreset loadedPreset;
 
     float vibratoPhaseRadians { 0.0f };
     std::array<LfoGenerator, kLfoSourceCount> lfoGenerators;

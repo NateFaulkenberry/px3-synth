@@ -1509,6 +1509,20 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     rebuildPresetFilteredList();
     // Do not auto-load INIT here: the host may have just restored plugin state.
     // Auto-loading a preset in the editor constructor would overwrite that state.
+    // Adopt whatever the processor is carrying, so a reopened window shows the
+    // preset that is actually loaded rather than falling back to INIT.
+    if (const auto restored = audioProcessor.getLoadedPreset(); restored.valid)
+    {
+        hasCurrentPreset = true;
+        currentPreset = PresetManager::PresetRecord {};
+        currentPreset.file = juce::File(restored.filePath);
+        currentPreset.metadata.name = restored.name;
+        currentPreset.metadata.category = restored.category;
+        currentPreset.metadata.author = restored.author;
+        loadedStateHash = computeCurrentStateHash();
+        currentPresetDirty = false;
+    }
+
     refreshPresetNameDisplay();
 
     refreshOscillatorModeUI();
@@ -2421,6 +2435,20 @@ void PX3SynthAudioProcessorEditor::refreshPresetNameDisplay()
         topMenuBar->setPresetDetails(hasCurrentPreset ? currentPreset.metadata.category : juce::String(),
                                      hasCurrentPreset ? currentPreset.metadata.author : juce::String());
     }
+
+    // Hand the identity to the processor so it survives in DAW state. The
+    // editor is destroyed with the window; without this, reopening it showed
+    // INIT and no category or author over a patch that had not changed.
+    PX3SynthAudioProcessor::LoadedPreset published;
+    if (hasCurrentPreset)
+    {
+        published.name = currentPreset.metadata.name;
+        published.category = currentPreset.metadata.category;
+        published.author = currentPreset.metadata.author;
+        published.filePath = currentPreset.file.getFullPathName();
+        published.valid = true;
+    }
+    audioProcessor.setLoadedPreset(published);
 }
 
 void PX3SynthAudioProcessorEditor::applyPresetRecord(const PresetManager::PresetRecord& record)

@@ -153,6 +153,14 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
 
     state.setProperty(kTopMenuViewId, getTopMenuViewIndex(), nullptr);
 
+    if (const auto preset = getLoadedPreset(); preset.valid)
+    {
+        state.setProperty(kLoadedPresetNameId, preset.name, nullptr);
+        state.setProperty(kLoadedPresetCategoryId, preset.category, nullptr);
+        state.setProperty(kLoadedPresetAuthorId, preset.author, nullptr);
+        state.setProperty(kLoadedPresetPathId, preset.filePath, nullptr);
+    }
+
     return state;
 }
 
@@ -160,6 +168,13 @@ juce::ValueTree PX3SynthAudioProcessor::createPresetStateTree() const
 {
     auto state = createParameterStateTree();
     state.removeProperty(kTopMenuViewId, nullptr);
+    // A preset file must not name itself: the identity belongs to the session,
+    // not to the sound. Saving it would mean a preset loaded, edited and saved
+    // under a new name still claimed to be the old one.
+    state.removeProperty(kLoadedPresetNameId, nullptr);
+    state.removeProperty(kLoadedPresetCategoryId, nullptr);
+    state.removeProperty(kLoadedPresetAuthorId, nullptr);
+    state.removeProperty(kLoadedPresetPathId, nullptr);
     return state;
 }
 
@@ -387,6 +402,17 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         setTopMenuViewIndex(0, false);
     }
 
+    if (restoreUiSessionState)
+    {
+        LoadedPreset preset;
+        preset.name = state.getProperty(kLoadedPresetNameId, juce::String()).toString();
+        preset.category = state.getProperty(kLoadedPresetCategoryId, juce::String()).toString();
+        preset.author = state.getProperty(kLoadedPresetAuthorId, juce::String()).toString();
+        preset.filePath = state.getProperty(kLoadedPresetPathId, juce::String()).toString();
+        preset.valid = preset.name.isNotEmpty();
+        setLoadedPreset(preset);
+    }
+
     if (error != nullptr)
     {
         error->clear();
@@ -398,4 +424,16 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new PX3SynthAudioProcessor();
+}
+
+PX3SynthAudioProcessor::LoadedPreset PX3SynthAudioProcessor::getLoadedPreset() const
+{
+    const std::scoped_lock<std::mutex> lock(loadedPresetMutex);
+    return loadedPreset;
+}
+
+void PX3SynthAudioProcessor::setLoadedPreset(const LoadedPreset& preset)
+{
+    const std::scoped_lock<std::mutex> lock(loadedPresetMutex);
+    loadedPreset = preset;
 }

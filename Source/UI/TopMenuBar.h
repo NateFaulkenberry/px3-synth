@@ -99,6 +99,7 @@ public:
     juce::TextButton& getPresetMenuButton();
     // The preset name doubles as the button that opens the browser sheet.
     juce::TextButton& getPresetNameButton();
+    juce::TextButton& getPresetNextButton();
 
 private:
     void configureTopMenuSectionButton(TopMenuTabButton& button,
