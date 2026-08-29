@@ -62,15 +62,25 @@ void ToggleChipButton::paintButton(juce::Graphics& g,
                                  .withAlpha(shouldDrawButtonAsDown ? 0.34f : 0.24f);
     const auto offFill = enabled ? offNeutral.interpolatedWith(offTinted, offTint) : offNeutral;
 
-    const auto fill = on ? lit.withAlpha(enabled ? 0.90f : 0.45f) : offFill;
+    // On is the card's OWN colour, darkened - not the bright accent it used to
+    // flip to. That bright fill needed near-black text to stay legible, and the
+    // two together read as a different palette from the card around them: a
+    // deep red DOOM card grew pale pink chips with black captions. A darker,
+    // slightly richer shade of the same hue keeps every chip inside its card's
+    // palette, and keeps the same light text in both states.
+    //
+    // The fill no longer has to carry the state on its own, which is what let
+    // this get darker rather than brighter: each chip names the state it is in.
+    const auto onFill = lit.withSaturation(juce::jmin(1.0f, lit.getSaturation() * 1.15f))
+                           .withBrightness(lit.getBrightness() * 0.50f)
+                           .withAlpha(enabled ? 0.95f : 0.45f);
+
+    const auto fill = on ? onFill : offFill;
 
     g.setColour(shouldDrawButtonAsHighlighted ? fill.brighter(0.18f) : fill);
     g.fillRoundedRectangle(area, kCornerRadius);
 
-    // On, the text sits on a filled accent chip, so it goes dark for contrast
-    // rather than staying pale on pale.
-    const auto textColour = on ? juce::Colour::fromRGB(16, 18, 24).withAlpha(enabled ? 1.0f : 0.6f)
-                               : juce::Colour::fromRGB(232, 232, 232).withAlpha(enabled ? 1.0f : 0.6f);
+    const auto textColour = juce::Colour::fromRGB(232, 232, 232).withAlpha(enabled ? 1.0f : 0.6f);
 
     g.setColour(textColour);
     g.setFont(juce::FontOptions(fontSize));

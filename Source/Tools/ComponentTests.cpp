@@ -338,6 +338,39 @@ double estimateFrequency(const std::vector<float>& signal,
     return 0.0;
 }
 
+// Broadband energy in a band, as dBFS. A hiss meter: pink noise lives up here,
+// and a 110 Hz tone through a saturator does not - by 8 kHz it is past its 70th
+// harmonic and the odd-harmonic series has long since died away.
+double bandRmsDb(const std::vector<float>& signal,
+                 double lowHz,
+                 double highHz,
+                 int fromSample,
+                 int fftOrder = 14)
+{
+    const auto size = 1 << fftOrder;
+    if (fromSample + size > static_cast<int>(signal.size())) return -200.0;
+
+    juce::dsp::FFT fft(fftOrder);
+    std::vector<float> data(static_cast<std::size_t>(size) * 2, 0.0f);
+    for (int i = 0; i < size; ++i)
+    {
+        const auto w = 0.5f - 0.5f * std::cos(juce::MathConstants<float>::twoPi
+                                              * static_cast<float>(i) / static_cast<float>(size - 1));
+        data[static_cast<std::size_t>(i)] = signal[static_cast<std::size_t>(fromSample + i)] * w;
+    }
+    fft.performFrequencyOnlyForwardTransform(data.data());
+
+    const auto binsPerHz = static_cast<double>(size) / kSampleRate;
+    double sum = 0.0;
+    for (int b = static_cast<int>(lowHz * binsPerHz); b <= static_cast<int>(highHz * binsPerHz); ++b)
+    {
+        if (b <= 0 || b >= size / 2) continue;
+        const auto m = static_cast<double>(data[static_cast<std::size_t>(b)]);
+        sum += m * m;
+    }
+    return juce::Decibels::gainToDecibels(std::sqrt(sum) / (size * 0.5), -200.0);
+}
+
 // Energy at the harmonics of a tone, relative to energy at the fundamental. A
 // sine has none of its own, so on a sine source this is a direct measure of how
 // much a nonlinearity is adding - unaffected by level, and unaffected by slow
@@ -1915,6 +1948,7 @@ void testLfo()
 // PSU sag, temperature, correlated chaos) plus a per-voice variation set (pitch
 // cents, cutoff/resonance offset, gain offset, asymmetry/saturation bias).
 // SynthVoice applies these to filter cutoff and resonance, oscillator pitch,
+
 // waveshaping, added noise, VCA nonlinearity and voice gain. It has three
 // controls: vibeEnabled, vibeAmount and vibeType.
 void testVibe()
@@ -2005,6 +2039,41 @@ void testVibe()
           hHalf > hQuarter && hThreeQuarter > hHalf && hFull > hThreeQuarter,
           "harmonic/fundamental 0.25 -> " + fmt(hQuarter, 5) + ", 0.5 -> " + fmt(hHalf, 5)
               + ", 0.75 -> " + fmt(hThreeQuarter, 5) + ", 1.0 -> " + fmt(hFull, 5));
+
+
+    // Hiss has to scale with the amount rather than sit on a fixed floor. It
+    // used to be "0.0035 + 0.0165 * amount", and the constant term dominated
+    // everything below about three quarters of the range: measured in an
+    // 8-16 kHz band on a sine source, hiss jumped from -161 dBFS with vibe off
+    // to -75.4 dBFS at amount 0.05 - an 86 dB step into a level within 14 dB of
+    // FULL amount. The floor also swamped the type profiles, so Clean (noise
+    // 0.03) and LoFi (noise 0.84) measured identically.
+    {
+        auto hissAt = [](float amount, int typeIndex)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "osc1Mode", 0);          // SINE: no HF of its own
+            setParam(processor, "vibeEnabled", 1.0f);
+            setParam(processor, "vibeAmount", amount);
+            setChoice(processor, "vibeType", typeIndex);
+            const auto capture = render(processor, 96000, { { 2000, true, 45, 0.9f } });
+            return bandRmsDb(capture.left, 8000.0, 16000.0, 40000);
+        };
+
+        const auto quiet = hissAt(0.05f, 0);
+        const auto loud = hissAt(1.0f, 0);
+        check("Vibe_HissScalesWithAmountRatherThanSittingOnAFloor",
+              loud - quiet > 40.0,
+              "amount 0.05 -> " + fmt(quiet, 1) + " dBFS, amount 1.0 -> " + fmt(loud, 1)
+                  + " dBFS, range " + fmt(loud - quiet, 1) + " dB");
+
+        const auto clean = hissAt(1.0f, 4);               // Clean, noise 0.03
+        const auto lofi = hissAt(1.0f, 5);                // LoFi,  noise 0.84
+        check("Vibe_TypeProfilesHaveDistinctNoiseFloors",
+              lofi - clean > 15.0,
+              "Clean " + fmt(clean, 1) + " dBFS vs LoFi " + fmt(lofi, 1) + " dBFS");
+    }
 
     // Turning vibe up must not change the mix balance. This is the property the
     // old stage broke: its makeup gain was level-dependent, so vibe acted as up

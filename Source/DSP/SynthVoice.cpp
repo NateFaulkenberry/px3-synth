@@ -585,6 +585,16 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
             // Pink-weighted hiss. Real analog noise falls with frequency; flat
             // white noise reads as digital.
+            //
+            // The gain is strictly PROPORTIONAL to the amount. It used to be
+            // "0.0035 + 0.0165 * amount", and that fixed floor did not scale
+            // with the amount knob or with the NOISE tuning: hiss went from
+            // -161 dBFS with vibe off to -75 dBFS the instant the stage
+            // engaged, an 86 dB step that landed within 14 dB of the hiss at
+            // FULL amount. At the lowest usable setting the floor was 99% of
+            // the noise gain, so neither the knob nor the profile could be
+            // heard - Clean (noise 0.03) and LoFi (noise 0.84) measured the
+            // same. The coefficient is set so full amount is unchanged.
             const auto white = oscillatorUnits[0].nextDeterministicNoise();
             vibePinkState[0] = 0.99765f * vibePinkState[0] + white * 0.0990460f;
             vibePinkState[1] = 0.96300f * vibePinkState[1] + white * 0.2965164f;
@@ -594,7 +604,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             const auto noiseAmount = vibeTuning.noise * vibeDepth * (0.55f + 0.45f * std::abs(vibeShared.psu));
             const auto noiseTailScale = 0.18f + 0.82f * releaseTailShape;
             stageSample += pink
-                           * (0.0035f + 0.0165f * noiseAmount)
+                           * (0.0218f * noiseAmount)
                            * noiseTailScale
                            * juce::jlimit(0.0f, 1.0f, noiseScale);
 
