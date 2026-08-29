@@ -131,57 +131,58 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
     // band beneath one.
     auto legendArea = showLed ? area.withTop(led.getBottom() + 2.0f) : area;
 
-    // Padding inside the face. This is what moves the name and the details down
-    // off the top edge; there was no way to do it before, because every offset
-    // here was a literal.
-    legendArea = legendArea.withTrimmedTop(juce::jmax(0.0f, content.paddingTop))
-                           .withTrimmedBottom(juce::jmax(0.0f, content.paddingBottom));
-    if (legendArea.getHeight() < 4.0f)
-    {
-        legendArea = legendArea.withHeight(4.0f);
-    }
-
-    // A subtitle takes the bottom of the face, and the legend centres in what
-    // is left - so a tab without one is laid out exactly as it was.
+    // A tab with neither a category nor an author is laid out exactly as it was
+    // before any of this existed: one legend, centred in the whole face.
     const auto hasSubtitle = subtitleLeft.isNotEmpty() || subtitleRight.isNotEmpty();
 
-    // Both fonts are sized from their OWN band when there are two of them.
-    // Sizing them from the whole face is what made the first attempt
-    // unreadable: the tab is 32px tall, so area * 0.21 put the subtitle at
-    // 6.7px and drawFittedText then shrank it further to fit. Measured from
-    // its own 12px band it lands at 9px, against a 12px name.
-    auto legendFontSize = juce::jmin(13.0f, area.getHeight() * 0.30f);
+    // The content box, then the two rows inside it - the same shape as a card's
+    // inner rows, and for the same reason: it is the arrangement anyone editing
+    // the config already knows.
+    legendArea = content.padding.shrink(legendArea);
+    if (legendArea.getHeight() < 8.0f)
+    {
+        legendArea = legendArea.withHeight(8.0f);
+    }
+
     juce::Rectangle<float> subtitleArea;
     auto subtitleFontSize = 0.0f;
+    auto legendFontSize = juce::jmin(13.0f, area.getHeight() * 0.30f);
 
     if (hasSubtitle)
     {
-        // The name takes a band at the top and the subtitles take EVERYTHING
-        // below it, down to the bottom edge, rather than a fixed strip with
-        // slack under it.
-        // The name row is taken off the top and the detail row off the bottom,
-        // so either can be pinned and the other given what is left.
-        const auto nameHeight = content.nameRowHeight > 0.0f
-                                    ? juce::jmin(content.nameRowHeight, legendArea.getHeight() - 4.0f)
-                                    : juce::jmin(legendArea.getHeight() * 0.58f, 19.0f);
-        const auto nameBand = legendArea.removeFromTop(juce::jmax(4.0f, nameHeight));
+        const auto box = legendArea.getHeight();
 
-        const auto detailHeight = content.detailRowHeight > 0.0f
-                                      ? juce::jmin(content.detailRowHeight, legendArea.getHeight())
-                                      : legendArea.getHeight();
-        subtitleArea = legendArea.removeFromTop(juce::jmax(4.0f, detailHeight));
+        // Auto on either row means "an equal share of what the other leaves",
+        // so one row can be pinned in pixels and the other left to fill.
+        auto nameHeight = content.name.height.resolve(box, box * 0.5f);
+        auto detailHeight = content.detail.height.resolve(box, box * 0.5f);
+
+        if (content.name.height.isAuto() && ! content.detail.height.isAuto())
+        {
+            nameHeight = box - detailHeight;
+        }
+        else if (content.detail.height.isAuto() && ! content.name.height.isAuto())
+        {
+            detailHeight = box - nameHeight;
+        }
+
+        nameHeight = juce::jlimit(4.0f, box - 4.0f, nameHeight);
+        detailHeight = juce::jlimit(4.0f, box - nameHeight, detailHeight);
+
+        const auto nameBand = content.name.padding.shrink(legendArea.removeFromTop(nameHeight));
+        subtitleArea = content.detail.padding.shrink(legendArea.removeFromTop(detailHeight));
         legendArea = nameBand;
 
-        legendFontSize = content.nameFontSize > 0.0f
-                             ? content.nameFontSize
+        legendFontSize = content.name.fontSize > 0.0f
+                             ? content.name.fontSize
                              : juce::jmin(13.0f, nameBand.getHeight() * 0.68f);
-        subtitleFontSize = content.detailFontSize > 0.0f
-                               ? content.detailFontSize
+        subtitleFontSize = content.detail.fontSize > 0.0f
+                               ? content.detail.fontSize
                                : juce::jmin(10.0f, subtitleArea.getHeight() * 0.66f);
     }
 
-    g.setColour(legend);
-    g.setFont(juce::FontOptions(legendFontSize, juce::Font::bold));
+    g.setColour(content.nameColour.isTransparent() ? legend : content.nameColour);
+    g.setFont(juce::FontOptions(legendFontSize, content.nameBold ? juce::Font::bold : juce::Font::plain));
     g.drawFittedText(getButtonText(), legendArea.toNearestInt(), juce::Justification::centred, 1);
 
     if (hasSubtitle)
@@ -189,7 +190,7 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
         // The same colour as the name. Size alone carries the hierarchy - it
         // was dimmed as well, and between that and a font sized off the whole
         // 32px face the subtitles came out unreadable.
-        g.setColour(legend);
+        g.setColour(content.detailColour.isTransparent() ? legend : content.detailColour);
         g.setFont(juce::FontOptions(subtitleFontSize));
 
         // Two equal columns, each centred in its own. A long category cannot
@@ -201,18 +202,27 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
         columns.flexDirection = juce::FlexBox::Direction::row;
         columns.items.add(juce::FlexItem().withFlex(1.0f));
         columns.items.add(juce::FlexItem().withFlex(1.0f));
-        columns.performLayout(subtitleArea.withTrimmedLeft(juce::jmax(0.0f, content.paddingLeft))
-                                          .withTrimmedRight(juce::jmax(0.0f, content.paddingRight)));
+        columns.performLayout(subtitleArea);
 
         const auto leftCell = columns.items.getReference(0).currentBounds;
         const auto rightCell = columns.items.getReference(1).currentBounds;
 
         // Named, so the second line says what it is showing rather than
         // leaving two bare words to be worked out.
-        g.drawFittedText("CATEGORY: " + subtitleLeft.toUpperCase(),
-                         leftCell.toNearestInt(), juce::Justification::centred, 1, 0.75f);
-        g.drawFittedText("AUTHOR: " + subtitleRight.toUpperCase(),
-                         rightCell.toNearestInt(), juce::Justification::centred, 1, 0.75f);
+        const auto cased = [&](const juce::String& text)
+        {
+            return content.detailUppercase ? text.toUpperCase() : text;
+        };
+        const auto edges = content.detailAlign == ContentStyle::DetailAlign::edges;
+
+        g.drawFittedText((content.showLabels ? "CATEGORY: " : "") + cased(subtitleLeft),
+                         leftCell.toNearestInt(),
+                         edges ? juce::Justification::centredLeft : juce::Justification::centred,
+                         1, 0.75f);
+        g.drawFittedText((content.showLabels ? "AUTHOR: " : "") + cased(subtitleRight),
+                         rightCell.toNearestInt(),
+                         edges ? juce::Justification::centredRight : juce::Justification::centred,
+                         1, 0.75f);
 
         // A hairline on the boundary between the two columns, in the text's own
         // colour, so the pair reads as two fields rather than one run-on line.
@@ -221,8 +231,13 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
         const auto divider = leftCell.getRight();
         g.setColour(legend.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, content.dividerAlpha)));
         const auto inset = juce::jlimit(0.0f, subtitleArea.getHeight() * 0.45f, content.dividerInset);
-        g.fillRect(juce::Rectangle<float>(divider, subtitleArea.getY() + inset,
-                                          1.0f, juce::jmax(1.0f, subtitleArea.getHeight() - inset * 2.0f)));
+        const auto thickness = juce::jmax(0.0f, content.dividerWidth);
+        if (thickness > 0.0f)
+        {
+            g.fillRect(juce::Rectangle<float>(divider - thickness * 0.5f, subtitleArea.getY() + inset,
+                                              thickness,
+                                              juce::jmax(1.0f, subtitleArea.getHeight() - inset * 2.0f)));
+        }
     }
 
     // The seam between neighbours. One line on the right only, so butted tabs
@@ -524,17 +539,54 @@ void TopMenuBar::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     TopMenuTabButton::ContentStyle contentStyle;
     if (uiConfig != nullptr)
     {
-        const juce::String path { "topMenu.presetTab." };
-        contentStyle.paddingTop = uiConfig->getFloat(path + "paddingTop", contentStyle.paddingTop);
-        contentStyle.paddingBottom = uiConfig->getFloat(path + "paddingBottom", contentStyle.paddingBottom);
-        contentStyle.paddingLeft = uiConfig->getFloat(path + "paddingLeft", contentStyle.paddingLeft);
-        contentStyle.paddingRight = uiConfig->getFloat(path + "paddingRight", contentStyle.paddingRight);
-        contentStyle.nameFontSize = uiConfig->getFloat(path + "nameFontSize", contentStyle.nameFontSize);
-        contentStyle.detailFontSize = uiConfig->getFloat(path + "detailFontSize", contentStyle.detailFontSize);
-        contentStyle.nameRowHeight = uiConfig->getFloat(path + "nameRowHeight", contentStyle.nameRowHeight);
-        contentStyle.detailRowHeight = uiConfig->getFloat(path + "detailRowHeight", contentStyle.detailRowHeight);
-        contentStyle.dividerInset = uiConfig->getFloat(path + "dividerInset", contentStyle.dividerInset);
-        contentStyle.dividerAlpha = uiConfig->getFloat(path + "dividerAlpha", contentStyle.dividerAlpha);
+        const juce::String path { "topMenu.presetTab" };
+
+        // Insets and Dimensions parsed by the same helpers the cards use, so
+        // "58%", "18px", 18 and "auto" all mean here what they mean there - and
+        // so do padding, paddingTop and the rest.
+        const auto readInsets = [this](const juce::String& base, px3::ui::Insets fallback)
+        {
+            auto result = px3::ui::Insets::parse(uiConfig->getValue(base), fallback);
+            const auto side = [&](const char* suffix, float& target)
+            {
+                if (const auto v = uiConfig->getValue(base + suffix); ! v.isVoid())
+                {
+                    target = static_cast<float>(v);
+                }
+            };
+            side("Top", result.top);
+            side("Right", result.right);
+            side("Bottom", result.bottom);
+            side("Left", result.left);
+            return result;
+        };
+
+        const auto readRow = [this, &readInsets](const juce::String& base,
+                                                 TopMenuTabButton::ContentStyle::Row fallback)
+        {
+            fallback.height = px3::ui::Dimension::parse(uiConfig->getValue(base + ".height"), fallback.height);
+            fallback.padding = readInsets(base + ".padding", fallback.padding);
+            fallback.fontSize = uiConfig->getFloat(base + ".fontSize", fallback.fontSize);
+            return fallback;
+        };
+
+        contentStyle.padding = readInsets(path + ".padding", contentStyle.padding);
+        contentStyle.name = readRow(path + ".rows.row1", contentStyle.name);
+        contentStyle.detail = readRow(path + ".rows.row2", contentStyle.detail);
+
+        contentStyle.dividerAlpha = uiConfig->getFloat(path + ".divider.alpha", contentStyle.dividerAlpha);
+        contentStyle.dividerInset = uiConfig->getFloat(path + ".divider.inset", contentStyle.dividerInset);
+        contentStyle.dividerWidth = uiConfig->getFloat(path + ".divider.width", contentStyle.dividerWidth);
+
+        contentStyle.showLabels = uiConfig->getBool(path + ".showLabels", contentStyle.showLabels);
+        contentStyle.detailUppercase = uiConfig->getBool(path + ".detailUppercase", contentStyle.detailUppercase);
+        contentStyle.nameBold = uiConfig->getBool(path + ".nameBold", contentStyle.nameBold);
+        contentStyle.detailAlign =
+            uiConfig->getString(path + ".detailAlign", "centred").equalsIgnoreCase("edges")
+                ? TopMenuTabButton::ContentStyle::DetailAlign::edges
+                : TopMenuTabButton::ContentStyle::DetailAlign::centred;
+        contentStyle.nameColour = uiConfig->getColour(path + ".rows.row1.colour", contentStyle.nameColour);
+        contentStyle.detailColour = uiConfig->getColour(path + ".rows.row2.colour", contentStyle.detailColour);
     }
     presetNameButton.setContentStyle(contentStyle);
 

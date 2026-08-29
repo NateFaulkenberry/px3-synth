@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "Card.h"
+
 #include <array>
 #include <functional>
 #include <memory>
@@ -59,29 +61,49 @@ public:
     // use, which is not what it is: it is showing you what is loaded.
     void setAlwaysActiveText(bool shouldBeActive);
 
-    // How the tab's text is laid out inside its face, read from UIConfig. A
-    // zero means "derive it from the tab's height", which is what every tab did
-    // before any of this was configurable - so a tab given no content style is
-    // laid out exactly as it was.
+    // How the tab's text is laid out inside its face, read from UIConfig. Laid
+    // out the same way a card's inner rows are: a padded content box, then rows
+    // whose heights are Dimensions - pixels, a percentage of that box, or auto
+    // for an equal share of what is left - each with its own padding.
+    //
+    // It is worth this much structure because the tab is 32px carrying three
+    // strings, and because the first attempt fixed the name band at "58% of the
+    // face, but never more than 19px". On a taller tab that cap pinned the name
+    // to the top and handed every spare pixel to the row underneath.
     struct ContentStyle
     {
-        float paddingTop { 0.0f };
-        float paddingBottom { 0.0f };
-        float paddingLeft { 6.0f };
-        float paddingRight { 6.0f };
-        // 0 = derived from the band the text sits in.
-        float nameFontSize { 0.0f };
-        float detailFontSize { 0.0f };
-        // Row heights, in pixels. 0 = derive: the name takes 58% of the face and
-        // the details take the rest. Setting either one fixes that row and
-        // leaves the other with the remainder; setting both fixes the split and
-        // any space left over falls to the bottom.
-        float nameRowHeight { 0.0f };
-        float detailRowHeight { 0.0f };
+        struct Row
+        {
+            px3::ui::Dimension height {};                  // auto: an equal share
+            px3::ui::Insets padding {};
+            float fontSize { 0.0f };              // 0: derived from the row
+        };
+
+        px3::ui::Insets padding {};
+        Row name { px3::ui::Dimension { px3::ui::Dimension::Unit::percent, 58.0f }, px3::ui::Insets {}, 0.0f };
+        Row detail { px3::ui::Dimension { px3::ui::Dimension::Unit::percent, 42.0f }, px3::ui::Insets {}, 0.0f };
+
         float dividerAlpha { 1.0f };
-        // Vertical inset on the divider, so it can be shorter than the row it
-        // sits in rather than running its full height.
         float dividerInset { 1.0f };
+        float dividerWidth { 1.0f };
+
+        // "CATEGORY: " and "AUTHOR: " in front of the values. Off leaves the
+        // two values on their own, which is what the row was before they were
+        // added and is worth being able to get back to.
+        bool showLabels { true };
+        bool detailUppercase { true };
+        bool nameBold { true };
+
+        // Where each value sits in its own half. Centred by default; "edges"
+        // pushes the category out to the left and the author to the right,
+        // away from the divider.
+        enum class DetailAlign { centred, edges };
+        DetailAlign detailAlign { DetailAlign::centred };
+
+        // Drawn in the tab's own text colour when these are transparent, which
+        // is what keeps a themed tab consistent without restating its colours.
+        juce::Colour nameColour { juce::Colours::transparentBlack };
+        juce::Colour detailColour { juce::Colours::transparentBlack };
     };
 
     void setContentStyle(const ContentStyle& styleIn);

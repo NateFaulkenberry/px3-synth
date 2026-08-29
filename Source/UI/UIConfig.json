@@ -47,16 +47,16 @@
       "gap": 0
     },
     "presetTab": {
-      "paddingTop": 0,
-      "paddingBottom": 0,
-      "paddingLeft": 6,
-      "paddingRight": 6,
-      "nameFontSize": 0,
-      "detailFontSize": 0,
-      "nameRowHeight": 0,
-      "detailRowHeight": 0,
-      "dividerAlpha": 1.0,
-      "dividerInset": 1
+      "padding": 0,
+      "rows": {
+        "row1": { "height": "58%", "padding": 0, "fontSize": 0 },
+        "row2": { "height": "42%", "padding": 0, "fontSize": 0 }
+      },
+      "divider": { "width": 1, "inset": 1, "alpha": 1.0 },
+      "showLabels": true,
+      "detailUppercase": true,
+      "nameBold": true,
+      "detailAlign": "centred"
     },
     "tabStyle": {
       "face": "$bgTopStrip",

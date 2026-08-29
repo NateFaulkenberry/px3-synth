@@ -13077,7 +13077,9 @@ void testEditorLifecycle()
             button.setShowLed(false);
             button.setContentStyle(style);
             button.setButtonText("PRESET NAME");
-            button.setSubtitles("BASS", "P(X3)");
+            // Mixed case on purpose: fed "BASS" the uppercase switch has
+            // nothing to do, and would read as inert when it is not.
+            button.setSubtitles("Bass", "Nate f");
             button.setBounds(0, 0, 468, 32);
             button.setVisible(true);
 
@@ -13114,68 +13116,107 @@ void testEditorLifecycle()
 
         {
             auto style = base;
-            style.paddingTop = 10.0f;
+            style.padding.top = 10.0f;
             const auto moved = inkRows(style);
-            detail << "paddingTop: first ink row " << plain.firstRow << " -> " << moved.firstRow << "  ";
-            if (moved.firstRow <= plain.firstRow) inert.add("paddingTop");
+            detail << "padding.top: first ink row " << plain.firstRow << " -> " << moved.firstRow << "  ";
+            if (moved.firstRow <= plain.firstRow) inert.add("padding.top");
         }
         {
             auto style = base;
-            style.paddingBottom = 10.0f;
+            style.padding.bottom = 10.0f;
             const auto moved = inkRows(style);
-            detail << "paddingBottom: last ink row " << plain.lastRow << " -> " << moved.lastRow << "  ";
-            if (moved.lastRow >= plain.lastRow) inert.add("paddingBottom");
+            detail << "padding.bottom: last ink row " << plain.lastRow << " -> " << moved.lastRow << "  ";
+            if (moved.lastRow >= plain.lastRow) inert.add("padding.bottom");
         }
         {
             auto style = base;
-            style.nameFontSize = 6.0f;
-            if (inkRows(style).ink >= plain.ink) inert.add("nameFontSize");
-        }
-        {
-            auto style = base;
-            style.detailFontSize = 6.0f;
-            if (inkRows(style).ink >= plain.ink) inert.add("detailFontSize");
-        }
-        {
-            auto style = base;
-            style.nameRowHeight = 22.0f;
-            const auto tall = inkRows(style);
-            detail << "nameRowHeight: last ink row " << plain.lastRow << " -> " << tall.lastRow << "  ";
-            if (tall.lastRow == plain.lastRow && tall.ink == plain.ink) inert.add("nameRowHeight");
-        }
-        {
-            auto style = base;
-            style.detailRowHeight = 8.0f;
-            const auto short_ = inkRows(style);
-            if (short_.lastRow == plain.lastRow && short_.ink == plain.ink) inert.add("detailRowHeight");
-        }
-        {
-            auto style = base;
-            style.dividerInset = 6.0f;
-            if (inkRows(style).ink >= plain.ink) inert.add("dividerInset");
-        }
-        {
-            auto style = base;
-            style.paddingLeft = 120.0f;
+            style.padding.left = 120.0f;
             const auto shifted = inkRows(style);
-            detail << "paddingLeft: ink centre " << fmt(plain.centreX, 0) << " -> "
+            detail << "padding.left: ink centre " << fmt(plain.centreX, 0) << " -> "
                    << fmt(shifted.centreX, 0) << "  ";
-            if (shifted.centreX <= plain.centreX + 4.0) inert.add("paddingLeft");
+            if (shifted.centreX <= plain.centreX + 4.0) inert.add("padding.left");
         }
         {
             auto style = base;
-            style.paddingRight = 120.0f;
-            const auto shifted = inkRows(style);
-            if (shifted.centreX >= plain.centreX - 4.0) inert.add("paddingRight");
+            style.padding.right = 120.0f;
+            if (inkRows(style).centreX >= plain.centreX - 4.0) inert.add("padding.right");
+        }
+        {
+            auto style = base;
+            style.name.height = { px3::ui::Dimension::Unit::pixels, 24.0f };
+            const auto tall = inkRows(style);
+            detail << "rows.row1.height: last ink row " << plain.lastRow << " -> " << tall.lastRow << "  ";
+            if (tall.lastRow == plain.lastRow && tall.ink == plain.ink) inert.add("rows.row1.height");
+        }
+        {
+            auto style = base;
+            style.detail.height = { px3::ui::Dimension::Unit::pixels, 8.0f };
+            const auto squashed = inkRows(style);
+            if (squashed.lastRow == plain.lastRow && squashed.ink == plain.ink) inert.add("rows.row2.height");
+        }
+        {
+            auto style = base;
+            style.name.padding.top = 6.0f;
+            if (inkRows(style).firstRow <= plain.firstRow) inert.add("rows.row1.padding");
+        }
+        {
+            auto style = base;
+            style.detail.padding.left = 120.0f;
+            if (inkRows(style).centreX <= plain.centreX + 2.0) inert.add("rows.row2.padding");
+        }
+        {
+            auto style = base;
+            style.name.fontSize = 6.0f;
+            if (inkRows(style).ink >= plain.ink) inert.add("rows.row1.fontSize");
+        }
+        {
+            auto style = base;
+            style.detail.fontSize = 6.0f;
+            if (inkRows(style).ink >= plain.ink) inert.add("rows.row2.fontSize");
         }
         {
             auto style = base;
             style.dividerAlpha = 0.0f;
-            if (inkRows(style).ink >= plain.ink) inert.add("dividerAlpha");
+            if (inkRows(style).ink >= plain.ink) inert.add("divider.alpha");
+        }
+        {
+            auto style = base;
+            style.dividerInset = 6.0f;
+            if (inkRows(style).ink >= plain.ink) inert.add("divider.inset");
+        }
+        {
+            auto style = base;
+            style.dividerWidth = 5.0f;
+            if (inkRows(style).ink <= plain.ink) inert.add("divider.width");
+        }
+        {
+            auto style = base;
+            style.showLabels = false;
+            if (inkRows(style).ink >= plain.ink) inert.add("showLabels");
+        }
+        {
+            auto style = base;
+            style.detailUppercase = false;
+            if (inkRows(style).ink == plain.ink) inert.add("detailUppercase");
+        }
+        {
+            auto style = base;
+            style.nameBold = false;
+            if (inkRows(style).ink == plain.ink) inert.add("nameBold");
+        }
+        {
+            auto style = base;
+            style.detailAlign = TopMenuTabButton::ContentStyle::DetailAlign::edges;
+            if (inkRows(style).centreX == plain.centreX) inert.add("detailAlign");
+        }
+        {
+            auto style = base;
+            style.detailColour = juce::Colour::fromRGB(255, 0, 0);
+            if (inkRows(style).ink == plain.ink) inert.add("rows.row2.colour");
         }
 
         check("TopMenu_EveryPresetTabPropertyChangesTheLayout", inert.isEmpty(),
-              inert.isEmpty() ? detail + "(all 10 properties measurably change the face)"
+              inert.isEmpty() ? detail + "(every property measurably changes the face)"
                               : "inert: " + inert.joinIntoString(", "));
     }
 }
