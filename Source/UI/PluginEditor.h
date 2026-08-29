@@ -94,6 +94,35 @@ private:
         }
     };
 
+    // Covers the whole editor while the preset sheet is open, so nothing behind
+    // it can be clicked. The sheet was only ever modal to look at:
+    // paintOverChildren dimmed the UI while every knob, card, chip and key
+    // underneath stayed live, so a click that missed the sheet edited the patch
+    // you were browsing away from.
+    //
+    // Mouse events are forwarded to the editor rather than swallowed, because
+    // the editor is where the sheet's own mouse behaviour already lives - the
+    // panel does not intercept clicks on its own background, so its title-bar
+    // drag and its click-outside-to-close both arrive as editor events. With
+    // the scrim in the way those clicks would otherwise stop here.
+    class PresetModalScrim final : public juce::Component
+    {
+    public:
+        explicit PresetModalScrim(juce::Component& ownerIn) : owner(ownerIn) {}
+
+        void mouseDown(const juce::MouseEvent& e) override { forward(e, &juce::Component::mouseDown); }
+        void mouseDrag(const juce::MouseEvent& e) override { forward(e, &juce::Component::mouseDrag); }
+        void mouseUp(const juce::MouseEvent& e) override { forward(e, &juce::Component::mouseUp); }
+
+    private:
+        void forward(const juce::MouseEvent& e, void (juce::Component::*handler)(const juce::MouseEvent&))
+        {
+            (owner.*handler)(e.getEventRelativeTo(&owner));
+        }
+
+        juce::Component& owner;
+    };
+
     struct KnobBinding
     {
         juce::Slider* slider { nullptr };
@@ -504,6 +533,7 @@ private:
     juce::TextButton presetBrowserLoadButton;
     juce::TextButton presetBrowserCloseButton;
     juce::Label presetBrowserDetails;
+    PresetModalScrim presetBrowserScrim { *this };
     bool presetBrowserVisible { false };
     bool presetBrowserDragging { false };
     juce::Point<int> presetBrowserDragOffset;

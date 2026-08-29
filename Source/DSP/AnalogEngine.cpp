@@ -90,6 +90,22 @@ float AnalogEngine::inverseTransfer(float x, float blend)
 // profiles
 // ============================================================================
 
+// Every profile was recalibrated once the FULL path was measured. Two things
+// came out of that:
+//
+// 1. The trims had been derived on channel + dry bus, but the real path also
+//    runs a master stage. With it included the engine LOST level - 0.8 dB on
+//    CLEAN up to 3.5 dB on TRANSFORMER - so switching it on made the mix
+//    quieter, and an A/B was partly a loudness comparison. The trims below are
+//    solved against channel + dry bus + master and land within 0.01 dB.
+//
+// 2. curveBlend, not drive, is what controls how much character the engine
+//    has. Raising pairDrive does almost nothing, because the channel and the
+//    bus share it and the pair cancels: measured, THD did not even rise
+//    monotonically with it. The blend changes the SHAPE of the transfer, which
+//    the inverse cannot undo once several channels have been summed.
+//
+// Blends were raised to roughly double the harmonic content at full amount.
 AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
 {
     Tuning t;
@@ -104,7 +120,7 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             // coming from accumulation rather than from colour.
             t.pairDrive = 0.85f;
             t.masterDrive = 0.70f;
-            t.curveBlend = 0.10f;
+            t.curveBlend = 0.20f;
             t.evenHarmonic = 0.0f;
             t.slewEnhance = 0.06f;
             t.hfRolloffHz = 21000.0f;
@@ -112,7 +128,7 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             t.lfCornerHz = 6.0f;
             t.lfLevelTrim = 0.05f;
             t.headroom = 1.15f;
-            t.outputTrim = 1.0060f;   // -0.11 dB measured
+            t.outputTrim = 1.1107f;   // 0.54% THD; solved on the full path at 440 Hz
             break;
 
         case Profile::british:
@@ -121,7 +137,7 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             // hear. Slew is moderate - these desks are not fast.
             t.pairDrive = 1.05f;
             t.masterDrive = 0.88f;
-            t.curveBlend = 0.30f;
+            t.curveBlend = 0.48f;
             t.evenHarmonic = 0.022f;
             t.slewEnhance = 0.18f;
             t.hfRolloffHz = 16000.0f;
@@ -129,7 +145,7 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             t.lfCornerHz = 18.0f;
             t.lfLevelTrim = 0.28f;
             t.headroom = 0.95f;
-            t.outputTrim = 1.0498f;   // -0.77 dB measured
+            t.outputTrim = 1.3111f;   // 6.6% THD; solved on the full path at 440 Hz
             break;
 
         case Profile::american:
@@ -139,7 +155,7 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             // and the extra 5th-harmonic content come from.
             t.pairDrive = 1.15f;
             t.masterDrive = 0.92f;
-            t.curveBlend = 0.62f;
+            t.curveBlend = 0.66f;
             t.evenHarmonic = 0.004f;
             t.slewEnhance = 0.28f;
             t.hfRolloffHz = 18500.0f;
@@ -147,7 +163,7 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             t.lfCornerHz = 14.0f;
             t.lfLevelTrim = 0.12f;
             t.headroom = 0.90f;
-            t.outputTrim = 1.1928f;   // -2.41 dB measured
+            t.outputTrim = 1.4791f;   // ~9% THD; 0.744 folded at the clamp, 0.66 still rises
             break;
 
         case Profile::transformer:
@@ -156,7 +172,7 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             // is the profile that changes tone rather than just density.
             t.pairDrive = 1.10f;
             t.masterDrive = 0.95f;
-            t.curveBlend = 0.20f;
+            t.curveBlend = 0.32f;
             t.evenHarmonic = 0.030f;
             t.slewEnhance = 0.14f;
             t.hfRolloffHz = 13500.0f;
@@ -164,7 +180,7 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             t.lfCornerHz = 26.0f;
             t.lfLevelTrim = 0.45f;
             t.headroom = 0.88f;
-            t.outputTrim = 1.0234f;   // -0.39 dB measured
+            t.outputTrim = 1.1903f;   // 4.7% THD; solved on the full path at 440 Hz
             break;
 
         case Profile::modern:
@@ -173,7 +189,7 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             // CLEAN when it finally does reach the knee.
             t.pairDrive = 0.90f;
             t.masterDrive = 0.75f;
-            t.curveBlend = 0.45f;
+            t.curveBlend = 0.585f;
             t.evenHarmonic = 0.008f;
             t.slewEnhance = 0.10f;
             t.hfRolloffHz = 20000.0f;
@@ -181,7 +197,7 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             t.lfCornerHz = 8.0f;
             t.lfLevelTrim = 0.08f;
             t.headroom = 1.25f;
-            t.outputTrim = 1.0781f;   // -1.14 dB measured
+            t.outputTrim = 1.4415f;   // 3.9% THD; solved on the full path at 440 Hz
             break;
     }
 
@@ -469,7 +485,18 @@ float AnalogEngine::processStage(StageState& state,
         x = out;
     }
 
-    return sanitize(x * tuning.outputTrim);
+    // The make-up is applied on the INVERSE side and at the master only, for the
+    // same reason the colour and the DC blocker are. A trim on the forward
+    // channel stage sits between the channel's transfer and the bus's inverse,
+    // so the bus inverts a signal that has been scaled since - and the pair
+    // stops cancelling. Measured on one channel, which must be transparent by
+    // construction: a trim of 1.08 on the forward side put 0.045% THD there.
+    if (! forward || context == Context::master)
+    {
+        x *= tuning.outputTrim;
+    }
+
+    return sanitize(x);
 }
 
 // ============================================================================

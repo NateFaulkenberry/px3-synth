@@ -399,5 +399,15 @@ void FxPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
         reverbComponent->setUIConfig(uiConfig);
     }
 
+    // The strip's node colours are READ from the config, in sectionAccent, at
+    // the moment the nodes are built - and that build happens in the panel's
+    // constructor, before any config exists. Without this the nodes kept
+    // sectionAccent's fallback, so every node in the strip drew the same blue
+    // bar until something unrelated rebuilt them; clicking one reordered the
+    // chain, which called setChainOrder, which refreshed them, and the whole
+    // strip snapped to its real colours at once. This is also what makes a
+    // live config reload repaint the strip in the new colours.
+    refreshSignalFlowNodes();
+
     repaint();
 }

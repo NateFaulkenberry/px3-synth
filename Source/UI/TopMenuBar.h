@@ -78,6 +78,8 @@ public:
     const juce::Rectangle<int>& getPresetClusterArea() const;
     juce::Rectangle<int> getPresetMenuButtonBounds() const;
     juce::TextButton& getPresetMenuButton();
+    // The preset name doubles as the button that opens the browser sheet.
+    juce::TextButton& getPresetNameButton();
 
 private:
     void configureTopMenuSectionButton(TopMenuTabButton& button,

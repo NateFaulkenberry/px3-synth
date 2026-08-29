@@ -27,6 +27,9 @@
 #include "../DSP/StereoSpread.h"
 #include "../UI/FxCardComponent.h"
 #include "../UI/FxChainLayout.h"
+#include "../UI/PianoKeyboard.h"
+#include "../UI/TopMenuBar.h"
+#include "../UI/FxPanel.h"
 #include "../UI/FxSignalFlow.h"
 #include "../UI/UIConfigManager.h"
 #include "../UI/MixerControls.h"
@@ -7777,6 +7780,69 @@ void testFxChain()
                   + juce::String(slots.empty() ? -1.0f : slots[0].getX(), 1));
     }
 
+    {
+        // The strip's nodes take their colour from the card blocks in the
+        // config, read in sectionAccent at the moment the nodes are BUILT - and
+        // they are built in the panel's constructor, from addCard, and from
+        // setChainOrder, every one of which runs before any config exists. When
+        // sectionAccent has no config it returns the panel's own accent, so all
+        // eight nodes came out the same blue.
+        //
+        // setUIConfig used to store the config without rebuilding them, so they
+        // stayed blue until something unrelated rebuilt them: clicking a node
+        // reordered the chain, which called setChainOrder, which refreshed the
+        // nodes, and the whole strip snapped to its real colours at once. That
+        // is the "they all reset when I click one" half of the report.
+        //
+        // Driven through FxPanel rather than the editor because in this build
+        // resolveUiConfigFile only probes the bundle - the source-tree and cwd
+        // candidates are behind JUCE_DEBUG || PX3_DEBUG_PANEL - so the editor
+        // under test never loads a config at all and every node would be blue
+        // for a reason that has nothing to do with this bug.
+        UIConfigManager manager;
+        manager.setConfigFile(juce::File::getCurrentWorkingDirectory()
+                                  .getChildFile("Source/UI/UIConfig.json"));
+        manager.loadInitial();
+        const auto config = manager.getConfig();
+
+        PX3SynthAudioProcessor processor;
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+
+        FxPanel* panel = nullptr;
+        px3::ui::FxSignalFlow* strip = nullptr;
+        std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+        {
+            if (auto* p = dynamic_cast<FxPanel*>(&c)) panel = p;
+            if (auto* f = dynamic_cast<px3::ui::FxSignalFlow*>(&c)) strip = f;
+            for (auto* child : c.getChildren()) walk(*child);
+        };
+        if (editor != nullptr) walk(*editor);
+
+        if (panel != nullptr)
+        {
+            panel->setUIConfig(config);
+        }
+
+        juce::String detail;
+        auto distinct = panel != nullptr && strip != nullptr && strip->nodeList().size() >= 2;
+
+        if (strip != nullptr)
+        {
+            const auto& list = strip->nodeList();
+            for (std::size_t i = 0; i < list.size(); ++i)
+            {
+                detail << list[i].name << " " << list[i].accent.toDisplayString(false) << "  ";
+                for (std::size_t j = i + 1; j < list.size(); ++j)
+                {
+                    distinct = distinct && list[i].accent != list[j].accent;
+                }
+            }
+        }
+
+        check("FxChain_EveryStripNodeKeepsItsOwnColour", distinct,
+              panel == nullptr ? "no FX panel found in the editor" : detail);
+    }
+
     // ---- the shipping config parses and is complete ------------------------
     {
         // Read from the file the plugin actually ships, so a property that
@@ -12478,7 +12544,7 @@ void testEditorLifecycle()
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
         std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
-        editor->setSize(1320, 700);
+        editor->setSize(1320, 760);
 
         // Every tuning key must round-trip through the processor's debug hooks,
         // which is what the panel's sliders drive.
@@ -12545,6 +12611,126 @@ void testEditorLifecycle()
 
         editor.reset();
         check("Editor_SurvivesTeardownAfterProcessing", true, "");
+    }
+
+    {
+        // The window grew 60px so the taller FX cards have room, and all 60 of
+        // them belong to the PANELS - the keyboard and the header keep the
+        // heights they had at 700px. The keyboard is sized as a fraction of the
+        // window, so growing the window without re-basing that fraction would
+        // have silently handed it 8 of the 60.
+        PX3SynthAudioProcessor processor;
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+
+        auto panelHeightAt = [&](int windowHeight)
+        {
+            editor->setSize(1320, windowHeight);
+            juce::Component* keyboard = nullptr;
+            std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+            {
+                if (dynamic_cast<PianoKeyboard*>(&c) != nullptr) keyboard = &c;
+                for (auto* child : c.getChildren()) walk(*child);
+            };
+            walk(*editor);
+
+            FxPanel* panel = nullptr;
+            std::function<void(juce::Component&)> findPanel = [&](juce::Component& c)
+            {
+                if (auto* p = dynamic_cast<FxPanel*>(&c)) panel = p;
+                for (auto* child : c.getChildren()) findPanel(*child);
+            };
+            findPanel(*editor);
+
+            struct R { int panel; int keyboard; };
+            return R { panel != nullptr ? panel->getHeight() : 0,
+                       keyboard != nullptr ? keyboard->getHeight() : 0 };
+        };
+
+        const auto small = panelHeightAt(700);
+        const auto grown = panelHeightAt(760);
+
+        check("Editor_TheExtraSixtyPixelsGoToThePanels",
+              grown.panel - small.panel == 60 && grown.keyboard == small.keyboard,
+              "panel " + juce::String(small.panel) + " -> " + juce::String(grown.panel)
+                  + " (+" + juce::String(grown.panel - small.panel) + "), keyboard "
+                  + juce::String(small.keyboard) + " -> " + juce::String(grown.keyboard));
+    }
+
+    {
+        // The preset sheet was modal only to LOOK at: paintOverChildren dimmed
+        // the editor behind it while every knob, card, chip and key underneath
+        // stayed live, so a click that missed the sheet edited the patch you
+        // were browsing away from. Nothing behind it may be reachable now.
+        //
+        // Asserted through getComponentAt, which resolves a point exactly the
+        // way a click does - the deepest visible child there that intercepts
+        // mouse clicks.
+        PX3SynthAudioProcessor processor;
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        editor->setSize(1320, 760);
+        editor->setVisible(true);   // getComponentAt short-circuits on the visible flag
+
+        TopMenuBar* menu = nullptr;
+        std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+        {
+            if (auto* m = dynamic_cast<TopMenuBar*>(&c)) menu = m;
+            for (auto* child : c.getChildren()) walk(*child);
+        };
+        walk(*editor);
+
+        // Spread across the editor, all well outside the centred sheet.
+        const std::array<juce::Point<int>, 5> probes { {
+            { 40, 200 },                                   // panel area, far left
+            { editor->getWidth() - 40, 200 },              // panel area, far right
+            { 200, editor->getHeight() - 60 },             // the keyboard
+            { editor->getWidth() - 200, editor->getHeight() - 60 },
+            { 60, editor->getHeight() - 200 },
+        } };
+
+        std::array<juce::Component*, 5> before {};
+        for (std::size_t i = 0; i < probes.size(); ++i)
+        {
+            before[i] = editor->getComponentAt(probes[i]);
+        }
+
+        // onClick directly rather than triggerClick(), which posts an async
+        // command message that never dispatches without a running message loop.
+        if (menu != nullptr && menu->getPresetNameButton().onClick != nullptr)
+        {
+            menu->getPresetNameButton().onClick();
+        }
+
+        juce::String detail;
+        auto blocked = menu != nullptr;
+        juce::Component* scrim = nullptr;
+
+        for (std::size_t i = 0; i < probes.size(); ++i)
+        {
+            auto* after = editor->getComponentAt(probes[i]);
+
+            // Every probe must now resolve to the SAME component - the scrim -
+            // and it must not be whatever was reachable there before.
+            if (scrim == nullptr) scrim = after;
+            blocked = blocked && after != nullptr && after == scrim && after != before[i];
+
+            detail << "(" << probes[i].x << "," << probes[i].y << ") "
+                   << (before[i] != nullptr ? before[i]->getBounds().toString() : "none")
+                   << " -> " << (after != nullptr ? after->getBounds().toString() : "none")
+                   << (after == before[i] ? " SAME" : " changed") << "   ";
+        }
+
+        check("Editor_PresetSheetBlocksTheUiBehindIt", blocked,
+              menu == nullptr ? "no top menu bar found" : detail);
+
+        // The converse: a scrim that also covered the sheet would pass the test
+        // above and leave the browser unusable.
+        auto* onTheSheet = editor->getComponentAt(editor->getLocalBounds().getCentre());
+        check("Editor_PresetSheetItselfStaysClickable",
+              onTheSheet != nullptr && onTheSheet != scrim,
+              onTheSheet == nullptr ? "nothing at the sheet centre"
+                                    : "sheet centre resolves to " + onTheSheet->getBounds().toString()
+                                          + ", scrim is " + (scrim != nullptr ? scrim->getBounds().toString()
+                                                                              : juce::String("none")));
     }
 }
 
@@ -12649,6 +12835,42 @@ std::vector<float> runConsole(Engine::Profile profile,
     return out;
 }
 
+// The FULL dry path: every source channel, the dry bus that inverts them, then
+// the master output stage. runConsole above stops at the bus, which is fine for
+// isolating the pair but is not what anybody hears - and measuring level on it
+// missed the engine losing up to 3.5 dB once the master was included.
+std::vector<float> runFullPath(Engine::Profile profile, int channels,
+                               const std::vector<float>& input)
+{
+    Engine engine;
+    engine.prepare(kSampleRate, 4);
+    engine.setProfile(profile);
+    engine.setAmount(1.0f);
+
+    std::vector<float> out;
+    out.reserve(input.size());
+
+    for (int pass = 0; pass < 8; ++pass)
+    {
+        out.clear();
+        for (const auto sample : input)
+        {
+            auto sum = 0.0f;
+            for (int c = 0; c < channels; ++c)
+            {
+                sum += engine.processChannelSample(c, sample / static_cast<float>(channels));
+            }
+            auto l = sum;
+            auto r = sum;
+            engine.processBusSample(Engine::Context::dryBus, l, r);
+            engine.processBusSample(Engine::Context::master, l, r);
+            out.push_back(l);
+        }
+    }
+
+    return out;
+}
+
 std::vector<float> sineAt(double frequency, double amplitude, int length,
                           double sampleRate = kSampleRate)
 {
@@ -12689,6 +12911,8 @@ bool vectorIsFinite(const std::vector<float>& x)
     return true;
 }
 } // namespace analogtest
+
+
 
 void testAnalogEngine()
 {
@@ -13289,12 +13513,16 @@ void testAnalogEngine()
 
         for (std::size_t p = 0; p < profiles.size(); ++p)
         {
-            const auto out = runConsole(profiles[p], 4, input);
+            // The FULL path, master included. Measured on channel + bus alone
+            // this read within 0.2 dB while the real path was losing 0.8 dB on
+            // CLEAN and 3.5 dB on TRANSFORMER: switching the engine on made the
+            // mix quieter, and every A/B was partly a loudness comparison.
+            const auto out = runFullPath(profiles[p], 4, input);
             const auto ratio = rmsOf(out) / juce::jmax(1.0e-9, rmsOf(input));
             const auto db = 20.0 * std::log10(juce::jmax(1.0e-9, ratio));
 
-            // Within 1.5 dB. Anything more and an A/B is measuring loudness.
-            const auto ok = std::abs(db) < 1.5;
+            // Within 0.75 dB. Anything more and an A/B is measuring loudness.
+            const auto ok = std::abs(db) < 0.75;
             allMatched = allMatched && ok;
             detail << profileNames[p] << " " << juce::String(db, 2) << "dB  ";
         }

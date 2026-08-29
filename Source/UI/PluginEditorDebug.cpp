@@ -967,7 +967,7 @@ void PX3SynthAudioProcessorEditor::refreshDebugModuleState()
     const auto treeOrder = readModuleOrderFromStateTree(audioProcessor.createParameterStateTree());
     using ModuleNames = std::array<juce::String, px3::kFxStageCount>;
 
-    auto namesFor = [this](const px3::FxOrder& order)
+    auto namesFor = [](const px3::FxOrder& order)
     {
         ModuleNames names {};
         for (int i = 0; i < px3::kFxStageCount; ++i)

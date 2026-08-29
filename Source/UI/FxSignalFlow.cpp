@@ -157,7 +157,7 @@ void FxSignalFlow::mouseDrag(const juce::MouseEvent& event)
 
     auto& dragged = current[static_cast<std::size_t>(draggedIndex)];
     const auto newX = juce::jlimit(getLocalBounds().toFloat().getX(),
-                                   juce::jmax(0.0f, getWidth() - dragged.getWidth()),
+                                   juce::jmax(0.0f, static_cast<float>(getWidth()) - dragged.getWidth()),
                                    static_cast<float>(event.getPosition().x - dragOffsetX));
     dragged.setX(newX);
 

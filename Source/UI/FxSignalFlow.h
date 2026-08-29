@@ -66,6 +66,7 @@ public:
 
     // Slot rectangles in chain order - the resting positions of the nodes.
     const std::vector<juce::Rectangle<float>>& slotBounds() const noexcept { return slots; }
+    const std::vector<Node>& nodeList() const noexcept { return nodes; }
 
     // The nodes, in chain order. Called whenever the model changes - by a drag
     // here, by a preset load, or by the host restoring a session.

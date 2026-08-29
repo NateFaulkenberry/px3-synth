@@ -1419,6 +1419,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     applyTopMenuSectionSelection(audioProcessor.getTopMenuViewIndex(), false);
 
+    // Added before the panel so that, with both marked always-on-top, the panel
+    // still sits above the scrim.
+    addChildComponent(presetBrowserScrim);
+
     presetBrowserPanel.setInterceptsMouseClicks(false, true);
     addAndMakeVisible(presetBrowserPanel);
     presetBrowserPanel.setVisible(false);
@@ -1480,7 +1484,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     // Seed visual slot layout with the processor order before the first setSize/resized pass.
     fxSectionOrder = audioProcessor.getFxProcessingOrder();
-    setSize(1320, 700);
+    setSize(1320, 760);
 
     juce::String presetInitError;
     if (!presetManager.initialise(presetInitError))
@@ -1859,7 +1863,12 @@ void PX3SynthAudioProcessorEditor::resized()
 
     const auto headerHeight = uiConfig != nullptr ? uiConfig->getInt("editor.layout.headerHeight", 120) : 120;
     const auto controlsHeight = juce::jlimit(150, 270, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.34)));
-    const auto keyboardHeight = juce::jlimit(106, 144, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.15)));
+    // 0.14 rather than 0.15 so that the keyboard is the SAME 106px at the new
+    // 760px default that it was at the old 700px one. The window grew by 60px
+    // to give the taller FX cards room, and all 60 belong to the panels: the
+    // keyboard and the header are unchanged. At 0.15 the keyboard would have
+    // quietly taken 8 of those pixels for itself.
+    const auto keyboardHeight = juce::jlimit(106, 144, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.14)));
     // const auto statusHeight = 36;
     const auto sectionGap = uiConfig != nullptr ? uiConfig->getInt("editor.layout.sectionGap", 10) : 10;
 
@@ -1989,6 +1998,7 @@ void PX3SynthAudioProcessorEditor::resized()
 
     browserX = juce::jlimit(8, juce::jmax(8, getWidth() - browserWidth - 8), browserX);
     browserY = juce::jlimit(8, juce::jmax(8, getHeight() - browserHeight - 8), browserY);
+    presetBrowserScrim.setBounds(getLocalBounds());
     presetBrowserPanel.setBounds(browserX, browserY, browserWidth, browserHeight);
 
     auto browserArea = presetBrowserPanel.getLocalBounds().reduced(10);
@@ -2424,6 +2434,10 @@ void PX3SynthAudioProcessorEditor::openPresetBrowser()
     presetBrowserBackdropSnapshot = createComponentSnapshot(getLocalBounds());
     presetBrowserVisible = true;
     presetBrowserDragging = false;
+    presetBrowserScrim.setBounds(getLocalBounds());
+    presetBrowserScrim.setVisible(true);
+    presetBrowserScrim.setAlwaysOnTop(true);
+    presetBrowserScrim.toFront(false);
     presetBrowserPanel.setVisible(true);
     presetBrowserPanel.setAlwaysOnTop(true);
     presetBrowserPanel.toFront(true);
@@ -2437,6 +2451,8 @@ void PX3SynthAudioProcessorEditor::closePresetBrowser()
     presetBrowserDragging = false;
     presetBrowserPanel.setAlwaysOnTop(false);
     presetBrowserPanel.setVisible(false);
+    presetBrowserScrim.setAlwaysOnTop(false);
+    presetBrowserScrim.setVisible(false);
     presetBrowserBackdropSnapshot = {};
     repaint();
 }
@@ -3645,6 +3661,8 @@ void PX3SynthAudioProcessorEditor::timerCallback()
 
     if (presetBrowserVisible)
     {
+        presetBrowserScrim.setAlwaysOnTop(true);
+        presetBrowserScrim.toFront(false);
         presetBrowserPanel.setAlwaysOnTop(true);
         presetBrowserPanel.toFront(false);
     }
