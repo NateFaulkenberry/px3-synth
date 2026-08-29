@@ -13153,6 +13153,100 @@ void testEditorLifecycle()
     }
 
     {
+        // With every oscillator source bypassed the instrument cannot make a
+        // sound. The keyboard should say so rather than animating and lighting
+        // up keys that produce silence.
+        PX3SynthAudioProcessor processor;
+
+        auto keyboardOf = [](juce::AudioProcessorEditor& e)
+        {
+            PianoKeyboard* keys = nullptr;
+            std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+            {
+                if (auto* k = dynamic_cast<PianoKeyboard*>(&c)) keys = k;
+                for (auto* child : c.getChildren()) walk(*child);
+            };
+            walk(e);
+            return keys;
+        };
+
+        // A row across the middle of the keyboard, counted against the grey the
+        // silenced keyboard is filled with. Only meaningful while silenced.
+        auto brightPixelsAcrossTheMiddle = [](PianoKeyboard& keys)
+        {
+            const auto img = keys.createComponentSnapshot(keys.getLocalBounds());
+            auto lit = 0;
+            for (int x = 0; x < img.getWidth(); ++x)
+            {
+                if (img.getPixelAt(x, img.getHeight() / 2).getBrightness() > 0.55f) ++lit;
+            }
+            return lit;
+        };
+
+        auto silencedWith = [&](bool osc1, bool osc2, bool osc3, bool sub)
+        {
+            setParam(processor, "osc1Enabled", osc1 ? 1.0f : 0.0f);
+            setParam(processor, "osc2Enabled", osc2 ? 1.0f : 0.0f);
+            setParam(processor, "osc3Enabled", osc3 ? 1.0f : 0.0f);
+            setParam(processor, "subOscEnabled", sub ? 1.0f : 0.0f);
+
+            std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+            editor->setSize(1320, 798);
+            editor->setVisible(true);
+
+            auto* keys = keyboardOf(*editor);
+            struct R { bool silenced; int bright; };
+            return R { keys != nullptr && keys->isSilenced(),
+                       keys != nullptr ? brightPixelsAcrossTheMiddle(*keys) : 0 };
+        };
+
+        const auto allOn = silencedWith(true, true, true, true);
+        const auto allOff = silencedWith(false, false, false, false);
+        const auto subOnly = silencedWith(false, false, false, true);
+        const auto osc2Only = silencedWith(false, true, false, false);
+
+        check("Keyboard_SilencesItselfOnlyWhenNothingCanSound",
+              ! allOn.silenced && allOff.silenced && ! subOnly.silenced && ! osc2Only.silenced,
+              "all on -> " + juce::String(allOn.silenced ? "silenced" : "live")
+                  + ", all off -> " + juce::String(allOff.silenced ? "silenced" : "live")
+                  + ", sub only -> " + juce::String(subOnly.silenced ? "silenced" : "live")
+                  + ", osc2 only -> " + juce::String(osc2Only.silenced ? "silenced" : "live"));
+
+        // The silenced keyboard is greyed and dimmed, so almost nothing on that
+        // row is bright except the warning box sitting in the middle of it.
+        check("Keyboard_WarningIsActuallyDrawnWhenSilenced",
+              allOff.bright > 10 && allOff.bright < allOn.bright,
+              "bright pixels across the middle row: live keyboard " + juce::String(allOn.bright)
+                  + ", silenced " + juce::String(allOff.bright));
+
+        // And the transition back, which is what a user actually does. Driven on
+        // the component rather than through the editor's 30 Hz timer: a console
+        // build has no message loop, so the timer never dispatches here. The
+        // editor's half of the chain - deciding WHEN to call this - is what the
+        // state-mapping check above covers.
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+            editor->setSize(1320, 798);
+            editor->setVisible(true);
+            auto* keys = keyboardOf(*editor);
+
+            if (keys != nullptr)
+            {
+                keys->setSilenced(true);
+                const auto whileSilenced = brightPixelsAcrossTheMiddle(*keys);
+
+                keys->setSilenced(false);
+                const auto afterClearing = brightPixelsAcrossTheMiddle(*keys);
+
+                check("Keyboard_ClearsCompletelyWhenAnOscillatorReturns",
+                      ! keys->isSilenced() && afterClearing > whileSilenced * 3,
+                      "bright pixels across the middle row: silenced " + juce::String(whileSilenced)
+                          + " -> cleared " + juce::String(afterClearing));
+            }
+        }
+    }
+
+    {
         // The preset tab carries the loaded preset's category and author under
         // its name, upper case and smaller. Verified by rendering the button:
         // the subtitles are painted, not held in a child label, so the only

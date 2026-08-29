@@ -7,6 +7,8 @@
 #include <functional>
 #include <vector>
 
+#include "Card.h"
+
 class PianoKeyboard final : public juce::Component,
                             private juce::Timer
 {
@@ -23,6 +25,32 @@ public:
 
     void setActiveNotes(const std::array<bool, totalKeys>& noteStates,
                         const std::array<float, totalKeys>& velocities);
+
+    // How the "no oscillator engaged" warning is drawn. Every value comes from
+    // UIConfig under keyboard.warning, because it is a piece of the interface
+    // like any other and the rest of the plugin's chrome is configurable.
+    struct WarningStyle
+    {
+        juce::String text { "Please engage an oscillator!" };
+        // start | centre | end, applied horizontally within the keyboard.
+        juce::Justification::Flags alignment { juce::Justification::centred };
+        juce::Colour background { juce::Colour::fromRGBA(18, 19, 23, 232) };
+        juce::Colour border { juce::Colour::fromRGBA(255, 138, 138, 190) };
+        juce::Colour textColour { juce::Colour::fromRGB(245, 247, 250) };
+        float borderWidth { 1.2f };
+        float cornerRadius { 8.0f };
+        float fontSize { 15.0f };
+        px3::ui::Insets padding { 10.0f, 18.0f, 10.0f, 18.0f };
+        px3::ui::Insets margin { 0.0f, 0.0f, 0.0f, 0.0f };
+    };
+
+    void setWarningStyle(const WarningStyle& style);
+
+    // Silenced when every oscillator source is bypassed: nothing this keyboard
+    // does can make a sound, so it stops animating, greys out, stops responding
+    // to the mouse, and says why.
+    void setSilenced(bool shouldBeSilenced);
+    bool isSilenced() const noexcept { return silenced; }
 
     void paint(juce::Graphics& g) override;
     void mouseDown(const juce::MouseEvent& event) override;
@@ -50,6 +78,7 @@ private:
         float zigzagAmplitude { 2.0f };
     };
 
+    void paintKeyboard(juce::Graphics& g);
     void timerCallback() override;
     void spawnLightningBurst(int midiNote, bool isBlackKey, float velocityNorm);
     bool getKeyBoundsForNote(int midiNote, juce::Rectangle<float>& bounds, bool& isBlack) const;
@@ -67,4 +96,6 @@ private:
     float vibrationPhase { 0.0f };
     int heldMidiNote { -1 };
     float clickVelocityNorm { 0.65f };
+    bool silenced { false };
+    WarningStyle warningStyle;
 };

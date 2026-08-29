@@ -1523,6 +1523,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     refreshPresetNameDisplay();
 
+    // Before the first timer tick: a patch loaded with every source bypassed
+    // must come up greyed and warning, not animate for a frame first.
+    refreshOscillatorEngagedState();
+
     refreshOscillatorModeUI();
     refreshGranularModeUI();
     refreshLfoAssignmentUI();
@@ -2187,6 +2191,50 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
     {
         topMenuBar->setUIConfig(uiConfig);
     }
+    {
+        // The warning shown when every oscillator source is bypassed. Insets
+        // parsed by the same helper the cards use, so padding, paddingTop and
+        // the rest mean here what they mean everywhere else.
+        PianoKeyboard::WarningStyle warning;
+        if (uiConfig != nullptr)
+        {
+            const juce::String path { "keyboard.warning" };
+
+            const auto readInsets = [this](const juce::String& base, px3::ui::Insets fallback)
+            {
+                auto result = px3::ui::Insets::parse(uiConfig->getValue(base), fallback);
+                const auto side = [&](const char* suffix, float& target)
+                {
+                    if (const auto v = uiConfig->getValue(base + suffix); ! v.isVoid())
+                    {
+                        target = static_cast<float>(v);
+                    }
+                };
+                side("Top", result.top);
+                side("Right", result.right);
+                side("Bottom", result.bottom);
+                side("Left", result.left);
+                return result;
+            };
+
+            warning.text = uiConfig->getString(path + ".text", warning.text);
+            warning.background = uiConfig->getColour(path + ".background", warning.background);
+            warning.border = uiConfig->getColour(path + ".border.color", warning.border);
+            warning.borderWidth = uiConfig->getFloat(path + ".border.width", warning.borderWidth);
+            warning.cornerRadius = uiConfig->getFloat(path + ".border.radius", warning.cornerRadius);
+            warning.textColour = uiConfig->getColour(path + ".textColour", warning.textColour);
+            warning.fontSize = uiConfig->getFloat(path + ".fontSize", warning.fontSize);
+            warning.padding = readInsets(path + ".padding", warning.padding);
+            warning.margin = readInsets(path + ".margin", warning.margin);
+
+            const auto align = uiConfig->getString(path + ".align", "center");
+            warning.alignment = align.equalsIgnoreCase("left")  ? juce::Justification::left
+                              : align.equalsIgnoreCase("right") ? juce::Justification::right
+                                                                : juce::Justification::centred;
+        }
+        pianoKeyboard.setWarningStyle(warning);
+    }
+
     if (fxPanel != nullptr)
     {
         fxPanel->setUIConfig(uiConfig);
@@ -3567,6 +3615,31 @@ void PX3SynthAudioProcessorEditor::buildStereoSpreadCard()
     fxPanel->addCard(px3::fxStageStereoSpread, std::move(card));
 }
 
+void PX3SynthAudioProcessorEditor::refreshOscillatorEngagedState()
+{
+    auto engaged = audioProcessor.getSubOscEnabledParam().get();
+    for (int osc = 0; osc < kOscillatorSourceCount; ++osc)
+    {
+        engaged = engaged || audioProcessor.getOscillatorEnabledParam(osc).get();
+    }
+
+    if (engaged == anyOscillatorEngaged)
+    {
+        return;
+    }
+
+    anyOscillatorEngaged = engaged;
+    pianoKeyboard.setSilenced(! engaged);
+
+    if (! engaged)
+    {
+        // Stop the logo mid-shake rather than letting it ring out over a
+        // keyboard that has just been greyed.
+        logoVibrationIntensity = 0.0f;
+        repaint(logoPanelArea);
+    }
+}
+
 void PX3SynthAudioProcessorEditor::timerCallback()
 {
     loadUiConfig(false);
@@ -3672,7 +3745,10 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         if (midiStatus.noteOn)
         {
             const auto velNorm = juce::jlimit(0.0f, 1.0f, static_cast<float>(midiStatus.velocity) / 127.0f);
-            logoVibrationIntensity = juce::jmax(logoVibrationIntensity, velNorm);
+            if (anyOscillatorEngaged)
+            {
+                logoVibrationIntensity = juce::jmax(logoVibrationIntensity, velNorm);
+            }
         }
     }
 
@@ -3697,7 +3773,9 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         presetBrowserPanel.toFront(false);
     }
 
-    if (logoVibrationIntensity > 0.001f || anyKeyDown)
+    refreshOscillatorEngagedState();
+
+    if (anyOscillatorEngaged && (logoVibrationIntensity > 0.001f || anyKeyDown))
     {
         logoVibrationPhase += 0.38f;
 

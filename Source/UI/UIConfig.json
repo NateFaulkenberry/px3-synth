@@ -36,6 +36,18 @@
       "heightInset": 20
     }
   },
+  "keyboard": {
+    "warning": {
+      "text": "Please engage an oscillator!",
+      "align": "center",
+      "fontSize": 15,
+      "textColour": "#F5F7FA",
+      "background": "#121317E8",
+      "border": { "color": "#FF8A8ABE", "width": 1.2, "radius": 8 },
+      "padding": { "top": 10, "right": 18, "bottom": 10, "left": 18 },
+      "margin": 0
+    }
+  },
   "topMenu": {
     "flex": {
       "display": "flex",

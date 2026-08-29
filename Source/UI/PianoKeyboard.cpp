@@ -22,10 +22,9 @@ void PianoKeyboard::setActiveNotes(const std::array<bool, PianoKeyboard::totalKe
     }
 }
 
-void PianoKeyboard::paint(juce::Graphics& g)
+void PianoKeyboard::paintKeyboard(juce::Graphics& g)
 {
     g.fillAll(juce::Colour::fromRGB(25, 25, 25));
-
     const auto area = getLocalBounds().toFloat().reduced(8.0f);
     const auto whiteKeyWidth = area.getWidth() / static_cast<float>(whiteKeys);
     const auto whiteKeyHeight = area.getHeight();
@@ -152,8 +151,127 @@ void PianoKeyboard::paint(juce::Graphics& g)
     }
 }
 
+void PianoKeyboard::setWarningStyle(const WarningStyle& style)
+{
+    warningStyle = style;
+    repaint();
+}
+
+void PianoKeyboard::setSilenced(bool shouldBeSilenced)
+{
+    if (silenced == shouldBeSilenced)
+    {
+        return;
+    }
+
+    silenced = shouldBeSilenced;
+
+    if (silenced)
+    {
+        // Drop everything in flight. A key held when the last oscillator was
+        // bypassed would otherwise stay lit under the grey, and its sparks
+        // would keep animating over a keyboard that can no longer sound.
+        sparks.clear();
+        activeNotes.fill(false);
+        previousActiveNotes.fill(false);
+        noteVelocities.fill(0.0f);
+        heldMidiNote = -1;
+        stopTimer();
+    }
+    else
+    {
+        startTimerHz(60);
+    }
+
+    setMouseCursor(silenced ? juce::MouseCursor::NormalCursor
+                            : juce::MouseCursor::PointingHandCursor);
+    repaint();
+}
+
+void PianoKeyboard::paint(juce::Graphics& g)
+{
+    // Drawn once normally; when silenced the same drawing is taken into an
+    // image, desaturated and dimmed, so the grey version cannot drift from the
+    // live one.
+    if (! silenced)
+    {
+        paintKeyboard(g);
+    }
+    if (! silenced)
+    {
+        return;
+    }
+
+    // Grey, then dim: desaturating alone still reads as a live keyboard, and
+    // the point is that nothing here can make a sound.
+    {
+        juce::Image shot(juce::Image::ARGB, juce::jmax(1, getWidth()), juce::jmax(1, getHeight()), true);
+        {
+            juce::Graphics ig(shot);
+            paintKeyboard(ig);
+        }
+        shot.desaturate();
+        g.setOpacity(1.0f);
+        g.drawImageAt(shot, 0, 0);
+        g.setColour(juce::Colour::fromRGBA(0, 0, 0, 110));
+        g.fillRect(getLocalBounds());
+    }
+
+    // ---- the warning ------------------------------------------------------
+    const auto host = warningStyle.margin.shrink(getLocalBounds().toFloat());
+    if (host.isEmpty())
+    {
+        return;
+    }
+
+    g.setFont(juce::FontOptions(warningStyle.fontSize, juce::Font::bold));
+    const auto textWidth = juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), warningStyle.text);
+    const auto boxWidth = juce::jmin(host.getWidth(),
+                                     textWidth + warningStyle.padding.horizontal());
+    const auto boxHeight = juce::jmin(host.getHeight(),
+                                      warningStyle.fontSize + warningStyle.padding.vertical());
+
+    auto box = juce::Rectangle<float>(boxWidth, boxHeight).withY(host.getCentreY() - boxHeight * 0.5f);
+    if (warningStyle.alignment == juce::Justification::left)
+    {
+        box.setX(host.getX());
+    }
+    else if (warningStyle.alignment == juce::Justification::right)
+    {
+        box.setX(host.getRight() - boxWidth);
+    }
+    else
+    {
+        box.setX(host.getCentreX() - boxWidth * 0.5f);
+    }
+
+    g.setColour(warningStyle.background);
+    g.fillRoundedRectangle(box, warningStyle.cornerRadius);
+
+    if (warningStyle.borderWidth > 0.0f)
+    {
+        g.setColour(warningStyle.border);
+        g.drawRoundedRectangle(box, warningStyle.cornerRadius, warningStyle.borderWidth);
+    }
+
+    g.setColour(warningStyle.textColour);
+    g.drawFittedText(warningStyle.text,
+                     warningStyle.padding.shrink(box).toNearestInt(),
+                     juce::Justification::centred,
+                     1,
+                     0.8f);
+
+}
+
 void PianoKeyboard::mouseDown(const juce::MouseEvent& event)
 {
+    if (silenced)
+    {
+        // Nothing here can make a sound, so clicking a key must not pretend
+        // otherwise - no note, no lightning, no lit key.
+        return;
+    }
+
     const auto note = midiNoteAt(event.position);
     if (note < firstMidiNote || note > lastMidiNote)
     {
@@ -169,6 +287,13 @@ void PianoKeyboard::mouseDown(const juce::MouseEvent& event)
 
 void PianoKeyboard::mouseDrag(const juce::MouseEvent& event)
 {
+    if (silenced)
+    {
+        // Nothing here can make a sound, so clicking a key must not pretend
+        // otherwise - no note, no lightning, no lit key.
+        return;
+    }
+
     const auto note = midiNoteAt(event.position);
     if (note == heldMidiNote)
     {

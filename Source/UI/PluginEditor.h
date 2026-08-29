@@ -276,6 +276,10 @@ private:
     PerformanceControls performanceControls;
     PianoKeyboard pianoKeyboard;
     PX3SynthAudioProcessor::MidiStatus midiStatus;
+    // Every oscillator source bypassed: the instrument cannot make a sound, so
+    // the keyboard and the logo stop pretending it can.
+    bool anyOscillatorEngaged { true };
+    void refreshOscillatorEngagedState();
 
     juce::Image backgroundImage;
     juce::Image logoFrame;
