@@ -21,6 +21,7 @@
 #include "../DSP/Doom.h"
 #include "../DSP/FxChain.h"
 #include "../DSP/Chorus.h"
+#include "../Preset/FactoryPresets.h"
 #include "../DSP/Lucy.h"
 #include "../DSP/StereoSpread.h"
 #include "../UI/FxCardComponent.h"
@@ -11748,6 +11749,293 @@ void testStereoSpread()
                   + juce::String(b.rms(), 5));
     }
 }
+
+// ============================================================================
+// FACTORY PRESETS
+// ============================================================================
+
+void testFactoryPresets()
+{
+    suite("FACTORY PRESETS");
+
+    const auto presets = px3::presets::factoryPresets();
+
+    check("Presets_LibraryIsNotEmpty", presets.size() >= 16,
+          juce::String(static_cast<int>(presets.size())) + " factory presets");
+
+    // ---- names, categories, descriptions -----------------------------------
+    {
+        juce::StringArray names;
+        juce::StringArray duplicates;
+        juce::StringArray badCategories;
+        juce::StringArray missingText;
+
+        const juce::StringArray validCategories { "BASS", "LEADS", "PADS", "PLUCKS", "EXPERIMENTAL" };
+
+        for (const auto& preset : presets)
+        {
+            const juce::String name(preset.name);
+            if (names.contains(name))
+            {
+                duplicates.add(name);
+            }
+            names.add(name);
+
+            if (! validCategories.contains(juce::String(preset.category)))
+            {
+                badCategories.add(name);
+            }
+
+            // A preset with no description is a preset nobody can choose from a
+            // list, which is most of what a factory library is for.
+            if (juce::String(preset.description).length() < 20 || juce::String(preset.author).isEmpty())
+            {
+                missingText.add(name);
+            }
+        }
+
+        check("Presets_NamesAreUnique", duplicates.isEmpty(),
+              duplicates.isEmpty() ? juce::String(names.size()) + " distinct names"
+                                   : "duplicated: " + duplicates.joinIntoString(", "));
+        check("Presets_CategoriesAreValid", badCategories.isEmpty(),
+              badCategories.isEmpty() ? "" : "bad: " + badCategories.joinIntoString(", "));
+        check("Presets_EveryPresetIsDescribed", missingText.isEmpty(),
+              missingText.isEmpty() ? "" : "missing: " + missingText.joinIntoString(", "));
+
+        // Every category should actually have something in it, or the browser
+        // shows an empty folder.
+        juce::StringArray emptyCategories;
+        for (const auto& category : validCategories)
+        {
+            auto found = false;
+            for (const auto& preset : presets)
+            {
+                found = found || category == preset.category;
+            }
+            if (! found)
+            {
+                emptyCategories.add(category);
+            }
+        }
+        check("Presets_EveryCategoryHasPresets", emptyCategories.isEmpty(),
+              emptyCategories.isEmpty() ? "" : "empty: " + emptyCategories.joinIntoString(", "));
+    }
+
+    // ---- parameter ids and units -------------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+
+        auto findParam = [&processor](const juce::String& id) -> juce::RangedAudioParameter*
+        {
+            for (auto* parameter : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                {
+                    if (ranged->getParameterID() == id)
+                    {
+                        return ranged;
+                    }
+                }
+            }
+            return nullptr;
+        };
+
+        juce::StringArray unknownIds;
+        juce::StringArray outOfRange;
+
+        for (const auto& preset : presets)
+        {
+            for (const auto& [id, value] : preset.params)
+            {
+                auto* param = findParam(id);
+                if (param == nullptr)
+                {
+                    unknownIds.addIfNotAlreadyThere(juce::String(preset.name) + "/" + id);
+                    continue;
+                }
+
+                // Values are written in each parameter's OWN units. A value
+                // outside the range is a unit mistake - a frequency written into
+                // a 0..1 amount, or seconds into a choice index - and it would
+                // otherwise clamp silently into something that merely sounds
+                // wrong.
+                const auto& range = param->getNormalisableRange();
+                if (value < range.start - 1.0e-4f || value > range.end + 1.0e-4f)
+                {
+                    outOfRange.add(juce::String(preset.name) + "/" + id + "="
+                                   + juce::String(value, 3) + " outside ["
+                                   + juce::String(range.start, 3) + ", "
+                                   + juce::String(range.end, 3) + "]");
+                }
+            }
+        }
+
+        check("Presets_EveryParameterIdExists", unknownIds.isEmpty(),
+              unknownIds.isEmpty() ? "" : unknownIds.joinIntoString(", "));
+        check("Presets_EveryValueIsInsideItsParameterRange", outOfRange.isEmpty(),
+              outOfRange.isEmpty() ? "values are in real units and all in range"
+                                   : outOfRange.joinIntoString("; "));
+    }
+
+    // ---- FX coverage -------------------------------------------------------
+    {
+        // The library exists partly to show what the instrument can do, so every
+        // effect has to appear somewhere with a non-zero amount.
+        struct Coverage { const char* label; const char* id; };
+        const std::array<Coverage, 8> effects { {
+            { "VIBE", "vibeAmount" },
+            { "CHORUS", "chorusAmount" },
+            { "DOOM", "doomMix" },
+            { "LUCY", "lucyGlobal" },
+            { "DELAY", "delayAmount" },
+            { "MOOD", "moodMix" },
+            { "REVERB", "reverbAmount" },
+            { "SPREAD", "spreadAmount" },
+        } };
+
+        juce::StringArray uncovered;
+        juce::String detail;
+
+        for (const auto& effect : effects)
+        {
+            auto count = 0;
+            for (const auto& preset : presets)
+            {
+                for (const auto& [id, value] : preset.params)
+                {
+                    if (juce::String(id) == effect.id && value > 0.0f)
+                    {
+                        ++count;
+                        break;
+                    }
+                }
+            }
+
+            if (count == 0)
+            {
+                uncovered.add(effect.label);
+            }
+            detail << effect.label << ":" << count << "  ";
+        }
+
+        check("Presets_EveryEffectIsShowcased", uncovered.isEmpty(),
+              uncovered.isEmpty() ? detail : "never used: " + uncovered.joinIntoString(", "));
+    }
+
+    // ---- oscillator mode coverage ------------------------------------------
+    {
+        // Not every mode needs a preset, but a library that only ever reaches
+        // for a saw is not showing the instrument either.
+        std::set<int> modesUsed;
+        for (const auto& preset : presets)
+        {
+            for (const auto& [id, value] : preset.params)
+            {
+                const juce::String name(id);
+                if (name == "osc1Mode" || name == "osc2Mode" || name == "osc3Mode")
+                {
+                    modesUsed.insert(static_cast<int>(value));
+                }
+            }
+        }
+
+        check("Presets_UseAVarietyOfOscillatorModes", modesUsed.size() >= 10,
+              juce::String(static_cast<int>(modesUsed.size())) + " of 20 oscillator modes used");
+    }
+
+    // ---- every preset actually makes a sound -------------------------------
+    {
+        // The single most valuable check here. A preset that loads silent, or
+        // clips, or produces a NaN is worse than no preset - and none of that is
+        // visible from reading the definitions.
+        juce::StringArray silent;
+        juce::StringArray clipping;
+        juce::StringArray invalid;
+        juce::StringArray loud;
+        juce::StringArray quiet;
+        std::vector<double> levels;
+
+        for (const auto& preset : presets)
+        {
+            PX3SynthAudioProcessor processor;
+
+            for (const auto& [id, value] : preset.params)
+            {
+                for (auto* parameter : processor.getParameters())
+                {
+                    if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                    {
+                        if (ranged->getParameterID() == id)
+                        {
+                            ranged->setValueNotifyingHost(
+                                juce::jlimit(0.0f, 1.0f, ranged->convertTo0to1(value)));
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Long enough for a slow pad to open and for a tail to be heard.
+            const auto capture = render(processor, static_cast<int>(kSampleRate * 4.0),
+                                        { { 4000, true, 55, 0.85f },
+                                          { 4200, true, 62, 0.85f },
+                                          { static_cast<int>(kSampleRate * 2.5), false, 55, 0.0f },
+                                          { static_cast<int>(kSampleRate * 2.5), false, 62, 0.0f } });
+
+            const auto rms = capture.rms();
+            const auto peak = capture.peak();
+
+            auto finite = true;
+            for (std::size_t i = 0; i < capture.left.size(); ++i)
+            {
+                if (! std::isfinite(capture.left[i]) || ! std::isfinite(capture.right[i]))
+                {
+                    finite = false;
+                    break;
+                }
+            }
+
+            const juce::String name(preset.name);
+            if (! finite)                 { invalid.add(name); }
+            // Measured on PEAK, not RMS. Karplus-Strong excites from an
+            // unseeded generator, so a plucked preset's RMS swings run to run
+            // and an RMS threshold here would be intermittently flaky. Peak is
+            // stable across runs and answers the same question.
+            if (peak < 0.02f)             { silent.add(name + " peak " + juce::String(peak, 5)); }
+            if (peak > 0.999f)            { clipping.add(name + " peak " + juce::String(peak, 4)); }
+            if (rms > 0.30)               { loud.add(name + " rms " + juce::String(rms, 4)); }
+            if (rms > 0.0 && rms < 0.012) { quiet.add(name + " rms " + juce::String(rms, 4)); }
+
+            levels.push_back(rms);
+        }
+
+        check("Presets_EveryPresetIsFinite", invalid.isEmpty(),
+              invalid.isEmpty() ? "" : invalid.joinIntoString(", "));
+        check("Presets_NoPresetIsSilent", silent.isEmpty(),
+              silent.isEmpty() ? "all produce audio from a two-note chord"
+                               : silent.joinIntoString(", "));
+        check("Presets_NoPresetClips", clipping.isEmpty(),
+              clipping.isEmpty() ? "" : clipping.joinIntoString(", "));
+
+        // Browsing a library should not be a volume ride.
+        if (! levels.empty())
+        {
+            const auto loudest = *std::max_element(levels.begin(), levels.end());
+            const auto quietest = *std::min_element(levels.begin(), levels.end());
+            const auto spreadDb = 20.0 * std::log10(loudest / juce::jmax(1.0e-9, quietest));
+
+            // Generous on purpose: a decaying pluck measured over four seconds
+            // is legitimately quieter than a sustained pad, and one preset's
+            // level is stochastic. This is here to catch a preset that is
+            // wildly out, not to flatten the library.
+            check("Presets_LevelsAreWithinAReasonableSpread", spreadDb < 24.0,
+                  "loudest to quietest = " + juce::String(spreadDb, 1) + " dB  (quietest "
+                      + juce::String(quietest, 4) + ", loudest " + juce::String(loudest, 4) + ")");
+        }
+
+        juce::ignoreUnused(loud, quiet);
+    }
+}
 } // namespace
 
 int main(int argc, char* argv[])
@@ -11762,6 +12050,99 @@ int main(int argc, char* argv[])
 
     std::printf("\nPX3 COMPONENT TESTS  (%.0f Hz, %d-sample blocks, shipping build)\n",
                 kSampleRate, kBlockSize);
+
+    if (filter == "installpresets")
+    {
+        // Runs the real factory-library install and reports what landed on
+        // disk. This is the one path the automated suite cannot cover without
+        // writing into the user's application-support directory as a side
+        // effect, so it is an explicit developer action instead.
+        PX3SynthAudioProcessor processor;
+        PresetManager manager(processor);
+
+        juce::String error;
+        const auto ok = manager.initialise(error);
+
+        std::printf("\nFACTORY PRESET INSTALL\n\n");
+        if (! ok)
+        {
+            std::printf("  FAILED: %s\n\n", error.toRawUTF8());
+            return 1;
+        }
+
+        const auto root = manager.getFactoryPresetRootDir();
+        std::printf("  root: %s\n", root.getFullPathName().toRawUTF8());
+        std::printf("  library version stamp: %s\n\n",
+                    root.getChildFile(".factory-version").loadFileAsString().trim().toRawUTF8());
+
+        auto files = root.findChildFiles(juce::File::findFiles, true, "*.px3preset");
+        files.sort();
+        for (const auto& file : files)
+        {
+            std::printf("    %-14s %s\n",
+                        file.getParentDirectory().getFileName().toRawUTF8(),
+                        file.getFileNameWithoutExtension().toRawUTF8());
+        }
+        std::printf("\n  %d preset files\n\n", files.size());
+        return 0;
+    }
+
+    if (filter == "params")
+    {
+        // Every parameter, its type, its default as the NORMALISED value a
+        // preset file stores, and - for choices - the normalised value of each
+        // option. Preset definitions are written in normalised units, so
+        // authoring one without this is guesswork.
+        PX3SynthAudioProcessor processor;
+
+        std::printf("\nPARAMETERS  (preset files store the normalised value)\n\n");
+        std::printf("  %-26s %-8s %10s  %s\n", "id", "type", "default", "range / choices");
+        std::printf("  %-26s %-8s %10s  %s\n", "--------------------------", "--------",
+                    "----------", "------------------------------");
+
+        for (auto* parameter : processor.getParameters())
+        {
+            auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter);
+            if (ranged == nullptr)
+            {
+                continue;
+            }
+
+            const auto id = ranged->getParameterID();
+            const auto normalised = ranged->getValue();
+
+            if (auto* choice = dynamic_cast<juce::AudioParameterChoice*>(ranged))
+            {
+                juce::String options;
+                const auto count = choice->choices.size();
+                for (int i = 0; i < count; ++i)
+                {
+                    const auto value = count > 1 ? static_cast<float>(i) / static_cast<float>(count - 1) : 0.0f;
+                    options << choice->choices[i] << "=" << juce::String(value, 4);
+                    if (i + 1 < count)
+                    {
+                        options << "  ";
+                    }
+                }
+                std::printf("  %-26s %-8s %10.4f  %s\n", id.toRawUTF8(), "choice",
+                            normalised, options.toRawUTF8());
+            }
+            else if (dynamic_cast<juce::AudioParameterBool*>(ranged) != nullptr)
+            {
+                std::printf("  %-26s %-8s %10.4f  off=0  on=1\n", id.toRawUTF8(), "bool", normalised);
+            }
+            else
+            {
+                const auto& range = ranged->getNormalisableRange();
+                std::printf("  %-26s %-8s %10.4f  %.3f .. %.3f%s\n", id.toRawUTF8(), "float",
+                            normalised, range.start, range.end,
+                            range.skew != 1.0f ? "  (skewed)" : "");
+            }
+        }
+
+        std::printf("\n");
+        return 0;
+    }
 
     if (filter == "reverbmetrics")
     {
@@ -12434,6 +12815,7 @@ int main(int argc, char* argv[])
     if (wants("mood")) testMood();
     if (wants("fx")) testEffectIndependence();
     if (wants("preset")) testPresets();
+    if (wants("factorypresets")) testFactoryPresets();
     if (wants("integration")) testIntegration();
 
     std::printf("\n------------------------------------------------------------\n");

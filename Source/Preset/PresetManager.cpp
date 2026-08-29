@@ -1,5 +1,7 @@
 #include "PresetManager.h"
 
+#include "FactoryPresets.h"
+
 #include <algorithm>
 #include <limits>
 
@@ -756,47 +758,53 @@ bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
         return false;
     }
 
-    struct Def
+    // The library itself lives in FactoryPresets.cpp - that is where a sound
+    // designer looks, and it keeps the writing of preset files separate from
+    // the choosing of what is in them.
+    const auto defs = px3::presets::factoryPresets();
+
+    // Look the parameter up and let it do its own conversion. An id that does
+    // not exist is reported rather than silently ignored, because a typo would
+    // otherwise ship as a preset that quietly does not set what it claims to.
+    juce::StringArray unknownIds;
+    auto normalisedFor = [this, &unknownIds](const juce::String& id, float realValue)
     {
-        const char* name;
-        const char* category;
-        const char* author;
-        const char* description;
-        std::vector<std::pair<const char*, float>> params;
+        for (auto* parameter : processor.getParameters())
+        {
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+            {
+                if (ranged->getParameterID() == id)
+                {
+                    return juce::jlimit(0.0f, 1.0f, ranged->convertTo0to1(realValue));
+                }
+            }
+        }
+
+        unknownIds.addIfNotAlreadyThere(id);
+        return -1.0f;
     };
 
-    const std::vector<Def> defs {
-        { "Neon Machine", "LEADS", "P(X3)", "Bright PX3 lead with motion.",
-          { { "osc1Mode", 19.0f / 19.0f }, { "osc1MacroA", 0.62f }, { "osc1MacroB", 0.55f }, { "osc1MacroC", 0.58f }, { "filter1Cutoff", 0.82f }, { "filter1Resonance", 0.36f }, { "vibeAmount", 0.35f }, { "vibeEnabled", 1.0f }, { "reverbAmount", 0.20f }, { "reverbEnabled", 1.0f } } },
-        { "Sub Pressure", "BASS", "P(X3)", "Low-end focused bass with light drive.",
-                    { { "osc1Mode", 1.0f / 19.0f }, { "osc1MacroA", 0.0f }, { "filter1Cutoff", 0.28f }, { "filter1Resonance", 0.15f }, { "vibeAmount", 0.42f }, { "vibeEnabled", 1.0f }, { "ampAttack", 0.01f }, { "ampDecay", 0.24f }, { "ampSustain", 0.75f } } },
-        { "Soft Orbit", "PADS", "P(X3)", "Slow evolving supersaw pad.",
-                    { { "osc1Mode", 6.0f / 19.0f }, { "osc1MacroA", 0.38f }, { "osc1MacroB", 0.72f }, { "ampAttack", 0.40f }, { "ampRelease", 0.65f }, { "reverbAmount", 0.44f }, { "reverbEnabled", 1.0f } } },
-        { "Glass Pluck", "PLUCKS", "P(X3)", "Fast attack pluck with ping-pong delay.",
-                    { { "osc1Mode", 11.0f / 19.0f }, { "osc1MacroA", 0.42f }, { "osc1MacroB", 0.44f }, { "ampAttack", 0.0f }, { "ampDecay", 0.16f }, { "ampSustain", 0.10f }, { "ampRelease", 0.18f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 3.0f / 6.0f }, { "delayAmount", 0.30f } } },
-        { "Chaos Reactor", "EXPERIMENTAL", "P(X3)", "Aggressive ROB chaos texture.",
-          { { "osc1Mode", 17.0f / 19.0f }, { "osc1MacroA", 0.82f }, { "osc1MacroB", 0.74f }, { "osc1MacroC", 0.93f }, { "vibeAmount", 0.68f }, { "vibeEnabled", 1.0f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.35f } } },
-                { "Image Sweep", "EXPERIMENTAL", "P(X3)", "Wavetable sweep style patch.",
-                    { { "osc1Mode", 8.0f / 19.0f }, { "osc1MacroA", 0.25f }, { "osc1MacroB", 0.50f }, { "osc1MacroC", 0.55f }, { "reverbAmount", 0.22f }, { "reverbEnabled", 1.0f } } },
-                { "Broken Radio", "EXPERIMENTAL", "P(X3)", "Lo-fi digital texture demo.",
-                                        { { "osc1Mode", 15.0f / 19.0f }, { "osc1MacroA", 0.52f }, { "osc1MacroB", 0.62f }, { "osc1MacroC", 0.70f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.44f } } },
+    // The factory library is versioned. Without this, a refreshed library never
+    // reaches anyone who already ran the plugin once: the writer below skips
+    // files that exist, which is right for not clobbering the same preset twice
+    // and wrong for shipping new ones.
+    const auto stampFile = getFactoryPresetRootDir().getChildFile(".factory-version");
+    const auto installedVersion = stampFile.existsAsFile() ? stampFile.loadFileAsString().trim().getIntValue() : 0;
+    const auto rewriteAll = installedVersion != px3::presets::kFactoryLibraryVersion;
 
-                // Extra randomized-style factory starters for shipping variety.
-                { "Dustline Runner", "BASS", "P(X3)", "Tight low bass with controlled grit.",
-                    { { "osc1Mode", 2.0f / 19.0f }, { "osc1MacroA", 0.18f }, { "osc1MacroB", 0.71f }, { "filter1Cutoff", 0.24f }, { "filter1Resonance", 0.29f }, { "ampAttack", 0.01f }, { "ampDecay", 0.22f }, { "ampSustain", 0.78f }, { "ampRelease", 0.27f }, { "vibeEnabled", 1.0f }, { "vibeAmount", 0.47f }, { "masterGain", 0.66f } } },
-                { "Arc Light Mono", "LEADS", "P(X3)", "Focused mono lead with short ambience.",
-                    { { "osc1Mode", 12.0f / 19.0f }, { "osc1MacroA", 0.69f }, { "osc1MacroB", 0.26f }, { "osc1MacroC", 0.52f }, { "filter1Cutoff", 0.66f }, { "filter1Resonance", 0.42f }, { "ampAttack", 0.02f }, { "ampDecay", 0.19f }, { "ampSustain", 0.48f }, { "ampRelease", 0.21f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.18f } } },
-                { "Moonglass Bloom", "PADS", "P(X3)", "Wide evolving pad with slow movement.",
-                    { { "osc1Mode", 6.0f / 19.0f }, { "osc1MacroA", 0.41f }, { "osc1MacroB", 0.84f }, { "osc1MacroC", 0.37f }, { "filter1Cutoff", 0.58f }, { "filter1Resonance", 0.24f }, { "ampAttack", 0.54f }, { "ampDecay", 0.46f }, { "ampSustain", 0.72f }, { "ampRelease", 0.78f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.56f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.21f } } },
-                { "Pixel Harp", "PLUCKS", "P(X3)", "Snappy digital pluck with timed echoes.",
-                    { { "osc1Mode", 15.0f / 19.0f }, { "osc1MacroA", 0.77f }, { "osc1MacroB", 0.33f }, { "filter1Cutoff", 0.74f }, { "filter1Resonance", 0.45f }, { "ampAttack", 0.0f }, { "ampDecay", 0.14f }, { "ampSustain", 0.12f }, { "ampRelease", 0.17f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 4.0f / 6.0f }, { "delayAmount", 0.39f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.11f } } },
-                { "Volt Garden", "EXPERIMENTAL", "P(X3)", "Animated hybrid patch with shifting harmonics.",
-                    { { "osc1Mode", 18.0f / 19.0f }, { "osc1MacroA", 0.74f }, { "osc1MacroB", 0.62f }, { "osc1MacroC", 0.81f }, { "filter1Cutoff", 0.63f }, { "filter1Resonance", 0.58f }, { "vibeEnabled", 1.0f }, { "vibeAmount", 0.52f }, { "delayEnabled", 1.0f }, { "delayAmount", 0.48f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.31f } } },
-                { "Raster Drift", "EXPERIMENTAL", "P(X3)", "Modulated texture with moderate ambience.",
-                    { { "osc1Mode", 8.0f / 19.0f }, { "osc1MacroA", 0.63f }, { "osc1MacroB", 0.42f }, { "filter1Cutoff", 0.57f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.24f } } },
-                { "Tape Phantom", "EXPERIMENTAL", "P(X3)", "Lo-fi texture with diffused tail.",
-                    { { "osc1Mode", 15.0f / 19.0f }, { "osc1MacroA", 0.34f }, { "osc1MacroB", 0.76f }, { "osc1MacroC", 0.58f }, { "delayEnabled", 1.0f }, { "delayAlgorithm", 1.0f / 6.0f }, { "delayAmount", 0.36f }, { "reverbEnabled", 1.0f }, { "reverbAmount", 0.29f } } }
-    };
+    if (rewriteAll && getFactoryPresetRootDir().isDirectory())
+    {
+        // Only the factory tree, and only the preset files in it. User presets
+        // live in a separate root and are never touched.
+        for (const auto& stale : getFactoryPresetRootDir().findChildFiles(juce::File::findFiles, true,
+                                                                          "*" + kPresetExtension))
+        {
+            if (stale.getFileNameWithoutExtension() != "INIT")
+            {
+                stale.deleteFile();
+            }
+        }
+    }
 
     auto baseState = processor.createPresetStateTree();
 
@@ -805,7 +813,11 @@ bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
         auto state = baseState.createCopy();
         for (const auto& [id, value] : def.params)
         {
-            state.setProperty(id, juce::jlimit(0.0f, 1.0f, value), nullptr);
+            const auto normalised = normalisedFor(id, value);
+            if (normalised >= 0.0f)
+            {
+                state.setProperty(id, normalised, nullptr);
+            }
         }
 
         PresetMetadata md;
@@ -841,6 +853,28 @@ bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
                 return false;
             }
         }
+    }
+
+    if (!unknownIds.isEmpty())
+    {
+        error = "Factory presets reference unknown parameter ids: " + unknownIds.joinIntoString(", ");
+        return false;
+    }
+
+    if (rewriteAll)
+    {
+        // A category the library no longer uses leaves an empty folder behind,
+        // and an empty folder shows up in the browser as a category with
+        // nothing in it.
+        for (const auto& dir : getFactoryPresetRootDir().findChildFiles(juce::File::findDirectories, false))
+        {
+            if (dir.findChildFiles(juce::File::findFilesAndDirectories, true).isEmpty())
+            {
+                dir.deleteRecursively();
+            }
+        }
+
+        stampFile.replaceWithText(juce::String(px3::presets::kFactoryLibraryVersion));
     }
 
     return true;

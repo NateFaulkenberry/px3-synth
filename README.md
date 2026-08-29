@@ -6,6 +6,7 @@ Current version: v0.1.0
 
 For dedicated build/install/release workflow documentation, see `docs/BUILDING.md`.
 For preset system format and storage details, see `docs/PRESETS.md`.
+The shipped factory presets are defined in `Source/Preset/FactoryPresets.cpp`.
 For developer architecture, maintenance map, and release workflow, see `DEVELOPMENT.md`.
 
 ## What You Get

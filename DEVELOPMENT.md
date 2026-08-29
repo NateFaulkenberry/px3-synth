@@ -104,6 +104,23 @@ Developer note: oscillator/sub pitch controls
    - Included automatically through parameter tree serialization.
    - Additional explicit sub-osc subtree persistence/backfill is handled in `Source/DSP/PluginProcessorState.cpp`.
 
+Want to change the factory presets?
+- The library is `Source/Preset/FactoryPresets.cpp` - one entry per preset, with
+  named enums for every choice index. That is the only file a sound designer
+  needs to touch.
+- Values are written in each parameter's OWN units: seconds, hertz, semitones,
+  decibels, a 0..1 amount, or a choice index. `PresetManager` converts through
+  the parameter itself, so a skewed range is handled correctly and a value in
+  the wrong units fails the `factorypresets` suite rather than clamping quietly.
+- **Bump `kFactoryLibraryVersion` in `FactoryPresets.h` whenever you change the
+  list.** The writer skips files that already exist, so without a bump a
+  refreshed preset never reaches anyone who has already run the plugin. On a
+  bump the factory tree is swept and rewritten; INIT and the whole user tree are
+  left alone.
+- `PX3Tests factorypresets` checks that every id exists, every value is in its
+  parameter's range, every preset renders audio without clipping or NaNs, every
+  effect is showcased somewhere, and that the library is not a volume ride.
+
 Want to change an FX algorithm?
 - VIBE: `Source/DSP/VibeEngine.cpp` for the shared per-block state,
   `Source/DSP/SynthVoice.cpp` (`applyVibeSourceStage`) for the per-sample stage.
@@ -280,9 +297,20 @@ cmake --build build/diag --target PX3Tests
 build/diag/PX3Tests_artefacts/RelWithDebInfo/PX3Tests
 ```
 
+`PX3Tests` also has two developer modes that are not pass/fail:
+
+- `params` prints every parameter, its type, its default as the NORMALISED value
+  a preset file stores, and the normalised value of each choice option. Preset
+  definitions are written against real units and converted, but this is how you
+  check what a parameter's range and options actually are.
+- `installpresets` runs the real factory-library install and lists what landed
+  on disk. It is a developer action rather than a test because it writes into
+  the user's application-support directory.
+
 `PX3Tests` takes an optional suite filter: `subosc`, `osc`, `ampenv`, `modenv`,
 `lfo`, `vibe`, `reverb`, `comb`, `delay`, `mood`, `doom`, `lucy`, `chorus`,
-`spread`, `cardstyle`, `cardinner`, `fxchain`, `fx`, `preset`, `integration`.
+`spread`, `cardstyle`, `cardinner`, `fxchain`, `fx`, `preset`, `factorypresets`,
+`integration`.
 
 The four newest FX suites each carry the measurement that IS their design brief,
 so a refactor that quietly breaks the premise fails rather than passing quietly:

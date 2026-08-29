@@ -766,12 +766,12 @@ Lucy::Frame Lucy::applyFilter(Frame in)
             state.ic1 = sanitize(2.0f * v1 - state.ic1);
             state.ic2 = sanitize(2.0f * v2 - state.ic2);
 
-            x = v1;   // band-pass
+            // The SVF's band-pass output peaks at Q, not at unity, so a
+            // cascade multiplies by Q per section. Normalising each section by
+            // k (= 1/Q) makes its peak gain 1, which is what lets sections be
+            // stacked for slope without the level running away with resonance.
+            x = v1 * k;
         }
-
-        // A steep band-pass loses level; scaled back so slope changes tone
-        // rather than volume.
-        x *= 1.0f + static_cast<float>(sections) * 0.35f;
 
         // INVERT: the band taken OUT of the input, which is the band-reject the
         // source documents rather than a separate filter.

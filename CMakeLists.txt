@@ -140,6 +140,7 @@ set(PX3_SHARED_SOURCES
         Source/DSP/SynthVoice.cpp
         Source/DSP/PX3Diagnostics.cpp
         Source/Preset/PresetManager.cpp
+        Source/Preset/FactoryPresets.cpp
 )
 
 set(PX3_INCLUDE_DIRS
