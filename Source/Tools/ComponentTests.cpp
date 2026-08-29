@@ -14502,6 +14502,115 @@ void testBusInserts()
               "mean output over the second half: " + fmt(dc, 6));
     }
 
+    // ---- aliasing, and therefore the oversampling decision ------------------
+    // The only nonlinear stages in the chain are the FET element and the output
+    // transformer, both in the compressor. A nonlinearity folds every harmonic
+    // above Nyquist back down, and those images are not harmonically related to
+    // the input, so they are audible as a metallic edge rather than as
+    // distortion. This measures them directly and decides oversampling on the
+    // number rather than on principle.
+    //
+    // 11 kHz at 48 kHz is the honest worst case: h2 at 22 k is still below
+    // Nyquist, but h3 at 33 k folds to 15 k, h4 at 44 k folds to 4 k and h5 at
+    // 55 k folds to 7 k - all of them well inside the band and none of them
+    // maskable by the fundamental.
+    {
+        constexpr auto kToneHz = 11000.0;
+        constexpr auto kOrder = 15;
+        constexpr auto kSize = 1 << kOrder;
+
+        auto aliasingDbFor = [&](float inputDb, float attack = 1.0f)
+        {
+            px3::FetCompressor comp;
+            comp.prepare(kSampleRate);
+
+            px3::CompressorSettings settings;
+            settings.enabled = true;
+            settings.inputDb = inputDb;
+            settings.ratio = px3::CompRatio::twentyToOne;
+            settings.attack = attack;
+            settings.release = 0.5f;
+            comp.setSettings(settings);
+
+            std::vector<float> out;
+            out.reserve(static_cast<std::size_t>(kSize) * 2);
+            for (int i = 0; i < kSize * 2; ++i)
+            {
+                auto l = 0.7f * static_cast<float>(
+                    std::sin(juce::MathConstants<double>::twoPi * kToneHz * i / kSampleRate));
+                auto r = l;
+                comp.processSample(l, r);
+                out.push_back(l);
+            }
+
+            juce::dsp::FFT fft(kOrder);
+            std::vector<float> data(static_cast<std::size_t>(kSize) * 2, 0.0f);
+            for (int i = 0; i < kSize; ++i)
+            {
+                const auto w = 0.5f - 0.5f * std::cos(juce::MathConstants<float>::twoPi
+                                                      * static_cast<float>(i) / static_cast<float>(kSize - 1));
+                data[static_cast<std::size_t>(i)] = out[static_cast<std::size_t>(kSize + i)] * w;
+            }
+            fft.performFrequencyOnlyForwardTransform(data.data());
+
+            const auto binsPerHz = static_cast<double>(kSize) / kSampleRate;
+            auto energyAround = [&](double hz)
+            {
+                const auto centre = static_cast<int>(hz * binsPerHz + 0.5);
+                double sum = 0.0;
+                for (int b = centre - 8; b <= centre + 8; ++b)
+                {
+                    if (b <= 0 || b >= kSize / 2) continue;
+                    const auto m = static_cast<double>(data[static_cast<std::size_t>(b)]);
+                    sum += m * m;
+                }
+                return sum;
+            };
+
+            const auto fundamental = energyAround(kToneHz);
+
+            // Every harmonic that lands above Nyquist folds back to a
+            // frequency that is not a harmonic of the input. Computing the fold
+            // rather than listing a few by hand matters: written out by hand,
+            // h4 folded to a negative bin and h5 above Nyquist, and both were
+            // being silently dropped - which flattered the result.
+            double images = 0.0;
+            for (int h = 2; h <= 12; ++h)
+            {
+                const auto exact = static_cast<double>(h) * kToneHz;
+                if (exact < kSampleRate * 0.5)
+                {
+                    continue;   // a real harmonic, not an image
+                }
+                auto folded = std::fmod(exact, kSampleRate);
+                if (folded > kSampleRate * 0.5)
+                {
+                    folded = kSampleRate - folded;
+                }
+                images += energyAround(folded);
+            }
+            return juce::Decibels::gainToDecibels(std::sqrt(images / juce::jmax(1.0e-30, fundamental)), -200.0);
+        };
+
+        const auto normal = aliasingDbFor(0.0f);
+        const auto gentle = aliasingDbFor(6.0f);
+        const auto hard = aliasingDbFor(30.0f);
+
+        // The thresholds come from what the stage measured, not from a round
+        // number. Before the antialiasing these read -43.8 / -36.8 / -15.2, so
+        // this pins the 13 dB improvement as well as an absolute level.
+        //
+        // -28.6 dB at full slam is the honest residual, and it is accepted: it
+        // takes a near-full-scale tone above 10 kHz driven 30 dB into a bus
+        // compressor to produce, and buying the last of it costs either 2x
+        // oversampling - rejected on latency, see FetCompressor.cpp - or a
+        // change to the curve itself.
+        check("BusComp_AliasingStaysBelowAudibility",
+              normal < -55.0 && gentle < -50.0 && hard < -25.0,
+              "11 kHz at 0.7, images against the fundamental: " + fmt(normal, 1)
+              + " dB at unity, " + fmt(gentle, 1) + " dB at +6, " + fmt(hard, 1) + " dB slammed");
+    }
+
     // =======================================================================
     // Wired into the processor. Everything above proves the DSP; this proves
     // the DSP is actually reached, on the right bus, and only when asked.

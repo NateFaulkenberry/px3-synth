@@ -99,6 +99,13 @@ struct Scenario
     bool voiceStealing { false };   // retrigger faster than voices can retire
     bool rapidTrigger { false };    // constant note-on/note-off during measurement
     int oscMode { -1 };
+    // Bus inserts. Declared after oscMode so the scenario table's positional
+    // rows keep meaning what they meant.
+    bool eqDry { false };
+    bool compDry { false };
+    bool eqFx { false };
+    bool compFx { false };
+    bool insertsBypassed { false };  // parameters loaded, enables off
 };
 
 struct Timing
@@ -124,6 +131,32 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     setParameter(processor, "osc2Enabled", scenario.allSources ? 1.0f : 0.0f);
     setParameter(processor, "osc3Enabled", scenario.allSources ? 1.0f : 0.0f);
     setParameter(processor, "subOscEnabled", scenario.allSources ? 1.0f : 0.0f);
+
+    // Bus inserts. Every band is given a non-identity setting so the EQ
+    // measurement is the cost of four running biquads and not the cost of the
+    // identity skip - which would flatter it.
+    {
+        auto loadInserts = [&](const char* bus, bool eq, bool comp)
+        {
+            const auto b = juce::String(bus);
+            const auto on = ! scenario.insertsBypassed;
+            setParameter(processor, b + "EqEnabled", (eq && on) ? 1.0f : 0.0f);
+            for (int band = 1; band <= 4; ++band)
+            {
+                const auto n = juce::String(band);
+                setParameter(processor, b + "EqGain" + n, band % 2 == 0 ? 4.0f : -3.0f);
+                setParameter(processor, b + "EqQ" + n, 1.2f);
+            }
+            setParameter(processor, b + "CompEnabled", (comp && on) ? 1.0f : 0.0f);
+            setParameter(processor, b + "CompInput", 18.0f);
+            setParameter(processor, b + "CompMix", 1.0f);
+        };
+
+        const auto anyDry = scenario.eqDry || scenario.compDry;
+        const auto anyFx = scenario.eqFx || scenario.compFx;
+        if (anyDry || scenario.insertsBypassed) loadInserts("dry", scenario.eqDry, scenario.compDry);
+        if (anyFx || scenario.insertsBypassed) loadInserts("fx", scenario.eqFx, scenario.compFx);
+    }
 
     if (scenario.oscMode >= 0)
     {
@@ -347,6 +380,28 @@ const Scenario kScenarios[] = {
     { "16 voices + new FX only",       16, false , true  , false , false , false , false , false , false , true  , true  , false , false , false , -1 },
     { "16 voices + analog only",       16, false , true  , false , false , false , false , false , false , false , true  , false , false , false , -1 },
     { "16 voices, PX3",                16, false , true  , true  , false , false , false , false , false , false , false , false , false , false , 19 },
+
+    // ---- bus inserts (v0.3.1) ------------------------------------------------
+    // Measured against "16 voices, all 4 sources" - the row directly above the
+    // group is the baseline these are read against.
+    { "16 voices + inserts bypassed",  16, false , true  , false , false , false , false , false , false , false , false , false , false , false , -1,
+      false, false, false, false, true },
+    { "16 voices + dry EQ",            16, false , true  , false , false , false , false , false , false , false , false , false , false , false , -1,
+      true,  false, false, false, false },
+    { "16 voices + dry COMP",          16, false , true  , false , false , false , false , false , false , false , false , false , false , false , -1,
+      false, true,  false, false, false },
+    { "16 voices + dry EQ + COMP",     16, false , true  , false , false , false , false , false , false , false , false , false , false , false , -1,
+      true,  true,  false, false, false },
+    // The FX rows carry a send and an FX chain, so they need their own
+    // baseline: reading them against the dry rows would charge the inserts for
+    // the delay.
+    { "16 voices + FX send, no inserts", 16, false , true  , false , false , false , false , false , true  , false , false , false , false , false , -1 },
+    { "16 voices + FX EQ + COMP",      16, false , true  , false , false , false , false , false , true  , false , false , false , false , false , -1,
+      false, false, true,  true,  false },
+    { "16 voices + both buses",        16, false , true  , false , false , false , false , false , true  , false , false , false , false , false , -1,
+      true,  true,  true,  true,  false },
+    { "64 voices + both buses",        64, true  , true  , true  , true  , true  , true  , true  , true  , true  , true  , true  , false , false , -1,
+      true,  true,  true,  true,  false },
 };
 
 // ---------------------------------------------------------------------------

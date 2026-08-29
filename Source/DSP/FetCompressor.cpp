@@ -78,6 +78,10 @@ void FetCompressor::reset()
     transformerDcX1 = { { 0.0f, 0.0f } };
     transformerDcY1 = { { 0.0f, 0.0f } };
     detectorHpState = { { 0.0f, 0.0f } };
+    fetPrevInput = { { 0.0f, 0.0f } };
+    fetPrevIntegral = { { 0.0f, 0.0f } };
+    fetPrevDrive = { { 1.0f, 1.0f } };
+    fetPrevBias = { { 0.0f, 0.0f } };
     ratioCreep = 0.0f;
     meterSmoothed = 0.0f;
     meterDb.store(0.0f, std::memory_order_relaxed);
@@ -135,19 +139,81 @@ float FetCompressor::detectorKnee(float overDb, float knee) const
 // the gate; what that correction leaves behind is a large part of the audible
 // signature, and it grows as the device works harder - so the distortion is
 // program dependent for free rather than being a fixed "analog" flavour.
-float FetCompressor::fetGainElement(float x, float reductionDb) const
+//
+// Asymmetry is a GATE BIAS rather than a squared term. Both put second harmonic
+// in, but a bias is what the device actually has, and - decisively - it keeps
+// the curve integrable in closed form, which is what the antialiasing below
+// needs. The bias's own DC offset is subtracted so the stage still passes zero
+// to zero.
+float FetCompressor::fetCurve(float x, float drive, float bias)
 {
+    return (std::tanh(drive * (x + bias)) - std::tanh(drive * bias)) / drive;
+}
+
+// The antiderivative of the curve above. log(cosh(u)) overflows for large u if
+// written literally, so it is evaluated as |u| + log1p(e^-2|u|) - log 2, which
+// is exact for small u and asymptotically |u| - log 2 for large.
+float FetCompressor::fetIntegral(float x, float drive, float bias)
+{
+    const auto u = drive * (x + bias);
+    const auto a = std::abs(u);
+    const auto logCosh = a + std::log1p(std::exp(-2.0f * a)) - 0.6931472f;
+    return logCosh / (drive * drive) - std::tanh(drive * bias) * x / drive;
+}
+
+// The gain element, antialiased.
+//
+// Measured: a slammed 11 kHz tone folded images back into the band at -15.2 dB
+// relative to the fundamental. Linearising this stage and the transformer sent
+// that to -77.6 dB, which located all of it here rather than in the detector
+// loop, so this is the stage that needed treating.
+//
+// The treatment is first-order antiderivative antialiasing rather than 2x
+// oversampling. Oversampling was measured as the alternative and rejected on
+// LATENCY, not on cost: a halfband pair adds around 15 samples of group delay,
+// and this insert is per-bus - so enabling it on the dry bus alone would slide
+// the dry path against the FX return and comb the two together at the master
+// sum. ADAA has none: no filters, no delay, nothing to align.
+//
+// It works by integrating the curve across the segment between this sample and
+// the last one instead of point-sampling it, which is exactly the average the
+// band-limited version would have taken. When two consecutive inputs are too
+// close together the difference quotient loses its precision, so the midpoint
+// value is used instead - that is the standard fallback, not a fudge.
+float FetCompressor::fetGainElement(int channel, float x, float reductionDb)
+{
+    const auto c = static_cast<std::size_t>(channel);
     const auto work = juce::jlimit(0.0f, 1.0f, reductionDb / 20.0f);
-    // Asymmetric: a FET conducts differently on each half cycle, which is what
-    // puts SECOND harmonic in rather than only odd orders.
-    const auto asymmetry = 0.06f * work;
-    const auto shaped = x + asymmetry * x * x;
     const auto drive = 1.0f + 0.55f * work;
-    // Normalised by the DRIVE, not by tanh(drive). tanh(x*d)/d tends to x for
-    // small x, so the stage is unity below the knee; tanh(x*d)/tanh(d) tends to
-    // x*d/tanh(d), which at rest is 1/tanh(1) = +2.37 dB of gain applied to
-    // everything - measured as -40 dB in coming out at -37.63.
-    return std::tanh(shaped * drive) / drive;
+    // Matched to the previous squared term at typical level, so the second
+    // harmonic content the stage was tuned for is preserved.
+    const auto bias = 0.03f * work;
+
+    const auto integral = fetIntegral(x, drive, bias);
+    const auto prev = fetPrevInput[c];
+    const auto delta = x - prev;
+
+    float y;
+    if (std::abs(delta) < 1.0e-5f)
+    {
+        y = fetCurve(0.5f * (x + prev), drive, bias);
+    }
+    else
+    {
+        // The stored integral belongs to the drive and bias in force last
+        // sample. Those move with the envelope, so it has to be re-evaluated
+        // under the current pair or the quotient mixes two different curves.
+        const auto prevIntegral = (drive == fetPrevDrive[c] && bias == fetPrevBias[c])
+                                      ? fetPrevIntegral[c]
+                                      : fetIntegral(prev, drive, bias);
+        y = (integral - prevIntegral) / delta;
+    }
+
+    fetPrevInput[c] = x;
+    fetPrevIntegral[c] = integral;
+    fetPrevDrive[c] = drive;
+    fetPrevBias[c] = bias;
+    return y;
 }
 
 // A transformer cannot pass DC and saturates at low frequencies first, because
@@ -297,8 +363,8 @@ void FetCompressor::processSample(float& left, float& right)
     feedbackGain[1] = gainR;
 
     // ---- gain element ---------------------------------------------------
-    auto outL = fetGainElement(inL * gainL, reduceL);
-    auto outR = fetGainElement(inR * gainR, reduceR);
+    auto outL = fetGainElement(0, inL * gainL, reduceL);
+    auto outR = fetGainElement(1, inR * gainR, reduceR);
 
     outL = outputTransformer(outL, transformerState[0], transformerCoeff,
                              transformerDcX1[0], transformerDcY1[0], transformerDcCoeff);

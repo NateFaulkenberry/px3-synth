@@ -66,7 +66,11 @@ public:
 
 private:
     float detectorKnee(float overDb, float knee) const;
-    float fetGainElement(float x, float reductionDb) const;
+    // The FET curve and its antiderivative. The antiderivative is what makes
+    // antialiasing possible without oversampling - see fetGainElement.
+    static float fetCurve(float x, float drive, float bias);
+    static float fetIntegral(float x, float drive, float bias);
+    float fetGainElement(int channel, float x, float reductionDb);
     static float outputTransformer(float x, float& state, float coeff,
                                    float& dcX1, float& dcY1, float dcCoeff);
 
@@ -88,6 +92,13 @@ private:
     std::array<float, 2> transformerDcX1 { { 0.0f, 0.0f } };
     std::array<float, 2> transformerDcY1 { { 0.0f, 0.0f } };
     std::array<float, 2> detectorHpState { { 0.0f, 0.0f } };
+    // Antiderivative antialiasing needs one sample of history per channel, and
+    // the integral evaluated at it. Storing the integral as well as the input
+    // avoids recomputing a log every sample.
+    std::array<float, 2> fetPrevInput { { 0.0f, 0.0f } };
+    std::array<float, 2> fetPrevIntegral { { 0.0f, 0.0f } };
+    std::array<float, 2> fetPrevDrive { { 1.0f, 1.0f } };
+    std::array<float, 2> fetPrevBias { { 0.0f, 0.0f } };
 
     float attackCoeff { 0.5f };
     float releaseCoeff { 0.01f };
