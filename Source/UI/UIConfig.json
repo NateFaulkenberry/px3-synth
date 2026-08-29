@@ -167,7 +167,7 @@
     "grid": {
       "columns": 4,
       "gap": 8,
-      "rowHeight": 300
+      "rowHeight": 400
     }
   },
   "osc": {

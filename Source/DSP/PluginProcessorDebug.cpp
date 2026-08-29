@@ -58,6 +58,56 @@ float PX3SynthAudioProcessor::debugGetVibeTuningValue(const juce::String& key) c
     return vibeComponent.getTuningValue(key);
 }
 
+// AnalogEngine tuning is reachable ONLY from here. These values are never
+// serialised into presets or DAW state and revert to the profile's compiled
+// defaults on every construction - see docs/ANALOG_ENGINE_ARCHITECTURE.md.
+void PX3SynthAudioProcessor::debugSetAnalogTuningValue(const juce::String& key, float value)
+{
+    analogEngine.setTuningValue(key, value);
+}
+
+float PX3SynthAudioProcessor::debugGetAnalogTuningValue(const juce::String& key) const
+{
+    return analogEngine.getTuningValue(key);
+}
+
+void PX3SynthAudioProcessor::debugResetAnalogTuning()
+{
+    analogEngine.resetTuning();
+    analogEngine.refreshAmount();
+}
+
+juce::String PX3SynthAudioProcessor::debugDescribeAnalogEngine() const
+{
+    const auto names = px3::AnalogEngine::profileNames();
+    const auto index = juce::jlimit(0, names.size() - 1, static_cast<int>(analogEngine.getProfile()));
+
+    juce::String text;
+    text << "ANALOG ENGINE\n";
+    text << "  enabled: " << ((analogEnabledParam != nullptr && analogEnabledParam->get()) ? "yes" : "no") << "\n";
+    text << "  profile: " << names[index] << "\n\n";
+    text << "  tuning (internal, never serialised):\n";
+
+    for (const auto& key : px3::AnalogEngine::tuningKeys())
+    {
+        const auto value = analogEngine.getTuningValue(key);
+        const auto compiled = px3::AnalogEngine::defaultTuningFor(analogEngine.getProfile());
+        px3::AnalogEngine probe;
+        probe.setProfile(analogEngine.getProfile());
+        const auto defaultValue = probe.getTuningValue(key);
+        juce::ignoreUnused(compiled);
+
+        text << "    " << key.paddedRight(' ', 20) << " " << juce::String(value, 4);
+        if (std::abs(value - defaultValue) > 1.0e-6f)
+        {
+            text << "   (edited, default " << juce::String(defaultValue, 4) << ")";
+        }
+        text << "\n";
+    }
+
+    return text;
+}
+
 juce::String PX3SynthAudioProcessor::debugGetInstanceId() const
 {
     return debugInstanceId;

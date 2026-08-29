@@ -6,6 +6,7 @@
 #include "LfoGenerator.h"
 #include "FxChain.h"
 #include "Doom.h"
+#include "AnalogEngine.h"
 #include "Chorus.h"
 #include "Lucy.h"
 #include "StereoSpread.h"
@@ -286,6 +287,11 @@ public:
     juce::AudioParameterFloat& getSpreadMixParam() const;
     juce::AudioParameterFloat& getSpreadToneParam() const;
     juce::AudioParameterChoice& getSpreadModeParam() const;
+
+    // AnalogEngine exposes only its on/off and its archetype. Every tuning
+    // constant is internal and reachable through the debug console alone.
+    juce::AudioParameterBool& getAnalogEnabledParam() const;
+    juce::AudioParameterChoice& getAnalogProfileParam() const;
     juce::AudioParameterBool& getLfoEnabledParam() const;
     juce::AudioParameterBool& getLfoEnabledParam(int lfoIndex) const;
     juce::AudioParameterFloat& getLfoFrequencyParam() const;
@@ -388,6 +394,10 @@ public:
     void debugSetVibeBypass(bool shouldBypass);
     void debugSetVibeSeed(uint32_t seed);
     void debugSetVibeTuningValue(const juce::String& key, float value);
+    void debugSetAnalogTuningValue(const juce::String& key, float value);
+    float debugGetAnalogTuningValue(const juce::String& key) const;
+    void debugResetAnalogTuning();
+    juce::String debugDescribeAnalogEngine() const;
     float debugGetVibeTuningValue(const juce::String& key) const;
 
     float copyPitchBendNormalized() const;
@@ -619,6 +629,9 @@ private:
     juce::AudioParameterFloat* spreadMixParam { nullptr };
     juce::AudioParameterFloat* spreadToneParam { nullptr };
     juce::AudioParameterChoice* spreadModeParam { nullptr };
+
+    juce::AudioParameterBool* analogEnabledParam { nullptr };
+    juce::AudioParameterChoice* analogProfileParam { nullptr };
     juce::AudioParameterFloat* reverbSizeParam { nullptr };
     juce::AudioParameterFloat* reverbDecayParam { nullptr };
     juce::AudioParameterFloat* reverbDampingParam { nullptr };
@@ -717,6 +730,7 @@ private:
     px3::Lucy lucyComponent;
     px3::Chorus chorusComponent;
     px3::StereoSpread stereoSpreadComponent;
+    px3::AnalogEngine analogEngine;
     ::Reverb reverb;
 
     // Internal routing buses (prepared once, reused per block).

@@ -488,6 +488,18 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                       juce::StringArray { "CLASSIC", "WIDE", "DEEP", "MONO SAFE" },
                                                       0);
 
+    // ---- ANALOG ENGINE ---------------------------------------------------
+    // Only these two are user-facing. See docs/ANALOG_ENGINE_ARCHITECTURE.md.
+    //
+    // Off by default: this changes the sound of every existing patch, so it is
+    // opt-in until it has been listened to rather than silently rewriting the
+    // instrument's tone on upgrade.
+    analogEnabledParam = new juce::AudioParameterBool("analogEnabled", "Analog Enabled", false);
+    analogProfileParam = new juce::AudioParameterChoice("analogProfile",
+                                                         "Analog Profile",
+                                                         px3::AnalogEngine::profileNames(),
+                                                         0);
+
     reverbSizeParam = new juce::AudioParameterFloat("reverbSize", "Reverb Size", juce::NormalisableRange<float>(0.0f, 1.0f), 0.52f);
     reverbDecayParam = new juce::AudioParameterFloat("reverbDecay", "Reverb Decay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.48f);
     reverbDampingParam = new juce::AudioParameterFloat("reverbDamping", "Reverb Damping", juce::NormalisableRange<float>(0.0f, 1.0f), 0.46f);
@@ -723,6 +735,9 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(spreadMixParam);
     addParameter(spreadToneParam);
     addParameter(spreadModeParam);
+
+    addParameter(analogEnabledParam);
+    addParameter(analogProfileParam);
     addParameter(reverbSizeParam);
     addParameter(reverbDecayParam);
     addParameter(reverbDampingParam);
@@ -864,6 +879,8 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     lucyComponent.prepare(sampleRate);
     chorusComponent.prepare(sampleRate);
     stereoSpreadComponent.prepare(sampleRate);
+    // Four mono source channels plus three stereo bus contexts.
+    analogEngine.prepare(sampleRate, kMixerSourceCount);
     reverb.prepare(sampleRate);
 
     const auto busChannels = juce::jmax(kMixerSourceCount, getTotalNumOutputChannels());
@@ -1569,6 +1586,15 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     lucyComponent.updateForBlock(currentLucySettings());
     chorusComponent.updateForBlock(currentChorusSettings());
     stereoSpreadComponent.updateForBlock(currentStereoSpreadSettings());
+
+    // The engine's amount is a tuning constant; the parameter only gates it.
+    // Smoothed inside the engine, so toggling it does not click.
+    if (analogProfileParam != nullptr)
+    {
+        analogEngine.setProfile(static_cast<px3::AnalogEngine::Profile>(
+            juce::jlimit(0, px3::AnalogEngine::kProfileCount - 1, analogProfileParam->getIndex())));
+    }
+    analogEngine.setAmount((analogEnabledParam != nullptr && analogEnabledParam->get()) ? 1.0f : 0.0f);
     reverb.updateForBlock(currentReverbSettings(), buffer.getNumSamples());
     const auto fxOrder = getFxProcessingOrder();
     const auto fxSendGain = fxSendGainParam != nullptr
@@ -1710,8 +1736,18 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             const auto idxPhase = static_cast<std::size_t>(sourceIndex);
             // Polarity first, so the flip reaches the dry path and the FX send
             // alike - it is a property of the channel, not of one destination.
-            const auto sampleValue = oscillatorBusBuffer.getSample(sourceIndex, sample)
-                                     * sourcePhaseSmoothers[idxPhase].next(sourcePhaseValues[idxPhase]);
+            // ANALOG CHANNEL. Placed where a console strip sits: after polarity,
+            // before the fader and the pan. Mono, because the source channels
+            // are mono until they are panned into the bus - which is what a
+            // channel strip is.
+            //
+            // On its own this is not a saturator. It is the forward half of an
+            // invertible pair; the bus runs the inverse, so ONE channel through
+            // the console is transparent and the character comes from summing.
+            const auto sampleValue = analogEngine.processChannelSample(
+                sourceIndex,
+                oscillatorBusBuffer.getSample(sourceIndex, sample)
+                    * sourcePhaseSmoothers[idxPhase].next(sourcePhaseValues[idxPhase]));
             const auto dryGate = sourceDryGateSmoothers[static_cast<std::size_t>(sourceIndex)].next();
             const auto sendGate = sourceSendGateSmoothers[static_cast<std::size_t>(sourceIndex)].next();
             const auto idxSource = static_cast<std::size_t>(sourceIndex);
@@ -1822,11 +1858,23 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             dryR *= dryScale * dryPanRight;
         }
 
+        // ANALOG DRY BUS. The inverse of what the channels did - so a single
+        // channel comes back out unchanged, and several channels summed do not.
+        // This is where the character actually appears.
+        analogEngine.processBusSample(px3::AnalogEngine::Context::dryBus, dryL, dryR);
+
         dryBusBuffer.setSample(0, sample, dryL);
         if (outputChannels > 1)
         {
             dryBusBuffer.setSample(1, sample, dryR);
         }
+
+        // ANALOG FX BUS. On the send sum, BEFORE the chain: an aux send is
+        // summed on its own bus and the effects receive what that bus produced.
+        // It also has to be here rather than after the chain because the return
+        // below is a difference (stage - send), and a stage applied after the
+        // chain would have the untouched send subtracted back out of it.
+        analogEngine.processBusSample(px3::AnalogEngine::Context::fxBus, fxInL, fxInR);
 
         auto stageL = fxInL;
         auto stageR = fxInR;
@@ -1929,10 +1977,20 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         // MASTER BUS: DRY + FX return, then the fixed output boost. Applied here
         // so the debug meters and clip counters see the level that actually
         // leaves the plugin.
-        masterBusBuffer.setSample(0, sample, applyCeiling((dryL + fxL) * outputBoostGain));
+        // ANALOG MASTER. An output stage rather than a summing amplifier, so it
+        // saturates forward like a channel does, and it works on mid/side
+        // because stereo behaviour at a master bus is a property of the summing.
+        //
+        // Before the output ceiling, never after: the ceiling is the
+        // instrument's guarantee that nothing can clip, so it stays last.
+        auto masterL = (dryL + fxL) * outputBoostGain;
+        auto masterR = (dryR + fxR) * outputBoostGain;
+        analogEngine.processBusSample(px3::AnalogEngine::Context::master, masterL, masterR);
+
+        masterBusBuffer.setSample(0, sample, applyCeiling(masterL));
         if (outputChannels > 1)
         {
-            masterBusBuffer.setSample(1, sample, applyCeiling((dryR + fxR) * outputBoostGain));
+            masterBusBuffer.setSample(1, sample, applyCeiling(masterR));
         }
     }
 

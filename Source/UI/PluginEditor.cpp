@@ -1531,8 +1531,22 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
 {
     stopTimer();
 
+    // Attachments FIRST, before anything that owns a control they point at.
+    //
+    // This used to be safe in the other order, because every panel held
+    // references to controls the editor owned - so the controls outlived the
+    // panels either way. FxCardComponent changed that: those cards own their
+    // sliders, boxes and buttons. Destroying the panel first therefore freed
+    // the targets while the attachments were still holding raw pointers to
+    // them, and ~SliderParameterAttachment called removeListener on freed
+    // memory. Measured as a segfault on quit, in
+    // juce::Slider::removeListener via ~SliderParameterAttachment.
+    sliderAttachments.clear();
+    comboBoxAttachments.clear();
+    buttonAttachments.clear();
+
     // Panels hold child components that reference editor-owned controls.
-    // Tear panels down first to avoid shutdown-order lifetime hazards.
+    // Tear panels down after the attachments that point into them.
     oscPanel.reset();
     modPanelViewport.setViewedComponent(nullptr, false);
     modPanel.reset();

@@ -306,7 +306,7 @@ void FxPanel::resized()
     // second reading of the strip rather than a second list to keep in step.
     const auto columns = uiConfig != nullptr ? uiConfig->getInt("fx.grid.columns", 4) : 4;
     const auto gap = uiConfig != nullptr ? uiConfig->getInt("fx.grid.gap", 8) : 8;
-    const auto rowHeight = uiConfig != nullptr ? uiConfig->getInt("fx.grid.rowHeight", 300) : 300;
+    const auto rowHeight = uiConfig != nullptr ? uiConfig->getInt("fx.grid.rowHeight", 400) : 400;
 
     // Only the stages that have a card take a cell. A stage without one is
     // still in the chain and still processes; it simply has nothing to show.

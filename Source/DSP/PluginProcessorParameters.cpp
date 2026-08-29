@@ -382,6 +382,9 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadHighFreqParam() cons
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadMixParam() const { return *spreadMixParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadToneParam() const { return *spreadToneParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getSpreadModeParam() const { return *spreadModeParam; }
+
+juce::AudioParameterBool& PX3SynthAudioProcessor::getAnalogEnabledParam() const { return *analogEnabledParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getAnalogProfileParam() const { return *analogProfileParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getLfoEnabledParam() const { return getLfoEnabledParam(0); }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getLfoEnabledParam(int lfoIndex) const
 {

@@ -96,6 +96,7 @@ set(PX3_SHARED_SOURCES
         Source/UI/Card.cpp
         Source/DSP/CombResonator.cpp
         Source/DSP/StftEngine.cpp
+        Source/DSP/AnalogEngine.cpp
         Source/DSP/Doom.cpp
         Source/DSP/Lucy.cpp
         Source/DSP/Chorus.cpp

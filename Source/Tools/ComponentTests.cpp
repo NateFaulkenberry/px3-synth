@@ -12036,6 +12036,70 @@ void testFactoryPresets()
         juce::ignoreUnused(loud, quiet);
     }
 }
+
+void testEditorLifecycle()
+{
+    suite("EDITOR LIFECYCLE");
+
+    // Create and destroy the editor repeatedly.
+    //
+    // This exists because of a real crash: FxCardComponent made the FX cards OWN
+    // their sliders, but the editor destructor still tore the panels down before
+    // releasing the parameter attachments that point at those sliders. The
+    // attachments then called removeListener on freed memory - a segfault on
+    // quit, in juce::Slider::removeListener via ~SliderParameterAttachment.
+    //
+    // Nothing else in the suite constructs the editor, so nothing else could
+    // have caught it.
+    auto survived = true;
+
+    for (int i = 0; i < 3 && survived; ++i)
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        survived = survived && editor != nullptr;
+
+        if (editor != nullptr)
+        {
+            editor->setSize(1280, 800);
+            // Reaching the destructor at all is the test.
+            editor.reset();
+        }
+    }
+
+    check("Editor_CreatesAndDestroysWithoutCrashing", survived,
+          "3 create/destroy cycles - attachments must be released before the "
+          "panels that own their targets");
+
+    {
+        // And with audio having run through it, so the timer callbacks and the
+        // FX cards have actually been touched before teardown.
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        editor->setSize(1280, 800);
+
+        juce::AudioBuffer<float> buffer(2, kBlockSize);
+        for (int block = 0; block < 20; ++block)
+        {
+            buffer.clear();
+            juce::MidiBuffer midi;
+            if (block == 2)
+            {
+                midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
+            }
+            processor.processBlock(buffer, midi);
+        }
+
+        editor.reset();
+        check("Editor_SurvivesTeardownAfterProcessing", true, "");
+    }
+}
 } // namespace
 
 int main(int argc, char* argv[])
@@ -12816,6 +12880,7 @@ int main(int argc, char* argv[])
     if (wants("fx")) testEffectIndependence();
     if (wants("preset")) testPresets();
     if (wants("factorypresets")) testFactoryPresets();
+    if (wants("editor")) testEditorLifecycle();
     if (wants("integration")) testIntegration();
 
     std::printf("\n------------------------------------------------------------\n");
