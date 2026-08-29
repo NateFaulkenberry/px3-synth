@@ -863,8 +863,9 @@
         "knobSize": 54,
         "featureKnobSize": 77,
         "choiceWidth": 92,
-        "toggleWidth": 68,
+        "toggleWidth": 46,
         "toggleHeight": 20,
+        "toggleFontSize": 9.0,
         "choiceHeight": 22,
         "labelHeight": 14,
         "readoutHeight": 15,
@@ -910,12 +911,11 @@
               "size": "auto"
             }
           },
-          "row1": { "height": "7%", "gap": 2 },
-          "row2": { "height": "7%", "gap": 2 },
-          "row3": { "height": "10%", "gap": 2 },
-          "row4": { "height": "24%", "gap": 5, "justifyContent": "space-between" },
-          "row5": { "height": "28%", "gap": 5, "justifyContent": "space-between" },
-          "row6": { "height": "24%", "gap": 2 }
+          "row1": { "height": "4%", "gap": 2 },
+          "row2": { "height": "11%", "gap": 3 },
+          "row3": { "height": "25%", "gap": 5, "justifyContent": "space-between" },
+          "row4": { "height": "30%", "gap": 5, "justifyContent": "space-between" },
+          "row5": { "height": "26%", "gap": 2 }
         }
       }
     },
@@ -931,8 +931,9 @@
         "knobSize": 54,
         "featureKnobSize": 77,
         "choiceWidth": 92,
-        "toggleWidth": 68,
+        "toggleWidth": 46,
         "toggleHeight": 20,
+        "toggleFontSize": 9.0,
         "choiceHeight": 22,
         "labelHeight": 14,
         "readoutHeight": 15,
@@ -974,12 +975,11 @@
               "size": "auto"
             }
           },
-          "row1": { "height": "7%", "gap": 2 },
-          "row2": { "height": "7%", "gap": 2 },
-          "row3": { "height": "10%", "gap": 2 },
-          "row4": { "height": "24%", "gap": 5, "justifyContent": "space-between" },
-          "row5": { "height": "28%", "gap": 5, "justifyContent": "space-between" },
-          "row6": { "height": "24%", "gap": 2 }
+          "row1": { "height": "4%", "gap": 2 },
+          "row2": { "height": "11%", "gap": 3 },
+          "row3": { "height": "25%", "gap": 5, "justifyContent": "space-between" },
+          "row4": { "height": "30%", "gap": 5, "justifyContent": "space-between" },
+          "row5": { "height": "26%", "gap": 2 }
         }
       }
     },

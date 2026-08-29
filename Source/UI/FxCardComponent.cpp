@@ -255,6 +255,12 @@ void FxCardComponent::setUIConfig(std::shared_ptr<const UIConfig> config)
             entry.label->setColour(juce::Label::textColourId, labelColour);
             entry.label->setFont(juce::FontOptions(labelFont));
         }
+
+        const auto toggleFont = uiConfig->getFloat("cards." + styleKey + ".controls.toggleFontSize", 11.5f);
+        for (auto& entry : toggles)
+        {
+            entry.button->setFontSize(toggleFont);
+        }
     }
 
     // cardInner parses its rows in resized(), so a live config reload has to

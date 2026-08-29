@@ -8981,7 +8981,7 @@ void testDoom()
 
 
     {
-        // DOOM and LUCY pack four toggles and three dropdowns onto single lines.
+        // DOOM and LUCY pack six toggles and three dropdowns onto single lines.
         // At four cards across the grid that is tight, and a control a few
         // pixels too wide silently wraps the row onto a second line instead of
         // failing - which is how the layout drifts without anyone noticing.
@@ -9011,7 +9011,7 @@ void testDoom()
             const auto toggleWidth = config->getFloat("cards." + key + ".controls.toggleWidth", 68.0f);
             const auto choiceWidth = config->getFloat("cards." + key + ".controls.choiceWidth", 92.0f);
 
-            const std::vector<float> toggles(4, toggleWidth);
+            const std::vector<float> toggles(6, toggleWidth);
             const std::vector<float> choices(3, choiceWidth);
 
             if (px3::ui::wrappedLineCount(toggles, rowGap, rowWidth) > 1)
@@ -9025,7 +9025,7 @@ void testDoom()
         }
 
         check("FxCard_DoomAndLucyRowsFitOnOneLine", wrapped.isEmpty(),
-              wrapped.isEmpty() ? "4 toggles and 3 dropdowns fit a "
+              wrapped.isEmpty() ? "6 toggles and 3 dropdowns fit a "
                                       + juce::String(static_cast<int>(rowWidth)) + "px card row"
                                 : "wrapping: " + wrapped.joinIntoString(", "));
     }

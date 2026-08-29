@@ -9,6 +9,12 @@ ToggleChipButton::ToggleChipButton()
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
 }
 
+void ToggleChipButton::setFontSize(float size)
+{
+    fontSize = juce::jlimit(6.0f, 20.0f, size);
+    repaint();
+}
+
 void ToggleChipButton::setAccentColour(juce::Colour colour)
 {
     accent = colour;
@@ -52,12 +58,15 @@ void ToggleChipButton::paintButton(juce::Graphics& g,
                                : juce::Colour::fromRGB(232, 232, 232).withAlpha(enabled ? 1.0f : 0.6f);
 
     g.setColour(textColour);
-    g.setFont(juce::FontOptions(11.5f));
+    g.setFont(juce::FontOptions(fontSize));
     const auto stateLabel = on ? onLabel : offLabel;
     const auto text = stateLabel.isNotEmpty() ? stateLabel : getButtonText();
 
-    g.drawText(text, area.reduced(6.0f, 0.0f).toNearestInt(),
-               juce::Justification::centred, true);
+    // Fitted rather than plain drawText: these chips are packed six to a row on
+    // the busier cards, and a caption that does not fit should shrink rather
+    // than silently lose its last characters.
+    g.drawFittedText(text, area.reduced(4.0f, 0.0f).toNearestInt(),
+                     juce::Justification::centred, 1, 0.75f);
 }
 
 } // namespace px3::ui

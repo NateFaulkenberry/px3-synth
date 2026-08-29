@@ -22,6 +22,10 @@ public:
 
     void setAccentColour(juce::Colour colour);
 
+    // Cards that pack many chips into one row need a smaller face than the
+    // default. Set per card from cards.<key>.controls.toggleFontSize.
+    void setFontSize(float size);
+
     // Distinct text per state, so the chip says which state it is IN rather
     // than leaving the fill colour to carry that alone.
     void setStateLabels(juce::String onText, juce::String offText);
@@ -34,6 +38,7 @@ private:
     static constexpr float kCornerRadius = 7.0f;
 
     juce::Colour accent { juce::Colour::fromRGB(120, 200, 255) };
+    float fontSize { 11.5f };
     juce::String onLabel;
     juce::String offLabel;
 };

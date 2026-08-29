@@ -3186,17 +3186,16 @@ void PX3SynthAudioProcessorEditor::buildDoomCard()
 
     // Two channels, so two rows of state before the knobs: which channel is
     // running, and the three global switches.
-    // Four state toggles on one line, then the three mode selectors on one
-    // line. Labels are short because the card is one of four across the grid -
-    // at this width a longer caption wraps the row onto a second line.
+    // Every state toggle on one line, then the three mode selectors on another.
+    // Six chips in a card that is one of four across the grid is tight, so the
+    // captions are short and the chip font is set smaller for this card.
     card->addToggleRow({ { "loopActive", "LOOPER", "LISTEN", "Play the captured micro-loop, or keep listening" },
                          { "wetActive", "WET ON", "WET OFF", "Engage the wet channel" },
+                         { "freeze", "FROZEN", "FREEZE", "Freeze the wet channel and repeat it" },
                          { "loopHalf", "HALF", "FULL", "Halve the micro-loop length" },
                          { "clockSmooth", "SMOOTH", "STEPPED",
-                           "Sweep the clock continuously instead of in harmonised steps" } });
-
-    card->addToggleRow({ { "freeze", "FROZEN", "FREEZE", "Freeze the wet channel and repeat it" },
-                         { "crossSource", "X: CHANNEL", "X: INPUT",
+                           "Sweep the clock continuously instead of in harmonised steps" },
+                         { "crossSource", "X: CH", "X: IN",
                            "Modulate from your playing, or let each channel modulate the other" } });
 
     card->addChoiceRow({ { "loopMode", "LOOP", "Micro-looper mode",
@@ -3305,12 +3304,11 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
     card->addToggleRow({ { "freeze", "FROZEN", "FREEZE", "Freeze the spectrum" },
                          { "freezeSlushy", "SLUSHY", "SOLID",
                            "Let the freeze keep updating from what you play" },
+                         { "gate", "GATE ON", "GATE OFF", "Silence anything below the cutoff" },
                          { "verbPost", "V-POST", "V-PRE",
                            "Reverb after the chain, or in front of it feeding the loss" },
                          { "filterInvert", "REJECT", "PASS",
-                           "Keep the band, or keep everything but the band" } });
-
-    card->addToggleRow({ { "gate", "GATE ON", "GATE OFF", "Silence anything below the cutoff" },
+                           "Keep the band, or keep everything but the band" },
                          { "slow", "SLOW ON", "SLOW OFF",
                            "Bigger, darker, slower, and with more latency" } });
 
