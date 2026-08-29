@@ -1349,7 +1349,12 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     topMenuBar = std::make_unique<TopMenuBar>();
 
-    topMenuBar->setOnPresetPrevious([this]()
+    // The arrows step through actual presets. INIT heads the browser list
+    // because it is what you reach for to start again, but stepping onto it
+    // with the arrows would put the default state in the middle of an audition.
+    auto isAuditionable = [](const PresetManager::PresetRecord& record) { return ! record.isInit; };
+
+    topMenuBar->setOnPresetPrevious([this, isAuditionable]()
     {
         if (presetFiltered.empty())
         {
@@ -1358,7 +1363,14 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
         if (!hasCurrentPreset)
         {
-            applyPresetRecord(presetFiltered.front());
+            for (const auto& record : presetFiltered)
+            {
+                if (isAuditionable(record))
+                {
+                    applyPresetRecord(record);
+                    return;
+                }
+            }
             return;
         }
 
@@ -1372,11 +1384,19 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
             }
         }
 
-        const auto next = (currentIndex - 1 + static_cast<int>(presetFiltered.size())) % static_cast<int>(presetFiltered.size());
-        applyPresetRecord(presetFiltered[static_cast<std::size_t>(next)]);
+        const auto count = static_cast<int>(presetFiltered.size());
+        for (int step = 1; step <= count; ++step)
+        {
+            const auto next = ((currentIndex - step) % count + count) % count;
+            if (isAuditionable(presetFiltered[static_cast<std::size_t>(next)]))
+            {
+                applyPresetRecord(presetFiltered[static_cast<std::size_t>(next)]);
+                return;
+            }
+        }
     });
 
-    topMenuBar->setOnPresetNext([this]()
+    topMenuBar->setOnPresetNext([this, isAuditionable]()
     {
         if (presetFiltered.empty())
         {
@@ -1385,7 +1405,14 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
         if (!hasCurrentPreset)
         {
-            applyPresetRecord(presetFiltered.front());
+            for (const auto& record : presetFiltered)
+            {
+                if (isAuditionable(record))
+                {
+                    applyPresetRecord(record);
+                    return;
+                }
+            }
             return;
         }
 
@@ -1399,8 +1426,16 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
             }
         }
 
-        const auto next = (currentIndex + 1) % static_cast<int>(presetFiltered.size());
-        applyPresetRecord(presetFiltered[static_cast<std::size_t>(next)]);
+        const auto count = static_cast<int>(presetFiltered.size());
+        for (int step = 1; step <= count; ++step)
+        {
+            const auto next = (currentIndex + step) % count;
+            if (isAuditionable(presetFiltered[static_cast<std::size_t>(next)]))
+            {
+                applyPresetRecord(presetFiltered[static_cast<std::size_t>(next)]);
+                return;
+            }
+        }
     });
 
     topMenuBar->setOnPresetName([this]() { openPresetBrowser(); });

@@ -35,6 +35,8 @@ public:
         PresetMetadata metadata;
         juce::String pluginVersion;
         bool isFactory { false };
+        // The synthetic first row of the browser: the default state, not a file.
+        bool isInit { false };
         bool isFavorite { false };
         int presetVersion { currentPresetFormatVersion };
         juce::int64 modifiedTimeMs { 0 };
@@ -58,6 +60,10 @@ public:
     std::vector<PresetRecord> queryPresets(const Query& query) const;
 
     bool loadPreset(const PresetRecord& preset, juce::String& error);
+    // Restores the state the plugin loads with. Nothing is read from disk.
+    bool loadInitState(juce::String& error);
+    // The one place the label lives. INIT is not a preset and has no file.
+    static const juce::String& initPresetName();
     bool loadPresetFile(const juce::File& file, juce::String& error);
 
     bool saveUserPreset(const PresetMetadata& metadata,
@@ -78,7 +84,8 @@ public:
                                       juce::String& error,
                                       int* outSerializedBytes = nullptr);
 
-    bool createInitPresetIfMissing(juce::String& error);
+    juce::ValueTree initPresetTree(juce::String& error) const;
+    void removeLegacyInitPreset() const;
 
     const PresetRecord* findByFile(const juce::File& file) const;
 

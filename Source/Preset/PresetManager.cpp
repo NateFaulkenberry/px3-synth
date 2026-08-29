@@ -28,6 +28,14 @@ const juce::Identifier kAssetsId("ASSETS");
 const juce::String kPresetExtension(PresetManager::presetFileExtension);
 }
 
+const juce::String& PresetManager::initPresetName()
+{
+    // Written with the dashes because it is what the user sees, in the tab and
+    // at the top of the browser, and it is not the name of anything on disk.
+    static const juce::String name { "- INIT -" };
+    return name;
+}
+
 PresetManager::PresetManager(PX3SynthAudioProcessor& processorIn)
     : processor(processorIn)
 {
@@ -94,6 +102,20 @@ std::vector<PresetManager::PresetRecord> PresetManager::queryPresets(const Query
     const auto search = query.searchText.toLowerCase().trim();
     const auto category = normalizeCategory(query.category);
 
+    // INIT leads the list. It is not indexed with the presets because it is not
+    // one - it has no file, no category and no author - but it is the thing you
+    // reach for to start again, so it belongs at the top rather than nowhere.
+    // It is a state, so a favourites view and a search that does not name it
+    // both leave it out.
+    if (! query.favoritesOnly && (search.isEmpty() || initPresetName().toLowerCase().contains(search)))
+    {
+        PresetRecord init;
+        init.metadata.name = initPresetName();
+        init.metadata.description = "The state the plugin loads with.";
+        init.isInit = true;
+        result.push_back(init);
+    }
+
     for (const auto& preset : indexedPresets)
     {
         if (!query.includeFactory && preset.isFactory)
@@ -159,6 +181,12 @@ std::vector<PresetManager::PresetRecord> PresetManager::queryPresets(const Query
 
 bool PresetManager::loadPreset(const PresetRecord& preset, juce::String& error)
 {
+    // INIT has no file to read: it is the default state, restored from memory.
+    if (preset.isInit)
+    {
+        return loadInitState(error);
+    }
+
     return loadPresetFile(preset.file, error);
 }
 
@@ -455,31 +483,29 @@ bool PresetManager::dumpCurrentStateToPresetFile(const juce::File& destinationFi
     return true;
 }
 
-bool PresetManager::createInitPresetIfMissing(juce::String& error)
+// The state the plugin starts in. Built in memory and never written anywhere:
+// INIT is not a preset, it is the default the instrument loads with, and giving
+// it a file meant it also got a category of its own and a row in the browser
+// alongside sounds somebody actually designed.
+juce::ValueTree PresetManager::initPresetTree(juce::String& error) const
 {
-    const auto initFile = getFactoryPresetRootDir().getChildFile("INIT").withFileExtension(kPresetExtension);
-    if (initFile.existsAsFile())
-    {
-        return true;
-    }
-
     PresetMetadata md;
-    md.name = "INIT";
-    md.category = "INIT";
+    md.name = initPresetName();
+    md.category = initPresetName();
     md.author = "P(X3)";
-    md.description = "Default initialized state.";
+    md.description = "The state the plugin loads with.";
 
     auto tree = buildPresetTreeFromCurrentState(md, true, error);
     if (!tree.isValid())
     {
-        return false;
+        return {};
     }
 
     auto state = tree.getChildWithName(kPluginStateId);
     if (!state.isValid())
     {
-        error = "Failed to build INIT preset: missing plugin state node.";
-        return false;
+        error = "Failed to build the INIT state: missing plugin state node.";
+        return {};
     }
 
     // Canonical INIT payload captured from /INIT.px3preset in the repository.
@@ -615,12 +641,40 @@ bool PresetManager::createInitPresetIfMissing(juce::String& error)
     vibeState.setProperty("seed", 1337, nullptr);
     state.addChild(vibeState, -1, nullptr);
 
-    if (!writePresetFile(initFile, tree, error))
+    return tree;
+}
+
+bool PresetManager::loadInitState(juce::String& error)
+{
+    const auto tree = initPresetTree(error);
+    if (! tree.isValid())
     {
         return false;
     }
 
-    return true;
+    const auto state = tree.getChildWithName(kPluginStateId);
+    if (! state.isValid())
+    {
+        error = "The INIT state has no plugin state node.";
+        return false;
+    }
+
+    return processor.applyParameterStateTree(state, &error, false);
+}
+
+// Anyone who ran an earlier build has an INIT.px3preset sitting in a factory
+// category of its own. It is not a preset and should never have been a file, so
+// it is removed rather than left to keep appearing in the browser.
+void PresetManager::removeLegacyInitPreset() const
+{
+    const auto root = getFactoryPresetRootDir();
+    root.getChildFile("INIT").withFileExtension(kPresetExtension).deleteFile();
+
+    const auto initCategoryDir = root.getChildFile("INIT");
+    if (initCategoryDir.isDirectory())
+    {
+        initCategoryDir.deleteRecursively();
+    }
 }
 
 const PresetManager::PresetRecord* PresetManager::findByFile(const juce::File& file) const
@@ -753,10 +807,7 @@ bool PresetManager::ensureDirectoryLayout(juce::String& error) const
 
 bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
 {
-    if (!createInitPresetIfMissing(error))
-    {
-        return false;
-    }
+    removeLegacyInitPreset();
 
     // The library itself lives in FactoryPresets.cpp - that is where a sound
     // designer looks, and it keeps the writing of preset files separate from
@@ -799,7 +850,7 @@ bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
         for (const auto& stale : getFactoryPresetRootDir().findChildFiles(juce::File::findFiles, true,
                                                                           "*" + kPresetExtension))
         {
-            if (stale.getFileNameWithoutExtension() != "INIT")
+            if (true)
             {
                 stale.deleteFile();
             }

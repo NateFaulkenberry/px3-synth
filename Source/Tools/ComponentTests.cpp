@@ -12230,6 +12230,81 @@ void testFactoryPresets()
     suite("FACTORY PRESETS");
 
     {
+        // INIT is the state the plugin loads with, not a preset. It used to be
+        // written to disk as INIT.px3preset in a factory category called INIT,
+        // which gave the browser a category containing one entry and listed the
+        // default alongside sounds somebody had designed. It has no file now.
+        PX3SynthAudioProcessor processor;
+        PresetManager manager(processor);
+        juce::String error;
+
+        // A leftover from an earlier build, to prove it gets cleaned up.
+        const auto factoryRoot = manager.getFactoryPresetRootDir();
+        const auto legacyDir = factoryRoot.getChildFile("INIT");
+        legacyDir.createDirectory();
+        const auto legacyFile = legacyDir.getChildFile("INIT.px3preset");
+        legacyFile.replaceWithText("<PX3_PRESET/>");
+        const auto legacyFlat = factoryRoot.getChildFile("INIT.px3preset");
+        legacyFlat.replaceWithText("<PX3_PRESET/>");
+
+        manager.initialise(error);
+
+        check("Preset_InitIsNeverWrittenToDisk",
+              ! legacyFile.existsAsFile() && ! legacyFlat.existsAsFile() && ! legacyDir.isDirectory(),
+              "after initialise: INIT dir " + juce::String(legacyDir.isDirectory() ? "still there" : "gone")
+                  + ", INIT file " + juce::String(legacyFile.existsAsFile() ? "still there" : "gone"));
+
+        // No preset file anywhere may claim the INIT category either.
+        juce::StringArray offenders;
+        for (const auto& file : factoryRoot.findChildFiles(juce::File::findFiles, true, "*.px3preset"))
+        {
+            if (file.getFileNameWithoutExtension().equalsIgnoreCase("INIT")
+                || file.getParentDirectory().getFileName().equalsIgnoreCase("INIT"))
+            {
+                offenders.add(file.getFullPathName());
+            }
+        }
+        check("Preset_NoFactoryCategoryIsCalledInit", offenders.isEmpty(),
+              offenders.isEmpty() ? "the factory tree has no INIT file and no INIT category"
+                                  : offenders.joinIntoString(", "));
+
+        // Held in a local: getAllCategories returns by value, so begin() and
+        // end() taken from two separate calls are iterators into two different
+        // temporaries and comparing them is meaningless.
+        const auto categories = manager.getAllCategories();
+        check("Preset_InitIsNotInTheCategoryList",
+              std::find(categories.begin(), categories.end(), juce::String("INIT")) == categories.end(),
+              "categories: " + juce::StringArray(categories.data(), (int) categories.size())
+                                   .joinIntoString(", "));
+
+        // ...but it is the first thing offered in the browser.
+        PresetManager::Query query;
+        const auto listed = manager.queryPresets(query);
+        check("Preset_InitIsTheFirstRowOfTheBrowser",
+              ! listed.empty() && listed.front().isInit
+                  && listed.front().metadata.name == "- INIT -",
+              listed.empty() ? "the browser listed nothing"
+                             : "first row is \"" + listed.front().metadata.name + "\", "
+                                   + juce::String(listed.size()) + " rows in total");
+
+        // And loading it restores the default state from memory.
+        {
+            setParam(processor, "osc1MacroA", 0.9f);
+            const auto moved = getParamValue(processor, "osc1MacroA");
+
+            PresetManager::PresetRecord init;
+            init.isInit = true;
+            juce::String loadError;
+            const auto loaded = manager.loadPreset(init, loadError);
+
+            check("Preset_LoadingInitRestoresTheDefaultState",
+                  loaded && std::abs(getParamValue(processor, "osc1MacroA") - moved) > 0.1f,
+                  loaded ? "osc1MacroA " + fmt(moved, 3) + " -> " + fmt(getParamValue(processor, "osc1MacroA"), 3)
+                         : "load failed: " + loadError);
+        }
+    }
+
+    {
         // Every effect defaults to ENABLED, and a factory preset starts from
         // the plugin's defaults and only overrides what it lists - so a preset
         // that says nothing about the FX ships with all eight of them running.
