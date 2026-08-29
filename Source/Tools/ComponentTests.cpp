@@ -13506,6 +13506,55 @@ void testEditorLifecycle()
             const auto keysStillHitTest =
                 keys != nullptr && keys->hitTest(keys->getWidth() / 2, area.getCentreY());
 
+            // The headroom must be INVISIBLE. It is transparent, so whatever is
+            // behind it has to render exactly as it would if the keyboard had
+            // never been grown - and it did not: the editor's performance strip
+            // took its bounds from the keyboard COMPONENT, so growing the
+            // component dragged that gradient and its white outline up into the
+            // headroom as a stray panel above the keys.
+            //
+            // Rendered twice, with and without the headroom, and the region
+            // above the keys compared pixel for pixel. The keys themselves do
+            // not move: only the component's top edge does.
+            if (keys != nullptr && headroom > 0)
+            {
+                const auto keysTopInEditor = keys->getY() + keys->keyboardArea().getY();
+                const auto probe = juce::Rectangle<int>(keys->getX(),
+                                                        keysTopInEditor - headroom,
+                                                        keys->getWidth(),
+                                                        headroom);
+
+                auto renderAbove = [&](int sparkHeadroom)
+                {
+                    keys->setSparkHeadroom(sparkHeadroom);
+                    editor->resized();
+                    return editor->createComponentSnapshot(probe);
+                };
+
+                const auto withHeadroom = renderAbove(headroom);
+                const auto withoutHeadroom = renderAbove(0);
+                keys->setSparkHeadroom(headroom);
+                editor->resized();
+
+                auto differing = 0;
+                for (int y = 0; y < withHeadroom.getHeight(); ++y)
+                {
+                    for (int x = 0; x < withHeadroom.getWidth(); ++x)
+                    {
+                        if (withHeadroom.getPixelAt(x, y) != withoutHeadroom.getPixelAt(x, y))
+                        {
+                            ++differing;
+                        }
+                    }
+                }
+
+                const auto total = juce::jmax(1, withHeadroom.getWidth() * withHeadroom.getHeight());
+                check("Keyboard_SparkHeadroomDrawsNothingOfItsOwn", differing == 0,
+                      juce::String(differing) + " of " + juce::String(total)
+                          + " pixels above the keys differ between headroom "
+                          + juce::String(headroom) + " and headroom 0");
+            }
+
             check("Keyboard_SparksHaveHeadroomAboveTheKeys",
                   headroomIsAbove && headroomPassesClicksThrough && keysStillHitTest,
                   juce::String(headroom) + "px of headroom above a "

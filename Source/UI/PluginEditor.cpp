@@ -1822,7 +1822,13 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
 
     if (performanceControlsArea.getWidth() > 0 && pianoKeyboard.getBounds().getWidth() > 0)
     {
-        auto performanceStrip = performanceControlsArea.getUnion(pianoKeyboard.getBounds()).toFloat();
+        // The KEYS, not the keyboard component. The component is taller than
+        // the instrument it draws - it carries transparent headroom above the
+        // keys so the sparks are not clipped - and taking its raw bounds here
+        // dragged this gradient and its outline up into that headroom, where it
+        // read as a stray panel floating above the keyboard.
+        const auto keys = pianoKeyboard.keyboardArea() + pianoKeyboard.getPosition();
+        auto performanceStrip = performanceControlsArea.getUnion(keys).toFloat();
         juce::ColourGradient stripGradient(juce::Colour::fromRGBA(56, 88, 118, 72),
                                            performanceStrip.getX(),
                                            performanceStrip.getY(),
