@@ -4103,7 +4103,11 @@ int main(int argc, char* argv[])
             { "osc1 FX send",        "mix.osc1.fxSend", 0.0f, 1.0f },
             { "FX send gain",        "fxSendGain",     0.0f,  1.0f },
             { "FX return gain",      "fxReturnGain",   0.0f,  1.0f },
-            { "FX return pan",       "fxReturnPan",   -1.0f,  1.0f },
+            // The parameter is registered as "mix.fx.pan"; "fxReturnPan" is the
+            // C++ member name, not the ID. Sweeping an id that does not exist
+            // measured nothing and reported a flat 0.000000 delta, so this row
+            // had been passing without testing anything.
+            { "FX return pan",       "mix.fx.pan",    -1.0f,  1.0f },
             { "master gain",         "masterGain",     0.0f,  1.0f },
         };
 

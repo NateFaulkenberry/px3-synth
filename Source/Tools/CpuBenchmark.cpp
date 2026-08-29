@@ -21,8 +21,21 @@
 
 namespace
 {
-constexpr double kSampleRate = 48000.0;
-constexpr int kBlockSize = 512;
+// Overridable so one binary can report the sample-rate / block-size matrix a
+// release audit needs. Compile-time constants meant every figure came from a
+// single 48 kHz / 512 configuration, which hides the fixed per-block overhead
+// that dominates at small buffers.
+const double kSampleRate = []
+{
+    const auto v = juce::SystemStats::getEnvironmentVariable("PX3_BENCH_RATE", "48000").getDoubleValue();
+    return v > 0.0 ? v : 48000.0;
+}();
+
+const int kBlockSize = []
+{
+    const auto v = juce::SystemStats::getEnvironmentVariable("PX3_BENCH_BLOCK", "512").getIntValue();
+    return v > 0 ? v : 512;
+}();
 
 // Enough blocks that scheduler noise averages out, repeated so a single
 // unlucky sweep cannot set the reported figure.

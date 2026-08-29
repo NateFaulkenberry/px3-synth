@@ -871,14 +871,11 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureEffectKnob(moodSpreadKnob, moodSpreadLabel, "SPREAD", audioProcessor.getMoodSpreadParam());
     configureEffectKnob(moodDegradeKnob, moodDegradeLabel, "DEGRADE", audioProcessor.getMoodDegradeParam());
 
-    // isaacTextureLabel.setVisible(true);
 
     // Compact labels and tooltips keep delay controls readable in narrow layouts.
     isaacTextureLabel.getProperties().set("compactLabel", true);
     delayTimeLabel.getProperties().set("compactLabel", true);
     delayFeedbackLabel.getProperties().set("compactLabel", true);
-    // isaacTextureLabel.setTooltip("INTENSITY");
-    // isaacTextureKnob.setTooltip("INTENSITY");
     delayFeedbackLabel.setTooltip("FEEDBACK");
     delayFeedbackKnob.setTooltip("FEEDBACK");
 
@@ -1340,12 +1337,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     attachButton(audioProcessor.getLfoEnabledParam(), lfoBypassButton);
 
     // MIDI status bar is temporarily disabled.
-    // midiStatusLabel.setText("MIDI In: waiting for note...", juce::dontSendNotification);
-    // midiStatusLabel.setJustificationType(juce::Justification::centred);
-    // midiStatusLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(236, 172, 88));
-    // midiStatusLabel.setFont(juce::FontOptions(14.0f));
-    // midiStatusLabel.setInterceptsMouseClicks(false, false);
-    // addAndMakeVisible(midiStatusLabel);
 
     topMenuBar = std::make_unique<TopMenuBar>();
 
@@ -1896,7 +1887,6 @@ void PX3SynthAudioProcessorEditor::resized()
     // the work; making it explicit means the panels get all of any extra
     // height, at the default size and on resize.
     constexpr auto keyboardHeight = 106;
-    // const auto statusHeight = 36;
     const auto sectionGap = uiConfig != nullptr ? uiConfig->getInt("editor.layout.sectionGap", 10) : 10;
 
     headerArea = bounds.removeFromTop(headerHeight);
@@ -1952,9 +1942,6 @@ void PX3SynthAudioProcessorEditor::resized()
 
     const auto desiredControlsHeight = juce::jmax(controlsHeight, bounds.getHeight() - keyboardHeight);
     controlsArea = bounds.removeFromTop(juce::jlimit(0, bounds.getHeight(), desiredControlsHeight));
-    // bounds.removeFromTop(sectionGap);
-    // midiStatusArea = bounds.removeFromBottom(statusHeight);
-    // bounds.removeFromBottom(sectionGap);
 
     // No horizontal inset: the header, the panels and the keyboard all derive
     // from the same `bounds`, and a 4px reduce here was the only thing making
@@ -1965,7 +1952,6 @@ void PX3SynthAudioProcessorEditor::resized()
 
     performanceControls.setBounds(performanceControlsArea);
     pianoKeyboard.setBounds(keyboardRow);
-    // midiStatusLabel.setBounds(midiStatusArea.withTrimmedLeft(180).withTrimmedRight(180));
 
     // Vertical inset only. The horizontal 8 here was the reason the cards sat
     // inboard of the top nav: the header strip is drawn at the full width of
@@ -3025,9 +3011,6 @@ void PX3SynthAudioProcessorEditor::refreshGranularModeUI()
             break;
     }
 
-    // isaacTextureLabel.setText("INTENSITY", juce::dontSendNotification);
-    // isaacTextureLabel.setTooltip("INTENSITY");
-    // isaacTextureKnob.setTooltip("INTENSITY");
     delayFeedbackLabel.setTooltip("FEEDBACK");
     delayFeedbackKnob.setTooltip("FEEDBACK");
     delayTimeLabel.setTooltip(delayTimeLabel.getText());

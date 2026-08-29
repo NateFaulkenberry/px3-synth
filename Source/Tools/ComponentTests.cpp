@@ -8084,7 +8084,10 @@ Result runDoom(const DoomSettings& settings,
                          : 0.0f;
                 break;
             case Source::noise:
-                in = 0.3f * (static_cast<float>((i * 1103515245 + 12345) & 0xFFFF) / 32768.0f - 1.0f);
+                // Unsigned: signed overflow is undefined, and this multiply
+                // overflows int by design - UBSan flagged it in both copies.
+                in = 0.3f * (static_cast<float>((static_cast<uint32_t>(i) * 1103515245u + 12345u) & 0xFFFFu)
+                             / 32768.0f - 1.0f);
                 break;
         }
         phase += increment;
@@ -9694,7 +9697,10 @@ Result runLucy(const LucySettings& settings,
                 break;
             }
             case Source::noise:
-                in = 0.3f * (static_cast<float>((i * 1103515245 + 12345) & 0xFFFF) / 32768.0f - 1.0f);
+                // Unsigned: signed overflow is undefined, and this multiply
+                // overflows int by design - UBSan flagged it in both copies.
+                in = 0.3f * (static_cast<float>((static_cast<uint32_t>(i) * 1103515245u + 12345u) & 0xFFFFu)
+                             / 32768.0f - 1.0f);
                 break;
         }
 

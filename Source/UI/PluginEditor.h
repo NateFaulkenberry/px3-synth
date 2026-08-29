@@ -307,7 +307,6 @@ private:
     juce::Rectangle<int> headerPlaceholderArea;
     juce::Rectangle<int> presetBarArea;
     juce::Rectangle<int> robSectionArea;
-    juce::Rectangle<int> midiStatusArea;
     juce::Rectangle<int> performanceControlsArea;
     // The one authoritative UI-side chain order. The signal-flow strip edits it,
     // the FX grid and the processor both follow it.
@@ -440,7 +439,6 @@ private:
     juce::Label lfoAmountValueLabel;
     juce::Label envAmountValueLabel;
     KnobLabel lfoAssignLabel;
-    KnobLabel midiStatusLabel;
     std::unique_ptr<OscPanel> oscPanel;
     std::unique_ptr<ModPanel> modPanel;
     // The OSC panel is hosted in a viewport so panels.osc can declare a fixed
