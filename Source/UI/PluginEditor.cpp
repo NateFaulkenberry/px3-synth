@@ -3186,16 +3186,16 @@ void PX3SynthAudioProcessorEditor::buildDoomCard()
 
     // Two channels, so two rows of state before the knobs: which channel is
     // running, and the three global switches.
-    // Every state toggle on one line, then the three mode selectors on another.
-    // Six chips in a card that is one of four across the grid is tight, so the
-    // captions are short and the chip font is set smaller for this card.
+    // Every state toggle in one block, three across, then the three mode
+    // selectors. The three-across limit is toggleMaxColumns in UIConfig, so the
+    // chips keep their proportions as the card resizes.
     card->addToggleRow({ { "loopActive", "LOOPER", "LISTEN", "Play the captured micro-loop, or keep listening" },
                          { "wetActive", "WET ON", "WET OFF", "Engage the wet channel" },
                          { "freeze", "FROZEN", "FREEZE", "Freeze the wet channel and repeat it" },
                          { "loopHalf", "HALF", "FULL", "Halve the micro-loop length" },
                          { "clockSmooth", "SMOOTH", "STEPPED",
                            "Sweep the clock continuously instead of in harmonised steps" },
-                         { "crossSource", "X: CH", "X: IN",
+                         { "crossSource", "CROSS: CHAN", "CROSS: INPUT",
                            "Modulate from your playing, or let each channel modulate the other" } });
 
     card->addChoiceRow({ { "loopMode", "LOOP", "Micro-looper mode",

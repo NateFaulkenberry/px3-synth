@@ -280,12 +280,28 @@ void FxCardComponent::layoutToggleRow(int rowIndex, const Row& row)
     const auto content = inner.rowContent(rowIndex);
     const auto rowWidth = static_cast<float>(juce::jmax(1, content.getWidth()));
 
-    const auto cellWidth = uiConfig != nullptr
-                               ? uiConfig->getFloat("cards." + styleKey + ".controls.toggleWidth", kDefaultToggleCell)
-                               : kDefaultToggleCell;
     const auto controlHeight = uiConfig != nullptr
                                    ? uiConfig->getInt("cards." + styleKey + ".controls.toggleHeight", kDefaultControlHeight)
                                    : kDefaultControlHeight;
+
+    // maxColumns pins how many chips may sit on one line. Expressed as a count
+    // rather than a pixel width because a width only holds at one card size:
+    // the grid is four cards across a resizable window, so a width tuned for
+    // one layout silently fits a different number of chips in another.
+    const auto maxColumns = uiConfig != nullptr
+                                ? uiConfig->getInt("cards." + styleKey + ".controls.toggleMaxColumns", 0)
+                                : 0;
+
+    auto cellWidth = uiConfig != nullptr
+                         ? uiConfig->getFloat("cards." + styleKey + ".controls.toggleWidth", kDefaultToggleCell)
+                         : kDefaultToggleCell;
+
+    if (maxColumns > 0)
+    {
+        // Each item carries `gap` as a margin on every side, so a line of n
+        // items occupies n * (width + 2 * gap).
+        cellWidth = juce::jmax(16.0f, rowWidth / static_cast<float>(maxColumns) - 2.0f * gap.left);
+    }
 
     const std::vector<float> widths(row.ids.size(), cellWidth);
     const auto gapWidth = gap.left + gap.right;
@@ -322,9 +338,20 @@ void FxCardComponent::layoutChoiceRow(int rowIndex, const Row& row)
     const auto content = inner.rowContent(rowIndex);
     const auto rowWidth = static_cast<float>(juce::jmax(1, content.getWidth()));
 
-    const auto cellWidth = uiConfig != nullptr
-                               ? uiConfig->getFloat("cards." + styleKey + ".controls.choiceWidth", kDefaultChoiceCell)
-                               : kDefaultChoiceCell;
+    // Same as the toggle row: a column count survives a resize where a pixel
+    // width does not.
+    const auto maxColumns = uiConfig != nullptr
+                                ? uiConfig->getInt("cards." + styleKey + ".controls.choiceMaxColumns", 0)
+                                : 0;
+
+    auto cellWidth = uiConfig != nullptr
+                         ? uiConfig->getFloat("cards." + styleKey + ".controls.choiceWidth", kDefaultChoiceCell)
+                         : kDefaultChoiceCell;
+
+    if (maxColumns > 0)
+    {
+        cellWidth = juce::jmax(16.0f, rowWidth / static_cast<float>(maxColumns) - 2.0f * gap.left);
+    }
     const auto labelHeight = uiConfig != nullptr
                                  ? uiConfig->getInt("cards." + styleKey + ".controls.labelHeight", kDefaultLabelHeight)
                                  : kDefaultLabelHeight;

@@ -8981,53 +8981,70 @@ void testDoom()
 
 
     {
-        // DOOM and LUCY pack six toggles and three dropdowns onto single lines.
-        // At four cards across the grid that is tight, and a control a few
-        // pixels too wide silently wraps the row onto a second line instead of
-        // failing - which is how the layout drifts without anyone noticing.
+        // DOOM and LUCY cap their toggle row at three across and put three
+        // dropdowns on one line. Both are pinned here because a control a few
+        // pixels too wide silently reflows instead of failing, which is how a
+        // layout drifts without anyone noticing.
         UIConfigManager manager;
         manager.setConfigFile(juce::File::getCurrentWorkingDirectory()
                                   .getChildFile("Source/UI/UIConfig.json"));
         manager.loadInitial();
         const auto config = manager.getConfig();
 
-        // The editor is 1320 wide; the grid is four columns with an 8px gap and
-        // a scrollbar gutter, and each card then has its own padding.
-        const auto columns = config->getInt("fx.grid.columns", 4);
-        const auto gap = config->getInt("fx.grid.gap", 8);
-        const auto contentWidth = 1320 - 14;
-        const auto cellWidth = (contentWidth - gap * (columns - 1)) / columns;
-        const auto rowWidth = static_cast<float>(cellWidth
-                                                 - 2 * config->getInt("cards.doom.cardInner.padding", 4)
-                                                 - 8);
-
         juce::StringArray wrapped;
-        for (const auto* card : { "doom", "lucy" })
+        auto rowWidth = 0.0f;
+
+        // Checked at three card widths, not one. toggleMaxColumns exists
+        // precisely so the answer does not depend on the window size.
+        for (const auto editorWidth : { 1100, 1320, 1800 })
         {
-            const juce::String key(card);
-            const auto rowGap = static_cast<float>(
-                config->getInt("cards." + key + ".cardInner.rows.row1.gap", 4));
+            const auto columns = config->getInt("fx.grid.columns", 4);
+            const auto gridGap = config->getInt("fx.grid.gap", 8);
+            const auto contentWidth = editorWidth - 14;
+            const auto cellWidth = (contentWidth - gridGap * (columns - 1)) / columns;
 
-            const auto toggleWidth = config->getFloat("cards." + key + ".controls.toggleWidth", 68.0f);
-            const auto choiceWidth = config->getFloat("cards." + key + ".controls.choiceWidth", 92.0f);
-
-            const std::vector<float> toggles(6, toggleWidth);
-            const std::vector<float> choices(3, choiceWidth);
-
-            if (px3::ui::wrappedLineCount(toggles, rowGap, rowWidth) > 1)
+            for (const auto* card : { "doom", "lucy" })
             {
-                wrapped.add(key + " toggles");
-            }
-            if (px3::ui::wrappedLineCount(choices, rowGap, rowWidth) > 1)
-            {
-                wrapped.add(key + " dropdowns");
+                const juce::String key(card);
+                rowWidth = static_cast<float>(cellWidth
+                                              - 2 * config->getInt("cards." + key + ".cardInner.padding", 4)
+                                              - 8);
+
+                const auto toggleGap = static_cast<float>(
+                    config->getInt("cards." + key + ".cardInner.rows.row1.gap", 2));
+                const auto maxColumns = config->getInt("cards." + key + ".controls.toggleMaxColumns", 0);
+
+                // The width the card will actually compute for a capped row.
+                const auto toggleWidth = maxColumns > 0
+                                             ? juce::jmax(16.0f, rowWidth / static_cast<float>(maxColumns)
+                                                                     - 2.0f * toggleGap)
+                                             : config->getFloat("cards." + key + ".controls.toggleWidth", 68.0f);
+
+                const std::vector<float> toggles(6, toggleWidth);
+                if (px3::ui::wrappedLineCount(toggles, toggleGap * 2.0f, rowWidth) != 2)
+                {
+                    wrapped.add(key + " toggles @" + juce::String(editorWidth));
+                }
+
+                const auto choiceGap = static_cast<float>(
+                    config->getInt("cards." + key + ".cardInner.rows.row2.gap", 3));
+                const auto choiceColumns = config->getInt("cards." + key + ".controls.choiceMaxColumns", 0);
+                const auto choiceWidth = choiceColumns > 0
+                                             ? juce::jmax(16.0f, rowWidth / static_cast<float>(choiceColumns)
+                                                                     - 2.0f * choiceGap)
+                                             : config->getFloat("cards." + key + ".controls.choiceWidth", 92.0f);
+                const std::vector<float> choices(3, choiceWidth);
+                if (px3::ui::wrappedLineCount(choices, choiceGap * 2.0f, rowWidth) > 1)
+                {
+                    wrapped.add(key + " dropdowns @" + juce::String(editorWidth));
+                }
             }
         }
 
-        check("FxCard_DoomAndLucyRowsFitOnOneLine", wrapped.isEmpty(),
-              wrapped.isEmpty() ? "6 toggles and 3 dropdowns fit a "
-                                      + juce::String(static_cast<int>(rowWidth)) + "px card row"
-                                : "wrapping: " + wrapped.joinIntoString(", "));
+        check("FxCard_DoomAndLucyRowsHoldTheirShapeAtAnyWidth", wrapped.isEmpty(),
+              wrapped.isEmpty() ? "6 toggles stay 3-across over 2 lines, and 3 dropdowns stay "
+                                  "on 1 line, at 1100/1320/1800px"
+                                : "reflowed: " + wrapped.joinIntoString(", "));
     }
 
     // ---- integration: state, presets, ordering -----------------------------
