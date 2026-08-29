@@ -98,6 +98,8 @@ set(PX3_SHARED_SOURCES
         Source/DSP/StftEngine.cpp
         Source/DSP/Doom.cpp
         Source/DSP/Lucy.cpp
+        Source/DSP/Chorus.cpp
+        Source/DSP/StereoSpread.cpp
         Source/UI/FxSignalFlow.cpp
         Source/UI/FxChainLayout.cpp
         Source/UI/BypassButton.cpp

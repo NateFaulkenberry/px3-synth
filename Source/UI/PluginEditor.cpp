@@ -1265,6 +1265,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     addAndMakeVisible(*mixPanel);
     buildDoomCard();
     buildLucyCard();
+    buildChorusCard();
+    buildStereoSpreadCard();
 
     fxPanel->onChainOrderChanged = [this](const px3::FxOrder& order)
     {
@@ -3133,10 +3135,26 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
         lucyCard->setActive(lucyEnabled);
     }
 
+    const auto chorusEnabled = audioProcessor.getChorusEnabledParam().get();
+    if (chorusCard != nullptr)
+    {
+        chorusCard->bypassButton().setToggleState(chorusEnabled, juce::dontSendNotification);
+        chorusCard->setActive(chorusEnabled);
+    }
+
+    const auto spreadEnabled = audioProcessor.getSpreadEnabledParam().get();
+    if (spreadCard != nullptr)
+    {
+        spreadCard->bypassButton().setToggleState(spreadEnabled, juce::dontSendNotification);
+        spreadCard->setActive(spreadEnabled);
+    }
+
     if (fxPanel != nullptr)
     {
         fxPanel->setSectionActive(px3::fxStageDoom, doomEnabled);
         fxPanel->setSectionActive(px3::fxStageLucy, lucyEnabled);
+        fxPanel->setSectionActive(px3::fxStageChorus, chorusEnabled);
+        fxPanel->setSectionActive(px3::fxStageStereoSpread, spreadEnabled);
     }
 }
 
@@ -3353,6 +3371,108 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
 
     lucyCard = card.get();
     fxPanel->addCard(px3::fxStageLucy, std::move(card));
+}
+
+void PX3SynthAudioProcessorEditor::buildChorusCard()
+{
+    auto card = std::make_unique<px3::ui::FxCardComponent>("chorus", "CHORUS");
+
+    card->addChoiceRow({ { "mode", "MODE", "Dimension mode, ensemble, or CE-style",
+                           audioProcessor.getChorusModeParam().choices } });
+
+    card->addKnobRow({ { "rate", "RATE", "Modulation rate" },
+                       { "depth", "DEPTH", "Modulation excursion" },
+                       { "width", "WIDTH", "Stereo expansion of the wet pair" },
+                       { "spread", "SPREAD", "Phase offset between the two delay paths" } });
+
+    card->addKnobRow({ { "tone", "TONE", "Warm against clear, on the wet path only" },
+                       { "lowCut", "LOW CUT", "Wet-path high-pass: what anchors the bass" },
+                       { "feedback", "FEEDBACK", "Colour; capped short of flanging" },
+                       { "character", "CHARACTER", "BBD emphasis, companding and bandwidth" },
+                       { "mix", "MIX", "Final dry against wet" } });
+
+    card->addFeatureKnobRow({ "amount", "AMOUNT", "Overall intensity" });
+
+    struct KnobAttachment { const char* id; juce::AudioParameterFloat* parameter; };
+    const std::array<KnobAttachment, 10> knobAttachments { {
+        { "amount", &audioProcessor.getChorusAmountParam() },
+        { "rate", &audioProcessor.getChorusRateParam() },
+        { "depth", &audioProcessor.getChorusDepthParam() },
+        { "width", &audioProcessor.getChorusWidthParam() },
+        { "spread", &audioProcessor.getChorusSpreadParam() },
+        { "tone", &audioProcessor.getChorusToneParam() },
+        { "lowCut", &audioProcessor.getChorusLowCutParam() },
+        { "feedback", &audioProcessor.getChorusFeedbackParam() },
+        { "character", &audioProcessor.getChorusCharacterParam() },
+        { "mix", &audioProcessor.getChorusMixParam() },
+    } };
+
+    for (const auto& attachment : knobAttachments)
+    {
+        auto* slider = card->knob(attachment.id);
+        jassert(slider != nullptr);
+        const auto& range = attachment.parameter->getNormalisableRange();
+        slider->setRange(range.start, range.end);
+        slider->setLookAndFeel(&knobLookAndFeel);
+        attachSlider(*attachment.parameter, *slider);
+    }
+
+    attachComboBox(audioProcessor.getChorusModeParam(), *card->choice("mode"));
+    attachButton(audioProcessor.getChorusEnabledParam(), card->bypassButton());
+
+    chorusCard = card.get();
+    fxPanel->addCard(px3::fxStageChorus, std::move(card));
+}
+
+void PX3SynthAudioProcessorEditor::buildStereoSpreadCard()
+{
+    auto card = std::make_unique<px3::ui::FxCardComponent>("stereoSpread", "SPREAD");
+
+    card->addChoiceRow({ { "mode", "MODE", "Widening strategy",
+                           audioProcessor.getSpreadModeParam().choices } });
+
+    card->addKnobRow({ { "width", "WIDTH", "Overall stereo expansion" },
+                       { "depth", "DEPTH", "Decorrelation depth" },
+                       { "center", "CENTER", "How strongly the middle is anchored" },
+                       { "tone", "TONE", "Tilt on the side signal only" } });
+
+    card->addKnobRow({ { "lowWidth", "LOW W", "Width permitted below the low crossover" },
+                       { "highWidth", "HIGH W", "Width in the top band" },
+                       { "lowFreq", "LOW XO", "Low crossover: below it, mono" },
+                       { "highFreq", "HIGH XO", "High crossover: above it, level rather than phase" },
+                       { "mix", "MIX", "Final dry against wet" } });
+
+    card->addFeatureKnobRow({ "amount", "AMOUNT", "Overall amount of spatial processing" });
+
+    struct KnobAttachment { const char* id; juce::AudioParameterFloat* parameter; };
+    const std::array<KnobAttachment, 10> knobAttachments { {
+        { "amount", &audioProcessor.getSpreadAmountParam() },
+        { "width", &audioProcessor.getSpreadWidthParam() },
+        { "depth", &audioProcessor.getSpreadDepthParam() },
+        { "center", &audioProcessor.getSpreadCenterParam() },
+        { "tone", &audioProcessor.getSpreadToneParam() },
+        { "lowWidth", &audioProcessor.getSpreadLowWidthParam() },
+        { "highWidth", &audioProcessor.getSpreadHighWidthParam() },
+        { "lowFreq", &audioProcessor.getSpreadLowFreqParam() },
+        { "highFreq", &audioProcessor.getSpreadHighFreqParam() },
+        { "mix", &audioProcessor.getSpreadMixParam() },
+    } };
+
+    for (const auto& attachment : knobAttachments)
+    {
+        auto* slider = card->knob(attachment.id);
+        jassert(slider != nullptr);
+        const auto& range = attachment.parameter->getNormalisableRange();
+        slider->setRange(range.start, range.end);
+        slider->setLookAndFeel(&knobLookAndFeel);
+        attachSlider(*attachment.parameter, *slider);
+    }
+
+    attachComboBox(audioProcessor.getSpreadModeParam(), *card->choice("mode"));
+    attachButton(audioProcessor.getSpreadEnabledParam(), card->bypassButton());
+
+    spreadCard = card.get();
+    fxPanel->addCard(px3::fxStageStereoSpread, std::move(card));
 }
 
 void PX3SynthAudioProcessorEditor::timerCallback()

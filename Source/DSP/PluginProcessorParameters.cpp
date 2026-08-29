@@ -356,6 +356,32 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucySpreadParam() const { 
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getLucyModeParam() const { return *lucyModeParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getLucyPacketsParam() const { return *lucyPacketsParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getLucySlopeParam() const { return *lucySlopeParam; }
+
+juce::AudioParameterBool& PX3SynthAudioProcessor::getChorusEnabledParam() const { return *chorusEnabledParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getChorusAmountParam() const { return *chorusAmountParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getChorusRateParam() const { return *chorusRateParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getChorusDepthParam() const { return *chorusDepthParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getChorusWidthParam() const { return *chorusWidthParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getChorusSpreadParam() const { return *chorusSpreadParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getChorusLowCutParam() const { return *chorusLowCutParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getChorusFeedbackParam() const { return *chorusFeedbackParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getChorusCharacterParam() const { return *chorusCharacterParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getChorusMixParam() const { return *chorusMixParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getChorusToneParam() const { return *chorusToneParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getChorusModeParam() const { return *chorusModeParam; }
+
+juce::AudioParameterBool& PX3SynthAudioProcessor::getSpreadEnabledParam() const { return *spreadEnabledParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadAmountParam() const { return *spreadAmountParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadWidthParam() const { return *spreadWidthParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadDepthParam() const { return *spreadDepthParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadCenterParam() const { return *spreadCenterParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadLowWidthParam() const { return *spreadLowWidthParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadHighWidthParam() const { return *spreadHighWidthParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadLowFreqParam() const { return *spreadLowFreqParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadHighFreqParam() const { return *spreadHighFreqParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadMixParam() const { return *spreadMixParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadToneParam() const { return *spreadToneParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getSpreadModeParam() const { return *spreadModeParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getLfoEnabledParam() const { return getLfoEnabledParam(0); }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getLfoEnabledParam(int lfoIndex) const
 {

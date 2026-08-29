@@ -448,6 +448,46 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                      juce::StringArray { "6 dB", "24 dB", "96 dB" },
                                                      1);
 
+    // ---- CHORUS ----------------------------------------------------------
+    // Dimension D-inspired. See docs/CHORUS_DSP_DESIGN.md.
+    chorusEnabledParam = new juce::AudioParameterBool("chorusEnabled", "Chorus Enabled", true);
+    // Zero by default, like reverbAmount: adding an effect must not change
+    // what existing patches sound like.
+    chorusAmountParam = new juce::AudioParameterFloat("chorusAmount", "Chorus Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    chorusRateParam = new juce::AudioParameterFloat("chorusRate", "Chorus Rate", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
+    chorusDepthParam = new juce::AudioParameterFloat("chorusDepth", "Chorus Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    chorusWidthParam = new juce::AudioParameterFloat("chorusWidth", "Chorus Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.75f);
+    chorusSpreadParam = new juce::AudioParameterFloat("chorusSpread", "Chorus Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    chorusLowCutParam = new juce::AudioParameterFloat("chorusLowCut", "Chorus Low Cut", juce::NormalisableRange<float>(0.0f, 1.0f), 0.3f);
+    chorusFeedbackParam = new juce::AudioParameterFloat("chorusFeedback", "Chorus Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    chorusCharacterParam = new juce::AudioParameterFloat("chorusCharacter", "Chorus Character", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    chorusMixParam = new juce::AudioParameterFloat("chorusMix", "Chorus Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    chorusToneParam = new juce::AudioParameterFloat("chorusTone", "Chorus Tone", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
+    chorusModeParam = new juce::AudioParameterChoice("chorusMode",
+                                                      "Chorus Mode",
+                                                      juce::StringArray { "DIM 1", "DIM 2", "DIM 3", "DIM 4",
+                                                                          "DIM 1+4", "DIM 2+4", "DIM 3+4",
+                                                                          "ENSEMBLE", "CE WARM" },
+                                                      1);
+
+    // ---- STEREO SPREAD ---------------------------------------------------
+    // See docs/STEREO_SPREAD_DSP_DESIGN.md.
+    spreadEnabledParam = new juce::AudioParameterBool("spreadEnabled", "Spread Enabled", true);
+    spreadAmountParam = new juce::AudioParameterFloat("spreadAmount", "Spread Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    spreadWidthParam = new juce::AudioParameterFloat("spreadWidth", "Spread Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
+    spreadDepthParam = new juce::AudioParameterFloat("spreadDepth", "Spread Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.4f);
+    spreadCenterParam = new juce::AudioParameterFloat("spreadCenter", "Spread Center", juce::NormalisableRange<float>(0.0f, 1.0f), 0.7f);
+    spreadLowWidthParam = new juce::AudioParameterFloat("spreadLowWidth", "Spread Low Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    spreadHighWidthParam = new juce::AudioParameterFloat("spreadHighWidth", "Spread High Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f);
+    spreadLowFreqParam = new juce::AudioParameterFloat("spreadLowFreq", "Spread Low Freq", juce::NormalisableRange<float>(0.0f, 1.0f), 0.55f);
+    spreadHighFreqParam = new juce::AudioParameterFloat("spreadHighFreq", "Spread High Freq", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    spreadMixParam = new juce::AudioParameterFloat("spreadMix", "Spread Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    spreadToneParam = new juce::AudioParameterFloat("spreadTone", "Spread Tone", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
+    spreadModeParam = new juce::AudioParameterChoice("spreadMode",
+                                                      "Spread Mode",
+                                                      juce::StringArray { "CLASSIC", "WIDE", "DEEP", "MONO SAFE" },
+                                                      0);
+
     reverbSizeParam = new juce::AudioParameterFloat("reverbSize", "Reverb Size", juce::NormalisableRange<float>(0.0f, 1.0f), 0.52f);
     reverbDecayParam = new juce::AudioParameterFloat("reverbDecay", "Reverb Decay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.48f);
     reverbDampingParam = new juce::AudioParameterFloat("reverbDamping", "Reverb Damping", juce::NormalisableRange<float>(0.0f, 1.0f), 0.46f);
@@ -657,6 +697,32 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(lucyModeParam);
     addParameter(lucyPacketsParam);
     addParameter(lucySlopeParam);
+
+    addParameter(chorusEnabledParam);
+    addParameter(chorusAmountParam);
+    addParameter(chorusRateParam);
+    addParameter(chorusDepthParam);
+    addParameter(chorusWidthParam);
+    addParameter(chorusSpreadParam);
+    addParameter(chorusLowCutParam);
+    addParameter(chorusFeedbackParam);
+    addParameter(chorusCharacterParam);
+    addParameter(chorusMixParam);
+    addParameter(chorusToneParam);
+    addParameter(chorusModeParam);
+
+    addParameter(spreadEnabledParam);
+    addParameter(spreadAmountParam);
+    addParameter(spreadWidthParam);
+    addParameter(spreadDepthParam);
+    addParameter(spreadCenterParam);
+    addParameter(spreadLowWidthParam);
+    addParameter(spreadHighWidthParam);
+    addParameter(spreadLowFreqParam);
+    addParameter(spreadHighFreqParam);
+    addParameter(spreadMixParam);
+    addParameter(spreadToneParam);
+    addParameter(spreadModeParam);
     addParameter(reverbSizeParam);
     addParameter(reverbDecayParam);
     addParameter(reverbDampingParam);
@@ -796,6 +862,8 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     moodComponent.prepare(sampleRate);
     doomComponent.prepare(sampleRate);
     lucyComponent.prepare(sampleRate);
+    chorusComponent.prepare(sampleRate);
+    stereoSpreadComponent.prepare(sampleRate);
     reverb.prepare(sampleRate);
 
     const auto busChannels = juce::jmax(kMixerSourceCount, getTotalNumOutputChannels());
@@ -1499,6 +1567,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     moodComponent.updateForBlock(currentMoodSettings());
     doomComponent.updateForBlock(currentDoomSettings());
     lucyComponent.updateForBlock(currentLucySettings());
+    chorusComponent.updateForBlock(currentChorusSettings());
+    stereoSpreadComponent.updateForBlock(currentStereoSpreadSettings());
     reverb.updateForBlock(currentReverbSettings(), buffer.getNumSamples());
     const auto fxOrder = getFxProcessingOrder();
     const auto fxSendGain = fxSendGainParam != nullptr
@@ -1786,6 +1856,14 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
                 case 5: // Lucy
                     lucyComponent.processSampleFrame(stageL, stageR, stageL, stageR);
+                    break;
+
+                case 6: // Chorus
+                    chorusComponent.processSampleFrame(stageL, stageR, stageL, stageR);
+                    break;
+
+                case 7: // Stereo Spread
+                    stereoSpreadComponent.processSampleFrame(stageL, stageR, stageL, stageR);
                     break;
 
                 default:

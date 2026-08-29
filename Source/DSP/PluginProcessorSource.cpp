@@ -351,6 +351,56 @@ LucySettings PX3SynthAudioProcessor::currentLucySettings() const
     return settings;
 }
 
+ChorusSettings PX3SynthAudioProcessor::currentChorusSettings() const
+{
+    auto modulated = [this](juce::AudioParameterFloat* param)
+    {
+        return param->convertFrom0to1(
+            applyModulationToNormalizedValue(param,
+                                             static_cast<juce::RangedAudioParameter*>(param)->getValue()));
+    };
+
+    ChorusSettings settings;
+    settings.enabled = chorusEnabledParam != nullptr && chorusEnabledParam->get();
+    settings.amount = modulated(chorusAmountParam);
+    settings.rate = modulated(chorusRateParam);
+    settings.depth = modulated(chorusDepthParam);
+    settings.width = modulated(chorusWidthParam);
+    settings.spread = modulated(chorusSpreadParam);
+    settings.lowCut = modulated(chorusLowCutParam);
+    settings.feedback = modulated(chorusFeedbackParam);
+    settings.character = modulated(chorusCharacterParam);
+    settings.mix = modulated(chorusMixParam);
+    settings.tone = modulated(chorusToneParam);
+    settings.modeIndex = chorusModeParam != nullptr ? chorusModeParam->getIndex() : 1;
+    return settings;
+}
+
+StereoSpreadSettings PX3SynthAudioProcessor::currentStereoSpreadSettings() const
+{
+    auto modulated = [this](juce::AudioParameterFloat* param)
+    {
+        return param->convertFrom0to1(
+            applyModulationToNormalizedValue(param,
+                                             static_cast<juce::RangedAudioParameter*>(param)->getValue()));
+    };
+
+    StereoSpreadSettings settings;
+    settings.enabled = spreadEnabledParam != nullptr && spreadEnabledParam->get();
+    settings.amount = modulated(spreadAmountParam);
+    settings.width = modulated(spreadWidthParam);
+    settings.depth = modulated(spreadDepthParam);
+    settings.center = modulated(spreadCenterParam);
+    settings.lowWidth = modulated(spreadLowWidthParam);
+    settings.highWidth = modulated(spreadHighWidthParam);
+    settings.lowFreq = modulated(spreadLowFreqParam);
+    settings.highFreq = modulated(spreadHighFreqParam);
+    settings.mix = modulated(spreadMixParam);
+    settings.tone = modulated(spreadToneParam);
+    settings.modeIndex = spreadModeParam != nullptr ? spreadModeParam->getIndex() : 0;
+    return settings;
+}
+
 void PX3SynthAudioProcessor::updateTransportState()
 {
     currentBpm = 120.0;

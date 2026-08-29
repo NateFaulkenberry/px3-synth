@@ -119,6 +119,8 @@ private:
     // declares, and hands it to the panel. One per new-generation FX.
     void buildDoomCard();
     void buildLucyCard();
+    void buildChorusCard();
+    void buildStereoSpreadCard();
     void refreshLfoAssignmentUI();
     void refreshEnvelopeAssignmentUI();
     void refreshLfoFrequencyLabel();
@@ -418,6 +420,8 @@ private:
     // refresh passes can reach their controls.
     px3::ui::FxCardComponent* doomCard { nullptr };
     px3::ui::FxCardComponent* lucyCard { nullptr };
+    px3::ui::FxCardComponent* chorusCard { nullptr };
+    px3::ui::FxCardComponent* spreadCard { nullptr };
     std::unique_ptr<MixPanel> mixPanel;
     std::unique_ptr<TopMenuBar> topMenuBar;
 

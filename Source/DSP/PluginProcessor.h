@@ -6,7 +6,9 @@
 #include "LfoGenerator.h"
 #include "FxChain.h"
 #include "Doom.h"
+#include "Chorus.h"
 #include "Lucy.h"
+#include "StereoSpread.h"
 #include "Mood.h"
 #include "PianoKeyboard.h"
 #include "Reverb.h"
@@ -258,6 +260,32 @@ public:
     juce::AudioParameterChoice& getLucyModeParam() const;
     juce::AudioParameterChoice& getLucyPacketsParam() const;
     juce::AudioParameterChoice& getLucySlopeParam() const;
+
+    juce::AudioParameterBool& getChorusEnabledParam() const;
+    juce::AudioParameterFloat& getChorusAmountParam() const;
+    juce::AudioParameterFloat& getChorusRateParam() const;
+    juce::AudioParameterFloat& getChorusDepthParam() const;
+    juce::AudioParameterFloat& getChorusWidthParam() const;
+    juce::AudioParameterFloat& getChorusSpreadParam() const;
+    juce::AudioParameterFloat& getChorusLowCutParam() const;
+    juce::AudioParameterFloat& getChorusFeedbackParam() const;
+    juce::AudioParameterFloat& getChorusCharacterParam() const;
+    juce::AudioParameterFloat& getChorusMixParam() const;
+    juce::AudioParameterFloat& getChorusToneParam() const;
+    juce::AudioParameterChoice& getChorusModeParam() const;
+
+    juce::AudioParameterBool& getSpreadEnabledParam() const;
+    juce::AudioParameterFloat& getSpreadAmountParam() const;
+    juce::AudioParameterFloat& getSpreadWidthParam() const;
+    juce::AudioParameterFloat& getSpreadDepthParam() const;
+    juce::AudioParameterFloat& getSpreadCenterParam() const;
+    juce::AudioParameterFloat& getSpreadLowWidthParam() const;
+    juce::AudioParameterFloat& getSpreadHighWidthParam() const;
+    juce::AudioParameterFloat& getSpreadLowFreqParam() const;
+    juce::AudioParameterFloat& getSpreadHighFreqParam() const;
+    juce::AudioParameterFloat& getSpreadMixParam() const;
+    juce::AudioParameterFloat& getSpreadToneParam() const;
+    juce::AudioParameterChoice& getSpreadModeParam() const;
     juce::AudioParameterBool& getLfoEnabledParam() const;
     juce::AudioParameterBool& getLfoEnabledParam(int lfoIndex) const;
     juce::AudioParameterFloat& getLfoFrequencyParam() const;
@@ -408,6 +436,8 @@ private:
     MoodSettings currentMoodSettings() const;
     DoomSettings currentDoomSettings() const;
     LucySettings currentLucySettings() const;
+    ChorusSettings currentChorusSettings() const;
+    StereoSpreadSettings currentStereoSpreadSettings() const;
 
     void updateTransportState();
     void buildLfoAssignableTargets();
@@ -563,6 +593,32 @@ private:
     juce::AudioParameterChoice* lucyModeParam { nullptr };
     juce::AudioParameterChoice* lucyPacketsParam { nullptr };
     juce::AudioParameterChoice* lucySlopeParam { nullptr };
+
+    juce::AudioParameterBool* chorusEnabledParam { nullptr };
+    juce::AudioParameterFloat* chorusAmountParam { nullptr };
+    juce::AudioParameterFloat* chorusRateParam { nullptr };
+    juce::AudioParameterFloat* chorusDepthParam { nullptr };
+    juce::AudioParameterFloat* chorusWidthParam { nullptr };
+    juce::AudioParameterFloat* chorusSpreadParam { nullptr };
+    juce::AudioParameterFloat* chorusLowCutParam { nullptr };
+    juce::AudioParameterFloat* chorusFeedbackParam { nullptr };
+    juce::AudioParameterFloat* chorusCharacterParam { nullptr };
+    juce::AudioParameterFloat* chorusMixParam { nullptr };
+    juce::AudioParameterFloat* chorusToneParam { nullptr };
+    juce::AudioParameterChoice* chorusModeParam { nullptr };
+
+    juce::AudioParameterBool* spreadEnabledParam { nullptr };
+    juce::AudioParameterFloat* spreadAmountParam { nullptr };
+    juce::AudioParameterFloat* spreadWidthParam { nullptr };
+    juce::AudioParameterFloat* spreadDepthParam { nullptr };
+    juce::AudioParameterFloat* spreadCenterParam { nullptr };
+    juce::AudioParameterFloat* spreadLowWidthParam { nullptr };
+    juce::AudioParameterFloat* spreadHighWidthParam { nullptr };
+    juce::AudioParameterFloat* spreadLowFreqParam { nullptr };
+    juce::AudioParameterFloat* spreadHighFreqParam { nullptr };
+    juce::AudioParameterFloat* spreadMixParam { nullptr };
+    juce::AudioParameterFloat* spreadToneParam { nullptr };
+    juce::AudioParameterChoice* spreadModeParam { nullptr };
     juce::AudioParameterFloat* reverbSizeParam { nullptr };
     juce::AudioParameterFloat* reverbDecayParam { nullptr };
     juce::AudioParameterFloat* reverbDampingParam { nullptr };
@@ -659,6 +715,8 @@ private:
     Mood moodComponent;
     px3::Doom doomComponent;
     px3::Lucy lucyComponent;
+    px3::Chorus chorusComponent;
+    px3::StereoSpread stereoSpreadComponent;
     ::Reverb reverb;
 
     // Internal routing buses (prepared once, reused per block).
