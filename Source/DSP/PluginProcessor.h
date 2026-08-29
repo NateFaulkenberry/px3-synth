@@ -7,6 +7,7 @@
 #include "FxChain.h"
 #include "Doom.h"
 #include "AnalogEngine.h"
+#include "BusInsertChain.h"
 #include "Chorus.h"
 #include "Lucy.h"
 #include "StereoSpread.h"
@@ -658,6 +659,35 @@ private:
     juce::AudioParameterChoice* chorusModeParam { nullptr };
 
     juce::AudioParameterBool* spreadEnabledParam { nullptr };
+
+    // ---- bus inserts ------------------------------------------------------
+    // One set per bus. Indexed rather than named individually so a third bus
+    // is another entry here and nothing else: see BusInsertChain.
+    static constexpr int kBusInsertCount = 2;   // 0 = dry, 1 = FX
+
+    struct BusInsertParams
+    {
+        juce::AudioParameterBool* eqEnabled { nullptr };
+        std::array<juce::AudioParameterChoice*, px3::kEqBandCount> bandType { {} };
+        std::array<juce::AudioParameterFloat*, px3::kEqBandCount> bandFreq { {} };
+        std::array<juce::AudioParameterFloat*, px3::kEqBandCount> bandGain { {} };
+        std::array<juce::AudioParameterFloat*, px3::kEqBandCount> bandQ { {} };
+
+        juce::AudioParameterBool* compEnabled { nullptr };
+        juce::AudioParameterFloat* compInput { nullptr };
+        juce::AudioParameterFloat* compOutput { nullptr };
+        juce::AudioParameterFloat* compAttack { nullptr };
+        juce::AudioParameterFloat* compRelease { nullptr };
+        juce::AudioParameterChoice* compRatio { nullptr };
+        juce::AudioParameterFloat* compMix { nullptr };
+        juce::AudioParameterBool* compLink { nullptr };
+    };
+
+    std::array<BusInsertParams, kBusInsertCount> busInsertParams {};
+    std::array<px3::BusInsertChain, kBusInsertCount> busInserts {};
+
+    void createBusInsertParameters(int bus, const juce::String& idPrefix, const juce::String& label);
+    void updateBusInsertSettings(int bus);
     juce::AudioParameterFloat* spreadAmountParam { nullptr };
     juce::AudioParameterFloat* spreadWidthParam { nullptr };
     juce::AudioParameterFloat* spreadDepthParam { nullptr };

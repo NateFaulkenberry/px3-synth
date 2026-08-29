@@ -724,6 +724,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(chorusModeParam);
 
     addParameter(spreadEnabledParam);
+
+    // Bus inserts. Dry first, FX second - the order the signal meets them.
+    createBusInsertParameters(0, "dry", "Dry Bus");
+    createBusInsertParameters(1, "fx", "FX Bus");
     addParameter(spreadAmountParam);
     addParameter(spreadWidthParam);
     addParameter(spreadDepthParam);
@@ -859,6 +863,171 @@ void PX3SynthAudioProcessor::changeProgramName(int, const juce::String&)
 {
 }
 
+// One set of insert parameters for a bus. Namespaced by prefix so a third bus
+// adds a prefix rather than a scheme: see docs/V3_1_EQ_COMP_RESEARCH.md.
+//
+// Defaults are chosen so that switching an insert on changes nothing until a
+// control is moved - a bus processor that colours the sound the moment it is
+// enabled cannot be A/B'd, and every band starts at 0 dB for the same reason.
+void PX3SynthAudioProcessor::createBusInsertParameters(int bus,
+                                                       const juce::String& idPrefix,
+                                                       const juce::String& label)
+{
+    auto& p = busInsertParams[static_cast<std::size_t>(bus)];
+
+    p.eqEnabled = new juce::AudioParameterBool(idPrefix + "EqEnabled", label + " EQ Enabled", false);
+
+    // Band 1 is a low shelf or a high pass, band 4 a high shelf or a low pass;
+    // the inner two are bells. The outer bands switch because the most useful
+    // move on a bus is a shelf and the most useful move on an FX return that is
+    // too bright is a low pass.
+    static const juce::StringArray outerLowChoices { "Low Shelf", "High Pass" };
+    static const juce::StringArray outerHighChoices { "High Shelf", "Low Pass" };
+
+    static constexpr std::array<float, px3::kEqBandCount> defaultFreq { { 100.0f, 300.0f, 3000.0f, 8000.0f } };
+    static constexpr std::array<float, px3::kEqBandCount> defaultQ { { 0.707f, 0.9f, 0.9f, 0.707f } };
+
+    for (int band = 0; band < px3::kEqBandCount; ++band)
+    {
+        const auto b = static_cast<std::size_t>(band);
+        const auto n = juce::String(band + 1);
+        const auto bandLabel = label + " EQ " + n + " ";
+
+        // Only the outer bands have a type to choose. The inner two are always
+        // bells, so they get no parameter at all rather than a one-entry choice:
+        // a choice of one has a zero-width range, and normalising against it
+        // divides by zero - which is exactly how the state tests found this.
+        if (band == 0 || band == 3)
+        {
+            p.bandType[b] = new juce::AudioParameterChoice(
+                idPrefix + "EqType" + n, bandLabel + "Type",
+                band == 0 ? outerLowChoices : outerHighChoices, 0);
+        }
+
+        // Logarithmic: an EQ knob that spends half its travel above 10 kHz is
+        // unusable, and frequency is perceived logarithmically.
+        p.bandFreq[b] = new juce::AudioParameterFloat(
+            idPrefix + "EqFreq" + n, bandLabel + "Frequency",
+            juce::NormalisableRange<float>(px3::ParametricEQ::kMinFrequencyHz,
+                                           px3::ParametricEQ::kMaxFrequencyHz, 0.0f, 0.25f),
+            defaultFreq[b]);
+
+        p.bandGain[b] = new juce::AudioParameterFloat(
+            idPrefix + "EqGain" + n, bandLabel + "Gain",
+            juce::NormalisableRange<float>(px3::ParametricEQ::kMinGainDb,
+                                           px3::ParametricEQ::kMaxGainDb), 0.0f);
+
+        p.bandQ[b] = new juce::AudioParameterFloat(
+            idPrefix + "EqQ" + n, bandLabel + "Q",
+            juce::NormalisableRange<float>(px3::ParametricEQ::kMinQ,
+                                           px3::ParametricEQ::kMaxQ, 0.0f, 0.4f),
+            defaultQ[b]);
+    }
+
+    p.compEnabled = new juce::AudioParameterBool(idPrefix + "CompEnabled", label + " Comp Enabled", false);
+
+    // INPUT is the primary control: the 1176 has no threshold, and driving the
+    // input into a fixed threshold is the actual workflow.
+    p.compInput = new juce::AudioParameterFloat(
+        idPrefix + "CompInput", label + " Comp Input",
+        juce::NormalisableRange<float>(-12.0f, 36.0f), 0.0f);
+    p.compOutput = new juce::AudioParameterFloat(
+        idPrefix + "CompOutput", label + " Comp Output",
+        juce::NormalisableRange<float>(-24.0f, 24.0f), 0.0f);
+
+    // 0..1 where 1 is FASTEST, matching the hardware's reversed panel.
+    p.compAttack = new juce::AudioParameterFloat(
+        idPrefix + "CompAttack", label + " Comp Attack",
+        juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
+    p.compRelease = new juce::AudioParameterFloat(
+        idPrefix + "CompRelease", label + " Comp Release",
+        juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+
+    p.compRatio = new juce::AudioParameterChoice(
+        idPrefix + "CompRatio", label + " Comp Ratio",
+        juce::StringArray { "4:1", "8:1", "12:1", "20:1", "All Buttons" }, 0);
+
+    p.compMix = new juce::AudioParameterFloat(
+        idPrefix + "CompMix", label + " Comp Mix",
+        juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+
+    p.compLink = new juce::AudioParameterBool(idPrefix + "CompLink", label + " Comp Stereo Link", true);
+
+    addParameter(p.eqEnabled);
+    for (int band = 0; band < px3::kEqBandCount; ++band)
+    {
+        const auto b = static_cast<std::size_t>(band);
+        if (p.bandType[b] != nullptr)
+        {
+            addParameter(p.bandType[b]);
+        }
+        addParameter(p.bandFreq[b]);
+        addParameter(p.bandGain[b]);
+        addParameter(p.bandQ[b]);
+    }
+    addParameter(p.compEnabled);
+    addParameter(p.compInput);
+    addParameter(p.compOutput);
+    addParameter(p.compAttack);
+    addParameter(p.compRelease);
+    addParameter(p.compRatio);
+    addParameter(p.compMix);
+    addParameter(p.compLink);
+}
+
+// Read once per block and handed to the chain. The processors smooth their own
+// parameters per sample; this only has to deliver targets.
+void PX3SynthAudioProcessor::updateBusInsertSettings(int bus)
+{
+    const auto i = static_cast<std::size_t>(bus);
+    const auto& p = busInsertParams[i];
+    if (p.eqEnabled == nullptr)
+    {
+        return;
+    }
+
+    px3::EqSettings eq;
+    eq.enabled = p.eqEnabled->get();
+    for (int band = 0; band < px3::kEqBandCount; ++band)
+    {
+        const auto b = static_cast<std::size_t>(band);
+        auto& target = eq.bands[b];
+
+        // Band 1 chooses between low shelf and high pass, band 4 between high
+        // shelf and low pass; the middle two are always bells.
+        if (band == 0 && p.bandType[b] != nullptr)
+        {
+            target.type = p.bandType[b]->getIndex() == 0 ? px3::EqBandType::lowShelf
+                                                         : px3::EqBandType::highPass;
+        }
+        else if (band == 3 && p.bandType[b] != nullptr)
+        {
+            target.type = p.bandType[b]->getIndex() == 0 ? px3::EqBandType::highShelf
+                                                         : px3::EqBandType::lowPass;
+        }
+        else
+        {
+            target.type = px3::EqBandType::bell;
+        }
+
+        target.frequencyHz = p.bandFreq[b]->get();
+        target.gainDb = p.bandGain[b]->get();
+        target.q = p.bandQ[b]->get();
+    }
+
+    px3::CompressorSettings comp;
+    comp.enabled = p.compEnabled->get();
+    comp.inputDb = p.compInput->get();
+    comp.outputDb = p.compOutput->get();
+    comp.attack = p.compAttack->get();
+    comp.release = p.compRelease->get();
+    comp.ratio = static_cast<px3::CompRatio>(juce::jlimit(0, 4, p.compRatio->getIndex()));
+    comp.mix = p.compMix->get();
+    comp.stereoLink = p.compLink->get();
+
+    busInserts[i].setSettings(eq, comp);
+}
+
 void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     currentSampleRateHz = juce::jmax(1.0, sampleRate);
@@ -883,6 +1052,10 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     stereoSpreadComponent.prepare(sampleRate);
     // Four mono source channels plus three stereo bus contexts.
     analogEngine.prepare(sampleRate, kMixerSourceCount);
+    for (auto& insert : busInserts)
+    {
+        insert.prepare(sampleRate);
+    }
     reverb.prepare(sampleRate);
 
     const auto busChannels = juce::jmax(kMixerSourceCount, getTotalNumOutputChannels());
@@ -1669,6 +1842,11 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             juce::jlimit(0, px3::AnalogEngine::kProfileCount - 1, analogProfileParam->getIndex())));
     }
     analogEngine.setAmount((analogEnabledParam != nullptr && analogEnabledParam->get()) ? 1.0f : 0.0f);
+
+    for (int bus = 0; bus < kBusInsertCount; ++bus)
+    {
+        updateBusInsertSettings(bus);
+    }
     reverb.updateForBlock(currentReverbSettings(), buffer.getNumSamples());
     const auto fxOrder = getFxProcessingOrder();
     const auto fxSendGain = fxSendGainParam != nullptr
@@ -1937,6 +2115,11 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         // This is where the character actually appears.
         analogEngine.processBusSample(px3::AnalogEngine::Context::dryBus, dryL, dryR);
 
+        // DRY BUS INSERTS: EQ then compressor. Last stage on the dry bus before
+        // the master sum, and post-fader because the invertible console pair
+        // above has to stay adjacent to its channel half.
+        busInserts[0].processSample(dryL, dryR);
+
         dryBusBuffer.setSample(0, sample, dryL);
         if (outputChannels > 1)
         {
@@ -2025,8 +2208,17 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         // The FX return carries the same source-side headroom as the
         // oscillators, so its fader is a true gain readout too.
         const auto fxHeadroom = px3::processor_internal::sourceHeadroomGain();
-        const auto fxL = (stageL - fxInL) * fxHeadroom * smoothedFxReturnGain * fxPanLeft * fxReturnGate;
-        const auto fxR = (stageR - fxInR) * fxHeadroom * smoothedFxReturnGain * fxPanRight * fxReturnGate;
+
+        // FX BUS INSERTS: on the recovered wet signal, after the (stage - send)
+        // difference and the headroom scale, but BEFORE the return fader. Feed
+        // it the difference and the inserts see only wet; put it after the fader
+        // and riding the blend would change the compression.
+        auto wetL = (stageL - fxInL) * fxHeadroom;
+        auto wetR = (stageR - fxInR) * fxHeadroom;
+        busInserts[1].processSample(wetL, wetR);
+
+        const auto fxL = wetL * smoothedFxReturnGain * fxPanLeft * fxReturnGate;
+        const auto fxR = wetR * smoothedFxReturnGain * fxPanRight * fxReturnGate;
         fxReturnEnergy += static_cast<double>(fxL) * static_cast<double>(fxL)
                   + static_cast<double>(fxR) * static_cast<double>(fxR);
 

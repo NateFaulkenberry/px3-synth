@@ -14501,6 +14501,260 @@ void testBusInserts()
         check("BusComp_DoesNotAccumulateDc", std::abs(dc) < 0.002,
               "mean output over the second half: " + fmt(dc, 6));
     }
+
+    // =======================================================================
+    // Wired into the processor. Everything above proves the DSP; this proves
+    // the DSP is actually reached, on the right bus, and only when asked.
+    // =======================================================================
+    suite("BUS INSERTS / INTEGRATION");
+
+    const std::vector<NoteEvent> oneNote { { 0, true, 57, 0.9f }, { 60000, false, 57, 0.0f } };
+
+    // DOOM and LUCY default to enabled and draw from the shared system random,
+    // which cannot be seeded (see docs). Two identical renders with them on
+    // differ by 0.25 - so any test that compares samples has to switch them off
+    // first, or it is measuring the dice and not the inserts.
+    auto renderWith = [&](const std::function<void(PX3SynthAudioProcessor&)>& configure)
+    {
+        PX3SynthAudioProcessor processor;
+        makePlainPatch(processor);
+        setParam(processor, "doomEnabled", 0.0f);
+        setParam(processor, "lucyEnabled", 0.0f);
+        configure(processor);
+        return render(processor, 66000, oneNote);
+    };
+
+    // ---- disabled is bit-identical -----------------------------------------
+    // The strongest statement available: an insert that is off must not be a
+    // near-wire, it must be the same audio the plugin rendered before it
+    // existed. Anything less and every preset in the library changed.
+    {
+        const auto plain = renderWith([](PX3SynthAudioProcessor&) {});
+
+        // Settings that would be violent if they ran, with the enables off.
+        const auto loaded = renderWith([](PX3SynthAudioProcessor& p)
+        {
+            for (const auto* bus : { "dry", "fx" })
+            {
+                setParam(p, juce::String(bus) + "EqEnabled", 0.0f);
+                setParam(p, juce::String(bus) + "EqGain2", 18.0f);
+                setParam(p, juce::String(bus) + "EqFreq2", 900.0f);
+                setParam(p, juce::String(bus) + "CompEnabled", 0.0f);
+                setParam(p, juce::String(bus) + "CompInput", 36.0f);
+            }
+        });
+
+        // Sample-for-sample comparison is not available here: a global
+        // note-start sequence advances every note, so two identical renders
+        // already differ in start phase. Level is the honest measure, and the
+        // exact wire property is asserted on the chain itself below.
+        const auto before = juce::Decibels::gainToDecibels(plain.rmsOver(4000, 50000), -200.0);
+        const auto after = juce::Decibels::gainToDecibels(loaded.rmsOver(4000, 50000), -200.0);
+        check("BusInsert_DisabledSettingsDoNothing", std::abs(after - before) < 0.02,
+              "+18 dB of EQ and 36 dB of compressor drive loaded with both enables off: "
+              + fmt(before, 3) + " dB -> " + fmt(after, 3) + " dB");
+    }
+
+    // The exact statement, made where it can be made exactly: a disabled chain
+    // returns its input untouched, not merely close to it.
+    {
+        px3::BusInsertChain chain;
+        chain.prepare(kSampleRate);
+
+        px3::EqSettings eq;
+        eq.enabled = false;
+        for (auto& band : eq.bands) { band.gainDb = 18.0f; }
+
+        px3::CompressorSettings comp;
+        comp.enabled = false;
+        comp.inputDb = 36.0f;
+        chain.setSettings(eq, comp);
+
+        auto worst = 0.0;
+        for (int i = 0; i < 20000; ++i)
+        {
+            const auto in = 0.8f * static_cast<float>(
+                std::sin(juce::MathConstants<double>::twoPi * 220.0 * i / kSampleRate));
+            auto l = in;
+            auto r = -in;
+            chain.processSample(l, r);
+            worst = juce::jmax(worst, static_cast<double>(std::abs(l - in)));
+            worst = juce::jmax(worst, static_cast<double>(std::abs(r + in)));
+        }
+        check("BusInsert_DisabledChainIsExactlyAWire", worst == 0.0,
+              "worst deviation from the input across 20000 samples: " + fmt(worst, 9));
+    }
+
+    // ---- the dry insert is on the dry path ---------------------------------
+    {
+        const auto plain = renderWith([](PX3SynthAudioProcessor&) {});
+        const auto cut = renderWith([](PX3SynthAudioProcessor& p)
+        {
+            setParam(p, "dryEqEnabled", 1.0f);
+            setChoice(p, "dryEqType1", 1);          // high pass
+            setParam(p, "dryEqFreq1", 2000.0f);     // well above a 220 Hz note
+        });
+
+        const auto before = juce::Decibels::gainToDecibels(plain.rmsOver(4000, 40000), -200.0);
+        const auto after = juce::Decibels::gainToDecibels(cut.rmsOver(4000, 40000), -200.0);
+        check("BusInsert_DryEqReachesTheDryBus", after < before - 12.0,
+              "220 Hz note through a 2 kHz high pass: " + fmt(before, 2) + " dB -> " + fmt(after, 2) + " dB");
+    }
+
+    // ---- the FX insert is on the return, not the dry path ------------------
+    // With every send closed there is no wet signal at all, so an FX insert set
+    // to something extreme must still change nothing. That is what separates
+    // "wired to the FX bus" from "wired to the output".
+    {
+        const auto plain = renderWith([](PX3SynthAudioProcessor&) {});
+        const auto loaded = renderWith([](PX3SynthAudioProcessor& p)
+        {
+            setParam(p, "fxEqEnabled", 1.0f);
+            setChoice(p, "fxEqType1", 1);
+            setParam(p, "fxEqFreq1", 12000.0f);
+            setParam(p, "fxCompEnabled", 1.0f);
+            setParam(p, "fxCompInput", 30.0f);
+        });
+
+        const auto before = juce::Decibels::gainToDecibels(plain.rmsOver(4000, 50000), -200.0);
+        const auto after = juce::Decibels::gainToDecibels(loaded.rmsOver(4000, 50000), -200.0);
+        check("BusInsert_FxInsertDoesNotTouchTheDryPath", std::abs(after - before) < 0.02,
+              "a 12 kHz high pass and 30 dB of compression on the FX insert, all sends closed: "
+              + fmt(before, 3) + " dB -> " + fmt(after, 3) + " dB");
+    }
+
+    // ---- and it does act once there is something on the return -------------
+    {
+        auto openSend = [](PX3SynthAudioProcessor& p)
+        {
+            setParam(p, "delayEnabled", 1.0f);
+            setParam(p, "delayAmount", 0.7f);
+            setParam(p, "mix.osc1.fxSend", 0.9f);
+            setParam(p, "fxReturnGain", 0.8f);
+        };
+
+        const auto plain = renderWith(openSend);
+        const auto cut = renderWith([&](PX3SynthAudioProcessor& p)
+        {
+            openSend(p);
+            setParam(p, "fxEqEnabled", 1.0f);
+            setChoice(p, "fxEqType1", 1);
+            setParam(p, "fxEqFreq1", 4000.0f);
+        });
+
+        const auto before = juce::Decibels::gainToDecibels(plain.rmsOver(4000, 50000), -200.0);
+        const auto after = juce::Decibels::gainToDecibels(cut.rmsOver(4000, 50000), -200.0);
+        // Not asserted as a level DROP: the delay return partly cancels against
+        // the dry signal here, so removing its top end raises the total. What
+        // matters is that the insert demonstrably reached the return at all.
+        check("BusInsert_FxEqReachesTheReturn", std::abs(after - before) > 1.0,
+              "a 4 kHz high pass on the return with the send open: "
+              + fmt(before, 3) + " dB -> " + fmt(after, 3) + " dB");
+    }
+
+    // ---- the compressor compresses, in the plugin --------------------------
+    {
+        auto quietLoud = [](PX3SynthAudioProcessor& p, float level)
+        {
+            setParam(p, "mix.osc1.level", level);
+        };
+
+        auto peakWith = [&](float level, bool comp)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            quietLoud(processor, level);
+            if (comp)
+            {
+                setParam(processor, "dryCompEnabled", 1.0f);
+                setParam(processor, "dryCompInput", 24.0f);
+                setChoice(processor, "dryCompRatio", 3);     // 20:1
+                setParam(processor, "dryCompOutput", 0.0f);
+            }
+            const auto out = render(processor, 66000, oneNote);
+            return juce::Decibels::gainToDecibels(out.rmsOver(20000, 50000), -200.0);
+        };
+
+        const auto rangeOff = peakWith(0.9f, false) - peakWith(0.25f, false);
+        const auto rangeOn = peakWith(0.9f, true) - peakWith(0.25f, true);
+        check("BusInsert_DryCompressorNarrowsDynamicRange", rangeOn < rangeOff - 2.0,
+              "an 11 dB level change becomes " + fmt(rangeOff, 2) + " dB uncompressed, "
+              + fmt(rangeOn, 2) + " dB compressed");
+    }
+
+    // ---- every new parameter survives a state round trip --------------------
+    // Registered parameters serialise automatically, so this is really a guard
+    // against one being created but never registered - which would silently
+    // drop it from presets and from the DAW session.
+    {
+        PX3SynthAudioProcessor source;
+        makePlainPatch(source);
+
+        std::vector<juce::String> ids;
+        for (const auto* bus : { "dry", "fx" })
+        {
+            const auto b = juce::String(bus);
+            ids.push_back(b + "EqEnabled");
+            ids.push_back(b + "EqType1");
+            ids.push_back(b + "EqType4");
+            for (int band = 1; band <= 4; ++band)
+            {
+                const auto n = juce::String(band);
+                ids.push_back(b + "EqFreq" + n);
+                ids.push_back(b + "EqGain" + n);
+                ids.push_back(b + "EqQ" + n);
+            }
+            for (const auto* suffix : { "CompEnabled", "CompInput", "CompOutput", "CompAttack",
+                                        "CompRelease", "CompRatio", "CompMix", "CompLink" })
+            {
+                ids.push_back(b + suffix);
+            }
+        }
+
+        // A distinct, non-default normalised value per parameter, so a mix-up
+        // between two of them shows as a mismatch rather than passing.
+        std::map<juce::String, float> written;
+        auto index = 0;
+        for (const auto& id : ids)
+        {
+            const auto value = 0.17f + 0.03f * static_cast<float>(index % 20);
+            for (auto* param : source.getParameters())
+            {
+                if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*>(param);
+                    withId != nullptr && withId->paramID == id)
+                {
+                    param->setValueNotifyingHost(value);
+                    written[id] = param->getValue();
+                }
+            }
+            ++index;
+        }
+
+        check("BusInsert_EveryParameterIsRegistered", written.size() == ids.size(),
+              "found " + juce::String(static_cast<int>(written.size())) + " of "
+              + juce::String(static_cast<int>(ids.size())) + " insert parameters on the processor");
+
+        juce::MemoryBlock state;
+        source.getStateInformation(state);
+
+        PX3SynthAudioProcessor restored;
+        restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        auto worst = 0.0f;
+        juce::String offender;
+        for (auto* param : restored.getParameters())
+        {
+            auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*>(param);
+            if (withId == nullptr) continue;
+            const auto found = written.find(withId->paramID);
+            if (found == written.end()) continue;
+            const auto delta = std::abs(param->getValue() - found->second);
+            if (delta > worst) { worst = delta; offender = withId->paramID; }
+        }
+        check("BusInsert_ParametersRoundTripThroughState", worst < 1.0e-4f,
+              "worst normalised drift " + fmt(worst, 7)
+              + (offender.isEmpty() ? juce::String() : " on " + offender));
+    }
 }
 
 void testFilters()
