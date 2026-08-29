@@ -30,6 +30,10 @@ public:
     void advanceAnimation(float deltaPhase);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
+    // Raised when a strip's EQ or COMP button is clicked. The panel does not
+    // own the overlays - the editor does, because they cover the whole window.
+    std::function<void(int bus, bool wantsEq)> onOpenBusInsert;
+
 private:
     struct ChannelWidgets
     {
@@ -47,11 +51,19 @@ private:
         juce::Slider send;
         juce::Label sendLabel;
         juce::Label sendValueLabel;
+        // Only the dry and FX strips build these; the rest leave them null so
+        // the channel component skips the corners.
+        std::unique_ptr<InsertButton> eqInsert;
+        std::unique_ptr<InsertButton> compInsert;
         std::unique_ptr<MixerChannelComponent> component;
         bool hasSend { true };
     };
 
     void configureChannelWidgets(ChannelWidgets& channel, const juce::String& titleText, bool hasSend, bool stereoTagVisible);
+    // Gives a strip its two insert buttons. Called only for the buses that have
+    // inserts; adding a third bus is one more call.
+    void addInsertButtons(ChannelWidgets& channel, int bus);
+    void refreshInsertButtonStates();
     void applyConfigToChannels();
     void timerCallback() override;
     void refreshMeterValues();

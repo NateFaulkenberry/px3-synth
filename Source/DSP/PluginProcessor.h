@@ -206,6 +206,56 @@ public:
     juce::AudioParameterBool& getMixerPhaseInvertParam(int sourceIndex) const;
     juce::AudioParameterBool& getFxReturnPhaseInvertParam() const;
 
+    // ---- bus inserts ------------------------------------------------------
+    // One set per bus. Indexed rather than named individually so a third bus
+    // is one more entry here and one more createBusInsertParameters call, and
+    // nothing else changes: see BusInsertChain.
+    static constexpr int kBusInsertCount = 2;   // 0 = dry, 1 = FX
+    enum BusInsertSlot { dryBusInsert = 0, fxBusInsert = 1 };
+
+    struct BusInsertParams
+    {
+        juce::AudioParameterBool* eqEnabled { nullptr };
+        // Only bands 1 and 4 have a type; the inner two are always bells, so
+        // their entries stay null rather than being one-entry choices.
+        std::array<juce::AudioParameterChoice*, px3::kEqBandCount> bandType { {} };
+        std::array<juce::AudioParameterFloat*, px3::kEqBandCount> bandFreq { {} };
+        std::array<juce::AudioParameterFloat*, px3::kEqBandCount> bandGain { {} };
+        std::array<juce::AudioParameterFloat*, px3::kEqBandCount> bandQ { {} };
+
+        juce::AudioParameterBool* compEnabled { nullptr };
+        juce::AudioParameterFloat* compInput { nullptr };
+        juce::AudioParameterFloat* compOutput { nullptr };
+        juce::AudioParameterFloat* compAttack { nullptr };
+        juce::AudioParameterFloat* compRelease { nullptr };
+        juce::AudioParameterChoice* compRatio { nullptr };
+        juce::AudioParameterFloat* compMix { nullptr };
+        juce::AudioParameterBool* compLink { nullptr };
+    };
+
+    const BusInsertParams& getBusInsertParams(int bus) const
+    {
+        return busInsertParams[static_cast<std::size_t>(juce::jlimit(0, kBusInsertCount - 1, bus))];
+    }
+
+    // Gain reduction for a bus's compressor, in positive decibels, with the
+    // meter's own ballistics already applied. Read off an atomic, so the UI can
+    // ask at any rate it likes without touching the audio thread.
+    float getBusGainReductionDb(int bus) const
+    {
+        return busInserts[static_cast<std::size_t>(juce::jlimit(0, kBusInsertCount - 1, bus))]
+            .getCompressor().gainReductionDb();
+    }
+
+    // The EQ's own view of its response, for the curve display. Reads the live
+    // processor rather than recomputing from parameters, so what is drawn is
+    // what is running - the smoothing included.
+    float getBusEqMagnitudeDb(int bus, float frequencyHz) const
+    {
+        return busInserts[static_cast<std::size_t>(juce::jlimit(0, kBusInsertCount - 1, bus))]
+            .getEq().magnitudeDb(frequencyHz);
+    }
+
     // The dry bus as a mixer channel of its own: the summed sources before the
     // FX return is added. Previously the dry path had no control at all, so the
     // only way to change the balance between dry and wet was to move every
@@ -659,29 +709,6 @@ private:
     juce::AudioParameterChoice* chorusModeParam { nullptr };
 
     juce::AudioParameterBool* spreadEnabledParam { nullptr };
-
-    // ---- bus inserts ------------------------------------------------------
-    // One set per bus. Indexed rather than named individually so a third bus
-    // is another entry here and nothing else: see BusInsertChain.
-    static constexpr int kBusInsertCount = 2;   // 0 = dry, 1 = FX
-
-    struct BusInsertParams
-    {
-        juce::AudioParameterBool* eqEnabled { nullptr };
-        std::array<juce::AudioParameterChoice*, px3::kEqBandCount> bandType { {} };
-        std::array<juce::AudioParameterFloat*, px3::kEqBandCount> bandFreq { {} };
-        std::array<juce::AudioParameterFloat*, px3::kEqBandCount> bandGain { {} };
-        std::array<juce::AudioParameterFloat*, px3::kEqBandCount> bandQ { {} };
-
-        juce::AudioParameterBool* compEnabled { nullptr };
-        juce::AudioParameterFloat* compInput { nullptr };
-        juce::AudioParameterFloat* compOutput { nullptr };
-        juce::AudioParameterFloat* compAttack { nullptr };
-        juce::AudioParameterFloat* compRelease { nullptr };
-        juce::AudioParameterChoice* compRatio { nullptr };
-        juce::AudioParameterFloat* compMix { nullptr };
-        juce::AudioParameterBool* compLink { nullptr };
-    };
 
     std::array<BusInsertParams, kBusInsertCount> busInsertParams {};
     std::array<px3::BusInsertChain, kBusInsertCount> busInserts {};

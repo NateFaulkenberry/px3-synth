@@ -221,7 +221,7 @@ void MixerToggleButton::paintButton(juce::Graphics& g, bool shouldDrawButtonAsHi
     // button is on or off, which is what lets the legend keep one colour and
     // stay readable either way.
     const auto enabled = isEnabled();
-    const auto on = getToggleState() && enabled;
+    const auto on = isLit() && enabled;
     const auto area = getLocalBounds().toFloat();
 
     // The legend sits under the cap, so the cap is the square part above it.
@@ -349,6 +349,24 @@ PhaseButton::PhaseButton()
     // U+00D8, the slashed O every console uses for polarity inversion.
     setName(juce::String::fromUTF8("\xc3\x98"));
     setTooltip("Phase");
+}
+
+InsertButton::InsertButton(const juce::String& legend)
+    : MixerToggleButton(legend)
+{
+    setName(legend);
+    setTooltip(legend == "EQ" ? "Bus EQ" : "Bus compressor");
+}
+
+void InsertButton::setInsertActive(bool active)
+{
+    if (insertActive == active)
+    {
+        return;
+    }
+
+    insertActive = active;
+    repaint();
 }
 
 namespace

@@ -220,6 +220,11 @@
     }
   },
   "mix": {
+    "insertButton": { "size": { "width": 26, "height": 26 }, "cornerRadius": 4, "textSize": 9, "textColour": "#DCE2EC", "normalColour": "#2C2E34D2", "hoverColour": "#42464FE6", "activeColour": "#4C88CAE6", "pressedColour": "#60A4EEE6", "disabledColour": "#22222288", "borderColour": "#DCE0EC78" },
+    "inserts": {
+      "eq": { "size": 26, "offsetX": 0, "offsetY": 0 },
+      "comp": { "size": 26, "offsetX": 0, "offsetY": 0 }
+    },
     "panel": {
       "fillAlpha": 0,
       "strokeAlpha": 0,
@@ -447,6 +452,42 @@
         "alignContent": "center",
         "gap": 2
       }
+    }
+  },
+  "busInserts": {
+    "eq": {
+      "widthFraction": 0.7,
+      "heightFraction": 0.62,
+      "padding": 22, "headerHeight": 34, "headerGap": 12,
+      "buttonWidth": 64, "enableWidth": 44,
+      "curveHeight": 190, "curveGap": 16,
+      "columnGap": 10, "knobSize": 54, "typeHeight": 22,
+      "cornerRadius": 12, "titleSize": 16,
+      "backgroundColor": "#141719FA",
+      "borderColor": "#82BEFF78",
+      "titleColor": "#FFFFFF",
+      "curveBackgroundColor": "#0A0C10DC",
+      "curveBorderColor": "#FFFFFF28",
+      "gridColor": "#FFFFFF22",
+      "zeroLineColor": "#FFFFFF4E",
+      "curveColor": "#82BEFF"
+    },
+    "comp": {
+      "widthFraction": 0.58,
+      "heightFraction": 0.4,
+      "padding": 22, "headerHeight": 34, "headerGap": 12,
+      "buttonWidth": 64, "enableWidth": 44,
+      "meterWidth": 210, "meterHeight": 130, "meterGap": 18,
+      "knobSize": 62, "knobGap": 12,
+      "ratioGap": 20, "ratioHeight": 30, "ratioButtonGap": 6,
+      "cornerRadius": 12, "titleSize": 16, "grainAmount": 0.06,
+      "panelTopColor": "#CED0D2",
+      "panelBottomColor": "#A6A9AD",
+      "borderColor": "#3C3E42C8",
+      "titleColor": "#26282C",
+      "meterFaceColor": "#EEE7D2",
+      "meterInkColor": "#262420",
+      "meterNeedleColor": "#18181A"
     }
   },
   "cards": {

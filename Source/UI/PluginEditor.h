@@ -23,6 +23,8 @@
 #include "FltPanel.h"
 #include "FxPanel.h"
 #include "MixPanel.h"
+#include "BusInsertOverlay.h"
+#include "ModalBackdrop.h"
 #include "OscPanel.h"
 #include "TopMenuBar.h"
 #include "DelayComponent.h"
@@ -175,6 +177,12 @@ private:
     void applyPresetRecord(const PresetManager::PresetRecord& record);
     void openPresetBrowser();
     void closePresetBrowser();
+
+    // The bus insert sheets. One EQ and one compressor between them, retargeted
+    // to whichever bus asked - a third bus needs no new component here.
+    void openBusInsert(int bus, bool wantsEq);
+    void closeBusInsert();
+    juce::Component* activeBusInsertSheet() const;
     void showPresetError(const juce::String& title, const juce::String& message);
     void savePreset(bool saveAs);
     void importPreset();
@@ -537,6 +545,11 @@ private:
     juce::TextButton presetBrowserCloseButton;
     juce::Label presetBrowserDetails;
     PresetModalScrim presetBrowserScrim { *this };
+    std::unique_ptr<px3::ui::BusEqOverlay> busEqOverlay;
+    std::unique_ptr<px3::ui::BusCompOverlay> busCompOverlay;
+    px3::ui::ModalScrim busInsertScrim { *this };
+    juce::Image busInsertBackdropSnapshot;
+    bool busInsertVisible { false };
     bool presetBrowserVisible { false };
     bool presetBrowserDragging { false };
     juce::Point<int> presetBrowserDragOffset;

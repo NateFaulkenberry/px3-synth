@@ -89,7 +89,9 @@ set(PX3_SHARED_SOURCES
         Source/UI/FltPanel.cpp
         Source/UI/FxPanel.cpp
         Source/UI/MixPanel.cpp
-        Source/UI/MixerControls.cpp
+        Source/UI/ModalBackdrop.cpp
+    Source/UI/BusInsertOverlay.cpp
+    Source/UI/MixerControls.cpp
         Source/UI/MixerChannelComponent.cpp
         Source/UI/TopMenuBar.cpp
         Source/UI/DelayComponent.cpp

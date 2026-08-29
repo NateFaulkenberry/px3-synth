@@ -19,6 +19,8 @@ void MixerChannelComponent::setSourceActive(bool active)
     for (auto* component : { controls.meter, static_cast<juce::Component*>(controls.mute),
                              static_cast<juce::Component*>(controls.solo),
                              static_cast<juce::Component*>(controls.phase),
+                             static_cast<juce::Component*>(controls.eqInsert),
+                             static_cast<juce::Component*>(controls.compInsert),
                              static_cast<juce::Component*>(controls.fader),
                              static_cast<juce::Component*>(controls.pan),
                              static_cast<juce::Component*>(controls.send) })
@@ -75,6 +77,64 @@ void MixerChannelComponent::refreshCardStyle()
     card.setStyleKey(cardStyleKey);
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
+
+    // The two insert buttons are placed by coordinate, so each needs its own
+    // size and offset. They are read per style key, which is what lets the dry
+    // strip and the FX strip place them differently.
+    auto readLayout = [this](const juce::String& which, InsertButtonLayout& target)
+    {
+        target = {};
+        if (uiConfig == nullptr)
+        {
+            return;
+        }
+
+        for (const auto& base : { juce::String("cards.") + cardStyleKey + ".inserts." + which,
+                                  juce::String("mix.inserts.") + which })
+        {
+            if (! uiConfig->getObject(base).isObject())
+            {
+                continue;
+            }
+
+            target.size = uiConfig->getInt(base + ".size", target.size);
+            target.offsetX = uiConfig->getInt(base + ".offsetX", target.offsetX);
+            target.offsetY = uiConfig->getInt(base + ".offsetY", target.offsetY);
+            break;
+        }
+    };
+
+    readLayout("eq", eqLayout);
+    readLayout("comp", compLayout);
+}
+
+// The insert buttons sit in the strip's bottom corners: EQ on the left, COMP on
+// the right, both square, both inside the card's content box so they line up
+// with the fader and knobs above rather than with the raw component edge.
+void MixerChannelComponent::layoutInsertButtons()
+{
+    if (controls.eqInsert == nullptr && controls.compInsert == nullptr)
+    {
+        return;
+    }
+
+    const auto content = card.contentBelowTitle().toNearestInt();
+
+    if (controls.eqInsert != nullptr)
+    {
+        controls.eqInsert->setBounds(content.getX() + eqLayout.offsetX,
+                                     content.getBottom() - eqLayout.size + eqLayout.offsetY,
+                                     eqLayout.size,
+                                     eqLayout.size);
+    }
+
+    if (controls.compInsert != nullptr)
+    {
+        controls.compInsert->setBounds(content.getRight() - compLayout.size + compLayout.offsetX,
+                                       content.getBottom() - compLayout.size + compLayout.offsetY,
+                                       compLayout.size,
+                                       compLayout.size);
+    }
 }
 
 void MixerChannelComponent::paint(juce::Graphics& g)
@@ -263,4 +323,6 @@ void MixerChannelComponent::resized()
             controls.send->setBounds({});
         }
     }
+
+    layoutInsertButtons();
 }

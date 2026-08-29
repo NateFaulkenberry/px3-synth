@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "ModalBackdrop.h"
 
 #include "../DSP/PluginProcessorInternals.h"
 
@@ -1270,6 +1271,20 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     addAndMakeVisible(*fltPanel);
     addAndMakeVisible(*fxPanel);
     addAndMakeVisible(*mixPanel);
+
+    busEqOverlay = std::make_unique<px3::ui::BusEqOverlay>(audioProcessor);
+    busCompOverlay = std::make_unique<px3::ui::BusCompOverlay>(audioProcessor);
+    for (auto* sheet : { static_cast<px3::ui::BusInsertOverlay*>(busEqOverlay.get()),
+                         static_cast<px3::ui::BusInsertOverlay*>(busCompOverlay.get()) })
+    {
+        sheet->setKnobLookAndFeel(&knobLookAndFeel);
+        sheet->onClose = [this]() { closeBusInsert(); };
+        addChildComponent(*sheet);
+    }
+    addChildComponent(busInsertScrim);
+
+    mixPanel->onOpenBusInsert = [this](int bus, bool wantsEq) { openBusInsert(bus, wantsEq); };
+
     buildDoomCard();
     buildLucyCard();
     buildChorusCard();
@@ -1820,49 +1835,32 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
 
 void PX3SynthAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
 {
+    if (busInsertVisible)
+    {
+        if (auto* sheet = activeBusInsertSheet())
+        {
+            px3::ui::paintModalBackdrop(g,
+                                        getLocalBounds(),
+                                        sheet->getBounds().toFloat(),
+                                        busInsertBackdropSnapshot,
+                                        12.0f);
+        }
+        return;
+    }
+
     if (!presetBrowserVisible)
     {
         return;
     }
 
-    // The preset browser is drawn as a modal-like sheet over the main UI.
-    // We retain context by blurring/dimming the rest of the editor instead of
-    // switching to a separate window.
-    const auto panelBounds = presetBrowserPanel.getBounds().toFloat();
-    const auto panelHole = panelBounds.expanded(1.0f);
-
-    juce::Path outsidePanelMask;
-    outsidePanelMask.setUsingNonZeroWinding(false);
-    outsidePanelMask.addRectangle(getLocalBounds().toFloat());
-    outsidePanelMask.addRoundedRectangle(panelHole, 10.0f);
-
-    if (presetBrowserBackdropSnapshot.isValid())
-    {
-        g.saveState();
-        g.reduceClipRegion(outsidePanelMask);
-
-        // Multi-offset snapshot blend gives an inexpensive full-UI blur effect.
-        g.setOpacity(0.075f);
-        for (int dy = -6; dy <= 6; dy += 2)
-        {
-            for (int dx = -6; dx <= 6; dx += 2)
-            {
-                if (dx == 0 && dy == 0)
-                {
-                    continue;
-                }
-                g.drawImageAt(presetBrowserBackdropSnapshot, dx, dy, false);
-            }
-        }
-
-        g.setOpacity(0.14f);
-        g.drawImageAt(presetBrowserBackdropSnapshot, 0, 0, false);
-        g.setOpacity(1.0f);
-        g.restoreState();
-    }
-
-    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 180));
-    g.fillPath(outsidePanelMask);
+    // The preset browser is drawn as a modal-like sheet over the main UI. The
+    // rest of the editor is blurred and dimmed rather than replaced, so the
+    // patch you are browsing away from stays in view.
+    px3::ui::paintModalBackdrop(g,
+                                getLocalBounds(),
+                                presetBrowserPanel.getBounds().toFloat(),
+                                presetBrowserBackdropSnapshot,
+                                10.0f);
 }
 
 void PX3SynthAudioProcessorEditor::resized()
@@ -2259,6 +2257,14 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
     {
         mixPanel->setUIConfig(uiConfig);
     }
+    for (auto* sheet : { static_cast<px3::ui::BusInsertOverlay*>(busEqOverlay.get()),
+                         static_cast<px3::ui::BusInsertOverlay*>(busCompOverlay.get()) })
+    {
+        if (sheet != nullptr)
+        {
+            sheet->setUIConfig(uiConfig);
+        }
+    }
 
     if (uiConfig != nullptr)
     {
@@ -2293,6 +2299,16 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
 void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 {
     const auto point = event.getEventRelativeTo(this).getPosition();
+
+    if (busInsertVisible)
+    {
+        auto* sheet = activeBusInsertSheet();
+        if (sheet == nullptr || ! sheet->getBounds().contains(point))
+        {
+            closeBusInsert();
+        }
+        return;
+    }
 
     if (presetBrowserVisible)
     {
@@ -2535,6 +2551,97 @@ void PX3SynthAudioProcessorEditor::closePresetBrowser()
     presetBrowserScrim.setAlwaysOnTop(false);
     presetBrowserScrim.setVisible(false);
     presetBrowserBackdropSnapshot = {};
+    repaint();
+}
+
+
+// The insert sheets. Both share the preset browser's backdrop, its scrim and
+// its click-outside-to-close, because that is what makes a sheet a sheet - and
+// neither shares its face.
+juce::Component* PX3SynthAudioProcessorEditor::activeBusInsertSheet() const
+{
+    if (busEqOverlay != nullptr && busEqOverlay->isVisible())
+    {
+        return busEqOverlay.get();
+    }
+
+    if (busCompOverlay != nullptr && busCompOverlay->isVisible())
+    {
+        return busCompOverlay.get();
+    }
+
+    return nullptr;
+}
+
+void PX3SynthAudioProcessorEditor::openBusInsert(int bus, bool wantsEq)
+{
+    if (busEqOverlay == nullptr || busCompOverlay == nullptr)
+    {
+        return;
+    }
+
+    // The preset browser and an insert sheet are both modal, so opening one
+    // closes the other rather than stacking two scrims.
+    if (presetBrowserVisible)
+    {
+        closePresetBrowser();
+    }
+
+    closeBusInsert();
+
+    auto* sheet = wantsEq ? static_cast<px3::ui::BusInsertOverlay*>(busEqOverlay.get())
+                          : static_cast<px3::ui::BusInsertOverlay*>(busCompOverlay.get());
+
+    sheet->setBusName(bus == PX3SynthAudioProcessor::fxBusInsert ? "FX" : "DRY");
+    sheet->setBus(bus);
+
+    // Sized as a fraction of the window rather than in pixels: the sheet has to
+    // stay the same proportion of the UI at any window size, and the width is
+    // the design decision here, so the config owns it.
+    const auto widthFraction = uiConfig != nullptr
+                                   ? uiConfig->getFloat(wantsEq ? "busInserts.eq.widthFraction"
+                                                                : "busInserts.comp.widthFraction",
+                                                        wantsEq ? 0.70f : 0.58f)
+                                   : (wantsEq ? 0.70f : 0.58f);
+    const auto heightFraction = uiConfig != nullptr
+                                    ? uiConfig->getFloat(wantsEq ? "busInserts.eq.heightFraction"
+                                                                 : "busInserts.comp.heightFraction",
+                                                         wantsEq ? 0.62f : 0.40f)
+                                    : (wantsEq ? 0.62f : 0.40f);
+
+    const auto sheetWidth = juce::roundToInt(static_cast<float>(getWidth()) * juce::jlimit(0.2f, 0.98f, widthFraction));
+    const auto sheetHeight = juce::roundToInt(static_cast<float>(getHeight()) * juce::jlimit(0.2f, 0.98f, heightFraction));
+    sheet->setBounds(juce::Rectangle<int>(0, 0, sheetWidth, sheetHeight)
+                         .withCentre(getLocalBounds().getCentre()));
+
+    busInsertBackdropSnapshot = createComponentSnapshot(getLocalBounds());
+    busInsertVisible = true;
+    busInsertScrim.setBounds(getLocalBounds());
+    busInsertScrim.setVisible(true);
+    busInsertScrim.setAlwaysOnTop(true);
+    busInsertScrim.toFront(false);
+    sheet->setVisible(true);
+    sheet->setAlwaysOnTop(true);
+    sheet->toFront(true);
+    repaint();
+}
+
+void PX3SynthAudioProcessorEditor::closeBusInsert()
+{
+    for (auto* sheet : { static_cast<juce::Component*>(busEqOverlay.get()),
+                         static_cast<juce::Component*>(busCompOverlay.get()) })
+    {
+        if (sheet != nullptr)
+        {
+            sheet->setAlwaysOnTop(false);
+            sheet->setVisible(false);
+        }
+    }
+
+    busInsertVisible = false;
+    busInsertScrim.setAlwaysOnTop(false);
+    busInsertScrim.setVisible(false);
+    busInsertBackdropSnapshot = {};
     repaint();
 }
 

@@ -22,6 +22,10 @@ MixPanel::MixPanel(PX3SynthAudioProcessor& processorIn,
         configureChannelWidgets(osc3Channel, "OSC 3", true, false);
         // No FX send on the dry bus: it is what the sends feed away from, so a
         // send here would route the dry path into the FX chain it bypasses.
+        // Built before configureChannelWidgets, which hands the pointers to the
+        // channel component.
+        addInsertButtons(dryChannel, PX3SynthAudioProcessor::dryBusInsert);
+        addInsertButtons(fxChannel, PX3SynthAudioProcessor::fxBusInsert);
         configureChannelWidgets(dryChannel, "DRY", false, true);
         configureChannelWidgets(fxChannel, "FX", false, true);
 
@@ -143,6 +147,7 @@ void MixPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 void MixPanel::timerCallback()
 {
     refreshMeterValues();
+    refreshInsertButtonStates();
 }
 
 MixerToggleButton::Style MixPanel::buttonStyleFromConfig(const std::shared_ptr<const UIConfig>& uiConfig,
@@ -261,6 +266,8 @@ void MixPanel::configureChannelWidgets(ChannelWidgets& channel,
                                           &channel.sendLabel,
                                           &channel.sendValueLabel,
                                           &channel.stereoTag,
+                                          channel.eqInsert.get(),
+                                          channel.compInsert.get(),
                                           hasSend });
 
     addAndMakeVisible(*channel.component);
@@ -278,6 +285,65 @@ void MixPanel::configureChannelWidgets(ChannelWidgets& channel,
     channel.component->addAndMakeVisible(channel.send);
     channel.component->addAndMakeVisible(channel.sendLabel);
     channel.component->addAndMakeVisible(channel.sendValueLabel);
+
+    if (channel.eqInsert != nullptr)
+    {
+        channel.component->addAndMakeVisible(*channel.eqInsert);
+    }
+
+    if (channel.compInsert != nullptr)
+    {
+        channel.component->addAndMakeVisible(*channel.compInsert);
+    }
+}
+
+void MixPanel::addInsertButtons(ChannelWidgets& channel, int bus)
+{
+    channel.eqInsert = std::make_unique<InsertButton>("EQ");
+    channel.compInsert = std::make_unique<InsertButton>("CMP");
+
+    channel.eqInsert->onClick = [this, bus]()
+    {
+        if (onOpenBusInsert != nullptr)
+        {
+            onOpenBusInsert(bus, true);
+        }
+    };
+
+    channel.compInsert->onClick = [this, bus]()
+    {
+        if (onOpenBusInsert != nullptr)
+        {
+            onOpenBusInsert(bus, false);
+        }
+    };
+}
+
+// The buttons light with their insert's enable state, so the strip says what is
+// running without the overlay being open. Polled with the rest of the meters
+// rather than attached: an enable can change from the overlay, from the host's
+// automation or from a preset load, and polling covers all three.
+void MixPanel::refreshInsertButtonStates()
+{
+    const std::array<std::pair<ChannelWidgets*, int>, 2> insertChannels { {
+        { &dryChannel, PX3SynthAudioProcessor::dryBusInsert },
+        { &fxChannel, PX3SynthAudioProcessor::fxBusInsert },
+    } };
+
+    for (const auto& entry : insertChannels)
+    {
+        const auto& params = processor.getBusInsertParams(entry.second);
+
+        if (entry.first->eqInsert != nullptr && params.eqEnabled != nullptr)
+        {
+            entry.first->eqInsert->setInsertActive(params.eqEnabled->get());
+        }
+
+        if (entry.first->compInsert != nullptr && params.compEnabled != nullptr)
+        {
+            entry.first->compInsert->setInsertActive(params.compEnabled->get());
+        }
+    }
 }
 
 void MixPanel::applyConfigToChannels()
@@ -307,6 +373,9 @@ void MixPanel::applyConfigToChannels()
     const auto muteStyle = buttonStyleFromConfig(uiConfig, "mix.mute", MixerToggleButton::Style());
     const auto soloStyle = buttonStyleFromConfig(uiConfig, "mix.solo", MixerToggleButton::Style());
     const auto phaseStyle = buttonStyleFromConfig(uiConfig, "mix.phase", MixerToggleButton::Style());
+    // Defaults to the phase button's look, which is the one the strip already
+    // uses for a symbol rather than a word. Its own block overrides it.
+    const auto insertStyle = buttonStyleFromConfig(uiConfig, "mix.insertButton", phaseStyle);
     const auto titleSize = uiConfig != nullptr ? uiConfig->getFloat("mix.channel.titleSize", 11.5f) : 11.5f;
     const auto labelSize = uiConfig != nullptr ? uiConfig->getFloat("mix.channel.labelSize", 9.5f) : 9.5f;
     MixerLevelMeter::Style meterStyle;
@@ -356,6 +425,16 @@ void MixPanel::applyConfigToChannels()
         channel->mute.applyStyle(muteStyle);
         channel->solo.applyStyle(soloStyle);
         channel->phase.applyStyle(phaseStyle);
+
+        if (channel->eqInsert != nullptr)
+        {
+            channel->eqInsert->applyStyle(insertStyle);
+        }
+
+        if (channel->compInsert != nullptr)
+        {
+            channel->compInsert->applyStyle(insertStyle);
+        }
         channel->title.setFont(juce::FontOptions(titleSize));
         channel->panLabel.setFont(juce::FontOptions(labelSize));
         channel->sendLabel.setFont(juce::FontOptions(labelSize));

@@ -114,6 +114,10 @@ public:
     void applyStyle(const Style& styleIn);
 
 protected:
+    // What lights the lamp. For MUTE, SOLO and PHASE that is the toggle state;
+    // a button that opens something rather than latching overrides it.
+    virtual bool isLit() const { return getToggleState(); }
+
     Style style;
 };
 
@@ -136,6 +140,27 @@ class PhaseButton final : public MixerToggleButton
 {
 public:
     PhaseButton();
+};
+
+// Opens a bus insert's editor. Square rather than the wide rectangle MUTE and
+// SOLO use, because it is not a state toggle sitting in a row of state toggles -
+// it opens something. It keeps the same paint, the same border and the same
+// active colour so it still reads as part of the strip, and it lights while its
+// insert is switched on so the strip says at a glance what is running.
+class InsertButton final : public MixerToggleButton
+{
+public:
+    explicit InsertButton(const juce::String& legend);
+
+    // The insert's enable state, which is what lights the button - as distinct
+    // from the overlay being open.
+    void setInsertActive(bool active);
+
+protected:
+    bool isLit() const override { return insertActive; }
+
+private:
+    bool insertActive { false };
 };
 
 class MixerLevelMeter final : public juce::Component
