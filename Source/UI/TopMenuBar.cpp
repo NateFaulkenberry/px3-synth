@@ -212,7 +212,9 @@ TopMenuBar::TopMenuBar()
     presetMenuButton.setShowSeam(false);
 
     presetPrevButton.setButtonText("<");
-    presetNameButton.setButtonText("INIT");
+    // Replaced the moment the editor refreshes the display; this is only what
+    // the tab reads before that first pass.
+    presetNameButton.setButtonText("- INIT -");
     presetNextButton.setButtonText(">");
     presetMenuButton.setButtonText("MENU");
 

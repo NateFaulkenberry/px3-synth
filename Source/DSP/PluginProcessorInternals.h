@@ -59,6 +59,11 @@ inline const juce::Identifier kTopMenuViewId("topMenuView");
 // naming itself would be circular. It exists because the editor is rebuilt
 // every time the window is reopened, and without it the tab fell back to INIT
 // over a patch that had not changed.
+// What the preset tab shows before anything has been loaded. Display only -
+// the factory INIT preset FILE is still called "INIT", so this must not be
+// used to find it.
+inline const juce::String kNoPresetLabel { "- INIT -" };
+
 inline const juce::Identifier kLoadedPresetNameId("loadedPresetName");
 inline const juce::Identifier kLoadedPresetCategoryId("loadedPresetCategory");
 inline const juce::Identifier kLoadedPresetAuthorId("loadedPresetAuthor");

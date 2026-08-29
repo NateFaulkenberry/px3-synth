@@ -29,6 +29,9 @@
 #include "../UI/FxChainLayout.h"
 #include "../UI/PianoKeyboard.h"
 #include "../UI/TopMenuBar.h"
+#include "../UI/FilterComponent.h"
+#include "../DSP/FilterResponse.h"
+#include "../DSP/VoiceFilter.h"
 #include "../UI/OscillatorComponent.h"
 #include "../UI/FxPanel.h"
 #include "../UI/FxSignalFlow.h"
@@ -13216,6 +13219,262 @@ double modeOvertonesDb(int mode, float macro)
     return juce::Decibels::gainToDecibels(std::sqrt(rest / juce::jmax(1.0e-12, f0)), -120.0);
 }
 
+
+
+// Magnitude response measured the honest way: feed a steady sine, let the
+// filter settle, read the amplitude out. No coefficient arithmetic - if the
+// implementation is wrong then its coefficients are wrong too, and a test
+// written from the same maths would agree with it.
+double filterGainDbAt(int mode, float cutoff, float q, double hz)
+{
+    VoiceFilter filter;
+    filter.prepare(kSampleRate);
+    FilterSettings settings;
+    settings.enabled = true;
+    settings.cutoffHz = cutoff;
+    settings.resonanceQ = q;
+    settings.modeIndex = mode;
+    filter.setCurrentSettingsImmediate(settings);
+    filter.setTargetSettings(settings);
+
+    // RMS, not peak. At 8 kHz there are only six samples per cycle, so none of
+    // them need land near the crest: peak-of-samples read a flat all-pass as
+    // -0.75 dB down purely from where the samples fell. RMS is exact for a sine
+    // however it is sampled, given a whole number of cycles to average over.
+    const auto total = static_cast<int>(kSampleRate * 0.6);
+    const auto measureFrom = static_cast<int>(kSampleRate * 0.35);
+    double sumOut = 0.0;
+    double sumIn = 0.0;
+    for (int i = 0; i < total; ++i)
+    {
+        const auto x = static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * hz * i / kSampleRate));
+        const auto y = filter.processSample(x);
+        if (i >= measureFrom)
+        {
+            sumOut += static_cast<double>(y) * y;
+            sumIn += static_cast<double>(x) * x;
+        }
+    }
+    return juce::Decibels::gainToDecibels(std::sqrt(sumOut / juce::jmax(1.0e-12, sumIn)), -120.0);
+}
+
+
+void testFilters()
+{
+    suite("FILTERS");
+
+    // A mode labelled 12 dB has to be 12 dB, and one labelled 24 has to be 24.
+    {
+        juce::String detail;
+        auto allRight = true;
+        const std::array<std::pair<int, double>, 4> expected { {
+            { 0, -12.0 }, { 1, -24.0 }, { 2, -12.0 }, { 3, -24.0 } } };
+        static const char* names[] = { "LP12", "LP24", "HP12", "HP24" };
+
+        for (const auto& [mode, want] : expected)
+        {
+            // Measured an octave into the stop band, well clear of the knee.
+            const auto slope = mode < 2
+                ? filterGainDbAt(mode, 1000.0f, 0.707f, 4000.0) - filterGainDbAt(mode, 1000.0f, 0.707f, 2000.0)
+                : filterGainDbAt(mode, 1000.0f, 0.707f, 250.0) - filterGainDbAt(mode, 1000.0f, 0.707f, 500.0);
+            allRight = allRight && std::abs(slope - want) < 3.0;
+            detail << names[mode] << " " << fmt(slope, 1) << "dB/oct  ";
+        }
+
+        check("Filter_SlopesMatchTheirLabels", allRight, detail);
+    }
+
+    // Resonance has to mean the same thing whichever slope is selected. It did
+    // not: a 4-pole filter is two biquads in series and both were built at the
+    // user's Q, so their peaks multiplied. At Q 10 the 24 dB modes resonated at
+    // +40 dB where the 12 dB modes reached +20 - loud enough to wreck a mix,
+    // and a different control depending on a menu.
+    {
+        juce::String detail;
+        auto worstGap = 0.0;
+
+        for (const auto q : { 0.707f, 2.0f, 5.0f, 10.0f })
+        {
+            const auto twelve = filterGainDbAt(0, 1000.0f, q, 1000.0);
+            const auto twentyFour = filterGainDbAt(1, 1000.0f, q, 1000.0);
+            worstGap = juce::jmax(worstGap, std::abs(twelve - twentyFour));
+            detail << "Q" << fmt(q, 1) << ": " << fmt(twelve, 1) << "/" << fmt(twentyFour, 1) << "dB  ";
+        }
+
+        check("Filter_ResonanceIsTheSameWhicheverSlope", worstGap < 2.0,
+              "12dB vs 24dB peak at cutoff - " + detail + "(worst gap " + fmt(worstGap, 1) + " dB)");
+    }
+
+    // A notch is a null. This one was "input - bandpass * 0.92", and the 0.92
+    // is why it never nulled: the deepest it reached was -21.9 dB.
+    {
+        const auto depth = filterGainDbAt(5, 1000.0f, 0.707f, 1000.0);
+        check("Filter_NotchActuallyNulls", depth < -50.0,
+              "depth at cutoff " + fmt(depth, 1) + " dB");
+    }
+
+    // An all-pass moves phase and leaves magnitude alone. If it dips, it is a
+    // filter with a bug rather than an all-pass.
+    {
+        juce::String detail;
+        auto worst = 0.0;
+        for (const auto hz : { 100.0, 500.0, 1000.0, 4000.0, 8000.0 })
+        {
+            const auto db = filterGainDbAt(6, 1000.0f, 2.0f, hz);
+            worst = juce::jmax(worst, std::abs(db));
+            detail << fmt(hz, 0) << "Hz " << fmt(db, 2) << "dB  ";
+        }
+        check("Filter_AllPassLeavesMagnitudeAlone", worst < 0.6, detail);
+    }
+
+    // Coefficients are rebuilt every 8th sample rather than every sample, which
+    // could have quantised a moving cutoff into steps. Measured rather than
+    // assumed: a jump is judged against the local slope, so a loud passage does
+    // not flag and a click in a quiet one does.
+    {
+        VoiceFilter filter;
+        filter.prepare(kSampleRate);
+        FilterSettings settings;
+        settings.enabled = true;
+        settings.cutoffHz = 200.0f;
+        settings.resonanceQ = 6.0f;
+        settings.modeIndex = 0;
+        filter.setCurrentSettingsImmediate(settings);
+        filter.setTargetSettings(settings);
+
+        const auto total = static_cast<int>(kSampleRate * 0.5);
+        std::vector<float> out;
+        out.reserve(static_cast<std::size_t>(total));
+
+        for (int i = 0; i < total; ++i)
+        {
+            const auto lfo = 0.5 - 0.5 * std::cos(juce::MathConstants<double>::twoPi * 4.0 * i / kSampleRate);
+            settings.cutoffHz = static_cast<float>(200.0 + 5800.0 * lfo);
+            filter.setTargetSettings(settings);
+            const auto x = static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * 440.0 * i / kSampleRate));
+            out.push_back(filter.processSample(x));
+        }
+
+        constexpr int window = 64;
+        auto worst = 0.0;
+        for (int i = static_cast<int>(kSampleRate * 0.1) + window; i + window < total; ++i)
+        {
+            const auto jump = std::abs(static_cast<double>(out[static_cast<std::size_t>(i)])
+                                       - out[static_cast<std::size_t>(i - 1)]);
+            double sum = 0.0;
+            int count = 0;
+            for (int k = i - window; k < i + window; ++k)
+            {
+                if (k == i || k == i - 1) continue;
+                const auto d = static_cast<double>(out[static_cast<std::size_t>(k)]) - out[static_cast<std::size_t>(k - 1)];
+                sum += d * d;
+                ++count;
+            }
+            const auto reference = std::sqrt(sum / juce::jmax(1, count));
+            if (reference < 1.0e-7) continue;
+            worst = juce::jmax(worst, jump / reference);
+        }
+
+        check("Filter_ASweptCutoffDoesNotStep", worst < 4.0,
+              "200Hz to 6kHz four times a second: worst jump is " + fmt(worst, 1)
+                  + "x the local slope");
+    }
+
+    // The graph under the filter card has to be a picture of THIS filter. It
+    // used to be drawn from invented shapes - pow(t, 1.4) for the 12 dB modes,
+    // pow(t, 2.3) for the 24 dB ones, a gaussian bump stuck on top for
+    // resonance - so it could not be wrong about the filter, having never
+    // described it. Notch and all-pass drew a flat line.
+    //
+    // Both now come from one coefficient builder, so the check is that the
+    // curve the display asks for matches what the audio path measures.
+    {
+        static const char* names[] = { "LP12", "LP24", "HP12", "HP24", "BP", "NOTCH", "ALLPASS" };
+        juce::String detail;
+        auto worst = 0.0;
+        juce::String worstAt;
+
+        for (int mode = 0; mode < 7; ++mode)
+        {
+            for (const auto q : { 0.707f, 4.0f })
+            {
+                const auto pair = px3::makeFilterCoefficients(mode, kSampleRate, 1000.0f, q);
+
+                for (const auto hz : { 100.0, 400.0, 1000.0, 2500.0, 6000.0 })
+                {
+                    const auto drawn = static_cast<double>(px3::filterMagnitudeDb(pair, hz, kSampleRate));
+                    const auto measured = filterGainDbAt(mode, 1000.0f, q, hz);
+
+                    // A deep null is not a fair comparison point: either side of
+                    // it the response falls off a cliff, so a bin's worth of
+                    // frequency error reads as tens of dB.
+                    if (drawn < -40.0 || measured < -40.0) continue;
+
+                    const auto error = std::abs(drawn - measured);
+                    if (error > worst)
+                    {
+                        worst = error;
+                        worstAt = juce::String(names[mode]) + " Q" + fmt(q, 1) + " at " + fmt(hz, 0)
+                                  + "Hz: drawn " + fmt(drawn, 1) + " dB, measured " + fmt(measured, 1) + " dB";
+                    }
+                }
+            }
+        }
+
+        detail = "worst disagreement " + fmt(worst, 2) + " dB";
+        if (worstAt.isNotEmpty()) detail << " - " << worstAt;
+
+        check("Filter_TheGraphDrawsTheFilterItClaimsTo", worst < 1.5, detail);
+    }
+
+    // ...and the component has to actually draw that response, not merely have
+    // it available. Measured off the rendered image: how much of the graph's
+    // right-hand half is under the curve should follow the cutoff.
+    {
+        auto skirtOnTheRight = [](float cutoffHz, float q, int modeIndex)
+        {
+            juce::AudioParameterFloat cutoff { "c", "c", juce::NormalisableRange<float>(20.0f, 20000.0f), cutoffHz };
+            juce::AudioParameterFloat res { "r", "r", juce::NormalisableRange<float>(0.2f, 10.0f), q };
+            juce::AudioParameterChoice mode { "m", "m",
+                juce::StringArray { "LP12","LP24","HP12","HP24","BP","NOTCH","AP","COMB" }, modeIndex };
+            juce::AudioParameterBool on { "e", "e", true };
+
+            FilterComponent comp(cutoff, res, mode, on, "1", juce::Colour::fromRGB(255, 88, 88));
+            comp.setBounds(0, 0, 320, 260);
+            comp.setVisible(true);
+            comp.resized();
+
+            const auto img = comp.createComponentSnapshot(comp.getLocalBounds());
+            auto lit = 0;
+            for (int y = 170; y < img.getHeight() - 12; ++y)
+            {
+                for (int x = img.getWidth() / 2; x < img.getWidth() - 8; ++x)
+                {
+                    if (img.getPixelAt(x, y).getBrightness() > 0.20f) ++lit;
+                }
+            }
+            return lit;
+        };
+
+        const auto lowCutoff = skirtOnTheRight(150.0f, 0.707f, 0);
+        const auto highCutoff = skirtOnTheRight(12000.0f, 0.707f, 0);
+        const auto highPass = skirtOnTheRight(150.0f, 0.707f, 2);
+
+        check("Filter_TheGraphRedrawsAsTheCutoffMoves",
+              highCutoff > lowCutoff * 2,
+              "low-pass at 150 Hz lights " + juce::String(lowCutoff)
+                  + " pixels on the right of the graph, at 12 kHz " + juce::String(highCutoff));
+
+        // A high-pass at the same cutoff must fill the right-hand side that the
+        // low-pass leaves empty - the two are opposites, and a graph that drew
+        // the same shape for both would pass every check above.
+        check("Filter_TheGraphDistinguishesLowPassFromHighPass",
+              highPass > lowCutoff * 2,
+              "at 150 Hz: low-pass " + juce::String(lowCutoff) + " pixels, high-pass "
+                  + juce::String(highPass));
+    }
+}
+
 void testOscillatorModeRichness()
 {
     suite("OSCILLATOR RICHNESS");
@@ -15301,6 +15560,7 @@ int main(int argc, char* argv[])
     if (wants("fx")) testEffectIndependence();
     if (wants("preset")) testPresets();
     if (wants("factorypresets")) testFactoryPresets();
+    if (wants("filters")) testFilters();
     if (wants("oscrichness")) testOscillatorModeRichness();
     if (wants("analog")) testAnalogEngine();
     if (wants("editor")) testEditorLifecycle();

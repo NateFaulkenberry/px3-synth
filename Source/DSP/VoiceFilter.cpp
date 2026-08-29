@@ -1,5 +1,7 @@
 #include "VoiceFilter.h"
 
+#include "FilterResponse.h"
+
 #include <cmath>
 
 void VoiceFilter::prepare(double newSampleRate)
@@ -125,10 +127,6 @@ float VoiceFilter::processSampleActive(float inputSample)
     {
         output = stageB.processSample(output);
     }
-    else if (mode == px3::FilterMode::notch)
-    {
-        output = inputSample - output * 0.92f;
-    }
 
     // Smoothstep so the crossfade lands at both ends with zero slope.
     const auto blend = bypassBlend * bypassBlend * (3.0f - 2.0f * bypassBlend);
@@ -142,42 +140,24 @@ void VoiceFilter::applyFilter(float cutoffHz, float resonanceQ, int modeIndex)
         return;
     }
 
-    const auto mode = static_cast<px3::FilterMode>(px3::clampFilterModeIndex(modeIndex));
-    // Cutoff is clamped below Nyquist as well as to the parameter range: JUCE's
-    // coefficient builders require frequency <= sampleRate / 2, and a high
-    // cutoff at a low sample rate would otherwise cross it.
-    const auto maxCutoff = static_cast<float>(sampleRate * 0.5) * 0.98f;
-    const auto cutoff = juce::jlimit(20.0f, juce::jmax(20.0f, maxCutoff), cutoffHz);
-    const auto q = juce::jlimit(0.20f, 10.0f, resonanceQ);
+    // Built by the shared response code, which is also what the filter card's
+    // graph draws from - so the curve on screen is this filter and not a
+    // drawing of one.
+    //
+    // ArrayCoefficients returns by value and is assigned into the existing
+    // Coefficients object. The Coefficients::makeXxx factories used previously
+    // each did "*new Coefficients(...)", allocating on the audio thread on
+    // every coefficient update.
+    const auto pair = px3::makeFilterCoefficients(modeIndex, sampleRate, cutoffHz, resonanceQ);
 
-    // ArrayCoefficients returns the coefficients by value and assigns them into
-    // the existing Coefficients object. The Coefficients::makeXxx factories
-    // used previously each did "*new Coefficients(...)", which allocated on the
-    // audio thread on every coefficient update.
-    using Array = juce::dsp::IIR::ArrayCoefficients<float>;
+    *stageA.coefficients = juce::dsp::IIR::Coefficients<float> {
+        pair.stageA[0], pair.stageA[1], pair.stageA[2],
+        pair.stageA[3], pair.stageA[4], pair.stageA[5] };
 
-    switch (mode)
+    if (pair.usesStageB)
     {
-        case px3::FilterMode::lp12:
-        case px3::FilterMode::lp24:
-            *stageA.coefficients = Array::makeLowPass(sampleRate, cutoff, q);
-            *stageB.coefficients = Array::makeLowPass(sampleRate, cutoff, q);
-            break;
-        case px3::FilterMode::hp12:
-        case px3::FilterMode::hp24:
-            *stageA.coefficients = Array::makeHighPass(sampleRate, cutoff, q);
-            *stageB.coefficients = Array::makeHighPass(sampleRate, cutoff, q);
-            break;
-        case px3::FilterMode::bp:
-            *stageA.coefficients = Array::makeBandPass(sampleRate, cutoff, q);
-            break;
-        case px3::FilterMode::notch:
-            *stageA.coefficients = Array::makeBandPass(sampleRate, cutoff, q);
-            break;
-        case px3::FilterMode::allPass:
-            *stageA.coefficients = Array::makeAllPass(sampleRate, cutoff, q);
-            break;
-        default:
-            break;
+        *stageB.coefficients = juce::dsp::IIR::Coefficients<float> {
+            pair.stageB[0], pair.stageB[1], pair.stageB[2],
+            pair.stageB[3], pair.stageB[4], pair.stageB[5] };
     }
 }

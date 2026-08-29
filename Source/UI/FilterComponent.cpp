@@ -1,5 +1,7 @@
 #include "FilterComponent.h"
 
+#include "../DSP/FilterResponse.h"
+
 #include "../DSP/FilterMode.h"
 
 #include "BypassButton.h"
@@ -270,62 +272,108 @@ void FilterComponent::paint(juce::Graphics& g)
         return;
     }
 
-    const auto cutoffPos = juce::jlimit(0.08f, 0.92f, cutoffNorm());
-    const auto resBoost = juce::jlimit(0.0f, 1.0f, resonanceNorm());
-
-    juce::Path response;
-    response.startNewSubPath(left, bottom);
+    // ---- the real response -------------------------------------------------
+    // Drawn from the same coefficients the audio path runs, on a logarithmic
+    // frequency axis from 20 Hz to 20 kHz. It used to be invented shapes -
+    // pow(t, 1.4) for the 12 dB modes, pow(t, 2.3) for the 24 dB ones, a
+    // gaussian bump for resonance, and a flat line for notch and all-pass - so
+    // it could not be wrong about the filter, having never described it.
+    constexpr auto kLowHz = 20.0;
+    constexpr auto kHighHz = 20000.0;
+    constexpr auto kTopDb = 18.0;      // headroom for a resonant peak
+    constexpr auto kBottomDb = -42.0;
 
     const auto width = juce::jmax(1.0f, right - left);
-    for (int s = 1; s <= 56; ++s)
-    {
-        const auto t = static_cast<float>(s) / 56.0f;
-        const auto x = left + t * width;
+    const auto height = juce::jmax(1.0f, bottom - top);
 
-        float yNorm = 0.5f;
-        if (idx == 0 || idx == 1)
+    const auto xForHz = [&](double hz)
+    {
+        const auto t = std::log(juce::jlimit(kLowHz, kHighHz, hz) / kLowHz) / std::log(kHighHz / kLowHz);
+        return left + static_cast<float>(t) * width;
+    };
+    const auto yForDb = [&](double db)
+    {
+        const auto t = (juce::jlimit(kBottomDb, kTopDb, db) - kBottomDb) / (kTopDb - kBottomDb);
+        return bottom - static_cast<float>(t) * height;
+    };
+
+    // ---- grid, so the curve can be read rather than just seen ---------------
+    g.setFont(juce::FontOptions(8.0f));
+    for (const auto hz : { 100.0, 1000.0, 10000.0 })
+    {
+        const auto x = xForHz(hz);
+        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 22));
+        g.drawLine(x, top, x, bottom, 1.0f);
+        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 90));
+        g.drawText(hz >= 1000.0 ? juce::String(hz / 1000.0, 0) + "k" : juce::String(hz, 0),
+                   juce::Rectangle<float>(x - 14.0f, bottom - 10.0f, 28.0f, 10.0f).toNearestInt(),
+                   juce::Justification::centred);
+    }
+
+    // 0 dB, so a boost is visibly a boost and a cut visibly a cut.
+    {
+        const auto y = yForDb(0.0);
+        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 30));
+        g.drawLine(left, y, right, y, 1.0f);
+    }
+
+    const auto pair = px3::makeFilterCoefficients(idx, kGraphSampleRate, cutoff.get(), resonance.get());
+
+    juce::Path response;
+    for (int sIdx = 0; sIdx <= 160; ++sIdx)
+    {
+        const auto t = static_cast<double>(sIdx) / 160.0;
+        const auto hz = kLowHz * std::pow(kHighHz / kLowHz, t);
+        const auto db = static_cast<double>(px3::filterMagnitudeDb(pair, hz, kGraphSampleRate));
+        const auto x = left + static_cast<float>(t) * width;
+        const auto y = yForDb(db);
+
+        if (sIdx == 0)
         {
-            const auto slope = idx == 0 ? 1.4f : 2.3f;
-            const auto local = clamp01(t / cutoffPos);
-            yNorm = 1.0f - std::pow(local, slope);
-        }
-        else if (idx == 2 || idx == 3)
-        {
-            const auto slope = idx == 2 ? 1.4f : 2.3f;
-            const auto local = clamp01((t - cutoffPos) / juce::jmax(0.06f, 1.0f - cutoffPos));
-            yNorm = std::pow(local, slope);
-        }
-        else if (idx == 4)
-        {
-            const auto spread = juce::jmax(0.08f, 0.32f - resBoost * 0.16f);
-            const auto d = std::abs(t - cutoffPos) / spread;
-            yNorm = juce::jmax(0.0f, 1.0f - d * d);
-        }
-        else if (idx == 5)
-        {
-            const auto spread = juce::jmax(0.08f, 0.32f - resBoost * 0.12f);
-            const auto d = std::abs(t - cutoffPos) / spread;
-            yNorm = 0.12f + 0.88f * juce::jlimit(0.0f, 1.0f, d * d);
+            response.startNewSubPath(x, y);
         }
         else
         {
-            yNorm = 0.55f;
+            response.lineTo(x, y);
         }
+    }
 
-        if (idx == 0 || idx == 1 || idx == 2 || idx == 3)
-        {
-            const auto d = std::abs(t - cutoffPos);
-            const auto peak = std::exp(-(d * d) / 0.0036f) * (0.12f + resBoost * 0.34f);
-            yNorm += peak;
-        }
+    // ---- the cutoff itself, and what it is set to --------------------------
+    // The one number you are actually reaching for when you turn the knob.
+    {
+        const auto cutoffHz = juce::jlimit(kLowHz, kHighHz, static_cast<double>(cutoff.get()));
+        const auto x = xForHz(cutoffHz);
 
-        const auto y = bottom - juce::jlimit(0.0f, 1.0f, yNorm) * (bottom - top);
-        response.lineTo(x, y);
+        g.setColour(effectiveAccent.withAlpha(currentEnabled ? 0.55f : 0.25f));
+        g.drawLine(x, top, x, bottom, 1.0f);
+
+        const auto label = cutoffHz >= 1000.0 ? juce::String(cutoffHz / 1000.0, 2) + " kHz"
+                                              : juce::String(cutoffHz, 0) + " Hz";
+        g.setFont(juce::FontOptions(9.0f));
+        g.setColour(effectiveAccent.brighter(0.3f).withAlpha(currentEnabled ? 1.0f : 0.5f));
+
+        // Flipped to the other side of the line near the right edge so the
+        // readout never runs off the graph.
+        const auto flip = x > right - 46.0f;
+        g.drawText(label,
+                   juce::Rectangle<float>(flip ? x - 46.0f : x + 3.0f, top + 1.0f, 43.0f, 11.0f).toNearestInt(),
+                   flip ? juce::Justification::centredRight : juce::Justification::centredLeft);
+    }
+
+    // A filled skirt under the curve: which frequencies survive the filter is
+    // the question the graph exists to answer, and an outline alone leaves it
+    // to be inferred from a line.
+    {
+        juce::Path filled = response;
+        filled.lineTo(right, bottom);
+        filled.lineTo(left, bottom);
+        filled.closeSubPath();
+        g.setColour(effectiveAccent.withAlpha(currentEnabled ? 0.16f : 0.07f));
+        g.fillPath(filled);
     }
 
     g.setColour(effectiveAccent.brighter(0.15f).withAlpha(currentEnabled ? 1.0f : 0.6f));
-    g.strokePath(response, juce::PathStrokeType(1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-
+    g.strokePath(response, juce::PathStrokeType(1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
 float FilterComponent::clamp01(float value)

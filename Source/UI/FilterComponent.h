@@ -56,6 +56,12 @@ public:
 
 private:
     static float clamp01(float value);
+    // The graph is a picture of the response shape, and that shape barely moves
+    // between 44.1 and 96 kHz over the audible range. Drawing at a fixed rate
+    // keeps the curve identical whatever the host is running at, rather than
+    // having it shift when a session is opened at a different rate.
+    static constexpr double kGraphSampleRate = 48000.0;
+
     float cutoffNorm() const;
     float resonanceNorm() const;
 

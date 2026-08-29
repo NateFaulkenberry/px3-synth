@@ -1,5 +1,7 @@
 #include "PluginEditor.h"
 
+#include "../DSP/PluginProcessorInternals.h"
+
 #include "Card.h"
 
 #include "BinaryData.h"
@@ -2420,7 +2422,8 @@ void PX3SynthAudioProcessorEditor::rebuildPresetFilteredList()
 
 void PX3SynthAudioProcessorEditor::refreshPresetNameDisplay()
 {
-    juce::String name = hasCurrentPreset ? currentPreset.metadata.name : juce::String("INIT");
+    juce::String name = hasCurrentPreset ? currentPreset.metadata.name
+                                         : px3::processor_internal::kNoPresetLabel;
     if (currentPresetDirty)
     {
         name << "*";
