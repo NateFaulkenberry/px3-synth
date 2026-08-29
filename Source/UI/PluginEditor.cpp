@@ -67,6 +67,20 @@ void enableLabelHoverOverlay(juce::Label& label, const juce::String& tooltipText
 }
 
 #if PX3_DEBUG_PANEL
+// Resident size of the WHOLE process - the DAW, every other plug-in it has
+// loaded, and every sample in its memory. There is no per-instance figure
+// available here and there cannot be: a plug-in shares its host's address
+// space, and nothing in it distinguishes one instance's pages from another's.
+//
+// It used to be divided by the number of PX3 instances and labelled RAM, which
+// made it arithmetic rather than measurement: with a single instance open it
+// reported the entirety of Logic as PX3's footprint, which is why it never
+// resembled what the memory tests report. Run PX3Mem for the real per-instance
+// figure - that one counts allocations rather than dividing a total.
+//
+// It is still worth showing undivided. The absolute number means little, but
+// watching it climb while nothing is being played is how a leak announces
+// itself, and that is what this readout is for.
 double processResidentMemoryMb()
 {
 #if JUCE_MAC
@@ -3919,9 +3933,21 @@ void PX3SynthAudioProcessorEditor::refreshDebugPerformanceOverlay()
     debugPerformanceOverlayLastUpdateMs = nowMs;
 
     const auto cpuPercent = juce::jlimit(0.0, 999.0, static_cast<double>(audioProcessor.debugGetInstanceCpuLoadPercent()));
-    const auto activeInstances = juce::jmax(1, audioProcessor.debugGetActiveInstanceCount());
-    const auto ramMb = juce::jlimit(0.0, 99999.0, processResidentMemoryMb() / static_cast<double>(activeInstances));
-    debugPerformanceOverlayLabel.setText("CPU: " + juce::String(cpuPercent, 1) + "% | RAM: " + juce::String(ramMb, 1) + " MB",
+
+    // Labelled HOST RSS, not RAM, because that is what it is - see
+    // processResidentMemoryMb. The delta since the editor opened is the part
+    // worth watching: a number that only ever goes up is a leak, whatever the
+    // host started at.
+    const auto rssMb = juce::jlimit(0.0, 99999.0, processResidentMemoryMb());
+    if (debugHostRssBaselineMb <= 0.0)
+    {
+        debugHostRssBaselineMb = rssMb;
+    }
+    const auto deltaMb = rssMb - debugHostRssBaselineMb;
+
+    debugPerformanceOverlayLabel.setText("CPU: " + juce::String(cpuPercent, 1) + "%"
+                                             + " | HOST RSS: " + juce::String(rssMb, 1) + " MB"
+                                             + " (" + (deltaMb >= 0.0 ? "+" : "") + juce::String(deltaMb, 1) + ")",
                                          juce::dontSendNotification);
 #endif
 }

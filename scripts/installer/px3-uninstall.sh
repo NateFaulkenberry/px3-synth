@@ -95,7 +95,8 @@ APP_NAME="${PRODUCT_NAME}.app"
 safe_remove "/Library/Audio/Plug-Ins/Components/${AU_NAME}" "System AU"
 safe_remove "/Library/Audio/Plug-Ins/VST3/${VST3_NAME}" "System VST3"
 safe_remove "/Applications/${APP_NAME}" "Standalone app"
-safe_remove "/Library/Application Support/${APP_SUPPORT_NAME}" "System app support"
+safe_remove "/Library/${APP_SUPPORT_NAME}" "System app support"
+safe_remove "/Library/Application Support/${APP_SUPPORT_NAME}" "System app support (Application Support)"
 safe_remove "/Library/Preferences/${BUNDLE_ID}.plist" "System preferences"
 safe_remove "/Library/Caches/${BUNDLE_ID}" "System cache"
 safe_remove_glob "/Library/Audio/Presets/PX3/*" "System audio preset"
@@ -127,7 +128,16 @@ for USER_HOME in $(user_home_dirs); do
 
   # Presets, both factory and user, plus favourites and settings. This is the
   # whole preset library and it does not come back.
-  safe_remove "${USER_HOME}/Library/Application Support/${APP_SUPPORT_NAME}" "User preset library and settings"
+  #
+  # ~/Library/<name> is where the plug-in ACTUALLY writes: PresetManager uses
+  # juce::File::userApplicationDataDirectory, which on macOS is ~/Library and
+  # not ~/Library/Application Support. Only the Application Support path was
+  # listed here, so the uninstaller reported success while leaving the entire
+  # preset library in place - after a dialog that promised to remove it.
+  safe_remove "${USER_HOME}/Library/${APP_SUPPORT_NAME}" "User preset library and settings"
+  # The conventional location too. Nothing writes here today, but an earlier or
+  # later build might, and removing a directory that is not there costs nothing.
+  safe_remove "${USER_HOME}/Library/Application Support/${APP_SUPPORT_NAME}" "User preset library and settings (Application Support)"
 
   safe_remove "${USER_HOME}/Library/Preferences/${BUNDLE_ID}.plist" "User preferences"
   safe_remove "${USER_HOME}/Library/Caches/${BUNDLE_ID}" "User cache"

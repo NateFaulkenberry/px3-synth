@@ -567,6 +567,9 @@ private:
     juce::Label debugPerformanceOverlayLabel;
     juce::Rectangle<int> debugPerformanceOverlayArea;
     uint32_t debugPerformanceOverlayLastUpdateMs { 0 };
+    // Host RSS when this editor opened, so the overlay can show the change
+    // rather than only the absolute figure. See processResidentMemoryMb.
+    double debugHostRssBaselineMb { 0.0 };
 
     juce::Component debugPanel;
     juce::Label debugPanelTitle;

@@ -50,7 +50,10 @@ on run
 		return
 	end if
 
-	display dialog "PX3 Synth has been removed." & return & return & "Quit and reopen any DAW to refresh its plug-in list." & return & return & "A log of everything removed is at /tmp/px3-uninstall.log" with title "PX3 Uninstaller" buttons {"OK"} default button 1
+	-- No mention of the log file. It exists, and the failure dialog above points
+	-- at it because there it is actionable, but on a clean removal the path to a
+	-- temporary file is noise for the person reading it.
+	display dialog "PX3 Synth has been removed." & return & return & "Quit and reopen any DAW to refresh its plug-in list." with title "PX3 Uninstaller" buttons {"OK"} default button 1
 end run
 
 on bulletList(rawText)
