@@ -68,7 +68,7 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
             return;
         }
 
-        std::array<int, 4> next {};
+        px3::FxOrder next {};
         std::copy(order.begin(), order.end(), next.begin());
         onChainOrderChanged(next);
     };
@@ -155,7 +155,7 @@ void FxPanel::paint(juce::Graphics& g)
     g.drawRoundedRectangle(area, radius, 1.0f);
 }
 
-void FxPanel::setChainOrder(const std::array<int, 4>& order)
+void FxPanel::setChainOrder(const px3::FxOrder& order)
 {
     chainOrder = order;
     refreshSignalFlowNodes();

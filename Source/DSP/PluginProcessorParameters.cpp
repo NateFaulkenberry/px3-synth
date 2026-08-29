@@ -306,6 +306,31 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getMoodDegradeParam() const {
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getMoodRoutingParam() const { return *moodRoutingParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getMoodWetModeParam() const { return *moodWetModeParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getMoodLoopModeParam() const { return *moodLoopModeParam; }
+
+juce::AudioParameterBool& PX3SynthAudioProcessor::getDoomEnabledParam() const { return *doomEnabledParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getDoomFreezeParam() const { return *doomFreezeParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getDoomLoopActiveParam() const { return *doomLoopActiveParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getDoomWetActiveParam() const { return *doomWetActiveParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getDoomLoopHalfParam() const { return *doomLoopHalfParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getDoomClockSmoothParam() const { return *doomClockSmoothParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDoomMixParam() const { return *doomMixParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDoomClockParam() const { return *doomClockParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDoomLoopLengthParam() const { return *doomLoopLengthParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDoomLoopModifyParam() const { return *doomLoopModifyParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDoomOverdubParam() const { return *doomOverdubParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDoomFadeParam() const { return *doomFadeParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDoomWetTimeParam() const { return *doomWetTimeParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDoomWetModifyParam() const { return *doomWetModifyParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDoomCrossParam() const { return *doomCrossParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDoomGlueParam() const { return *doomGlueParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDoomEqParam() const { return *doomEqParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDoomBalanceParam() const { return *doomBalanceParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDoomBlendParam() const { return *doomBlendParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getDoomSpreadParam() const { return *doomSpreadParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getDoomRoutingParam() const { return *doomRoutingParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getDoomLoopModeParam() const { return *doomLoopModeParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getDoomWetModeParam() const { return *doomWetModeParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getDoomCrossSourceParam() const { return *doomCrossSourceParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getLfoEnabledParam() const { return getLfoEnabledParam(0); }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getLfoEnabledParam(int lfoIndex) const
 {
@@ -776,44 +801,22 @@ float PX3SynthAudioProcessor::lfoDepthForParameterId(const juce::String& paramet
     return 1.0f;
 }
 
-std::array<int, 4> PX3SynthAudioProcessor::getFxProcessingOrder() const
+px3::FxOrder PX3SynthAudioProcessor::getFxProcessingOrder() const
 {
     // Stored order is packed atomically; sanitize on read so malformed legacy or
     // duplicate values always recover to a valid permutation.
     const auto packed = fxProcessingOrderPacked.load(std::memory_order_relaxed);
     const auto raw = unpackFxOrder(packed);
 
-    std::array<int, 4> sanitized { { 0, 1, 3, 2 } };
-    std::array<bool, 4> seen { { false, false, false, false } };
-
-    int write = 0;
-    for (int i = 0; i < 4; ++i)
-    {
-        const auto stage = juce::jlimit(0, 3, raw[static_cast<std::size_t>(i)]);
-        if (!seen[static_cast<std::size_t>(stage)])
-        {
-            sanitized[static_cast<std::size_t>(write++)] = stage;
-            seen[static_cast<std::size_t>(stage)] = true;
-        }
-    }
-
-    for (int stage = 0; stage < 4; ++stage)
-    {
-        if (!seen[static_cast<std::size_t>(stage)] && write < 4)
-        {
-            sanitized[static_cast<std::size_t>(write++)] = stage;
-        }
-    }
-
-    return sanitized;
+    return sanitizeFxOrder(raw);
 }
 
-void PX3SynthAudioProcessor::setFxProcessingOrder(const std::array<int, 4>& order)
+void PX3SynthAudioProcessor::setFxProcessingOrder(const px3::FxOrder& order)
 {
     setFxProcessingOrderWithReason(order, "UNKNOWN", "UNSPECIFIED", -1, -1);
 }
 
-void PX3SynthAudioProcessor::setFxProcessingOrderWithReason(const std::array<int, 4>& order,
+void PX3SynthAudioProcessor::setFxProcessingOrderWithReason(const px3::FxOrder& order,
                                                                 const juce::String& source,
                                                                 const juce::String& reason,
                                                                 int fromIndex,
@@ -822,27 +825,7 @@ void PX3SynthAudioProcessor::setFxProcessingOrderWithReason(const std::array<int
     // Authoritative module order lives in the processor (not UI). UI drag-drop
     // requests are sanitized and committed here so DSP, state save, and debug
     // diagnostics all observe the same canonical order.
-    std::array<int, 4> sanitized { { 0, 1, 3, 2 } };
-    std::array<bool, 4> seen { { false, false, false, false } };
-
-    int write = 0;
-    for (const auto stageIn : order)
-    {
-        const auto stage = juce::jlimit(0, 3, stageIn);
-        if (!seen[static_cast<std::size_t>(stage)] && write < 4)
-        {
-            sanitized[static_cast<std::size_t>(write++)] = stage;
-            seen[static_cast<std::size_t>(stage)] = true;
-        }
-    }
-
-    for (int stage = 0; stage < 4 && write < 4; ++stage)
-    {
-        if (!seen[static_cast<std::size_t>(stage)])
-        {
-            sanitized[static_cast<std::size_t>(write++)] = stage;
-        }
-    }
+    const auto sanitized = sanitizeFxOrder(order);
 
     const auto packed = packFxOrder(sanitized);
     const auto previous = fxProcessingOrderPacked.load(std::memory_order_relaxed);

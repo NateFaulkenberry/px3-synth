@@ -18,6 +18,8 @@
 #include "../DSP/AmpEnvelope.h"
 #include "../UI/Card.h"
 #include "../UI/CardInner.h"
+#include "../DSP/Doom.h"
+#include "../DSP/FxChain.h"
 #include "../UI/FxChainLayout.h"
 #include "../UI/FxSignalFlow.h"
 #include "../UI/UIConfigManager.h"
@@ -7431,7 +7433,7 @@ void testFxChain()
 
     using namespace px3::ui;
 
-    auto asVector = [](const std::array<int, 4>& order)
+    auto asVector = [](const px3::FxOrder& order)
     {
         return std::vector<int>(order.begin(), order.end());
     };
@@ -7648,7 +7650,9 @@ void testFxChain()
     {
         PX3SynthAudioProcessor processor;
 
-        const std::array<int, 4> reordered { { 2, 0, 3, 1 } };
+        // Every stage present exactly once, in an order nothing defaults to.
+        auto reordered = px3::kDefaultFxOrder;
+        std::reverse(reordered.begin(), reordered.end());
         processor.setFxProcessingOrder(reordered);
 
         check("FxChain_ProcessorKeepsTheOrderItWasGiven",
@@ -7670,7 +7674,7 @@ void testFxChain()
         // Reordering must not change what the chain does to silence, and every
         // order must still produce audio: a bad permutation that dropped a
         // stage would otherwise pass unnoticed.
-        std::array<int, 4> order { { 0, 1, 3, 2 } };
+        auto order = px3::kDefaultFxOrder;
         auto ordersProduceAudio = true;
         juce::String detail;
 
@@ -7683,11 +7687,1373 @@ void testFxChain()
             ordersProduceAudio = ordersProduceAudio && rms > 1.0e-4f && std::isfinite(rms);
             detail << asText(asVector(order)) << " rms " << juce::String(rms, 5) << "  ";
 
-            const auto rotated = moveChainEntry(asVector(order), 0, 3);
+            const auto rotated = moveChainEntry(asVector(order), 0, px3::kFxStageCount - 1);
             std::copy(rotated.begin(), rotated.end(), order.begin());
         }
 
         check("FxChain_EveryOrderStillRendersAudio", ordersProduceAudio, detail);
+    }
+}
+
+// ============================================================================
+// DOOM
+// ============================================================================
+
+namespace doomtest
+{
+struct Result
+{
+    std::vector<float> left;
+    std::vector<float> right;
+
+    bool finite() const
+    {
+        for (std::size_t i = 0; i < left.size(); ++i)
+        {
+            if (! std::isfinite(left[i]) || ! std::isfinite(right[i]))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    float peak() const
+    {
+        auto p = 0.0f;
+        for (std::size_t i = 0; i < left.size(); ++i)
+        {
+            p = juce::jmax(p, std::abs(left[i]), std::abs(right[i]));
+        }
+        return p;
+    }
+
+    double rms() const
+    {
+        if (left.empty())
+        {
+            return 0.0;
+        }
+        auto sum = 0.0;
+        for (std::size_t i = 0; i < left.size(); ++i)
+        {
+            sum += static_cast<double>(left[i]) * left[i] + static_cast<double>(right[i]) * right[i];
+        }
+        return std::sqrt(sum / static_cast<double>(left.size() * 2));
+    }
+
+    double dc() const
+    {
+        if (left.empty())
+        {
+            return 0.0;
+        }
+        auto sum = 0.0;
+        for (std::size_t i = 0; i < left.size(); ++i)
+        {
+            sum += static_cast<double>(left[i]) + right[i];
+        }
+        return sum / static_cast<double>(left.size() * 2);
+    }
+
+    // Only the second half, so a measurement is not dominated by the engine
+    // filling up.
+    double tailRms() const
+    {
+        const auto half = left.size() / 2;
+        if (half == 0)
+        {
+            return 0.0;
+        }
+        auto sum = 0.0;
+        for (auto i = half; i < left.size(); ++i)
+        {
+            sum += static_cast<double>(left[i]) * left[i] + static_cast<double>(right[i]) * right[i];
+        }
+        return std::sqrt(sum / static_cast<double>((left.size() - half) * 2));
+    }
+
+    double correlation() const
+    {
+        auto sxy = 0.0, sxx = 0.0, syy = 0.0;
+        for (std::size_t i = 0; i < left.size(); ++i)
+        {
+            sxy += static_cast<double>(left[i]) * right[i];
+            sxx += static_cast<double>(left[i]) * left[i];
+            syy += static_cast<double>(right[i]) * right[i];
+        }
+        const auto denom = std::sqrt(sxx * syy);
+        return denom > 1.0e-12 ? sxy / denom : 1.0;
+    }
+};
+
+enum class Source { silence, impulse, sine, burst, noise };
+
+// Runs DOOM for `seconds` and returns the wet path. Deterministic: the engine's
+// stochastic parts run off a seeded generator.
+Result runDoom(const DoomSettings& settings,
+               Source source,
+               double seconds,
+               double sampleRate = kSampleRate,
+               float frequency = 220.0f,
+               uint32_t seed = 12345u,
+               double listenSeconds = 0.0)
+{
+    px3::Doom doom;
+    doom.prepare(sampleRate);
+    doom.setSeed(seed);
+
+    // The looper is always listening, so engaging it captures what has already
+    // happened. A test that engages it at t = 0 captures silence - correct
+    // behaviour, but it measures nothing. Feed it material first, exactly as a
+    // player would.
+    if (listenSeconds > 0.0 && settings.loopActive)
+    {
+        auto listening = settings;
+        listening.loopActive = false;
+        doom.updateForBlock(listening);
+
+        // Continuous, not bursts. A gapped warm-up ends on a silent bar, and a
+        // short loop then correctly captures that silence - which measures
+        // nothing and looks exactly like a broken looper.
+        auto warmPhase = 0.0;
+        const auto warmIncrement = juce::MathConstants<double>::twoPi * frequency / sampleRate;
+        const auto warmTotal = static_cast<int>(sampleRate * listenSeconds);
+        for (int i = 0; i < warmTotal; ++i)
+        {
+            const auto in = 0.5f * static_cast<float>(std::sin(warmPhase));
+            warmPhase += warmIncrement;
+            float l = 0.0f;
+            float r = 0.0f;
+            doom.processSampleFrame(in, in, l, r);
+        }
+    }
+
+    doom.updateForBlock(settings);
+
+    const auto total = static_cast<int>(sampleRate * seconds);
+    Result result;
+    result.left.reserve(static_cast<std::size_t>(total));
+    result.right.reserve(static_cast<std::size_t>(total));
+
+    auto phase = 0.0;
+    const auto increment = juce::MathConstants<double>::twoPi * frequency / sampleRate;
+
+    for (int i = 0; i < total; ++i)
+    {
+        auto in = 0.0f;
+        switch (source)
+        {
+            case Source::silence:
+                break;
+            case Source::impulse:
+                // Past the smoothing ramps. At sample 64 the mix smoother is
+                // still near zero, so the DRY impulse leaks through and is
+                // louder than anything the effect produces.
+                in = i == 4096 ? 1.0f : 0.0f;
+                break;
+            case Source::sine:
+                in = 0.5f * static_cast<float>(std::sin(phase));
+                break;
+            case Source::burst:
+                // Notes with gaps: the shape the looper, Burst's onset detector
+                // and Cross's envelope follower all actually see in use.
+                in = ((i / static_cast<int>(sampleRate * 0.25)) % 2 == 0)
+                         ? 0.5f * static_cast<float>(std::sin(phase))
+                         : 0.0f;
+                break;
+            case Source::noise:
+                in = 0.3f * (static_cast<float>((i * 1103515245 + 12345) & 0xFFFF) / 32768.0f - 1.0f);
+                break;
+        }
+        phase += increment;
+
+        float outL = 0.0f;
+        float outR = 0.0f;
+        doom.processSampleFrame(in, in, outL, outR);
+        result.left.push_back(outL);
+        result.right.push_back(outR);
+    }
+
+    return result;
+}
+
+DoomSettings audible()
+{
+    DoomSettings s;
+    s.enabled = true;
+    s.mix = 1.0f;
+    return s;
+}
+} // namespace doomtest
+
+void testDoom()
+{
+    suite("DOOM");
+
+    using namespace doomtest;
+
+    // ---- construction and defaults -----------------------------------------
+    {
+        const DoomSettings defaults;
+        check("Doom_DefaultsAreValid",
+              defaults.enabled
+                  && juce::approximatelyEqual(defaults.clock, 1.0f)
+                  && defaults.loopModeIndex == 1 && defaults.wetModeIndex == 0
+                  && juce::approximatelyEqual(defaults.cross, 0.0f)
+                  && ! defaults.loopActive && defaults.wetActive,
+              "cross off by default, looper listening, wet channel on");
+
+        px3::Doom doom;
+        doom.prepare(kSampleRate);
+        doom.reset();
+        float l = 0.0f;
+        float r = 0.0f;
+        doom.processSampleFrame(0.0f, 0.0f, l, r);
+        check("Doom_ConstructsAndProcessesWithoutPreparingSettings",
+              std::isfinite(l) && std::isfinite(r), "");
+    }
+
+    // ---- the clock ---------------------------------------------------------
+    {
+        // Harmonised steps: the whole point of the control is that each step is
+        // a musical interval, so the ratios must be simple.
+        juce::StringArray ratios;
+        auto allMusical = true;
+        for (int i = 0; i < px3::Doom::clockStepCount(); ++i)
+        {
+            const auto c = static_cast<float>(i) / static_cast<float>(px3::Doom::clockStepCount() - 1);
+            const auto ratio = px3::Doom::clockRatioFor(c, false);
+            ratios.add(juce::String(ratio, 4));
+
+            // Simple = p/q with q <= 16 and p <= 3.
+            auto simple = false;
+            for (int q = 1; q <= 16 && ! simple; ++q)
+            {
+                for (int p = 1; p <= 3; ++p)
+                {
+                    if (std::abs(ratio - static_cast<float>(p) / static_cast<float>(q)) < 1.0e-5f)
+                    {
+                        simple = true;
+                        break;
+                    }
+                }
+            }
+            allMusical = allMusical && simple;
+        }
+        check("Doom_ClockStepsAreSimpleRatios", allMusical, ratios.joinIntoString(" "));
+
+        check("Doom_ClockIsMonotonicAndBounded",
+              juce::approximatelyEqual(px3::Doom::clockRatioFor(1.0f, false), 1.0f)
+                  && px3::Doom::clockRatioFor(0.0f, false) < 0.1f
+                  && px3::Doom::clockRatioFor(0.5f, false) > px3::Doom::clockRatioFor(0.2f, false),
+              "");
+
+        // Halving the clock has to halve the loop speed, which means halving the
+        // pitch. Measured rather than asserted: this is the one relationship the
+        // whole control rests on.
+        check("Doom_SmoothClockIsContinuousAndMatchesTheStepRange",
+              juce::approximatelyEqual(px3::Doom::clockRatioFor(1.0f, true), 1.0f)
+                  && std::abs(px3::Doom::clockRatioFor(0.5f, true) - px3::Doom::clockRatioFor(0.5f, false)) < 0.2f
+                  && px3::Doom::clockRatioFor(0.31f, true) != px3::Doom::clockRatioFor(0.32f, true),
+              "smooth sweeps where the stepped version holds");
+
+        // Every clock position has to be stable, not just the named ones.
+        juce::String detail;
+        auto allStable = true;
+        for (int i = 0; i <= px3::Doom::clockStepCount(); ++i)
+        {
+            auto s = audible();
+            s.clock = static_cast<float>(i) / static_cast<float>(px3::Doom::clockStepCount());
+            s.wetTime = 0.6f;
+            const auto out = runDoom(s, Source::burst, 1.2);
+            const auto stable = out.finite() && out.peak() < 4.0f;
+            allStable = allStable && stable;
+            if (! stable)
+            {
+                detail << "clock " << juce::String(s.clock, 2) << " peak "
+                       << juce::String(out.peak(), 3) << "  ";
+            }
+        }
+        check("Doom_EveryClockPositionIsStable", allStable, detail);
+    }
+
+    // ---- silence, impulse, sine --------------------------------------------
+    {
+        auto s = audible();
+        s.wetTime = 0.9f;
+        s.glue = 0.5f;
+        const auto quiet = runDoom(s, Source::silence, 2.0);
+        check("Doom_SilenceStaysSilent",
+              quiet.finite() && quiet.peak() < 1.0e-4f && std::abs(quiet.dc()) < 1.0e-5f,
+              "peak " + juce::String(quiet.peak(), 8) + ", dc " + juce::String(quiet.dc(), 8));
+
+        const auto impulse = runDoom(s, Source::impulse, 3.0);
+        check("Doom_ImpulseProducesABoundedTail",
+              impulse.finite() && impulse.peak() < 4.0f && impulse.tailRms() > 1.0e-6,
+              "peak " + juce::String(impulse.peak(), 4) + ", tail rms "
+                  + juce::String(impulse.tailRms(), 8));
+
+        juce::String freqDetail;
+        auto allFine = true;
+        for (const auto hz : { 50.0f, 110.0f, 220.0f, 440.0f, 1000.0f, 5000.0f })
+        {
+            const auto out = runDoom(s, Source::sine, 1.5, kSampleRate, hz);
+            const auto ok = out.finite() && out.peak() < 4.0f;
+            allFine = allFine && ok;
+            freqDetail << juce::String(static_cast<int>(hz)) << "Hz "
+                       << juce::String(out.peak(), 3) << "  ";
+        }
+        check("Doom_SineIsStableAcrossTheBand", allFine, freqDetail);
+    }
+
+    // ---- sample rates and block sizes --------------------------------------
+    {
+        juce::String detail;
+        auto allFine = true;
+        for (const auto rate : { 44100.0, 48000.0, 88200.0, 96000.0 })
+        {
+            auto s = audible();
+            s.loopActive = true;
+            s.wetTime = 0.5f;
+            const auto out = runDoom(s, Source::burst, 1.5, rate, 220.0f, 12345u, 1.0);
+            const auto ok = out.finite() && out.peak() < 4.0f && out.rms() > 1.0e-5;
+            allFine = allFine && ok;
+            detail << juce::String(static_cast<int>(rate)) << " rms "
+                   << juce::String(out.rms(), 4) << "  ";
+        }
+        check("Doom_RunsAtEverySupportedSampleRate", allFine, detail);
+    }
+
+    // ---- the micro-looper --------------------------------------------------
+    {
+        // Always listening: engaging the looper has to produce audio
+        // IMMEDIATELY, from material recorded before it was engaged. A looper
+        // that starts recording on engage would be silent here.
+        px3::Doom doom;
+        doom.prepare(kSampleRate);
+        doom.setSeed(999u);
+
+        auto listening = audible();
+        listening.loopActive = false;
+        listening.wetActive = false;
+        doom.updateForBlock(listening);
+
+        auto phase = 0.0;
+        const auto increment = juce::MathConstants<double>::twoPi * 220.0 / kSampleRate;
+        for (int i = 0; i < static_cast<int>(kSampleRate * 1.5); ++i)
+        {
+            float l = 0.0f;
+            float r = 0.0f;
+            const auto in = 0.5f * static_cast<float>(std::sin(phase));
+            phase += increment;
+            doom.processSampleFrame(in, in, l, r);
+        }
+
+        // Engage, then feed SILENCE. Anything that comes out came from history.
+        auto playing = listening;
+        playing.loopActive = true;
+        playing.loopModeIndex = 2;      // MASK with threshold 0 = the pure loop
+        playing.loopModify = 0.0f;
+        playing.balance = 0.0f;         // looper only
+        doom.updateForBlock(playing);
+
+        auto captured = 0.0;
+        const auto captureLength = static_cast<int>(kSampleRate * 0.5);
+        for (int i = 0; i < captureLength; ++i)
+        {
+            float l = 0.0f;
+            float r = 0.0f;
+            doom.processSampleFrame(0.0f, 0.0f, l, r);
+            captured += static_cast<double>(l) * l + static_cast<double>(r) * r;
+        }
+        captured = std::sqrt(captured / static_cast<double>(captureLength * 2));
+
+        check("Doom_LooperIsAlwaysListening", captured > 0.01,
+              "engaged the looper, fed silence, got rms " + juce::String(captured, 5));
+    }
+
+    {
+        // Every loop mode, and every Radio station, has to be stable and has to
+        // actually produce something.
+        static const char* loopModeNames[] = { "BURST", "RADIO", "MASK" };
+        juce::String detail;
+        auto allFine = true;
+
+        for (int mode = 0; mode < 3; ++mode)
+        {
+            auto s = audible();
+            s.loopActive = true;
+            s.wetActive = false;
+            s.loopModeIndex = mode;
+            s.balance = 0.0f;
+            const auto out = runDoom(s, Source::burst, 2.5, kSampleRate, 220.0f, 12345u, 1.5);
+            const auto ok = out.finite() && out.peak() < 4.0f && out.tailRms() > 1.0e-5;
+            allFine = allFine && ok;
+            detail << loopModeNames[mode] << " " << juce::String(out.tailRms(), 5) << "  ";
+        }
+        check("Doom_EveryLoopModeProducesStableAudio", allFine, detail);
+
+        static const char* stations[] = { "TAPE", "AMBIENT", "ORCHESTRAL", "SHOEGAZE", "DANCE" };
+        juce::String stationDetail;
+        auto stationsFine = true;
+        for (int station = 0; station < 5; ++station)
+        {
+            auto s = audible();
+            s.loopActive = true;
+            s.wetActive = false;
+            s.loopModeIndex = 1;     // RADIO
+            s.loopModify = static_cast<float>(station) / 4.0f;   // parked on a centre
+            s.balance = 0.0f;
+            const auto out = runDoom(s, Source::burst, 2.5, kSampleRate, 220.0f, 12345u, 1.5);
+            const auto ok = out.finite() && out.peak() < 4.0f && out.tailRms() > 1.0e-5;
+            stationsFine = stationsFine && ok;
+            stationDetail << stations[station] << " " << juce::String(out.tailRms(), 4) << "  ";
+        }
+        check("Doom_EveryRadioStationProducesStableAudio", stationsFine, stationDetail);
+
+        // Between two stations there is interference; parked on one there is
+        // not. That difference is the mode's defining behaviour.
+        auto onStation = audible();
+        onStation.loopActive = true;
+        onStation.wetActive = false;
+        onStation.loopModeIndex = 1;
+        onStation.loopModify = 0.25f;    // exactly on station 2 of 5
+        onStation.balance = 0.0f;
+        onStation.loopLength = 0.5f;
+
+        auto betweenStations = onStation;
+        betweenStations.loopModify = 0.125f;   // halfway between two
+
+        // Measured on silence after a capture, so what is left IS the static.
+        const auto clean = runDoom(onStation, Source::silence, 1.0, kSampleRate, 220.0f, 12345u, 1.5);
+        const auto noisy = runDoom(betweenStations, Source::silence, 1.0, kSampleRate, 220.0f, 12345u, 1.5);
+
+        // Measured as high-frequency content relative to level, not as level:
+        // off-station the tuned signal is deliberately weaker too, so plain RMS
+        // would report the attenuation rather than the interference.
+        auto noisiness = [](const Result& r)
+        {
+            auto hf = 0.0;
+            auto total = 0.0;
+            for (std::size_t i = 1; i < r.left.size(); ++i)
+            {
+                const auto d = r.left[i] - r.left[i - 1];
+                hf += static_cast<double>(d) * d;
+                total += static_cast<double>(r.left[i]) * r.left[i];
+            }
+            return hf / juce::jmax(1.0e-12, total);
+        };
+
+        check("Doom_RadioStaticRisesBetweenStations",
+              noisiness(noisy) > noisiness(clean),
+              "on station " + juce::String(noisiness(clean), 6) + ", between "
+                  + juce::String(noisiness(noisy), 6));
+    }
+
+    {
+        // MASK at threshold zero is documented as the pure loop, and is the
+        // position you build a loop up in - so it has to be clean.
+        auto pure = audible();
+        pure.loopActive = true;
+        pure.wetActive = false;
+        pure.loopModeIndex = 2;
+        pure.loopModify = 0.0f;
+        pure.balance = 0.0f;
+
+        auto masked = pure;
+        masked.loopModify = 1.0f;      // always masked
+        masked.loopLength = 0.5f;
+
+        const auto clean = runDoom(pure, Source::burst, 2.0, kSampleRate, 220.0f, 12345u, 1.5);
+        const auto disguised = runDoom(masked, Source::burst, 2.0, kSampleRate, 220.0f, 12345u, 1.5);
+
+        auto differs = false;
+        for (std::size_t i = 0; i < clean.left.size(); ++i)
+        {
+            if (std::abs(clean.left[i] - disguised.left[i]) > 1.0e-4f)
+            {
+                differs = true;
+                break;
+            }
+        }
+        check("Doom_MaskThresholdChangesTheLoop",
+              differs && clean.finite() && disguised.finite(),
+              "threshold 0 vs 1 produce different audio");
+    }
+
+    {
+        // HALF has to actually halve the loop, and playback rate has to change
+        // the loop's speed - the buffer itself must be manipulable, not hidden
+        // behind a pitch shifter.
+        auto normal = audible();
+        normal.loopActive = true;
+        normal.wetActive = false;
+        normal.loopModeIndex = 1;
+        normal.loopModify = 0.0f;     // TAPE
+        normal.loopLength = 0.5f;     // TAPE: rate = 0 at 0.5, so this is a stop
+        normal.balance = 0.0f;
+
+        auto halfSpeed = normal;
+        halfSpeed.loopLength = 0.625f;   // TAPE maps 0..1 to -2x..+2x, so this is 0.5x
+
+        auto doubleSpeed = normal;
+        doubleSpeed.loopLength = 1.0f;   // +2x
+
+        auto reverse = normal;
+        reverse.loopLength = 0.25f;      // -1x
+
+        const auto slow = runDoom(halfSpeed, Source::burst, 2.0, kSampleRate, 220.0f, 12345u, 1.5);
+        const auto fast = runDoom(doubleSpeed, Source::burst, 2.0, kSampleRate, 220.0f, 12345u, 1.5);
+        const auto back = runDoom(reverse, Source::burst, 2.0, kSampleRate, 220.0f, 12345u, 1.5);
+
+        check("Doom_TapeSupportsHalfDoubleAndReverse",
+              slow.finite() && fast.finite() && back.finite()
+                  && slow.tailRms() > 1.0e-5 && fast.tailRms() > 1.0e-5 && back.tailRms() > 1.0e-5,
+              "0.5x " + juce::String(slow.tailRms(), 5) + ", 2x " + juce::String(fast.tailRms(), 5)
+                  + ", -1x " + juce::String(back.tailRms(), 5));
+
+        auto halfLoop = normal;
+        halfLoop.loopHalf = true;
+        halfLoop.loopLength = 0.625f;
+        const auto halved = runDoom(halfLoop, Source::burst, 2.0, kSampleRate, 220.0f, 12345u, 1.5);
+        auto differs = false;
+        for (std::size_t i = 0; i < slow.left.size(); ++i)
+        {
+            if (std::abs(slow.left[i] - halved.left[i]) > 1.0e-4f)
+            {
+                differs = true;
+                break;
+            }
+        }
+        check("Doom_LoopHalfChangesTheLoopLength", differs && halved.finite(), "");
+    }
+
+    {
+        // Overdub has to reach the loop, and FADE has to make it evolve.
+        auto noOverdub = audible();
+        noOverdub.loopActive = true;
+        noOverdub.wetActive = false;
+        noOverdub.loopModeIndex = 2;
+        noOverdub.loopModify = 0.0f;
+        noOverdub.balance = 0.0f;
+
+        auto overdubbing = noOverdub;
+        overdubbing.overdub = 0.8f;
+
+        auto fading = overdubbing;
+        fading.fade = 0.3f;
+
+        const auto a = runDoom(noOverdub, Source::burst, 2.5, kSampleRate, 220.0f, 12345u, 1.5);
+        const auto b = runDoom(overdubbing, Source::burst, 2.5, kSampleRate, 220.0f, 12345u, 1.5);
+        const auto c = runDoom(fading, Source::burst, 2.5, kSampleRate, 220.0f, 12345u, 1.5);
+
+        auto overdubDiffers = false;
+        auto fadeDiffers = false;
+        for (std::size_t i = 0; i < a.left.size(); ++i)
+        {
+            overdubDiffers = overdubDiffers || std::abs(a.left[i] - b.left[i]) > 1.0e-4f;
+            fadeDiffers = fadeDiffers || std::abs(b.left[i] - c.left[i]) > 1.0e-4f;
+        }
+        check("Doom_OverdubAndFadeReachTheLoop",
+              overdubDiffers && fadeDiffers && a.finite() && b.finite() && c.finite(),
+              "");
+    }
+
+    // ---- the wet channel ---------------------------------------------------
+    {
+        static const char* wetNames[] = { "SOUP", "RELAY", "FLIP" };
+        juce::String detail;
+        auto allFine = true;
+        for (int mode = 0; mode < 3; ++mode)
+        {
+            auto s = audible();
+            s.wetModeIndex = mode;
+            s.wetTime = 0.5f;
+            s.wetModify = 0.5f;
+            s.balance = 1.0f;    // wet channel only
+            const auto out = runDoom(s, Source::burst, 2.5);
+            const auto ok = out.finite() && out.peak() < 4.0f && out.tailRms() > 1.0e-5;
+            allFine = allFine && ok;
+            detail << wetNames[mode] << " " << juce::String(out.tailRms(), 5) << "  ";
+        }
+        check("Doom_EveryWetModeProducesStableAudio", allFine, detail);
+    }
+
+    {
+        // SOUP is a spectral reverb, so a longer TIME has to leave more energy
+        // behind after the input stops. This is the one measurement that says
+        // the magnitude accumulator is actually decaying rather than gating.
+        auto shortDecay = audible();
+        shortDecay.wetModeIndex = 0;
+        shortDecay.wetTime = 0.15f;
+        shortDecay.balance = 1.0f;
+
+        auto longDecay = shortDecay;
+        longDecay.wetTime = 0.95f;
+
+        // One impulse, then silence: what is left is the tail.
+        const auto quick = runDoom(shortDecay, Source::impulse, 4.0);
+        const auto slow = runDoom(longDecay, Source::impulse, 4.0);
+
+        check("Doom_SoupDecayTimeLengthensTheTail",
+              slow.tailRms() > quick.tailRms() * 1.5 && slow.finite() && quick.finite(),
+              "short " + juce::String(quick.tailRms(), 8) + ", long "
+                  + juce::String(slow.tailRms(), 8));
+
+        // Character is the synthetic axis: high character randomises phase and
+        // blurs the magnitude spectrum, which must change the output.
+        auto coherent = longDecay;
+        coherent.wetModify = 0.0f;
+        auto scattered = longDecay;
+        scattered.wetModify = 1.0f;
+
+        const auto a = runDoom(coherent, Source::burst, 2.0);
+        const auto b = runDoom(scattered, Source::burst, 2.0);
+        auto differs = false;
+        for (std::size_t i = 0; i < a.left.size(); ++i)
+        {
+            if (std::abs(a.left[i] - b.left[i]) > 1.0e-3f)
+            {
+                differs = true;
+                break;
+            }
+        }
+        check("Doom_SoupCharacterChangesTheResynthesis",
+              differs && a.finite() && b.finite(),
+              "coherent rms " + juce::String(a.rms(), 5) + ", scattered "
+                  + juce::String(b.rms(), 5));
+    }
+
+    {
+        // RELAY's repeats do NOT fade: that is the whole mode. Measured as the
+        // level of the last repeat against the first - a feedback delay would
+        // show a geometric decay here.
+        auto s = audible();
+        s.wetModeIndex = 1;
+        s.wetTime = 0.35f;
+        s.wetModify = 0.75f;    // several repeats
+        s.balance = 1.0f;
+        s.glue = 0.0f;
+
+        const auto out = runDoom(s, Source::impulse, 3.0);
+
+        // The N loudest 20ms windows ARE the N repeats. Comparing the quietest
+        // of them to the loudest is the whole claim: under geometric feedback
+        // decay the last repeat would be a small fraction of the first.
+        //
+        // Measured as window ENERGY, not peak. A one-sample impulse landing at
+        // a fractional delay is split across two samples by the interpolator,
+        // so its peak depends on the fractional part and varies by up to 6 dB
+        // between taps - while its energy does not.
+        std::vector<double> windowEnergy;
+        const auto windowSize = static_cast<std::size_t>(kSampleRate * 0.02);
+        for (std::size_t w = 0; w + windowSize < out.left.size(); w += windowSize)
+        {
+            auto sum = 0.0;
+            for (std::size_t i = w; i < w + windowSize; ++i)
+            {
+                sum += static_cast<double>(out.left[i]) * out.left[i];
+            }
+            windowEnergy.push_back(std::sqrt(sum / static_cast<double>(windowSize)));
+        }
+
+        std::sort(windowEnergy.begin(), windowEnergy.end(), std::greater<double>());
+
+        // How many repeats there are is the mode's business, not the test's -
+        // counting the windows that carry energy avoids restating its mapping
+        // here, where a copy could drift out of step with the real one.
+        auto repeats = 0;
+        for (const auto energy : windowEnergy)
+        {
+            if (energy > 1.0e-5)
+            {
+                ++repeats;
+            }
+        }
+
+        auto ratio = 0.0;
+        if (repeats >= 2)
+        {
+            ratio = windowEnergy[static_cast<std::size_t>(repeats - 1)]
+                    / juce::jmax(1.0e-9, windowEnergy.front());
+        }
+
+        juce::String levels;
+        for (std::size_t i = 0; i < std::min<std::size_t>(8u, windowEnergy.size()); ++i)
+        {
+            levels << juce::String(windowEnergy[i], 5) << " ";
+        }
+
+        check("Doom_RelayRepeatsDoNotFade",
+              repeats >= 2 && ratio > 0.6 && out.finite(),
+              "quietest of " + juce::String(repeats) + " repeats is "
+                  + juce::String(ratio, 3) + " of the loudest [" + levels.trim() + "]");
+
+        // More repeats must not mean more level.
+        auto few = s;
+        few.wetModify = 0.1f;
+        auto many = s;
+        many.wetModify = 0.9f;
+        const auto a = runDoom(few, Source::burst, 2.0);
+        const auto b = runDoom(many, Source::burst, 2.0);
+        check("Doom_RelayRepeatCountIsLevelNeutral",
+              b.rms() < a.rms() * 3.0 && b.finite(),
+              "1 repeat rms " + juce::String(a.rms(), 5) + ", many "
+                  + juce::String(b.rms(), 5));
+
+        // The looper position sustains rather than exploding.
+        auto infinite = s;
+        infinite.wetModify = 1.0f;
+        const auto held = runDoom(infinite, Source::burst, 6.0);
+        check("Doom_RelayAtMaximumSustainsWithoutRunaway",
+              held.finite() && held.peak() < 4.0f && held.tailRms() > 1.0e-5,
+              "peak " + juce::String(held.peak(), 4) + ", tail "
+                  + juce::String(held.tailRms(), 5));
+    }
+
+    {
+        // FLIP has to produce actual harmonies, and more of them as MODIFY
+        // rises. Measured by the count of distinct spectral peaks.
+        juce::String detail;
+        auto allFine = true;
+        for (const auto modify : { 0.0f, 0.3f, 0.6f, 1.0f })
+        {
+            auto s = audible();
+            s.wetModeIndex = 2;
+            s.wetTime = 0.2f;
+            s.wetModify = modify;
+            s.balance = 1.0f;
+            const auto out = runDoom(s, Source::sine, 2.0, kSampleRate, 220.0f);
+            const auto ok = out.finite() && out.peak() < 4.0f && out.tailRms() > 1.0e-5;
+            allFine = allFine && ok;
+            detail << juce::String(modify, 1) << ":" << juce::String(out.tailRms(), 4) << "  ";
+        }
+        check("Doom_FlipProducesStableHarmoniesAcrossTheTable", allFine, detail);
+    }
+
+    {
+        // Freeze holds each mode's sound: it must sustain on silence.
+        static const char* wetNames[] = { "SOUP", "RELAY", "FLIP" };
+        juce::String detail;
+        auto allFine = true;
+
+        for (int mode = 0; mode < 3; ++mode)
+        {
+            px3::Doom doom;
+            doom.prepare(kSampleRate);
+            doom.setSeed(4242u);
+
+            auto s = audible();
+            s.wetModeIndex = mode;
+            s.wetTime = 0.5f;
+            s.balance = 1.0f;
+            doom.updateForBlock(s);
+
+            auto phase = 0.0;
+            const auto increment = juce::MathConstants<double>::twoPi * 220.0 / kSampleRate;
+            for (int i = 0; i < static_cast<int>(kSampleRate * 1.5); ++i)
+            {
+                float l = 0.0f;
+                float r = 0.0f;
+                const auto in = 0.5f * static_cast<float>(std::sin(phase));
+                phase += increment;
+                doom.processSampleFrame(in, in, l, r);
+            }
+
+            s.freeze = true;
+            doom.updateForBlock(s);
+
+            auto energy = 0.0;
+            const auto length = static_cast<int>(kSampleRate * 2.0);
+            auto peak = 0.0f;
+            for (int i = 0; i < length; ++i)
+            {
+                float l = 0.0f;
+                float r = 0.0f;
+                doom.processSampleFrame(0.0f, 0.0f, l, r);
+                energy += static_cast<double>(l) * l + static_cast<double>(r) * r;
+                peak = juce::jmax(peak, std::abs(l), std::abs(r));
+            }
+            energy = std::sqrt(energy / static_cast<double>(length * 2));
+
+            const auto ok = std::isfinite(peak) && peak < 4.0f && energy > 1.0e-5;
+            allFine = allFine && ok;
+            detail << wetNames[mode] << " " << juce::String(energy, 5) << "  ";
+        }
+        check("Doom_FreezeSustainsInEveryWetMode", allFine, detail);
+    }
+
+    // ---- CROSS -------------------------------------------------------------
+    {
+        juce::String detail;
+        auto allStable = true;
+        std::vector<double> rmsByDepth;
+
+        for (const auto depth : { 0.0f, 0.25f, 0.5f, 1.0f })
+        {
+            auto s = audible();
+            s.cross = depth;
+            s.wetTime = 0.5f;
+            s.balance = 1.0f;
+            const auto out = runDoom(s, Source::burst, 3.0);
+            allStable = allStable && out.finite() && out.peak() < 4.0f;
+            rmsByDepth.push_back(out.rms());
+            detail << juce::String(depth, 2) << ":" << juce::String(out.rms(), 5) << "  ";
+        }
+
+        check("Doom_CrossIsStableAtEveryIntensity", allStable, detail);
+
+        // Increasing Cross must actually change the behaviour, not just sit
+        // there - it interferes with amplitude, so the level moves.
+        check("Doom_CrossChangesBehaviourAsItRises",
+              std::abs(rmsByDepth.back() - rmsByDepth.front()) > 1.0e-4,
+              "off " + juce::String(rmsByDepth.front(), 6) + ", max "
+                  + juce::String(rmsByDepth.back(), 6));
+
+        // Both sources have to work, and the channel-modulates-channel case is
+        // the one that could become an algebraic loop.
+        auto channelSource = audible();
+        channelSource.cross = 1.0f;
+        channelSource.crossSourceIndex = 1;
+        channelSource.loopActive = true;
+        channelSource.wetTime = 0.7f;
+        const auto crossed = runDoom(channelSource, Source::burst, 4.0);
+        check("Doom_CrossChannelToChannelStaysBounded",
+              crossed.finite() && crossed.peak() < 4.0f,
+              "peak " + juce::String(crossed.peak(), 4));
+    }
+
+    // ---- GLUE --------------------------------------------------------------
+    {
+        juce::String detail;
+        auto allStable = true;
+        std::vector<double> rmsByGlue;
+
+        for (const auto glue : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
+        {
+            auto s = audible();
+            s.glue = glue;
+            s.wetTime = 0.4f;
+            s.balance = 1.0f;
+            const auto out = runDoom(s, Source::sine, 2.0);
+            allStable = allStable && out.finite() && out.peak() < 4.0f
+                        && std::abs(out.dc()) < 0.05;
+            rmsByGlue.push_back(out.rms());
+            detail << juce::String(glue, 2) << ":" << juce::String(out.rms(), 4) << "  ";
+        }
+
+        check("Doom_GlueIsStableAndDcFreeAtEveryAmount", allStable, detail);
+
+        // Level-compensated: turning GLUE up changes character, not loudness.
+        // Without the per-region makeup this ratio runs away.
+        auto maxRatio = 0.0;
+        for (const auto rms : rmsByGlue)
+        {
+            maxRatio = juce::jmax(maxRatio, rms / juce::jmax(1.0e-9, rmsByGlue.front()));
+        }
+        check("Doom_GlueIsRoughlyLevelNeutral", maxRatio < 3.0,
+              "loudest/cleanest = " + juce::String(maxRatio, 3));
+
+        // And it has to actually do something.
+        check("Doom_GlueChangesTheSignal",
+              std::abs(rmsByGlue.back() - rmsByGlue.front()) > 1.0e-5,
+              "");
+    }
+
+    // ---- EQ, balance, blend, spread ---------------------------------------
+    {
+        auto flat = audible();
+        flat.wetTime = 0.4f;
+        flat.balance = 1.0f;
+
+        auto dark = flat;
+        dark.eq = -1.0f;
+        auto bright = flat;
+        bright.eq = 1.0f;
+
+        const auto a = runDoom(dark, Source::noise, 1.5);
+        const auto b = runDoom(bright, Source::noise, 1.5);
+
+        // A tilt: one direction removes highs, the other removes lows. Measured
+        // as the high-frequency energy, which must be larger on the bright side.
+        auto highEnergy = [](const Result& r)
+        {
+            auto sum = 0.0;
+            for (std::size_t i = 1; i < r.left.size(); ++i)
+            {
+                const auto d = r.left[i] - r.left[i - 1];
+                sum += static_cast<double>(d) * d;
+            }
+            return std::sqrt(sum / static_cast<double>(std::max<std::size_t>(1u, r.left.size() - 1)));
+        };
+
+        check("Doom_EqTiltsRatherThanCuts",
+              highEnergy(b) > highEnergy(a) && a.finite() && b.finite(),
+              "dark hf " + juce::String(highEnergy(a), 6) + ", bright hf "
+                  + juce::String(highEnergy(b), 6));
+
+        // Balance crossfades the two channels.
+        auto loopOnly = audible();
+        loopOnly.loopActive = true;
+        loopOnly.balance = 0.0f;
+        auto wetOnly = loopOnly;
+        wetOnly.balance = 1.0f;
+        const auto l = runDoom(loopOnly, Source::burst, 2.0, kSampleRate, 220.0f, 12345u, 1.5);
+        const auto w = runDoom(wetOnly, Source::burst, 2.0, kSampleRate, 220.0f, 12345u, 1.5);
+        auto balanceDiffers = false;
+        for (std::size_t i = 0; i < l.left.size(); ++i)
+        {
+            if (std::abs(l.left[i] - w.left[i]) > 1.0e-4f)
+            {
+                balanceDiffers = true;
+                break;
+            }
+        }
+        check("Doom_BalanceCrossfadesTheTwoChannels",
+              balanceDiffers && l.finite() && w.finite(), "");
+
+        // Spread has to widen the image rather than just being carried around.
+        auto narrow = audible();
+        narrow.loopActive = true;
+        narrow.loopModeIndex = 1;
+        narrow.spread = 0.0f;
+        narrow.balance = 0.0f;
+        auto wide = narrow;
+        wide.spread = 1.0f;
+
+        const auto n = runDoom(narrow, Source::burst, 2.5, kSampleRate, 220.0f, 12345u, 1.5);
+        const auto wd = runDoom(wide, Source::burst, 2.5, kSampleRate, 220.0f, 12345u, 1.5);
+        check("Doom_SpreadWidensTheImage",
+              wd.correlation() < n.correlation() + 0.01 && n.finite() && wd.finite(),
+              "narrow corr " + juce::String(n.correlation(), 4) + ", wide "
+                  + juce::String(wd.correlation(), 4));
+    }
+
+    // ---- routing -----------------------------------------------------------
+    {
+        // ROUTING only means anything when both channels are on, as documented.
+        juce::String detail;
+        auto allFine = true;
+        std::vector<double> byRouting;
+
+        for (int routing = 0; routing < 3; ++routing)
+        {
+            auto s = audible();
+            s.loopActive = true;
+            s.wetActive = true;
+            s.routingIndex = routing;
+            s.wetTime = 0.5f;
+            const auto out = runDoom(s, Source::burst, 2.5, kSampleRate, 220.0f, 12345u, 1.5);
+            allFine = allFine && out.finite() && out.peak() < 4.0f;
+            byRouting.push_back(out.rms());
+            detail << routing << ":" << juce::String(out.rms(), 5) << "  ";
+        }
+
+        check("Doom_EveryRoutingIsStable", allFine, detail);
+        check("Doom_RoutingChangesWhatTheWetChannelHears",
+              std::abs(byRouting[0] - byRouting[2]) > 1.0e-5,
+              "INPUT " + juce::String(byRouting[0], 6) + ", LOOP "
+                  + juce::String(byRouting[2], 6));
+    }
+
+    // ---- hostile combinations ---------------------------------------------
+    {
+        struct Hostile { const char* name; DoomSettings settings; };
+
+        auto everything = audible();
+        everything.loopActive = true;
+        everything.wetActive = true;
+        everything.loopModeIndex = 0;
+        everything.wetModeIndex = 1;
+        everything.wetTime = 1.0f;
+        everything.wetModify = 1.0f;
+        everything.loopLength = 1.0f;
+        everything.loopModify = 1.0f;
+        everything.cross = 1.0f;
+        everything.crossSourceIndex = 1;
+        everything.glue = 1.0f;
+        everything.overdub = 1.0f;
+        everything.fade = 1.0f;
+        everything.clock = 0.0f;
+        everything.spread = 1.0f;
+        everything.freeze = true;
+
+        auto soupExtreme = everything;
+        soupExtreme.wetModeIndex = 0;
+        soupExtreme.clock = 1.0f;
+
+        auto flipExtreme = everything;
+        flipExtreme.wetModeIndex = 2;
+        flipExtreme.clock = 0.5f;
+
+        auto noFade = everything;
+        noFade.fade = 0.0f;
+        noFade.freeze = false;
+
+        const std::array<Hostile, 4> cases { {
+            { "everything+relay+lowest clock", everything },
+            { "everything+soup+highest clock", soupExtreme },
+            { "everything+flip", flipExtreme },
+            { "everything, fade 0, unfrozen", noFade },
+        } };
+
+        juce::String detail;
+        auto allSurvive = true;
+        for (const auto& c : cases)
+        {
+            const auto out = runDoom(c.settings, Source::noise, 6.0, kSampleRate, 220.0f, 12345u, 1.0);
+            const auto ok = out.finite() && out.peak() < 8.0f && std::abs(out.dc()) < 0.2;
+            allSurvive = allSurvive && ok;
+            if (! ok)
+            {
+                detail << c.name << " peak " << juce::String(out.peak(), 3)
+                       << " dc " << juce::String(out.dc(), 4) << "  ";
+            }
+        }
+        check("Doom_HostileCombinationsStayValidAudio", allSurvive,
+              detail.isEmpty() ? "all four survive 6s of noise at maximum everything" : detail);
+    }
+
+    // ---- automation --------------------------------------------------------
+    {
+        // Every continuous control swept min to max while audio runs. What this
+        // is looking for is a discontinuity the signal itself cannot explain.
+        struct Sweep { const char* name; float DoomSettings::* member; };
+        const std::array<Sweep, 10> sweeps { {
+            { "clock", &DoomSettings::clock },
+            { "mix", &DoomSettings::mix },
+            { "loopLength", &DoomSettings::loopLength },
+            { "loopModify", &DoomSettings::loopModify },
+            { "wetTime", &DoomSettings::wetTime },
+            { "wetModify", &DoomSettings::wetModify },
+            { "cross", &DoomSettings::cross },
+            { "glue", &DoomSettings::glue },
+            { "balance", &DoomSettings::balance },
+            { "spread", &DoomSettings::spread },
+        } };
+
+        juce::String detail;
+        auto allSmooth = true;
+
+        for (const auto& sweep : sweeps)
+        {
+            px3::Doom doom;
+            doom.prepare(kSampleRate);
+            doom.setSeed(777u);
+
+            auto s = audible();
+            s.loopActive = true;
+            s.wetTime = 0.5f;
+
+            const auto total = static_cast<int>(kSampleRate * 3.0);
+            const auto blockSize = 64;
+
+            auto phase = 0.0;
+            const auto increment = juce::MathConstants<double>::twoPi * 220.0 / kSampleRate;
+            auto worstStep = 0.0f;
+            auto previous = 0.0f;
+            auto valid = true;
+
+            for (int i = 0; i < total; ++i)
+            {
+                if (i % blockSize == 0)
+                {
+                    s.*(sweep.member) = static_cast<float>(i) / static_cast<float>(total);
+                    doom.updateForBlock(s);
+                }
+
+                const auto in = 0.5f * static_cast<float>(std::sin(phase));
+                phase += increment;
+
+                float l = 0.0f;
+                float r = 0.0f;
+                doom.processSampleFrame(in, in, l, r);
+                valid = valid && std::isfinite(l) && std::isfinite(r) && std::abs(l) < 8.0f;
+
+                if (i > 1000)
+                {
+                    worstStep = juce::jmax(worstStep, std::abs(l - previous));
+                }
+                previous = l;
+            }
+
+            // The input itself steps by up to 2*pi*f/fs * amplitude per sample.
+            // The threshold is generous: this is looking for a click, not for
+            // slope.
+            const auto ok = valid && worstStep < 0.75f;
+            allSmooth = allSmooth && ok;
+            if (! ok)
+            {
+                detail << sweep.name << " step " << juce::String(worstStep, 4) << "  ";
+            }
+        }
+
+        check("Doom_EveryParameterSweepsWithoutDiscontinuity", allSmooth,
+              detail.isEmpty() ? "10 controls swept min to max under audio" : detail);
+    }
+
+    // ---- determinism -------------------------------------------------------
+    {
+        auto s = audible();
+        s.loopActive = true;
+        s.loopModeIndex = 0;      // BURST, whose fills are stochastic
+        s.loopModify = 1.0f;      // maximum sensitivity, so fills fire often
+
+        const auto a = runDoom(s, Source::burst, 2.0, kSampleRate, 220.0f, 555u, 1.5);
+        const auto b = runDoom(s, Source::burst, 2.0, kSampleRate, 220.0f, 555u, 1.5);
+        const auto c = runDoom(s, Source::burst, 2.0, kSampleRate, 220.0f, 556u, 1.5);
+
+        auto sameSeedMatches = a.left.size() == b.left.size();
+        for (std::size_t i = 0; i < a.left.size() && sameSeedMatches; ++i)
+        {
+            sameSeedMatches = juce::approximatelyEqual(a.left[i], b.left[i]);
+        }
+
+        auto differentSeedDiffers = false;
+        for (std::size_t i = 0; i < a.left.size(); ++i)
+        {
+            if (std::abs(a.left[i] - c.left[i]) > 1.0e-6f)
+            {
+                differentSeedDiffers = true;
+                break;
+            }
+        }
+
+        check("Doom_SeededRandomnessIsDeterministic",
+              sameSeedMatches && differentSeedDiffers,
+              "same seed is sample-identical; a different seed is not");
+    }
+
+    // ---- bypass ------------------------------------------------------------
+    {
+        // Bypass is not mix = 0: it stops the processing. What matters audibly
+        // is that the dry signal comes through unchanged and without a click.
+        px3::Doom doom;
+        doom.prepare(kSampleRate);
+
+        auto s = audible();
+        s.wetTime = 0.8f;
+        doom.updateForBlock(s);
+
+        auto phase = 0.0;
+        const auto increment = juce::MathConstants<double>::twoPi * 220.0 / kSampleRate;
+        for (int i = 0; i < static_cast<int>(kSampleRate); ++i)
+        {
+            float l = 0.0f;
+            float r = 0.0f;
+            const auto in = 0.5f * static_cast<float>(std::sin(phase));
+            phase += increment;
+            doom.processSampleFrame(in, in, l, r);
+        }
+
+        s.enabled = false;
+        doom.updateForBlock(s);
+
+        auto worstStep = 0.0f;
+        auto previous = 0.0f;
+        auto maxDeviation = 0.0f;
+        const auto length = static_cast<int>(kSampleRate * 0.5);
+        for (int i = 0; i < length; ++i)
+        {
+            const auto in = 0.5f * static_cast<float>(std::sin(phase));
+            phase += increment;
+
+            float l = 0.0f;
+            float r = 0.0f;
+            doom.processSampleFrame(in, in, l, r);
+
+            if (i > 0)
+            {
+                worstStep = juce::jmax(worstStep, std::abs(l - previous));
+            }
+            previous = l;
+
+            // After the bypass ramp has settled, the output IS the input.
+            if (i > static_cast<int>(kSampleRate * 0.1))
+            {
+                maxDeviation = juce::jmax(maxDeviation, std::abs(l - in));
+            }
+        }
+
+        check("Doom_BypassPassesDryWithoutAClick",
+              maxDeviation < 1.0e-5f && worstStep < 0.2f,
+              "deviation from dry " + juce::String(maxDeviation, 8) + ", worst step "
+                  + juce::String(worstStep, 5));
+    }
+
+    // ---- integration: state, presets, ordering -----------------------------
+    {
+        PX3SynthAudioProcessor processor;
+
+        struct FloatParam { const char* id; float value; };
+        const std::array<FloatParam, 14> floats { {
+            { "doomMix", 0.71f }, { "doomClock", 0.33f }, { "doomLoopLength", 0.62f },
+            { "doomLoopModify", 0.19f }, { "doomOverdub", 0.44f }, { "doomFade", 0.27f },
+            { "doomWetTime", 0.83f }, { "doomWetModify", 0.56f }, { "doomCross", 0.38f },
+            { "doomGlue", 0.91f }, { "doomEq", -0.64f }, { "doomBalance", 0.22f },
+            { "doomBlend", 0.77f }, { "doomSpread", 0.11f },
+        } };
+
+        auto findParam = [&processor](const juce::String& id) -> juce::RangedAudioParameter*
+        {
+            for (auto* param : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
+                {
+                    if (ranged->paramID == id)
+                    {
+                        return ranged;
+                    }
+                }
+            }
+            return nullptr;
+        };
+
+        juce::StringArray missing;
+        for (const auto& f : floats)
+        {
+            if (auto* param = findParam(f.id))
+            {
+                param->setValueNotifyingHost(param->convertTo0to1(f.value));
+            }
+            else
+            {
+                missing.add(f.id);
+            }
+        }
+
+        const std::array<const char*, 6> bools {
+            { "doomEnabled", "doomFreeze", "doomLoopActive", "doomWetActive",
+              "doomLoopHalf", "doomClockSmooth" }
+        };
+        for (const auto* id : bools)
+        {
+            if (auto* param = findParam(id))
+            {
+                param->setValueNotifyingHost(param->getValue() > 0.5f ? 0.0f : 1.0f);
+            }
+            else
+            {
+                missing.add(id);
+            }
+        }
+
+        const std::array<const char*, 4> choices {
+            { "doomRouting", "doomLoopMode", "doomWetMode", "doomCrossSource" }
+        };
+        for (const auto* id : choices)
+        {
+            if (auto* param = findParam(id))
+            {
+                param->setValueNotifyingHost(1.0f);
+            }
+            else
+            {
+                missing.add(id);
+            }
+        }
+
+        check("Doom_AllParametersExist", missing.isEmpty(),
+              missing.isEmpty() ? "24 DOOM parameters registered"
+                                : "missing " + missing.joinIntoString(", "));
+
+        // Non-default order that includes DOOM somewhere other than its slot.
+        auto order = px3::kDefaultFxOrder;
+        std::rotate(order.begin(), order.begin() + 3, order.end());
+        processor.setFxProcessingOrder(order);
+
+        std::vector<float> before;
+        for (auto* param : processor.getParameters())
+        {
+            before.push_back(param->getValue());
+        }
+
+        juce::MemoryBlock state;
+        processor.getStateInformation(state);
+
+        PX3SynthAudioProcessor restored;
+        restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        std::size_t index = 0;
+        juce::StringArray drifted;
+        for (auto* param : restored.getParameters())
+        {
+            if (index < before.size() && std::abs(param->getValue() - before[index]) > 1.0e-5f)
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param);
+                    ranged != nullptr && ranged->paramID.startsWithIgnoreCase("doom"))
+                {
+                    drifted.add(ranged->paramID);
+                }
+            }
+            ++index;
+        }
+
+        check("Doom_EveryParameterRoundTripsThroughDawState", drifted.isEmpty(),
+              drifted.isEmpty() ? "24 parameters restored exactly"
+                                : "drifted: " + drifted.joinIntoString(", "));
+
+        check("Doom_FxOrderIncludingDoomSurvivesState",
+              restored.getFxProcessingOrder() == order, "");
+    }
+
+    {
+        // DOOM must actually be IN the chain, and its position must matter.
+        auto renderWithOrder = [](const px3::FxOrder& order)
+        {
+            PX3SynthAudioProcessor processor;
+            for (auto* param : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
+                {
+                    if (ranged->paramID == "doomMix")       ranged->setValueNotifyingHost(0.8f);
+                    if (ranged->paramID == "doomWetTime")   ranged->setValueNotifyingHost(0.6f);
+                    if (ranged->paramID == "delayMix" || ranged->paramID == "delayAmount")
+                        ranged->setValueNotifyingHost(0.6f);
+                    if (ranged->paramID == "reverbAmount")  ranged->setValueNotifyingHost(0.6f);
+                }
+            }
+            processor.setFxProcessingOrder(order);
+            return render(processor, 48000, { { 2000, true, 60, 0.9f } });
+        };
+
+        auto doomFirst = px3::kDefaultFxOrder;
+        auto doomLast = px3::kDefaultFxOrder;
+
+        // Move DOOM to the very front, and to the very back.
+        auto moveTo = [](px3::FxOrder order, int stage, int position)
+        {
+            std::vector<int> v(order.begin(), order.end());
+            const auto it = std::find(v.begin(), v.end(), stage);
+            const auto from = static_cast<int>(std::distance(v.begin(), it));
+            const auto moved = v[static_cast<std::size_t>(from)];
+            v.erase(v.begin() + from);
+            v.insert(v.begin() + position, moved);
+            std::copy(v.begin(), v.end(), order.begin());
+            return order;
+        };
+
+        doomFirst = moveTo(doomFirst, px3::fxStageDoom, 0);
+        doomLast = moveTo(doomLast, px3::fxStageDoom, px3::kFxStageCount - 1);
+
+        const auto a = renderWithOrder(doomFirst);
+        const auto b = renderWithOrder(doomLast);
+
+        auto differs = false;
+        const auto count = juce::jmin(a.left.size(), b.left.size());
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            if (std::abs(a.left[i] - b.left[i]) > 1.0e-5f)
+            {
+                differs = true;
+                break;
+            }
+        }
+
+        check("Doom_PositionInTheChainChangesTheAudio", differs,
+              "DOOM first rms " + juce::String(a.rms(), 5) + ", DOOM last "
+                  + juce::String(b.rms(), 5));
     }
 }
 } // namespace
@@ -8368,6 +9734,7 @@ int main(int argc, char* argv[])
     if (wants("cardstyle")) testCardStyle();
     if (wants("cardinner")) testCardInner();
     if (wants("fxchain")) testFxChain();
+    if (wants("doom")) testDoom();
     if (wants("delay")) testDelay();
     if (wants("mood")) testMood();
     if (wants("fx")) testEffectIndependence();

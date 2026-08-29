@@ -95,6 +95,8 @@ set(PX3_SHARED_SOURCES
         Source/UI/DelayComponent.cpp
         Source/UI/Card.cpp
         Source/DSP/CombResonator.cpp
+        Source/DSP/StftEngine.cpp
+        Source/DSP/Doom.cpp
         Source/UI/FxSignalFlow.cpp
         Source/UI/FxChainLayout.cpp
         Source/UI/BypassButton.cpp

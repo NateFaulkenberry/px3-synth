@@ -4,6 +4,8 @@
 
 #include "Delay.h"
 #include "LfoGenerator.h"
+#include "FxChain.h"
+#include "Doom.h"
 #include "Mood.h"
 #include "PianoKeyboard.h"
 #include "Reverb.h"
@@ -205,6 +207,31 @@ public:
     juce::AudioParameterChoice& getMoodRoutingParam() const;
     juce::AudioParameterChoice& getMoodWetModeParam() const;
     juce::AudioParameterChoice& getMoodLoopModeParam() const;
+
+    juce::AudioParameterBool& getDoomEnabledParam() const;
+    juce::AudioParameterBool& getDoomFreezeParam() const;
+    juce::AudioParameterBool& getDoomLoopActiveParam() const;
+    juce::AudioParameterBool& getDoomWetActiveParam() const;
+    juce::AudioParameterBool& getDoomLoopHalfParam() const;
+    juce::AudioParameterBool& getDoomClockSmoothParam() const;
+    juce::AudioParameterFloat& getDoomMixParam() const;
+    juce::AudioParameterFloat& getDoomClockParam() const;
+    juce::AudioParameterFloat& getDoomLoopLengthParam() const;
+    juce::AudioParameterFloat& getDoomLoopModifyParam() const;
+    juce::AudioParameterFloat& getDoomOverdubParam() const;
+    juce::AudioParameterFloat& getDoomFadeParam() const;
+    juce::AudioParameterFloat& getDoomWetTimeParam() const;
+    juce::AudioParameterFloat& getDoomWetModifyParam() const;
+    juce::AudioParameterFloat& getDoomCrossParam() const;
+    juce::AudioParameterFloat& getDoomGlueParam() const;
+    juce::AudioParameterFloat& getDoomEqParam() const;
+    juce::AudioParameterFloat& getDoomBalanceParam() const;
+    juce::AudioParameterFloat& getDoomBlendParam() const;
+    juce::AudioParameterFloat& getDoomSpreadParam() const;
+    juce::AudioParameterChoice& getDoomRoutingParam() const;
+    juce::AudioParameterChoice& getDoomLoopModeParam() const;
+    juce::AudioParameterChoice& getDoomWetModeParam() const;
+    juce::AudioParameterChoice& getDoomCrossSourceParam() const;
     juce::AudioParameterBool& getLfoEnabledParam() const;
     juce::AudioParameterBool& getLfoEnabledParam(int lfoIndex) const;
     juce::AudioParameterFloat& getLfoFrequencyParam() const;
@@ -233,9 +260,9 @@ public:
     bool setEnvelopeAssignmentIndex(int envIndex, int index, bool notifyHost = true);
     bool setEnvelopeAssignmentByParameterId(const juce::String& parameterId, bool notifyHost = true);
     bool setEnvelopeAssignmentByParameterId(int envIndex, const juce::String& parameterId, bool notifyHost = true);
-    std::array<int, 4> getFxProcessingOrder() const;
-    void setFxProcessingOrder(const std::array<int, 4>& order);
-    void setFxProcessingOrderWithReason(const std::array<int, 4>& order,
+    px3::FxOrder getFxProcessingOrder() const;
+    void setFxProcessingOrder(const px3::FxOrder& order);
+    void setFxProcessingOrderWithReason(const px3::FxOrder& order,
                                         const juce::String& source,
                                         const juce::String& reason,
                                         int fromIndex = -1,
@@ -258,7 +285,7 @@ public:
     bool debugRoundTripCurrentState(juce::String& report);
     uint32_t debugGetModuleOrderGeneration() const;
     uint32_t debugGetModuleOrderHash() const;
-    juce::String debugDescribeOrder(const std::array<int, 4>& order) const;
+    juce::String debugDescribeOrder(const px3::FxOrder& order) const;
     float debugGetLfoPhase() const;
     float debugGetLfoCurrentValue() const;
     float debugGetLfoCurrentValue(int lfoIndex) const;
@@ -353,6 +380,7 @@ private:
     DelaySettings currentDelaySettings() const;
     ReverbSettings currentReverbSettings() const;
     MoodSettings currentMoodSettings() const;
+    DoomSettings currentDoomSettings() const;
 
     void updateTransportState();
     void buildLfoAssignableTargets();
@@ -458,6 +486,31 @@ private:
     juce::AudioParameterChoice* moodRoutingParam { nullptr };
     juce::AudioParameterChoice* moodWetModeParam { nullptr };
     juce::AudioParameterChoice* moodLoopModeParam { nullptr };
+
+    juce::AudioParameterBool* doomEnabledParam { nullptr };
+    juce::AudioParameterBool* doomFreezeParam { nullptr };
+    juce::AudioParameterBool* doomLoopActiveParam { nullptr };
+    juce::AudioParameterBool* doomWetActiveParam { nullptr };
+    juce::AudioParameterBool* doomLoopHalfParam { nullptr };
+    juce::AudioParameterBool* doomClockSmoothParam { nullptr };
+    juce::AudioParameterFloat* doomMixParam { nullptr };
+    juce::AudioParameterFloat* doomClockParam { nullptr };
+    juce::AudioParameterFloat* doomLoopLengthParam { nullptr };
+    juce::AudioParameterFloat* doomLoopModifyParam { nullptr };
+    juce::AudioParameterFloat* doomOverdubParam { nullptr };
+    juce::AudioParameterFloat* doomFadeParam { nullptr };
+    juce::AudioParameterFloat* doomWetTimeParam { nullptr };
+    juce::AudioParameterFloat* doomWetModifyParam { nullptr };
+    juce::AudioParameterFloat* doomCrossParam { nullptr };
+    juce::AudioParameterFloat* doomGlueParam { nullptr };
+    juce::AudioParameterFloat* doomEqParam { nullptr };
+    juce::AudioParameterFloat* doomBalanceParam { nullptr };
+    juce::AudioParameterFloat* doomBlendParam { nullptr };
+    juce::AudioParameterFloat* doomSpreadParam { nullptr };
+    juce::AudioParameterChoice* doomRoutingParam { nullptr };
+    juce::AudioParameterChoice* doomLoopModeParam { nullptr };
+    juce::AudioParameterChoice* doomWetModeParam { nullptr };
+    juce::AudioParameterChoice* doomCrossSourceParam { nullptr };
     juce::AudioParameterFloat* reverbSizeParam { nullptr };
     juce::AudioParameterFloat* reverbDecayParam { nullptr };
     juce::AudioParameterFloat* reverbDampingParam { nullptr };
@@ -552,6 +605,7 @@ private:
     Vibe vibeComponent;
     Delay delayComponent;
     Mood moodComponent;
+    px3::Doom doomComponent;
     ::Reverb reverb;
 
     // Internal routing buses (prepared once, reused per block).

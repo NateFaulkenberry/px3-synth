@@ -268,6 +268,49 @@ MoodSettings PX3SynthAudioProcessor::currentMoodSettings() const
     return settings;
 }
 
+DoomSettings PX3SynthAudioProcessor::currentDoomSettings() const
+{
+    // Every continuous control goes through applyModulationToNormalizedValue,
+    // which is what makes it a modulation destination - there is no DOOM-side
+    // modulation plumbing.
+    auto modulated = [this](juce::AudioParameterFloat* param)
+    {
+        return param->convertFrom0to1(
+            applyModulationToNormalizedValue(param,
+                                             static_cast<juce::RangedAudioParameter*>(param)->getValue()));
+    };
+
+    DoomSettings settings;
+    settings.enabled = doomEnabledParam != nullptr && doomEnabledParam->get();
+    settings.freeze = doomFreezeParam != nullptr && doomFreezeParam->get();
+    settings.loopActive = doomLoopActiveParam != nullptr && doomLoopActiveParam->get();
+    settings.wetActive = doomWetActiveParam != nullptr && doomWetActiveParam->get();
+    settings.loopHalf = doomLoopHalfParam != nullptr && doomLoopHalfParam->get();
+    settings.clockSmooth = doomClockSmoothParam != nullptr && doomClockSmoothParam->get();
+
+    settings.mix = modulated(doomMixParam);
+    settings.clock = modulated(doomClockParam);
+    settings.loopLength = modulated(doomLoopLengthParam);
+    settings.loopModify = modulated(doomLoopModifyParam);
+    settings.overdub = modulated(doomOverdubParam);
+    settings.fade = modulated(doomFadeParam);
+    settings.wetTime = modulated(doomWetTimeParam);
+    settings.wetModify = modulated(doomWetModifyParam);
+    settings.cross = modulated(doomCrossParam);
+    settings.glue = modulated(doomGlueParam);
+    settings.eq = modulated(doomEqParam);
+    settings.balance = modulated(doomBalanceParam);
+    settings.blend = modulated(doomBlendParam);
+    settings.spread = modulated(doomSpreadParam);
+
+    settings.routingIndex = doomRoutingParam != nullptr ? doomRoutingParam->getIndex() : 0;
+    settings.loopModeIndex = doomLoopModeParam != nullptr ? doomLoopModeParam->getIndex() : 1;
+    settings.wetModeIndex = doomWetModeParam != nullptr ? doomWetModeParam->getIndex() : 0;
+    settings.crossSourceIndex = doomCrossSourceParam != nullptr ? doomCrossSourceParam->getIndex() : 0;
+
+    return settings;
+}
+
 void PX3SynthAudioProcessor::updateTransportState()
 {
     currentBpm = 120.0;

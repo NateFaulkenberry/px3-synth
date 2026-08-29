@@ -62,7 +62,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     debugInstanceId = "PX3-INSTANCE-" + juce::String(static_cast<int>(instanceNumber)).paddedLeft('0', 2);
     debugProcessorCreatedTime = nowTimestamp();
 
-    fxProcessingOrderPacked.store(packFxOrder({ { 0, 1, 3, 2 } }), std::memory_order_relaxed);
+    fxProcessingOrderPacked.store(packFxOrder(px3::kDefaultFxOrder), std::memory_order_relaxed);
     fxOrderRevision.store(0u, std::memory_order_relaxed);
 
     for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
@@ -368,6 +368,49 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                         "Mood Loop Mode",
                                                         juce::StringArray { "ENV", "TAPE", "STRETCH" },
                                                         0);
+    // ---- DOOM ------------------------------------------------------------
+    // A BAD MOOD-inspired two-channel processor. See docs/DOOM_DSP_DESIGN.md.
+    doomEnabledParam = new juce::AudioParameterBool("doomEnabled", "Doom Enabled", true);
+    doomFreezeParam = new juce::AudioParameterBool("doomFreeze", "Doom Freeze", false);
+    doomLoopActiveParam = new juce::AudioParameterBool("doomLoopActive", "Doom Looper Active", false);
+    doomWetActiveParam = new juce::AudioParameterBool("doomWetActive", "Doom Wet Active", true);
+    doomLoopHalfParam = new juce::AudioParameterBool("doomLoopHalf", "Doom Loop Half", false);
+    doomClockSmoothParam = new juce::AudioParameterBool("doomClockSmooth", "Doom Clock Smooth", false);
+    // Zero by default, matching reverbAmount: adding an effect to the instrument
+    // must not change what every existing patch sounds like.
+    doomMixParam = new juce::AudioParameterFloat("doomMix", "Doom Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    doomClockParam = new juce::AudioParameterFloat("doomClock", "Doom Clock", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    doomLoopLengthParam = new juce::AudioParameterFloat("doomLoopLength", "Doom Loop Length", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
+    doomLoopModifyParam = new juce::AudioParameterFloat("doomLoopModify", "Doom Loop Modify", juce::NormalisableRange<float>(0.0f, 1.0f), 0.50f);
+    doomOverdubParam = new juce::AudioParameterFloat("doomOverdub", "Doom Overdub", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    doomFadeParam = new juce::AudioParameterFloat("doomFade", "Doom Fade", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    doomWetTimeParam = new juce::AudioParameterFloat("doomWetTime", "Doom Wet Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
+    doomWetModifyParam = new juce::AudioParameterFloat("doomWetModify", "Doom Wet Modify", juce::NormalisableRange<float>(0.0f, 1.0f), 0.40f);
+    // Off by default: cross is confusing before you know what it does, and the
+    // source pedal ships it off for the same reason.
+    doomCrossParam = new juce::AudioParameterFloat("doomCross", "Doom Cross", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    doomGlueParam = new juce::AudioParameterFloat("doomGlue", "Doom Glue", juce::NormalisableRange<float>(0.0f, 1.0f), 0.15f);
+    doomEqParam = new juce::AudioParameterFloat("doomEq", "Doom EQ", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
+    doomBalanceParam = new juce::AudioParameterFloat("doomBalance", "Doom Balance", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    doomBlendParam = new juce::AudioParameterFloat("doomBlend", "Doom Blend", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    doomSpreadParam = new juce::AudioParameterFloat("doomSpread", "Doom Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    doomRoutingParam = new juce::AudioParameterChoice("doomRouting",
+                                                       "Doom Routing",
+                                                       juce::StringArray { "INPUT", "INPUT+LOOP", "LOOP" },
+                                                       0);
+    doomLoopModeParam = new juce::AudioParameterChoice("doomLoopMode",
+                                                        "Doom Loop Mode",
+                                                        juce::StringArray { "BURST", "RADIO", "MASK" },
+                                                        1);
+    doomWetModeParam = new juce::AudioParameterChoice("doomWetMode",
+                                                       "Doom Wet Mode",
+                                                       juce::StringArray { "SOUP", "RELAY", "FLIP" },
+                                                       0);
+    doomCrossSourceParam = new juce::AudioParameterChoice("doomCrossSource",
+                                                           "Doom Cross Source",
+                                                           juce::StringArray { "INPUT", "CHANNEL" },
+                                                           0);
+
     reverbSizeParam = new juce::AudioParameterFloat("reverbSize", "Reverb Size", juce::NormalisableRange<float>(0.0f, 1.0f), 0.52f);
     reverbDecayParam = new juce::AudioParameterFloat("reverbDecay", "Reverb Decay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.48f);
     reverbDampingParam = new juce::AudioParameterFloat("reverbDamping", "Reverb Damping", juce::NormalisableRange<float>(0.0f, 1.0f), 0.46f);
@@ -527,6 +570,31 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(moodRoutingParam);
     addParameter(moodWetModeParam);
     addParameter(moodLoopModeParam);
+
+    addParameter(doomEnabledParam);
+    addParameter(doomFreezeParam);
+    addParameter(doomLoopActiveParam);
+    addParameter(doomWetActiveParam);
+    addParameter(doomLoopHalfParam);
+    addParameter(doomClockSmoothParam);
+    addParameter(doomMixParam);
+    addParameter(doomClockParam);
+    addParameter(doomLoopLengthParam);
+    addParameter(doomLoopModifyParam);
+    addParameter(doomOverdubParam);
+    addParameter(doomFadeParam);
+    addParameter(doomWetTimeParam);
+    addParameter(doomWetModifyParam);
+    addParameter(doomCrossParam);
+    addParameter(doomGlueParam);
+    addParameter(doomEqParam);
+    addParameter(doomBalanceParam);
+    addParameter(doomBlendParam);
+    addParameter(doomSpreadParam);
+    addParameter(doomRoutingParam);
+    addParameter(doomLoopModeParam);
+    addParameter(doomWetModeParam);
+    addParameter(doomCrossSourceParam);
     addParameter(reverbSizeParam);
     addParameter(reverbDecayParam);
     addParameter(reverbDampingParam);
@@ -664,6 +732,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     vibeComponent.prepare(sampleRate, synth.getNumVoices(), vibeComponent.getSeed());
     delayComponent.prepare(sampleRate);
     moodComponent.prepare(sampleRate);
+    doomComponent.prepare(sampleRate);
     reverb.prepare(sampleRate);
 
     const auto busChannels = juce::jmax(kMixerSourceCount, getTotalNumOutputChannels());
@@ -1365,6 +1434,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     delayComponent.updateForBlock(currentDelaySettings());
     moodComponent.updateForBlock(currentMoodSettings());
+    doomComponent.updateForBlock(currentDoomSettings());
     reverb.updateForBlock(currentReverbSettings(), buffer.getNumSamples());
     const auto fxOrder = getFxProcessingOrder();
     const auto fxSendGain = fxSendGainParam != nullptr
@@ -1644,6 +1714,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
                 case 3: // Mood
                     moodComponent.processSampleFrame(stageL, stageR, stageL, stageR);
+                    break;
+
+                case 4: // Doom
+                    doomComponent.processSampleFrame(stageL, stageR, stageL, stageR);
                     break;
 
                 default:

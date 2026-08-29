@@ -1263,7 +1263,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     addAndMakeVisible(*fltPanel);
     addAndMakeVisible(*fxPanel);
     addAndMakeVisible(*mixPanel);
-    fxPanel->onChainOrderChanged = [this](const std::array<int, kFxSectionCount>& order)
+    fxPanel->onChainOrderChanged = [this](const px3::FxOrder& order)
     {
         applyFxChainOrder(order, "USER", "USER_DRAG_END", -1, -1);
     };
@@ -2286,7 +2286,7 @@ void PX3SynthAudioProcessorEditor::mouseUp(const juce::MouseEvent& event)
 
 
 
-void PX3SynthAudioProcessorEditor::applyFxChainOrder(const std::array<int, kFxSectionCount>& order,
+void PX3SynthAudioProcessorEditor::applyFxChainOrder(const px3::FxOrder& order,
                                                      const juce::String& source,
                                                      const juce::String& reason,
                                                      int fromIndex,

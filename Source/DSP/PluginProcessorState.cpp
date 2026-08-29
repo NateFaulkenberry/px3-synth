@@ -205,16 +205,19 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         }
     }
 
-    std::array<int, 4> fxOrderFromState { { 0, 1, 3, 2 } };
+    auto fxOrderFromState = px3::kDefaultFxOrder;
     auto hasModuleOrder = false;
     auto moduleOrderSource = juce::String("none");
 
     if (const auto moduleOrder = state.getChildWithName(kModuleOrderId); moduleOrder.isValid())
     {
-        std::array<bool, 4> seen { { false, false, false, false } };
+        // Read what the state names, then let the shared sanitiser fill in any
+        // stage the saved order predates. A session written before an effect
+        // existed simply gets that effect in its default slot.
+        FxOrder fromState {};
         int write = 0;
 
-        for (int i = 0; i < moduleOrder.getNumChildren() && write < 4; ++i)
+        for (int i = 0; i < moduleOrder.getNumChildren() && write < kFxStageCount; ++i)
         {
             const auto moduleNode = moduleOrder.getChild(i);
             if (!moduleNode.isValid() || moduleNode.getType() != kModuleEntryId || !moduleNode.hasProperty(kModuleIdProperty))
@@ -222,31 +225,28 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                 continue;
             }
 
-            const auto moduleId = moduleNode.getProperty(kModuleIdProperty).toString();
-            const auto stage = stageForModuleId(moduleId);
+            const auto stage = stageForModuleId(moduleNode.getProperty(kModuleIdProperty).toString());
             if (stage < 0)
             {
                 continue;
             }
 
-            if (!seen[static_cast<std::size_t>(stage)])
-            {
-                fxOrderFromState[static_cast<std::size_t>(write++)] = stage;
-                seen[static_cast<std::size_t>(stage)] = true;
-            }
+            fromState[static_cast<std::size_t>(write++)] = stage;
         }
 
         if (write > 0)
         {
             hasModuleOrder = true;
             moduleOrderSource = "MODULE_ORDER";
-            for (int stage = 0; stage < 4 && write < 4; ++stage)
+
+            // Pad with a stage the sanitiser will discard as a duplicate, so
+            // the unwritten tail cannot read as a run of stage 0.
+            for (int i = write; i < kFxStageCount; ++i)
             {
-                if (!seen[static_cast<std::size_t>(stage)])
-                {
-                    fxOrderFromState[static_cast<std::size_t>(write++)] = stage;
-                }
+                fromState[static_cast<std::size_t>(i)] = fromState[0];
             }
+
+            fxOrderFromState = sanitizeFxOrder(fromState);
         }
     }
 

@@ -10,6 +10,8 @@
 // Shared internal constants/helpers for split PluginProcessor implementation
 // files. This is intentionally private processor internals, not a public API.
 
+#include "FxChain.h"
+
 namespace px3::processor_internal
 {
 // Sources generate this far below full scale so modulation has somewhere to go.
@@ -68,12 +70,19 @@ inline const juce::StringArray kVibeTypeChoices {
     "LoFi"
 };
 
-inline constexpr int kFxStageCount = 4;
+using px3::kFxStageCount;
+using px3::FxOrder;
+using px3::kDefaultFxOrder;
 
 inline const std::array<juce::String, kFxStageCount> kFxModuleIds { juce::String("harmonicDrive"),
                                                                      juce::String("delay"),
                                                                      juce::String("reverb"),
-                                                                     juce::String("mood") };
+                                                                     juce::String("mood"),
+                                                                     juce::String("doom"),
+                                                                     juce::String("lucy"),
+                                                                     juce::String("chorus"),
+                                                                     juce::String("stereoSpread") };
+
 
 inline juce::String nowTimestamp()
 {
@@ -101,7 +110,7 @@ inline int stageForModuleId(const juce::String& moduleId)
     return -1;
 }
 
-inline juce::String formatOrderString(const std::array<int, kFxStageCount>& order)
+inline juce::String formatOrderString(const FxOrder& order)
 {
     juce::StringArray items;
     for (const auto stage : order)
@@ -111,22 +120,61 @@ inline juce::String formatOrderString(const std::array<int, kFxStageCount>& orde
     return items.joinIntoString(",");
 }
 
-inline uint32_t packFxOrder(const std::array<int, kFxStageCount>& order)
+// Recovers a valid permutation from anything: a malformed saved order, a
+// duplicate, a stage id from a build that had fewer effects. Every stage
+// appears exactly once, and stages the input never mentioned are appended in
+// their default order rather than dropped - a dropped stage is an effect that
+// silently stops processing.
+inline FxOrder sanitizeFxOrder(const FxOrder& order)
 {
-    return (static_cast<uint32_t>(order[0] & 0x3)
-            | (static_cast<uint32_t>(order[1] & 0x3) << 2)
-            | (static_cast<uint32_t>(order[2] & 0x3) << 4)
-            | (static_cast<uint32_t>(order[3] & 0x3) << 6));
+    FxOrder sanitized {};
+    std::array<bool, kFxStageCount> seen {};
+
+    int write = 0;
+    for (const auto stageIn : order)
+    {
+        const auto stage = juce::jlimit(0, kFxStageCount - 1, stageIn);
+        if (! seen[static_cast<std::size_t>(stage)])
+        {
+            sanitized[static_cast<std::size_t>(write++)] = stage;
+            seen[static_cast<std::size_t>(stage)] = true;
+        }
+    }
+
+    for (const auto stage : kDefaultFxOrder)
+    {
+        if (! seen[static_cast<std::size_t>(stage)] && write < kFxStageCount)
+        {
+            sanitized[static_cast<std::size_t>(write++)] = stage;
+            seen[static_cast<std::size_t>(stage)] = true;
+        }
+    }
+
+    return sanitized;
 }
 
-inline std::array<int, kFxStageCount> unpackFxOrder(uint32_t packed)
+inline uint32_t packFxOrder(const FxOrder& order)
 {
-    return {
-        { static_cast<int>(packed & 0x3u),
-          static_cast<int>((packed >> 2) & 0x3u),
-          static_cast<int>((packed >> 4) & 0x3u),
-          static_cast<int>((packed >> 6) & 0x3u) }
-    };
+    // Three bits per stage. Widening past eight stages needs a wider word, so
+    // the assert is here rather than in a comment.
+    static_assert(kFxStageCount <= 10, "packFxOrder holds ten 3-bit stages at most");
+
+    uint32_t packed = 0u;
+    for (int i = 0; i < kFxStageCount; ++i)
+    {
+        packed |= (static_cast<uint32_t>(order[static_cast<std::size_t>(i)]) & 0x7u) << (i * 3);
+    }
+    return packed;
+}
+
+inline FxOrder unpackFxOrder(uint32_t packed)
+{
+    FxOrder order {};
+    for (int i = 0; i < kFxStageCount; ++i)
+    {
+        order[static_cast<std::size_t>(i)] = static_cast<int>((packed >> (i * 3)) & 0x7u);
+    }
+    return order;
 }
 
 inline float divisionBeatsForIndex(int index)

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../DSP/FxChain.h"
+
 #include <JuceHeader.h>
 
 #include "FxSignalFlow.h"
@@ -68,13 +70,13 @@ public:
     // The chain order to display. The panel lays its cards out in this order
     // and hands the same order to the signal-flow strip, so the two views
     // cannot disagree - they are the same list read twice.
-    void setChainOrder(const std::array<int, 4>& order);
+    void setChainOrder(const px3::FxOrder& order);
     void setSectionActive(int sectionId, bool active);
 
     // Raised when the user drags the strip into a new order. The panel does not
     // apply it: the editor writes it to the processor, which feeds it back
     // through setChainOrder.
-    std::function<void(const std::array<int, 4>&)> onChainOrderChanged;
+    std::function<void(const px3::FxOrder&)> onChainOrderChanged;
 
     void setActive(bool vibeEnabled,
                    bool delayEnabled,
@@ -103,7 +105,7 @@ private:
     px3::ui::FxSignalFlow signalFlow;
     juce::Viewport gridViewport;
     juce::Component gridContent;
-    std::array<int, 4> chainOrder { { 0, 1, 3, 2 } };
+    px3::FxOrder chainOrder { px3::kDefaultFxOrder };
     std::array<bool, 4> sectionActive { { true, true, true, true } };
     std::shared_ptr<const UIConfig> uiConfig;
 };

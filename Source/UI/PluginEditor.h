@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../DSP/FxChain.h"
+
 #include <JuceHeader.h>
 
 #include "BypassButton.h"
@@ -160,13 +162,15 @@ private:
 
     static juce::String fxModuleIdFromSection(int sectionId);
 
-    static constexpr int kFxSectionCount = 4;
+    // The chain's shape is the processor's, not the editor's: an FX section IS
+    // an FX stage, so there is nothing here to keep in step with it.
+    static constexpr int kFxSectionCount = px3::kFxStageCount;
 
     struct DebugSnapshot
     {
         juce::String timestamp;
-        std::array<int, kFxSectionCount> processorOrder { { 0, 1, 3, 2 } };
-        std::array<int, kFxSectionCount> uiOrder { { 0, 1, 3, 2 } };
+        px3::FxOrder processorOrder { px3::kDefaultFxOrder };
+        px3::FxOrder uiOrder { px3::kDefaultFxOrder };
         juce::String stateXml;
         juce::String serializedXml;
         int serializedBytes { 0 };
@@ -208,11 +212,11 @@ private:
     void debugWriteDeterministicTestValues();
     void debugRandomizeParameters();
     void debugResetParameters();
-    void debugApplyModuleOrder(const std::array<int, kFxSectionCount>& order,
+    void debugApplyModuleOrder(const px3::FxOrder& order,
                                const juce::String& reason,
                                int fromIndex = -1,
                                int toIndex = -1);
-    std::array<juce::String, kFxSectionCount> readModuleOrderFromStateTree(const juce::ValueTree& state) const;
+    std::array<juce::String, px3::kFxStageCount> readModuleOrderFromStateTree(const juce::ValueTree& state) const;
     juce::String describeUiOrder() const;
     juce::String describeProcessorOrder() const;
     juce::String describeStateTreeOrder() const;
@@ -260,8 +264,8 @@ private:
     juce::Rectangle<int> performanceControlsArea;
     // The one authoritative UI-side chain order. The signal-flow strip edits it,
     // the FX grid and the processor both follow it.
-    std::array<int, kFxSectionCount> fxSectionOrder { { 0, 1, 3, 2 } };
-    void applyFxChainOrder(const std::array<int, kFxSectionCount>& order,
+    px3::FxOrder fxSectionOrder { px3::kDefaultFxOrder };
+    void applyFxChainOrder(const px3::FxOrder& order,
                            const juce::String& source,
                            const juce::String& reason,
                            int fromIndex,
