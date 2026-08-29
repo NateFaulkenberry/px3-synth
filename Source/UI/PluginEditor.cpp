@@ -854,11 +854,11 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     osc3PitchLabel.setFont(juce::FontOptions(11.0f));
     subOscPitchLabel.setFont(juce::FontOptions(11.0f));
 
-    configureEffectKnob(vibeAmountKnob, audioProcessor.getVibeAmountParam());
-    configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "", audioProcessor.getDelayAmountParam());
+    configureEffectKnob(vibeAmountKnob, vibeAmountLabel, "AMOUNT", audioProcessor.getVibeAmountParam());
+    configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "AMOUNT", audioProcessor.getDelayAmountParam());
     configureEffectKnob(delayTimeKnob, delayTimeLabel, "TIME", audioProcessor.getDelayTimeParam());
     configureEffectKnob(delayFeedbackKnob, delayFeedbackLabel, "FEEDBACK", audioProcessor.getDelayFeedbackParam());
-    configureEffectKnob(reverbKnob, reverbLabel, "", audioProcessor.getReverbAmountParam());
+    configureEffectKnob(reverbKnob, reverbLabel, "AMOUNT", audioProcessor.getReverbAmountParam());
     configureEffectKnob(moodMixKnob, moodMixLabel, "MIX", audioProcessor.getMoodMixParam());
     configureEffectKnob(moodClockKnob, moodClockLabel, "CLOCK", audioProcessor.getMoodClockParam());
     configureEffectKnob(moodWetTimeKnob, moodWetTimeLabel, "WET TIME", audioProcessor.getMoodWetTimeParam());
@@ -869,7 +869,6 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureEffectKnob(moodSpreadKnob, moodSpreadLabel, "SPREAD", audioProcessor.getMoodSpreadParam());
     configureEffectKnob(moodDegradeKnob, moodDegradeLabel, "DEGRADE", audioProcessor.getMoodDegradeParam());
 
-    // isaacTextureLabel.setText("INTENSITY", juce::dontSendNotification);
     // isaacTextureLabel.setVisible(true);
 
     // Compact labels and tooltips keep delay controls readable in narrow layouts.
@@ -1207,6 +1206,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           kGroupAccents[1]);
     fxPanel = std::make_unique<FxPanel>(robBypassButton,
                                         vibeAmountKnob,
+                                        vibeAmountLabel,
                                         vibeTypeBox,
                                         vibeTypeLabel,
                                         delayBypassButton,

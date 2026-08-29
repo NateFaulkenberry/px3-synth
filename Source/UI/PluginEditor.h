@@ -467,6 +467,7 @@ private:
 
     juce::Slider vibeAmountKnob;
     juce::ComboBox vibeTypeBox;
+    KnobLabel vibeAmountLabel;
     KnobLabel vibeTypeLabel;
     juce::Slider isaacTextureKnob;
     KnobLabel isaacTextureLabel;

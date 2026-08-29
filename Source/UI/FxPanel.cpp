@@ -4,7 +4,8 @@
 
 FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
                  juce::Slider& vibeAmountKnob,
-                      juce::ComboBox& vibeTypeBox,
+                 juce::Label& vibeAmountLabel,
+                 juce::ComboBox& vibeTypeBox,
                  juce::Label& vibeTypeLabel,
                  juce::ToggleButton& delayBypass,
                  juce::Slider& delayAmountKnob,
@@ -77,6 +78,7 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
 
     vibeUiComponent = std::make_unique<VibeComponent>(vibeBypass,
                                                         vibeAmountKnob,
+                                                        vibeAmountLabel,
                                                         vibeTypeBox,
                                                         vibeTypeLabel,
                                                         juce::Colour::fromRGB(236, 182, 92));

@@ -117,34 +117,49 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
     // A subtitle takes the bottom of the face, and the legend centres in what
     // is left - so a tab without one is laid out exactly as it was.
     const auto hasSubtitle = subtitleLeft.isNotEmpty() || subtitleRight.isNotEmpty();
+
+    // Both fonts are sized from their OWN band when there are two of them.
+    // Sizing them from the whole face is what made the first attempt
+    // unreadable: the tab is 32px tall, so area * 0.21 put the subtitle at
+    // 6.7px and drawFittedText then shrank it further to fit. Measured from
+    // its own 12px band it lands at 9px, against a 12px name.
+    auto legendFontSize = juce::jmin(13.0f, area.getHeight() * 0.30f);
     juce::Rectangle<float> subtitleArea;
+    auto subtitleFontSize = 0.0f;
+
     if (hasSubtitle)
     {
-        subtitleArea = legendArea.removeFromBottom(juce::jmin(14.0f, legendArea.getHeight() * 0.38f));
+        subtitleArea = legendArea.removeFromBottom(
+            juce::jlimit(10.0f, 13.0f, legendArea.getHeight() * 0.38f));
+        legendFontSize = juce::jmin(13.0f, legendArea.getHeight() * 0.60f);
+        subtitleFontSize = juce::jmin(9.5f, subtitleArea.getHeight() * 0.75f);
     }
 
     g.setColour(legend);
-    g.setFont(juce::FontOptions(juce::jmin(13.0f, area.getHeight() * 0.30f), juce::Font::bold));
+    g.setFont(juce::FontOptions(legendFontSize, juce::Font::bold));
     g.drawFittedText(getButtonText(), legendArea.toNearestInt(), juce::Justification::centred, 1);
 
     if (hasSubtitle)
     {
-        // Dimmer as well as smaller. Two lines at the same weight read as two
-        // competing labels rather than as a name with its details under it.
-        g.setColour(legend.withMultipliedAlpha(0.62f));
-        g.setFont(juce::FontOptions(juce::jmin(9.5f, area.getHeight() * 0.21f)));
+        // The same colour as the name. Size alone carries the hierarchy - it
+        // was dimmed as well, and between that and a font sized off the whole
+        // 32px face the subtitles came out unreadable.
+        g.setColour(legend);
+        g.setFont(juce::FontOptions(subtitleFontSize));
 
         // Half the width each, so a long category cannot push the author off
-        // the right-hand edge - each is fitted into its own half instead.
+        // the right-hand edge - each is fitted into its own half instead. The
+        // minimum scale is high because there is ample width here: a subtitle
+        // that has to shrink much is already too small to read.
         const auto inset = subtitleArea.reduced(6.0f, 0.0f);
         const auto half = inset.getWidth() * 0.5f;
 
         g.drawFittedText(subtitleLeft.toUpperCase(),
                          inset.withWidth(half).toNearestInt(),
-                         juce::Justification::centredLeft, 1, 0.7f);
+                         juce::Justification::centredLeft, 1, 0.9f);
         g.drawFittedText(subtitleRight.toUpperCase(),
                          inset.withTrimmedLeft(half).toNearestInt(),
-                         juce::Justification::centredRight, 1, 0.7f);
+                         juce::Justification::centredRight, 1, 0.9f);
     }
 
     // The seam between neighbours. One line on the right only, so butted tabs
@@ -395,7 +410,11 @@ void TopMenuBar::setSelectedSection(int sectionIndex)
 
 void TopMenuBar::setPresetName(const juce::String& name)
 {
-    presetNameButton.setButtonText(name);
+    // Upper case on the way in, not in the file: the preset keeps whatever
+    // casing it was saved with everywhere else - the browser list, the details
+    // pane, the .px3 itself - and only the tab renders it this way, to sit with
+    // the section tabs and the category and author beneath it.
+    presetNameButton.setButtonText(name.toUpperCase());
 }
 
 void TopMenuBar::setPresetDetails(const juce::String& category, const juce::String& author)

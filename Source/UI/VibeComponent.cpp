@@ -7,11 +7,13 @@
 
 VibeComponent::VibeComponent(juce::ToggleButton& enabledButtonIn,
                                  juce::Slider& amountKnobIn,
+                                 juce::Label& amountLabelIn,
                                  juce::ComboBox& typeBoxIn,
                                  juce::Label& typeLabelIn,
                                  juce::Colour accentIn)
     : enabledButton(enabledButtonIn),
       amountKnob(amountKnobIn),
+      amountLabel(amountLabelIn),
       typeBox(typeBoxIn),
       typeLabel(typeLabelIn),
       accent(accentIn)
@@ -22,6 +24,7 @@ VibeComponent::VibeComponent(juce::ToggleButton& enabledButtonIn,
 
     addAndMakeVisible(enabledButton);
     addAndMakeVisible(amountKnob);
+    addAndMakeVisible(amountLabel);
     addAndMakeVisible(typeBox);
     addAndMakeVisible(typeLabel);
 }
@@ -36,6 +39,7 @@ void VibeComponent::setActive(bool enabled)
 {
     isActive = enabled;
     amountKnob.setEnabled(isActive);
+    amountLabel.setEnabled(isActive);
     typeBox.setEnabled(isActive);
     typeLabel.setEnabled(isActive);
     amountKnob.getProperties().set("psychedelicBypassGray", !isActive);
@@ -90,11 +94,12 @@ void VibeComponent::resized()
                            .withMargin(gap));
         flex.performLayout(row.toFloat());
 
-        // Knob only - the "AMOUNT" caption was removed; the card title and the
-        // knob's own tooltip already say what it is.
         px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
-                                       { nullptr, &amountKnob, nullptr,
-                                         ControlShape::square, 0, 0, 82 },
+                                       // readoutHeight 22 to match DELAY and
+                                       // REVERB. At 0 the caption is laid out
+                                       // with no height and never appears.
+                                       { nullptr, &amountKnob, &amountLabel,
+                                         ControlShape::square, 0, 22, 82 },
                                        inner.rowControl(0));
     }
 

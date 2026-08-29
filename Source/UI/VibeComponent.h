@@ -14,6 +14,7 @@ class VibeComponent final : public juce::Component
 public:
     VibeComponent(juce::ToggleButton& enabledButtonIn,
                     juce::Slider& amountKnobIn,
+                    juce::Label& amountLabelIn,
                     juce::ComboBox& typeBoxIn,
                     juce::Label& typeLabelIn,
                     juce::Colour accentIn);
@@ -29,6 +30,7 @@ public:
 private:
     juce::ToggleButton& enabledButton;
     juce::Slider& amountKnob;
+    juce::Label& amountLabel;
     juce::ComboBox& typeBox;
     juce::Label& typeLabel;
     px3::ui::CardHost card;

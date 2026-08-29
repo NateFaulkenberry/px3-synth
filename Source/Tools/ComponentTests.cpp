@@ -12593,6 +12593,43 @@ void testEditorLifecycle()
         editor.reset();
     }
 
+    {
+        PX3SynthAudioProcessor processor;
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        editor->setSize(1320, 798);
+        editor->setVisible(true);
+
+        TopMenuBar* menu = nullptr;
+        std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+        {
+            if (auto* m = dynamic_cast<TopMenuBar*>(&c)) menu = m;
+            for (auto* child : c.getChildren()) walk(*child);
+        };
+        walk(*editor);
+
+        if (menu != nullptr)
+        {
+            auto& b = menu->getPresetNameButton();
+            menu->setPresetName("REESE UNDERTOW");
+            menu->setPresetDetails("BASS", "P(X3)");
+
+            const auto img = b.createComponentSnapshot(b.getLocalBounds());
+            std::printf("\nPRESET BUTTON %dx%d\n", img.getWidth(), img.getHeight());
+            const auto ref = img.getPixelAt(2, img.getHeight() / 2);
+            for (int y = 0; y < img.getHeight(); ++y)
+            {
+                std::printf("  ");
+                for (int x = 0; x < img.getWidth(); x += 3)
+                {
+                    const auto d = std::abs(img.getPixelAt(x, y).getBrightness() - ref.getBrightness());
+                    std::printf("%c", d > 0.30f ? '#' : (d > 0.12f ? '+' : (d > 0.05f ? '.' : ' ')));
+                }
+                std::printf("|\n");
+            }
+            std::printf("\n");
+        }
+    }
+
 
     {
         // And with audio having run through it, so the timer callbacks and the
@@ -12690,6 +12727,43 @@ void testEditorLifecycle()
         }
 
         check("Editor_ExtraWindowHeightAllGoesToThePanels", keyboardHeld && panelTracks, detail);
+    }
+
+    {
+        // VIBE, DELAY and REVERB all had an amount knob with no caption. DELAY
+        // and REVERB were passing "" as the caption to configureEffectKnob, so
+        // the label was laid out and painted with nothing in it - a reserved
+        // gap under the knob; VIBE had no label component at all and passed
+        // nullptr into layoutLabelledControl.
+        PX3SynthAudioProcessor processor;
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        editor->setSize(1320, 798);
+        editor->setVisible(true);
+
+        // Every amount caption in the FX panel, found by text so the test does
+        // not need access to the editor's private label members.
+        int amountLabels = 0;
+        int laidOut = 0;
+        juce::String detail;
+        std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+        {
+            if (auto* label = dynamic_cast<juce::Label*>(&c))
+            {
+                if (label->getText().trim().equalsIgnoreCase("AMOUNT"))
+                {
+                    ++amountLabels;
+                    if (! label->getBounds().isEmpty() && label->isVisible()) ++laidOut;
+                    detail << label->getBounds().toString() << "  ";
+                }
+            }
+            for (auto* child : c.getChildren()) walk(*child);
+        };
+        walk(*editor);
+
+        check("FxCards_VibeDelayAndReverbAmountKnobsAreLabelled",
+              amountLabels >= 3 && laidOut == amountLabels,
+              juce::String(amountLabels) + " AMOUNT captions, " + juce::String(laidOut)
+                  + " laid out and visible: " + detail);
     }
 
     {
@@ -12814,7 +12888,8 @@ void testEditorLifecycle()
         {
             auto& button = menu->getPresetNameButton();
 
-            menu->setPresetName("TEST PATCH");
+            // Mixed case in, upper case on the face.
+            menu->setPresetName("Test Patch");
             menu->setPresetDetails({}, {});
             const auto bare = inkInBottomBand(button);
 
@@ -12826,7 +12901,10 @@ void testEditorLifecycle()
             ok = button.getHeight() >= 28 && bare >= 0 && withDetails > bare + 20;
 
             detail << "button " << button.getWidth() << "x" << button.getHeight()
-                   << ", bottom-band ink " << bare << " -> " << withDetails;
+                   << ", bottom-band ink " << bare << " -> " << withDetails
+                   << ", name \"" << button.getButtonText() << "\"";
+
+            ok = ok && button.getButtonText() == "TEST PATCH";
         }
 
         check("TopMenu_PresetTabShowsCategoryAndAuthor", ok,
