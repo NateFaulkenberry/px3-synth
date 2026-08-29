@@ -46,6 +46,20 @@ public:
 
     void setWarningStyle(const WarningStyle& style);
 
+    // Extra height ABOVE the keys, reserved for the spark animation.
+    //
+    // A component cannot paint outside its own bounds - the parent clips it -
+    // so the sparks were being cut off at the top edge the moment they left a
+    // key. The fix is to make the component taller than the keyboard it draws
+    // and put the keys at the bottom of it: the headroom is transparent, does
+    // not respond to the mouse, and exists only so the sparks have somewhere to
+    // go. The keys, the hit testing and the warning all follow the keyboard
+    // area rather than the component bounds.
+    void setSparkHeadroom(int pixels);
+    int getSparkHeadroom() const noexcept { return sparkHeadroomPx; }
+    // The keys themselves: the component minus its spark headroom.
+    juce::Rectangle<int> keyboardArea() const;
+
     // Silenced when every oscillator source is bypassed: nothing this keyboard
     // does can make a sound, so it stops animating, greys out, stops responding
     // to the mouse, and says why.
@@ -53,6 +67,9 @@ public:
     bool isSilenced() const noexcept { return silenced; }
 
     void paint(juce::Graphics& g) override;
+    // The headroom is not part of the instrument, so clicks pass through it to
+    // whatever is behind.
+    bool hitTest(int x, int y) override;
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
     void mouseUp(const juce::MouseEvent& event) override;
@@ -97,5 +114,6 @@ private:
     int heldMidiNote { -1 };
     float clickVelocityNorm { 0.65f };
     bool silenced { false };
+    int sparkHeadroomPx { 0 };
     WarningStyle warningStyle;
 };

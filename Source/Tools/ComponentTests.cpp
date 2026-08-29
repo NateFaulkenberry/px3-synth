@@ -13442,11 +13442,17 @@ void testEditorLifecycle()
             return keys;
         };
 
-        // A row across the middle of the keyboard, counted against the grey the
+        // A row across the middle of the KEYS, counted against the grey the
         // silenced keyboard is filled with. Only meaningful while silenced.
+        //
+        // The keys are not the middle of the component: it is grown upward by
+        // the spark headroom, which is transparent, so the component's own
+        // centre line sits above the keyboard and crosses neither the keys nor
+        // the warning box.
         auto brightPixelsAcrossTheMiddle = [](PianoKeyboard& keys)
         {
-            const auto img = keys.createComponentSnapshot(keys.getLocalBounds());
+            const auto area = keys.keyboardArea();
+            const auto img = keys.createComponentSnapshot(area);
             auto lit = 0;
             for (int x = 0; x < img.getWidth(); ++x)
             {
@@ -13476,6 +13482,38 @@ void testEditorLifecycle()
         const auto allOff = silencedWith(false, false, false, false);
         const auto subOnly = silencedWith(false, false, false, true);
         const auto osc2Only = silencedWith(false, true, false, false);
+
+        {
+            // The sparks used to be clipped at the top edge of the keys, because
+            // a component cannot paint outside its own bounds. The component is
+            // now taller than the keyboard it draws, and the extra strip has to
+            // be BOTH transparent to the mouse and outside the keyboard area -
+            // otherwise it would eat clicks meant for the panel above it.
+            setParam(processor, "osc1Enabled", 1.0f);
+            std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+            editor->setSize(1320, 798);
+            editor->setVisible(true);
+
+            auto* keys = keyboardOf(*editor);
+            const auto headroom = keys != nullptr ? keys->getSparkHeadroom() : 0;
+            const auto area = keys != nullptr ? keys->keyboardArea() : juce::Rectangle<int>();
+
+            const auto headroomIsAbove = keys != nullptr && headroom > 0
+                                         && area.getY() == headroom
+                                         && area.getBottom() == keys->getHeight();
+            const auto headroomPassesClicksThrough =
+                keys != nullptr && ! keys->hitTest(keys->getWidth() / 2, headroom / 2);
+            const auto keysStillHitTest =
+                keys != nullptr && keys->hitTest(keys->getWidth() / 2, area.getCentreY());
+
+            check("Keyboard_SparksHaveHeadroomAboveTheKeys",
+                  headroomIsAbove && headroomPassesClicksThrough && keysStillHitTest,
+                  juce::String(headroom) + "px of headroom above a "
+                      + juce::String(area.getHeight()) + "px keyboard; a click in the headroom "
+                      + (headroomPassesClicksThrough ? "passes through" : "IS CAUGHT")
+                      + " and a click on the keys "
+                      + (keysStillHitTest ? "lands" : "MISSES"));
+        }
 
         check("Keyboard_SilencesItselfOnlyWhenNothingCanSound",
               ! allOn.silenced && allOff.silenced && ! subOnly.silenced && ! osc2Only.silenced,

@@ -24,8 +24,12 @@ void PianoKeyboard::setActiveNotes(const std::array<bool, PianoKeyboard::totalKe
 
 void PianoKeyboard::paintKeyboard(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour::fromRGB(25, 25, 25));
-    const auto area = getLocalBounds().toFloat().reduced(8.0f);
+    // Only the keyboard's own rectangle is filled. fillAll would paint the
+    // spark headroom too, which sits over the panel above.
+    g.setColour(juce::Colour::fromRGB(25, 25, 25));
+    g.fillRect(keyboardArea());
+
+    const auto area = keyboardArea().toFloat().reduced(8.0f);
     const auto whiteKeyWidth = area.getWidth() / static_cast<float>(whiteKeys);
     const auto whiteKeyHeight = area.getHeight();
     const auto blackKeyWidth = whiteKeyWidth * 0.64f;
@@ -151,6 +155,28 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
     }
 }
 
+juce::Rectangle<int> PianoKeyboard::keyboardArea() const
+{
+    return getLocalBounds().withTrimmedTop(juce::jmin(sparkHeadroomPx, getHeight()));
+}
+
+void PianoKeyboard::setSparkHeadroom(int pixels)
+{
+    const auto clamped = juce::jmax(0, pixels);
+    if (sparkHeadroomPx == clamped)
+    {
+        return;
+    }
+
+    sparkHeadroomPx = clamped;
+    repaint();
+}
+
+bool PianoKeyboard::hitTest(int x, int y)
+{
+    return keyboardArea().contains(x, y);
+}
+
 void PianoKeyboard::setWarningStyle(const WarningStyle& style)
 {
     warningStyle = style;
@@ -216,11 +242,11 @@ void PianoKeyboard::paint(juce::Graphics& g)
         g.setOpacity(1.0f);
         g.drawImageAt(shot, 0, 0);
         g.setColour(juce::Colour::fromRGBA(0, 0, 0, 110));
-        g.fillRect(getLocalBounds());
+        g.fillRect(keyboardArea());
     }
 
     // ---- the warning ------------------------------------------------------
-    const auto host = warningStyle.margin.shrink(getLocalBounds().toFloat());
+    const auto host = warningStyle.margin.shrink(keyboardArea().toFloat());
     if (host.isEmpty())
     {
         return;
@@ -455,7 +481,7 @@ bool PianoKeyboard::getKeyBoundsForNote(int midiNote, juce::Rectangle<float>& bo
         return false;
     }
 
-    const auto area = getLocalBounds().toFloat().reduced(8.0f);
+    const auto area = keyboardArea().toFloat().reduced(8.0f);
     const auto whiteKeyWidth = area.getWidth() / static_cast<float>(whiteKeys);
     const auto whiteKeyHeight = area.getHeight();
     const auto blackKeyWidth = whiteKeyWidth * 0.64f;
@@ -486,7 +512,7 @@ bool PianoKeyboard::getKeyBoundsForNote(int midiNote, juce::Rectangle<float>& bo
 
 int PianoKeyboard::midiNoteAt(juce::Point<float> position) const
 {
-    const auto area = getLocalBounds().toFloat().reduced(8.0f);
+    const auto area = keyboardArea().toFloat().reduced(8.0f);
     if (!area.contains(position))
     {
         return -1;

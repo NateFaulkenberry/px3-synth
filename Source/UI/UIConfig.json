@@ -37,6 +37,7 @@
     }
   },
   "keyboard": {
+    "sparkHeadroom": 46,
     "warning": {
       "text": "Please engage an oscillator!",
       "align": "center",

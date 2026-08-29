@@ -1967,7 +1967,14 @@ void PX3SynthAudioProcessorEditor::resized()
     performanceControlsArea = keyboardRow.removeFromLeft(perfWidth);
 
     performanceControls.setBounds(performanceControlsArea);
-    pianoKeyboard.setBounds(keyboardRow);
+
+    // Grown upward by the spark headroom, and brought to the front, so the
+    // sparks can leave the keys instead of being clipped at the top edge. The
+    // extra strip is transparent and does not hit-test, so what is behind it is
+    // both visible and clickable.
+    const auto headroom = juce::jmin(pianoKeyboard.getSparkHeadroom(), controlsArea.getHeight());
+    pianoKeyboard.setBounds(keyboardRow.withTop(keyboardRow.getY() - headroom));
+    pianoKeyboard.toFront(false);
 
     // Vertical inset only. The horizontal 8 here was the reason the cards sat
     // inboard of the top nav: the header strip is drawn at the full width of
@@ -2202,6 +2209,17 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
     if (topMenuBar != nullptr)
     {
         topMenuBar->setUIConfig(uiConfig);
+    }
+    {
+        // How far above the keys the sparks are allowed to travel. The keyboard
+        // component is grown upward by this much and draws the keys at the
+        // bottom of itself; the headroom is transparent and passes clicks
+        // through. 0 restores the old behaviour, where sparks were clipped at
+        // the top edge of the keys.
+        pianoKeyboard.setSparkHeadroom(uiConfig != nullptr
+                                           ? uiConfig->getInt("keyboard.sparkHeadroom", 46)
+                                           : 46);
+        resized();
     }
     {
         // The warning shown when every oscillator source is bypassed. Insets
