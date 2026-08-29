@@ -27,6 +27,7 @@
 #include "../DSP/StereoSpread.h"
 #include "../UI/FxCardComponent.h"
 #include "../UI/FxChainLayout.h"
+#include "../UI/ChipLabel.h"
 #include "../UI/PianoKeyboard.h"
 #include "../UI/TopMenuBar.h"
 #include "../UI/FilterComponent.h"
@@ -14082,6 +14083,7 @@ double filterGainDbAt(int mode, float cutoff, float q, double hz)
 
 
 // ---- TEMPORARY: REAL PRESET CLICK HUNT --------------------------------------
+
 void testFilters()
 {
     suite("FILTERS");
@@ -14295,6 +14297,64 @@ void testFilters()
               highPass > lowCutoff * 2,
               "at 150 Hz: low-pass " + juce::String(lowCutoff) + " pixels, high-pass "
                   + juce::String(highPass));
+    }
+
+    {
+        // Every chip label has to be readable in full. ChipLabel used to draw
+        // with drawText's useEllipsesIfTooBig, so a caption that did not quite
+        // fit was cut short instead of shrunk: RESONANCE overflowed its 84px
+        // chip by ONE pixel and read "Resonan...". Thirteen labels across the
+        // plugin were over, from that one pixel up to AUTO GAIN by twelve.
+        //
+        // It draws fitted now, shrinking only as much as it needs to, so this
+        // asserts that the shrink required is within what the renderer allows.
+        PX3SynthAudioProcessor processor;
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        editor->setSize(1320, 798);
+        editor->setVisible(true);
+
+        juce::StringArray unreadable;
+        auto worstShrink = 1.0f;
+        juce::String worstLabel;
+        auto examined = 0;
+
+        std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+        {
+            if (auto* label = dynamic_cast<px3::ui::ChipLabel*>(&c))
+            {
+                if (label->getText().isNotEmpty() && label->getWidth() > 0 && label->isVisible())
+                {
+                    ++examined;
+                    // The same box ChipLabel::paint reduces to.
+                    const auto compact = static_cast<bool>(
+                        label->getProperties().getWithDefault("compactLabel", false));
+                    const auto padding = compact ? 4.0f : 8.0f;
+                    const auto available = static_cast<float>(label->getWidth()) - 4.0f - 2.0f * padding;
+                    const auto needed = juce::GlyphArrangement::getStringWidth(label->getFont(),
+                                                                               label->getText());
+
+                    if (needed > available && available > 0.0f)
+                    {
+                        const auto shrink = available / needed;
+                        if (shrink < worstShrink) { worstShrink = shrink; worstLabel = label->getText(); }
+                        if (shrink < px3::ui::ChipLabel::kMinimumTextScale)
+                        {
+                            unreadable.add(label->getText() + " needs " + fmt(needed, 0)
+                                           + "px in " + fmt(available, 0) + "px");
+                        }
+                    }
+                }
+            }
+            for (auto* child : c.getChildren()) walk(*child);
+        };
+        walk(*editor);
+
+        check("Labels_EveryChipLabelCanBeReadInFull",
+              examined > 40 && unreadable.isEmpty(),
+              unreadable.isEmpty()
+                  ? juce::String(examined) + " chip labels; the tightest is " + worstLabel
+                        + " at " + fmt(worstShrink * 100.0f, 0) + "% of its natural width"
+                  : "cut off: " + unreadable.joinIntoString(", "));
     }
 }
 

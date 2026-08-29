@@ -36,13 +36,25 @@ public:
 
         g.setColour(findColour(juce::Label::textColourId));
         g.setFont(getFont());
-        g.drawText(getText(),
-                   area.reduced(horizontalPadding, 0.0f).toNearestInt(),
-                   juce::Justification::centred,
-                   true);
+        // Fitted, not ellipsised. drawText's last argument is
+        // useEllipsesIfTooBig, and a caption that does not quite fit its chip
+        // is far more useful shrunk by a few percent than cut short: RESONANCE
+        // overflowed its 84px chip by ONE pixel and read "Resonan...". Thirteen
+        // labels were over, from that one pixel up to AUTO GAIN by twelve.
+        //
+        // drawFittedText shrinks only as much as it needs to, so a label that
+        // already fits is drawn at its full size and is untouched by this.
+        g.drawFittedText(getText(),
+                         area.reduced(horizontalPadding, 0.0f).toNearestInt(),
+                         juce::Justification::centred,
+                         1,
+                         kMinimumTextScale);
     }
 
     static constexpr float kCornerRadius = 7.0f;
+    // Enough for the longest caption in the plugin - AUTO GAIN, which needs
+    // about 0.78 of its natural width - with room to spare.
+    static constexpr float kMinimumTextScale = 0.7f;
 };
 
 } // namespace px3::ui
