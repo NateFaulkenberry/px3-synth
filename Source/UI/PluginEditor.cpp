@@ -3195,6 +3195,10 @@ void PX3SynthAudioProcessorEditor::buildDoomCard()
                          { "clockSmooth", "SMOOTH", "STEPPED",
                            "Sweep the clock continuously instead of in harmonised steps" } });
 
+    card->addToggleRow({ { "freeze", "FROZEN", "FREEZE", "Freeze the wet channel and repeat it" },
+                         { "crossSource", "X: CHANNEL", "X: INPUT",
+                           "Modulate from your playing, or let each channel modulate the other" } });
+
     card->addChoiceRow({ { "loopMode", "LOOP", "Micro-looper mode",
                            audioProcessor.getDoomLoopModeParam().choices },
                          { "routing", "ROUTE", "What the wet channel processes",
@@ -3218,10 +3222,6 @@ void PX3SynthAudioProcessorEditor::buildDoomCard()
                        { "spread", "SPREAD", "Stereo processing depth" } });
 
     card->addFeatureKnobRow({ "mix", "MIX", "Dry against DOOM" });
-
-    card->addToggleRow({ { "freeze", "FROZEN", "FREEZE", "Freeze the wet channel and repeat it" },
-                         { "crossSource", "X: CHANNEL", "X: INPUT",
-                           "Modulate from your playing, or let each channel modulate the other" } });
 
     // Attaching by id rather than by reference: the card owns the controls, and
     // a typo here is a null dereference at startup rather than a control that
@@ -3310,6 +3310,10 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
                          { "filterInvert", "REJECT", "PASS",
                            "Keep the band, or keep everything but the band" } });
 
+    card->addToggleRow({ { "gate", "GATE ON", "GATE OFF", "Silence anything below the cutoff" },
+                         { "slow", "SLOW ON", "SLOW OFF",
+                           "Bigger, darker, slower, and with more latency" } });
+
     card->addChoiceRow({ { "mode", "MODE", "Loss mode",
                            audioProcessor.getLucyModeParam().choices },
                          { "slope", "SLOPE", "Filter slope",
@@ -3333,10 +3337,6 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
                        { "spread", "SPREAD", "Packet alternation and reverb width" } });
 
     card->addFeatureKnobRow({ "global", "GLOBAL", "Overall amount of processing" });
-
-    card->addToggleRow({ { "gate", "GATE ON", "GATE OFF", "Silence anything below the cutoff" },
-                         { "slow", "SLOW ON", "SLOW OFF",
-                           "Bigger, darker, slower, and with more latency" } });
 
     struct KnobAttachment { const char* id; juce::AudioParameterFloat* parameter; };
     const std::array<KnobAttachment, 14> knobAttachments { {

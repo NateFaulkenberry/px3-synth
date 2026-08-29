@@ -175,7 +175,49 @@ Two of the measurements were also wrong before the DSP was:
 
 ---
 
-## 6. Future: JSON
+## 6. Tuning it by ear
+
+The constants are not parameters, so the only way to reach them is the debug
+panel — and the debug panel is **compiled out of the normal build**.
+
+```bash
+cmake -B build/tune -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DPX3_DEBUG_PANEL=ON
+cmake --build build/tune --target PX3Synth_Standalone
+open "build/tune/PX3Synth_artefacts/RelWithDebInfo/Standalone/PX3 Synth.app"
+```
+
+Then: the plugin menu (top right) → **DEBUG**, and the window's left column,
+**section D. ANALOG ENGINE**.
+
+```
+ANALOG ENGINE  (0 = off, 1 = on)      <- ships at 0; nothing is audible until this moves
+PROFILE                               <- CLEAN / BRITISH / AMERICAN / TRANSFORMER / MODERN
+RESET TO COMPILED DEFAULTS
+Engine Amount, Pair Drive, Master Drive, FX Bus Trim, Headroom,
+Curve Blend, Even Harmonic, Slew Enhance, HF Rolloff, HF Level Dependence,
+LF Corner, LF Level Trim, DC Block, Output Trim
+```
+
+Every slider reads back its live value and, when it differs, the compiled
+default beside it.
+
+Three things worth knowing before turning knobs:
+
+- **Changing PROFILE reloads that profile's whole tuning set**, discarding any
+  edits. The sliders follow, so what you see is always what is running.
+- **Nothing here is saved.** Not to presets, not to DAW state, not to
+  UIConfig — by design, and there is a test that asserts it. Write values down
+  or they are gone on the next launch.
+- **The effect is quiet on a single sustained note by construction.** One
+  channel is transparent; the character lives in the summing. Play chords, or
+  a patch with several sources enabled, or it will seem to do nothing. That is
+  the architecture working, not a fault.
+
+A good first pass: enable it, set PROFILE to TRANSFORMER (the most coloured),
+play a four-note chord with all four sources on, and A/B the enable slider.
+Then compare profiles at the same material before touching any constant.
+
+## 7. Future: JSON
 
 Not implemented, deliberately. The intended shape:
 
@@ -196,7 +238,7 @@ that, and the JSON layer should preserve it.
 
 ---
 
-## 7. Honest limitations
+## 8. Honest limitations
 
 - **Nobody has listened to this.** Every claim above is a measurement. The
   profiles are demonstrably distinct in THD, harmonic balance and bandwidth;

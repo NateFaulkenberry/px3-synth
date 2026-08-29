@@ -12126,6 +12126,60 @@ void testEditorLifecycle()
           "3 create/destroy cycles - attachments must be released before the "
           "panels that own their targets");
 
+
+    {
+        // The analog engine has to be reachable and audible from the debug
+        // window, because its tuning constants exist nowhere else - they are not
+        // parameters, not in presets, and not in UIConfig. If the panel does not
+        // expose them there is no way to tune it at all.
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        editor->setSize(1320, 700);
+
+        // Every tuning key must round-trip through the processor's debug hooks,
+        // which is what the panel's sliders drive.
+        juce::StringArray unreachable;
+        for (const auto& key : px3::AnalogEngine::tuningKeys())
+        {
+            const auto original = processor.debugGetAnalogTuningValue(key);
+            const auto probe = original * 0.5f + 0.077f;
+            processor.debugSetAnalogTuningValue(key, probe);
+            if (juce::approximatelyEqual(processor.debugGetAnalogTuningValue(key), original))
+            {
+                unreachable.add(key);
+            }
+        }
+
+        check("Editor_AnalogTuningIsReachableFromTheDebugHooks", unreachable.isEmpty(),
+              unreachable.isEmpty() ? juce::String(px3::AnalogEngine::tuningKeys().size())
+                                          + " keys reachable"
+                                    : "unreachable: " + unreachable.joinIntoString(", "));
+
+        processor.debugResetAnalogTuning();
+        const auto compiled = px3::AnalogEngine::defaultTuningFor(px3::AnalogEngine::Profile::clean);
+        check("Editor_AnalogResetRestoresCompiledDefaults",
+              juce::approximatelyEqual(processor.debugGetAnalogTuningValue("curveBlend"),
+                                       compiled.curveBlend),
+              "");
+
+        // And every profile must be selectable, since flipping through them is
+        // the point of the dropdown.
+        auto allSelectable = true;
+        for (int i = 0; i < px3::AnalogEngine::kProfileCount; ++i)
+        {
+            auto& param = processor.getAnalogProfileParam();
+            param.setValueNotifyingHost(param.convertTo0to1(static_cast<float>(i)));
+            allSelectable = allSelectable && param.getIndex() == i;
+        }
+        check("Editor_EveryAnalogProfileIsSelectable", allSelectable,
+              juce::String(px3::AnalogEngine::kProfileCount) + " profiles");
+
+        editor.reset();
+    }
+
     {
         // And with audio having run through it, so the timer callbacks and the
         // FX cards have actually been touched before teardown.

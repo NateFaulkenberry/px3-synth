@@ -911,11 +911,11 @@
             }
           },
           "row1": { "height": "7%", "gap": 2 },
-          "row2": { "height": "10%", "gap": 2 },
-          "row3": { "height": "24%", "gap": 5, "justifyContent": "space-between" },
-          "row4": { "height": "28%", "gap": 5, "justifyContent": "space-between" },
-          "row5": { "height": "23%", "gap": 2 },
-          "row6": { "height": "8%", "gap": 2 }
+          "row2": { "height": "7%", "gap": 2 },
+          "row3": { "height": "10%", "gap": 2 },
+          "row4": { "height": "24%", "gap": 5, "justifyContent": "space-between" },
+          "row5": { "height": "28%", "gap": 5, "justifyContent": "space-between" },
+          "row6": { "height": "24%", "gap": 2 }
         }
       }
     },
@@ -975,11 +975,11 @@
             }
           },
           "row1": { "height": "7%", "gap": 2 },
-          "row2": { "height": "10%", "gap": 2 },
-          "row3": { "height": "24%", "gap": 5, "justifyContent": "space-between" },
-          "row4": { "height": "28%", "gap": 5, "justifyContent": "space-between" },
-          "row5": { "height": "23%", "gap": 2 },
-          "row6": { "height": "8%", "gap": 2 }
+          "row2": { "height": "7%", "gap": 2 },
+          "row3": { "height": "10%", "gap": 2 },
+          "row4": { "height": "24%", "gap": 5, "justifyContent": "space-between" },
+          "row5": { "height": "28%", "gap": 5, "justifyContent": "space-between" },
+          "row6": { "height": "24%", "gap": 2 }
         }
       }
     },

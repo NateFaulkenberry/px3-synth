@@ -117,7 +117,7 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     setupLabel(debugInstanceLabel, "A. PLUGIN INSTANCE INFO");
     setupLabel(debugModuleOrderLabel, "B. MODULE ORDER STATE");
     setupLabel(debugValueTreeLabel, "C. VALUETREE STATE");
-    setupLabel(debugBackendControlLabel, "D. SERIALIZATION EVENTS");
+    setupLabel(debugBackendControlLabel, "D. ANALOG ENGINE");
     setupLabel(debugParameterLabel, "E. PARAMETER STATE");
     setupLabel(debugSerializedLabel, "F. VIBE / ANALOG IMPERFECTIONS");
     setupLabel(debugLfoLabel, "G. LFO DEBUG");
@@ -129,6 +129,8 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     setupEditor(debugInstanceText);
     setupEditor(debugModuleOrderText);
     setupEditor(debugValueTreeText);
+    // Kept as a sink for the serialization dump - section D now shows the
+    // analog console instead, and the XML section already covers this content.
     setupEditor(debugSerializedText);
     setupEditor(debugParameterInspectorText);
     setupEditor(debugEventLogText);
@@ -205,6 +207,11 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     addToPanel(debugInstanceLabel);
     addToPanel(debugModuleOrderLabel);
     addToPanel(debugValueTreeLabel);
+    buildAnalogEngineDebugControls();
+    debugAnalogViewport.setViewedComponent(&debugAnalogContent, false);
+    debugAnalogViewport.setScrollBarsShown(true, false);
+    addToPanel(debugAnalogViewport);
+
     addToPanel(debugSerializedLabel);
     addToPanel(debugParameterLabel);
     addToPanel(debugBackendControlLabel);
@@ -217,7 +224,6 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     addToPanel(debugInstanceText);
     addToPanel(debugModuleOrderText);
     addToPanel(debugValueTreeText);
-    addToPanel(debugSerializedText);
     addToPanel(debugParameterInspectorText);
     addToPanel(debugEventLogText);
     addToPanel(debugSnapshotText);
@@ -489,6 +495,244 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     debugParamControlsInitialized = true;
 }
 
+// ============================================================================
+// AnalogEngine debug controls
+// ============================================================================
+
+void PX3SynthAudioProcessorEditor::buildAnalogEngineDebugControls()
+{
+    if (debugAnalogControlsInitialized)
+    {
+        return;
+    }
+
+    auto styleLabel = [](juce::Label& label, const juce::String& text, juce::Colour colour)
+    {
+        label.setText(text, juce::dontSendNotification);
+        label.setColour(juce::Label::textColourId, colour);
+        label.setFont(juce::FontOptions(11.0f));
+    };
+
+    // ---- enable ------------------------------------------------------------
+    // The engine ships disabled, so this is the first thing anyone needs.
+    {
+        auto control = std::make_unique<DebugParamControl>();
+        control->key = "analog.enabled";
+        styleLabel(control->label, "ANALOG ENGINE  (0 = off, 1 = on)",
+                   juce::Colour::fromRGB(255, 214, 140));
+        control->slider.setRange(0.0, 1.0, 1.0);
+        control->slider.setSliderStyle(juce::Slider::LinearHorizontal);
+        control->slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 60, 18);
+        control->slider.setScrollWheelEnabled(false);
+        control->slider.setValue(audioProcessor.getAnalogEnabledParam().get() ? 1.0 : 0.0,
+                                 juce::dontSendNotification);
+        control->slider.onValueChange = [this, ptr = control.get()]
+        {
+            if (ptr->suppressCallbacks)
+            {
+                return;
+            }
+            auto& p = audioProcessor.getAnalogEnabledParam();
+            p.beginChangeGesture();
+            p.setValueNotifyingHost(ptr->slider.getValue() >= 0.5 ? 1.0f : 0.0f);
+            p.endChangeGesture();
+        };
+        control->readback.setColour(juce::Label::textColourId, juce::Colour::fromRGB(184, 235, 184));
+        control->readback.setFont(juce::FontOptions(10.0f));
+
+        debugAnalogContent.addAndMakeVisible(control->label);
+        debugAnalogContent.addAndMakeVisible(control->slider);
+        debugAnalogContent.addAndMakeVisible(control->readback);
+        debugAnalogControls.push_back(std::move(control));
+    }
+
+    // ---- profile -----------------------------------------------------------
+    {
+        auto control = std::make_unique<DebugParamControl>();
+        control->key = "analog.profile";
+        styleLabel(control->label, "PROFILE", juce::Colour::fromRGB(255, 214, 140));
+
+        control->box = std::make_unique<juce::ComboBox>();
+        const auto names = px3::AnalogEngine::profileNames();
+        for (int i = 0; i < names.size(); ++i)
+        {
+            control->box->addItem(names[i], i + 1);
+        }
+        control->box->setSelectedItemIndex(audioProcessor.getAnalogProfileParam().getIndex(),
+                                           juce::dontSendNotification);
+        control->box->onChange = [this, ptr = control.get()]
+        {
+            if (ptr->suppressCallbacks)
+            {
+                return;
+            }
+            auto& p = audioProcessor.getAnalogProfileParam();
+            const auto index = juce::jmax(0, ptr->box->getSelectedItemIndex());
+            p.beginChangeGesture();
+            p.setValueNotifyingHost(p.convertTo0to1(static_cast<float>(index)));
+            p.endChangeGesture();
+
+            // Switching profile replaces the whole tuning set, so the sliders
+            // below are now showing the previous profile's numbers. Pull them
+            // back into step, and note that this discards any edits.
+            refreshAnalogEngineDebugControls();
+        };
+
+        control->readback.setColour(juce::Label::textColourId, juce::Colour::fromRGB(184, 235, 184));
+        control->readback.setFont(juce::FontOptions(10.0f));
+
+        debugAnalogContent.addAndMakeVisible(control->label);
+        debugAnalogContent.addAndMakeVisible(*control->box);
+        debugAnalogContent.addAndMakeVisible(control->readback);
+        debugAnalogControls.push_back(std::move(control));
+    }
+
+    // ---- reset -------------------------------------------------------------
+    {
+        auto control = std::make_unique<DebugParamControl>();
+        control->key = "analog.reset";
+        styleLabel(control->label, "TUNING (internal - never saved to presets or DAW state)",
+                   juce::Colour::fromRGB(255, 214, 140));
+
+        control->button = std::make_unique<juce::TextButton>("RESET TO COMPILED DEFAULTS");
+        control->button->onClick = [this]
+        {
+            audioProcessor.debugResetAnalogTuning();
+            refreshAnalogEngineDebugControls();
+        };
+
+        control->readback.setColour(juce::Label::textColourId, juce::Colour::fromRGB(184, 235, 184));
+        control->readback.setFont(juce::FontOptions(10.0f));
+
+        debugAnalogContent.addAndMakeVisible(control->label);
+        debugAnalogContent.addAndMakeVisible(*control->button);
+        debugAnalogContent.addAndMakeVisible(control->readback);
+        debugAnalogControls.push_back(std::move(control));
+    }
+
+    // ---- the tuning constants ----------------------------------------------
+    // Ranges match the clamps in AnalogEngine::setTuningValue, so a slider
+    // cannot ask for a value the engine will silently refuse.
+    struct Spec
+    {
+        const char* key;
+        const char* caption;
+        double minimum;
+        double maximum;
+        double step;
+    };
+
+    static const std::array<Spec, 14> specs { {
+        { "engineAmount",      "Engine Amount",          0.0,     1.0,     0.001 },
+        { "pairDrive",         "Pair Drive (ch = bus)",  0.0,     3.0,     0.001 },
+        { "masterDrive",       "Master Drive",           0.0,     3.0,     0.001 },
+        { "fxBusTrim",         "FX Bus Trim (mix)",      0.0,     2.0,     0.001 },
+        { "headroom",          "Headroom",               0.25,    3.0,     0.001 },
+        { "curveBlend",        "Curve Blend (pre-warp)", 0.0,     1.0,     0.001 },
+        { "evenHarmonic",      "Even Harmonic (2nd)",    0.0,     0.5,     0.0005 },
+        { "slewEnhance",       "Slew Enhance",           0.0,     1.0,     0.001 },
+        { "hfRolloffHz",       "HF Rolloff (Hz)",        1000.0,  22000.0, 10.0 },
+        { "hfLevelDependence", "HF Level Dependence",    0.0,     1.0,     0.001 },
+        { "lfCornerHz",        "LF Corner (Hz)",         1.0,     200.0,   0.5 },
+        { "lfLevelTrim",       "LF Level Trim",          0.0,     1.0,     0.001 },
+        { "dcBlockHz",         "DC Block (Hz)",          0.1,     50.0,    0.1 },
+        { "outputTrim",        "Output Trim (per stage)", 0.25,   4.0,     0.001 },
+    } };
+
+    for (const auto& spec : specs)
+    {
+        auto control = std::make_unique<DebugParamControl>();
+        control->key = spec.key;
+        styleLabel(control->label, spec.caption, juce::Colour::fromRGB(230, 230, 230));
+        control->slider.setRange(spec.minimum, spec.maximum, spec.step);
+        control->slider.setSliderStyle(juce::Slider::LinearHorizontal);
+        control->slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 78, 18);
+        control->slider.setScrollWheelEnabled(false);
+        control->slider.setValue(audioProcessor.debugGetAnalogTuningValue(spec.key),
+                                 juce::dontSendNotification);
+        control->slider.onValueChange = [this, ptr = control.get()]
+        {
+            if (ptr->suppressCallbacks)
+            {
+                return;
+            }
+            const auto requested = static_cast<float>(ptr->slider.getValue());
+            ptr->lastRequested = requested;
+            audioProcessor.debugSetAnalogTuningValue(ptr->key, requested);
+        };
+        control->readback.setColour(juce::Label::textColourId, juce::Colour::fromRGB(184, 235, 184));
+        control->readback.setFont(juce::FontOptions(10.0f));
+
+        debugAnalogContent.addAndMakeVisible(control->label);
+        debugAnalogContent.addAndMakeVisible(control->slider);
+        debugAnalogContent.addAndMakeVisible(control->readback);
+        debugAnalogControls.push_back(std::move(control));
+    }
+
+    debugAnalogControlsInitialized = true;
+}
+
+void PX3SynthAudioProcessorEditor::refreshAnalogEngineDebugControls()
+{
+    if (!debugAnalogControlsInitialized)
+    {
+        return;
+    }
+
+    for (auto& control : debugAnalogControls)
+    {
+        control->suppressCallbacks = true;
+
+        if (control->key == "analog.enabled")
+        {
+            const auto on = audioProcessor.getAnalogEnabledParam().get();
+            control->slider.setValue(on ? 1.0 : 0.0, juce::dontSendNotification);
+            control->readback.setText(on ? "ACTIVE - channels, dry bus, FX bus and master"
+                                         : "bypassed - the instrument is unchanged",
+                                      juce::dontSendNotification);
+        }
+        else if (control->key == "analog.profile")
+        {
+            const auto index = audioProcessor.getAnalogProfileParam().getIndex();
+            control->box->setSelectedItemIndex(index, juce::dontSendNotification);
+            control->readback.setText("changing profile reloads its compiled tuning",
+                                      juce::dontSendNotification);
+        }
+        else if (control->key == "analog.reset")
+        {
+            control->readback.setText("edits are live but never persisted",
+                                      juce::dontSendNotification);
+        }
+        else
+        {
+            const auto actual = audioProcessor.debugGetAnalogTuningValue(control->key);
+            control->slider.setValue(actual, juce::dontSendNotification);
+
+            const auto compiled = px3::AnalogEngine::defaultTuningFor(
+                static_cast<px3::AnalogEngine::Profile>(
+                    juce::jlimit(0, px3::AnalogEngine::kProfileCount - 1,
+                                 audioProcessor.getAnalogProfileParam().getIndex())));
+
+            px3::AnalogEngine probe;
+            probe.setProfile(static_cast<px3::AnalogEngine::Profile>(
+                juce::jlimit(0, px3::AnalogEngine::kProfileCount - 1,
+                             audioProcessor.getAnalogProfileParam().getIndex())));
+            juce::ignoreUnused(compiled);
+            const auto defaultValue = probe.getTuningValue(control->key);
+
+            juce::String text;
+            text << "Actual: " << juce::String(actual, 4);
+            if (std::abs(actual - defaultValue) > 1.0e-6f)
+            {
+                text << "   (default " << juce::String(defaultValue, 4) << ")";
+            }
+            control->readback.setText(text, juce::dontSendNotification);
+        }
+
+        control->suppressCallbacks = false;
+    }
+}
+
 void PX3SynthAudioProcessorEditor::openDebugWindow()
 {
     if (debugWindow == nullptr)
@@ -596,7 +840,39 @@ void PX3SynthAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& 
     section(debugInstanceLabel, debugInstanceText, 78);
     section(debugModuleOrderLabel, debugModuleOrderText, 120);
     section(debugValueTreeLabel, debugValueTreeText, 80);
-    section(debugBackendControlLabel, debugSerializedText, juce::jmax(120, left.getHeight() - 24));
+    // Section D is the analog console. It replaced the serialization-events
+    // dump, which duplicated what the XML section already showed.
+    section(debugBackendControlLabel, debugAnalogViewport, juce::jmax(160, left.getHeight() - 24));
+
+    {
+        auto content = debugAnalogViewport.getLocalBounds().reduced(4);
+        content.removeFromRight(12);
+        int ay = 0;
+        for (auto& control : debugAnalogControls)
+        {
+            control->label.setBounds(0, ay, content.getWidth(), 16);
+            ay += 16;
+
+            if (control->box != nullptr)
+            {
+                control->box->setBounds(0, ay, content.getWidth(), 22);
+            }
+            else if (control->button != nullptr)
+            {
+                control->button->setBounds(0, ay, content.getWidth(), 22);
+            }
+            else
+            {
+                control->slider.setBounds(0, ay, content.getWidth(), 22);
+            }
+            ay += 22;
+
+            control->readback.setBounds(0, ay, content.getWidth(), 14);
+            ay += 18;
+        }
+        debugAnalogContent.setBounds(0, 0, content.getWidth(),
+                                     juce::jmax(content.getHeight(), ay));
+    }
 
     auto sectionRight = [&right](juce::Label& label, juce::Component& component, int height)
     {
@@ -799,6 +1075,8 @@ void PX3SynthAudioProcessorEditor::refreshDebugParameterInspector()
 
 void PX3SynthAudioProcessorEditor::refreshDebugParameterControls()
 {
+    refreshAnalogEngineDebugControls();
+
     if (!debugParamControlsInitialized)
     {
         return;

@@ -195,7 +195,18 @@ private:
         juce::RangedAudioParameter* parameter { nullptr };
         float lastRequested { 0.0f };
         bool suppressCallbacks { false };
+
+        // A control is one of three shapes. A header is a caption with no
+        // control under it; a chooser uses the box instead of the slider.
+        std::unique_ptr<juce::ComboBox> box;
+        std::unique_ptr<juce::TextButton> button;
+        bool isHeader { false };
     };
+
+    // Builds one slider-shaped debug control. The panel had thirty lines of
+    // boilerplate per control, which is fine for six and not for twenty.
+    void buildAnalogEngineDebugControls();
+    void refreshAnalogEngineDebugControls();
 
     void setupDebugPanel();
     void openDebugWindow();
@@ -558,6 +569,14 @@ private:
     juce::Viewport debugParamViewport;
     juce::Component debugParamContent;
     std::vector<std::unique_ptr<DebugParamControl>> debugParamControls;
+
+    // AnalogEngine gets its own list and viewport. Its constants are internal
+    // tuning rather than parameters, so mixing them into the parameter panel
+    // would blur exactly the distinction the engine depends on.
+    juce::Viewport debugAnalogViewport;
+    juce::Component debugAnalogContent;
+    std::vector<std::unique_ptr<DebugParamControl>> debugAnalogControls;
+    bool debugAnalogControlsInitialized { false };
     std::unique_ptr<juce::DocumentWindow> debugWindow;
     juce::Rectangle<int> debugWindowBounds { 100, 80, 1240, 780 };
     juce::Rectangle<int> debugLastPanelLayoutBounds;
