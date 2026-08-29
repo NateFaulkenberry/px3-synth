@@ -7315,6 +7315,72 @@ void testIntegration()
               "peak " + fmt(capture.peak(), 5) + ", rms " + fmt(capture.rms(), 5));
     }
 
+    {
+        // The pool is 64 voices, but the number allowed to SOUND at once is
+        // budgeted against the sample rate: a voice costs the same work
+        // whatever the rate, while the time available to compute it halves as
+        // the rate doubles. Measured with every effect, the analog console and
+        // vibe enabled, 64 held voices took 108.7% of the block budget at
+        // 48 kHz and 211.2% at 96 kHz - the whole block late, rather than the
+        // quietest note being dropped.
+        juce::String detail;
+        auto sensible = true;
+
+        for (const auto rate : { 44100.0, 48000.0, 88200.0, 96000.0, 192000.0 })
+        {
+            const auto budget = PX3SynthAudioProcessor::soundingVoiceBudgetForRate(rate);
+            detail << juce::String(rate / 1000.0, 1) << "k:" << budget << "  ";
+
+            // Never more than the reference budget, never below the floor, and
+            // never more than the pool can supply.
+            sensible = sensible
+                       && budget >= PX3SynthAudioProcessor::kMinimumSoundingVoiceBudget
+                       && budget <= PX3SynthAudioProcessor::kSoundingVoiceBudgetAtReference
+                       && budget <= PX3SynthAudioProcessor::kPolyphonyVoiceCount;
+        }
+
+        // Higher rate, fewer voices - the whole point of scaling it.
+        sensible = sensible
+                   && PX3SynthAudioProcessor::soundingVoiceBudgetForRate(96000.0)
+                          < PX3SynthAudioProcessor::soundingVoiceBudgetForRate(48000.0);
+
+        check("Voices_BudgetScalesWithTheSampleRate", sensible, detail);
+    }
+
+    {
+        // Holding far more notes than the budget must stay clean: the excess is
+        // faded out through the same path the tail pruner uses, so there is no
+        // step in the summed output, and the result must not be silence either.
+        PX3SynthAudioProcessor processor;
+        makePlainPatch(processor);
+        setParam(processor, "vibeEnabled", 1.0f);
+        setParam(processor, "vibeAmount", 0.7f);
+        setParam(processor, "analogEnabled", 1.0f);
+        setParam(processor, "filter1Enabled", 1.0f);
+
+        std::vector<NoteEvent> chord;
+        for (int i = 0; i < 64; ++i)
+        {
+            chord.push_back({ 500 + i * 40, true, 24 + i, 0.8f });
+        }
+
+        const auto capture = render(processor, 96000, chord);
+
+        auto worstStep = 0.0f;
+        for (std::size_t i = 40001; i < capture.left.size(); ++i)
+        {
+            worstStep = juce::jmax(worstStep,
+                                   std::abs(capture.left[i] - capture.left[i - 1]));
+        }
+
+        check("Voices_HoldingMoreNotesThanTheBudgetStaysCleanAndAudible",
+              capture.isFinite() && capture.peak() <= 1.0001 && capture.rms() > 0.01
+                  && worstStep < 0.35f,
+              "64 held notes against the budget: rms " + fmt(capture.rms(), 5)
+                  + ", peak " + fmt(capture.peak(), 5)
+                  + ", worst sample step " + fmt(worstStep, 5));
+    }
+
     // Voice stealing under sustained pressure.
     {
         PX3SynthAudioProcessor processor;

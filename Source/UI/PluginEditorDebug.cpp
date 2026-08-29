@@ -1531,7 +1531,12 @@ void PX3SynthAudioProcessorEditor::debugDumpPresetToFile()
                              {
                                  metadata.name = destination.getFileNameWithoutExtension();
                              }
-                             metadata.category = hasCurrentPreset ? currentPreset.metadata.category : juce::String("USER_DUMP");
+                             // A real category, not an invented one. This used to
+                             // write "USER_DUMP", which put a category in the
+                             // browser that exists nowhere else and holds nothing
+                             // but debug dumps.
+                             metadata.category = hasCurrentPreset ? currentPreset.metadata.category
+                                                                  : juce::String("EXPERIMENTAL");
                              metadata.author = hasCurrentPreset ? currentPreset.metadata.author : juce::String();
                              metadata.description = hasCurrentPreset ? currentPreset.metadata.description : juce::String();
 

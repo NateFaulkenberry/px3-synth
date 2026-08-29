@@ -59,6 +59,31 @@ public:
     static constexpr int kEnvelopeSourceCount = 3;
     static constexpr int kMixerSourceCount = 4;
     static constexpr int kPolyphonyVoiceCount = 64;
+
+    // How many voices may SOUND at once. The pool above stays at 64 - the
+    // objects are cheap to keep and their memory is already accounted for -
+    // but the number allowed to run at any moment is budgeted, because the
+    // cost of a voice scales directly with the sample rate while the time
+    // available to compute it does not.
+    //
+    // Measured, all effects plus the analog console and vibe enabled, as a
+    // percentage of the real-time budget at 128-sample blocks:
+    //
+    //             48 kHz    96 kHz
+    //   64 voices  108.7%    211.2%
+    //   48 voices   82.8%    161.4%
+    //   32 voices   58.0%    112.5%
+    //   24 voices     ~44%     ~85%
+    //
+    // 64 voices overran the budget at every sample rate tested, and at 96 kHz
+    // even 32 did. A single fixed number cannot serve both: 48 is comfortable
+    // at 48 kHz and hopeless at 96. So the budget is referenced to 48 kHz and
+    // scaled by the rate the host is actually running.
+    static constexpr int kSoundingVoiceBudgetAtReference = 48;
+    static constexpr double kVoiceBudgetReferenceRate = 48000.0;
+    static constexpr int kMinimumSoundingVoiceBudget = 16;
+
+    static int soundingVoiceBudgetForRate(double sampleRate);
     static constexpr int kMixerChannelCount = 5;
 
     enum MixerSourceId
@@ -791,6 +816,8 @@ private:
     // Voices in pool order, typed. Owned by juce::Synthesiser, not by this
     // array; populated once at construction alongside addVoice.
     std::array<SynthVoice*, kPolyphonyVoiceCount> typedVoices { };
+    // Recomputed in prepareToPlay; read once per block.
+    std::atomic<int> soundingVoiceBudget { kSoundingVoiceBudgetAtReference };
 
     std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
     std::atomic<uint32_t> fxOrderRevision { 0u };

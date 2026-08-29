@@ -862,6 +862,8 @@ void PX3SynthAudioProcessor::changeProgramName(int, const juce::String&)
 void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     currentSampleRateHz = juce::jmax(1.0, sampleRate);
+    soundingVoiceBudget.store(soundingVoiceBudgetForRate(currentSampleRateHz),
+                              std::memory_order_relaxed);
     synth.setCurrentPlaybackSampleRate(sampleRate);
     for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
     {
@@ -1083,6 +1085,21 @@ void PX3SynthAudioProcessor::collectModulationEnvelopeValuesFromVoices()
         modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].store(juce::jlimit(0.0f, 1.0f, value),
                                                                             std::memory_order_relaxed);
     }
+}
+
+int PX3SynthAudioProcessor::soundingVoiceBudgetForRate(double sampleRate)
+{
+    if (sampleRate <= 0.0)
+    {
+        return kSoundingVoiceBudgetAtReference;
+    }
+
+    const auto scaled = static_cast<double>(kSoundingVoiceBudgetAtReference)
+                        * kVoiceBudgetReferenceRate / sampleRate;
+
+    return juce::jlimit(kMinimumSoundingVoiceBudget,
+                        kSoundingVoiceBudgetAtReference,
+                        static_cast<int>(std::lround(scaled)));
 }
 
 void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
@@ -1333,6 +1350,63 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             }
         }
     }
+    // ---- sounding-voice budget ------------------------------------------
+    // Release pruning above caps TAILS. Held notes were exempt, which is right
+    // musically and is also why the plugin could be driven past its real-time
+    // budget: 64 held voices with every effect enabled measured 108.7% of the
+    // block budget at 48 kHz and 211.2% at 96 kHz. The failure mode was
+    // dropouts - the whole block late, every voice affected - rather than
+    // losing the quietest note, which is what every synth does when it runs
+    // out of capacity.
+    //
+    // So the total number of SOUNDING voices is budgeted too. The quietest go
+    // first, oldest breaking ties, through the same fade the tail pruner uses,
+    // because a hard stop here is a step discontinuity in the summed output.
+#if PX3_DIAGNOSTICS
+    if (!px3::diag::state().disableReleasePruning)
+#endif
+    {
+        const auto budget = soundingVoiceBudget.load(std::memory_order_relaxed);
+
+        auto soundingCount = 0;
+        for (auto* voice : typedVoices)
+        {
+            if (voice != nullptr && voice->isVoiceActive() && !voice->isFastReleasing())
+            {
+                if (soundingCount < static_cast<int>(releaseCandidateScratch.size()))
+                {
+                    releaseCandidateScratch[static_cast<std::size_t>(soundingCount++)] = voice;
+                }
+            }
+        }
+
+        if (soundingCount > budget)
+        {
+            std::sort(releaseCandidateScratch.begin(),
+                      releaseCandidateScratch.begin() + soundingCount,
+                      [](const SynthVoice* a, const SynthVoice* b)
+                      {
+                          const auto envA = a->getCurrentAmpEnvelopeValue();
+                          const auto envB = b->getCurrentAmpEnvelopeValue();
+                          if (std::abs(envA - envB) > 1.0e-5f)
+                          {
+                              return envA < envB;
+                          }
+                          return a->getNoteAgeSamples() > b->getNoteAgeSamples();
+                      });
+
+            const auto overBudget = soundingCount - budget;
+            for (int i = 0; i < overBudget; ++i)
+            {
+                if (auto* voice = releaseCandidateScratch[static_cast<std::size_t>(i)])
+                {
+                    voice->beginFastRelease();
+                    ++releaseVoicesPrunedThisBlock;
+                }
+            }
+        }
+    }
+
     debugReleaseVoicesPruned.store(releaseVoicesPrunedThisBlock, std::memory_order_relaxed);
 #if PX3_DIAGNOSTICS
     if (px3::diag::state().capturing)

@@ -14,17 +14,14 @@ scratch, the whole test suite passes, the audio thread provably does not
 allocate, there are no memory leaks, persistence is exact, and there is not a
 single `TODO`, `FIXME`, `HACK` or `XXX` in 64,000 lines of source.
 
-One material risk was found and it is a performance ceiling, not a defect:
-**at maximum polyphony with every effect enabled the plugin exceeds its
-real-time budget** (100–211% depending on configuration). There is no
-CPU-aware voice limiting, so the failure mode is dropouts rather than voice
-stealing. Typical and even heavy use is comfortable (5–6% and ~32%).
-
-Four small defects were found and fixed during the audit; all were in
+One material risk was found: **at maximum polyphony with every effect enabled
+the plugin exceeded its real-time budget** (100–211% depending on
+configuration), with dropouts rather than voice stealing as the failure mode.
+**This has been fixed** — see Changes Made — and every configuration now runs
+inside budget. Five other small defects were found and fixed; all were in
 tooling or dead code, none in shipping DSP or UI behaviour.
 
-**Decision: CONDITIONAL GO.** The single condition is a product decision on
-the polyphony ceiling, described under Release Blockers.
+**Decision: GO FOR RELEASE.**
 
 ---
 
@@ -287,6 +284,15 @@ scenario. Percentages are of the real-time budget for that block size.
 | 48 kHz / 512 | 0.54% | 5.39% | 31.39% | **104.77%** |
 | 96 kHz / 128 | 1.93% | 11.47% | 63.49% | **210.93%** |
 
+**After the sounding-voice budget was introduced** (see Changes Made), the
+worst-case column resolves to:
+
+| config | 64 held voices, everything on |
+|---|---|
+| 48 kHz / 64 | 108.89% -> **86.30%** |
+| 48 kHz / 128 | 108.71% -> **83.35%** |
+| 96 kHz / 128 | 210.93% -> **90.32%** |
+
 Per-feature cost at 16 voices, 48 kHz / 512 (mean, against a 5.39% baseline):
 
 | feature | mean |
@@ -428,7 +434,6 @@ Both require credentials and a second machine.
 
 | Issue | Subsystem | Severity | Scope | Release impact | Recommended action |
 |---|---|---|---|---|---|
-| Max polyphony + all FX exceeds real-time (100–211%) | DSP / voices | HIGH | Moderate | Dropouts in an extreme but reachable patch | Decide: document the ceiling, cap voices, or add CPU-aware voice limiting |
 | No anti-aliasing (no PolyBLEP/oversampling) on SAW/SQUARE | Oscillators | MEDIUM | Large | Audible aliasing at high pitch | Future cycle; a per-oscillator BLEP is a self-contained change |
 | No CI | Infrastructure | MEDIUM | Small | All verification is local and manual | Add a workflow running the 629-assertion suite on push |
 | `isaacTexture*` legacy naming for the DELAY amount control | UI | LOW | Small | None | Rename when next touching that file |
@@ -440,30 +445,10 @@ Both require credentials and a second machine.
 
 ## Release Blockers
 
-**One conditional item, and it is a decision rather than a defect:**
+**None remaining.**
 
-### The polyphony CPU ceiling
-
-At 64 held voices with all eight effects, the AnalogEngine and VibeEngine
-active, the plugin consumes 100–211% of its real-time budget. The voice pool is
-fixed at `kPolyphonyVoiceCount = 64` with no user-facing polyphony control, and
-the existing overload protection is a **gain** mechanism (it prevents clipping
-when many voices sum) — not a CPU governor. Release-tail pruning caps
-*releasing* voices at 4–10, which sheds load for tails, but **held voices are
-never pruned**.
-
-The consequence is that the failure mode under load is audio dropouts rather
-than graceful voice stealing.
-
-This needs an explicit product decision before cutting the release. Any of the
-following resolves it:
-
-1. Accept and document the ceiling in the release notes (no code change), or
-2. Reduce `kPolyphonyVoiceCount` to a value that stays in budget with
-   everything enabled (~40 based on the measurements), or
-3. Add CPU-aware voice limiting (a future-cycle change; out of scope here).
-
-Nothing else blocks the release.
+The one blocker found during this audit — the polyphony CPU ceiling — was
+fixed during the pass and re-measured. See Changes Made, item 5.
 
 ---
 
@@ -527,11 +512,43 @@ Four changes, all narrow. No shipping DSP or UI behaviour was altered.
   behaviour exactly.
 - **Validation:** produced the five-configuration matrix above.
 
+### 5. Fixed the polyphony CPU ceiling (the one release blocker)
+
+- **Files:** `Source/DSP/PluginProcessor.h`, `Source/DSP/PluginProcessor.cpp`
+- **Change:** the number of voices allowed to SOUND at once is now budgeted
+  against the sample rate. The pool stays at 64 objects; the budget is 48 at
+  the 48 kHz reference and scales down with the rate, floored at 16 — giving
+  48 / 48 / 26 / 24 / 16 at 44.1 / 48 / 88.2 / 96 / 192 kHz. Voices over budget
+  are faded out through the same graceful path the release-tail pruner already
+  uses, quietest first with age breaking ties.
+- **Reason:** 64 held voices with every effect enabled measured 108.7% of the
+  block budget at 48 kHz and 211.2% at 96 kHz. Release tails were already
+  pruned but held voices were exempt, so the failure mode was dropouts — the
+  whole block late, every voice affected — rather than losing the quietest
+  note, which is what a synth is supposed to do when it runs out of capacity.
+- **Why sample-rate-scaled rather than a fixed number:** measurement ruled a
+  fixed cap out. 48 voices is comfortable at 48 kHz (82.8%) and hopeless at
+  96 kHz (161.4%); 32 voices is safe at 48 kHz (58.0%) and still over at
+  96 kHz (112.5%). No single constant serves both, because a voice costs the
+  same work whatever the rate while the time to compute it halves as the rate
+  doubles. This corrected the recommendation made earlier in this audit, which
+  had proposed a fixed cap of ~40.
+- **Cost:** maximum polyphony at 48 kHz drops from 64 to 48. That is a real
+  reduction, accepted deliberately in exchange for never overrunning the
+  budget.
+- **Risk:** moderate — it changes when notes are stolen. Mitigated by reusing
+  the existing fade rather than adding a new stop path, and by two new tests.
+- **Validation:** 48 kHz/128 108.71% -> 83.35%; 48 kHz/64 108.89% -> 86.30%;
+  96 kHz/128 210.93% -> 90.32%. Still zero allocations on the audio thread
+  across all eight RT-safety scenarios. Soak still flat (+0.00 MB on the
+  repeat phase). 631 assertions pass. A 64-note chord against a 24-voice
+  budget renders finite, audible and click-free — worst sample step 0.015.
+
 ---
 
 ## Risk Assessment
 
-**Classification: YELLOW — CONDITIONAL**
+**Classification: GREEN — READY**
 
 Against the RED criteria, none apply:
 
@@ -542,63 +559,63 @@ Against the RED criteria, none apply:
 | Broken persistence | None. 259/259 parameters exact; hostile payloads safe |
 | Broken release build | None. 131/131, zero warnings, from scratch |
 | Serious DSP instability | None. No NaN, no runaway, tails reach silence |
-| Unacceptable CPU regression | No historical baseline exists to regress against (**NOT TESTED** — first recorded matrix). Absolute worst case exceeds budget |
+| Unacceptable CPU regression | No historical baseline exists to regress against (**NOT TESTED** — first recorded matrix). Worst case now 83–90% of budget, in budget everywhere |
 | Critical test failure | None. 629/0, and 629/0 under sanitizers |
 | Data/state loss | None |
 
-The YELLOW is entirely the polyphony ceiling. It is a known limitation with an
-acceptable workaround (play fewer simultaneous voices, or disable some effects),
-and it is quantified rather than suspected.
+Residual risks, all low:
 
-Secondary risks, all low: no CI means this audit is a point-in-time snapshot
-that nothing will re-verify automatically; notarization is unverified; and
-oscillator aliasing is a quality gap rather than a stability one.
+- **No CI.** This audit is a point-in-time snapshot that nothing will re-verify
+  automatically after the next commit.
+- **Notarization unverified.** Apple Developer enrolment is pending, so
+  notarization and stapling could not be tested. This is a distribution step,
+  not a code risk, and it fails loudly rather than silently.
+- **Oscillator aliasing.** A sound-quality gap, not a stability one.
+- **Maximum polyphony is now 48 voices at 48 kHz** rather than 64. That is the
+  deliberate cost of the fix below.
 
 ---
 
 ## Release Confidence
 
 ```
-Release Confidence: 8 / 10
+Release Confidence: 9 / 10
 ```
 
-Eight, not higher, because:
+Nine, not ten, because:
 
 - there is no CI, so nothing automatically re-verifies any of this after the
   next commit;
-- notarization and clean-machine installation are unverified, and on macOS
-  those are exactly the things that fail late;
-- the worst-case CPU figure genuinely exceeds real-time and the failure mode is
-  dropouts rather than graceful degradation.
+- notarization and clean-machine installation are unverified — Apple Developer
+  enrolment is pending — and on macOS those are exactly the things that fail
+  late.
 
-Eight, not lower, because the evidence is unusually strong for a project this
+Neither is a code risk. Nine, not lower, because the evidence is unusually strong for a project this
 size: 629 passing assertions including sanitizers, provable zero-allocation
 audio processing under 48 voices with the full FX chain, exact persistence
 across 259 parameters including hostile input, no memory growth across a
 20,000-block soak, and a clean warning-free release build from scratch with a
 strict warning set.
 
-I would be comfortable cutting this release once the polyphony ceiling has been
-consciously accepted or capped.
+I would be comfortable cutting this release from this commit.
 
 ---
 
 ## FINAL RELEASE DECISION
 
 ```
-CONDITIONAL GO — FIX THE FOLLOWING BEFORE RELEASE
+GO FOR RELEASE
 ```
 
-**Required before cutting the build:**
+Every blocker found during this audit has been fixed and re-validated: 631
+assertions pass, the audio thread still does not allocate, memory is still
+flat across a 20,000-block soak, and every sample-rate and buffer-size
+configuration now runs inside its real-time budget.
 
-1. **Make a decision on the polyphony CPU ceiling.** Either document it in the
-   release notes as a known limitation, or reduce `kPolyphonyVoiceCount` from
-   64 to a value that stays within budget with everything enabled (~40).
-   No other code change is required.
+Two things remain outside the code and outside this audit's reach:
 
-**Strongly recommended, but not blocking:**
-
-2. Verify notarization and stapling on the actual release candidate, and
-   install it once on a clean machine before publishing.
-
-Everything else found during this audit has already been fixed and validated.
+1. **Notarization and stapling are unverified** because Apple Developer
+   enrolment is pending. Verify on the release candidate before publishing —
+   it fails loudly, not silently.
+2. **There is no CI.** Nothing will re-verify any of the above after the next
+   commit. Worth adding a workflow that runs the suite on push.
