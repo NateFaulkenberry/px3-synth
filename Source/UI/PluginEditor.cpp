@@ -3623,15 +3623,17 @@ void PX3SynthAudioProcessorEditor::refreshOscillatorEngagedState()
         engaged = engaged || audioProcessor.getOscillatorEnabledParam(osc).get();
     }
 
-    if (engaged == anyOscillatorEngaged)
-    {
-        return;
-    }
-
-    anyOscillatorEngaged = engaged;
+    // Pushed every tick rather than only on a change. Tracking the previous
+    // value here meant the keyboard's state was owned in two places, and if
+    // they ever disagreed - a keyboard silenced while this still read
+    // "engaged" - nothing would ever put it right. setSilenced is a no-op when
+    // the state already matches, so this is self-correcting and costs nothing.
     pianoKeyboard.setSilenced(! engaged);
 
-    if (! engaged)
+    const auto changed = engaged != anyOscillatorEngaged;
+    anyOscillatorEngaged = engaged;
+
+    if (changed && ! engaged)
     {
         // Stop the logo mid-shake rather than letting it ring out over a
         // keyboard that has just been greyed.

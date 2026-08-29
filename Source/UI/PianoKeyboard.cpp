@@ -176,12 +176,14 @@ void PianoKeyboard::setSilenced(bool shouldBeSilenced)
         previousActiveNotes.fill(false);
         noteVelocities.fill(0.0f);
         heldMidiNote = -1;
-        stopTimer();
     }
-    else
-    {
-        startTimerHz(60);
-    }
+
+    // The timer is deliberately NOT stopped and restarted here. A component
+    // that turns its own clock off can only come back if something turns it
+    // on again, and that made the keyboard's liveness depend on a state
+    // machine outside it staying in step. It keeps ticking; timerCallback
+    // does nothing while silenced, which costs a comparison per frame and
+    // cannot strand the keyboard.
 
     setMouseCursor(silenced ? juce::MouseCursor::NormalCursor
                             : juce::MouseCursor::PointingHandCursor);
@@ -339,6 +341,13 @@ void PianoKeyboard::mouseExit(const juce::MouseEvent&)
 
 void PianoKeyboard::timerCallback()
 {
+    if (silenced)
+    {
+        // Nothing to advance: no sparks, no held keys, no vibration.
+        return;
+    }
+
+
     constexpr float dt = 1.0f / 60.0f;
 
     vibrationPhase += dt;
