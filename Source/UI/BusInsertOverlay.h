@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "BusEqGraph.h"
+#include "Card.h"
 #include "MixerControls.h"
 
 #include <array>
@@ -43,13 +45,42 @@ public:
     // mixer owns the strip names.
     void setBusName(juce::String name);
 
+    // Called as the sheet is shown and hidden, so anything that costs something
+    // to run - the spectrum tap - only runs while it is on screen.
+    virtual void setSheetVisible(bool shown);
+
     std::function<void()> onClose;
 
 protected:
     // Where a subclass hangs its own attachments. Cleared before each rebuild.
     virtual void rebuildForBus() = 0;
     virtual juce::String sheetTitle() const = 0;
+    // The block under `cards` this sheet reads its frame from.
+    virtual juce::String cardStyleKey() const = 0;
 
+    // The sheet wears the same frame as every card in the plugin: a border, a
+    // padding gap over a translucent background, and then one solid panel
+    // inside it. The card system already owns the first two; what a card puts
+    // in the third place is a two-part gloss, and these sheets put a single
+    // solid fill there instead - the "inner overlay" the controls sit on.
+    struct InnerOverlayStyle
+    {
+        float margin { 6.0f };
+        float radius { 6.0f };
+        juce::Colour colour { juce::Colour::fromRGBA(12, 14, 18, 255) };
+    };
+
+    // Inside the card's padding, inset by the inner overlay's own margin. This
+    // is where a subclass lays its controls out.
+    juce::Rectangle<int> innerOverlayBounds() const;
+    // The strip between the card title and the inner overlay, where the enable
+    // and close buttons live.
+    juce::Rectangle<int> headerBounds() const;
+    // This bus's identity colour, taken from its mixer strip so the sheet and
+    // the strip that opened it are visibly the same channel.
+    juce::Colour busAccentColour() const;
+
+    void refreshCardStyle();
     void paint(juce::Graphics& g) override;
 
     PX3SynthAudioProcessor& processor;
@@ -65,7 +96,14 @@ protected:
     MixerToggleButton enableButton { "ON" };
     juce::LookAndFeel* knobLookAndFeel { nullptr };
 
+    px3::ui::CardHost card;
+    InnerOverlayStyle innerStyle;
+
     virtual void knobLookAndFeelChanged() {}
+    // A live config reload replaces the UIConfig object, and anything a
+    // subclass owns that reads config has to be told - the alternative is the
+    // stale-style bug the Card system exists to prevent.
+    virtual void uiConfigChanged() {}
 
 protected:
     // Attachments point at the SUBCLASS's sliders and buttons, which are gone
@@ -91,20 +129,16 @@ public:
     ~BusEqOverlay() override;
 
     void resized() override;
-    void paint(juce::Graphics& g) override;
 
 private:
     static constexpr int kBandCount = 4;
 
     void rebuildForBus() override;
     juce::String sheetTitle() const override { return busName + " EQ"; }
+    juce::String cardStyleKey() const override { return "busInsertEq"; }
+    void setSheetVisible(bool shown) override;
     void timerCallback() override;
     void refreshReadouts();
-
-    // The response curve, in the sheet's own coordinates. Read from the live
-    // processor rather than recomputed here, so what is drawn is what is
-    // running.
-    void paintCurve(juce::Graphics& g, juce::Rectangle<float> area) const;
 
     struct BandStrip
     {
@@ -122,9 +156,10 @@ private:
     };
 
     void knobLookAndFeelChanged() override;
+    void uiConfigChanged() override;
 
     std::array<BandStrip, kBandCount> bands;
-    juce::Rectangle<int> curveArea;
+    BusEqGraph graph;
 };
 
 // ---------------------------------------------------------------------------
@@ -143,6 +178,7 @@ public:
 private:
     void rebuildForBus() override;
     juce::String sheetTitle() const override { return busName + " COMP"; }
+    juce::String cardStyleKey() const override { return "busInsertComp"; }
     void timerCallback() override;
 
     // A moving-coil VU face reading gain reduction, which on this unit runs

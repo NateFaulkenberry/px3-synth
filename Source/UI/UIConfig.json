@@ -221,10 +221,10 @@
     }
   },
   "mix": {
-    "insertButton": { "size": { "width": 26, "height": 26 }, "cornerRadius": 4, "textSize": 9, "textColour": "#DCE2EC", "normalColour": "#2C2E34D2", "hoverColour": "#42464FE6", "activeColour": "#4C88CAE6", "pressedColour": "#60A4EEE6", "disabledColour": "#22222288", "borderColour": "#DCE0EC78" },
+    "insertButton": { "size": { "width": 36, "height": 36 }, "cornerRadius": 4, "textSize": 9, "textColour": "#DCE2EC", "normalColour": "#2C2E34D2", "hoverColour": "#42464FE6", "activeColour": "#4C88CAE6", "pressedColour": "#60A4EEE6", "disabledColour": "#22222288", "borderColour": "#DCE0EC78" },
     "inserts": {
-      "eq": { "size": 26, "offsetX": 0, "offsetY": 0 },
-      "comp": { "size": 26, "offsetX": 0, "offsetY": 0 }
+      "eq": { "size": 36, "offsetX": 0, "offsetY": 0 },
+      "comp": { "size": 36, "offsetX": 0, "offsetY": 0 }
     },
     "panel": {
       "fillAlpha": 0,
@@ -456,36 +456,37 @@
     }
   },
   "busInserts": {
+    "headerHeight": 30,
+    "headerGap": 8,
+    "buttonWidth": 62,
+    "enableWidth": 42,
     "eq": {
       "widthFraction": 0.7,
       "heightFraction": 0.62,
-      "padding": 22, "headerHeight": 34, "headerGap": 12,
-      "buttonWidth": 64, "enableWidth": 44,
-      "curveHeight": 190, "curveGap": 16,
-      "columnGap": 10, "knobSize": 54, "typeHeight": 22,
-      "cornerRadius": 12, "titleSize": 16,
-      "backgroundColor": "#141719FA",
-      "borderColor": "#82BEFF78",
-      "titleColor": "#FFFFFF",
-      "curveBackgroundColor": "#0A0C10DC",
-      "curveBorderColor": "#FFFFFF28",
+      "innerPadding": 12,
+      "graphHeight": 210,
+      "graphGap": 14,
+      "columnGap": 10,
+      "knobSize": 46,
+      "typeHeight": 20,
       "gridColor": "#FFFFFF22",
-      "zeroLineColor": "#FFFFFF4E",
-      "curveColor": "#82BEFF"
+      "zeroLineColor": "#FFFFFF60",
+      "axisLabelColor": "#FFFFFF96",
+      "spectrumColor": "#96C8FF3A"
     },
     "comp": {
       "widthFraction": 0.58,
-      "heightFraction": 0.4,
-      "padding": 22, "headerHeight": 34, "headerGap": 12,
-      "buttonWidth": 64, "enableWidth": 44,
-      "meterWidth": 210, "meterHeight": 130, "meterGap": 18,
-      "knobSize": 62, "knobGap": 12,
-      "ratioGap": 20, "ratioHeight": 30, "ratioButtonGap": 6,
-      "cornerRadius": 12, "titleSize": 16, "grainAmount": 0.06,
-      "panelTopColor": "#CED0D2",
-      "panelBottomColor": "#A6A9AD",
-      "borderColor": "#3C3E42C8",
-      "titleColor": "#26282C",
+      "heightFraction": 0.44,
+      "innerPadding": 16,
+      "meterWidth": 200,
+      "meterHeight": 124,
+      "meterGap": 16,
+      "knobSize": 58,
+      "knobGap": 10,
+      "ratioGap": 18,
+      "ratioHeight": 28,
+      "ratioButtonGap": 6,
+      "grainAmount": 0.06,
       "meterFaceColor": "#EEE7D2",
       "meterInkColor": "#262420",
       "meterNeedleColor": "#18181A"
@@ -693,6 +694,24 @@
       "title": {
         "color": "#DCF0FF"
       }
+    },
+    "busInsertEq": {
+      "margin": 0,
+      "padding": 12,
+      "background": { "color": "#EDF1F7", "opacity": 0.06 },
+      "gloss": { "topFill": { "opacity": 0 }, "bottomFill": { "opacity": 0 } },
+      "border": { "color": "#EDF1F7", "opacity": 0.28, "radius": 10 },
+      "title": { "color": "#F7FAFF", "fontSize": 12 },
+      "innerOverlay": { "margin": 4, "radius": 6, "color": "#101318FF" }
+    },
+    "busInsertComp": {
+      "margin": 0,
+      "padding": 12,
+      "background": { "color": "#EDF1F7", "opacity": 0.06 },
+      "gloss": { "topFill": { "opacity": 0 }, "bottomFill": { "opacity": 0 } },
+      "border": { "color": "#EDF1F7", "opacity": 0.28, "radius": 10 },
+      "title": { "color": "#F7FAFF", "fontSize": 12 },
+      "innerOverlay": { "margin": 4, "radius": 6, "color": "#BFC2C6FF" }
     },
     "mixerChannel": {
       "margin": 2,

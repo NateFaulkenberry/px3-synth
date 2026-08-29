@@ -2658,7 +2658,7 @@ void PX3SynthAudioProcessorEditor::openBusInsert(int bus, bool wantsEq)
     busInsertScrim.setVisible(true);
     busInsertScrim.setAlwaysOnTop(true);
     busInsertScrim.toFront(false);
-    sheet->setVisible(true);
+    sheet->setSheetVisible(true);
     sheet->setAlwaysOnTop(true);
     sheet->toFront(true);
     repaint();
@@ -2666,13 +2666,15 @@ void PX3SynthAudioProcessorEditor::openBusInsert(int bus, bool wantsEq)
 
 void PX3SynthAudioProcessorEditor::closeBusInsert()
 {
-    for (auto* sheet : { static_cast<juce::Component*>(busEqOverlay.get()),
-                         static_cast<juce::Component*>(busCompOverlay.get()) })
+    for (auto* sheet : { static_cast<px3::ui::BusInsertOverlay*>(busEqOverlay.get()),
+                         static_cast<px3::ui::BusInsertOverlay*>(busCompOverlay.get()) })
     {
         if (sheet != nullptr)
         {
             sheet->setAlwaysOnTop(false);
-            sheet->setVisible(false);
+            // Not setVisible: the sheet also has to stop the spectrum tap, so
+            // an overlay nobody is looking at costs the audio thread nothing.
+            sheet->setSheetVisible(false);
         }
     }
 

@@ -247,6 +247,13 @@ public:
             .getCompressor().gainReductionDb();
     }
 
+    // The spectrum tap for a bus. Inert until a UI switches it on, so an
+    // overlay nobody has opened costs the audio thread nothing.
+    px3::BusAnalyser& getBusAnalyser(int bus)
+    {
+        return busInserts[static_cast<std::size_t>(juce::jlimit(0, kBusInsertCount - 1, bus))].getAnalyser();
+    }
+
     // The EQ's own view of its response, for the curve display. Reads the live
     // processor rather than recomputing from parameters, so what is drawn is
     // what is running - the smoothing included.

@@ -296,17 +296,54 @@ retargeted with `setBus`, which rebuilds its attachments. Opening from the FX
 strip and opening from the dry strip use the same component.
 
 They share the preset browser's **backdrop, scrim and click-outside-to-close**,
-extracted into `Source/UI/ModalBackdrop.{h,cpp}` — the treatment that makes a
-sheet a sheet. They share none of its visual design:
+extracted into `Source/UI/ModalBackdrop.{h,cpp}`, and they wear the plugin's
+**card frame** — border, a padding gap over a translucent background — taken
+straight from the Card system, with the mixer palette. Where a card puts a
+two-part gloss, a sheet puts a single solid panel: the *inner overlay*, which is
+what the controls sit on. It is declared per sheet at
+`cards.<key>.innerOverlay`.
 
-- **EQ** — dark panel, 70% of the window's width by default, with a live
-  response curve read from the running processor one point per pixel. Reading
-  the processor rather than recomputing from parameters means the curve cannot
-  disagree with the audio, and it shows the smoothing.
-- **Compressor** — a silver face with a vertical gradient and a fixed
-  pixel-derived grain, a moving-coil gain reduction meter whose needle falls as
-  the unit works, five ratio buttons in a row, and the five large controls
-  above them.
+Each sheet takes its accent from the mixer strip that opened it, so a DRY sheet
+and the DRY strip are visibly the same channel.
+
+**The EQ graph** (`Source/UI/BusEqGraph.{h,cpp}`) is the primary control, not a
+picture of one. It follows the ADSR graph's interaction model — pick the nearest
+handle, wrap the edit in a host gesture, double-click to restore the parameter's
+own default — with one addition: a band has three values and a pointer has two,
+so **Q is on the wheel** over the handle it belongs to. A drag sets frequency
+and gain together; a band switched to a pass filter has no gain at all, so its
+handle rides the 0 dB line and only moves horizontally.
+
+Axes are labelled: a log frequency ruling at 20/50/100/200/500/1k/2k/5k/10k/20k
+with unlabelled minor ticks between, and a dB ruling at ±12, ±6 and 0 against
+the parameters' own ±18 dB range, so a band at its limit sits on the edge of the
+plot rather than somewhere arbitrary inside it.
+
+**The analyser** behind the curve is a live spectrum of the bus, fed by
+`px3::BusAnalyser` — a fixed ring the audio thread writes single samples into
+with one relaxed store, no allocation and no lock. The read is allowed to race:
+a display is not worth synchronising for, and the ring is twice the window so
+the writer cannot lap the reader inside a frame even at 192 kHz.
+
+Three decisions worth recording:
+
+- **Tapped pre-EQ.** Post-EQ would draw the same shaping twice, once as the
+  curve and once as the trace, which is exactly when an analyser stops helping
+  you decide a cut.
+- **Nothing is written unless a sheet is open.** The tap is switched on with the
+  overlay's visibility, so a sheet nobody has opened costs the audio thread one
+  relaxed load per sample and nothing else. That is what keeps the "an insert
+  you are not using is free" property true, and it is asserted rather than
+  assumed.
+- **Resampled onto the log axis, peak per display bin.** A linear bin walk puts
+  nine tenths of its points in the top octave and draws the bass from three
+  bins; an average across a display bin buries the narrow resonance someone
+  opened the analyser to find.
+
+**The compressor face** is the same frame with a silver inner overlay: a solid
+fill with a fixed pixel-derived grain over it, the five large controls, the five
+ratio buttons and a moving-coil gain reduction meter whose needle falls as the
+unit works.
 
 ### UIConfig
 
@@ -321,18 +358,21 @@ placeholder.
 and bottom-right corners respectively. A card style block may override these per
 bus at `cards.<key>.inserts.<eq|comp>`.
 
-`busInserts.eq` — `widthFraction`, `heightFraction`, `padding`, `headerHeight`,
-`headerGap`, `buttonWidth`, `enableWidth`, `curveHeight`, `curveGap`,
-`columnGap`, `knobSize`, `typeHeight`, `cornerRadius`, `titleSize`,
-`backgroundColor`, `borderColor`, `titleColor`, `curveBackgroundColor`,
-`curveBorderColor`, `gridColor`, `zeroLineColor`, `curveColor`.
+`busInserts` — shared by both sheets: `headerHeight`, `headerGap`,
+`buttonWidth`, `enableWidth`.
 
-`busInserts.comp` — `widthFraction`, `heightFraction`, `padding`,
-`headerHeight`, `headerGap`, `buttonWidth`, `enableWidth`, `meterWidth`,
-`meterHeight`, `meterGap`, `knobSize`, `knobGap`, `ratioGap`, `ratioHeight`,
-`ratioButtonGap`, `cornerRadius`, `titleSize`, `grainAmount`, `panelTopColor`,
-`panelBottomColor`, `borderColor`, `titleColor`, `meterFaceColor`,
+`busInserts.eq` — `widthFraction`, `heightFraction`, `innerPadding`,
+`graphHeight`, `graphGap`, `columnGap`, `knobSize`, `typeHeight`, `gridColor`,
+`zeroLineColor`, `axisLabelColor`, `spectrumColor`.
+
+`busInserts.comp` — `widthFraction`, `heightFraction`, `innerPadding`,
+`meterWidth`, `meterHeight`, `meterGap`, `knobSize`, `knobGap`, `ratioGap`,
+`ratioHeight`, `ratioButtonGap`, `grainAmount`, `meterFaceColor`,
 `meterInkColor`, `meterNeedleColor`.
+
+`cards.busInsertEq` and `cards.busInsertComp` — the frame, in the same shape as
+every other card block, plus `innerOverlay.{margin, radius, color}` for the
+solid panel that replaces the gloss.
 
 The sheets are sized as a fraction of the window rather than in pixels so they
 hold their proportion at any window size.
@@ -358,7 +398,7 @@ The sheets need no change: they are constructed once and retargeted. Neither
 
 ## 10. Test coverage
 
-29 assertions in `PX3Tests businserts`, in four groups:
+39 assertions in `PX3Tests businserts`, in five groups:
 
 - **BUS EQ** — flat response, shelf and pass behaviour, proportional Q,
   stability at four sample rates and every extreme, and continuity while
@@ -374,9 +414,15 @@ The sheets need no change: they are constructed once and retargeted. Neither
 - **BUS INSERTS / UI** — exactly two EQ and two CMP buttons exist across six
   strips; opening a sheet covers the UI behind it; the sheet edits the bus whose
   button was pressed and leaves the other bus alone; the shipping config
-  declares both sheets.
+  declares both sheets and styles them as cards.
+- **BUS INSERTS / EQ GRAPH** — dragging a band moves its frequency and gain and
+  leaves the other three alone; the wheel over a handle sets its Q; a double
+  click restores that band's defaults; a pass filter's handle has no gain to
+  drag; the analyser tap runs only while the sheet is open; and the ring itself
+  returns the most recent window in order with no seam, and writes nothing at
+  all while inactive.
 
-Full suite: **668 assertions, 0 failures**. Release build clean, no warnings.
+Full suite: **680 assertions, 0 failures**. Release build clean, no warnings.
 
 ### Two measurement notes worth keeping
 
@@ -400,8 +446,6 @@ switch them off first.
 - **Aliasing residual.** −28.6 dB at maximum abuse, as measured and accepted in
   section 5. Not audible on program material; measurable on a slammed
   high-frequency tone.
-- **No spectrum analyser** behind the EQ curve. The curve is the filter
-  response, not the signal. Not in the brief; noted because people expect one.
 - **Not tested on hardware other than arm64 macOS.** No CI exists for this
   repository, so the suite is run by hand.
 - **Meter ballistics are not calibrated to a VU standard.** They are a smoothed

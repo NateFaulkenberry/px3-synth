@@ -64,8 +64,56 @@ BusInsertOverlay::~BusInsertOverlay() = default;
 void BusInsertOverlay::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+    refreshCardStyle();
+    uiConfigChanged();
     resized();
     repaint();
+}
+
+void BusInsertOverlay::setSheetVisible(bool shown)
+{
+    setVisible(shown);
+}
+
+void BusInsertOverlay::refreshCardStyle()
+{
+    card.setStyleKey(cardStyleKey());
+    card.setConfig(uiConfig);
+    card.setPanelContentBounds(getLocalBounds());
+    card.layout(getLocalBounds());
+
+    innerStyle = {};
+    if (uiConfig != nullptr)
+    {
+        const auto base = "cards." + cardStyleKey() + ".innerOverlay";
+        innerStyle.margin = uiConfig->getFloat(base + ".margin", innerStyle.margin);
+        innerStyle.radius = uiConfig->getFloat(base + ".radius", innerStyle.radius);
+        innerStyle.colour = uiConfig->getColour(base + ".color", innerStyle.colour);
+    }
+}
+
+juce::Rectangle<int> BusInsertOverlay::headerBounds() const
+{
+    return card.contentBelowTitle().withHeight(
+        uiConfig != nullptr ? uiConfig->getInt("busInserts.headerHeight", 30) : 30);
+}
+
+juce::Rectangle<int> BusInsertOverlay::innerOverlayBounds() const
+{
+    const auto header = headerBounds();
+    const auto gap = uiConfig != nullptr ? uiConfig->getInt("busInserts.headerGap", 8) : 8;
+    return card.contentBelowTitle()
+        .withTrimmedTop(header.getHeight() + gap)
+        .reduced(juce::roundToInt(innerStyle.margin));
+}
+
+juce::Colour BusInsertOverlay::busAccentColour() const
+{
+    // Straight from the strip that opened this sheet, so the two are visibly
+    // the same channel rather than two components that happen to share a name.
+    const auto key = busIndex == PX3SynthAudioProcessor::fxBusInsert ? "cards.mixerFx.border.color"
+                                                                     : "cards.mixerDry.border.color";
+    return configColour(uiConfig, key, juce::Colour::fromRGB(237, 241, 247));
 }
 
 void BusInsertOverlay::setKnobLookAndFeel(juce::LookAndFeel* lookAndFeel)
@@ -79,6 +127,7 @@ void BusInsertOverlay::setBus(int bus)
     busIndex = juce::jlimit(0, PX3SynthAudioProcessor::kBusInsertCount - 1, bus);
     clearAttachments();
     rebuildForBus();
+    refreshCardStyle();
     resized();
     repaint();
 }
@@ -96,39 +145,28 @@ void BusInsertOverlay::clearAttachments()
     comboAttachments.clear();
 }
 
-void BusInsertOverlay::paint(juce::Graphics&)
+void BusInsertOverlay::paint(juce::Graphics& g)
 {
-    // The subclasses draw their own faces. This exists so the base can be
-    // instantiated in a test without a face.
+    // Border, padding gap, translucent background: the card system, unchanged,
+    // so a sheet is recognisably the same object as every other framed thing in
+    // the plugin. What sits inside is a single solid panel rather than a card's
+    // two-part gloss.
+    card.draw(g, sheetTitle());
+
+    const auto inner = innerOverlayBounds().toFloat();
+    g.setColour(innerStyle.colour);
+    g.fillRoundedRectangle(inner, innerStyle.radius);
 }
 
 //==============================================================================
 // EQ
 //==============================================================================
-namespace
-{
-// The display's frequency axis. Fixed rather than following the bands, because
-// a curve whose axis moves under it cannot be read.
-constexpr float kCurveMinHz = 20.0f;
-constexpr float kCurveMaxHz = 20000.0f;
-constexpr float kCurveRangeDb = 20.0f;
-
-float frequencyToX(float hz, juce::Rectangle<float> area)
-{
-    const auto position = std::log(hz / kCurveMinHz) / std::log(kCurveMaxHz / kCurveMinHz);
-    return area.getX() + position * area.getWidth();
-}
-
-float decibelsToY(float db, juce::Rectangle<float> area)
-{
-    const auto position = 0.5f - juce::jlimit(-1.0f, 1.0f, db / kCurveRangeDb) * 0.5f;
-    return area.getY() + position * area.getHeight();
-}
-} // namespace
-
 BusEqOverlay::BusEqOverlay(PX3SynthAudioProcessor& processorIn)
-    : BusInsertOverlay(processorIn)
+    : BusInsertOverlay(processorIn),
+      graph(processorIn)
 {
+    addAndMakeVisible(graph);
+
     static const std::array<const char*, kBandCount> captions { { "BAND 1", "BAND 2", "BAND 3", "BAND 4" } };
 
     for (int band = 0; band < kBandCount; ++band)
@@ -186,8 +224,26 @@ void BusEqOverlay::knobLookAndFeelChanged()
     }
 }
 
+void BusEqOverlay::uiConfigChanged()
+{
+    graph.setUIConfig(uiConfig);
+    graph.setAccentColour(busAccentColour());
+}
+
+void BusEqOverlay::setSheetVisible(bool shown)
+{
+    // The spectrum tap costs the audio thread nothing while the sheet is
+    // closed, and that only holds if something actually switches it off.
+    graph.setAnalyserRunning(shown);
+    BusInsertOverlay::setSheetVisible(shown);
+}
+
 void BusEqOverlay::rebuildForBus()
 {
+    graph.setBus(busIndex);
+    graph.setUIConfig(uiConfig);
+    graph.setAccentColour(busAccentColour());
+
     const auto& params = processor.getBusInsertParams(busIndex);
     if (params.eqEnabled == nullptr)
     {
@@ -238,10 +294,6 @@ void BusEqOverlay::timerCallback()
     }
 
     refreshReadouts();
-    // The curve is drawn from the LIVE processor, whose smoothing moves between
-    // frames even when nothing is being dragged, so the display repaints on the
-    // clock rather than on parameter changes.
-    repaint(curveArea);
 }
 
 void BusEqOverlay::refreshReadouts()
@@ -268,23 +320,23 @@ void BusEqOverlay::refreshReadouts()
 
 void BusEqOverlay::resized()
 {
-    auto area = getLocalBounds().reduced(configInt(uiConfig, "busInserts.eq.padding", 22));
+    refreshCardStyle();
 
-    auto header = area.removeFromTop(configInt(uiConfig, "busInserts.eq.headerHeight", 34));
-    const auto buttonWidth = configInt(uiConfig, "busInserts.eq.buttonWidth", 64);
-    closeButton.setBounds(header.removeFromRight(buttonWidth).reduced(0, 4));
-    header.removeFromRight(8);
-    enableButton.setBounds(header.removeFromRight(configInt(uiConfig, "busInserts.eq.enableWidth", 44)).reduced(0, 4));
+    auto header = headerBounds();
+    const auto buttonWidth = configInt(uiConfig, "busInserts.buttonWidth", 62);
+    closeButton.setBounds(header.removeFromRight(buttonWidth).reduced(0, 3));
+    header.removeFromRight(6);
+    enableButton.setBounds(header.removeFromRight(configInt(uiConfig, "busInserts.enableWidth", 42)).reduced(0, 3));
 
-    area.removeFromTop(configInt(uiConfig, "busInserts.eq.headerGap", 12));
+    auto area = innerOverlayBounds().reduced(configInt(uiConfig, "busInserts.eq.innerPadding", 12));
 
-    curveArea = area.removeFromTop(configInt(uiConfig, "busInserts.eq.curveHeight", 190));
-    area.removeFromTop(configInt(uiConfig, "busInserts.eq.curveGap", 16));
+    graph.setBounds(area.removeFromTop(configInt(uiConfig, "busInserts.eq.graphHeight", 210)));
+    area.removeFromTop(configInt(uiConfig, "busInserts.eq.graphGap", 14));
 
     const auto columnGap = configInt(uiConfig, "busInserts.eq.columnGap", 10);
-    const auto knobSize = configInt(uiConfig, "busInserts.eq.knobSize", 54);
-    const auto captionHeight = 14;
-    const auto valueHeight = 13;
+    const auto knobSize = configInt(uiConfig, "busInserts.eq.knobSize", 46);
+    constexpr auto captionHeight = 13;
+    constexpr auto valueHeight = 12;
 
     const auto columnWidth = (area.getWidth() - columnGap * (kBandCount - 1)) / kBandCount;
 
@@ -298,115 +350,36 @@ void BusEqOverlay::resized()
 
         auto& strip = bands[static_cast<std::size_t>(band)];
         strip.caption.setBounds(column.removeFromTop(captionHeight));
-        column.removeFromTop(4);
+        column.removeFromTop(3);
 
-        // The two inner bands have no selector, so they give the row back
-        // rather than leaving a hole - the columns stay aligned because every
-        // band reserves the same height for it.
-        auto typeRow = column.removeFromTop(configInt(uiConfig, "busInserts.eq.typeHeight", 22));
+        // Every band reserves the same height for a type selector even though
+        // only the outer two have one, so the three knob rows below stay in
+        // line across all four columns.
+        auto typeRow = column.removeFromTop(configInt(uiConfig, "busInserts.eq.typeHeight", 20));
         if (strip.type.isVisible())
         {
             strip.type.setBounds(typeRow);
         }
-        column.removeFromTop(8);
+        column.removeFromTop(6);
 
-        const auto rowHeight = knobSize + valueHeight + captionHeight + 4;
+        // The three knobs sit side by side rather than stacked: the graph above
+        // is the primary control now, and these are for precision, so they get
+        // one row rather than a column three deep.
+        auto knobRow = column.removeFromTop(knobSize);
+        auto captionRow = column.removeFromTop(captionHeight);
+        auto valueRow = column.removeFromTop(valueHeight);
+
+        const auto slot = knobRow.getWidth() / 3;
         for (const auto& entry : { std::make_tuple(&strip.frequency, &strip.frequencyCaption, &strip.frequencyValue),
                                    std::make_tuple(&strip.gain, &strip.gainCaption, &strip.gainValue),
                                    std::make_tuple(&strip.q, &strip.qCaption, &strip.qValue) })
         {
-            auto row = column.removeFromTop(rowHeight);
-            std::get<0>(entry)->setBounds(row.removeFromTop(knobSize).withSizeKeepingCentre(knobSize, knobSize));
-            std::get<1>(entry)->setBounds(row.removeFromTop(captionHeight));
-            std::get<2>(entry)->setBounds(row.removeFromTop(valueHeight));
+            auto knobSlot = knobRow.removeFromLeft(slot);
+            std::get<0>(entry)->setBounds(knobSlot.withSizeKeepingCentre(juce::jmin(slot, knobSize), knobSize));
+            std::get<1>(entry)->setBounds(captionRow.removeFromLeft(slot));
+            std::get<2>(entry)->setBounds(valueRow.removeFromLeft(slot));
         }
     }
-}
-
-void BusEqOverlay::paintCurve(juce::Graphics& g, juce::Rectangle<float> area) const
-{
-    const auto gridColour = configColour(uiConfig, "busInserts.eq.gridColor",
-                                         juce::Colour::fromRGBA(255, 255, 255, 34));
-    const auto zeroColour = configColour(uiConfig, "busInserts.eq.zeroLineColor",
-                                         juce::Colour::fromRGBA(255, 255, 255, 78));
-    const auto curveColour = configColour(uiConfig, "busInserts.eq.curveColor",
-                                          juce::Colour::fromRGB(130, 190, 255));
-
-    g.setColour(gridColour);
-    for (const auto hz : { 50.0f, 100.0f, 200.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f })
-    {
-        const auto x = frequencyToX(hz, area);
-        g.drawVerticalLine(juce::roundToInt(x), area.getY(), area.getBottom());
-    }
-    for (const auto db : { -12.0f, -6.0f, 6.0f, 12.0f })
-    {
-        const auto y = decibelsToY(db, area);
-        g.drawHorizontalLine(juce::roundToInt(y), area.getX(), area.getRight());
-    }
-
-    g.setColour(zeroColour);
-    g.drawHorizontalLine(juce::roundToInt(decibelsToY(0.0f, area)), area.getX(), area.getRight());
-
-    // One sample per pixel. Asking the processor per pixel is cheap - a biquad
-    // magnitude is a handful of trig calls - and it means the curve cannot
-    // disagree with the audio.
-    juce::Path curve;
-    const auto width = juce::jmax(2, juce::roundToInt(area.getWidth()));
-    for (int i = 0; i < width; ++i)
-    {
-        const auto position = static_cast<float>(i) / static_cast<float>(width - 1);
-        const auto hz = kCurveMinHz * std::pow(kCurveMaxHz / kCurveMinHz, position);
-        const auto db = processor.getBusEqMagnitudeDb(busIndex, hz);
-        const auto x = area.getX() + position * area.getWidth();
-        const auto y = decibelsToY(db, area);
-
-        if (i == 0)
-        {
-            curve.startNewSubPath(x, y);
-        }
-        else
-        {
-            curve.lineTo(x, y);
-        }
-    }
-
-    const auto& params = processor.getBusInsertParams(busIndex);
-    const auto enabled = params.eqEnabled != nullptr && params.eqEnabled->get();
-
-    g.setColour(curveColour.withAlpha(enabled ? 1.0f : 0.35f));
-    g.strokePath(curve, juce::PathStrokeType(2.0f));
-}
-
-void BusEqOverlay::paint(juce::Graphics& g)
-{
-    const auto bounds = getLocalBounds().toFloat();
-    const auto corner = configFloat(uiConfig, "busInserts.eq.cornerRadius", 12.0f);
-
-    g.setColour(configColour(uiConfig, "busInserts.eq.backgroundColor",
-                             juce::Colour::fromRGBA(20, 23, 29, 250)));
-    g.fillRoundedRectangle(bounds, corner);
-
-    g.setColour(configColour(uiConfig, "busInserts.eq.borderColor",
-                             juce::Colour::fromRGBA(130, 190, 255, 120)));
-    g.drawRoundedRectangle(bounds.reduced(0.5f), corner, 1.5f);
-
-    g.setColour(configColour(uiConfig, "busInserts.eq.titleColor", juce::Colours::white));
-    g.setFont(juce::Font(juce::FontOptions(configFloat(uiConfig, "busInserts.eq.titleSize", 16.0f),
-                                           juce::Font::bold)));
-    g.drawText(sheetTitle(),
-               getLocalBounds().reduced(configInt(uiConfig, "busInserts.eq.padding", 22), 0)
-                   .withHeight(configInt(uiConfig, "busInserts.eq.headerHeight", 34))
-                   .translated(0, configInt(uiConfig, "busInserts.eq.padding", 22)),
-               juce::Justification::centredLeft);
-
-    const auto curve = curveArea.toFloat();
-    g.setColour(configColour(uiConfig, "busInserts.eq.curveBackgroundColor",
-                             juce::Colour::fromRGBA(10, 12, 16, 220)));
-    g.fillRoundedRectangle(curve, 6.0f);
-    paintCurve(g, curve.reduced(6.0f));
-    g.setColour(configColour(uiConfig, "busInserts.eq.curveBorderColor",
-                             juce::Colour::fromRGBA(255, 255, 255, 40)));
-    g.drawRoundedRectangle(curve.reduced(0.5f), 6.0f, 1.0f);
 }
 
 //==============================================================================
@@ -530,27 +503,27 @@ void BusCompOverlay::timerCallback()
 
 void BusCompOverlay::resized()
 {
-    auto area = getLocalBounds().reduced(configInt(uiConfig, "busInserts.comp.padding", 22));
+    refreshCardStyle();
 
-    auto header = area.removeFromTop(configInt(uiConfig, "busInserts.comp.headerHeight", 34));
-    closeButton.setBounds(header.removeFromRight(configInt(uiConfig, "busInserts.comp.buttonWidth", 64)).reduced(0, 4));
-    header.removeFromRight(8);
-    enableButton.setBounds(header.removeFromRight(configInt(uiConfig, "busInserts.comp.enableWidth", 44)).reduced(0, 4));
+    auto header = headerBounds();
+    closeButton.setBounds(header.removeFromRight(configInt(uiConfig, "busInserts.buttonWidth", 62)).reduced(0, 3));
+    header.removeFromRight(6);
+    enableButton.setBounds(header.removeFromRight(configInt(uiConfig, "busInserts.enableWidth", 42)).reduced(0, 3));
 
-    area.removeFromTop(configInt(uiConfig, "busInserts.comp.headerGap", 12));
+    auto area = innerOverlayBounds().reduced(configInt(uiConfig, "busInserts.comp.innerPadding", 16));
 
-    // The face is laid out as the hardware is: the meter on the right, the four
-    // large controls to its left, the ratio buttons in a row beneath.
-    const auto meterWidth = configInt(uiConfig, "busInserts.comp.meterWidth", 210);
-    meterArea = area.removeFromRight(meterWidth).removeFromTop(configInt(uiConfig, "busInserts.comp.meterHeight", 130));
-    area.removeFromRight(configInt(uiConfig, "busInserts.comp.meterGap", 18));
+    // Laid out as the hardware is: the meter on the right, the large controls
+    // to its left, the ratio buttons in a row beneath.
+    const auto meterWidth = configInt(uiConfig, "busInserts.comp.meterWidth", 200);
+    meterArea = area.removeFromRight(meterWidth).removeFromTop(configInt(uiConfig, "busInserts.comp.meterHeight", 124));
+    area.removeFromRight(configInt(uiConfig, "busInserts.comp.meterGap", 16));
 
-    const auto knobSize = configInt(uiConfig, "busInserts.comp.knobSize", 62);
-    const auto captionHeight = 14;
+    const auto knobSize = configInt(uiConfig, "busInserts.comp.knobSize", 58);
+    constexpr auto captionHeight = 13;
 
-    auto knobRow = area.removeFromTop(knobSize + captionHeight + 6);
-    const auto knobGap = configInt(uiConfig, "busInserts.comp.knobGap", 12);
-    const auto slots = 5;
+    auto knobRow = area.removeFromTop(knobSize + captionHeight * 2 + 6);
+    const auto knobGap = configInt(uiConfig, "busInserts.comp.knobGap", 10);
+    constexpr auto slots = 5;
     const auto slotWidth = (knobRow.getWidth() - knobGap * (slots - 1)) / slots;
 
     for (const auto& entry : { std::make_pair(&input, &inputCaption),
@@ -562,7 +535,7 @@ void BusCompOverlay::resized()
         auto slot = knobRow.removeFromLeft(slotWidth);
         knobRow.removeFromLeft(knobGap);
         entry.first->setBounds(slot.removeFromTop(knobSize).withSizeKeepingCentre(knobSize, knobSize));
-        slot.removeFromTop(4);
+        slot.removeFromTop(3);
         entry.second->setBounds(slot.removeFromTop(captionHeight));
     }
 
@@ -571,9 +544,9 @@ void BusCompOverlay::resized()
     // compressor alone and people reach for it expecting a blend.
     mixValue.setBounds(mixCaption.getBounds().translated(0, captionHeight));
 
-    area.removeFromTop(configInt(uiConfig, "busInserts.comp.ratioGap", 20));
+    area.removeFromTop(configInt(uiConfig, "busInserts.comp.ratioGap", 18));
 
-    auto ratioRow = area.removeFromTop(configInt(uiConfig, "busInserts.comp.ratioHeight", 30));
+    auto ratioRow = area.removeFromTop(configInt(uiConfig, "busInserts.comp.ratioHeight", 28));
     const auto ratioGap = configInt(uiConfig, "busInserts.comp.ratioButtonGap", 6);
     const auto ratioSlots = static_cast<int>(ratioButtons.size()) + 1;
     const auto ratioWidth = (ratioRow.getWidth() - ratioGap * (ratioSlots - 1)) / ratioSlots;
@@ -642,43 +615,22 @@ void BusCompOverlay::paintMeter(juce::Graphics& g, juce::Rectangle<float> area) 
 
 void BusCompOverlay::paint(juce::Graphics& g)
 {
-    const auto bounds = getLocalBounds().toFloat();
-    const auto corner = configFloat(uiConfig, "busInserts.comp.cornerRadius", 12.0f);
+    // The card frame and the solid inner panel, exactly as the EQ sheet draws
+    // them - the two are the same object with different contents.
+    BusInsertOverlay::paint(g);
 
-    // The silver face. A vertical gradient with a brushed grain over it: the
-    // grain is what stops a flat fill reading as plastic, and it is derived
-    // from pixel position rather than from a random source so it does not
-    // shimmer between frames.
-    const auto top = configColour(uiConfig, "busInserts.comp.panelTopColor",
-                                  juce::Colour::fromRGB(206, 208, 210));
-    const auto bottom = configColour(uiConfig, "busInserts.comp.panelBottomColor",
-                                     juce::Colour::fromRGB(166, 169, 173));
-
-    g.setGradientFill(juce::ColourGradient(top, bounds.getCentreX(), bounds.getY(),
-                                           bottom, bounds.getCentreX(), bounds.getBottom(), false));
-    g.fillRoundedRectangle(bounds, corner);
-
+    // The grain is what makes the inner panel read as brushed metal rather than
+    // as flat plastic. It is texture over the solid fill, not a second fill,
+    // and it is derived from pixel position so it does not shimmer between
+    // frames. grainAmount 0 removes it.
+    const auto inner = innerOverlayBounds().toFloat();
     {
         juce::Graphics::ScopedSaveState state(g);
         juce::Path clip;
-        clip.addRoundedRectangle(bounds, corner);
+        clip.addRoundedRectangle(inner, innerStyle.radius);
         g.reduceClipRegion(clip);
-        paintSurfaceNoise(g, bounds, configFloat(uiConfig, "busInserts.comp.grainAmount", 0.06f));
+        paintSurfaceNoise(g, inner, configFloat(uiConfig, "busInserts.comp.grainAmount", 0.06f));
     }
-
-    g.setColour(configColour(uiConfig, "busInserts.comp.borderColor",
-                             juce::Colour::fromRGBA(60, 62, 66, 200)));
-    g.drawRoundedRectangle(bounds.reduced(0.5f), corner, 1.5f);
-
-    const auto padding = configInt(uiConfig, "busInserts.comp.padding", 22);
-    g.setColour(configColour(uiConfig, "busInserts.comp.titleColor", juce::Colour::fromRGB(38, 40, 44)));
-    g.setFont(juce::Font(juce::FontOptions(configFloat(uiConfig, "busInserts.comp.titleSize", 16.0f),
-                                           juce::Font::bold)));
-    g.drawText(sheetTitle(),
-               getLocalBounds().reduced(padding, 0)
-                   .withHeight(configInt(uiConfig, "busInserts.comp.headerHeight", 34))
-                   .translated(0, padding),
-               juce::Justification::centredLeft);
 
     paintMeter(g, meterArea.toFloat());
 }

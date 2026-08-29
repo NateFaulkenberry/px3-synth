@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BusAnalyser.h"
 #include "BusInsertTypes.h"
 #include "FetCompressor.h"
 #include "ParametricEQ.h"
@@ -29,6 +30,7 @@ public:
     {
         eq.reset();
         compressor.reset();
+        analyser.reset();
     }
 
     void setSettings(const EqSettings& eqSettings, const CompressorSettings& compSettings)
@@ -39,16 +41,25 @@ public:
 
     void processSample(float& left, float& right)
     {
+        // Tapped BEFORE the EQ, so the display shows what is arriving on the
+        // bus rather than the result of the curve drawn over it. Post-EQ would
+        // draw the same shaping twice - once as the curve, once as the trace -
+        // which is exactly when an analyser stops helping you decide a cut.
+        analyser.push(left, right);
+
         eq.processSample(left, right);
         compressor.processSample(left, right);
     }
 
     const ParametricEQ& getEq() const { return eq; }
     const FetCompressor& getCompressor() const { return compressor; }
+    BusAnalyser& getAnalyser() { return analyser; }
+    const BusAnalyser& getAnalyser() const { return analyser; }
 
 private:
     ParametricEQ eq;
     FetCompressor compressor;
+    BusAnalyser analyser;
 };
 
 } // namespace px3

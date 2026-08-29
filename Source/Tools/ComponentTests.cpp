@@ -41,6 +41,7 @@
 #include "../UI/FxPanel.h"
 #include "../UI/FxSignalFlow.h"
 #include "../UI/UIConfigManager.h"
+#include "../UI/BusEqGraph.h"
 #include "../UI/MixerControls.h"
 #include "../UI/UIConfig.h"
 #include "../DSP/Delay.h"
@@ -15103,6 +15104,236 @@ void testBusInserts()
                          != juce::Colours::black,
               "EQ sheet width " + fmt(eqWidth, 2) + " of the window, compressor "
                   + fmt(compWidth, 2));
+    }
+
+    // =======================================================================
+    // The EQ graph. The bands are the primary control now, so the drag, the
+    // wheel and the double click are the interface - not decoration on top of
+    // the knobs.
+    // =======================================================================
+    suite("BUS INSERTS / EQ GRAPH");
+
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        editor->setSize(1320, 798);
+        editor->setVisible(true);
+
+        std::vector<juce::Component*> eqButtons;
+        collectNamed(*editor, "EQ", eqButtons);
+        if (! eqButtons.empty())
+        {
+            if (auto* button = dynamic_cast<juce::Button*>(eqButtons.front()); button != nullptr && button->onClick != nullptr)
+            {
+                button->onClick();
+            }
+        }
+
+        std::vector<juce::Component*> graphs;
+        collectNamed(*editor, "BusEqGraph", graphs);
+        auto* graph = graphs.empty() ? nullptr : dynamic_cast<px3::ui::BusEqGraph*>(graphs.front());
+
+        check("BusEqGraph_IsHostedInTheSheet", graph != nullptr && graph->getWidth() > 100,
+              graph != nullptr ? "graph is " + graph->getBounds().toString()
+                               : juce::String("no BusEqGraph found in the editor"));
+
+        // A mouse event the component will accept. Built by hand because the
+        // test has no message loop to generate one.
+        auto eventAt = [&](juce::Point<float> position, int clicks)
+        {
+            return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(),
+                                    position, juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                    graph, graph, juce::Time::getCurrentTime(),
+                                    position, juce::Time::getCurrentTime(), clicks, false);
+        };
+
+        const auto& dry = processor.getBusInsertParams(PX3SynthAudioProcessor::dryBusInsert);
+
+        if (graph != nullptr && dry.bandFreq[1] != nullptr)
+        {
+            // ---- dragging band 2 moves its frequency and its gain ----------
+            setParam(processor, "dryEqFreq2", 300.0f);
+            setParam(processor, "dryEqGain2", 0.0f);
+
+            const auto plot = graph->plotBounds();
+            const auto startPoint = juce::Point<float>(
+                plot.getX() + plot.getWidth() * std::log(300.0f / px3::ui::BusEqGraph::kMinHz)
+                                  / std::log(px3::ui::BusEqGraph::kMaxHz / px3::ui::BusEqGraph::kMinHz),
+                plot.getCentreY());
+
+            // Up and to the right: a higher frequency and a boost.
+            const auto endPoint = juce::Point<float>(startPoint.getX() + plot.getWidth() * 0.25f,
+                                                     plot.getCentreY() - plot.getHeight() * 0.25f);
+
+            graph->mouseDown(eventAt(startPoint, 1));
+            graph->mouseDrag(eventAt(endPoint, 1));
+            graph->mouseUp(eventAt(endPoint, 1));
+
+            const auto hz = dry.bandFreq[1]->get();
+            const auto db = dry.bandGain[1]->get();
+
+            check("BusEqGraph_DraggingABandMovesFrequencyAndGain",
+                  hz > 300.0f * 1.5f && db > 4.0f,
+                  "dragged band 2 from 300 Hz / 0.0 dB to " + fmt(hz, 0) + " Hz / " + fmt(db, 1) + " dB");
+
+            // ---- and it moves ONLY that band -------------------------------
+            check("BusEqGraph_DraggingOneBandLeavesTheOthersAlone",
+                  std::abs(dry.bandGain[0]->get()) < 0.01f
+                      && std::abs(dry.bandGain[2]->get()) < 0.01f
+                      && std::abs(dry.bandGain[3]->get()) < 0.01f,
+                  "bands 1, 3 and 4 still at "
+                      + fmt(dry.bandGain[0]->get(), 2) + " / " + fmt(dry.bandGain[2]->get(), 2)
+                      + " / " + fmt(dry.bandGain[3]->get(), 2) + " dB");
+
+            // ---- the wheel is Q --------------------------------------------
+            const auto qBefore = dry.bandQ[1]->get();
+            juce::MouseWheelDetails wheel {};
+            wheel.deltaY = 1.0f;
+            wheel.isReversed = false;
+            graph->mouseWheelMove(eventAt(graph->plotBounds().getCentre(), 1), wheel);
+            // Aimed at the handle, not the middle of the plot.
+            const auto handleX = plot.getX() + plot.getWidth()
+                                     * std::log(dry.bandFreq[1]->get() / px3::ui::BusEqGraph::kMinHz)
+                                     / std::log(px3::ui::BusEqGraph::kMaxHz / px3::ui::BusEqGraph::kMinHz);
+            const auto handleY = plot.getCentreY() - plot.getHeight() * 0.5f * (dry.bandGain[1]->get() / px3::ui::BusEqGraph::kRangeDb);
+            graph->mouseWheelMove(eventAt({ handleX, handleY }, 1), wheel);
+            const auto qAfter = dry.bandQ[1]->get();
+
+            check("BusEqGraph_WheelOverAHandleSetsItsQ", qAfter > qBefore + 0.05f,
+                  "Q " + fmt(qBefore, 2) + " -> " + fmt(qAfter, 2) + " on a wheel notch over the handle");
+
+            // ---- double click restores the band's defaults ------------------
+            graph->mouseDoubleClick(eventAt({ handleX, handleY }, 2));
+
+            const auto defaultHz = dry.bandFreq[1]->convertFrom0to1(
+                static_cast<juce::RangedAudioParameter*>(dry.bandFreq[1])->getDefaultValue());
+            check("BusEqGraph_DoubleClickRestoresTheBandDefaults",
+                  std::abs(dry.bandFreq[1]->get() - defaultHz) < 1.0f
+                      && std::abs(dry.bandGain[1]->get()) < 0.01f,
+                  "band 2 back to " + fmt(dry.bandFreq[1]->get(), 0) + " Hz / "
+                      + fmt(dry.bandGain[1]->get(), 2) + " dB");
+        }
+
+        // ---- a pass filter has no gain to drag -----------------------------
+        if (graph != nullptr && dry.bandType[0] != nullptr)
+        {
+            setChoice(processor, "dryEqType1", 1);      // high pass
+            setParam(processor, "dryEqGain1", 0.0f);
+            setParam(processor, "dryEqFreq1", 100.0f);
+
+            const auto plot = graph->plotBounds();
+            const auto x = plot.getX() + plot.getWidth()
+                               * std::log(100.0f / px3::ui::BusEqGraph::kMinHz)
+                               / std::log(px3::ui::BusEqGraph::kMaxHz / px3::ui::BusEqGraph::kMinHz);
+
+            graph->mouseDown(eventAt({ x, plot.getCentreY() }, 1));
+            graph->mouseDrag(eventAt({ x + 40.0f, plot.getY() + 4.0f }, 1));
+            graph->mouseUp(eventAt({ x + 40.0f, plot.getY() + 4.0f }, 1));
+
+            check("BusEqGraph_APassFilterHandleHasNoGainToDrag",
+                  std::abs(dry.bandGain[0]->get()) < 0.01f && dry.bandFreq[0]->get() > 100.0f,
+                  "dragged to the top of the plot: gain stayed at "
+                      + fmt(dry.bandGain[0]->get(), 2) + " dB while frequency moved to "
+                      + fmt(dry.bandFreq[0]->get(), 0) + " Hz");
+        }
+
+        // ---- the analyser only runs while the sheet is open -----------------
+        // This is what keeps "an insert you are not using is free" true: the
+        // tap is a store per sample on the audio thread, and it must not happen
+        // for a sheet nobody has opened.
+        const auto runningWhileOpen = processor.getBusAnalyser(PX3SynthAudioProcessor::dryBusInsert).isActive();
+
+        std::vector<juce::Component*> closeButtons;
+        collectNamed(*editor, "CLOSE", closeButtons);
+        for (auto* candidate : closeButtons)
+        {
+            if (auto* button = dynamic_cast<juce::Button*>(candidate);
+                button != nullptr && button->onClick != nullptr && candidate->isVisible())
+            {
+                button->onClick();
+            }
+        }
+
+        const auto runningWhileClosed = processor.getBusAnalyser(PX3SynthAudioProcessor::dryBusInsert).isActive();
+
+        check("BusEqGraph_AnalyserOnlyRunsWhileTheSheetIsOpen",
+              runningWhileOpen && ! runningWhileClosed,
+              juce::String("tap active with the sheet open: ") + (runningWhileOpen ? "yes" : "NO")
+                  + ", after closing: " + (runningWhileClosed ? "STILL ON" : "no"));
+    }
+
+    {
+        // The tap itself, away from any UI. A ring the writer laps would show a
+        // spectrum assembled from two different moments.
+        px3::BusAnalyser analyser;
+        analyser.setActive(true);
+
+        for (int i = 0; i < px3::BusAnalyser::kWindowSize * 3; ++i)
+        {
+            const auto value = static_cast<float>(i);
+            analyser.push(value, value);
+        }
+
+        std::vector<float> window(static_cast<std::size_t>(px3::BusAnalyser::kWindowSize), 0.0f);
+        analyser.readWindow(window.data());
+
+        // The window must be the most recent samples, oldest first, with no
+        // seam: consecutive and ending at the last sample written.
+        const auto last = static_cast<float>(px3::BusAnalyser::kWindowSize * 3 - 1);
+        auto contiguous = true;
+        for (std::size_t i = 1; i < window.size(); ++i)
+        {
+            contiguous = contiguous && std::abs((window[i] - window[i - 1]) - 1.0f) < 0.001f;
+        }
+
+        check("BusAnalyser_ReadsTheMostRecentWindowInOrder",
+              contiguous && std::abs(window.back() - last) < 0.001f,
+              "window ends at " + fmt(window.back(), 0) + " (expected " + fmt(last, 0) + "), "
+                  + (contiguous ? "contiguous" : "HAS A SEAM"));
+
+        // Inactive means nothing is written at all.
+        analyser.reset();
+        analyser.setActive(false);
+        for (int i = 0; i < 512; ++i)
+        {
+            analyser.push(1.0f, 1.0f);
+        }
+        analyser.readWindow(window.data());
+        auto allZero = true;
+        for (const auto v : window) allZero = allZero && v == 0.0f;
+
+        check("BusAnalyser_WritesNothingWhileInactive", allZero,
+              "512 pushes with the tap switched off left the ring untouched");
+    }
+
+    {
+        // Both sheets now wear the card frame, so their card blocks have to
+        // exist or they fall back to defaults and stop looking like the mixer.
+        UIConfigManager manager;
+        manager.setConfigFile(juce::File::getCurrentWorkingDirectory()
+                                  .getChildFile("Source/UI/UIConfig.json"));
+        manager.loadInitial();
+        const auto config = manager.getConfig();
+
+        const auto eqInner = config != nullptr
+                                 ? config->getColour("cards.busInsertEq.innerOverlay.color", juce::Colours::transparentBlack)
+                                 : juce::Colours::transparentBlack;
+        const auto compInner = config != nullptr
+                                   ? config->getColour("cards.busInsertComp.innerOverlay.color", juce::Colours::transparentBlack)
+                                   : juce::Colours::transparentBlack;
+
+        check("BusInsert_ShippingConfigStylesBothSheetsAsCards",
+              config != nullptr
+                  && config->getColour("cards.busInsertEq.border.color", juce::Colours::black) != juce::Colours::black
+                  && config->getColour("cards.busInsertComp.border.color", juce::Colours::black) != juce::Colours::black
+                  // A solid panel, not a translucent one: this is what replaced
+                  // the card's two-part gloss.
+                  && eqInner.getAlpha() == 255 && compInner.getAlpha() == 255
+                  && config->getFloat("cards.busInsertEq.innerOverlay.margin", -1.0f) >= 0.0f,
+              "EQ inner " + eqInner.toDisplayString(true) + ", comp inner " + compInner.toDisplayString(true));
     }
 }
 
