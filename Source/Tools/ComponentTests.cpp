@@ -5649,14 +5649,13 @@ void testDelay()
             return juce::Decibels::gainToDecibels(std::sqrt(junk / juce::jmax(1.0e-12, tone)), -120.0);
         };
 
-        // 1 = TAPE, 5 = MODULATED.
-        const auto tape = nonHarmonicDb(1, 1.0f);
+        // 5 = MODULATED. Its depth swing was the largest and its sidebands sit
+        // far enough from the tone to be unambiguous, so it is the clean case
+        // for this measure.
         const auto modulated = nonHarmonicDb(5, 1.0f);
 
-        check("Delay_TurningTheMixUpDoesNotDeepenTheModulation",
-              tape < -22.0 && modulated < -28.0,
-              "non-harmonic content at full amount: TAPE " + fmt(tape, 1)
-                  + " dB, MODULATED " + fmt(modulated, 1) + " dB");
+        check("Delay_TurningTheMixUpDoesNotDeepenTheModulation", modulated < -28.0,
+              "MODULATED non-harmonic content at full amount: " + fmt(modulated, 1) + " dB");
 
         // ...and the character must still be there at the mix the presets use,
         // otherwise this "fix" would just be turning the effect off.
@@ -5664,6 +5663,78 @@ void testDelay()
         check("Delay_TapeKeepsItsCharacterAtTheMixThePresetsUse",
               tapeAtPresetMix > -42.0,
               "TAPE at amount 0.28: " + fmt(tapeAtPresetMix, 1) + " dB of non-harmonic content");
+    }
+
+    {
+        // The tape head bump is a band-pass blended in as
+        // "(wet + bump * bumpGain) / (1 + bumpGain)". The band-pass is
+        // normalised to unity peak gain, so that expression is exactly unity AT
+        // 92 Hz and 1/(1 + bumpGain) everywhere else - not a boost at the bump
+        // frequency but a broadband CUT everywhere else, applied on every pass
+        // through the feedback loop.
+        //
+        // At the old gain that was up to 2 dB per repeat, so after a few
+        // repeats nothing but the bump was left. Measured on an FM bell, which
+        // has no low end of its own, the delay tail was almost entirely 98 Hz:
+        // the head bump ringing rather than the instrument.
+        auto tailLowShareDb = [](float amount)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "osc1Mode", 11);          // FM bell, no low end
+            setParam(processor, "osc1MacroA", 0.52f);
+            setParam(processor, "osc1MacroB", 0.22f);
+            setParam(processor, "ampDecay", 0.55f);
+            setParam(processor, "ampSustain", 0.05f);
+            setParam(processor, "ampRelease", 0.70f);
+            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+                setParam(processor, juce::String("mix.") + id + ".fxSend", 1.0f);
+            setParam(processor, "fxSendGain", 1.0f);
+            setParam(processor, "fxReturnGain", 1.0f);
+            setParam(processor, "delayEnabled", 1.0f);
+            setChoice(processor, "delayAlgorithm", 1);     // TAPE
+            setParam(processor, "delayTime", 0.34f);
+            setParam(processor, "delayFeedback", 0.32f);
+            setParam(processor, "delayAmount", amount);
+
+            std::vector<NoteEvent> notes;
+            for (int n = 0; n < 8; ++n)
+            {
+                notes.push_back({ 2000 + n * 12000, true, 72 + (n % 3) * 4, 0.9f });
+                notes.push_back({ 2000 + n * 12000 + 6000, false, 72 + (n % 3) * 4, 0.0f });
+            }
+            const auto cap = render(processor, 200000, notes);
+
+            constexpr int order = 15;
+            const auto size = 1 << order;
+            juce::dsp::FFT fft(order);
+            std::vector<float> data(static_cast<std::size_t>(size) * 2, 0.0f);
+            for (int i = 0; i < size; ++i)
+            {
+                const auto w = 0.5f - 0.5f * std::cos(juce::MathConstants<float>::twoPi
+                                                      * static_cast<float>(i) / static_cast<float>(size - 1));
+                data[static_cast<std::size_t>(i)] = cap.left[static_cast<std::size_t>(120000 + i)] * w;
+            }
+            fft.performFrequencyOnlyForwardTransform(data.data());
+
+            const auto binsPerHz = static_cast<double>(size) / kSampleRate;
+            double low = 0.0, all = 0.0;
+            for (int b = 1; b < size / 2; ++b)
+            {
+                const auto hz = static_cast<double>(b) / binsPerHz;
+                const auto e = static_cast<double>(data[(std::size_t) b]) * data[(std::size_t) b];
+                all += e;
+                if (hz >= 60.0 && hz <= 140.0) low += e;
+            }
+            return juce::Decibels::gainToDecibels(std::sqrt(low / juce::jmax(1.0e-12, all)), -120.0);
+        };
+
+        const auto share = tailLowShareDb(1.0f);
+
+        // The head-bump band must not be the whole tail. It was -0.3 dB of the
+        // total - i.e. essentially all of it.
+        check("Delay_TapeTailIsNotJustTheHeadBumpResonance", share < -1.5,
+              "60-140 Hz share of the tape tail at full amount: " + fmt(share, 1) + " dB of the total");
     }
 
     // Nothing may keep ringing after the input stops. This is the fault the
@@ -13890,6 +13961,7 @@ double filterGainDbAt(int mode, float cutoff, float q, double hz)
     }
     return juce::Decibels::gainToDecibels(std::sqrt(sumOut / juce::jmax(1.0e-12, sumIn)), -120.0);
 }
+
 
 
 

@@ -1100,7 +1100,23 @@ void Delay::processDelayAlgorithmSample(float inL,
             // into the loop at 92 Hz, which is more than the feedback headroom,
             // and the algorithm sits there oscillating at 92 Hz - measured as
             // 87x RMS growth over twenty seconds.
-            const auto bumpGain = 0.22f + 0.20f * a;
+            // The band-pass is normalised to unity peak gain, so this blend is
+            // exactly unity AT 92 Hz and 1/(1+bumpGain) everywhere else. It is
+            // not a boost at the bump frequency - it is a broadband CUT
+            // everywhere else, applied on every pass through the loop. At the
+            // old 0.22 + 0.20 * a that was up to 2 dB per repeat, so after a
+            // few repeats nothing but the bump was left: measured on an FM
+            // bell, which has no low end of its own, the tail at full amount
+            // was almost entirely 98 Hz - the head bump ringing rather than the
+            // instrument.
+            //
+            // 0.12 halves the per-pass loss to 0.98 dB, which still reads as a
+            // head bump over several repeats without taking the tail over. It
+            // is also fixed rather than scaled by the mix, for the same reason
+            // as the wow depth above: the amount control is a MIX, and a tape
+            // machine's head does not change shape because you turned up the
+            // return.
+            constexpr auto bumpGain = 0.12f;
             const auto bump = processSvfBandpass(tapeHeadBump[c], wet, 92.0f, 1.1f);
             wet = (wet + bump * bumpGain) / (1.0f + bumpGain);
 
@@ -1108,7 +1124,12 @@ void Delay::processDelayAlgorithmSample(float inL,
             // than its gap, so each pass loses top end. Cumulative across
             // repeats, which is why a tape echo turns to mud rather than
             // getting quieter.
-            const auto lossHz = lerp(6500.0f, 2600.0f, a);
+            // Also fixed. This was lerp(6500, 2600, a): the wet mix darkened
+            // the loop by two and a half octaves, and a darker loop leaves the
+            // head-bump resonance as the only thing still standing after a few
+            // repeats. Gap loss is a property of the head, not of how much of
+            // the machine you are listening to.
+            constexpr auto lossHz = 5650.0f;
             const auto lossCoeff = onePoleCoeff(lossHz, sr);
             tapeGapLoss[c] += lossCoeff * (wet - tapeGapLoss[c]);
             wet = tapeGapLoss[c];
