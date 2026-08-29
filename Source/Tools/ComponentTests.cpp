@@ -12587,6 +12587,7 @@ void testEditorLifecycle()
         editor.reset();
     }
 
+
     {
         // And with audio having run through it, so the timer callbacks and the
         // FX cards have actually been touched before teardown.
@@ -12614,46 +12615,68 @@ void testEditorLifecycle()
     }
 
     {
-        // The window grew 60px so the taller FX cards have room, and all 60 of
-        // them belong to the PANELS - the keyboard and the header keep the
-        // heights they had at 700px. The keyboard is sized as a fraction of the
-        // window, so growing the window without re-basing that fraction would
-        // have silently handed it 8 of the 60.
+        // The default window has to be tall enough to show a whole first row of
+        // FX cards without scrolling. FxPanel spends its height on the signal
+        // flow strip, the gap under it, and then the grid, so the requirement is
+        // read from the same config keys the panel lays out from rather than
+        // written down here - raise fx.grid.rowHeight and this test says so.
+        UIConfigManager manager;
+        manager.setConfigFile(juce::File::getCurrentWorkingDirectory()
+                                  .getChildFile("Source/UI/UIConfig.json"));
+        manager.loadInitial();
+        const auto config = manager.getConfig();
+
+        const auto padY = config->getInt("fx.panel.layout.padY", 0);
+        const auto strip = config->getInt("fx.signalFlow.height", 46);
+        const auto stripGap = config->getInt("fx.signalFlow.gapBelow", 8);
+        const auto rowHeight = config->getInt("fx.grid.rowHeight", 400);
+        const auto required = 2 * padY + strip + stripGap + rowHeight;
+
         PX3SynthAudioProcessor processor;
         std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        editor->setVisible(true);
 
-        auto panelHeightAt = [&](int windowHeight)
+        FxPanel* panel = nullptr;
+        PianoKeyboard* keys = nullptr;
+        juce::Component* header = nullptr;
+        std::function<void(juce::Component&)> walk = [&](juce::Component& c)
         {
-            editor->setSize(1320, windowHeight);
-            juce::Component* keyboard = nullptr;
-            std::function<void(juce::Component&)> walk = [&](juce::Component& c)
-            {
-                if (dynamic_cast<PianoKeyboard*>(&c) != nullptr) keyboard = &c;
-                for (auto* child : c.getChildren()) walk(*child);
-            };
-            walk(*editor);
-
-            FxPanel* panel = nullptr;
-            std::function<void(juce::Component&)> findPanel = [&](juce::Component& c)
-            {
-                if (auto* p = dynamic_cast<FxPanel*>(&c)) panel = p;
-                for (auto* child : c.getChildren()) findPanel(*child);
-            };
-            findPanel(*editor);
-
-            struct R { int panel; int keyboard; };
-            return R { panel != nullptr ? panel->getHeight() : 0,
-                       keyboard != nullptr ? keyboard->getHeight() : 0 };
+            if (auto* p = dynamic_cast<FxPanel*>(&c)) panel = p;
+            if (auto* k = dynamic_cast<PianoKeyboard*>(&c)) keys = k;
+            if (auto* t = dynamic_cast<TopMenuBar*>(&c)) header = t;
+            for (auto* child : c.getChildren()) walk(*child);
         };
+        walk(*editor);
 
-        const auto small = panelHeightAt(700);
-        const auto grown = panelHeightAt(760);
+        const auto defaultPanel = panel != nullptr ? panel->getHeight() : 0;
+        const auto defaultKeys = keys != nullptr ? keys->getHeight() : 0;
+        const auto defaultHeader = header != nullptr ? header->getHeight() : 0;
 
-        check("Editor_TheExtraSixtyPixelsGoToThePanels",
-              grown.panel - small.panel == 60 && grown.keyboard == small.keyboard,
-              "panel " + juce::String(small.panel) + " -> " + juce::String(grown.panel)
-                  + " (+" + juce::String(grown.panel - small.panel) + "), keyboard "
-                  + juce::String(small.keyboard) + " -> " + juce::String(grown.keyboard));
+        check("Editor_DefaultSizeFitsAWholeRowOfFxCards",
+              panel != nullptr && defaultPanel >= required,
+              "panel " + juce::String(defaultPanel) + "px, a row needs " + juce::String(required)
+                  + "px (strip " + juce::String(strip) + " + gap " + juce::String(stripGap)
+                  + " + rowHeight " + juce::String(rowHeight) + ")");
+
+        // Resizing must spend every pixel on the panels. The keyboard used to be
+        // a fraction of the window height, so it quietly took a share of any
+        // height added for the cards, and the fraction had to be re-based every
+        // time the window grew.
+        juce::String detail;
+        auto keyboardHeld = keys != nullptr && header != nullptr;
+        auto panelTracks = panel != nullptr;
+
+        for (const auto h : { 700, 838, 900, 980 })
+        {
+            editor->setSize(1320, h);
+            keyboardHeld = keyboardHeld && keys->getHeight() == defaultKeys
+                           && header->getHeight() == defaultHeader;
+            panelTracks = panelTracks && panel->getHeight() - defaultPanel == h - 838;
+            detail << h << ": panel " << panel->getHeight() << " keys " << keys->getHeight()
+                   << " header " << header->getHeight() << "   ";
+        }
+
+        check("Editor_ExtraWindowHeightAllGoesToThePanels", keyboardHeld && panelTracks, detail);
     }
 
     {
@@ -12731,6 +12754,70 @@ void testEditorLifecycle()
                                     : "sheet centre resolves to " + onTheSheet->getBounds().toString()
                                           + ", scrim is " + (scrim != nullptr ? scrim->getBounds().toString()
                                                                               : juce::String("none")));
+    }
+
+    {
+        // The preset tab carries the loaded preset's category and author under
+        // its name, upper case and smaller. Verified by rendering the button:
+        // the subtitles are painted, not held in a child label, so the only
+        // honest check is whether ink appears in the bottom band.
+        PX3SynthAudioProcessor processor;
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        editor->setSize(1320, 760);
+        editor->setVisible(true);
+
+        TopMenuBar* menu = nullptr;
+        std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+        {
+            if (auto* m = dynamic_cast<TopMenuBar*>(&c)) menu = m;
+            for (auto* child : c.getChildren()) walk(*child);
+        };
+        walk(*editor);
+
+        auto inkInBottomBand = [](juce::Component& c)
+        {
+            const auto image = c.createComponentSnapshot(c.getLocalBounds());
+            if (! image.isValid() || image.getHeight() < 6) return -1;
+
+            // The band the subtitles occupy, sampled against the face colour
+            // at the button's own left edge so a themed face does not count.
+            const auto reference = image.getPixelAt(2, image.getHeight() / 2);
+            auto ink = 0;
+            for (int y = image.getHeight() * 2 / 3; y < image.getHeight() - 2; ++y)
+            {
+                for (int x = 4; x < image.getWidth() - 4; ++x)
+                {
+                    const auto p = image.getPixelAt(x, y);
+                    if (std::abs(p.getBrightness() - reference.getBrightness()) > 0.08f) ++ink;
+                }
+            }
+            return ink;
+        };
+
+        juce::String detail;
+        auto ok = menu != nullptr;
+
+        if (menu != nullptr)
+        {
+            auto& button = menu->getPresetNameButton();
+
+            menu->setPresetName("TEST PATCH");
+            menu->setPresetDetails({}, {});
+            const auto bare = inkInBottomBand(button);
+
+            menu->setPresetDetails("Bass", "Nate");
+            const auto withDetails = inkInBottomBand(button);
+
+            // Room for two rows at all: the band has to be tall enough that a
+            // 9.5px line can land in it.
+            ok = button.getHeight() >= 28 && bare >= 0 && withDetails > bare + 20;
+
+            detail << "button " << button.getWidth() << "x" << button.getHeight()
+                   << ", bottom-band ink " << bare << " -> " << withDetails;
+        }
+
+        check("TopMenu_PresetTabShowsCategoryAndAuthor", ok,
+              menu == nullptr ? "no top menu bar found" : detail);
     }
 }
 

@@ -1484,7 +1484,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     // Seed visual slot layout with the processor order before the first setSize/resized pass.
     fxSectionOrder = audioProcessor.getFxProcessingOrder();
-    setSize(1320, 760);
+    // Tall enough for a full first row of FX cards: the panel needs
+    // fx.signalFlow.height + gapBelow + fx.grid.rowHeight, and the editor's
+    // other rows are fixed, so this is that requirement plus the chrome.
+    setSize(1320, 838);
 
     juce::String presetInitError;
     if (!presetManager.initialise(presetInitError))
@@ -1863,12 +1866,14 @@ void PX3SynthAudioProcessorEditor::resized()
 
     const auto headerHeight = uiConfig != nullptr ? uiConfig->getInt("editor.layout.headerHeight", 120) : 120;
     const auto controlsHeight = juce::jlimit(150, 270, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.34)));
-    // 0.14 rather than 0.15 so that the keyboard is the SAME 106px at the new
-    // 760px default that it was at the old 700px one. The window grew by 60px
-    // to give the taller FX cards room, and all 60 belong to the panels: the
-    // keyboard and the header are unchanged. At 0.15 the keyboard would have
-    // quietly taken 8 of those pixels for itself.
-    const auto keyboardHeight = juce::jlimit(106, 144, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.14)));
+    // Fixed, not a fraction of the window. It was height * 0.15, which meant
+    // every time the window grew to give the FX cards room the keyboard
+    // silently took a share of it - and the fraction had to be re-based to
+    // claw that back. 106px is what the fraction produced at every window
+    // height up to about 707 anyway, because the lower clamp bound was doing
+    // the work; making it explicit means the panels get all of any extra
+    // height, at the default size and on resize.
+    constexpr auto keyboardHeight = 106;
     // const auto statusHeight = 36;
     const auto sectionGap = uiConfig != nullptr ? uiConfig->getInt("editor.layout.sectionGap", 10) : 10;
 
@@ -2409,6 +2414,11 @@ void PX3SynthAudioProcessorEditor::refreshPresetNameDisplay()
     if (topMenuBar != nullptr)
     {
         topMenuBar->setPresetName(name);
+
+        // Blank for INIT, which is not a preset and has no category or author
+        // to report - the tab then draws as a single centred name.
+        topMenuBar->setPresetDetails(hasCurrentPreset ? currentPreset.metadata.category : juce::String(),
+                                     hasCurrentPreset ? currentPreset.metadata.author : juce::String());
     }
 }
 

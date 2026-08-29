@@ -879,8 +879,8 @@
       },
       "cardInner": {
         "margin": 0,
-        "paddingRight": 4,
-        "paddingLeft": 4,
+        "paddingRight": 0,
+        "paddingLeft": 0,
         "paddingBottom": 4,
         "marginTop": 20,
         "display": "flex",
@@ -891,7 +891,7 @@
         "alignContent": "center",
         "gap": 0,
         "power": {
-          "x": -4,
+          "x": 0,
           "y": -32,
           "size": 25
         },
@@ -916,7 +916,7 @@
               "size": "auto"
             }
           },
-          "row1": { "height": 45, "gap": 1 },
+          "row1": { "height": 45, "gap": 1, "justifyContent": "space-evenly" },
           "row2": { "height": 65, "gap": 10 },
           "row3": { "height": "30%", "gap": 5, "justifyContent": "space-between" },
           "row4": { "height": "30%", "gap": 5, "justifyContent": "space-between" },

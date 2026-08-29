@@ -46,6 +46,13 @@ public:
     // to report, so it wears the same face with no lamp on it.
     void setShowLed(bool shouldShow);
 
+    // A second line under the legend, left and right justified. The preset tab
+    // uses it for the loaded preset's category and author; a tab with neither
+    // draws exactly as it did before, with the legend centred in the whole
+    // face. Drawn upper case and smaller than the legend, so the name stays
+    // the thing you read first.
+    void setSubtitles(const juce::String& left, const juce::String& right);
+
 private:
     void paintButton(juce::Graphics& g,
                      bool shouldDrawButtonAsHighlighted,
@@ -55,6 +62,8 @@ private:
     juce::Colour accent { juce::Colour::fromRGB(74, 153, 255) };
     bool showSeam { true };
     bool showLed { true };
+    juce::String subtitleLeft;
+    juce::String subtitleRight;
 };
 
 class TopMenuBar final : public juce::Component
@@ -72,6 +81,9 @@ public:
 
     void setSelectedSection(int sectionIndex);
     void setPresetName(const juce::String& name);
+    // Shown under the name, upper case and smaller: category on the left,
+    // author on the right. Either may be empty.
+    void setPresetDetails(const juce::String& category, const juce::String& author);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
     const juce::Rectangle<int>& getSectionButtonsArea() const;

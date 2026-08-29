@@ -35,6 +35,18 @@ void TopMenuTabButton::setShowLed(bool shouldShow)
     repaint();
 }
 
+void TopMenuTabButton::setSubtitles(const juce::String& left, const juce::String& right)
+{
+    if (subtitleLeft == left && subtitleRight == right)
+    {
+        return;
+    }
+
+    subtitleLeft = left;
+    subtitleRight = right;
+    repaint();
+}
+
 void TopMenuTabButton::paintButton(juce::Graphics& g,
                                    bool shouldDrawButtonAsHighlighted,
                                    bool shouldDrawButtonAsDown)
@@ -97,14 +109,43 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
 
     // ---- legend ------------------------------------------------------------
     const auto legend = on ? style.textActive : style.text;
-    g.setColour(legend);
-    g.setFont(juce::FontOptions(juce::jmin(13.0f, area.getHeight() * 0.30f), juce::Font::bold));
+
     // With no lamp above it the legend centres in the whole face instead of the
     // band beneath one.
-    g.drawFittedText(getButtonText(),
-                     (showLed ? area.withTop(led.getBottom() + 2.0f) : area).toNearestInt(),
-                     juce::Justification::centred,
-                     1);
+    auto legendArea = showLed ? area.withTop(led.getBottom() + 2.0f) : area;
+
+    // A subtitle takes the bottom of the face, and the legend centres in what
+    // is left - so a tab without one is laid out exactly as it was.
+    const auto hasSubtitle = subtitleLeft.isNotEmpty() || subtitleRight.isNotEmpty();
+    juce::Rectangle<float> subtitleArea;
+    if (hasSubtitle)
+    {
+        subtitleArea = legendArea.removeFromBottom(juce::jmin(14.0f, legendArea.getHeight() * 0.38f));
+    }
+
+    g.setColour(legend);
+    g.setFont(juce::FontOptions(juce::jmin(13.0f, area.getHeight() * 0.30f), juce::Font::bold));
+    g.drawFittedText(getButtonText(), legendArea.toNearestInt(), juce::Justification::centred, 1);
+
+    if (hasSubtitle)
+    {
+        // Dimmer as well as smaller. Two lines at the same weight read as two
+        // competing labels rather than as a name with its details under it.
+        g.setColour(legend.withMultipliedAlpha(0.62f));
+        g.setFont(juce::FontOptions(juce::jmin(9.5f, area.getHeight() * 0.21f)));
+
+        // Half the width each, so a long category cannot push the author off
+        // the right-hand edge - each is fitted into its own half instead.
+        const auto inset = subtitleArea.reduced(6.0f, 0.0f);
+        const auto half = inset.getWidth() * 0.5f;
+
+        g.drawFittedText(subtitleLeft.toUpperCase(),
+                         inset.withWidth(half).toNearestInt(),
+                         juce::Justification::centredLeft, 1, 0.7f);
+        g.drawFittedText(subtitleRight.toUpperCase(),
+                         inset.withTrimmedLeft(half).toNearestInt(),
+                         juce::Justification::centredRight, 1, 0.7f);
+    }
 
     // The seam between neighbours. One line on the right only, so butted tabs
     // share a single hairline instead of drawing two against each other.
@@ -355,6 +396,11 @@ void TopMenuBar::setSelectedSection(int sectionIndex)
 void TopMenuBar::setPresetName(const juce::String& name)
 {
     presetNameButton.setButtonText(name);
+}
+
+void TopMenuBar::setPresetDetails(const juce::String& category, const juce::String& author)
+{
+    presetNameButton.setSubtitles(category, author);
 }
 
 void TopMenuBar::setUIConfig(std::shared_ptr<const UIConfig> configIn)
