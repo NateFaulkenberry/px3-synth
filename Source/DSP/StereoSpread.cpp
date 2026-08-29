@@ -213,6 +213,21 @@ void StereoSpread::processSampleFrame(float inL, float inR, float& outL, float& 
     const auto amount = amountSmoothed.getNextValue();
     const auto mix = mixSmoothed.getNextValue();
 
+    if (amount * enabled * mix <= 1.0e-6f
+        && ! amountSmoothed.isSmoothing() && ! enabledSmoothed.isSmoothing()
+        && ! mixSmoothed.isSmoothing())
+    {
+        if (! idle)
+        {
+            idle = true;
+            reset();
+        }
+        outL = inL;
+        outR = inR;
+        return;
+    }
+    idle = false;
+
     const auto spec = specFor(settings.modeIndex);
 
     const auto width = widthSmoothed.getNextValue();

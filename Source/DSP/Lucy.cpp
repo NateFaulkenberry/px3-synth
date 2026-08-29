@@ -962,6 +962,21 @@ void Lucy::processSampleFrame(float inL, float inR, float& outL, float& outR)
     const auto global = globalSmoothed.getNextValue();
     const auto verbMix = verbSmoothed.getNextValue();
 
+    // Two FFTs per hop per channel is the most expensive thing in the plugin;
+    // running them to produce a signal nothing hears is the least defensible.
+    if (global * enabled <= 1.0e-6f && ! globalSmoothed.isSmoothing() && ! enabledSmoothed.isSmoothing())
+    {
+        if (! idle)
+        {
+            idle = true;
+            reset();
+        }
+        outL = inL;
+        outR = inR;
+        return;
+    }
+    idle = false;
+
     lossSmoothed.getNextValue();
     speedSmoothed.getNextValue();
     freezerSmoothed.getNextValue();

@@ -56,7 +56,19 @@ Main code lives in Source/
 - `Source/DSP/`: processor lifecycle, parameter definitions, voice/sound DSP (`PluginProcessor.*`, `SynthVoice.*`, `SynthSound.*`)
   - FX components, each a self-contained class with the same
     `prepare` / `reset` / `updateForBlock` / `processSampleFrame` interface:
-    `Vibe.*` + `VibeEngine.*`, `Delay.*`, `Reverb.*`, `Mood.*`
+    `Vibe.*` + `VibeEngine.*`, `Delay.*`, `Reverb.*`, `Mood.*`,
+    `Doom.*`, `Lucy.*`, `Chorus.*`, `StereoSpread.*`
+  - Each FX also has a plain-struct settings header (`DoomTypes.h`,
+    `LucyTypes.h`, `ChorusTypes.h`, `StereoSpreadTypes.h`) holding one block's
+    worth of controls, built by a `current<Name>Settings()` method in
+    `PluginProcessorSource.cpp` that routes every continuous control through
+    `applyModulationToNormalizedValue` - which is what makes it a modulation
+    destination, with no per-effect modulation plumbing
+  - `FxChain.h`: the chain's shape in one place - stage ids, `FxOrder`, and the
+    default order. Stage ids are permanent; `MODULE_ORDER` stores them by name
+    and the FX panel addresses its cards by id, so append, never renumber
+  - `StftEngine.*`: shared short-time Fourier analysis/synthesis with
+    overlap-add, used by DOOM's SOUP and by LUCY
   - Voice-level building blocks: `OscillatorUnit.*`, `SubOscillator.*`,
     `VoiceFilter.*`, `AmpEnvelope.*`, `EnvelopeGenerator.*`, `LfoGenerator.*`
   - Shared internals: `PluginProcessorInternals.h` (gain-structure constants,
@@ -100,6 +112,50 @@ Want to change an FX algorithm?
 - DELAY: `Source/DSP/Delay.cpp`
 - REVERB: `Source/DSP/Reverb.cpp`
 - MOOD: `Source/DSP/Mood.cpp`
+- DOOM: `Source/DSP/Doom.cpp` - design notes in `docs/DOOM_DSP_DESIGN.md`
+- LUCY: `Source/DSP/Lucy.cpp` - design notes in `docs/LUCY_DSP_DESIGN.md`
+- CHORUS: `Source/DSP/Chorus.cpp` - design notes in `docs/CHORUS_DSP_DESIGN.md`
+- SPREAD: `Source/DSP/StereoSpread.cpp` - design notes in
+  `docs/STEREO_SPREAD_DSP_DESIGN.md`
+
+Each of those four has a design document recording what the source hardware
+publicly documents, what is inferred from it, and which DSP reproduces each
+behaviour. Read the document before changing the algorithm: several choices that
+look arbitrary are the point (RELAY's parallel taps rather than feedback,
+CHORUS's anti-phase pair, LUCY's masking model, SPREAD's allpass network).
+
+Want to add a new FX?
+1. `Source/DSP/FxChain.h`: append a stage id and a module id string, bump
+   `kFxStageCount`, and place it in `kDefaultFxOrder`.
+2. `Source/DSP/PluginProcessorInternals.h`: append the matching entry to
+   `kFxModuleIds`, in the same order.
+3. Write the engine with the shared `prepare` / `reset` / `updateForBlock` /
+   `processSampleFrame` interface, plus a settings struct.
+4. Register parameters in `PluginProcessor.cpp`, accessors in
+   `PluginProcessorParameters.cpp`, and a `current<Name>Settings()` in
+   `PluginProcessorSource.cpp`.
+5. Add the stage to the `switch` in `processBlock`.
+6. Build the card with `px3::ui::FxCardComponent` in a `build<Name>Card()` in
+   `PluginEditor.cpp`, and hand it to `FxPanel::addCard`.
+7. Add a `cards.<key>` block to `UIConfig.json`.
+8. Default its amount/mix to **zero**, matching `reverbAmount`: adding an effect
+   must not change what existing patches sound like.
+9. Give it an inaudible-path early-out (see below).
+
+Every step after 1 and 2 is additive - nothing else in the chain needs to know
+the stage count changed, because packing, sanitising and `MODULE_ORDER` restore
+are all driven by `kFxStageCount`. An older saved order that predates the new
+stage still loads, with the new stage appended in its default slot.
+
+Why every FX has an idle early-out:
+- An effect at zero mix that still runs its whole engine costs as much as one
+  you can hear. With eight in the chain that is the difference between a
+  full-voice patch fitting the real-time budget and not.
+- The pattern: when the amount is zero AND its smoother is not still ramping,
+  clear the state once and return the input. The smoothing check is what keeps
+  it from clicking on the way in or out.
+- `reset()` must therefore be allocation-free - fills only - because the idle
+  transition calls it from the audio thread.
 
 Want to change internal bus routing stages?
 - `Source/DSP/PluginProcessor.cpp` (`prepareToPlay`, `processBlock`)
@@ -128,8 +184,28 @@ Want to change ADSR graph UI?
 - `EnvelopeGraphComponent` in `Source/UI/PluginEditor.cpp`
 
 Want to change module ordering behavior?
-- UI drag/commit in `Source/UI/PluginEditor.cpp`
-- canonical order storage/serialization in `Source/DSP/PluginProcessor.cpp`
+- The order is edited in ONE place: the signal-flow strip,
+  `Source/UI/FxSignalFlow.cpp`. The FX cards are editors, not ordering controls.
+- The strip reports; it does not apply. `FxPanel::onChainOrderChanged` ->
+  `PX3SynthAudioProcessorEditor::applyFxChainOrder` -> the processor, which then
+  hands the order back through `FxPanel::setChainOrder`. One authority, no UI
+  copy that can drift.
+- Ordering and grid arithmetic: `Source/UI/FxChainLayout.cpp`, shared by the
+  strip and the grid so there is one implementation and it can be tested without
+  a window.
+- Canonical storage, packing and sanitising: `Source/DSP/PluginProcessor.cpp`
+  and `PluginProcessorInternals.h` (`packFxOrder`, `unpackFxOrder`,
+  `sanitizeFxOrder`).
+- Serialisation: `MODULE_ORDER` in `Source/DSP/PluginProcessorState.cpp`.
+
+Want to change an FX card's controls or styling?
+- `Source/UI/FxCardComponent.*` is the shared card. It OWNS its controls and is
+  asked for them by id; the editor attaches parameters to what it gets back.
+  Layout is declared as rows, so a different control set is a different
+  declaration rather than a different `resized()`.
+- Sizes, colours and fonts come from `cards.<key>.controls` in `UIConfig.json`.
+- Looking a control up by an id the card does not have returns null, so a wiring
+  typo fails at startup rather than shipping as a knob that does nothing.
 
 Want to tune FX send/return gain behavior?
 - parameter definitions + registration in `Source/DSP/PluginProcessor.cpp`
@@ -205,7 +281,28 @@ build/diag/PX3Tests_artefacts/RelWithDebInfo/PX3Tests
 ```
 
 `PX3Tests` takes an optional suite filter: `subosc`, `osc`, `ampenv`, `modenv`,
-`lfo`, `vibe`, `reverb`, `delay`, `mood`, `fx`, `preset`, `integration`.
+`lfo`, `vibe`, `reverb`, `comb`, `delay`, `mood`, `doom`, `lucy`, `chorus`,
+`spread`, `cardstyle`, `cardinner`, `fxchain`, `fx`, `preset`, `integration`.
+
+The four newest FX suites each carry the measurement that IS their design brief,
+so a refactor that quietly breaks the premise fails rather than passing quietly:
+
+| Suite | The measurement that matters |
+| --- | --- |
+| `doom` | the looper is always listening (engage it, feed silence, still get audio); RELAY's repeats do not fade |
+| `lucy` | INVERSE is brighter and thinner than STANDARD; PACKET LOSS produces drop-out runs that CLEAN does not |
+| `chorus` | pitch stability against a naive single-delay chorus built inside the test; mono collapse at five AMOUNT settings |
+| `spread` | side energy CREATED from a mono source; mono-sum level retained at five AMOUNT settings |
+
+Stochastic behaviour in DOOM, LUCY and CHORUS runs off a seeded generator
+(`setSeed`), so every one of those tests is reproducible.
+
+A note on measuring these, learned the hard way several times: **check the
+instrument before changing the DSP.** A warm-up that ends on a silent bar makes a
+correct looper look broken; an impulse fired during a parameter ramp makes the
+dry path louder than the effect; comparing a processed signal against an
+undelayed reference measures latency rather than processing. Every one of those
+looked like a DSP bug first.
 
 It also has measurement modes that print characterisation tables rather than
 pass/fail results. These exist so that "sounds better" can be argued from numbers:

@@ -1595,6 +1595,23 @@ void Doom::processSampleFrame(float inL, float inR, float& outL, float& outR)
     const auto enabled = enabledSmoothed.getNextValue();
     const auto mix = mixSmoothed.getNextValue();
 
+    // Contributing nothing, and not on the way to contributing something. The
+    // engine is skipped entirely and its tails are cleared once, so coming back
+    // starts from silence rather than from whatever was in flight.
+    const auto amountNow = mix * enabled;
+    if (amountNow <= 1.0e-6f && ! mixSmoothed.isSmoothing() && ! enabledSmoothed.isSmoothing())
+    {
+        if (! idle)
+        {
+            idle = true;
+            reset();
+        }
+        outL = inL;
+        outR = inR;
+        return;
+    }
+    idle = false;
+
     updateClock();
 
     // Down-conversion by box average over each internal step. Point sampling

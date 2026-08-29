@@ -198,6 +198,10 @@ private:
     uint32_t rngState { 0x9E3779B9u };
 
     bool wasEnabled { false };
+    // True while the effect is contributing nothing. An effect at zero mix that
+    // still runs its whole engine costs the same as one you can hear, which is
+    // what pushed a full-voice patch over the real-time budget.
+    bool idle { false };
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> enabledSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> mixSmoothed;

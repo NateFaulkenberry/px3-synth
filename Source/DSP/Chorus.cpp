@@ -402,6 +402,21 @@ void Chorus::processSampleFrame(float inL, float inR, float& outL, float& outR)
     const auto amount = amountSmoothed.getNextValue();
     const auto mix = mixSmoothed.getNextValue();
 
+    if (amount * enabled * mix <= 1.0e-6f
+        && ! amountSmoothed.isSmoothing() && ! enabledSmoothed.isSmoothing()
+        && ! mixSmoothed.isSmoothing())
+    {
+        if (! idle)
+        {
+            idle = true;
+            reset();
+        }
+        outL = inL;
+        outR = inR;
+        return;
+    }
+    idle = false;
+
     rateSmoothed.getNextValue();
     characterSmoothed.getNextValue();
     feedbackSmoothed.getNextValue();

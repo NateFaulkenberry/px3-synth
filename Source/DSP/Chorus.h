@@ -109,6 +109,8 @@ private:
 
     uint32_t rngState { 0x2545F491u };
     bool wasEnabled { false };
+    // See the note in Doom.h: an inaudible effect must also be a free one.
+    bool idle { false };
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> enabledSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> amountSmoothed;

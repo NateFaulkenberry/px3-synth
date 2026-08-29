@@ -1,6 +1,6 @@
 # P(X3) Synth
 
-P(X3) is a polyphonic JUCE synthesizer with a multi-mode source engine, a channel-style mixer, and reorderable FX (VIBE, Delay, Reverb, Mood). This README is a full operating guide for new users and a function-level map for developers.
+P(X3) is a polyphonic JUCE synthesizer with a multi-mode source engine, a channel-style mixer, and eight reorderable FX (VIBE, CHORUS, DOOM, LUCY, Delay, Mood, Reverb, SPREAD). This README is a full operating guide for new users and a function-level map for developers.
 
 Current version: v0.1.0
 
@@ -16,7 +16,15 @@ For developer architecture, maintenance map, and release workflow, see `DEVELOPM
 - Dedicated SUB + OSC1/OSC2/OSC3 source channels.
 - Filter, amp envelope, and master gain section.
 - Three LFO modulation sources with assignable destinations.
-- Four FX blocks with bypass and drag/drop processing order.
+- Eight FX blocks with bypass, and a signal-flow strip for setting the processing order.
+- DOOM: a two-channel ambient processor - an always-listening micro-looper and a
+  set of spatial effects, tied together by one musical clock.
+- LUCY: a spectral degradation engine built on a masking coder - low-bitrate
+  artifacts, packet loss, spectral freeze and timing jitter.
+- CHORUS: a Dimension D-inspired stereo chorus that widens without wobbling and
+  collapses cleanly to mono.
+- SPREAD: a mono-compatible stereo widener using allpass decorrelation rather
+  than delay or phase inversion.
 - Mixer channel controls: level, pan, send, mute, solo, per-channel meter.
 - Mixer faders show the real gain of each channel; the -4 dB of modulation headroom lives on the sources themselves, not hidden inside the fader.
 - Explicit internal audio bus routing: OSCILLATOR STEMS -> DRY BUS + FX SEND BUS -> FX CHAIN -> FX RETURN -> MASTER.
@@ -320,7 +328,7 @@ MIDI/Virtual Keyboard
   -> Voice Stems (SUB, OSC1, OSC2, OSC3)
   -> DRY BUS (channel pan/mute/solo applied)
   -> FX SEND BUS (channel sends + send gates)
-  -> FX Chain (user-order: VIBE / Delay / Reverb / Mood)
+  -> FX Chain (user-order: VIBE / CHORUS / DOOM / LUCY / Delay / Mood / Reverb / SPREAD)
   -> FX RETURN (return gain/pan/mute/solo applied)
   -> MASTER BUS (DRY + FX RETURN)
   -> Master Output
@@ -552,7 +560,11 @@ You have four FX blocks:
 - REVERB
 - MOOD
 
-Each block has a corner bypass toggle and can be reordered by drag-and-drop.
+Each block has a corner bypass toggle. The processing order is set by dragging
+the nodes in the signal-flow strip above the grid - the cards themselves are
+editors, not ordering controls, so they can wrap and scroll freely. The strip is
+the only place the order can be changed, and it stays visible while the grid
+scrolls.
 
 Bypass semantics:
 
@@ -726,6 +738,88 @@ Also:
 - Bypassing the block clears the delay lines once the amount fade reaches zero, so
   re-enabling it does not release the tail of whatever was playing when it was
   switched off.
+
+
+### DOOM
+
+DOOM is a two-channel ambient processor inspired by the Chase Bliss BAD MOOD. It
+is a separate engine from Mood, not a variant of it.
+
+One half is an **always-listening micro-looper**: it records continuously while
+bypassed, so engaging it captures what you already played rather than starting a
+recording. Three modes - BURST slices the loop at its own onsets and sequences
+them, RADIO scans five loopers with interference between them, MASK replaces the
+loud parts of the loop with something else.
+
+The other half is a **wet channel** - SOUP is a spectral reverb that resynthesises
+what passes through it, RELAY is a delay whose repeats do not fade (you choose how
+many, and they all share one volume), FLIP builds harmonies and spreads them
+across time.
+
+**CLOCK** is the engine's sample rate, and it moves in musical steps. Lowering it
+lengthens the loop, drops its pitch, slows the wet channel and narrows the band -
+all at once, because they are all the same thing.
+
+**CROSS** modulates pitch and loudness from the music itself, either from what
+you play or from one channel to the other. **GLUE** is an end-of-chain saturator
+that goes from warming things up to destroying them.
+
+DSP design notes: `docs/DOOM_DSP_DESIGN.md`.
+
+### LUCY
+
+LUCY is a spectral degradation engine inspired by the Chase Bliss and Goodhertz
+Lossy. It is not a bitcrusher: the heart of it is a **masking coder** that models
+what a low-bitrate encoder throws away.
+
+**LOSS** sets both how hard it degrades and which frequencies it reaches.
+**STANDARD** keeps the coded signal - darker, full of chiming artifacts.
+**INVERSE** plays what STANDARD discarded - brighter, thinner, feathery.
+**JITTER** models an unstable clock in both phase and timing.
+
+**PACKETS** simulates a bad connection using a two-state burst model, so losses
+cluster the way they do on a real link. LOSS drops frames; REPEAT conceals them
+with the previous frame, smeared.
+
+**FREEZE** is a real spectral freeze - solid, or *slushy*, where it keeps
+updating from what you play. **SPEED** sets how fast the loss, the packets and
+the freeze all evolve.
+
+The reverb sits in **front** by default, so the degradation codes its tail too.
+A filter, a gate and a limiter finish the chain.
+
+DSP design notes: `docs/LUCY_DSP_DESIGN.md`.
+
+### CHORUS
+
+CHORUS is a stereo chorus modelled on the Roland SDD-320 Dimension D's actual
+mechanism: two delay lines modulated in **anti-phase** and summed to the outputs
+with opposite polarity. When one goes sharp the other goes flat by the same
+amount, so there is no audible vibrato - and the wet signal cancels exactly when
+the two outputs are summed, so it is perfectly mono compatible.
+
+Nine modes: four Dimension modes from softest to strongest, three combinations,
+an ENSEMBLE mode after the string machines, and a CE-style single-path warmth.
+
+The dry path is never filtered and the wet path is high-passed, so a bass note
+keeps its weight and its pitch while its harmonics move.
+
+DSP design notes: `docs/CHORUS_DSP_DESIGN.md`.
+
+### SPREAD
+
+SPREAD widens the stereo image using **allpass decorrelation** rather than a
+delay or a phase inversion. It splits into three bands and treats each the way
+hearing does: lows stay mono, mids are decorrelated by phase, highs by level.
+
+Because the decorrelation *creates* side content rather than amplifying content
+that is already there, it widens a mono source - which plain mid/side gain
+cannot do. Mono compatibility is a first-class requirement: the mono sum keeps
+its level and its low end at every setting.
+
+Four modes: CLASSIC, WIDE, DEEP and MONO SAFE.
+
+DSP design notes: `docs/STEREO_SPREAD_DSP_DESIGN.md`.
 
 ### Mood
 
@@ -933,6 +1027,12 @@ not need to know anything about their internals:
   - `processFdn8` is the shared feedback delay network behind ROOM, HALL and
     CLOUD; the Dattorro plate is separate.
 - `Source/DSP/Mood.*`
+- `Source/DSP/Doom.*`, `Source/DSP/DoomTypes.h`
+- `Source/DSP/Lucy.*`, `Source/DSP/LucyTypes.h`
+- `Source/DSP/Chorus.*`, `Source/DSP/ChorusTypes.h`
+- `Source/DSP/StereoSpread.*`, `Source/DSP/StereoSpreadTypes.h`
+- `Source/DSP/StftEngine.*` (shared spectral analysis/synthesis)
+- `Source/DSP/FxChain.h` (stage ids, chain order, default order)
   - `processInternalStep` runs the clock-divided engine; the loop and wet modes
     are `renderLoop*` and `renderWet*`.
 - `getFxProcessingOrder` / `setFxProcessingOrder`
