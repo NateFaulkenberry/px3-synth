@@ -411,6 +411,43 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                            juce::StringArray { "INPUT", "CHANNEL" },
                                                            0);
 
+    // ---- LUCY ------------------------------------------------------------
+    // A Lossy-inspired spectral degradation engine. See docs/LUCY_DSP_DESIGN.md.
+    lucyEnabledParam = new juce::AudioParameterBool("lucyEnabled", "Lucy Enabled", true);
+    lucyFilterInvertParam = new juce::AudioParameterBool("lucyFilterInvert", "Lucy Filter Invert", false);
+    lucyVerbPostParam = new juce::AudioParameterBool("lucyVerbPost", "Lucy Verb Post", false);
+    lucyFreezeParam = new juce::AudioParameterBool("lucyFreeze", "Lucy Freeze", false);
+    lucyFreezeSlushyParam = new juce::AudioParameterBool("lucyFreezeSlushy", "Lucy Freeze Slushy", false);
+    lucyGateParam = new juce::AudioParameterBool("lucyGate", "Lucy Gate", false);
+    lucySlowParam = new juce::AudioParameterBool("lucySlow", "Lucy Slow", false);
+    // Zero by default, like reverbAmount and doomMix.
+    lucyGlobalParam = new juce::AudioParameterFloat("lucyGlobal", "Lucy Global", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    lucyLossParam = new juce::AudioParameterFloat("lucyLoss", "Lucy Loss", juce::NormalisableRange<float>(0.0f, 1.0f), 0.55f);
+    lucySpeedParam = new juce::AudioParameterFloat("lucySpeed", "Lucy Speed", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    lucyFilterParam = new juce::AudioParameterFloat("lucyFilter", "Lucy Filter", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    lucyFilterFreqParam = new juce::AudioParameterFloat("lucyFilterFreq", "Lucy Filter Freq", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    lucyVerbParam = new juce::AudioParameterFloat("lucyVerb", "Lucy Verb", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    lucyVerbDecayParam = new juce::AudioParameterFloat("lucyVerbDecay", "Lucy Verb Decay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
+    lucyFreezerParam = new juce::AudioParameterFloat("lucyFreezer", "Lucy Freezer", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    lucyGateCutoffParam = new juce::AudioParameterFloat("lucyGateCutoff", "Lucy Gate Cutoff", juce::NormalisableRange<float>(0.0f, 1.0f), 0.25f);
+    lucyThresholdParam = new juce::AudioParameterFloat("lucyThreshold", "Lucy Threshold", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f);
+    lucyAutoGainParam = new juce::AudioParameterFloat("lucyAutoGain", "Lucy Auto Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.75f);
+    lucyWeightingParam = new juce::AudioParameterFloat("lucyWeighting", "Lucy Weighting", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
+    lucyGainParam = new juce::AudioParameterFloat("lucyGain", "Lucy Gain", juce::NormalisableRange<float>(-36.0f, 36.0f), 0.0f);
+    lucySpreadParam = new juce::AudioParameterFloat("lucySpread", "Lucy Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    lucyModeParam = new juce::AudioParameterChoice("lucyMode",
+                                                    "Lucy Mode",
+                                                    juce::StringArray { "STANDARD", "INVERSE", "JITTER" },
+                                                    0);
+    lucyPacketsParam = new juce::AudioParameterChoice("lucyPackets",
+                                                       "Lucy Packets",
+                                                       juce::StringArray { "CLEAN", "LOSS", "REPEAT" },
+                                                       0);
+    lucySlopeParam = new juce::AudioParameterChoice("lucySlope",
+                                                     "Lucy Slope",
+                                                     juce::StringArray { "6 dB", "24 dB", "96 dB" },
+                                                     1);
+
     reverbSizeParam = new juce::AudioParameterFloat("reverbSize", "Reverb Size", juce::NormalisableRange<float>(0.0f, 1.0f), 0.52f);
     reverbDecayParam = new juce::AudioParameterFloat("reverbDecay", "Reverb Decay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.48f);
     reverbDampingParam = new juce::AudioParameterFloat("reverbDamping", "Reverb Damping", juce::NormalisableRange<float>(0.0f, 1.0f), 0.46f);
@@ -595,6 +632,31 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(doomLoopModeParam);
     addParameter(doomWetModeParam);
     addParameter(doomCrossSourceParam);
+
+    addParameter(lucyEnabledParam);
+    addParameter(lucyFilterInvertParam);
+    addParameter(lucyVerbPostParam);
+    addParameter(lucyFreezeParam);
+    addParameter(lucyFreezeSlushyParam);
+    addParameter(lucyGateParam);
+    addParameter(lucySlowParam);
+    addParameter(lucyGlobalParam);
+    addParameter(lucyLossParam);
+    addParameter(lucySpeedParam);
+    addParameter(lucyFilterParam);
+    addParameter(lucyFilterFreqParam);
+    addParameter(lucyVerbParam);
+    addParameter(lucyVerbDecayParam);
+    addParameter(lucyFreezerParam);
+    addParameter(lucyGateCutoffParam);
+    addParameter(lucyThresholdParam);
+    addParameter(lucyAutoGainParam);
+    addParameter(lucyWeightingParam);
+    addParameter(lucyGainParam);
+    addParameter(lucySpreadParam);
+    addParameter(lucyModeParam);
+    addParameter(lucyPacketsParam);
+    addParameter(lucySlopeParam);
     addParameter(reverbSizeParam);
     addParameter(reverbDecayParam);
     addParameter(reverbDampingParam);
@@ -733,6 +795,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     delayComponent.prepare(sampleRate);
     moodComponent.prepare(sampleRate);
     doomComponent.prepare(sampleRate);
+    lucyComponent.prepare(sampleRate);
     reverb.prepare(sampleRate);
 
     const auto busChannels = juce::jmax(kMixerSourceCount, getTotalNumOutputChannels());
@@ -1435,6 +1498,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     delayComponent.updateForBlock(currentDelaySettings());
     moodComponent.updateForBlock(currentMoodSettings());
     doomComponent.updateForBlock(currentDoomSettings());
+    lucyComponent.updateForBlock(currentLucySettings());
     reverb.updateForBlock(currentReverbSettings(), buffer.getNumSamples());
     const auto fxOrder = getFxProcessingOrder();
     const auto fxSendGain = fxSendGainParam != nullptr
@@ -1718,6 +1782,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
                 case 4: // Doom
                     doomComponent.processSampleFrame(stageL, stageR, stageL, stageR);
+                    break;
+
+                case 5: // Lucy
+                    lucyComponent.processSampleFrame(stageL, stageR, stageL, stageR);
                     break;
 
                 default:

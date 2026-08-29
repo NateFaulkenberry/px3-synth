@@ -20,6 +20,17 @@ void StftEngine::prepare(int fftOrder, int channels, int hopDivisor)
                                    * static_cast<float>(i) / static_cast<float>(fftSize));
     }
 
+    // Measured rather than assumed: the analysis and synthesis windows are
+    // applied twice, so the reconstruction gain is the sum of the SQUARED
+    // window across one hop, and for Hann at 75% overlap that is 3/2.
+    auto colaSum = 0.0f;
+    for (int offset = 0; offset < fftSize; offset += hop)
+    {
+        const auto w = window[static_cast<std::size_t>(offset)];
+        colaSum += w * w;
+    }
+    overlapNormalisation = colaSum > 1.0e-6f ? 1.0f / colaSum : 1.0f;
+
     inputRing.assign(static_cast<std::size_t>(channelCount),
                      std::vector<float>(static_cast<std::size_t>(fftSize), 0.0f));
     outputRing.assign(static_cast<std::size_t>(channelCount),
@@ -104,7 +115,8 @@ void StftEngine::transformFrame(int channel, const FrameFn& onFrame)
     {
         const auto index = (pos + i) % fftSize;
         out[static_cast<std::size_t>(index)] +=
-            scratch[static_cast<std::size_t>(i) * 2u] * window[static_cast<std::size_t>(i)];
+            scratch[static_cast<std::size_t>(i) * 2u] * window[static_cast<std::size_t>(i)]
+            * overlapNormalisation;
     }
 }
 

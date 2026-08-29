@@ -16,9 +16,10 @@ namespace px3
 // never allocates once prepared.
 //
 // Windowing: Hann is applied on analysis AND on synthesis. The product of the
-// two is a Hann-squared window, which sums to a constant at 75% overlap
-// (hop = size/4) - so reconstruction is unity without a normalisation table,
-// and a frame the callback leaves untouched comes back out unchanged.
+// two is a Hann-squared window, which sums to a CONSTANT at 75% overlap
+// (hop = size/4) - but that constant is 3/2, not 1. The overlap-add is scaled
+// by its reciprocal, so a frame the callback leaves untouched comes back out
+// unchanged rather than half again as loud.
 class StftEngine
 {
 public:
@@ -50,6 +51,8 @@ private:
     int channelCount { 0 };
 
     std::vector<float> window;
+    // 1 / sum of the squared window across the overlap. See the note above.
+    float overlapNormalisation { 1.0f };
 
     // Per channel: a sliding input ring, an accumulating output ring, and the
     // write cursor they share.

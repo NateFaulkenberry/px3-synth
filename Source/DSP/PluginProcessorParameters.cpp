@@ -331,6 +331,31 @@ juce::AudioParameterChoice& PX3SynthAudioProcessor::getDoomRoutingParam() const 
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getDoomLoopModeParam() const { return *doomLoopModeParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getDoomWetModeParam() const { return *doomWetModeParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getDoomCrossSourceParam() const { return *doomCrossSourceParam; }
+
+juce::AudioParameterBool& PX3SynthAudioProcessor::getLucyEnabledParam() const { return *lucyEnabledParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getLucyFilterInvertParam() const { return *lucyFilterInvertParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getLucyVerbPostParam() const { return *lucyVerbPostParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getLucyFreezeParam() const { return *lucyFreezeParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getLucyFreezeSlushyParam() const { return *lucyFreezeSlushyParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getLucyGateParam() const { return *lucyGateParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getLucySlowParam() const { return *lucySlowParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucyGlobalParam() const { return *lucyGlobalParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucyLossParam() const { return *lucyLossParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucySpeedParam() const { return *lucySpeedParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucyFilterParam() const { return *lucyFilterParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucyFilterFreqParam() const { return *lucyFilterFreqParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucyVerbParam() const { return *lucyVerbParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucyVerbDecayParam() const { return *lucyVerbDecayParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucyFreezerParam() const { return *lucyFreezerParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucyGateCutoffParam() const { return *lucyGateCutoffParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucyThresholdParam() const { return *lucyThresholdParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucyAutoGainParam() const { return *lucyAutoGainParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucyWeightingParam() const { return *lucyWeightingParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucyGainParam() const { return *lucyGainParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLucySpreadParam() const { return *lucySpreadParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getLucyModeParam() const { return *lucyModeParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getLucyPacketsParam() const { return *lucyPacketsParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getLucySlopeParam() const { return *lucySlopeParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getLfoEnabledParam() const { return getLfoEnabledParam(0); }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getLfoEnabledParam(int lfoIndex) const
 {

@@ -1107,8 +1107,9 @@ Doom::Frame Doom::renderSoup(float inL, float inR)
         soupFrame(channel, real, imag, bins);
     };
 
-    // The overlap-add already normalises; the extra trim keeps a long decay
-    // from outrunning the rest of the chain.
+    // The overlap-add reconstructs at unity on its own. This trim is a level
+    // choice, not a correction: a long spectral decay accumulates energy the
+    // input never had, and it has to sit under the rest of the chain.
     constexpr auto kSoupTrim = 0.45f;
 
     return { sanitize(soupStft.processSample(0, inL, frame) * kSoupTrim),

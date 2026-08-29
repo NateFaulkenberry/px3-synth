@@ -1264,6 +1264,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     addAndMakeVisible(*fxPanel);
     addAndMakeVisible(*mixPanel);
     buildDoomCard();
+    buildLucyCard();
 
     fxPanel->onChainOrderChanged = [this](const px3::FxOrder& order)
     {
@@ -3125,9 +3126,17 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
         doomCard->bypassButton().setToggleState(doomEnabled, juce::dontSendNotification);
         doomCard->setActive(doomEnabled);
     }
+    const auto lucyEnabled = audioProcessor.getLucyEnabledParam().get();
+    if (lucyCard != nullptr)
+    {
+        lucyCard->bypassButton().setToggleState(lucyEnabled, juce::dontSendNotification);
+        lucyCard->setActive(lucyEnabled);
+    }
+
     if (fxPanel != nullptr)
     {
         fxPanel->setSectionActive(px3::fxStageDoom, doomEnabled);
+        fxPanel->setSectionActive(px3::fxStageLucy, lucyEnabled);
     }
 }
 
@@ -3239,6 +3248,111 @@ void PX3SynthAudioProcessorEditor::buildDoomCard()
 
     doomCard = card.get();
     fxPanel->addCard(px3::fxStageDoom, std::move(card));
+}
+
+void PX3SynthAudioProcessorEditor::buildLucyCard()
+{
+    auto card = std::make_unique<px3::ui::FxCardComponent>("lucy", "LUCY");
+
+    card->addToggleRow({ { "freeze", "FREEZE ON", "FREEZE OFF", "Freeze the spectrum" },
+                         { "freezeSlushy", "SLUSHY", "SOLID",
+                           "Let the freeze keep updating from what you play" },
+                         { "gate", "GATE ON", "GATE OFF", "Silence anything below the cutoff" } });
+
+    card->addToggleRow({ { "verbPost", "VERB POST", "VERB PRE",
+                           "Reverb after the chain, or in front of it feeding the loss" },
+                         { "filterInvert", "REJECT", "BAND PASS",
+                           "Keep the band, or keep everything but the band" },
+                         { "slow", "SLOW ON", "SLOW OFF",
+                           "Bigger, darker, slower, and with more latency" } });
+
+    card->addChoiceRow({ { "mode", "MODE", "Loss mode",
+                           audioProcessor.getLucyModeParam().choices },
+                         { "packets", "PACKETS", "Packet corruption mode",
+                           audioProcessor.getLucyPacketsParam().choices },
+                         { "slope", "SLOPE", "Filter slope",
+                           audioProcessor.getLucySlopeParam().choices } });
+
+    card->addKnobRow({ { "loss", "LOSS", "Depth of the loss and packet effects, and which frequencies they reach" },
+                       { "speed", "SPEED", "How fast the loss, packets and freeze update" },
+                       { "filter", "FILTER", "Filter width; fully down is no filtering" },
+                       { "filterFreq", "FREQ", "Filter centre frequency" },
+                       { "verb", "VERB", "Reverb mix" },
+                       { "verbDecay", "DECAY", "Reverb size and length" } });
+
+    card->addKnobRow({ { "freezer", "FREEZER", "Live against frozen" },
+                       { "gateCutoff", "CUTOFF", "Gate threshold" },
+                       { "threshold", "LIMIT", "Limiter threshold; lower means more limiting" },
+                       { "autoGain", "AUTO GAIN", "Gain compensation for the loss modes" },
+                       { "weighting", "WEIGHT", "Dark, psychoacoustic, or bright frequency weighting" },
+                       { "gain", "GAIN", "Wet gain, plus or minus 36 dB" },
+                       { "spread", "SPREAD", "Packet alternation and reverb width" } });
+
+    card->addFeatureKnobRow({ "global", "GLOBAL", "Overall amount of processing" });
+
+    struct KnobAttachment { const char* id; juce::AudioParameterFloat* parameter; };
+    const std::array<KnobAttachment, 14> knobAttachments { {
+        { "global", &audioProcessor.getLucyGlobalParam() },
+        { "loss", &audioProcessor.getLucyLossParam() },
+        { "speed", &audioProcessor.getLucySpeedParam() },
+        { "filter", &audioProcessor.getLucyFilterParam() },
+        { "filterFreq", &audioProcessor.getLucyFilterFreqParam() },
+        { "verb", &audioProcessor.getLucyVerbParam() },
+        { "verbDecay", &audioProcessor.getLucyVerbDecayParam() },
+        { "freezer", &audioProcessor.getLucyFreezerParam() },
+        { "gateCutoff", &audioProcessor.getLucyGateCutoffParam() },
+        { "threshold", &audioProcessor.getLucyThresholdParam() },
+        { "autoGain", &audioProcessor.getLucyAutoGainParam() },
+        { "weighting", &audioProcessor.getLucyWeightingParam() },
+        { "gain", &audioProcessor.getLucyGainParam() },
+        { "spread", &audioProcessor.getLucySpreadParam() },
+    } };
+
+    for (const auto& attachment : knobAttachments)
+    {
+        auto* slider = card->knob(attachment.id);
+        jassert(slider != nullptr);
+        const auto& range = attachment.parameter->getNormalisableRange();
+        slider->setRange(range.start, range.end);
+        slider->setLookAndFeel(&knobLookAndFeel);
+        attachSlider(*attachment.parameter, *slider);
+    }
+
+    struct ChoiceAttachment { const char* id; juce::RangedAudioParameter* parameter; };
+    const std::array<ChoiceAttachment, 3> choiceAttachments { {
+        { "mode", &audioProcessor.getLucyModeParam() },
+        { "packets", &audioProcessor.getLucyPacketsParam() },
+        { "slope", &audioProcessor.getLucySlopeParam() },
+    } };
+
+    for (const auto& attachment : choiceAttachments)
+    {
+        auto* box = card->choice(attachment.id);
+        jassert(box != nullptr);
+        attachComboBox(*attachment.parameter, *box);
+    }
+
+    struct ToggleAttachment { const char* id; juce::RangedAudioParameter* parameter; };
+    const std::array<ToggleAttachment, 6> toggleAttachments { {
+        { "freeze", &audioProcessor.getLucyFreezeParam() },
+        { "freezeSlushy", &audioProcessor.getLucyFreezeSlushyParam() },
+        { "gate", &audioProcessor.getLucyGateParam() },
+        { "verbPost", &audioProcessor.getLucyVerbPostParam() },
+        { "filterInvert", &audioProcessor.getLucyFilterInvertParam() },
+        { "slow", &audioProcessor.getLucySlowParam() },
+    } };
+
+    for (const auto& attachment : toggleAttachments)
+    {
+        auto* button = card->toggle(attachment.id);
+        jassert(button != nullptr);
+        attachButton(*attachment.parameter, *button);
+    }
+
+    attachButton(audioProcessor.getLucyEnabledParam(), card->bypassButton());
+
+    lucyCard = card.get();
+    fxPanel->addCard(px3::fxStageLucy, std::move(card));
 }
 
 void PX3SynthAudioProcessorEditor::timerCallback()

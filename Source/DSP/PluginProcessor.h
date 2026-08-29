@@ -6,6 +6,7 @@
 #include "LfoGenerator.h"
 #include "FxChain.h"
 #include "Doom.h"
+#include "Lucy.h"
 #include "Mood.h"
 #include "PianoKeyboard.h"
 #include "Reverb.h"
@@ -232,6 +233,31 @@ public:
     juce::AudioParameterChoice& getDoomLoopModeParam() const;
     juce::AudioParameterChoice& getDoomWetModeParam() const;
     juce::AudioParameterChoice& getDoomCrossSourceParam() const;
+
+    juce::AudioParameterBool& getLucyEnabledParam() const;
+    juce::AudioParameterBool& getLucyFilterInvertParam() const;
+    juce::AudioParameterBool& getLucyVerbPostParam() const;
+    juce::AudioParameterBool& getLucyFreezeParam() const;
+    juce::AudioParameterBool& getLucyFreezeSlushyParam() const;
+    juce::AudioParameterBool& getLucyGateParam() const;
+    juce::AudioParameterBool& getLucySlowParam() const;
+    juce::AudioParameterFloat& getLucyGlobalParam() const;
+    juce::AudioParameterFloat& getLucyLossParam() const;
+    juce::AudioParameterFloat& getLucySpeedParam() const;
+    juce::AudioParameterFloat& getLucyFilterParam() const;
+    juce::AudioParameterFloat& getLucyFilterFreqParam() const;
+    juce::AudioParameterFloat& getLucyVerbParam() const;
+    juce::AudioParameterFloat& getLucyVerbDecayParam() const;
+    juce::AudioParameterFloat& getLucyFreezerParam() const;
+    juce::AudioParameterFloat& getLucyGateCutoffParam() const;
+    juce::AudioParameterFloat& getLucyThresholdParam() const;
+    juce::AudioParameterFloat& getLucyAutoGainParam() const;
+    juce::AudioParameterFloat& getLucyWeightingParam() const;
+    juce::AudioParameterFloat& getLucyGainParam() const;
+    juce::AudioParameterFloat& getLucySpreadParam() const;
+    juce::AudioParameterChoice& getLucyModeParam() const;
+    juce::AudioParameterChoice& getLucyPacketsParam() const;
+    juce::AudioParameterChoice& getLucySlopeParam() const;
     juce::AudioParameterBool& getLfoEnabledParam() const;
     juce::AudioParameterBool& getLfoEnabledParam(int lfoIndex) const;
     juce::AudioParameterFloat& getLfoFrequencyParam() const;
@@ -381,6 +407,7 @@ private:
     ReverbSettings currentReverbSettings() const;
     MoodSettings currentMoodSettings() const;
     DoomSettings currentDoomSettings() const;
+    LucySettings currentLucySettings() const;
 
     void updateTransportState();
     void buildLfoAssignableTargets();
@@ -511,6 +538,31 @@ private:
     juce::AudioParameterChoice* doomLoopModeParam { nullptr };
     juce::AudioParameterChoice* doomWetModeParam { nullptr };
     juce::AudioParameterChoice* doomCrossSourceParam { nullptr };
+
+    juce::AudioParameterBool* lucyEnabledParam { nullptr };
+    juce::AudioParameterBool* lucyFilterInvertParam { nullptr };
+    juce::AudioParameterBool* lucyVerbPostParam { nullptr };
+    juce::AudioParameterBool* lucyFreezeParam { nullptr };
+    juce::AudioParameterBool* lucyFreezeSlushyParam { nullptr };
+    juce::AudioParameterBool* lucyGateParam { nullptr };
+    juce::AudioParameterBool* lucySlowParam { nullptr };
+    juce::AudioParameterFloat* lucyGlobalParam { nullptr };
+    juce::AudioParameterFloat* lucyLossParam { nullptr };
+    juce::AudioParameterFloat* lucySpeedParam { nullptr };
+    juce::AudioParameterFloat* lucyFilterParam { nullptr };
+    juce::AudioParameterFloat* lucyFilterFreqParam { nullptr };
+    juce::AudioParameterFloat* lucyVerbParam { nullptr };
+    juce::AudioParameterFloat* lucyVerbDecayParam { nullptr };
+    juce::AudioParameterFloat* lucyFreezerParam { nullptr };
+    juce::AudioParameterFloat* lucyGateCutoffParam { nullptr };
+    juce::AudioParameterFloat* lucyThresholdParam { nullptr };
+    juce::AudioParameterFloat* lucyAutoGainParam { nullptr };
+    juce::AudioParameterFloat* lucyWeightingParam { nullptr };
+    juce::AudioParameterFloat* lucyGainParam { nullptr };
+    juce::AudioParameterFloat* lucySpreadParam { nullptr };
+    juce::AudioParameterChoice* lucyModeParam { nullptr };
+    juce::AudioParameterChoice* lucyPacketsParam { nullptr };
+    juce::AudioParameterChoice* lucySlopeParam { nullptr };
     juce::AudioParameterFloat* reverbSizeParam { nullptr };
     juce::AudioParameterFloat* reverbDecayParam { nullptr };
     juce::AudioParameterFloat* reverbDampingParam { nullptr };
@@ -606,6 +658,7 @@ private:
     Delay delayComponent;
     Mood moodComponent;
     px3::Doom doomComponent;
+    px3::Lucy lucyComponent;
     ::Reverb reverb;
 
     // Internal routing buses (prepared once, reused per block).

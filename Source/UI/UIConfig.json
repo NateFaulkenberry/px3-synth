@@ -919,6 +919,70 @@
         }
       }
     },
+    "lucy": {
+      "border": { "color": "#5FB8C9", "opacity": 0.74 },
+      "background": { "color": "#5FB8C9", "opacity": 0.14 },
+      "gloss": {
+        "topFill": { "color": "#9FE0EA", "opacity": 0.11 },
+        "bottomFill": { "color": "#000000", "opacity": 0.08 }
+      },
+      "title": { "color": "#D2EFF5" },
+      "controls": {
+        "knobSize": 54,
+        "featureKnobSize": 86,
+        "choiceWidth": 88,
+        "toggleWidth": 104,
+        "toggleHeight": 20,
+        "choiceHeight": 22,
+        "labelHeight": 14,
+        "readoutHeight": 15,
+        "labelFontSize": 10.5,
+        "boxBackground": "#232323D2",
+        "boxText": "#E8E8E8",
+        "boxOutline": "#FFFFFF69",
+        "labelColour": "#E8E8E8"
+      },
+      "cardInner": {
+        "margin": 0,
+        "padding": 4,
+        "display": "flex",
+        "direction": "column",
+        "wrap": "nowrap",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "alignContent": "center",
+        "gap": 2,
+        "power": { "x": -4, "y": -16, "size": 25 },
+        "rows": {
+          "default": {
+            "margin": 0,
+            "padding": 0,
+            "display": "flex",
+            "direction": "row",
+            "wrap": "wrap",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "alignContent": "center",
+            "gap": 5,
+            "control": {
+              "direction": "column",
+              "justifyContent": "center",
+              "alignItems": "center",
+              "gap": 6,
+              "labelHeight": "auto",
+              "readoutHeight": "auto",
+              "size": "auto"
+            }
+          },
+          "row1": { "height": "9%", "gap": 4 },
+          "row2": { "height": "9%", "gap": 4 },
+          "row3": { "height": "13%", "gap": 5, "justifyContent": "space-between" },
+          "row4": { "height": "23%", "gap": 5, "justifyContent": "space-between" },
+          "row5": { "height": "26%", "gap": 5, "justifyContent": "space-between" },
+          "row6": { "height": "20%", "gap": 4 }
+        }
+      }
+    },
     "mood": {
       "border": {
         "color": "#FFC66E",

@@ -311,6 +311,46 @@ DoomSettings PX3SynthAudioProcessor::currentDoomSettings() const
     return settings;
 }
 
+LucySettings PX3SynthAudioProcessor::currentLucySettings() const
+{
+    auto modulated = [this](juce::AudioParameterFloat* param)
+    {
+        return param->convertFrom0to1(
+            applyModulationToNormalizedValue(param,
+                                             static_cast<juce::RangedAudioParameter*>(param)->getValue()));
+    };
+
+    LucySettings settings;
+    settings.enabled = lucyEnabledParam != nullptr && lucyEnabledParam->get();
+    settings.filterInvert = lucyFilterInvertParam != nullptr && lucyFilterInvertParam->get();
+    settings.verbPost = lucyVerbPostParam != nullptr && lucyVerbPostParam->get();
+    settings.freeze = lucyFreezeParam != nullptr && lucyFreezeParam->get();
+    settings.freezeSlushy = lucyFreezeSlushyParam != nullptr && lucyFreezeSlushyParam->get();
+    settings.gate = lucyGateParam != nullptr && lucyGateParam->get();
+    settings.slow = lucySlowParam != nullptr && lucySlowParam->get();
+
+    settings.global = modulated(lucyGlobalParam);
+    settings.loss = modulated(lucyLossParam);
+    settings.speed = modulated(lucySpeedParam);
+    settings.filterWidth = modulated(lucyFilterParam);
+    settings.filterFreq = modulated(lucyFilterFreqParam);
+    settings.verb = modulated(lucyVerbParam);
+    settings.verbDecay = modulated(lucyVerbDecayParam);
+    settings.freezer = modulated(lucyFreezerParam);
+    settings.gateCutoff = modulated(lucyGateCutoffParam);
+    settings.threshold = modulated(lucyThresholdParam);
+    settings.autoGain = modulated(lucyAutoGainParam);
+    settings.weighting = modulated(lucyWeightingParam);
+    settings.gainDb = modulated(lucyGainParam);
+    settings.spread = modulated(lucySpreadParam);
+
+    settings.modeIndex = lucyModeParam != nullptr ? lucyModeParam->getIndex() : 0;
+    settings.packetIndex = lucyPacketsParam != nullptr ? lucyPacketsParam->getIndex() : 0;
+    settings.slopeIndex = lucySlopeParam != nullptr ? lucySlopeParam->getIndex() : 1;
+
+    return settings;
+}
+
 void PX3SynthAudioProcessor::updateTransportState()
 {
     currentBpm = 120.0;

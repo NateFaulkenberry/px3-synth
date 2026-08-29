@@ -20,6 +20,7 @@
 #include "../UI/CardInner.h"
 #include "../DSP/Doom.h"
 #include "../DSP/FxChain.h"
+#include "../DSP/Lucy.h"
 #include "../UI/FxCardComponent.h"
 #include "../UI/FxChainLayout.h"
 #include "../UI/FxSignalFlow.h"
@@ -9148,6 +9149,1223 @@ void testDoom()
                   + juce::String(b.rms(), 5));
     }
 }
+
+// ============================================================================
+// LUCY
+// ============================================================================
+
+namespace lucytest
+{
+using doomtest::Result;
+
+enum class Source { silence, impulse, sine, saw, chord, pluck, noise };
+
+Result runLucy(const LucySettings& settings,
+               Source source,
+               double seconds,
+               double sampleRate = kSampleRate,
+               float frequency = 220.0f,
+               uint32_t seed = 24680u)
+{
+    px3::Lucy lucy;
+    lucy.prepare(sampleRate);
+    lucy.setSeed(seed);
+    lucy.updateForBlock(settings);
+
+    const auto total = static_cast<int>(sampleRate * seconds);
+    Result result;
+    result.left.reserve(static_cast<std::size_t>(total));
+    result.right.reserve(static_cast<std::size_t>(total));
+
+    auto phase = 0.0;
+    auto phase3 = 0.0;
+    auto phase5 = 0.0;
+    const auto increment = juce::MathConstants<double>::twoPi * frequency / sampleRate;
+
+    for (int i = 0; i < total; ++i)
+    {
+        auto in = 0.0f;
+        switch (source)
+        {
+            case Source::silence:
+                break;
+            case Source::impulse:
+                // Past the parameter smoothing ramps, so the dry path is not
+                // still fading in when it arrives.
+                in = i == 4096 ? 1.0f : 0.0f;
+                break;
+            case Source::sine:
+                in = 0.5f * static_cast<float>(std::sin(phase));
+                break;
+            case Source::saw:
+            {
+                // Band-limited enough for a test: a raw ramp would alias, and
+                // the measurement would be of the source rather than of LUCY.
+                auto sum = 0.0;
+                for (int h = 1; h <= 12; ++h)
+                {
+                    sum += std::sin(phase * h) / h;
+                }
+                in = 0.28f * static_cast<float>(sum);
+                break;
+            }
+            case Source::chord:
+                in = 0.2f * static_cast<float>(std::sin(phase) + std::sin(phase3) + std::sin(phase5));
+                break;
+            case Source::pluck:
+            {
+                const auto age = static_cast<double>(i % static_cast<int>(sampleRate * 0.5));
+                const auto env = std::exp(-age / (sampleRate * 0.08));
+                in = 0.6f * static_cast<float>(env * std::sin(phase));
+                break;
+            }
+            case Source::noise:
+                in = 0.3f * (static_cast<float>((i * 1103515245 + 12345) & 0xFFFF) / 32768.0f - 1.0f);
+                break;
+        }
+
+        phase += increment;
+        phase3 += increment * 1.2599;   // minor third
+        phase5 += increment * 1.4983;   // fifth
+
+        float outL = 0.0f;
+        float outR = 0.0f;
+        lucy.processSampleFrame(in, in, outL, outR);
+        result.left.push_back(outL);
+        result.right.push_back(outR);
+    }
+
+    return result;
+}
+
+LucySettings audible()
+{
+    LucySettings s;
+    s.enabled = true;
+    s.global = 1.0f;
+    return s;
+}
+
+// Energy above roughly a quarter of Nyquist as a fraction of the total. The
+// documented difference between STANDARD (darker) and INVERSE (brighter) is a
+// spectral tilt, so it has to be measured as one rather than as a level.
+double brightness(const Result& r)
+{
+    auto hf = 0.0;
+    auto total = 0.0;
+    for (std::size_t i = 1; i < r.left.size(); ++i)
+    {
+        const auto d = r.left[i] - r.left[i - 1];
+        hf += static_cast<double>(d) * d;
+        total += static_cast<double>(r.left[i]) * r.left[i];
+    }
+    return hf / juce::jmax(1.0e-12, total);
+}
+} // namespace lucytest
+
+void testLucy()
+{
+    suite("LUCY");
+
+    using namespace lucytest;
+
+    // ---- construction and defaults -----------------------------------------
+    {
+        const LucySettings defaults;
+        check("Lucy_DefaultsAreValid",
+              defaults.enabled
+                  && juce::approximatelyEqual(defaults.global, 0.0f)
+                  && juce::approximatelyEqual(defaults.filterWidth, 0.0f)
+                  && defaults.modeIndex == 0 && defaults.packetIndex == 0
+                  && ! defaults.freeze && ! defaults.gate && ! defaults.slow,
+              "global and filter width both zero, packets clean");
+
+        px3::Lucy lucy;
+        lucy.prepare(kSampleRate);
+        lucy.reset();
+        float l = 0.0f;
+        float r = 0.0f;
+        lucy.processSampleFrame(0.0f, 0.0f, l, r);
+        check("Lucy_ConstructsAndProcessesWithoutPreparingSettings",
+              std::isfinite(l) && std::isfinite(r), "");
+    }
+
+    // ---- sample rates ------------------------------------------------------
+    {
+        juce::String detail;
+        auto allFine = true;
+        for (const auto rate : { 44100.0, 48000.0, 88200.0, 96000.0 })
+        {
+            auto s = audible();
+            s.loss = 0.6f;
+            const auto out = runLucy(s, Source::saw, 1.5, rate);
+            const auto ok = out.finite() && out.peak() < 4.0f && out.rms() > 1.0e-5;
+            allFine = allFine && ok;
+            detail << juce::String(static_cast<int>(rate)) << " rms "
+                   << juce::String(out.rms(), 4) << "  ";
+        }
+        check("Lucy_RunsAtEverySupportedSampleRate", allFine, detail);
+    }
+
+    // ---- silence, impulse, sines, complex material -------------------------
+    {
+        auto s = audible();
+        s.loss = 0.8f;
+        s.verb = 0.6f;
+        s.filterWidth = 0.5f;
+
+        const auto quiet = runLucy(s, Source::silence, 2.0);
+        check("Lucy_SilenceStaysSilent",
+              quiet.finite() && quiet.peak() < 1.0e-3f && std::abs(quiet.dc()) < 1.0e-4,
+              "peak " + juce::String(quiet.peak(), 8) + ", dc " + juce::String(quiet.dc(), 8));
+
+        const auto impulse = runLucy(s, Source::impulse, 3.0);
+        check("Lucy_ImpulseStaysBounded",
+              impulse.finite() && impulse.peak() < 4.0f,
+              "peak " + juce::String(impulse.peak(), 4));
+
+        juce::String freqDetail;
+        auto allFine = true;
+        for (const auto hz : { 50.0f, 100.0f, 440.0f, 1000.0f, 5000.0f, 10000.0f })
+        {
+            const auto out = runLucy(s, Source::sine, 1.5, kSampleRate, hz);
+            const auto ok = out.finite() && out.peak() < 4.0f;
+            allFine = allFine && ok;
+            freqDetail << juce::String(static_cast<int>(hz)) << " " << juce::String(out.peak(), 3) << "  ";
+        }
+        check("Lucy_SineIsStableAcrossTheBand", allFine, freqDetail);
+
+        juce::String materialDetail;
+        auto materialsFine = true;
+        const std::array<std::pair<const char*, Source>, 4> materials { {
+            { "saw", Source::saw }, { "chord", Source::chord },
+            { "pluck", Source::pluck }, { "noise", Source::noise },
+        } };
+        for (const auto& material : materials)
+        {
+            const auto out = runLucy(s, material.second, 2.0);
+            const auto ok = out.finite() && out.peak() < 4.0f && out.rms() > 1.0e-5;
+            materialsFine = materialsFine && ok;
+            materialDetail << material.first << " " << juce::String(out.rms(), 4) << "  ";
+        }
+        check("Lucy_HandlesSynthMaterial", materialsFine, materialDetail);
+    }
+
+    // ---- LOSS --------------------------------------------------------------
+    {
+        // At zero loss the spectral path has to be effectively transparent.
+        // Hann analysis and synthesis at 75% overlap reconstruct exactly, so a
+        // frame nothing touched must come back out unchanged - if this drifts,
+        // the engine is colouring before any mode has been chosen.
+        auto clean = audible();
+        clean.loss = 0.0f;
+        clean.autoGain = 0.0f;
+
+        const auto out = runLucy(clean, Source::sine, 1.5, kSampleRate, 440.0f);
+
+        std::vector<float> reference;
+        reference.reserve(out.left.size());
+        auto phase = 0.0;
+        const auto increment = juce::MathConstants<double>::twoPi * 440.0 / kSampleRate;
+        for (std::size_t i = 0; i < out.left.size(); ++i)
+        {
+            reference.push_back(0.5f * static_cast<float>(std::sin(phase)));
+            phase += increment;
+        }
+
+        px3::Lucy probe;
+        probe.prepare(kSampleRate);
+        probe.updateForBlock(clean);
+        const auto latency = static_cast<std::size_t>(probe.wetLatencySamples());
+
+        auto worstError = 0.0f;
+        for (auto i = latency + 8192; i < out.left.size(); ++i)
+        {
+            worstError = juce::jmax(worstError, std::abs(out.left[i] - reference[i - latency]));
+        }
+
+        check("Lucy_ZeroLossReconstructsTheInput", worstError < 0.08f,
+              "worst deviation from the delayed input " + juce::String(worstError, 5));
+    }
+
+    {
+        juce::String detail;
+        auto allStable = true;
+        std::vector<double> rmsByLoss;
+
+        for (const auto loss : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
+        {
+            auto s = audible();
+            s.loss = loss;
+            const auto out = runLucy(s, Source::saw, 2.0);
+            allStable = allStable && out.finite() && out.peak() < 4.0f;
+            rmsByLoss.push_back(out.rms());
+            detail << juce::String(loss, 2) << ":" << juce::String(out.rms(), 4) << "  ";
+        }
+        check("Lucy_LossIsStableAtEveryDepth", allStable, detail);
+
+        // AUTO GAIN exists because the loss modes change loudness by
+        // construction. With it up, the level must not run away as loss rises.
+        auto maxRatio = 0.0;
+        for (const auto rms : rmsByLoss)
+        {
+            maxRatio = juce::jmax(maxRatio, rms / juce::jmax(1.0e-9, rmsByLoss.front()));
+        }
+        check("Lucy_AutoGainKeepsLevelRoughlyConstantAcrossLoss", maxRatio < 3.0,
+              "loudest/cleanest across the loss sweep = " + juce::String(maxRatio, 3));
+    }
+
+    {
+        // The documented tilt: STANDARD is darker, INVERSE is what STANDARD
+        // threw away and is therefore brighter and thinner.
+        auto standard = audible();
+        standard.loss = 0.75f;
+        standard.modeIndex = 0;
+        standard.autoGain = 0.0f;
+
+        auto inverse = standard;
+        inverse.modeIndex = 1;
+
+        auto jitter = standard;
+        jitter.modeIndex = 2;
+
+        const auto a = runLucy(standard, Source::saw, 2.0);
+        const auto b = runLucy(inverse, Source::saw, 2.0);
+        const auto c = runLucy(jitter, Source::saw, 2.0);
+
+        check("Lucy_EveryLossModeIsStable",
+              a.finite() && b.finite() && c.finite()
+                  && a.peak() < 4.0f && b.peak() < 4.0f && c.peak() < 4.0f,
+              "standard " + juce::String(a.rms(), 4) + ", inverse " + juce::String(b.rms(), 4)
+                  + ", jitter " + juce::String(c.rms(), 4));
+
+        check("Lucy_InverseIsBrighterAndThinnerThanStandard",
+              brightness(b) > brightness(a) && b.rms() < a.rms(),
+              "standard brightness " + juce::String(brightness(a), 5) + " rms "
+                  + juce::String(a.rms(), 5) + ", inverse brightness "
+                  + juce::String(brightness(b), 5) + " rms " + juce::String(b.rms(), 5));
+
+        check("Lucy_JitterChangesTheSignal",
+              std::abs(c.rms() - a.rms()) > 1.0e-6 || brightness(c) != brightness(a),
+              "jitter rms " + juce::String(c.rms(), 5));
+    }
+
+    {
+        // LOSS controls WHICH frequencies are affected, not only how much: at a
+        // low setting only a strip is touched, so the output must stay closer
+        // to the unprocessed signal than at a high setting.
+        auto narrow = audible();
+        narrow.loss = 0.12f;
+        narrow.autoGain = 0.0f;
+
+        auto wide = narrow;
+        wide.loss = 1.0f;
+
+        auto bypassed = audible();
+        bypassed.global = 0.0f;
+
+        const auto a = runLucy(narrow, Source::saw, 2.0);
+        const auto b = runLucy(wide, Source::saw, 2.0);
+        const auto dry = runLucy(bypassed, Source::saw, 2.0);
+
+        px3::Lucy probe;
+        probe.prepare(kSampleRate);
+        probe.updateForBlock(narrow);
+        const auto latency = static_cast<std::size_t>(probe.wetLatencySamples());
+
+        // Against the DELAYED dry, and normalised by its level. Comparing
+        // against the undelayed input measures the latency; comparing raw
+        // energy measures how much quieter high loss is. Neither is the
+        // question, which is how much of the spectrum was touched.
+        auto deviation = [&dry, latency](const Result& r)
+        {
+            auto sum = 0.0;
+            auto reference = 0.0;
+            auto count = 0;
+            for (std::size_t i = latency; i < r.left.size() && (i - latency) < dry.left.size(); ++i)
+            {
+                const auto d = r.left[i] - dry.left[i - latency];
+                sum += static_cast<double>(d) * d;
+                reference += static_cast<double>(dry.left[i - latency]) * dry.left[i - latency];
+                ++count;
+            }
+            juce::ignoreUnused(count);
+            return std::sqrt(sum / juce::jmax(1.0e-12, reference));
+        };
+
+        check("Lucy_LossWidensTheAffectedBandAsItRises",
+              deviation(b) > deviation(a),
+              "narrow strip deviates " + juce::String(deviation(a), 5) + ", full spectrum "
+                  + juce::String(deviation(b), 5));
+    }
+
+    {
+        // WEIGHTING chooses which end of the spectrum survives the coder.
+        auto dark = audible();
+        dark.loss = 0.8f;
+        dark.weighting = -1.0f;
+        dark.autoGain = 0.0f;
+
+        auto bright = dark;
+        bright.weighting = 1.0f;
+
+        const auto a = runLucy(dark, Source::noise, 2.0);
+        const auto b = runLucy(bright, Source::noise, 2.0);
+
+        check("Lucy_WeightingChoosesWhichEndSurvives",
+              std::abs(brightness(a) - brightness(b)) > 1.0e-6 && a.finite() && b.finite(),
+              "dark " + juce::String(brightness(a), 5) + ", bright "
+                  + juce::String(brightness(b), 5));
+    }
+
+    // ---- SPEED -------------------------------------------------------------
+    {
+        // One control, three consequences. Slow holds a decision across many
+        // frames, which is what spectral smearing IS - so the short-term level
+        // must move less than at fast.
+        auto slow = audible();
+        slow.loss = 0.8f;
+        slow.speed = 0.0f;
+        slow.packetIndex = 1;
+
+        auto fast = slow;
+        fast.speed = 1.0f;
+
+        auto variability = [](const Result& r)
+        {
+            const auto window = static_cast<std::size_t>(kSampleRate * 0.02);
+            std::vector<double> levels;
+            for (std::size_t w = 0; w + window < r.left.size(); w += window)
+            {
+                auto sum = 0.0;
+                for (std::size_t i = w; i < w + window; ++i)
+                {
+                    sum += static_cast<double>(r.left[i]) * r.left[i];
+                }
+                levels.push_back(std::sqrt(sum / static_cast<double>(window)));
+            }
+            if (levels.size() < 2)
+            {
+                return 0.0;
+            }
+            auto mean = 0.0;
+            for (const auto l : levels) { mean += l; }
+            mean /= static_cast<double>(levels.size());
+            auto variance = 0.0;
+            for (const auto l : levels) { variance += (l - mean) * (l - mean); }
+            return std::sqrt(variance / static_cast<double>(levels.size())) / juce::jmax(1.0e-9, mean);
+        };
+
+        const auto a = runLucy(slow, Source::saw, 3.0);
+        const auto b = runLucy(fast, Source::saw, 3.0);
+
+        check("Lucy_SpeedIsStableAtBothExtremes",
+              a.finite() && b.finite() && a.peak() < 4.0f && b.peak() < 4.0f, "");
+
+        check("Lucy_SpeedChangesHowFastTheDegradationEvolves",
+              std::abs(variability(a) - variability(b)) > 1.0e-3,
+              "slow variability " + juce::String(variability(a), 5) + ", fast "
+                  + juce::String(variability(b), 5));
+    }
+
+    // ---- PACKETS -----------------------------------------------------------
+    {
+        static const char* packetNames[] = { "CLEAN", "LOSS", "REPEAT" };
+        juce::String detail;
+        auto allStable = true;
+        std::array<Result, 3> byMode;
+
+        for (int mode = 0; mode < 3; ++mode)
+        {
+            auto s = audible();
+            s.loss = 0.8f;
+            s.speed = 0.5f;
+            s.packetIndex = mode;
+            byMode[static_cast<std::size_t>(mode)] = runLucy(s, Source::saw, 3.0);
+            const auto& out = byMode[static_cast<std::size_t>(mode)];
+            allStable = allStable && out.finite() && out.peak() < 4.0f;
+            detail << packetNames[mode] << " " << juce::String(out.rms(), 4) << "  ";
+        }
+        check("Lucy_EveryPacketModeIsStable", allStable, detail);
+
+        auto differs = [](const Result& a, const Result& b)
+        {
+            const auto count = std::min(a.left.size(), b.left.size());
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                if (std::abs(a.left[i] - b.left[i]) > 1.0e-4f)
+                {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        check("Lucy_PacketModesAreGenuinelyDifferent",
+              differs(byMode[0], byMode[1]) && differs(byMode[1], byMode[2])
+                  && differs(byMode[0], byMode[2]),
+              "clean, loss and repeat all produce different audio");
+
+        // PACKET LOSS is drop-outs: there must be quiet stretches CLEAN does
+        // not have. That is what separates it from a tremolo, which would be
+        // periodic, and from noise, which would have no runs at all.
+        auto quietRuns = [](const Result& r)
+        {
+            const auto window = static_cast<std::size_t>(kSampleRate * 0.01);
+            auto runs = 0;
+            auto inRun = false;
+            for (std::size_t w = 0; w + window < r.left.size(); w += window)
+            {
+                auto peak = 0.0f;
+                for (std::size_t i = w; i < w + window; ++i)
+                {
+                    peak = juce::jmax(peak, std::abs(r.left[i]));
+                }
+                const auto quiet = peak < 0.01f;
+                if (quiet && ! inRun)
+                {
+                    ++runs;
+                }
+                inRun = quiet;
+            }
+            return runs;
+        };
+
+        check("Lucy_PacketLossProducesDropOuts",
+              quietRuns(byMode[1]) > quietRuns(byMode[0]),
+              "clean has " + juce::String(quietRuns(byMode[0])) + " quiet runs, packet loss "
+                  + juce::String(quietRuns(byMode[1])));
+
+        // PACKET REPEAT fills the same gaps with material rather than silence,
+        // so it must be less gappy than PACKET LOSS.
+        check("Lucy_PacketRepeatFillsTheGapsRatherThanEmptyingThem",
+              quietRuns(byMode[2]) <= quietRuns(byMode[1]),
+              "packet loss " + juce::String(quietRuns(byMode[1])) + " runs, repeat "
+                  + juce::String(quietRuns(byMode[2])));
+
+        auto s = audible();
+        s.loss = 0.8f;
+        s.packetIndex = 1;
+        const auto a = runLucy(s, Source::saw, 1.5, kSampleRate, 220.0f, 111u);
+        const auto b = runLucy(s, Source::saw, 1.5, kSampleRate, 220.0f, 111u);
+        const auto c = runLucy(s, Source::saw, 1.5, kSampleRate, 220.0f, 222u);
+
+        auto identical = a.left.size() == b.left.size();
+        for (std::size_t i = 0; i < a.left.size() && identical; ++i)
+        {
+            identical = juce::approximatelyEqual(a.left[i], b.left[i]);
+        }
+        check("Lucy_PacketChainIsDeterministicUnderASeed",
+              identical && differs(a, c),
+              "same seed is sample-identical; a different seed is not");
+    }
+
+    // ---- FREEZE ------------------------------------------------------------
+    {
+        // A spectral freeze sustains on silence. This is what says it is a
+        // freeze rather than a short looper: the frozen sound has no loop point
+        // and keeps going indefinitely.
+        auto runFreeze = [](bool slushy, bool withPackets, bool withVerb)
+        {
+            px3::Lucy lucy;
+            lucy.prepare(kSampleRate);
+            lucy.setSeed(31337u);
+
+            auto s = audible();
+            s.loss = 0.5f;
+            s.freezeSlushy = slushy;
+            s.packetIndex = withPackets ? 2 : 0;
+            s.verb = withVerb ? 0.6f : 0.0f;
+            lucy.updateForBlock(s);
+
+            auto phase = 0.0;
+            const auto increment = juce::MathConstants<double>::twoPi * 220.0 / kSampleRate;
+            for (int i = 0; i < static_cast<int>(kSampleRate * 1.5); ++i)
+            {
+                float l = 0.0f;
+                float r = 0.0f;
+                const auto in = 0.4f * static_cast<float>(std::sin(phase));
+                phase += increment;
+                lucy.processSampleFrame(in, in, l, r);
+            }
+
+            s.freeze = true;
+            lucy.updateForBlock(s);
+
+            Result out;
+            const auto length = static_cast<int>(kSampleRate * 2.5);
+            for (int i = 0; i < length; ++i)
+            {
+                float l = 0.0f;
+                float r = 0.0f;
+                lucy.processSampleFrame(0.0f, 0.0f, l, r);
+                out.left.push_back(l);
+                out.right.push_back(r);
+            }
+            return out;
+        };
+
+        const auto solid = runFreeze(false, false, false);
+        const auto slushy = runFreeze(true, false, false);
+        const auto withPackets = runFreeze(false, true, false);
+        const auto withVerb = runFreeze(false, false, true);
+
+        check("Lucy_FreezeSustainsOnSilence",
+              solid.finite() && solid.tailRms() > 1.0e-4 && solid.peak() < 4.0f,
+              "tail rms after 2.5s of silence " + juce::String(solid.tailRms(), 6));
+
+        check("Lucy_SlushyFreezeIsDifferentFromSolid",
+              slushy.finite() && std::abs(slushy.tailRms() - solid.tailRms()) > 1.0e-8,
+              "solid " + juce::String(solid.tailRms(), 6) + ", slushy "
+                  + juce::String(slushy.tailRms(), 6));
+
+        check("Lucy_FreezeCombinesWithPacketsAndVerb",
+              withPackets.finite() && withPackets.peak() < 4.0f
+                  && withVerb.finite() && withVerb.peak() < 4.0f,
+              "packets " + juce::String(withPackets.tailRms(), 5) + ", verb "
+                  + juce::String(withVerb.tailRms(), 5));
+
+        auto live = audible();
+        live.freeze = true;
+        live.freezer = 0.0f;
+        auto frozen = live;
+        frozen.freezer = 1.0f;
+
+        const auto a = runLucy(live, Source::saw, 2.0);
+        const auto b = runLucy(frozen, Source::saw, 2.0);
+        auto freezerDiffers = false;
+        for (std::size_t i = 0; i < a.left.size(); ++i)
+        {
+            if (std::abs(a.left[i] - b.left[i]) > 1.0e-4f)
+            {
+                freezerDiffers = true;
+                break;
+            }
+        }
+        check("Lucy_FreezerBalancesLiveAgainstFrozen", freezerDiffers, "");
+    }
+
+    // ---- FILTER ------------------------------------------------------------
+    {
+        auto none = audible();
+        none.loss = 0.0f;
+        none.autoGain = 0.0f;
+        none.filterWidth = 0.0f;
+
+        auto narrow = none;
+        narrow.filterWidth = 1.0f;
+
+        const auto open = runLucy(none, Source::noise, 1.5);
+        const auto banded = runLucy(narrow, Source::noise, 1.5);
+
+        check("Lucy_FilterNarrowsTheBand",
+              std::abs(brightness(banded) - brightness(open)) > 1.0e-4
+                  && banded.finite() && open.finite(),
+              "open " + juce::String(brightness(open), 5) + ", narrowed "
+                  + juce::String(brightness(banded), 5));
+
+        auto slopesFine = true;
+        for (int slope = 0; slope < 3; ++slope)
+        {
+            for (const auto freq : { 0.0f, 0.5f, 1.0f })
+            {
+                auto s = audible();
+                s.loss = 0.0f;
+                s.filterWidth = 0.9f;
+                s.filterFreq = freq;
+                s.slopeIndex = slope;
+                const auto out = runLucy(s, Source::noise, 1.0);
+                slopesFine = slopesFine && out.finite() && out.peak() < 4.0f;
+            }
+        }
+        check("Lucy_EverySlopeIsStableAcrossTheSweep", slopesFine,
+              "6, 24 and 96 dB at minimum, middle and maximum frequency");
+
+        // INVERT is the band taken OUT, so it must be the complement rather
+        // than a second filter with a character of its own.
+        auto pass = audible();
+        pass.loss = 0.0f;
+        pass.filterWidth = 0.8f;
+        pass.autoGain = 0.0f;
+        auto reject = pass;
+        reject.filterInvert = true;
+
+        const auto p = runLucy(pass, Source::noise, 1.5);
+        const auto rj = runLucy(reject, Source::noise, 1.5);
+        check("Lucy_FilterInvertIsTheComplement",
+              std::abs(brightness(p) - brightness(rj)) > 1.0e-6 && p.finite() && rj.finite(),
+              "band-pass " + juce::String(brightness(p), 5) + ", band-reject "
+                  + juce::String(brightness(rj), 5));
+    }
+
+    // ---- VERB --------------------------------------------------------------
+    {
+        auto dry = audible();
+        dry.loss = 0.0f;
+        dry.verb = 0.0f;
+
+        auto wet = dry;
+        wet.verb = 1.0f;
+        wet.verbDecay = 1.0f;
+
+        // Measured as the tail after a sustained note stops, which is how a
+        // reverb is actually heard. A lone impulse is the wrong stimulus for
+        // this one: it quantises inside its own feedback loop by design, so a
+        // single spike falls under that floor long before a note's tail does.
+        auto runTail = [](const LucySettings& s)
+        {
+            px3::Lucy lucy;
+            lucy.prepare(kSampleRate);
+            lucy.updateForBlock(s);
+
+            auto phase = 0.0;
+            const auto increment = juce::MathConstants<double>::twoPi * 220.0 / kSampleRate;
+            for (int i = 0; i < static_cast<int>(kSampleRate * 1.5); ++i)
+            {
+                float l = 0.0f;
+                float r = 0.0f;
+                const auto in = 0.5f * static_cast<float>(std::sin(phase));
+                phase += increment;
+                lucy.processSampleFrame(in, in, l, r);
+            }
+
+            Result out;
+            for (int i = 0; i < static_cast<int>(kSampleRate * 1.5); ++i)
+            {
+                float l = 0.0f;
+                float r = 0.0f;
+                lucy.processSampleFrame(0.0f, 0.0f, l, r);
+                out.left.push_back(l);
+                out.right.push_back(r);
+            }
+            return out;
+        };
+
+        const auto a = runTail(dry);
+        const auto b = runTail(wet);
+
+        // The LATE tail. The first few milliseconds after the note stops are
+        // the transform flushing its last frame, which every configuration has
+        // and which dominates an RMS taken over the whole window.
+        check("Lucy_VerbAtMaximumDecayStaysBounded",
+              b.finite() && b.peak() < 4.0f && b.tailRms() > a.tailRms() * 8.0,
+              "dry late tail " + juce::String(a.tailRms(), 8) + ", wet late tail "
+                  + juce::String(b.tailRms(), 8));
+
+        // PRE feeds the loss, POST does not. That routing difference is the
+        // point of the control, so it has to change the audio.
+        auto pre = audible();
+        pre.loss = 0.8f;
+        pre.verb = 0.7f;
+        pre.verbPost = false;
+        auto post = pre;
+        post.verbPost = true;
+
+        const auto p = runLucy(pre, Source::saw, 2.5);
+        const auto q = runLucy(post, Source::saw, 2.5);
+
+        auto differs = false;
+        for (std::size_t i = 0; i < p.left.size(); ++i)
+        {
+            if (std::abs(p.left[i] - q.left[i]) > 1.0e-4f)
+            {
+                differs = true;
+                break;
+            }
+        }
+        check("Lucy_VerbRoutingChangesWhetherTheLossHearsIt",
+              differs && p.finite() && q.finite(),
+              "pre rms " + juce::String(p.rms(), 5) + ", post " + juce::String(q.rms(), 5));
+
+        auto hostileVerb = audible();
+        hostileVerb.loss = 1.0f;
+        hostileVerb.packetIndex = 2;
+        hostileVerb.verb = 1.0f;
+        hostileVerb.verbDecay = 1.0f;
+        hostileVerb.freeze = true;
+        const auto held = runLucy(hostileVerb, Source::saw, 6.0);
+        check("Lucy_VerbWithLossPacketsAndFreezeDoesNotRunAway",
+              held.finite() && held.peak() < 4.0f,
+              "peak " + juce::String(held.peak(), 4));
+    }
+
+    // ---- GATE --------------------------------------------------------------
+    {
+        juce::String detail;
+        auto allStable = true;
+        std::vector<double> rmsByCutoff;
+
+        for (const auto cutoff : { 0.0f, 0.25f, 0.5f, 1.0f })
+        {
+            auto s = audible();
+            s.loss = 0.0f;
+            s.gate = true;
+            s.gateCutoff = cutoff;
+            s.autoGain = 0.0f;
+            const auto out = runLucy(s, Source::pluck, 2.5);
+            allStable = allStable && out.finite() && out.peak() < 4.0f;
+            rmsByCutoff.push_back(out.rms());
+            detail << juce::String(cutoff, 2) << ":" << juce::String(out.rms(), 4) << "  ";
+        }
+        check("Lucy_GateIsStableAtEveryCutoff", allStable, detail);
+
+        check("Lucy_HigherGateCutoffPassesLess",
+              rmsByCutoff.back() < rmsByCutoff.front(),
+              "cutoff 0 rms " + juce::String(rmsByCutoff.front(), 5) + ", cutoff 1 "
+                  + juce::String(rmsByCutoff.back(), 5));
+
+        // A gate that chatters at the threshold buzzes rather than sputters, so
+        // the hysteresis has to hold. Measured as the worst sample-to-sample
+        // step on a signal parked right at the cutoff.
+        auto s = audible();
+        s.loss = 0.0f;
+        s.gate = true;
+        s.gateCutoff = 0.5f;
+        s.autoGain = 0.0f;
+        const auto out = runLucy(s, Source::sine, 2.0, kSampleRate, 220.0f);
+
+        auto worstStep = 0.0f;
+        for (auto i = static_cast<std::size_t>(kSampleRate * 0.2); i < out.left.size(); ++i)
+        {
+            worstStep = juce::jmax(worstStep, std::abs(out.left[i] - out.left[i - 1]));
+        }
+        check("Lucy_GateDoesNotChatterAtTheThreshold", worstStep < 0.35f,
+              "worst step at the cutoff " + juce::String(worstStep, 5));
+    }
+
+    // ---- LIMITER -----------------------------------------------------------
+    {
+        // Fed deliberate overload. The limiter is not decoration here: freeze,
+        // reverb feedback and coarse spectral quantisation can each produce
+        // peaks the input never had.
+        // The overload has to reach the limiter's INPUT. LOSS GAIN sits after
+        // it, by design and by the source's own documentation - it is there to
+        // compensate for the limiter making things quieter - so pushing gain
+        // through that control would be testing the wrong stage.
+        auto s = audible();
+        s.loss = 1.0f;
+        s.verb = 1.0f;
+        s.verbDecay = 1.0f;
+        s.threshold = 0.2f;
+        s.autoGain = 1.0f;
+        s.gainDb = 0.0f;
+
+        const auto out = runLucy(s, Source::noise, 3.0);
+        check("Lucy_LimiterBoundsDeliberateOverload",
+              out.finite() && out.peak() < 0.45f && std::abs(out.dc()) < 0.05,
+              "maximum loss, verb and auto gain into a 0.2 threshold -> peak "
+                  + juce::String(out.peak(), 4));
+
+        auto loose = s;
+        loose.threshold = 1.0f;
+        const auto unlimited = runLucy(loose, Source::noise, 3.0);
+        check("Lucy_LowerThresholdMeansMoreLimiting",
+              out.peak() < unlimited.peak(),
+              "threshold 0.2 peak " + juce::String(out.peak(), 4) + ", threshold 1.0 peak "
+                  + juce::String(unlimited.peak(), 4));
+    }
+
+    // ---- SLOW --------------------------------------------------------------
+    {
+        auto fast = audible();
+        fast.loss = 0.7f;
+        fast.slow = false;
+        auto slow = fast;
+        slow.slow = true;
+
+        const auto a = runLucy(fast, Source::saw, 2.5);
+        const auto b = runLucy(slow, Source::saw, 2.5);
+
+        auto differs = false;
+        for (std::size_t i = 0; i < a.left.size(); ++i)
+        {
+            if (std::abs(a.left[i] - b.left[i]) > 1.0e-4f)
+            {
+                differs = true;
+                break;
+            }
+        }
+        check("Lucy_SlowChangesTheTransformAndTheSound",
+              differs && b.finite() && b.peak() < 4.0f,
+              "fast rms " + juce::String(a.rms(), 5) + ", slow " + juce::String(b.rms(), 5));
+
+        px3::Lucy lucy;
+        lucy.prepare(kSampleRate);
+        lucy.updateForBlock(fast);
+        const auto fastLatency = lucy.wetLatencySamples();
+        lucy.updateForBlock(slow);
+        const auto slowLatency = lucy.wetLatencySamples();
+
+        // Slow doubles the transform, so it costs exactly one more fast-mode
+        // FFT of latency. Asserted as the difference rather than as a total,
+        // because the total also carries the jitter line and the limiter's
+        // lookahead.
+        check("Lucy_SlowCostsMoreLatencyAsDocumented",
+              slowLatency - fastLatency == 512 && fastLatency > 512,
+              juce::String(fastLatency) + " samples normally, " + juce::String(slowLatency)
+                  + " in slow");
+    }
+
+    // ---- stereo ------------------------------------------------------------
+    {
+        // Packets alternate sides, which is documented behaviour and is what
+        // makes the stereo movement related rather than two independent effects.
+        auto narrow = audible();
+        narrow.loss = 0.8f;
+        narrow.packetIndex = 1;
+        narrow.spread = 0.0f;
+
+        auto wide = narrow;
+        wide.spread = 1.0f;
+        wide.verb = 0.6f;
+
+        const auto a = runLucy(narrow, Source::saw, 3.0);
+        const auto b = runLucy(wide, Source::saw, 3.0);
+
+        check("Lucy_PacketsAlternateSides",
+              a.correlation() < 0.999 && a.finite(),
+              "channel correlation with independent packet chains "
+                  + juce::String(a.correlation(), 4));
+
+        check("Lucy_SpreadWidensTheImage",
+              b.correlation() <= a.correlation() + 0.02 && b.finite(),
+              "narrow " + juce::String(a.correlation(), 4) + ", wide "
+                  + juce::String(b.correlation(), 4));
+    }
+
+    // ---- hostile combinations ---------------------------------------------
+    {
+        struct Hostile { const char* name; LucySettings settings; };
+
+        auto everything = audible();
+        everything.loss = 1.0f;
+        everything.speed = 1.0f;
+        everything.modeIndex = 2;
+        everything.packetIndex = 2;
+        everything.filterWidth = 1.0f;
+        everything.filterFreq = 1.0f;
+        everything.slopeIndex = 2;
+        everything.verb = 1.0f;
+        everything.verbDecay = 1.0f;
+        everything.freeze = true;
+        everything.freezeSlushy = true;
+        everything.freezer = 1.0f;
+        everything.gate = true;
+        everything.gateCutoff = 1.0f;
+        everything.threshold = 0.05f;
+        everything.autoGain = 1.0f;
+        everything.weighting = 1.0f;
+        everything.gainDb = 36.0f;
+        everything.spread = 1.0f;
+        everything.slow = true;
+
+        auto inverseExtreme = everything;
+        inverseExtreme.modeIndex = 1;
+        inverseExtreme.slow = false;
+
+        auto standardExtreme = everything;
+        standardExtreme.modeIndex = 0;
+        standardExtreme.packetIndex = 1;
+        standardExtreme.gate = false;
+
+        auto slowSpeed = everything;
+        slowSpeed.speed = 0.0f;
+        slowSpeed.filterInvert = true;
+
+        const std::array<Hostile, 4> cases { {
+            { "everything, jitter, slow", everything },
+            { "everything, inverse", inverseExtreme },
+            { "everything, standard, packet loss", standardExtreme },
+            { "everything, speed 0, band reject", slowSpeed },
+        } };
+
+        juce::String detail;
+        auto allSurvive = true;
+        for (const auto& c : cases)
+        {
+            const auto out = runLucy(c.settings, Source::noise, 6.0);
+            const auto ok = out.finite() && out.peak() < 8.0f && std::abs(out.dc()) < 0.2;
+            allSurvive = allSurvive && ok;
+            if (! ok)
+            {
+                detail << c.name << " peak " << juce::String(out.peak(), 3)
+                       << " dc " << juce::String(out.dc(), 4) << "  ";
+            }
+        }
+        check("Lucy_HostileCombinationsStayValidAudio", allSurvive,
+              detail.isEmpty() ? "all four survive 6s of noise at maximum everything" : detail);
+    }
+
+    // ---- automation --------------------------------------------------------
+    {
+        struct Sweep { const char* name; float LucySettings::* member; };
+        const std::array<Sweep, 11> sweeps { {
+            { "global", &LucySettings::global },
+            { "loss", &LucySettings::loss },
+            { "speed", &LucySettings::speed },
+            { "filterWidth", &LucySettings::filterWidth },
+            { "filterFreq", &LucySettings::filterFreq },
+            { "verb", &LucySettings::verb },
+            { "verbDecay", &LucySettings::verbDecay },
+            { "freezer", &LucySettings::freezer },
+            { "gateCutoff", &LucySettings::gateCutoff },
+            { "threshold", &LucySettings::threshold },
+            { "spread", &LucySettings::spread },
+        } };
+
+        juce::String detail;
+        auto allSmooth = true;
+
+        for (const auto& sweep : sweeps)
+        {
+            px3::Lucy lucy;
+            lucy.prepare(kSampleRate);
+            lucy.setSeed(4321u);
+
+            auto s = audible();
+            s.loss = 0.5f;
+
+            const auto total = static_cast<int>(kSampleRate * 3.0);
+            const auto blockSize = 64;
+
+            auto phase = 0.0;
+            const auto increment = juce::MathConstants<double>::twoPi * 220.0 / kSampleRate;
+            auto worstStep = 0.0f;
+            auto previous = 0.0f;
+            auto valid = true;
+
+            for (int i = 0; i < total; ++i)
+            {
+                if (i % blockSize == 0)
+                {
+                    s.*(sweep.member) = static_cast<float>(i) / static_cast<float>(total);
+                    lucy.updateForBlock(s);
+                }
+
+                const auto in = 0.5f * static_cast<float>(std::sin(phase));
+                phase += increment;
+
+                float l = 0.0f;
+                float r = 0.0f;
+                lucy.processSampleFrame(in, in, l, r);
+                valid = valid && std::isfinite(l) && std::isfinite(r) && std::abs(l) < 8.0f;
+
+                if (i > 2000)
+                {
+                    worstStep = juce::jmax(worstStep, std::abs(l - previous));
+                }
+                previous = l;
+            }
+
+            const auto ok = valid && worstStep < 0.75f;
+            allSmooth = allSmooth && ok;
+            if (! ok)
+            {
+                detail << sweep.name << " step " << juce::String(worstStep, 4) << "  ";
+            }
+        }
+
+        check("Lucy_EveryParameterSweepsWithoutDiscontinuity", allSmooth,
+              detail.isEmpty() ? "11 controls swept min to max under audio" : detail);
+    }
+
+    // ---- bypass ------------------------------------------------------------
+    {
+        px3::Lucy lucy;
+        lucy.prepare(kSampleRate);
+
+        auto s = audible();
+        s.loss = 0.8f;
+        s.verb = 0.7f;
+        lucy.updateForBlock(s);
+
+        auto phase = 0.0;
+        const auto increment = juce::MathConstants<double>::twoPi * 220.0 / kSampleRate;
+        for (int i = 0; i < static_cast<int>(kSampleRate); ++i)
+        {
+            float l = 0.0f;
+            float r = 0.0f;
+            const auto in = 0.5f * static_cast<float>(std::sin(phase));
+            phase += increment;
+            lucy.processSampleFrame(in, in, l, r);
+        }
+
+        s.enabled = false;
+        lucy.updateForBlock(s);
+
+        auto maxDeviation = 0.0f;
+        auto worstStep = 0.0f;
+        auto previous = 0.0f;
+        const auto length = static_cast<int>(kSampleRate * 0.5);
+        for (int i = 0; i < length; ++i)
+        {
+            const auto in = 0.5f * static_cast<float>(std::sin(phase));
+            phase += increment;
+
+            float l = 0.0f;
+            float r = 0.0f;
+            lucy.processSampleFrame(in, in, l, r);
+
+            if (i > 0)
+            {
+                worstStep = juce::jmax(worstStep, std::abs(l - previous));
+            }
+            previous = l;
+
+            if (i > static_cast<int>(kSampleRate * 0.1))
+            {
+                maxDeviation = juce::jmax(maxDeviation, std::abs(l - in));
+            }
+        }
+
+        check("Lucy_BypassPassesDryWithoutAClick",
+              maxDeviation < 1.0e-5f && worstStep < 0.2f,
+              "deviation from dry " + juce::String(maxDeviation, 8) + ", worst step "
+                  + juce::String(worstStep, 5));
+    }
+
+    // ---- integration -------------------------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+
+        auto findParam = [&processor](const juce::String& id) -> juce::RangedAudioParameter*
+        {
+            for (auto* param : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
+                {
+                    if (ranged->paramID == id)
+                    {
+                        return ranged;
+                    }
+                }
+            }
+            return nullptr;
+        };
+
+        const std::array<const char*, 24> ids { {
+            "lucyEnabled", "lucyFilterInvert", "lucyVerbPost", "lucyFreeze",
+            "lucyFreezeSlushy", "lucyGate", "lucySlow", "lucyGlobal", "lucyLoss",
+            "lucySpeed", "lucyFilter", "lucyFilterFreq", "lucyVerb", "lucyVerbDecay",
+            "lucyFreezer", "lucyGateCutoff", "lucyThreshold", "lucyAutoGain",
+            "lucyWeighting", "lucyGain", "lucySpread", "lucyMode", "lucyPackets",
+            "lucySlope",
+        } };
+
+        juce::StringArray missing;
+        for (const auto* id : ids)
+        {
+            if (auto* param = findParam(id))
+            {
+                // A value nothing defaults to, so a parameter that failed to
+                // save shows up as a difference rather than as a coincidence.
+                param->setValueNotifyingHost(param->getValue() > 0.5f ? 0.15f : 0.85f);
+            }
+            else
+            {
+                missing.add(id);
+            }
+        }
+
+        check("Lucy_AllParametersExist", missing.isEmpty(),
+              missing.isEmpty() ? "24 LUCY parameters registered"
+                                : "missing " + missing.joinIntoString(", "));
+
+        auto order = px3::kDefaultFxOrder;
+        std::rotate(order.begin(), order.begin() + 5, order.end());
+        processor.setFxProcessingOrder(order);
+
+        std::vector<float> before;
+        for (auto* param : processor.getParameters())
+        {
+            before.push_back(param->getValue());
+        }
+
+        juce::MemoryBlock state;
+        processor.getStateInformation(state);
+
+        PX3SynthAudioProcessor restored;
+        restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        std::size_t index = 0;
+        juce::StringArray drifted;
+        for (auto* param : restored.getParameters())
+        {
+            if (index < before.size() && std::abs(param->getValue() - before[index]) > 1.0e-5f)
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param);
+                    ranged != nullptr && ranged->paramID.startsWithIgnoreCase("lucy"))
+                {
+                    drifted.add(ranged->paramID);
+                }
+            }
+            ++index;
+        }
+
+        check("Lucy_EveryParameterRoundTripsThroughDawState", drifted.isEmpty(),
+              drifted.isEmpty() ? "24 parameters restored exactly"
+                                : "drifted: " + drifted.joinIntoString(", "));
+
+        check("Lucy_FxOrderIncludingLucySurvivesState",
+              restored.getFxProcessingOrder() == order, "");
+    }
+
+    {
+        // LUCY and DOOM in both orders. Position has to change the audio, or
+        // the chain is not really a chain.
+        auto renderWithOrder = [](const px3::FxOrder& order)
+        {
+            PX3SynthAudioProcessor processor;
+            for (auto* param : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
+                {
+                    if (ranged->paramID == "lucyGlobal")   ranged->setValueNotifyingHost(0.7f);
+                    if (ranged->paramID == "lucyLoss")     ranged->setValueNotifyingHost(0.7f);
+                    if (ranged->paramID == "doomMix")      ranged->setValueNotifyingHost(0.6f);
+                    if (ranged->paramID == "reverbAmount") ranged->setValueNotifyingHost(0.6f);
+                }
+            }
+            processor.setFxProcessingOrder(order);
+            return render(processor, 48000, { { 2000, true, 60, 0.9f } });
+        };
+
+        auto moveTo = [](px3::FxOrder order, int stage, int position)
+        {
+            std::vector<int> v(order.begin(), order.end());
+            const auto it = std::find(v.begin(), v.end(), stage);
+            const auto from = static_cast<int>(std::distance(v.begin(), it));
+            const auto moved = v[static_cast<std::size_t>(from)];
+            v.erase(v.begin() + from);
+            v.insert(v.begin() + position, moved);
+            std::copy(v.begin(), v.end(), order.begin());
+            return order;
+        };
+
+        const auto lucyBeforeDoom = moveTo(moveTo(px3::kDefaultFxOrder, px3::fxStageLucy, 0),
+                                           px3::fxStageDoom, 1);
+        const auto doomBeforeLucy = moveTo(moveTo(px3::kDefaultFxOrder, px3::fxStageDoom, 0),
+                                           px3::fxStageLucy, 1);
+
+        const auto a = renderWithOrder(lucyBeforeDoom);
+        const auto b = renderWithOrder(doomBeforeLucy);
+
+        auto differs = false;
+        const auto count = juce::jmin(a.left.size(), b.left.size());
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            if (std::abs(a.left[i] - b.left[i]) > 1.0e-5f)
+            {
+                differs = true;
+                break;
+            }
+        }
+
+        check("Lucy_PositionRelativeToDoomChangesTheAudio", differs,
+              "LUCY->DOOM rms " + juce::String(a.rms(), 5) + ", DOOM->LUCY "
+                  + juce::String(b.rms(), 5));
+    }
+}
 } // namespace
 
 int main(int argc, char* argv[])
@@ -9827,6 +11045,7 @@ int main(int argc, char* argv[])
     if (wants("cardinner")) testCardInner();
     if (wants("fxchain")) testFxChain();
     if (wants("doom")) testDoom();
+    if (wants("lucy")) testLucy();
     if (wants("delay")) testDelay();
     if (wants("mood")) testMood();
     if (wants("fx")) testEffectIndependence();

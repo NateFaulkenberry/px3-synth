@@ -118,6 +118,7 @@ private:
     // Builds an FX card that owns its controls, attaches every parameter it
     // declares, and hands it to the panel. One per new-generation FX.
     void buildDoomCard();
+    void buildLucyCard();
     void refreshLfoAssignmentUI();
     void refreshEnvelopeAssignmentUI();
     void refreshLfoFrequencyLabel();
@@ -416,6 +417,7 @@ private:
     // Not owned here - the panel takes them. Kept as raw pointers so the
     // refresh passes can reach their controls.
     px3::ui::FxCardComponent* doomCard { nullptr };
+    px3::ui::FxCardComponent* lucyCard { nullptr };
     std::unique_ptr<MixPanel> mixPanel;
     std::unique_ptr<TopMenuBar> topMenuBar;
 
