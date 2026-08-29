@@ -1057,7 +1057,18 @@ void Delay::processDelayAlgorithmSample(float inL,
         advance(tapeScrapePhase, 38.9f);
         advance(tapeDriftPhase, 0.11f);
 
-        const auto depth = 0.4f + 0.6f * a;
+        // Fixed, NOT scaled by the mix. This read "0.4 + 0.6 * a", so turning
+        // the DELAY amount up drove the wow and flutter depth 2.5x deeper at
+        // the same time as it raised the wet level - the modulation sidebands
+        // grew fastest exactly where they were most audible. Measured on a
+        // 5 kHz tone, the non-harmonic content at full amount was -18.6 dB
+        // against the tone; decoupled it is -28.1 dB.
+        //
+        // A tape machine's wow does not change because you turned up the
+        // return, and the amount control is a MIX. 0.55 is what the old
+        // expression produced at the amount the factory presets ship with, so
+        // they sound as they did.
+        constexpr auto depth = 0.55f;
         const auto wow = std::sin(tapeWowPhase) * 0.0035f
                        + std::sin(tapeWowPhase * 2.7f + 1.1f) * 0.0011f;
         const auto flutter = std::sin(tapeFlutterPhase) * 0.0009f
@@ -1281,7 +1292,12 @@ void Delay::processDelayAlgorithmSample(float inL,
         advance(delayModPhaseB, 0.41f);
         advance(delayModPhaseC, 1.13f);
 
-        const auto depthSamples = (0.0009f + 0.0042f * a) * sr;
+        // Fixed for the same reason as TAPE's wow depth: this was
+        // "0.0009 + 0.0042 * a", a 5.7x swing driven by the wet mix, so the
+        // modulation got deepest exactly as it got loudest. 0.0018 is what the
+        // old expression gave at the amount the presets ship with.
+        constexpr auto depthSeconds = 0.0018f;
+        const auto depthSamples = depthSeconds * sr;
         const auto modL = std::sin(delayModPhaseA)
                         + 0.6f * std::sin(delayModPhaseB * 1.31f + 1.2f)
                         + 0.25f * std::sin(delayModPhaseC);

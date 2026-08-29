@@ -5587,6 +5587,85 @@ void testDelay()
                   + ", long " + fmt(longSetting, 5));
     }
 
+    {
+        // The DELAY amount knob is a wet/dry MIX. It used to double as a
+        // character control: TAPE scaled its wow and flutter depth by
+        // "0.4 + 0.6 * amount" and MODULATED scaled its modulation depth by
+        // "0.0009 + 0.0042 * amount", so the modulation sidebands grew deepest
+        // exactly where the wet signal was loudest. Measured on a 5 kHz tone as
+        // everything that is not the tone or a harmonic of it, TAPE reached
+        // -18.6 dB against the tone at full amount and MODULATED -14.0 dB -
+        // audible grit, and the reason a delay-heavy patch sounded rough.
+        auto nonHarmonicDb = [](int algorithm, float amount)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "osc1Mode", 0);
+            setParam(processor, "ampSustain", 1.0f);
+            setParam(processor, "ampRelease", 0.05f);
+
+            // The delay is on the FX BUS and makePlainPatch zeroes every send.
+            // Without this the measurement sees dry signal only - which it did
+            // at first, reporting an identical -46.4 dB for every algorithm at
+            // every amount because the delay was never in the path.
+            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+                setParam(processor, juce::String("mix.") + id + ".fxSend", 1.0f);
+            setParam(processor, "fxSendGain", 1.0f);
+            setParam(processor, "fxReturnGain", 1.0f);
+
+            setParam(processor, "delayEnabled", 1.0f);
+            setChoice(processor, "delayAlgorithm", algorithm);
+            setParam(processor, "delayTime", 0.34f);
+            setParam(processor, "delayFeedback", 0.32f);
+            setParam(processor, "delayAmount", amount);
+
+            const auto cap = render(processor, 200000, { { 2000, true, 111, 0.9f } });
+
+            constexpr int order = 15;
+            const auto size = 1 << order;
+            juce::dsp::FFT fft(order);
+            std::vector<float> data(static_cast<std::size_t>(size) * 2, 0.0f);
+            for (int i = 0; i < size; ++i)
+            {
+                const auto w = 0.5f - 0.5f * std::cos(juce::MathConstants<float>::twoPi
+                                                      * static_cast<float>(i) / static_cast<float>(size - 1));
+                data[static_cast<std::size_t>(i)] = cap.left[static_cast<std::size_t>(120000 + i)] * w;
+            }
+            fft.performFrequencyOnlyForwardTransform(data.data());
+
+            const auto binsPerHz = static_cast<double>(size) / kSampleRate;
+            double tone = 0.0, junk = 0.0;
+            for (int b = 1; b < size / 2; ++b)
+            {
+                const auto hz = static_cast<double>(b) / binsPerHz;
+                auto harmonic = hz < 60.0;
+                for (int h = 1; h <= 8 && ! harmonic; ++h)
+                {
+                    harmonic = std::abs(hz - 4978.0 * h) < 60.0;
+                }
+                const auto e = static_cast<double>(data[(std::size_t) b]) * data[(std::size_t) b];
+                (harmonic ? tone : junk) += e;
+            }
+            return juce::Decibels::gainToDecibels(std::sqrt(junk / juce::jmax(1.0e-12, tone)), -120.0);
+        };
+
+        // 1 = TAPE, 5 = MODULATED.
+        const auto tape = nonHarmonicDb(1, 1.0f);
+        const auto modulated = nonHarmonicDb(5, 1.0f);
+
+        check("Delay_TurningTheMixUpDoesNotDeepenTheModulation",
+              tape < -22.0 && modulated < -28.0,
+              "non-harmonic content at full amount: TAPE " + fmt(tape, 1)
+                  + " dB, MODULATED " + fmt(modulated, 1) + " dB");
+
+        // ...and the character must still be there at the mix the presets use,
+        // otherwise this "fix" would just be turning the effect off.
+        const auto tapeAtPresetMix = nonHarmonicDb(1, 0.28f);
+        check("Delay_TapeKeepsItsCharacterAtTheMixThePresetsUse",
+              tapeAtPresetMix > -42.0,
+              "TAPE at amount 0.28: " + fmt(tapeAtPresetMix, 1) + " dB of non-harmonic content");
+    }
+
     // Nothing may keep ringing after the input stops. This is the fault the
     // static tests could not see: three separate mechanisms only misbehaved
     // while a control was moving, or only on sustained rather than impulsive
@@ -13811,6 +13890,7 @@ double filterGainDbAt(int mode, float cutoff, float q, double hz)
     }
     return juce::Decibels::gainToDecibels(std::sqrt(sumOut / juce::jmax(1.0e-12, sumIn)), -120.0);
 }
+
 
 
 
