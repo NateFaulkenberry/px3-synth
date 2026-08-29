@@ -879,7 +879,10 @@
       },
       "cardInner": {
         "margin": 0,
-        "padding": 4,
+        "paddingRight": 4,
+        "paddingLeft": 4,
+        "paddingBottom": 4,
+        "paddingTop": 10,
         "display": "flex",
         "direction": "column",
         "wrap": "nowrap",
@@ -902,7 +905,7 @@
             "justifyContent": "center",
             "alignItems": "center",
             "alignContent": "center",
-            "gap": 5,
+            "gap": 2,
             "control": {
               "direction": "column",
               "justifyContent": "center",
@@ -913,11 +916,11 @@
               "size": "auto"
             }
           },
-          "row1": { "height": 44, "gap": 0 },
-          "row2": { "height": 20, "gap": 0 },
-          "row3": { "height": 60, "gap": 5, "justifyContent": "space-between" },
+          "row1": { "height": 45, "gap": 1 },
+          "row2": { "height": 50, "gap": 1 },
+          "row3": { "height": "30%", "gap": 5, "justifyContent": "space-between" },
           "row4": { "height": "30%", "gap": 5, "justifyContent": "space-between" },
-          "row5": { "height": "24%", "gap": 2 }
+          "row5": { "height": "30%", "gap": 2, "alignContent": "flex-end" }
         }
       }
     },
@@ -980,7 +983,7 @@
             }
           },
           "row1": { "height": 42, "gap": 0 },
-          "row2": { "height": 20, "gap": 0 },
+          "row2": { "height": 40, "gap": 0 },
           "row3": { "height": 60, "gap": 5, "justifyContent": "space-between" },
           "row4": { "height": "30%", "gap": 5, "justifyContent": "space-between" },
           "row5": { "height": "24%", "gap": 2 }

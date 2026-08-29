@@ -56,6 +56,14 @@ card is sized; padding reduces the card before its contents are laid out. Both
 accept a single number or per-side values. Over-large insets collapse the box to
 zero rather than inverting it.
 
+**Insets have three spellings.** A single number sets all four sides; an object
+`{ "top": 4, "right": 8, "bottom": 4, "left": 8 }` sets them individually; and
+flat siblings — `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`,
+and the same four for `margin` — override one edge at a time. The sibling form
+is applied *after* the generic one, so `"padding": 4, "paddingTop": 10` means
+10 on top and 4 elsewhere. All three work on `cardInner` and on any row inside
+it, and a row may override a single edge of what `rows.default` set.
+
 **Percentages reference the parent Panel's content box.** Not the slot, not a
 sibling, not the plugin window, not the card's own bounds. The reference is an
 explicit argument — `resolveBounds(slot, panelContent)` — so it cannot be
@@ -129,6 +137,7 @@ prove it looks right. With the standalone running and a debug build, edit
 - [ ] `border.radius: 20` — corners round noticeably
 - [ ] `margin: 20` — card shrinks away from its column edges
 - [ ] `padding: 30` — controls move inward, card unchanged
+- [ ] `paddingTop: 0` alongside it — only the top edge opens back up
 - [ ] `width: 200` — card narrows, stays centred in its column
 - [ ] `width: "50%"` — card takes half the panel width (capped by the column)
 - [ ] `height: 200` — card shortens
@@ -226,6 +235,10 @@ three rows would be meaningless there.
 ```jsonc
 "cardInner": {
   "margin": 0, "padding": 4,          // independent of the Card's own
+  "paddingTop": 10,                   // per-side override of the line above.
+                                      // Also paddingRight/Bottom/Left, and
+                                      // marginTop/Right/Bottom/Left. Valid on
+                                      // rows too.
   "display": "flex",                  // or "none"
   "direction": "column",              // row | rowReverse | column | columnReverse
   "wrap": "nowrap",
@@ -237,7 +250,7 @@ three rows would be meaningless there.
     "default": { /* every row property; the base every row starts from */ },
     "row1": { "height": "26%", "gap": 8 },
     "row2": { "height": "30%" },
-    "row3": { "height": "44%", "padding": 2 }
+    "row3": { "height": "44%", "padding": 2, "paddingBottom": 0 }
   }
 }
 ```

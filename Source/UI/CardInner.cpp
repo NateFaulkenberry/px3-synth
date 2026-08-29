@@ -152,6 +152,40 @@ AlignItems parseAlign(const juce::String& text, AlignItems fallback)
 // FlexStyle
 // ---------------------------------------------------------------------------
 
+// Reads an inset the generic way - a number, or {top,right,bottom,left} - and
+// then lets flat per-side siblings override individual edges:
+//
+//     "padding": 4, "paddingTop": 0
+//
+// The sibling form exists because trimming one edge is the common case and
+// writing the whole object out to change one number is not. Sides are applied
+// after the generic value, so the generic one is the base and each sibling is
+// an override of it. Layered the same way as everything else, so a row may
+// override a single edge of the default row's padding.
+Insets readInsetsLayered(const UIConfig* config,
+                         const juce::StringArray& pathsMostSpecificFirst,
+                         const juce::String& key,
+                         Insets fallback)
+{
+    auto result = Insets::parse(readLayered(config, pathsMostSpecificFirst, key), fallback);
+
+    const auto side = [&](const char* suffix, float& target)
+    {
+        const auto value = readLayered(config, pathsMostSpecificFirst, key + suffix);
+        if (! value.isVoid())
+        {
+            target = static_cast<float>(value);
+        }
+    };
+
+    side("Top", result.top);
+    side("Right", result.right);
+    side("Bottom", result.bottom);
+    side("Left", result.left);
+
+    return result;
+}
+
 FlexStyle FlexStyle::readLayered(const UIConfig* config,
                                  const juce::StringArray& pathsMostSpecificFirst,
                                  const FlexStyle& fallback)
@@ -255,8 +289,8 @@ CardInnerStyle CardInnerStyle::fromConfig(const UIConfig* config,
 
     if (config != nullptr)
     {
-        style.margin = Insets::parse(config->getValue(stylePath + ".margin"), style.margin);
-        style.padding = Insets::parse(config->getValue(stylePath + ".padding"), style.padding);
+        style.margin = readInsetsLayered(config, { stylePath }, "margin", style.margin);
+        style.padding = readInsetsLayered(config, { stylePath }, "padding", style.padding);
         style.flex = FlexStyle::readLayered(config, { stylePath }, style.flex);
 
         const auto powerPath = stylePath + ".power";
@@ -290,8 +324,8 @@ CardInnerStyle CardInnerStyle::fromConfig(const UIConfig* config,
 
             auto merged = rowFallback;
             merged.height = Dimension::parse(readLayered(config, paths, "height"), merged.height);
-            merged.margin = Insets::parse(readLayered(config, paths, "margin"), merged.margin);
-            merged.padding = Insets::parse(readLayered(config, paths, "padding"), merged.padding);
+            merged.margin = readInsetsLayered(config, paths, "margin", merged.margin);
+            merged.padding = readInsetsLayered(config, paths, "padding", merged.padding);
             merged.flex = FlexStyle::readLayered(config, paths, merged.flex);
 
             juce::StringArray controlPaths;

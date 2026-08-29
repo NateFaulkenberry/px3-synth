@@ -4398,6 +4398,80 @@ void testCardInner()
         return UIConfig::fromJsonText(json, error);
     };
 
+
+    // ---- per-side padding and margin ---------------------------------------
+    {
+        // "padding": 4 sets all four edges; "paddingTop": 0 then overrides one.
+        // Trimming a single edge is the common case, and rewriting the whole
+        // {top,right,bottom,left} object to change one number is not workable.
+        auto rowFor = [](const char* json)
+        {
+            juce::String error;
+            const auto config = UIConfig::fromJsonText(json, error);
+            CardInner inner;
+            inner.setStylePath("cards.probe.cardInner");
+            inner.setConfig(config);
+            inner.setRowCount(1);
+            inner.layout({ 0, 0, 200, 200 });
+            return inner.rowContent(0);
+        };
+
+        const auto plain = rowFor(R"({"cards":{"probe":{"cardInner":{
+            "margin":0,"padding":0,"rows":{"row1":{"height":"100%"}}}}}})");
+        check("CardInner_NoPaddingIsTheWholeBox",
+              plain.getX() == 0 && plain.getY() == 0
+                  && plain.getWidth() == 200 && plain.getHeight() == 200,
+              "");
+
+        const auto uniform = rowFor(R"({"cards":{"probe":{"cardInner":{
+            "margin":0,"padding":10,"rows":{"row1":{"height":"100%"}}}}}})");
+        check("CardInner_GenericPaddingStillSetsAllFourSides",
+              uniform.getX() == 10 && uniform.getY() == 10
+                  && uniform.getWidth() == 180 && uniform.getHeight() == 180,
+              "x " + juce::String(uniform.getX()) + " w " + juce::String(uniform.getWidth()));
+
+        // One side at a time, each on top of a generic value, so the override
+        // has to actually replace rather than add.
+        struct Case { const char* key; int x; int y; int w; int h; };
+        const std::array<Case, 4> cases { {
+            { "paddingTop",    10,  0, 180, 190 },
+            { "paddingBottom", 10, 10, 180, 190 },
+            { "paddingLeft",    0, 10, 190, 180 },
+            { "paddingRight",  10, 10, 190, 180 },
+        } };
+
+        juce::StringArray wrong;
+        for (const auto& c : cases)
+        {
+            const juce::String json = juce::String(R"({"cards":{"probe":{"cardInner":{
+                "margin":0,"padding":10,")") + c.key + R"(":0,"rows":{"row1":{"height":"100%"}}}}}})";
+            const auto r = rowFor(json.toRawUTF8());
+            if (r.getX() != c.x || r.getY() != c.y || r.getWidth() != c.w || r.getHeight() != c.h)
+            {
+                wrong.add(juce::String(c.key) + " gave " + r.toString());
+            }
+        }
+
+        check("CardInner_EachPaddingSideOverridesTheGenericValue", wrong.isEmpty(),
+              wrong.isEmpty() ? "paddingTop/Right/Bottom/Left each override padding alone"
+                              : wrong.joinIntoString("; "));
+
+        // The same treatment on margin, and on a ROW rather than the container.
+        const auto marginSide = rowFor(R"({"cards":{"probe":{"cardInner":{
+            "margin":10,"marginLeft":0,"padding":0,"rows":{"row1":{"height":"100%"}}}}}})");
+        check("CardInner_MarginSidesWorkToo",
+              marginSide.getX() == 0 && marginSide.getWidth() == 190,
+              "x " + juce::String(marginSide.getX()) + " w " + juce::String(marginSide.getWidth()));
+
+        const auto rowSide = rowFor(R"({"cards":{"probe":{"cardInner":{
+            "margin":0,"padding":0,"rows":{"default":{"padding":8},
+            "row1":{"height":"100%","paddingTop":0}}}}}})");
+        check("CardInner_ARowCanOverrideOneEdgeOfTheDefaultRow",
+              rowSide.getY() == 0 && rowSide.getX() == 8 && rowSide.getHeight() == 192,
+              "y " + juce::String(rowSide.getY()) + " x " + juce::String(rowSide.getX())
+                  + " h " + juce::String(rowSide.getHeight()));
+    }
+
     // ---- The percentage chain ---------------------------------------------
     {
         const auto config = configFrom(R"({"cards":{"probe":{"cardInner":{
@@ -9048,13 +9122,22 @@ void testDoom()
         manager.loadInitial();
         const auto config = manager.getConfig();
 
+        // Padding is checked through the resolved style rather than the raw
+        // key, because it may be written either as "padding" or as per-side
+        // "paddingTop"/etc, and the card only ever sees the resolved value.
+        const auto inner = px3::ui::CardInnerStyle::fromConfig(config.get(), "cards.doom.cardInner", 5);
+
         check("Doom_ShippingConfigStylesTheCard",
               config != nullptr
                   && config->getColour("cards.doom.border.color", juce::Colours::black)
                          != juce::Colours::black
                   && config->getFloat("cards.doom.controls.knobSize", -1.0f) > 0.0f
-                  && config->getInt("cards.doom.cardInner.padding", -1) >= 0,
-              "");
+                  && inner.padding.vertical() > 0.0f
+                  && inner.padding.horizontal() > 0.0f,
+              "padding t " + juce::String(inner.padding.top, 1)
+                  + " r " + juce::String(inner.padding.right, 1)
+                  + " b " + juce::String(inner.padding.bottom, 1)
+                  + " l " + juce::String(inner.padding.left, 1));
     }
 
 
