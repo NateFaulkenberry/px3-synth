@@ -9,6 +9,12 @@ ToggleChipButton::ToggleChipButton()
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
 }
 
+void ToggleChipButton::setOffTint(float amount)
+{
+    offTint = juce::jlimit(0.0f, 1.0f, amount);
+    repaint();
+}
+
 void ToggleChipButton::setFontSize(float size)
 {
     fontSize = juce::jlimit(6.0f, 20.0f, size);
@@ -46,8 +52,17 @@ void ToggleChipButton::paintButton(juce::Graphics& g,
     // sits with the rest of the interface rather than shouting.
     // No border: a solid rounded fill only. State is carried entirely by the
     // fill colour and the text on top of it.
-    const auto fill = on ? lit.withAlpha(enabled ? 0.90f : 0.45f)
-                         : juce::Colour::fromRGBA(255, 255, 255, shouldDrawButtonAsDown ? 86 : 62);
+    // Off was a neutral white on every card, which read as a stray control on
+    // the strongly coloured ones. Tinted toward the card's accent it belongs to
+    // its card while still being obviously unlit: heavily desaturated, and at
+    // the same low alpha as before.
+    const auto offNeutral = juce::Colour::fromRGBA(255, 255, 255, shouldDrawButtonAsDown ? 86 : 62);
+    const auto offTinted = accent.withSaturation(0.42f)
+                                 .withBrightness(0.92f)
+                                 .withAlpha(shouldDrawButtonAsDown ? 0.34f : 0.24f);
+    const auto offFill = enabled ? offNeutral.interpolatedWith(offTinted, offTint) : offNeutral;
+
+    const auto fill = on ? lit.withAlpha(enabled ? 0.90f : 0.45f) : offFill;
 
     g.setColour(shouldDrawButtonAsHighlighted ? fill.brighter(0.18f) : fill);
     g.fillRoundedRectangle(area, kCornerRadius);

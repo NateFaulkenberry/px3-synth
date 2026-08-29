@@ -322,6 +322,11 @@ build/diag/PX3Tests_artefacts/RelWithDebInfo/PX3Tests
   a preset file stores, and the normalised value of each choice option. Preset
   definitions are written against real units and converted, but this is how you
   check what a parameter's range and options actually are.
+- `artifacts` scans DOOM and LUCY for discontinuities across their mode space
+  and prints the worst jump per configuration, measured against the LOCAL slope
+  rather than an absolute threshold - a loud passage legitimately has large
+  deltas and a click in a quiet one does not. Anything above about 8 is worth
+  listening to.
 - `installpresets` runs the real factory-library install and lists what landed
   on disk. It is a developer action rather than a test because it writes into
   the user's application-support directory.

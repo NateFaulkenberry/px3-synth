@@ -264,6 +264,8 @@ void Doom::reset()
     maskEnv = 0.0f;
     maskGate = 0.0f;
     maskRingPhase = 0.0f;
+    maskPitchPhase = 0.0f;
+    maskReversePhase = 0.0f;
     maskResonator = { { 0.0f, 0.0f } };
     maskResonatorPrev = { { 0.0f, 0.0f } };
 
@@ -585,13 +587,18 @@ Doom::Frame Doom::renderBurst()
     const auto sliceStart = sliceOffsets[static_cast<std::size_t>(slice)];
 
     burstGrainPhase += crossReadRate();
-    const auto readOffset = std::fmod(sliceStart + burstGrainPhase, loopLengthSamples);
+    const auto readOffset = sliceStart + burstGrainPhase;
 
     // A short attack/decay on each step, so slice boundaries do not click.
     const auto env = hannAt(juce::jlimit(0.0f, 1.0f, burstStepPhase / stepSamples));
 
-    const auto l = readHistory(0, loopStartAbs + readOffset) * env;
-    const auto r = readHistory(1, loopStartAbs + readOffset) * env;
+    // Spliced, not a bare wrap. A step long enough to run off the end of the
+    // loop used to jump straight back to its start at whatever the envelope
+    // happened to be - a click once per lap, and the loudest artifact in the
+    // whole engine at 27x the local slope.
+    const auto fade = juce::jmin(512.0f, loopLengthSamples * 0.1f);
+    const auto l = readHistorySpliced(0, loopStartAbs, readOffset, loopLengthSamples, fade) * env;
+    const auto r = readHistorySpliced(1, loopStartAbs, readOffset, loopLengthSamples, fade) * env;
 
     // Stereo by step index, so consecutive steps land in different places.
     const auto pan = spread * (static_cast<float>(slice % 3) - 1.0f) * 0.6f;
@@ -935,18 +942,22 @@ Doom::Frame Doom::renderMask()
     }
     else if (character < 0.5f)
     {
-        // Reversal - read the same slice backwards from the current position.
-        const auto reversed = std::fmod(loopLengthSamples - pos + loopLengthSamples, loopLengthSamples);
-        disguised = { readHistorySpliced(0, loopStartAbs, reversed, loopLengthSamples, fade),
-                      readHistorySpliced(1, loopStartAbs, reversed, loopLengthSamples, fade) };
+        // Reversal - the loop read backwards, on its OWN phase. Derived from
+        // the playback position it inherited that position's wrap, which threw
+        // it from one end of the loop to the other in a single sample.
+        maskReversePhase -= crossReadRate();
+        disguised = { readHistorySpliced(0, loopStartAbs, maskReversePhase, loopLengthSamples, fade),
+                      readHistorySpliced(1, loopStartAbs, maskReversePhase, loopLengthSamples, fade) };
     }
     else if (character < 0.75f)
     {
-        // Pitch displacement - a fixed interval, read at a different rate.
+        // Pitch displacement - a fixed interval, read at a different rate and
+        // on its own phase. Scaling the playback position instead made it wrap
+        // wherever that position did rather than at the end of its own lap.
         const auto semis = juce::jmap(character, 0.5f, 0.75f, -12.0f, 12.0f);
-        const auto shifted = std::fmod(pos * semitoneRatio(semis), loopLengthSamples);
-        disguised = { readHistorySpliced(0, loopStartAbs, shifted, loopLengthSamples, fade),
-                      readHistorySpliced(1, loopStartAbs, shifted, loopLengthSamples, fade) };
+        maskPitchPhase += semitoneRatio(semis) * crossReadRate();
+        disguised = { readHistorySpliced(0, loopStartAbs, maskPitchPhase, loopLengthSamples, fade),
+                      readHistorySpliced(1, loopStartAbs, maskPitchPhase, loopLengthSamples, fade) };
     }
     else
     {

@@ -26,6 +26,10 @@ public:
     // default. Set per card from cards.<key>.controls.toggleFontSize.
     void setFontSize(float size);
 
+    // How far the OFF chip is tinted toward the card's accent. 0 leaves the
+    // neutral white every static chip label uses; 1 is fully the card's colour.
+    void setOffTint(float amount);
+
     // Distinct text per state, so the chip says which state it is IN rather
     // than leaving the fill colour to carry that alone.
     void setStateLabels(juce::String onText, juce::String offText);
@@ -39,6 +43,7 @@ private:
 
     juce::Colour accent { juce::Colour::fromRGB(120, 200, 255) };
     float fontSize { 11.5f };
+    float offTint { 0.0f };
     juce::String onLabel;
     juce::String offLabel;
 };

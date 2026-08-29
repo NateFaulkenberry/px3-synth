@@ -257,9 +257,11 @@ void FxCardComponent::setUIConfig(std::shared_ptr<const UIConfig> config)
         }
 
         const auto toggleFont = uiConfig->getFloat("cards." + styleKey + ".controls.toggleFontSize", 11.5f);
+        const auto toggleOffTint = uiConfig->getFloat("cards." + styleKey + ".controls.toggleOffTint", 0.0f);
         for (auto& entry : toggles)
         {
             entry.button->setFontSize(toggleFont);
+            entry.button->setOffTint(toggleOffTint);
         }
     }
 
@@ -299,8 +301,10 @@ void FxCardComponent::layoutToggleRow(int rowIndex, const Row& row)
     if (maxColumns > 0)
     {
         // Each item carries `gap` as a margin on every side, so a line of n
-        // items occupies n * (width + 2 * gap).
-        cellWidth = juce::jmax(16.0f, rowWidth / static_cast<float>(maxColumns) - 2.0f * gap.left);
+        // items occupies n * (width + 2 * gap). The column count sets the room
+        // available; the width property caps what is taken of it.
+        const auto share = juce::jmax(16.0f, rowWidth / static_cast<float>(maxColumns) - 2.0f * gap.left);
+        cellWidth = juce::jmin(share, cellWidth);
     }
 
     const std::vector<float> widths(row.ids.size(), cellWidth);
@@ -350,20 +354,14 @@ void FxCardComponent::layoutChoiceRow(int rowIndex, const Row& row)
 
     if (maxColumns > 0)
     {
-        cellWidth = juce::jmax(16.0f, rowWidth / static_cast<float>(maxColumns) - 2.0f * gap.left);
+        // The column count sets how much room a box MAY have; the width
+        // property caps how much it takes. Without the cap each box stretches
+        // to fill its share, which on a wide card turns three dropdowns into
+        // three banners.
+        const auto share = juce::jmax(16.0f, rowWidth / static_cast<float>(maxColumns) - 2.0f * gap.left);
+        cellWidth = juce::jmin(share, cellWidth);
     }
 
-    // A ceiling on top of that. maxColumns alone stretches each box to fill its
-    // share of the row, which on a wide card makes a three-item dropdown row
-    // look like three banners; this caps them and lets the row's justifyContent
-    // place the slack.
-    const auto maxWidth = uiConfig != nullptr
-                              ? uiConfig->getFloat("cards." + styleKey + ".controls.choiceMaxWidth", 0.0f)
-                              : 0.0f;
-    if (maxWidth > 0.0f)
-    {
-        cellWidth = juce::jmin(cellWidth, maxWidth);
-    }
     const auto labelHeight = uiConfig != nullptr
                                  ? uiConfig->getInt("cards." + styleKey + ".controls.labelHeight", kDefaultLabelHeight)
                                  : kDefaultLabelHeight;

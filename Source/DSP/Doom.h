@@ -156,6 +156,11 @@ private:
     float maskEnv { 0.0f };
     float maskGate { 0.0f };
     float maskRingPhase { 0.0f };
+    // The disguises read the loop at their own rates, so they need their own
+    // phases. Deriving them from the playback position means they inherit ITS
+    // wrap, which lands them somewhere the splice crossfade is not.
+    float maskPitchPhase { 0.0f };
+    float maskReversePhase { 0.0f };
     std::array<float, 2> maskResonator { { 0.0f, 0.0f } };
     std::array<float, 2> maskResonatorPrev { { 0.0f, 0.0f } };
 

@@ -8266,6 +8266,84 @@ void testDoom()
               "");
     }
 
+
+    // ---- artifacts ---------------------------------------------------------
+    {
+        // A discontinuity measured against the LOCAL SLOPE rather than against
+        // an absolute threshold, because a loud passage legitimately has large
+        // sample-to-sample deltas and a click in a quiet one does not.
+        //
+        // This found two real faults: BURST read the loop with a bare wrap
+        // rather than a splice, and MASK's reversal and pitch disguises were
+        // derived from the playback position, so they inherited ITS wrap and
+        // landed where their own crossfade was not. 27x and 21x the local slope
+        // respectively; both are now around 2.
+        auto worstRatio = [](const std::vector<float>& x)
+        {
+            constexpr int kWindow = 96;
+            const auto skip = static_cast<int>(kSampleRate * 2.0);
+            auto worst = 0.0;
+
+            for (int i = skip + kWindow; i + kWindow < static_cast<int>(x.size()); ++i)
+            {
+                const auto jump = std::abs(static_cast<double>(x[static_cast<std::size_t>(i)])
+                                           - x[static_cast<std::size_t>(i - 1)]);
+                double sum = 0.0;
+                int count = 0;
+                for (int k = i - kWindow; k < i + kWindow; ++k)
+                {
+                    if (k == i || k == i - 1)
+                    {
+                        continue;
+                    }
+                    const auto d = static_cast<double>(x[static_cast<std::size_t>(k)])
+                                   - x[static_cast<std::size_t>(k - 1)];
+                    sum += d * d;
+                    ++count;
+                }
+                const auto reference = std::sqrt(sum / juce::jmax(1, count));
+                if (reference > 1.0e-7)
+                {
+                    worst = juce::jmax(worst, jump / reference);
+                }
+            }
+            return worst;
+        };
+
+        auto runLoopMode = [&](int loopMode, float modify)
+        {
+            auto s = audible();
+            s.loopActive = true;
+            s.wetActive = false;
+            s.loopModeIndex = loopMode;
+            s.loopModify = modify;
+            s.loopLength = 0.5f;
+            s.balance = 0.0f;
+            return runDoom(s, Source::sine, 7.0, kSampleRate, 220.0f, 4242u, 4.0);
+        };
+
+        juce::String detail;
+        auto allClean = true;
+
+        static const char* names[] = { "BURST", "RADIO", "MASK" };
+        for (int mode = 0; mode < 3; ++mode)
+        {
+            for (const auto modify : { 0.0f, 0.5f, 1.0f })
+            {
+                const auto ratio = worstRatio(runLoopMode(mode, modify).left);
+                allClean = allClean && ratio < 6.0;
+                if (ratio >= 6.0)
+                {
+                    detail << names[mode] << " " << juce::String(modify, 1) << " = "
+                           << juce::String(ratio, 1) << "  ";
+                }
+            }
+        }
+
+        check("Doom_NoLoopModeClicksAtItsLoopWrap", allClean,
+              detail.isEmpty() ? "every loop mode stays under 6x the local slope" : detail);
+    }
+
     // ---- the wet channel ---------------------------------------------------
     {
         static const char* wetNames[] = { "SOUP", "RELAY", "FLIP" };
@@ -9091,10 +9169,12 @@ void testDoom()
                 const auto maxColumns = config->getInt("cards." + key + ".controls.toggleMaxColumns", 0);
 
                 // The width the card will actually compute for a capped row.
+                const auto configuredToggle = config->getFloat("cards." + key + ".controls.toggleWidth", 68.0f);
                 const auto toggleWidth = maxColumns > 0
-                                             ? juce::jmax(16.0f, rowWidth / static_cast<float>(maxColumns)
-                                                                     - 2.0f * toggleGap)
-                                             : config->getFloat("cards." + key + ".controls.toggleWidth", 68.0f);
+                                             ? juce::jmin(configuredToggle,
+                                                          juce::jmax(16.0f, rowWidth / static_cast<float>(maxColumns)
+                                                                                - 2.0f * toggleGap))
+                                             : configuredToggle;
 
                 const std::vector<float> toggles(6, toggleWidth);
                 if (px3::ui::wrappedLineCount(toggles, toggleGap * 2.0f, rowWidth) != 2)
@@ -9105,18 +9185,12 @@ void testDoom()
                 const auto choiceGap = static_cast<float>(
                     config->getInt("cards." + key + ".cardInner.rows.row2.gap", 3));
                 const auto choiceColumns = config->getInt("cards." + key + ".controls.choiceMaxColumns", 0);
-                auto choiceWidth = choiceColumns > 0
-                                       ? juce::jmax(16.0f, rowWidth / static_cast<float>(choiceColumns)
-                                                               - 2.0f * choiceGap)
-                                       : config->getFloat("cards." + key + ".controls.choiceWidth", 92.0f);
-
-                // The ceiling, if one is set. It only ever narrows the box, so
-                // a capped row still fits wherever the uncapped one did.
-                const auto choiceMaxWidth = config->getFloat("cards." + key + ".controls.choiceMaxWidth", 0.0f);
-                if (choiceMaxWidth > 0.0f)
-                {
-                    choiceWidth = juce::jmin(choiceWidth, choiceMaxWidth);
-                }
+                const auto configuredChoice = config->getFloat("cards." + key + ".controls.choiceWidth", 92.0f);
+                const auto choiceWidth = choiceColumns > 0
+                                             ? juce::jmin(configuredChoice,
+                                                          juce::jmax(16.0f, rowWidth / static_cast<float>(choiceColumns)
+                                                                                - 2.0f * choiceGap))
+                                             : configuredChoice;
                 const std::vector<float> choices(3, choiceWidth);
                 if (px3::ui::wrappedLineCount(choices, choiceGap * 2.0f, rowWidth) > 1)
                 {
@@ -9126,16 +9200,17 @@ void testDoom()
         }
 
         {
-            // The cap has to bite at a wide card, or it is a property that
-            // exists in the config and changes nothing.
+            // The width property has to bite at a wide card, or a dropdown row
+            // stretches into three banners. maxColumns sets the room available;
+            // the width caps what is taken of it.
             const auto wideRow = static_cast<float>((1800 - 14 - 8 * 3) / 4 - 2 * 4 - 8);
-            const auto uncapped = wideRow / 3.0f - 2.0f * 3.0f;
-            const auto cap = config->getFloat("cards.doom.controls.choiceMaxWidth", 0.0f);
+            const auto share = wideRow / 3.0f - 2.0f * 1.0f;
+            const auto width = config->getFloat("cards.doom.controls.choiceWidth", 0.0f);
 
-            check("FxCard_ChoiceMaxWidthActuallyCapsAWideCard",
-                  cap > 0.0f && cap < uncapped,
-                  "at an 1800px editor a dropdown would be "
-                      + juce::String(uncapped, 1) + "px, capped to " + juce::String(cap, 1));
+            check("FxCard_ChoiceWidthCapsAWideCard",
+                  width > 0.0f && width < share,
+                  "at an 1800px editor a dropdown could be " + juce::String(share, 1)
+                      + "px, capped by choiceWidth to " + juce::String(width, 1));
         }
 
         check("FxCard_DoomAndLucyRowsHoldTheirShapeAtAnyWidth", wrapped.isEmpty(),
@@ -13347,6 +13422,308 @@ void testAnalogEngine()
                   + juce::String(analogOnTopOfVibe, 6));
     }
 }
+
+// ============================================================================
+// ARTIFACT SCAN  (measurement mode, not pass/fail)
+// ============================================================================
+
+namespace artifactscan
+{
+// A discontinuity is a sample-to-sample jump the SIGNAL cannot explain, so it
+// has to be measured against the local slope rather than against an absolute
+// threshold. A loud passage legitimately has large deltas; a click is a delta
+// that does not belong to its neighbourhood.
+struct Worst
+{
+    double ratio { 0.0 };   // jump / local RMS slope
+    int index { 0 };
+    double jump { 0.0 };
+};
+
+Worst worstDiscontinuity(const std::vector<float>& x, int skip)
+{
+    Worst worst;
+    if (static_cast<int>(x.size()) < skip + 256)
+    {
+        return worst;
+    }
+
+    // Local slope, measured over a window either side, excluding the sample
+    // under test so a click cannot raise its own reference.
+    constexpr int kWindow = 96;
+
+    for (int i = skip + kWindow; i + kWindow < static_cast<int>(x.size()); ++i)
+    {
+        const auto jump = std::abs(static_cast<double>(x[static_cast<std::size_t>(i)])
+                                   - x[static_cast<std::size_t>(i - 1)]);
+
+        double sum = 0.0;
+        int count = 0;
+        for (int k = i - kWindow; k < i + kWindow; ++k)
+        {
+            if (k == i || k == i - 1)
+            {
+                continue;
+            }
+            const auto d = static_cast<double>(x[static_cast<std::size_t>(k)])
+                           - x[static_cast<std::size_t>(k - 1)];
+            sum += d * d;
+            ++count;
+        }
+
+        const auto reference = std::sqrt(sum / juce::jmax(1, count));
+        if (reference < 1.0e-7)
+        {
+            continue;
+        }
+
+        const auto ratio = jump / reference;
+        if (ratio > worst.ratio)
+        {
+            worst = { ratio, i, jump };
+        }
+    }
+
+    return worst;
+}
+} // namespace artifactscan
+
+void scanDoomLucyArtifacts()
+{
+    using namespace artifactscan;
+
+    std::printf("\nDOOM / LUCY ARTIFACT SCAN\n");
+    std::printf("  Feeds a steady tone and looks for sample-to-sample jumps the signal\n");
+    std::printf("  itself cannot explain. The ratio is the jump against the local slope,\n");
+    std::printf("  so a loud passage does not flag and a click in a quiet one does.\n");
+    std::printf("  Anything above about 8 is worth listening to.\n\n");
+    std::printf("  %-42s %8s %10s %10s\n", "configuration", "ratio", "jump", "at (s)");
+    std::printf("  %-42s %8s %10s %10s\n", "------------------------------------------",
+                "--------", "----------", "----------");
+
+    const auto seconds = 7.0;
+    const auto total = static_cast<int>(kSampleRate * seconds);
+
+    auto tone = [total](double hz)
+    {
+        std::vector<float> x;
+        x.reserve(static_cast<std::size_t>(total));
+        for (int i = 0; i < total; ++i)
+        {
+            x.push_back(0.45f * static_cast<float>(
+                std::sin(juce::MathConstants<double>::twoPi * hz * i / kSampleRate)));
+        }
+        return x;
+    };
+
+    const auto input = tone(220.0);
+
+    auto report = [&](const char* label, const std::vector<float>& out)
+    {
+        // The first two seconds are the engine filling. RELAY's taps run out to
+        // about 0.9s, so the edge between an empty buffer and the signal is
+        // still propagating through them well past half a second - and that edge
+        // is a start-up transient, not something anyone plays through.
+        const auto worst = worstDiscontinuity(out, static_cast<int>(kSampleRate * 2.0));
+        std::printf("  %-42s %8.1f %10.6f %10.3f\n", label, worst.ratio, worst.jump,
+                    worst.index / kSampleRate);
+    };
+
+    // ---- DOOM ---------------------------------------------------------------
+    {
+        static const char* loopNames[] = { "BURST", "RADIO", "MASK" };
+        static const char* wetNames[] = { "SOUP", "RELAY", "FLIP" };
+
+        for (int wet = 0; wet < 3; ++wet)
+        {
+            DoomSettings s;
+            s.enabled = true;
+            s.mix = 1.0f;
+            s.wetModeIndex = wet;
+            s.wetTime = 0.5f;
+            s.wetModify = 0.5f;
+            s.balance = 1.0f;
+
+            px3::Doom doom;
+            doom.prepare(kSampleRate);
+            doom.setSeed(4242u);
+            doom.updateForBlock(s);
+
+            std::vector<float> out;
+            out.reserve(input.size());
+            for (const auto sample : input)
+            {
+                float l = 0.0f;
+                float r = 0.0f;
+                doom.processSampleFrame(sample, sample, l, r);
+                out.push_back(l);
+            }
+            report((juce::String("DOOM wet ") + wetNames[wet]).toRawUTF8(), out);
+        }
+
+        for (int loop = 0; loop < 3; ++loop)
+        {
+            for (const auto modify : { 0.0f, 0.5f, 1.0f })
+            {
+                DoomSettings s;
+                s.enabled = true;
+                s.mix = 1.0f;
+                s.loopActive = true;
+                s.wetActive = false;
+                s.loopModeIndex = loop;
+                s.loopModify = modify;
+                s.loopLength = 0.5f;
+                s.balance = 0.0f;
+
+                px3::Doom doom;
+                doom.prepare(kSampleRate);
+                doom.setSeed(4242u);
+
+                // Listen first, then engage: the looper captures what already
+                // happened, so engaging it at zero captures silence.
+                auto listening = s;
+                listening.loopActive = false;
+                doom.updateForBlock(listening);
+                for (const auto sample : input)
+                {
+                    float l = 0.0f;
+                    float r = 0.0f;
+                    doom.processSampleFrame(sample, sample, l, r);
+                }
+                doom.updateForBlock(s);
+
+                std::vector<float> out;
+                out.reserve(input.size());
+                for (const auto sample : input)
+                {
+                    float l = 0.0f;
+                    float r = 0.0f;
+                    doom.processSampleFrame(sample, sample, l, r);
+                    out.push_back(l);
+                }
+                report((juce::String("DOOM loop ") + loopNames[loop]
+                        + " modify " + juce::String(modify, 1)).toRawUTF8(), out);
+            }
+        }
+
+        for (const auto clock : { 0.0f, 0.3f, 0.6f, 1.0f })
+        {
+            DoomSettings s;
+            s.enabled = true;
+            s.mix = 1.0f;
+            s.clock = clock;
+            s.wetTime = 0.5f;
+            s.balance = 1.0f;
+
+            px3::Doom doom;
+            doom.prepare(kSampleRate);
+            doom.setSeed(4242u);
+            doom.updateForBlock(s);
+
+            std::vector<float> out;
+            out.reserve(input.size());
+            for (const auto sample : input)
+            {
+                float l = 0.0f;
+                float r = 0.0f;
+                doom.processSampleFrame(sample, sample, l, r);
+                out.push_back(l);
+            }
+            report((juce::String("DOOM clock ") + juce::String(clock, 1)).toRawUTF8(), out);
+        }
+    }
+
+    // ---- LUCY ---------------------------------------------------------------
+    {
+        static const char* modeNames[] = { "STANDARD", "INVERSE", "JITTER" };
+        static const char* packetNames[] = { "CLEAN", "LOSS", "REPEAT" };
+
+        for (int mode = 0; mode < 3; ++mode)
+        {
+            for (int packets = 0; packets < 3; ++packets)
+            {
+                LucySettings s;
+                s.enabled = true;
+                s.global = 1.0f;
+                s.modeIndex = mode;
+                s.packetIndex = packets;
+                s.loss = 0.6f;
+                s.speed = 0.5f;
+
+                px3::Lucy lucy;
+                lucy.prepare(kSampleRate);
+                lucy.setSeed(4242u);
+                lucy.updateForBlock(s);
+
+                std::vector<float> out;
+                out.reserve(input.size());
+                for (const auto sample : input)
+                {
+                    float l = 0.0f;
+                    float r = 0.0f;
+                    lucy.processSampleFrame(sample, sample, l, r);
+                    out.push_back(l);
+                }
+                report((juce::String("LUCY ") + modeNames[mode] + " / " + packetNames[packets]).toRawUTF8(),
+                       out);
+            }
+        }
+
+        for (const auto gate : { 0.2f, 0.5f, 0.8f })
+        {
+            LucySettings s;
+            s.enabled = true;
+            s.global = 1.0f;
+            s.loss = 0.4f;
+            s.gate = true;
+            s.gateCutoff = gate;
+
+            px3::Lucy lucy;
+            lucy.prepare(kSampleRate);
+            lucy.setSeed(4242u);
+            lucy.updateForBlock(s);
+
+            std::vector<float> out;
+            out.reserve(input.size());
+            for (const auto sample : input)
+            {
+                float l = 0.0f;
+                float r = 0.0f;
+                lucy.processSampleFrame(sample, sample, l, r);
+                out.push_back(l);
+            }
+            report((juce::String("LUCY gate cutoff ") + juce::String(gate, 1)).toRawUTF8(), out);
+        }
+
+        for (const auto freezeSlushy : { false, true })
+        {
+            LucySettings s;
+            s.enabled = true;
+            s.global = 1.0f;
+            s.loss = 0.5f;
+            s.freeze = true;
+            s.freezeSlushy = freezeSlushy;
+
+            px3::Lucy lucy;
+            lucy.prepare(kSampleRate);
+            lucy.setSeed(4242u);
+            lucy.updateForBlock(s);
+
+            std::vector<float> out;
+            out.reserve(input.size());
+            for (const auto sample : input)
+            {
+                float l = 0.0f;
+                float r = 0.0f;
+                lucy.processSampleFrame(sample, sample, l, r);
+                out.push_back(l);
+            }
+            report((juce::String("LUCY freeze ") + (freezeSlushy ? "slushy" : "solid")).toRawUTF8(), out);
+        }
+    }
+
+    std::printf("\n");
+}
 } // namespace
 
 int main(int argc, char* argv[])
@@ -13395,6 +13772,12 @@ int main(int argc, char* argv[])
                         file.getFileNameWithoutExtension().toRawUTF8());
         }
         std::printf("\n  %d preset files\n\n", files.size());
+        return 0;
+    }
+
+    if (filter == "artifacts")
+    {
+        scanDoomLucyArtifacts();
         return 0;
     }
 

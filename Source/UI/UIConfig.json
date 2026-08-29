@@ -862,9 +862,8 @@
       "controls": {
         "knobSize": 54,
         "featureKnobSize": 77,
-        "choiceWidth": 92,
+        "choiceWidth": 76,
         "choiceMaxColumns": 3,
-        "choiceMaxWidth": 86,
         "toggleWidth": 92,
         "toggleMaxColumns": 3,
         "toggleHeight": 20,
@@ -914,9 +913,9 @@
               "size": "auto"
             }
           },
-          "row1": { "height": 44, "gap": 1 },
-          "row2": { "height": 36, "gap": 0 },
-          "row3": { "height": "26%", "gap": 5, "justifyContent": "space-between" },
+          "row1": { "height": 44, "gap": 0 },
+          "row2": { "height": 20, "gap": 0 },
+          "row3": { "height": 60, "gap": 5, "justifyContent": "space-between" },
           "row4": { "height": "30%", "gap": 5, "justifyContent": "space-between" },
           "row5": { "height": "24%", "gap": 2 }
         }
@@ -933,9 +932,8 @@
       "controls": {
         "knobSize": 54,
         "featureKnobSize": 77,
-        "choiceWidth": 92,
+        "choiceWidth": 72,
         "choiceMaxColumns": 3,
-        "choiceMaxWidth": 86,
         "toggleWidth": 92,
         "toggleMaxColumns": 3,
         "toggleHeight": 20,
@@ -981,9 +979,9 @@
               "size": "auto"
             }
           },
-          "row1": { "height": 44, "gap": 1 },
-          "row2": { "height": 36, "gap": 0 },
-          "row3": { "height": "26%", "gap": 5, "justifyContent": "space-between" },
+          "row1": { "height": 42, "gap": 0 },
+          "row2": { "height": 20, "gap": 0 },
+          "row3": { "height": 60, "gap": 5, "justifyContent": "space-between" },
           "row4": { "height": "30%", "gap": 5, "justifyContent": "space-between" },
           "row5": { "height": "24%", "gap": 2 }
         }
