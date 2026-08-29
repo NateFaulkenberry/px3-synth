@@ -13584,6 +13584,7 @@ void testOscillatorModeRichness()
     }
 }
 
+
 void testAnalogEngine()
 {
     suite("ANALOG ENGINE");
@@ -13689,9 +13690,52 @@ void testAnalogEngine()
             const auto out = runConsole(profiles[p], 1, input);
             const auto thd = thdPercent(out, bin);
 
-            const auto ok = thd < 1.1;
+            juce::ignoreUnused(thd);
+
+            // The claim being tested is about the invertible PAIR: the channel
+            // runs a transfer and the bus runs its exact inverse, so one channel
+            // through the two of them is transparent and every nonlinearity a
+            // listener hears comes from several channels being summed.
+            //
+            // The colour stages are deliberately outside that pair - they are
+            // the desk's tone, and a channel strip is supposed to have one - so
+            // measuring total THD on one channel tests the colour, not the
+            // claim. Once the colour was set deep enough to actually hear, that
+            // measurement stopped meaning anything: TRANSFORMER, the profile
+            // built to change tone rather than density, reads 2.5% on a single
+            // channel entirely from its bandwidth limit and coupling corner.
+            //
+            // So the colour is neutralised and the pair measured on its own.
+            Engine bare;
+            bare.prepare(kSampleRate, 4);
+            bare.setProfile(profiles[p]);
+            bare.setAmount(1.0f);
+            bare.setTuningValue("evenHarmonic", 0.0f);
+            bare.setTuningValue("slewEnhance", 0.0f);
+            bare.setTuningValue("hfLevelDependence", 0.0f);
+            bare.setTuningValue("hfRolloffHz", 20000.0f);
+            bare.setTuningValue("lfCornerHz", 1.0f);
+            bare.setTuningValue("lfLevelTrim", 0.0f);
+            bare.setTuningValue("outputTrim", 1.0f);
+
+            std::vector<float> bareOut;
+            for (int pass = 0; pass < 8; ++pass)
+            {
+                bareOut.clear();
+                for (const auto sample : input)
+                {
+                    auto v = bare.processChannelSample(0, sample);
+                    auto l = v;
+                    auto r = v;
+                    bare.processBusSample(Engine::Context::dryBus, l, r);
+                    bareOut.push_back(l);
+                }
+            }
+
+            const auto pairThd = thdPercent(bareOut, bin);
+            const auto ok = pairThd < 0.35;
             allTransparent = allTransparent && ok;
-            detail << profileNames[p] << " " << juce::String(thd, 3) << "%  ";
+            detail << profileNames[p] << " " << juce::String(pairThd, 3) << "%  ";
         }
 
         check("Analog_OneChannelCarriesNoSummingDistortion", allTransparent,
@@ -13786,7 +13830,11 @@ void testAnalogEngine()
         // while the bus stays put. What matters here is the STEP from one
         // channel to two - that is the summing nonlinearity switching on.
         check("Analog_TheSecondChannelIsWhereTheNonlinearityAppears",
-              thdByCount[1] > thdByCount[0] * 10.0,
+              // Was 10x, from when the colour stages were set below audibility
+              // and a single channel measured near zero. They carry a profile's
+              // character and are now deep enough to hear, so one channel has a
+              // floor of its own; the summing still has to be what dominates.
+              thdByCount[1] > thdByCount[0] * 1.8,
               "1 channel " + juce::String(thdByCount[0], 3) + "%, 2 channels "
                   + juce::String(thdByCount[1], 3) + "%");
     }
@@ -14179,7 +14227,13 @@ void testAnalogEngine()
         juce::String detail;
         auto allMatched = true;
 
-        const auto input = sineAt(440.0, 0.5, static_cast<int>(kSampleRate));
+        // BROADBAND, not a 440 Hz tone. The engine limits bandwidth, and a
+        // single mid tone never meets that limit - so trims matched on a sine
+        // left the engine 1.7 to 4.4 dB down on real material, which is the
+        // case that matters. The two cannot both be matched; music is wideband.
+        std::vector<float> input;
+        juce::Random random(2468);
+        for (int i = 0; i < 32768; ++i) input.push_back(random.nextFloat() - 0.5f);
 
         for (std::size_t p = 0; p < profiles.size(); ++p)
         {

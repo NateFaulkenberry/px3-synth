@@ -90,6 +90,22 @@ float AnalogEngine::inverseTransfer(float x, float blend)
 // profiles
 // ============================================================================
 
+// A second calibration pass, after the engine was measured on BROADBAND
+// material rather than on a single tone. Two things came out of it.
+//
+// The colour stages were set where they were measurable but barely audible -
+// a 21 kHz bandwidth limit is above most people's hearing, and a 6 Hz coupling
+// corner does nothing at all. They are the stages nothing downstream inverts,
+// so they are where a profile's character actually lives, and they are now set
+// where they can be heard: bandwidth into the audible range, real coupling
+// corners, and enough level dependence that a loud passage audibly loses its
+// top the way a driven desk does.
+//
+// The trims are solved against noise, not a 440 Hz sine. Solved on a tone they
+// left the engine 1.7 to 4.4 dB down on wideband material, because a sine at
+// 440 Hz never meets the bandwidth limit that costs the level. A quieter,
+// duller signal reads as less character, not more.
+//
 // Every profile was recalibrated once the FULL path was measured. Two things
 // came out of that:
 //
@@ -119,16 +135,16 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             // does something audible on a busy mix, the character really is
             // coming from accumulation rather than from colour.
             t.pairDrive = 0.85f;
-            t.masterDrive = 0.70f;
-            t.curveBlend = 0.20f;
-            t.evenHarmonic = 0.0f;
-            t.slewEnhance = 0.06f;
-            t.hfRolloffHz = 21000.0f;
-            t.hfLevelDependence = 0.10f;
-            t.lfCornerHz = 6.0f;
-            t.lfLevelTrim = 0.05f;
+            t.masterDrive = 0.92f;
+            t.curveBlend = 0.34f;
+            t.evenHarmonic = 0.010f;
+            t.slewEnhance = 0.14f;
+            t.hfRolloffHz = 18000.0f;
+            t.hfLevelDependence = 0.22f;
+            t.lfCornerHz = 12.0f;
+            t.lfLevelTrim = 0.12f;
             t.headroom = 1.15f;
-            t.outputTrim = 1.1107f;   // 0.54% THD; solved on the full path at 440 Hz
+            t.outputTrim = 1.3708f;   // 2.2% THD; solved against noise on the full path
             break;
 
         case Profile::british:
@@ -136,16 +152,16 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             // a real coupling-capacitor corner, and the top rolled off enough to
             // hear. Slew is moderate - these desks are not fast.
             t.pairDrive = 1.05f;
-            t.masterDrive = 0.88f;
-            t.curveBlend = 0.48f;
-            t.evenHarmonic = 0.022f;
-            t.slewEnhance = 0.18f;
-            t.hfRolloffHz = 16000.0f;
-            t.hfLevelDependence = 0.38f;
-            t.lfCornerHz = 18.0f;
-            t.lfLevelTrim = 0.28f;
+            t.masterDrive = 1.15f;
+            t.curveBlend = 0.58f;
+            t.evenHarmonic = 0.055f;
+            t.slewEnhance = 0.30f;
+            t.hfRolloffHz = 11500.0f;
+            t.hfLevelDependence = 0.60f;
+            t.lfCornerHz = 26.0f;
+            t.lfLevelTrim = 0.42f;
             t.headroom = 0.95f;
-            t.outputTrim = 1.3111f;   // 6.6% THD; solved on the full path at 440 Hz
+            t.outputTrim = 1.8522f;   // 10.6% THD; solved against noise on the full path
             break;
 
         case Profile::american:
@@ -154,16 +170,16 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             // heaviest pre-warp of any profile, which is where the harder onset
             // and the extra 5th-harmonic content come from.
             t.pairDrive = 1.15f;
-            t.masterDrive = 0.92f;
-            t.curveBlend = 0.66f;
-            t.evenHarmonic = 0.004f;
-            t.slewEnhance = 0.28f;
-            t.hfRolloffHz = 18500.0f;
-            t.hfLevelDependence = 0.22f;
-            t.lfCornerHz = 14.0f;
-            t.lfLevelTrim = 0.12f;
+            t.masterDrive = 1.20f;
+            t.curveBlend = 0.70f;
+            t.evenHarmonic = 0.012f;
+            t.slewEnhance = 0.46f;
+            t.hfRolloffHz = 14000.0f;
+            t.hfLevelDependence = 0.36f;
+            t.lfCornerHz = 20.0f;
+            t.lfLevelTrim = 0.20f;
             t.headroom = 0.90f;
-            t.outputTrim = 1.4791f;   // ~9% THD; 0.744 folded at the clamp, 0.66 still rises
+            t.outputTrim = 1.8222f;   // 11.3% THD; solved against noise on the full path
             break;
 
         case Profile::transformer:
@@ -171,16 +187,16 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             // level-dependent low end, and the most restricted bandwidth. This
             // is the profile that changes tone rather than just density.
             t.pairDrive = 1.10f;
-            t.masterDrive = 0.95f;
-            t.curveBlend = 0.32f;
-            t.evenHarmonic = 0.030f;
-            t.slewEnhance = 0.14f;
-            t.hfRolloffHz = 13500.0f;
-            t.hfLevelDependence = 0.52f;
-            t.lfCornerHz = 26.0f;
-            t.lfLevelTrim = 0.45f;
+            t.masterDrive = 1.24f;
+            t.curveBlend = 0.46f;
+            t.evenHarmonic = 0.075f;
+            t.slewEnhance = 0.24f;
+            t.hfRolloffHz = 9000.0f;
+            t.hfLevelDependence = 0.78f;
+            t.lfCornerHz = 38.0f;
+            t.lfLevelTrim = 0.68f;
             t.headroom = 0.88f;
-            t.outputTrim = 1.1903f;   // 4.7% THD; solved on the full path at 440 Hz
+            t.outputTrim = 1.8788f;   // 8.2% THD; solved against noise on the full path
             break;
 
         case Profile::modern:
@@ -188,16 +204,16 @@ AnalogEngine::Tuning AnalogEngine::defaultTuningFor(Profile profile)
             // recovery, the least colour - but a distinctly harder edge than
             // CLEAN when it finally does reach the knee.
             t.pairDrive = 0.90f;
-            t.masterDrive = 0.75f;
-            t.curveBlend = 0.585f;
-            t.evenHarmonic = 0.008f;
-            t.slewEnhance = 0.10f;
-            t.hfRolloffHz = 20000.0f;
-            t.hfLevelDependence = 0.14f;
-            t.lfCornerHz = 8.0f;
-            t.lfLevelTrim = 0.08f;
+            t.masterDrive = 0.98f;
+            t.curveBlend = 0.66f;
+            t.evenHarmonic = 0.020f;
+            t.slewEnhance = 0.20f;
+            t.hfRolloffHz = 16500.0f;
+            t.hfLevelDependence = 0.26f;
+            t.lfCornerHz = 14.0f;
+            t.lfLevelTrim = 0.16f;
             t.headroom = 1.25f;
-            t.outputTrim = 1.4415f;   // 3.9% THD; solved on the full path at 440 Hz
+            t.outputTrim = 1.7487f;   // 7.4% THD; solved against noise on the full path
             break;
     }
 
@@ -216,6 +232,10 @@ float AnalogEngine::sanitize(float v)
     }
     return juce::jlimit(-8.0f, 8.0f, v);
 }
+
+// A leak of a few hertz: high enough that nothing can accumulate over seconds,
+// low enough that the audio band passes through the reconstruction unchanged.
+constexpr float kSlewLeak = 0.9994f;
 
 float AnalogEngine::onePoleCoeff(float hz, float rate)
 {
@@ -411,13 +431,21 @@ float AnalogEngine::processStage(StageState& state,
                                     : std::sin(difference);
         const auto blended = difference + (shaped - difference) * tuning.slewEnhance;
 
-        // The slew stage integrates, so it can walk off into DC. The servo pulls
-        // it back the way a real amplifier's does - slowly, and proportionally
-        // to how far out it has drifted.
-        state.servo += (blended - difference) * 1.0e-4f;
-        state.servo *= 0.99995f;
-
-        x = state.lastShaped + blended - state.servo;
+        // Reconstructed with a LEAKY integrator, not a plain one plus a servo
+        // correction. Differencing and re-integrating is an identity only if
+        // nothing is done in between; the whole point of this stage is that
+        // something is, so the sum drifts. On a periodic signal the drift
+        // cancels each cycle, which is why every test built on sines passed -
+        // but the integral of a noise-like signal is a random walk, with
+        // unbounded variance, and the servo's 0.4 second leak could not contain
+        // it. It reached the +/-4 rail, the transfer's clamp then flattened the
+        // signal to a constant, and the DC blocker removed the constant: BRITISH
+        // and AMERICAN faded to complete silence after about six seconds of
+        // dense material.
+        //
+        // The leak makes the reconstruction a one-pole high-pass at a few hertz
+        // instead - identical in the audio band, and unable to accumulate.
+        x = state.lastShaped * kSlewLeak + blended;
         state.lastShaped = juce::jlimit(-4.0f, 4.0f, x);
     }
 
