@@ -50,7 +50,7 @@
       "padding": 0,
       "rows": {
         "row1": { "height": "45%", "paddingTop": 20, "fontSize": 14 },
-        "row2": { "height": "42%", "padding": 5, "fontSize": 10 }
+        "row2": { "height": "42%", "padding": 5, "fontSize": 10.5 }
       },
       "divider": { "width": 1, "inset": 6, "alpha": 0.5 },
       "showLabels": true,
