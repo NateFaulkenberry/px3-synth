@@ -30,6 +30,7 @@
 #include "../UI/PianoKeyboard.h"
 #include "../UI/TopMenuBar.h"
 #include "../UI/FilterComponent.h"
+#include <chrono>
 #include <set>
 
 #include "../DSP/FilterResponse.h"
@@ -5735,6 +5736,118 @@ void testDelay()
         // total - i.e. essentially all of it.
         check("Delay_TapeTailIsNotJustTheHeadBumpResonance", share < -1.5,
               "60-140 Hz share of the tape tail at full amount: " + fmt(share, 1) + " dB of the total");
+    }
+
+    {
+        // TAPE and MODULATED read the delay line by SLIDING the read pointer
+        // rather than crossfading between two taps - that slide is what gives
+        // them their pitch glide. The read position is writePos - samples, so
+        // its velocity is 1 - d(samples)/dn: change the length by more than one
+        // sample per sample and the read pointer stops moving forward, overtakes
+        // the write head, and reads samples that have not been written yet.
+        //
+        // The free time range is 0.015 to 2 seconds, about 86,000 samples, and
+        // the control smoothing has an 8 ms time constant - so an end-to-end
+        // change asked the pointer to move roughly 224 samples per sample.
+        // Snapping the time end to end produced 4 clicks on TAPE and 3 on
+        // MODULATED, the worst 35.7 times the local slope. The five algorithms
+        // that crossfade were unaffected.
+        //
+        // Measured at 44.1 kHz with 512-sample blocks. It did NOT show at
+        // 128-sample blocks, which is why several earlier passes over this same
+        // delay found nothing - the artifact needs a big enough block that the
+        // whole slew lands inside one of them.
+        static const char* names[] = { "Granular", "Tape", "AnalogBBD", "PingPong",
+                                       "Stereo", "Modulated", "Diffusion" };
+        juce::StringArray clicking;
+        juce::String detail;
+
+        for (int algo = 0; algo < 7; ++algo)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "osc1Mode", 11);
+            setParam(processor, "ampSustain", 0.35f);
+            setParam(processor, "ampRelease", 0.70f);
+            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+                setParam(processor, juce::String("mix.") + id + ".fxSend", 1.0f);
+            setParam(processor, "fxSendGain", 1.0f);
+            setParam(processor, "fxReturnGain", 1.0f);
+            setParam(processor, "delayEnabled", 1.0f);
+            setChoice(processor, "delayAlgorithm", algo);
+            setParam(processor, "delayAmount", 1.0f);
+            setParam(processor, "delayFeedback", 0.45f);
+            setParam(processor, "delayTime", 0.9f);
+
+            constexpr double rate = 44100.0;
+            constexpr int block = 512;
+            processor.setPlayConfigDetails(0, 2, rate, block);
+            processor.prepareToPlay(rate, block);
+            juce::AudioBuffer<float> buffer(2, block);
+            std::vector<float> left, right;
+
+            for (int b = 0; b < 700; ++b)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                if (b % 60 == 4) midi.addEvent(juce::MidiMessage::noteOn(1, 72, 0.9f), 0);
+                if (b == 200) setParam(processor, "delayTime", 0.05f);
+                if (b == 380) setParam(processor, "delayTime", 0.95f);
+                if (b == 560) setParam(processor, "delayTime", 0.10f);
+                processor.processBlock(buffer, midi);
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                {
+                    // BOTH channels: TAPE modulates the right differently, so a
+                    // fault on the right alone would be invisible.
+                    left.push_back(buffer.getSample(0, i));
+                    right.push_back(buffer.getSample(1, i));
+                }
+            }
+
+            double energy = 0.0;
+            for (const auto v : left) energy += static_cast<double>(v) * v;
+            const auto rms = std::sqrt(energy / std::max<std::size_t>(1, left.size()));
+
+            constexpr int window = 64;
+            auto worst = 0.0;
+            auto clicks = 0;
+            for (int pass = 0; pass < 2; ++pass)
+            {
+                const auto& chan = pass == 0 ? left : right;
+                for (int i = window; i + window < static_cast<int>(chan.size()); ++i)
+                {
+                    const auto jump = std::abs(static_cast<double>(chan[(std::size_t) i])
+                                               - chan[(std::size_t)(i - 1)]);
+                    // A click is large in absolute terms as well as against the
+                    // local slope; a decaying tail has a vanishing slope and
+                    // makes anything look enormous.
+                    if (jump < rms * 0.4) continue;
+
+                    double sum = 0.0;
+                    int count = 0;
+                    for (int k = i - window; k < i + window; ++k)
+                    {
+                        if (k == i || k == i - 1) continue;
+                        const auto d = static_cast<double>(chan[(std::size_t) k]) - chan[(std::size_t)(k - 1)];
+                        sum += d * d;
+                        ++count;
+                    }
+                    const auto reference = std::sqrt(sum / juce::jmax(1, count));
+                    if (reference < 1.0e-6) continue;
+
+                    const auto ratio = jump / reference;
+                    if (ratio > 6.0) ++clicks;
+                    worst = juce::jmax(worst, ratio);
+                }
+            }
+
+            detail << names[algo] << " " << fmt(worst, 1) << "x  ";
+            if (clicks > 0) clicking.add(juce::String(names[algo]) + " (" + juce::String(clicks) + ")");
+        }
+
+        check("Delay_SnappingTheTimeDoesNotClick", clicking.isEmpty(),
+              clicking.isEmpty() ? "worst jump against the local slope: " + detail
+                                 : "clicking: " + clicking.joinIntoString(", "));
     }
 
     // Nothing may keep ringing after the input stops. This is the fault the
@@ -13967,6 +14080,8 @@ double filterGainDbAt(int mode, float cutoff, float q, double hz)
 
 
 
+
+// ---- TEMPORARY: REAL PRESET CLICK HUNT --------------------------------------
 void testFilters()
 {
     suite("FILTERS");

@@ -79,6 +79,7 @@ private:
     static float softSaturate(float x);
 
     float readDelaySample(int channel, float readPos) const;
+    float slewReadLength(int channel, float target);
     float readCrossfadedTap(int channel, CrossfadeTap& tap, float targetSamples);
     float processSvfLowpass(Svf& state, float x, float cutoffHz, float q) const;
     float processSvfBandpass(Svf& state, float x, float cutoffHz, float q) const;
@@ -174,6 +175,18 @@ private:
     float delayTimeControlSmoothed { 0.5f };
     float delayFeedbackControlSmoothed { 0.35f };
     float delayControlSmoothingCoeff { 0.0f };
+    // The delay length TAPE and MODULATED actually read from, slew-limited so
+    // the read pointer can never overtake the write pointer. Those two slide
+    // the pointer instead of crossfading taps, which is what gives them their
+    // pitch glide - and what makes an abrupt time change able to outrun the
+    // write head and read samples that have not been written yet.
+    float slidingDelaySamples { 0.0f };
+    bool slidingDelayPrimed { false };
+    // The final per-channel read length, after modulation. Limiting the base
+    // alone is not enough: MODULATED adds its depth on top, so the length the
+    // pointer actually uses can still jump.
+    std::array<float, 2> slidingReadSamples { { 0.0f, 0.0f } };
+    bool slidingReadPrimed { false };
     int crossfadeLengthSamples { 512 };
     int lastDelayAlgorithmIndex { -1 };
     int lastGranularModeIndex { -1 };
