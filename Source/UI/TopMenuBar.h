@@ -59,6 +59,26 @@ public:
     // use, which is not what it is: it is showing you what is loaded.
     void setAlwaysActiveText(bool shouldBeActive);
 
+    // How the tab's text is laid out inside its face, read from UIConfig. A
+    // zero means "derive it from the tab's height", which is what every tab did
+    // before any of this was configurable - so a tab given no content style is
+    // laid out exactly as it was.
+    struct ContentStyle
+    {
+        float paddingTop { 0.0f };
+        float paddingBottom { 0.0f };
+        float paddingLeft { 6.0f };
+        float paddingRight { 6.0f };
+        // 0 = derived from the band the text sits in.
+        float nameFontSize { 0.0f };
+        float detailFontSize { 0.0f };
+        // 0 = the second line takes 58% of what is left under the name.
+        float detailRowHeight { 0.0f };
+        float dividerAlpha { 1.0f };
+    };
+
+    void setContentStyle(const ContentStyle& styleIn);
+
 private:
     void paintButton(juce::Graphics& g,
                      bool shouldDrawButtonAsHighlighted,
@@ -71,6 +91,7 @@ private:
     juce::String subtitleLeft;
     juce::String subtitleRight;
     bool alwaysActiveText { false };
+    ContentStyle content;
 };
 
 class TopMenuBar final : public juce::Component

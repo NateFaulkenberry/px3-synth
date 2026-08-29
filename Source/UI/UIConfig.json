@@ -46,6 +46,16 @@
       "alignContent": "center",
       "gap": 0
     },
+    "presetTab": {
+      "paddingTop": 0,
+      "paddingBottom": 0,
+      "paddingLeft": 6,
+      "paddingRight": 6,
+      "nameFontSize": 0,
+      "detailFontSize": 0,
+      "detailRowHeight": 0,
+      "dividerAlpha": 1.0
+    },
     "tabStyle": {
       "face": "$bgTopStrip",
       "faceActive": "#161618",

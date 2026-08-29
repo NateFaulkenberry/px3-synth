@@ -12982,6 +12982,107 @@ void testEditorLifecycle()
         check("TopMenu_PresetTabShowsCategoryAndAuthor", ok,
               menu == nullptr ? "no top menu bar found" : detail);
     }
+
+    {
+        // Every property in topMenu.presetTab has to do something. The tab's
+        // text layout used to be entirely literals, so there was no way to push
+        // the name and details down off the top edge or to resize them.
+        //
+        // Measured off the rendered face: where the ink is, and how much of it.
+        auto inkRows = [](const TopMenuTabButton::ContentStyle& style)
+        {
+            TopMenuTabButton button { "" };
+            button.setShowLed(false);
+            button.setContentStyle(style);
+            button.setButtonText("PRESET NAME");
+            button.setSubtitles("BASS", "P(X3)");
+            button.setBounds(0, 0, 468, 32);
+            button.setVisible(true);
+
+            const auto img = button.createComponentSnapshot(button.getLocalBounds());
+            const auto reference = img.getPixelAt(2, 2);
+
+            struct R { int firstRow; int lastRow; int ink; double centreX; };
+            R r { -1, -1, 0, 0.0 };
+            double weighted = 0.0;
+            for (int y = 0; y < img.getHeight(); ++y)
+            {
+                for (int x = 2; x < img.getWidth() - 2; ++x)
+                {
+                    if (std::abs(img.getPixelAt(x, y).getBrightness() - reference.getBrightness()) > 0.25f)
+                    {
+                        if (r.firstRow < 0) r.firstRow = y;
+                        r.lastRow = y;
+                        ++r.ink;
+                        weighted += x;
+                    }
+                }
+            }
+            // Where the ink sits, not just how much: padding moves the text
+            // rather than adding or removing any of it.
+            r.centreX = r.ink > 0 ? weighted / r.ink : 0.0;
+            return r;
+        };
+
+        const TopMenuTabButton::ContentStyle base;
+        const auto plain = inkRows(base);
+
+        juce::StringArray inert;
+        juce::String detail;
+
+        {
+            auto style = base;
+            style.paddingTop = 10.0f;
+            const auto moved = inkRows(style);
+            detail << "paddingTop: first ink row " << plain.firstRow << " -> " << moved.firstRow << "  ";
+            if (moved.firstRow <= plain.firstRow) inert.add("paddingTop");
+        }
+        {
+            auto style = base;
+            style.paddingBottom = 10.0f;
+            const auto moved = inkRows(style);
+            detail << "paddingBottom: last ink row " << plain.lastRow << " -> " << moved.lastRow << "  ";
+            if (moved.lastRow >= plain.lastRow) inert.add("paddingBottom");
+        }
+        {
+            auto style = base;
+            style.nameFontSize = 6.0f;
+            if (inkRows(style).ink >= plain.ink) inert.add("nameFontSize");
+        }
+        {
+            auto style = base;
+            style.detailFontSize = 6.0f;
+            if (inkRows(style).ink >= plain.ink) inert.add("detailFontSize");
+        }
+        {
+            auto style = base;
+            style.detailRowHeight = 22.0f;
+            if (inkRows(style).ink == plain.ink) inert.add("detailRowHeight");
+        }
+        {
+            auto style = base;
+            style.paddingLeft = 120.0f;
+            const auto shifted = inkRows(style);
+            detail << "paddingLeft: ink centre " << fmt(plain.centreX, 0) << " -> "
+                   << fmt(shifted.centreX, 0) << "  ";
+            if (shifted.centreX <= plain.centreX + 4.0) inert.add("paddingLeft");
+        }
+        {
+            auto style = base;
+            style.paddingRight = 120.0f;
+            const auto shifted = inkRows(style);
+            if (shifted.centreX >= plain.centreX - 4.0) inert.add("paddingRight");
+        }
+        {
+            auto style = base;
+            style.dividerAlpha = 0.0f;
+            if (inkRows(style).ink >= plain.ink) inert.add("dividerAlpha");
+        }
+
+        check("TopMenu_EveryPresetTabPropertyChangesTheLayout", inert.isEmpty(),
+              inert.isEmpty() ? detail + "(all 8 properties measurably change the face)"
+                              : "inert: " + inert.joinIntoString(", "));
+    }
 }
 
 // ============================================================================
@@ -13257,6 +13358,7 @@ double filterGainDbAt(int mode, float cutoff, float q, double hz)
     }
     return juce::Decibels::gainToDecibels(std::sqrt(sumOut / juce::jmax(1.0e-12, sumIn)), -120.0);
 }
+
 
 
 void testFilters()

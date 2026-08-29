@@ -58,6 +58,12 @@ void TopMenuTabButton::setAlwaysActiveText(bool shouldBeActive)
     repaint();
 }
 
+void TopMenuTabButton::setContentStyle(const ContentStyle& styleIn)
+{
+    content = styleIn;
+    repaint();
+}
+
 void TopMenuTabButton::paintButton(juce::Graphics& g,
                                    bool shouldDrawButtonAsHighlighted,
                                    bool shouldDrawButtonAsDown)
@@ -125,6 +131,16 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
     // band beneath one.
     auto legendArea = showLed ? area.withTop(led.getBottom() + 2.0f) : area;
 
+    // Padding inside the face. This is what moves the name and the details down
+    // off the top edge; there was no way to do it before, because every offset
+    // here was a literal.
+    legendArea = legendArea.withTrimmedTop(juce::jmax(0.0f, content.paddingTop))
+                           .withTrimmedBottom(juce::jmax(0.0f, content.paddingBottom));
+    if (legendArea.getHeight() < 4.0f)
+    {
+        legendArea = legendArea.withHeight(4.0f);
+    }
+
     // A subtitle takes the bottom of the face, and the legend centres in what
     // is left - so a tab without one is laid out exactly as it was.
     const auto hasSubtitle = subtitleLeft.isNotEmpty() || subtitleRight.isNotEmpty();
@@ -143,13 +159,18 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
         // The name takes a band at the top and the subtitles take EVERYTHING
         // below it, down to the bottom edge, rather than a fixed strip with
         // slack under it.
-        const auto nameBand = legendArea.removeFromTop(
-            juce::jmin(legendArea.getHeight() * 0.58f, 19.0f));
-        subtitleArea = legendArea;
-        legendArea = nameBand;
+        const auto detailHeight = content.detailRowHeight > 0.0f
+                                      ? juce::jmin(content.detailRowHeight, legendArea.getHeight() * 0.8f)
+                                      : legendArea.getHeight() - juce::jmin(legendArea.getHeight() * 0.58f, 19.0f);
+        subtitleArea = legendArea.removeFromBottom(juce::jmax(4.0f, detailHeight));
+        const auto nameBand = legendArea;
 
-        legendFontSize = juce::jmin(13.0f, nameBand.getHeight() * 0.68f);
-        subtitleFontSize = juce::jmin(10.0f, subtitleArea.getHeight() * 0.66f);
+        legendFontSize = content.nameFontSize > 0.0f
+                             ? content.nameFontSize
+                             : juce::jmin(13.0f, nameBand.getHeight() * 0.68f);
+        subtitleFontSize = content.detailFontSize > 0.0f
+                               ? content.detailFontSize
+                               : juce::jmin(10.0f, subtitleArea.getHeight() * 0.66f);
     }
 
     g.setColour(legend);
@@ -173,14 +194,27 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
         columns.flexDirection = juce::FlexBox::Direction::row;
         columns.items.add(juce::FlexItem().withFlex(1.0f));
         columns.items.add(juce::FlexItem().withFlex(1.0f));
-        columns.performLayout(subtitleArea.reduced(6.0f, 0.0f));
+        columns.performLayout(subtitleArea.withTrimmedLeft(juce::jmax(0.0f, content.paddingLeft))
+                                          .withTrimmedRight(juce::jmax(0.0f, content.paddingRight)));
 
-        g.drawFittedText(subtitleLeft.toUpperCase(),
-                         columns.items.getReference(0).currentBounds.toNearestInt(),
-                         juce::Justification::centred, 1, 0.9f);
-        g.drawFittedText(subtitleRight.toUpperCase(),
-                         columns.items.getReference(1).currentBounds.toNearestInt(),
-                         juce::Justification::centred, 1, 0.9f);
+        const auto leftCell = columns.items.getReference(0).currentBounds;
+        const auto rightCell = columns.items.getReference(1).currentBounds;
+
+        // Named, so the second line says what it is showing rather than
+        // leaving two bare words to be worked out.
+        g.drawFittedText("CATEGORY: " + subtitleLeft.toUpperCase(),
+                         leftCell.toNearestInt(), juce::Justification::centred, 1, 0.75f);
+        g.drawFittedText("AUTHOR: " + subtitleRight.toUpperCase(),
+                         rightCell.toNearestInt(), juce::Justification::centred, 1, 0.75f);
+
+        // A hairline on the boundary between the two columns, in the text's own
+        // colour, so the pair reads as two fields rather than one run-on line.
+        // Inset vertically so it sits with the text rather than butting into
+        // the name above and the chip's edge below.
+        const auto divider = leftCell.getRight();
+        g.setColour(legend.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, content.dividerAlpha)));
+        g.fillRect(juce::Rectangle<float>(divider, subtitleArea.getY() + 1.0f,
+                                          1.0f, juce::jmax(1.0f, subtitleArea.getHeight() - 2.0f)));
     }
 
     // The seam between neighbours. One line on the right only, so butted tabs
@@ -474,6 +508,25 @@ void TopMenuBar::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     {
         button->applyStyle(tabStyle);
     }
+
+    // The preset tab carries three strings in a fixed 32px face, so where they
+    // sit and how big they are is worth being able to adjust without a rebuild.
+    // Only this tab reads it - the section tabs have one word each and keep the
+    // derived layout.
+    TopMenuTabButton::ContentStyle contentStyle;
+    if (uiConfig != nullptr)
+    {
+        const juce::String path { "topMenu.presetTab." };
+        contentStyle.paddingTop = uiConfig->getFloat(path + "paddingTop", contentStyle.paddingTop);
+        contentStyle.paddingBottom = uiConfig->getFloat(path + "paddingBottom", contentStyle.paddingBottom);
+        contentStyle.paddingLeft = uiConfig->getFloat(path + "paddingLeft", contentStyle.paddingLeft);
+        contentStyle.paddingRight = uiConfig->getFloat(path + "paddingRight", contentStyle.paddingRight);
+        contentStyle.nameFontSize = uiConfig->getFloat(path + "nameFontSize", contentStyle.nameFontSize);
+        contentStyle.detailFontSize = uiConfig->getFloat(path + "detailFontSize", contentStyle.detailFontSize);
+        contentStyle.detailRowHeight = uiConfig->getFloat(path + "detailRowHeight", contentStyle.detailRowHeight);
+        contentStyle.dividerAlpha = uiConfig->getFloat(path + "dividerAlpha", contentStyle.dividerAlpha);
+    }
+    presetNameButton.setContentStyle(contentStyle);
 
     resized();
     repaint();
