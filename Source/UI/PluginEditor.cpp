@@ -2928,9 +2928,24 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
         return;
     }
 
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&topMenuBar->getPresetMenuButton()),
+    // The button wears its active face for as long as the menu is up. Without
+    // it the strip gives no sign of where the open menu came from - it is the
+    // one control here that opens something and then looks untouched.
+    auto& menuButton = topMenuBar->getPresetMenuButton();
+    menuButton.setToggleState(true, juce::dontSendNotification);
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&menuButton),
                        [this](int result)
                        {
+                           // Runs for every dismissal, including clicking away,
+                           // where result is 0 - so the button always comes
+                           // back rather than sticking on.
+                           if (topMenuBar != nullptr)
+                           {
+                               topMenuBar->getPresetMenuButton()
+                                   .setToggleState(false, juce::dontSendNotification);
+                           }
+
                            switch (result)
                            {
                                case MenuItemId::save:

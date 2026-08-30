@@ -14006,14 +14006,53 @@ void testEditorLifecycle()
             if (inkRows(style).ink == plain.ink) inert.add("nameBold");
         }
         {
+            // Alignment is per cell now, so both are checked - a shared setting
+            // could not put the category left while the author stayed centred.
             auto style = base;
-            style.detailAlign = TopMenuTabButton::ContentStyle::DetailAlign::edges;
-            if (inkRows(style).centreX == plain.centreX) inert.add("detailAlign");
+            style.categoryAlign = juce::Justification::centredLeft;
+            if (inkRows(style).centreX == plain.centreX) inert.add("category.align");
+        }
+        {
+            auto style = base;
+            style.authorAlign = juce::Justification::centredRight;
+            if (inkRows(style).centreX == plain.centreX) inert.add("author.align");
+        }
+        {
+            auto style = base;
+            style.categoryPadding = { 0.0f, 0.0f, 0.0f, 26.0f };
+            if (inkRows(style).centreX == plain.centreX) inert.add("category.padding");
+        }
+        {
+            auto style = base;
+            style.authorPadding = { 0.0f, 26.0f, 0.0f, 0.0f };
+            if (inkRows(style).centreX == plain.centreX) inert.add("author.padding");
         }
         {
             auto style = base;
             style.detailColour = juce::Colour::fromRGB(255, 0, 0);
             if (inkRows(style).ink == plain.ink) inert.add("rows.row2.colour");
+        }
+
+        {
+            // The two subtitle cells align and pad independently. Checked as a
+            // pair, because the point of splitting them is that one can differ
+            // from the other - a shared setting would move both together and
+            // still pass a test that only looked at one.
+            auto leftOnly = base;
+            leftOnly.categoryAlign = juce::Justification::centredLeft;
+            auto rightOnly = base;
+            rightOnly.authorAlign = juce::Justification::centredRight;
+
+            const auto movedLeft = inkRows(leftOnly).centreX;
+            const auto movedRight = inkRows(rightOnly).centreX;
+
+            check("TopMenu_SubtitleCellsAlignIndependently",
+                  std::abs(movedLeft - plain.centreX) > 0.5
+                      && std::abs(movedRight - plain.centreX) > 0.5
+                      && std::abs(movedLeft - movedRight) > 0.5,
+                  "ink centre " + fmt(plain.centreX, 1) + " centred; "
+                      + fmt(movedLeft, 1) + " with the category left; "
+                      + fmt(movedRight, 1) + " with the author right");
         }
 
         check("TopMenu_EveryPresetTabPropertyChangesTheLayout", inert.isEmpty(),

@@ -110,7 +110,9 @@
       "showLabels": true,
       "detailUppercase": true,
       "nameBold": true,
-      "detailAlign": "centred"
+      "detailAlign": "centred",
+      "category": { "align": "centred", "padding": 0 },
+      "author": { "align": "centred", "padding": 0 }
     },
     "tabStyle": {
       "hoverGlow": { "color": "#FFFFFF", "opacity": 0.22, "size": 10, "pressedOpacity": 0.34 },
@@ -527,7 +529,7 @@
       "hoverColor": "#B9BFC8"
     },
     "eq": {
-      "enableButton": { "size": { "height": 40 }, "offsetX": -10, "offsetY": -24, "legendPlacement": "right", "anchor": "innerTopLeft" },
+      "enableButton": { "size": { "height": 40 }, "offsetX": 0, "offsetY": -36, "legendPlacement": "right", "anchor": "innerTopLeft" },
       "closeButton": { "offsetX": -3, "offsetY": -16 },
       "widthFraction": 0.7,
       "heightFraction": 0.62,

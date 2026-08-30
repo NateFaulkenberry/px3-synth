@@ -231,15 +231,16 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
         {
             return content.detailUppercase ? text.toUpperCase() : text;
         };
-        const auto edges = content.detailAlign == ContentStyle::DetailAlign::edges;
-
+        // Each cell keeps its own padding clear, then aligns its text inside
+        // what is left. The divider still sits on the cell boundary, so
+        // padding pulls the text away from the line rather than moving it.
         g.drawFittedText((content.showLabels ? "CATEGORY: " : "") + cased(subtitleLeft),
-                         leftCell.toNearestInt(),
-                         edges ? juce::Justification::centredLeft : juce::Justification::centred,
+                         content.categoryPadding.shrink(leftCell).toNearestInt(),
+                         content.categoryAlign,
                          1, 0.75f);
         g.drawFittedText((content.showLabels ? "AUTHOR: " : "") + cased(subtitleRight),
-                         rightCell.toNearestInt(),
-                         edges ? juce::Justification::centredRight : juce::Justification::centred,
+                         content.authorPadding.shrink(rightCell).toNearestInt(),
+                         content.authorAlign,
                          1, 0.75f);
 
         // A hairline on the boundary between the two columns, in the text's own
@@ -603,11 +604,52 @@ void TopMenuBar::setUIConfig(std::shared_ptr<const UIConfig> configIn)
         contentStyle.showLabels = uiConfig->getBool(path + ".showLabels", contentStyle.showLabels);
         contentStyle.detailUppercase = uiConfig->getBool(path + ".detailUppercase", contentStyle.detailUppercase);
         contentStyle.nameBold = uiConfig->getBool(path + ".nameBold", contentStyle.nameBold);
-        contentStyle.detailAlign =
-            uiConfig->getString(path + ".detailAlign", "centred").equalsIgnoreCase("edges")
-                ? TopMenuTabButton::ContentStyle::DetailAlign::edges
-                : TopMenuTabButton::ContentStyle::DetailAlign::centred;
-        contentStyle.nameColour = uiConfig->getColour(path + ".rows.row1.colour", contentStyle.nameColour);
+        // Per-cell alignment and padding for the second row's two fields.
+        //
+        // Padding is read with the same shorthand-then-per-side convention the
+        // cards use - `padding` for all four, `paddingLeft` and siblings to
+        // override one - so it means here what it means everywhere else.
+        const auto readAlign = [this](const juce::String& key, juce::Justification fallback)
+        {
+            const auto text = uiConfig->getString(key, {}).trim().toLowerCase();
+            if (text == "left")   return juce::Justification(juce::Justification::centredLeft);
+            if (text == "right")  return juce::Justification(juce::Justification::centredRight);
+            if (text == "centre" || text == "center" || text == "centred")
+            {
+                return juce::Justification(juce::Justification::centred);
+            }
+            return fallback;
+        };
+
+        const auto readCellPadding = [this](const juce::String& base, px3::ui::Insets fallback)
+        {
+            auto result = px3::ui::Insets::parse(uiConfig->getValue(base + ".padding"), fallback);
+            const auto side = [&](const char* suffix, float& target)
+            {
+                if (const auto v = uiConfig->getValue(base + suffix); ! v.isVoid())
+                {
+                    target = static_cast<float>(v);
+                }
+            };
+            side(".paddingTop", result.top);
+            side(".paddingRight", result.right);
+            side(".paddingBottom", result.bottom);
+            side(".paddingLeft", result.left);
+            return result;
+        };
+
+        // The old single detailAlign is the fallback for both, so a config that
+        // only says "edges" still puts the category left and the author right.
+        const auto edges = uiConfig->getString(path + ".detailAlign", "centred").equalsIgnoreCase("edges");
+        contentStyle.categoryAlign = readAlign(path + ".category.align",
+                                               edges ? juce::Justification(juce::Justification::centredLeft)
+                                                     : juce::Justification(juce::Justification::centred));
+        contentStyle.authorAlign = readAlign(path + ".author.align",
+                                             edges ? juce::Justification(juce::Justification::centredRight)
+                                                   : juce::Justification(juce::Justification::centred));
+        contentStyle.categoryPadding = readCellPadding(path + ".category", contentStyle.categoryPadding);
+        contentStyle.authorPadding = readCellPadding(path + ".author", contentStyle.authorPadding);
+
         contentStyle.detailColour = uiConfig->getColour(path + ".rows.row2.colour", contentStyle.detailColour);
     }
     presetNameButton.setContentStyle(contentStyle);

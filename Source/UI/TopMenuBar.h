@@ -112,8 +112,16 @@ public:
         // Where each value sits in its own half. Centred by default; "edges"
         // pushes the category out to the left and the author to the right,
         // away from the divider.
-        enum class DetailAlign { centred, edges };
-        DetailAlign detailAlign { DetailAlign::centred };
+        // Where CATEGORY and AUTHOR sit inside their own cells, and how much
+        // room each cell keeps clear around its text.
+        //
+        // Independent per cell: the pair reads as two fields, and wanting the
+        // category hard left while the author stays centred is a normal thing
+        // to want. A single shared setting could not express it.
+        juce::Justification categoryAlign { juce::Justification::centred };
+        juce::Justification authorAlign { juce::Justification::centred };
+        px3::ui::Insets categoryPadding {};
+        px3::ui::Insets authorPadding {};
 
         // Drawn in the tab's own text colour when these are transparent, which
         // is what keeps a themed tab consistent without restating its colours.
