@@ -8,7 +8,8 @@ void paintModalBackdrop(juce::Graphics& g,
                         juce::Rectangle<float> panelBounds,
                         const juce::Image& snapshot,
                         float panelCornerRadius,
-                        juce::Colour dimColour)
+                        juce::Colour dimColour,
+                        float blurRadius)
 {
     // A non-zero-winding path with the panel punched out of it, so everything
     // below is masked to the region OUTSIDE the sheet in one clip rather than
@@ -43,16 +44,33 @@ void paintModalBackdrop(juce::Graphics& g,
 
         // A box blur as a stack of offset draws. Cheaper than a real
         // convolution and, under the dim below, indistinguishable from one.
-        g.setOpacity(0.075f);
-        for (int dy = -6; dy <= 6; dy += 2)
+        //
+        // Seven taps per axis whatever the radius, so changing the radius
+        // changes how far the smear reaches and not how dense it is - dropping
+        // taps with the radius would thin the blur as well as tightening it.
+        // The offsets are fractional, so a transform is used rather than
+        // drawImageAt, which only takes whole pixels.
+        constexpr int kTapsPerSide = 3;
+        const auto step = blurRadius / static_cast<float>(kTapsPerSide);
+
+        if (step > 0.0f)
         {
-            for (int dx = -6; dx <= 6; dx += 2)
+            g.setOpacity(0.075f);
+            for (int iy = -kTapsPerSide; iy <= kTapsPerSide; ++iy)
             {
-                if (dx == 0 && dy == 0)
+                for (int ix = -kTapsPerSide; ix <= kTapsPerSide; ++ix)
                 {
-                    continue;
+                    if (ix == 0 && iy == 0)
+                    {
+                        continue;
+                    }
+
+                    g.drawImageTransformed(snapshot,
+                                           juce::AffineTransform::translation(
+                                               static_cast<float>(ix) * step,
+                                               static_cast<float>(iy) * step),
+                                           false);
                 }
-                g.drawImageAt(snapshot, dx, dy, false);
             }
         }
 

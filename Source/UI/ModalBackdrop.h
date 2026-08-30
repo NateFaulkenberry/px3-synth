@@ -20,12 +20,16 @@ namespace px3::ui
 // That is what a sheet with a translucent face needs - the backdrop has to be
 // behind it, not around it, or the sheet shows the sharp bright editor through
 // itself while everything beside it is blurred and dark.
+// `blurRadius` is how far the treatment spreads, in pixels at 1x. The default
+// is 4.5: three quarters of the 6 this started at, which is a visibly softer
+// touch on the UI behind a sheet while still reading as out of focus.
 void paintModalBackdrop(juce::Graphics& g,
                         juce::Rectangle<int> fullBounds,
                         juce::Rectangle<float> panelBounds,
                         const juce::Image& snapshot,
                         float panelCornerRadius,
-                        juce::Colour dimColour = juce::Colour::fromRGBA(0, 0, 0, 180));
+                        juce::Colour dimColour = juce::Colour::fromRGBA(0, 0, 0, 180),
+                        float blurRadius = 4.5f);
 
 // Blocks every mouse event from reaching the UI behind a sheet, while still
 // letting the owner see clicks - which is what click-outside-to-close needs.
@@ -45,9 +49,16 @@ public:
         repaint();
     }
 
+    void setBlurRadius(float radius)
+    {
+        blurRadius = juce::jmax(0.0f, radius);
+        repaint();
+    }
+
     void paint(juce::Graphics& g) override
     {
-        paintModalBackdrop(g, getLocalBounds(), {}, backdrop, 0.0f);
+        paintModalBackdrop(g, getLocalBounds(), {}, backdrop, 0.0f,
+                           juce::Colour::fromRGBA(0, 0, 0, 180), blurRadius);
     }
 
     void mouseDown(const juce::MouseEvent& e) override { forward(e, &juce::Component::mouseDown); }
@@ -56,6 +67,7 @@ public:
 
 private:
     juce::Image backdrop;
+    float blurRadius { 4.5f };
 
     void forward(const juce::MouseEvent& e, void (juce::Component::*handler)(const juce::MouseEvent&))
     {

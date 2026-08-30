@@ -169,6 +169,12 @@ void BusInsertOverlay::refreshHeaderButtonStyles()
             {
                 enableOffsetY = static_cast<int>(v);
             }
+            if (const auto v = uiConfig->getValue(base + ".anchor"); ! v.isVoid())
+            {
+                const auto text = v.toString().trim().toLowerCase();
+                if (text == "innertopleft")       enableAnchor = EnableAnchor::innerTopLeft;
+                else if (text == "headertopright") enableAnchor = EnableAnchor::headerTopRight;
+            }
         }
     }
 
@@ -230,10 +236,27 @@ void BusInsertOverlay::layoutHeaderButtons()
     const auto height = juce::jmax(8, enableStyle.height);
     const auto gap = configInt(uiConfig, "busInserts.headerButtonGap", 8);
 
-    enableButton.setBounds(header.getRight() - close.size - gap - width + enableOffsetX,
-                           header.getY() + enableOffsetY,
-                           width,
-                           height);
+    if (enableAnchor == EnableAnchor::innerTopLeft)
+    {
+        const auto inner = innerOverlayBounds();
+        enableButton.setBounds(inner.getX() + enableOffsetX,
+                               inner.getY() + enableOffsetY,
+                               width,
+                               height);
+    }
+    else
+    {
+        enableButton.setBounds(header.getRight() - close.size - gap - width + enableOffsetX,
+                               header.getY() + enableOffsetY,
+                               width,
+                               height);
+    }
+
+    // Both sit over the panel, and on the EQ sheet the graph is added after
+    // them - so without this the graph would be drawn on top of the enable
+    // button it now shares a corner with.
+    closeButton.toFront(false);
+    enableButton.toFront(false);
 }
 
 juce::Rectangle<int> BusInsertOverlay::headerBounds() const

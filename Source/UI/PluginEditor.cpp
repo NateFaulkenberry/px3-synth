@@ -1884,7 +1884,11 @@ void PX3SynthAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
                                 getLocalBounds(),
                                 presetBrowserPanel.getBounds().toFloat(),
                                 presetBrowserBackdropSnapshot,
-                                10.0f);
+                                10.0f,
+                                juce::Colour::fromRGBA(0, 0, 0, 180),
+                                uiConfig != nullptr
+                                    ? uiConfig->getFloat("busInserts.backdropBlur", 4.5f)
+                                    : 4.5f);
 }
 
 void PX3SynthAudioProcessorEditor::resized()
@@ -2678,6 +2682,9 @@ void PX3SynthAudioProcessorEditor::openBusInsert(int bus, bool wantsEq)
     // Handed to the scrim, which sits BELOW the sheet - so a sheet with a
     // translucent face shows the dimmed backdrop through itself instead of the
     // untreated editor.
+    busInsertScrim.setBlurRadius(uiConfig != nullptr
+                                     ? uiConfig->getFloat("busInserts.backdropBlur", 4.5f)
+                                     : 4.5f);
     busInsertScrim.setBackdropImage(busInsertBackdropSnapshot);
     busInsertScrim.setBounds(getLocalBounds());
     busInsertScrim.setVisible(true);

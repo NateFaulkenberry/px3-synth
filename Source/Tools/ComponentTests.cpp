@@ -16388,6 +16388,15 @@ void testBusInserts()
             const auto compX = offset("busInserts.comp.enableButton.offsetX", sharedX);
             const auto compY = offset("busInserts.comp.enableButton.offsetY", sharedY);
 
+            // The anchor is per sheet too: the EQ's enable sits on the inner
+            // panel's top left, the compressor's stays in its header row.
+            const auto anchorOf = [&layered](const char* path)
+            {
+                if (layered == nullptr) return juce::String();
+                return layered->getValue(path).toString();
+            };
+            juce::ignoreUnused(anchorOf);
+
             check("BusInsert_EachSheetsEnableButtonResolvesIndependently",
                   eqStyle.legendPlacement == MixerToggleButton::Style::LegendPlacement::left
                       && compStyle.legendPlacement == MixerToggleButton::Style::LegendPlacement::below
@@ -16398,6 +16407,22 @@ void testBusInserts()
                       + juce::String(eqX) + "," + juce::String(eqY) + "); comp "
                       + juce::String(compStyle.width) + "px legend-below at ("
                       + juce::String(compX) + "," + juce::String(compY) + ")");
+        }
+
+        // The shipping config's own anchors, which is what actually places the
+        // buttons in the plug-in.
+        {
+            const auto eqAnchor = config != nullptr
+                                      ? config->getValue("busInserts.eq.enableButton.anchor").toString()
+                                      : juce::String();
+            const auto compAnchor = config != nullptr
+                                        ? config->getValue("busInserts.comp.enableButton.anchor").toString()
+                                        : juce::String();
+
+            check("BusInsert_OnlyTheEqEnableIsAnchoredToTheInnerPanel",
+                  eqAnchor.equalsIgnoreCase("innerTopLeft") && compAnchor.isEmpty(),
+                  "EQ anchor '" + eqAnchor + "', compressor anchor '"
+                      + (compAnchor.isEmpty() ? juce::String("(default header top right)") : compAnchor) + "'");
         }
 
         check("BusInsert_ShippingConfigStylesBothSheetsAsCards",

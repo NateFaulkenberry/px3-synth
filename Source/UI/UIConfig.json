@@ -498,6 +498,7 @@
     }
   },
   "busInserts": {
+    "backdropBlur": 4.5,
     "headerHeight": 0,
     "headerGap": 8,
     "headerButtonGap": 8,
@@ -526,7 +527,7 @@
       "hoverColor": "#B9BFC8"
     },
     "eq": {
-      "enableButton": { "size": { "height": 40 }, "offsetX": -10, "offsetY": -24, "legendPlacement": "right" },
+      "enableButton": { "size": { "height": 40 }, "offsetX": -10, "offsetY": -24, "legendPlacement": "right", "anchor": "innerTopLeft" },
       "closeButton": { "offsetX": -3, "offsetY": -16 },
       "widthFraction": 0.7,
       "heightFraction": 0.62,

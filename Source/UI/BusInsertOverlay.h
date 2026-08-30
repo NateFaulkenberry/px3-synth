@@ -157,6 +157,13 @@ protected:
     // deliberate.
     int enableOffsetX { 0 };
     int enableOffsetY { 0 };
+
+    // Which corner the enable button is measured from. The header's top right
+    // is where a title-row control belongs; the inner panel's top left puts it
+    // on the face itself, which is what the EQ sheet wants now that its header
+    // row is zero-height.
+    enum class EnableAnchor { headerTopRight, innerTopLeft };
+    EnableAnchor enableAnchor { EnableAnchor::headerTopRight };
     juce::LookAndFeel* knobLookAndFeel { nullptr };
 
     px3::ui::CardHost card;
