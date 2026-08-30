@@ -45,6 +45,49 @@ void configureRotary(juce::Slider& slider, juce::LookAndFeel* lookAndFeel)
 } // namespace
 
 //==============================================================================
+SheetCloseButton::SheetCloseButton()
+    : juce::Button("CLOSE")
+{
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    setTooltip("Close");
+}
+
+void SheetCloseButton::applyStyle(const Style& styleIn)
+{
+    style = styleIn;
+    repaint();
+}
+
+void SheetCloseButton::paintButton(juce::Graphics& g,
+                                   bool shouldDrawButtonAsHighlighted,
+                                   bool shouldDrawButtonAsDown)
+{
+    const auto bounds = getLocalBounds().toFloat();
+    const auto side = juce::jmin(bounds.getWidth(), bounds.getHeight());
+    if (side <= 0.0f)
+    {
+        return;
+    }
+
+    const auto box = juce::Rectangle<float>(side, side).withCentre(bounds.getCentre());
+    const auto tint = shouldDrawButtonAsHighlighted ? style.hover : style.glyph;
+
+    g.setColour(style.seat.withMultipliedAlpha(shouldDrawButtonAsDown ? 1.2f : 1.0f));
+    g.fillEllipse(box);
+
+    g.setColour((shouldDrawButtonAsHighlighted ? style.hover : style.ring)
+                    .withMultipliedAlpha(isEnabled() ? 1.0f : 0.4f));
+    g.drawEllipse(box.reduced(style.ringWidth * 0.5f), style.ringWidth);
+
+    // The X, inset from the ring so the two never touch.
+    const auto inset = juce::jlimit(0.1f, 0.45f, style.glyphInset) * side;
+    const auto glyph = box.reduced(inset);
+    g.setColour(tint.withMultipliedAlpha(isEnabled() ? 1.0f : 0.4f));
+    g.drawLine(glyph.getX(), glyph.getY(), glyph.getRight(), glyph.getBottom(), style.glyphWidth);
+    g.drawLine(glyph.getRight(), glyph.getY(), glyph.getX(), glyph.getBottom(), style.glyphWidth);
+}
+
+//==============================================================================
 BusInsertOverlay::BusInsertOverlay(PX3SynthAudioProcessor& processorIn)
     : processor(processorIn)
 {
@@ -77,6 +120,8 @@ void BusInsertOverlay::setSheetVisible(bool shown)
 
 void BusInsertOverlay::refreshCardStyle()
 {
+    refreshHeaderButtonStyles();
+
     card.setStyleKey(cardStyleKey());
     card.setConfig(uiConfig);
     card.setPanelContentBounds(getLocalBounds());
@@ -94,6 +139,79 @@ void BusInsertOverlay::refreshCardStyle()
         // alpha byte into the colour.
         innerStyle.opacity = uiConfig->getFloat(base + ".opacity", innerStyle.opacity);
     }
+}
+
+void BusInsertOverlay::refreshHeaderButtonStyles()
+{
+    const auto sheet = cardStyleKey() == "busInsertComp" ? juce::String("comp") : juce::String("eq");
+
+    MixerToggleButton::Style enableFallback;
+    enableFallback.width = 42;
+    enableFallback.height = 24;
+
+    enableStyle = px3::ui::mixerToggleStyleFromConfig(
+        uiConfig.get(), "busInserts.enableButton", "busInserts." + sheet + ".enableButton", enableFallback);
+    enableButton.applyStyle(enableStyle);
+
+    // The close glyph, shared block then per-sheet override, same precedence.
+    SheetCloseButton::Style closeStyle;
+    if (uiConfig != nullptr)
+    {
+        const auto apply = [&](const juce::String& base)
+        {
+            const auto number = [&](const char* key, auto& field)
+            {
+                if (const auto value = uiConfig->getValue(base + key); ! value.isVoid())
+                {
+                    field = static_cast<std::remove_reference_t<decltype(field)>>(static_cast<double>(value));
+                }
+            };
+            const auto colour = [&](const char* key, juce::Colour& field)
+            {
+                if (const auto value = uiConfig->getValue(base + key); ! value.isVoid())
+                {
+                    field = uiConfig->getColour(base + key, field);
+                }
+            };
+
+            number(".size", closeStyle.size);
+            number(".offsetX", closeStyle.offsetX);
+            number(".offsetY", closeStyle.offsetY);
+            number(".ringWidth", closeStyle.ringWidth);
+            number(".glyphWidth", closeStyle.glyphWidth);
+            number(".glyphInset", closeStyle.glyphInset);
+            colour(".seatColor", closeStyle.seat);
+            colour(".ringColor", closeStyle.ring);
+            colour(".glyphColor", closeStyle.glyph);
+            colour(".hoverColor", closeStyle.hover);
+        };
+
+        apply("busInserts.closeButton");
+        apply("busInserts." + sheet + ".closeButton");
+    }
+
+    closeButton.applyStyle(closeStyle);
+}
+
+// Sized from the buttons' own style rather than from separate width keys: two
+// places declaring one dimension is how they end up disagreeing.
+void BusInsertOverlay::layoutHeaderButtons()
+{
+    auto header = headerBounds();
+
+    // The close glyph is placed by coordinate from the header's top right, so
+    // it can be moved anywhere without disturbing the row.
+    const auto& close = closeButton.getStyle();
+    closeButton.setBounds(header.getRight() - close.size + close.offsetX,
+                          header.getCentreY() - close.size / 2 + close.offsetY,
+                          close.size,
+                          close.size);
+
+    header.removeFromRight(close.size + configInt(uiConfig, "busInserts.headerButtonGap", 8));
+
+    const auto width = juce::jmax(8, enableStyle.width);
+    const auto height = juce::jlimit(8, header.getHeight(), enableStyle.height);
+    enableButton.setBounds(header.removeFromRight(width).withSizeKeepingCentre(width, height));
 }
 
 juce::Rectangle<int> BusInsertOverlay::headerBounds() const
@@ -326,11 +444,7 @@ void BusEqOverlay::resized()
 {
     refreshCardStyle();
 
-    auto header = headerBounds();
-    const auto buttonWidth = configInt(uiConfig, "busInserts.buttonWidth", 62);
-    closeButton.setBounds(header.removeFromRight(buttonWidth).reduced(0, 3));
-    header.removeFromRight(6);
-    enableButton.setBounds(header.removeFromRight(configInt(uiConfig, "busInserts.enableWidth", 42)).reduced(0, 3));
+    layoutHeaderButtons();
 
     auto area = innerOverlayBounds().reduced(configInt(uiConfig, "busInserts.eq.innerPadding", 12));
 
@@ -526,10 +640,7 @@ void BusCompOverlay::resized()
 {
     refreshCardStyle();
 
-    auto header = headerBounds();
-    closeButton.setBounds(header.removeFromRight(configInt(uiConfig, "busInserts.buttonWidth", 62)).reduced(0, 3));
-    header.removeFromRight(6);
-    enableButton.setBounds(header.removeFromRight(configInt(uiConfig, "busInserts.enableWidth", 42)).reduced(0, 3));
+    layoutHeaderButtons();
 
     auto panel = innerOverlayBounds().reduced(configInt(uiConfig, "busInserts.comp.innerPadding", 14));
 
@@ -669,42 +780,59 @@ void BusCompOverlay::paintMeter(juce::Graphics& g, juce::Rectangle<float> area) 
     g.setColour(juce::Colour::fromRGBA(0, 0, 0, 70));
     g.drawRect(face, 1.0f);
 
-    // The scale. Gain reduction runs backwards - 0 at the right, and the needle
-    // falls to the left as the unit works, which is why the meter "drops".
-    const auto pivot = juce::Point<float>(face.getCentreX(), face.getBottom() + face.getHeight() * 0.62f);
-    const auto radius = face.getHeight() * 1.34f;
-    constexpr auto kSpan = 0.56f;
-    constexpr auto kFullScaleDb = 20.0f;
-
-    auto angleFor = [&](float db)
+    // Everything from here is clipped to the face. A moving-coil needle pivots
+    // BELOW the glass, so its tail is outside the window by construction and
+    // has to be cut off there rather than drawn across the badge.
     {
-        const auto position = juce::jlimit(0.0f, 1.0f, db / kFullScaleDb);
-        return kSpan - position * (kSpan * 2.0f);
-    };
+        juce::Graphics::ScopedSaveState state(g);
+        g.reduceClipRegion(face.toNearestInt());
 
-    g.setColour(inkColour.withAlpha(0.85f));
-    for (const auto db : { 0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 7.0f, 10.0f, 15.0f, 20.0f })
-    {
-        const auto angle = angleFor(db);
-        const auto direction = juce::Point<float>(std::sin(angle), -std::cos(angle));
-        const auto major = db == 0.0f || db == 5.0f || db == 10.0f || db == 20.0f;
-        g.drawLine({ pivot + direction * (radius - (major ? 9.0f : 5.0f)), pivot + direction * radius },
-                   major ? 1.5f : 0.9f);
+        const auto arc = vuArcFor(face);
 
-        if (major)
+        g.setColour(inkColour.withAlpha(0.85f));
+        g.setFont(juce::FontOptions(configFloat(uiConfig, "busInserts.comp.meterScaleFontSize", 7.5f),
+                                    juce::Font::bold));
+
+        for (const auto db : { 0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 7.0f, 10.0f, 15.0f, 20.0f })
         {
-            g.setFont(juce::FontOptions(7.5f, juce::Font::bold));
-            g.drawText(juce::String(juce::roundToInt(db)),
-                       juce::Rectangle<float>(16.0f, 9.0f)
-                           .withCentre(pivot + direction * (radius - 16.0f)),
-                       juce::Justification::centred, false);
-        }
-    }
+            const auto major = db == 0.0f || db == 5.0f || db == 10.0f || db == 20.0f;
 
-    const auto angle = angleFor(live ? meterDb : 0.0f);
-    const auto direction = juce::Point<float>(std::sin(angle), -std::cos(angle));
-    g.setColour(needleColour.withAlpha(live ? 1.0f : 0.35f));
-    g.drawLine({ pivot + direction * (radius * 0.30f), pivot + direction * (radius - 3.0f) }, 1.8f);
+            // Ticks point at the pivot, which is what makes a printed scale
+            // read as one rather than as a row of dashes.
+            g.setColour(inkColour.withAlpha(major ? 0.9f : 0.6f));
+            g.drawLine({ arc.pointFor(db, major ? 0.90f : 0.94f), arc.pointFor(db, 1.0f) },
+                       major ? 1.4f : 0.9f);
+
+            if (major)
+            {
+                g.setColour(inkColour);
+                g.drawText(juce::String(juce::roundToInt(db)),
+                           juce::Rectangle<float>(16.0f, 9.0f).withCentre(arc.pointFor(db, 0.80f)),
+                           juce::Justification::centred, false);
+            }
+        }
+
+        // The red overload band above the working range, as the face carries.
+        juce::Path band;
+        band.startNewSubPath(arc.pointFor(0.0f, 1.0f));
+        for (float db = 0.0f; db <= 3.0f; db += 0.25f)
+        {
+            band.lineTo(arc.pointFor(db, 1.0f));
+        }
+        g.setColour(configColour(uiConfig, "busInserts.comp.meterBandColor",
+                                 juce::Colour::fromRGBA(176, 46, 40, 200)));
+        g.strokePath(band, juce::PathStrokeType(2.0f));
+
+        const auto needle = arc.directionFor(live ? meterDb : 0.0f);
+        g.setColour(needleColour.withAlpha(live ? 1.0f : 0.35f));
+        g.drawLine({ arc.pivot + needle * (arc.radius * 0.35f),
+                     arc.pivot + needle * (arc.radius * 0.97f) },
+                   configFloat(uiConfig, "busInserts.comp.meterNeedleWidth", 1.6f));
+
+        // The hub, where the needle disappears behind the bottom of the glass.
+        g.setColour(needleColour.withAlpha(live ? 0.9f : 0.3f));
+        g.fillEllipse(juce::Rectangle<float>(9.0f, 9.0f).withCentre(arc.pivot));
+    }
 
     // The badge below the movement. This plug-in's own mark: the panel is a
     // generic archetype of a rack FET limiter, and it carries no other maker's

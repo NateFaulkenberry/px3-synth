@@ -351,6 +351,63 @@ PhaseButton::PhaseButton()
     setTooltip("Phase");
 }
 
+namespace px3::ui
+{
+MixerToggleButton::Style mixerToggleStyleFromConfig(const UIConfig* config,
+                                                    const juce::String& sharedBase,
+                                                    const juce::String& overrideBase,
+                                                    const MixerToggleButton::Style& fallback)
+{
+    auto style = fallback;
+    if (config == nullptr)
+    {
+        return style;
+    }
+
+    const auto apply = [&](const juce::String& base)
+    {
+        if (base.isEmpty())
+        {
+            return;
+        }
+
+        // getValue rather than getObject throughout: getObject returns a fresh
+        // empty object for any path, so it cannot report that a block is
+        // absent, and an override that does not exist would wipe the shared one.
+        const auto number = [&](const char* key, auto& field)
+        {
+            if (const auto value = config->getValue(base + key); ! value.isVoid())
+            {
+                field = static_cast<std::remove_reference_t<decltype(field)>>(static_cast<double>(value));
+            }
+        };
+        const auto colour = [&](const char* key, juce::Colour& field)
+        {
+            if (const auto value = config->getValue(base + key); ! value.isVoid())
+            {
+                field = config->getColour(base + key, field);
+            }
+        };
+
+        number(".size.width", style.width);
+        number(".size.height", style.height);
+        number(".cornerRadius", style.cornerRadius);
+        number(".textSize", style.textSize);
+        colour(".textColour", style.textColour);
+        colour(".normalColour", style.normalColour);
+        colour(".hoverColour", style.hoverColour);
+        colour(".activeColour", style.activeColour);
+        colour(".pressedColour", style.pressedColour);
+        colour(".disabledColour", style.disabledColour);
+        colour(".borderColour", style.borderColour);
+    };
+
+    apply(sharedBase);
+    apply(overrideBase);
+    return style;
+}
+} // namespace px3::ui
+
 InsertButton::InsertButton(const juce::String& legend)
     : MixerToggleButton(legend)
 {

@@ -106,8 +106,53 @@ void FetPushButtonLookAndFeel::drawButtonText(juce::Graphics& g,
                                               bool)
 {
     g.setColour(juce::Colour::fromRGB(28, 29, 32).withAlpha(button.isEnabled() ? 1.0f : 0.4f));
-    g.setFont(juce::FontOptions(juce::jmin(11.0f, button.getHeight() * 0.52f), juce::Font::bold));
+    g.setFont(juce::FontOptions(juce::jmin(11.0f, static_cast<float>(button.getHeight()) * 0.52f), juce::Font::bold));
     g.drawText(button.getButtonText(), button.getLocalBounds(), juce::Justification::centred, false);
+}
+
+float VuArc::angleFor(float db) const
+{
+    const auto position = juce::jlimit(0.0f, 1.0f, db / juce::jmax(1.0e-3f, fullScaleDb));
+    return span - position * (span * 2.0f);
+}
+
+juce::Point<float> VuArc::directionFor(float db) const
+{
+    const auto angle = angleFor(db);
+    return { std::sin(angle), -std::cos(angle) };
+}
+
+juce::Point<float> VuArc::pointFor(float db, float fraction) const
+{
+    return pivot + directionFor(db) * (radius * fraction);
+}
+
+juce::Rectangle<float> VuArc::drawnBounds() const
+{
+    // The scale's extremes are its two ends and its apex; nothing drawn between
+    // them can fall outside the box those three define.
+    auto bounds = juce::Rectangle<float>(pointFor(0.0f, 1.0f), pointFor(fullScaleDb, 1.0f));
+    const auto apex = pivot.translated(0.0f, -radius);
+    return bounds.getUnion(juce::Rectangle<float>(apex, apex));
+}
+
+VuArc vuArcFor(juce::Rectangle<float> face)
+{
+    VuArc arc;
+    arc.span = 0.60f;
+
+    // The radius is bounded by BOTH dimensions. Half the face's width has to
+    // contain radius*sin(span), and the arc's sagitta - radius*(1-cos(span)) -
+    // has to fit the height left under the apex. Taking the smaller is what
+    // makes the arc fit a face of any proportion.
+    const auto byWidth = (face.getWidth() * 0.46f) / juce::jmax(0.05f, std::sin(arc.span));
+    const auto byHeight = (face.getHeight() * 0.58f) / juce::jmax(0.05f, 1.0f - std::cos(arc.span));
+    arc.radius = juce::jmax(1.0f, juce::jmin(byWidth, byHeight));
+
+    // The apex sits a little below the top edge, and the pivot follows from it.
+    const auto apexY = face.getY() + face.getHeight() * 0.20f;
+    arc.pivot = { face.getCentreX(), apexY + arc.radius };
+    return arc;
 }
 
 namespace panel

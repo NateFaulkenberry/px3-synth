@@ -18,6 +18,41 @@ class UIConfig;
 namespace px3::ui
 {
 
+// The sheets' close control: an X in a ring, built as a Path for the same
+// reasons the power symbol is - two primitives cost less than parsing artwork,
+// stay crisp at any size, and can be tinted per sheet without a second asset.
+//
+// It deliberately mirrors BypassButton's seat and ring so the two read as
+// members of one family: the power button turns a section on, this one shuts a
+// sheet, and nothing else on the panel is a circular glyph.
+class SheetCloseButton final : public juce::Button
+{
+public:
+    struct Style
+    {
+        int size { 24 };
+        int offsetX { 0 };
+        int offsetY { 0 };
+        float ringWidth { 1.6f };
+        float glyphWidth { 2.0f };
+        float glyphInset { 0.32f };   // fraction of the button, per side
+        juce::Colour seat { juce::Colour::fromRGBA(12, 14, 20, 190) };
+        juce::Colour ring { juce::Colour::fromRGBA(237, 241, 247, 150) };
+        juce::Colour glyph { juce::Colour::fromRGB(237, 241, 247) };
+        juce::Colour hover { juce::Colour::fromRGB(255, 148, 148) };
+    };
+
+    SheetCloseButton();
+
+    void applyStyle(const Style& styleIn);
+    const Style& getStyle() const noexcept { return style; }
+
+private:
+    void paintButton(juce::Graphics& g, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override;
+
+    Style style;
+};
+
 // The two bus-insert sheets: a four band parametric EQ and a FET compressor.
 //
 // Both are BUS AGNOSTIC. Each is constructed once and retargeted with setBus,
@@ -88,6 +123,11 @@ protected:
     juce::Colour busAccentColour() const;
 
     void refreshCardStyle();
+    // Restyles ON and CLOSE from busInserts.{enableButton,closeButton}, with a
+    // per-sheet override under busInserts.<eq|comp>.
+    void refreshHeaderButtonStyles();
+    // The header row, laid out from the two buttons' own configured sizes.
+    void layoutHeaderButtons();
     void paint(juce::Graphics& g) override;
 
     PX3SynthAudioProcessor& processor;
@@ -99,8 +139,9 @@ protected:
     std::vector<std::unique_ptr<juce::ButtonParameterAttachment>> buttonAttachments;
     std::vector<std::unique_ptr<juce::ComboBoxParameterAttachment>> comboAttachments;
 
-    juce::TextButton closeButton { "CLOSE" };
+    SheetCloseButton closeButton;
     MixerToggleButton enableButton { "ON" };
+    MixerToggleButton::Style enableStyle;
     juce::LookAndFeel* knobLookAndFeel { nullptr };
 
     px3::ui::CardHost card;

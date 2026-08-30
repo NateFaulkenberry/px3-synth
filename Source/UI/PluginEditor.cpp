@@ -1972,13 +1972,15 @@ void PX3SynthAudioProcessorEditor::resized()
     const auto perfWidth = juce::jlimit(112, 190, keyboardRow.getWidth() / 8);
     performanceControlsArea = keyboardRow.removeFromLeft(perfWidth);
 
-    performanceControls.setBounds(performanceControlsArea);
-
-    // Grown upward by the spark headroom, and brought to the front, so the
-    // sparks can leave the keys instead of being clipped at the top edge. The
-    // extra strip is transparent and does not hit-test, so what is behind it is
-    // both visible and clickable.
+    // Both are grown upward by the spark headroom and brought to the front, so
+    // their animations can leave the controls instead of being clipped at the
+    // top edge. The extra strip is transparent and does not hit-test, so what
+    // is behind it is both visible and clickable.
     const auto headroom = juce::jmin(pianoKeyboard.getSparkHeadroom(), controlsArea.getHeight());
+
+    performanceControls.setBounds(performanceControlsArea.withTop(performanceControlsArea.getY() - headroom));
+    performanceControls.toFront(false);
+
     pianoKeyboard.setBounds(keyboardRow.withTop(keyboardRow.getY() - headroom));
     pianoKeyboard.toFront(false);
 
@@ -2222,9 +2224,14 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
         // bottom of itself; the headroom is transparent and passes clicks
         // through. 0 restores the old behaviour, where sparks were clipped at
         // the top edge of the keys.
-        pianoKeyboard.setSparkHeadroom(uiConfig != nullptr
-                                           ? uiConfig->getInt("keyboard.sparkHeadroom", 46)
-                                           : 46);
+        // Sized from the spark physics, not from taste: the burst runs at 60 Hz
+        // with a starting speed of up to 8.4 px/frame decaying by 0.93 each
+        // frame, over a lifetime of up to 0.45 s. That integrates to about
+        // 102 px of travel, which is why the first value of 46 still clipped.
+        const auto headroom = uiConfig != nullptr ? uiConfig->getInt("keyboard.sparkHeadroom", 112) : 112;
+        pianoKeyboard.setSparkHeadroom(headroom);
+        // The wheels throw the same sparks, so they get the same room.
+        performanceControls.setSparkHeadroom(headroom);
         resized();
     }
     {
@@ -2253,7 +2260,11 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
                 return result;
             };
 
-            warning.text = uiConfig->getString(path + ".text", warning.text);
+            // The wording is NOT read from here. Copy belongs with copy, and
+            // this file is styling - a string sitting among colours and insets
+            // is the one property a translator would need and the last place
+            // they would look. It stays compiled in until there is a config
+            // that is actually about text.
             warning.background = uiConfig->getColour(path + ".background", warning.background);
             warning.border = uiConfig->getColour(path + ".border.color", warning.border);
             warning.borderWidth = uiConfig->getFloat(path + ".border.width", warning.borderWidth);

@@ -99,20 +99,13 @@ void PerformanceControls::setControllerState(float pitchBendNormalized,
     targetPitch = clampPitch(pitchBendNormalized);
     targetMod = clampMod(modWheelNormalized);
 
-    const auto pitchDelta = targetPitch - previousTargetPitch;
-    const auto pitchMove = std::abs(pitchDelta);
-    if (pitchMove > 0.02f)
-    {
-        const auto direction = pitchDelta >= 0.0f ? 1.0f : -1.0f;
-        spawnUnicornsFromPitchWheel(pitchMove, direction);
-    }
+    // Movement gives the burst a kick, but it is not what drives the emission -
+    // the DISPLACEMENT is. A wheel held at full bend keeps throwing sparkles;
+    // one nudged and released throws a handful. See timerCallback.
+    pitchKick = juce::jmax(pitchKick, std::abs(targetPitch - previousTargetPitch) * 4.0f);
     previousTargetPitch = targetPitch;
 
-    const auto modMove = std::abs(targetMod - previousTargetMod);
-    if (modMove > 0.03f)
-    {
-        spawnCatsFromModWheel(modMove);
-    }
+    modKick = juce::jmax(modKick, std::abs(targetMod - previousTargetMod) * 4.0f);
     previousTargetMod = targetMod;
 
     const auto pitchUse = clamp01(std::abs(targetPitch));
@@ -122,11 +115,36 @@ void PerformanceControls::setControllerState(float pitchBendNormalized,
     targetModGlow = clamp01(0.30f * modUse + 0.70f * clamp01(modActivity));
 }
 
+juce::Rectangle<int> PerformanceControls::controlsArea() const
+{
+    return getLocalBounds().withTrimmedTop(juce::jmin(sparkHeadroomPx, getHeight()));
+}
+
+void PerformanceControls::setSparkHeadroom(int pixels)
+{
+    const auto clamped = juce::jmax(0, pixels);
+    if (sparkHeadroomPx == clamped)
+    {
+        return;
+    }
+
+    sparkHeadroomPx = clamped;
+    repaint();
+}
+
+bool PerformanceControls::hitTest(int x, int y)
+{
+    return controlsArea().contains(x, y);
+}
+
 void PerformanceControls::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour::fromRGB(20, 20, 20));
+    // Only the strip's own rectangle. fillAll would paint the spark headroom
+    // too, which sits over the panel above.
+    g.setColour(juce::Colour::fromRGB(20, 20, 20));
+    g.fillRect(controlsArea());
 
-    auto bounds = getLocalBounds().toFloat().reduced(2.0f);
+    auto bounds = controlsArea().toFloat().reduced(2.0f);
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 24));
     g.drawRoundedRectangle(bounds, 10.0f, 1.0f);
 
@@ -148,52 +166,36 @@ void PerformanceControls::paint(juce::Graphics& g)
               false,
               easeAmount(visualModGlow));
 
-    if (!unicornSparks.empty())
+    if (!sparkles.empty())
     {
-        for (const auto& unicorn : unicornSparks)
+        for (const auto& sparkle : sparkles)
         {
-            const auto lifeDen = juce::jmax(0.0001f, unicorn.maxLifetimeSeconds);
-            const auto lifeNorm = juce::jlimit(0.0f, 1.0f, unicorn.lifetimeSeconds / lifeDen);
-            const auto alpha = lifeNorm;
+            const auto divisor = juce::jmax(0.0001f, sparkle.maxLifetimeSeconds);
+            const auto life = juce::jlimit(0.0f, 1.0f, sparkle.lifetimeSeconds / divisor);
 
-            auto bodyPath = createUnicornPath(unicorn.scale, unicorn.facing);
-            bodyPath.applyTransform(juce::AffineTransform::rotation(unicorn.rotation)
-                                        .translated(unicorn.position.x, unicorn.position.y));
+            // Fades out AND shrinks. Fading alone leaves a ghost the same size
+            // as a live spark, which reads as the animation stalling.
+            const auto colour = juce::Colour::fromHSV(sparkle.hue, 0.85f, 1.0f, life);
+            const auto size = sparkle.size * (0.35f + 0.65f * life);
 
-            auto hornPath = createUnicornHornPath(unicorn.scale, unicorn.facing);
-            hornPath.applyTransform(juce::AffineTransform::rotation(unicorn.rotation)
-                                        .translated(unicorn.position.x, unicorn.position.y));
+            juce::Graphics::ScopedSaveState state(g);
+            g.addTransform(juce::AffineTransform::rotation(sparkle.rotation)
+                               .translated(sparkle.position.getX(), sparkle.position.getY()));
 
-            g.setColour(juce::Colour::fromRGBA(255, 255, 255, static_cast<juce::uint8>(170.0f * alpha)));
-            g.fillPath(bodyPath);
+            // A soft halo under the star, so a dense burst glows instead of
+            // looking like scattered confetti.
+            g.setColour(colour.withMultipliedAlpha(0.30f));
+            g.fillEllipse(juce::Rectangle<float>(size * 2.6f, size * 2.6f).withCentre({ 0.0f, 0.0f }));
 
-            g.setColour(juce::Colour::fromRGBA(255, 255, 255, static_cast<juce::uint8>(220.0f * alpha)));
-            g.strokePath(bodyPath, juce::PathStrokeType(1.0f));
+            g.setColour(colour);
+            g.fillPath(createSparklePath(size));
 
-            g.setColour(juce::Colour::fromRGBA(255, 255, 255, static_cast<juce::uint8>(240.0f * alpha)));
-            g.strokePath(hornPath, juce::PathStrokeType(1.0f));
+            // A white core keeps the sparkle legible against the rainbow.
+            g.setColour(juce::Colours::white.withAlpha(life * 0.85f));
+            g.fillEllipse(juce::Rectangle<float>(size * 0.42f, size * 0.42f).withCentre({ 0.0f, 0.0f }));
         }
     }
 
-    if (!catSparks.empty())
-    {
-        for (const auto& cat : catSparks)
-        {
-            const auto lifeDen = juce::jmax(0.0001f, cat.maxLifetimeSeconds);
-            const auto lifeNorm = juce::jlimit(0.0f, 1.0f, cat.lifetimeSeconds / lifeDen);
-            const auto alpha = lifeNorm;
-
-            auto catPath = createCatPath(cat.scale);
-            catPath.applyTransform(juce::AffineTransform::rotation(cat.rotation)
-                                       .translated(cat.position.x, cat.position.y));
-
-            g.setColour(juce::Colour::fromRGBA(0, 0, 0, static_cast<juce::uint8>(180.0f * alpha)));
-            g.fillPath(catPath);
-
-            g.setColour(juce::Colour::fromRGBA(255, 255, 255, static_cast<juce::uint8>(200.0f * alpha)));
-            g.strokePath(catPath, juce::PathStrokeType(1.0f));
-        }
-    }
 }
 
 void PerformanceControls::mouseDown(const juce::MouseEvent& event)
@@ -270,200 +272,138 @@ void PerformanceControls::timerCallback()
     visualModGlow += (targetModGlow - visualModGlow) * 0.14f;
 
     constexpr float dt = 1.0f / 60.0f;
-    for (auto& cat : catSparks)
+    for (auto& sparkle : sparkles)
     {
-        cat.position += cat.velocity;
-        cat.velocity *= 0.95f;
-        cat.velocity.y -= 0.03f;
-        cat.lifetimeSeconds -= dt;
-        cat.rotation += cat.spin;
+        sparkle.position += sparkle.velocity;
+        sparkle.velocity *= 0.94f;
+        // A little lift rather than gravity: these are sparks, and sparks rise.
+        sparkle.velocity.y -= 0.025f;
+        sparkle.lifetimeSeconds -= dt;
+        sparkle.rotation += sparkle.spin;
     }
 
-    for (auto& unicorn : unicornSparks)
+    // Continuous emission, proportional to how far each wheel is bent. The
+    // accumulator is what makes a small bend a trickle and a full one a
+    // constant spray, without either being a special case.
+    const auto emitFrom = [this](juce::Point<float> origin, float bend, float& kick, float& accumulator)
     {
-        unicorn.position += unicorn.velocity;
-        unicorn.velocity *= 0.94f;
-        unicorn.velocity.y -= 0.02f;
-        unicorn.lifetimeSeconds -= dt;
-        unicorn.rotation += unicorn.spin;
+        const auto intensity = juce::jlimit(0.0f, 1.0f, bend + kick);
+        kick *= 0.82f;
+
+        if (intensity <= 0.02f)
+        {
+            accumulator = 0.0f;
+            return;
+        }
+
+        // Bursts per frame, scaled so a full bend emits every frame and a
+        // quarter bend roughly every fourth.
+        accumulator += 0.15f + intensity * 0.85f;
+        while (accumulator >= 1.0f)
+        {
+            accumulator -= 1.0f;
+            emitSparkles(origin, intensity);
+        }
+    };
+
+    {
+        const auto track = getPitchVisual().track;
+        const auto topY = track.getY() + kHandleRadius;
+        const auto bottomY = track.getBottom() - kHandleRadius;
+        const auto centreY = (topY + bottomY) * 0.5f;
+        emitFrom({ track.getCentreX(), centreY - visualPitch * (bottomY - topY) * 0.5f },
+                 juce::jlimit(0.0f, 1.0f, std::abs(visualPitch)), pitchKick, pitchEmitAccumulator);
+    }
+    {
+        const auto track = getModVisual().track;
+        const auto topY = track.getY() + kHandleRadius;
+        const auto bottomY = track.getBottom() - kHandleRadius;
+        emitFrom({ track.getCentreX(), bottomY - visualMod * (bottomY - topY) },
+                 juce::jlimit(0.0f, 1.0f, visualMod), modKick, modEmitAccumulator);
     }
 
-    catSparks.erase(std::remove_if(catSparks.begin(),
-                                   catSparks.end(),
-                                   [](const CatSpark& c) { return c.lifetimeSeconds <= 0.0f; }),
-                   catSparks.end());
+    sparkles.erase(std::remove_if(sparkles.begin(),
+                                  sparkles.end(),
+                                  [](const Sparkle& s) { return s.lifetimeSeconds <= 0.0f; }),
+                   sparkles.end());
 
-    unicornSparks.erase(std::remove_if(unicornSparks.begin(),
-                                       unicornSparks.end(),
-                                       [](const UnicornSpark& u) { return u.lifetimeSeconds <= 0.0f; }),
-                       unicornSparks.end());
-
-    if (catSparks.size() > 80)
+    // A hard ceiling, dropping the OLDEST first: a held bend emits continuously,
+    // and without this the vector grows for as long as the wheel is up.
+    constexpr std::size_t kMaxSparkles = 220;
+    if (sparkles.size() > kMaxSparkles)
     {
-        catSparks.erase(catSparks.begin(), catSparks.begin() + static_cast<std::ptrdiff_t>(catSparks.size() - 80));
-    }
-
-    if (unicornSparks.size() > 110)
-    {
-        unicornSparks.erase(unicornSparks.begin(), unicornSparks.begin() + static_cast<std::ptrdiff_t>(unicornSparks.size() - 110));
+        sparkles.erase(sparkles.begin(),
+                       sparkles.begin() + static_cast<std::ptrdiff_t>(sparkles.size() - kMaxSparkles));
     }
 
     repaint();
 }
 
-void PerformanceControls::spawnCatsFromModWheel(float movementAmount)
+// Emitted in every direction, not along one. The angle is drawn from the whole
+// circle, so a burst is a starburst around the handle rather than a stream
+// leaving it - which is what the two shape animations did before.
+void PerformanceControls::emitSparkles(juce::Point<float> origin, float intensity)
 {
-    const auto modVisual = getModVisual();
-    const auto track = modVisual.track;
-    const auto topY = track.getY() + kHandleRadius;
-    const auto bottomY = track.getBottom() - kHandleRadius;
-    const auto handleY = bottomY - targetMod * (bottomY - topY);
-    const auto handleX = track.getCentreX();
+    intensity = juce::jlimit(0.0f, 1.0f, intensity);
+    if (intensity <= 0.001f)
+    {
+        return;
+    }
 
-    const auto intensity = juce::jlimit(0.0f, 1.0f, movementAmount * 6.0f + targetMod * 0.30f);
-    const auto count = juce::jlimit(1, 3, static_cast<int>(std::lround(1.0f + intensity * 2.0f)));
+    // Count, speed, size and lifetime all rise together with the bend, so the
+    // burst grows as a whole instead of just getting faster or just denser.
+    const auto count = juce::jlimit(1, 7, static_cast<int>(std::lround(1.0f + intensity * 6.0f)));
 
     for (int i = 0; i < count; ++i)
     {
-        const auto angle = juce::MathConstants<float>::pi * (0.85f + 0.30f * rng.nextFloat());
-        const auto speed = (1.0f + 2.5f * rng.nextFloat()) * (0.65f + 0.55f * intensity);
+        const auto angle = rng.nextFloat() * juce::MathConstants<float>::twoPi;
+        const auto speed = (0.8f + 2.2f * rng.nextFloat()) * (0.55f + 1.15f * intensity);
 
-        CatSpark cat;
-        cat.position = {
-            handleX + (rng.nextFloat() * 2.0f - 1.0f) * 7.0f,
-            handleY + (rng.nextFloat() * 2.0f - 1.0f) * 6.0f
-        };
-        cat.velocity = {
-            std::cos(angle) * speed,
-            std::sin(angle) * speed - (0.4f + 1.0f * intensity)
-        };
-        cat.maxLifetimeSeconds = 0.16f + rng.nextFloat() * 0.24f;
-        cat.lifetimeSeconds = cat.maxLifetimeSeconds;
-        cat.scale = 1.45f + rng.nextFloat() * 1.35f;
-        cat.rotation = (rng.nextFloat() * 2.0f - 1.0f) * 0.7f;
-        cat.spin = (rng.nextFloat() * 2.0f - 1.0f) * 0.09f;
-        catSparks.push_back(cat);
+        Sparkle sparkle;
+        // Spawned on a small disc rather than at a point, so the burst has an
+        // origin with some size to it and does not look like it is coming out
+        // of a pinhole.
+        const auto spawnAngle = rng.nextFloat() * juce::MathConstants<float>::twoPi;
+        const auto spawnRadius = rng.nextFloat() * 5.0f;
+        sparkle.position = origin.translated(std::cos(spawnAngle) * spawnRadius,
+                                             std::sin(spawnAngle) * spawnRadius);
+        sparkle.velocity = { std::cos(angle) * speed, std::sin(angle) * speed };
+        sparkle.maxLifetimeSeconds = (0.26f + rng.nextFloat() * 0.30f) * (0.7f + 0.5f * intensity);
+        sparkle.lifetimeSeconds = sparkle.maxLifetimeSeconds;
+        sparkle.size = (1.8f + rng.nextFloat() * 2.0f) * (0.7f + 0.6f * intensity);
+
+        // The hue advances per sparkle, so a single burst spans the spectrum
+        // rather than every spark in it sharing one colour.
+        hueCycle += 0.071f;
+        if (hueCycle >= 1.0f)
+        {
+            hueCycle -= 1.0f;
+        }
+        sparkle.hue = hueCycle;
+
+        sparkle.rotation = rng.nextFloat() * juce::MathConstants<float>::twoPi;
+        sparkle.spin = (rng.nextFloat() * 2.0f - 1.0f) * 0.10f;
+        sparkles.push_back(sparkle);
     }
 }
 
-void PerformanceControls::spawnUnicornsFromPitchWheel(float movementAmount, float direction)
+// A four-point star: two crossed spindles, thin at the waist. Built as a path
+// rather than drawn as lines so the points taper.
+juce::Path PerformanceControls::createSparklePath(float size)
 {
-    const auto pitchVisual = getPitchVisual();
-    const auto track = pitchVisual.track;
-    const auto topY = track.getY() + kHandleRadius;
-    const auto bottomY = track.getBottom() - kHandleRadius;
-    const auto centerY = (topY + bottomY) * 0.5f;
-    const auto handleY = centerY - targetPitch * (bottomY - topY) * 0.5f;
-    const auto handleX = track.getCentreX();
+    juce::Path path;
+    const auto arm = size;
+    const auto waist = size * 0.26f;
 
-    const auto intensity = juce::jlimit(0.0f, 1.0f, movementAmount * 5.5f + std::abs(targetPitch) * 0.40f);
-    const auto count = juce::jlimit(1, 4, static_cast<int>(std::lround(1.0f + intensity * 3.0f)));
-
-    for (int i = 0; i < count; ++i)
-    {
-        const auto spread = (rng.nextFloat() * 2.0f - 1.0f) * 0.65f;
-        const auto launch = direction > 0.0f ? -1.0f : 1.0f;
-        const auto angle = juce::MathConstants<float>::halfPi + launch * (0.40f + spread);
-        const auto speed = (0.9f + 2.6f * rng.nextFloat()) * (0.75f + 0.65f * intensity);
-
-        UnicornSpark unicorn;
-        unicorn.position = {
-            handleX + direction * (4.0f + rng.nextFloat() * 6.0f),
-            handleY + (rng.nextFloat() * 2.0f - 1.0f) * 6.0f
-        };
-        unicorn.velocity = {
-            std::cos(angle) * speed + direction * (0.4f + intensity * 0.9f),
-            std::sin(angle) * speed
-        };
-        unicorn.maxLifetimeSeconds = 0.24f + rng.nextFloat() * 0.26f;
-        unicorn.lifetimeSeconds = unicorn.maxLifetimeSeconds;
-        unicorn.scale = 1.30f + rng.nextFloat() * 1.30f;
-        unicorn.facing = direction;
-        unicorn.rotation = (rng.nextFloat() * 2.0f - 1.0f) * 0.18f;
-        unicorn.spin = (rng.nextFloat() * 2.0f - 1.0f) * 0.07f;
-        unicornSparks.push_back(unicorn);
-    }
+    path.startNewSubPath(0.0f, -arm);
+    path.quadraticTo(waist * 0.4f, -waist * 0.4f, arm, 0.0f);
+    path.quadraticTo(waist * 0.4f, waist * 0.4f, 0.0f, arm);
+    path.quadraticTo(-waist * 0.4f, waist * 0.4f, -arm, 0.0f);
+    path.quadraticTo(-waist * 0.4f, -waist * 0.4f, 0.0f, -arm);
+    path.closeSubPath();
+    return path;
 }
 
-juce::Path PerformanceControls::createCatPath(float scale)
-{
-    juce::Path cat;
-
-    cat.addEllipse(-4.6f * scale, -2.8f * scale, 9.2f * scale, 5.6f * scale);
-    cat.addEllipse(-2.2f * scale, -6.2f * scale, 4.4f * scale, 3.9f * scale);
-
-    juce::Path ears;
-    ears.startNewSubPath(-1.5f * scale, -3.6f * scale);
-    ears.lineTo(-3.2f * scale, -6.8f * scale);
-    ears.lineTo(-0.2f * scale, -5.2f * scale);
-    ears.closeSubPath();
-    ears.startNewSubPath(1.5f * scale, -3.6f * scale);
-    ears.lineTo(3.2f * scale, -6.8f * scale);
-    ears.lineTo(0.2f * scale, -5.2f * scale);
-    ears.closeSubPath();
-    cat.addPath(ears);
-
-    juce::Path tail;
-    tail.startNewSubPath(3.2f * scale, -0.4f * scale);
-    tail.quadraticTo(7.2f * scale, -2.1f * scale, 6.6f * scale, 1.8f * scale);
-    cat.addPath(tail);
-
-    return cat;
-}
-
-juce::Path PerformanceControls::createUnicornPath(float scale, float facing)
-{
-    juce::Path unicorn;
-
-    // Stylized compact unicorn body for small particle rendering.
-    unicorn.addEllipse(-4.5f * scale, -2.5f * scale, 9.0f * scale, 5.0f * scale);
-    unicorn.addEllipse((2.0f * facing - 2.6f) * scale, -5.8f * scale, 4.4f * scale, 3.7f * scale);
-
-    juce::Path legs;
-    legs.startNewSubPath(-2.6f * scale, 1.5f * scale);
-    legs.lineTo(-2.7f * scale, 4.2f * scale);
-    legs.startNewSubPath(0.9f * scale, 1.4f * scale);
-    legs.lineTo(1.0f * scale, 4.1f * scale);
-    unicorn.addPath(legs);
-
-    juce::Path tail;
-    const auto tailX = -3.6f * facing * scale;
-    tail.startNewSubPath(tailX, -0.1f * scale);
-    tail.quadraticTo(tailX - 3.3f * facing * scale,
-                     -2.6f * scale,
-                     tailX - 2.7f * facing * scale,
-                     1.8f * scale);
-    unicorn.addPath(tail);
-
-    return unicorn;
-}
-
-juce::Path PerformanceControls::createUnicornHornPath(float scale, float facing)
-{
-    juce::Path horn;
-
-    const auto headX = (2.7f * facing) * scale;
-    const auto hornBaseY = -4.9f * scale;
-    const auto hornTipX = headX + 2.3f * facing * scale;
-    const auto hornTipY = -8.0f * scale;
-
-    horn.startNewSubPath(headX, hornBaseY);
-    horn.lineTo(hornTipX, hornTipY);
-
-    // White rainbow-style horn bands represented as short white cross bars.
-    for (int i = 1; i <= 3; ++i)
-    {
-        const auto t = static_cast<float>(i) / 4.0f;
-        const auto px = juce::jmap(t, headX, hornTipX);
-        const auto py = juce::jmap(t, hornBaseY, hornTipY);
-        const auto band = 0.9f * scale;
-
-        horn.startNewSubPath(px - band * facing, py + 0.2f * scale);
-        horn.lineTo(px + band * facing * 0.2f, py - 0.2f * scale);
-    }
-
-    return horn;
-}
 
 void PerformanceControls::updateFromMousePosition(juce::Point<float> position)
 {
@@ -497,7 +437,7 @@ void PerformanceControls::updateFromMousePosition(juce::Point<float> position)
 
 PerformanceControls::WheelVisual PerformanceControls::getPitchVisual() const
 {
-    auto area = getLocalBounds().toFloat().reduced(5.0f);
+    auto area = controlsArea().toFloat().reduced(5.0f);
     const auto panelWidth = (area.getWidth() - kPanelGap) * 0.5f;
 
     WheelVisual visual;
@@ -512,7 +452,7 @@ PerformanceControls::WheelVisual PerformanceControls::getPitchVisual() const
 
 PerformanceControls::WheelVisual PerformanceControls::getModVisual() const
 {
-    auto area = getLocalBounds().toFloat().reduced(5.0f);
+    auto area = controlsArea().toFloat().reduced(5.0f);
     const auto panelWidth = (area.getWidth() - kPanelGap) * 0.5f;
     area.removeFromLeft(panelWidth + kPanelGap);
 

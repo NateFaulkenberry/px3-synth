@@ -121,6 +121,23 @@ protected:
     Style style;
 };
 
+namespace px3::ui
+{
+// Parses a MixerToggleButton::Style out of a config block.
+//
+// Free, and taking its paths as arguments, because three different places want
+// it now: the mixer strip's own buttons, the insert buttons in the strip
+// corners, and the ON and CLOSE buttons on the two insert sheets.
+//
+// `sharedBase` is read first and `overrideBase` layered on top key by key, so a
+// sheet only declares what it changes. An empty overrideBase reads the shared
+// block alone.
+MixerToggleButton::Style mixerToggleStyleFromConfig(const UIConfig* config,
+                                                    const juce::String& sharedBase,
+                                                    const juce::String& overrideBase,
+                                                    const MixerToggleButton::Style& fallback);
+} // namespace px3::ui
+
 class MuteButton final : public MixerToggleButton
 {
 public:

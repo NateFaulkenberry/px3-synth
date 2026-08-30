@@ -20,7 +20,17 @@ public:
     std::function<void()> onPitchBendGestureEnded;
     std::function<void(float)> onModWheelChanged;
 
+    // Extra height ABOVE the controls, reserved for the wheels' spark
+    // animations. Same arrangement the keyboard uses: a component cannot paint
+    // outside its own bounds, so it is grown upward and draws its controls at
+    // the bottom of itself. The strip is transparent and passes clicks through.
+    void setSparkHeadroom(int pixels);
+    int getSparkHeadroom() const noexcept { return sparkHeadroomPx; }
+    // The controls themselves: the component minus its spark headroom.
+    juce::Rectangle<int> controlsArea() const;
+
     void paint(juce::Graphics& g) override;
+    bool hitTest(int x, int y) override;
 
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
@@ -28,6 +38,8 @@ public:
     void mouseDoubleClick(const juce::MouseEvent& event) override;
 
 private:
+    int sparkHeadroomPx { 0 };
+
     enum class ActiveControl
     {
         none,
@@ -41,36 +53,28 @@ private:
         juce::Rectangle<float> track;
     };
 
-    struct CatSpark
+    // One sparkle. Emitted radially, tinted from a rotating hue, and drawn as a
+    // four-point star rather than a dot so it reads as a spark rather than as
+    // noise.
+    struct Sparkle
     {
         juce::Point<float> position;
         juce::Point<float> velocity;
         float lifetimeSeconds { 0.0f };
         float maxLifetimeSeconds { 0.0f };
-        float scale { 1.0f };
-        float rotation { 0.0f };
-        float spin { 0.0f };
-    };
-
-    struct UnicornSpark
-    {
-        juce::Point<float> position;
-        juce::Point<float> velocity;
-        float lifetimeSeconds { 0.0f };
-        float maxLifetimeSeconds { 0.0f };
-        float scale { 1.0f };
-        float facing { 1.0f };
+        float size { 1.0f };
+        float hue { 0.0f };
         float rotation { 0.0f };
         float spin { 0.0f };
     };
 
     void timerCallback() override;
     void updateFromMousePosition(juce::Point<float> position);
-    void spawnCatsFromModWheel(float movementAmount);
-    void spawnUnicornsFromPitchWheel(float movementAmount, float direction);
-    static juce::Path createCatPath(float scale);
-    static juce::Path createUnicornPath(float scale, float facing);
-    static juce::Path createUnicornHornPath(float scale, float facing);
+    // `intensity` is 0 to 1 and drives count, speed, size and lifetime
+    // together - one number, so the whole burst grows with the bend rather than
+    // only part of it changing.
+    void emitSparkles(juce::Point<float> origin, float intensity);
+    static juce::Path createSparklePath(float size);
 
     WheelVisual getPitchVisual() const;
     WheelVisual getModVisual() const;
@@ -91,7 +95,15 @@ private:
     float previousTargetMod { 0.0f };
 
     ActiveControl activeControl { ActiveControl::none };
-    std::vector<CatSpark> catSparks;
-    std::vector<UnicornSpark> unicornSparks;
+    std::vector<Sparkle> sparkles;
+    // Advances with every burst so consecutive sparkles are different colours
+    // and the emission reads as a rainbow rather than as one tint at a time.
+    float hueCycle { 0.0f };
+    // A moved wheel gets a short-lived boost on top of its displacement, so a
+    // fast sweep sparks harder than a slow one at the same position.
+    float pitchKick { 0.0f };
+    float modKick { 0.0f };
+    float pitchEmitAccumulator { 0.0f };
+    float modEmitAccumulator { 0.0f };
     juce::Random rng;
 };

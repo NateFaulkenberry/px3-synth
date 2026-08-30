@@ -37,9 +37,8 @@
     }
   },
   "keyboard": {
-    "sparkHeadroom": 46,
+    "sparkHeadroom": 112,
     "warning": {
-      "text": "Please engage an oscillator!",
       "align": "center",
       "fontSize": 15,
       "textColour": "#F5F7FA",
@@ -223,8 +222,8 @@
   "mix": {
     "insertButton": { "size": { "width": 36, "height": 36 }, "cornerRadius": 4, "textSize": 9, "textColour": "#DCE2EC", "normalColour": "#2C2E34D2", "hoverColour": "#42464FE6", "activeColour": "#4C88CAE6", "pressedColour": "#60A4EEE6", "disabledColour": "#22222288", "borderColour": "#DCE0EC78" },
     "inserts": {
-      "eq": { "size": 46, "offsetX": 0, "offsetY": 0 },
-      "comp": { "size": 46, "offsetX": 0, "offsetY": 0 }
+      "eq": { "size": 40, "offsetX": 0, "offsetY": 0 },
+      "comp": { "size": 40, "offsetX": 0, "offsetY": 0 }
     },
     "panel": {
       "fillAlpha": 0,
@@ -458,8 +457,31 @@
   "busInserts": {
     "headerHeight": 30,
     "headerGap": 8,
-    "buttonWidth": 62,
-    "enableWidth": 42,
+    "headerButtonGap": 8,
+    "enableButton": {
+      "size": { "width": 42, "height": 24 },
+      "cornerRadius": 4,
+      "textSize": 9.5,
+      "textColour": "#DCE2EC",
+      "normalColour": "#2C2E34D2",
+      "hoverColour": "#42464FE6",
+      "activeColour": "#4C88CAE6",
+      "pressedColour": "#60A4EEE6",
+      "disabledColour": "#22222288",
+      "borderColour": "#DCE0EC78"
+    },
+    "closeButton": {
+      "size": 24,
+      "offsetX": 0,
+      "offsetY": 0,
+      "ringWidth": 1.6,
+      "glyphWidth": 2,
+      "glyphInset": 0.32,
+      "seatColor": "#0C0E14BE",
+      "ringColor": "#EDF1F796",
+      "glyphColor": "#EDF1F7",
+      "hoverColor": "#FF9494"
+    },
     "eq": {
       "widthFraction": 0.7,
       "heightFraction": 0.62,
@@ -499,6 +521,9 @@
       "meterInkColor": "#262420",
       "meterNeedleColor": "#18181A",
       "meterGlowColor": "#FFF4CED2",
+      "meterBandColor": "#B02E28C8",
+      "meterScaleFontSize": 7.5,
+      "meterNeedleWidth": 1.6,
       "badgeColor": "#FFFFFF1E",
       "badgeTextColor": "#E8EEF8",
       "badgeFontSize": 7
@@ -710,14 +735,14 @@
     "busInsertEq": {
       "margin": 0,
       "padding": 14,
-      "background": { "color": "#EDF1F7", "opacity": 0 },
+      "background": { "color": "#EDF1F7", "opacity": 0.2 },
       "gloss": {
         "margin": 8,
-        "topFill": { "color": "#FFFFFF", "opacity": 0.07 },
-        "bottomFill": { "color": "#FFFFFF", "opacity": 0.07 }
+        "topFill": { "color": "#EDF1F7", "opacity": 1 },
+        "bottomFill": { "color": "#EDF1F7", "opacity": 1 }
       },
       "border": { "color": "#EDF1F7", "opacity": 0.28, "radius": 10 },
-      "title": { "color": "#F7FAFF", "fontSize": 12 },
+      "title": { "color": "#333333", "fontSize": 12 },
       "innerOverlay": { "margin": 4, "radius": 6, "color": "#101318", "opacity": 1 }
     },
     "busInsertComp": {
@@ -726,8 +751,8 @@
       "background": { "color": "#EDF1F7", "opacity": 0 },
       "gloss": {
         "margin": 8,
-        "topFill": { "color": "#FFFFFF", "opacity": 0.07 },
-        "bottomFill": { "color": "#FFFFFF", "opacity": 0.07 }
+        "topFill": { "color": "#EDF1F7", "opacity": 0.2 },
+        "bottomFill": { "color": "#EDF1F7", "opacity": 0.2 }
       },
       "border": { "color": "#EDF1F7", "opacity": 0.28, "radius": 10 },
       "title": { "color": "#F7FAFF", "fontSize": 12 },

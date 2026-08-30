@@ -44,6 +44,8 @@
 #include "../UI/BusEqGraph.h"
 #include "../UI/MixerControls.h"
 #include "../UI/MixerChannelComponent.h"
+#include "../UI/FetPanelStyle.h"
+#include "../UI/PerformanceControls.h"
 #include "../UI/UIConfig.h"
 #include "../DSP/Delay.h"
 #include "../DSP/EnvelopeGenerator.h"
@@ -13557,6 +13559,38 @@ void testEditorLifecycle()
                           + juce::String(headroom) + " and headroom 0");
             }
 
+            // The wheels throw the same sparkles and were clipped the same way,
+            // so they get the same headroom and the same two guarantees.
+            std::vector<juce::Component*> perfComponents;
+            PerformanceControls* wheels = nullptr;
+            {
+                std::function<void(juce::Component&)> walk = [&](juce::Component& root)
+                {
+                    for (auto* child : root.getChildren())
+                    {
+                        if (child == nullptr) continue;
+                        if (auto* p = dynamic_cast<PerformanceControls*>(child)) wheels = p;
+                        walk(*child);
+                    }
+                };
+                walk(*editor);
+            }
+
+            const auto wheelsMatch = wheels != nullptr
+                                     && wheels->getSparkHeadroom() == headroom
+                                     && wheels->controlsArea().getY() == headroom
+                                     && ! wheels->hitTest(wheels->getWidth() / 2, headroom / 2)
+                                     && wheels->hitTest(wheels->getWidth() / 2,
+                                                        wheels->controlsArea().getCentreY());
+
+            check("PerformanceControls_ShareTheKeyboardSparkHeadroom", wheelsMatch,
+                  wheels == nullptr
+                      ? juce::String("no PerformanceControls found")
+                      : juce::String(wheels->getSparkHeadroom()) + "px of headroom, controls start at y="
+                            + juce::String(wheels->controlsArea().getY())
+                            + ", headroom click passes through: "
+                            + (wheels->hitTest(wheels->getWidth() / 2, headroom / 2) ? "NO" : "yes"));
+
             check("Keyboard_SparksHaveHeadroomAboveTheKeys",
                   headroomIsAbove && headroomPassesClicksThrough && keysStillHitTest,
                   juce::String(headroom) + "px of headroom above a "
@@ -15359,18 +15393,61 @@ void testBusInserts()
                                    ? config->getColour("cards.busInsertComp.innerOverlay.color", juce::Colours::transparentBlack)
                                    : juce::Colours::transparentBlack;
 
+        // The meter's scale has to fit the glass it is printed on. It did not:
+        // the radius came from the face's HEIGHT alone, so on a face wider than
+        // it was tall the 0 dB tick landed past the right edge and the needle
+        // ran out of the bottom and across the badge below it.
+        //
+        // Checked across a spread of proportions, because the bug only appears
+        // at some of them - a square face hid it completely.
+        {
+            juce::String worst;
+            auto allFit = true;
+
+            for (const auto& face : { juce::Rectangle<float>(0.0f, 0.0f, 300.0f, 90.0f),    // wide
+                                      juce::Rectangle<float>(0.0f, 0.0f, 176.0f, 110.0f),   // shipping
+                                      juce::Rectangle<float>(0.0f, 0.0f, 120.0f, 120.0f),   // square
+                                      juce::Rectangle<float>(0.0f, 0.0f, 90.0f, 240.0f) })  // tall
+            {
+                const auto arc = px3::ui::vuArcFor(face);
+                const auto drawn = arc.drawnBounds();
+
+                // The whole scale, both ends and the apex, inside the glass.
+                const auto fits = face.contains(drawn);
+                if (! fits)
+                {
+                    allFit = false;
+                    worst = face.toString() + " -> scale at " + drawn.toString();
+                }
+
+                // And the needle must actually sweep: an arc collapsed to a
+                // point would "fit" every face ever measured.
+                const auto sweep = arc.pointFor(0.0f, 1.0f).getDistanceFrom(arc.pointFor(20.0f, 1.0f));
+                if (sweep < face.getWidth() * 0.5f)
+                {
+                    allFit = false;
+                    worst = face.toString() + " -> sweep only " + fmt(sweep, 1) + "px";
+                }
+            }
+
+            check("BusComp_MeterScaleFitsTheGlass", allFit,
+                  allFit ? "wide, shipping, square and tall faces all contain the full scale"
+                         : "does not fit: " + worst);
+        }
+
         // Every property the panel paints with has to be reachable, or it is a
         // hard-coded look wearing a configurable one's clothes. This walks the
         // whole declared block and requires each key to parse.
         {
-            static const std::array<const char*, 12> numbers { {
+            static const std::array<const char*, 14> numbers { {
                 "innerPadding", "earWidth", "sectionGap", "legendHeight", "legendFontSize",
                 "largeKnobSize", "smallKnobSize", "scaleMargin", "timeColumnWidth",
                 "ratioWidth", "meterWidth", "screwRadius",
+                "meterScaleFontSize", "meterNeedleWidth",
             } };
-            static const std::array<const char*, 7> colours { {
+            static const std::array<const char*, 8> colours { {
                 "inkColor", "meterBezelColor", "meterFaceColor", "meterInkColor",
-                "meterNeedleColor", "meterGlowColor", "badgeTextColor",
+                "meterNeedleColor", "meterGlowColor", "meterBandColor", "badgeTextColor",
             } };
 
             juce::String missing;

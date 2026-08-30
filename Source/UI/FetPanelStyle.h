@@ -46,6 +46,35 @@ public:
                         bool shouldDrawButtonAsDown) override;
 };
 
+// The geometry of a moving-coil meter's scale.
+//
+// Separated out and made a pure function of the face rectangle because getting
+// it wrong is invisible until it is rendered: the first version derived the
+// radius from the face's HEIGHT alone, so on a face wider than it was tall the
+// 0 dB tick landed beyond the right edge and the needle's tail ran out of the
+// bottom. The arc must fit the face it is drawn on, whatever shape that is.
+struct VuArc
+{
+    juce::Point<float> pivot;
+    float radius { 1.0f };
+    float span { 0.6f };        // radians either side of vertical
+    float fullScaleDb { 20.0f };
+
+    // Gain reduction reads BACKWARDS: 0 at the right, and the needle falls to
+    // the left as the unit works. That is why the meter "drops".
+    float angleFor(float db) const;
+    juce::Point<float> directionFor(float db) const;
+    // A point on the scale at `db`, `fraction` of the way out from the pivot.
+    juce::Point<float> pointFor(float db, float fraction) const;
+
+    // Every extreme of the drawn scale, for a caller that wants to check it
+    // lands where it should.
+    juce::Rectangle<float> drawnBounds() const;
+};
+
+// Fits an arc to a meter face, leaving room for the tick labels inside it.
+VuArc vuArcFor(juce::Rectangle<float> face);
+
 // Panel furniture, drawn straight onto the silver.
 namespace panel
 {
