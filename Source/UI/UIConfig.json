@@ -126,8 +126,8 @@
       "detailUppercase": true,
       "nameBold": true,
       "detailAlign": "centred",
-      "category": { "align": "centred", "padding": 0 },
-      "author": { "align": "centred", "padding": 0 }
+      "category": { "align": "right", "paddingRight": 15, "paddingLeft": 15 },
+      "author": { "align": "left", "padding": 0, "paddingRight": 15, "paddingLeft": 15 }
     },
     "tabStyle": {
       "hoverGlow": { "color": "#FFFFFF", "opacity": 0.22, "size": 10, "pressedOpacity": 0.34 },
@@ -280,7 +280,7 @@
     }
   },
   "mix": {
-    "insertButton": { "size": { "width": 36, "height": 36 }, "cornerRadius": 4, "textSize": 9, "textColour": "#DCE2EC", "normalColour": "#2C2E34D2", "hoverColour": "#42464FE6", "activeColour": "#4C88CAE6", "pressedColour": "#60A4EEE6", "disabledColour": "#22222288", "borderColour": "#DCE0EC78" },
+    "insertButton": { "inset": { "colour": "#FFFFFF", "opacity": 0.337 }, "outerEdge": { "colour": "#000000", "opacity": 0.227 }, "size": { "width": 36, "height": 36 }, "cornerRadius": 4, "textSize": 9, "textColour": "#DCE2EC", "normalColour": "#2C2E34D2", "hoverColour": "#42464FE6", "activeColour": "#4C88CAE6", "pressedColour": "#60A4EEE6", "disabledColour": "#22222288", "borderColour": "#DCE0EC78" },
     "inserts": {
       "eq": { "size": 40, "offsetX": 0, "offsetY": 0 },
       "comp": { "size": 40, "offsetX": 0, "offsetY": 0 }
@@ -301,9 +301,10 @@
       "labelSize": 9.5
     },
     "fader": {
+      "accent": "#68C2FF",
       "trackWidth": 4,
       "thumbWidth": 25,
-      "thumbHeight": 20,
+      "thumbHeight": 30,
       "cornerRadius": 2,
       "trackPadding": 3,
       "trackColour": "#82BEFFCC",
@@ -313,6 +314,8 @@
       "hoverColour": "#F0F6FFDD"
     },
     "mute": {
+      "inset": { "colour": "#FFFFFF", "opacity": 0 },
+      "outerEdge": { "colour": "#000000", "opacity": 0.227 },
       "size": {
         "width": 51,
         "height": 42
@@ -328,6 +331,8 @@
       "borderColour": "#DCE0EC78"
     },
     "solo": {
+      "inset": { "colour": "#FFFFFF", "opacity": 0.337 },
+      "outerEdge": { "colour": "#000000", "opacity": 0.227 },
       "size": {
         "width": 51,
         "height": 42
@@ -351,6 +356,8 @@
       "borderColour": "#DCE0EC5A"
     },
     "phase": {
+      "inset": { "colour": "#FFFFFF", "opacity": 0.337 },
+      "outerEdge": { "colour": "#000000", "opacity": 0.227 },
       "size": {
         "width": 51,
         "height": 42

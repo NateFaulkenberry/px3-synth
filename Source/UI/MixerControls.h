@@ -107,6 +107,15 @@ public:
         juce::Colour disabledColour { juce::Colour::fromRGBA(30, 30, 30, 130) };
         juce::Colour borderColour { juce::Colour::fromRGBA(220, 224, 236, 120) };
 
+        // The cap's rim, in two halves: a bright hairline just inside the edge
+        // and a whisper of a dark one just outside it. Together they are what
+        // make the cap read as raised without drawing a hard box around a pale
+        // face - so both are exposed, since changing one alone tips it.
+        juce::Colour insetColour { juce::Colour::fromRGB(255, 255, 255) };
+        float insetOpacity { 0.337f };          // 86/255, the value it shipped with
+        juce::Colour outerEdgeColour { juce::Colour::fromRGB(0, 0, 0) };
+        float outerEdgeOpacity { 0.227f };      // 58/255
+
         // Where the legend sits relative to the cap. Beneath it on a console
         // strip, where a column of buttons reads downward; to one side when the
         // button is alone in a row and the vertical space is not there.

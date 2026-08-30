@@ -405,30 +405,25 @@ void MixPanel::applyConfigToChannels()
             continue;
         }
 
-        // The fader keeps the colour of the SOURCE it controls, read from that
-        // source's own card - not from the channel strip's card, which now
-        // wears the mixer's scheme. Taking it from the strip would have turned
-        // every fader white along with the cards.
+        // Every fader wears ONE colour, read from mix.fader.accent.
+        //
+        // They used to take the colour of the source each controlled - sub,
+        // osc1, osc2, osc3, and the delay's scheme for the two buses - so the
+        // strip was six different colours. That made the faders look like six
+        // unrelated controls when they are one row doing one job, and it put
+        // the identity colour on the moving part rather than on the card.
+        //
+        // Defaults to osc 1's blue, which is where the shared colour came from.
         auto channelFaderStyle = faderStyle;
         if (uiConfig != nullptr)
         {
-            static const std::array<const char*, 6> sourceCards { {
-                "cards.subOsc.border.color",
-                "cards.osc1.border.color",
-                "cards.osc2.border.color",
-                "cards.osc3.border.color",
-                "cards.delay.border.color",   // the dry bus takes the FX scheme
-                "cards.delay.border.color",   // and so does the FX return
-            } };
-
-            const auto slot = index;
-            if (slot < sourceCards.size())
-            {
-                channelFaderStyle.accentColour =
-                    uiConfig->getColour(sourceCards[slot], channelFaderStyle.accentColour);
-                channelFaderStyle.trackColour = channelFaderStyle.accentColour.withAlpha(0.80f);
-            }
+            channelFaderStyle.accentColour =
+                uiConfig->getColour("mix.fader.accent",
+                                    uiConfig->getColour("cards.osc1.border.color",
+                                                        channelFaderStyle.accentColour));
+            channelFaderStyle.trackColour = channelFaderStyle.accentColour.withAlpha(0.80f);
         }
+
         channel->fader.applyStyle(channelFaderStyle);
         channel->mute.applyStyle(muteStyle);
         channel->solo.applyStyle(soloStyle);

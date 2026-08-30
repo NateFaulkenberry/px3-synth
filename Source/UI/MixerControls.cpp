@@ -309,9 +309,9 @@ void MixerToggleButton::paintButton(juce::Graphics& g, bool shouldDrawButtonAsHi
     // Rim: a bright inner edge with only a whisper of a dark outer one. The
     // cap still reads raised, but the outline no longer draws a hard black box
     // around a pale face.
-    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 86));
+    g.setColour(style.insetColour.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.insetOpacity)));
     g.drawRoundedRectangle(cap.reduced(0.5f), capRadius, 1.0f);
-    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 58));
+    g.setColour(style.outerEdgeColour.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.outerEdgeOpacity)));
     g.drawRoundedRectangle(cap.expanded(0.4f), capRadius, 1.0f);
 
     // ---- lamp --------------------------------------------------------------
@@ -429,6 +429,10 @@ MixerToggleButton::Style mixerToggleStyleFromConfig(const UIConfig* config,
         colour(".pressedColour", style.pressedColour);
         colour(".disabledColour", style.disabledColour);
         colour(".borderColour", style.borderColour);
+        colour(".inset.colour", style.insetColour);
+        number(".inset.opacity", style.insetOpacity);
+        colour(".outerEdge.colour", style.outerEdgeColour);
+        number(".outerEdge.opacity", style.outerEdgeOpacity);
 
         if (const auto value = config->getValue(base + ".legendPlacement"); ! value.isVoid())
         {

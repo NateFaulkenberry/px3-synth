@@ -13871,6 +13871,54 @@ void testEditorLifecycle()
                           + (notifications > 0 ? "" : " - the last frame of sparks would stay on screen"));
             }
 
+            // WHAT ACTUALLY PAINTS THE SECTION'S BACKGROUND.
+            //
+            // Three layers stack here, back to front:
+            //
+            //   1. the editor's window background (image + scrim)
+            //   2. performanceStrip - one fill across the whole section
+            //   3. the keyboard's own background, and the wheels' own
+            //
+            // 2 is almost entirely hidden, because 3 tiles the same area: the
+            // strip spans the union of the two components and each of them
+            // fills its whole rectangle. So changing the strip's colour appears
+            // to do nothing while the two components are opaque, and only shows
+            // where their square edges leave its rounded corners exposed.
+            //
+            // Setting either component's background opacity to 0 is what lets
+            // the strip through - this proves that path works.
+            if (keys != nullptr)
+            {
+                // A band inside the keyboard's bounds but outside the keys: the
+                // padding, which is where its background is visible.
+                const auto band = juce::Rectangle<int>(2, 2, keys->getWidth() - 4, 4);
+
+                auto sample = [&](juce::Colour background, float opacity)
+                {
+                    PianoKeyboard::Style style;
+                    style.background = background;
+                    style.backgroundOpacity = opacity;
+                    keys->setStyle(style);
+                    const auto shot = keys->createComponentSnapshot(band);
+                    return shot.getPixelAt(shot.getWidth() / 2, shot.getHeight() / 2);
+                };
+
+                const auto opaqueRed = sample(juce::Colour::fromRGB(200, 0, 0), 1.0f);
+                const auto opaqueBlue = sample(juce::Colour::fromRGB(0, 0, 200), 1.0f);
+                const auto transparent = sample(juce::Colour::fromRGB(0, 0, 200), 0.0f);
+
+                keys->setStyle(PianoKeyboard::Style {});
+
+                check("Keyboard_PaintsItsOwnBackgroundAboveTheStrip",
+                      opaqueRed != opaqueBlue
+                          && transparent != opaqueBlue
+                          && transparent.getAlpha() < opaqueBlue.getAlpha(),
+                      "its own colour shows at full opacity (" + opaqueRed.toDisplayString(true)
+                          + " vs " + opaqueBlue.toDisplayString(true)
+                          + ") and clears at opacity 0 (" + transparent.toDisplayString(true)
+                          + "), which is what lets the strip beneath through");
+            }
+
             check("SparkOverlay_InvalidatesNothingWithNoParticles",
                   keys != nullptr && wheels != nullptr
                       && keys->sparkBounds().isEmpty()
@@ -15699,7 +15747,51 @@ void testBusInserts()
                                                                     "mix.inserts.eq",
                                                                     "cards.mixerDry.inserts.eq");
 
-            check("BusInsert_ButtonLayoutFallsBackToTheSharedBlock",
+            // The cap rim on the strip's toggles, and the one shared fader colour.
+        {
+            juce::String rimError;
+            const auto rimConfig = UIConfig::fromJsonText(
+                R"({ "mix": { "mute": { "inset": { "colour": "#123456", "opacity": 0.5 },
+                                        "outerEdge": { "colour": "#654321", "opacity": 0.25 } } } })",
+                rimError);
+            const auto rim = px3::ui::mixerToggleStyleFromConfig(
+                rimConfig.get(), "mix.mute", {}, MixerToggleButton::Style());
+
+            const MixerToggleButton::Style rimDefault;
+            check("MixerToggle_CapRimIsConfigurable",
+                  rim.insetColour != rimDefault.insetColour
+                      && rim.insetOpacity != rimDefault.insetOpacity
+                      && rim.outerEdgeColour != rimDefault.outerEdgeColour
+                      && rim.outerEdgeOpacity != rimDefault.outerEdgeOpacity,
+                  "inset " + rim.insetColour.toDisplayString(false) + " at "
+                      + fmt(rim.insetOpacity, 2) + ", outer edge "
+                      + rim.outerEdgeColour.toDisplayString(false) + " at "
+                      + fmt(rim.outerEdgeOpacity, 2));
+        }
+
+        {
+            UIConfigManager faderManager;
+            faderManager.setConfigFile(juce::File::getCurrentWorkingDirectory()
+                                           .getChildFile("Source/UI/UIConfig.json"));
+            faderManager.loadInitial();
+            const auto shipping = faderManager.getConfig();
+
+            // One colour for every strip, declared where the faders are styled
+            // rather than inherited from six different source cards.
+            const auto accent = shipping != nullptr
+                                    ? shipping->getColour("mix.fader.accent", juce::Colours::transparentBlack)
+                                    : juce::Colours::transparentBlack;
+            const auto osc1 = shipping != nullptr
+                                  ? shipping->getColour("cards.osc1.border.color", juce::Colours::transparentBlack)
+                                  : juce::Colours::transparentBlack;
+
+            check("Mixer_AllFadersShareOneAccent",
+                  accent != juce::Colours::transparentBlack && accent == osc1,
+                  "mix.fader.accent is " + accent.toDisplayString(false)
+                      + ", osc 1's card is " + osc1.toDisplayString(false));
+        }
+
+        check("BusInsert_ButtonLayoutFallsBackToTheSharedBlock",
                   shared.size == 41 && shared.offsetX == 3,
                   "with no card block declared: size " + juce::String(shared.size)
                       + ", offsetX " + juce::String(shared.offsetX) + " (expected 41 / 3)");
