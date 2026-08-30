@@ -591,11 +591,16 @@
       "meterBezelColor": "#1A3460",
       "meterFaceColor": "#EEE7D2",
       "meterInkColor": "#262420",
-      "meterNeedleColor": "#18181A",
+      "meterNeedle": {
+        "color": "#18181A",
+        "width": 2.6,
+        "lengthScale": 0.97,
+        "offsetY": 0,
+        "base": { "color": "#18181A", "radius": 8.6, "offsetY": 0 }
+      },
       "meterGlowColor": "#FFF4CED2",
       "meterBandColor": "#B02E28C8",
       "meterScaleFontSize": 7.5,
-      "meterNeedleWidth": 2.6,
       "badgeColor": "#FFFFFF1E",
       "badgeTextColor": "#E8EEF8",
       "badgeFontSize": 7

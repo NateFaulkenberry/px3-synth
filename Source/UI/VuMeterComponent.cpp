@@ -314,14 +314,35 @@ void VuMeterComponent::paint(juce::Graphics& g)
     const auto angle = static_cast<double>(arc.angleForPosition(
         static_cast<float>(juce::jlimit(0.0, 1.0, movement.position()))));
 
-    const auto needleColour = cfg(uiConfig, "busInserts.comp.meterNeedleColor", juce::Colour::fromRGB(24, 24, 26));
-    const auto length = arc.radius * 0.97f;
-    const auto width = cfgF(uiConfig, "busInserts.comp.meterNeedleWidth", 1.6f) * 2.2f;
+    // The needle and its pivot cap are drawn separately - one is a rotating
+    // blade, the other a fixed disc over its centre - so each has its own
+    // colour and its own vertical position. They shared a colour and a point
+    // before, which meant neither could be adjusted without moving the other.
+    const auto needleColour = cfg(uiConfig, "busInserts.comp.meterNeedle.color",
+                                  juce::Colour::fromRGB(24, 24, 26));
+    const auto width = cfgF(uiConfig, "busInserts.comp.meterNeedle.width", 1.6f) * 2.2f;
+    const auto needleOffsetY = cfgF(uiConfig, "busInserts.comp.meterNeedle.offsetY", 0.0f);
+
+    const auto baseColour = cfg(uiConfig, "busInserts.comp.meterNeedle.base.color", needleColour);
+    const auto baseRadius = juce::jmax(0.0f, cfgF(uiConfig, "busInserts.comp.meterNeedle.base.radius",
+                                                  juce::jmax(2.5f, width * 1.5f)));
+    const auto baseOffsetY = cfgF(uiConfig, "busInserts.comp.meterNeedle.base.offsetY", 0.0f);
+
+    // As a FRACTION of the arc's radius, not a pixel count: the meter is sized
+    // from its panel, so an absolute length would be right at one size and
+    // wrong at every other. 1.0 reaches the scale's arc exactly.
+    const auto length = arc.radius
+                        * juce::jlimit(0.05f, 2.0f,
+                                       cfgF(uiConfig, "busInserts.comp.meterNeedle.lengthScale", 0.97f));
+
+    // Moving the needle's Y moves its PIVOT, so the blade swings about the new
+    // point rather than being translated off its own arc.
+    const auto pivot = arc.pivot.translated(0.0f, needleOffsetY);
 
     // Rotated about the PIVOT, not about a bounding box: the path is built with
     // its pivot at the origin and then moved there.
     const auto transform = juce::AffineTransform::rotation(static_cast<float>(angle))
-                               .translated(arc.pivot.getX(), arc.pivot.getY());
+                               .translated(pivot.getX(), pivot.getY());
 
     auto blade = needlePath(length, width);
 
@@ -333,15 +354,23 @@ void VuMeterComponent::paint(juce::Graphics& g)
     g.setColour(needleColour.withAlpha(live ? 1.0f : 0.35f));
     g.fillPath(blade, transform);
 
-    // A highlight down one side of the blade, and the pivot cap over it.
+    // A highlight down one side of the blade.
     g.setColour(juce::Colours::white.withAlpha(live ? 0.16f : 0.05f));
     g.strokePath(blade, juce::PathStrokeType(0.6f), transform);
 
-    const auto capRadius = juce::jmax(2.5f, width * 1.5f);
-    g.setColour(needleColour.withAlpha(live ? 1.0f : 0.35f));
-    g.fillEllipse(juce::Rectangle<float>(capRadius * 2.0f, capRadius * 2.0f).withCentre(arc.pivot));
-    g.setColour(juce::Colours::white.withAlpha(live ? 0.22f : 0.06f));
-    g.drawEllipse(juce::Rectangle<float>(capRadius * 2.0f, capRadius * 2.0f).withCentre(arc.pivot), 0.8f);
+    // The cap, on its own centre. A radius of 0 removes it entirely, for a face
+    // whose movement disappears behind the scale rather than sitting on it.
+    if (baseRadius > 0.0f)
+    {
+        const auto baseCentre = arc.pivot.translated(0.0f, baseOffsetY);
+        const auto capBounds = juce::Rectangle<float>(baseRadius * 2.0f, baseRadius * 2.0f)
+                                   .withCentre(baseCentre);
+
+        g.setColour(baseColour.withAlpha(live ? 1.0f : 0.35f));
+        g.fillEllipse(capBounds);
+        g.setColour(juce::Colours::white.withAlpha(live ? 0.22f : 0.06f));
+        g.drawEllipse(capBounds, 0.8f);
+    }
 }
 
 } // namespace px3::ui

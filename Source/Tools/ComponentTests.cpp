@@ -16680,15 +16680,18 @@ void testBusInserts()
         // hard-coded look wearing a configurable one's clothes. This walks the
         // whole declared block and requires each key to parse.
         {
-            static const std::array<const char*, 14> numbers { {
+            static const std::array<const char*, 18> numbers { {
                 "innerPadding", "earWidth", "sectionGap", "legendHeight", "legendFontSize",
                 "largeKnobSize", "smallKnobSize", "scaleMargin", "timeColumnWidth",
                 "ratioWidth", "meterWidth", "screwRadius",
-                "meterScaleFontSize", "meterNeedleWidth",
+                "meterScaleFontSize",
+                "meterNeedle.width", "meterNeedle.lengthScale",
+                "meterNeedle.offsetY", "meterNeedle.base.radius", "meterNeedle.base.offsetY",
             } };
-            static const std::array<const char*, 8> colours { {
+            static const std::array<const char*, 9> colours { {
                 "inkColor", "meterBezelColor", "meterFaceColor", "meterInkColor",
-                "meterNeedleColor", "meterGlowColor", "meterBandColor", "badgeTextColor",
+                "meterGlowColor", "meterBandColor", "badgeTextColor",
+                "meterNeedle.color", "meterNeedle.base.color",
             } };
 
             juce::String missing;
