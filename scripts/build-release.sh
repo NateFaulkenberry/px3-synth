@@ -446,6 +446,27 @@ elif [[ -f "${ICON_OUTPUT}" ]]; then
   echo "  App icon: using committed ${ICON_OUTPUT##*/}"
 fi
 
+# The uninstaller's icon is the application's with a red X struck through it, so
+# the two are instantly distinguishable in a folder while still obviously
+# belonging to the same product. Generated FROM the app icon above, so it
+# follows any change to it rather than being a second asset to remember.
+#
+# Committed like the app icon, and skipped the same way when the tooling is
+# absent: a release must not fail because node or sharp is missing.
+UNINSTALL_ICON_OUTPUT="${REPO_ROOT}/Source/Assets/px3-uninstall.icns"
+if [[ -f "${REPO_ROOT}/scripts/make-uninstaller-icon.mjs" && -f "${ICON_OUTPUT}" ]] \
+   && command -v node >/dev/null 2>&1; then
+  if node "${REPO_ROOT}/scripts/make-uninstaller-icon.mjs" >/dev/null 2>&1; then
+    echo "  Uninstaller icon regenerated from $(basename "${ICON_OUTPUT}")"
+  elif [[ -f "${UNINSTALL_ICON_OUTPUT}" ]]; then
+    echo "  Uninstaller icon: using committed ${UNINSTALL_ICON_OUTPUT##*/}"
+  else
+    echo "  Uninstaller icon: none (install sharp to generate one: npm install --prefix .tools sharp)"
+  fi
+elif [[ -f "${UNINSTALL_ICON_OUTPUT}" ]]; then
+  echo "  Uninstaller icon: using committed ${UNINSTALL_ICON_OUTPUT##*/}"
+fi
+
 echo "[2/8] Configuring CMake"
 rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
@@ -827,10 +848,14 @@ if [[ "${BUILD_UNINSTALLER}" == true ]]; then
   # No Dock icon: it is a one-shot utility, not an application to switch to.
   /usr/libexec/PlistBuddy -c "Add :LSUIElement bool true" "${UNINSTALLER_PLIST}" 2>/dev/null || true
 
-  if [[ -n "${INSTALLER_BRANDING_FILE:-}" && -f "${PRODUCT_RESOURCES_DIR}/${INSTALLER_BRANDING_FILE}" ]]; then
-    if [[ -f "${REPO_ROOT}/Source/Assets/px3.icns" ]]; then
-      cp "${REPO_ROOT}/Source/Assets/px3.icns" "${UNINSTALLER_RES}/applet.icns"
-    fi
+  # Its own icon - the app's with a red X through it - falling back to the
+  # app's if that has not been generated. This used to be conditional on the
+  # installer's branding image being present, which is unrelated: with no
+  # branding configured the uninstaller simply had no icon at all.
+  if [[ -f "${REPO_ROOT}/Source/Assets/px3-uninstall.icns" ]]; then
+    cp "${REPO_ROOT}/Source/Assets/px3-uninstall.icns" "${UNINSTALLER_RES}/applet.icns"
+  elif [[ -f "${REPO_ROOT}/Source/Assets/px3.icns" ]]; then
+    cp "${REPO_ROOT}/Source/Assets/px3.icns" "${UNINSTALLER_RES}/applet.icns"
   fi
 
   UNINSTALLER_SIGN_STATE="unsigned"
