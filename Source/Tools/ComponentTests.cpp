@@ -16043,6 +16043,85 @@ void testBusInserts()
         collectNamed(*editor, "BusEqGraph", graphs);
         auto* graph = graphs.empty() ? nullptr : dynamic_cast<px3::ui::BusEqGraph*>(graphs.front());
 
+        // The stair-stepping, measured on the resampler itself.
+        //
+        // A log-spaced display point below about 100 Hz covers less than one
+        // FFT bin, so aggregating by "peak over a band" returns the SAME bin -
+        // and the same number - for many consecutive points. That is a flat run
+        // in the curve, and it was 42 points long at 33 Hz.
+        //
+        // Reproduced against a spectrum that varies bin to bin, so any flat run
+        // in the output belongs to the resampler and not to the signal.
+        {
+            constexpr int kFft = 4096;
+            constexpr int kPoints = 1024;
+            constexpr double kRate = 48000.0;
+            const auto binsPerHz = static_cast<double>(kFft) / kRate;
+            constexpr int lastUsable = kFft / 2 - 2;
+
+            std::vector<float> bins(static_cast<std::size_t>(kFft / 2), 0.0f);
+            for (std::size_t b = 0; b < bins.size(); ++b)
+            {
+                bins[b] = 0.2f + 0.8f * std::abs(std::sin(static_cast<float>(b) * 0.37f));
+            }
+
+            auto longestFlatRun = [&](bool interpolate)
+            {
+                std::vector<float> out(static_cast<std::size_t>(kPoints), 0.0f);
+                const auto step = std::pow(20000.0 / 20.0, 1.0 / (kPoints - 1));
+
+                for (int i = 0; i < kPoints; ++i)
+                {
+                    const auto p = static_cast<double>(i) / (kPoints - 1);
+                    const auto hz = 20.0 * std::pow(1000.0, p);
+                    const auto exact = hz * binsPerHz;
+                    const auto first = static_cast<int>(std::floor(hz / step * binsPerHz));
+                    const auto last = static_cast<int>(std::ceil(hz * step * binsPerHz));
+
+                    if (! interpolate || last - first >= 2)
+                    {
+                        auto peak = 0.0f;
+                        for (int b = juce::jmax(1, first); b <= juce::jmin(lastUsable, last); ++b)
+                        {
+                            peak = juce::jmax(peak, bins[static_cast<std::size_t>(b)]);
+                        }
+                        out[static_cast<std::size_t>(i)] = peak;
+                    }
+                    else
+                    {
+                        const auto lo = juce::jlimit(1, lastUsable, static_cast<int>(std::floor(exact)));
+                        const auto hi = juce::jlimit(1, lastUsable, lo + 1);
+                        const auto t = static_cast<float>(juce::jlimit(0.0, 1.0, exact - lo));
+                        out[static_cast<std::size_t>(i)] = bins[static_cast<std::size_t>(lo)]
+                            + (bins[static_cast<std::size_t>(hi)] - bins[static_cast<std::size_t>(lo)]) * t;
+                    }
+                }
+
+                auto worst = 1;
+                auto run = 1;
+                for (std::size_t i = 1; i < out.size(); ++i)
+                {
+                    if (std::abs(out[i] - out[i - 1]) < 1.0e-7f) { ++run; worst = juce::jmax(worst, run); }
+                    else                                          { run = 1; }
+                }
+                return worst;
+            };
+
+            const auto beforeFix = longestFlatRun(false);
+            const auto afterFix = longestFlatRun(true);
+
+            // A short run still survives at the very bottom of the axis: below
+            // about 25 Hz two adjacent display points land inside the same pair
+            // of bins with almost the same weight, so they interpolate to
+            // almost the same number. That is the data running out, not the
+            // resampler discarding it - 6 points is 5 px.
+            check("BusEqGraph_LogResamplerDoesNotFlattenTheLowEnd",
+                  afterFix < 10 && beforeFix > 20,
+                  "longest run of identical points: " + juce::String(beforeFix)
+                      + " taking the peak over a sub-bin band, " + juce::String(afterFix)
+                      + " interpolating between bins");
+        }
+
         check("BusEqGraph_IsHostedInTheSheet", graph != nullptr && graph->getWidth() > 100,
               graph != nullptr ? "graph is " + graph->getBounds().toString()
                                : juce::String("no BusEqGraph found in the editor"));
@@ -16597,10 +16676,10 @@ void testBusInserts()
                                         ? config->getValue("busInserts.comp.enableButton.anchor").toString()
                                         : juce::String();
 
-            check("BusInsert_OnlyTheEqEnableIsAnchoredToTheInnerPanel",
-                  eqAnchor.equalsIgnoreCase("innerTopLeft") && compAnchor.isEmpty(),
-                  "EQ anchor '" + eqAnchor + "', compressor anchor '"
-                      + (compAnchor.isEmpty() ? juce::String("(default header top right)") : compAnchor) + "'");
+            check("BusInsert_BothSheetsAnchorTheirEnableToTheInnerPanel",
+                  eqAnchor.equalsIgnoreCase("innerTopLeft")
+                      && compAnchor.equalsIgnoreCase("innerTopLeft"),
+                  "EQ anchor '" + eqAnchor + "', compressor anchor '" + compAnchor + "'");
         }
 
         check("BusInsert_ShippingConfigStylesBothSheetsAsCards",

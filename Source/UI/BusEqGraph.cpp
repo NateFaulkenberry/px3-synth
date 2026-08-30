@@ -252,30 +252,61 @@ void BusEqGraph::refreshSpectrum()
     // Resampled onto the LOG axis rather than drawn linearly. A linear bin walk
     // puts nine tenths of its points in the top octave, where the display has
     // the least room for them, and leaves the bass drawn from three bins.
+    //
+    // How a display point is filled depends on how many FFT bins it covers, and
+    // getting this wrong was the visible stair-stepping:
+    //
+    //   spans MANY bins  -> take the peak, so a narrow resonance inside the
+    //                       point is not averaged away
+    //   spans ONE or FEWER -> INTERPOLATE between the neighbouring bins
+    //
+    // The old code took the peak over a fixed +-6% band in both cases. At 33 Hz
+    // that band is a third of one bin wide, so 42 consecutive display points
+    // resolved to the same bin and returned the same number - a 36 px dead-flat
+    // step in the curve. The data underneath varied; the aggregation discarded
+    // it.
+    const auto lastUsableBin = kFftSize / 2 - 2;
+
     for (int i = 0; i < kSpectrumBins; ++i)
     {
         const auto position = static_cast<float>(i) / static_cast<float>(kSpectrumBins - 1);
         const auto hz = kMinHz * std::pow(kMaxHz / kMinHz, position);
 
-        // Each display bin covers a band, so take the PEAK across it: an
-        // average would bury a narrow resonance that is exactly what someone
-        // has the analyser open to find.
-        const auto lowHz = hz / 1.06f;
-        const auto highHz = hz * 1.06f;
-        const auto firstBin = juce::jmax(1, static_cast<int>(lowHz * binsPerHz));
-        const auto lastBin = juce::jmin(kFftSize / 2 - 1, static_cast<int>(highHz * binsPerHz));
+        // The band this display point covers, taken from its neighbours on the
+        // log axis rather than a fixed percentage - so it tracks the axis
+        // instead of being right at one end and wrong at the other.
+        const auto step = std::pow(kMaxHz / kMinHz, 1.0f / static_cast<float>(kSpectrumBins - 1));
+        const auto lowHz = hz / step;
+        const auto highHz = hz * step;
 
-        auto peak = 0.0f;
-        for (int bin = firstBin; bin <= lastBin; ++bin)
+        const auto exactBin = static_cast<float>(hz * binsPerHz);
+        const auto firstBin = static_cast<int>(std::floor(lowHz * binsPerHz));
+        const auto lastBin = static_cast<int>(std::ceil(highHz * binsPerHz));
+
+        float magnitude = 0.0f;
+
+        if (lastBin - firstBin >= 2)
         {
-            peak = juce::jmax(peak, fftScratch[static_cast<std::size_t>(bin)]);
+            // Several bins under one point: the peak, so a narrow resonance
+            // survives.
+            for (int bin = juce::jmax(1, firstBin); bin <= juce::jmin(lastUsableBin, lastBin); ++bin)
+            {
+                magnitude = juce::jmax(magnitude, fftScratch[static_cast<std::size_t>(bin)]);
+            }
         }
-        if (lastBin < firstBin)
+        else
         {
-            peak = fftScratch[static_cast<std::size_t>(juce::jlimit(1, kFftSize / 2 - 1, firstBin))];
+            // Between two bins: interpolate. This is what removes the plateaus.
+            const auto lower = juce::jlimit(1, lastUsableBin, static_cast<int>(std::floor(exactBin)));
+            const auto upper = juce::jlimit(1, lastUsableBin, lower + 1);
+            const auto t = juce::jlimit(0.0f, 1.0f, exactBin - static_cast<float>(lower));
+
+            const auto a = fftScratch[static_cast<std::size_t>(lower)];
+            const auto b = fftScratch[static_cast<std::size_t>(upper)];
+            magnitude = a + (b - a) * t;
         }
 
-        const auto db = juce::Decibels::gainToDecibels(peak * 2.0f / static_cast<float>(kFftSize), -120.0f);
+        const auto db = juce::Decibels::gainToDecibels(magnitude * 2.0f / static_cast<float>(kFftSize), -120.0f);
 
         auto& smoothed = spectrumDb[static_cast<std::size_t>(i)];
         if (! spectrumPrimed)
@@ -289,8 +320,7 @@ void BusEqGraph::refreshSpectrum()
             //
             // The coefficient is derived from the refresh rate rather than
             // written as a constant, so changing the rate changes only the
-            // smoothness and not the fall time. Tuned at 24 Hz with 0.22, which
-            // is a time constant of about 165 ms.
+            // smoothness and not the fall time.
             smoothed = db > smoothed ? db : smoothed + (db - smoothed) * kDecayPerFrame;
         }
     }

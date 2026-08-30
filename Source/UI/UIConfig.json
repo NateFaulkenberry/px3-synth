@@ -561,7 +561,7 @@
       "spectrumColor": "#96C8FF3A"
     },
     "comp": {
-      "enableButton": { "offsetX": 0, "offsetY": 0, "legendPlacement": "below" },
+      "enableButton": { "offsetX": 0, "offsetY": 0, "legendPlacement": "below", "anchor": "innerTopLeft" },
       "closeButton": { "offsetX": 0, "offsetY": 0 },
       "widthFraction": 0.58,
       "heightFraction": 0.44,
