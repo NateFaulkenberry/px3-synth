@@ -13591,6 +13591,57 @@ void testEditorLifecycle()
                             + ", headroom click passes through: "
                             + (wheels->hitTest(wheels->getWidth() / 2, headroom / 2) ? "NO" : "yes"));
 
+            // The wheels now sit IN FRONT of the keyboard, because their
+            // sparkles spill over the keys and the keyboard would otherwise
+            // paint over them. That is only safe if the spill is transparent to
+            // the mouse - otherwise every key under the overlap goes dead.
+            if (wheels != nullptr && keys != nullptr)
+            {
+                const auto overlap = wheels->getBounds().getIntersection(keys->getBounds());
+
+                // A point over the keys, inside the wheels' spill, and low
+                // enough to be on an actual key rather than in the headroom.
+                const auto probe = juce::Point<int>(
+                    overlap.getCentreX(),
+                    keys->getY() + keys->keyboardArea().getCentreY());
+
+                auto* resolved = overlap.isEmpty() ? nullptr : editor->getComponentAt(probe);
+                auto* owner = resolved;
+                while (owner != nullptr && owner != keys && owner != wheels)
+                {
+                    owner = owner->getParentComponent();
+                }
+
+                check("PerformanceControls_SpillDoesNotStealClicksFromTheKeys",
+                      ! overlap.isEmpty() && owner == keys,
+                      overlap.isEmpty()
+                          ? juce::String("the wheels do not reach the keys at all")
+                          : "overlap " + overlap.toString() + "; a click there resolves to "
+                                + (owner == keys ? "the keyboard"
+                                                 : (owner == wheels ? "THE WHEELS" : "neither")));
+
+                // And it must draw nothing of its own over them.
+                const auto probeArea = overlap.withHeight(juce::jmin(overlap.getHeight(), 60));
+                const auto before = editor->createComponentSnapshot(probeArea);
+                wheels->setSparkMargins({ 0, 0, 0, 0 });
+                editor->resized();
+                const auto after = editor->createComponentSnapshot(probeArea);
+                editor->resized();
+
+                auto differing = 0;
+                for (int y = 0; y < before.getHeight(); ++y)
+                {
+                    for (int x = 0; x < before.getWidth(); ++x)
+                    {
+                        if (before.getPixelAt(x, y) != after.getPixelAt(x, y)) ++differing;
+                    }
+                }
+
+                check("PerformanceControls_SpillDrawsNothingOverTheKeys", differing == 0,
+                      juce::String(differing) + " pixels over the keys differ with the spill "
+                          + "present and absent");
+            }
+
             check("Keyboard_SparksHaveHeadroomAboveTheKeys",
                   headroomIsAbove && headroomPassesClicksThrough && keysStillHitTest,
                   juce::String(headroom) + "px of headroom above a "
@@ -14944,7 +14995,8 @@ void testBusInserts()
                 ids.push_back(b + "EqQ" + n);
             }
             for (const auto* suffix : { "CompEnabled", "CompInput", "CompOutput", "CompAttack",
-                                        "CompRelease", "CompRatio", "CompMix", "CompLink" })
+                                        "CompRelease", "CompRatio", "CompMix", "CompLink",
+                                        "CompMeterMode" })
             {
                 ids.push_back(b + suffix);
             }
@@ -15393,6 +15445,37 @@ void testBusInserts()
                                    ? config->getColour("cards.busInsertComp.innerOverlay.color", juce::Colours::transparentBlack)
                                    : juce::Colours::transparentBlack;
 
+        // A VU movement is linear in AMPLITUDE, not in decibels. That is the
+        // whole reason its face looks the way it does, and getting it wrong
+        // gives an evenly-spaced scale that is not a VU meter at all.
+        {
+            const auto atMinus20 = px3::ui::VuArc::positionForLevelDb(-20.0f);
+            const auto atMinus10 = px3::ui::VuArc::positionForLevelDb(-10.0f);
+            const auto atZero = px3::ui::VuArc::positionForLevelDb(0.0f);
+            const auto atPlusThree = px3::ui::VuArc::positionForLevelDb(3.0f);
+
+            // 0 VU lands around 70% of the sweep, and the bottom 10 dB of the
+            // scale occupies less room than the top 3 dB - which is exactly
+            // what a linear-in-dB scale would get backwards.
+            const auto lowDecade = atMinus10 - atMinus20;
+            const auto topThree = atPlusThree - atZero;
+
+            check("BusComp_VuScaleIsLinearInAmplitude",
+                  atZero > 0.65f && atZero < 0.76f
+                      && atPlusThree > 0.99f
+                      && lowDecade < topThree,
+                  "0 VU at " + fmt(atZero * 100.0f, 1) + "% of the sweep; -20..-10 dB spans "
+                      + fmt(lowDecade * 100.0f, 1) + "% against 0..+3 dB's " + fmt(topThree * 100.0f, 1) + "%");
+
+            // Gain reduction rests at the right stop and falls left.
+            const auto noReduction = px3::ui::VuArc::positionForReductionDb(0.0f);
+            const auto deepReduction = px3::ui::VuArc::positionForReductionDb(20.0f);
+            check("BusComp_GainReductionMeterFallsFromRest",
+                  noReduction > 0.99f && deepReduction < 0.15f && deepReduction < noReduction,
+                  "0 dB of reduction rests at " + fmt(noReduction * 100.0f, 1)
+                      + "% and 20 dB falls to " + fmt(deepReduction * 100.0f, 1) + "%");
+        }
+
         // The meter's scale has to fit the glass it is printed on. It did not:
         // the radius came from the face's HEIGHT alone, so on a face wider than
         // it was tall the 0 dB tick landed past the right edge and the needle
@@ -15422,7 +15505,8 @@ void testBusInserts()
 
                 // And the needle must actually sweep: an arc collapsed to a
                 // point would "fit" every face ever measured.
-                const auto sweep = arc.pointFor(0.0f, 1.0f).getDistanceFrom(arc.pointFor(20.0f, 1.0f));
+                const auto sweep = arc.pointForPosition(0.0f, 1.0f)
+                                       .getDistanceFrom(arc.pointForPosition(1.0f, 1.0f));
                 if (sweep < face.getWidth() * 0.5f)
                 {
                     allFit = false;
@@ -15473,6 +15557,49 @@ void testBusInserts()
                       ? juce::String(static_cast<int>(numbers.size() + colours.size()))
                             + " panel properties all declared and parsing"
                       : "not reachable from config: " + missing);
+        }
+
+        // The header buttons must answer to their own size and position, and
+        // must not be constrained by the row they nominally sit in - the row is
+        // reserved space, not a container. headerHeight 0 is a supported
+        // layout: the buttons then float over the panel.
+        {
+            juce::String parseError;
+            const auto tall = UIConfig::fromJsonText(
+                R"({ "busInserts": { "headerHeight": 0,
+                     "enableButton": { "size": { "width": 88, "height": 44 }, "offsetX": -5, "offsetY": 7 } } })",
+                parseError);
+
+            const auto style = px3::ui::mixerToggleStyleFromConfig(
+                tall.get(), "busInserts.enableButton", {}, MixerToggleButton::Style());
+
+            check("BusInsert_EnableButtonSizeIsNotCappedByTheHeaderRow",
+                  style.width == 88 && style.height == 44
+                      && tall != nullptr && tall->getInt("busInserts.headerHeight", -1) == 0
+                      && tall->getInt("busInserts.enableButton.offsetY", -999) == 7,
+                  "parsed " + juce::String(style.width) + "x" + juce::String(style.height)
+                      + " with headerHeight 0 and offsetY "
+                      + juce::String(tall != nullptr ? tall->getInt("busInserts.enableButton.offsetY", -999) : -999));
+        }
+
+        // The sheet titles are card titles, so their size comes from the card
+        // block - and the ROW HEIGHT is a separate property. Raising fontSize
+        // alone just clips the glyphs against a 14px box, which reads as the
+        // property being ignored. Both are declared so both are reachable.
+        {
+            const auto eqTitle = px3::ui::CardStyle::fromConfig(config.get(), "cards.defaults",
+                                                                "cards.busInsertEq");
+            const auto compTitle = px3::ui::CardStyle::fromConfig(config.get(), "cards.defaults",
+                                                                  "cards.busInsertComp");
+
+            check("BusInsert_SheetTitleSizeAndRowAreBothConfigurable",
+                  eqTitle.title.fontSize > 0.0f && eqTitle.title.height >= eqTitle.title.fontSize
+                      && compTitle.title.fontSize > 0.0f
+                      && compTitle.title.height >= compTitle.title.fontSize,
+                  "EQ title " + fmt(eqTitle.title.fontSize, 1) + "pt in a "
+                      + fmt(eqTitle.title.height, 1) + "px row; comp "
+                      + fmt(compTitle.title.fontSize, 1) + "pt in "
+                      + fmt(compTitle.title.height, 1) + "px");
         }
 
         check("BusInsert_ShippingConfigStylesBothSheetsAsCards",

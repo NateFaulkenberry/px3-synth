@@ -117,18 +117,21 @@ void PerformanceControls::setControllerState(float pitchBendNormalized,
 
 juce::Rectangle<int> PerformanceControls::controlsArea() const
 {
-    return getLocalBounds().withTrimmedTop(juce::jmin(sparkHeadroomPx, getHeight()));
+    auto area = sparkMargins.subtractedFrom(getLocalBounds());
+    // A margin larger than the component would invert the rectangle, and an
+    // inverted rectangle contains nothing - so every click would fall through
+    // and the wheels would stop responding.
+    return area.isEmpty() ? getLocalBounds() : area;
 }
 
-void PerformanceControls::setSparkHeadroom(int pixels)
+void PerformanceControls::setSparkMargins(juce::BorderSize<int> margins)
 {
-    const auto clamped = juce::jmax(0, pixels);
-    if (sparkHeadroomPx == clamped)
+    if (sparkMargins == margins)
     {
         return;
     }
 
-    sparkHeadroomPx = clamped;
+    sparkMargins = margins;
     repaint();
 }
 
@@ -285,7 +288,7 @@ void PerformanceControls::timerCallback()
     // Continuous emission, proportional to how far each wheel is bent. The
     // accumulator is what makes a small bend a trickle and a full one a
     // constant spray, without either being a special case.
-    const auto emitFrom = [this](juce::Point<float> origin, float bend, float& kick, float& accumulator)
+    const auto emitFrom = [this](juce::Point<float> handleCentre, float bend, float& kick, float& accumulator)
     {
         const auto intensity = juce::jlimit(0.0f, 1.0f, bend + kick);
         kick *= 0.82f;
@@ -302,7 +305,7 @@ void PerformanceControls::timerCallback()
         while (accumulator >= 1.0f)
         {
             accumulator -= 1.0f;
-            emitSparkles(origin, intensity);
+            emitSparkles(handleCentre, kHandleRadius, intensity);
         }
     };
 
@@ -342,7 +345,7 @@ void PerformanceControls::timerCallback()
 // Emitted in every direction, not along one. The angle is drawn from the whole
 // circle, so a burst is a starburst around the handle rather than a stream
 // leaving it - which is what the two shape animations did before.
-void PerformanceControls::emitSparkles(juce::Point<float> origin, float intensity)
+void PerformanceControls::emitSparkles(juce::Point<float> centre, float radius, float intensity)
 {
     intensity = juce::jlimit(0.0f, 1.0f, intensity);
     if (intensity <= 0.001f)
@@ -356,18 +359,24 @@ void PerformanceControls::emitSparkles(juce::Point<float> origin, float intensit
 
     for (int i = 0; i < count; ++i)
     {
-        const auto angle = rng.nextFloat() * juce::MathConstants<float>::twoPi;
+        // A point on the handle's circumference, and the outward normal there.
+        const auto bearing = rng.nextFloat() * juce::MathConstants<float>::twoPi;
+        const auto outward = juce::Point<float>(std::cos(bearing), std::sin(bearing));
+
+        // Spawned just outside the rim so a sparkle never appears on top of the
+        // knob it came off.
+        const auto spawnRadius = radius + 1.0f + rng.nextFloat() * 2.0f;
+
+        // Travelling out along that same radius, with a little tangential
+        // scatter. Without the scatter the burst is a set of perfectly straight
+        // spokes, which reads as a diagram rather than as sparks.
+        const auto scatter = (rng.nextFloat() * 2.0f - 1.0f) * 0.38f;
+        const auto heading = bearing + scatter;
         const auto speed = (0.8f + 2.2f * rng.nextFloat()) * (0.55f + 1.15f * intensity);
 
         Sparkle sparkle;
-        // Spawned on a small disc rather than at a point, so the burst has an
-        // origin with some size to it and does not look like it is coming out
-        // of a pinhole.
-        const auto spawnAngle = rng.nextFloat() * juce::MathConstants<float>::twoPi;
-        const auto spawnRadius = rng.nextFloat() * 5.0f;
-        sparkle.position = origin.translated(std::cos(spawnAngle) * spawnRadius,
-                                             std::sin(spawnAngle) * spawnRadius);
-        sparkle.velocity = { std::cos(angle) * speed, std::sin(angle) * speed };
+        sparkle.position = centre + outward * spawnRadius;
+        sparkle.velocity = { std::cos(heading) * speed, std::sin(heading) * speed };
         sparkle.maxLifetimeSeconds = (0.26f + rng.nextFloat() * 0.30f) * (0.7f + 0.5f * intensity);
         sparkle.lifetimeSeconds = sparkle.maxLifetimeSeconds;
         sparkle.size = (1.8f + rng.nextFloat() * 2.0f) * (0.7f + 0.6f * intensity);

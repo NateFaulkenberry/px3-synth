@@ -570,6 +570,10 @@ private:
     // Host RSS when this editor opened, so the overlay can show the change
     // rather than only the absolute figure. See processResidentMemoryMb.
     double debugHostRssBaselineMb { 0.0 };
+    // How far the wheels' sparkles may spill past their strip, on the three
+    // sides that are not the shared headroom. Clamped to the window in
+    // resized().
+    int performanceSparkSpill { 112 };
 
     juce::Component debugPanel;
     juce::Label debugPanelTitle;

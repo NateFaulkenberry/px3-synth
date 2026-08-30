@@ -953,6 +953,13 @@ void PX3SynthAudioProcessor::createBusInsertParameters(int bus,
 
     p.compLink = new juce::AudioParameterBool(idPrefix + "CompLink", label + " Comp Stereo Link", true);
 
+    // What the movement is wired to. A parameter rather than UI state so it
+    // survives a session and travels with a preset - a meter that resets to a
+    // different source every time the editor opens is worse than no switch.
+    p.compMeterMode = new juce::AudioParameterChoice(
+        idPrefix + "CompMeterMode", label + " Comp Meter",
+        juce::StringArray { "GR", "IN", "OUT" }, 0);
+
     addParameter(p.eqEnabled);
     for (int band = 0; band < px3::kEqBandCount; ++band)
     {
@@ -973,6 +980,7 @@ void PX3SynthAudioProcessor::createBusInsertParameters(int bus,
     addParameter(p.compRatio);
     addParameter(p.compMix);
     addParameter(p.compLink);
+    addParameter(p.compMeterMode);
 }
 
 // Read once per block and handed to the chain. The processors smooth their own
@@ -1024,6 +1032,7 @@ void PX3SynthAudioProcessor::updateBusInsertSettings(int bus)
     comp.ratio = static_cast<px3::CompRatio>(juce::jlimit(0, 4, p.compRatio->getIndex()));
     comp.mix = p.compMix->get();
     comp.stereoLink = p.compLink->get();
+    comp.meterMode = static_cast<px3::CompMeterMode>(juce::jlimit(0, 2, p.compMeterMode->getIndex()));
 
     busInserts[i].setSettings(eq, comp);
 }

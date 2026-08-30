@@ -3,68 +3,6 @@
 namespace px3::ui
 {
 
-namespace
-{
-// The rotary sweep of a panel knob: a little over three quarters of a turn,
-// with the dead space at the bottom where the pointer would be hidden by the
-// hand turning it.
-constexpr float kStartAngle = juce::MathConstants<float>::pi * 1.22f;
-constexpr float kEndAngle = juce::MathConstants<float>::pi * 2.78f;
-} // namespace
-
-void FetKnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
-                                          int x, int y, int width, int height,
-                                          float sliderPosProportional,
-                                          float,
-                                          float,
-                                          juce::Slider& slider)
-{
-    const auto full = juce::Rectangle<float>(static_cast<float>(x), static_cast<float>(y),
-                                             static_cast<float>(width), static_cast<float>(height));
-    const auto diameter = juce::jmin(full.getWidth(), full.getHeight());
-    const auto bounds = juce::Rectangle<float>(diameter, diameter).withCentre(full.getCentre());
-    const auto centre = bounds.getCentre();
-    const auto radius = diameter * 0.5f;
-
-    // The knob's own sweep, not the caller's: the scale engraved on the panel
-    // is drawn across the same span, and the two have to agree or the pointer
-    // lies about the number it is on.
-    const auto angle = kStartAngle + juce::jlimit(0.0f, 1.0f, sliderPosProportional) * (kEndAngle - kStartAngle);
-
-    const auto enabled = slider.isEnabled();
-
-    // Chromed collar, brightest at the top left where the room light is.
-    const auto collar = bounds;
-    g.setGradientFill(juce::ColourGradient(juce::Colour::fromRGB(238, 240, 243), collar.getX(), collar.getY(),
-                                           juce::Colour::fromRGB(126, 129, 134), collar.getRight(), collar.getBottom(),
-                                           false));
-    g.fillEllipse(collar);
-    g.setColour(juce::Colour::fromRGBA(40, 42, 46, 140));
-    g.drawEllipse(collar.reduced(0.5f), 1.0f);
-
-    // The cap: black phenolic, lit from the same direction as the collar.
-    const auto cap = bounds.reduced(radius * 0.17f);
-    g.setGradientFill(juce::ColourGradient(juce::Colour::fromRGB(62, 63, 67), cap.getX(), cap.getY(),
-                                           juce::Colour::fromRGB(16, 16, 18), cap.getRight(), cap.getBottom(),
-                                           false));
-    g.fillEllipse(cap);
-
-    // A soft highlight arc across the top of the cap, which is what stops a
-    // black circle reading as a hole.
-    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 26));
-    g.fillEllipse(cap.reduced(cap.getWidth() * 0.12f).translated(0.0f, -cap.getHeight() * 0.16f)
-                      .withHeight(cap.getHeight() * 0.42f));
-
-    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 150));
-    g.drawEllipse(cap.reduced(0.5f), 1.0f);
-
-    // The indicator, cut from the cap's edge toward its centre.
-    const auto direction = juce::Point<float>(std::sin(angle), -std::cos(angle));
-    const auto capRadius = cap.getWidth() * 0.5f;
-    g.setColour(juce::Colour::fromRGB(242, 244, 247).withAlpha(enabled ? 1.0f : 0.45f));
-    g.drawLine({ centre + direction * (capRadius * 0.34f), centre + direction * (capRadius * 0.93f) }, 2.4f);
-}
-
 void FetPushButtonLookAndFeel::drawButtonBackground(juce::Graphics& g,
                                                     juce::Button& button,
                                                     const juce::Colour&,
@@ -110,28 +48,46 @@ void FetPushButtonLookAndFeel::drawButtonText(juce::Graphics& g,
     g.drawText(button.getButtonText(), button.getLocalBounds(), juce::Justification::centred, false);
 }
 
-float VuArc::angleFor(float db) const
+float VuArc::angleForPosition(float position) const
 {
-    const auto position = juce::jlimit(0.0f, 1.0f, db / juce::jmax(1.0e-3f, fullScaleDb));
-    return span - position * (span * 2.0f);
+    // 0 is the left stop, 1 the right.
+    return -span + juce::jlimit(0.0f, 1.0f, position) * (span * 2.0f);
 }
 
-juce::Point<float> VuArc::directionFor(float db) const
+juce::Point<float> VuArc::directionForPosition(float position) const
 {
-    const auto angle = angleFor(db);
+    const auto angle = angleForPosition(position);
     return { std::sin(angle), -std::cos(angle) };
 }
 
-juce::Point<float> VuArc::pointFor(float db, float fraction) const
+juce::Point<float> VuArc::pointForPosition(float position, float fraction) const
 {
-    return pivot + directionFor(db) * (radius * fraction);
+    return pivot + directionForPosition(position) * (radius * fraction);
+}
+
+float VuArc::positionForLevelDb(float db)
+{
+    // Linear in amplitude, normalised so +3 dB reaches the right stop. This is
+    // what puts 0 VU at about 71% of the sweep, as it is on a real face.
+    constexpr auto kFullScaleDb = 3.0f;
+    const auto amplitude = std::pow(10.0f, juce::jlimit(-60.0f, kFullScaleDb, db) / 20.0f);
+    const auto fullScale = std::pow(10.0f, kFullScaleDb / 20.0f);
+    return juce::jlimit(0.0f, 1.0f, amplitude / fullScale);
+}
+
+float VuArc::positionForReductionDb(float db)
+{
+    // No reduction rests at the right stop; the needle falls left as the unit
+    // works. Same amplitude-linear movement, so the deep end crowds together
+    // exactly as it does on the hardware.
+    return juce::jlimit(0.0f, 1.0f, std::pow(10.0f, -juce::jmax(0.0f, db) / 20.0f));
 }
 
 juce::Rectangle<float> VuArc::drawnBounds() const
 {
     // The scale's extremes are its two ends and its apex; nothing drawn between
     // them can fall outside the box those three define.
-    auto bounds = juce::Rectangle<float>(pointFor(0.0f, 1.0f), pointFor(fullScaleDb, 1.0f));
+    auto bounds = juce::Rectangle<float>(pointForPosition(0.0f, 1.0f), pointForPosition(1.0f, 1.0f));
     const auto apex = pivot.translated(0.0f, -radius);
     return bounds.getUnion(juce::Rectangle<float>(apex, apex));
 }
@@ -182,7 +138,9 @@ void drawScrew(juce::Graphics& g, juce::Point<float> centre, float radius)
 void drawKnobScale(juce::Graphics& g,
                    juce::Rectangle<float> knobBounds,
                    const juce::StringArray& marks,
-                   juce::Colour ink)
+                   juce::Colour ink,
+                   float startAngle,
+                   float endAngle)
 {
     if (marks.size() < 2)
     {
@@ -197,7 +155,7 @@ void drawKnobScale(juce::Graphics& g,
     for (int i = 0; i < marks.size(); ++i)
     {
         const auto position = static_cast<float>(i) / static_cast<float>(marks.size() - 1);
-        const auto angle = kStartAngle + position * (kEndAngle - kStartAngle);
+        const auto angle = startAngle + position * (endAngle - startAngle);
         const auto direction = juce::Point<float>(std::sin(angle), -std::cos(angle));
 
         g.setColour(ink.withAlpha(0.75f));

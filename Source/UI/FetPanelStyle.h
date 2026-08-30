@@ -15,20 +15,6 @@ namespace px3::ui
 //
 // See docs/V3_1_EQ_COMP_RESEARCH.md for the circuit these controls belong to.
 
-// A large black control knob with a white indicator, on a chromed collar. The
-// numbered scale around it is engraved on the PANEL rather than printed on the
-// cap, which is what the hardware does and the reason the numbers do not turn.
-class FetKnobLookAndFeel final : public juce::LookAndFeel_V4
-{
-public:
-    void drawRotarySlider(juce::Graphics& g,
-                          int x, int y, int width, int height,
-                          float sliderPosProportional,
-                          float rotaryStartAngle,
-                          float rotaryEndAngle,
-                          juce::Slider& slider) override;
-};
-
 // The vertical bank of latching push buttons - ratio on the original, and here
 // too. Light caps, dark legends, and a pressed cap sits lower and darker.
 class FetPushButtonLookAndFeel final : public juce::LookAndFeel_V4
@@ -58,14 +44,20 @@ struct VuArc
     juce::Point<float> pivot;
     float radius { 1.0f };
     float span { 0.6f };        // radians either side of vertical
-    float fullScaleDb { 20.0f };
 
-    // Gain reduction reads BACKWARDS: 0 at the right, and the needle falls to
-    // the left as the unit works. That is why the meter "drops".
-    float angleFor(float db) const;
-    juce::Point<float> directionFor(float db) const;
-    // A point on the scale at `db`, `fraction` of the way out from the pivot.
-    juce::Point<float> pointFor(float db, float fraction) const;
+    // A real VU movement is linear in AMPLITUDE, not in decibels. That is the
+    // whole reason its scale looks the way it does: -20 is crammed against the
+    // left stop while 0 to +3 spreads across the last third. Positions are
+    // therefore taken as 0..1 across the sweep, and the caller converts.
+    float angleForPosition(float position) const;
+    juce::Point<float> directionForPosition(float position) const;
+    juce::Point<float> pointForPosition(float position, float fraction) const;
+
+    // Where a level sits on a VU face, with +3 dB at full scale.
+    static float positionForLevelDb(float db);
+    // Where a gain reduction sits: 0 dB at rest on the RIGHT, falling left as
+    // the unit works, on the same amplitude-linear movement.
+    static float positionForReductionDb(float db);
 
     // Every extreme of the drawn scale, for a caller that wants to check it
     // lands where it should.
@@ -81,12 +73,19 @@ namespace panel
 // A slotted screw in a countersunk well, as the rack ears carry.
 void drawScrew(juce::Graphics& g, juce::Point<float> centre, float radius);
 
-// The engraved arc of numbers around a large knob. `marks` are drawn evenly
-// across the knob's rotary sweep, which is how a panel scale is laid out.
+// The engraved arc of numbers around a knob. `marks` are spread evenly across
+// the sweep, which is how a panel scale is laid out.
+//
+// The sweep is passed in rather than assumed: the scale is engraved on the
+// PANEL and the pointer belongs to the knob, so if the two disagree by even a
+// few degrees the numbers lie about the value. Callers pass the slider's own
+// juce::Slider::getRotaryParameters().
 void drawKnobScale(juce::Graphics& g,
                    juce::Rectangle<float> knobBounds,
                    const juce::StringArray& marks,
-                   juce::Colour ink);
+                   juce::Colour ink,
+                   float startAngle,
+                   float endAngle);
 
 // Small engraved lettering, the way a panel is legended: dark, spaced, and
 // under the control it names.

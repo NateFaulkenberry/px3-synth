@@ -231,6 +231,7 @@ public:
         juce::AudioParameterChoice* compRatio { nullptr };
         juce::AudioParameterFloat* compMix { nullptr };
         juce::AudioParameterBool* compLink { nullptr };
+        juce::AudioParameterChoice* compMeterMode { nullptr };
     };
 
     const BusInsertParams& getBusInsertParams(int bus) const
@@ -252,6 +253,15 @@ public:
     px3::BusAnalyser& getBusAnalyser(int bus)
     {
         return busInserts[static_cast<std::size_t>(juce::jlimit(0, kBusInsertCount - 1, bus))].getAnalyser();
+    }
+
+    // Level either side of a bus's compressor, in dBFS, for the meter when it
+    // is switched away from gain reduction.
+    float getBusCompressorLevelDb(int bus, bool wantInput) const
+    {
+        const auto& comp = busInserts[static_cast<std::size_t>(juce::jlimit(0, kBusInsertCount - 1, bus))]
+                               .getCompressor();
+        return wantInput ? comp.inputLevelDb() : comp.outputLevelDb();
     }
 
     // The EQ's own view of its response, for the curve display. Reads the live

@@ -153,6 +153,25 @@ void BusInsertOverlay::refreshHeaderButtonStyles()
         uiConfig.get(), "busInserts.enableButton", "busInserts." + sheet + ".enableButton", enableFallback);
     enableButton.applyStyle(enableStyle);
 
+    // Its own X and Y, like the close glyph's.
+    enableOffsetX = 0;
+    enableOffsetY = 0;
+    if (uiConfig != nullptr)
+    {
+        for (const auto& base : { juce::String("busInserts.enableButton"),
+                                  "busInserts." + sheet + ".enableButton" })
+        {
+            if (const auto v = uiConfig->getValue(base + ".offsetX"); ! v.isVoid())
+            {
+                enableOffsetX = static_cast<int>(v);
+            }
+            if (const auto v = uiConfig->getValue(base + ".offsetY"); ! v.isVoid())
+            {
+                enableOffsetY = static_cast<int>(v);
+            }
+        }
+    }
+
     // The close glyph, shared block then per-sheet override, same precedence.
     SheetCloseButton::Style closeStyle;
     if (uiConfig != nullptr)
@@ -193,31 +212,38 @@ void BusInsertOverlay::refreshHeaderButtonStyles()
     closeButton.applyStyle(closeStyle);
 }
 
-// Sized from the buttons' own style rather than from separate width keys: two
-// places declaring one dimension is how they end up disagreeing.
+// Both header controls are placed by coordinate, anchored to the top right of
+// the header rectangle and offset from there. Anchoring to a CORNER rather than
+// to the row's centre is what lets headerHeight go to 0 without either button
+// jumping: a centre moves when the row's height changes, a corner does not.
 void BusInsertOverlay::layoutHeaderButtons()
 {
-    auto header = headerBounds();
+    const auto header = headerBounds();
 
-    // The close glyph is placed by coordinate from the header's top right, so
-    // it can be moved anywhere without disturbing the row.
     const auto& close = closeButton.getStyle();
     closeButton.setBounds(header.getRight() - close.size + close.offsetX,
-                          header.getCentreY() - close.size / 2 + close.offsetY,
+                          header.getY() + close.offsetY,
                           close.size,
                           close.size);
 
-    header.removeFromRight(close.size + configInt(uiConfig, "busInserts.headerButtonGap", 8));
-
     const auto width = juce::jmax(8, enableStyle.width);
-    const auto height = juce::jlimit(8, header.getHeight(), enableStyle.height);
-    enableButton.setBounds(header.removeFromRight(width).withSizeKeepingCentre(width, height));
+    const auto height = juce::jmax(8, enableStyle.height);
+    const auto gap = configInt(uiConfig, "busInserts.headerButtonGap", 8);
+
+    enableButton.setBounds(header.getRight() - close.size - gap - width + enableOffsetX,
+                           header.getY() + enableOffsetY,
+                           width,
+                           height);
 }
 
 juce::Rectangle<int> BusInsertOverlay::headerBounds() const
 {
-    return card.contentBelowTitle().withHeight(
-        uiConfig != nullptr ? uiConfig->getInt("busInserts.headerHeight", 30) : 30);
+    // Purely the space RESERVED above the inner panel. It does not size the
+    // buttons and does not constrain them: both are placed by coordinate from
+    // this rectangle's top right, so headerHeight can be 0 and they simply sit
+    // over the panel instead of above it.
+    const auto declared = uiConfig != nullptr ? uiConfig->getInt("busInserts.headerHeight", 30) : 30;
+    return card.contentBelowTitle().withHeight(juce::jmax(0, declared));
 }
 
 juce::Rectangle<int> BusInsertOverlay::innerOverlayBounds() const
@@ -535,6 +561,31 @@ BusCompOverlay::BusCompOverlay(PX3SynthAudioProcessor& processorIn)
     linkButton.setLookAndFeel(&pushLook);
     addAndMakeVisible(linkButton);
 
+    // What the movement is wired to. Same latching push buttons as the ratio
+    // bank, because they are the same kind of switch.
+    static const std::array<const char*, 3> meterLegends { { "GR", "IN", "OUT" } };
+    for (std::size_t i = 0; i < meterModeButtons.size(); ++i)
+    {
+        auto& button = meterModeButtons[i];
+        button.setButtonText(meterLegends[i]);
+        button.setClickingTogglesState(false);
+        button.setLookAndFeel(&pushLook);
+        addAndMakeVisible(button);
+        button.onClick = [this, i]()
+        {
+            const auto& params = processor.getBusInsertParams(busIndex);
+            if (params.compMeterMode == nullptr)
+            {
+                return;
+            }
+
+            // Through the parameter, so the choice is recorded by the host and
+            // travels with the session and the preset.
+            params.compMeterMode->setValueNotifyingHost(
+                params.compMeterMode->convertTo0to1(static_cast<float>(i)));
+        };
+    }
+
     // The legends are engraved onto the panel in paint(), not placed as labels,
     // so these captions carry only the mix readout.
     addAndMakeVisible(mixValue);
@@ -565,19 +616,40 @@ BusCompOverlay::~BusCompOverlay()
     {
         button.setLookAndFeel(nullptr);
     }
+    for (auto& button : meterModeButtons)
+    {
+        button.setLookAndFeel(nullptr);
+    }
     linkButton.setLookAndFeel(nullptr);
 }
 
 void BusCompOverlay::knobLookAndFeelChanged()
 {
-    // The panel's own knob, not the plugin's: this face is a rack unit, and a
-    // synth knob in the middle of it would be the one thing that gives it away.
-    for (auto* slider : { &input, &output, &attack, &release, &mix })
+    // The plugin's own knob, tinted per section: the two large gain controls
+    // and the mix blend take the warm accent, the two time constants the cool
+    // one, so what a control DOES is readable before its legend is.
+    //
+    // The engraved scales around INPUT and OUTPUT are drawn from these
+    // sliders' own rotary parameters, so swapping the knob look cannot leave
+    // the numbers pointing somewhere the pointer never reaches.
+    const auto warm = configColour(uiConfig, "busInserts.comp.largeKnobColor",
+                                   juce::Colour::fromRGB(234, 166, 76));
+    const auto cool = configColour(uiConfig, "busInserts.comp.smallKnobColor",
+                                   juce::Colour::fromRGB(120, 186, 255));
+
+    for (auto* slider : { &input, &output, &mix })
     {
-        configureRotary(*slider, &knobLook);
+        configureRotary(*slider, knobLookAndFeel);
+        slider->setColour(juce::Slider::rotarySliderFillColourId, warm);
         addAndMakeVisible(*slider);
     }
-    juce::ignoreUnused(knobLookAndFeel);
+
+    for (auto* slider : { &attack, &release })
+    {
+        configureRotary(*slider, knobLookAndFeel);
+        slider->setColour(juce::Slider::rotarySliderFillColourId, cool);
+        addAndMakeVisible(*slider);
+    }
 }
 
 void BusCompOverlay::rebuildForBus()
@@ -605,6 +677,16 @@ void BusCompOverlay::rebuildForBus()
         std::make_unique<juce::SliderParameterAttachment>(*params.compMix, mix, nullptr));
 }
 
+px3::CompMeterMode BusCompOverlay::meterMode() const
+{
+    const auto& params = processor.getBusInsertParams(busIndex);
+    if (params.compMeterMode == nullptr)
+    {
+        return px3::CompMeterMode::gainReduction;
+    }
+    return static_cast<px3::CompMeterMode>(juce::jlimit(0, 2, params.compMeterMode->getIndex()));
+}
+
 void BusCompOverlay::timerCallback()
 {
     if (! isVisible())
@@ -628,10 +710,35 @@ void BusCompOverlay::timerCallback()
 
     mixValue.setText(juce::String(juce::roundToInt(mix.getValue() * 100.0)) + "%", juce::dontSendNotification);
 
-    const auto reduction = processor.getBusGainReductionDb(busIndex);
-    if (std::abs(reduction - meterDb) > 0.01f)
+    // The mode buttons are a radio group driven by a choice parameter, so their
+    // lit state is polled for the same reason the ratio bank's is.
+    if (params.compMeterMode != nullptr)
     {
-        meterDb = reduction;
+        const auto selected = params.compMeterMode->getIndex();
+        for (int i = 0; i < static_cast<int>(meterModeButtons.size()); ++i)
+        {
+            meterModeButtons[static_cast<std::size_t>(i)]
+                .setToggleState(i == selected, juce::dontSendNotification);
+        }
+    }
+
+    // Whichever source the movement is switched to. GR is a positive number of
+    // decibels of reduction; IN and OUT are levels in dBFS, so the meter's
+    // scale changes with the mode as well as its needle.
+    const auto reading = [this]()
+    {
+        switch (meterMode())
+        {
+            case px3::CompMeterMode::input:  return processor.getBusCompressorLevelDb(busIndex, true);
+            case px3::CompMeterMode::output: return processor.getBusCompressorLevelDb(busIndex, false);
+            case px3::CompMeterMode::gainReduction:
+            default: return processor.getBusGainReductionDb(busIndex);
+        }
+    }();
+
+    if (std::abs(reading - meterDb) > 0.01f)
+    {
+        meterDb = reading;
         repaint(meterArea);
     }
 }
@@ -711,7 +818,23 @@ void BusCompOverlay::resized()
 
     {
         auto slot = column(configInt(uiConfig, "busInserts.comp.meterWidth", 176));
-        meterArea = slot.reduced(0, configInt(uiConfig, "busInserts.comp.meterInset", 6));
+        slot = slot.reduced(0, configInt(uiConfig, "busInserts.comp.meterInset", 6));
+
+        // The mode switch sits under the movement, as the meter-select bank
+        // does on the hardware.
+        meterModeArea = slot.removeFromBottom(configInt(uiConfig, "busInserts.comp.meterModeHeight", 20));
+        slot.removeFromBottom(configInt(uiConfig, "busInserts.comp.meterModeGap", 5));
+        meterArea = slot;
+
+        auto row = meterModeArea;
+        const auto buttonGap = configInt(uiConfig, "busInserts.comp.meterModeButtonGap", 4);
+        const auto count = static_cast<int>(meterModeButtons.size());
+        const auto buttonWidth = (row.getWidth() - buttonGap * (count - 1)) / count;
+        for (auto& button : meterModeButtons)
+        {
+            button.setBounds(row.removeFromLeft(buttonWidth));
+            row.removeFromLeft(buttonGap);
+        }
     }
 
     {
@@ -723,7 +846,11 @@ void BusCompOverlay::resized()
         auto slot = panel;
         auto knobSlot = slot.removeFromTop(slot.getHeight() / 2);
         knobSlot.removeFromBottom(legendHeight);
-        mix.setBounds(knobSlot.withSizeKeepingCentre(smallKnob, smallKnob));
+        // 20% over the other small knobs: it is the one control on this panel
+        // that is ours rather than the unit's, and it is reached for often.
+        const auto mixKnob = juce::roundToInt(static_cast<float>(smallKnob)
+                                              * configFloat(uiConfig, "busInserts.comp.mixKnobScale", 1.2f));
+        mix.setBounds(knobSlot.withSizeKeepingCentre(mixKnob, mixKnob));
         mixValue.setBounds(knobSlot.getX(), knobSlot.getBottom(), knobSlot.getWidth(), legendHeight);
 
         slot.removeFromBottom(legendHeight);
@@ -788,45 +915,141 @@ void BusCompOverlay::paintMeter(juce::Graphics& g, juce::Rectangle<float> area) 
         g.reduceClipRegion(face.toNearestInt());
 
         const auto arc = vuArcFor(face);
+        const auto mode = meterMode();
 
-        g.setColour(inkColour.withAlpha(0.85f));
-        g.setFont(juce::FontOptions(configFloat(uiConfig, "busInserts.comp.meterScaleFontSize", 7.5f),
-                                    juce::Font::bold));
+        // The scale, as a real face carries it: numbers along the top, ticks
+        // hanging below them on the arc, and the arc itself drawn as a line
+        // that changes colour where the useful range ends.
+        struct Mark { float position; const char* label; bool major; bool hot; };
+        std::vector<Mark> marks;
 
-        for (const auto db : { 0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 7.0f, 10.0f, 15.0f, 20.0f })
+        if (mode == px3::CompMeterMode::gainReduction)
         {
-            const auto major = db == 0.0f || db == 5.0f || db == 10.0f || db == 20.0f;
-
-            // Ticks point at the pivot, which is what makes a printed scale
-            // read as one rather than as a row of dashes.
-            g.setColour(inkColour.withAlpha(major ? 0.9f : 0.6f));
-            g.drawLine({ arc.pointFor(db, major ? 0.90f : 0.94f), arc.pointFor(db, 1.0f) },
-                       major ? 1.4f : 0.9f);
-
-            if (major)
+            // Gain reduction: 0 at rest on the right, falling left.
+            for (const auto db : { 0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 7.0f, 10.0f, 15.0f, 20.0f })
             {
-                g.setColour(inkColour);
-                g.drawText(juce::String(juce::roundToInt(db)),
-                           juce::Rectangle<float>(16.0f, 9.0f).withCentre(arc.pointFor(db, 0.80f)),
-                           juce::Justification::centred, false);
+                const auto major = db == 0.0f || db == 5.0f || db == 10.0f || db == 20.0f;
+                marks.push_back({ px3::ui::VuArc::positionForReductionDb(db),
+                                  nullptr, major, db >= 10.0f });
+            }
+        }
+        else
+        {
+            // A VU face. The numbers crowd at the bottom and open out towards
+            // 0 because the movement is linear in amplitude, not in decibels.
+            for (const auto db : { -20.0f, -10.0f, -7.0f, -5.0f, -3.0f, -2.0f, -1.0f,
+                                   0.0f, 1.0f, 2.0f, 3.0f })
+            {
+                marks.push_back({ px3::ui::VuArc::positionForLevelDb(db), nullptr, true, db >= 0.0f });
             }
         }
 
-        // The red overload band above the working range, as the face carries.
-        juce::Path band;
-        band.startNewSubPath(arc.pointFor(0.0f, 1.0f));
-        for (float db = 0.0f; db <= 3.0f; db += 0.25f)
+        // The arc line, in two passes so the hot end is red.
+        const auto hotColour = configColour(uiConfig, "busInserts.comp.meterHotColor",
+                                            juce::Colour::fromRGB(178, 44, 38));
+        for (const auto hot : { false, true })
         {
-            band.lineTo(arc.pointFor(db, 1.0f));
-        }
-        g.setColour(configColour(uiConfig, "busInserts.comp.meterBandColor",
-                                 juce::Colour::fromRGBA(176, 46, 40, 200)));
-        g.strokePath(band, juce::PathStrokeType(2.0f));
+            juce::Path line;
+            auto started = false;
+            for (int i = 0; i <= 120; ++i)
+            {
+                const auto position = static_cast<float>(i) / 120.0f;
+                const auto isHot = mode == px3::CompMeterMode::gainReduction
+                                       ? position <= px3::ui::VuArc::positionForReductionDb(10.0f)
+                                       : position >= px3::ui::VuArc::positionForLevelDb(0.0f);
+                if (isHot != hot)
+                {
+                    started = false;
+                    continue;
+                }
 
-        const auto needle = arc.directionFor(live ? meterDb : 0.0f);
+                const auto point = arc.pointForPosition(position, 0.86f);
+                if (! started)
+                {
+                    line.startNewSubPath(point);
+                    started = true;
+                }
+                else
+                {
+                    line.lineTo(point);
+                }
+            }
+
+            g.setColour(hot ? hotColour : inkColour);
+            g.strokePath(line, juce::PathStrokeType(1.4f));
+        }
+
+        g.setFont(juce::FontOptions(configFloat(uiConfig, "busInserts.comp.meterScaleFontSize", 7.5f),
+                                    juce::Font::bold));
+
+        for (const auto& mark : marks)
+        {
+            const auto colour = mark.hot ? hotColour : inkColour;
+
+            g.setColour(colour.withAlpha(mark.major ? 0.95f : 0.6f));
+            g.drawLine({ arc.pointForPosition(mark.position, 0.86f),
+                         arc.pointForPosition(mark.position, mark.major ? 0.78f : 0.82f) },
+                       mark.major ? 1.3f : 0.8f);
+        }
+
+        // Labels sit ABOVE the arc, which is what leaves the lower half of the
+        // face clear for the needle to sweep through.
+        const auto labelFor = [mode](float position) -> juce::String
+        {
+            if (mode == px3::CompMeterMode::gainReduction)
+            {
+                for (const auto db : { 0.0f, 5.0f, 10.0f, 20.0f })
+                {
+                    if (std::abs(px3::ui::VuArc::positionForReductionDb(db) - position) < 1.0e-4f)
+                    {
+                        return juce::String(juce::roundToInt(db));
+                    }
+                }
+                return {};
+            }
+
+            for (const auto db : { -20.0f, -10.0f, -7.0f, -5.0f, -3.0f, -1.0f, 0.0f, 1.0f, 2.0f, 3.0f })
+            {
+                if (std::abs(px3::ui::VuArc::positionForLevelDb(db) - position) < 1.0e-4f)
+                {
+                    return juce::String(juce::roundToInt(db));
+                }
+            }
+            return {};
+        };
+
+        for (const auto& mark : marks)
+        {
+            const auto text = labelFor(mark.position);
+            if (text.isEmpty())
+            {
+                continue;
+            }
+
+            g.setColour(mark.hot ? hotColour : inkColour);
+            g.drawText(text,
+                       juce::Rectangle<float>(18.0f, 10.0f)
+                           .withCentre(arc.pointForPosition(mark.position, 0.70f)),
+                       juce::Justification::centred, false);
+        }
+
+        // What the movement is reading, spelled out on the face so the switch
+        // below it is never ambiguous.
+        panel::drawLegend(g,
+                          juce::Rectangle<float>(face.getX(), face.getBottom() - 14.0f,
+                                                 face.getWidth(), 11.0f),
+                          mode == px3::CompMeterMode::gainReduction ? "GAIN REDUCTION"
+                              : (mode == px3::CompMeterMode::input ? "INPUT" : "OUTPUT"),
+                          inkColour.withAlpha(0.55f), 6.5f);
+
+        const auto position = mode == px3::CompMeterMode::gainReduction
+                                  ? px3::ui::VuArc::positionForReductionDb(live ? meterDb : 0.0f)
+                                  : px3::ui::VuArc::positionForLevelDb(live ? meterDb : -60.0f);
+
+        const auto needle = arc.directionForPosition(position);
         g.setColour(needleColour.withAlpha(live ? 1.0f : 0.35f));
-        g.drawLine({ arc.pivot + needle * (arc.radius * 0.35f),
-                     arc.pivot + needle * (arc.radius * 0.97f) },
+        g.drawLine({ arc.pivot + needle * (arc.radius * 0.30f),
+                     arc.pivot + needle * (arc.radius * 0.92f) },
                    configFloat(uiConfig, "busInserts.comp.meterNeedleWidth", 1.6f));
 
         // The hub, where the needle disappears behind the bottom of the glass.
@@ -893,15 +1116,19 @@ void BusCompOverlay::paint(juce::Graphics& g)
     static const juce::StringArray kInputMarks { "-12", "-6", "0", "6", "12", "18", "24", "30", "36" };
     static const juce::StringArray kOutputMarks { "-24", "-16", "-8", "0", "8", "16", "24" };
 
+    const auto sweep = input.getRotaryParameters();
+
     if (! inputKnobArea.isEmpty())
     {
-        panel::drawKnobScale(g, inputKnobArea, kInputMarks, ink.withAlpha(0.8f));
+        panel::drawKnobScale(g, inputKnobArea, kInputMarks, ink.withAlpha(0.8f),
+                             sweep.startAngleRadians, sweep.endAngleRadians);
         panel::drawLegend(g, inputKnobArea.withY(inputKnobArea.getBottom() + 20.0f).withHeight(14.0f),
                           "INPUT", ink, legendSize);
     }
     if (! outputKnobArea.isEmpty())
     {
-        panel::drawKnobScale(g, outputKnobArea, kOutputMarks, ink.withAlpha(0.8f));
+        panel::drawKnobScale(g, outputKnobArea, kOutputMarks, ink.withAlpha(0.8f),
+                             sweep.startAngleRadians, sweep.endAngleRadians);
         panel::drawLegend(g, outputKnobArea.withY(outputKnobArea.getBottom() + 20.0f).withHeight(14.0f),
                           "OUTPUT", ink, legendSize);
     }

@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 
+#include "../DSP/BusInsertTypes.h"
 #include "BusEqGraph.h"
 #include "FetPanelStyle.h"
 #include "Card.h"
@@ -39,7 +40,7 @@ public:
         juce::Colour seat { juce::Colour::fromRGBA(12, 14, 20, 190) };
         juce::Colour ring { juce::Colour::fromRGBA(237, 241, 247, 150) };
         juce::Colour glyph { juce::Colour::fromRGB(237, 241, 247) };
-        juce::Colour hover { juce::Colour::fromRGB(255, 148, 148) };
+        juce::Colour hover { juce::Colour::fromRGB(185, 191, 200) };
     };
 
     SheetCloseButton();
@@ -142,6 +143,11 @@ protected:
     SheetCloseButton closeButton;
     MixerToggleButton enableButton { "ON" };
     MixerToggleButton::Style enableStyle;
+    // Both header controls are placed by coordinate from the content box's top
+    // right, so the header row can be zero-height and they still land somewhere
+    // deliberate.
+    int enableOffsetX { 0 };
+    int enableOffsetY { 0 };
     juce::LookAndFeel* knobLookAndFeel { nullptr };
 
     px3::ui::CardHost card;
@@ -232,6 +238,7 @@ private:
     // A moving-coil VU face reading gain reduction, which on this unit runs
     // right to left - the needle falls as the compressor works.
     void paintMeter(juce::Graphics& g, juce::Rectangle<float> area) const;
+    px3::CompMeterMode meterMode() const;
 
     juce::Slider input;
     juce::Slider output;
@@ -247,6 +254,8 @@ private:
     juce::Label mixValue;
 
     std::array<juce::TextButton, 5> ratioButtons;
+    // GR / IN / OUT, under the movement, switching what it is wired to.
+    std::array<juce::TextButton, 3> meterModeButtons;
     juce::TextButton linkButton { "LINK" };
 
     void knobLookAndFeelChanged() override;
@@ -258,9 +267,9 @@ private:
     juce::Rectangle<float> outputKnobArea;
     juce::Rectangle<float> ratioBankArea;
     juce::Rectangle<float> mixBankArea;
+    juce::Rectangle<int> meterModeArea;
     float meterDb { 0.0f };
 
-    FetKnobLookAndFeel knobLook;
     FetPushButtonLookAndFeel pushLook;
 };
 

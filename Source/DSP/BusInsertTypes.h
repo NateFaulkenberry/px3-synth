@@ -58,6 +58,16 @@ enum class CompRatio : int
     allButtons
 };
 
+// What the moving-coil meter is wired to. The hardware switches its movement
+// between gain reduction and two level calibrations; this is the same idea with
+// the two levels named for what they are.
+enum class CompMeterMode
+{
+    gainReduction = 0,
+    input,
+    output
+};
+
 struct CompressorSettings
 {
     bool enabled { false };
@@ -85,6 +95,7 @@ struct CompressorSettings
     // Stereo link. Unlinked, a loud transient on one side pulls only that side
     // down and the image shifts.
     bool stereoLink { true };
+    CompMeterMode meterMode { CompMeterMode::gainReduction };
 };
 
 } // namespace px3

@@ -20,13 +20,20 @@ public:
     std::function<void()> onPitchBendGestureEnded;
     std::function<void(float)> onModWheelChanged;
 
-    // Extra height ABOVE the controls, reserved for the wheels' spark
-    // animations. Same arrangement the keyboard uses: a component cannot paint
-    // outside its own bounds, so it is grown upward and draws its controls at
-    // the bottom of itself. The strip is transparent and passes clicks through.
-    void setSparkHeadroom(int pixels);
-    int getSparkHeadroom() const noexcept { return sparkHeadroomPx; }
-    // The controls themselves: the component minus its spark headroom.
+    // Room for the sparkles on EVERY side, not just above.
+    //
+    // A component cannot paint outside its own bounds, so the component is
+    // grown in each direction and draws its controls in the middle of itself.
+    // The margin is transparent and passes clicks through, which is what lets
+    // it overlap the keyboard to the right without swallowing key presses.
+    //
+    // Four sides rather than one because the wheels emit radially: sparkles
+    // leave in every direction, so clipping any edge cuts a visible arc out of
+    // the burst.
+    void setSparkMargins(juce::BorderSize<int> margins);
+    juce::BorderSize<int> getSparkMargins() const noexcept { return sparkMargins; }
+    int getSparkHeadroom() const noexcept { return sparkMargins.getTop(); }
+    // The controls themselves: the component minus its spark margins.
     juce::Rectangle<int> controlsArea() const;
 
     void paint(juce::Graphics& g) override;
@@ -38,7 +45,7 @@ public:
     void mouseDoubleClick(const juce::MouseEvent& event) override;
 
 private:
-    int sparkHeadroomPx { 0 };
+    juce::BorderSize<int> sparkMargins { 0, 0, 0, 0 };
 
     enum class ActiveControl
     {
@@ -73,7 +80,10 @@ private:
     // `intensity` is 0 to 1 and drives count, speed, size and lifetime
     // together - one number, so the whole burst grows with the bend rather than
     // only part of it changing.
-    void emitSparkles(juce::Point<float> origin, float intensity);
+    // Emitted from the RIM of the handle, not its centre: `centre` and
+    // `radius` describe the wheel's knob, and each sparkle leaves the point on
+    // that circle where it was born, travelling outward along the same radius.
+    void emitSparkles(juce::Point<float> centre, float radius, float intensity);
     static juce::Path createSparklePath(float size);
 
     WheelVisual getPitchVisual() const;

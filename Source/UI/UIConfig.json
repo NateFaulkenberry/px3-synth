@@ -38,6 +38,7 @@
   },
   "keyboard": {
     "sparkHeadroom": 112,
+    "wheelSparkSpill": 112,
     "warning": {
       "align": "center",
       "fontSize": 15,
@@ -455,14 +456,14 @@
     }
   },
   "busInserts": {
-    "headerHeight": 30,
+    "headerHeight": 0,
     "headerGap": 8,
     "headerButtonGap": 8,
     "enableButton": {
-      "size": { "width": 42, "height": 24 },
+      "size": { "width": 42, "height": 54 },
       "cornerRadius": 4,
-      "textSize": 9.5,
-      "textColour": "#DCE2EC",
+      "textSize": 10.5,
+      "textColour": "#333333",
       "normalColour": "#2C2E34D2",
       "hoverColour": "#42464FE6",
       "activeColour": "#4C88CAE6",
@@ -472,15 +473,15 @@
     },
     "closeButton": {
       "size": 24,
-      "offsetX": 0,
-      "offsetY": 0,
+      "offsetX": -4,
+      "offsetY": -4,
       "ringWidth": 1.6,
       "glyphWidth": 2,
       "glyphInset": 0.32,
       "seatColor": "#0C0E14BE",
       "ringColor": "#EDF1F796",
       "glyphColor": "#EDF1F7",
-      "hoverColor": "#FF9494"
+      "hoverColor": "#B9BFC8"
     },
     "eq": {
       "widthFraction": 0.7,
@@ -512,10 +513,17 @@
       "ratioButtonGap": 3,
       "meterWidth": 176,
       "meterInset": 6,
+      "meterModeHeight": 20,
+      "meterModeGap": 5,
+      "meterModeButtonGap": 4,
+      "meterHotColor": "#B22C26",
       "meterBezelWidth": 7,
       "screwRadius": 3.4,
       "grainAmount": 0.06,
       "inkColor": "#2E3034",
+      "largeKnobColor": "#EAA64C",
+      "smallKnobColor": "#78BAFF",
+      "mixKnobScale": 1.2,
       "meterBezelColor": "#1A3460",
       "meterFaceColor": "#EEE7D2",
       "meterInkColor": "#262420",
@@ -742,7 +750,7 @@
         "bottomFill": { "color": "#EDF1F7", "opacity": 1 }
       },
       "border": { "color": "#EDF1F7", "opacity": 0.28, "radius": 10 },
-      "title": { "color": "#333333", "fontSize": 12 },
+      "title": { "color": "#333333", "fontSize": 12, "height": 16, "y": 0, "align": "centredTop" },
       "innerOverlay": { "margin": 4, "radius": 6, "color": "#101318", "opacity": 1 }
     },
     "busInsertComp": {
@@ -755,7 +763,7 @@
         "bottomFill": { "color": "#EDF1F7", "opacity": 0.2 }
       },
       "border": { "color": "#EDF1F7", "opacity": 0.28, "radius": 10 },
-      "title": { "color": "#F7FAFF", "fontSize": 12 },
+      "title": { "color": "#F7FAFF", "fontSize": 12, "height": 16, "y": 0, "align": "centredTop" },
       "innerOverlay": { "margin": 4, "radius": 6, "color": "#C6C8CB", "opacity": 1 }
     },
     "mixerChannel": {

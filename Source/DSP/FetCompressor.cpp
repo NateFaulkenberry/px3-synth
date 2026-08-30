@@ -84,7 +84,11 @@ void FetCompressor::reset()
     fetPrevBias = { { 0.0f, 0.0f } };
     ratioCreep = 0.0f;
     meterSmoothed = 0.0f;
+    inputMeterSmoothed = -60.0f;
+    outputMeterSmoothed = -60.0f;
     meterDb.store(0.0f, std::memory_order_relaxed);
+    inputMeterDb.store(-60.0f, std::memory_order_relaxed);
+    outputMeterDb.store(-60.0f, std::memory_order_relaxed);
 }
 
 void FetCompressor::setSettings(const CompressorSettings& newSettings)
@@ -387,6 +391,19 @@ void FetCompressor::processSample(float& left, float& right)
     const auto reduction = juce::jmax(reduceL, reduceR);
     meterSmoothed += (reduction - meterSmoothed) * meterCoeff;
     meterDb.store(sanitize(meterSmoothed), std::memory_order_relaxed);
+
+    // Level either side, on the same ballistics. Measured on the louder
+    // channel: a stereo pair driven from one meter reads the programme, and
+    // averaging would hide a one-sided transient.
+    const auto inLevel = juce::Decibels::gainToDecibels(
+        juce::jmax(std::abs(inL), std::abs(inR)), -60.0f);
+    const auto outLevel = juce::Decibels::gainToDecibels(
+        juce::jmax(std::abs(left), std::abs(right)), -60.0f);
+
+    inputMeterSmoothed += (inLevel - inputMeterSmoothed) * meterCoeff;
+    outputMeterSmoothed += (outLevel - outputMeterSmoothed) * meterCoeff;
+    inputMeterDb.store(sanitize(inputMeterSmoothed), std::memory_order_relaxed);
+    outputMeterDb.store(sanitize(outputMeterSmoothed), std::memory_order_relaxed);
 }
 
 } // namespace px3

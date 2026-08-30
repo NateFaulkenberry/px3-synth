@@ -49,6 +49,13 @@ public:
     // it likes. Never a lock and never a queue on the audio thread.
     float gainReductionDb() const { return meterDb.load(std::memory_order_relaxed); }
 
+    // Level either side of the unit, in dBFS, with the same ballistics as the
+    // gain-reduction readout so the needle behaves the same whichever source
+    // the meter is switched to. Input is measured AFTER the input control,
+    // because that is the signal the unit is actually working on.
+    float inputLevelDb() const { return inputMeterDb.load(std::memory_order_relaxed); }
+    float outputLevelDb() const { return outputMeterDb.load(std::memory_order_relaxed); }
+
     // Attack 20 us to 800 us and release 50 ms to 1.1 s, the hardware ranges.
     static constexpr float kAttackFastUs = 20.0f;
     static constexpr float kAttackSlowUs = 800.0f;
@@ -110,7 +117,11 @@ private:
     float creepCoeff { 0.001f };
 
     std::atomic<float> meterDb { 0.0f };
+    std::atomic<float> inputMeterDb { -60.0f };
+    std::atomic<float> outputMeterDb { -60.0f };
     float meterSmoothed { 0.0f };
+    float inputMeterSmoothed { -60.0f };
+    float outputMeterSmoothed { -60.0f };
 };
 
 } // namespace px3
