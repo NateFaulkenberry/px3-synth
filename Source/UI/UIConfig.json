@@ -526,7 +526,7 @@
       "hoverColor": "#B9BFC8"
     },
     "eq": {
-      "enableButton": { "size": { "width": 62, "height": 40 }, "offsetX": 0, "offsetY": 0, "legendPlacement": "left" },
+      "enableButton": { "size": { "height": 40 }, "offsetX": -10, "offsetY": -24, "legendPlacement": "right" },
       "closeButton": { "offsetX": -3, "offsetY": -16 },
       "widthFraction": 0.7,
       "heightFraction": 0.62,
