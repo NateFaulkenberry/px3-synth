@@ -29,6 +29,7 @@ public:
     // translated by `offset`.
     void paintSparklesInto(juce::Graphics& g, juce::Point<int> offset) const;
     bool hasSparkles() const noexcept { return ! sparkles.empty(); }
+    juce::Rectangle<float> sparkleBounds() const;
     std::function<void()> onSparklesChanged;
 
     void mouseDown(const juce::MouseEvent& event) override;
@@ -99,6 +100,7 @@ private:
     // Advances with every burst so consecutive sparkles are different colours
     // and the emission reads as a rainbow rather than as one tint at a time.
     float hueCycle { 0.0f };
+    bool hadSparklesLastFrame { false };
     // A moved wheel gets a short-lived boost on top of its displacement, so a
     // fast sweep sparks harder than a slow one at the same position.
     float pitchKick { 0.0f };

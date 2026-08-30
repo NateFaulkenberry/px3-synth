@@ -267,6 +267,37 @@ branch. Active, it is that load plus a store and a release store. No allocation,
 no lock, no unbounded work - and it is inactive unless a sheet is open, which is
 why "inserts bypassed" measures as free.
 
+### UI paint, and why the particle layer repaints a rectangle
+
+The particle overlay is transparent, so invalidating it redraws everything
+beneath it - the mixer panel, the keys, the wheels. Measured at 1320x798, with
+`paintEntireComponent` clipped to each region:
+
+| region invalidated | cost | of a 60 Hz frame |
+|---|---|---|
+| full editor | 11.08 ms | 66.4% |
+| whole overlay strip (1320x234) | 3.62 ms | 21.7% |
+| 600x234 slice | 1.73 ms | 10.4% |
+| 400x234 slice | 1.25 ms | 7.5% |
+| 260x234 slice | 0.88 ms | 5.3% |
+| 160x160 slice | 0.53 ms | 3.2% |
+
+Repainting the whole strip every frame while a note rings costs 22% of a core
+redrawing a mixer panel that did not change, so the overlay invalidates only the
+box the live particles occupy - roughly a 160 to 260 px square for one key,
+which is 4 to 7 times cheaper.
+
+The invalidated box is the union of THIS frame's and the LAST frame's. Particles
+move, so invalidating only where they are now would leave the previous frame
+drawn where they were - a trail - and when the last particle dies the current
+box is empty, so nothing would be invalidated and the final frame would stay on
+screen permanently. Both animators therefore report for one frame past empty.
+
+**Note on the numbers above:** JUCE timers do not dispatch in a console test
+build, so no particles exist while measuring. These are the cost of redrawing
+each region, which is exactly what the overlay's invalidation forces and what a
+smaller rectangle avoids. The particle drawing itself is on top of this.
+
 **Not measured:** GPU cost. The sheets are ordinary JUCE software rendering like
 the rest of the UI, and no GPU path exists in this plugin to measure.
 

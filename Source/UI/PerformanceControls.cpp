@@ -117,6 +117,26 @@ void PerformanceControls::setControllerState(float pitchBendNormalized,
 
 // Painted by the shared overlay, for the same reason the keyboard's sparks are:
 // the two components overlap each other and z-order can only favour one.
+juce::Rectangle<float> PerformanceControls::sparkleBounds() const
+{
+    if (sparkles.empty())
+    {
+        return {};
+    }
+
+    auto bounds = juce::Rectangle<float>(sparkles.front().position, sparkles.front().position);
+    auto widest = 0.0f;
+    for (const auto& sparkle : sparkles)
+    {
+        bounds = bounds.getUnion(juce::Rectangle<float>(sparkle.position, sparkle.position));
+        widest = juce::jmax(widest, sparkle.size);
+    }
+
+    // The halo is 2.6x the star's arm, so the figure reaches well past the
+    // point the sparkle is recorded at.
+    return bounds.expanded(widest * 1.6f + 4.0f);
+}
+
 void PerformanceControls::paintSparklesInto(juce::Graphics& g, juce::Point<int> offset) const
 {
     if (sparkles.empty())
@@ -336,10 +356,12 @@ void PerformanceControls::timerCallback()
     // overlay's job.
     repaint();
 
-    if (! sparkles.empty() && onSparklesChanged != nullptr)
+    // One frame past empty, so the overlay clears the last sparkle.
+    if ((! sparkles.empty() || hadSparklesLastFrame) && onSparklesChanged != nullptr)
     {
         onSparklesChanged();
     }
+    hadSparklesLastFrame = ! sparkles.empty();
 }
 
 // Emitted in every direction, not along one. The angle is drawn from the whole

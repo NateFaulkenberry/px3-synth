@@ -63,6 +63,9 @@ public:
     // this component's own paint any more.
     void paintSparksInto(juce::Graphics& g, juce::Point<int> offset) const;
     bool hasSparks() const noexcept { return ! sparks.empty(); }
+    // The area the live sparks actually occupy, in this component's
+    // coordinates. Empty when there are none.
+    juce::Rectangle<float> sparkBounds() const;
     // Raised on every animation frame that changed something, so the overlay
     // that draws the sparks knows to repaint.
     std::function<void()> onSparksChanged;
@@ -112,5 +115,6 @@ private:
     int heldMidiNote { -1 };
     float clickVelocityNorm { 0.65f };
     bool silenced { false };
+    bool hadSparksLastFrame { false };
     WarningStyle warningStyle;
 };

@@ -566,9 +566,60 @@ private:
             wheels.paintSparklesInto(g, wheels.getPosition() - getPosition());
         }
 
+        // Repaints only where particles actually are.
+        //
+        // This layer is transparent, so invalidating it redraws everything
+        // beneath it as well - the mixer panel, the keys, the wheels. Doing
+        // that for the whole strip measured 3.6 ms a frame, 22% of a 60 Hz
+        // budget spent redrawing things that had not changed. A burst from one
+        // key occupies a small fraction of the strip, and this repaints that
+        // fraction.
+        void repaintParticles()
+        {
+            const auto region = boundsOf(keys.sparkBounds(), keys.getPosition())
+                                    .getUnion(boundsOf(wheels.sparkleBounds(), wheels.getPosition()));
+
+            // The union with LAST frame's region, not just this one.
+            //
+            // Two things break without it. Particles move, so invalidating
+            // only where they are now leaves the previous frame still drawn
+            // where they were - a trail. And when the last particle dies the
+            // current region is empty, so nothing would be invalidated at all
+            // and the final frame would stay on screen for good.
+            const auto invalid = region.getUnion(previousParticleRegion);
+            previousParticleRegion = region;
+
+            if (invalid.isEmpty())
+            {
+                return;
+            }
+
+            repaint(invalid.getIntersection(getLocalBounds()));
+        }
+
+        // Exposed so the invalidated area can be asserted rather than inferred
+        // from what appears on screen.
+        juce::Rectangle<int> lastParticleRegion() const { return previousParticleRegion; }
+
     private:
+        // Translates a child's particle box into this overlay's coordinates,
+        // returning an empty rectangle unchanged so an absent set of particles
+        // does not drag the union to the origin.
+        juce::Rectangle<int> boundsOf(juce::Rectangle<float> box, juce::Point<int> childOrigin) const
+        {
+            if (box.isEmpty())
+            {
+                return {};
+            }
+
+            return box.getSmallestIntegerContainer()
+                .translated(childOrigin.getX() - getX(), childOrigin.getY() - getY());
+        }
+
+
         PianoKeyboard& keys;
         PerformanceControls& wheels;
+        juce::Rectangle<int> previousParticleRegion;
     };
 
     SparkOverlay sparkOverlay { pianoKeyboard, performanceControls };
