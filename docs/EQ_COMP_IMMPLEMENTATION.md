@@ -222,20 +222,50 @@ Each row is read against its own baseline: the dry rows against
 inserts". Reading the FX rows against the dry baseline would charge the inserts
 for the delay.
 
-| scenario | mean µs | vs baseline | CPU |
-|---|---|---|---|
-| 16 voices, all 4 sources *(baseline)* | 1004.6 | — | 9.42% |
-| 16 voices + inserts bypassed | 1007.0 | +2.4 | +0.02% |
-| 16 voices + dry EQ | 1017.1 | +12.5 | +0.12% |
-| 16 voices + dry COMP | 1044.5 | +39.9 | +0.37% |
-| 16 voices + dry EQ + COMP | 1055.8 | +51.2 | +0.48% |
-| 16 voices + FX send, no inserts *(baseline)* | 1241.4 | — | 11.64% |
-| 16 voices + FX EQ + COMP | 1287.8 | +46.4 | +0.43% |
-| 16 voices + both buses | 1335.0 | +93.6 | +0.88% |
-| 64 voices, everything on + both buses | 8854.9 | +2.4% | 83.01% |
+| scenario | mean µs | p99 µs | vs baseline | CPU |
+|---|---|---|---|---|
+| 16 voices, all 4 sources *(baseline)* | 925.2 | 1039.4 | — | 8.67% |
+| 16 voices + inserts bypassed | 933.1 | 1051.8 | +7.9 | +0.07% |
+| 16 voices + dry EQ | 948.8 | 1121.1 | +23.6 | +0.22% |
+| 16 voices + dry COMP | 984.7 | 1112.8 | +59.5 | +0.56% |
+| 16 voices + dry EQ + COMP | 990.4 | 1122.1 | +65.2 | +0.61% |
+| 16 voices + FX send, no inserts *(baseline)* | 1150.0 | 1297.1 | — | 10.78% |
+| 16 voices + FX EQ + COMP | 1216.5 | 1413.4 | +66.5 | +0.62% |
+| 16 voices + both buses | 1284.0 | 1478.0 | +134.0 | +1.26% |
+| 64 voices, everything on + both buses | 8351.7 | 9103.9 | ~0 | 78.30% |
 
-A bypassed insert costs 0.02% — within run-to-run noise, which is the intended
+A bypassed insert costs 0.07% — within run-to-run noise, which is the intended
 result: a disabled chain returns early rather than running an identity filter.
+At 64 voices with everything on, adding both buses' inserts is indistinguishable
+from not having them (8351.7 against that scenario's own 8417.1).
+
+### Read p99, not max
+
+**The `max` column of this harness is dominated by OS scheduling, not by DSP,
+and should not be quoted.** The benchmark is an ordinary userspace process with
+no thread pinning, so a single descheduling lands in whichever block was being
+timed. In the run above, "64 voices, EVERYTHING on" reported a max of
+**420,402 µs** — 3941% of the block budget. A 420 ms block is not work; it is
+the process being taken off the CPU.
+
+Outliers of 2.5× to 3.7× the mean appear on rows with no inserts at all - the FX
+chain, mod envelopes, long release tails - and they move to a different row on
+every run. `p99` stays at 1.1 to 1.2× the mean everywhere, which is the tail
+statistic that actually describes the DSP.
+
+This matters because an earlier version of this document quoted a 10.4 ms max on
+"both buses" and attributed it to the spectrum analyser. That was wrong twice:
+the analyser's FFT runs on the message thread from a `juce::Timer`, never on the
+audio thread, and PX3Bench does not construct an editor at all, so no analyser
+was running during any of these numbers. The figure did not reproduce on a
+re-run.
+
+### The analyser's actual audio-thread cost
+
+`BusAnalyser::push` is the whole of it. Inactive, it is one relaxed load and a
+branch. Active, it is that load plus a store and a release store. No allocation,
+no lock, no unbounded work - and it is inactive unless a sheet is open, which is
+why "inserts bypassed" measures as free.
 
 **Not measured:** GPU cost. The sheets are ordinary JUCE software rendering like
 the rest of the UI, and no GPU path exists in this plugin to measure.
