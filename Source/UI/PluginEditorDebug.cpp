@@ -118,11 +118,11 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     setupLabel(debugModuleOrderLabel, "B. MODULE ORDER STATE");
     setupLabel(debugValueTreeLabel, "C. VALUETREE STATE");
     setupLabel(debugBackendControlLabel, "D. ANALOG ENGINE");
-    setupLabel(debugParameterLabel, "E. PARAMETER STATE");
+    setupLabel(debugParameterLabel, "I. PARAMETER STATE");
     setupLabel(debugSerializedLabel, "F. VIBE / ANALOG IMPERFECTIONS");
     setupLabel(debugLfoLabel, "G. LFO DEBUG");
     setupLabel(debugEnvelopeLabel, "H. AMP ENVELOPE DEBUG");
-    setupLabel(debugPresetToolsLabel, "I. PRESET / STATE TOOLS");
+    setupLabel(debugPresetToolsLabel, "E. PRESET / STATE TOOLS");
     setupLabel(debugSnapshotLabel, "J. STATE TESTING");
     setupLabel(debugEventLogLabel, "K. EVENT LOG");
 
@@ -186,6 +186,16 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
         debugPanel.addAndMakeVisible(c);
     };
 
+    // Anything that scrolls belongs to the content component, not the panel.
+    const auto addToSections = [this](juce::Component& c)
+    {
+        debugSectionsContent.addAndMakeVisible(c);
+    };
+
+    debugSectionsViewport.setViewedComponent(&debugSectionsContent, false);
+    debugSectionsViewport.setScrollBarsShown(true, false);
+    addToPanel(debugSectionsViewport);
+
     addToPanel(debugPanelTitle);
     // The CPU/RAM readout. It used to float over the plugin editor itself,
     // covering whatever was in the bottom-left corner; it belongs with the rest
@@ -208,36 +218,36 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     addToPanel(debugRandomizeParamsButton);
     addToPanel(debugResetParamsButton);
     addToPanel(debugWriteTestValuesButton);
-    addToPanel(debugInstanceLabel);
-    addToPanel(debugModuleOrderLabel);
-    addToPanel(debugValueTreeLabel);
+    addToSections(debugInstanceLabel);
+    addToSections(debugModuleOrderLabel);
+    addToSections(debugValueTreeLabel);
     buildAnalogEngineDebugControls();
     debugAnalogViewport.setViewedComponent(&debugAnalogContent, false);
     debugAnalogViewport.setScrollBarsShown(true, false);
-    addToPanel(debugAnalogViewport);
+    addToSections(debugAnalogViewport);
 
-    addToPanel(debugSerializedLabel);
-    addToPanel(debugParameterLabel);
-    addToPanel(debugBackendControlLabel);
-    addToPanel(debugLfoLabel);
-    addToPanel(debugEnvelopeLabel);
-    addToPanel(debugPresetToolsLabel);
-    addToPanel(debugDumpPresetNameLabel);
-    addToPanel(debugSnapshotLabel);
-    addToPanel(debugEventLogLabel);
-    addToPanel(debugInstanceText);
-    addToPanel(debugModuleOrderText);
-    addToPanel(debugValueTreeText);
-    addToPanel(debugParameterInspectorText);
-    addToPanel(debugEventLogText);
-    addToPanel(debugSnapshotText);
-    addToPanel(debugLfoText);
-    addToPanel(debugEnvelopeText);
-    addToPanel(debugDumpPresetNameEditor);
-    addToPanel(debugLfoAssignLabel);
-    addToPanel(debugLfoAssignBox);
-    addToPanel(debugDumpPresetButton);
-    addToPanel(debugParamViewport);
+    addToSections(debugSerializedLabel);
+    addToSections(debugParameterLabel);
+    addToSections(debugBackendControlLabel);
+    addToSections(debugLfoLabel);
+    addToSections(debugEnvelopeLabel);
+    addToSections(debugPresetToolsLabel);
+    addToSections(debugDumpPresetNameLabel);
+    addToSections(debugSnapshotLabel);
+    addToSections(debugEventLogLabel);
+    addToSections(debugInstanceText);
+    addToSections(debugModuleOrderText);
+    addToSections(debugValueTreeText);
+    addToSections(debugParameterInspectorText);
+    addToSections(debugEventLogText);
+    addToSections(debugSnapshotText);
+    addToSections(debugLfoText);
+    addToSections(debugEnvelopeText);
+    addToSections(debugDumpPresetNameEditor);
+    addToSections(debugLfoAssignLabel);
+    addToSections(debugLfoAssignBox);
+    addToSections(debugDumpPresetButton);
+    addToSections(debugParamViewport);
 
     debugValueTreeText.setText("Manual refresh disabled for live mode. Click 'REFRESH XML + SERIALIZED STATE'.", juce::dontSendNotification);
     debugSerializedText.setText("Manual refresh disabled for live mode. Click 'REFRESH XML + SERIALIZED STATE'.", juce::dontSendNotification);
@@ -838,8 +848,36 @@ void PX3SynthAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& 
     debugCopyLogButton.setBounds(actionRow3.removeFromLeft(130));
 
     area.removeFromTop(6);
-    auto left = area.removeFromLeft(area.getWidth() / 2);
-    auto right = area;
+
+    // Everything below the buttons scrolls. The content is laid out at its
+    // NATURAL height and the viewport shows as much of it as the window has
+    // room for, so a short window costs a scrollbar rather than hiding the
+    // sections at the bottom.
+    debugSectionsViewport.setBounds(area);
+
+    // Each section is a label plus a body plus a gap. Summed per column so the
+    // content knows how tall it has to be before anything is positioned - a
+    // height that fell out of the layout afterwards would be one frame late.
+    constexpr int labelHeight = 18;
+    constexpr int gap = 4;
+    auto stack = [](std::initializer_list<int> bodyHeights)
+    {
+        int total = 0;
+        for (const auto h : bodyHeights) { total += labelHeight + h + gap; }
+        return total;
+    };
+
+    const auto leftNaturalHeight = stack({ 78, 120, 80, 160 });
+    const auto rightNaturalHeight = stack({ 24 + gap + 24, 120, 196, 66 + gap + 24, 180, 80, 120 });
+
+    const auto viewportWidth = juce::jmax(0, debugSectionsViewport.getMaximumVisibleWidth());
+    const auto contentHeight = juce::jmax(debugSectionsViewport.getMaximumVisibleHeight(),
+                                          juce::jmax(leftNaturalHeight, rightNaturalHeight));
+    debugSectionsContent.setBounds(0, 0, viewportWidth, contentHeight);
+
+    auto sections = debugSectionsContent.getLocalBounds();
+    auto left = sections.removeFromLeft(sections.getWidth() / 2);
+    auto right = sections.withTrimmedLeft(8);
 
     auto section = [&left](juce::Label& label, juce::Component& component, int height)
     {
@@ -892,7 +930,18 @@ void PX3SynthAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& 
         right.removeFromTop(4);
     };
 
-    sectionRight(debugParameterLabel, debugParameterInspectorText, 120);
+    // The preset dump is the section reached for most often, so it sits at the
+    // top of the column instead of eight sections down. It and the parameter
+    // inspector swapped places, letters included, so the headings still read in
+    // order down the page.
+    debugPresetToolsLabel.setBounds(right.removeFromTop(18));
+    auto presetNameRow = right.removeFromTop(24);
+    debugDumpPresetNameLabel.setBounds(presetNameRow.removeFromLeft(96));
+    debugDumpPresetNameEditor.setBounds(presetNameRow.reduced(1, 0));
+    right.removeFromTop(4);
+    debugDumpPresetButton.setBounds(right.removeFromTop(24));
+    right.removeFromTop(4);
+
     sectionRight(debugSerializedLabel, debugParamViewport, 196);
 
     debugLfoLabel.setBounds(right.removeFromTop(18));
@@ -907,14 +956,7 @@ void PX3SynthAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& 
     debugEnvelopeText.setBounds(right.removeFromTop(180));
     right.removeFromTop(4);
 
-    debugPresetToolsLabel.setBounds(right.removeFromTop(18));
-    auto presetNameRow = right.removeFromTop(24);
-    debugDumpPresetNameLabel.setBounds(presetNameRow.removeFromLeft(96));
-    debugDumpPresetNameEditor.setBounds(presetNameRow.reduced(1, 0));
-    right.removeFromTop(4);
-    debugDumpPresetButton.setBounds(right.removeFromTop(24));
-    right.removeFromTop(4);
-
+    sectionRight(debugParameterLabel, debugParameterInspectorText, 120);
     sectionRight(debugSnapshotLabel, debugSnapshotText, 80);
     sectionRight(debugEventLogLabel, debugEventLogText, juce::jmax(120, right.getHeight() - 24));
 

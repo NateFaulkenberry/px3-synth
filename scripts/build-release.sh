@@ -11,6 +11,14 @@ CMAKE_FILE="${REPO_ROOT}/CMakeLists.txt"
 SIGN_MODE=false
 SIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
 INSTALLER_SIGN_IDENTITY="${DEVELOPER_ID_INSTALLER:-}"
+
+# Notarisation. Signing proves who built it; notarisation is Apple confirming
+# they scanned it, and without it Gatekeeper refuses the download on any machine
+# but this one. Stapling attaches the ticket to the artifact so the check works
+# with no network.
+NOTARIZE_MODE=false
+NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+NOTARY_AUTH_ARGS=()
 DEBUG_PANEL=false
 BUILD_UNINSTALLER=true
 
@@ -21,6 +29,10 @@ Usage:
 
 Options:
   --sign                 Sign release artifacts using codesign.
+  --notarize             Sign, then notarise and staple the installer, the
+                         uninstaller and the standalone app. Implies --sign.
+  --notary-profile NAME  notarytool keychain profile to authenticate with.
+                         Implies --notarize.
   --sign-identity ID     Explicit signing identity. Overrides CODESIGN_IDENTITY.
   --debug BOOL           Enable in-plugin debug panel UI when BOOL is true. Default: false.
   --no-uninstaller       Skip building the uninstaller package.
@@ -29,6 +41,11 @@ Options:
 Environment:
   CODESIGN_IDENTITY      Optional signing identity used with --sign.
   DEVELOPER_ID_INSTALLER Optional installer signing identity for productbuild.
+  NOTARY_PROFILE         notarytool keychain profile name.
+  NOTARY_KEY / NOTARY_KEY_ID / NOTARY_ISSUER
+                         App Store Connect API key, as an alternative.
+  APPLE_ID / APPLE_APP_PASSWORD / APPLE_TEAM_ID
+                         Apple ID credentials, as a further alternative.
 EOF
 }
 
@@ -340,11 +357,85 @@ sign_and_verify() {
   echo "  Signed ${label}: ${artifact}"
 }
 
+# Works out how notarytool should authenticate, once, and fails now rather than
+# after a build has run. A keychain profile is preferred because it keeps the
+# app-specific password out of the environment and out of this script's output.
+resolve_notary_credentials() {
+  if [[ -n "${NOTARY_PROFILE}" ]]; then
+    NOTARY_AUTH_ARGS=(--keychain-profile "${NOTARY_PROFILE}")
+  elif [[ -n "${NOTARY_KEY:-}" && -n "${NOTARY_KEY_ID:-}" && -n "${NOTARY_ISSUER:-}" ]]; then
+    NOTARY_AUTH_ARGS=(--key "${NOTARY_KEY}" --key-id "${NOTARY_KEY_ID}" --issuer "${NOTARY_ISSUER}")
+  elif [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
+    NOTARY_AUTH_ARGS=(--apple-id "${APPLE_ID}" --password "${APPLE_APP_PASSWORD}" --team-id "${APPLE_TEAM_ID}")
+  else
+    die "No notarisation credentials. Set NOTARY_PROFILE to a profile stored with
+  xcrun notarytool store-credentials <name> --apple-id <id> --team-id <team> --password <app-specific>
+or set NOTARY_KEY/NOTARY_KEY_ID/NOTARY_ISSUER, or APPLE_ID/APPLE_APP_PASSWORD/APPLE_TEAM_ID."
+  fi
+
+  # Proves the credentials work before anything is submitted, so a bad password
+  # costs a second rather than a full build.
+  xcrun notarytool history "${NOTARY_AUTH_ARGS[@]}" --limit 1 >/dev/null 2>&1 \
+    || die "Notarisation credentials were rejected by Apple. Check the profile or password."
+}
+
+# Submits one artifact, waits for the verdict, and staples the ticket to it.
+#
+# A bundle cannot be submitted directly - notarytool takes a zip, a pkg or a
+# dmg - so an app is zipped for the submission and the ticket is stapled to the
+# ORIGINAL bundle afterwards. Stapling the zip would achieve nothing: the zip is
+# thrown away and the bundle is what gets shipped.
+notarize_and_staple() {
+  local artifact="$1"
+  local label="$2"
+  local submission="${artifact}"
+  local scratch=""
+
+  if [[ -d "${artifact}" ]]; then
+    scratch="$(mktemp -d)"
+    submission="${scratch}/$(basename "${artifact}").zip"
+    ditto -c -k --keepParent "${artifact}" "${submission}" \
+      || die "Could not archive ${label} for notarisation"
+  fi
+
+  echo "  Notarising ${label} (this waits on Apple and can take several minutes)..."
+  if ! xcrun notarytool submit "${submission}" "${NOTARY_AUTH_ARGS[@]}" --wait; then
+    [[ -n "${scratch}" ]] && rm -rf "${scratch}"
+    die "Notarisation failed for ${label}. Run: xcrun notarytool log <submission-id> ${NOTARY_AUTH_ARGS[*]}"
+  fi
+  [[ -n "${scratch}" ]] && rm -rf "${scratch}"
+
+  xcrun stapler staple "${artifact}" || die "Could not staple the ticket to ${label}"
+  xcrun stapler validate "${artifact}" >/dev/null || die "Stapled ticket does not validate for ${label}"
+  echo "  Notarised and stapled ${label}: ${artifact}"
+}
+
+# Only meaningful once the artifact is both signed and stapled - this is the
+# check the user's machine performs on first launch.
+notarize_if_requested() {
+  [[ "${NOTARIZE_MODE}" == true ]] || return 0
+  notarize_and_staple "$1" "$2"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --sign)
       SIGN_MODE=true
       shift
+      ;;
+    --notarize)
+      # Notarisation is only meaningful on a signed artifact, so it implies it
+      # rather than failing later with an unsigned-binary rejection from Apple.
+      SIGN_MODE=true
+      NOTARIZE_MODE=true
+      shift
+      ;;
+    --notary-profile)
+      [[ $# -ge 2 ]] || die "--notary-profile requires a value"
+      NOTARY_PROFILE="$2"
+      SIGN_MODE=true
+      NOTARIZE_MODE=true
+      shift 2
       ;;
     --sign-identity)
       [[ $# -ge 2 ]] || die "--sign-identity requires a value"
@@ -425,6 +516,12 @@ require_cmd grep
 require_cmd find
 require_cmd sed
 require_cmd /usr/libexec/PlistBuddy
+if [[ "${NOTARIZE_MODE}" == true ]]; then
+  require_cmd xcrun
+  require_cmd ditto
+  resolve_notary_credentials
+fi
+
 if [[ "${SIGN_MODE}" == true ]]; then
   require_cmd codesign
   require_cmd security
@@ -538,6 +635,9 @@ if [[ "${SIGN_MODE}" == true ]]; then
   sign_and_verify "${VST3_BUNDLE}" "VST3"
   if [[ -n "${APP_BUNDLE}" ]]; then
     sign_and_verify "${APP_BUNDLE}" "Standalone"
+    # Before the pkg is built from it, so the installed app carries its own
+    # ticket and passes Gatekeeper on first launch with no network.
+    notarize_if_requested "${APP_BUNDLE}" "Standalone"
   fi
 
   SIGNED_STATE="signed"
@@ -739,6 +839,7 @@ PRODUCTBUILD_ARGS+=("${PKG_PATH}")
 
 productbuild "${PRODUCTBUILD_ARGS[@]}"
 sign_product_if_requested "${PKG_PATH}"
+notarize_if_requested "${PKG_PATH}" "Installer"
 
 [[ -f "${AU_COMPONENT_PKG}" ]] || die "AU component package not created: ${AU_COMPONENT_PKG}"
 [[ -f "${VST3_COMPONENT_PKG}" ]] || die "VST3 component package not created: ${VST3_COMPONENT_PKG}"
@@ -862,6 +963,11 @@ if [[ "${BUILD_UNINSTALLER}" == true ]]; then
   if [[ "${SIGN_MODE}" == true && -n "${SIGN_IDENTITY}" ]]; then
     codesign --force --deep --options runtime --timestamp --sign "${SIGN_IDENTITY}" "${UNINSTALLER_APP_PATH}" \
       && UNINSTALLER_SIGN_STATE="signed"
+
+    if [[ "${UNINSTALLER_SIGN_STATE}" == "signed" ]]; then
+      notarize_if_requested "${UNINSTALLER_APP_PATH}" "Uninstaller"
+      [[ "${NOTARIZE_MODE}" == true ]] && UNINSTALLER_SIGN_STATE="signed + notarised"
+    fi
   fi
 
   # Verify it actually carries what it needs, rather than trusting osacompile.

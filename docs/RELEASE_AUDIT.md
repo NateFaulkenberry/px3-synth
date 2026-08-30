@@ -413,8 +413,18 @@ local-path dependency. `UIConfig.json` is correctly copied into each bundle's
 - `dist/` currently holds v0.2.1 artifacts (pkg, zip, uninstaller) from a prior
   run and is gitignored.
 
-**NOT TESTED:** notarization and stapling, and installation on a clean machine.
-Both require credentials and a second machine.
+**NOTARIZATION:** `build-release.sh --notarize` now submits the installer, the
+uninstaller and the standalone app to Apple, waits for the verdict and staples
+the ticket to each. `scripts/test-signing.sh` verifies the result:
+`--preflight` checks the tooling and credentials without submitting anything,
+the default mode verifies whatever is in `dist/`, and `--full` builds, signs,
+notarizes and then verifies end to end.
+
+Both Developer ID certificates are installed and share team QS3SZF6HDB. What is
+still outstanding is a stored `notarytool` credential (`NOTARY_PROFILE`) and one
+real submission.
+
+**NOT TESTED:** installation on a clean machine, which needs a second machine.
 
 ---
 
@@ -586,9 +596,10 @@ Nine, not ten, because:
 
 - there is no CI, so nothing automatically re-verifies any of this after the
   next commit;
-- notarization and clean-machine installation are unverified — Apple Developer
-  enrolment is pending — and on macOS those are exactly the things that fail
-  late.
+- clean-machine installation is unverified, and on macOS that is exactly the
+  kind of thing that fails late. Notarization is now implemented and has a test
+  (`scripts/test-signing.sh`), but no artifact has been through a real
+  submission yet.
 
 Neither is a code risk. Nine, not lower, because the evidence is unusually strong for a project this
 size: 629 passing assertions including sanitizers, provable zero-allocation

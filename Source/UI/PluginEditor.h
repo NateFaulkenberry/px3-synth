@@ -658,6 +658,14 @@ private:
     int keyboardSparkHeadroom { 112 };
 
     juce::Component debugPanel;
+
+    // The sections are taller than the window on any laptop screen, so they
+    // scroll rather than forcing the window to be dragged out to reach the last
+    // of them. The title row and the action buttons stay put above it - they
+    // are how the panel is driven, and scrolling them away to press a button
+    // would be worse than the problem being solved.
+    juce::Viewport debugSectionsViewport;
+    juce::Component debugSectionsContent;
     juce::Label debugPanelTitle;
     juce::TextButton debugPanelCloseButton;
     juce::TextButton debugClearLogButton;
