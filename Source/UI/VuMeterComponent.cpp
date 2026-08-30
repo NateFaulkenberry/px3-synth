@@ -73,6 +73,30 @@ void VuMeterComponent::setBadgeText(juce::String text)
 //==============================================================================
 // calibration
 //==============================================================================
+VuMeterComponent::NeedleAim VuMeterComponent::aimAt(const px3::ui::VuArc& arc,
+                                                    double position,
+                                                    float pivotOffsetY,
+                                                    float lengthScale)
+{
+    // The point on the scale this reading corresponds to - the mark the needle
+    // has to indicate.
+    const auto target = arc.pointForPosition(static_cast<float>(juce::jlimit(0.0, 1.0, position)), 1.0f);
+    const auto pivot = arc.pivot.translated(0.0f, pivotOffsetY);
+
+    const auto delta = target - pivot;
+    const auto distance = delta.getDistanceFromOrigin();
+
+    if (distance < 1.0e-4f)
+    {
+        return { 0.0f, 0.0f };
+    }
+
+    // The blade is built pointing up, and the arc's own convention is
+    // direction = (sin a, -cos a), so the angle that points along `delta` is
+    // atan2(dx, -dy).
+    return { std::atan2(delta.getX(), -delta.getY()), distance * lengthScale };
+}
+
 double VuMeterComponent::positionForLevelDb(double dbfs)
 {
     // The scale is linear in AMPLITUDE, as a moving-coil movement is, which is
@@ -309,15 +333,8 @@ void VuMeterComponent::paint(juce::Graphics& g)
     juce::Graphics::ScopedSaveState clip(g);
     g.reduceClipRegion(glass.toNearestInt());
 
-    // Fractional throughout: the angle is a double and nothing is rounded to a
-    // pixel or a degree before it reaches the transform.
-    const auto angle = static_cast<double>(arc.angleForPosition(
-        static_cast<float>(juce::jlimit(0.0, 1.0, movement.position()))));
-
-    // The needle and its pivot cap are drawn separately - one is a rotating
-    // blade, the other a fixed disc over its centre - so each has its own
-    // colour and its own vertical position. They shared a colour and a point
-    // before, which meant neither could be adjusted without moving the other.
+    // Fractional throughout: nothing is rounded to a pixel or a degree before
+    // it reaches the transform.
     const auto needleColour = cfg(uiConfig, "busInserts.comp.meterNeedle.color",
                                   juce::Colour::fromRGB(24, 24, 26));
     const auto width = cfgF(uiConfig, "busInserts.comp.meterNeedle.width", 1.6f) * 2.2f;
@@ -333,23 +350,24 @@ void VuMeterComponent::paint(juce::Graphics& g)
                                           cfgF(uiConfig, "busInserts.comp.meterNeedle.base.opacity",
                                                needleOpacity));
 
-    // As a FRACTION of the arc's radius, not a pixel count: the meter is sized
-    // from its panel, so an absolute length would be right at one size and
-    // wrong at every other. 1.0 reaches the scale's arc exactly.
-    const auto length = arc.radius
-                        * juce::jlimit(0.05f, 2.0f,
-                                       cfgF(uiConfig, "busInserts.comp.meterNeedle.lengthScale", 0.97f));
-
-    // Moving the needle's Y moves its PIVOT, so the blade swings about the new
-    // point rather than being translated off its own arc.
+    // Aimed at the mark, from wherever the pivot has been moved to. Both the
+    // angle and the length come out of that, so the tip stays on the scale at
+    // any offset - see aimAt.
+    //
+    // lengthScale is a FRACTION of the distance to the mark, not a pixel count:
+    // the meter is sized from its panel, so an absolute length would be right
+    // at one size and wrong at every other. 1.0 reaches the mark exactly.
+    const auto lengthScale = juce::jlimit(0.05f, 2.0f,
+                                          cfgF(uiConfig, "busInserts.comp.meterNeedle.lengthScale", 0.97f));
+    const auto aim = aimAt(arc, juce::jlimit(0.0, 1.0, movement.position()), needleOffsetY, lengthScale);
     const auto pivot = arc.pivot.translated(0.0f, needleOffsetY);
 
     // Rotated about the PIVOT, not about a bounding box: the path is built with
     // its pivot at the origin and then moved there.
-    const auto transform = juce::AffineTransform::rotation(static_cast<float>(angle))
+    const auto transform = juce::AffineTransform::rotation(aim.angleRadians)
                                .translated(pivot.getX(), pivot.getY());
 
-    auto blade = needlePath(length, width);
+    auto blade = needlePath(aim.length, width);
 
     // A soft shadow just off the pivot axis, which is what stops the needle
     // reading as a sticker on the glass.

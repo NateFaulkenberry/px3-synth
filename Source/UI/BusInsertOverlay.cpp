@@ -25,6 +25,18 @@ float configFloat(const std::shared_ptr<const UIConfig>& config, const juce::Str
     return config != nullptr ? config->getFloat(path, fallback) : fallback;
 }
 
+// A cached face has to be rendered at the DISPLAY's scale, not the component's.
+// Drawn at 1x and blitted into a 2x context every glyph is upscaled, which is
+// exactly how cached text goes soft on a Retina panel.
+float displayScale()
+{
+    if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+    {
+        return static_cast<float>(display->scale);
+    }
+    return 1.0f;
+}
+
 void styleCaption(juce::Label& label, juce::Colour colour, float size, juce::Justification justification)
 {
     label.setJustificationType(justification);
@@ -1025,8 +1037,14 @@ void BusCompOverlay::rebuildFace()
         return;
     }
 
-    face = juce::Image(juce::Image::ARGB, bounds.getWidth(), bounds.getHeight(), true);
+    const auto scale = juce::jlimit(1.0f, 4.0f, displayScale());
+    face = juce::Image(juce::Image::ARGB,
+                       juce::roundToInt(static_cast<float>(bounds.getWidth()) * scale),
+                       juce::roundToInt(static_cast<float>(bounds.getHeight()) * scale),
+                       true);
+
     juce::Graphics g(face);
+    g.addTransform(juce::AffineTransform::scale(scale));
 
     // The card frame and the solid inner panel, exactly as the EQ sheet draws
     // them - the two are the same object with different contents.
@@ -1121,14 +1139,19 @@ void BusCompOverlay::rebuildFace()
 
 void BusCompOverlay::paint(juce::Graphics& g)
 {
-    if (face.isNull() || face.getWidth() != getWidth() || face.getHeight() != getHeight())
+    const auto scale = juce::jlimit(1.0f, 4.0f, displayScale());
+    const auto wantedWidth = juce::roundToInt(static_cast<float>(getWidth()) * scale);
+    const auto wantedHeight = juce::roundToInt(static_cast<float>(getHeight()) * scale);
+    if (face.isNull() || face.getWidth() != wantedWidth || face.getHeight() != wantedHeight)
     {
         rebuildFace();
     }
 
     if (face.isValid())
     {
-        g.drawImageAt(face, 0, 0, false);
+        // Drawn INTO the component's bounds rather than 1:1, so the extra
+        // resolution is used rather than overflowing.
+        g.drawImage(face, getLocalBounds().toFloat());
     }
 
     // The movement paints itself - see VuMeterComponent.

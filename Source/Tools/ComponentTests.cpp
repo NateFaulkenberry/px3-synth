@@ -14885,6 +14885,45 @@ void testVuBallistics()
                   + "%, 20 dB at " + fmt(Meter::positionForReductionDb(20.0) * 100.0, 1) + "%");
     }
 
+    // ---- the needle stays calibrated when its pivot is moved ---------------
+    // A needle is calibrated by where its TIP lands, not by its angle. The
+    // scale's marks are drawn about the arc's own pivot, so translating the
+    // needle and keeping its angle makes the tip miss every mark by exactly the
+    // offset - 40 px at an offsetY of -40, measured. It is aimed at the mark
+    // instead, which holds at any offset.
+    {
+        const auto face = juce::Rectangle<float>(0.0f, 0.0f, 176.0f, 110.0f);
+        const auto arc = px3::ui::vuArcFor(face);
+
+        auto worstMiss = 0.0f;
+        juce::String offender;
+
+        for (const auto offset : { 0.0f, -10.0f, -40.0f, 15.0f })
+        {
+            for (const auto position : { 0.0, 0.25, 0.708, 1.0 })
+            {
+                // lengthScale 1.0 puts the tip exactly on the mark.
+                const auto aim = px3::ui::VuMeterComponent::aimAt(arc, position, offset, 1.0f);
+                const auto pivot = arc.pivot.translated(0.0f, offset);
+                const auto tip = pivot + juce::Point<float>(std::sin(aim.angleRadians),
+                                                            -std::cos(aim.angleRadians)) * aim.length;
+                const auto mark = arc.pointForPosition(static_cast<float>(position), 1.0f);
+                const auto miss = tip.getDistanceFrom(mark);
+
+                if (miss > worstMiss)
+                {
+                    worstMiss = miss;
+                    offender = "offset " + fmt(offset, 0) + " at position " + fmt(position, 3);
+                }
+            }
+        }
+
+        check("Vu_NeedleStaysCalibratedWhenItsPivotMoves", worstMiss < 0.01f,
+              "worst distance from the tip to the mark it indicates, across four pivot "
+              "offsets and four positions: " + fmt(worstMiss, 4) + " px"
+                  + (worstMiss < 0.01f ? juce::String() : " at " + offender));
+    }
+
     // ---- it settles rather than ringing ------------------------------------
     {
         px3::ui::VuBallistics movement;

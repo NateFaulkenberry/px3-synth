@@ -41,6 +41,25 @@ public:
     // +4 dBu, so this is a stated choice: -18 dBFS, the common alignment.
     static constexpr float kZeroVuDbfs = -18.0f;
     // Where a level sits on the face, with +3 VU at the right stop.
+    // Where the needle must point, and how long it must be, to indicate a
+    // given position from a pivot that may have been moved.
+    //
+    // A needle is calibrated by where its TIP lands on the scale, not by its
+    // angle. The scale's marks are drawn about the arc's own pivot, so simply
+    // translating the needle and keeping its angle makes the tip miss every
+    // mark by exactly the offset - 40 px at an offsetY of -40. Aiming it at
+    // the mark instead keeps it correct at any offset.
+    struct NeedleAim
+    {
+        float angleRadians { 0.0f };
+        float length { 0.0f };
+    };
+
+    static NeedleAim aimAt(const px3::ui::VuArc& arc,
+                           double position,
+                           float pivotOffsetY,
+                           float lengthScale);
+
     static double positionForLevelDb(double dbfs);
     static double positionForReductionDb(double db);
 
