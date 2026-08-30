@@ -13618,6 +13618,8 @@ void testEditorLifecycle()
                       "handle": { "radius": 17, "glowOuterRadius": 29, "glowInnerRadius": 23,
                                   "rimColor": "#2A2B2C" },
                       "sparkles": { "maxPerBurst": 9, "rate": 0.33 },
+                      "divider": { "orientation": "vertical", "color": "#313233",
+                                   "opacity": 0.66, "inset": 21, "width": 3 },
                       "pitch": { "accent": "#2D2E2F" },
                       "mod": { "accent": "#303132" }
                     } })", parseError);
@@ -13657,6 +13659,11 @@ void testEditorLifecycle()
                 expectMoved("performance.background.color", w.background != wDefault.background);
                 expectMoved("performance.background.opacity", w.backgroundOpacity != wDefault.backgroundOpacity);
                 expectMoved("performance.border.inset", w.borderInset != wDefault.borderInset);
+                expectMoved("divider.color", w.dividerColour != wDefault.dividerColour);
+                expectMoved("divider.opacity", w.dividerOpacity != wDefault.dividerOpacity);
+                expectMoved("divider.inset", w.dividerInset != wDefault.dividerInset);
+                expectMoved("divider.width", w.dividerWidth != wDefault.dividerWidth);
+                expectMoved("divider.orientation", w.dividerOrientation != wDefault.dividerOrientation);
                 expectMoved("performance.border.color", w.borderColour != wDefault.borderColour);
                 expectMoved("performance.border.width", w.borderWidth != wDefault.borderWidth);
                 expectMoved("performance.border.radius", w.borderRadius.topLeft != wDefault.borderRadius.topLeft);
@@ -13787,7 +13794,7 @@ void testEditorLifecycle()
             }
 
             check("KeyboardAndWheels_EveryStylePropertyIsReachable", stuck.isEmpty(),
-                      stuck.isEmpty() ? juce::String("all 47 properties parse and change the style")
+                      stuck.isEmpty() ? juce::String("all 52 properties parse and change the style")
                                       : "ignored by the parser: " + stuck.joinIntoString(", "));
             }
 
@@ -16680,13 +16687,14 @@ void testBusInserts()
         // hard-coded look wearing a configurable one's clothes. This walks the
         // whole declared block and requires each key to parse.
         {
-            static const std::array<const char*, 18> numbers { {
+            static const std::array<const char*, 20> numbers { {
                 "innerPadding", "earWidth", "sectionGap", "legendHeight", "legendFontSize",
                 "largeKnobSize", "smallKnobSize", "scaleMargin", "timeColumnWidth",
                 "ratioWidth", "meterWidth", "screwRadius",
                 "meterScaleFontSize",
                 "meterNeedle.width", "meterNeedle.lengthScale",
-                "meterNeedle.offsetY", "meterNeedle.base.radius", "meterNeedle.base.offsetY",
+                "meterNeedle.offsetY", "meterNeedle.opacity",
+                "meterNeedle.base.radius", "meterNeedle.base.offsetY", "meterNeedle.base.opacity",
             } };
             static const std::array<const char*, 9> colours { {
                 "inkColor", "meterBezelColor", "meterFaceColor", "meterInkColor",

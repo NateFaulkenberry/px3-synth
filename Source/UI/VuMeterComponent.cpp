@@ -322,11 +322,16 @@ void VuMeterComponent::paint(juce::Graphics& g)
                                   juce::Colour::fromRGB(24, 24, 26));
     const auto width = cfgF(uiConfig, "busInserts.comp.meterNeedle.width", 1.6f) * 2.2f;
     const auto needleOffsetY = cfgF(uiConfig, "busInserts.comp.meterNeedle.offsetY", 0.0f);
+    const auto needleOpacity = juce::jlimit(0.0f, 1.0f,
+                                            cfgF(uiConfig, "busInserts.comp.meterNeedle.opacity", 1.0f));
 
     const auto baseColour = cfg(uiConfig, "busInserts.comp.meterNeedle.base.color", needleColour);
     const auto baseRadius = juce::jmax(0.0f, cfgF(uiConfig, "busInserts.comp.meterNeedle.base.radius",
                                                   juce::jmax(2.5f, width * 1.5f)));
     const auto baseOffsetY = cfgF(uiConfig, "busInserts.comp.meterNeedle.base.offsetY", 0.0f);
+    const auto baseOpacity = juce::jlimit(0.0f, 1.0f,
+                                          cfgF(uiConfig, "busInserts.comp.meterNeedle.base.opacity",
+                                               needleOpacity));
 
     // As a FRACTION of the arc's radius, not a pixel count: the meter is sized
     // from its panel, so an absolute length would be right at one size and
@@ -351,7 +356,7 @@ void VuMeterComponent::paint(juce::Graphics& g)
     g.setColour(juce::Colour::fromRGBA(0, 0, 0, live ? 46 : 18));
     g.fillPath(blade, transform.translated(1.0f, 1.5f));
 
-    g.setColour(needleColour.withAlpha(live ? 1.0f : 0.35f));
+    g.setColour(needleColour.withAlpha(needleOpacity * (live ? 1.0f : 0.35f)));
     g.fillPath(blade, transform);
 
     // A highlight down one side of the blade.
@@ -366,7 +371,7 @@ void VuMeterComponent::paint(juce::Graphics& g)
         const auto capBounds = juce::Rectangle<float>(baseRadius * 2.0f, baseRadius * 2.0f)
                                    .withCentre(baseCentre);
 
-        g.setColour(baseColour.withAlpha(live ? 1.0f : 0.35f));
+        g.setColour(baseColour.withAlpha(baseOpacity * (live ? 1.0f : 0.35f)));
         g.fillEllipse(capBounds);
         g.setColour(juce::Colours::white.withAlpha(live ? 0.22f : 0.06f));
         g.drawEllipse(capBounds, 0.8f);

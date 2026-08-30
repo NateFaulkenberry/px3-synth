@@ -102,8 +102,9 @@
       "rimColor": "#FFFFFF"
     },
     "sparkles": { "maxPerBurst": 4, "rate": 1 },
-    "pitch": { "accent": "#529BFF", "background": { "color": "#111111", "opacity": 0.863 } },
-    "mod": { "accent": "#E8544E", "background": { "color": "#111111", "opacity": 0.863 } }
+    "divider": { "orientation": "horizontal", "color": "#FFFFFF", "opacity": 0.15, "inset": 8, "width": 1 },
+    "pitch": { "accent": "#529BFF", "background": { "color": "#141414", "opacity": 1 } },
+    "mod": { "accent": "#E8544E", "background": { "color": "#141414", "opacity": 1 } }
   },
   "topMenu": {
     "flex": {
@@ -593,10 +594,11 @@
       "meterInkColor": "#262420",
       "meterNeedle": {
         "color": "#18181A",
-        "width": 2.6,
-        "lengthScale": 0.97,
-        "offsetY": 0,
-        "base": { "color": "#18181A", "radius": 8.6, "offsetY": 0 }
+        "opacity": 1,
+        "width": 1.6,
+        "lengthScale": 0.47,
+        "offsetY": -40,
+        "base": { "color": "#18181A", "radius": 8.6, "offsetY": -40, "opacity": 1 }
       },
       "meterGlowColor": "#FFF4CED2",
       "meterBandColor": "#B02E28C8",

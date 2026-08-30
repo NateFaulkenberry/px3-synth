@@ -76,6 +76,23 @@ public:
         // Scales how often a burst is emitted, independently of its size.
         float sparkleRate { 1.0f };
 
+        // A hairline between the two wheels.
+        //
+        // The wheels sit SIDE BY SIDE - 70 x 96 each in the shipping layout -
+        // so the line that falls between them is vertical. Horizontal instead
+        // runs across the middle of both rather than between them, which is a
+        // different thing and a legitimate one to want, so the orientation is
+        // a setting rather than a consequence of the layout.
+        //
+        // Width is here as well as the three asked for, because a divider that
+        // cannot be set to 0 is one that cannot be removed.
+        enum class DividerOrientation { horizontal, vertical };
+        DividerOrientation dividerOrientation { DividerOrientation::horizontal };
+        juce::Colour dividerColour { juce::Colour::fromRGB(255, 255, 255) };
+        float dividerOpacity { 0.15f };
+        float dividerInset { 8.0f };    // from the top and bottom of the strip
+        float dividerWidth { 1.0f };
+
         juce::Colour pitchAccent { juce::Colour::fromRGB(82, 155, 255) };
         juce::Colour modAccent { juce::Colour::fromRGB(232, 84, 78) };
 

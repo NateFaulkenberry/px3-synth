@@ -250,6 +250,17 @@ PerformanceControls::Style PerformanceControls::Style::fromConfig(const UIConfig
                                                      static_cast<float>(s.sparkleMaxPerBurst)));
     s.sparkleRate = cfgFloat(config, prefix + ".sparkles.rate", s.sparkleRate);
 
+    if (const auto v = config->getValue(prefix + ".divider.orientation"); ! v.isVoid())
+    {
+        s.dividerOrientation = v.toString().trim().equalsIgnoreCase("vertical")
+                                   ? Style::DividerOrientation::vertical
+                                   : Style::DividerOrientation::horizontal;
+    }
+    s.dividerColour = cfgColour(config, prefix + ".divider.color", s.dividerColour);
+    s.dividerOpacity = cfgFloat(config, prefix + ".divider.opacity", s.dividerOpacity);
+    s.dividerInset = cfgFloat(config, prefix + ".divider.inset", s.dividerInset);
+    s.dividerWidth = cfgFloat(config, prefix + ".divider.width", s.dividerWidth);
+
     s.pitchAccent = cfgColour(config, prefix + ".pitch.accent", s.pitchAccent);
     s.modAccent = cfgColour(config, prefix + ".mod.accent", s.modAccent);
     return s;
@@ -295,6 +306,49 @@ void PerformanceControls::paint(juce::Graphics& g)
               visualPitch,
               true,
               easeAmount(visualPitchGlow));
+
+    // The divider.
+    //
+    // Vertical, it falls exactly midway between the two panels - taken from the
+    // panels themselves rather than the strip's centre, so it stays in the
+    // middle of the GAP if the two are ever sized unevenly. Horizontal, it runs
+    // across the middle of both.
+    //
+    // Either way it is snapped to a half-pixel: a 1px stroke on a whole
+    // coordinate straddles two pixel rows and renders as a 2px smear rather
+    // than a hairline.
+    if (style.dividerWidth > 0.0f)
+    {
+        const auto pitchPanel = getPitchVisual().panel;
+        const auto modPanel = getModVisual().panel;
+
+        g.setColour(style.dividerColour.withMultipliedAlpha(
+            juce::jlimit(0.0f, 1.0f, style.dividerOpacity)));
+
+        if (style.dividerOrientation == Style::DividerOrientation::vertical)
+        {
+            const auto x = std::floor((pitchPanel.getRight() + modPanel.getX()) * 0.5f) + 0.5f;
+            const auto top = pitchPanel.getY() + style.dividerInset;
+            const auto bottom = pitchPanel.getBottom() - style.dividerInset;
+
+            if (bottom > top)
+            {
+                g.drawLine(x, top, x, bottom, style.dividerWidth);
+            }
+        }
+        else
+        {
+            const auto span = pitchPanel.getUnion(modPanel);
+            const auto y = std::floor(span.getCentreY()) + 0.5f;
+            const auto left = span.getX() + style.dividerInset;
+            const auto right = span.getRight() - style.dividerInset;
+
+            if (right > left)
+            {
+                g.drawLine(left, y, right, y, style.dividerWidth);
+            }
+        }
+    }
 
     drawWheel(g,
               style,
