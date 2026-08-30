@@ -46,18 +46,21 @@ public:
 
     void setWarningStyle(const WarningStyle& style);
 
-    // Extra height ABOVE the keys, reserved for the spark animation.
+    // Room for the sparks on EVERY side, not just above.
     //
     // A component cannot paint outside its own bounds - the parent clips it -
-    // so the sparks were being cut off at the top edge the moment they left a
-    // key. The fix is to make the component taller than the keyboard it draws
-    // and put the keys at the bottom of it: the headroom is transparent, does
-    // not respond to the mouse, and exists only so the sparks have somewhere to
-    // go. The keys, the hit testing and the warning all follow the keyboard
-    // area rather than the component bounds.
-    void setSparkHeadroom(int pixels);
-    int getSparkHeadroom() const noexcept { return sparkHeadroomPx; }
-    // The keys themselves: the component minus its spark headroom.
+    // so the component is grown in each direction and draws the keys in the
+    // middle of itself. The margin is transparent, does not respond to the
+    // mouse, and exists only so the sparks have somewhere to go. The keys, the
+    // hit testing and the warning all follow the keyboard area rather than the
+    // component bounds.
+    //
+    // Four sides rather than one because a burst leaves a key in every
+    // direction: clipping any edge cuts a visible arc out of it.
+    void setSparkMargins(juce::BorderSize<int> margins);
+    juce::BorderSize<int> getSparkMargins() const noexcept { return sparkMargins; }
+    int getSparkHeadroom() const noexcept { return sparkMargins.getTop(); }
+    // The keys themselves: the component minus its spark margins.
     juce::Rectangle<int> keyboardArea() const;
 
     // Silenced when every oscillator source is bypassed: nothing this keyboard
@@ -114,6 +117,6 @@ private:
     int heldMidiNote { -1 };
     float clickVelocityNorm { 0.65f };
     bool silenced { false };
-    int sparkHeadroomPx { 0 };
+    juce::BorderSize<int> sparkMargins { 0, 0, 0, 0 };
     WarningStyle warningStyle;
 };

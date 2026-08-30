@@ -574,6 +574,9 @@ private:
     // sides that are not the shared headroom. Clamped to the window in
     // resized().
     int performanceSparkSpill { 112 };
+    // The keyboard's own headroom above the keys, read from the config and
+    // clamped to the panel area in resized().
+    int keyboardSparkHeadroom { 112 };
 
     juce::Component debugPanel;
     juce::Label debugPanelTitle;

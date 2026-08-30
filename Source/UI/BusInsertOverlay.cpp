@@ -757,6 +757,16 @@ void BusCompOverlay::resized()
     panel.removeFromLeft(earWidth);
     panel.removeFromRight(earWidth);
 
+    // MIX and LINK are taken off the RIGHT first, at a fixed width, so they stay
+    // put when everything else moves. Laying them out last from "whatever is
+    // left" would have made their position a function of every column before
+    // them - shifting the meter would drag them along with it.
+    auto mixSlot = panel.removeFromRight(configInt(uiConfig, "busInserts.comp.mixColumnWidth", 70));
+    mixBankArea = mixSlot.toFloat();
+
+    // Everything else is offset from the left ear by this much.
+    panel.removeFromLeft(configInt(uiConfig, "busInserts.comp.contentOffsetX", 30));
+
     const auto gap = configInt(uiConfig, "busInserts.comp.sectionGap", 10);
     const auto legendHeight = configInt(uiConfig, "busInserts.comp.legendHeight", 14);
     const auto largeKnob = configInt(uiConfig, "busInserts.comp.largeKnobSize", 62);
@@ -842,8 +852,7 @@ void BusCompOverlay::resized()
         // hardware. Placed here rather than squeezed in among the four original
         // controls: they are ours, and putting them where a switch bank lives
         // keeps the rest of the panel honest.
-        mixBankArea = panel.toFloat();
-        auto slot = panel;
+        auto slot = mixSlot;
         auto knobSlot = slot.removeFromTop(slot.getHeight() / 2);
         knobSlot.removeFromBottom(legendHeight);
         // 20% over the other small knobs: it is the one control on this panel

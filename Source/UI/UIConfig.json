@@ -503,6 +503,8 @@
       "innerPadding": 14,
       "earWidth": 26,
       "sectionGap": 10,
+      "contentOffsetX": 30,
+      "mixColumnWidth": 70,
       "legendHeight": 14,
       "legendFontSize": 8.5,
       "largeKnobSize": 62,

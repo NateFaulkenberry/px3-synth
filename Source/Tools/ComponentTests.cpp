@@ -13502,13 +13502,33 @@ void testEditorLifecycle()
             const auto headroom = keys != nullptr ? keys->getSparkHeadroom() : 0;
             const auto area = keys != nullptr ? keys->keyboardArea() : juce::Rectangle<int>();
 
-            const auto headroomIsAbove = keys != nullptr && headroom > 0
-                                         && area.getY() == headroom
-                                         && area.getBottom() == keys->getHeight();
+            const auto margins = keys != nullptr ? keys->getSparkMargins() : juce::BorderSize<int>();
+
+            // The keys sit exactly inside the margins on EVERY side - the
+            // component is grown in all four directions now, not just upward,
+            // because a burst leaves a key in every direction and clipping any
+            // edge cuts a visible arc out of it.
+            const auto areaMatchesMargins =
+                keys != nullptr
+                && area == margins.subtractedFrom(keys->getLocalBounds())
+                && margins.getTop() == headroom;
+
+            const auto grownOnEverySide = margins.getTop() > 0 && margins.getLeft() > 0
+                                          && margins.getBottom() > 0 && margins.getRight() > 0;
+
             const auto headroomPassesClicksThrough =
                 keys != nullptr && ! keys->hitTest(keys->getWidth() / 2, headroom / 2);
             const auto keysStillHitTest =
-                keys != nullptr && keys->hitTest(keys->getWidth() / 2, area.getCentreY());
+                keys != nullptr && keys->hitTest(area.getCentreX(), area.getCentreY());
+
+            check("Keyboard_SparkRoomSurroundsTheKeysOnEverySide",
+                  areaMatchesMargins && grownOnEverySide,
+                  "margins top " + juce::String(margins.getTop()) + ", left "
+                      + juce::String(margins.getLeft()) + ", bottom "
+                      + juce::String(margins.getBottom()) + ", right "
+                      + juce::String(margins.getRight()) + "; keys at " + area.toString());
+
+            const auto headroomIsAbove = areaMatchesMargins && headroom > 0;
 
             // The headroom must be INVISIBLE. It is transparent, so whatever is
             // behind it has to render exactly as it would if the keyboard had
@@ -13530,14 +13550,15 @@ void testEditorLifecycle()
 
                 auto renderAbove = [&](int sparkHeadroom)
                 {
-                    keys->setSparkHeadroom(sparkHeadroom);
+                    keys->setSparkMargins(juce::BorderSize<int>(sparkHeadroom, margins.getLeft(),
+                                                               margins.getBottom(), margins.getRight()));
                     editor->resized();
                     return editor->createComponentSnapshot(probe);
                 };
 
                 const auto withHeadroom = renderAbove(headroom);
                 const auto withoutHeadroom = renderAbove(0);
-                keys->setSparkHeadroom(headroom);
+                keys->setSparkMargins(margins);
                 editor->resized();
 
                 auto differing = 0;

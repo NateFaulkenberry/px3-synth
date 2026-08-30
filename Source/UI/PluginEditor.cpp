@@ -1975,9 +1975,27 @@ void PX3SynthAudioProcessorEditor::resized()
     // Both are grown outward so their animations can leave the controls instead
     // of being clipped at an edge. The extra area is transparent and does not
     // hit-test, so what is behind it stays both visible and clickable.
-    const auto headroom = juce::jmin(pianoKeyboard.getSparkHeadroom(), controlsArea.getHeight());
+    const auto headroom = juce::jmin(keyboardSparkHeadroom, controlsArea.getHeight());
 
-    pianoKeyboard.setBounds(keyboardRow.withTop(keyboardRow.getY() - headroom));
+    // Grown on all four sides then clamped to the window, with the margins
+    // derived from what the clamp actually left - so the keys stay exactly
+    // where they were however much room the animation got. At the window's
+    // right and bottom edges that room is zero, which is a fact about the
+    // window rather than something to work around.
+    const auto keyboardSpill = juce::jmax(0, performanceSparkSpill);
+    const auto keyRow = keyboardRow;
+    auto keyboardBounds = keyRow.withTop(keyRow.getY() - headroom)
+                              .withLeft(keyRow.getX() - keyboardSpill)
+                              .withRight(keyRow.getRight() + keyboardSpill)
+                              .withBottom(keyRow.getBottom() + keyboardSpill)
+                              .getIntersection(getLocalBounds());
+
+    pianoKeyboard.setBounds(keyboardBounds);
+    pianoKeyboard.setSparkMargins(
+        juce::BorderSize<int>(keyRow.getY() - keyboardBounds.getY(),
+                              keyRow.getX() - keyboardBounds.getX(),
+                              keyboardBounds.getBottom() - keyRow.getBottom(),
+                              keyboardBounds.getRight() - keyRow.getRight()));
 
     // The wheels emit radially, so they need room on all four sides - including
     // to the RIGHT, over the keys. Grown then clamped to the window, and the
@@ -2249,14 +2267,13 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
         // with a starting speed of up to 8.4 px/frame decaying by 0.93 each
         // frame, over a lifetime of up to 0.45 s. That integrates to about
         // 102 px of travel, which is why the first value of 46 still clipped.
-        const auto headroom = uiConfig != nullptr ? uiConfig->getInt("keyboard.sparkHeadroom", 112) : 112;
-        pianoKeyboard.setSparkHeadroom(headroom);
+        keyboardSparkHeadroom = uiConfig != nullptr ? uiConfig->getInt("keyboard.sparkHeadroom", 112) : 112;
         // The wheels throw the same sparks, so they get the same room - and
         // more of it, because theirs go out in every direction. resized()
         // turns this into the four margins, clamped to the window.
         performanceSparkSpill = uiConfig != nullptr
-                                    ? uiConfig->getInt("keyboard.wheelSparkSpill", headroom)
-                                    : headroom;
+                                    ? uiConfig->getInt("keyboard.wheelSparkSpill", keyboardSparkHeadroom)
+                                    : keyboardSparkHeadroom;
         resized();
     }
     {

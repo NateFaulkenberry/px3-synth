@@ -157,18 +157,20 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
 
 juce::Rectangle<int> PianoKeyboard::keyboardArea() const
 {
-    return getLocalBounds().withTrimmedTop(juce::jmin(sparkHeadroomPx, getHeight()));
+    auto area = sparkMargins.subtractedFrom(getLocalBounds());
+    // Margins larger than the component would invert the rectangle, and an
+    // inverted rectangle contains nothing - every key would stop responding.
+    return area.isEmpty() ? getLocalBounds() : area;
 }
 
-void PianoKeyboard::setSparkHeadroom(int pixels)
+void PianoKeyboard::setSparkMargins(juce::BorderSize<int> margins)
 {
-    const auto clamped = juce::jmax(0, pixels);
-    if (sparkHeadroomPx == clamped)
+    if (sparkMargins == margins)
     {
         return;
     }
 
-    sparkHeadroomPx = clamped;
+    sparkMargins = margins;
     repaint();
 }
 
