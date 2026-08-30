@@ -23,6 +23,8 @@
 #include "../DSP/AnalogEngine.h"
 #include "../DSP/Chorus.h"
 #include "../Preset/FactoryPresets.h"
+#include "../DSP/Wavetable.h"
+#include "../DSP/WavetableReader.h"
 #include "../DSP/Lucy.h"
 #include "../DSP/StereoSpread.h"
 #include "../UI/FxCardComponent.h"
@@ -493,6 +495,434 @@ void makePlainPatch(PX3SynthAudioProcessor& processor)
     }
     setParam(processor, "mix.fx.mute", 0.0f);
     setParam(processor, "mix.fx.solo", 0.0f);
+}
+} // namespace
+
+//==============================================================================
+// WAVETABLE
+//==============================================================================
+namespace
+{
+// Amplitude of harmonic h in one frame, by correlating against it. Reading a
+// single sample and comparing would test the phase convention as much as the
+// amplitude; this isolates the amplitude.
+double harmonicAmplitudeOf(const float* frame, int length, int h)
+{
+    double re = 0.0, im = 0.0;
+    for (int i = 0; i < length; ++i)
+    {
+        const auto angle = 2.0 * juce::MathConstants<double>::pi * h * i / length;
+        re += frame[i] * std::sin(angle);
+        im += frame[i] * std::cos(angle);
+    }
+    return 2.0 * std::sqrt(re * re + im * im) / length;
+}
+
+px3::FrameSpectrum spectrumOf(std::initializer_list<float> amplitudes)
+{
+    px3::FrameSpectrum s;
+    s.amplitude.push_back(0.0f);   // DC, ignored
+    for (const auto a : amplitudes) { s.amplitude.push_back(a); }
+    s.phase.assign(s.amplitude.size(), 0.0f);
+    return s;
+}
+
+void testWavetable()
+{
+    suite("WAVETABLE");
+
+    // ---- the amplitude that goes in is the amplitude that comes out --------
+    // Everything else rests on this. If the transform's scaling convention is
+    // wrong, every table is quietly the wrong level and every later measurement
+    // is measuring that instead of what it claims to.
+    {
+        const auto table = px3::Wavetable::build("test", "TEST", { spectrumOf({ 0.5f }) });
+        check("Wavetable_BuildsFromASpectrum", table != nullptr,
+              table != nullptr ? "built" : "build returned null");
+
+        if (table != nullptr)
+        {
+            const auto measured = harmonicAmplitudeOf(table->getFrame(0, 0),
+                                                      table->getLevelLength(0), 1);
+            check("Wavetable_HarmonicComesOutAtTheAmplitudeItWentInAt",
+                  std::abs(measured - 0.5) < 0.001,
+                  "asked for 0.5, measured " + fmt(measured, 6));
+        }
+    }
+
+    // ---- levels are truncations, not rescalings ---------------------------
+    // A level that renormalised itself would keep the same RMS while changing
+    // the amplitude of every harmonic it kept - which is a change to the part of
+    // the sound that is still audible, dressed up as band-limiting.
+    {
+        px3::FrameSpectrum wide;
+        wide.amplitude.push_back(0.0f);
+        for (int h = 1; h <= 256; ++h)
+        {
+            wide.amplitude.push_back(1.0f / static_cast<float>(h));
+        }
+        wide.phase.assign(wide.amplitude.size(), 0.0f);
+
+        const auto table = px3::Wavetable::build("tilt", "TEST", { wide });
+        if (table != nullptr)
+        {
+            auto worst = 0.0;
+            juce::String offender;
+            const auto reference = harmonicAmplitudeOf(table->getFrame(0, 0),
+                                                       table->getLevelLength(0), 1);
+
+            for (int level = 0; level < table->getLevelCount(); ++level)
+            {
+                const auto measured = harmonicAmplitudeOf(table->getFrame(level, 0),
+                                                          table->getLevelLength(level), 1);
+                const auto error = std::abs(measured - reference);
+                if (error > worst)
+                {
+                    worst = error;
+                    offender = "level " + juce::String(level);
+                }
+            }
+
+            check("Wavetable_EveryLevelKeepsTheFundamentalAtOneAmplitude",
+                  worst < 0.001,
+                  "worst drift across " + juce::String(table->getLevelCount())
+                      + " levels: " + fmt(worst, 6)
+                      + (worst < 0.001 ? juce::String() : " at " + offender));
+        }
+    }
+
+    // ---- the level length floor -------------------------------------------
+    // Pinned because it is worth 45 dB of alias rejection at C7 and there is
+    // nothing in the sound of a short table that says "this is why".
+    {
+        const auto table = px3::Wavetable::build("floor", "TEST", { spectrumOf({ 1.0f }) });
+        if (table != nullptr)
+        {
+            auto shortest = table->getLevelLength(0);
+            for (int level = 0; level < table->getLevelCount(); ++level)
+            {
+                shortest = juce::jmin(shortest, table->getLevelLength(level));
+            }
+            check("Wavetable_NoLevelIsShorterThanTheFloor",
+                  shortest >= px3::Wavetable::kMinLevelLength,
+                  "shortest level is " + juce::String(shortest) + " samples, floor is "
+                      + juce::String(px3::Wavetable::kMinLevelLength));
+        }
+    }
+
+    // ---- headroom ----------------------------------------------------------
+    // Worth 20 dB of alias rejection and completely invisible from the outside:
+    // a level whose top harmonic sits at its own Nyquist is critically sampled
+    // and no interpolator can read it cleanly.
+    {
+        const auto table = px3::Wavetable::build("headroom", "TEST", { spectrumOf({ 1.0f }) });
+        if (table != nullptr)
+        {
+            auto worst = 1.0e9;
+            juce::String offender;
+            for (int level = 0; level < table->getLevelCount(); ++level)
+            {
+                const auto headroom = static_cast<double>(table->getLevelLength(level))
+                                      / (2.0 * juce::jmax(1, table->getLevelHarmonics(level)));
+                if (headroom < worst)
+                {
+                    worst = headroom;
+                    offender = "level " + juce::String(level);
+                }
+            }
+            check("Wavetable_EveryLevelKeepsItsNyquistHeadroom",
+                  worst >= px3::Wavetable::kLevelHeadroom,
+                  "tightest level carries " + fmt(worst, 2) + "x Nyquist ("
+                      + offender + "), design minimum is "
+                      + juce::String(px3::Wavetable::kLevelHeadroom) + "x");
+        }
+    }
+
+    // ---- level selection ---------------------------------------------------
+    {
+        const auto table = px3::Wavetable::build("select", "TEST", { spectrumOf({ 1.0f }) });
+        if (table != nullptr)
+        {
+            juce::StringArray aliasing;
+            // Every note from A0 to well above the top of the keyboard.
+            for (int midi = 21; midi <= 120; ++midi)
+            {
+                const auto hz = 440.0 * std::pow(2.0, (midi - 69) / 12.0);
+                const auto increment = hz / kSampleRate;
+                const auto level = table->levelForIncrement(increment);
+                // The chosen level's top harmonic has to land under Nyquist.
+                const auto top = table->getLevelHarmonics(level) * hz;
+                if (top > kSampleRate * 0.5)
+                {
+                    aliasing.add(juce::String(midi) + " (" + fmt(top, 0) + " Hz)");
+                }
+            }
+
+            check("Wavetable_SelectedLevelNeverReachesPastNyquist", aliasing.isEmpty(),
+                  aliasing.isEmpty()
+                      ? "every note from MIDI 21 to 120 selects a level that fits"
+                      : "top harmonic past Nyquist at: " + aliasing.joinIntoString(", "));
+        }
+    }
+
+    // ---- memory ------------------------------------------------------------
+    // A table is the largest single thing this synth allocates, so the budget is
+    // asserted rather than assumed.
+    {
+        std::vector<px3::FrameSpectrum> frames;
+        for (int f = 0; f < px3::Wavetable::kDefaultFrameCount; ++f)
+        {
+            frames.push_back(spectrumOf({ 1.0f, 0.5f, 0.25f }));
+        }
+
+        const auto table = px3::Wavetable::build("budget", "TEST", frames);
+        if (table != nullptr)
+        {
+            // 2.5 MB, not the 1.4 MB the first design came to: keeping four
+            // times Nyquist in every level is what buys the alias floor, and it
+            // has to be paid for in level length. One table is shared by every
+            // voice and every oscillator, so this is a global cost, not a
+            // per-voice one.
+            const auto mb = table->getSizeInBytes() / 1048576.0;
+            check("Wavetable_PyramidFitsItsMemoryBudget", mb < 2.5,
+                  fmt(mb, 3) + " MB for " + juce::String(table->getFrameCount())
+                      + " frames across " + juce::String(table->getLevelCount()) + " levels");
+        }
+    }
+
+    // ---- the read path -----------------------------------------------------
+    // A table that evolves from a soft tilt to a bright one, so scanning it has
+    // something to scan through.
+    const auto scanTable = []
+    {
+        std::vector<px3::FrameSpectrum> frames;
+        for (int f = 0; f < px3::Wavetable::kDefaultFrameCount; ++f)
+        {
+            const auto t = static_cast<double>(f) / (px3::Wavetable::kDefaultFrameCount - 1);
+            // Brightest frame is a sawtooth. Anything brighter is not a waveform
+            // anyone plays, and testing against it would buy memory to fix a
+            // problem no user has.
+            const auto tilt = 2.0 - 1.0 * t;
+            px3::FrameSpectrum spectrum;
+            spectrum.amplitude.push_back(0.0f);
+            for (int h = 1; h <= 512; ++h)
+            {
+                spectrum.amplitude.push_back(static_cast<float>(std::pow(1.0 / h, tilt)));
+            }
+            spectrum.phase.assign(spectrum.amplitude.size(), 0.0f);
+            frames.push_back(std::move(spectrum));
+        }
+        return px3::Wavetable::build("scan", "TEST", frames);
+    }();
+
+    // Renders a steady tone through the reader.
+    const auto renderTone = [](const px3::Wavetable& table, double hz, float position, int samples)
+    {
+        px3::WavetableReader reader;
+        std::vector<float> out(static_cast<std::size_t>(samples), 0.0f);
+        const auto increment = hz / kSampleRate;
+        double phase = 0.0;
+        for (int i = 0; i < samples; ++i)
+        {
+            out[static_cast<std::size_t>(i)] = reader.read(table, phase, position, increment);
+            phase += increment;
+            if (phase >= 1.0) { phase -= 1.0; }
+        }
+        return out;
+    };
+
+    if (scanTable != nullptr)
+    {
+        // ---- the ends of the scan are the ends of the table ----------------
+        {
+            const auto first = renderTone(*scanTable, 110.0, 0.0f, 4096);
+            const auto last = renderTone(*scanTable, 110.0, 1.0f, 4096);
+
+            // Frame 0 is the softest tilt and the final frame the brightest, so
+            // the two ends must not sound the same.
+            const auto brightnessOf = [](const std::vector<float>& v)
+            {
+                double slope = 0.0;
+                for (std::size_t i = 1; i < v.size(); ++i)
+                {
+                    const auto d = static_cast<double>(v[i]) - v[i - 1];
+                    slope += d * d;
+                }
+                return std::sqrt(slope / v.size());
+            };
+
+            const auto ends = brightnessOf(last) / juce::jmax(1.0e-9, brightnessOf(first));
+            check("Wavetable_ScanEndsReachDifferentFrames", ends > 1.5,
+                  "the last frame is " + fmt(ends, 2) + "x brighter than the first");
+        }
+
+        // ---- position is continuous, not stepped --------------------------
+        // The brief is explicit that position must not be integer frame
+        // switching. A stepped implementation would hold still for a whole
+        // frame and then jump; a continuous one moves at every step.
+        {
+            auto biggestStep = 0.0;
+            auto smallestStep = 1.0e9;
+            double previous = 0.0;
+
+            for (int i = 0; i <= 200; ++i)
+            {
+                const auto position = static_cast<float>(i) / 200.0f;
+                const auto tone = renderTone(*scanTable, 110.0, position, 2048);
+                double energy = 0.0;
+                for (std::size_t k = 1; k < tone.size(); ++k)
+                {
+                    const auto d = static_cast<double>(tone[k]) - tone[k - 1];
+                    energy += d * d;
+                }
+                const auto brightness = std::sqrt(energy / tone.size());
+                if (i > 0)
+                {
+                    const auto step = std::abs(brightness - previous);
+                    biggestStep = juce::jmax(biggestStep, step);
+                    smallestStep = juce::jmin(smallestStep, step);
+                }
+                previous = brightness;
+            }
+
+            // If position switched frames instead of interpolating, most steps
+            // would be zero and a few would be large. The ratio catches that
+            // where an average would not.
+            const auto ratio = biggestStep / juce::jmax(1.0e-12, smallestStep);
+            check("Wavetable_PositionInterpolatesRatherThanSwitchingFrames",
+                  smallestStep > 1.0e-9 && ratio < 200.0,
+                  "over 200 steps of the scan, smallest change " + fmt(smallestStep, 9)
+                      + ", largest " + fmt(biggestStep, 9) + ", ratio " + fmt(ratio, 1));
+        }
+
+        // ---- aliasing ------------------------------------------------------
+        {
+            juce::StringArray poor;
+            juce::String detail;
+
+            // Down to MIDI 24: low notes select the levels with the LEAST
+            // headroom between their harmonic count and their length, so
+            // leaving them out would have tested the easy half of the range.
+            for (const auto midi : { 24, 36, 48, 60, 72, 84, 96 })
+            {
+                constexpr int order = 14;
+                const int n = 1 << order;
+
+                // The tone is snapped to an exact FFT bin and rendered without a
+                // window.
+                //
+                // A periodic signal that does not complete a whole number of
+                // cycles in the analysis frame leaks, and 512 densely packed
+                // harmonics each leaking a little adds up to a floor that looks
+                // exactly like aliasing. It read 45 dB at MIDI 24 and did not
+                // move when the table geometry changed underneath it, which is
+                // what gave it away. On an exact bin the harmonics land on bins,
+                // leakage is zero, and what is left between them is the
+                // oscillator's own error.
+                const auto wanted = 440.0 * std::pow(2.0, (midi - 69) / 12.0);
+                const auto bin = juce::jmax(1, juce::roundToInt(wanted * n / kSampleRate));
+                const auto hz = bin * kSampleRate / n;
+
+                const auto tone = renderTone(*scanTable, hz, 1.0f, n);
+
+                juce::dsp::FFT fft(order);
+                std::vector<float> buf(static_cast<std::size_t>(2 << order), 0.0f);
+                for (int i = 0; i < n; ++i)
+                {
+                    buf[static_cast<std::size_t>(i)] = tone[static_cast<std::size_t>(i)];
+                }
+                fft.performFrequencyOnlyForwardTransform(buf.data());
+
+                double harmonic = 0.0, inharmonic = 0.0;
+                const auto binHz = kSampleRate / n;
+
+                // The mask has to scale with the note, not sit at a fixed bin
+                // count. At a fixed +/-6 bins, a low note's harmonics are packed
+                // closer together than the mask is wide, so every bin counts as
+                // harmonic and the measurement reports a spotless 99 dB no
+                // matter what the oscillator is doing. Quarter of the spacing
+                // keeps the same question being asked at every pitch.
+                juce::ignoreUnused(binHz);
+
+                for (int b = 1; b < n / 2; ++b)
+                {
+                    const auto power = static_cast<double>(buf[static_cast<std::size_t>(b)])
+                                     * buf[static_cast<std::size_t>(b)];
+                    // Harmonics sit on exact multiples of the fundamental's bin.
+                    // One bin either side absorbs nothing but rounding.
+                    const auto offset = b % bin;
+                    if (offset <= 1 || offset >= bin - 1) { harmonic += power; }
+                    else { inharmonic += power; }
+                }
+
+                const auto separation = 10.0 * std::log10(juce::jmax(harmonic, 1.0e-30))
+                                      - 10.0 * std::log10(juce::jmax(inharmonic, 1.0e-30));
+                detail << (detail.isEmpty() ? "" : ", ") << juce::String(midi) << ": "
+                       << fmt(separation, 1);
+                if (separation < 60.0) { poor.add(juce::String(midi)); }
+            }
+
+            check("Wavetable_StaysCleanAcrossTheKeyboard", poor.isEmpty(),
+                  "tone:inharmonic by MIDI note - " + detail
+                      + (poor.isEmpty() ? " dB" : " dB; under 60 dB at " + poor.joinIntoString(", ")));
+        }
+
+        // ---- band-limit hysteresis ----------------------------------------
+        // A note parked on a level boundary with vibrato must not toggle
+        // between levels once per cycle, which would be heard as a warble.
+        {
+            px3::WavetableReader reader;
+            // Find a pitch that sits exactly on a boundary.
+            auto boundaryHz = 0.0;
+            for (auto hz = 100.0; hz < 8000.0; hz *= 1.001)
+            {
+                if (scanTable->levelForIncrement(hz / kSampleRate)
+                    != scanTable->levelForIncrement(hz * 1.001 / kSampleRate))
+                {
+                    boundaryHz = hz;
+                    break;
+                }
+            }
+
+            auto changes = 0;
+            auto lastLevel = -1;
+            double phase = 0.0;
+            // Half a semitone of vibrato either side, which is more than most.
+            for (int i = 0; i < 20000; ++i)
+            {
+                const auto wobble = std::sin(2.0 * juce::MathConstants<double>::pi * 5.0 * i / kSampleRate);
+                const auto hz = boundaryHz * std::pow(2.0, wobble * 0.5 / 12.0);
+                const auto increment = hz / kSampleRate;
+                reader.read(*scanTable, phase, 0.5f, increment);
+                phase += increment;
+                if (phase >= 1.0) { phase -= 1.0; }
+
+                if (lastLevel >= 0 && reader.getLevel() != lastLevel) { ++changes; }
+                lastLevel = reader.getLevel();
+            }
+
+            // Without hysteresis this toggles twice per vibrato cycle - about
+            // four times over the two cycles rendered here.
+            check("Wavetable_VibratoOnALevelBoundaryDoesNotChatter", changes <= 1,
+                  juce::String(changes) + " level changes over 2 vibrato cycles at "
+                      + fmt(boundaryHz, 0) + " Hz");
+        }
+    }
+
+    // ---- rejects what it cannot build --------------------------------------
+    // Returning an empty table instead of null would ship silence that looks
+    // like a working oscillator.
+    {
+        check("Wavetable_RejectsAnEmptyFrameSet",
+              px3::Wavetable::build("empty", "TEST", {}) == nullptr,
+              "no frames returns null rather than a silent table");
+
+        std::vector<px3::FrameSpectrum> tooMany(px3::Wavetable::kMaxFrameCount + 1,
+                                                spectrumOf({ 1.0f }));
+        check("Wavetable_RejectsMoreFramesThanTheFormatHolds",
+              px3::Wavetable::build("huge", "TEST", tooMany) == nullptr,
+              juce::String(px3::Wavetable::kMaxFrameCount + 1) + " frames returns null");
+    }
 }
 } // namespace
 
@@ -19342,6 +19772,7 @@ int main(int argc, char* argv[])
         return 0;
     }
 
+    if (wants("wavetable")) testWavetable();
     if (wants("subosc")) testSubOscillator();
     if (wants("osc")) testOscillators();
     if (wants("ampenv")) testAmpEnvelope();

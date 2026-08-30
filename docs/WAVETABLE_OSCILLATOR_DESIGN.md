@@ -130,22 +130,23 @@ px3::Wavetable                       immutable once built, shared by shared_ptr
     name, category, sourceId         sourceId identifies a user import
     frameCount     64 (default; up to 256 for imports — §F.3)
     frameSize      2048
-    levels[]                         mip pyramid, level 0 = full bandwidth
-        level ℓ: frameCount frames of max(256, frameSize >> ℓ) samples,
-                 band-limited to (frameSize/2 >> ℓ) harmonics
+    levels[]                         mip pyramid, level 0 = brightest
+        level ℓ: harmonics = 512 >> ℓ
+                 length    = max(256, 8 * harmonics)
 ```
 
-The 256-sample floor is load-bearing, not a rounding-up — see §E.0. All levels
-share one gain, taken from the full-bandwidth spectrum, so a level change never
-alters the amplitude of the harmonics it retains.
+Length is derived from the harmonic count, not from the frame size, so every
+level keeps four times the samples Nyquist demands — see §E.3, where that turns
+out to be worth 20 dB and to be the reason the first layout measured badly. All
+levels share one gain, taken from the full-bandwidth spectrum, so a level change
+never alters the amplitude of the harmonics it retains.
 
 Storing level ℓ at reduced *length* as well as reduced bandwidth is what makes
 the pyramid affordable: the total is a geometric series, ≈2× the base table
 rather than ×levels.
 
 ```
-64 frames × 2048 samples × 4 B  =  512 KB base
-pyramid, with the 256-sample floor =  1.25 MB per table   (measured)
+64 frames, 10 levels, headroom 4  =  2.25 MB per table   (measured)
 ```
 
 Against the ~2 MB voice pool this is the dominant new allocation, so tables are
@@ -167,9 +168,9 @@ measured in §E.2. The level gap at the worst boundary is 0.0098 dB, and a
 crossfade costs +79% per sample to remove it. Hysteresis addresses the actual
 risk, which is a note chattering between levels under vibrato.
 
-Levels are stored with a **minimum length of 256 samples** even as bandwidth
-keeps halving (§E.0). This is worth 45 dB of alias rejection at C7 and costs
-25% more memory.
+Level lengths are derived from harmonic count with four times Nyquist headroom
+(§E.3), which is what holds alias rejection between 68 and 98 dB across the
+keyboard. A 256-sample floor still applies to the darkest levels.
 
 ### C.3 Interpolation
 
@@ -428,6 +429,66 @@ and the absolute values are tiny throughout: 0.000184 at 64 frames.
 ~2 MB voice pool. The format carries the frame count per table so imports can
 land at 256 (the okwt and Serum convention) when the source has that much
 material, at 5 MB each.
+
+### E.3 Nyquist headroom is the quality knob — and it is not the one §7 pointed at
+
+Found while implementing, not while prototyping, because the prototype's tables
+happened to be dark enough at the top to hide it.
+
+A level whose top harmonic sits at its own Nyquist is **critically sampled**, and
+no interpolator can reconstruct it. Alias rejection tracks the ratio of a level's
+length to twice its harmonic count — its headroom — at roughly **16 dB per
+doubling**, and is close to independent of everything else:
+
+| headroom | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| alias rejection | 48 dB | 52 dB | 68 dB | 83 dB | 98 dB | 116 dB |
+
+The original layout — level ℓ holding `frameSize >> ℓ` samples and
+`frameSize/2 >> ℓ` harmonics — has headroom **1 at every level**, which is why it
+measured 45-55 dB across the middle of the keyboard however the mip floor and
+oversampling were adjusted.
+
+The fix is to derive a level's length from its harmonic count rather than from
+the frame size: `length = 2 · headroom · harmonics`, with headroom 4. Across the
+keyboard, before and after:
+
+| | MIDI 24 | 36 | 48 | 60 | 72 | 84 | 96 |
+|---|---|---|---|---|---|---|---|
+| length from frame size | 55.5 | 52.5 | 48.3 | 51.5 | 67.9 | 83.2 | 97.7 |
+| **length from harmonics** | **86.3** | **77.5** | **74.2** | **71.1** | **67.9** | **83.2** | **97.7** |
+
+Level 0 carries 512 harmonics rather than the 1023 a 2048-point frame could
+hold. Keeping headroom 4 for 1023 harmonics would need an 8192-sample level and
+4.35 MB per table, to reproduce content above 16 kHz that only exists on the
+lowest notes and that nobody can hear. The ceiling this sets is about 16.5 kHz at
+every pitch — the deliberate trade for a 70 dB alias floor. Cost: 2.25 MB per
+table, shared by every voice and every oscillator.
+
+This supersedes §E.0. The minimum level length still exists and still matters,
+but it is now a floor on the darkest levels rather than the mechanism that sets
+quality.
+
+### A note on three broken measurements
+
+Each of these gave a confident, wrong answer before it was caught, and all three
+were caught the same way — by a number that would not move when the thing it
+supposedly measured was changed underneath it.
+
+1. **Hann window, -56 dB sidelobes.** Reported all three interpolators as
+   identical at low notes. Replaced with Blackman-Harris.
+2. **A fixed ±6-bin harmonic mask.** At MIDI 24 the harmonics are 32.7 Hz apart
+   and the mask was ±17.6 Hz wide, so every bin counted as harmonic and the
+   measurement reported a spotless 99.7 dB regardless of what the oscillator
+   did.
+3. **Non-integer cycles in the analysis frame.** With the mask fixed, MIDI 24
+   still read ~45 dB and would not move for any table geometry — 512 densely
+   packed harmonics each leaking a little, summing to something that looked
+   exactly like an alias floor. Fixed by snapping each test tone to an exact FFT
+   bin and dropping the window entirely.
+
+Only after the third fix did the numbers become monotonic in headroom, which is
+what made §E.3 visible at all.
 
 ## G. Remaining open questions
 
