@@ -40,8 +40,15 @@ public:
         float borderWidth { 1.0f };
         px3::ui::CornerRadii borderRadius { px3::ui::CornerRadii::all(10.0f) };
 
-        // Each wheel's backing panel.
-        juce::Colour panelColour { juce::Colour::fromRGBA(17, 17, 17, 220) };
+        // Each wheel's backing panel. The shared colour is the fallback and
+        // either wheel can override it, the same way their accents do - the
+        // two are a pair, and wanting them to differ is a normal thing to want.
+        juce::Colour panelColour { juce::Colour::fromRGB(17, 17, 17) };
+        float panelOpacity { 0.863f };          // 220/255, the value it shipped with
+        juce::Colour pitchPanelColour { juce::Colour::fromRGB(17, 17, 17) };
+        float pitchPanelOpacity { 0.863f };
+        juce::Colour modPanelColour { juce::Colour::fromRGB(17, 17, 17) };
+        float modPanelOpacity { 0.863f };
         px3::ui::CornerRadii panelRadius { px3::ui::CornerRadii::all(8.0f) };
 
         juce::Colour titleColour { juce::Colour::fromRGB(228, 228, 228) };

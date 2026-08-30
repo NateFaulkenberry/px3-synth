@@ -882,6 +882,12 @@ void BusCompOverlay::resized()
     // left" would have made their position a function of every column before
     // them - shifting the meter would drag them along with it.
     auto mixSlot = panel.removeFromRight(configInt(uiConfig, "busInserts.comp.mixColumnWidth", 70));
+
+    // The whole MIX/LINK group shifts together - knob, both its labels, the
+    // button and its legend - because everything below is measured from this
+    // rectangle. Moving the pieces individually would need four offsets that
+    // have to be kept equal to stay aligned.
+    mixSlot.translate(configInt(uiConfig, "busInserts.comp.mixOffsetX", 0), 0);
     mixBankArea = mixSlot.toFloat();
 
     // Everything else is offset from the left ear by this much.

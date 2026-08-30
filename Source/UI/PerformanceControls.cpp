@@ -25,13 +25,14 @@ void drawWheel(juce::Graphics& g,
                const PerformanceControls::Style& style,
                const juce::String& title,
                const juce::Colour& accent,
+               const juce::Colour& panelColour,
                juce::Rectangle<float> panel,
                juce::Rectangle<float> track,
                float normalizedValue,
                bool hasCenter,
                float glow)
 {
-    g.setColour(style.panelColour);
+    g.setColour(panelColour);
     px3::ui::fillRounded(g, panel, style.panelRadius);
 
     const auto labelArea = panel.removeFromTop(style.titleHeight);
@@ -218,7 +219,15 @@ PerformanceControls::Style PerformanceControls::Style::fromConfig(const UIConfig
     s.borderRadius = px3::ui::CornerRadii::fromConfig(config, prefix + ".border", s.borderRadius);
 
     s.panelColour = cfgColour(config, prefix + ".wheelPanel.color", s.panelColour);
+    s.panelOpacity = cfgFloat(config, prefix + ".wheelPanel.opacity", s.panelOpacity);
     s.panelRadius = px3::ui::CornerRadii::fromConfig(config, prefix + ".wheelPanel", s.panelRadius);
+
+    // Each wheel starts from the shared panel and overrides only what it
+    // declares, so setting wheelPanel alone still changes both.
+    s.pitchPanelColour = cfgColour(config, prefix + ".pitch.background.color", s.panelColour);
+    s.pitchPanelOpacity = cfgFloat(config, prefix + ".pitch.background.opacity", s.panelOpacity);
+    s.modPanelColour = cfgColour(config, prefix + ".mod.background.color", s.panelColour);
+    s.modPanelOpacity = cfgFloat(config, prefix + ".mod.background.opacity", s.panelOpacity);
 
     s.titleColour = cfgColour(config, prefix + ".title.color", s.titleColour);
     s.titleSize = cfgFloat(config, prefix + ".title.fontSize", s.titleSize);
@@ -279,6 +288,8 @@ void PerformanceControls::paint(juce::Graphics& g)
               style,
               "PITCH",
               style.pitchAccent,
+              style.pitchPanelColour.withMultipliedAlpha(
+                  juce::jlimit(0.0f, 1.0f, style.pitchPanelOpacity)),
               getPitchVisual().panel,
               getPitchVisual().track,
               visualPitch,
@@ -289,6 +300,8 @@ void PerformanceControls::paint(juce::Graphics& g)
               style,
               "MOD",
               style.modAccent,
+              style.modPanelColour.withMultipliedAlpha(
+                  juce::jlimit(0.0f, 1.0f, style.modPanelOpacity)),
               getModVisual().panel,
               getModVisual().track,
               visualMod,

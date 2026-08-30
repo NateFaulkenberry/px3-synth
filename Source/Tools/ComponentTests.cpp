@@ -13610,7 +13610,7 @@ void testEditorLifecycle()
                     "performance": {
                       "background": { "color": "#203040", "opacity": 0.25 },
                       "border": { "inset": 5, "color": "#212223", "width": 4, "radius": 9 },
-                      "wheelPanel": { "color": "#242526", "radius": 11 },
+                      "wheelPanel": { "color": "#242526", "opacity": 0.4, "radius": 11 },
                       "title": { "color": "#272829", "fontSize": 19, "height": 27 },
                       "track": { "radius": 13, "borderWidth": 6, "fillOpacity": 0.11,
                                  "fillGlowOpacity": 0.12, "borderOpacity": 0.13,
@@ -13661,6 +13661,7 @@ void testEditorLifecycle()
                 expectMoved("performance.border.width", w.borderWidth != wDefault.borderWidth);
                 expectMoved("performance.border.radius", w.borderRadius.topLeft != wDefault.borderRadius.topLeft);
                 expectMoved("wheelPanel.color", w.panelColour != wDefault.panelColour);
+                expectMoved("wheelPanel.opacity", w.panelOpacity != wDefault.panelOpacity);
                 expectMoved("wheelPanel.radius", w.panelRadius.topLeft != wDefault.panelRadius.topLeft);
                 expectMoved("title.color", w.titleColour != wDefault.titleColour);
                 expectMoved("title.fontSize", w.titleSize != wDefault.titleSize);
@@ -13681,7 +13682,45 @@ void testEditorLifecycle()
                 expectMoved("pitch.accent", w.pitchAccent != wDefault.pitchAccent);
                 expectMoved("mod.accent", w.modAccent != wDefault.modAccent);
 
-                // The performance strip's corners are individually settable, which
+                // Each wheel's own background, with the shared panel as fallback.
+            {
+                juce::String wheelError;
+
+                const auto sharedOnly = PerformanceControls::Style::fromConfig(
+                    UIConfig::fromJsonText(
+                        R"({ "performance": { "wheelPanel": { "color": "#203040", "opacity": 0.5 } } })",
+                        wheelError).get(),
+                    "performance");
+
+                const auto perWheel = PerformanceControls::Style::fromConfig(
+                    UIConfig::fromJsonText(
+                        R"({ "performance": { "wheelPanel": { "color": "#203040", "opacity": 0.5 },
+                             "pitch": { "background": { "color": "#112233" } },
+                             "mod":   { "background": { "opacity": 0.9 } } } })",
+                        wheelError).get(),
+                    "performance");
+
+                check("PerformanceControls_WheelBackgroundsOverrideTheShared",
+                      // With only the shared block, both wheels take it.
+                      sharedOnly.pitchPanelColour == sharedOnly.modPanelColour
+                          && sharedOnly.pitchPanelColour == sharedOnly.panelColour
+                          && std::abs(sharedOnly.modPanelOpacity - 0.5f) < 1.0e-4f
+                          // With overrides, each takes only what it declares:
+                          // pitch keeps the shared opacity, mod keeps the
+                          // shared colour.
+                          && perWheel.pitchPanelColour != perWheel.modPanelColour
+                          && std::abs(perWheel.pitchPanelOpacity - 0.5f) < 1.0e-4f
+                          && perWheel.modPanelColour == perWheel.panelColour
+                          && std::abs(perWheel.modPanelOpacity - 0.9f) < 1.0e-4f,
+                      "shared alone gives both " + sharedOnly.panelColour.toDisplayString(false)
+                          + " at " + fmt(sharedOnly.panelOpacity, 2)
+                          + "; overridden gives pitch " + perWheel.pitchPanelColour.toDisplayString(false)
+                          + " at " + fmt(perWheel.pitchPanelOpacity, 2)
+                          + " and mod " + perWheel.modPanelColour.toDisplayString(false)
+                          + " at " + fmt(perWheel.modPanelOpacity, 2));
+            }
+
+            // The performance strip's corners are individually settable, which
             // is what lets its right edge round into the keyboard beside it
             // while its left stays square against the window.
             {
@@ -13748,7 +13787,7 @@ void testEditorLifecycle()
             }
 
             check("KeyboardAndWheels_EveryStylePropertyIsReachable", stuck.isEmpty(),
-                      stuck.isEmpty() ? juce::String("all 46 properties parse and change the style")
+                      stuck.isEmpty() ? juce::String("all 47 properties parse and change the style")
                                       : "ignored by the parser: " + stuck.joinIntoString(", "));
             }
 
@@ -16434,7 +16473,64 @@ void testBusInserts()
             }
             const auto whenOn = sheet != nullptr ? countEnabled(*sheet) : std::make_pair(-1, -1);
 
-            check("BusComp_BypassedFaceAcceptsNoEdits",
+            // The MIX/LINK group moves as ONE. Knob, percentage readout, LINK
+        // button and both painted legends are all measured from a single
+        // rectangle, so a horizontal offset has to shift every one of them by
+        // the same amount - four separate offsets kept equal by hand is how
+        // they end up drifting apart.
+        if (auto* comp = dynamic_cast<px3::ui::BusCompOverlay*>(sheet); comp != nullptr)
+        {
+            juce::String cfgError;
+
+            auto boundsWithOffset = [&](int offsetX)
+            {
+                const auto text = juce::String(R"({ "busInserts": { "comp": { "mixOffsetX": )")
+                                  + juce::String(offsetX) + R"( } } })";
+                comp->setUIConfig(UIConfig::fromJsonText(text, cfgError));
+
+                std::vector<juce::Rectangle<int>> pieces;
+                // The rightmost column only. "Right of centre" also caught the
+                // meter's own mode buttons and the header's ON and CLOSE, all
+                // of which correctly do NOT move with this offset - so the
+                // filter has to be the mix column, not the right-hand half.
+                const auto columnStart = static_cast<int>(comp->getWidth() * 0.78f);
+                for (auto* ch : comp->getChildren())
+                {
+                    if (ch != nullptr && ch->getX() > columnStart
+                        && ch->getWidth() < 100 && ch->getY() > 80)
+                    {
+                        pieces.push_back(ch->getBounds());
+                    }
+                }
+                std::sort(pieces.begin(), pieces.end(),
+                          [](const auto& a, const auto& b) { return a.getY() < b.getY(); });
+                return pieces;
+            };
+
+            const auto unshifted = boundsWithOffset(0);
+            const auto shifted = boundsWithOffset(-10);
+
+            auto everyPieceMoved = ! unshifted.empty() && unshifted.size() == shifted.size();
+            juce::String detail;
+
+            for (std::size_t i = 0; i < unshifted.size() && everyPieceMoved; ++i)
+            {
+                const auto dx = shifted[i].getX() - unshifted[i].getX();
+                const auto dy = shifted[i].getY() - unshifted[i].getY();
+                everyPieceMoved = everyPieceMoved && dx == -10 && dy == 0;
+                detail << dx << " ";
+            }
+
+            check("BusComp_MixGroupMovesAsOne", everyPieceMoved,
+                  everyPieceMoved
+                      ? juce::String(static_cast<int>(unshifted.size()))
+                            + " controls all shifted by exactly -10 px, none vertically"
+                      : "per-control dx: " + detail);
+
+            comp->setUIConfig(nullptr);
+        }
+
+        check("BusComp_BypassedFaceAcceptsNoEdits",
                   sheet != nullptr && whenOff.second > 0
                       && whenOff.first == 0 && whenOn.first == whenOn.second,
                   sheet == nullptr
