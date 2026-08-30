@@ -2,6 +2,10 @@
 
 #include <JuceHeader.h>
 
+class UIConfig;
+
+#include "RoundedRect.h"
+
 #include <functional>
 #include <vector>
 
@@ -23,6 +27,55 @@ public:
     // The controls occupy the whole component again, now that the sparkles are
     // drawn by the overlay above rather than inside here.
     juce::Rectangle<int> controlsArea() const;
+
+    // Everything the pitch and mod section is drawn with. Every field is read
+    // by paint or drawWheel.
+    struct Style
+    {
+        juce::Colour background { juce::Colour::fromRGB(20, 20, 20) };
+        float backgroundOpacity { 1.0f };
+        // The outer frame, inset from the component edge.
+        float borderInset { 2.0f };
+        juce::Colour borderColour { juce::Colour::fromRGBA(255, 255, 255, 24) };
+        float borderWidth { 1.0f };
+        px3::ui::CornerRadii borderRadius { px3::ui::CornerRadii::all(10.0f) };
+
+        // Each wheel's backing panel.
+        juce::Colour panelColour { juce::Colour::fromRGBA(17, 17, 17, 220) };
+        px3::ui::CornerRadii panelRadius { px3::ui::CornerRadii::all(8.0f) };
+
+        juce::Colour titleColour { juce::Colour::fromRGB(228, 228, 228) };
+        float titleSize { 10.5f };
+        float titleHeight { 18.0f };
+
+        // The slot the handle rides in. Its tint is the wheel's accent, at an
+        // alpha that rises with activity - so both ends of that range are here.
+        px3::ui::CornerRadii trackRadius { px3::ui::CornerRadii::all(8.0f) };
+        float trackFillAlpha { 0.22f };
+        float trackFillGlowAlpha { 0.28f };
+        float trackBorderAlpha { 0.36f };
+        float trackBorderGlowAlpha { 0.42f };
+        float trackBorderWidth { 1.0f };
+        float centreLineAlpha { 0.30f };
+
+        float handleRadius { 7.0f };
+        float handleGlowOuterRadius { 15.0f };
+        float handleGlowInnerRadius { 11.0f };
+        juce::Colour handleRimColour { juce::Colour::fromRGB(255, 255, 255) };
+
+        // The burst at full bend. Halved from the original 7 per burst: at that
+        // density the wheels were the loudest thing on screen.
+        int sparkleMaxPerBurst { 4 };
+        // Scales how often a burst is emitted, independently of its size.
+        float sparkleRate { 1.0f };
+
+        juce::Colour pitchAccent { juce::Colour::fromRGB(82, 155, 255) };
+        juce::Colour modAccent { juce::Colour::fromRGB(232, 84, 78) };
+
+        static Style fromConfig(const UIConfig* config, const juce::String& prefix);
+    };
+
+    void setStyle(const Style& style);
 
     void paint(juce::Graphics& g) override;
     // Draws this component's sparkles into another component's context,
@@ -99,6 +152,7 @@ private:
     std::vector<Sparkle> sparkles;
     // Advances with every burst so consecutive sparkles are different colours
     // and the emission reads as a rainbow rather than as one tint at a time.
+    Style style;
     float hueCycle { 0.0f };
     bool hadSparklesLastFrame { false };
     // A moved wheel gets a short-lived boost on top of its displacement, so a

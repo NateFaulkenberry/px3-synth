@@ -1,5 +1,8 @@
 #include "PianoKeyboard.h"
 
+#include "RoundedRect.h"
+#include "UIConfig.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -26,14 +29,14 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
 {
     // Only the keyboard's own rectangle is filled. fillAll would paint the
     // spark headroom too, which sits over the panel above.
-    g.setColour(juce::Colour::fromRGB(25, 25, 25));
+    g.setColour(style.background.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.backgroundOpacity)));
     g.fillRect(keyboardArea());
 
-    const auto area = keyboardArea().toFloat().reduced(8.0f);
+    const auto area = keyboardArea().toFloat().reduced(style.padding);
     const auto whiteKeyWidth = area.getWidth() / static_cast<float>(whiteKeys);
     const auto whiteKeyHeight = area.getHeight();
-    const auto blackKeyWidth = whiteKeyWidth * 0.64f;
-    const auto blackKeyHeight = whiteKeyHeight * 0.62f;
+    const auto blackKeyWidth = whiteKeyWidth * style.blackWidthRatio;
+    const auto blackKeyHeight = whiteKeyHeight * style.blackHeightRatio;
 
     std::vector<KeyGeometry> whites;
     std::vector<KeyGeometry> blacks;
@@ -75,11 +78,11 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
         const auto shakeY = isActive ? std::cos(vibrationPhase * 8.1f + static_cast<float>(key.midiNote) * 0.51f) * 0.45f : 0.0f;
         const auto drawBounds = key.bounds.translated(shakeX, shakeY);
 
-        g.setColour(isActive ? juce::Colour::fromRGB(255, 220, 120) : juce::Colour::fromRGB(245, 245, 240));
-        g.fillRect(drawBounds);
+        g.setColour(isActive ? style.whiteActiveFill : style.whiteFill);
+        px3::ui::fillRounded(g, drawBounds, style.whiteRadius);
 
-        g.setColour(juce::Colour::fromRGB(50, 50, 50));
-        g.drawRect(drawBounds, 1.0f);
+        g.setColour(style.whiteBorder);
+        px3::ui::drawRounded(g, drawBounds, style.whiteRadius, style.whiteBorderWidth);
 
         const auto semitone = key.midiNote % 12;
         const auto labelC = semitone == 0;
@@ -87,8 +90,8 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
 
         if (labelC || labelAEdges)
         {
-            g.setColour(juce::Colour::fromRGB(70, 70, 70));
-            g.setFont(juce::FontOptions(11.0f));
+            g.setColour(style.labelColour);
+            g.setFont(juce::FontOptions(style.labelSize));
             g.drawText(noteNameFor(key.midiNote),
                        drawBounds.withTrimmedTop(drawBounds.getHeight() - 18.0f).toNearestInt(),
                        juce::Justification::centred);
@@ -103,11 +106,11 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
         const auto shakeY = isActive ? std::cos(vibrationPhase * 9.6f + static_cast<float>(key.midiNote) * 0.63f) * 0.35f : 0.0f;
         const auto drawBounds = key.bounds.translated(shakeX, shakeY);
 
-        g.setColour(isActive ? juce::Colour::fromRGB(225, 95, 75) : juce::Colour::fromRGB(18, 18, 18));
-        g.fillRoundedRectangle(drawBounds, 2.5f);
+        g.setColour(isActive ? style.blackActiveFill : style.blackFill);
+        px3::ui::fillRounded(g, drawBounds, style.blackRadius);
 
-        g.setColour(juce::Colour::fromRGB(0, 0, 0));
-        g.drawRoundedRectangle(drawBounds, 2.5f, 1.0f);
+        g.setColour(style.blackBorder);
+        px3::ui::drawRounded(g, drawBounds, style.blackRadius, style.blackBorderWidth);
     }
 
 }
@@ -129,6 +132,14 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
 // the whole strip: it is transparent, so repainting it costs a redraw of
 // everything beneath it too - measured at 3.6 ms for the full region, which is
 // 22% of a 60 Hz frame spent redrawing a mixer panel that did not change.
+//
+// Each spark contributes its OWN reach rather than a shared worst case. A bolt
+// is drawn forward from its position over four segments of its own length, with
+// its own zigzag either side and its own stroke width, so a single constant is
+// either too small for the biggest bolt or far too large for the rest. It was
+// too small - 56 px against a true maximum of 62.9 - and the far end of a long
+// bolt was drawn outside the region that ever gets erased, which is precisely
+// how a fragment gets left behind on screen.
 juce::Rectangle<float> PianoKeyboard::sparkBounds() const
 {
     if (sparks.empty())
@@ -136,17 +147,25 @@ juce::Rectangle<float> PianoKeyboard::sparkBounds() const
         return {};
     }
 
-    auto bounds = juce::Rectangle<float>(sparks.front().position, sparks.front().position);
+    juce::Rectangle<float> bounds;
+    auto first = true;
+
     for (const auto& spark : sparks)
     {
-        bounds = bounds.getUnion(juce::Rectangle<float>(spark.position, spark.position));
+        // Four segments along the direction of travel, plus the zigzag either
+        // side of it and half the outer stroke. Taken as a radius because the
+        // direction is arbitrary.
+        const auto reach = spark.segmentLength * 4.0f
+                           + spark.zigzagAmplitude
+                           + spark.width * 1.45f * 0.5f
+                           + 2.0f;
+
+        const auto box = juce::Rectangle<float>(spark.position, spark.position).expanded(reach);
+        bounds = first ? box : bounds.getUnion(box);
+        first = false;
     }
 
-    // A bolt is drawn forward from its position over four segments, and the
-    // glow sits around it, so the box has to allow for the whole figure rather
-    // than just the points it was built from.
-    const auto reach = 4.0f * 12.0f + 8.0f;
-    return bounds.expanded(reach);
+    return bounds;
 }
 
 void PianoKeyboard::paintSparksInto(juce::Graphics& g, juce::Point<int> offset) const
@@ -205,14 +224,78 @@ void PianoKeyboard::paintSparksInto(juce::Graphics& g, juce::Point<int> offset) 
     }
 }
 
+namespace
+{
+// Reads a colour only when the key is actually present, so an absent key keeps
+// the compiled default instead of being overwritten by a fallback.
+juce::Colour styleColour(const UIConfig* config, const juce::String& path, juce::Colour fallback)
+{
+    if (config == nullptr || config->getValue(path).isVoid())
+    {
+        return fallback;
+    }
+    return config->getColour(path, fallback);
+}
+
+float styleFloat(const UIConfig* config, const juce::String& path, float fallback)
+{
+    if (config == nullptr || config->getValue(path).isVoid())
+    {
+        return fallback;
+    }
+    return config->getFloat(path, fallback);
+}
+} // namespace
+
+PianoKeyboard::Style PianoKeyboard::Style::fromConfig(const UIConfig* config, const juce::String& prefix)
+{
+    Style s;
+    if (config == nullptr)
+    {
+        return s;
+    }
+
+    s.background = styleColour(config, prefix + ".background.color", s.background);
+    s.backgroundOpacity = styleFloat(config, prefix + ".background.opacity", s.backgroundOpacity);
+    s.padding = styleFloat(config, prefix + ".padding", s.padding);
+
+    s.whiteFill = styleColour(config, prefix + ".whiteKey.fill", s.whiteFill);
+    s.whiteActiveFill = styleColour(config, prefix + ".whiteKey.activeFill", s.whiteActiveFill);
+    s.whiteBorder = styleColour(config, prefix + ".whiteKey.border.color", s.whiteBorder);
+    s.whiteBorderWidth = styleFloat(config, prefix + ".whiteKey.border.width", s.whiteBorderWidth);
+    s.whiteRadius = px3::ui::CornerRadii::fromConfig(config, prefix + ".whiteKey.border", s.whiteRadius);
+
+    s.blackFill = styleColour(config, prefix + ".blackKey.fill", s.blackFill);
+    s.blackActiveFill = styleColour(config, prefix + ".blackKey.activeFill", s.blackActiveFill);
+    s.blackBorder = styleColour(config, prefix + ".blackKey.border.color", s.blackBorder);
+    s.blackBorderWidth = styleFloat(config, prefix + ".blackKey.border.width", s.blackBorderWidth);
+    s.blackRadius = px3::ui::CornerRadii::fromConfig(config, prefix + ".blackKey.border", s.blackRadius);
+    s.blackWidthRatio = styleFloat(config, prefix + ".blackKey.widthRatio", s.blackWidthRatio);
+    s.blackHeightRatio = styleFloat(config, prefix + ".blackKey.heightRatio", s.blackHeightRatio);
+
+    s.labelColour = styleColour(config, prefix + ".label.color", s.labelColour);
+    s.labelSize = styleFloat(config, prefix + ".label.fontSize", s.labelSize);
+
+    s.silencedVeil = styleColour(config, prefix + ".silencedVeil", s.silencedVeil);
+    s.whiteSparkColour = styleColour(config, prefix + ".sparks.whiteKeyColor", s.whiteSparkColour);
+    s.blackSparkColour = styleColour(config, prefix + ".sparks.blackKeyColor", s.blackSparkColour);
+    return s;
+}
+
+void PianoKeyboard::setStyle(const Style& newStyle)
+{
+    style = newStyle;
+    repaint();
+}
+
 juce::Rectangle<int> PianoKeyboard::keyboardArea() const
 {
     return getLocalBounds();
 }
 
-void PianoKeyboard::setWarningStyle(const WarningStyle& style)
+void PianoKeyboard::setWarningStyle(const WarningStyle& newWarningStyle)
 {
-    warningStyle = style;
+    warningStyle = newWarningStyle;
     repaint();
 }
 
@@ -235,6 +318,15 @@ void PianoKeyboard::setSilenced(bool shouldBeSilenced)
         previousActiveNotes.fill(false);
         noteVelocities.fill(0.0f);
         heldMidiNote = -1;
+
+        // The sparks are drawn on the overlay above, so clearing them here and
+        // repainting THIS component leaves the last frame of them on screen
+        // over a greyed-out keyboard. The overlay has to be told.
+        if (onSparksChanged != nullptr)
+        {
+            onSparksChanged();
+        }
+        hadSparksLastFrame = false;
     }
 
     // The timer is deliberately NOT stopped and restarted here. A component
@@ -274,7 +366,7 @@ void PianoKeyboard::paint(juce::Graphics& g)
         shot.desaturate();
         g.setOpacity(1.0f);
         g.drawImageAt(shot, 0, 0);
-        g.setColour(juce::Colour::fromRGBA(0, 0, 0, 110));
+        g.setColour(style.silencedVeil);
         g.fillRect(keyboardArea());
     }
 
@@ -402,7 +494,14 @@ void PianoKeyboard::timerCallback()
 {
     if (silenced)
     {
-        // Nothing to advance: no sparks, no held keys, no vibration.
+        // Nothing to advance: no sparks, no held keys, no vibration. But if
+        // anything was drawn on the overlay last frame it still has to be
+        // cleared, or it stays there for as long as the keyboard is silent.
+        if (hadSparksLastFrame && onSparksChanged != nullptr)
+        {
+            onSparksChanged();
+            hadSparksLastFrame = false;
+        }
         return;
     }
 
@@ -487,8 +586,7 @@ void PianoKeyboard::spawnLightningBurst(int midiNote, bool keyIsBlack, float vel
 
     const auto intensity = juce::jlimit(0.1f, 1.0f, velocityNorm);
 
-    const auto colour = actualBlack ? juce::Colour::fromRGB(225, 95, 75)
-                                    : juce::Colour::fromRGB(255, 220, 120);
+    const auto colour = actualBlack ? style.blackSparkColour : style.whiteSparkColour;
 
     const auto sparkCount = juce::jlimit(1, 6, static_cast<int>(std::lround(1.0 + intensity * 5.0)));
 
@@ -525,11 +623,11 @@ bool PianoKeyboard::getKeyBoundsForNote(int midiNote, juce::Rectangle<float>& bo
         return false;
     }
 
-    const auto area = keyboardArea().toFloat().reduced(8.0f);
+    const auto area = keyboardArea().toFloat().reduced(style.padding);
     const auto whiteKeyWidth = area.getWidth() / static_cast<float>(whiteKeys);
     const auto whiteKeyHeight = area.getHeight();
-    const auto blackKeyWidth = whiteKeyWidth * 0.64f;
-    const auto blackKeyHeight = whiteKeyHeight * 0.62f;
+    const auto blackKeyWidth = whiteKeyWidth * style.blackWidthRatio;
+    const auto blackKeyHeight = whiteKeyHeight * style.blackHeightRatio;
 
     isBlack = isBlackKey(midiNote);
     const auto whiteIndex = whiteKeyIndex(midiNote);
@@ -556,7 +654,7 @@ bool PianoKeyboard::getKeyBoundsForNote(int midiNote, juce::Rectangle<float>& bo
 
 int PianoKeyboard::midiNoteAt(juce::Point<float> position) const
 {
-    const auto area = keyboardArea().toFloat().reduced(8.0f);
+    const auto area = keyboardArea().toFloat().reduced(style.padding);
     if (!area.contains(position))
     {
         return -1;

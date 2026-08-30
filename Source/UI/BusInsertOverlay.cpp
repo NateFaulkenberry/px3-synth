@@ -441,6 +441,31 @@ void BusEqOverlay::timerCallback()
         return;
     }
 
+    // A bypassed EQ's controls are dead: the graph refuses the mouse and every
+    // band control greys out. Polled rather than attached because the enable
+    // also moves from automation, from a preset load, and from the strip.
+    const auto& params = processor.getBusInsertParams(busIndex);
+    const auto live = params.eqEnabled != nullptr && params.eqEnabled->get();
+
+    if (live != controlsLive)
+    {
+        controlsLive = live;
+        graph.setEditable(live);
+
+        for (auto& strip : bands)
+        {
+            strip.type.setEnabled(live);
+            strip.frequency.setEnabled(live);
+            strip.q.setEnabled(live);
+            for (auto* label : { &strip.caption, &strip.frequencyValue, &strip.gainValue,
+                                 &strip.qValue, &strip.frequencyCaption, &strip.gainCaption,
+                                 &strip.qCaption })
+            {
+                label->setEnabled(live);
+            }
+        }
+    }
+
     refreshReadouts();
 }
 
@@ -462,7 +487,10 @@ void BusEqOverlay::refreshReadouts()
         const auto working = isPass || std::abs(strip.gain.getValue()) > 0.05;
         strip.gainValue.setColour(juce::Label::textColourId,
                                   juce::Colours::white.withAlpha(working ? 0.85f : 0.35f));
-        strip.gain.setEnabled(! isPass);
+        // Two reasons a gain knob is dead - the band is a pass filter, or the
+        // whole EQ is bypassed - and both are decided here, or the two would
+        // overwrite each other every frame.
+        strip.gain.setEnabled(controlsLive && ! isPass);
     }
 }
 
@@ -596,7 +624,10 @@ BusCompOverlay::BusCompOverlay(PX3SynthAudioProcessor& processorIn)
         caption->setVisible(false);
     }
 
-    startTimerHz(24);
+    // 60, not 24. The needle's ballistics live in the DSP; what the poll rate
+    // decides is how many positions between them get drawn, and at 24 a fast
+    // gain reduction arrived in a handful of visible steps.
+    startTimerHz(60);
 }
 
 BusCompOverlay::~BusCompOverlay()
@@ -736,7 +767,10 @@ void BusCompOverlay::timerCallback()
         }
     }();
 
-    if (std::abs(reading - meterDb) > 0.01f)
+    // The threshold exists so a still needle does not repaint; it has to be
+    // smaller than the step between frames or it would swallow exactly the
+    // intermediate positions the higher rate was raised to draw.
+    if (std::abs(reading - meterDb) > 0.002f)
     {
         meterDb = reading;
         repaint(meterArea);

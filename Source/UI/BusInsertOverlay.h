@@ -214,6 +214,8 @@ private:
 
     std::array<BandStrip, kBandCount> bands;
     BusEqGraph graph;
+    // Starts false so the first poll always applies the real state.
+    bool controlsLive { false };
 };
 
 // ---------------------------------------------------------------------------

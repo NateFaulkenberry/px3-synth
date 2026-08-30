@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Card.h"
+#include "RoundedRect.h"
 
 class PianoKeyboard final : public juce::Component,
                             private juce::Timer
@@ -45,6 +46,48 @@ public:
     };
 
     void setWarningStyle(const WarningStyle& style);
+
+    // Everything the instrument is drawn with. Every field is read by
+    // paintKeyboard - there is nothing here that does not move something.
+    struct Style
+    {
+        juce::Colour background { juce::Colour::fromRGB(25, 25, 25) };
+        float backgroundOpacity { 1.0f };
+        // Inset from the component to the first key.
+        float padding { 8.0f };
+
+        // White keys. Drawn square, so a radius of 0 is the default rather than
+        // an omission.
+        juce::Colour whiteFill { juce::Colour::fromRGB(245, 245, 240) };
+        juce::Colour whiteActiveFill { juce::Colour::fromRGB(255, 220, 120) };
+        juce::Colour whiteBorder { juce::Colour::fromRGB(50, 50, 50) };
+        float whiteBorderWidth { 1.0f };
+        px3::ui::CornerRadii whiteRadius {};
+
+        juce::Colour blackFill { juce::Colour::fromRGB(18, 18, 18) };
+        juce::Colour blackActiveFill { juce::Colour::fromRGB(225, 95, 75) };
+        juce::Colour blackBorder { juce::Colour::fromRGB(0, 0, 0) };
+        float blackBorderWidth { 1.0f };
+        px3::ui::CornerRadii blackRadius { px3::ui::CornerRadii::all(2.5f) };
+        // As fractions of a white key, which is how a keyboard is proportioned.
+        float blackWidthRatio { 0.64f };
+        float blackHeightRatio { 0.62f };
+
+        juce::Colour labelColour { juce::Colour::fromRGB(70, 70, 70) };
+        float labelSize { 11.0f };
+
+        // The veil over a keyboard that cannot sound.
+        juce::Colour silencedVeil { juce::Colour::fromRGBA(0, 0, 0, 110) };
+
+        // Spark tint per key colour, so the animation belongs to the key it
+        // came off.
+        juce::Colour whiteSparkColour { juce::Colour::fromRGB(255, 220, 120) };
+        juce::Colour blackSparkColour { juce::Colour::fromRGB(225, 95, 75) };
+
+        static Style fromConfig(const UIConfig* config, const juce::String& prefix);
+    };
+
+    void setStyle(const Style& style);
 
     // The keys. Kept as a named accessor because the editor's performance
     // strip is drawn around it, and because it used to be narrower than the
@@ -115,6 +158,7 @@ private:
     int heldMidiNote { -1 };
     float clickVelocityNorm { 0.65f };
     bool silenced { false };
+    Style style;
     bool hadSparksLastFrame { false };
     WarningStyle warningStyle;
 };

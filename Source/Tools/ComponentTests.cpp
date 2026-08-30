@@ -47,6 +47,7 @@
 #include "../UI/FetPanelStyle.h"
 #include "../UI/PerformanceControls.h"
 #include "../UI/ModalBackdrop.h"
+#include "../UI/RoundedRect.h"
 #include "../UI/UIConfig.h"
 #include "../DSP/Delay.h"
 #include "../DSP/EnvelopeGenerator.h"
@@ -13583,6 +13584,150 @@ void testEditorLifecycle()
             // after the last particle dies, or the final frame is never drawn
             // over and stays on screen - which is why the region is unioned
             // with the previous frame's rather than replacing it.
+            // Every property the keyboard and the wheels are drawn with has to
+            // be reachable, or it is a hard-coded look wearing a configurable
+            // one's clothes. Parsed from a config that changes ALL of them away
+            // from the compiled defaults, so a key that is silently ignored
+            // shows up as a value that did not move.
+            {
+                juce::String parseError;
+                const auto styled = UIConfig::fromJsonText(R"({
+                    "keyboard": {
+                      "background": { "color": "#102030", "opacity": 0.5 },
+                      "padding": 3,
+                      "whiteKey": { "fill": "#112233", "activeFill": "#445566",
+                                    "border": { "color": "#778899", "width": 2.5, "radius": 4 } },
+                      "blackKey": { "fill": "#010203", "activeFill": "#040506",
+                                    "border": { "color": "#070809", "width": 3.5, "radius": 6 },
+                                    "widthRatio": 0.5, "heightRatio": 0.4 },
+                      "label": { "color": "#0A0B0C", "fontSize": 21 },
+                      "silencedVeil": "#0D0E0F80",
+                      "sparks": { "whiteKeyColor": "#111213", "blackKeyColor": "#141516" }
+                    },
+                    "performance": {
+                      "background": { "color": "#203040", "opacity": 0.25 },
+                      "border": { "inset": 5, "color": "#212223", "width": 4, "radius": 9 },
+                      "wheelPanel": { "color": "#242526", "radius": 11 },
+                      "title": { "color": "#272829", "fontSize": 19, "height": 27 },
+                      "track": { "radius": 13, "borderWidth": 6, "fillOpacity": 0.11,
+                                 "fillGlowOpacity": 0.12, "borderOpacity": 0.13,
+                                 "borderGlowOpacity": 0.14, "centreLineOpacity": 0.15 },
+                      "handle": { "radius": 17, "glowOuterRadius": 29, "glowInnerRadius": 23,
+                                  "rimColor": "#2A2B2C" },
+                      "sparkles": { "maxPerBurst": 9, "rate": 0.33 },
+                      "pitch": { "accent": "#2D2E2F" },
+                      "mod": { "accent": "#303132" }
+                    } })", parseError);
+
+                const auto k = PianoKeyboard::Style::fromConfig(styled.get(), "keyboard");
+                const auto w = PerformanceControls::Style::fromConfig(styled.get(), "performance");
+                const PianoKeyboard::Style kDefault;
+                const PerformanceControls::Style wDefault;
+
+                juce::StringArray stuck;
+                auto expectMoved = [&stuck](const char* name, bool moved)
+                {
+                    if (! moved) stuck.add(name);
+                };
+
+                expectMoved("keyboard.background.color", k.background != kDefault.background);
+                expectMoved("keyboard.background.opacity", k.backgroundOpacity != kDefault.backgroundOpacity);
+                expectMoved("keyboard.padding", k.padding != kDefault.padding);
+                expectMoved("whiteKey.fill", k.whiteFill != kDefault.whiteFill);
+                expectMoved("whiteKey.activeFill", k.whiteActiveFill != kDefault.whiteActiveFill);
+                expectMoved("whiteKey.border.color", k.whiteBorder != kDefault.whiteBorder);
+                expectMoved("whiteKey.border.width", k.whiteBorderWidth != kDefault.whiteBorderWidth);
+                expectMoved("whiteKey.border.radius", k.whiteRadius.topLeft != kDefault.whiteRadius.topLeft);
+                expectMoved("blackKey.fill", k.blackFill != kDefault.blackFill);
+                expectMoved("blackKey.activeFill", k.blackActiveFill != kDefault.blackActiveFill);
+                expectMoved("blackKey.border.color", k.blackBorder != kDefault.blackBorder);
+                expectMoved("blackKey.border.width", k.blackBorderWidth != kDefault.blackBorderWidth);
+                expectMoved("blackKey.border.radius", k.blackRadius.topLeft != kDefault.blackRadius.topLeft);
+                expectMoved("blackKey.widthRatio", k.blackWidthRatio != kDefault.blackWidthRatio);
+                expectMoved("blackKey.heightRatio", k.blackHeightRatio != kDefault.blackHeightRatio);
+                expectMoved("label.color", k.labelColour != kDefault.labelColour);
+                expectMoved("label.fontSize", k.labelSize != kDefault.labelSize);
+                expectMoved("silencedVeil", k.silencedVeil != kDefault.silencedVeil);
+                expectMoved("sparks.whiteKeyColor", k.whiteSparkColour != kDefault.whiteSparkColour);
+                expectMoved("sparks.blackKeyColor", k.blackSparkColour != kDefault.blackSparkColour);
+
+                expectMoved("performance.background.color", w.background != wDefault.background);
+                expectMoved("performance.background.opacity", w.backgroundOpacity != wDefault.backgroundOpacity);
+                expectMoved("performance.border.inset", w.borderInset != wDefault.borderInset);
+                expectMoved("performance.border.color", w.borderColour != wDefault.borderColour);
+                expectMoved("performance.border.width", w.borderWidth != wDefault.borderWidth);
+                expectMoved("performance.border.radius", w.borderRadius.topLeft != wDefault.borderRadius.topLeft);
+                expectMoved("wheelPanel.color", w.panelColour != wDefault.panelColour);
+                expectMoved("wheelPanel.radius", w.panelRadius.topLeft != wDefault.panelRadius.topLeft);
+                expectMoved("title.color", w.titleColour != wDefault.titleColour);
+                expectMoved("title.fontSize", w.titleSize != wDefault.titleSize);
+                expectMoved("title.height", w.titleHeight != wDefault.titleHeight);
+                expectMoved("track.radius", w.trackRadius.topLeft != wDefault.trackRadius.topLeft);
+                expectMoved("track.borderWidth", w.trackBorderWidth != wDefault.trackBorderWidth);
+                expectMoved("track.fillOpacity", w.trackFillAlpha != wDefault.trackFillAlpha);
+                expectMoved("track.fillGlowOpacity", w.trackFillGlowAlpha != wDefault.trackFillGlowAlpha);
+                expectMoved("track.borderOpacity", w.trackBorderAlpha != wDefault.trackBorderAlpha);
+                expectMoved("track.borderGlowOpacity", w.trackBorderGlowAlpha != wDefault.trackBorderGlowAlpha);
+                expectMoved("track.centreLineOpacity", w.centreLineAlpha != wDefault.centreLineAlpha);
+                expectMoved("handle.radius", w.handleRadius != wDefault.handleRadius);
+                expectMoved("handle.glowOuterRadius", w.handleGlowOuterRadius != wDefault.handleGlowOuterRadius);
+                expectMoved("handle.glowInnerRadius", w.handleGlowInnerRadius != wDefault.handleGlowInnerRadius);
+                expectMoved("handle.rimColor", w.handleRimColour != wDefault.handleRimColour);
+                expectMoved("sparkles.maxPerBurst", w.sparkleMaxPerBurst != wDefault.sparkleMaxPerBurst);
+                expectMoved("sparkles.rate", w.sparkleRate != wDefault.sparkleRate);
+                expectMoved("pitch.accent", w.pitchAccent != wDefault.pitchAccent);
+                expectMoved("mod.accent", w.modAccent != wDefault.modAccent);
+
+                check("KeyboardAndWheels_EveryStylePropertyIsReachable", stuck.isEmpty(),
+                      stuck.isEmpty() ? juce::String("all 46 properties parse and change the style")
+                                      : "ignored by the parser: " + stuck.joinIntoString(", "));
+            }
+
+            // Corners are individually settable, with the shorthand-then-
+            // override convention the insets already use.
+            {
+                juce::String parseError;
+                const auto cfg = UIConfig::fromJsonText(
+                    R"({ "b": { "radius": 5, "radiusTopRight": 12, "radiusBottomLeft": 0 } })", parseError);
+                const auto r = px3::ui::CornerRadii::fromConfig(cfg.get(), "b",
+                                                                px3::ui::CornerRadii::all(99.0f));
+
+                check("CornerRadii_ShorthandThenPerCornerOverride",
+                      r.topLeft == 5.0f && r.topRight == 12.0f
+                          && r.bottomRight == 5.0f && r.bottomLeft == 0.0f
+                          && ! r.isUniform(),
+                      "TL " + fmt(r.topLeft, 1) + ", TR " + fmt(r.topRight, 1)
+                          + ", BR " + fmt(r.bottomRight, 1) + ", BL " + fmt(r.bottomLeft, 1));
+
+                // A radius larger than the box would fold the path back on
+                // itself, so it is clamped to half the shorter side.
+                const auto clamped = px3::ui::CornerRadii::all(500.0f)
+                                         .clampedTo(juce::Rectangle<float>(0.0f, 0.0f, 40.0f, 20.0f));
+                check("CornerRadii_ClampsToTheBox",
+                      clamped.topLeft == 10.0f && clamped.bottomRight == 10.0f,
+                      "a 500px radius on a 40x20 box clamps to " + fmt(clamped.topLeft, 1));
+            }
+
+            // Silencing the keyboard drops every spark in flight - but they are
+            // drawn on the overlay, so clearing them here and repainting the
+            // KEYBOARD leaves the last frame of them on screen over a greyed
+            // instrument. The overlay has to be told, and once silenced the
+            // timer returns immediately, so it cannot be told later either.
+            {
+                PianoKeyboard standalone;
+                standalone.setSize(600, 100);
+
+                auto notifications = 0;
+                standalone.onSparksChanged = [&notifications]() { ++notifications; };
+
+                standalone.setSilenced(true);
+
+                check("Keyboard_SilencingClearsWhatTheOverlayHasDrawn",
+                      notifications > 0,
+                      juce::String(notifications) + " overlay notification(s) on silencing"
+                          + (notifications > 0 ? "" : " - the last frame of sparks would stay on screen"));
+            }
+
             check("SparkOverlay_InvalidatesNothingWithNoParticles",
                   keys != nullptr && wheels != nullptr
                       && keys->sparkBounds().isEmpty()
@@ -15344,6 +15489,52 @@ void testBusInserts()
                       && std::abs(dry.bandGain[1]->get()) < 0.01f,
                   "band 2 back to " + fmt(dry.bandFreq[1]->get(), 0) + " Hz / "
                       + fmt(dry.bandGain[1]->get(), 2) + " dB");
+        }
+
+        // ---- a bypassed EQ cannot be edited --------------------------------
+        // A graph that answers the mouse while the EQ is off is offering an
+        // edit that changes nothing audible.
+        if (graph != nullptr && dry.eqEnabled != nullptr && dry.bandFreq[1] != nullptr)
+        {
+            setParam(processor, "dryEqEnabled", 1.0f);
+            setParam(processor, "dryEqFreq2", 300.0f);
+            setParam(processor, "dryEqGain2", 0.0f);
+
+            const auto plot = graph->plotBounds();
+            const auto handleX = plot.getX() + plot.getWidth()
+                                     * std::log(300.0f / px3::ui::BusEqGraph::kMinHz)
+                                     / std::log(px3::ui::BusEqGraph::kMaxHz / px3::ui::BusEqGraph::kMinHz);
+            const auto from = juce::Point<float>(handleX, plot.getCentreY());
+            const auto to = juce::Point<float>(handleX + plot.getWidth() * 0.2f,
+                                               plot.getCentreY() - plot.getHeight() * 0.2f);
+
+            graph->setEditable(false);
+            graph->mouseDown(eventAt(from, 1));
+            graph->mouseDrag(eventAt(to, 1));
+            graph->mouseUp(eventAt(to, 1));
+
+            const auto hzAfterDrag = dry.bandFreq[1]->get();
+            const auto dbAfterDrag = dry.bandGain[1]->get();
+
+            juce::MouseWheelDetails wheel {};
+            wheel.deltaY = 1.0f;
+            const auto qBefore = dry.bandQ[1]->get();
+            graph->mouseWheelMove(eventAt(from, 1), wheel);
+            const auto qAfterWheel = dry.bandQ[1]->get();
+
+            graph->mouseDoubleClick(eventAt(from, 2));
+            const auto hzAfterDouble = dry.bandFreq[1]->get();
+
+            graph->setEditable(true);
+
+            check("BusEqGraph_BypassedGraphRefusesEveryEdit",
+                  std::abs(hzAfterDrag - 300.0f) < 0.5f
+                      && std::abs(dbAfterDrag) < 0.01f
+                      && std::abs(qAfterWheel - qBefore) < 1.0e-4f
+                      && std::abs(hzAfterDouble - 300.0f) < 0.5f,
+                  "drag left it at " + fmt(hzAfterDrag, 0) + " Hz / " + fmt(dbAfterDrag, 2)
+                      + " dB, wheel left Q at " + fmt(qAfterWheel, 2)
+                      + ", double click left " + fmt(hzAfterDouble, 0) + " Hz");
         }
 
         // ---- a pass filter has no gain to drag -----------------------------

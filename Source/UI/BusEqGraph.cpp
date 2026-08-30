@@ -97,6 +97,23 @@ void BusEqGraph::setAccentColour(juce::Colour colour)
     repaint();
 }
 
+void BusEqGraph::setEditable(bool shouldBeEditable)
+{
+    if (editable == shouldBeEditable)
+    {
+        return;
+    }
+
+    editable = shouldBeEditable;
+
+    // Any drag in progress is abandoned rather than left half-applied, and the
+    // hover state cleared so a handle does not stay lit under a dead pointer.
+    dragBand = -1;
+    hoverBand = -1;
+    setMouseCursor(juce::MouseCursor::NormalCursor);
+    repaint();
+}
+
 void BusEqGraph::setAnalyserRunning(bool shouldRun)
 {
     if (analyserRunning == shouldRun)
@@ -111,7 +128,10 @@ void BusEqGraph::setAnalyserRunning(bool shouldRun)
     {
         spectrumDb.fill(-120.0f);
         spectrumPrimed = false;
-        startTimerHz(24);
+        // 60, not 24. At 24 the trace visibly stepped between frames - the
+        // decay below is what makes it look continuous, and a decay is only as
+        // smooth as the rate it is applied at.
+        startTimerHz(kRefreshHz);
     }
     else
     {
@@ -266,7 +286,12 @@ void BusEqGraph::refreshSpectrum()
         {
             // Fast up, slow down: a peak-hold-ish decay, so a transient is
             // visible for long enough to read instead of flickering past.
-            smoothed = db > smoothed ? db : smoothed + (db - smoothed) * 0.22f;
+            //
+            // The coefficient is derived from the refresh rate rather than
+            // written as a constant, so changing the rate changes only the
+            // smoothness and not the fall time. Tuned at 24 Hz with 0.22, which
+            // is a time constant of about 165 ms.
+            smoothed = db > smoothed ? db : smoothed + (db - smoothed) * kDecayPerFrame;
         }
     }
 
@@ -488,6 +513,11 @@ void BusEqGraph::paint(juce::Graphics& g)
 //==============================================================================
 void BusEqGraph::mouseMove(const juce::MouseEvent& event)
 {
+    if (! editable)
+    {
+        return;
+    }
+
     const auto picked = pickHandle(event.position);
     if (picked != hoverBand)
     {
@@ -510,6 +540,11 @@ void BusEqGraph::mouseExit(const juce::MouseEvent&)
 
 void BusEqGraph::mouseDown(const juce::MouseEvent& event)
 {
+    if (! editable)
+    {
+        return;
+    }
+
     dragBand = pickHandle(event.position);
     hoverBand = dragBand;
 
@@ -576,6 +611,11 @@ void BusEqGraph::mouseUp(const juce::MouseEvent&)
 
 void BusEqGraph::mouseDoubleClick(const juce::MouseEvent& event)
 {
+    if (! editable)
+    {
+        return;
+    }
+
     const auto band = pickHandle(event.position);
     if (band < 0)
     {
@@ -606,6 +646,11 @@ void BusEqGraph::mouseDoubleClick(const juce::MouseEvent& event)
 
 void BusEqGraph::mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
 {
+    if (! editable)
+    {
+        return;
+    }
+
     // Q is the third value, and a pointer only has two. It belongs on the
     // wheel over the handle it applies to rather than as a modifier drag, which
     // is undiscoverable and collides with the host's own modifier handling.

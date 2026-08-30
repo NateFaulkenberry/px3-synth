@@ -1,5 +1,7 @@
 #include "PerformanceControls.h"
 
+#include "UIConfig.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -7,7 +9,6 @@ namespace
 {
 constexpr float kPanelGap = 14.0f;
 constexpr float kTrackWidth = 10.0f;
-constexpr float kHandleRadius = 7.0f;
 
 inline float clamp01(float value)
 {
@@ -21,6 +22,7 @@ inline float easeAmount(float value)
 }
 
 void drawWheel(juce::Graphics& g,
+               const PerformanceControls::Style& style,
                const juce::String& title,
                const juce::Colour& accent,
                juce::Rectangle<float> panel,
@@ -29,23 +31,24 @@ void drawWheel(juce::Graphics& g,
                bool hasCenter,
                float glow)
 {
-    g.setColour(juce::Colour::fromRGBA(17, 17, 17, 220));
-    g.fillRoundedRectangle(panel, 8.0f);
+    g.setColour(style.panelColour);
+    px3::ui::fillRounded(g, panel, style.panelRadius);
 
-    const auto labelArea = panel.removeFromTop(18.0f);
+    const auto labelArea = panel.removeFromTop(style.titleHeight);
 
-    g.setColour(juce::Colour::fromRGB(228, 228, 228));
-    g.setFont(juce::FontOptions(10.5f, juce::Font::bold));
+    g.setColour(style.titleColour);
+    g.setFont(juce::FontOptions(style.titleSize, juce::Font::bold));
     g.drawText(title, labelArea.toNearestInt(), juce::Justification::centred, false);
 
-    g.setColour(accent.withAlpha(0.22f + 0.28f * glow));
-    g.fillRoundedRectangle(track, 8.0f);
+    g.setColour(accent.withAlpha(style.trackFillAlpha + style.trackFillGlowAlpha * glow));
+    px3::ui::fillRounded(g, track, style.trackRadius);
 
-    g.setColour(accent.withAlpha(0.36f + 0.42f * glow));
-    g.drawRoundedRectangle(track, 8.0f, 1.0f);
+    g.setColour(accent.withAlpha(style.trackBorderAlpha + style.trackBorderGlowAlpha * glow));
+    px3::ui::drawRounded(g, track, style.trackRadius, style.trackBorderWidth);
 
-    const auto topY = track.getY() + kHandleRadius;
-    const auto bottomY = track.getBottom() - kHandleRadius;
+    const auto handleRadius = style.handleRadius;
+    const auto topY = track.getY() + handleRadius;
+    const auto bottomY = track.getBottom() - handleRadius;
     float handleY = bottomY;
 
     if (hasCenter)
@@ -53,7 +56,7 @@ void drawWheel(juce::Graphics& g,
         const auto centerY = (topY + bottomY) * 0.5f;
         handleY = centerY - normalizedValue * (bottomY - topY) * 0.5f;
 
-        g.setColour(accent.withAlpha(0.30f));
+        g.setColour(accent.withAlpha(style.centreLineAlpha));
         g.drawLine(track.getX() - 6.0f, centerY, track.getRight() + 6.0f, centerY, 1.0f);
     }
     else
@@ -64,24 +67,27 @@ void drawWheel(juce::Graphics& g,
     const auto handleX = track.getCentreX();
     const auto glowAlpha = 0.14f + 0.56f * glow;
 
+    const auto outer = style.handleGlowOuterRadius;
+    const auto inner = style.handleGlowInnerRadius;
+
     g.setColour(accent.withAlpha(glowAlpha * 0.50f));
-    g.fillEllipse(handleX - 15.0f, handleY - 15.0f, 30.0f, 30.0f);
+    g.fillEllipse(handleX - outer, handleY - outer, outer * 2.0f, outer * 2.0f);
 
     g.setColour(accent.withAlpha(glowAlpha));
-    g.fillEllipse(handleX - 11.0f, handleY - 11.0f, 22.0f, 22.0f);
+    g.fillEllipse(handleX - inner, handleY - inner, inner * 2.0f, inner * 2.0f);
 
     juce::ColourGradient handleGradient(accent.brighter(0.35f + 0.25f * glow),
                                         handleX,
-                                        handleY - kHandleRadius,
+                                        handleY - handleRadius,
                                         accent.darker(0.45f),
                                         handleX,
-                                        handleY + kHandleRadius,
+                                        handleY + handleRadius,
                                         false);
     g.setGradientFill(handleGradient);
-    g.fillEllipse(handleX - kHandleRadius, handleY - kHandleRadius, kHandleRadius * 2.0f, kHandleRadius * 2.0f);
+    g.fillEllipse(handleX - handleRadius, handleY - handleRadius, handleRadius * 2.0f, handleRadius * 2.0f);
 
-    g.setColour(juce::Colour::fromRGBA(255, 255, 255, static_cast<juce::uint8>(120 + 80.0f * glow)));
-    g.drawEllipse(handleX - kHandleRadius, handleY - kHandleRadius, kHandleRadius * 2.0f, kHandleRadius * 2.0f, 1.0f);
+    g.setColour(style.handleRimColour.withAlpha((120.0f + 80.0f * glow) / 255.0f));
+    g.drawEllipse(handleX - handleRadius, handleY - handleRadius, handleRadius * 2.0f, handleRadius * 2.0f, 1.0f);
 
 }
 }
@@ -117,6 +123,9 @@ void PerformanceControls::setControllerState(float pitchBendNormalized,
 
 // Painted by the shared overlay, for the same reason the keyboard's sparks are:
 // the two components overlap each other and z-order can only favour one.
+// As with the keyboard's sparks, each sparkle contributes its own reach. The
+// halo is 2.6x the star's arm across, so it extends 1.3x the arm from the
+// centre - and the arm is the sparkle's own size.
 juce::Rectangle<float> PerformanceControls::sparkleBounds() const
 {
     if (sparkles.empty())
@@ -124,17 +133,20 @@ juce::Rectangle<float> PerformanceControls::sparkleBounds() const
         return {};
     }
 
-    auto bounds = juce::Rectangle<float>(sparkles.front().position, sparkles.front().position);
-    auto widest = 0.0f;
+    juce::Rectangle<float> bounds;
+    auto first = true;
+
     for (const auto& sparkle : sparkles)
     {
-        bounds = bounds.getUnion(juce::Rectangle<float>(sparkle.position, sparkle.position));
-        widest = juce::jmax(widest, sparkle.size);
+        // size at draw time is scaled by remaining life, never above the
+        // sparkle's own size, so this is a true upper bound.
+        const auto reach = sparkle.size * 1.3f + 2.0f;
+        const auto box = juce::Rectangle<float>(sparkle.position, sparkle.position).expanded(reach);
+        bounds = first ? box : bounds.getUnion(box);
+        first = false;
     }
 
-    // The halo is 2.6x the star's arm, so the figure reaches well past the
-    // point the sparkle is recorded at.
-    return bounds.expanded(widest * 1.6f + 4.0f);
+    return bounds;
 }
 
 void PerformanceControls::paintSparklesInto(juce::Graphics& g, juce::Point<int> offset) const
@@ -176,6 +188,70 @@ void PerformanceControls::paintSparklesInto(juce::Graphics& g, juce::Point<int> 
         }
     }
 
+namespace
+{
+juce::Colour cfgColour(const UIConfig* c, const juce::String& path, juce::Colour fallback)
+{
+    return (c == nullptr || c->getValue(path).isVoid()) ? fallback : c->getColour(path, fallback);
+}
+
+float cfgFloat(const UIConfig* c, const juce::String& path, float fallback)
+{
+    return (c == nullptr || c->getValue(path).isVoid()) ? fallback : c->getFloat(path, fallback);
+}
+} // namespace
+
+PerformanceControls::Style PerformanceControls::Style::fromConfig(const UIConfig* config,
+                                                                  const juce::String& prefix)
+{
+    Style s;
+    if (config == nullptr)
+    {
+        return s;
+    }
+
+    s.background = cfgColour(config, prefix + ".background.color", s.background);
+    s.backgroundOpacity = cfgFloat(config, prefix + ".background.opacity", s.backgroundOpacity);
+    s.borderInset = cfgFloat(config, prefix + ".border.inset", s.borderInset);
+    s.borderColour = cfgColour(config, prefix + ".border.color", s.borderColour);
+    s.borderWidth = cfgFloat(config, prefix + ".border.width", s.borderWidth);
+    s.borderRadius = px3::ui::CornerRadii::fromConfig(config, prefix + ".border", s.borderRadius);
+
+    s.panelColour = cfgColour(config, prefix + ".wheelPanel.color", s.panelColour);
+    s.panelRadius = px3::ui::CornerRadii::fromConfig(config, prefix + ".wheelPanel", s.panelRadius);
+
+    s.titleColour = cfgColour(config, prefix + ".title.color", s.titleColour);
+    s.titleSize = cfgFloat(config, prefix + ".title.fontSize", s.titleSize);
+    s.titleHeight = cfgFloat(config, prefix + ".title.height", s.titleHeight);
+
+    s.trackRadius = px3::ui::CornerRadii::fromConfig(config, prefix + ".track", s.trackRadius);
+    s.trackFillAlpha = cfgFloat(config, prefix + ".track.fillOpacity", s.trackFillAlpha);
+    s.trackFillGlowAlpha = cfgFloat(config, prefix + ".track.fillGlowOpacity", s.trackFillGlowAlpha);
+    s.trackBorderAlpha = cfgFloat(config, prefix + ".track.borderOpacity", s.trackBorderAlpha);
+    s.trackBorderGlowAlpha = cfgFloat(config, prefix + ".track.borderGlowOpacity", s.trackBorderGlowAlpha);
+    s.trackBorderWidth = cfgFloat(config, prefix + ".track.borderWidth", s.trackBorderWidth);
+    s.centreLineAlpha = cfgFloat(config, prefix + ".track.centreLineOpacity", s.centreLineAlpha);
+
+    s.handleRadius = cfgFloat(config, prefix + ".handle.radius", s.handleRadius);
+    s.handleGlowOuterRadius = cfgFloat(config, prefix + ".handle.glowOuterRadius", s.handleGlowOuterRadius);
+    s.handleGlowInnerRadius = cfgFloat(config, prefix + ".handle.glowInnerRadius", s.handleGlowInnerRadius);
+    s.handleRimColour = cfgColour(config, prefix + ".handle.rimColor", s.handleRimColour);
+
+    s.sparkleMaxPerBurst = static_cast<int>(cfgFloat(config, prefix + ".sparkles.maxPerBurst",
+                                                     static_cast<float>(s.sparkleMaxPerBurst)));
+    s.sparkleRate = cfgFloat(config, prefix + ".sparkles.rate", s.sparkleRate);
+
+    s.pitchAccent = cfgColour(config, prefix + ".pitch.accent", s.pitchAccent);
+    s.modAccent = cfgColour(config, prefix + ".mod.accent", s.modAccent);
+    return s;
+}
+
+void PerformanceControls::setStyle(const Style& newStyle)
+{
+    style = newStyle;
+    repaint();
+}
+
 juce::Rectangle<int> PerformanceControls::controlsArea() const
 {
     return getLocalBounds();
@@ -185,16 +261,17 @@ void PerformanceControls::paint(juce::Graphics& g)
 {
     // Only the strip's own rectangle. fillAll would paint the spark headroom
     // too, which sits over the panel above.
-    g.setColour(juce::Colour::fromRGB(20, 20, 20));
+    g.setColour(style.background.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.backgroundOpacity)));
     g.fillRect(controlsArea());
 
-    auto bounds = controlsArea().toFloat().reduced(2.0f);
-    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 24));
-    g.drawRoundedRectangle(bounds, 10.0f, 1.0f);
+    auto bounds = controlsArea().toFloat().reduced(style.borderInset);
+    g.setColour(style.borderColour);
+    px3::ui::drawRounded(g, bounds, style.borderRadius, style.borderWidth);
 
     drawWheel(g,
+              style,
               "PITCH",
-              juce::Colour::fromRGB(82, 155, 255),
+              style.pitchAccent,
               getPitchVisual().panel,
               getPitchVisual().track,
               visualPitch,
@@ -202,8 +279,9 @@ void PerformanceControls::paint(juce::Graphics& g)
               easeAmount(visualPitchGlow));
 
     drawWheel(g,
+              style,
               "MOD",
-              juce::Colour::fromRGB(232, 84, 78),
+              style.modAccent,
               getModVisual().panel,
               getModVisual().track,
               visualMod,
@@ -313,26 +391,26 @@ void PerformanceControls::timerCallback()
 
         // Bursts per frame, scaled so a full bend emits every frame and a
         // quarter bend roughly every fourth.
-        accumulator += 0.15f + intensity * 0.85f;
+        accumulator += (0.15f + intensity * 0.85f) * style.sparkleRate;
         while (accumulator >= 1.0f)
         {
             accumulator -= 1.0f;
-            emitSparkles(handleCentre, kHandleRadius, intensity);
+            emitSparkles(handleCentre, style.handleRadius, intensity);
         }
     };
 
     {
         const auto track = getPitchVisual().track;
-        const auto topY = track.getY() + kHandleRadius;
-        const auto bottomY = track.getBottom() - kHandleRadius;
+        const auto topY = track.getY() + style.handleRadius;
+        const auto bottomY = track.getBottom() - style.handleRadius;
         const auto centreY = (topY + bottomY) * 0.5f;
         emitFrom({ track.getCentreX(), centreY - visualPitch * (bottomY - topY) * 0.5f },
                  juce::jlimit(0.0f, 1.0f, std::abs(visualPitch)), pitchKick, pitchEmitAccumulator);
     }
     {
         const auto track = getModVisual().track;
-        const auto topY = track.getY() + kHandleRadius;
-        const auto bottomY = track.getBottom() - kHandleRadius;
+        const auto topY = track.getY() + style.handleRadius;
+        const auto bottomY = track.getBottom() - style.handleRadius;
         emitFrom({ track.getCentreX(), bottomY - visualMod * (bottomY - topY) },
                  juce::jlimit(0.0f, 1.0f, visualMod), modKick, modEmitAccumulator);
     }
@@ -377,7 +455,9 @@ void PerformanceControls::emitSparkles(juce::Point<float> centre, float radius, 
 
     // Count, speed, size and lifetime all rise together with the bend, so the
     // burst grows as a whole instead of just getting faster or just denser.
-    const auto count = juce::jlimit(1, 7, static_cast<int>(std::lround(1.0f + intensity * 6.0f)));
+    const auto count = juce::jlimit(1, juce::jmax(1, style.sparkleMaxPerBurst),
+                                    static_cast<int>(std::lround(
+                                        1.0f + intensity * (static_cast<float>(style.sparkleMaxPerBurst) - 1.0f))));
 
     for (int i = 0; i < count; ++i)
     {
@@ -441,8 +521,8 @@ void PerformanceControls::updateFromMousePosition(juce::Point<float> position)
     if (activeControl == ActiveControl::pitch)
     {
         const auto track = getPitchVisual().track;
-        const auto topY = track.getY() + kHandleRadius;
-        const auto bottomY = track.getBottom() - kHandleRadius;
+        const auto topY = track.getY() + style.handleRadius;
+        const auto bottomY = track.getBottom() - style.handleRadius;
         const auto denom = juce::jmax(1.0f, bottomY - topY);
         const auto normalized = juce::jlimit(-1.0f, 1.0f, ((topY + bottomY) * 0.5f - position.y) / (denom * 0.5f));
 
@@ -454,8 +534,8 @@ void PerformanceControls::updateFromMousePosition(juce::Point<float> position)
     else if (activeControl == ActiveControl::mod)
     {
         const auto track = getModVisual().track;
-        const auto topY = track.getY() + kHandleRadius;
-        const auto bottomY = track.getBottom() - kHandleRadius;
+        const auto topY = track.getY() + style.handleRadius;
+        const auto bottomY = track.getBottom() - style.handleRadius;
         const auto denom = juce::jmax(1.0f, bottomY - topY);
         const auto normalized = juce::jlimit(0.0f, 1.0f, (bottomY - position.y) / denom);
 

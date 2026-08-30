@@ -37,6 +37,23 @@
     }
   },
   "keyboard": {
+    "background": { "color": "#191919", "opacity": 1 },
+    "padding": 8,
+    "whiteKey": {
+      "fill": "#F5F5F0",
+      "activeFill": "#FFDC78",
+      "border": { "color": "#323232", "width": 1, "radius": 0 }
+    },
+    "blackKey": {
+      "fill": "#121212",
+      "activeFill": "#E15F4B",
+      "border": { "color": "#000000", "width": 1, "radius": 2.5 },
+      "widthRatio": 0.64,
+      "heightRatio": 0.62
+    },
+    "label": { "color": "#464646", "fontSize": 11 },
+    "silencedVeil": "#0000006E",
+    "sparks": { "whiteKeyColor": "#FFDC78", "blackKeyColor": "#E15F4B" },
     "sparkHeadroom": 112,
     "wheelSparkSpill": 112,
     "warning": {
@@ -48,6 +65,30 @@
       "padding": { "top": 10, "right": 18, "bottom": 10, "left": 18 },
       "margin": 0
     }
+  },
+  "performance": {
+    "background": { "color": "#141414", "opacity": 1 },
+    "border": { "inset": 2, "color": "#FFFFFF18", "width": 1, "radius": 10 },
+    "wheelPanel": { "color": "#111111DC", "radius": 8 },
+    "title": { "color": "#E4E4E4", "fontSize": 10.5, "height": 18 },
+    "track": {
+      "radius": 8,
+      "borderWidth": 1,
+      "fillOpacity": 0.22,
+      "fillGlowOpacity": 0.28,
+      "borderOpacity": 0.36,
+      "borderGlowOpacity": 0.42,
+      "centreLineOpacity": 0.3
+    },
+    "handle": {
+      "radius": 7,
+      "glowOuterRadius": 15,
+      "glowInnerRadius": 11,
+      "rimColor": "#FFFFFF"
+    },
+    "sparkles": { "maxPerBurst": 4, "rate": 1 },
+    "pitch": { "accent": "#529BFF" },
+    "mod": { "accent": "#E8544E" }
   },
   "topMenu": {
     "flex": {
@@ -473,7 +514,7 @@
     },
     "closeButton": {
       "size": 24,
-      "offsetX": 0,
+      "offsetX": -2,
       "offsetY": -16,
       "ringWidth": 1.6,
       "glyphWidth": 2,
@@ -487,7 +528,7 @@
       "widthFraction": 0.7,
       "heightFraction": 0.62,
       "innerPadding": 12,
-      "graphHeight": 210,
+      "graphHeight": 280,
       "graphGap": 14,
       "columnGap": 10,
       "knobSize": 46,
@@ -508,7 +549,7 @@
       "legendHeight": 14,
       "legendFontSize": 8.5,
       "largeKnobSize": 62,
-      "smallKnobSize": 34,
+      "smallKnobSize": 44,
       "scaleMargin": 30,
       "timeColumnWidth": 70,
       "ratioWidth": 46,
@@ -758,14 +799,14 @@
     "busInsertComp": {
       "margin": 0,
       "padding": 14,
-      "background": { "color": "#EDF1F7", "opacity": 0 },
+      "background": { "color": "#EDF1F7", "opacity": 0.2 },
       "gloss": {
         "margin": 8,
-        "topFill": { "color": "#EDF1F7", "opacity": 0.2 },
-        "bottomFill": { "color": "#EDF1F7", "opacity": 0.2 }
+        "topFill": { "color": "#EDF1F7", "opacity": 1 },
+        "bottomFill": { "color": "#EDF1F7", "opacity": 1 }
       },
       "border": { "color": "#EDF1F7", "opacity": 0.28, "radius": 10 },
-      "title": { "color": "#F7FAFF", "fontSize": 12, "height": 16, "y": 0, "align": "centredTop" },
+      "title": { "color": "#333333", "fontSize": 12, "height": 16, "y": 0, "align": "centredTop" },
       "innerOverlay": { "margin": 4, "radius": 6, "color": "#C6C8CB", "opacity": 1 }
     },
     "mixerChannel": {

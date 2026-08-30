@@ -2247,6 +2247,10 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
         // The wheels throw the same sparks, so they get the same room - and
         // more of it, because theirs go out in every direction. resized()
         // turns this into the four margins, clamped to the window.
+        // The instrument and the wheels, both fully styled from config.
+        pianoKeyboard.setStyle(PianoKeyboard::Style::fromConfig(uiConfig.get(), "keyboard"));
+        performanceControls.setStyle(PerformanceControls::Style::fromConfig(uiConfig.get(), "performance"));
+
         performanceSparkSpill = uiConfig != nullptr
                                     ? uiConfig->getInt("keyboard.wheelSparkSpill", keyboardSparkHeadroom)
                                     : keyboardSparkHeadroom;

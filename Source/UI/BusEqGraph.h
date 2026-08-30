@@ -36,6 +36,10 @@ public:
     // Switches the audio-side tap on and off with the overlay's visibility.
     void setAnalyserRunning(bool shouldRun);
 
+    // Whether the bands can be dragged. A graph that answers the mouse while
+    // the EQ is bypassed is offering an edit that changes nothing audible.
+    void setEditable(bool shouldBeEditable);
+
     void paint(juce::Graphics& g) override;
     void mouseMove(const juce::MouseEvent& event) override;
     void mouseExit(const juce::MouseEvent& event) override;
@@ -57,9 +61,22 @@ public:
 
 private:
     static constexpr int kBandCount = 4;
-    static constexpr int kFftOrder = 11;                 // 2048, the tap's window
+    static constexpr int kFftOrder = 12;                 // 4096, the tap's window
     static constexpr int kFftSize = 1 << kFftOrder;
-    static constexpr int kSpectrumBins = 256;            // resampled onto the log axis
+    // Resampled onto the log axis. Wide enough that the trace has more points
+    // than the plot has pixels, so the curve is limited by the display rather
+    // than by the resampling - at 256 the steps were visible.
+    static constexpr int kSpectrumBins = 1024;
+
+    // The display's refresh, and the decay applied per frame at that rate.
+    // 0.22 per frame at 24 Hz is a fall time of about 165 ms; the constant
+    // below reproduces it at whatever rate is set, so the two can be changed
+    // independently.
+    static constexpr int kRefreshHz = 60;
+    // 0.22 per frame at 24 Hz is a fall time constant of 168 ms. The same fall
+    // at 60 Hz is 0.0946 per frame, so raising the refresh made the trace
+    // smoother without making it decay faster.
+    static constexpr float kDecayPerFrame = 0.0946f;
 
     void timerCallback() override;
     void refreshSpectrum();
@@ -88,6 +105,7 @@ private:
     int hoverBand { -1 };
     int dragBand { -1 };
     bool analyserRunning { false };
+    bool editable { true };
 
     juce::dsp::FFT fft { kFftOrder };
     std::vector<float> fftScratch;

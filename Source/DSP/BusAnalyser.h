@@ -28,8 +28,8 @@ namespace px3
 class BusAnalyser
 {
 public:
-    static constexpr int kWindowSize = 2048;
-    static constexpr int kRingSize = 4096;   // power of two, twice the window
+    static constexpr int kWindowSize = 4096;
+    static constexpr int kRingSize = 8192;   // power of two, twice the window
 
     void reset()
     {
