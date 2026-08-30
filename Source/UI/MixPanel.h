@@ -63,6 +63,19 @@ private:
     // Gives a strip its two insert buttons. Called only for the buses that have
     // inserts; adding a third bus is one more call.
     void addInsertButtons(ChannelWidgets& channel, int bus);
+    // Whether each insert's button has been pressed yet, per bus.
+    //
+    // The first press engages an insert that is off, so opening the overlay
+    // does not land on a bypassed unit where the first edit changes nothing
+    // audible. Every press after that only opens it - once someone has
+    // switched a unit off deliberately, re-opening it must not switch it back
+    // on underneath them.
+    //
+    // Deliberately NOT persisted. It is a fact about this editor session, not
+    // about the patch, and putting it in the parameter set would serialise UI
+    // bookkeeping into every preset and DAW session.
+    std::array<bool, 2> eqButtonPressed { { false, false } };
+    std::array<bool, 2> compButtonPressed { { false, false } };
     void refreshInsertButtonStates();
     void applyConfigToChannels();
     void timerCallback() override;
