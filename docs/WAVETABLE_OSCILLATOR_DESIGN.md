@@ -131,9 +131,13 @@ px3::Wavetable                       immutable once built, shared by shared_ptr
     frameCount     64 (default)
     frameSize      2048
     levels[]                         mip pyramid, level 0 = full bandwidth
-        level ℓ: frameCount frames of (frameSize >> ℓ) samples,
+        level ℓ: frameCount frames of max(256, frameSize >> ℓ) samples,
                  band-limited to (frameSize/2 >> ℓ) harmonics
 ```
+
+The 256-sample floor is load-bearing, not a rounding-up — see §E.0. All levels
+share one gain, taken from the full-bandwidth spectrum, so a level change never
+alters the amplitude of the harmonics it retains.
 
 Storing level ℓ at reduced *length* as well as reduced bandwidth is what makes
 the pyramid affordable: the total is a geometric series, ≈2× the base table
@@ -141,7 +145,7 @@ rather than ×levels.
 
 ```
 64 frames × 2048 samples × 4 B  =  512 KB base
-pyramid (Σ 1/2^ℓ)               ≈  1 MB per table
+pyramid, with the 256-sample floor =  1.25 MB per table   (measured)
 ```
 
 Against the ~2 MB voice pool this is the dominant new allocation, so tables are
@@ -158,19 +162,21 @@ maxHarmonic = 0.5 / increment                  harmonics that fit below Nyquist
 level ℓ     = smallest level whose harmonic count ≤ maxHarmonic
 ```
 
-To satisfy §9 (no discontinuity when the level changes), **crossfade between
-adjacent levels** over the octave rather than switching. The cost is reading two
-levels near a boundary; the benefit is that a slow pitch sweep has no audible
-step. Whether the crossfade is needed in practice or whether the switch is
-inaudible is an open question — §E.2.
+Switch levels rather than crossfading, with **hysteresis** on the selection —
+measured in §E.2. The level gap at the worst boundary is 0.0098 dB, and a
+crossfade costs +79% per sample to remove it. Hysteresis addresses the actual
+risk, which is a note chattering between levels under vibrato.
+
+Levels are stored with a **minimum length of 256 samples** even as bandwidth
+keeps halving (§E.0). This is worth 45 dB of alias rejection at C7 and costs
+25% more memory.
 
 ### C.3 Interpolation
 
 - **Between frames:** linear, for the reason in §B. Frames are phase-aligned at
   build time so linear is spectrally and perceptually correct.
-- **Between samples:** to be decided by measurement — §E.1. Candidates are
-  linear, cubic Hermite and sinc FIR. Hermite is the expected answer; the brief
-  correctly forbids assuming the most complex option wins, so it gets measured.
+- **Between samples:** cubic Hermite, measured — §E.1. It matches an eight-tap
+  windowed sinc on alias rejection for 70% of the cost.
 
 ### C.4 Parameters and modulation
 
@@ -258,16 +264,112 @@ preference and makes the tables regenerable rather than opaque binaries.
 
 ---
 
-## E. Open questions for the prototypes
+## E. Prototype results
 
-These are settled by measurement before implementation, not by argument.
+Built and measured before implementation, in
+`docs/research/wavetable-prototype.cpp` (standalone, no JUCE):
 
-1. **Sample interpolation order.** Linear vs cubic Hermite vs sinc FIR, measured
-   on aliasing (inharmonic energy at C5–C7), high-frequency response, and CPU
-   per voice. Hermite expected; evidence decides.
-2. **Is the mip crossfade audible?** Measure a slow pitch sweep across a level
-   boundary with and without crossfade. If the switch is inaudible, drop the
-   crossfade and save the second table read.
+```
+clang++ -O3 -std=c++17 -o proto docs/research/wavetable-prototype.cpp && ./proto
+```
+
+64 frames x 2048 samples, 9 mip levels. Test tables are built additively so
+their harmonic content is exact, which means any inharmonic energy measured is
+the oscillator's rather than the table's. Analysis uses a Blackman-Harris
+window; a first pass with Hann flatlined at its own -56 dB sidelobe floor and
+reported all three interpolators as identical, which was a measurement floor and
+not a result.
+
+### E.0 The mip pyramid must have a minimum LENGTH, not just a minimum bandwidth
+
+This was not on the original list of questions, and it turned out to matter more
+than anything that was.
+
+Halving the stored length at every level is what makes the pyramid cheap, but
+carried all the way down it reaches 16 samples at level 7 and 8 at level 8. At
+that point the interpolator is reconstructing the waveform almost unaided and
+its error swamps everything else. Flooring the length at 256 samples:
+
+| | worst boundary, diff < 15 kHz | level gap |
+|---|---|---|
+| length halved all the way | -24.79 dB | 0.0826 dB |
+| length floored at 256 | **-34.15 dB** | **0.0098 dB** |
+
+9.4 dB of boundary cleanliness and an 8x smaller level gap, for 25% more memory
+(1.25 MB per table instead of 1.00 MB).
+
+Surge guards the same cliff from the other side: its level selection refuses the
+top mip levels unless the table is still 128 or 64 samples long (`ts >= 128`,
+`ts >= 64`). Same finding, arrived at independently.
+
+**This dominates the interpolator choice.** At C7 the alias rejection was 39.75
+dB with the length halved all the way and 84.79 dB with the floor — using the
+*same* interpolator. 45 dB from a memory-layout decision, against roughly 8 dB
+from the interpolation order.
+
+### E.1 Sample interpolation: cubic Hermite
+
+Alias rejection, tone against inharmonic energy, dB, higher is cleaner:
+
+| interp | C2 | C3 | C4 | C5 | C6 | C7 | ns/sample |
+|---|---|---|---|---|---|---|---|
+| linear | 83.25 | 83.48 | 76.05 | 79.25 | 81.41 | 84.79 | 2.99 |
+| **hermite** | 87.03 | 87.91 | 83.41 | **90.12** | **87.68** | **92.47** | **4.21** |
+| sinc8 | 88.20 | 88.22 | 87.22 | 90.14 | 87.14 | 90.91 | 6.05 |
+
+High-frequency droop at C4, dB (0 = no loss). The 20 kHz column is the
+band-limiting working as intended, not interpolation loss:
+
+| interp | 2 kHz | 5 kHz | 10 kHz | 15 kHz |
+|---|---|---|---|---|
+| linear | 0.20 | -0.82 | -0.54 | -2.15 |
+| **hermite** | 0.23 | -0.66 | **0.02** | **-1.06** |
+| sinc8 | 0.23 | -0.66 | 0.08 | -0.76 |
+
+**Hermite.** It matches sinc8 on alias rejection once the length floor is in
+place — and beats it at C6 and C7 — for 70% of the cost, and is transparent
+through 10 kHz. The eight-tap sinc buys nothing here and costs 44% more per
+sample. This is the outcome §10 of the brief warned to leave open rather than
+assume.
+
+### E.2 Mip transition: hard switch, no crossfade
+
+How different the two levels actually are at the pitch where selection changes,
+split at 15 kHz because a difference living entirely above that cannot be
+reported by a listener:
+
+| boundary | pitch | level gap | diff < 15 kHz | diff > 15 kHz |
+|---|---|---|---|---|
+| 3 -> 4 | 187.5 Hz | 0.0000 dB | -63.87 | -64.70 |
+| 5 -> 6 | 750 Hz | 0.0002 dB | -46.31 | -46.59 |
+| 6 -> 7 | 1500 Hz | 0.0015 dB | -38.06 | -37.48 |
+| 7 -> 8 | 3000 Hz | 0.0098 dB | -34.15 | -27.30 |
+
+Cost: hard switch 9.88 ns/sample, crossfade 17.63 ns/sample — **+79% to read two
+levels instead of one.**
+
+**No crossfade.** The level gap is 0.0098 dB at the worst boundary, three orders
+of magnitude below a just-noticeable level change, and the crossfade nearly
+doubles the per-sample cost of the oscillator to remove it.
+
+The real risk at a boundary is not the switch, it is **chatter**: a note sitting
+on a boundary with vibrato would toggle levels at the vibrato rate and warble.
+Selection therefore gets hysteresis — the same job Surge's `wtbias = 1.8` does —
+which costs nothing per sample. Verified during implementation.
+
+### A note on one wrong turn
+
+The first explanation for the boundary difference was per-level normalisation:
+if each level is normalised to its own energy, dropping the top harmonics boosts
+the retained ones and changes the audible part of the spectrum. That is a real
+hazard and the design avoids it (all levels share one gain taken from the
+full-bandwidth spectrum) — but it was not the cause here. Fixing it moved the
+worst boundary by 0.02 dB. The cause was table length, above.
+
+## F. Remaining open questions
+
+Settled by measurement, not argument. Items 1 and 2 are answered above.
+
 3. **Frame count.** 64 vs 128 vs 256. Memory is linear in this; morph smoothness
    may not improve past 64 once frames are phase-aligned.
 4. **Phase alignment method.** Align each frame's fundamental to zero phase, or
