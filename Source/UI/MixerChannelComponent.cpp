@@ -79,8 +79,15 @@ void MixerChannelComponent::refreshCardStyle()
     card.layout(getLocalBounds());
 
     // The two insert buttons are placed by coordinate, so each needs its own
-    // size and offset. They are read per style key, which is what lets the dry
-    // strip and the FX strip place them differently.
+    // size and offset. The shared block is read first and a card block may
+    // override it, which is what lets the dry strip and the FX strip place them
+    // differently without either having to restate the parts they share.
+    //
+    // Each key is tested with getValue, NOT with getObject: getObject returns a
+    // fresh empty object for a path that does not exist, so it can never report
+    // absence. Using it as an existence test here matched the card block that
+    // was not there, read nothing out of it, and stopped before reaching the
+    // shared one - so mix.inserts was silently dead.
     auto readLayout = [this](const juce::String& which, InsertButtonLayout& target)
     {
         target = {};
@@ -89,19 +96,23 @@ void MixerChannelComponent::refreshCardStyle()
             return;
         }
 
-        for (const auto& base : { juce::String("cards.") + cardStyleKey + ".inserts." + which,
-                                  juce::String("mix.inserts.") + which })
+        const auto apply = [&](const juce::String& base)
         {
-            if (! uiConfig->getObject(base).isObject())
+            const auto number = [&](const char* key, int& field)
             {
-                continue;
-            }
+                if (const auto value = uiConfig->getValue(base + key); ! value.isVoid())
+                {
+                    field = static_cast<int>(value);
+                }
+            };
 
-            target.size = uiConfig->getInt(base + ".size", target.size);
-            target.offsetX = uiConfig->getInt(base + ".offsetX", target.offsetX);
-            target.offsetY = uiConfig->getInt(base + ".offsetY", target.offsetY);
-            break;
-        }
+            number(".size", target.size);
+            number(".offsetX", target.offsetX);
+            number(".offsetY", target.offsetY);
+        };
+
+        apply("mix.inserts." + which);
+        apply("cards." + cardStyleKey + ".inserts." + which);
     };
 
     readLayout("eq", eqLayout);

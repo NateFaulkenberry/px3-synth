@@ -15003,6 +15003,36 @@ void testBusInserts()
         // Two of each: the dry strip and the FX strip. A source channel gets
         // none, so a third pair here would mean they had leaked onto strips
         // with no inserts behind them.
+        // The size the buttons actually come out at, under the SHIPPING config.
+        // The editor a test builds resolves no config file - the test binary has
+        // no bundled copy - so the buttons above are at their compiled defaults,
+        // and asserting on them would pin the fallback rather than the config.
+        // This drives the same lookup the component uses, against the real file.
+        {
+            UIConfigManager manager;
+            manager.setConfigFile(juce::File::getCurrentWorkingDirectory()
+                                      .getChildFile("Source/UI/UIConfig.json"));
+            manager.loadInitial();
+            const auto config = manager.getConfig();
+
+            const auto sharedSize = config != nullptr ? config->getInt("mix.inserts.eq.size", -1) : -1;
+            const auto compSize = config != nullptr ? config->getInt("mix.inserts.comp.size", -1) : -1;
+
+            // getObject cannot be used to ask whether a block exists: it hands
+            // back a fresh empty object for any path at all. That is exactly how
+            // the shared block got skipped - the card block "existed", supplied
+            // nothing, and the lookup stopped there.
+            const auto absentBlock = config != nullptr
+                                         ? config->getValue("cards.mixerDry.inserts.eq")
+                                         : juce::var();
+
+            check("BusInsert_ButtonSizeComesFromTheSharedBlock",
+                  sharedSize == 36 && compSize == 36 && absentBlock.isVoid(),
+                  "mix.inserts sizes " + juce::String(sharedSize) + "/" + juce::String(compSize)
+                      + ", and an undeclared card block reads as "
+                      + juce::String(absentBlock.isVoid() ? "absent" : "PRESENT"));
+        }
+
         check("BusInsert_OnlyTheBusStripsCarryInsertButtons",
               eqButtons.size() == 2 && compButtons.size() == 2,
               "found " + juce::String(static_cast<int>(eqButtons.size())) + " EQ and "
