@@ -30,7 +30,7 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
     // Only the keyboard's own rectangle is filled. fillAll would paint the
     // spark headroom too, which sits over the panel above.
     g.setColour(style.background.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.backgroundOpacity)));
-    g.fillRect(keyboardArea());
+    px3::ui::fillRounded(g, keyboardArea().toFloat(), style.backgroundRadius);
 
     const auto area = keyboardArea().toFloat().reduced(style.padding);
     const auto whiteKeyWidth = area.getWidth() / static_cast<float>(whiteKeys);
@@ -257,6 +257,7 @@ PianoKeyboard::Style PianoKeyboard::Style::fromConfig(const UIConfig* config, co
 
     s.background = styleColour(config, prefix + ".background.color", s.background);
     s.backgroundOpacity = styleFloat(config, prefix + ".background.opacity", s.backgroundOpacity);
+    s.backgroundRadius = px3::ui::CornerRadii::fromConfig(config, prefix + ".background", s.backgroundRadius);
     s.padding = styleFloat(config, prefix + ".padding", s.padding);
 
     s.whiteFill = styleColour(config, prefix + ".whiteKey.fill", s.whiteFill);
@@ -367,7 +368,7 @@ void PianoKeyboard::paint(juce::Graphics& g)
         g.setOpacity(1.0f);
         g.drawImageAt(shot, 0, 0);
         g.setColour(style.silencedVeil);
-        g.fillRect(keyboardArea());
+        px3::ui::fillRounded(g, keyboardArea().toFloat(), style.backgroundRadius);
     }
 
     // ---- the warning ------------------------------------------------------

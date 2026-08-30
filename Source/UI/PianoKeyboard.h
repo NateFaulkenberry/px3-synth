@@ -53,6 +53,8 @@ public:
     {
         juce::Colour background { juce::Colour::fromRGB(25, 25, 25) };
         float backgroundOpacity { 1.0f };
+        // The instrument's own panel corners. Square by default, as it was.
+        px3::ui::CornerRadii backgroundRadius {};
         // Inset from the component to the first key.
         float padding { 8.0f };
 

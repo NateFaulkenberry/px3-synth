@@ -261,10 +261,17 @@ void PerformanceControls::paint(juce::Graphics& g)
 {
     // Only the strip's own rectangle. fillAll would paint the spark headroom
     // too, which sits over the panel above.
-    g.setColour(style.background.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.backgroundOpacity)));
-    g.fillRect(controlsArea());
+    // The FILL follows the same corners as the border. It was a plain
+    // fillRect, so rounding the border left a square block of background
+    // sitting behind it and the corner never appeared to round at all.
+    //
+    // Both are drawn on the inset rectangle, so the border sits on the fill's
+    // own edge rather than inside a larger square of colour.
+    const auto bounds = controlsArea().toFloat().reduced(style.borderInset);
 
-    auto bounds = controlsArea().toFloat().reduced(style.borderInset);
+    g.setColour(style.background.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.backgroundOpacity)));
+    px3::ui::fillRounded(g, bounds, style.borderRadius);
+
     g.setColour(style.borderColour);
     px3::ui::drawRounded(g, bounds, style.borderRadius, style.borderWidth);
 

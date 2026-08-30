@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "ModalBackdrop.h"
+#include "RoundedRect.h"
 
 #include "../DSP/PluginProcessorInternals.h"
 
@@ -1827,7 +1828,19 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
     // could survive a switch to another panel as stale outlines.
 
 
-    if (performanceControlsArea.getWidth() > 0 && pianoKeyboard.getBounds().getWidth() > 0)
+    // The strip BEHIND the performance controls and the keyboard.
+    //
+    // A third layer, easy to forget: a translucent gradient, a hairline outline
+    // and a divider, spanning both components. Its corners were fixed at 12px
+    // while the two components on top of it were square, so as soon as either
+    // of them was rounded this showed through the gap - which is exactly what
+    // "something is peeking past the corners" is.
+    //
+    // Every part of it is configurable now, including off, since it is the
+    // layer most likely to be in the way of a rounded panel above it.
+    const auto stripEnabled = uiConfig == nullptr || uiConfig->getBool("performanceStrip.enabled", true);
+
+    if (stripEnabled && performanceControlsArea.getWidth() > 0 && pianoKeyboard.getBounds().getWidth() > 0)
     {
         // The KEYS, not the keyboard component. The component is taller than
         // the instrument it draws - it carries transparent headroom above the
@@ -1835,27 +1848,61 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
         // dragged this gradient and its outline up into that headroom, where it
         // read as a stray panel floating above the keyboard.
         const auto keys = pianoKeyboard.keyboardArea() + pianoKeyboard.getPosition();
-        auto performanceStrip = performanceControlsArea.getUnion(keys).toFloat();
-        juce::ColourGradient stripGradient(juce::Colour::fromRGBA(56, 88, 118, 72),
+        const auto performanceStrip = performanceControlsArea.getUnion(keys).toFloat();
+
+        const auto radii = px3::ui::CornerRadii::fromConfig(uiConfig.get(), "performanceStrip",
+                                                            px3::ui::CornerRadii::all(12.0f));
+
+        const auto from = uiConfig != nullptr
+                              ? uiConfig->getColour("performanceStrip.gradientFrom",
+                                                    juce::Colour::fromRGBA(56, 88, 118, 72))
+                              : juce::Colour::fromRGBA(56, 88, 118, 72);
+        const auto to = uiConfig != nullptr
+                            ? uiConfig->getColour("performanceStrip.gradientTo",
+                                                  juce::Colour::fromRGBA(35, 38, 42, 96))
+                            : juce::Colour::fromRGBA(35, 38, 42, 96);
+
+        juce::ColourGradient stripGradient(from,
                                            performanceStrip.getX(),
                                            performanceStrip.getY(),
-                                           juce::Colour::fromRGBA(35, 38, 42, 96),
+                                           to,
                                            performanceStrip.getRight(),
                                            performanceStrip.getBottom(),
                                            false);
         g.setGradientFill(stripGradient);
-        g.fillRoundedRectangle(performanceStrip, 12.0f);
+        px3::ui::fillRounded(g, performanceStrip, radii);
 
-        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 50));
-        g.drawRoundedRectangle(performanceStrip, 12.0f, 1.0f);
+        const auto outlineWidth = uiConfig != nullptr
+                                      ? uiConfig->getFloat("performanceStrip.outline.width", 1.0f)
+                                      : 1.0f;
+        if (outlineWidth > 0.0f)
+        {
+            g.setColour(uiConfig != nullptr
+                            ? uiConfig->getColour("performanceStrip.outline.color",
+                                                  juce::Colour::fromRGBA(255, 255, 255, 50))
+                            : juce::Colour::fromRGBA(255, 255, 255, 50));
+            px3::ui::drawRounded(g, performanceStrip, radii, outlineWidth);
+        }
 
-        const auto dividerX = static_cast<float>(performanceControlsArea.getRight() + 3);
-        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 38));
-        g.drawLine(dividerX,
-                   performanceStrip.getY() + 8.0f,
-                   dividerX,
-                   performanceStrip.getBottom() - 8.0f,
-                   1.0f);
+        const auto dividerWidth = uiConfig != nullptr
+                                      ? uiConfig->getFloat("performanceStrip.divider.width", 1.0f)
+                                      : 1.0f;
+        if (dividerWidth > 0.0f)
+        {
+            const auto inset = uiConfig != nullptr
+                                   ? uiConfig->getFloat("performanceStrip.divider.inset", 8.0f)
+                                   : 8.0f;
+            const auto dividerX = static_cast<float>(performanceControlsArea.getRight() + 3);
+            g.setColour(uiConfig != nullptr
+                            ? uiConfig->getColour("performanceStrip.divider.color",
+                                                  juce::Colour::fromRGBA(255, 255, 255, 38))
+                            : juce::Colour::fromRGBA(255, 255, 255, 38));
+            g.drawLine(dividerX,
+                       performanceStrip.getY() + inset,
+                       dividerX,
+                       performanceStrip.getBottom() - inset,
+                       dividerWidth);
+        }
     }
 
 }

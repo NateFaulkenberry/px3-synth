@@ -13681,7 +13681,72 @@ void testEditorLifecycle()
                 expectMoved("pitch.accent", w.pitchAccent != wDefault.pitchAccent);
                 expectMoved("mod.accent", w.modAccent != wDefault.modAccent);
 
-                check("KeyboardAndWheels_EveryStylePropertyIsReachable", stuck.isEmpty(),
+                // The performance strip's corners are individually settable, which
+            // is what lets its right edge round into the keyboard beside it
+            // while its left stays square against the window.
+            {
+                juce::String cornerError;
+                const auto cornered = UIConfig::fromJsonText(
+                    R"({ "performance": { "border": { "radius": 0,
+                         "radiusTopRight": 14, "radiusBottomRight": 9 } } })", cornerError);
+                const auto cornerStyle = PerformanceControls::Style::fromConfig(cornered.get(), "performance");
+                const auto r = cornerStyle.borderRadius;
+
+                check("PerformanceControls_RightCornersRoundIndependently",
+                      r.topRight == 14.0f && r.bottomRight == 9.0f
+                          && r.topLeft == 0.0f && r.bottomLeft == 0.0f
+                          && ! r.isUniform(),
+                      "TL " + fmt(r.topLeft, 1) + ", TR " + fmt(r.topRight, 1)
+                          + ", BR " + fmt(r.bottomRight, 1) + ", BL " + fmt(r.bottomLeft, 1));
+            }
+
+            // The strip drawn BEHIND the keyboard and the wheels. It was
+            // hardcoded and invisible in the config, so it showed through the
+            // corners of anything rounded above it with no way to match or
+            // remove it. Its own corners, colours and off switch are declared.
+            {
+                UIConfigManager stripManager;
+                stripManager.setConfigFile(juce::File::getCurrentWorkingDirectory()
+                                               .getChildFile("Source/UI/UIConfig.json"));
+                stripManager.loadInitial();
+                const auto shipping = stripManager.getConfig();
+
+                const auto radii = px3::ui::CornerRadii::fromConfig(shipping.get(), "performanceStrip",
+                                                                     px3::ui::CornerRadii::all(-1.0f));
+                const auto declared = shipping != nullptr
+                                      && ! shipping->getValue("performanceStrip.enabled").isVoid()
+                                      && shipping->getColour("performanceStrip.gradientFrom",
+                                                             juce::Colours::transparentBlack)
+                                             != juce::Colours::transparentBlack
+                                      && ! shipping->getValue("performanceStrip.outline.width").isVoid()
+                                      && ! shipping->getValue("performanceStrip.divider.inset").isVoid();
+
+                check("PerformanceStrip_BehindLayerIsDeclaredAndCornerable",
+                      declared && radii.topRight >= 0.0f && radii.bottomRight >= 0.0f,
+                      declared ? "declared, corners TL " + fmt(radii.topLeft, 1) + " TR "
+                                     + fmt(radii.topRight, 1) + " BR " + fmt(radii.bottomRight, 1)
+                                     + " BL " + fmt(radii.bottomLeft, 1)
+                               : juce::String("the strip behind the keyboard is still hardcoded"));
+
+                // And the keyboard's own panel can round, which it could not:
+                // its background was a fillRect.
+                const auto kb = PianoKeyboard::Style::fromConfig(
+                    UIConfig::fromJsonText(
+                        R"({ "keyboard": { "background": { "radiusTopRight": 11,
+                                                           "radiusBottomRight": 7 } } })",
+                        parseError).get(),
+                    "keyboard");
+
+                check("Keyboard_PanelCornersAreIndividuallySettable",
+                      kb.backgroundRadius.topRight == 11.0f
+                          && kb.backgroundRadius.bottomRight == 7.0f
+                          && kb.backgroundRadius.topLeft == 0.0f,
+                      "TL " + fmt(kb.backgroundRadius.topLeft, 1) + ", TR "
+                          + fmt(kb.backgroundRadius.topRight, 1) + ", BR "
+                          + fmt(kb.backgroundRadius.bottomRight, 1));
+            }
+
+            check("KeyboardAndWheels_EveryStylePropertyIsReachable", stuck.isEmpty(),
                       stuck.isEmpty() ? juce::String("all 46 properties parse and change the style")
                                       : "ignored by the parser: " + stuck.joinIntoString(", "));
             }
