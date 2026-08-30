@@ -63,11 +63,6 @@ private:
     // Gives a strip its two insert buttons. Called only for the buses that have
     // inserts; adding a third bus is one more call.
     void addInsertButtons(ChannelWidgets& channel, int bus);
-    // The engage-once latch lives on the PROCESSOR, not here - see
-    // PX3SynthAudioProcessor::hasInsertButtonBeenPressed. Holding it in the
-    // editor meant closing and reopening the plugin window re-armed it, so an
-    // insert the user had switched off came back on the next time they opened
-    // it.
     void refreshInsertButtonStates();
     void applyConfigToChannels();
     void timerCallback() override;

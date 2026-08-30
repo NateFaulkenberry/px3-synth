@@ -302,43 +302,29 @@ void MixPanel::addInsertButtons(ChannelWidgets& channel, int bus)
     channel.eqInsert = std::make_unique<InsertButton>("EQ");
     channel.compInsert = std::make_unique<InsertButton>("COMP");
 
-    // The FIRST press of a strip's insert button engages that insert if it is
-    // off; every press after it only opens the overlay.
+    // The button opens and closes the overlay. That is all it does.
     //
-    // The first press is someone reaching for a processor they have not used
-    // yet, and opening onto a bypassed unit makes their first edit do nothing
-    // audible - which reads as the plugin being broken. But once a unit has
-    // been switched off deliberately, re-opening it must leave it off, or the
-    // button would undo that decision every time it was pressed.
-    //
-    // An insert already on from a preset or a restored session needs no
-    // engaging and still spends its first press, so both cases behave
-    // identically from then on.
-    const auto openInsert = [this, bus](bool wantsEq)
+    // It used to engage a bypassed insert on its first press, so the overlay
+    // never opened onto a unit where the first edit changed nothing audible.
+    // That put a second meaning on the control - "show me this" and "switch
+    // this on" - and made the strip's state depend on how many times the
+    // button had been pressed. Enabling belongs to the ON control inside the
+    // overlay, where it is visible and where it is the only thing it does.
+    channel.eqInsert->onClick = [this, bus]()
     {
-        if (! processor.hasInsertButtonBeenPressed(bus, wantsEq))
-        {
-            processor.markInsertButtonPressed(bus, wantsEq);
-
-            const auto& params = processor.getBusInsertParams(bus);
-            auto* enable = wantsEq ? params.eqEnabled : params.compEnabled;
-
-            // Through the parameter, so the host records it and every other
-            // view of it follows.
-            if (enable != nullptr && ! enable->get())
-            {
-                enable->setValueNotifyingHost(1.0f);
-            }
-        }
-
         if (onOpenBusInsert != nullptr)
         {
-            onOpenBusInsert(bus, wantsEq);
+            onOpenBusInsert(bus, true);
         }
     };
 
-    channel.eqInsert->onClick = [openInsert]() { openInsert(true); };
-    channel.compInsert->onClick = [openInsert]() { openInsert(false); };
+    channel.compInsert->onClick = [this, bus]()
+    {
+        if (onOpenBusInsert != nullptr)
+        {
+            onOpenBusInsert(bus, false);
+        }
+    };
 }
 
 // The buttons light with their insert's enable state, so the strip says what is

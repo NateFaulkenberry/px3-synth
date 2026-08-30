@@ -2702,6 +2702,16 @@ void PX3SynthAudioProcessorEditor::openBusInsert(int bus, bool wantsEq)
     auto* sheet = wantsEq ? static_cast<px3::ui::BusInsertOverlay*>(busEqOverlay.get())
                           : static_cast<px3::ui::BusInsertOverlay*>(busCompOverlay.get());
 
+    // Pressing the same strip button again closes it. The scrim normally makes
+    // that unreachable, but a keyboard or accessibility activation can still
+    // get through - and a control that opens something should be able to shut
+    // it rather than being a one-way door.
+    if (busInsertVisible && sheet->isVisible() && sheet->getBus() == bus)
+    {
+        closeBusInsert();
+        return;
+    }
+
     sheet->setBusName(bus == PX3SynthAudioProcessor::fxBusInsert ? "FX" : "DRY");
     sheet->setBus(bus);
 

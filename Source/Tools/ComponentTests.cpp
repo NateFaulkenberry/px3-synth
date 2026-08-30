@@ -15762,12 +15762,12 @@ void testBusInserts()
                       + fmt(worst, 4) + " (middle reads " + fmt(reference, 4) + ")");
         }
 
-        // The strip button's engage-once rule, walked as a sequence.
+        // The strip button opens the overlay and does NOT touch the enable.
         //
-        // First press turns a bypassed insert on, so the overlay does not open
-        // onto a unit where the first edit changes nothing audible. After that
-        // the button only opens: switching a unit off is a decision, and a
-        // button that undid it on every press would make it impossible to keep.
+        // It used to engage a bypassed insert on its first press. Enabling now
+        // belongs to the ON control inside the overlay, so pressing the strip
+        // button must leave the parameter exactly where it was - whatever a
+        // preset or a restored session put there.
         {
             const auto& dryParams = processor.getBusInsertParams(PX3SynthAudioProcessor::dryBusInsert);
 
@@ -15783,58 +15783,21 @@ void testBusInserts()
                 }
             };
 
-            const auto startedOff = dryParams.eqEnabled != nullptr && ! dryParams.eqEnabled->get();
-
-            pressEq();
-            const auto afterFirst = dryParams.eqEnabled != nullptr && dryParams.eqEnabled->get();
-
-            // Second press, while it is already on: must leave it on.
-            pressEq();
-            const auto afterSecond = dryParams.eqEnabled != nullptr && dryParams.eqEnabled->get();
-
-            // Switched off from inside the overlay, then pressed again: must
-            // STAY off, because the first press is spent.
+            // From off: pressing must not switch it on.
             if (dryParams.eqEnabled != nullptr) dryParams.eqEnabled->setValueNotifyingHost(0.0f);
             pressEq();
-            const auto afterOffThenPress = dryParams.eqEnabled != nullptr && dryParams.eqEnabled->get();
+            const auto stayedOff = dryParams.eqEnabled != nullptr && ! dryParams.eqEnabled->get();
 
-            check("BusInsert_ButtonEngagesOnFirstPressOnly",
-                  startedOff && afterFirst && afterSecond && ! afterOffThenPress,
-                  juce::String("started ") + (startedOff ? "off" : "ON")
-                      + ", first press -> " + (afterFirst ? "on" : "OFF")
-                      + ", second press -> " + (afterSecond ? "on" : "OFF")
-                      + ", off then pressed -> " + (afterOffThenPress ? "ON AGAIN" : "still off"));
+            // From on: pressing must not switch it off either.
+            if (dryParams.eqEnabled != nullptr) dryParams.eqEnabled->setValueNotifyingHost(1.0f);
+            pressEq();
+            const auto stayedOn = dryParams.eqEnabled != nullptr && dryParams.eqEnabled->get();
 
-            // And the latch survives the editor being closed and reopened. It
-            // lives on the processor for exactly this reason: rebuilt with the
-            // window, it would re-engage an insert the user had switched off.
-            {
-                if (dryParams.eqEnabled != nullptr) dryParams.eqEnabled->setValueNotifyingHost(0.0f);
+            check("BusInsert_StripButtonDoesNotTouchTheEnable",
+                  stayedOff && stayedOn,
+                  juce::String("pressed while off -> ") + (stayedOff ? "still off" : "TURNED ON")
+                      + ", pressed while on -> " + (stayedOn ? "still on" : "TURNED OFF"));
 
-                std::unique_ptr<juce::AudioProcessorEditor> reopened(processor.createEditor());
-                reopened->setSize(1320, 798);
-                reopened->setVisible(true);
-
-                std::vector<juce::Component*> freshEqButtons;
-                collectNamed(*reopened, "EQ", freshEqButtons);
-                if (! freshEqButtons.empty())
-                {
-                    if (auto* b = dynamic_cast<juce::Button*>(freshEqButtons.front());
-                        b != nullptr && b->onClick != nullptr)
-                    {
-                        b->onClick();
-                    }
-                }
-
-                const auto reEngaged = dryParams.eqEnabled != nullptr && dryParams.eqEnabled->get();
-                check("BusInsert_EngageLatchSurvivesReopeningTheEditor", ! reEngaged,
-                      reEngaged ? juce::String("a new editor re-engaged an insert that was switched off")
-                                : "a new editor left the switched-off insert alone");
-            }
-
-            // Put the editor back as the following tests expect it: this block
-            // pressed the button three times, so a sheet is open and the next
-            // test's "before" probe would already be looking at it.
             if (dryParams.eqEnabled != nullptr) dryParams.eqEnabled->setValueNotifyingHost(0.0f);
 
             std::vector<juce::Component*> closers;
