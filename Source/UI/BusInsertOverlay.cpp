@@ -936,14 +936,23 @@ void BusCompOverlay::resized()
         // controls: they are ours, and putting them where a switch bank lives
         // keeps the rest of the panel honest.
         auto slot = mixSlot;
+
+        // The whole MIX stack sits lower than the switch bank it replaces.
+        slot.removeFromTop(configInt(uiConfig, "busInserts.comp.mixOffsetY", 20));
+
         auto knobSlot = slot.removeFromTop(slot.getHeight() / 2);
-        knobSlot.removeFromBottom(legendHeight);
+
+        // Legend above the knob, readout below it. The legend is painted rather
+        // than placed, so resized() only records where it goes.
+        mixLabelArea = knobSlot.removeFromTop(legendHeight).toFloat();
+        const auto valueRow = knobSlot.removeFromBottom(legendHeight);
+
         // 20% over the other small knobs: it is the one control on this panel
         // that is ours rather than the unit's, and it is reached for often.
         const auto mixKnob = juce::roundToInt(static_cast<float>(smallKnob)
                                               * configFloat(uiConfig, "busInserts.comp.mixKnobScale", 1.2f));
         mix.setBounds(knobSlot.withSizeKeepingCentre(mixKnob, mixKnob));
-        mixValue.setBounds(knobSlot.getX(), knobSlot.getBottom(), knobSlot.getWidth(), legendHeight);
+        mixValue.setBounds(valueRow);
 
         slot.removeFromBottom(legendHeight);
         linkButton.setBounds(slot.withSizeKeepingCentre(juce::jmin(slot.getWidth(), 46),
@@ -1249,13 +1258,11 @@ void BusCompOverlay::paint(juce::Graphics& g)
         panel::drawLegend(g, ratioBankArea.withY(ratioBankArea.getBottom() + 1.0f).withHeight(13.0f),
                           "RATIO", ink, legendSize);
     }
-    if (! mixBankArea.isEmpty())
+    if (! mixLabelArea.isEmpty())
     {
-        panel::drawLegend(g,
-                          juce::Rectangle<float>(mixBankArea.getX(),
-                                                 static_cast<float>(mix.getBounds().getBottom()) + 2.0f,
-                                                 mixBankArea.getWidth(), 13.0f),
-                          "MIX", ink, legendSize);
+        // Above the knob, with the percentage below it - so the pair reads
+        // name-then-value downward, as the rest of the panel's legends do.
+        panel::drawLegend(g, mixLabelArea, "MIX", ink, legendSize);
     }
 
     paintMeter(g, meterArea.toFloat());

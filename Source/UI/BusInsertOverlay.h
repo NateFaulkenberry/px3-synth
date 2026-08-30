@@ -293,6 +293,7 @@ private:
     juce::Rectangle<float> outputKnobArea;
     juce::Rectangle<float> ratioBankArea;
     juce::Rectangle<float> mixBankArea;
+    juce::Rectangle<float> mixLabelArea;
     juce::Rectangle<int> meterModeArea;
     float meterDb { 0.0f };
 

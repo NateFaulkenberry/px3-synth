@@ -113,6 +113,7 @@
       "detailAlign": "centred"
     },
     "tabStyle": {
+      "hoverGlow": { "color": "#FFFFFF", "opacity": 0.22, "size": 10, "pressedOpacity": 0.34 },
       "face": "$bgTopStrip",
       "faceActive": "#161618",
       "text": "#BABEC6",
@@ -525,6 +526,8 @@
       "hoverColor": "#B9BFC8"
     },
     "eq": {
+      "enableButton": { "size": { "width": 62, "height": 40 }, "offsetX": 0, "offsetY": 0, "legendPlacement": "left" },
+      "closeButton": { "offsetX": -3, "offsetY": -16 },
       "widthFraction": 0.7,
       "heightFraction": 0.62,
       "innerPadding": 12,
@@ -539,6 +542,8 @@
       "spectrumColor": "#96C8FF3A"
     },
     "comp": {
+      "enableButton": { "offsetX": 0, "offsetY": 0, "legendPlacement": "below" },
+      "closeButton": { "offsetX": 0, "offsetY": 0 },
       "widthFraction": 0.58,
       "heightFraction": 0.44,
       "innerPadding": 14,
@@ -546,6 +551,7 @@
       "sectionGap": 10,
       "contentOffsetX": 30,
       "mixColumnWidth": 70,
+      "mixOffsetY": 20,
       "legendHeight": 14,
       "legendFontSize": 8.5,
       "largeKnobSize": 62,

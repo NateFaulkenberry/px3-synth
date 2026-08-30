@@ -73,21 +73,39 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
     const auto area = getLocalBounds().toFloat();
     const auto on = getToggleState();
 
-    auto face = on ? style.faceActive : style.face;
-    if (shouldDrawButtonAsDown)
-    {
-        face = face.darker(0.18f);
-    }
-    else if (shouldDrawButtonAsHighlighted)
-    {
-        face = face.brighter(0.14f);
-    }
+    // The face does NOT change on hover. It is what tells you whether the
+    // section is open, and lifting it made a hovered unselected tab approach
+    // the colour of the selected one.
+    const auto face = on ? style.faceActive : style.face;
 
     // Flat, not graded: the tabs sit on the bar's own colour, so any vertical
     // ramp here reads as a button laid on top of the bar rather than as part
     // of it. The LED, the lit top edge and the brighter inset carry state.
     g.setColour(face);
     g.fillRect(area);
+
+    // Hover and press are an inner glow over that face - the equivalent of a
+    // CSS inset box-shadow. Drawn as a stack of inset rectangle outlines
+    // fading inward, which is what gives it a soft edge without a blur pass.
+    if (shouldDrawButtonAsHighlighted || shouldDrawButtonAsDown)
+    {
+        const auto strength = shouldDrawButtonAsDown ? style.pressedGlowOpacity
+                                                     : style.hoverGlowOpacity;
+        const auto size = juce::jmax(1.0f, style.hoverGlowSize);
+        const auto steps = juce::jlimit(1, 48, juce::roundToInt(size));
+
+        for (int i = 0; i < steps; ++i)
+        {
+            // Strongest at the edge, falling to nothing at `size` inward. The
+            // square keeps the falloff weighted towards the edge rather than
+            // spreading evenly across the face.
+            const auto t = static_cast<float>(i) / static_cast<float>(steps);
+            const auto alpha = strength * (1.0f - t) * (1.0f - t) / static_cast<float>(steps) * 3.0f;
+
+            g.setColour(style.hoverGlow.withAlpha(juce::jlimit(0.0f, 1.0f, alpha)));
+            g.drawRect(area.reduced(static_cast<float>(i)), 1.0f);
+        }
+    }
 
     // A lit top edge marks the selected tab, the way a selected panel does.
     if (on)
@@ -516,6 +534,10 @@ void TopMenuBar::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     {
         tabStyle.face = uiConfig->getColour("topMenu.tabStyle.face", tabStyle.face);
         tabStyle.faceActive = uiConfig->getColour("topMenu.tabStyle.faceActive", tabStyle.faceActive);
+        tabStyle.hoverGlow = uiConfig->getColour("topMenu.tabStyle.hoverGlow.color", tabStyle.hoverGlow);
+        tabStyle.hoverGlowOpacity = uiConfig->getFloat("topMenu.tabStyle.hoverGlow.opacity", tabStyle.hoverGlowOpacity);
+        tabStyle.hoverGlowSize = uiConfig->getFloat("topMenu.tabStyle.hoverGlow.size", tabStyle.hoverGlowSize);
+        tabStyle.pressedGlowOpacity = uiConfig->getFloat("topMenu.tabStyle.hoverGlow.pressedOpacity", tabStyle.pressedGlowOpacity);
         tabStyle.text = uiConfig->getColour("topMenu.tabStyle.text", tabStyle.text);
         tabStyle.textActive = uiConfig->getColour("topMenu.tabStyle.textActive", tabStyle.textActive);
         tabStyle.seam = uiConfig->getColour("topMenu.tabStyle.seam", tabStyle.seam);

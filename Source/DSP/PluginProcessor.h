@@ -234,6 +234,33 @@ public:
         juce::AudioParameterChoice* compMeterMode { nullptr };
     };
 
+    // Whether a strip's insert button has been pressed yet, per bus.
+    //
+    // The first press engages an insert that is off, so opening the overlay
+    // does not land on a bypassed unit where the first edit changes nothing
+    // audible. Every press after that only opens it.
+    //
+    // Held on the PROCESSOR rather than the editor so it survives closing and
+    // reopening the plugin window - the editor is rebuilt each time, and a
+    // latch that reset with it would re-engage an insert the user had
+    // deliberately switched off. A fresh plugin instance starts fresh, which is
+    // right: its parameters are fresh too.
+    //
+    // Deliberately NOT serialised. It is a fact about this session's use of the
+    // UI, not about the patch; a parameter would put it in the automation list
+    // and in every preset.
+    bool hasInsertButtonBeenPressed(int bus, bool wantsEq) const
+    {
+        const auto slot = static_cast<std::size_t>(juce::jlimit(0, kBusInsertCount - 1, bus));
+        return wantsEq ? eqInsertButtonPressed[slot] : compInsertButtonPressed[slot];
+    }
+
+    void markInsertButtonPressed(int bus, bool wantsEq)
+    {
+        const auto slot = static_cast<std::size_t>(juce::jlimit(0, kBusInsertCount - 1, bus));
+        (wantsEq ? eqInsertButtonPressed[slot] : compInsertButtonPressed[slot]) = true;
+    }
+
     const BusInsertParams& getBusInsertParams(int bus) const
     {
         return busInsertParams[static_cast<std::size_t>(juce::jlimit(0, kBusInsertCount - 1, bus))];
@@ -726,6 +753,9 @@ private:
     juce::AudioParameterChoice* chorusModeParam { nullptr };
 
     juce::AudioParameterBool* spreadEnabledParam { nullptr };
+
+    std::array<bool, kBusInsertCount> eqInsertButtonPressed { {} };
+    std::array<bool, kBusInsertCount> compInsertButtonPressed { {} };
 
     std::array<BusInsertParams, kBusInsertCount> busInsertParams {};
     std::array<px3::BusInsertChain, kBusInsertCount> busInserts {};

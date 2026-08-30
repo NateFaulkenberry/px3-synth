@@ -13,10 +13,16 @@ void paintModalBackdrop(juce::Graphics& g,
     // A non-zero-winding path with the panel punched out of it, so everything
     // below is masked to the region OUTSIDE the sheet in one clip rather than
     // being drawn and then painted over.
+    //
+    // An empty panelBounds punches nothing: the caller wants the treatment
+    // across the whole area, because it is painting BEHIND the sheet.
     juce::Path outsidePanelMask;
     outsidePanelMask.setUsingNonZeroWinding(false);
     outsidePanelMask.addRectangle(fullBounds.toFloat());
-    outsidePanelMask.addRoundedRectangle(panelBounds.expanded(1.0f), panelCornerRadius);
+    if (! panelBounds.isEmpty())
+    {
+        outsidePanelMask.addRoundedRectangle(panelBounds.expanded(1.0f), panelCornerRadius);
+    }
 
     if (snapshot.isValid())
     {

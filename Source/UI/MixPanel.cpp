@@ -316,12 +316,9 @@ void MixPanel::addInsertButtons(ChannelWidgets& channel, int bus)
     // identically from then on.
     const auto openInsert = [this, bus](bool wantsEq)
     {
-        const auto slot = static_cast<std::size_t>(juce::jlimit(0, 1, bus));
-        auto& pressed = wantsEq ? eqButtonPressed[slot] : compButtonPressed[slot];
-
-        if (! pressed)
+        if (! processor.hasInsertButtonBeenPressed(bus, wantsEq))
         {
-            pressed = true;
+            processor.markInsertButtonPressed(bus, wantsEq);
 
             const auto& params = processor.getBusInsertParams(bus);
             auto* enable = wantsEq ? params.eqEnabled : params.compEnabled;

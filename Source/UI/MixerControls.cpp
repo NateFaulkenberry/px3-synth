@@ -222,12 +222,41 @@ void MixerToggleButton::paintButton(juce::Graphics& g, bool shouldDrawButtonAsHi
     // stay readable either way.
     const auto enabled = isEnabled();
     const auto on = isLit() && enabled;
-    const auto area = getLocalBounds().toFloat();
+    auto area = getLocalBounds().toFloat();
 
-    // The legend sits under the cap, so the cap is the square part above it.
-    const auto legendHeight = juce::jmin(area.getHeight() * 0.34f, style.textSize + 2.0f);
+    // The legend takes its slice off whichever edge it sits on, and the cap is
+    // what is left. Measuring the text rather than assuming a width, so a
+    // longer legend beside the cap does not clip.
     constexpr float legendGap = 3.0f;
-    auto capArea = area.withTrimmedBottom(legendHeight + legendGap);
+    const auto legendHeight = juce::jmin(area.getHeight() * 0.34f, style.textSize + 2.0f);
+
+    auto capArea = area;
+    juce::Rectangle<float> legendArea;
+
+    switch (style.legendPlacement)
+    {
+        case Style::LegendPlacement::left:
+        case Style::LegendPlacement::right:
+        {
+            juce::Font legendFont(juce::FontOptions(style.textSize, juce::Font::bold));
+            const auto textWidth = juce::GlyphArrangement::getStringWidth(legendFont, getName()) + 4.0f;
+            const auto slice = juce::jmin(textWidth, area.getWidth() * 0.6f);
+
+            legendArea = style.legendPlacement == Style::LegendPlacement::left
+                             ? area.removeFromLeft(slice)
+                             : area.removeFromRight(slice);
+            capArea = style.legendPlacement == Style::LegendPlacement::left
+                          ? area.withTrimmedLeft(legendGap)
+                          : area.withTrimmedRight(legendGap);
+            break;
+        }
+
+        case Style::LegendPlacement::below:
+        default:
+            legendArea = area.withTop(area.getBottom() - legendHeight);
+            capArea = area.withTrimmedBottom(legendHeight + legendGap);
+            break;
+    }
     const auto press = shouldDrawButtonAsDown ? 1.0f : 0.0f;
 
     const auto capSide = juce::jmin(capArea.getWidth(), capArea.getHeight());
@@ -318,7 +347,7 @@ void MixerToggleButton::paintButton(juce::Graphics& g, bool shouldDrawButtonAsHi
     g.setColour(style.textColour.withMultipliedAlpha(enabled ? (on ? 1.0f : 0.80f) : 0.45f));
     g.setFont(juce::FontOptions(style.textSize));
     g.drawFittedText(getName(),
-                     area.withTop(area.getBottom() - legendHeight).toNearestInt(),
+                     legendArea.toNearestInt(),
                      juce::Justification::centred,
                      1);
 }
@@ -400,6 +429,14 @@ MixerToggleButton::Style mixerToggleStyleFromConfig(const UIConfig* config,
         colour(".pressedColour", style.pressedColour);
         colour(".disabledColour", style.disabledColour);
         colour(".borderColour", style.borderColour);
+
+        if (const auto value = config->getValue(base + ".legendPlacement"); ! value.isVoid())
+        {
+            const auto text = value.toString().trim().toLowerCase();
+            if (text == "left")       style.legendPlacement = MixerToggleButton::Style::LegendPlacement::left;
+            else if (text == "right") style.legendPlacement = MixerToggleButton::Style::LegendPlacement::right;
+            else if (text == "below") style.legendPlacement = MixerToggleButton::Style::LegendPlacement::below;
+        }
     };
 
     apply(sharedBase);

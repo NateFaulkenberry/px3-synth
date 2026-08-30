@@ -1862,16 +1862,13 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
 
 void PX3SynthAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
 {
+    // The bus insert sheets draw their backdrop on the SCRIM, which is a
+    // component below them, rather than over the top of everything with a hole
+    // cut for the sheet. Their faces are translucent, and a hole would let the
+    // sharp, undimmed editor show through them while everything beside them was
+    // blurred and dark.
     if (busInsertVisible)
     {
-        if (auto* sheet = activeBusInsertSheet())
-        {
-            px3::ui::paintModalBackdrop(g,
-                                        getLocalBounds(),
-                                        sheet->getBounds().toFloat(),
-                                        busInsertBackdropSnapshot,
-                                        12.0f);
-        }
         return;
     }
 
@@ -2678,6 +2675,10 @@ void PX3SynthAudioProcessorEditor::openBusInsert(int bus, bool wantsEq)
 
     busInsertBackdropSnapshot = createComponentSnapshot(getLocalBounds());
     busInsertVisible = true;
+    // Handed to the scrim, which sits BELOW the sheet - so a sheet with a
+    // translucent face shows the dimmed backdrop through itself instead of the
+    // untreated editor.
+    busInsertScrim.setBackdropImage(busInsertBackdropSnapshot);
     busInsertScrim.setBounds(getLocalBounds());
     busInsertScrim.setVisible(true);
     busInsertScrim.setAlwaysOnTop(true);
@@ -2705,6 +2706,7 @@ void PX3SynthAudioProcessorEditor::closeBusInsert()
     busInsertVisible = false;
     busInsertScrim.setAlwaysOnTop(false);
     busInsertScrim.setVisible(false);
+    busInsertScrim.setBackdropImage({});
     busInsertBackdropSnapshot = {};
     repaint();
 }

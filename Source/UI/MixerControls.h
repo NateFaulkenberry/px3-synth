@@ -106,6 +106,12 @@ public:
         juce::Colour pressedColour { juce::Colour::fromRGBA(96, 164, 238, 230) };
         juce::Colour disabledColour { juce::Colour::fromRGBA(30, 30, 30, 130) };
         juce::Colour borderColour { juce::Colour::fromRGBA(220, 224, 236, 120) };
+
+        // Where the legend sits relative to the cap. Beneath it on a console
+        // strip, where a column of buttons reads downward; to one side when the
+        // button is alone in a row and the vertical space is not there.
+        enum class LegendPlacement { below, left, right };
+        LegendPlacement legendPlacement { LegendPlacement::below };
     };
 
     explicit MixerToggleButton(const juce::String& text);

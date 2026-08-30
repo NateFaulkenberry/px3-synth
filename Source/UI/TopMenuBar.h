@@ -33,6 +33,21 @@ public:
         // its own key in the strip without a heavy outline around it.
         juce::Colour inset { juce::Colour::fromRGBA(226, 232, 240, 40) };
         juce::Colour insetActive { juce::Colour::fromRGBA(240, 245, 252, 90) };
+
+        // Hover is an inner glow rather than a brighter face.
+        //
+        // Lifting the whole fill changed what the tab IS - a selected tab and a
+        // hovered unselected one drifted towards the same colour, so the strip
+        // stopped saying which section was open. A glow inside the edges reads
+        // as a highlight over the face instead of a different face, and it
+        // works the same on both states.
+        //
+        // The equivalent of a CSS `box-shadow: inset 0 0 <size>px <colour>`.
+        juce::Colour hoverGlow { juce::Colour::fromRGB(255, 255, 255) };
+        float hoverGlowOpacity { 0.22f };
+        float hoverGlowSize { 10.0f };
+        // Pressed reads as the same glow, harder.
+        float pressedGlowOpacity { 0.34f };
     };
 
     explicit TopMenuTabButton(const juce::String& name);

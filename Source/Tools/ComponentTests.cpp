@@ -15321,6 +15321,33 @@ void testBusInserts()
                       + ", second press -> " + (afterSecond ? "on" : "OFF")
                       + ", off then pressed -> " + (afterOffThenPress ? "ON AGAIN" : "still off"));
 
+            // And the latch survives the editor being closed and reopened. It
+            // lives on the processor for exactly this reason: rebuilt with the
+            // window, it would re-engage an insert the user had switched off.
+            {
+                if (dryParams.eqEnabled != nullptr) dryParams.eqEnabled->setValueNotifyingHost(0.0f);
+
+                std::unique_ptr<juce::AudioProcessorEditor> reopened(processor.createEditor());
+                reopened->setSize(1320, 798);
+                reopened->setVisible(true);
+
+                std::vector<juce::Component*> freshEqButtons;
+                collectNamed(*reopened, "EQ", freshEqButtons);
+                if (! freshEqButtons.empty())
+                {
+                    if (auto* b = dynamic_cast<juce::Button*>(freshEqButtons.front());
+                        b != nullptr && b->onClick != nullptr)
+                    {
+                        b->onClick();
+                    }
+                }
+
+                const auto reEngaged = dryParams.eqEnabled != nullptr && dryParams.eqEnabled->get();
+                check("BusInsert_EngageLatchSurvivesReopeningTheEditor", ! reEngaged,
+                      reEngaged ? juce::String("a new editor re-engaged an insert that was switched off")
+                                : "a new editor left the switched-off insert alone");
+            }
+
             // Put the editor back as the following tests expect it: this block
             // pressed the button three times, so a sheet is open and the next
             // test's "before" probe would already be looking at it.
@@ -15361,6 +15388,67 @@ void testBusInserts()
             }
 
             after = editor->getComponentAt(probe);
+        }
+
+        // What shows through a translucent sheet must be the DIMMED backdrop,
+        // not the untreated editor.
+        //
+        // The treatment used to be painted over everything with a hole cut for
+        // the sheet, so the sheet's own translucency revealed the sharp, bright
+        // UI while everything beside it was blurred and dark. It is painted on
+        // the scrim now, which sits below the sheet.
+        {
+            const auto shot = editor->createComponentSnapshot(editor->getLocalBounds());
+            auto* sheet = editor->getComponentAt(editor->getLocalBounds().getCentre());
+            while (sheet != nullptr && sheet->getParentComponent() != editor.get())
+            {
+                sheet = sheet->getParentComponent();
+            }
+
+            if (sheet != nullptr && ! sheet->getBounds().isEmpty())
+            {
+                const auto inside = sheet->getBounds();
+
+                // A strip just inside the sheet's edge against one just
+                // outside it. Both are the dimmed backdrop - one seen through
+                // the sheet's translucent face, one directly - so they should
+                // be in the same ballpark rather than one being obviously
+                // brighter.
+                auto meanBrightness = [&shot](juce::Rectangle<int> r)
+                {
+                    r = r.getIntersection(juce::Rectangle<int>(shot.getWidth(), shot.getHeight()));
+                    if (r.isEmpty()) return -1.0;
+                    auto total = 0.0;
+                    auto count = 0;
+                    for (int y = r.getY(); y < r.getBottom(); y += 2)
+                    {
+                        for (int x = r.getX(); x < r.getRight(); x += 2)
+                        {
+                            total += shot.getPixelAt(x, y).getBrightness();
+                            ++count;
+                        }
+                    }
+                    return count > 0 ? total / count : -1.0;
+                };
+
+                const auto justOutside = meanBrightness(
+                    juce::Rectangle<int>(inside.getX() - 30, inside.getY() + 40, 24, 120));
+                const auto justInside = meanBrightness(
+                    juce::Rectangle<int>(inside.getX() + 6, inside.getY() + 40, 24, 120));
+
+                // The sheet's face lightens what is under it a little, so an
+                // exact match is not the claim - only that the two are close,
+                // where before the inside was the full-brightness UI.
+                check("BusInsert_TranslucentSheetShowsTheDimmedBackdrop",
+                      justOutside >= 0.0 && justInside >= 0.0
+                          // Measured: the hole-punched version read 0.185 inside
+                          // against 0.095 outside. 0.05 sits well clear of the
+                          // 0.018 the fix produces and well under that.
+                          && std::abs(justInside - justOutside) < 0.05,
+                      "just outside the sheet " + fmt(justOutside, 3)
+                          + ", just inside " + fmt(justInside, 3)
+                          + " (difference " + fmt(std::abs(justInside - justOutside), 3) + ")");
+            }
         }
 
         check("BusInsert_OpeningTheSheetCoversTheUiBehindIt",
@@ -15954,6 +16042,56 @@ void testBusInserts()
                       + fmt(eqTitle.title.height, 1) + "px row; comp "
                       + fmt(compTitle.title.fontSize, 1) + "pt in "
                       + fmt(compTitle.title.height, 1) + "px");
+        }
+
+        // Each sheet's header buttons resolve independently: a shared block
+        // sets the baseline and either sheet overrides only what it changes.
+        // The EQ's enable legend sits beside its cap; the compressor's stays
+        // beneath, which is the arrangement a console strip uses.
+        {
+            juce::String parseError;
+            const auto layered = UIConfig::fromJsonText(R"({
+                "busInserts": {
+                  "enableButton": { "size": { "width": 42, "height": 24 },
+                                    "legendPlacement": "below", "offsetX": 1, "offsetY": 2 },
+                  "eq":   { "enableButton": { "size": { "width": 62, "height": 24 },
+                                              "legendPlacement": "left", "offsetX": 9 } },
+                  "comp": { "enableButton": { "offsetY": 8 } }
+                } })", parseError);
+
+            const auto eqStyle = px3::ui::mixerToggleStyleFromConfig(
+                layered.get(), "busInserts.enableButton", "busInserts.eq.enableButton",
+                MixerToggleButton::Style());
+            const auto compStyle = px3::ui::mixerToggleStyleFromConfig(
+                layered.get(), "busInserts.enableButton", "busInserts.comp.enableButton",
+                MixerToggleButton::Style());
+
+            // Offsets follow the same shared-then-override layering as the
+            // style, so they are checked on the resolved config directly.
+            const auto offset = [&layered](const char* path, int fallback)
+            {
+                if (layered == nullptr) return fallback;
+                const auto sheetValue = layered->getValue(path);
+                return sheetValue.isVoid() ? fallback : static_cast<int>(sheetValue);
+            };
+
+            const auto sharedX = offset("busInserts.enableButton.offsetX", 0);
+            const auto sharedY = offset("busInserts.enableButton.offsetY", 0);
+            const auto eqX = offset("busInserts.eq.enableButton.offsetX", sharedX);
+            const auto eqY = offset("busInserts.eq.enableButton.offsetY", sharedY);
+            const auto compX = offset("busInserts.comp.enableButton.offsetX", sharedX);
+            const auto compY = offset("busInserts.comp.enableButton.offsetY", sharedY);
+
+            check("BusInsert_EachSheetsEnableButtonResolvesIndependently",
+                  eqStyle.legendPlacement == MixerToggleButton::Style::LegendPlacement::left
+                      && compStyle.legendPlacement == MixerToggleButton::Style::LegendPlacement::below
+                      && eqStyle.width == 62 && compStyle.width == 42
+                      && eqX == 9 && eqY == 2      // Y falls back to the shared block
+                      && compX == 1 && compY == 8, // X falls back, Y overrides
+                  "EQ " + juce::String(eqStyle.width) + "px legend-left at ("
+                      + juce::String(eqX) + "," + juce::String(eqY) + "); comp "
+                      + juce::String(compStyle.width) + "px legend-below at ("
+                      + juce::String(compX) + "," + juce::String(compY) + ")");
         }
 
         check("BusInsert_ShippingConfigStylesBothSheetsAsCards",
