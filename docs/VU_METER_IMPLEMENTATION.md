@@ -195,8 +195,42 @@ so a still meter costs nothing.
 
 | | |
 |---|---|
-| one meter, cached face | **0.015 ms/frame** — 0.09% of one core at 60 Hz |
+| one meter, cached face, drawn alone | **0.015 ms/frame** — 0.09% of one core at 60 Hz |
 | physics step | below the timer's resolution to measure |
+
+### What the meter alone does not tell you
+
+Measuring the component in isolation was misleading, and the needle still
+looked like it was running at a low frame rate afterwards. Repainting a region
+of a component redraws **everything beneath it**, and the same measurement taken
+in situ - the meter's rectangle, inside the open sheet, inside the editor - read
+**27.6 ms a frame**. That is 165% of a 60 Hz budget: the needle could not
+animate smoothly no matter what the physics did.
+
+Two layers underneath were doing per-frame work that never changed between
+frames:
+
+| layer | why it was expensive |
+|---|---|
+| the modal scrim | ~49 offset draws of a full-window snapshot, re-blurred every frame |
+| the compressor's face | `paintSurfaceNoise` — a per-pixel loop over the whole inner panel |
+
+Both are now rendered once into an image and blitted, the same treatment the
+meter's own face already had. The scrim rebuilds when its snapshot or blur
+radius changes; the panel face rebuilds on resize, on a config reload, and when
+the unit's enable changes, since the engraved legends dim with it.
+
+| | in situ, meter region |
+|---|---|
+| before | **27.578 ms/frame** (165% of a frame) |
+| after | **0.671 ms/frame** (4% of a frame) |
+
+A coarse guard in the suite fails above 5 ms — at the scale of the bug, not of
+normal variation.
+
+**The lesson is worth keeping:** a component that measures as free on its own
+can still be unable to animate, because the cost is in what its repaint forces
+underneath. Measure the region in place, not the component in isolation.
 
 Eight meters would be roughly 0.7% of a core. The cost is the blit; the face
 render happens on resize, not per frame.

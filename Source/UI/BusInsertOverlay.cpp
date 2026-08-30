@@ -716,6 +716,7 @@ BusCompOverlay::~BusCompOverlay()
 
 void BusCompOverlay::uiConfigChanged()
 {
+    face = {};
     meter.setUIConfig(uiConfig);
 }
 
@@ -865,6 +866,7 @@ void BusCompOverlay::timerCallback()
 
 void BusCompOverlay::resized()
 {
+    face = {};
     refreshCardStyle();
 
     layoutHeaderButtons();
@@ -1011,8 +1013,21 @@ void BusCompOverlay::resized()
     }
 }
 
-void BusCompOverlay::paint(juce::Graphics& g)
+// Everything static on the face, rendered once into an image. See the member
+// declaration for why: the grain is a per-pixel loop and it was being run on
+// every needle frame.
+void BusCompOverlay::rebuildFace()
 {
+    const auto bounds = getLocalBounds();
+    if (bounds.isEmpty())
+    {
+        face = {};
+        return;
+    }
+
+    face = juce::Image(juce::Image::ARGB, bounds.getWidth(), bounds.getHeight(), true);
+    juce::Graphics g(face);
+
     // The card frame and the solid inner panel, exactly as the EQ sheet draws
     // them - the two are the same object with different contents.
     BusInsertOverlay::paint(g);
@@ -1100,6 +1115,20 @@ void BusCompOverlay::paint(juce::Graphics& g)
         // Above the knob, with the percentage below it - so the pair reads
         // name-then-value downward, as the rest of the panel's legends do.
         panel::drawLegend(g, mixLabelArea, "MIX", ink, legendSize);
+    }
+
+}
+
+void BusCompOverlay::paint(juce::Graphics& g)
+{
+    if (face.isNull() || face.getWidth() != getWidth() || face.getHeight() != getHeight())
+    {
+        rebuildFace();
+    }
+
+    if (face.isValid())
+    {
+        g.drawImageAt(face, 0, 0, false);
     }
 
     // The movement paints itself - see VuMeterComponent.

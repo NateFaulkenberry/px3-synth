@@ -16537,6 +16537,59 @@ void testBusInserts()
             comp->setUIConfig(nullptr);
         }
 
+        // The needle has to be able to animate. This is a coarse guard, not a
+        // benchmark: it fails at the scale of the bug it exists for.
+        //
+        // Repainting the meter's region redraws everything beneath it, and two
+        // of those were per-frame work that never changed between frames - the
+        // scrim's 49-pass blur, and the compressor face's per-pixel grain.
+        // Together they measured 27.6 ms a frame, 165% of a 60 Hz budget,
+        // against 0.02 ms for the needle itself. Both are cached now, and the
+        // same measurement reads 0.67 ms.
+        if (sheet != nullptr)
+        {
+            px3::ui::VuMeterComponent* meterComponent = nullptr;
+            std::function<void(juce::Component&)> findMeter = [&](juce::Component& c)
+            {
+                for (auto* ch : c.getChildren())
+                {
+                    if (ch == nullptr) continue;
+                    if (auto* m = dynamic_cast<px3::ui::VuMeterComponent*>(ch)) meterComponent = m;
+                    findMeter(*ch);
+                }
+            };
+            findMeter(*editor);
+
+            if (meterComponent != nullptr && meterComponent->getWidth() > 0)
+            {
+                const auto area = meterComponent->getBounds()
+                                  + meterComponent->getParentComponent()->getBounds().getPosition();
+                juce::Image img(juce::Image::ARGB, area.getWidth(), area.getHeight(), true);
+
+                for (int i = 0; i < 5; ++i)
+                {
+                    juce::Graphics g(img);
+                    g.setOrigin(-area.getX(), -area.getY());
+                    editor->paintEntireComponent(g, true);
+                }
+
+                const auto start = juce::Time::getMillisecondCounterHiRes();
+                constexpr int frames = 40;
+                for (int i = 0; i < frames; ++i)
+                {
+                    juce::Graphics g(img);
+                    g.setOrigin(-area.getX(), -area.getY());
+                    editor->paintEntireComponent(g, true);
+                }
+                const auto ms = (juce::Time::getMillisecondCounterHiRes() - start) / frames;
+
+                check("BusComp_NeedleRegionRepaintsWithinAFrame", ms < 5.0,
+                      "repainting the meter's region costs " + fmt(ms, 3)
+                          + " ms; a 60 Hz frame is 16.7 ms and this read 27.6 before the"
+                          + " backdrop and the panel face were cached");
+            }
+        }
+
         check("BusComp_BypassedFaceAcceptsNoEdits",
                   sheet != nullptr && whenOff.second > 0
                       && whenOff.first == 0 && whenOn.first == whenOn.second,

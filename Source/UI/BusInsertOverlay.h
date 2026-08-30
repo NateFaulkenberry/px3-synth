@@ -296,6 +296,15 @@ private:
 
     // Panel furniture is painted rather than laid out as components, so
     // resized() records where each piece went and paint() draws onto it.
+    // The panel's static face - card frame, brushed grain, screws, engraved
+    // scales and legends - rendered once into an image.
+    //
+    // None of it changes between frames, and the grain alone is a per-pixel
+    // loop over the whole inner panel. Redrawing that every time the needle
+    // moved cost 17.9 ms a frame against 0.02 ms for the needle itself.
+    void rebuildFace();
+    juce::Image face;
+
     // The movement is its own component: it caches its face, animates its
     // needle on real elapsed time, and repaints without touching the panel.
     VuMeterComponent meter;
