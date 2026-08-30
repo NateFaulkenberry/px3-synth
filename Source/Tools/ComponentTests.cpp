@@ -13771,7 +13771,81 @@ void testEditorLifecycle()
                 // itself, so it is clamped to half the shorter side.
                 const auto clamped = px3::ui::CornerRadii::all(500.0f)
                                          .clampedTo(juce::Rectangle<float>(0.0f, 0.0f, 40.0f, 20.0f));
-                check("CornerRadii_ClampsToTheBox",
+                // THE PATH ITSELF, not the numbers that feed it.
+            //
+            // The parsing tests below passed the whole time the corners were
+            // rendering as jagged crossed lines, because they only ever checked
+            // the radii. JUCE's addCentredArc measures clockwise from twelve
+            // o'clock, and every arc was written a quarter-turn out, so each
+            // one was drawn in the wrong corner. A path that leaves its own
+            // rectangle is the signature of exactly that.
+            {
+                const auto box = juce::Rectangle<float>(20.0f, 10.0f, 160.0f, 80.0f);
+
+                auto worstOverflow = 0.0f;
+                juce::String offender;
+
+                const std::pair<const char*, px3::ui::CornerRadii> cases[] = {
+                    { "uniform 12",      px3::ui::CornerRadii::all(12.0f) },
+                    { "right side only", { 0.0f, 14.0f, 9.0f, 0.0f } },
+                    { "top only",        { 16.0f, 16.0f, 0.0f, 0.0f } },
+                    { "one corner",      { 0.0f, 0.0f, 22.0f, 0.0f } },
+                    { "all different",   { 4.0f, 8.0f, 12.0f, 16.0f } },
+                };
+
+                for (const auto& entry : cases)
+                {
+                    const auto path = px3::ui::roundedRectanglePath(box, entry.second);
+                    const auto bounds = path.getBounds();
+
+                    // A correctly built rounded rectangle exactly fills its box:
+                    // it never pokes outside, and its extremes reach every edge.
+                    const auto overflow = juce::jmax(
+                        juce::jmax(box.getX() - bounds.getX(), bounds.getRight() - box.getRight()),
+                        juce::jmax(box.getY() - bounds.getY(), bounds.getBottom() - box.getBottom()));
+
+                    if (overflow > worstOverflow)
+                    {
+                        worstOverflow = overflow;
+                        offender = juce::String(entry.first) + " -> " + bounds.toString();
+                    }
+                }
+
+                check("CornerRadii_PathStaysInsideItsRectangle", worstOverflow < 0.01f,
+                      worstOverflow < 0.01f
+                          ? "five corner arrangements, none leaves the box"
+                          : "worst overflow " + fmt(worstOverflow, 2) + "px on " + offender);
+            }
+
+            // And the shape is actually round: a corner with a radius has to cut
+            // its square off, so the path's area is less than the box's.
+            {
+                const auto box = juce::Rectangle<float>(0.0f, 0.0f, 100.0f, 100.0f);
+                const auto square = px3::ui::roundedRectanglePath(box, px3::ui::CornerRadii::all(0.0f));
+                const auto rounded = px3::ui::roundedRectanglePath(box, { 0.0f, 30.0f, 30.0f, 0.0f });
+
+                // Sampled rather than integrated: count points inside each.
+                auto squareHits = 0;
+                auto roundedHits = 0;
+                for (int y = 0; y < 100; ++y)
+                {
+                    for (int x = 0; x < 100; ++x)
+                    {
+                        const auto p = juce::Point<float>(x + 0.5f, y + 0.5f);
+                        if (square.contains(p)) ++squareHits;
+                        if (rounded.contains(p)) ++roundedHits;
+                    }
+                }
+
+                // Two 30px quarter-circles removed is about 2 * (900 - 706) px.
+                const auto removed = squareHits - roundedHits;
+                check("CornerRadii_RoundedCornersActuallyRemoveArea",
+                      squareHits > 9900 && removed > 300 && removed < 500,
+                      "square covers " + juce::String(squareHits) + " px, rounding two corners at 30px "
+                          + "removes " + juce::String(removed) + " (two quarter-circles are ~386)");
+            }
+
+            check("CornerRadii_ClampsToTheBox",
                       clamped.topLeft == 10.0f && clamped.bottomRight == 10.0f,
                       "a 500px radius on a 40x20 box clamps to " + fmt(clamped.topLeft, 1));
             }

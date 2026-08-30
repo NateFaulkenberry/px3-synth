@@ -38,7 +38,7 @@
   },
   "keyboard": {
     "background": { "color": "#191919", "opacity": 1, "radius": 0,
-                    "radiusTopLeft": 0, "radiusTopRight": 0,
+                    "radiusTopLeft": 0, "radiusTopRight": 12,
                     "radiusBottomRight": 0, "radiusBottomLeft": 0 },
     "padding": 8,
     "whiteKey": {
@@ -83,7 +83,7 @@
   "performance": {
     "background": { "color": "#141414", "opacity": 1 },
     "border": { "inset": 2, "color": "#FFFFFF18", "width": 1, "radius": 0,
-                "radiusTopLeft": 0, "radiusTopRight": 0,
+                "radiusTopLeft": 12, "radiusTopRight": 0,
                 "radiusBottomRight": 0, "radiusBottomLeft": 0 },
     "wheelPanel": { "color": "#111111DC", "radius": 8 },
     "title": { "color": "#E4E4E4", "fontSize": 10.5, "height": 18 },

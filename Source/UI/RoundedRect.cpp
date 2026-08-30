@@ -76,34 +76,48 @@ juce::Path roundedRectanglePath(juce::Rectangle<float> bounds, CornerRadii radii
     const auto bottom = bounds.getBottom();
 
     // Quarter-circle arcs joined by straight edges, clockwise from the top
-    // left. addCentredArc's angles are measured from 12 o'clock, clockwise.
+    // left.
+    //
+    // addCentredArc measures angles CLOCKWISE FROM 12 O'CLOCK, so each corner's
+    // arc spans the quarter that actually contains it: the top-right corner
+    // runs from straight up to the right, the bottom-right from right to down,
+    // and so on. Getting these a quarter-turn out draws each arc in the wrong
+    // corner and the outline crosses itself - which is what "jagged/broken"
+    // corners were.
+    constexpr auto up = 0.0f;
+    const auto rightAngle = juce::MathConstants<float>::halfPi;
+    const auto down = juce::MathConstants<float>::pi;
+    const auto leftAngle = juce::MathConstants<float>::pi * 1.5f;
+    const auto fullTurn = juce::MathConstants<float>::twoPi;
+
     path.startNewSubPath(x + r.topLeft, y);
+
     path.lineTo(right - r.topRight, y);
     if (r.topRight > 0.0f)
     {
         path.addCentredArc(right - r.topRight, y + r.topRight, r.topRight, r.topRight,
-                           0.0f, juce::MathConstants<float>::halfPi, juce::MathConstants<float>::pi);
+                           0.0f, up, rightAngle);
     }
 
     path.lineTo(right, bottom - r.bottomRight);
     if (r.bottomRight > 0.0f)
     {
         path.addCentredArc(right - r.bottomRight, bottom - r.bottomRight, r.bottomRight, r.bottomRight,
-                           0.0f, juce::MathConstants<float>::pi, juce::MathConstants<float>::pi * 1.5f);
+                           0.0f, rightAngle, down);
     }
 
     path.lineTo(x + r.bottomLeft, bottom);
     if (r.bottomLeft > 0.0f)
     {
         path.addCentredArc(x + r.bottomLeft, bottom - r.bottomLeft, r.bottomLeft, r.bottomLeft,
-                           0.0f, juce::MathConstants<float>::pi * 1.5f, juce::MathConstants<float>::twoPi);
+                           0.0f, down, leftAngle);
     }
 
     path.lineTo(x, y + r.topLeft);
     if (r.topLeft > 0.0f)
     {
         path.addCentredArc(x + r.topLeft, y + r.topLeft, r.topLeft, r.topLeft,
-                           0.0f, 0.0f, juce::MathConstants<float>::halfPi);
+                           0.0f, leftAngle, fullTurn);
     }
 
     path.closeSubPath();
