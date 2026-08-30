@@ -978,19 +978,26 @@ void BusCompOverlay::resized()
         // The whole MIX stack sits lower than the switch bank it replaces.
         slot.removeFromTop(configInt(uiConfig, "busInserts.comp.mixOffsetY", 20));
 
-        auto knobSlot = slot.removeFromTop(slot.getHeight() / 2);
-
-        // Legend above the knob, readout below it. The legend is painted rather
-        // than placed, so resized() only records where it goes.
-        mixLabelArea = knobSlot.removeFromTop(legendHeight).toFloat();
-        const auto valueRow = knobSlot.removeFromBottom(legendHeight);
-
         // 20% over the other small knobs: it is the one control on this panel
         // that is ours rather than the unit's, and it is reached for often.
         const auto mixKnob = juce::roundToInt(static_cast<float>(smallKnob)
                                               * configFloat(uiConfig, "busInserts.comp.mixKnobScale", 1.2f));
-        mix.setBounds(knobSlot.withSizeKeepingCentre(mixKnob, mixKnob));
-        mixValue.setBounds(valueRow);
+
+        // The three pieces are packed to their own height and the GROUP is
+        // centred, rather than each being placed in a share of the column.
+        // Giving the knob half the column and centring it in what was left put
+        // most of the panel's height between the label and the knob it names.
+        const auto stackGap = configInt(uiConfig, "busInserts.comp.mixStackGap", 2);
+        const auto stackHeight = legendHeight + stackGap + mixKnob + stackGap + legendHeight;
+
+        auto stack = slot.removeFromTop(slot.getHeight() / 2)
+                         .withSizeKeepingCentre(slot.getWidth(), juce::jmin(stackHeight, slot.getHeight()));
+
+        mixLabelArea = stack.removeFromTop(legendHeight).toFloat();
+        stack.removeFromTop(stackGap);
+        mix.setBounds(stack.removeFromTop(mixKnob).withSizeKeepingCentre(mixKnob, mixKnob));
+        stack.removeFromTop(stackGap);
+        mixValue.setBounds(stack.removeFromTop(legendHeight));
 
         slot.removeFromBottom(legendHeight);
         linkButton.setBounds(slot.withSizeKeepingCentre(juce::jmin(slot.getWidth(), 46),

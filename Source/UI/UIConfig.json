@@ -555,6 +555,7 @@
       "contentOffsetX": 30,
       "mixColumnWidth": 70,
       "mixOffsetY": 20,
+      "mixStackGap": 2,
       "legendHeight": 14,
       "legendFontSize": 8.5,
       "largeKnobSize": 62,
