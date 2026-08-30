@@ -34,7 +34,7 @@ namespace px3
 //    distortion increases. The rising ratio has its own time constant, and that
 //    lag is the sound.
 //
-// See docs/V3_1_EQ_COMP_RESEARCH.md for sources.
+// See docs/EQ_COMP_RESEARCH.md for sources.
 class FetCompressor
 {
 public:

@@ -3,7 +3,7 @@
 #include <array>
 
 // Everything the two bus inserts need for one block.
-// See docs/V3_1_EQ_COMP_RESEARCH.md.
+// See docs/EQ_COMP_RESEARCH.md.
 namespace px3
 {
 

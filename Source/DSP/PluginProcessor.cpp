@@ -864,7 +864,7 @@ void PX3SynthAudioProcessor::changeProgramName(int, const juce::String&)
 }
 
 // One set of insert parameters for a bus. Namespaced by prefix so a third bus
-// adds a prefix rather than a scheme: see docs/V3_1_EQ_COMP_RESEARCH.md.
+// adds a prefix rather than a scheme: see docs/EQ_COMP_RESEARCH.md.
 //
 // Defaults are chosen so that switching an insert on changes nothing until a
 // control is moved - a bus processor that colours the sound the moment it is

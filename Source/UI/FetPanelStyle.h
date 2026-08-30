@@ -13,7 +13,7 @@ namespace px3::ui
 // meter face carries this plug-in's own identity. Same rule the AnalogEngine's
 // console profiles follow.
 //
-// See docs/V3_1_EQ_COMP_RESEARCH.md for the circuit these controls belong to.
+// See docs/EQ_COMP_RESEARCH.md for the circuit these controls belong to.
 
 // The vertical bank of latching push buttons - ratio on the original, and here
 // too. Light caps, dark legends, and a pressed cap sits lower and darker.

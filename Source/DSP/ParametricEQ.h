@@ -28,7 +28,7 @@ namespace px3
 // makes every intermediate state a valid filter by construction. This is the
 // same reasoning that made VoiceFilter rebuild from a smoothed cutoff.
 //
-// See docs/V3_1_EQ_COMP_RESEARCH.md.
+// See docs/EQ_COMP_RESEARCH.md.
 class ParametricEQ
 {
 public:

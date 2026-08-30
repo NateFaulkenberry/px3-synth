@@ -1,6 +1,6 @@
 # v0.3.1 — Bus EQ and FET Compressor: Implementation Report
 
-Companion to `docs/V3_1_EQ_COMP_RESEARCH.md`, which was written first and which
+Companion to `docs/EQ_COMP_RESEARCH.md`, which was written first and which
 settled the topology questions. This document records what was built, what was
 measured, and what was decided by measurement rather than by preference.
 
