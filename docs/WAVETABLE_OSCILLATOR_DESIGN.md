@@ -128,7 +128,7 @@ Two findings from this comparison matter more than the rest:
 ```
 px3::Wavetable                       immutable once built, shared by shared_ptr
     name, category, sourceId         sourceId identifies a user import
-    frameCount     64 (default)
+    frameCount     64 (default; up to 256 for imports — §F.3)
     frameSize      2048
     levels[]                         mip pyramid, level 0 = full bandwidth
         level ℓ: frameCount frames of max(256, frameSize >> ℓ) samples,
@@ -174,7 +174,9 @@ keeps halving (§E.0). This is worth 45 dB of alias rejection at C7 and costs
 ### C.3 Interpolation
 
 - **Between frames:** linear, for the reason in §B. Frames are phase-aligned at
-  build time so linear is spectrally and perceptually correct.
+  build time — zero-phase fundamental, measured in §F.4 — so linear is
+  spectrally and perceptually correct. Without that alignment the same linear
+  crossfade loses 19 dB mid-morph on imported material.
 - **Between samples:** cubic Hermite, measured — §E.1. It matches an eight-tap
   windowed sinc on alias rejection for 70% of the cost.
 
@@ -228,8 +230,11 @@ WAV / AIFF / PNG / JPEG  →  Importer  →  canonical Wavetable  →  mip pyram
 ```
 
 - **Audio:** DC removal → normalise → pitch detection → cycle extraction at
-  detected period → phase alignment → resample each cycle to 2048 → frame
-  selection. Single-cycle files bypass detection.
+  detected period → **phase alignment** → resample each cycle to 2048 → frame
+  selection. Single-cycle files bypass detection. The alignment step is the one
+  that decides whether the import sounds good — §F.4 — and it is offered in two
+  modes: zero-phase fundamental (default, shape preserved) and discard-phase
+  (perfect morph, waveform redrawn).
 - **Image:** greyscale → resize to `frameSize × frameCount` → row = frame,
   column = sample position, brightness = amplitude → per-frame DC removal →
   normalise. This is okwt's mapping, which is the established convention;
@@ -366,15 +371,68 @@ hazard and the design avoids it (all levels share one gain taken from the
 full-bandwidth spectrum) — but it was not the cause here. Fixing it moved the
 worst boundary by 0.02 dB. The cause was table length, above.
 
-## F. Remaining open questions
+### F.4 Phase alignment: zero-phase fundamental, with discard-phase offered
 
-Settled by measurement, not argument. Items 1 and 2 are answered above.
+Measured in `docs/research/wavetable-prototype-2.cpp`. Frames cut from a
+recording arrive at arbitrary phase; interpolating between two frames whose
+harmonics disagree in phase is a comb filter, so the morph hollows out instead
+of evolving. Worst energy lost halfway between adjacent frames:
 
-3. **Frame count.** 64 vs 128 vs 256. Memory is linear in this; morph smoothness
-   may not improve past 64 once frames are phase-aligned.
-4. **Phase alignment method.** Align each frame's fundamental to zero phase, or
-   cross-correlate against the previous frame. The second preserves character
-   better on imported material; the first is more predictable.
+| alignment | generated table | imported table | waveform shape |
+|---|---|---|---|
+| none | -0.00 dB | **-19.06 dB** | exact |
+| **zero-phase fundamental** | -0.00 dB | **-1.49 dB** | exact — pure time shift |
+| cross-correlate | -0.00 dB | -1.23 dB | exact — pure time shift |
+| discard phase | -0.00 dB | **-0.00 dB** | **70.5% shape error** |
+
+Three things fall out of this:
+
+**Alignment is not optional for imports.** Without it the morph loses 19 dB
+mid-scan. This is the single biggest quality factor in the import path, and it
+is invisible in any test that only plays frames at fixed positions.
+
+**Generated tables never need it.** They are built additively at known phase, so
+every alignment mode reads -0.00 dB. Alignment is an import concern only.
+
+**Discarding phase is perfect and expensive.** Zeroing every harmonic's phase
+makes all frames phase-identical, so nothing can cancel and the morph is exact
+by construction — but the frame stops resembling the audio it came from, by
+70.5% of its own level, measured after best-case time alignment so that figure
+is shape error and not a shift. The spectrum is untouched; the waveform is not.
+That matters here because the 2D and 3D displays (§28-30) are meant to show what
+the table actually is.
+
+So: **zero-phase fundamental alignment by default** — a pure rotation, so shape
+is preserved exactly, and it recovers 17.6 of the 19 dB. **Discard-phase offered
+as an import option** for material where a clean scan matters more than the
+waveform's identity. Cross-correlate's extra 0.26 dB does not justify chaining
+each frame to the previous one, which can drift across 64 frames; zero-phase is
+absolute, frame-independent and reproducible.
+
+### F.3 Frame count: 64 by default, up to 256 for imports
+
+| frames | worst kink | memory/table | morph dip |
+|---|---|---|---|
+| 16 | 0.000752 | 0.31 MB | -0.01 dB |
+| 32 | 0.000355 | 0.62 MB | -0.00 dB |
+| **64** | **0.000184** | **1.25 MB** | -0.00 dB |
+| 128 | 0.000096 | 2.50 MB | -0.00 dB |
+| 256 | 0.000047 | 5.00 MB | -0.00 dB |
+
+The kink — the worst second difference of a harmonic's amplitude along a scan,
+which is what a slow sweep would ratchet on — halves exactly as memory doubles.
+There is no knee, so this is a budget decision rather than a measured threshold,
+and the absolute values are tiny throughout: 0.000184 at 64 frames.
+
+**64 frames** by default, at 1.25 MB per table, which is the right size next to a
+~2 MB voice pool. The format carries the frame count per table so imports can
+land at 256 (the okwt and Serum convention) when the source has that much
+material, at 5 MB each.
+
+## G. Remaining open questions
+
+Settled by measurement, not argument. Items 1-4 are answered above.
+
 5. **WT Position smoothing time.** Long enough to kill the 93.75 Hz block step,
    short enough that a fast envelope scan still feels immediate.
 
