@@ -89,6 +89,10 @@ void BusInsertOverlay::refreshCardStyle()
         innerStyle.margin = uiConfig->getFloat(base + ".margin", innerStyle.margin);
         innerStyle.radius = uiConfig->getFloat(base + ".radius", innerStyle.radius);
         innerStyle.colour = uiConfig->getColour(base + ".color", innerStyle.colour);
+        // Opacity as its own property, the way every Fill in the card system
+        // works, so the panel can be made translucent without hand-editing an
+        // alpha byte into the colour.
+        innerStyle.opacity = uiConfig->getFloat(base + ".opacity", innerStyle.opacity);
     }
 }
 
@@ -154,7 +158,7 @@ void BusInsertOverlay::paint(juce::Graphics& g)
     card.draw(g, sheetTitle());
 
     const auto inner = innerOverlayBounds().toFloat();
-    g.setColour(innerStyle.colour);
+    g.setColour(innerStyle.effectiveColour());
     g.fillRoundedRectangle(inner, innerStyle.radius);
 }
 
@@ -388,6 +392,7 @@ void BusEqOverlay::resized()
 BusCompOverlay::BusCompOverlay(PX3SynthAudioProcessor& processorIn)
     : BusInsertOverlay(processorIn)
 {
+    // Ratio is a vertical bank of latching push buttons, as the panel has.
     static const std::array<const char*, 5> ratioLegends { { "4", "8", "12", "20", "ALL" } };
 
     for (std::size_t i = 0; i < ratioButtons.size(); ++i)
@@ -395,6 +400,7 @@ BusCompOverlay::BusCompOverlay(PX3SynthAudioProcessor& processorIn)
         auto& button = ratioButtons[i];
         button.setButtonText(ratioLegends[i]);
         button.setClickingTogglesState(false);
+        button.setLookAndFeel(&pushLook);
         addAndMakeVisible(button);
         button.onClick = [this, i]()
         {
@@ -411,21 +417,19 @@ BusCompOverlay::BusCompOverlay(PX3SynthAudioProcessor& processorIn)
         };
     }
 
+    linkButton.setClickingTogglesState(true);
+    linkButton.setLookAndFeel(&pushLook);
     addAndMakeVisible(linkButton);
 
-    for (const auto& entry : { std::make_pair(&inputCaption, "INPUT"),
-                               std::make_pair(&outputCaption, "OUTPUT"),
-                               std::make_pair(&attackCaption, "ATTACK"),
-                               std::make_pair(&releaseCaption, "RELEASE"),
-                               std::make_pair(&mixCaption, "MIX") })
-    {
-        addAndMakeVisible(*entry.first);
-        styleCaption(*entry.first, juce::Colour::fromRGB(40, 42, 46), 10.0f, juce::Justification::centred);
-        entry.first->setText(entry.second, juce::dontSendNotification);
-    }
-
+    // The legends are engraved onto the panel in paint(), not placed as labels,
+    // so these captions carry only the mix readout.
     addAndMakeVisible(mixValue);
-    styleCaption(mixValue, juce::Colour::fromRGB(40, 42, 46), 10.0f, juce::Justification::centred);
+    styleCaption(mixValue, juce::Colour::fromRGB(38, 40, 44), 9.5f, juce::Justification::centred);
+
+    for (auto* caption : { &inputCaption, &outputCaption, &attackCaption, &releaseCaption, &mixCaption })
+    {
+        caption->setVisible(false);
+    }
 
     startTimerHz(24);
 }
@@ -434,15 +438,32 @@ BusCompOverlay::~BusCompOverlay()
 {
     stopTimer();
     clearAttachments();
+
+    // The look-and-feels are members declared after the controls that point at
+    // them, so they are destroyed FIRST - leaving every slider and button
+    // holding a dangling pointer for the rest of the teardown. Same shape as
+    // the attachment bug: a base or later member going before its users.
+    for (auto* slider : { &input, &output, &attack, &release, &mix })
+    {
+        slider->setLookAndFeel(nullptr);
+    }
+    for (auto& button : ratioButtons)
+    {
+        button.setLookAndFeel(nullptr);
+    }
+    linkButton.setLookAndFeel(nullptr);
 }
 
 void BusCompOverlay::knobLookAndFeelChanged()
 {
+    // The panel's own knob, not the plugin's: this face is a rack unit, and a
+    // synth knob in the middle of it would be the one thing that gives it away.
     for (auto* slider : { &input, &output, &attack, &release, &mix })
     {
-        configureRotary(*slider, knobLookAndFeel);
+        configureRotary(*slider, &knobLook);
         addAndMakeVisible(*slider);
     }
+    juce::ignoreUnused(knobLookAndFeel);
 }
 
 void BusCompOverlay::rebuildForBus()
@@ -510,77 +531,149 @@ void BusCompOverlay::resized()
     header.removeFromRight(6);
     enableButton.setBounds(header.removeFromRight(configInt(uiConfig, "busInserts.enableWidth", 42)).reduced(0, 3));
 
-    auto area = innerOverlayBounds().reduced(configInt(uiConfig, "busInserts.comp.innerPadding", 16));
+    auto panel = innerOverlayBounds().reduced(configInt(uiConfig, "busInserts.comp.innerPadding", 14));
 
-    // Laid out as the hardware is: the meter on the right, the large controls
-    // to its left, the ratio buttons in a row beneath.
-    const auto meterWidth = configInt(uiConfig, "busInserts.comp.meterWidth", 200);
-    meterArea = area.removeFromRight(meterWidth).removeFromTop(configInt(uiConfig, "busInserts.comp.meterHeight", 124));
-    area.removeFromRight(configInt(uiConfig, "busInserts.comp.meterGap", 16));
+    // The rack ears carry the screws and nothing else, exactly as they do on
+    // the unit: they are what make a panel read as a panel rather than a box.
+    const auto earWidth = configInt(uiConfig, "busInserts.comp.earWidth", 26);
+    panel.removeFromLeft(earWidth);
+    panel.removeFromRight(earWidth);
 
-    const auto knobSize = configInt(uiConfig, "busInserts.comp.knobSize", 58);
-    constexpr auto captionHeight = 13;
+    const auto gap = configInt(uiConfig, "busInserts.comp.sectionGap", 10);
+    const auto legendHeight = configInt(uiConfig, "busInserts.comp.legendHeight", 14);
+    const auto largeKnob = configInt(uiConfig, "busInserts.comp.largeKnobSize", 62);
+    const auto smallKnob = configInt(uiConfig, "busInserts.comp.smallKnobSize", 34);
 
-    auto knobRow = area.removeFromTop(knobSize + captionHeight * 2 + 6);
-    const auto knobGap = configInt(uiConfig, "busInserts.comp.knobGap", 10);
-    constexpr auto slots = 5;
-    const auto slotWidth = (knobRow.getWidth() - knobGap * (slots - 1)) / slots;
-
-    for (const auto& entry : { std::make_pair(&input, &inputCaption),
-                               std::make_pair(&output, &outputCaption),
-                               std::make_pair(&attack, &attackCaption),
-                               std::make_pair(&release, &releaseCaption),
-                               std::make_pair(&mix, &mixCaption) })
+    // Left to right: INPUT, OUTPUT, the two time constants stacked, the ratio
+    // bank, the meter, and finally the two controls this unit has that the
+    // original does not - where its meter-select bank sat.
+    auto column = [&](int width)
     {
-        auto slot = knobRow.removeFromLeft(slotWidth);
-        knobRow.removeFromLeft(knobGap);
-        entry.first->setBounds(slot.removeFromTop(knobSize).withSizeKeepingCentre(knobSize, knobSize));
-        slot.removeFromTop(3);
-        entry.second->setBounds(slot.removeFromTop(captionHeight));
+        auto slot = panel.removeFromLeft(width);
+        panel.removeFromLeft(gap);
+        return slot;
+    };
+
+    const auto largeColumn = largeKnob + configInt(uiConfig, "busInserts.comp.scaleMargin", 30);
+
+    {
+        auto slot = column(largeColumn);
+        slot.removeFromBottom(legendHeight);
+        inputKnobArea = slot.toFloat().withSizeKeepingCentre(static_cast<float>(largeKnob),
+                                                             static_cast<float>(largeKnob));
+        input.setBounds(inputKnobArea.toNearestInt());
+    }
+    {
+        auto slot = column(largeColumn);
+        slot.removeFromBottom(legendHeight);
+        outputKnobArea = slot.toFloat().withSizeKeepingCentre(static_cast<float>(largeKnob),
+                                                              static_cast<float>(largeKnob));
+        output.setBounds(outputKnobArea.toNearestInt());
     }
 
-    // The mix readout sits under its own caption. It is the one control here
-    // whose value is not obvious from the knob position, because 100% is the
-    // compressor alone and people reach for it expecting a blend.
-    mixValue.setBounds(mixCaption.getBounds().translated(0, captionHeight));
-
-    area.removeFromTop(configInt(uiConfig, "busInserts.comp.ratioGap", 18));
-
-    auto ratioRow = area.removeFromTop(configInt(uiConfig, "busInserts.comp.ratioHeight", 28));
-    const auto ratioGap = configInt(uiConfig, "busInserts.comp.ratioButtonGap", 6);
-    const auto ratioSlots = static_cast<int>(ratioButtons.size()) + 1;
-    const auto ratioWidth = (ratioRow.getWidth() - ratioGap * (ratioSlots - 1)) / ratioSlots;
-
-    for (auto& button : ratioButtons)
     {
-        button.setBounds(ratioRow.removeFromLeft(ratioWidth));
-        ratioRow.removeFromLeft(ratioGap);
+        // ATTACK above RELEASE, both small, as the panel stacks them.
+        auto slot = column(configInt(uiConfig, "busInserts.comp.timeColumnWidth", 70));
+        const auto half = slot.getHeight() / 2;
+        auto top = slot.removeFromTop(half);
+        auto bottom = slot;
+        top.removeFromBottom(legendHeight);
+        bottom.removeFromBottom(legendHeight);
+        attack.setBounds(top.withSizeKeepingCentre(smallKnob, smallKnob));
+        release.setBounds(bottom.withSizeKeepingCentre(smallKnob, smallKnob));
     }
 
-    linkButton.setBounds(ratioRow.removeFromLeft(ratioWidth));
+    {
+        auto slot = column(configInt(uiConfig, "busInserts.comp.ratioWidth", 46));
+        slot.removeFromBottom(legendHeight);
+        ratioBankArea = slot.toFloat();
+
+        const auto buttonGap = configInt(uiConfig, "busInserts.comp.ratioButtonGap", 3);
+        const auto count = static_cast<int>(ratioButtons.size());
+        const auto buttonHeight = (slot.getHeight() - buttonGap * (count - 1)) / count;
+        for (auto& button : ratioButtons)
+        {
+            button.setBounds(slot.removeFromTop(buttonHeight));
+            slot.removeFromTop(buttonGap);
+        }
+    }
+
+    {
+        auto slot = column(configInt(uiConfig, "busInserts.comp.meterWidth", 176));
+        meterArea = slot.reduced(0, configInt(uiConfig, "busInserts.comp.meterInset", 6));
+    }
+
+    {
+        // MIX and LINK, in the space the meter-select bank occupies on the
+        // hardware. Placed here rather than squeezed in among the four original
+        // controls: they are ours, and putting them where a switch bank lives
+        // keeps the rest of the panel honest.
+        mixBankArea = panel.toFloat();
+        auto slot = panel;
+        auto knobSlot = slot.removeFromTop(slot.getHeight() / 2);
+        knobSlot.removeFromBottom(legendHeight);
+        mix.setBounds(knobSlot.withSizeKeepingCentre(smallKnob, smallKnob));
+        mixValue.setBounds(knobSlot.getX(), knobSlot.getBottom(), knobSlot.getWidth(), legendHeight);
+
+        slot.removeFromBottom(legendHeight);
+        linkButton.setBounds(slot.withSizeKeepingCentre(juce::jmin(slot.getWidth(), 46),
+                                                        juce::jmin(slot.getHeight(), 22)));
+    }
 }
 
+// The lit VU. Revision H changed the movement to a light-box type with two
+// internal lamps, so the face is illuminated rather than merely pale - that
+// glow is most of what distinguishes it from the black-face revisions.
 void BusCompOverlay::paintMeter(juce::Graphics& g, juce::Rectangle<float> area) const
 {
+    const auto bezelColour = configColour(uiConfig, "busInserts.comp.meterBezelColor",
+                                          juce::Colour::fromRGB(26, 52, 96));
     const auto faceColour = configColour(uiConfig, "busInserts.comp.meterFaceColor",
                                          juce::Colour::fromRGB(238, 231, 210));
     const auto inkColour = configColour(uiConfig, "busInserts.comp.meterInkColor",
                                         juce::Colour::fromRGB(38, 36, 32));
     const auto needleColour = configColour(uiConfig, "busInserts.comp.meterNeedleColor",
                                            juce::Colour::fromRGB(24, 24, 26));
+    const auto glowColour = configColour(uiConfig, "busInserts.comp.meterGlowColor",
+                                         juce::Colour::fromRGBA(255, 244, 206, 210));
+
+    const auto& params = processor.getBusInsertParams(busIndex);
+    const auto live = params.compEnabled != nullptr && params.compEnabled->get();
+
+    // The bezel the movement sits in.
+    g.setColour(bezelColour);
+    g.fillRoundedRectangle(area, 3.0f);
+    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 90));
+    g.drawRoundedRectangle(area.reduced(0.5f), 3.0f, 1.0f);
+
+    auto face = area.reduced(configFloat(uiConfig, "busInserts.comp.meterBezelWidth", 7.0f));
+    face = face.withTrimmedBottom(face.getHeight() * 0.24f);
 
     g.setColour(faceColour);
-    g.fillRoundedRectangle(area, 4.0f);
-    g.setColour(inkColour.withAlpha(0.45f));
-    g.drawRoundedRectangle(area.reduced(0.5f), 4.0f, 1.0f);
+    g.fillRect(face);
 
-    // A moving-coil movement: the needle pivots below the face, and the scale
-    // is an arc rather than a bar. On this unit the scale reads gain reduction,
-    // so it runs backwards - 0 on the right, and the needle falls to the left
-    // as the compressor works, which is why the hardware's meter "drops".
-    const auto pivot = juce::Point<float>(area.getCentreX(), area.getBottom() + area.getHeight() * 0.55f);
-    const auto radius = area.getHeight() * 1.28f;
-    constexpr auto kSpan = 0.62f;   // radians either side of vertical
+    // The two lamps, behind the face. Off when the unit is bypassed, which is
+    // the quickest read on this panel of whether anything is happening.
+    if (live)
+    {
+        for (const auto x : { face.getX() + face.getWidth() * 0.28f, face.getX() + face.getWidth() * 0.72f })
+        {
+            juce::ColourGradient lamp(glowColour, x, face.getBottom(),
+                                      glowColour.withAlpha(0.0f), x, face.getY() - face.getHeight() * 0.35f,
+                                      true);
+            g.setGradientFill(lamp);
+            g.fillRect(face);
+        }
+    }
+
+    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 70));
+    g.drawRect(face, 1.0f);
+
+    // The scale. Gain reduction runs backwards - 0 at the right, and the needle
+    // falls to the left as the unit works, which is why the meter "drops".
+    const auto pivot = juce::Point<float>(face.getCentreX(), face.getBottom() + face.getHeight() * 0.62f);
+    const auto radius = face.getHeight() * 1.34f;
+    constexpr auto kSpan = 0.56f;
     constexpr auto kFullScaleDb = 20.0f;
 
     auto angleFor = [&](float db)
@@ -589,28 +682,44 @@ void BusCompOverlay::paintMeter(juce::Graphics& g, juce::Rectangle<float> area) 
         return kSpan - position * (kSpan * 2.0f);
     };
 
-    g.setColour(inkColour.withAlpha(0.8f));
-    for (const auto db : { 0.0f, 3.0f, 5.0f, 7.0f, 10.0f, 15.0f, 20.0f })
+    g.setColour(inkColour.withAlpha(0.85f));
+    for (const auto db : { 0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 7.0f, 10.0f, 15.0f, 20.0f })
     {
         const auto angle = angleFor(db);
         const auto direction = juce::Point<float>(std::sin(angle), -std::cos(angle));
-        const auto outer = pivot + direction * radius;
-        const auto inner = pivot + direction * (radius - (db == 0.0f || db == 20.0f ? 10.0f : 6.0f));
-        g.drawLine({ inner, outer }, db == 0.0f ? 1.8f : 1.0f);
+        const auto major = db == 0.0f || db == 5.0f || db == 10.0f || db == 20.0f;
+        g.drawLine({ pivot + direction * (radius - (major ? 9.0f : 5.0f)), pivot + direction * radius },
+                   major ? 1.5f : 0.9f);
+
+        if (major)
+        {
+            g.setFont(juce::FontOptions(7.5f, juce::Font::bold));
+            g.drawText(juce::String(juce::roundToInt(db)),
+                       juce::Rectangle<float>(16.0f, 9.0f)
+                           .withCentre(pivot + direction * (radius - 16.0f)),
+                       juce::Justification::centred, false);
+        }
     }
-
-    g.setFont(juce::Font(juce::FontOptions(9.0f, juce::Font::bold)));
-    g.drawText("GAIN REDUCTION",
-               area.withTrimmedTop(area.getHeight() * 0.62f).toNearestInt(),
-               juce::Justification::centred);
-
-    const auto& params = processor.getBusInsertParams(busIndex);
-    const auto live = params.compEnabled != nullptr && params.compEnabled->get();
 
     const auto angle = angleFor(live ? meterDb : 0.0f);
     const auto direction = juce::Point<float>(std::sin(angle), -std::cos(angle));
-    g.setColour(needleColour.withAlpha(live ? 1.0f : 0.4f));
-    g.drawLine({ pivot + direction * (radius * 0.20f), pivot + direction * (radius - 2.0f) }, 2.0f);
+    g.setColour(needleColour.withAlpha(live ? 1.0f : 0.35f));
+    g.drawLine({ pivot + direction * (radius * 0.30f), pivot + direction * (radius - 3.0f) }, 1.8f);
+
+    // The badge below the movement. This plug-in's own mark: the panel is a
+    // generic archetype of a rack FET limiter, and it carries no other maker's
+    // name, model number or logo.
+    auto badge = area.withTop(face.getBottom() + 3.0f).reduced(10.0f, 2.0f);
+    if (badge.getHeight() > 8.0f)
+    {
+        g.setColour(configColour(uiConfig, "busInserts.comp.badgeColor",
+                                 juce::Colour::fromRGBA(255, 255, 255, 30)));
+        g.fillRoundedRectangle(badge, 2.0f);
+        panel::drawLegend(g, badge, "P(X3) LIMITING AMPLIFIER",
+                          configColour(uiConfig, "busInserts.comp.badgeTextColor",
+                                       juce::Colour::fromRGB(232, 238, 248)),
+                          configFloat(uiConfig, "busInserts.comp.badgeFontSize", 7.0f));
+    }
 }
 
 void BusCompOverlay::paint(juce::Graphics& g)
@@ -619,17 +728,87 @@ void BusCompOverlay::paint(juce::Graphics& g)
     // them - the two are the same object with different contents.
     BusInsertOverlay::paint(g);
 
-    // The grain is what makes the inner panel read as brushed metal rather than
-    // as flat plastic. It is texture over the solid fill, not a second fill,
-    // and it is derived from pixel position so it does not shimmer between
-    // frames. grainAmount 0 removes it.
     const auto inner = innerOverlayBounds().toFloat();
+    const auto ink = configColour(uiConfig, "busInserts.comp.inkColor", juce::Colour::fromRGB(46, 48, 52));
+    const auto legendSize = configFloat(uiConfig, "busInserts.comp.legendFontSize", 8.5f);
+
+    // Brushed aluminium. Revision H's faceplate is natural brushed aluminium
+    // rather than the black anodised finish of the revisions before it, so the
+    // grain runs horizontally over a solid light panel.
     {
         juce::Graphics::ScopedSaveState state(g);
         juce::Path clip;
         clip.addRoundedRectangle(inner, innerStyle.radius);
         g.reduceClipRegion(clip);
         paintSurfaceNoise(g, inner, configFloat(uiConfig, "busInserts.comp.grainAmount", 0.06f));
+    }
+
+    // Rack ears: a seam and two screws at each end.
+    const auto earWidth = static_cast<float>(configInt(uiConfig, "busInserts.comp.earWidth", 26))
+                          + static_cast<float>(configInt(uiConfig, "busInserts.comp.innerPadding", 14));
+    const auto screwRadius = configFloat(uiConfig, "busInserts.comp.screwRadius", 3.4f);
+
+    g.setColour(ink.withAlpha(0.18f));
+    for (const auto x : { inner.getX() + earWidth, inner.getRight() - earWidth })
+    {
+        g.drawVerticalLine(juce::roundToInt(x), inner.getY() + 6.0f, inner.getBottom() - 6.0f);
+    }
+
+    for (const auto x : { inner.getX() + earWidth * 0.5f, inner.getRight() - earWidth * 0.5f })
+    {
+        panel::drawScrew(g, { x, inner.getY() + 14.0f }, screwRadius);
+        panel::drawScrew(g, { x, inner.getBottom() - 14.0f }, screwRadius);
+    }
+
+    // The engraved scales around the two large knobs. The numbers belong to the
+    // panel, not to the cap, which is why they do not turn with it.
+    static const juce::StringArray kInputMarks { "-12", "-6", "0", "6", "12", "18", "24", "30", "36" };
+    static const juce::StringArray kOutputMarks { "-24", "-16", "-8", "0", "8", "16", "24" };
+
+    if (! inputKnobArea.isEmpty())
+    {
+        panel::drawKnobScale(g, inputKnobArea, kInputMarks, ink.withAlpha(0.8f));
+        panel::drawLegend(g, inputKnobArea.withY(inputKnobArea.getBottom() + 20.0f).withHeight(14.0f),
+                          "INPUT", ink, legendSize);
+    }
+    if (! outputKnobArea.isEmpty())
+    {
+        panel::drawKnobScale(g, outputKnobArea, kOutputMarks, ink.withAlpha(0.8f));
+        panel::drawLegend(g, outputKnobArea.withY(outputKnobArea.getBottom() + 20.0f).withHeight(14.0f),
+                          "OUTPUT", ink, legendSize);
+    }
+
+    // The rest of the legends, engraved under what they name.
+    auto legendUnder = [&](juce::Rectangle<int> control, const juce::String& text)
+    {
+        if (control.isEmpty())
+        {
+            return;
+        }
+        panel::drawLegend(g,
+                          juce::Rectangle<float>(static_cast<float>(control.getX()) - 12.0f,
+                                                 static_cast<float>(control.getBottom()) + 2.0f,
+                                                 static_cast<float>(control.getWidth()) + 24.0f,
+                                                 13.0f),
+                          text, ink, legendSize);
+    };
+
+    legendUnder(attack.getBounds(), "ATTACK");
+    legendUnder(release.getBounds(), "RELEASE");
+    legendUnder(linkButton.getBounds(), "LINK");
+
+    if (! ratioBankArea.isEmpty())
+    {
+        panel::drawLegend(g, ratioBankArea.withY(ratioBankArea.getBottom() + 1.0f).withHeight(13.0f),
+                          "RATIO", ink, legendSize);
+    }
+    if (! mixBankArea.isEmpty())
+    {
+        panel::drawLegend(g,
+                          juce::Rectangle<float>(mixBankArea.getX(),
+                                                 static_cast<float>(mix.getBounds().getBottom()) + 2.0f,
+                                                 mixBankArea.getWidth(), 13.0f),
+                          "MIX", ink, legendSize);
     }
 
     paintMeter(g, meterArea.toFloat());

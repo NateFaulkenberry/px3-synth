@@ -8,6 +8,29 @@
 
 class UIConfig;
 
+namespace px3::ui
+{
+// Where one of the two insert buttons sits in a strip, and how big it is.
+//
+// Free, and taking its paths as arguments, so the PRECEDENCE can be tested
+// directly. It has already been wrong once: the shared block was skipped
+// entirely because the existence check could not distinguish an undeclared
+// path from an empty one, and nothing failed - the buttons just silently kept
+// their compiled defaults.
+struct InsertButtonLayout
+{
+    int size { 26 };
+    int offsetX { 0 };
+    int offsetY { 0 };
+};
+
+// `sharedBase` is read first and `overrideBase` layered on top, key by key, so
+// a card block only has to declare what it changes.
+InsertButtonLayout readInsertButtonLayout(const UIConfig* config,
+                                          const juce::String& sharedBase,
+                                          const juce::String& overrideBase);
+} // namespace px3::ui
+
 class MixerChannelComponent final : public juce::Component
 {
 public:
@@ -77,13 +100,6 @@ private:
     // The two insert buttons are placed by coordinate rather than by row: they
     // sit in the strip's bottom corners, under the last knob row, and the exact
     // spot is a design decision the config owns.
-    struct InsertButtonLayout
-    {
-        int size { 26 };
-        int offsetX { 0 };
-        int offsetY { 0 };
-    };
-
-    InsertButtonLayout eqLayout;
-    InsertButtonLayout compLayout;
+    px3::ui::InsertButtonLayout eqLayout;
+    px3::ui::InsertButtonLayout compLayout;
 };

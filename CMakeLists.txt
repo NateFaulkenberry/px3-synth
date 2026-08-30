@@ -92,6 +92,7 @@ set(PX3_SHARED_SOURCES
         Source/UI/ModalBackdrop.cpp
     Source/UI/BusInsertOverlay.cpp
     Source/UI/BusEqGraph.cpp
+    Source/UI/FetPanelStyle.cpp
     Source/UI/MixerControls.cpp
         Source/UI/MixerChannelComponent.cpp
         Source/UI/TopMenuBar.cpp

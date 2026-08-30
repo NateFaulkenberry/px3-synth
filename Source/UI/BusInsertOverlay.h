@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "BusEqGraph.h"
+#include "FetPanelStyle.h"
 #include "Card.h"
 #include "MixerControls.h"
 
@@ -67,7 +68,13 @@ protected:
     {
         float margin { 6.0f };
         float radius { 6.0f };
-        juce::Colour colour { juce::Colour::fromRGBA(12, 14, 18, 255) };
+        juce::Colour colour { juce::Colour::fromRGB(12, 14, 18) };
+        float opacity { 1.0f };
+
+        juce::Colour effectiveColour() const
+        {
+            return colour.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, opacity));
+        }
     };
 
     // Inside the card's padding, inset by the inner overlay's own margin. This
@@ -199,12 +206,21 @@ private:
     juce::Label mixValue;
 
     std::array<juce::TextButton, 5> ratioButtons;
-    MixerToggleButton linkButton { "LINK" };
+    juce::TextButton linkButton { "LINK" };
 
     void knobLookAndFeelChanged() override;
 
+    // Panel furniture is painted rather than laid out as components, so
+    // resized() records where each piece went and paint() draws onto it.
     juce::Rectangle<int> meterArea;
+    juce::Rectangle<float> inputKnobArea;
+    juce::Rectangle<float> outputKnobArea;
+    juce::Rectangle<float> ratioBankArea;
+    juce::Rectangle<float> mixBankArea;
     float meterDb { 0.0f };
+
+    FetKnobLookAndFeel knobLook;
+    FetPushButtonLookAndFeel pushLook;
 };
 
 } // namespace px3::ui

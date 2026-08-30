@@ -223,8 +223,8 @@
   "mix": {
     "insertButton": { "size": { "width": 36, "height": 36 }, "cornerRadius": 4, "textSize": 9, "textColour": "#DCE2EC", "normalColour": "#2C2E34D2", "hoverColour": "#42464FE6", "activeColour": "#4C88CAE6", "pressedColour": "#60A4EEE6", "disabledColour": "#22222288", "borderColour": "#DCE0EC78" },
     "inserts": {
-      "eq": { "size": 36, "offsetX": 0, "offsetY": 0 },
-      "comp": { "size": 36, "offsetX": 0, "offsetY": 0 }
+      "eq": { "size": 46, "offsetX": 0, "offsetY": 0 },
+      "comp": { "size": 46, "offsetX": 0, "offsetY": 0 }
     },
     "panel": {
       "fillAlpha": 0,
@@ -477,19 +477,31 @@
     "comp": {
       "widthFraction": 0.58,
       "heightFraction": 0.44,
-      "innerPadding": 16,
-      "meterWidth": 200,
-      "meterHeight": 124,
-      "meterGap": 16,
-      "knobSize": 58,
-      "knobGap": 10,
-      "ratioGap": 18,
-      "ratioHeight": 28,
-      "ratioButtonGap": 6,
+      "innerPadding": 14,
+      "earWidth": 26,
+      "sectionGap": 10,
+      "legendHeight": 14,
+      "legendFontSize": 8.5,
+      "largeKnobSize": 62,
+      "smallKnobSize": 34,
+      "scaleMargin": 30,
+      "timeColumnWidth": 70,
+      "ratioWidth": 46,
+      "ratioButtonGap": 3,
+      "meterWidth": 176,
+      "meterInset": 6,
+      "meterBezelWidth": 7,
+      "screwRadius": 3.4,
       "grainAmount": 0.06,
+      "inkColor": "#2E3034",
+      "meterBezelColor": "#1A3460",
       "meterFaceColor": "#EEE7D2",
       "meterInkColor": "#262420",
-      "meterNeedleColor": "#18181A"
+      "meterNeedleColor": "#18181A",
+      "meterGlowColor": "#FFF4CED2",
+      "badgeColor": "#FFFFFF1E",
+      "badgeTextColor": "#E8EEF8",
+      "badgeFontSize": 7
     }
   },
   "cards": {
@@ -706,7 +718,7 @@
       },
       "border": { "color": "#EDF1F7", "opacity": 0.28, "radius": 10 },
       "title": { "color": "#F7FAFF", "fontSize": 12 },
-      "innerOverlay": { "margin": 4, "radius": 6, "color": "#101318FF" }
+      "innerOverlay": { "margin": 4, "radius": 6, "color": "#101318", "opacity": 1 }
     },
     "busInsertComp": {
       "margin": 0,
@@ -719,7 +731,7 @@
       },
       "border": { "color": "#EDF1F7", "opacity": 0.28, "radius": 10 },
       "title": { "color": "#F7FAFF", "fontSize": 12 },
-      "innerOverlay": { "margin": 4, "radius": 6, "color": "#BFC2C6FF" }
+      "innerOverlay": { "margin": 4, "radius": 6, "color": "#C6C8CB", "opacity": 1 }
     },
     "mixerChannel": {
       "margin": 2,

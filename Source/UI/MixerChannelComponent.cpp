@@ -7,6 +7,43 @@ MixerChannelComponent::MixerChannelComponent(Controls controlsIn)
 {
 }
 
+namespace px3::ui
+{
+InsertButtonLayout readInsertButtonLayout(const UIConfig* config,
+                                          const juce::String& sharedBase,
+                                          const juce::String& overrideBase)
+{
+    InsertButtonLayout layout;
+    if (config == nullptr)
+    {
+        return layout;
+    }
+
+    const auto apply = [&](const juce::String& base)
+    {
+        const auto number = [&](const char* key, int& field)
+        {
+            // getValue, NOT getObject: getObject hands back a fresh empty object
+            // for any path at all, so it can never report that something is
+            // absent. Using it as an existence test is what made the shared
+            // block unreachable.
+            if (const auto value = config->getValue(base + key); ! value.isVoid())
+            {
+                field = static_cast<int>(value);
+            }
+        };
+
+        number(".size", layout.size);
+        number(".offsetX", layout.offsetX);
+        number(".offsetY", layout.offsetY);
+    };
+
+    apply(sharedBase);
+    apply(overrideBase);
+    return layout;
+}
+} // namespace px3::ui
+
 void MixerChannelComponent::setSourceActive(bool active)
 {
     if (sourceActive == active)
@@ -78,45 +115,15 @@ void MixerChannelComponent::refreshCardStyle()
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
 
-    // The two insert buttons are placed by coordinate, so each needs its own
-    // size and offset. The shared block is read first and a card block may
-    // override it, which is what lets the dry strip and the FX strip place them
-    // differently without either having to restate the parts they share.
-    //
-    // Each key is tested with getValue, NOT with getObject: getObject returns a
-    // fresh empty object for a path that does not exist, so it can never report
-    // absence. Using it as an existence test here matched the card block that
-    // was not there, read nothing out of it, and stopped before reaching the
-    // shared one - so mix.inserts was silently dead.
-    auto readLayout = [this](const juce::String& which, InsertButtonLayout& target)
+    const auto readLayout = [this](const juce::String& which)
     {
-        target = {};
-        if (uiConfig == nullptr)
-        {
-            return;
-        }
-
-        const auto apply = [&](const juce::String& base)
-        {
-            const auto number = [&](const char* key, int& field)
-            {
-                if (const auto value = uiConfig->getValue(base + key); ! value.isVoid())
-                {
-                    field = static_cast<int>(value);
-                }
-            };
-
-            number(".size", target.size);
-            number(".offsetX", target.offsetX);
-            number(".offsetY", target.offsetY);
-        };
-
-        apply("mix.inserts." + which);
-        apply("cards." + cardStyleKey + ".inserts." + which);
+        return px3::ui::readInsertButtonLayout(uiConfig.get(),
+                                               "mix.inserts." + which,
+                                               "cards." + cardStyleKey + ".inserts." + which);
     };
 
-    readLayout("eq", eqLayout);
-    readLayout("comp", compLayout);
+    eqLayout = readLayout("eq");
+    compLayout = readLayout("comp");
 }
 
 // The insert buttons sit in the strip's bottom corners: EQ on the left, COMP on

@@ -311,3 +311,51 @@ and DAW state, no internal tuning constants serialised.
 - [GroupDIY — FET gain elements and their control law](https://groupdiy.com/threads/that-was-fet-compressors.42515/)
 - [Airwindows](https://github.com/airwindows/airwindows) — studied for envelope and nonlinearity decisions; the console channel/bus pairing already informs this project's AnalogEngine.
 - [Signalsmith Audio DSP](https://github.com/signalsmith-audio/dsp), [DSPFilters](https://github.com/vinniefalco/DSPFilters), [Faust](https://github.com/grame-cncm/faust) — compared for filter parameterisation and compressor structure.
+
+---
+
+## Which 1176: Revision H
+
+The compressor is modelled on **Revision H**, and the choice matters less than
+it sounds, because Rev H is a **cosmetic** revision. Its circuit is Rev G's.
+
+**What Rev H changed** (serials ~7652 onward), all of it visual:
+
+- faceplate from black anodised to **natural brushed aluminium**
+- the silkscreened maker's logo replaced by a **blue logo on a raised badge**
+- the VU movement changed to a Modutec **"light box"** type with two internal
+  lamps, so the face is lit rather than merely pale
+- the meter's Off button changed from black plastic to **red**
+
+**What it inherits, and what that means for the model:**
+
+- **Rev F** moved to a push-pull Class AB output amplifier and swapped the
+  output transformer. It measures the lowest harmonic distortion of any
+  revision - so this family is the *least* coloured 1176, not the most.
+- **Rev G** removed the **input transformer**, replacing it with a differential
+  op-amp input stage. The output stage is unchanged from F.
+- Rev H therefore has **no input transformer** and **does** have an output
+  transformer.
+
+Three consequences for `FetCompressor`, all of which the existing model already
+satisfies - recorded here so a later change cannot quietly break them:
+
+1. There is **no input transformer stage**, and there should not be one.
+2. There **is** an output transformer, which is why `outputTransformer` models
+   low-frequency saturation and blocks DC.
+3. This is the clean end of the family. The FET asymmetry is deliberately small
+   for that reason; a blue-stripe Rev A would want considerably more.
+
+The UI follows the same revision: brushed aluminium panel, engraved panel scales
+that do not turn with the caps, a vertical bank of latching ratio buttons, and a
+**lit** meter face whose lamps go out when the unit is bypassed.
+
+**No maker's name, model number or logo appears on the panel.** It is a generic
+archetype of a rack-mount FET limiter and carries this plug-in's own mark, the
+same rule the AnalogEngine's console profiles follow.
+
+Sources: the revision histories at
+[DIY Recording Equipment](https://www.diyrecordingequipment.com/blogs/news/15851664-the-complete-guide-to-urei-universal-audio-1176-revisions)
+and [Vintage King](https://vintageking.com/urei-1176-ln-silverface-rev-h-compressor-8560-vintage),
+cross-checked against the output-stage discussion at
+[GroupDIY](https://groupdiy.com/threads/build-1176-rev-f-g-new-board-new-transformer.33834/).
