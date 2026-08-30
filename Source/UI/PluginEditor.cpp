@@ -1853,23 +1853,19 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
         const auto radii = px3::ui::CornerRadii::fromConfig(uiConfig.get(), "performanceStrip",
                                                             px3::ui::CornerRadii::all(12.0f));
 
-        const auto from = uiConfig != nullptr
-                              ? uiConfig->getColour("performanceStrip.gradientFrom",
-                                                    juce::Colour::fromRGBA(56, 88, 118, 72))
-                              : juce::Colour::fromRGBA(56, 88, 118, 72);
-        const auto to = uiConfig != nullptr
-                            ? uiConfig->getColour("performanceStrip.gradientTo",
-                                                  juce::Colour::fromRGBA(35, 38, 42, 96))
-                            : juce::Colour::fromRGBA(35, 38, 42, 96);
+        // A solid fill, not a gradient. The diagonal ramp it used to carry read
+        // as a panel laid on top of the bar rather than as part of it, and it
+        // could not be matched to anything else in the interface - every other
+        // surface here is a flat colour with an opacity.
+        const auto fill = uiConfig != nullptr
+                              ? uiConfig->getColour("performanceStrip.background.color",
+                                                    juce::Colour::fromRGB(20, 20, 20))
+                              : juce::Colour::fromRGB(20, 20, 20);
+        const auto fillOpacity = uiConfig != nullptr
+                                     ? uiConfig->getFloat("performanceStrip.background.opacity", 1.0f)
+                                     : 1.0f;
 
-        juce::ColourGradient stripGradient(from,
-                                           performanceStrip.getX(),
-                                           performanceStrip.getY(),
-                                           to,
-                                           performanceStrip.getRight(),
-                                           performanceStrip.getBottom(),
-                                           false);
-        g.setGradientFill(stripGradient);
+        g.setColour(fill.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, fillOpacity)));
         px3::ui::fillRounded(g, performanceStrip, radii);
 
         const auto outlineWidth = uiConfig != nullptr

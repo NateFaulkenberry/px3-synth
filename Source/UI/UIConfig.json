@@ -39,7 +39,7 @@
   "keyboard": {
     "background": { "color": "#191919", "opacity": 1, "radius": 0,
                     "radiusTopLeft": 0, "radiusTopRight": 12,
-                    "radiusBottomRight": 0, "radiusBottomLeft": 0 },
+                    "radiusBottomRight": 12, "radiusBottomLeft": 0 },
     "padding": 8,
     "whiteKey": {
       "fill": "#F5F5F0",
@@ -75,16 +75,15 @@
     "radiusTopRight": 12,
     "radiusBottomRight": 12,
     "radiusBottomLeft": 12,
-    "gradientFrom": "#38587648",
-    "gradientTo": "#23262A60",
+    "background": { "color": "#141414", "opacity": 1 },
     "outline": { "color": "#FFFFFF32", "width": 1 },
     "divider": { "color": "#FFFFFF26", "width": 1, "inset": 8 }
   },
   "performance": {
     "background": { "color": "#141414", "opacity": 1 },
-    "border": { "inset": 2, "color": "#FFFFFF18", "width": 1, "radius": 0,
+    "border": { "inset": 0, "color": "#FFFFFF18", "width": 0, "radius": 0,
                 "radiusTopLeft": 12, "radiusTopRight": 0,
-                "radiusBottomRight": 0, "radiusBottomLeft": 0 },
+                "radiusBottomRight": 0, "radiusBottomLeft": 12 },
     "wheelPanel": { "color": "#111111DC", "radius": 8 },
     "title": { "color": "#E4E4E4", "fontSize": 10.5, "height": 18 },
     "track": {
@@ -532,18 +531,6 @@
       "disabledColour": "#22222288",
       "borderColour": "#DCE0EC78"
     },
-    "closeButton": {
-      "size": 24,
-      "offsetX": -2,
-      "offsetY": -16,
-      "ringWidth": 1.6,
-      "glyphWidth": 2,
-      "glyphInset": 0.32,
-      "seatColor": "#0C0E14BE",
-      "ringColor": "#EDF1F796",
-      "glyphColor": "#EDF1F7",
-      "hoverColor": "#B9BFC8"
-    },
     "eq": {
       "enableButton": { "size": { "height": 40 }, "offsetX": 0, "offsetY": -36, "legendPlacement": "right", "anchor": "innerTopLeft" },
       "closeButton": { "offsetX": -3, "offsetY": -16 },
@@ -561,8 +548,8 @@
       "spectrumColor": "#96C8FF3A"
     },
     "comp": {
-      "enableButton": { "offsetX": 0, "offsetY": 0, "legendPlacement": "below", "anchor": "innerTopLeft" },
-      "closeButton": { "offsetX": 0, "offsetY": 0 },
+      "enableButton": { "size": { "height": 40 }, "offsetX": 0, "offsetY": -36, "legendPlacement": "right", "anchor": "innerTopLeft" },
+      "closeButton": { "offsetX": -3, "offsetY": -16 },
       "widthFraction": 0.58,
       "heightFraction": 0.44,
       "innerPadding": 14,

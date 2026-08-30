@@ -13715,9 +13715,10 @@ void testEditorLifecycle()
                                                                      px3::ui::CornerRadii::all(-1.0f));
                 const auto declared = shipping != nullptr
                                       && ! shipping->getValue("performanceStrip.enabled").isVoid()
-                                      && shipping->getColour("performanceStrip.gradientFrom",
+                                      && shipping->getColour("performanceStrip.background.color",
                                                              juce::Colours::transparentBlack)
                                              != juce::Colours::transparentBlack
+                                      && ! shipping->getValue("performanceStrip.background.opacity").isVoid()
                                       && ! shipping->getValue("performanceStrip.outline.width").isVoid()
                                       && ! shipping->getValue("performanceStrip.divider.inset").isVoid();
 
