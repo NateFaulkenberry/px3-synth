@@ -300,7 +300,7 @@ void MixPanel::configureChannelWidgets(ChannelWidgets& channel,
 void MixPanel::addInsertButtons(ChannelWidgets& channel, int bus)
 {
     channel.eqInsert = std::make_unique<InsertButton>("EQ");
-    channel.compInsert = std::make_unique<InsertButton>("CMP");
+    channel.compInsert = std::make_unique<InsertButton>("COMP");
 
     channel.eqInsert->onClick = [this, bus]()
     {

@@ -43,6 +43,7 @@
 #include "../UI/UIConfigManager.h"
 #include "../UI/BusEqGraph.h"
 #include "../UI/MixerControls.h"
+#include "../UI/MixerChannelComponent.h"
 #include "../UI/UIConfig.h"
 #include "../DSP/Delay.h"
 #include "../DSP/EnvelopeGenerator.h"
@@ -14997,40 +14998,43 @@ void testBusInserts()
         if (editor != nullptr)
         {
             collectNamed(*editor, "EQ", eqButtons);
-            collectNamed(*editor, "CMP", compButtons);
+            collectNamed(*editor, "COMP", compButtons);
         }
 
         // Two of each: the dry strip and the FX strip. A source channel gets
         // none, so a third pair here would mean they had leaked onto strips
         // with no inserts behind them.
-        // The size the buttons actually come out at, under the SHIPPING config.
-        // The editor a test builds resolves no config file - the test binary has
-        // no bundled copy - so the buttons above are at their compiled defaults,
-        // and asserting on them would pin the fallback rather than the config.
-        // This drives the same lookup the component uses, against the real file.
+        // The lookup itself, on synthetic configs. It asserts the PRECEDENCE
+        // rather than any particular size: the sizes in the shipping config are
+        // a design decision that belongs to whoever is tuning the layout, and a
+        // test that pins them just fails whenever the design moves.
         {
-            UIConfigManager manager;
-            manager.setConfigFile(juce::File::getCurrentWorkingDirectory()
-                                      .getChildFile("Source/UI/UIConfig.json"));
-            manager.loadInitial();
-            const auto config = manager.getConfig();
+            juce::String error;
 
-            const auto sharedSize = config != nullptr ? config->getInt("mix.inserts.eq.size", -1) : -1;
-            const auto compSize = config != nullptr ? config->getInt("mix.inserts.comp.size", -1) : -1;
+            const auto sharedOnly = UIConfig::fromJsonText(
+                R"({ "mix": { "inserts": { "eq": { "size": 41, "offsetX": 3 } } } })", error);
+            const auto shared = px3::ui::readInsertButtonLayout(sharedOnly.get(),
+                                                                "mix.inserts.eq",
+                                                                "cards.mixerDry.inserts.eq");
 
-            // getObject cannot be used to ask whether a block exists: it hands
-            // back a fresh empty object for any path at all. That is exactly how
-            // the shared block got skipped - the card block "existed", supplied
-            // nothing, and the lookup stopped there.
-            const auto absentBlock = config != nullptr
-                                         ? config->getValue("cards.mixerDry.inserts.eq")
-                                         : juce::var();
+            const auto withOverride = UIConfig::fromJsonText(
+                R"({ "mix": { "inserts": { "eq": { "size": 41, "offsetX": 3 } } },
+                     "cards": { "mixerDry": { "inserts": { "eq": { "size": 55 } } } } })", error);
+            const auto overridden = px3::ui::readInsertButtonLayout(withOverride.get(),
+                                                                    "mix.inserts.eq",
+                                                                    "cards.mixerDry.inserts.eq");
 
-            check("BusInsert_ButtonSizeComesFromTheSharedBlock",
-                  sharedSize == 36 && compSize == 36 && absentBlock.isVoid(),
-                  "mix.inserts sizes " + juce::String(sharedSize) + "/" + juce::String(compSize)
-                      + ", and an undeclared card block reads as "
-                      + juce::String(absentBlock.isVoid() ? "absent" : "PRESENT"));
+            check("BusInsert_ButtonLayoutFallsBackToTheSharedBlock",
+                  shared.size == 41 && shared.offsetX == 3,
+                  "with no card block declared: size " + juce::String(shared.size)
+                      + ", offsetX " + juce::String(shared.offsetX) + " (expected 41 / 3)");
+
+            // The override replaces only what it declares - offsetX is not in
+            // the card block and has to survive from the shared one.
+            check("BusInsert_ACardBlockOverridesOnlyWhatItDeclares",
+                  overridden.size == 55 && overridden.offsetX == 3,
+                  "with a card block declaring size only: size " + juce::String(overridden.size)
+                      + ", offsetX " + juce::String(overridden.offsetX) + " (expected 55 / 3)");
         }
 
         check("BusInsert_OnlyTheBusStripsCarryInsertButtons",
@@ -15354,6 +15358,45 @@ void testBusInserts()
         const auto compInner = config != nullptr
                                    ? config->getColour("cards.busInsertComp.innerOverlay.color", juce::Colours::transparentBlack)
                                    : juce::Colours::transparentBlack;
+
+        // Every property the panel paints with has to be reachable, or it is a
+        // hard-coded look wearing a configurable one's clothes. This walks the
+        // whole declared block and requires each key to parse.
+        {
+            static const std::array<const char*, 12> numbers { {
+                "innerPadding", "earWidth", "sectionGap", "legendHeight", "legendFontSize",
+                "largeKnobSize", "smallKnobSize", "scaleMargin", "timeColumnWidth",
+                "ratioWidth", "meterWidth", "screwRadius",
+            } };
+            static const std::array<const char*, 7> colours { {
+                "inkColor", "meterBezelColor", "meterFaceColor", "meterInkColor",
+                "meterNeedleColor", "meterGlowColor", "badgeTextColor",
+            } };
+
+            juce::String missing;
+            for (const auto* key : numbers)
+            {
+                if (config == nullptr || config->getValue(juce::String("busInserts.comp.") + key).isVoid())
+                {
+                    missing << key << " ";
+                }
+            }
+            for (const auto* key : colours)
+            {
+                if (config == nullptr
+                    || config->getColour(juce::String("busInserts.comp.") + key, juce::Colours::transparentBlack)
+                           == juce::Colours::transparentBlack)
+                {
+                    missing << key << " ";
+                }
+            }
+
+            check("BusInsert_CompressorPanelIsFullyConfigurable", missing.isEmpty(),
+                  missing.isEmpty()
+                      ? juce::String(static_cast<int>(numbers.size() + colours.size()))
+                            + " panel properties all declared and parsing"
+                      : "not reachable from config: " + missing);
+        }
 
         check("BusInsert_ShippingConfigStylesBothSheetsAsCards",
               config != nullptr
