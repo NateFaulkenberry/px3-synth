@@ -187,6 +187,10 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     };
 
     addToPanel(debugPanelTitle);
+    // The CPU/RAM readout. It used to float over the plugin editor itself,
+    // covering whatever was in the bottom-left corner; it belongs with the rest
+    // of the diagnostics.
+    addToPanel(debugPerformanceOverlayLabel);
     addToPanel(debugPanelCloseButton);
     addToPanel(debugClearLogButton);
     addToPanel(debugCopyLogButton);
@@ -801,6 +805,13 @@ void PX3SynthAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& 
     auto top = area.removeFromTop(30);
     debugPanelTitle.setBounds(top.removeFromLeft(320));
     debugPanelCloseButton.setBounds(top.removeFromRight(90));
+
+    // In the gap the title row already has, between the title and the close
+    // button - so it covers no control and no output pane. Taken from the
+    // RIGHT of what is left, leaving a margin before the close button.
+    top.removeFromRight(12);
+    debugPerformanceOverlayLabel.setBounds(
+        top.removeFromRight(juce::jmin(260, juce::jmax(0, top.getWidth()))));
 
     auto actionRow1 = area.removeFromTop(28);
     debugSerializeButton.setBounds(actionRow1.removeFromLeft(200));

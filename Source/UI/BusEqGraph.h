@@ -105,7 +105,9 @@ private:
     int hoverBand { -1 };
     int dragBand { -1 };
     bool analyserRunning { false };
-    bool editable { true };
+    // Starts false: the EQ defaults to bypassed, and a graph that begins
+    // editable would accept a drag before the first poll ran.
+    bool editable { false };
 
     juce::dsp::FFT fft { kFftOrder };
     std::vector<float> fftScratch;

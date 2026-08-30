@@ -1581,8 +1581,9 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     debugPerformanceOverlayLabel.setColour(juce::Label::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 56));
     debugPerformanceOverlayLabel.setFont(juce::FontOptions(11.0f));
     debugPerformanceOverlayLabel.setInterceptsMouseClicks(false, false);
-    addAndMakeVisible(debugPerformanceOverlayLabel);
-    debugPerformanceOverlayLabel.toFront(false);
+    // NOT added to the editor. It used to float over the bottom-left corner of
+    // the plugin window, on top of whatever happened to be there; it lives in
+    // the debug console's title row now. See layoutDebugPanel.
     refreshDebugPerformanceOverlay();
 #endif
 
@@ -2082,17 +2083,7 @@ void PX3SynthAudioProcessorEditor::resized()
     footerRight.removeFromLeft(10);
     presetBrowserCloseButton.setBounds(footerRight.removeFromLeft(90));
 
-#if PX3_DEBUG_PANEL
-    constexpr int overlayWidth = 170;
-    constexpr int overlayHeight = 20;
-    constexpr int overlayMargin = 12;
-    debugPerformanceOverlayArea = { overlayMargin,
-                                    getHeight() - overlayHeight - overlayMargin,
-                                    overlayWidth,
-                                    overlayHeight };
-    debugPerformanceOverlayLabel.setBounds(debugPerformanceOverlayArea);
-    debugPerformanceOverlayLabel.toFront(false);
-#endif
+
 
 }
 

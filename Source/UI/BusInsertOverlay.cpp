@@ -441,31 +441,42 @@ void BusEqOverlay::timerCallback()
         return;
     }
 
-    // A bypassed EQ's controls are dead: the graph refuses the mouse and every
-    // band control greys out. Polled rather than attached because the enable
-    // also moves from automation, from a preset load, and from the strip.
+    refreshControlEnablement();
+    refreshReadouts();
+}
+
+// A bypassed EQ's controls are dead: the graph refuses the mouse and every band
+// control greys out. Polled rather than attached because the enable also moves
+// from automation, from a preset load, and from the strip.
+void BusEqOverlay::refreshControlEnablement()
+{
     const auto& params = processor.getBusInsertParams(busIndex);
     const auto live = params.eqEnabled != nullptr && params.eqEnabled->get();
 
-    if (live != controlsLive)
+    if (live == controlsLive && enablementApplied)
     {
-        controlsLive = live;
-        graph.setEditable(live);
+        return;
+    }
 
-        for (auto& strip : bands)
+    controlsLive = live;
+    enablementApplied = true;
+    graph.setEditable(live);
+
+    for (auto& strip : bands)
+    {
+        strip.type.setEnabled(live);
+        strip.frequency.setEnabled(live);
+        strip.q.setEnabled(live);
+        for (auto* label : { &strip.caption, &strip.frequencyValue, &strip.gainValue,
+                             &strip.qValue, &strip.frequencyCaption, &strip.gainCaption,
+                             &strip.qCaption })
         {
-            strip.type.setEnabled(live);
-            strip.frequency.setEnabled(live);
-            strip.q.setEnabled(live);
-            for (auto* label : { &strip.caption, &strip.frequencyValue, &strip.gainValue,
-                                 &strip.qValue, &strip.frequencyCaption, &strip.gainCaption,
-                                 &strip.qCaption })
-            {
-                label->setEnabled(live);
-            }
+            label->setEnabled(live);
         }
     }
 
+    // The gain knobs have a second reason to be disabled, so refreshReadouts
+    // owns them; it runs immediately after this on every tick.
     refreshReadouts();
 }
 
@@ -708,6 +719,42 @@ void BusCompOverlay::rebuildForBus()
         std::make_unique<juce::SliderParameterAttachment>(*params.compMix, mix, nullptr));
 }
 
+// A bypassed compressor's controls are dead, exactly as the EQ's are: a knob
+// that moves a parameter nothing is reading is offering an edit that changes
+// nothing audible.
+void BusCompOverlay::refreshControlEnablement()
+{
+    const auto& params = processor.getBusInsertParams(busIndex);
+    const auto live = params.compEnabled != nullptr && params.compEnabled->get();
+
+    if (live == controlsLive && enablementApplied)
+    {
+        return;
+    }
+
+    controlsLive = live;
+    enablementApplied = true;
+
+    for (auto* slider : { &input, &output, &attack, &release, &mix })
+    {
+        slider->setEnabled(live);
+    }
+    for (auto& button : ratioButtons)
+    {
+        button.setEnabled(live);
+    }
+    for (auto& button : meterModeButtons)
+    {
+        button.setEnabled(live);
+    }
+    linkButton.setEnabled(live);
+    mixValue.setEnabled(live);
+
+    // The panel legends and the meter face are painted, not components, so they
+    // follow the enable through a repaint rather than a flag.
+    repaint();
+}
+
 px3::CompMeterMode BusCompOverlay::meterMode() const
 {
     const auto& params = processor.getBusInsertParams(busIndex);
@@ -740,6 +787,8 @@ void BusCompOverlay::timerCallback()
     }
 
     mixValue.setText(juce::String(juce::roundToInt(mix.getValue() * 100.0)) + "%", juce::dontSendNotification);
+
+    refreshControlEnablement();
 
     // The mode buttons are a radio group driven by a choice parameter, so their
     // lit state is polled for the same reason the ratio bank's is.

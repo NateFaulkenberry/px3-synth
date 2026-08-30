@@ -42,6 +42,7 @@
 #include "../UI/FxSignalFlow.h"
 #include "../UI/UIConfigManager.h"
 #include "../UI/BusEqGraph.h"
+#include "../UI/BusInsertOverlay.h"
 #include "../UI/MixerControls.h"
 #include "../UI/MixerChannelComponent.h"
 #include "../UI/FetPanelStyle.h"
@@ -15280,7 +15281,7 @@ void testBusInserts()
         check("BusInsert_OnlyTheBusStripsCarryInsertButtons",
               eqButtons.size() == 2 && compButtons.size() == 2,
               "found " + juce::String(static_cast<int>(eqButtons.size())) + " EQ and "
-                  + juce::String(static_cast<int>(compButtons.size())) + " CMP buttons across six strips");
+                  + juce::String(static_cast<int>(compButtons.size())) + " COMP buttons across six strips");
 
         // ---- opening a sheet blocks the UI behind it -----------------------
         juce::Component* before = nullptr;
@@ -15429,8 +15430,15 @@ void testBusInserts()
         if (graph != nullptr && dry.bandFreq[1] != nullptr)
         {
             // ---- dragging band 2 moves its frequency and its gain ----------
+            setParam(processor, "dryEqEnabled", 1.0f);
             setParam(processor, "dryEqFreq2", 300.0f);
             setParam(processor, "dryEqGain2", 0.0f);
+
+            // The graph starts non-editable because the EQ starts bypassed, and
+            // the poll that would notice the enable runs on a timer that does
+            // not dispatch without a message loop. Applied directly here; the
+            // bypass test below covers the state machine itself.
+            graph->setEditable(true);
 
             const auto plot = graph->plotBounds();
             const auto startPoint = juce::Point<float>(
@@ -15543,6 +15551,7 @@ void testBusInserts()
             setChoice(processor, "dryEqType1", 1);      // high pass
             setParam(processor, "dryEqGain1", 0.0f);
             setParam(processor, "dryEqFreq1", 100.0f);
+            graph->setEditable(true);
 
             const auto plot = graph->plotBounds();
             const auto x = plot.getX() + plot.getWidth()
@@ -15583,8 +15592,93 @@ void testBusInserts()
               runningWhileOpen && ! runningWhileClosed,
               juce::String("tap active with the sheet open: ") + (runningWhileOpen ? "yes" : "NO")
                   + ", after closing: " + (runningWhileClosed ? "STILL ON" : "no"));
+
+        // ---- a bypassed compressor is dead too ------------------------------
+        // Same rule as the EQ: nothing on a bypassed processor's face should
+        // accept an edit. Driven through the sheet's own poll, so this also
+        // proves the poll reaches every control rather than a subset.
+        {
+            std::vector<juce::Component*> cmpButtons;
+            collectNamed(*editor, "COMP", cmpButtons);
+            if (! cmpButtons.empty())
+            {
+                if (auto* b = dynamic_cast<juce::Button*>(cmpButtons.front());
+                    b != nullptr && b->onClick != nullptr)
+                {
+                    b->onClick();
+                }
+            }
+
+            // Find the sheet that is now up, and every slider and button on it.
+            juce::Component* sheet = nullptr;
+            for (auto* child : editor->getChildren())
+            {
+                if (child != nullptr && child->isVisible()
+                    && dynamic_cast<px3::ui::BusCompOverlay*>(child) != nullptr)
+                {
+                    sheet = child;
+                }
+            }
+
+            auto countEnabled = [](juce::Component& root)
+            {
+                auto enabled = 0;
+                auto total = 0;
+                std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+                {
+                    for (auto* child : c.getChildren())
+                    {
+                        if (child == nullptr) continue;
+                        // The enable and close controls stay live by design -
+                        // switching a bypassed unit back on is the one thing
+                        // its face must still allow.
+                        const auto isChrome = child->getName() == "ON" || child->getName() == "CLOSE";
+                        if (! isChrome
+                            && (dynamic_cast<juce::Slider*>(child) != nullptr
+                                || dynamic_cast<juce::Button*>(child) != nullptr))
+                        {
+                            ++total;
+                            if (child->isEnabled()) ++enabled;
+                        }
+                        walk(*child);
+                    }
+                };
+                walk(root);
+                return std::make_pair(enabled, total);
+            };
+
+            const auto& comp = processor.getBusInsertParams(PX3SynthAudioProcessor::dryBusInsert);
+            if (comp.compEnabled != nullptr) comp.compEnabled->setValueNotifyingHost(0.0f);
+            // Driven through the sheet's public refresh, not its timer:
+            // juce::Timer is a PRIVATE base here, so a dynamic_cast to it from
+            // outside returns null and the callback never runs - which is
+            // exactly what made the first version of this test report every
+            // control still live.
+            if (auto* c = dynamic_cast<px3::ui::BusInsertOverlay*>(sheet); c != nullptr)
+            {
+                c->refreshControlEnablement();
+            }
+            const auto whenOff = sheet != nullptr ? countEnabled(*sheet) : std::make_pair(-1, -1);
+
+            if (comp.compEnabled != nullptr) comp.compEnabled->setValueNotifyingHost(1.0f);
+            if (auto* c = dynamic_cast<px3::ui::BusInsertOverlay*>(sheet); c != nullptr)
+            {
+                c->refreshControlEnablement();
+            }
+            const auto whenOn = sheet != nullptr ? countEnabled(*sheet) : std::make_pair(-1, -1);
+
+            check("BusComp_BypassedFaceAcceptsNoEdits",
+                  sheet != nullptr && whenOff.second > 0
+                      && whenOff.first == 0 && whenOn.first == whenOn.second,
+                  sheet == nullptr
+                      ? juce::String("no compressor sheet open")
+                      : juce::String(whenOff.first) + " of " + juce::String(whenOff.second)
+                            + " controls live while bypassed, " + juce::String(whenOn.first)
+                            + " of " + juce::String(whenOn.second) + " once enabled");
+        }
     }
 
+    
     {
         // The tap itself, away from any UI. A ring the writer laps would show a
         // spectrum assembled from two different moments.

@@ -86,6 +86,14 @@ public:
     // to run - the spectrum tap - only runs while it is on screen.
     virtual void setSheetVisible(bool shown);
 
+    // Applies "is this processor bypassed" to every control on the face.
+    //
+    // Public and separate from the timer that normally drives it because the
+    // timer is a PRIVATE base - juce::Timer is inherited privately here, so a
+    // caller outside cannot reach timerCallback even by dynamic_cast, and this
+    // is otherwise only observable by waiting for a message loop.
+    virtual void refreshControlEnablement() {}
+
     std::function<void()> onClose;
 
 protected:
@@ -194,6 +202,11 @@ private:
     void timerCallback() override;
     void refreshReadouts();
 
+public:
+    void refreshControlEnablement() override;
+
+private:
+
     struct BandStrip
     {
         juce::ComboBox type;
@@ -214,8 +227,14 @@ private:
 
     std::array<BandStrip, kBandCount> bands;
     BusEqGraph graph;
-    // Starts false so the first poll always applies the real state.
+    // The cached state, plus whether it has ever been applied.
+    //
+    // The flag alone is not enough: it starts false and both processors default
+    // to disabled, so "has it changed" is false on the first poll and the
+    // controls would never actually be greyed out - they would simply stay in
+    // whatever state they were constructed in, which is enabled.
     bool controlsLive { false };
+    bool enablementApplied { false };
 };
 
 // ---------------------------------------------------------------------------
@@ -236,6 +255,11 @@ private:
     juce::String sheetTitle() const override { return busName + " COMP"; }
     juce::String cardStyleKey() const override { return "busInsertComp"; }
     void timerCallback() override;
+
+public:
+    void refreshControlEnablement() override;
+
+private:
 
     // A moving-coil VU face reading gain reduction, which on this unit runs
     // right to left - the needle falls as the compressor works.
@@ -273,6 +297,14 @@ private:
     float meterDb { 0.0f };
 
     FetPushButtonLookAndFeel pushLook;
+    // The cached state, plus whether it has ever been applied.
+    //
+    // The flag alone is not enough: it starts false and both processors default
+    // to disabled, so "has it changed" is false on the first poll and the
+    // controls would never actually be greyed out - they would simply stay in
+    // whatever state they were constructed in, which is enabled.
+    bool controlsLive { false };
+    bool enablementApplied { false };
 };
 
 } // namespace px3::ui
