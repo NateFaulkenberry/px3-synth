@@ -49,12 +49,27 @@ public:
     // it likes. Never a lock and never a queue on the audio thread.
     float gainReductionDb() const { return meterDb.load(std::memory_order_relaxed); }
 
-    // Level either side of the unit, in dBFS, with the same ballistics as the
-    // gain-reduction readout so the needle behaves the same whichever source
-    // the meter is switched to. Input is measured AFTER the input control,
-    // because that is the signal the unit is actually working on.
+    // Level either side of the unit, in dBFS, as a VU detector measures it:
+    // the FULL-WAVE AVERAGE of the signal over a short window, scaled by
+    // pi/(2*sqrt(2)) so a sine reads its RMS. Not peak, which the movement
+    // could never follow, and not RMS, which is not what a moving-coil
+    // mechanism responds to.
+    //
+    // Deliberately carries NO ballistics. The 300 ms response belongs to the
+    // needle, and it is simulated in the GUI - see px3::ui::VuBallistics.
+    // Smoothing here as well would apply it twice and the meter would crawl.
+    //
+    // Input is measured AFTER the input control, because that is the signal
+    // the unit is actually working on.
     float inputLevelDb() const { return inputMeterDb.load(std::memory_order_relaxed); }
     float outputLevelDb() const { return outputMeterDb.load(std::memory_order_relaxed); }
+
+    // The average is taken over a window far shorter than the movement's own
+    // response, so it stabilises the reading without colouring it.
+    static constexpr float kVuWindowSeconds = 0.010f;
+    // mean|x| for a sine is (2/pi)A while its RMS is A/sqrt(2); this is the
+    // ratio, and it is what makes a sine read its RMS on the scale.
+    static constexpr float kAverageToRms = 1.110721f;
 
     // Attack 20 us to 800 us and release 50 ms to 1.1 s, the hardware ranges.
     static constexpr float kAttackFastUs = 20.0f;
@@ -120,8 +135,11 @@ private:
     std::atomic<float> inputMeterDb { -60.0f };
     std::atomic<float> outputMeterDb { -60.0f };
     float meterSmoothed { 0.0f };
-    float inputMeterSmoothed { -60.0f };
-    float outputMeterSmoothed { -60.0f };
+    // Full-wave accumulators, emptied into the atomics once per window.
+    double inputRectifiedSum { 0.0 };
+    double outputRectifiedSum { 0.0 };
+    int vuWindowSamples { 480 };
+    int vuWindowCount { 0 };
 };
 
 } // namespace px3

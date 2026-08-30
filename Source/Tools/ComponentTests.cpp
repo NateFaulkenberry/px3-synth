@@ -49,6 +49,8 @@
 #include "../UI/PerformanceControls.h"
 #include "../UI/ModalBackdrop.h"
 #include "../UI/RoundedRect.h"
+#include "../UI/VuBallistics.h"
+#include "../UI/VuMeterComponent.h"
 #include "../UI/UIConfig.h"
 #include "../DSP/Delay.h"
 #include "../DSP/EnvelopeGenerator.h"
@@ -14431,6 +14433,310 @@ double eqGainDb(const px3::EqSettings& settings, double hz)
     return juce::Decibels::gainToDecibels(std::sqrt(sumOut / juce::jmax(1.0e-12, sumIn)), -120.0);
 }
 
+
+//==============================================================================
+// VU METER PHYSICS
+//
+// Tested without a GUI, which is the reason the model is a plain struct with no
+// JUCE in it. Every figure below is checked against ANSI C16.5 / IEC 60268-17
+// rather than against whatever the implementation happens to produce.
+//==============================================================================
+namespace
+{
+// Runs a step input at a given frame rate and reports what the movement did.
+struct StepResponse
+{
+    double timeToNinetyNinePercent { -1.0 };
+    double peak { 0.0 };
+    double timeToPeak { 0.0 };
+    double finalPosition { 0.0 };
+    bool stayedFinite { true };
+};
+
+StepResponse runStep(double frameRateHz, double seconds = 2.0, double target = 1.0)
+{
+    px3::ui::VuBallistics movement;
+    movement.reset(0.0);
+
+    StepResponse result;
+    const auto dt = 1.0 / frameRateHz;
+
+    for (double t = 0.0; t < seconds; t += dt)
+    {
+        movement.step(target, dt);
+
+        const auto p = movement.position();
+        result.stayedFinite = result.stayedFinite && std::isfinite(p)
+                              && std::isfinite(movement.velocity());
+
+        if (result.timeToNinetyNinePercent < 0.0 && p >= target * 0.99)
+        {
+            result.timeToNinetyNinePercent = t + dt;
+        }
+
+        if (p > result.peak)
+        {
+            result.peak = p;
+            result.timeToPeak = t + dt;
+        }
+    }
+
+    result.finalPosition = movement.position();
+    return result;
+}
+} // namespace
+
+void testVuBallistics()
+{
+    suite("VU METER PHYSICS");
+
+    // ---- the detector is a full-wave average, calibrated for a sine --------
+    // A VU movement is driven through a rectifier and responds to the MEAN of
+    // the rectified signal. For a sine, mean|x| is (2/pi)A while its RMS is
+    // A/sqrt(2), so the detector applies pi/(2*sqrt(2)) and a sine then reads
+    // its own RMS. Getting this wrong is a 0.9 dB error on sine and a much
+    // larger one on anything peaky.
+    {
+        auto measure = [](float amplitude, bool square)
+        {
+            px3::FetCompressor comp;
+            comp.prepare(kSampleRate);
+
+            px3::CompressorSettings settings;
+            settings.enabled = true;
+            settings.inputDb = 0.0f;
+            settings.outputDb = 0.0f;
+            settings.ratio = px3::CompRatio::fourToOne;
+            settings.mix = 1.0f;
+            comp.setSettings(settings);
+
+            for (int i = 0; i < static_cast<int>(kSampleRate * 0.4); ++i)
+            {
+                const auto phase = juce::MathConstants<double>::twoPi * 220.0 * i / kSampleRate;
+                auto value = square ? (std::sin(phase) >= 0.0 ? amplitude : -amplitude)
+                                    : amplitude * static_cast<float>(std::sin(phase));
+                auto l = value;
+                auto r = value;
+                comp.processSample(l, r);
+            }
+
+            return comp.inputLevelDb();
+        };
+
+        // A sine well below the threshold, so the compressor is a wire and the
+        // reading is the detector's alone.
+        const auto sineDb = measure(0.02f, false);
+        const auto expectedSine = juce::Decibels::gainToDecibels(0.02f / std::sqrt(2.0f), -60.0f);
+
+        // A square wave has mean|x| == peak == RMS, so a full-wave average
+        // detector calibrated for sine OVER-reads it by exactly the same
+        // 1.1107 factor - which is the signature of an averaging detector and
+        // would not appear on an RMS one.
+        const auto squareDb = measure(0.02f, true);
+        const auto expectedSquare = juce::Decibels::gainToDecibels(0.02f * 1.110721f, -60.0f);
+
+        check("Vu_DetectorIsAFullWaveAverageCalibratedForSine",
+              std::abs(sineDb - expectedSine) < 0.15f
+                  && std::abs(squareDb - expectedSquare) < 0.15f,
+              "sine reads " + fmt(sineDb, 2) + " dB (its RMS is " + fmt(expectedSine, 2)
+                  + "); square reads " + fmt(squareDb, 2) + " dB (average detector predicts "
+                  + fmt(expectedSquare, 2) + ")");
+    }
+
+
+    // ---- the two published numbers ----------------------------------------
+    {
+        const auto response = runStep(1000.0);
+
+        // 99% of full-scale deflection in 300 ms. Checked at a fine time step
+        // so this measures the MODEL, not the integrator's resolution.
+        check("Vu_ReachesNinetyNinePercentInThreeHundredMs",
+              response.timeToNinetyNinePercent > 0.285
+                  && response.timeToNinetyNinePercent < 0.315,
+              "reached 99% at " + fmt(response.timeToNinetyNinePercent * 1000.0, 1)
+                  + " ms (specification: 300 ms)");
+
+        // Overshoot not less than 1% and not more than 1.5%. A first-order
+        // smoother cannot produce this at all, which is what ruled the old
+        // implementation out.
+        const auto overshootPercent = (response.peak - 1.0) * 100.0;
+        check("Vu_OvershootIsWithinTheSpecifiedOneToOneAndAHalfPercent",
+              overshootPercent >= 1.0 && overshootPercent <= 1.5,
+              "overshot by " + fmt(overshootPercent, 2) + "% at "
+                  + fmt(response.timeToPeak * 1000.0, 0) + " ms");
+    }
+
+    // ---- scale calibration --------------------------------------------------
+    // The mapping is checked against the marks it has to line up with, not
+    // adjusted until it looks close. 0 VU is -18 dBFS by declaration, and the
+    // scale is linear in amplitude, so each mark's position is predictable in
+    // closed form.
+    {
+        using Meter = px3::ui::VuMeterComponent;
+
+        struct Point { double dbfs; double expected; const char* name; };
+        const auto fullScale = std::pow(10.0, 3.0 / 20.0);
+
+        std::vector<Point> points;
+        for (const auto vu : { -20.0, -10.0, -5.0, 0.0, 3.0 })
+        {
+            points.push_back({ Meter::kZeroVuDbfs + vu,
+                               std::pow(10.0, vu / 20.0) / fullScale,
+                               "" });
+        }
+
+        auto worst = 0.0;
+        for (const auto& point : points)
+        {
+            worst = juce::jmax(worst, std::abs(Meter::positionForLevelDb(point.dbfs) - point.expected));
+        }
+
+        // Silence pins to the left stop, and 0 VU lands where a VU face puts it.
+        const auto atSilence = Meter::positionForLevelDb(-120.0);
+        const auto atZeroVu = Meter::positionForLevelDb(Meter::kZeroVuDbfs);
+
+        check("Vu_ScaleCalibrationMatchesItsMarks",
+              worst < 1.0e-9 && atSilence <= 0.001
+                  && atZeroVu > 0.70 && atZeroVu < 0.72,
+              "worst deviation across -20/-10/-5/0/+3 VU: " + fmt(worst, 12)
+                  + "; 0 VU sits at " + fmt(atZeroVu * 100.0, 1) + "% of the sweep, silence at "
+                  + fmt(atSilence * 100.0, 2) + "%");
+
+        // Gain reduction rests at the right stop and falls left.
+        check("Vu_GainReductionScaleRestsAtTheRightStop",
+              Meter::positionForReductionDb(0.0) > 0.999
+                  && Meter::positionForReductionDb(20.0) < 0.11
+                  && Meter::positionForReductionDb(6.0) > Meter::positionForReductionDb(12.0),
+              "0 dB at " + fmt(Meter::positionForReductionDb(0.0) * 100.0, 1)
+                  + "%, 6 dB at " + fmt(Meter::positionForReductionDb(6.0) * 100.0, 1)
+                  + "%, 20 dB at " + fmt(Meter::positionForReductionDb(20.0) * 100.0, 1) + "%");
+    }
+
+    // ---- it settles rather than ringing ------------------------------------
+    {
+        px3::ui::VuBallistics movement;
+        movement.reset(0.0);
+
+        constexpr auto dt = 1.0 / 240.0;
+        for (int i = 0; i < static_cast<int>(3.0 / dt); ++i)
+        {
+            movement.step(1.0, dt);
+        }
+
+        check("Vu_SettlesRatherThanOscillating",
+              std::abs(movement.position() - 1.0) < 0.001
+                  && std::abs(movement.velocity()) < 0.01,
+              "after 3 s at a held target: position " + fmt(movement.position(), 5)
+                  + ", velocity " + fmt(movement.velocity(), 5));
+    }
+
+    // ---- FRAME RATE INDEPENDENCE -------------------------------------------
+    // The brief singles this out, and it is the property that separates a
+    // physical model from "move X per frame": the same target sequence must
+    // produce the same trajectory whether the GUI runs at 30 or 120.
+    {
+        const auto at30 = runStep(30.0);
+        const auto at60 = runStep(60.0);
+        const auto at90 = runStep(90.0);
+        const auto at120 = runStep(120.0);
+
+        const auto rises = { at30.timeToNinetyNinePercent, at60.timeToNinetyNinePercent,
+                             at90.timeToNinetyNinePercent, at120.timeToNinetyNinePercent };
+        const auto peaks = { at30.peak, at60.peak, at90.peak, at120.peak };
+
+        const auto riseSpread = *std::max_element(rises.begin(), rises.end())
+                                - *std::min_element(rises.begin(), rises.end());
+        const auto peakSpread = *std::max_element(peaks.begin(), peaks.end())
+                                - *std::min_element(peaks.begin(), peaks.end());
+
+        // A frame at 30 Hz is 33 ms, so the rise time cannot be resolved more
+        // finely than that - the tolerance is the sampling of the measurement,
+        // not slop in the physics.
+        check("Vu_ResponseIsIndependentOfFrameRate",
+              riseSpread < 0.035 && peakSpread < 0.004,
+              "rise across 30/60/90/120 Hz: " + fmt(at30.timeToNinetyNinePercent * 1000.0, 1)
+                  + " / " + fmt(at60.timeToNinetyNinePercent * 1000.0, 1)
+                  + " / " + fmt(at90.timeToNinetyNinePercent * 1000.0, 1)
+                  + " / " + fmt(at120.timeToNinetyNinePercent * 1000.0, 1)
+                  + " ms; peak spread " + fmt(peakSpread, 5));
+    }
+
+    // ---- a stalled GUI must not blow it up ---------------------------------
+    {
+        px3::ui::VuBallistics movement;
+        movement.reset(0.0);
+
+        // A debugger pause, a suspended host, a window dragged between
+        // displays: one frame arrives seconds late.
+        movement.step(1.0, 4.0);
+        const auto afterStall = movement.position();
+
+        movement.step(0.0, 30.0);
+        const auto afterHugeStall = movement.position();
+
+        // And a pathological one.
+        movement.step(1.0, std::numeric_limits<double>::infinity());
+
+        check("Vu_SurvivesAStalledGui",
+              std::isfinite(afterStall) && std::isfinite(afterHugeStall)
+                  && std::isfinite(movement.position()) && std::isfinite(movement.velocity())
+                  && movement.position() >= px3::ui::VuBallistics::kLowerStop - 0.001
+                  && movement.position() <= px3::ui::VuBallistics::kUpperStop + 0.001,
+              "after 4 s, 30 s and an infinite frame: position "
+                  + fmt(movement.position(), 4) + ", velocity " + fmt(movement.velocity(), 4));
+    }
+
+    // ---- it stays on the scale ---------------------------------------------
+    {
+        px3::ui::VuBallistics movement;
+        movement.reset(0.0);
+
+        auto worstLow = 1.0;
+        auto worstHigh = 0.0;
+        auto finite = true;
+
+        // Slammed between the stops as fast as the target can change.
+        for (int i = 0; i < 4000; ++i)
+        {
+            movement.step((i / 7) % 2 == 0 ? 1.0 : 0.0, 1.0 / 120.0);
+            worstLow = juce::jmin(worstLow, movement.position());
+            worstHigh = juce::jmax(worstHigh, movement.position());
+            finite = finite && std::isfinite(movement.position());
+        }
+
+        check("Vu_NeedleStaysBetweenItsStops",
+              finite && worstLow >= px3::ui::VuBallistics::kLowerStop - 1.0e-9
+                  && worstHigh <= px3::ui::VuBallistics::kUpperStop + 1.0e-9,
+              "driven between the stops for 33 s: range " + fmt(worstLow, 4)
+                  + " to " + fmt(worstHigh, 4));
+    }
+
+    // ---- fall matches rise --------------------------------------------------
+    // The movement is symmetric: the standard gives one time for both, and a
+    // separate release curve would be inventing behaviour.
+    {
+        px3::ui::VuBallistics movement;
+        movement.reset(0.0);
+        constexpr auto dt = 1.0 / 1000.0;
+
+        for (int i = 0; i < 2000; ++i) movement.step(1.0, dt);
+
+        auto fallTime = -1.0;
+        for (int i = 0; i < 2000; ++i)
+        {
+            movement.step(0.0, dt);
+            if (fallTime < 0.0 && movement.position() <= 0.01)
+            {
+                fallTime = (i + 1) * dt;
+            }
+        }
+
+        check("Vu_FallsAtTheSameRateItRises",
+              fallTime > 0.285 && fallTime < 0.315,
+              "fell to 1% in " + fmt(fallTime * 1000.0, 1) + " ms against a 300 ms rise");
+    }
+}
+
 void testBusInserts()
 {
     suite("BUS EQ");
@@ -18519,6 +18825,7 @@ int main(int argc, char* argv[])
     if (wants("fx")) testEffectIndependence();
     if (wants("preset")) testPresets();
     if (wants("factorypresets")) testFactoryPresets();
+    if (wants("vumeter")) testVuBallistics();
     if (wants("businserts")) testBusInserts();
     if (wants("filters")) testFilters();
     if (wants("oscrichness")) testOscillatorModeRichness();

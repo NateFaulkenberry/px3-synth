@@ -635,10 +635,36 @@ BusCompOverlay::BusCompOverlay(PX3SynthAudioProcessor& processorIn)
         caption->setVisible(false);
     }
 
-    // 60, not 24. The needle's ballistics live in the DSP; what the poll rate
-    // decides is how many positions between them get drawn, and at 24 a fast
-    // gain reduction arrived in a handful of visible steps.
-    startTimerHz(60);
+    addAndMakeVisible(meter);
+
+    // The movement asks for its own target every frame and runs its own
+    // physics; this sheet only tells it what the level is and whether the unit
+    // is live. See docs/VU_METER_IMPLEMENTATION.md.
+    meter.getTargetPosition = [this]() -> double
+    {
+        switch (meterMode())
+        {
+            case px3::CompMeterMode::input:
+                return VuMeterComponent::positionForLevelDb(
+                    processor.getBusCompressorLevelDb(busIndex, true));
+            case px3::CompMeterMode::output:
+                return VuMeterComponent::positionForLevelDb(
+                    processor.getBusCompressorLevelDb(busIndex, false));
+            case px3::CompMeterMode::gainReduction:
+            default:
+                return VuMeterComponent::positionForReductionDb(
+                    processor.getBusGainReductionDb(busIndex));
+        }
+    };
+
+    meter.isLive = [this]()
+    {
+        const auto& params = processor.getBusInsertParams(busIndex);
+        return params.compEnabled != nullptr && params.compEnabled->get();
+    };
+
+    // The sheet's own poll is for the switches and readouts, not the needle.
+    startTimerHz(30);
 }
 
 BusCompOverlay::~BusCompOverlay()
@@ -663,6 +689,11 @@ BusCompOverlay::~BusCompOverlay()
         button.setLookAndFeel(nullptr);
     }
     linkButton.setLookAndFeel(nullptr);
+}
+
+void BusCompOverlay::uiConfigChanged()
+{
+    meter.setUIConfig(uiConfig);
 }
 
 void BusCompOverlay::knobLookAndFeelChanged()
@@ -802,28 +833,11 @@ void BusCompOverlay::timerCallback()
         }
     }
 
-    // Whichever source the movement is switched to. GR is a positive number of
-    // decibels of reduction; IN and OUT are levels in dBFS, so the meter's
-    // scale changes with the mode as well as its needle.
-    const auto reading = [this]()
-    {
-        switch (meterMode())
-        {
-            case px3::CompMeterMode::input:  return processor.getBusCompressorLevelDb(busIndex, true);
-            case px3::CompMeterMode::output: return processor.getBusCompressorLevelDb(busIndex, false);
-            case px3::CompMeterMode::gainReduction:
-            default: return processor.getBusGainReductionDb(busIndex);
-        }
-    }();
-
-    // The threshold exists so a still needle does not repaint; it has to be
-    // smaller than the step between frames or it would swallow exactly the
-    // intermediate positions the higher rate was raised to draw.
-    if (std::abs(reading - meterDb) > 0.002f)
-    {
-        meterDb = reading;
-        repaint(meterArea);
-    }
+    // The needle is the meter component's business; this only has to keep the
+    // face in step with the mode switch.
+    meter.setMode(meterMode() == px3::CompMeterMode::gainReduction
+                      ? VuMeterComponent::Mode::gainReduction
+                      : VuMeterComponent::Mode::level);
 }
 
 void BusCompOverlay::resized()
@@ -918,6 +932,7 @@ void BusCompOverlay::resized()
         meterModeArea = slot.removeFromBottom(configInt(uiConfig, "busInserts.comp.meterModeHeight", 20));
         slot.removeFromBottom(configInt(uiConfig, "busInserts.comp.meterModeGap", 5));
         meterArea = slot;
+        meter.setBounds(meterArea);
 
         auto row = meterModeArea;
         const auto buttonGap = configInt(uiConfig, "busInserts.comp.meterModeButtonGap", 4);
@@ -957,220 +972,6 @@ void BusCompOverlay::resized()
         slot.removeFromBottom(legendHeight);
         linkButton.setBounds(slot.withSizeKeepingCentre(juce::jmin(slot.getWidth(), 46),
                                                         juce::jmin(slot.getHeight(), 22)));
-    }
-}
-
-// The lit VU. Revision H changed the movement to a light-box type with two
-// internal lamps, so the face is illuminated rather than merely pale - that
-// glow is most of what distinguishes it from the black-face revisions.
-void BusCompOverlay::paintMeter(juce::Graphics& g, juce::Rectangle<float> area) const
-{
-    const auto bezelColour = configColour(uiConfig, "busInserts.comp.meterBezelColor",
-                                          juce::Colour::fromRGB(26, 52, 96));
-    const auto faceColour = configColour(uiConfig, "busInserts.comp.meterFaceColor",
-                                         juce::Colour::fromRGB(238, 231, 210));
-    const auto inkColour = configColour(uiConfig, "busInserts.comp.meterInkColor",
-                                        juce::Colour::fromRGB(38, 36, 32));
-    const auto needleColour = configColour(uiConfig, "busInserts.comp.meterNeedleColor",
-                                           juce::Colour::fromRGB(24, 24, 26));
-    const auto glowColour = configColour(uiConfig, "busInserts.comp.meterGlowColor",
-                                         juce::Colour::fromRGBA(255, 244, 206, 210));
-
-    const auto& params = processor.getBusInsertParams(busIndex);
-    const auto live = params.compEnabled != nullptr && params.compEnabled->get();
-
-    // The bezel the movement sits in.
-    g.setColour(bezelColour);
-    g.fillRoundedRectangle(area, 3.0f);
-    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 90));
-    g.drawRoundedRectangle(area.reduced(0.5f), 3.0f, 1.0f);
-
-    auto face = area.reduced(configFloat(uiConfig, "busInserts.comp.meterBezelWidth", 7.0f));
-    face = face.withTrimmedBottom(face.getHeight() * 0.24f);
-
-    g.setColour(faceColour);
-    g.fillRect(face);
-
-    // The two lamps, behind the face. Off when the unit is bypassed, which is
-    // the quickest read on this panel of whether anything is happening.
-    if (live)
-    {
-        for (const auto x : { face.getX() + face.getWidth() * 0.28f, face.getX() + face.getWidth() * 0.72f })
-        {
-            juce::ColourGradient lamp(glowColour, x, face.getBottom(),
-                                      glowColour.withAlpha(0.0f), x, face.getY() - face.getHeight() * 0.35f,
-                                      true);
-            g.setGradientFill(lamp);
-            g.fillRect(face);
-        }
-    }
-
-    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 70));
-    g.drawRect(face, 1.0f);
-
-    // Everything from here is clipped to the face. A moving-coil needle pivots
-    // BELOW the glass, so its tail is outside the window by construction and
-    // has to be cut off there rather than drawn across the badge.
-    {
-        juce::Graphics::ScopedSaveState state(g);
-        g.reduceClipRegion(face.toNearestInt());
-
-        const auto arc = vuArcFor(face);
-        const auto mode = meterMode();
-
-        // The scale, as a real face carries it: numbers along the top, ticks
-        // hanging below them on the arc, and the arc itself drawn as a line
-        // that changes colour where the useful range ends.
-        struct Mark { float position; const char* label; bool major; bool hot; };
-        std::vector<Mark> marks;
-
-        if (mode == px3::CompMeterMode::gainReduction)
-        {
-            // Gain reduction: 0 at rest on the right, falling left.
-            for (const auto db : { 0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 7.0f, 10.0f, 15.0f, 20.0f })
-            {
-                const auto major = db == 0.0f || db == 5.0f || db == 10.0f || db == 20.0f;
-                marks.push_back({ px3::ui::VuArc::positionForReductionDb(db),
-                                  nullptr, major, db >= 10.0f });
-            }
-        }
-        else
-        {
-            // A VU face. The numbers crowd at the bottom and open out towards
-            // 0 because the movement is linear in amplitude, not in decibels.
-            for (const auto db : { -20.0f, -10.0f, -7.0f, -5.0f, -3.0f, -2.0f, -1.0f,
-                                   0.0f, 1.0f, 2.0f, 3.0f })
-            {
-                marks.push_back({ px3::ui::VuArc::positionForLevelDb(db), nullptr, true, db >= 0.0f });
-            }
-        }
-
-        // The arc line, in two passes so the hot end is red.
-        const auto hotColour = configColour(uiConfig, "busInserts.comp.meterHotColor",
-                                            juce::Colour::fromRGB(178, 44, 38));
-        for (const auto hot : { false, true })
-        {
-            juce::Path line;
-            auto started = false;
-            for (int i = 0; i <= 120; ++i)
-            {
-                const auto position = static_cast<float>(i) / 120.0f;
-                const auto isHot = mode == px3::CompMeterMode::gainReduction
-                                       ? position <= px3::ui::VuArc::positionForReductionDb(10.0f)
-                                       : position >= px3::ui::VuArc::positionForLevelDb(0.0f);
-                if (isHot != hot)
-                {
-                    started = false;
-                    continue;
-                }
-
-                const auto point = arc.pointForPosition(position, 0.86f);
-                if (! started)
-                {
-                    line.startNewSubPath(point);
-                    started = true;
-                }
-                else
-                {
-                    line.lineTo(point);
-                }
-            }
-
-            g.setColour(hot ? hotColour : inkColour);
-            g.strokePath(line, juce::PathStrokeType(1.4f));
-        }
-
-        g.setFont(juce::FontOptions(configFloat(uiConfig, "busInserts.comp.meterScaleFontSize", 7.5f),
-                                    juce::Font::bold));
-
-        for (const auto& mark : marks)
-        {
-            const auto colour = mark.hot ? hotColour : inkColour;
-
-            g.setColour(colour.withAlpha(mark.major ? 0.95f : 0.6f));
-            g.drawLine({ arc.pointForPosition(mark.position, 0.86f),
-                         arc.pointForPosition(mark.position, mark.major ? 0.78f : 0.82f) },
-                       mark.major ? 1.3f : 0.8f);
-        }
-
-        // Labels sit ABOVE the arc, which is what leaves the lower half of the
-        // face clear for the needle to sweep through.
-        const auto labelFor = [mode](float position) -> juce::String
-        {
-            if (mode == px3::CompMeterMode::gainReduction)
-            {
-                for (const auto db : { 0.0f, 5.0f, 10.0f, 20.0f })
-                {
-                    if (std::abs(px3::ui::VuArc::positionForReductionDb(db) - position) < 1.0e-4f)
-                    {
-                        return juce::String(juce::roundToInt(db));
-                    }
-                }
-                return {};
-            }
-
-            for (const auto db : { -20.0f, -10.0f, -7.0f, -5.0f, -3.0f, -1.0f, 0.0f, 1.0f, 2.0f, 3.0f })
-            {
-                if (std::abs(px3::ui::VuArc::positionForLevelDb(db) - position) < 1.0e-4f)
-                {
-                    return juce::String(juce::roundToInt(db));
-                }
-            }
-            return {};
-        };
-
-        for (const auto& mark : marks)
-        {
-            const auto text = labelFor(mark.position);
-            if (text.isEmpty())
-            {
-                continue;
-            }
-
-            g.setColour(mark.hot ? hotColour : inkColour);
-            g.drawText(text,
-                       juce::Rectangle<float>(18.0f, 10.0f)
-                           .withCentre(arc.pointForPosition(mark.position, 0.70f)),
-                       juce::Justification::centred, false);
-        }
-
-        // What the movement is reading, spelled out on the face so the switch
-        // below it is never ambiguous.
-        panel::drawLegend(g,
-                          juce::Rectangle<float>(face.getX(), face.getBottom() - 14.0f,
-                                                 face.getWidth(), 11.0f),
-                          mode == px3::CompMeterMode::gainReduction ? "GAIN REDUCTION"
-                              : (mode == px3::CompMeterMode::input ? "INPUT" : "OUTPUT"),
-                          inkColour.withAlpha(0.55f), 6.5f);
-
-        const auto position = mode == px3::CompMeterMode::gainReduction
-                                  ? px3::ui::VuArc::positionForReductionDb(live ? meterDb : 0.0f)
-                                  : px3::ui::VuArc::positionForLevelDb(live ? meterDb : -60.0f);
-
-        const auto needle = arc.directionForPosition(position);
-        g.setColour(needleColour.withAlpha(live ? 1.0f : 0.35f));
-        g.drawLine({ arc.pivot + needle * (arc.radius * 0.30f),
-                     arc.pivot + needle * (arc.radius * 0.92f) },
-                   configFloat(uiConfig, "busInserts.comp.meterNeedleWidth", 1.6f));
-
-        // The hub, where the needle disappears behind the bottom of the glass.
-        g.setColour(needleColour.withAlpha(live ? 0.9f : 0.3f));
-        g.fillEllipse(juce::Rectangle<float>(9.0f, 9.0f).withCentre(arc.pivot));
-    }
-
-    // The badge below the movement. This plug-in's own mark: the panel is a
-    // generic archetype of a rack FET limiter, and it carries no other maker's
-    // name, model number or logo.
-    auto badge = area.withTop(face.getBottom() + 3.0f).reduced(10.0f, 2.0f);
-    if (badge.getHeight() > 8.0f)
-    {
-        g.setColour(configColour(uiConfig, "busInserts.comp.badgeColor",
-                                 juce::Colour::fromRGBA(255, 255, 255, 30)));
-        g.fillRoundedRectangle(badge, 2.0f);
-        panel::drawLegend(g, badge, "P(X3) LIMITING AMPLIFIER",
-                          configColour(uiConfig, "busInserts.comp.badgeTextColor",
-                                       juce::Colour::fromRGB(232, 238, 248)),
-                          configFloat(uiConfig, "busInserts.comp.badgeFontSize", 7.0f));
     }
 }
 
@@ -1265,7 +1066,7 @@ void BusCompOverlay::paint(juce::Graphics& g)
         panel::drawLegend(g, mixLabelArea, "MIX", ink, legendSize);
     }
 
-    paintMeter(g, meterArea.toFloat());
+    // The movement paints itself - see VuMeterComponent.
 }
 
 } // namespace px3::ui

@@ -5,6 +5,7 @@
 #include "../DSP/BusInsertTypes.h"
 #include "BusEqGraph.h"
 #include "FetPanelStyle.h"
+#include "VuMeterComponent.h"
 #include "Card.h"
 #include "MixerControls.h"
 
@@ -263,7 +264,6 @@ private:
 
     // A moving-coil VU face reading gain reduction, which on this unit runs
     // right to left - the needle falls as the compressor works.
-    void paintMeter(juce::Graphics& g, juce::Rectangle<float> area) const;
     px3::CompMeterMode meterMode() const;
 
     juce::Slider input;
@@ -285,9 +285,13 @@ private:
     juce::TextButton linkButton { "LINK" };
 
     void knobLookAndFeelChanged() override;
+    void uiConfigChanged() override;
 
     // Panel furniture is painted rather than laid out as components, so
     // resized() records where each piece went and paint() draws onto it.
+    // The movement is its own component: it caches its face, animates its
+    // needle on real elapsed time, and repaints without touching the panel.
+    VuMeterComponent meter;
     juce::Rectangle<int> meterArea;
     juce::Rectangle<float> inputKnobArea;
     juce::Rectangle<float> outputKnobArea;
@@ -295,7 +299,6 @@ private:
     juce::Rectangle<float> mixBankArea;
     juce::Rectangle<float> mixLabelArea;
     juce::Rectangle<int> meterModeArea;
-    float meterDb { 0.0f };
 
     FetPushButtonLookAndFeel pushLook;
     // The cached state, plus whether it has ever been applied.

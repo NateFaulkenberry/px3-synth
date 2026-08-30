@@ -90,6 +90,8 @@ set(PX3_SHARED_SOURCES
         Source/UI/FxPanel.cpp
         Source/UI/MixPanel.cpp
         Source/UI/ModalBackdrop.cpp
+    Source/UI/RoundedRect.cpp
+    Source/UI/VuMeterComponent.cpp
     Source/UI/BusInsertOverlay.cpp
     Source/UI/BusEqGraph.cpp
     Source/UI/FetPanelStyle.cpp

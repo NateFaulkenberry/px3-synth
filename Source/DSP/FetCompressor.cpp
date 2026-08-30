@@ -47,7 +47,13 @@ void FetCompressor::prepare(double sampleRate)
 
     // VU ballistics: about 300 ms to full deflection. A meter that follows gain
     // reduction sample-accurately looks wrong and reads worse.
-    meterCoeff = onePoleCoeff(0.30f, sampleRateHz);
+    // Kept only for the gain-reduction readout's anti-zipper, not for
+    // ballistics: the needle's 300 ms lives in the GUI's physical model.
+    meterCoeff = onePoleCoeff(0.010f, sampleRateHz);
+    vuWindowSamples = juce::jmax(1, juce::roundToInt(sampleRateHz * kVuWindowSeconds));
+    vuWindowCount = 0;
+    inputRectifiedSum = 0.0;
+    outputRectifiedSum = 0.0;
 
     // The output transformer's low-frequency corner. Below it the core starts
     // to saturate, which is audible on bass-heavy material - which this bus
@@ -84,8 +90,9 @@ void FetCompressor::reset()
     fetPrevBias = { { 0.0f, 0.0f } };
     ratioCreep = 0.0f;
     meterSmoothed = 0.0f;
-    inputMeterSmoothed = -60.0f;
-    outputMeterSmoothed = -60.0f;
+    inputRectifiedSum = 0.0;
+    outputRectifiedSum = 0.0;
+    vuWindowCount = 0;
     meterDb.store(0.0f, std::memory_order_relaxed);
     inputMeterDb.store(-60.0f, std::memory_order_relaxed);
     outputMeterDb.store(-60.0f, std::memory_order_relaxed);
@@ -392,18 +399,27 @@ void FetCompressor::processSample(float& left, float& right)
     meterSmoothed += (reduction - meterSmoothed) * meterCoeff;
     meterDb.store(sanitize(meterSmoothed), std::memory_order_relaxed);
 
-    // Level either side, on the same ballistics. Measured on the louder
-    // channel: a stereo pair driven from one meter reads the programme, and
-    // averaging would hide a one-sided transient.
-    const auto inLevel = juce::Decibels::gainToDecibels(
-        juce::jmax(std::abs(inL), std::abs(inR)), -60.0f);
-    const auto outLevel = juce::Decibels::gainToDecibels(
-        juce::jmax(std::abs(left), std::abs(right)), -60.0f);
+    // Full-wave rectified, accumulated, and emptied once per window. The
+    // louder channel drives it: a stereo pair on one movement reads the
+    // programme, and averaging the two would hide a one-sided transient.
+    inputRectifiedSum += juce::jmax(std::abs(inL), std::abs(inR));
+    outputRectifiedSum += juce::jmax(std::abs(left), std::abs(right));
 
-    inputMeterSmoothed += (inLevel - inputMeterSmoothed) * meterCoeff;
-    outputMeterSmoothed += (outLevel - outputMeterSmoothed) * meterCoeff;
-    inputMeterDb.store(sanitize(inputMeterSmoothed), std::memory_order_relaxed);
-    outputMeterDb.store(sanitize(outputMeterSmoothed), std::memory_order_relaxed);
+    if (++vuWindowCount >= vuWindowSamples)
+    {
+        const auto scale = kAverageToRms / static_cast<float>(vuWindowCount);
+        const auto inAverage = static_cast<float>(inputRectifiedSum) * scale;
+        const auto outAverage = static_cast<float>(outputRectifiedSum) * scale;
+
+        inputMeterDb.store(sanitize(juce::Decibels::gainToDecibels(inAverage, -60.0f)),
+                           std::memory_order_relaxed);
+        outputMeterDb.store(sanitize(juce::Decibels::gainToDecibels(outAverage, -60.0f)),
+                            std::memory_order_relaxed);
+
+        inputRectifiedSum = 0.0;
+        outputRectifiedSum = 0.0;
+        vuWindowCount = 0;
+    }
 }
 
 } // namespace px3
