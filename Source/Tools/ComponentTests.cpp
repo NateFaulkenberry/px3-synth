@@ -46,6 +46,7 @@
 #include "../UI/MixerChannelComponent.h"
 #include "../UI/FetPanelStyle.h"
 #include "../UI/PerformanceControls.h"
+#include "../UI/ModalBackdrop.h"
 #include "../UI/UIConfig.h"
 #include "../DSP/Delay.h"
 #include "../DSP/EnvelopeGenerator.h"
@@ -13499,91 +13500,16 @@ void testEditorLifecycle()
             editor->setVisible(true);
 
             auto* keys = keyboardOf(*editor);
-            const auto headroom = keys != nullptr ? keys->getSparkHeadroom() : 0;
-            const auto area = keys != nullptr ? keys->keyboardArea() : juce::Rectangle<int>();
-
-            const auto margins = keys != nullptr ? keys->getSparkMargins() : juce::BorderSize<int>();
-
-            // The keys sit exactly inside the margins on EVERY side - the
-            // component is grown in all four directions now, not just upward,
-            // because a burst leaves a key in every direction and clipping any
-            // edge cuts a visible arc out of it.
-            const auto areaMatchesMargins =
-                keys != nullptr
-                && area == margins.subtractedFrom(keys->getLocalBounds())
-                && margins.getTop() == headroom;
-
-            const auto grownOnEverySide = margins.getTop() > 0 && margins.getLeft() > 0
-                                          && margins.getBottom() > 0 && margins.getRight() > 0;
-
-            const auto headroomPassesClicksThrough =
-                keys != nullptr && ! keys->hitTest(keys->getWidth() / 2, headroom / 2);
-            const auto keysStillHitTest =
-                keys != nullptr && keys->hitTest(area.getCentreX(), area.getCentreY());
-
-            check("Keyboard_SparkRoomSurroundsTheKeysOnEverySide",
-                  areaMatchesMargins && grownOnEverySide,
-                  "margins top " + juce::String(margins.getTop()) + ", left "
-                      + juce::String(margins.getLeft()) + ", bottom "
-                      + juce::String(margins.getBottom()) + ", right "
-                      + juce::String(margins.getRight()) + "; keys at " + area.toString());
-
-            const auto headroomIsAbove = areaMatchesMargins && headroom > 0;
-
-            // The headroom must be INVISIBLE. It is transparent, so whatever is
-            // behind it has to render exactly as it would if the keyboard had
-            // never been grown - and it did not: the editor's performance strip
-            // took its bounds from the keyboard COMPONENT, so growing the
-            // component dragged that gradient and its white outline up into the
-            // headroom as a stray panel above the keys.
+            // Particles are drawn by a shared overlay above BOTH the keyboard
+            // and the wheels.
             //
-            // Rendered twice, with and without the headroom, and the region
-            // above the keys compared pixel for pixel. The keys themselves do
-            // not move: only the component's top edge does.
-            if (keys != nullptr && headroom > 0)
-            {
-                const auto keysTopInEditor = keys->getY() + keys->keyboardArea().getY();
-                const auto probe = juce::Rectangle<int>(keys->getX(),
-                                                        keysTopInEditor - headroom,
-                                                        keys->getWidth(),
-                                                        headroom);
-
-                auto renderAbove = [&](int sparkHeadroom)
-                {
-                    keys->setSparkMargins(juce::BorderSize<int>(sparkHeadroom, margins.getLeft(),
-                                                               margins.getBottom(), margins.getRight()));
-                    editor->resized();
-                    return editor->createComponentSnapshot(probe);
-                };
-
-                const auto withHeadroom = renderAbove(headroom);
-                const auto withoutHeadroom = renderAbove(0);
-                keys->setSparkMargins(margins);
-                editor->resized();
-
-                auto differing = 0;
-                for (int y = 0; y < withHeadroom.getHeight(); ++y)
-                {
-                    for (int x = 0; x < withHeadroom.getWidth(); ++x)
-                    {
-                        if (withHeadroom.getPixelAt(x, y) != withoutHeadroom.getPixelAt(x, y))
-                        {
-                            ++differing;
-                        }
-                    }
-                }
-
-                const auto total = juce::jmax(1, withHeadroom.getWidth() * withHeadroom.getHeight());
-                check("Keyboard_SparkHeadroomDrawsNothingOfItsOwn", differing == 0,
-                      juce::String(differing) + " of " + juce::String(total)
-                          + " pixels above the keys differ between headroom "
-                          + juce::String(headroom) + " and headroom 0");
-            }
-
-            // The wheels throw the same sparkles and were clipped the same way,
-            // so they get the same headroom and the same two guarantees.
-            std::vector<juce::Component*> perfComponents;
+            // They used to be drawn inside each component, which meant each had
+            // to be grown outward to give them room - and since the two
+            // overlap, z-order could only ever favour one. The keyboard's
+            // sparks ended up behind the wheels' opaque face. One transparent
+            // layer above the pair is the only arrangement where neither loses.
             PerformanceControls* wheels = nullptr;
+            juce::Component* overlay = nullptr;
             {
                 std::function<void(juce::Component&)> walk = [&](juce::Component& root)
                 {
@@ -13591,85 +13517,78 @@ void testEditorLifecycle()
                     {
                         if (child == nullptr) continue;
                         if (auto* p = dynamic_cast<PerformanceControls*>(child)) wheels = p;
+                        if (child->getName() == "SparkOverlay") overlay = child;
                         walk(*child);
                     }
                 };
                 walk(*editor);
             }
 
-            const auto wheelsMatch = wheels != nullptr
-                                     && wheels->getSparkHeadroom() == headroom
-                                     && wheels->controlsArea().getY() == headroom
-                                     && ! wheels->hitTest(wheels->getWidth() / 2, headroom / 2)
-                                     && wheels->hitTest(wheels->getWidth() / 2,
-                                                        wheels->controlsArea().getCentreY());
+            const auto coversBoth = overlay != nullptr && keys != nullptr && wheels != nullptr
+                                    && overlay->getBounds().contains(keys->getBounds())
+                                    && overlay->getBounds().contains(wheels->getBounds());
 
-            check("PerformanceControls_ShareTheKeyboardSparkHeadroom", wheelsMatch,
-                  wheels == nullptr
-                      ? juce::String("no PerformanceControls found")
-                      : juce::String(wheels->getSparkHeadroom()) + "px of headroom, controls start at y="
-                            + juce::String(wheels->controlsArea().getY())
-                            + ", headroom click passes through: "
-                            + (wheels->hitTest(wheels->getWidth() / 2, headroom / 2) ? "NO" : "yes"));
+            // Room above the keys is the point of it, so it has to extend past
+            // them rather than merely wrap them.
+            const auto reachesAbove = overlay != nullptr && keys != nullptr
+                                      && overlay->getY() < keys->getY();
 
-            // The wheels now sit IN FRONT of the keyboard, because their
-            // sparkles spill over the keys and the keyboard would otherwise
-            // paint over them. That is only safe if the spill is transparent to
-            // the mouse - otherwise every key under the overlap goes dead.
-            if (wheels != nullptr && keys != nullptr)
+            check("SparkOverlay_CoversBothAnimatorsWithRoomToSpare",
+                  coversBoth && reachesAbove,
+                  overlay == nullptr
+                      ? juce::String("no SparkOverlay in the editor")
+                      : "overlay " + overlay->getBounds().toString() + " over keys "
+                            + (keys != nullptr ? keys->getBounds().toString() : juce::String("none"))
+                            + " and wheels "
+                            + (wheels != nullptr ? wheels->getBounds().toString() : juce::String("none")));
+
+            // Above both in z-order, or it would be drawn under the very
+            // components whose particles it exists to lift clear.
+            const auto overlayIndex = overlay != nullptr ? editor->getIndexOfChildComponent(overlay) : -1;
+            const auto keysIndex = keys != nullptr ? editor->getIndexOfChildComponent(keys) : -1;
+            const auto wheelsIndex = wheels != nullptr ? editor->getIndexOfChildComponent(wheels) : -1;
+
+            check("SparkOverlay_SitsAboveBothOfThem",
+                  overlayIndex > keysIndex && overlayIndex > wheelsIndex,
+                  "child order - overlay " + juce::String(overlayIndex) + ", keys "
+                      + juce::String(keysIndex) + ", wheels " + juce::String(wheelsIndex)
+                      + " (a HIGHER index is nearer the front in JUCE - child 0 is the back)");
+
+            // And invisible to the mouse. It covers both of them completely, so
+            // if it took a single click neither would work at all.
+            const auto ownerOf = [](juce::Component* c, juce::Component* wanted)
             {
-                const auto overlap = wheels->getBounds().getIntersection(keys->getBounds());
-
-                // A point over the keys, inside the wheels' spill, and low
-                // enough to be on an actual key rather than in the headroom.
-                const auto probe = juce::Point<int>(
-                    overlap.getCentreX(),
-                    keys->getY() + keys->keyboardArea().getCentreY());
-
-                auto* resolved = overlap.isEmpty() ? nullptr : editor->getComponentAt(probe);
-                auto* owner = resolved;
-                while (owner != nullptr && owner != keys && owner != wheels)
+                while (c != nullptr && c != wanted)
                 {
-                    owner = owner->getParentComponent();
+                    c = c->getParentComponent();
                 }
+                return c == wanted;
+            };
 
-                check("PerformanceControls_SpillDoesNotStealClicksFromTheKeys",
-                      ! overlap.isEmpty() && owner == keys,
-                      overlap.isEmpty()
-                          ? juce::String("the wheels do not reach the keys at all")
-                          : "overlap " + overlap.toString() + "; a click there resolves to "
-                                + (owner == keys ? "the keyboard"
-                                                 : (owner == wheels ? "THE WHEELS" : "neither")));
-
-                // And it must draw nothing of its own over them.
-                const auto probeArea = overlap.withHeight(juce::jmin(overlap.getHeight(), 60));
-                const auto before = editor->createComponentSnapshot(probeArea);
-                wheels->setSparkMargins({ 0, 0, 0, 0 });
-                editor->resized();
-                const auto after = editor->createComponentSnapshot(probeArea);
-                editor->resized();
-
-                auto differing = 0;
-                for (int y = 0; y < before.getHeight(); ++y)
-                {
-                    for (int x = 0; x < before.getWidth(); ++x)
-                    {
-                        if (before.getPixelAt(x, y) != after.getPixelAt(x, y)) ++differing;
-                    }
-                }
-
-                check("PerformanceControls_SpillDrawsNothingOverTheKeys", differing == 0,
-                      juce::String(differing) + " pixels over the keys differ with the spill "
-                          + "present and absent");
+            juce::Component* overKeys = nullptr;
+            juce::Component* overWheels = nullptr;
+            if (keys != nullptr && wheels != nullptr)
+            {
+                overKeys = editor->getComponentAt(keys->getBounds().getCentre());
+                overWheels = editor->getComponentAt(wheels->getBounds().getCentre());
             }
 
-            check("Keyboard_SparksHaveHeadroomAboveTheKeys",
-                  headroomIsAbove && headroomPassesClicksThrough && keysStillHitTest,
-                  juce::String(headroom) + "px of headroom above a "
-                      + juce::String(area.getHeight()) + "px keyboard; a click in the headroom "
-                      + (headroomPassesClicksThrough ? "passes through" : "IS CAUGHT")
-                      + " and a click on the keys "
-                      + (keysStillHitTest ? "lands" : "MISSES"));
+            check("SparkOverlay_TakesNoMouseEvents",
+                  overlay != nullptr && ownerOf(overKeys, keys) && ownerOf(overWheels, wheels),
+                  juce::String("centre of the keys resolves to ")
+                      + (ownerOf(overKeys, keys) ? "the keyboard" : "SOMETHING ELSE")
+                      + ", centre of the wheels to "
+                      + (ownerOf(overWheels, wheels) ? "the wheels" : "SOMETHING ELSE"));
+
+            // Neither component is grown any more: that machinery existed only
+            // to give particles somewhere to go inside their own bounds.
+            check("SparkAnimators_AreNotGrownBeyondTheirControls",
+                  keys != nullptr && wheels != nullptr
+                      && keys->keyboardArea() == keys->getLocalBounds()
+                      && wheels->controlsArea() == wheels->getLocalBounds(),
+                  keys == nullptr ? juce::String("no keyboard")
+                                  : "keys occupy " + keys->keyboardArea().toString()
+                                        + " of " + keys->getLocalBounds().toString());
         }
 
         check("Keyboard_SilencesItselfOnlyWhenNothingCanSound",
@@ -15142,6 +15061,57 @@ void testBusInserts()
                   overridden.size == 55 && overridden.offsetX == 3,
                   "with a card block declaring size only: size " + juce::String(overridden.size)
                       + ", offsetX " + juce::String(overridden.offsetX) + " (expected 55 / 3)");
+        }
+
+        // The dimmed backdrop has to be EVEN. Rendered on a uniform source so
+        // any variation in the result belongs to the algorithm rather than to
+        // whatever happened to be on screen.
+        //
+        // It was not even: the blur is a stack of offset copies, and a copy
+        // does not reach the edge it is shifted away from, so a strip around
+        // the window got fewer copies than the middle - and a corner, short on
+        // two axes at once, got fewest. That is the darker box that appeared in
+        // the corner behind an opening sheet. Measured then: 0.1765 at the
+        // corner against 0.1961 in the middle.
+        {
+            constexpr auto size = 200;
+            juce::Image flat(juce::Image::ARGB, size, size, true);
+            {
+                juce::Graphics flatGraphics(flat);
+                flatGraphics.fillAll(juce::Colour::fromRGB(180, 180, 180));
+            }
+
+            juce::Image rendered(juce::Image::ARGB, size, size, true);
+            {
+                juce::Graphics renderGraphics(rendered);
+                px3::ui::paintModalBackdrop(renderGraphics, { 0, 0, size, size },
+                                            juce::Rectangle<float>(80.0f, 80.0f, 40.0f, 40.0f),
+                                            flat, 8.0f);
+            }
+
+            auto brightnessAt = [&rendered](int x, int y)
+            {
+                return rendered.getPixelAt(x, y).getBrightness();
+            };
+
+            // Every corner, every edge midpoint, and a point well inside.
+            const auto reference = brightnessAt(size / 2, 30);
+            auto worst = 0.0f;
+            for (const auto& point : { juce::Point<int>(2, 2),
+                                       juce::Point<int>(size - 3, 2),
+                                       juce::Point<int>(2, size - 3),
+                                       juce::Point<int>(size - 3, size - 3),
+                                       juce::Point<int>(size / 2, 2),
+                                       juce::Point<int>(size / 2, size - 3),
+                                       juce::Point<int>(2, size / 2),
+                                       juce::Point<int>(size - 3, size / 2) })
+            {
+                worst = juce::jmax(worst, std::abs(brightnessAt(point.x, point.y) - reference));
+            }
+
+            check("ModalBackdrop_DimsEvenlyIntoTheCorners", worst < 0.005f,
+                  "worst deviation from the middle across all four corners and edges: "
+                      + fmt(worst, 4) + " (middle reads " + fmt(reference, 4) + ")");
         }
 
         check("BusInsert_OnlyTheBusStripsCarryInsertButtons",

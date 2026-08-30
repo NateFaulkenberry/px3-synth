@@ -544,6 +544,35 @@ private:
     juce::TextButton presetBrowserLoadButton;
     juce::TextButton presetBrowserCloseButton;
     juce::Label presetBrowserDetails;
+    // Draws BOTH the keyboard's sparks and the wheels' sparkles, above both
+    // components. They overlap each other, so z-order alone can never let both
+    // spill over the other - whichever went in front hid the other's particles
+    // behind its own opaque face. One transparent layer above the pair is the
+    // only arrangement where neither loses, and it takes no mouse events at
+    // all, so nothing underneath it changes behaviour.
+    class SparkOverlay final : public juce::Component
+    {
+    public:
+        SparkOverlay(PianoKeyboard& keysIn, PerformanceControls& wheelsIn)
+            : keys(keysIn), wheels(wheelsIn)
+        {
+            setName("SparkOverlay");
+            setInterceptsMouseClicks(false, false);
+        }
+
+        void paint(juce::Graphics& g) override
+        {
+            keys.paintSparksInto(g, keys.getPosition() - getPosition());
+            wheels.paintSparklesInto(g, wheels.getPosition() - getPosition());
+        }
+
+    private:
+        PianoKeyboard& keys;
+        PerformanceControls& wheels;
+    };
+
+    SparkOverlay sparkOverlay { pianoKeyboard, performanceControls };
+
     PresetModalScrim presetBrowserScrim { *this };
     std::unique_ptr<px3::ui::BusEqOverlay> busEqOverlay;
     std::unique_ptr<px3::ui::BusCompOverlay> busCompOverlay;

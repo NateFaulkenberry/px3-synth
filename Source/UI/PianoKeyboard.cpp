@@ -110,6 +110,32 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
         g.drawRoundedRectangle(drawBounds, 2.5f, 1.0f);
     }
 
+}
+
+// The keys occupy the whole component again. They stopped doing so when the
+// sparks needed room to spill into; now that the sparks are drawn by the
+// overlay above, the component is just the instrument.
+// Sparks are painted by the shared overlay above the keyboard row, not by the
+// keyboard itself.
+//
+// Two components were each spilling particles over the other - the keys over
+// the wheels, the wheels over the keys - and z-order can only ever favour one,
+// so whichever went in front hid the other's particles behind its own opaque
+// face. A single transparent layer above both is the only arrangement where
+// neither loses.
+//
+// `offset` translates from this component's coordinates into the overlay's.
+void PianoKeyboard::paintSparksInto(juce::Graphics& g, juce::Point<int> offset) const
+{
+    if (sparks.empty())
+    {
+        return;
+    }
+
+    juce::Graphics::ScopedSaveState state(g);
+    g.addTransform(juce::AffineTransform::translation(static_cast<float>(offset.getX()),
+                                                      static_cast<float>(offset.getY())));
+
     for (const auto& spark : sparks)
     {
         const auto lifeDivisor = (spark.maxLifetimeSeconds > 0.0001f) ? spark.maxLifetimeSeconds : 0.0001f;
@@ -157,26 +183,7 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
 
 juce::Rectangle<int> PianoKeyboard::keyboardArea() const
 {
-    auto area = sparkMargins.subtractedFrom(getLocalBounds());
-    // Margins larger than the component would invert the rectangle, and an
-    // inverted rectangle contains nothing - every key would stop responding.
-    return area.isEmpty() ? getLocalBounds() : area;
-}
-
-void PianoKeyboard::setSparkMargins(juce::BorderSize<int> margins)
-{
-    if (sparkMargins == margins)
-    {
-        return;
-    }
-
-    sparkMargins = margins;
-    repaint();
-}
-
-bool PianoKeyboard::hitTest(int x, int y)
-{
-    return keyboardArea().contains(x, y);
+    return getLocalBounds();
 }
 
 void PianoKeyboard::setWarningStyle(const WarningStyle& style)
@@ -425,9 +432,16 @@ void PianoKeyboard::timerCallback()
         sparks.erase(sparks.begin(), sparks.begin() + static_cast<std::ptrdiff_t>(sparks.size() - 450));
     }
 
-    if (anyActive || !sparks.empty())
+    if (anyActive)
     {
         repaint();
+    }
+
+    // The sparks live in the overlay above, so a frame that only moved them
+    // repaints that rather than the keyboard.
+    if (! sparks.empty() && onSparksChanged != nullptr)
+    {
+        onSparksChanged();
     }
 }
 

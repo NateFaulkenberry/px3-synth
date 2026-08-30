@@ -115,29 +115,50 @@ void PerformanceControls::setControllerState(float pitchBendNormalized,
     targetModGlow = clamp01(0.30f * modUse + 0.70f * clamp01(modActivity));
 }
 
-juce::Rectangle<int> PerformanceControls::controlsArea() const
+// Painted by the shared overlay, for the same reason the keyboard's sparks are:
+// the two components overlap each other and z-order can only favour one.
+void PerformanceControls::paintSparklesInto(juce::Graphics& g, juce::Point<int> offset) const
 {
-    auto area = sparkMargins.subtractedFrom(getLocalBounds());
-    // A margin larger than the component would invert the rectangle, and an
-    // inverted rectangle contains nothing - so every click would fall through
-    // and the wheels would stop responding.
-    return area.isEmpty() ? getLocalBounds() : area;
-}
-
-void PerformanceControls::setSparkMargins(juce::BorderSize<int> margins)
-{
-    if (sparkMargins == margins)
+    if (sparkles.empty())
     {
         return;
     }
 
-    sparkMargins = margins;
-    repaint();
-}
+    juce::Graphics::ScopedSaveState overlayTransform(g);
+    g.addTransform(juce::AffineTransform::translation(static_cast<float>(offset.getX()),
+                                                      static_cast<float>(offset.getY())));
 
-bool PerformanceControls::hitTest(int x, int y)
+    for (const auto& sparkle : sparkles)
+    {
+            const auto divisor = juce::jmax(0.0001f, sparkle.maxLifetimeSeconds);
+            const auto life = juce::jlimit(0.0f, 1.0f, sparkle.lifetimeSeconds / divisor);
+
+            // Fades out AND shrinks. Fading alone leaves a ghost the same size
+            // as a live spark, which reads as the animation stalling.
+            const auto colour = juce::Colour::fromHSV(sparkle.hue, 0.85f, 1.0f, life);
+            const auto size = sparkle.size * (0.35f + 0.65f * life);
+
+            juce::Graphics::ScopedSaveState state(g);
+            g.addTransform(juce::AffineTransform::rotation(sparkle.rotation)
+                               .translated(sparkle.position.getX(), sparkle.position.getY()));
+
+            // A soft halo under the star, so a dense burst glows instead of
+            // looking like scattered confetti.
+            g.setColour(colour.withMultipliedAlpha(0.30f));
+            g.fillEllipse(juce::Rectangle<float>(size * 2.6f, size * 2.6f).withCentre({ 0.0f, 0.0f }));
+
+            g.setColour(colour);
+            g.fillPath(createSparklePath(size));
+
+            // A white core keeps the sparkle legible against the rainbow.
+            g.setColour(juce::Colours::white.withAlpha(life * 0.85f));
+            g.fillEllipse(juce::Rectangle<float>(size * 0.42f, size * 0.42f).withCentre({ 0.0f, 0.0f }));
+        }
+    }
+
+juce::Rectangle<int> PerformanceControls::controlsArea() const
 {
-    return controlsArea().contains(x, y);
+    return getLocalBounds();
 }
 
 void PerformanceControls::paint(juce::Graphics& g)
@@ -169,35 +190,6 @@ void PerformanceControls::paint(juce::Graphics& g)
               false,
               easeAmount(visualModGlow));
 
-    if (!sparkles.empty())
-    {
-        for (const auto& sparkle : sparkles)
-        {
-            const auto divisor = juce::jmax(0.0001f, sparkle.maxLifetimeSeconds);
-            const auto life = juce::jlimit(0.0f, 1.0f, sparkle.lifetimeSeconds / divisor);
-
-            // Fades out AND shrinks. Fading alone leaves a ghost the same size
-            // as a live spark, which reads as the animation stalling.
-            const auto colour = juce::Colour::fromHSV(sparkle.hue, 0.85f, 1.0f, life);
-            const auto size = sparkle.size * (0.35f + 0.65f * life);
-
-            juce::Graphics::ScopedSaveState state(g);
-            g.addTransform(juce::AffineTransform::rotation(sparkle.rotation)
-                               .translated(sparkle.position.getX(), sparkle.position.getY()));
-
-            // A soft halo under the star, so a dense burst glows instead of
-            // looking like scattered confetti.
-            g.setColour(colour.withMultipliedAlpha(0.30f));
-            g.fillEllipse(juce::Rectangle<float>(size * 2.6f, size * 2.6f).withCentre({ 0.0f, 0.0f }));
-
-            g.setColour(colour);
-            g.fillPath(createSparklePath(size));
-
-            // A white core keeps the sparkle legible against the rainbow.
-            g.setColour(juce::Colours::white.withAlpha(life * 0.85f));
-            g.fillEllipse(juce::Rectangle<float>(size * 0.42f, size * 0.42f).withCentre({ 0.0f, 0.0f }));
-        }
-    }
 
 }
 
@@ -339,7 +331,15 @@ void PerformanceControls::timerCallback()
                        sparkles.begin() + static_cast<std::ptrdiff_t>(sparkles.size() - kMaxSparkles));
     }
 
+    // The wheels themselves still animate - the handles move and the glows
+    // breathe - so this component repaints either way; the sparkles are the
+    // overlay's job.
     repaint();
+
+    if (! sparkles.empty() && onSparklesChanged != nullptr)
+    {
+        onSparklesChanged();
+    }
 }
 
 // Emitted in every direction, not along one. The angle is drawn from the whole

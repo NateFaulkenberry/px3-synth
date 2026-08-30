@@ -46,21 +46,9 @@ public:
 
     void setWarningStyle(const WarningStyle& style);
 
-    // Room for the sparks on EVERY side, not just above.
-    //
-    // A component cannot paint outside its own bounds - the parent clips it -
-    // so the component is grown in each direction and draws the keys in the
-    // middle of itself. The margin is transparent, does not respond to the
-    // mouse, and exists only so the sparks have somewhere to go. The keys, the
-    // hit testing and the warning all follow the keyboard area rather than the
-    // component bounds.
-    //
-    // Four sides rather than one because a burst leaves a key in every
-    // direction: clipping any edge cuts a visible arc out of it.
-    void setSparkMargins(juce::BorderSize<int> margins);
-    juce::BorderSize<int> getSparkMargins() const noexcept { return sparkMargins; }
-    int getSparkHeadroom() const noexcept { return sparkMargins.getTop(); }
-    // The keys themselves: the component minus its spark margins.
+    // The keys. Kept as a named accessor because the editor's performance
+    // strip is drawn around it, and because it used to be narrower than the
+    // component - it no longer is, now that the sparks live in the overlay.
     juce::Rectangle<int> keyboardArea() const;
 
     // Silenced when every oscillator source is bypassed: nothing this keyboard
@@ -70,9 +58,16 @@ public:
     bool isSilenced() const noexcept { return silenced; }
 
     void paint(juce::Graphics& g) override;
+    // Draws this keyboard's sparks into another component's graphics context,
+    // translated by `offset`. See the definition for why they do not belong to
+    // this component's own paint any more.
+    void paintSparksInto(juce::Graphics& g, juce::Point<int> offset) const;
+    bool hasSparks() const noexcept { return ! sparks.empty(); }
+    // Raised on every animation frame that changed something, so the overlay
+    // that draws the sparks knows to repaint.
+    std::function<void()> onSparksChanged;
     // The headroom is not part of the instrument, so clicks pass through it to
     // whatever is behind.
-    bool hitTest(int x, int y) override;
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
     void mouseUp(const juce::MouseEvent& event) override;
@@ -117,6 +112,5 @@ private:
     int heldMidiNote { -1 };
     float clickVelocityNorm { 0.65f };
     bool silenced { false };
-    juce::BorderSize<int> sparkMargins { 0, 0, 0, 0 };
     WarningStyle warningStyle;
 };

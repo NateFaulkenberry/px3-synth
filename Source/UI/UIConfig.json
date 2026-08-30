@@ -460,7 +460,7 @@
     "headerGap": 8,
     "headerButtonGap": 8,
     "enableButton": {
-      "size": { "width": 42, "height": 54 },
+      "size": { "height": 40 },
       "cornerRadius": 4,
       "textSize": 10.5,
       "textColour": "#333333",
@@ -473,8 +473,8 @@
     },
     "closeButton": {
       "size": 24,
-      "offsetX": -4,
-      "offsetY": -4,
+      "offsetX": 0,
+      "offsetY": -16,
       "ringWidth": 1.6,
       "glyphWidth": 2,
       "glyphInset": 0.32,

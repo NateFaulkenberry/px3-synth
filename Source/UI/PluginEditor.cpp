@@ -486,6 +486,12 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     addAndMakeVisible(performanceControls);
     addAndMakeVisible(pianoKeyboard);
+    addAndMakeVisible(sparkOverlay);
+
+    // Each animator asks the overlay to repaint; neither draws its own
+    // particles any more.
+    pianoKeyboard.onSparksChanged = [this]() { sparkOverlay.repaint(); };
+    performanceControls.onSparklesChanged = [this]() { sparkOverlay.repaint(); };
 
     performanceControls.onPitchBendChanged = [this](float normalized)
     {
@@ -1972,56 +1978,26 @@ void PX3SynthAudioProcessorEditor::resized()
     const auto perfWidth = juce::jlimit(112, 190, keyboardRow.getWidth() / 8);
     performanceControlsArea = keyboardRow.removeFromLeft(perfWidth);
 
-    // Both are grown outward so their animations can leave the controls instead
-    // of being clipped at an edge. The extra area is transparent and does not
-    // hit-test, so what is behind it stays both visible and clickable.
+    // Both sit exactly where they belong; nothing is grown. Their particles are
+    // drawn by sparkOverlay, which covers the pair plus the room the animation
+    // needs above them.
+    pianoKeyboard.setBounds(keyboardRow);
+    performanceControls.setBounds(performanceControlsArea);
+
     const auto headroom = juce::jmin(keyboardSparkHeadroom, controlsArea.getHeight());
-
-    // Grown on all four sides then clamped to the window, with the margins
-    // derived from what the clamp actually left - so the keys stay exactly
-    // where they were however much room the animation got. At the window's
-    // right and bottom edges that room is zero, which is a fact about the
-    // window rather than something to work around.
-    const auto keyboardSpill = juce::jmax(0, performanceSparkSpill);
-    const auto keyRow = keyboardRow;
-    auto keyboardBounds = keyRow.withTop(keyRow.getY() - headroom)
-                              .withLeft(keyRow.getX() - keyboardSpill)
-                              .withRight(keyRow.getRight() + keyboardSpill)
-                              .withBottom(keyRow.getBottom() + keyboardSpill)
-                              .getIntersection(getLocalBounds());
-
-    pianoKeyboard.setBounds(keyboardBounds);
-    pianoKeyboard.setSparkMargins(
-        juce::BorderSize<int>(keyRow.getY() - keyboardBounds.getY(),
-                              keyRow.getX() - keyboardBounds.getX(),
-                              keyboardBounds.getBottom() - keyRow.getBottom(),
-                              keyboardBounds.getRight() - keyRow.getRight()));
-
-    // The wheels emit radially, so they need room on all four sides - including
-    // to the RIGHT, over the keys. Grown then clamped to the window, and the
-    // margins are derived from what the clamp actually left, so the controls
-    // stay exactly where they were however much room they got.
     const auto spill = juce::jmax(0, performanceSparkSpill);
-    auto wheelBounds = performanceControlsArea
-                           .withTop(performanceControlsArea.getY() - headroom)
-                           .withLeft(performanceControlsArea.getX() - spill)
-                           .withRight(performanceControlsArea.getRight() + spill)
-                           .withBottom(performanceControlsArea.getBottom() + spill)
-                           .getIntersection(getLocalBounds());
 
-    performanceControls.setBounds(wheelBounds);
-    performanceControls.setSparkMargins(
-        juce::BorderSize<int>(performanceControlsArea.getY() - wheelBounds.getY(),
-                              performanceControlsArea.getX() - wheelBounds.getX(),
-                              wheelBounds.getBottom() - performanceControlsArea.getBottom(),
-                              wheelBounds.getRight() - performanceControlsArea.getRight()));
+    sparkOverlay.setBounds(performanceControlsArea.getUnion(keyboardRow)
+                               .expanded(spill, 0)
+                               .withTop(keyboardRow.getY() - headroom)
+                               .withBottom(keyboardRow.getBottom() + spill)
+                               .getIntersection(getLocalBounds()));
 
-    // The wheels go in FRONT of the keyboard, not behind it: their sparkles
-    // spill over the keys, and the keyboard would otherwise paint over them.
-    // Safe because the spill area is transparent and excluded from hitTest, so
-    // the keys underneath stay visible and playable.
+    // The overlay goes last, above both, and takes no mouse events - so the
+    // keys and the wheels keep every click that was ever theirs.
     pianoKeyboard.toFront(false);
     performanceControls.toFront(false);
+    sparkOverlay.toFront(false);
 
     // Vertical inset only. The horizontal 8 here was the reason the cards sat
     // inboard of the top nav: the header strip is drawn at the full width of

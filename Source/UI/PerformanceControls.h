@@ -20,24 +20,16 @@ public:
     std::function<void()> onPitchBendGestureEnded;
     std::function<void(float)> onModWheelChanged;
 
-    // Room for the sparkles on EVERY side, not just above.
-    //
-    // A component cannot paint outside its own bounds, so the component is
-    // grown in each direction and draws its controls in the middle of itself.
-    // The margin is transparent and passes clicks through, which is what lets
-    // it overlap the keyboard to the right without swallowing key presses.
-    //
-    // Four sides rather than one because the wheels emit radially: sparkles
-    // leave in every direction, so clipping any edge cuts a visible arc out of
-    // the burst.
-    void setSparkMargins(juce::BorderSize<int> margins);
-    juce::BorderSize<int> getSparkMargins() const noexcept { return sparkMargins; }
-    int getSparkHeadroom() const noexcept { return sparkMargins.getTop(); }
-    // The controls themselves: the component minus its spark margins.
+    // The controls occupy the whole component again, now that the sparkles are
+    // drawn by the overlay above rather than inside here.
     juce::Rectangle<int> controlsArea() const;
 
     void paint(juce::Graphics& g) override;
-    bool hitTest(int x, int y) override;
+    // Draws this component's sparkles into another component's context,
+    // translated by `offset`.
+    void paintSparklesInto(juce::Graphics& g, juce::Point<int> offset) const;
+    bool hasSparkles() const noexcept { return ! sparkles.empty(); }
+    std::function<void()> onSparklesChanged;
 
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
@@ -45,8 +37,6 @@ public:
     void mouseDoubleClick(const juce::MouseEvent& event) override;
 
 private:
-    juce::BorderSize<int> sparkMargins { 0, 0, 0, 0 };
-
     enum class ActiveControl
     {
         none,
