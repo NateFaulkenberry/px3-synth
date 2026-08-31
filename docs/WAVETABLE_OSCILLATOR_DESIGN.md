@@ -219,8 +219,16 @@ An RCU-style retire, not a `shared_ptr` swap. The retired table is released on
 the message thread once the audio thread has demonstrably moved past it. This
 preserves the measured 0-allocations-per-block guarantee.
 
-Voices already sounding keep the table they started with until the next note, so
-a table swap never discontinues a held note.
+The audio thread takes the pointer **once per block** and does not hold it
+across blocks; that contract is what makes two epochs a sufficient guard.
+
+An earlier draft had voices keep the table they started with until the next
+note. That is kinder to a held note, but it means a table can be pinned for the
+length of a release and collection has to scan every voice to find out. Swapping
+at a block boundary is simpler and is what every comparable synth does - the
+cost is that changing tables under a sounding note is a timbre step. Auditioning
+tables while holding a chord is the one case that shows it, and it is worth
+revisiting if it turns out to be audible in practice.
 
 ### C.6 Import
 

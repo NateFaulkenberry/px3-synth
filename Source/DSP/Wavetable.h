@@ -29,6 +29,15 @@ struct FrameSpectrum
     }
 };
 
+// The inverse of what Wavetable::build consumes: turns one cycle of samples into
+// the harmonics it is made of.
+//
+// Needed by anything that produces a frame as a WAVEFORM rather than as a
+// spectrum - a generator written as a waveshaper, and every audio import. Its
+// output round-trips through Wavetable::build to the waveform it came from,
+// which is the property the tests hold it to.
+FrameSpectrum analyseFrame(const float* samples, int length);
+
 // An immutable band-limited wavetable, shared by every voice and every
 // oscillator that uses it.
 //

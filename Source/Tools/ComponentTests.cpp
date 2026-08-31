@@ -25,6 +25,8 @@
 #include "../Preset/FactoryPresets.h"
 #include "../DSP/Wavetable.h"
 #include "../DSP/WavetableReader.h"
+#include "../DSP/WavetableSlot.h"
+#include "../DSP/WavetableFactory.h"
 #include "../DSP/Lucy.h"
 #include "../DSP/StereoSpread.h"
 #include "../UI/FxCardComponent.h"
@@ -907,6 +909,167 @@ void testWavetable()
                   juce::String(changes) + " level changes over 2 vibrato cycles at "
                       + fmt(boundaryHz, 0) + " Hz");
         }
+    }
+
+    // ---- analyseFrame round-trips -----------------------------------------
+    // Generators written as waveshapers and every audio import go through this,
+    // so if it does not invert Wavetable::build exactly then every such table is
+    // quietly the wrong shape.
+    {
+        std::vector<float> cycle(static_cast<std::size_t>(px3::Wavetable::kFrameSize), 0.0f);
+        for (int i = 0; i < px3::Wavetable::kFrameSize; ++i)
+        {
+            const auto phase = juce::MathConstants<double>::twoPi * i / px3::Wavetable::kFrameSize;
+            // Several harmonics at deliberately awkward phases - a single sine
+            // would pass even if the phase convention were inverted.
+            cycle[static_cast<std::size_t>(i)] = static_cast<float>(
+                0.6 * std::sin(phase + 0.4) + 0.3 * std::sin(2 * phase - 1.1)
+                + 0.15 * std::sin(5 * phase + 2.2));
+        }
+
+        const auto spectrum = px3::analyseFrame(cycle.data(), px3::Wavetable::kFrameSize);
+        const auto table = px3::Wavetable::build("roundtrip", "TEST", { spectrum });
+
+        if (table != nullptr)
+        {
+            // Level 0 is long enough to hold every harmonic used above.
+            const auto* rebuilt = table->getFrame(0, 0);
+            const auto length = table->getLevelLength(0);
+            // Level 0 is longer than the source cycle, so the comparison walks
+            // the SOURCE and indexes the rebuilt frame - the other way round
+            // samples the source at half rate and measures that instead.
+            auto worst = 0.0;
+            for (int i = 0; i < px3::Wavetable::kFrameSize; ++i)
+            {
+                const auto at = static_cast<std::size_t>(
+                    static_cast<long long>(i) * length / px3::Wavetable::kFrameSize);
+                worst = juce::jmax(worst, std::abs(static_cast<double>(rebuilt[at])
+                                                   - cycle[static_cast<std::size_t>(i)]));
+            }
+            check("Wavetable_AnalyseFrameInvertsBuildExactly", worst < 0.002,
+                  "worst sample error round-tripping a three-harmonic cycle: " + fmt(worst, 6));
+        }
+    }
+
+    // ---- the factory library ----------------------------------------------
+    {
+        const auto& definitions = px3::factoryWavetables();
+        check("Wavetable_FactoryLibraryIsPopulated", definitions.size() >= 8,
+              juce::String(static_cast<int>(definitions.size())) + " factory tables");
+
+        juce::StringArray failedToBuild;
+        juce::StringArray tooStatic;
+        juce::StringArray unevenLevel;
+        juce::String evolutionDetail;
+
+        for (int i = 0; i < static_cast<int>(definitions.size()); ++i)
+        {
+            const auto table = px3::buildFactoryWavetable(i);
+            const auto name = juce::String(definitions[static_cast<std::size_t>(i)].name);
+            if (table == nullptr)
+            {
+                failedToBuild.add(name);
+                continue;
+            }
+
+            const auto length = table->getLevelLength(0);
+            const auto rms = [length](const float* f)
+            {
+                double e = 0.0;
+                for (int k = 0; k < length; ++k) { e += static_cast<double>(f[k]) * f[k]; }
+                return std::sqrt(e / length);
+            };
+
+            // Does the scan actually DO anything? A table whose frames all
+            // sound alike is a waveform with extra steps - and it is the
+            // failure mode a generator falls into most easily, because every
+            // frame on its own still sounds fine.
+            const auto* first = table->getFrame(0, 0);
+            const auto* last = table->getFrame(0, table->getFrameCount() - 1);
+            double difference = 0.0, reference = 0.0;
+            for (int k = 0; k < length; ++k)
+            {
+                const auto d = static_cast<double>(first[k]) - last[k];
+                difference += d * d;
+                reference += static_cast<double>(first[k]) * first[k];
+            }
+            const auto travel = std::sqrt(difference / juce::jmax(1.0e-12, reference));
+            evolutionDetail << (evolutionDetail.isEmpty() ? "" : ", ") << name << " "
+                            << fmt(travel, 2);
+            if (travel < 0.5) { tooStatic.add(name); }
+
+            // And is it the same loudness all the way across? Otherwise the
+            // scan is a volume control wearing a timbre control's clothes.
+            auto quietest = 1.0e9, loudest = 0.0;
+            for (int f = 0; f < table->getFrameCount(); ++f)
+            {
+                const auto level = rms(table->getFrame(0, f));
+                quietest = juce::jmin(quietest, level);
+                loudest = juce::jmax(loudest, level);
+            }
+            const auto spread = 20.0 * std::log10(loudest / juce::jmax(1.0e-12, quietest));
+            if (spread > 6.0)
+            {
+                unevenLevel.add(name + " (" + fmt(spread, 1) + " dB)");
+            }
+        }
+
+        check("Wavetable_EveryFactoryTableBuilds", failedToBuild.isEmpty(),
+              failedToBuild.isEmpty() ? "all " + juce::String(static_cast<int>(definitions.size()))
+                                            + " build"
+                                      : "failed: " + failedToBuild.joinIntoString(", "));
+
+        check("Wavetable_EveryFactoryTableActuallyEvolves", tooStatic.isEmpty(),
+              "distance travelled from first frame to last - " + evolutionDetail
+                  + (tooStatic.isEmpty() ? "" : "; too static: " + tooStatic.joinIntoString(", ")));
+
+        check("Wavetable_FactoryTablesHoldTheirLevelAcrossTheScan", unevenLevel.isEmpty(),
+              unevenLevel.isEmpty() ? "every table stays within 6 dB across its scan"
+                                    : "level swings: " + unevenLevel.joinIntoString(", "));
+
+        check("Wavetable_FactoryTablesAreFoundByName",
+              px3::buildFactoryWavetable(juce::String(definitions[0].name)) != nullptr
+                  && px3::buildFactoryWavetable("no such table") == nullptr,
+              "lookup by name works and an unknown name returns null");
+    }
+
+    // ---- the real-time handoff --------------------------------------------
+    {
+        px3::WavetableSlot slot;
+        check("WavetableSlot_StartsEmpty", ! slot.hasTable(), "no table until one is published");
+
+        slot.publish(px3::Wavetable::build("first", "TEST", { spectrumOf({ 1.0f }) }));
+        const auto* firstPointer = slot.beginBlock();
+        check("WavetableSlot_PublishesToTheAudioThread", firstPointer != nullptr,
+              "the audio thread sees the published table");
+
+        // Replacing must not free what a block might still be inside.
+        slot.publish(px3::Wavetable::build("second", "TEST", { spectrumOf({ 0.5f }) }));
+        slot.collectRetired();
+        check("WavetableSlot_DoesNotFreeATableTheAudioThreadCouldStillHold",
+              slot.getRetiredCount() == 1,
+              juce::String(slot.getRetiredCount()) + " table held back from collection");
+
+        // Two blocks later the audio thread cannot be holding it.
+        slot.beginBlock();
+        slot.beginBlock();
+        slot.collectRetired();
+        check("WavetableSlot_FreesOnceTheAudioThreadHasMovedPast",
+              slot.getRetiredCount() == 0,
+              "retired table collected after two blocks");
+
+        // And it does not accumulate under repeated swapping, which is what a
+        // user auditioning tables actually does.
+        for (int i = 0; i < 200; ++i)
+        {
+            slot.publish(px3::Wavetable::build("swap", "TEST", { spectrumOf({ 1.0f }) }));
+            slot.beginBlock();
+            slot.beginBlock();
+            slot.collectRetired();
+        }
+        check("WavetableSlot_DoesNotAccumulateRetiredTables",
+              slot.getRetiredCount() <= 1,
+              juce::String(slot.getRetiredCount()) + " retired after 200 swaps");
     }
 
     // ---- rejects what it cannot build --------------------------------------

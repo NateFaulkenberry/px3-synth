@@ -17,6 +17,39 @@ int orderFor(int length)
 }
 } // namespace
 
+FrameSpectrum analyseFrame(const float* samples, int length)
+{
+    FrameSpectrum spectrum;
+    if (samples == nullptr || length < 4 || (length & (length - 1)) != 0)
+    {
+        return spectrum;
+    }
+
+    juce::dsp::FFT fft(orderFor(length));
+    std::vector<float> scratch(static_cast<std::size_t>(length) * 2, 0.0f);
+    std::copy(samples, samples + length, scratch.begin());
+    fft.performRealOnlyForwardTransform(scratch.data());
+
+    const auto count = length / 2;
+    spectrum.amplitude.assign(static_cast<std::size_t>(count), 0.0f);
+    spectrum.phase.assign(static_cast<std::size_t>(count), 0.0f);
+
+    for (int h = 1; h < count; ++h)
+    {
+        const auto re = static_cast<double>(scratch[static_cast<std::size_t>(h) * 2]);
+        const auto im = static_cast<double>(scratch[static_cast<std::size_t>(h) * 2 + 1]);
+
+        // The exact inverse of the convention build() writes: a bin of
+        // (L/2) * A * exp(i*(phase - pi/2)) came from A*sin(2*pi*h*i/L + phase).
+        spectrum.amplitude[static_cast<std::size_t>(h)] =
+            static_cast<float>(2.0 * std::sqrt(re * re + im * im) / length);
+        spectrum.phase[static_cast<std::size_t>(h)] =
+            static_cast<float>(std::atan2(im, re) + juce::MathConstants<double>::halfPi);
+    }
+
+    return spectrum;
+}
+
 std::shared_ptr<const Wavetable> Wavetable::build(juce::String name,
                                                   juce::String category,
                                                   const std::vector<FrameSpectrum>& frames)
