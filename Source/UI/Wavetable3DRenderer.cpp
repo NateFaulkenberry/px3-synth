@@ -180,6 +180,10 @@ uniform float uEnvironment;
 // black is a fade-out, fading to the environment is distance.
 uniform vec3 uHaze;
 
+// The ribbon's half-width in PIXELS. Antialiasing has to be done in pixels or
+// it is not antialiasing - see the coverage term below.
+uniform float uHalfWidthPixels;
+
 void main()
 {
     // Distance from this frame to where the scan actually is. Everything below
@@ -200,11 +204,25 @@ void main()
     float closeness = 1.0 - smoothstep(0.0, 0.22, toSelected);
     float selected = 1.0 - smoothstep(0.0, 0.035, toSelected);
 
-    // Across the ribbon: 1 at the centre, 0 at the edges. This is the
-    // antialiasing and the glow, out of the same value - a hard edge here would
-    // undo the whole point of drawing ribbons instead of lines.
+    // Across the ribbon: 1 at the centre, 0 at the edges.
     float across = 1.0 - abs(vSide);
-    float core = smoothstep(0.0, 0.55, across);
+
+    // Coverage, in PIXELS: solid across the ribbon and ramping to nothing over
+    // the last pixel at each edge. This is what a crisp antialiased line is.
+    //
+    // It replaces a smoothstep over the ribbon's own width, which is not
+    // antialiasing but a gradient - and a gradient that got softer as the line
+    // got thicker, because the ramp was a FRACTION of the half-width rather
+    // than a fixed distance. At 2.2 px wide that read as slightly soft; when
+    // the lines were doubled to 4.4 px it read as blurry, and would have gone
+    // on blurring at any further thickness.
+    float across01 = clamp(across * uHalfWidthPixels, 0.0, 1.0);
+    float core = across01 * across01 * (3.0 - 2.0 * across01);
+
+    // The halo, still measured across the whole ribbon - because a glow SHOULD
+    // be soft. Kept off the base alpha of every ribbon, where it was the other
+    // half of the blur, and spent only where it means something: the emissive
+    // lift on the selected frame and the light spilling off the floor's rails.
     float glow = smoothstep(0.0, 1.0, across);
 
     // Frames the table does not actually contain are drawn weaker, so the
@@ -221,7 +239,7 @@ void main()
     vec3 colour = mix(base, hot, selected);
 
     float alpha = storedWeight * depthFade * (0.16 + 0.84 * closeness);
-    alpha *= core * 0.85 + glow * 0.35;
+    alpha *= core;
     alpha += selected * glow * 0.5;
 
     // Emissive lift on the selected frame, added rather than mixed so it reads
@@ -234,12 +252,18 @@ void main()
     // a rectangle drawn on the glass - and none of the selection treatment.
     if (vFloor > 0.5)
     {
-        float edge = smoothstep(0.0, 0.7, across);
+        // The same pixel coverage the stack uses. A separate smoothstep over
+        // 70% of the ribbon was the floor's share of the same blur.
+        float edge = core;
 
         // vStored carries the floor's emphasis. Equal across the box today, so
         // it reads as a wireframe; the attribute stays because varying it is how
         // any future emphasis would be expressed.
-        float floorAlpha = 0.16 * depthFade * edge * vStored;
+        // More translucent than it was. At 0.16 the box held its own against
+        // the stack, which was fine while both were drawn as hairlines; once
+        // the ribbons doubled in thickness the same alpha made the floor read
+        // as a structure rather than as a reference.
+        float floorAlpha = 0.115 * depthFade * edge * vStored;
 
         // The near edge is lit and the far edge falls away, which is what makes
         // the box read as a SURFACE occupying space rather than as an outline
@@ -252,13 +276,38 @@ void main()
         float floorLit = mix(1.0, mix(1.15, 0.55, vFrame), uEnvironment);
         floorAlpha *= floorLit;
 
-        // White rather than tinted with the accent. The box is scenery, and
-        // sharing the waveform's hue made it read as part of the instrument;
-        // neutral, it stays behind the stack and lets the accent mean one
-        // thing. It needs no grayscale treatment either - white has no colour
-        // to drain, so a bypassed stack greys out around a floor that already
-        // matches it.
-        gl_FragColor = vec4(vec3(1.0), clamp(floorAlpha, 0.0, 1.0) * uAccent.a);
+        // The wavetable itself as a light source.
+        //
+        // The floor's vFrame is its position ALONG the box, normalised exactly
+        // the way the stack's frames are - so vFrame == uSelected is the point
+        // directly beneath the selected waveform. A pool centred there travels
+        // along the side rails as the scan moves and lifts each end rail as the
+        // scan reaches it, which is what a light moving over a surface does.
+        //
+        // This is the one place the floor is allowed to get brighter, and it is
+        // not the floor asserting itself: it is the floor reporting where the
+        // instrument is.
+        float pool = exp(-toSelected * toSelected * 30.0) * uEnvironment;
+        floorAlpha += pool * (0.26 * core + 0.16 * glow);
+
+        // The rim. Broader than the core and much weaker, so an edge reads as
+        // having a little light spilling off it rather than as a thicker line.
+        floorAlpha += uEnvironment * 0.05 * glow * depthFade * vStored;
+
+        // Light adds colour as well as brightness: a white rail under a blue
+        // source is not white. Away from the pool the box stays neutral, which
+        // is what keeps it scenery - it only takes the instrument's hue where
+        // the instrument is actually lighting it.
+        vec3 floorColour = mix(vec3(1.0), hot, clamp(pool * 0.7, 0.0, 1.0));
+
+        // Which means it needs the grayscale treatment after all. It did not
+        // when it was white everywhere - white has no colour to drain - but a
+        // lit rail does, and a bypassed oscillator whose floor still glowed
+        // blue would be the one coloured thing left on a grey card.
+        float floorLuma = dot(floorColour, vec3(0.299, 0.587, 0.114));
+        floorColour = mix(floorColour, vec3(floorLuma), uGrayscale);
+
+        gl_FragColor = vec4(floorColour, clamp(floorAlpha, 0.0, 1.0) * uAccent.a);
         return;
     }
 
@@ -482,6 +531,7 @@ void Wavetable3DRenderer::newOpenGLContextCreated()
     uniformGrayscale = uniform("uGrayscale");
     uniformEnvironment = uniform("uEnvironment");
     uniformHaze = uniform("uHaze");
+    uniformHalfWidthPixels = uniform("uHalfWidthPixels");
 
     attribPosition = attribute("aPosition");
     attribNeighbour = attribute("aNeighbour");
@@ -663,6 +713,7 @@ void Wavetable3DRenderer::openGLContextClosing()
     uniformGrayscale.reset();
     uniformEnvironment.reset();
     uniformHaze.reset();
+    uniformHalfWidthPixels.reset();
     attribPosition.reset();
     attribNeighbour.reset();
     attribSide.reset();
@@ -1163,6 +1214,14 @@ void Wavetable3DRenderer::renderOpenGL()
         // heavier stack.
         const auto pixels = 4.4f * scale;
         uniformHalfWidth->set(pixels / static_cast<float>(height));
+
+        // The same width the fragment shader antialiases against. Half,
+        // because `pixels` is the full line width: the vertex offset of
+        // uHalfWidth in NDC works out to pixels/2 on each side.
+        if (uniformHalfWidthPixels != nullptr)
+        {
+            uniformHalfWidthPixels->set(pixels * 0.5f);
+        }
     }
     if (uniformAspect != nullptr)
     {

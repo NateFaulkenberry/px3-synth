@@ -199,6 +199,7 @@ private:
     std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformGrayscale;
     std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformEnvironment;
     std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformHaze;
+    std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformHalfWidthPixels;
 
     std::unique_ptr<juce::OpenGLShaderProgram::Attribute> attribPosition;
     std::unique_ptr<juce::OpenGLShaderProgram::Attribute> attribNeighbour;

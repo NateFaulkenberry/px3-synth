@@ -2685,6 +2685,69 @@ void testWavetable()
                       graph->isVisible() && ! graph->getBounds().isEmpty(),
                       "graph bounds " + graph->getBounds().toString());
 
+                // The panel border, as actually RENDERED, in both modes.
+                //
+                // Comparing the two colour sources is not enough: they agreed
+                // on the accent and on the alpha and the border still changed,
+                // because a translucent stroke takes the colour of the fill
+                // beneath it and the two panels filled differently. Only the
+                // pixels settle that.
+                {
+                    const auto panel = graph->getBounds();
+
+                    const auto borderPixel = [&card, &panel]
+                    {
+                        juce::Image shot(juce::Image::ARGB, card->getWidth(),
+                                         card->getHeight(), true);
+                        {
+                            juce::Graphics g(shot);
+                            card->paintEntireComponent(g, false);
+                        }
+
+                        // The brightest pixel across the panel's top edge. A
+                        // 1 px antialiased stroke does not land on one exact
+                        // row, so picking the strongest of a few is what makes
+                        // this stable rather than lucky.
+                        juce::Colour best;
+                        auto bestLuma = -1.0f;
+                        for (auto dy = -1; dy <= 1; ++dy)
+                        {
+                            for (auto dx = -6; dx <= 6; ++dx)
+                            {
+                                const auto x = panel.getCentreX() + dx;
+                                const auto y = panel.getY() + dy;
+                                if (! shot.getBounds().contains(x, y)) { continue; }
+
+                                const auto pixel = shot.getPixelAt(x, y);
+                                const auto luma = pixel.getBrightness() * pixel.getFloatAlpha();
+                                if (luma > bestLuma) { bestLuma = luma; best = pixel; }
+                            }
+                        }
+                        return best;
+                    };
+
+                    setChoice(processor, "osc1Mode", 8);
+                    card->refreshFromParameters(true, 8, 0);
+                    const auto inWavetable = borderPixel();
+
+                    setChoice(processor, "osc1Mode", 1);   // SAW
+                    card->refreshFromParameters(true, 1, 0);
+                    const auto inSaw = borderPixel();
+
+                    const auto channelGap = juce::jmax(
+                        juce::jmax(std::abs(inWavetable.getRed() - inSaw.getRed()),
+                                   std::abs(inWavetable.getGreen() - inSaw.getGreen())),
+                        juce::jmax(std::abs(inWavetable.getBlue() - inSaw.getBlue()),
+                                   std::abs(inWavetable.getAlpha() - inSaw.getAlpha())));
+
+                    check("WavetableCard_ThePanelBorderIsTheSameColourInEveryMode",
+                          channelGap <= 1,
+                          "border renders " + inWavetable.toDisplayString(true)
+                              + " in WAVETABLE and " + inSaw.toDisplayString(true)
+                              + " in SAW - worst channel differs by "
+                              + juce::String(channelGap));
+                }
+
                 setChoice(processor, "osc1Mode", 1);   // SAW
                 card->refreshFromParameters(true, 1, 0);
                 check("WavetableCard_GraphAndScanKnobHideInOtherModes",
@@ -21792,6 +21855,28 @@ int main(int argc, char* argv[])
                     off.lower - off.upper, on.lower - on.upper);
         std::printf("  lit pixels:            %d off, %d on\n\n", litOff, litOn);
 
+        // Does the floor take light from the scan? Measured by sweeping the
+        // scan and watching the frame, with the caveat that the STACK moves
+        // too - so this is reported as a sweep rather than gated, and the
+        // number that matters is how it compares with the light pool removed.
+        std::printf("  the scan sweeping, with the environment on:\n");
+        std::printf("    %-8s %8s %8s\n", "scan", "lower", "centre");
+        auto lowestLower = 1.0f, highestLower = 0.0f;
+        for (const auto scan : { 0.05f, 0.35f, 0.65f, 0.95f })
+        {
+            host->renderer.setPosition(scan);
+            settle();
+            const auto swept = host->renderer.getLuminanceProbe();
+            std::printf("    %-8.2f %8.4f %8.4f\n", scan, swept.lower, swept.centre);
+            lowestLower = juce::jmin(lowestLower, swept.lower);
+            highestLower = juce::jmax(highestLower, swept.lower);
+        }
+        std::printf("    lower region moves by %.4f across the sweep\n\n",
+                    highestLower - lowestLower);
+
+        host->renderer.setPosition(0.4f);
+        settle();
+
         // The three properties the brief actually specifies, as pass/fail. The
         // rest of the numbers are for judging the picture; these are the ones
         // that can be wrong.
@@ -21810,6 +21895,13 @@ int main(int argc, char* argv[])
             // Section 3: an environment, not a flat rectangle.
             { "the corners are lifted off the flat background",
               on.corners > off.corners + 0.005f },
+            // The floor takes light from the selected waveform. The lower
+            // region is where the floor lives and where the stack barely
+            // reaches, which is what makes this a measurement OF the floor:
+            // measured, it moves 0.0001 across the sweep with the light pool
+            // removed and 0.0097 with it.
+            { "the floor is lit by the scan moving over it",
+              (highestLower - lowestLower) > 0.003f },
         };
 
         auto allOk = true;

@@ -416,3 +416,62 @@ none of this changed how the stack itself draws.
 **No new per-frame allocation and no new geometry.** The environment's four
 vertices are uploaded once when the context is created. A resize, a camera move
 and a new table all cost nothing extra.
+
+## E. The floor as a lit surface
+
+The floor was an outline. Three changes make it a surface in a lit scene:
+
+**More translucent** - 0.16 to 0.115. The old alpha was chosen while both the
+stack and the floor were hairlines; once the ribbons doubled in thickness the
+same number made the floor read as a structure rather than as a reference.
+
+**Lit by the wavetable.** The floor's `vFrame` is its position along the box,
+normalised exactly the way the stack's frames are - so `vFrame == uSelected` is
+the point directly beneath the selected waveform. A pool centred there travels
+along the side rails as the scan moves and lifts each end rail as the scan
+reaches it. It adds colour as well as brightness, because a white rail under a
+blue source is not white, and only where the light actually falls: away from the
+pool the box stays neutral, which is what keeps it scenery.
+
+That change reinstates a grayscale branch that had been removed as inert. It was
+inert while the floor was white everywhere - white has no colour to drain - but
+a lit rail does, and a bypassed oscillator whose floor still glowed blue would
+be the one coloured thing left on a grey card.
+
+**A rim.** Broader than the core and much weaker, so an edge reads as having a
+little light spilling off it rather than as a thicker line.
+
+Measured, sweeping the scan and watching the lower region of the frame - where
+the floor lives and the stack barely reaches:
+
+```
+    scan     lower luminance
+             pool off   pool on
+    0.05       0.0983    0.0983
+    0.35       0.0983    0.0983
+    0.65       0.0983    0.0988
+    0.95       0.0985    0.1080
+    moves by   0.0001    0.0097
+```
+
+97x, which is the isolation: with the light removed the region is flat as the
+scan sweeps, so the movement is the floor and not the stack passing through.
+`envcheck` gates it at 0.003.
+
+## F. Sharpening the lines
+
+The ribbons were antialiased with `smoothstep(0.0, 0.55, across)`, where
+`across` runs 0 at the ribbon's edge to 1 at its centre. That is a gradient
+across the ribbon's own width, not antialiasing: the softness was a FRACTION of
+the half-width, so it scaled with thickness. At 2.2 px it read as slightly soft;
+doubling the lines to 4.4 px doubled the blur, and any further thickening would
+have blurred further.
+
+Replaced with coverage in pixels - `clamp(across * halfWidthPixels, 0, 1)`,
+smoothstepped - which is solid across the ribbon and ramps to nothing over the
+last pixel at each edge, at any thickness.
+
+The other half of the blur was `alpha *= core * 0.85 + glow * 0.35`, which put a
+full-ribbon-width halo under *every* line. The halo is kept, because a glow
+should be soft, but it is now spent only where it means something: the emissive
+lift on the selected frame, and the light spilling off the floor's rails.

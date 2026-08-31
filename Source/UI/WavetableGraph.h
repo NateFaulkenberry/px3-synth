@@ -20,10 +20,18 @@ public:
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void setAccentColour(juce::Colour accentIn);
 
-    // What the panel's border is drawn in. Exposed so the card can be held to
-    // supplying it: the graph has a default accent, and a default is exactly
-    // what you get when nobody wires the real one up.
+    // The panel's visual identity, resolved from config in one place.
+    //
+    // Exposed because the oscillator card draws a DIFFERENT panel in the same
+    // rectangle in every non-wavetable mode, and the two have to be identical
+    // or the border changes colour when the mode changes - which it did. They
+    // shared an accent and an alpha and still differed, because the mode visual
+    // filled translucent RGBA(12,16,26,170) where this fills opaque #0C0C0E,
+    // and a border at alpha 0.32 composites to whatever is under it.
     juce::Colour getBorderColour() const { return borderColour(); }
+    juce::Colour getPanelFillColour() const;
+    float getPanelCornerRadius() const { return cornerRadius(); }
+    float getPanelBorderWidth() const;
 
     // Rebuilding the surface is the expensive part, so it happens when the
     // TABLE changes and not when the position does.

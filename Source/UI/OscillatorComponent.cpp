@@ -448,10 +448,22 @@ void OscillatorComponent::paint(juce::Graphics& g)
     const auto macroBValue = static_cast<float>(macroB.getValue());
     const auto macroCValue = static_cast<float>(macroC.getValue());
 
-    g.setColour(juce::Colour::fromRGBA(12, 16, 26, 170));
-    g.fillRoundedRectangle(graph, 7.0f);
-    g.setColour(effectiveAccent.withAlpha(0.32f));
-    g.drawRoundedRectangle(graph, 7.0f, 1.0f);
+    // The mode visual occupies the SAME rectangle the wavetable panel does, in
+    // the modes where the wavetable panel is hidden - so it has to be the same
+    // panel, not a similar one. Both were drawn from the card's accent at
+    // alpha 0.32 and still did not match, because this filled a translucent
+    // blue-grey where the wavetable panel fills an opaque near-black, and a
+    // translucent border takes the colour of whatever is beneath it.
+    //
+    // Taken from the graph rather than duplicated here, so there is one
+    // definition of what this panel looks like and no way for the two to drift.
+    // The graph is a child in every mode; only its visibility changes.
+    const auto panelRadius = wavetableGraph.getPanelCornerRadius();
+    g.setColour(wavetableGraph.getPanelFillColour());
+    g.fillRoundedRectangle(graph, panelRadius);
+    g.setColour(wavetableGraph.getBorderColour());
+    g.drawRoundedRectangle(graph.reduced(0.5f), panelRadius,
+                           wavetableGraph.getPanelBorderWidth());
 
     const auto left = graph.getX() + 6.0f;
     const auto right = graph.getRight() - 6.0f;

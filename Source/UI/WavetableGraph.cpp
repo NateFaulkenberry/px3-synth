@@ -191,6 +191,18 @@ void WavetableGraph::setBypassed(bool shouldBeBypassed)
     repaint();
 }
 
+juce::Colour WavetableGraph::getPanelFillColour() const
+{
+    // Opaque, matching what the GL clear actually produces - see paint().
+    return configColour("osc.wavetable.graph.background",
+                        juce::Colour::fromRGB(12, 12, 14)).withAlpha(1.0f);
+}
+
+float WavetableGraph::getPanelBorderWidth() const
+{
+    return configFloat("osc.wavetable.graph.borderWidth", 1.0f);
+}
+
 juce::Colour WavetableGraph::borderColour() const
 {
     // The card's own accent, at the weight the envelope graphs already use, so
@@ -284,8 +296,7 @@ void WavetableGraph::paint(juce::Graphics& g)
     // alpha is ignored here on purpose: an attached context has no transparency
     // to composite against, so honouring it would make the ring around the GL
     // view a slightly different shade from the panel it is part of.
-    g.setColour(configColour("osc.wavetable.graph.background",
-                             juce::Colour::fromRGB(12, 12, 14)).withAlpha(1.0f));
+    g.setColour(getPanelFillColour());
     g.fillRoundedRectangle(bounds, radius);
 
     // The border is drawn HERE rather than in the overlay, even though a parent
@@ -302,8 +313,7 @@ void WavetableGraph::paint(juce::Graphics& g)
     else
     {
         g.setColour(borderColour());
-        g.drawRoundedRectangle(bounds.reduced(0.5f), radius,
-                               configFloat("osc.wavetable.graph.borderWidth", 1.0f));
+        g.drawRoundedRectangle(bounds.reduced(0.5f), radius, getPanelBorderWidth());
     }
 }
 
