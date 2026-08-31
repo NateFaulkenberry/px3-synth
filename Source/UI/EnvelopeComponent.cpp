@@ -39,6 +39,11 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
     // labels and the assignment box around it.
     addAndMakeVisible(breakpointEditor);
     breakpointEditor.setConfigPrefix(configPrefixIn);
+
+    // The card's accent, handed over here as well as in setAccentColour - that
+    // only fires on a change, so a card whose colour never changes left the
+    // editor on its own default and the curve came out the wrong blue.
+    breakpointEditor.setAccentColour(accentIn);
     breakpointEditor.onEnvelopeChanged = [this](const px3::BreakpointEnvelope& edited)
     {
         if (onEnvelopeEdited != nullptr)
@@ -111,6 +116,7 @@ void EnvelopeComponent::refreshFromParameters()
         lastSustain = s;
         lastRelease = r;
         currentEnabled = nextEnabled;
+        breakpointEditor.setEnvelopeEnabled(currentEnabled);
         enabledButton.setToggleState(currentEnabled, juce::dontSendNotification);
         assignLabel.setEnabled(currentEnabled);
         assignBox.setEnabled(currentEnabled);
@@ -144,6 +150,12 @@ void EnvelopeComponent::refreshFromParameters()
 void EnvelopeComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
 {
     card.setPanelContentBounds(panelContent);
+
+    // resized(), not just repaint(). This changes the card's geometry, and
+    // paint() recomputes it - so repainting alone left the breakpoint editor
+    // sitting where the PREVIOUS geometry put it while the frame was drawn
+    // somewhere else, which is how the curve ended up outside the background.
+    resized();
     repaint();
 }
 
@@ -192,17 +204,12 @@ void EnvelopeComponent::paint(juce::Graphics& g)
     const auto graphStrokeColour = currentEnabled ? graphStrokeColourEnabled : graphStrokeColourDisabled;
     const auto graphStrokeAlpha = currentEnabled ? graphStrokeAlphaEnabled : graphStrokeAlphaDisabled;
 
-    g.setColour(graphFillColour.withAlpha(static_cast<float>(graphFillAlpha) / 255.0f));
-    g.fillRoundedRectangle(graphArea, graphCornerRadius);
-    g.setColour(graphStrokeColour.withAlpha(static_cast<float>(graphStrokeAlpha) / 255.0f));
-    g.drawRoundedRectangle(graphArea, graphCornerRadius, graphStrokeThickness);
-
-    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 24));
-    for (int i = 1; i < 6; ++i)
-    {
-        const auto x = juce::jmap(static_cast<float>(i), 0.0f, 6.0f, geom.left, geom.right);
-        g.drawVerticalLine(static_cast<int>(std::lround(x)), geom.top, geom.bottom);
-    }
+    // The graph's fill, frame and grid all belong to the breakpoint editor
+    // now. Drawing them here as well meant one rectangle computed in two
+    // places, which is how the curve ended up outside its own background.
+    juce::ignoreUnused(graphFillColour, graphFillAlpha, graphStrokeColour,
+                       graphStrokeAlpha, graphCornerRadius, graphStrokeThickness,
+                       graphArea);
 
     // The curve, the breakpoints and the handles belong to the editor sitting on
     // top of this. Drawing the old fixed-handle ADSR here as well would leave
@@ -743,6 +750,15 @@ void EnvelopeComponent::applyDragPosition(juce::Point<float> mousePos,
     refreshFromParameters();
 }
 
+juce::Rectangle<int> EnvelopeComponent::debugGraphFrameBounds() const
+{
+    const auto geom = computeGeometry();
+    return juce::Rectangle<float>(geom.left - 6.0f,
+                                  geom.top - 5.0f,
+                                  (geom.right - geom.left) + 12.0f,
+                                  (geom.bottom - geom.top) + 10.0f).toNearestInt();
+}
+
 void EnvelopeComponent::setShapedEnvelope(const px3::BreakpointEnvelope& envelope)
 {
     breakpointEditor.setEnvelope(envelope);
@@ -750,6 +766,12 @@ void EnvelopeComponent::setShapedEnvelope(const px3::BreakpointEnvelope& envelop
 
 void EnvelopeComponent::resized()
 {
+    layoutCardInner();
+
+    // AFTER layoutCardInner, not before it. computeGeometry reads
+    // inner.rowContent, which only holds the right values once the card has
+    // been laid out - positioning the editor first gave it the PREVIOUS
+    // layout's graph rectangle, so the curve drew outside the frame.
     {
         const auto geom = computeGeometry();
         breakpointEditor.setBounds(juce::Rectangle<float>(geom.left - 6.0f,
@@ -758,8 +780,6 @@ void EnvelopeComponent::resized()
                                                           (geom.bottom - geom.top) + 10.0f)
                                        .toNearestInt());
     }
-
-    layoutCardInner();
 
     // AMP ENV is the deliberate exception: one full-size graph, no rows of
     // controls, so there is nothing to place here. `fullHeightGraph` is the
@@ -849,6 +869,13 @@ void EnvelopeComponent::layoutCardInner()
     // wave graphs elsewhere. Without this the graph kept the accent passed at
     // construction and stayed green after the mod envelopes went purple.
     accent = card.style().border.colour;
+
+    // Handed to the editor HERE, where it is derived, rather than from the
+    // constructor or setAccentColour. The card takes its identity colour from
+    // its own style, so the accent passed in at construction is not the one it
+    // draws with - which is exactly why the curve came out the wrong blue while
+    // the card frame was purple.
+    breakpointEditor.setAccentColour(accent);
 
     // The power glyph lights in this card's own identity colour.
 

@@ -42,6 +42,11 @@ public:
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
     void refreshFromParameters();
 
+    // For the layout tests: the frame paint() draws, and where the editor
+    // actually sits. They have to be the same rectangle.
+    juce::Rectangle<int> debugGraphFrameBounds() const;
+    juce::Rectangle<int> debugEditorBounds() const { return breakpointEditor.getBounds(); }
+
     // The shape this card is editing. Handed in by the editor, which owns the
     // connection to the processor - this component knows about an envelope, not
     // about where it lives.

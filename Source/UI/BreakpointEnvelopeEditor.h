@@ -22,6 +22,10 @@ public:
 
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void setAccentColour(juce::Colour accentIn);
+
+    // Greyed out with the rest of the card when the envelope is bypassed, the
+    // same way the card's own drawing was.
+    void setEnvelopeEnabled(bool shouldBeEnabled);
     void setConfigPrefix(juce::String prefix);
 
     void setEnvelope(const px3::BreakpointEnvelope& envelope);
@@ -60,6 +64,8 @@ public:
     juce::Point<float> pointToScreen(int index) const;
 
 private:
+    juce::Colour curveColour() const;
+    juce::Colour fillColour() const;
     juce::Rectangle<float> plotArea() const;
     juce::Point<float> toScreen(double timeSeconds, double value) const;
     double screenToTime(float x) const;
@@ -71,6 +77,8 @@ private:
 
     juce::Colour colourFor(const juce::String& key, juce::Colour fallback) const;
     float floatFor(const juce::String& key, float fallback) const;
+    float configFor(const juce::String& key, float fallback) const;
+    juce::Colour configColour(const juce::String& key, juce::Colour fallback) const;
 
     void notifyChanged();
 
@@ -78,6 +86,7 @@ private:
     std::shared_ptr<const UIConfig> config;
     juce::String configPrefix { "mod.env1" };
     juce::Colour accent { juce::Colour::fromRGB(120, 186, 255) };
+    bool envelopeEnabled { true };
 
     Hit hovered;
     Hit dragging;

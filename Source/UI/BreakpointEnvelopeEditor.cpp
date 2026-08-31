@@ -54,6 +54,13 @@ void BreakpointEnvelopeEditor::setLivePosition(float normalisedTime)
     repaint();
 }
 
+void BreakpointEnvelopeEditor::setEnvelopeEnabled(bool shouldBeEnabled)
+{
+    if (envelopeEnabled == shouldBeEnabled) { return; }
+    envelopeEnabled = shouldBeEnabled;
+    repaint();
+}
+
 juce::Colour BreakpointEnvelopeEditor::colourFor(const juce::String& key, juce::Colour fallback) const
 {
     return config != nullptr ? config->getColour(configPrefix + ".graph." + key, fallback) : fallback;
@@ -62,6 +69,34 @@ juce::Colour BreakpointEnvelopeEditor::colourFor(const juce::String& key, juce::
 float BreakpointEnvelopeEditor::floatFor(const juce::String& key, float fallback) const
 {
     return config != nullptr ? config->getFloat(configPrefix + ".graph." + key, fallback) : fallback;
+}
+
+// The frame's own styling keeps the keys the card already used for it, so an
+// existing UIConfig that themed the graph still themes it.
+float BreakpointEnvelopeEditor::configFor(const juce::String& key, float fallback) const
+{
+    return config != nullptr ? config->getFloat(configPrefix + ".visual.graph." + key, fallback)
+                             : fallback;
+}
+
+juce::Colour BreakpointEnvelopeEditor::configColour(const juce::String& key,
+                                                    juce::Colour fallback) const
+{
+    return config != nullptr ? config->getColour(configPrefix + ".visual.graph." + key, fallback)
+                             : fallback;
+}
+
+// The colours the card drew its own envelope in, so the editor looks like the
+// component it replaced the inside of rather than like a control borrowed from
+// somewhere else. A bypassed envelope goes grey with the rest of the card.
+juce::Colour BreakpointEnvelopeEditor::curveColour() const
+{
+    return envelopeEnabled ? accent.brighter(0.25f) : juce::Colour::fromRGB(176, 176, 176);
+}
+
+juce::Colour BreakpointEnvelopeEditor::fillColour() const
+{
+    return (envelopeEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180)).withAlpha(0.28f);
 }
 
 juce::Rectangle<float> BreakpointEnvelopeEditor::plotArea() const
@@ -184,8 +219,28 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
     const auto area = plotArea();
     if (area.isEmpty()) { return; }
 
+    // The editor draws its own background and frame.
+    //
+    // They used to belong to the card, which meant one rectangle computed in
+    // two places and kept in step by hand - and the curve appearing outside the
+    // frame is exactly what that costs when they drift. Owned here, the frame
+    // and what is drawn inside it cannot disagree: JUCE clips a component to
+    // its own bounds, so the content is inside the frame by construction.
+    const auto frame = getLocalBounds().toFloat().reduced(0.5f);
+    const auto frameRadius = configFor("cornerRadius", 7.0f);
+
+    g.setColour(configColour("fillColour", juce::Colour::fromRGB(14, 14, 18))
+                    .withAlpha(configFor("fillAlpha", 170.0f) / 255.0f));
+    g.fillRoundedRectangle(frame, frameRadius);
+
+    g.setColour((envelopeEnabled ? curveColour() : juce::Colour::fromRGB(136, 136, 136))
+                    .withAlpha(configFor(envelopeEnabled ? "strokeAlphaEnabled"
+                                                         : "strokeAlphaDisabled",
+                                         envelopeEnabled ? 82.0f : 62.0f) / 255.0f));
+    g.drawRoundedRectangle(frame, frameRadius, configFor("strokeThickness", 1.0f));
+
     // ---- grid -------------------------------------------------------------
-    g.setColour(colourFor("gridColor", juce::Colour::fromRGBA(255, 255, 255, 22)));
+    g.setColour(colourFor("gridColor", juce::Colour::fromRGBA(255, 255, 255, 24)));
     const auto gridWidth = floatFor("gridWidth", 1.0f);
     for (int i = 1; i < 4; ++i)
     {
@@ -201,12 +256,12 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
     if (sustainPoint >= 0 && sustainPoint < envelope.getPointCount())
     {
         const auto sustainX = pointToScreen(sustainPoint).x;
-        g.setColour(colourFor("sustainRegionColor", accent.withAlpha(0.07f)));
+        g.setColour(colourFor("sustainRegionColor", curveColour().withAlpha(0.07f)));
         g.fillRect(juce::Rectangle<float>(sustainX, area.getY(),
                                           juce::jmax(0.0f, area.getRight() - sustainX),
                                           area.getHeight()));
 
-        g.setColour(colourFor("sustainLineColor", accent.withAlpha(0.35f)));
+        g.setColour(colourFor("sustainLineColor", curveColour().withAlpha(0.35f)));
         g.fillRect(sustainX, area.getY(), floatFor("sustainLineWidth", 1.0f), area.getHeight());
     }
 
@@ -224,13 +279,13 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
         filled.closeSubPath();
 
         g.setGradientFill(juce::ColourGradient(
-            colourFor("fillTopColor", accent.withAlpha(0.26f)), area.getX(), area.getY(),
-            colourFor("fillBottomColor", accent.withAlpha(0.02f)), area.getX(), area.getBottom(),
-            false));
+            colourFor("fillTopColor", fillColour()), area.getX(), area.getY(),
+            colourFor("fillBottomColor", fillColour().withMultipliedAlpha(0.08f)),
+            area.getX(), area.getBottom(), false));
         g.fillPath(filled);
     }
 
-    g.setColour(colourFor("lineColor", accent));
+    g.setColour(colourFor("lineColor", curveColour()));
     g.strokePath(curve, juce::PathStrokeType(floatFor("lineWidth", 2.0f),
                                              juce::PathStrokeType::curved,
                                              juce::PathStrokeType::rounded));
@@ -254,7 +309,7 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
 
         // A handle on a straight segment is drawn faintly: it is available, but
         // it is not information.
-        g.setColour(colourFor("curveHandleColor", accent)
+        g.setColour(colourFor("curveHandleColor", curveColour())
                         .withAlpha(active ? 1.0f : (bent ? 0.75f : 0.3f)));
         const auto radius = active ? handleRadius * 1.5f : handleRadius;
         g.fillEllipse(position.x - radius, position.y - radius, radius * 2.0f, radius * 2.0f);
@@ -274,8 +329,8 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
         g.setColour(colourFor("pointFillColor", juce::Colour::fromRGB(18, 18, 20)));
         g.fillEllipse(position.x - radius, position.y - radius, radius * 2.0f, radius * 2.0f);
 
-        g.setColour(isSustain ? colourFor("sustainPointColor", accent.brighter(0.5f))
-                              : colourFor("pointColor", accent));
+        g.setColour(isSustain ? colourFor("sustainPointColor", curveColour().brighter(0.3f))
+                              : colourFor("pointColor", curveColour()));
         g.drawEllipse(position.x - radius, position.y - radius, radius * 2.0f, radius * 2.0f,
                       floatFor("pointOutlineWidth", 1.8f));
     }

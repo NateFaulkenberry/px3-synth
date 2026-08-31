@@ -36,6 +36,7 @@
 #include "../UI/Wavetable3DRenderer.h"
 #include "../UI/OscillatorComponent.h"
 #include "../UI/BreakpointEnvelopeEditor.h"
+#include "../UI/EnvelopeComponent.h"
 #include "../DSP/Lucy.h"
 #include "../DSP/StereoSpread.h"
 #include "../UI/FxCardComponent.h"
@@ -1221,6 +1222,63 @@ void testBreakpointEnvelope()
                   "first has " + juce::String(first.getEnvelope().getPointCount())
                       + " points, second still has "
                       + juce::String(second.getEnvelope().getPointCount()));
+        }
+    }
+
+    // ---- the editor sits inside the frame the card draws --------------------
+    // It did not: the editor was positioned from computeGeometry BEFORE
+    // layoutCardInner had run, so it got the previous layout's graph rectangle
+    // and the curve drew outside the card's frame.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        if (editor != nullptr)
+        {
+            std::vector<EnvelopeComponent*> cards;
+            std::function<void(juce::Component&)> find = [&](juce::Component& c)
+            {
+                for (auto* child : c.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* env = dynamic_cast<EnvelopeComponent*>(child))
+                    {
+                        cards.push_back(env);
+                    }
+                    find(*child);
+                }
+            };
+            find(*editor);
+
+            // Panel bounds change after the first layout in normal use, and that
+            // is the path that diverged: it repainted without re-placing the
+            // children, so the frame moved and the editor did not.
+            for (auto* card : cards)
+            {
+                card->setPanelContentBounds(card->getBounds().expanded(0, 12));
+            }
+
+            juce::StringArray misplaced;
+            for (std::size_t i = 0; i < cards.size(); ++i)
+            {
+                const auto frame = cards[i]->debugGraphFrameBounds();
+                const auto placed = cards[i]->debugEditorBounds();
+                if (frame != placed)
+                {
+                    misplaced.add("card " + juce::String(static_cast<int>(i)) + ": frame "
+                                  + frame.toString() + " vs editor " + placed.toString());
+                }
+            }
+
+            check("EnvelopeCard_EditorSitsExactlyOnTheGraphFrame",
+                  ! cards.empty() && misplaced.isEmpty(),
+                  cards.empty() ? "no envelope cards found in the editor"
+                                : (misplaced.isEmpty()
+                                       ? juce::String(static_cast<int>(cards.size()))
+                                             + " cards, every editor on its frame"
+                                       : misplaced.joinIntoString("; ")));
         }
     }
 
