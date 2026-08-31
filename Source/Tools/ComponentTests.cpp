@@ -34,6 +34,7 @@
 #include "../DSP/WavetableLibrary.h"
 #include "../UI/WavetableGraph.h"
 #include "../UI/OscillatorComponent.h"
+#include "../UI/BreakpointEnvelopeEditor.h"
 #include "../DSP/Lucy.h"
 #include "../DSP/StereoSpread.h"
 #include "../UI/FxCardComponent.h"
@@ -1016,6 +1017,210 @@ void testBreakpointEnvelope()
         check("Envelope_APresetWithNoShapeLoadsAsPlainAdsr",
               migrated.getShapedEnvelope(0).isPlainAdsr(),
               "absence of the node means ADSR, and clears whatever was shaped before");
+    }
+
+    // ---- the editor ---------------------------------------------------------
+    {
+        BreakpointEnvelopeEditor editor;
+        editor.setSize(400, 200);
+
+        EnvelopeSettings settings;
+        settings.attackSeconds = 0.1f;
+        settings.decaySeconds = 0.2f;
+        settings.sustainLevel = 0.5f;
+        settings.releaseSeconds = 0.3f;
+        editor.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+
+        int changeCount = 0;
+        editor.onEnvelopeChanged = [&changeCount](const px3::BreakpointEnvelope&) { ++changeCount; };
+
+        // A mouse event the component will accept. Built once and moved,
+        // because constructing one per interaction is most of the noise in a
+        // test like this.
+        const auto makeEvent = [&editor](juce::Point<float> position, int clicks,
+                                         juce::ModifierKeys mods = juce::ModifierKeys())
+        {
+            return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(),
+                                    position, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                    &editor, &editor, juce::Time::getCurrentTime(),
+                                    position, juce::Time::getCurrentTime(), clicks, false);
+        };
+
+        // ---- hit testing ----
+        {
+            const auto onPoint = editor.pointToScreen(1);
+            const auto hit = editor.grabAt(onPoint);
+            check("EnvelopeEditor_FindsABreakpointUnderTheMouse",
+                  hit.target == BreakpointEnvelopeEditor::Target::point && hit.index == 1,
+                  "point 1 at " + onPoint.toString() + " was hit");
+
+            // A few pixels off still counts: the grab radius is deliberately
+            // larger than the dot, because a user aims at what they can see.
+            const auto nearMiss = editor.grabAt(onPoint.translated(7.0f, 0.0f));
+            check("EnvelopeEditor_GrabRadiusIsLargerThanTheDot",
+                  nearMiss.target == BreakpointEnvelopeEditor::Target::point,
+                  "7 px off a breakpoint still grabs it");
+
+            const auto empty = editor.grabAt({ 5.0f, 5.0f });
+            check("EnvelopeEditor_EmptySpaceHitsNothing",
+                  empty.target == BreakpointEnvelopeEditor::Target::none,
+                  "the top-left corner grabs nothing");
+        }
+
+        // ---- adding and removing ----
+        {
+            const auto before = editor.getEnvelope().getPointCount();
+            editor.mouseDoubleClick(makeEvent({ 200.0f, 100.0f }, 2));
+            const auto afterAdd = editor.getEnvelope().getPointCount();
+            check("EnvelopeEditor_DoubleClickingEmptySpaceAddsAPoint", afterAdd == before + 1,
+                  juce::String(before) + " points, then " + juce::String(afterAdd));
+
+            // And removing it again by double-clicking the point itself.
+            auto addedIndex = -1;
+            for (int i = 0; i < editor.getEnvelope().getPointCount(); ++i)
+            {
+                if (editor.getEnvelope().canRemovePoint(i)) { addedIndex = i; break; }
+            }
+            if (addedIndex >= 0)
+            {
+                editor.mouseDoubleClick(makeEvent(editor.pointToScreen(addedIndex), 2));
+            }
+            check("EnvelopeEditor_DoubleClickingAPointRemovesIt",
+                  editor.getEnvelope().getPointCount() == before,
+                  "back to " + juce::String(editor.getEnvelope().getPointCount()) + " points");
+
+            // The structural points refuse, and refuse silently rather than
+            // leaving an envelope that cannot be evaluated.
+            const auto held = editor.getEnvelope().getPointCount();
+            editor.mouseDoubleClick(makeEvent(editor.pointToScreen(0), 2));
+            editor.mouseDoubleClick(makeEvent(
+                editor.pointToScreen(editor.getEnvelope().getPointCount() - 1), 2));
+            check("EnvelopeEditor_StructuralPointsSurviveADoubleClick",
+                  editor.getEnvelope().getPointCount() == held,
+                  "the anchor and the end are still there");
+        }
+
+        // ---- dragging a breakpoint ----
+        {
+            const auto start = editor.pointToScreen(1);
+            const auto before = editor.getEnvelope().getPoint(1);
+
+            editor.mouseDown(makeEvent(start, 1));
+            editor.mouseDrag(makeEvent(start.translated(20.0f, -20.0f), 1));
+            editor.mouseUp(makeEvent(start.translated(20.0f, -20.0f), 1));
+
+            const auto after = editor.getEnvelope().getPoint(1);
+            check("EnvelopeEditor_DraggingMovesAPointInTimeAndValue",
+                  after.timeSeconds > before.timeSeconds && after.value > before.value,
+                  "moved from " + fmt(before.timeSeconds, 4) + "s/" + fmt(before.value, 3)
+                      + " to " + fmt(after.timeSeconds, 4) + "s/" + fmt(after.value, 3));
+
+            check("EnvelopeEditor_DraggingReportsTheChange", changeCount > 0,
+                  juce::String(changeCount) + " change callbacks fired");
+        }
+
+        // ---- bending a segment ----
+        {
+            // A rising segment and a falling one, because the sign of the bend
+            // has to follow the mouse in both - a falling segment that bends
+            // the wrong way under the cursor feels broken long before it looks
+            // it.
+            juce::StringArray wrongWay;
+            for (const auto segment : { 0, 2 })
+            {
+                editor.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+                const auto handle = editor.grabAt(
+                    editor.pointToScreen(segment).translated(0.0f, 0.0f));
+                juce::ignoreUnused(handle);
+
+                // Grab the curve handle for this segment.
+                auto handlePosition = juce::Point<float>();
+                for (int x = 0; x < 400; ++x)
+                {
+                    for (int y = 0; y < 200; y += 2)
+                    {
+                        const auto probe = editor.grabAt({ static_cast<float>(x),
+                                                            static_cast<float>(y) });
+                        if (probe.target == BreakpointEnvelopeEditor::Target::curve
+                            && probe.index == segment)
+                        {
+                            handlePosition = { static_cast<float>(x), static_cast<float>(y) };
+                            x = 400;
+                            break;
+                        }
+                    }
+                }
+
+                editor.mouseDown(makeEvent(handlePosition, 1));
+                editor.mouseDrag(makeEvent(handlePosition.translated(0.0f, -30.0f), 1));
+                editor.mouseUp(makeEvent(handlePosition.translated(0.0f, -30.0f), 1));
+
+                // Dragging UP must raise the curve, whichever way the segment runs.
+                const auto& a = editor.getEnvelope().getPoint(segment);
+                const auto& b = editor.getEnvelope().getPoint(segment + 1);
+                const auto midpoint = a.value + (b.value - a.value)
+                                                     * px3::BreakpointEnvelope::shape(0.5, a.curveToNext);
+                const auto straight = 0.5 * (a.value + b.value);
+                if (midpoint <= straight + 1.0e-6)
+                {
+                    wrongWay.add("segment " + juce::String(segment));
+                }
+            }
+
+            check("EnvelopeEditor_DraggingUpBendsUpOnRisingAndFallingSegments",
+                  wrongWay.isEmpty(),
+                  wrongWay.isEmpty() ? "both a rising and a falling segment bend toward the mouse"
+                                     : "bent away from the mouse on " + wrongWay.joinIntoString(", "));
+        }
+
+        // ---- keyboard ----
+        {
+            editor.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+            // Point 2, the sustain: point 1 is the ADSR peak at 1.0 and has
+            // nowhere to be nudged, so testing there measures the clamp rather
+            // than the nudge.
+            editor.mouseDown(makeEvent(editor.pointToScreen(2), 1));
+            editor.mouseUp(makeEvent(editor.pointToScreen(2), 1));
+
+            const auto before = editor.getEnvelope().getPoint(2).value;
+            editor.keyPressed(juce::KeyPress(juce::KeyPress::upKey));
+            const auto afterUp = editor.getEnvelope().getPoint(2).value;
+
+            check("EnvelopeEditor_ArrowKeysNudgeTheSelectedPoint", afterUp > before,
+                  fmt(before, 4) + " -> " + fmt(afterUp, 4));
+
+            const auto pointsBefore = editor.getEnvelope().getPointCount();
+            editor.mouseDoubleClick(makeEvent({ 150.0f, 90.0f }, 2));
+            editor.mouseDown(makeEvent({ 150.0f, 90.0f }, 1));
+            editor.mouseUp(makeEvent({ 150.0f, 90.0f }, 1));
+            editor.keyPressed(juce::KeyPress(juce::KeyPress::deleteKey));
+
+            check("EnvelopeEditor_DeleteRemovesTheSelectedPoint",
+                  editor.getEnvelope().getPointCount() == pointsBefore,
+                  "added then deleted, back to " + juce::String(pointsBefore));
+        }
+
+        // ---- one editor cannot reach another ----
+        {
+            BreakpointEnvelopeEditor first, second;
+            first.setSize(400, 200);
+            second.setSize(400, 200);
+            first.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+            second.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+
+            first.mouseDoubleClick(juce::MouseEvent(
+                juce::Desktop::getInstance().getMainMouseSource(), { 200.0f, 100.0f },
+                juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &first, &first,
+                juce::Time::getCurrentTime(), { 200.0f, 100.0f },
+                juce::Time::getCurrentTime(), 2, false));
+
+            check("EnvelopeEditor_EditingOneDoesNotTouchAnother",
+                  first.getEnvelope().getPointCount() == 5
+                      && second.getEnvelope().getPointCount() == 4,
+                  "first has " + juce::String(first.getEnvelope().getPointCount())
+                      + " points, second still has "
+                      + juce::String(second.getEnvelope().getPointCount()));
+        }
     }
 
     // ---- instances are independent ------------------------------------------

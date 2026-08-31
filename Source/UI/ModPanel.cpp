@@ -263,6 +263,31 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
                                                            &bundle.amountValueLabel,
                                                            accent,
                                                            "mod.env" + juce::String(envIndex + 1));
+
+    // ENV 1/2/3 occupy slots 1..3. AMP ENV is slot 0 and is reached by a
+    // different component entirely, which is what keeps the two systems from
+    // acquiring a shared owner by accident.
+    const auto slot = envIndex + 1;
+    bundle.component->setShapedEnvelope(processor.getShapedEnvelope(slot));
+    bundle.component->onEnvelopeEdited = [this, envIndex, slot](const px3::BreakpointEnvelope& edited)
+    {
+        processor.setShapedEnvelope(slot, edited);
+
+        if (edited.isPlainAdsr())
+        {
+            const auto adsr = edited.toAdsr();
+            const auto write = [](juce::AudioParameterFloat& parameter, float value)
+            {
+                parameter.beginChangeGesture();
+                parameter.setValueNotifyingHost(parameter.convertTo0to1(value));
+                parameter.endChangeGesture();
+            };
+            write(processor.getEnvelopeAttackParam(envIndex), adsr.attackSeconds);
+            write(processor.getEnvelopeDecayParam(envIndex), adsr.decaySeconds);
+            write(processor.getEnvelopeSustainParam(envIndex), adsr.sustainLevel);
+            write(processor.getEnvelopeReleaseParam(envIndex), adsr.releaseSeconds);
+        }
+    };
 }
 
 void ModPanel::paint(juce::Graphics& g)
@@ -399,6 +424,13 @@ void ModPanel::refreshFromParameters()
             }
 
             bundle.component->refreshFromParameters();
+
+            // Rebuilt from the parameters while the shape is still ADSR, so a
+            // knob or a DAW automation lane moves the curve.
+            const auto slot = static_cast<int>(&bundle - envelopes.data()) + 1;
+            const auto stored = processor.getShapedEnvelope(slot);
+            bundle.component->setShapedEnvelope(
+                stored.isPlainAdsr() ? processor.currentModEnvelope(slot - 1) : stored);
         }
     }
 }

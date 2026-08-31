@@ -190,6 +190,13 @@ public:
     void setShapedEnvelope(int index, const px3::BreakpointEnvelope& envelope);
     px3::BreakpointEnvelope getShapedEnvelope(int index) const;
 
+    // The shape actually being played, which is the stored one unless it is
+    // still plain ADSR - in which case the parameters describe it and the
+    // envelope is built from them, so a knob and a DAW automation lane both
+    // still move the curve.
+    px3::BreakpointEnvelope currentAmpEnvelope() const;
+    px3::BreakpointEnvelope currentModEnvelope(int envIndex) const;
+
     // A user table is named, not indexed: the factory list has fixed positions
     // and the user library does not. Empty means "use the factory choice".
     void setUserWavetableName(int oscIndex, const juce::String& name);
@@ -613,8 +620,7 @@ private:
     // so automation keeps driving it. Once it has been shaped into something
     // they cannot describe, the stored envelope is authoritative and the editor
     // writes the parameters back to match.
-    px3::BreakpointEnvelope currentAmpEnvelope() const;
-    px3::BreakpointEnvelope currentModEnvelope(int envIndex) const;
+
     EnvelopeSettings currentModEnvelopeSettings(int envIndex) const;
     LfoSettings currentLfoSettings() const;
     LfoSettings currentLfoSettings(int lfoIndex) const;

@@ -9,6 +9,8 @@
 
 class UIConfig;
 
+#include "BreakpointEnvelopeEditor.h"
+
 // Reusable interactive ADSR graph that binds directly to provided parameters.
 class EnvelopeComponent final : public juce::Component
 {
@@ -40,6 +42,12 @@ public:
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
     void refreshFromParameters();
 
+    // The shape this card is editing. Handed in by the editor, which owns the
+    // connection to the processor - this component knows about an envelope, not
+    // about where it lives.
+    void setShapedEnvelope(const px3::BreakpointEnvelope& envelope);
+    std::function<void(const px3::BreakpointEnvelope&)> onEnvelopeEdited;
+
     void resized() override;
     void paint(juce::Graphics& g) override;
     void mouseMove(const juce::MouseEvent& event) override;
@@ -50,6 +58,8 @@ public:
     void mouseDoubleClick(const juce::MouseEvent& event) override;
 
 private:
+    BreakpointEnvelopeEditor breakpointEditor;
+
     enum class DragHandle
     {
         none,

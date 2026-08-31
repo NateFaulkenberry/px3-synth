@@ -34,6 +34,19 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
             accent(accentIn),
             configPrefix(configPrefixIn)
 {
+    // The graph is a breakpoint editor now. It draws the same curve the DSP
+    // evaluates and reports every edit; this component still owns the card, the
+    // labels and the assignment box around it.
+    addAndMakeVisible(breakpointEditor);
+    breakpointEditor.setConfigPrefix(configPrefixIn);
+    breakpointEditor.onEnvelopeChanged = [this](const px3::BreakpointEnvelope& edited)
+    {
+        if (onEnvelopeEdited != nullptr)
+        {
+            onEnvelopeEdited(edited);
+        }
+    };
+
         // The mod envelopes' card key and title come straight from their
         // config prefix; AMP ENV calls setCardIdentity to override both.
         cardStyleKey = configPrefix.fromLastOccurrenceOf(".", false, false);
@@ -61,12 +74,14 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
 
 void EnvelopeComponent::setAccentColour(juce::Colour accentIn)
 {
+    breakpointEditor.setAccentColour(accentIn);
     accent = accentIn;
     repaint();
 }
 
 void EnvelopeComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
+    breakpointEditor.setUIConfig(configIn);
     uiConfig = std::move(configIn);
 
     // As above: cardInner's rows come from resized(), so a reload has to redo
@@ -188,6 +203,11 @@ void EnvelopeComponent::paint(juce::Graphics& g)
         const auto x = juce::jmap(static_cast<float>(i), 0.0f, 6.0f, geom.left, geom.right);
         g.drawVerticalLine(static_cast<int>(std::lround(x)), geom.top, geom.bottom);
     }
+
+    // The curve, the breakpoints and the handles belong to the editor sitting on
+    // top of this. Drawing the old fixed-handle ADSR here as well would leave
+    // two envelopes on screen disagreeing with each other.
+    return;
 
     for (int i = 0; i <= 4; ++i)
     {
@@ -723,8 +743,22 @@ void EnvelopeComponent::applyDragPosition(juce::Point<float> mousePos,
     refreshFromParameters();
 }
 
+void EnvelopeComponent::setShapedEnvelope(const px3::BreakpointEnvelope& envelope)
+{
+    breakpointEditor.setEnvelope(envelope);
+}
+
 void EnvelopeComponent::resized()
 {
+    {
+        const auto geom = computeGeometry();
+        breakpointEditor.setBounds(juce::Rectangle<float>(geom.left - 6.0f,
+                                                          geom.top - 5.0f,
+                                                          (geom.right - geom.left) + 12.0f,
+                                                          (geom.bottom - geom.top) + 10.0f)
+                                       .toNearestInt());
+    }
+
     layoutCardInner();
 
     // AMP ENV is the deliberate exception: one full-size graph, no rows of

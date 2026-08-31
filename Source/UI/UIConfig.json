@@ -583,6 +583,30 @@
           "strokeColourDisabled": "#888888",
           "strokeAlphaDisabled": 62
         }
+      },
+      "graph": {
+        "insetX": 8.0,
+        "insetY": 10.0,
+        "lineWidth": 2.0,
+        "lineColor": "",
+        "fillTopColor": "",
+        "fillBottomColor": "",
+        "gridColor": "#FFFFFF16",
+        "gridWidth": 1.0,
+        "pointRadius": 4.0,
+        "pointColor": "",
+        "pointFillColor": "#121214",
+        "pointOutlineWidth": 1.8,
+        "sustainPointColor": "",
+        "sustainRegionColor": "",
+        "sustainLineColor": "",
+        "sustainLineWidth": 1.0,
+        "curveHandleRadius": 3.0,
+        "curveHandleColor": "",
+        "playheadColor": "#FFFFFF5A",
+        "playheadWidth": 1.0,
+        "readoutColor": "#E8E8E8",
+        "readoutSize": 10.5
       }
     },
     "env2": {
@@ -602,6 +626,30 @@
           "strokeColourDisabled": "#888888",
           "strokeAlphaDisabled": 62
         }
+      },
+      "graph": {
+        "insetX": 8.0,
+        "insetY": 10.0,
+        "lineWidth": 2.0,
+        "lineColor": "",
+        "fillTopColor": "",
+        "fillBottomColor": "",
+        "gridColor": "#FFFFFF16",
+        "gridWidth": 1.0,
+        "pointRadius": 4.0,
+        "pointColor": "",
+        "pointFillColor": "#121214",
+        "pointOutlineWidth": 1.8,
+        "sustainPointColor": "",
+        "sustainRegionColor": "",
+        "sustainLineColor": "",
+        "sustainLineWidth": 1.0,
+        "curveHandleRadius": 3.0,
+        "curveHandleColor": "",
+        "playheadColor": "#FFFFFF5A",
+        "playheadWidth": 1.0,
+        "readoutColor": "#E8E8E8",
+        "readoutSize": 10.5
       }
     },
     "env3": {
@@ -621,6 +669,30 @@
           "strokeColourDisabled": "#888888",
           "strokeAlphaDisabled": 62
         }
+      },
+      "graph": {
+        "insetX": 8.0,
+        "insetY": 10.0,
+        "lineWidth": 2.0,
+        "lineColor": "",
+        "fillTopColor": "",
+        "fillBottomColor": "",
+        "gridColor": "#FFFFFF16",
+        "gridWidth": 1.0,
+        "pointRadius": 4.0,
+        "pointColor": "",
+        "pointFillColor": "#121214",
+        "pointOutlineWidth": 1.8,
+        "sustainPointColor": "",
+        "sustainRegionColor": "",
+        "sustainLineColor": "",
+        "sustainLineWidth": 1.0,
+        "curveHandleRadius": 3.0,
+        "curveHandleColor": "",
+        "playheadColor": "#FFFFFF5A",
+        "playheadWidth": 1.0,
+        "readoutColor": "#E8E8E8",
+        "readoutSize": 10.5
       }
     },
     "env": {
@@ -678,6 +750,30 @@
           "strokeColourDisabled": "#888888",
           "strokeAlphaDisabled": 62
         }
+      },
+      "graph": {
+        "insetX": 8.0,
+        "insetY": 10.0,
+        "lineWidth": 2.0,
+        "lineColor": "",
+        "fillTopColor": "",
+        "fillBottomColor": "",
+        "gridColor": "#FFFFFF16",
+        "gridWidth": 1.0,
+        "pointRadius": 4.0,
+        "pointColor": "",
+        "pointFillColor": "#121214",
+        "pointOutlineWidth": 1.8,
+        "sustainPointColor": "",
+        "sustainRegionColor": "",
+        "sustainLineColor": "",
+        "sustainLineWidth": 1.0,
+        "curveHandleRadius": 3.0,
+        "curveHandleColor": "",
+        "playheadColor": "#FFFFFF5A",
+        "playheadWidth": 1.0,
+        "readoutColor": "#E8E8E8",
+        "readoutSize": 10.5
       }
     }
   },

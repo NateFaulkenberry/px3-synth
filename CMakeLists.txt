@@ -121,6 +121,7 @@ set(PX3_SHARED_SOURCES
         Source/UI/LfoComponent.cpp
         Source/UI/ReverbComponent.cpp
         Source/UI/UIConfig.cpp
+        Source/UI/BreakpointEnvelopeEditor.cpp
         Source/UI/WavetableGraph.cpp
         Source/UI/UIConfigManager.cpp
         Source/UI/SubOscComponent.cpp

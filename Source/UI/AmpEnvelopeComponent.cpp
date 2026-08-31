@@ -5,6 +5,9 @@
 AmpEnvelopeComponent::AmpEnvelopeComponent(PX3SynthAudioProcessor& processorIn, juce::Colour accentIn)
     : processor(processorIn)
 {
+    // AMP ENV edits index 0. It stays a separate component from ENV 1/2/3 and
+    // reaches a different slot; what it shares with them is the editor, not the
+    // envelope.
     enabledLabel.setText("ON", juce::dontSendNotification);
     enabledLabel.setJustificationType(juce::Justification::centredLeft);
     enabledLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
@@ -42,6 +45,31 @@ AmpEnvelopeComponent::AmpEnvelopeComponent(PX3SynthAudioProcessor& processorIn, 
                                                         nullptr,
                                                         accentIn,
                                                         "amp.env");
+
+    // Slot 0 is AMP ENV. The parameters are written back only while the shape is
+    // still ADSR, which is what keeps a DAW's automation of ampAttack and the
+    // rest meaningful; once the envelope is more than they can describe, the
+    // stored shape is what plays.
+    envelopeGraph->setShapedEnvelope(processor.getShapedEnvelope(0));
+    envelopeGraph->onEnvelopeEdited = [this](const px3::BreakpointEnvelope& edited)
+    {
+        processor.setShapedEnvelope(0, edited);
+
+        if (edited.isPlainAdsr())
+        {
+            const auto adsr = edited.toAdsr();
+            const auto write = [](juce::AudioParameterFloat& parameter, float value)
+            {
+                parameter.beginChangeGesture();
+                parameter.setValueNotifyingHost(parameter.convertTo0to1(value));
+                parameter.endChangeGesture();
+            };
+            write(processor.getAttackParam(), adsr.attackSeconds);
+            write(processor.getDecayParam(), adsr.decaySeconds);
+            write(processor.getSustainParam(), adsr.sustainLevel);
+            write(processor.getReleaseParam(), adsr.releaseSeconds);
+        }
+    };
 
     enabledButton.setVisible(false);
     enabledButton.setEnabled(false);
@@ -100,6 +128,13 @@ void AmpEnvelopeComponent::refreshFromParameters()
     if (envelopeGraph != nullptr)
     {
         envelopeGraph->refreshFromParameters();
+
+        // While the shape is still ADSR the parameters are authoritative, so the
+        // graph is rebuilt from them - that is what makes a knob move the curve
+        // and a DAW's automation move it too.
+        const auto stored = processor.getShapedEnvelope(0);
+        envelopeGraph->setShapedEnvelope(
+            stored.isPlainAdsr() ? processor.currentAmpEnvelope() : stored);
     }
     repaint();
 }
