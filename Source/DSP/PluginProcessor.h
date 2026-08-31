@@ -907,8 +907,39 @@ private:
     std::atomic<int> lastMidiNote { -1 };
     std::atomic<int> lastMidiVelocity { 0 };
     std::atomic<int> lastMidiNoteOn { 0 };
-    juce::CriticalSection virtualMidiLock;
-    juce::MidiBuffer virtualMidiMessages;
+    // Virtual keyboard events, handed from the message thread to the audio
+    // thread WITHOUT a lock.
+    //
+    // This was a juce::MidiBuffer behind a CriticalSection, and processBlock
+    // took that lock every block. A lock on the audio thread is a real-time
+    // violation whatever its hold time: if the message thread is preempted
+    // while holding it, the audio thread waits for that thread to be
+    // rescheduled, and a missed deadline is a dropout - which is heard as a
+    // click.
+    //
+    // It went unnoticed because it only bites where the on-screen keyboard is
+    // used and the message thread is busy, which is the standalone. Play a note
+    // there and the same thread that takes this lock is also spawning key
+    // sparks - a count proportional to VELOCITY - and repainting, so playing
+    // harder makes the contention worse.
+    //
+    // Single producer, single consumer, fixed capacity: the message thread
+    // writes and the audio thread reads, so a plain ring of atomics is enough
+    // and neither side ever blocks or allocates. A full ring drops events
+    // rather than waiting; 256 is far more than a keyboard can produce between
+    // two audio blocks.
+    struct VirtualNote
+    {
+        int note { 0 };
+        float velocity { 0.0f };
+        bool isNoteOn { false };
+    };
+    static constexpr int kVirtualNoteCapacity = 256;
+    std::array<VirtualNote, kVirtualNoteCapacity> virtualNotes {};
+    std::atomic<int> virtualNoteWrite { 0 };
+    std::atomic<int> virtualNoteRead { 0 };
+
+    void pushVirtualNote(VirtualNote event);
 
     std::atomic<float> pitchBendNormalized { 0.0f };
     std::atomic<float> modWheelNormalized { 0.0f };

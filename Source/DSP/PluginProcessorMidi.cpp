@@ -149,19 +149,34 @@ void PX3SynthAudioProcessor::decrementNoteCount(std::size_t index)
     }
 }
 
+void PX3SynthAudioProcessor::pushVirtualNote(VirtualNote event)
+{
+    // Message thread only. Publishes with a release so the audio thread's
+    // acquire sees the slot's contents, never just the index.
+    const auto write = virtualNoteWrite.load(std::memory_order_relaxed);
+    const auto next = (write + 1) % kVirtualNoteCapacity;
+
+    if (next == virtualNoteRead.load(std::memory_order_acquire))
+    {
+        return;   // full - drop rather than block, which is the whole point
+    }
+
+    virtualNotes[static_cast<std::size_t>(write)] = event;
+    virtualNoteWrite.store(next, std::memory_order_release);
+}
+
 void PX3SynthAudioProcessor::queueVirtualKeyboardNoteOn(int midiNote, float velocityNorm)
 {
-    const auto boundedNote = juce::jlimit(PianoKeyboard::firstMidiNote, PianoKeyboard::lastMidiNote, midiNote);
-    const auto boundedVelocity = juce::jlimit(0.0f, 1.0f, velocityNorm);
-    const juce::ScopedLock lock(virtualMidiLock);
-    virtualMidiMessages.addEvent(juce::MidiMessage::noteOn(1, boundedNote, boundedVelocity), 0);
+    const auto boundedNote = juce::jlimit(PianoKeyboard::firstMidiNote,
+                                          PianoKeyboard::lastMidiNote, midiNote);
+    pushVirtualNote({ boundedNote, juce::jlimit(0.0f, 1.0f, velocityNorm), true });
 }
 
 void PX3SynthAudioProcessor::queueVirtualKeyboardNoteOff(int midiNote)
 {
-    const auto boundedNote = juce::jlimit(PianoKeyboard::firstMidiNote, PianoKeyboard::lastMidiNote, midiNote);
-    const juce::ScopedLock lock(virtualMidiLock);
-    virtualMidiMessages.addEvent(juce::MidiMessage::noteOff(1, boundedNote), 0);
+    const auto boundedNote = juce::jlimit(PianoKeyboard::firstMidiNote,
+                                          PianoKeyboard::lastMidiNote, midiNote);
+    pushVirtualNote({ boundedNote, 0.0f, false });
 }
 
 std::array<bool, PianoKeyboard::totalKeys> PX3SynthAudioProcessor::copyActiveNoteStates() const

@@ -1398,11 +1398,22 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     combinedMidi.addEvents(midiMessages, 0, buffer.getNumSamples(), 0);
 
     {
-        // Virtual keyboard events are produced on the message thread. Lock scope
-        // is kept minimal so the audio thread only copies and clears queued MIDI.
-        const juce::ScopedLock lock(virtualMidiLock);
-        combinedMidi.addEvents(virtualMidiMessages, 0, -1, 0);
-        virtualMidiMessages.clear();
+        // Virtual keyboard events are produced on the message thread and drained
+        // here without a lock - see the ring's declaration for why that matters.
+        auto read = virtualNoteRead.load(std::memory_order_relaxed);
+        const auto write = virtualNoteWrite.load(std::memory_order_acquire);
+
+        while (read != write)
+        {
+            const auto& event = virtualNotes[static_cast<std::size_t>(read)];
+            combinedMidi.addEvent(event.isNoteOn
+                                      ? juce::MidiMessage::noteOn(1, event.note, event.velocity)
+                                      : juce::MidiMessage::noteOff(1, event.note),
+                                  0);
+            read = (read + 1) % kVirtualNoteCapacity;
+        }
+
+        virtualNoteRead.store(read, std::memory_order_release);
     }
 
     midiMessages.swapWith(combinedMidi);

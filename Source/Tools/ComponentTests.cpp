@@ -1809,6 +1809,80 @@ void testBreakpointEnvelope()
         }
     }
 
+    // ---- the on-screen keyboard reaches the audio without a lock ------------
+    // The path a standalone user plays through, which is NOT the path a DAW
+    // uses: the keyboard queues notes on the message thread and processBlock
+    // drains them. It used to do that behind a CriticalSection taken on the
+    // audio thread.
+    {
+        PX3SynthAudioProcessor processor;
+        makePlainPatch(processor);
+        setParam(processor, "ampAttack", 0.010f);
+        setParam(processor, "ampSustain", 1.00f);
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        juce::AudioBuffer<float> buffer(2, kBlockSize);
+        juce::MidiBuffer empty;
+
+        buffer.clear();
+        processor.processBlock(buffer, empty);
+        const auto silent = buffer.getMagnitude(0, kBlockSize);
+
+        processor.queueVirtualKeyboardNoteOn(60, 1.0f);
+        processor.queueVirtualKeyboardNoteOn(64, 1.0f);
+        processor.queueVirtualKeyboardNoteOn(67, 1.0f);
+
+        auto heard = 0.0f;
+        for (int block = 0; block < 20; ++block)
+        {
+            buffer.clear();
+            empty.clear();
+            processor.processBlock(buffer, empty);
+            heard = juce::jmax(heard, buffer.getMagnitude(0, kBlockSize));
+        }
+
+        check("VirtualKeyboard_QueuedNotesReachTheAudio",
+              silent < 1.0e-6f && heard > 0.01f,
+              "silent before at " + fmt(silent, 8) + ", sounding after at " + fmt(heard, 4));
+
+        // Note-off travels the same way.
+        processor.queueVirtualKeyboardNoteOff(60);
+        processor.queueVirtualKeyboardNoteOff(64);
+        processor.queueVirtualKeyboardNoteOff(67);
+        auto tail = 0.0f;
+        for (int block = 0; block < 60; ++block)
+        {
+            buffer.clear();
+            empty.clear();
+            processor.processBlock(buffer, empty);
+            tail = buffer.getMagnitude(0, kBlockSize);
+        }
+        check("VirtualKeyboard_NoteOffTravelsTheSameWay", tail < heard * 0.05f,
+              "the chord falls to " + fmt(tail, 6) + " after the queued note-offs");
+
+        // More events than the ring holds are dropped, not blocked on. The
+        // audio thread must never wait for the message thread.
+        for (int i = 0; i < 5000; ++i)
+        {
+            processor.queueVirtualKeyboardNoteOn(60 + (i % 12), 0.5f);
+            processor.queueVirtualKeyboardNoteOff(60 + (i % 12));
+        }
+        auto stillFinite = true;
+        for (int block = 0; block < 10; ++block)
+        {
+            buffer.clear();
+            empty.clear();
+            processor.processBlock(buffer, empty);
+            for (int i = 0; i < kBlockSize; ++i)
+            {
+                if (! std::isfinite(buffer.getSample(0, i))) { stillFinite = false; }
+            }
+        }
+        check("VirtualKeyboard_AFloodIsDroppedNotBlockedOn", stillFinite,
+              "10000 queued events overflow the ring and the audio stays finite");
+    }
+
     // ---- retriggering must not dive to silence first ------------------------
     // Reported as a click at note-on under a long attack. Restarting the
     // contour at zero means the level falls from wherever the release tail was
