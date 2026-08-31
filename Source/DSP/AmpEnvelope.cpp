@@ -24,7 +24,13 @@ void AmpEnvelope::setSettings(const EnvelopeSettings& newSettings)
     settings.sustainLevel = juce::jlimit(0.0f, 1.0f, settings.sustainLevel);
     settings.releaseSeconds = juce::jmax(0.001f, settings.releaseSeconds);
 
-    setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+    // Without the hold stage, deliberately. AMP ENV is a four-stage envelope -
+    // attack, decay, sustain, release - and building it as A -> H(0) -> D -> S
+    // -> R purely because the shared model has a hold slot is how a stage the
+    // instrument does not have ends up affecting the sound: settings carries a
+    // holdSeconds field for the modulation envelopes, and this class honoured
+    // it. Measured, a 200 ms hold moved the amp envelope by 0.5.
+    setEnvelope(px3::BreakpointEnvelope::fromAdsrWithoutHold(settings));
 }
 
 void AmpEnvelope::setEnvelope(const px3::BreakpointEnvelope& newEnvelope)

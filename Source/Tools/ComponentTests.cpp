@@ -1210,6 +1210,473 @@ void testBreakpointEnvelope()
               "over held level " + fmt(worstOvershoot, 4));
     }
 
+    // ---- four envelopes, four sets of parameters ----------------------------
+    // The coupling this guards against is the whole reason the brief exists:
+    // ENV 1's release changing AMP ENV's, or a preset load writing one
+    // envelope's values over another's.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        // Deliberately all different, so any bleed shows up as a wrong number
+        // rather than a coincidence.
+        setParam(processor, "ampAttack", 0.100f);
+        setParam(processor, "ampDecay", 0.110f);
+        setParam(processor, "ampSustain", 0.120f);
+        setParam(processor, "ampRelease", 0.130f);
+
+        for (int env = 1; env <= 3; ++env)
+        {
+            const auto prefix = "env" + juce::String(env);
+            const auto base = 0.200f * static_cast<float>(env);
+            setParam(processor, prefix + "Attack", base + 0.001f);
+            setParam(processor, prefix + "Hold", base + 0.002f);
+            setParam(processor, prefix + "Decay", base + 0.003f);
+            setParam(processor, prefix + "Sustain", 0.10f * static_cast<float>(env));
+            setParam(processor, prefix + "Release", base + 0.005f);
+        }
+
+        const auto readBack = [](PX3SynthAudioProcessor& p)
+        {
+            juce::StringArray values;
+            values.add(fmt(p.getAttackParam().get(), 3));
+            values.add(fmt(p.getDecayParam().get(), 3));
+            values.add(fmt(p.getSustainParam().get(), 3));
+            values.add(fmt(p.getReleaseParam().get(), 3));
+            for (int env = 0; env < 3; ++env)
+            {
+                values.add(fmt(p.getEnvelopeAttackParam(env).get(), 3));
+                values.add(fmt(p.getEnvelopeHoldParam(env).get(), 3));
+                values.add(fmt(p.getEnvelopeDecayParam(env).get(), 3));
+                values.add(fmt(p.getEnvelopeSustainParam(env).get(), 3));
+                values.add(fmt(p.getEnvelopeReleaseParam(env).get(), 3));
+            }
+            return values;
+        };
+
+        const auto written = readBack(processor);
+        const juce::StringArray expected {
+            "0.100", "0.110", "0.120", "0.130",
+            "0.201", "0.202", "0.203", "0.100", "0.205",
+            "0.401", "0.402", "0.403", "0.200", "0.405",
+            "0.601", "0.602", "0.603", "0.300", "0.605",
+        };
+
+        check("Envelopes_EveryParameterIsItsOwn",
+              written == expected,
+              written == expected
+                  ? "19 values written and read back unchanged - AMP ENV's four and "
+                    "five each for ENV 1-3"
+                  : "read back " + written.joinIntoString(", "));
+
+        // And they survive a save/load round trip without crossing over.
+        juce::MemoryBlock state;
+        processor.getStateInformation(state);
+
+        PX3SynthAudioProcessor restored;
+        restored.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        restored.prepareToPlay(kSampleRate, kBlockSize);
+        restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        check("Envelopes_EveryParameterSurvivesASaveAndLoad",
+              readBack(restored) == expected,
+              readBack(restored) == expected
+                  ? "all 19 restored exactly, none overwritten by another envelope"
+                  : "restored " + readBack(restored).joinIntoString(", "));
+
+        // The shapes the DSP is handed reflect those parameters, and differ
+        // from one another.
+        const auto amp = processor.currentAmpEnvelope();
+        juce::StringArray attacks;
+        attacks.add(fmt(amp.getPoint(1).timeSeconds, 3));
+        for (int env = 0; env < 3; ++env)
+        {
+            attacks.add(fmt(processor.currentModEnvelope(env).getPoint(1).timeSeconds, 3));
+        }
+        check("Envelopes_TheShapesHandedToTheDspAreAllDifferent",
+              attacks == juce::StringArray({ "0.100", "0.201", "0.401", "0.601" }),
+              "attack times in the four built shapes: " + attacks.joinIntoString(", "));
+    }
+
+    // ---- the graph and the DSP are the same numbers -------------------------
+    // Section 28: no separate hard-coded envelope for the UI.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        setParam(processor, "env1Attack", 0.310f);
+        setParam(processor, "env1Hold", 0.220f);
+        setParam(processor, "env1Decay", 0.130f);
+        setParam(processor, "env1Sustain", 0.44f);
+        setParam(processor, "env1Release", 0.550f);
+
+        const auto fromProcessor = processor.currentModEnvelope(0);
+
+        BreakpointEnvelopeEditor editor;
+        editor.setSize(400, 200);
+        editor.setEnvelope(fromProcessor);
+        const auto shown = editor.getEnvelope().toAdsr();
+
+        check("Envelopes_TheEditorShowsTheParametersTheDspUses",
+              std::abs(shown.attackSeconds - 0.310f) < 1.0e-3f
+                  && std::abs(shown.holdSeconds - 0.220f) < 1.0e-3f
+                  && std::abs(shown.decaySeconds - 0.130f) < 1.0e-3f
+                  && std::abs(shown.sustainLevel - 0.44f) < 1.0e-3f
+                  && std::abs(shown.releaseSeconds - 0.550f) < 1.0e-3f,
+              "the editor reads back A " + fmt(shown.attackSeconds, 3) + " H "
+                  + fmt(shown.holdSeconds, 3) + " D " + fmt(shown.decaySeconds, 3)
+                  + " S " + fmt(shown.sustainLevel, 2) + " R "
+                  + fmt(shown.releaseSeconds, 3));
+
+        // And the graph moves the way section 27 says it must.
+        const auto widthOfHold = [](const px3::BreakpointEnvelope& shape)
+        {
+            return shape.getPoint(2).timeSeconds - shape.getPoint(1).timeSeconds;
+        };
+        setParam(processor, "env1Hold", 0.600f);
+        const auto longer = processor.currentModEnvelope(0);
+
+        check("Envelopes_MoreHoldMakesTheFlatSegmentLonger",
+              widthOfHold(longer) > widthOfHold(fromProcessor) + 0.3,
+              "the full-level segment grows from " + fmt(widthOfHold(fromProcessor), 3)
+                  + " s to " + fmt(widthOfHold(longer), 3) + " s");
+
+        setParam(processor, "env1Sustain", 0.80f);
+        const auto higher = processor.currentModEnvelope(0);
+        check("Envelopes_MoreSustainRaisesThePlateauWithoutMovingIt",
+              std::abs(higher.getPoint(3).value - 0.80) < 1.0e-3
+                  && std::abs(higher.getPoint(3).timeSeconds
+                              - longer.getPoint(3).timeSeconds) < 1.0e-6,
+              "the plateau rises from " + fmt(longer.getPoint(3).value, 2) + " to "
+                  + fmt(higher.getPoint(3).value, 2) + " at the same time, "
+                  + fmt(higher.getPoint(3).timeSeconds, 3) + " s");
+    }
+
+    // ---- the two envelope MODELS, tested as state machines ------------------
+    //
+    // At 1000 Hz, so a 100 ms stage is exactly 100 samples and a stage boundary
+    // is a sample index rather than a tolerance. The point is to test the
+    // DURATION of each stage, not only that the final value is right.
+    {
+        constexpr double kSlowRate = 1000.0;
+
+        const auto settingsFor = [](float attack, float hold, float decay,
+                                    float sustain, float release)
+        {
+            EnvelopeSettings settings;
+            settings.attackSeconds = attack;
+            settings.holdSeconds = hold;
+            settings.decaySeconds = decay;
+            settings.sustainLevel = sustain;
+            settings.releaseSeconds = release;
+            return settings;
+        };
+
+        // Every sample of a held note, then every sample after note-off.
+        const auto runAmp = [](const EnvelopeSettings& settings, int heldSamples,
+                               int releaseSamples)
+        {
+            AmpEnvelope envelope;
+            envelope.prepare(kSlowRate);
+            envelope.setSettings(settings);
+            envelope.noteOn();
+
+            std::vector<float> trace;
+            for (int i = 0; i < heldSamples; ++i) { trace.push_back(envelope.getNextSample()); }
+            envelope.noteOff();
+            for (int i = 0; i < releaseSamples; ++i) { trace.push_back(envelope.getNextSample()); }
+            return trace;
+        };
+
+        const auto runMod = [](const EnvelopeSettings& settings, int heldSamples,
+                               int releaseSamples)
+        {
+            EnvelopeGenerator envelope;
+            envelope.prepare(kSlowRate);
+            envelope.setSettings(settings);
+            envelope.noteOn();
+
+            std::vector<float> trace;
+            for (int i = 0; i < heldSamples; ++i) { trace.push_back(envelope.getNextSample()); }
+            envelope.noteOff();
+            for (int i = 0; i < releaseSamples; ++i) { trace.push_back(envelope.getNextSample()); }
+            return trace;
+        };
+
+        const auto at = [](const std::vector<float>& trace, int index)
+        {
+            return trace.empty() ? 0.0f
+                                 : trace[static_cast<std::size_t>(
+                                       juce::jlimit(0, static_cast<int>(trace.size()) - 1, index))];
+        };
+
+        // ---- AMP ENV: A -> D -> S -> R, no hold ----
+        {
+            const auto settings = settingsFor(0.100f, 0.0f, 0.100f, 0.5f, 0.100f);
+            const auto trace = runAmp(settings, 600, 300);
+
+            check("AmpEnvDsp_RisesToFullOverTheAttack",
+                  at(trace, 0) < 0.05f && at(trace, 50) > 0.35f && at(trace, 50) < 0.65f
+                      && at(trace, 100) > 0.98f,
+                  "0 ms " + fmt(at(trace, 0), 3) + ", 50 ms " + fmt(at(trace, 50), 3)
+                      + ", 100 ms " + fmt(at(trace, 100), 3));
+
+            check("AmpEnvDsp_FallsToSustainOverTheDecay",
+                  at(trace, 150) > 0.5f && at(trace, 150) < 1.0f
+                      && std::abs(at(trace, 200) - 0.5f) < 0.02f,
+                  "mid-decay " + fmt(at(trace, 150), 3) + ", end of decay "
+                      + fmt(at(trace, 200), 3) + " (sustain 0.5)");
+
+            check("AmpEnvDsp_HoldsAtSustainUntilNoteOff",
+                  std::abs(at(trace, 300) - 0.5f) < 0.02f
+                      && std::abs(at(trace, 599) - 0.5f) < 0.02f,
+                  "still " + fmt(at(trace, 599), 3) + " after 600 ms of holding");
+
+            check("AmpEnvDsp_ReleasesToSilence",
+                  at(trace, 650) < at(trace, 599) && at(trace, 750) < 0.01f,
+                  "100 ms release: " + fmt(at(trace, 599), 3) + " -> "
+                      + fmt(at(trace, 650), 3) + " -> " + fmt(at(trace, 750), 4));
+
+            // Monotonic where it should be. A stage that wobbles is a stage
+            // that is being computed twice.
+            auto attackRises = true;
+            for (int i = 1; i <= 100; ++i)
+            {
+                if (at(trace, i) < at(trace, i - 1) - 1.0e-6f) { attackRises = false; }
+            }
+            auto decayFalls = true;
+            for (int i = 102; i <= 200; ++i)
+            {
+                if (at(trace, i) > at(trace, i - 1) + 1.0e-6f) { decayFalls = false; }
+            }
+            check("AmpEnvDsp_EachStageIsMonotone", attackRises && decayFalls,
+                  "the attack only rises and the decay only falls");
+        }
+
+        // ---- AMP ENV has no hold: setting one changes nothing ----
+        {
+            const auto without = runAmp(settingsFor(0.100f, 0.0f, 0.100f, 0.5f, 0.100f), 400, 200);
+            const auto with = runAmp(settingsFor(0.100f, 0.200f, 0.100f, 0.5f, 0.100f), 400, 200);
+
+            auto identical = with.size() == without.size();
+            auto worst = 0.0f;
+            for (std::size_t i = 0; identical && i < with.size(); ++i)
+            {
+                worst = juce::jmax(worst, std::abs(with[i] - without[i]));
+            }
+            check("AmpEnvDsp_IgnoresHoldEntirely", identical && worst < 1.0e-6f,
+                  "a 200 ms hold changes the amp envelope by " + fmt(worst, 6)
+                      + " - it has no hold stage to change");
+        }
+
+        // ---- ENV 1-3: A -> H -> D -> S -> R, and the hold is FLAT ----
+        {
+            // The brief's own example, chosen to catch hold implemented as a
+            // slow decay.
+            const auto settings = settingsFor(0.100f, 0.200f, 0.100f, 0.25f, 0.100f);
+            const auto trace = runMod(settings, 600, 300);
+
+            check("ModEnvDsp_RisesToFullOverTheAttack",
+                  at(trace, 0) < 0.05f && at(trace, 100) > 0.98f,
+                  "0 ms " + fmt(at(trace, 0), 3) + " -> 100 ms " + fmt(at(trace, 100), 3));
+
+            // Every sample of the hold, not just its ends: a hold implemented
+            // as a zero-slope decay passes an endpoint check and fails this.
+            auto lowestInHold = 1.0f;
+            for (int i = 100; i <= 300; ++i) { lowestInHold = juce::jmin(lowestInHold, at(trace, i)); }
+            check("ModEnvDsp_HoldIsAFlatPlateauAtFullLevel",
+                  lowestInHold > 0.98f,
+                  "across the whole 200 ms hold the lowest sample is "
+                      + fmt(lowestInHold, 4));
+
+            check("ModEnvDsp_DecaysToSustainAfterTheHold",
+                  at(trace, 350) < 0.98f && at(trace, 350) > 0.25f
+                      && std::abs(at(trace, 400) - 0.25f) < 0.02f,
+                  "mid-decay " + fmt(at(trace, 350), 3) + ", end of decay "
+                      + fmt(at(trace, 400), 3) + " (sustain 0.25)");
+
+            check("ModEnvDsp_HoldsAtSustainUntilNoteOff",
+                  std::abs(at(trace, 599) - 0.25f) < 0.02f,
+                  "still " + fmt(at(trace, 599), 3) + " at 600 ms");
+
+            check("ModEnvDsp_ReleasesToSilence",
+                  at(trace, 750) < 0.01f,
+                  "silent at " + fmt(at(trace, 750), 4) + " after the release");
+        }
+
+        // ---- hold is a TIME, sustain is a LEVEL ----
+        {
+            const auto shortHold = runMod(settingsFor(0.100f, 0.100f, 0.100f, 0.25f, 0.100f), 600, 100);
+            const auto longHold = runMod(settingsFor(0.100f, 0.300f, 0.100f, 0.25f, 0.100f), 600, 100);
+
+            // At 350 ms the short-hold envelope has finished decaying
+            // (100 attack + 100 hold + 100 decay = 300) and the long-hold one
+            // is still at full level (100 attack + 300 hold = 400). That is
+            // hold changing a DURATION and nothing else.
+            check("ModEnvDsp_HoldChangesDurationNotLevel",
+                  std::abs(at(shortHold, 350) - 0.25f) < 0.02f && at(longHold, 350) > 0.98f,
+                  "at 350 ms: 100 ms hold is at " + fmt(at(shortHold, 350), 3)
+                      + " (decayed to sustain), 300 ms hold is at " + fmt(at(longHold, 350), 3)
+                      + " (still at full level)");
+
+            const auto quiet = runMod(settingsFor(0.100f, 0.100f, 0.100f, 0.25f, 0.100f), 600, 100);
+            const auto loud = runMod(settingsFor(0.100f, 0.100f, 0.100f, 0.75f, 0.100f), 600, 100);
+
+            check("ModEnvDsp_SustainChangesLevelNotDuration",
+                  std::abs(at(quiet, 500) - 0.25f) < 0.02f
+                      && std::abs(at(loud, 500) - 0.75f) < 0.02f
+                      && std::abs(at(quiet, 100) - at(loud, 100)) < 0.02f,
+                  "the plateau moves from " + fmt(at(quiet, 500), 2) + " to "
+                      + fmt(at(loud, 500), 2) + " while the attack ends at the same place");
+        }
+
+        // ---- release starts from WHEREVER the envelope is ----
+        {
+            const auto settings = settingsFor(0.200f, 0.200f, 0.200f, 0.30f, 0.200f);
+
+            struct Moment { const char* stage; int atSample; };
+            const Moment moments[] = {
+                { "attack", 100 },   // half way up
+                { "hold",   300 },   // at full level
+                { "decay",  500 },   // part way down
+                { "sustain",700 },   // at the sustain level
+            };
+
+            juce::StringArray jumps;
+            juce::String detail;
+            for (const auto& moment : moments)
+            {
+                EnvelopeGenerator envelope;
+                envelope.prepare(kSlowRate);
+                envelope.setSettings(settings);
+                envelope.noteOn();
+
+                auto lastHeld = 0.0f;
+                for (int i = 0; i < moment.atSample; ++i) { lastHeld = envelope.getNextSample(); }
+
+                envelope.noteOff();
+                const auto firstReleased = envelope.getNextSample();
+
+                detail << (detail.isEmpty() ? "" : ", ") << moment.stage << " "
+                       << fmt(lastHeld, 3) << "->" << fmt(firstReleased, 3);
+
+                // No step. Release continues from where the envelope was, so
+                // the first released sample is next to the last held one.
+                if (std::abs(firstReleased - lastHeld) > 0.05f)
+                {
+                    jumps.add(juce::String(moment.stage) + " jumped from "
+                              + fmt(lastHeld, 3) + " to " + fmt(firstReleased, 3));
+                }
+            }
+
+            check("ModEnvDsp_ReleaseStartsFromTheCurrentLevel", jumps.isEmpty(),
+                  jumps.isEmpty() ? "note-off during " + detail
+                                  : jumps.joinIntoString("; "));
+        }
+
+        // ---- retrigger ----
+        // Section 14 asks what the existing policy IS rather than for a new
+        // one. It is: note-on restarts the contour from the beginning, and the
+        // output smoother carries the level across so a retrigger from a
+        // sounding note ramps rather than steps. This records that, and would
+        // catch either half of it changing.
+        {
+            // At the REAL sample rate, not the 1000 Hz rig above. The output
+            // smoother's ramp is a duration, so at 1000 Hz it is a handful of
+            // samples and judging it there measures the rig rather than the
+            // envelope. Stage TIMING is what 1000 Hz is for.
+            const auto settings = settingsFor(0.050f, 0.0f, 0.050f, 0.6f, 0.100f);
+
+            AmpEnvelope envelope;
+            envelope.prepare(kSampleRate);
+            envelope.setSettings(settings);
+            envelope.noteOn();
+
+            auto beforeRetrigger = 0.0f;
+            const auto toSustain = static_cast<int>(kSampleRate * 0.3);
+            for (int i = 0; i < toSustain; ++i) { beforeRetrigger = envelope.getNextSample(); }
+
+            envelope.noteOn();
+
+            // Straight through the new attack, watching for a step and for the
+            // peak at the same time - the attack is 50 ms, so measuring the
+            // peak afterwards would measure the sustain it had already reached.
+            auto worstStep = 0.0f;
+            auto peak = 0.0f;
+            auto previous = beforeRetrigger;
+            for (int i = 0; i < static_cast<int>(kSampleRate * 0.08); ++i)
+            {
+                const auto value = envelope.getNextSample();
+                worstStep = juce::jmax(worstStep, std::abs(value - previous));
+                peak = juce::jmax(peak, value);
+                previous = value;
+            }
+
+            check("Envelopes_RetriggerRestartsWithoutAStep",
+                  worstStep < 0.02f,
+                  "retriggered from " + fmt(beforeRetrigger, 3)
+                      + ": largest sample-to-sample step through the new attack is "
+                      + fmt(worstStep, 5));
+
+            check("Envelopes_RetriggerActuallyRestartsTheContour",
+                  peak > 0.95f,
+                  "the contour runs again from the top, reaching " + fmt(peak, 3));
+        }
+
+        // ---- four independent instances ----
+        {
+            AmpEnvelope amp;
+            std::array<EnvelopeGenerator, 3> mods;
+
+            amp.prepare(kSlowRate);
+            amp.setSettings(settingsFor(0.100f, 0.0f, 0.050f, 0.9f, 0.050f));
+            for (int i = 0; i < 3; ++i)
+            {
+                mods[static_cast<std::size_t>(i)].prepare(kSlowRate);
+                mods[static_cast<std::size_t>(i)].setSettings(
+                    settingsFor(0.100f + 0.200f * static_cast<float>(i + 1), 0.0f,
+                                0.050f, 0.9f, 0.050f));
+            }
+
+            // Only ENV 1 is triggered.
+            mods[0].noteOn();
+            for (int i = 0; i < 50; ++i)
+            {
+                mods[0].getNextSample();
+                mods[1].getNextSample();
+                mods[2].getNextSample();
+                amp.getNextSample();
+            }
+
+            check("Envelopes_TriggeringOneDoesNotTriggerAnother",
+                  mods[0].isActive() && ! mods[1].isActive() && ! mods[2].isActive()
+                      && ! amp.isActive(),
+                  "ENV 1 is running; ENV 2, ENV 3 and AMP ENV are not");
+
+            // And their timings do not bleed into each other.
+            const auto reach = [&settingsFor](float attack)
+            {
+                EnvelopeGenerator envelope;
+                envelope.prepare(kSlowRate);
+                envelope.setSettings(settingsFor(attack, 0.0f, 0.050f, 0.9f, 0.050f));
+                envelope.noteOn();
+                for (int i = 0; i < 300; ++i)
+                {
+                    if (envelope.getNextSample() > 0.98f) { return i; }
+                }
+                return -1;
+            };
+            const auto fast = reach(0.100f);
+            const auto slow = reach(0.250f);
+            check("Envelopes_EachInstanceKeepsItsOwnTiming",
+                  fast > 90 && fast < 115 && slow > 240 && slow < 265,
+                  "a 100 ms attack peaks at sample " + juce::String(fast)
+                      + " and a 250 ms attack at sample " + juce::String(slow));
+        }
+    }
+
     // ---- every stage is its OWN control -------------------------------------
     //
     // This is the regression suite for the thing that went round in circles.
