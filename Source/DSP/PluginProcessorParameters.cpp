@@ -15,13 +15,18 @@ using namespace px3::processor_internal;
 float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudioParameter* parameter,
                                                                float baseNormalized,
                                                                float* outBaseNormalized,
-                                                               float* outEffectiveNormalized) const
+                                                               float* outEffectiveNormalized,
+                                                               float* outUnclampedNormalized) const
 {
     const auto base = clamp01(baseNormalized);
     auto effective = base;
 
     if (parameter == nullptr)
     {
+        if (outUnclampedNormalized != nullptr)
+        {
+            *outUnclampedNormalized = base;
+        }
         if (outBaseNormalized != nullptr)
         {
             *outBaseNormalized = base;
@@ -38,7 +43,8 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
 
     const auto accumulateSourceDelta = [&](std::atomic<int> const& assignmentIndex,
                                            float signal,
-                                           float amount)
+                                           float amount,
+                                           bool bipolar)
     {
         const auto assignment = juce::jlimit(0,
                                              juce::jmax(0, static_cast<int>(lfoAssignableTargets.size()) - 1),
@@ -53,12 +59,38 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
         const auto samePointer = (target.parameter == parameter);
         if (sameId || samePointer)
         {
-            // Room the base has on its nearer side. A bipolar source scaled by
-            // this reaches the boundary exactly at full amount and turns around
-            // there, instead of driving past it and being clamped flat.
-            const auto headroom = target.centreOnBase
+            // The room the base actually has, in the direction this source can
+            // travel. Scaling by it means full amount arrives exactly at the end
+            // of the range and turns around there, instead of driving past it
+            // and being clamped flat - which turns a sine into a square with
+            // rounded shoulders and holds every other shape at its limit.
+            //
+            // The two source kinds need different room. An LFO is bipolar and
+            // swings both ways, so it gets the NEARER side and stays centred on
+            // the base. An envelope only ever travels one way, decided by the
+            // sign of its amount, so it gets the whole of that side and can
+            // still reach the end of the range from anywhere.
+            // Scale the swing to the room the base value actually leaves,
+            // rather than letting the sum run past the range and be clamped.
+            //
+            // Clamping is not wrong in itself, but it turns a sine into a
+            // square with rounded shoulders and holds every other shape at its
+            // limit: at base 0.5 and full amount the value spent 65.6% of every
+            // cycle pinned at an end, measured, in stalls of 661 ms. Scaling
+            // arrives at the boundary exactly and turns around there.
+            //
+            // The two source kinds need different room. An LFO is bipolar, so
+            // it needs the SAME headroom on both sides to stay centred on the
+            // base - the nearer side is what it gets. An envelope is unipolar
+            // and only ever travels one way, so it gets that whole side.
+            //
+            // This applies to every destination. It began scoped to the
+            // wavetable scan, where a clamped LFO is most visible because the
+            // stack stops moving, but the same flattening was happening on
+            // cutoff, pitch and the rest where it was only audible.
+            const auto headroom = bipolar
                                     ? juce::jmin(base, 1.0f - base)
-                                    : 1.0f;
+                                    : (amount >= 0.0f ? 1.0f - base : base);
 
             totalDelta += target.normalizedDepth * headroom * (signal * amount);
         }
@@ -67,9 +99,12 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
     for (int i = 0; i < kLfoSourceCount; ++i)
     {
         const auto index = static_cast<std::size_t>(i);
+        // Every LFO shape is bipolar - sine, triangle, saw and square all run
+        // -1..+1 - so they all centre on the base.
         accumulateSourceDelta(lfoAssignmentAtomic(i),
                               lfoCurrentValues[index].load(std::memory_order_relaxed),
-                              getLfoAmountParam(i).get());
+                              getLfoAmountParam(i).get(),
+                              true);
     }
     for (int i = 0; i < kEnvelopeSourceCount; ++i)
     {
@@ -79,11 +114,17 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
                                             modulationEnvelopeValues[index].load(std::memory_order_relaxed));
         const auto envAmount = juce::jlimit(-1.0f, 1.0f, getEnvelopeAmountParam(i).get());
 
-        accumulateSourceDelta(envelopeAssignmentAtomic(i), envSignal, envAmount);
+        accumulateSourceDelta(envelopeAssignmentAtomic(i), envSignal, envAmount, false);
     }
 
-    // Apply all source contributions in normalized space, then clamp once.
-    // This preserves additive behavior across multiple sources.
+    // Applied in normalized space, then clamped once. This preserves additive
+    // behaviour across multiple sources - and the pre-clamp value is reported
+    // so a test can tell "modulation stayed in range" from "modulation was cut
+    // off at the edge", which look identical afterwards.
+    if (outUnclampedNormalized != nullptr)
+    {
+        *outUnclampedNormalized = base + totalDelta;
+    }
     effective = clamp01(base + totalDelta);
 
     if (outBaseNormalized != nullptr)
@@ -439,6 +480,19 @@ float PX3SynthAudioProcessor::getModulatedNormalisedValue(juce::RangedAudioParam
     }
     return juce::jlimit(0.0f, 1.0f,
                         applyModulationToNormalizedValue(&parameter, parameter.getValue()));
+}
+
+float PX3SynthAudioProcessor::getUnclampedModulatedNormalisedValue(
+    juce::RangedAudioParameter& parameter) const
+{
+    if (! isParameterModulated(parameter.getParameterID()))
+    {
+        return -1.0f;
+    }
+
+    float unclamped = 0.0f;
+    applyModulationToNormalizedValue(&parameter, parameter.getValue(), nullptr, nullptr, &unclamped);
+    return unclamped;
 }
 
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorWtPositionParam(int oscIndex) const
@@ -999,7 +1053,8 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
                                            const juce::String& displayName,
                                            juce::RangedAudioParameter& runtimeParam)
     {
-        lfoAssignableTargets.push_back({ canonicalId, displayName, &runtimeParam, lfoDepthForParameterId(canonicalId) });
+        lfoAssignableTargets.push_back({ canonicalId, displayName, &runtimeParam,
+                                         lfoDepthForParameterId(canonicalId) });
         lfoAssignmentDisplayNames.add(displayName);
     };
 
@@ -1058,15 +1113,10 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
             continue;
         }
 
-        // The wavetable scan is centred on its base. It is the destination where
-        // a clamped sine is most visible - the stack visibly stops at an end -
-        // but the same treatment suits any destination whose range is a position
-        // rather than an amount, and it is one flag to add.
         lfoAssignableTargets.push_back({ id,
                                          floatParam->getName(64),
                                          floatParam,
-                                         lfoDepthForParameterId(id),
-                                         id.endsWithIgnoreCase("WtPos") });
+                                         lfoDepthForParameterId(id) });
 
         lfoAssignmentDisplayNames.add(floatParam->getName(64));
     }

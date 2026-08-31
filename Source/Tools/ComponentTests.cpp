@@ -25,6 +25,7 @@
 #include "../Preset/FactoryPresets.h"
 #include "../DSP/Wavetable.h"
 #include "../DSP/BreakpointEnvelope.h"
+#include "../DSP/LfoMode.h"
 #include "../DSP/AmpEnvelope.h"
 #include "../DSP/EnvelopeGenerator.h"
 #include "../DSP/WavetableReader.h"
@@ -2707,6 +2708,288 @@ void testWavetable()
         check("WavetableMod_ThePositionMovesContinuously", worstStep < 0.05f,
               "largest change between consecutive blocks: " + fmt(worstStep, 5)
                   + " of the table");
+    }
+
+    // ---- every waveform, every destination, never clamped -------------------
+    // The precise property is that the value BEFORE the range clamp stays in
+    // range. "Never stalls" would be the wrong test: a square LFO holds at its
+    // limit by definition, and a saw jumps. What must not happen is the
+    // modulation driving past the end and being cut off there, which flattens
+    // every shape into the same held edge.
+    {
+        struct Destination { const char* parameterId; const char* label; };
+        const Destination destinations[] = {
+            { "osc1WtPos", "wavetable scan" },
+            { "osc1MacroA", "osc macro" },
+            { "osc1Pitch", "osc pitch" },
+            { "filter1Cutoff", "filter cutoff" },
+            { "osc1Level", "osc level" },
+        };
+
+        juce::StringArray clampedAway;
+        juce::String worstDetail;
+        auto worstOvershoot = 0.0f;
+        auto combinations = 0;
+
+        for (const auto& destination : destinations)
+        {
+            for (int waveform = 0; waveform < px3::lfoWaveformChoices().size(); ++waveform)
+            {
+                for (const auto base : { 0.15f, 0.50f, 0.85f })
+                {
+                    for (const auto amount : { -1.0f, 0.5f, 1.0f })
+                    {
+                        PX3SynthAudioProcessor processor;
+                        makePlainPatch(processor);
+                        setParam(processor, "lfoEnabled", 1.0f);
+                        setParam(processor, "lfoFrequency", 4.0f);
+                        setParam(processor, "lfoAmount", amount);
+                        setChoice(processor, "lfoWaveform", waveform);
+
+                        if (! processor.setLfoAssignmentByParameterId(destination.parameterId))
+                        {
+                            continue;
+                        }
+
+                        auto* target = findParameter(processor, destination.parameterId);
+                        if (target == nullptr) { continue; }
+                        target->setValueNotifyingHost(base);
+
+                        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+                        juce::AudioBuffer<float> buffer(2, kBlockSize);
+                        juce::MidiBuffer midi;
+                        midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
+
+                        auto overshoot = 0.0f;
+                        for (int block = 0; block < 120; ++block)
+                        {
+                            buffer.clear();
+                            processor.processBlock(buffer, midi);
+                            midi.clear();
+
+                            const auto raw = processor.getUnclampedModulatedNormalisedValue(*target);
+                            if (raw < -0.5f) { continue; }   // not assigned
+                            overshoot = juce::jmax(overshoot,
+                                                   juce::jmax(-raw, raw - 1.0f));
+                        }
+
+                        ++combinations;
+                        if (overshoot > worstOvershoot)
+                        {
+                            worstOvershoot = overshoot;
+                            worstDetail = juce::String(destination.label) + " / "
+                                          + px3::lfoWaveformChoices()[waveform]
+                                          + " / base " + fmt(base, 2)
+                                          + " / amount " + fmt(amount, 2);
+                        }
+
+                        if (overshoot > 0.002f)
+                        {
+                            clampedAway.addIfNotAlreadyThere(
+                                juce::String(destination.label) + " "
+                                + px3::lfoWaveformChoices()[waveform]);
+                        }
+                    }
+                }
+            }
+        }
+
+        check("Modulation_NoWaveformIsEverClampedAtTheRange", clampedAway.isEmpty(),
+              clampedAway.isEmpty()
+                  ? juce::String(combinations)
+                        + " destination/waveform/base/amount combinations, worst overshoot past "
+                          "the range " + fmt(worstOvershoot, 6)
+                  : "driven past the range on: " + clampedAway.joinIntoString(", "));
+
+        check("Modulation_CoveredEveryWaveformAndDestination", combinations >= 100,
+              juce::String(combinations) + " combinations exercised across "
+                  + juce::String(px3::lfoWaveformChoices().size()) + " waveforms and "
+                  + juce::String(static_cast<int>(std::size(destinations))) + " destinations");
+    }
+
+    // ---- a bipolar source stays centred, a unipolar one reaches the end ------
+    {
+        PX3SynthAudioProcessor processor;
+        makePlainPatch(processor);
+        setParam(processor, "lfoEnabled", 1.0f);
+        setParam(processor, "lfoFrequency", 6.0f);
+        setParam(processor, "lfoAmount", 1.0f);
+        setChoice(processor, "lfoWaveform", 0);
+        processor.setLfoAssignmentByParameterId("filter1Cutoff");
+
+        auto* cutoff = findParameter(processor, "filter1Cutoff");
+        cutoff->setValueNotifyingHost(0.30f);
+
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        juce::AudioBuffer<float> buffer(2, kBlockSize);
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
+
+        auto low = 1.0f, high = 0.0f;
+        for (int block = 0; block < 200; ++block)
+        {
+            buffer.clear();
+            processor.processBlock(buffer, midi);
+            midi.clear();
+            const auto value = processor.getModulatedNormalisedValue(*cutoff);
+            low = juce::jmin(low, value);
+            high = juce::jmax(high, value);
+        }
+
+        check("Modulation_ABipolarSourceStaysCentredOnTheBase",
+              std::abs((low + high) * 0.5f - 0.30f) < 0.02f,
+              "an LFO on a base of 0.30 swung " + fmt(low, 3) + ".." + fmt(high, 3)
+                  + ", centred on " + fmt((low + high) * 0.5f, 3));
+
+        // The whole nearer side, so full amount arrives exactly at the end.
+        check("Modulation_FullAmountReachesTheEndOfTheRange",
+              low < 0.02f,
+              "the low end of the swing reached " + fmt(low, 4));
+    }
+
+    // ---- the symptom itself, on every waveform and destination --------------
+    // The overshoot test above is the precise property; this is the thing the
+    // user can actually see. A continuous LFO that is clamped stops moving at
+    // the end of its travel, so the knob ring and the wavetable stack sit still
+    // for a stretch of every cycle. Measured in milliseconds of no movement at
+    // a boundary, which is the same measurement the wavetable-scan test makes -
+    // generalised off that one destination and off the sine.
+    //
+    // SQUARE is exempt and must be: it holds at its limit because that is the
+    // shape, not because anything clamped it.
+    {
+        struct Destination { const char* parameterId; const char* label; };
+        const Destination destinations[] = {
+            { "osc1WtPos", "wavetable scan" },
+            { "osc1MacroA", "osc macro" },
+            { "osc1Pitch", "osc pitch" },
+            { "filter1Cutoff", "filter cutoff" },
+        };
+
+        juce::StringArray stalled;
+        auto worstStallMs = 0.0;
+        auto combinations = 0;
+
+        for (const auto& destination : destinations)
+        {
+            for (int waveform = 0; waveform < px3::lfoWaveformChoices().size(); ++waveform)
+            {
+                if (px3::lfoWaveformChoices()[waveform] == "SQUARE") { continue; }
+
+                for (const auto base : { 0.15f, 0.50f, 0.85f })
+                {
+                    PX3SynthAudioProcessor processor;
+                    makePlainPatch(processor);
+                    setParam(processor, "lfoEnabled", 1.0f);
+                    setParam(processor, "lfoFrequency", 0.5f);
+                    setParam(processor, "lfoAmount", 1.0f);
+                    setChoice(processor, "lfoWaveform", waveform);
+
+                    if (! processor.setLfoAssignmentByParameterId(destination.parameterId))
+                    {
+                        continue;
+                    }
+
+                    auto* target = findParameter(processor, destination.parameterId);
+                    if (target == nullptr) { continue; }
+                    target->setValueNotifyingHost(base);
+
+                    processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                    processor.prepareToPlay(kSampleRate, kBlockSize);
+
+                    juce::AudioBuffer<float> buffer(2, kBlockSize);
+                    juce::MidiBuffer midi;
+                    midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
+
+                    auto previous = -1.0f;
+                    auto longestRun = 0, run = 0;
+                    for (int block = 0; block < static_cast<int>(4.0 * kSampleRate / kBlockSize); ++block)
+                    {
+                        buffer.clear();
+                        processor.processBlock(buffer, midi);
+                        midi.clear();
+
+                        const auto value = processor.getModulatedNormalisedValue(*target);
+                        if (previous >= 0.0f)
+                        {
+                            const auto pinned = (value <= 1.0e-4f || value >= 1.0f - 1.0e-4f)
+                                                && std::abs(value - previous) < 1.0e-6f;
+                            if (pinned) { ++run; longestRun = juce::jmax(longestRun, run); }
+                            else { run = 0; }
+                        }
+                        previous = value;
+                    }
+
+                    const auto stallMs = longestRun * kBlockSize * 1000.0 / kSampleRate;
+                    worstStallMs = juce::jmax(worstStallMs, stallMs);
+                    ++combinations;
+
+                    if (stallMs > 20.0)
+                    {
+                        stalled.addIfNotAlreadyThere(
+                            juce::String(destination.label) + " "
+                            + px3::lfoWaveformChoices()[waveform]
+                            + " at base " + fmt(base, 2) + " stalled " + fmt(stallMs, 0) + " ms");
+                    }
+                }
+            }
+        }
+
+        check("Modulation_NoContinuousWaveformStallsAtEitherEnd", stalled.isEmpty(),
+              stalled.isEmpty()
+                  ? juce::String(combinations) + " combinations, longest time held still at a "
+                    "boundary " + fmt(worstStallMs, 1) + " ms"
+                  : stalled.joinIntoString("; "));
+    }
+
+    // ---- what is drawn is what is played ------------------------------------
+    // The wavetable position is the one destination read through a second
+    // accessor: the graph and the scan knob call getModulatedWavetablePosition,
+    // while the generic knob rings call getModulatedNormalisedValue. Two
+    // accessors are two chances to scale one and not the other, and the failure
+    // would be an animation that no longer tracks the sound.
+    {
+        PX3SynthAudioProcessor processor;
+        makePlainPatch(processor);
+        setParam(processor, "lfoEnabled", 1.0f);
+        setParam(processor, "lfoFrequency", 3.0f);
+        setParam(processor, "lfoAmount", 1.0f);
+        setChoice(processor, "lfoWaveform", 0);
+        processor.setLfoAssignmentByParameterId("osc1WtPos");
+
+        auto& positionParam = processor.getOscillatorWtPositionParam(0);
+        auto& asRanged = static_cast<juce::RangedAudioParameter&>(positionParam);
+        asRanged.setValueNotifyingHost(0.35f);
+
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        juce::AudioBuffer<float> buffer(2, kBlockSize);
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
+
+        auto worstDisagreement = 0.0f;
+        for (int block = 0; block < 240; ++block)
+        {
+            buffer.clear();
+            processor.processBlock(buffer, midi);
+            midi.clear();
+
+            const auto ringValue = processor.getModulatedNormalisedValue(asRanged);
+            const auto graphValue = asRanged.convertTo0to1(
+                processor.getModulatedWavetablePosition(0));
+            worstDisagreement = juce::jmax(worstDisagreement,
+                                           std::abs(ringValue - graphValue));
+        }
+
+        check("Modulation_TheDrawnValueMatchesTheOneTheDspUses",
+              worstDisagreement < 1.0e-4f,
+              "over 240 blocks the knob ring and the wavetable graph never differed by more "
+              "than " + fmt(worstDisagreement, 6));
     }
 
     // ---- the oscillator actually follows it ---------------------------------
