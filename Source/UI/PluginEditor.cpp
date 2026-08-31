@@ -3411,6 +3411,39 @@ void PX3SynthAudioProcessorEditor::configureWavetableControls()
     }
 }
 
+void PX3SynthAudioProcessorEditor::refreshModulationRings()
+{
+    // Every knob bound to a parameter, not just the wavetable scan. A knob whose
+    // parameter has a modulation source pointed at it draws an arc from where
+    // the parameter sits out to where the value actually is - so an LFO on the
+    // filter cutoff or an envelope on pitch is visible on the control it is
+    // moving, rather than only in its effect.
+    //
+    // The knob itself is never moved: it shows what the user set and what a DAW
+    // would automate, and driving it would fight the parameter attachment and
+    // write the modulation back into the parameter.
+    for (auto& binding : knobBindings)
+    {
+        if (binding.slider == nullptr || binding.parameter == nullptr)
+        {
+            continue;
+        }
+
+        const auto modulated = audioProcessor.getModulatedNormalisedValue(*binding.parameter);
+        const auto shown = static_cast<double>(
+            binding.slider->getProperties().getWithDefault("modulatedPos", -1.0));
+
+        // Only when it has actually moved, and only by enough to see. A repaint
+        // per knob per frame for a value that has not changed is how a UI ends
+        // up costing more than the synth.
+        if (std::abs(shown - static_cast<double>(modulated)) > 0.002)
+        {
+            binding.slider->getProperties().set("modulatedPos", static_cast<double>(modulated));
+            binding.slider->repaint();
+        }
+    }
+}
+
 void PX3SynthAudioProcessorEditor::refreshWavetableDisplays()
 {
     if (oscPanel == nullptr)
@@ -4209,6 +4242,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
 {
     loadUiConfig(false);
     refreshWavetableDisplays();
+    refreshModulationRings();
 
     const auto nowSeconds = juce::Time::getMillisecondCounterHiRes() * 0.001;
     const auto deltaSeconds = (lastAnimationTickSeconds > 0.0)

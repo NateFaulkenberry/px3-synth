@@ -220,6 +220,17 @@ public:
     // next to the base value so an LFO on the scan reads as a range rather than
     // as an unexplained wobble.
     float getModulatedWavetablePosition(int oscIndex) const;
+
+    // Is anything currently pointed at this parameter? Distinct from "is its
+    // modulated value different right now" - an LFO passing through zero is
+    // still assigned, and a knob whose arc vanished at every zero crossing
+    // would flicker.
+    bool isParameterModulated(const juce::String& parameterId) const;
+
+    // The parameter's value with modulation applied, normalised 0..1. Returns
+    // -1 when nothing is assigned to it, which is what the knobs draw as "no
+    // modulation ring".
+    float getModulatedNormalisedValue(juce::RangedAudioParameter& parameter) const;
     juce::AudioParameterFloat& getOscillatorHarmonicParam(int oscIndex, int harmonicIndex) const;
     juce::AudioParameterBool& getSubOscEnabledParam() const;
     juce::AudioParameterFloat& getSubOscPitchParam() const;

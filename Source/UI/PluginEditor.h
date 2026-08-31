@@ -361,6 +361,7 @@ private:
 
     void configureWavetableControls();
     void refreshWavetableDisplays();
+    void refreshModulationRings();
     void importWavetableFile(int oscIndex, const juce::File& file);
     void rebuildWavetableMenu(int oscIndex);
 

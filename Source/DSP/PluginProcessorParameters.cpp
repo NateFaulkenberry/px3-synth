@@ -386,6 +386,48 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadToneParam() const { 
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getSpreadModeParam() const { return *spreadModeParam; }
 
 juce::AudioParameterBool& PX3SynthAudioProcessor::getAnalogEnabledParam() const { return *analogEnabledParam; }
+bool PX3SynthAudioProcessor::isParameterModulated(const juce::String& parameterId) const
+{
+    const auto pointsAt = [this, &parameterId](std::atomic<int> const& assignmentIndex)
+    {
+        const auto assignment = juce::jlimit(0,
+                                             juce::jmax(0, static_cast<int>(lfoAssignableTargets.size()) - 1),
+                                             assignmentIndex.load(std::memory_order_relaxed));
+        if (assignment <= 0 || assignment >= static_cast<int>(lfoAssignableTargets.size()))
+        {
+            return false;
+        }
+        return lfoAssignableTargets[static_cast<std::size_t>(assignment)]
+            .parameterId.equalsIgnoreCase(parameterId);
+    };
+
+    for (int i = 0; i < kLfoSourceCount; ++i)
+    {
+        if (pointsAt(lfoAssignmentAtomic(i)) && getLfoEnabledParam(i).get())
+        {
+            return true;
+        }
+    }
+    for (int i = 0; i < kEnvelopeSourceCount; ++i)
+    {
+        if (pointsAt(envelopeAssignmentAtomic(i)) && getEnvelopeEnabledParam(i).get())
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+float PX3SynthAudioProcessor::getModulatedNormalisedValue(juce::RangedAudioParameter& parameter) const
+{
+    if (! isParameterModulated(parameter.getParameterID()))
+    {
+        return -1.0f;
+    }
+    return juce::jlimit(0.0f, 1.0f,
+                        applyModulationToNormalizedValue(&parameter, parameter.getValue()));
+}
+
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorWtPositionParam(int oscIndex) const
 {
     const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);

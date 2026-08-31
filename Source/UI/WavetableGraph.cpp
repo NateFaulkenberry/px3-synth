@@ -267,26 +267,15 @@ void WavetableGraph::paintOverlay(juce::Graphics& g)
             }
         }
 
-        // The scan marker. Base and modulated are drawn separately so an LFO
-        // sweeping the scan shows its range as well as its position.
-        const auto area = bounds.reduced(configFloat("osc.wavetable.graph.inset", 6.0f));
-        const auto markerFor = [&area](float position)
-        {
-            const auto x = area.getX() + area.getWidth() * juce::jlimit(0.0f, 1.0f, position);
-            return juce::Line<float>(x, area.getY(), x, area.getBottom());
-        };
-
-        if (std::abs(modulatedPosition - basePosition) > 0.002f)
-        {
-            g.setColour(configColour("osc.wavetable.graph.baseMarkerColor",
-                                     accent.withAlpha(0.35f)));
-            g.drawLine(markerFor(basePosition),
-                       configFloat("osc.wavetable.graph.baseMarkerWidth", 1.0f));
-        }
-
-        g.setColour(configColour("osc.wavetable.graph.markerColor", accent.brighter(0.4f)));
-        g.drawLine(markerFor(modulatedPosition),
-                   configFloat("osc.wavetable.graph.markerWidth", 1.6f));
+        // No scan marker is drawn here any more.
+        //
+        // Two flat vertical lines - one at the parameter's position, one at the
+        // modulated one - were how the old 2D renderer showed the scan. They are
+        // wrong over a perspective view: a frame's position on screen depends on
+        // where the camera is, so a line at "position times width" does not sit
+        // on the frame it claims to mark. The renderer highlights the selected
+        // frame in the stack itself, which is the same information in the right
+        // place.
 
         const auto shaderError = glView.getShaderError();
         if (shaderError.isNotEmpty())

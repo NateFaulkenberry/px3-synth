@@ -2549,6 +2549,41 @@ void testWavetable()
         }
     }
 
+    // ---- modulation rings on every knob -------------------------------------
+    // The scan knob got a ring showing where modulation had actually pushed it;
+    // this is the same treatment for any knob with a source pointed at it.
+    {
+        PX3SynthAudioProcessor processor;
+        makePlainPatch(processor);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+
+        check("ModulationRing_UnassignedParameterReportsNoModulation",
+              processor.getModulatedNormalisedValue(cutoff) < 0.0f,
+              "an unmodulated cutoff returns -1, which the knob draws as no ring");
+
+        setParam(processor, "lfoEnabled", 1.0f);
+        setParam(processor, "lfoAmount", 0.8f);
+        processor.setLfoAssignmentByParameterId("filter1Cutoff");
+
+        const auto modulated = processor.getModulatedNormalisedValue(cutoff);
+        check("ModulationRing_AssignedParameterReportsItsModulatedValue",
+              modulated >= 0.0f && modulated <= 1.0f,
+              "cutoff with an LFO on it reports " + fmt(modulated, 4));
+
+        check("ModulationRing_AssignmentIsDetectedByParameterId",
+              processor.isParameterModulated("filter1Cutoff")
+                  && ! processor.isParameterModulated("filter2Cutoff"),
+              "the assigned parameter reports modulated and its neighbour does not");
+
+        // A source that is switched off is not modulating anything, whatever it
+        // is pointed at.
+        setParam(processor, "lfoEnabled", 0.0f);
+        check("ModulationRing_ADisabledSourceDrawsNoRing",
+              processor.getModulatedNormalisedValue(cutoff) < 0.0f,
+              "turning the LFO off removes the ring rather than freezing it");
+    }
+
     // ---- the 3D renderer's camera ------------------------------------------
     // The rendering itself needs a GL context and cannot be checked here, but
     // the camera can - and an orbit control that can be dragged into an
