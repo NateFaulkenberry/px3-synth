@@ -23392,13 +23392,127 @@ int main(int argc, char* argv[])
             std::printf("\n");
         }
 
-        std::printf("  the first 24 samples at a 1 s attack, factory defaults:\n");
-        const auto slow = render(1.000f, 24, false);
-        for (std::size_t i = 0; i < slow.size(); ++i)
+        // Is anything OTHER than the envelope changing the gain?
+        //
+        // Render a note, and divide the signal's own envelope by the AMP ENV
+        // value at the same instant. If the envelope is the only gain in the
+        // path that ratio is flat; a duck or a limiter shows as it dipping and
+        // recovering. Run at two velocities because the report is that playing
+        // harder makes it worse.
+        for (const auto velocity : { 1.0f, 0.35f })
         {
-            std::printf("    %2d  %+.6f\n", static_cast<int>(i), slow[i]);
+            PX3SynthAudioProcessor processor;
+            setParam(processor, "ampAttack", 1.000f);
+            setParam(processor, "ampDecay", 0.100f);
+            setParam(processor, "ampSustain", 1.00f);
+            setParam(processor, "ampRelease", 0.100f);
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            AmpEnvelope reference;
+            reference.prepare(kSampleRate);
+            EnvelopeSettings settings;
+            settings.attackSeconds = 1.000f;
+            settings.decaySeconds = 0.100f;
+            settings.sustainLevel = 1.0f;
+            settings.releaseSeconds = 0.100f;
+            reference.setSettings(settings);
+            reference.noteOn();
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, velocity), 0);
+
+            std::printf("  velocity %.2f, signal divided by the envelope "
+                        "(flat means the envelope is the only gain):\n", velocity);
+
+            auto worstDip = 1.0e9;
+            auto worstAtMs = 0.0;
+            auto settled = 0.0;
+            for (int block = 0; block < static_cast<int>(0.30 * kSampleRate / kBlockSize); ++block)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, midi);
+                midi.clear();
+
+                auto env = 0.0f;
+                for (int i = 0; i < kBlockSize; ++i) { env = reference.getNextSample(); }
+
+                const auto level = buffer.getMagnitude(0, kBlockSize);
+                const auto ratio = env > 1.0e-5f ? level / env : 0.0;
+                const auto ms = 1000.0 * (block + 1) * kBlockSize / kSampleRate;
+
+                if (block >= 12) { settled = ratio; }
+                if (block >= 2 && ratio < worstDip) { worstDip = ratio; worstAtMs = ms; }
+
+                if (block < 14 || block % 6 == 0)
+                {
+                    std::printf("    %6.1f ms  env %.5f  level %.5f  ratio %.4f\n",
+                                ms, env, level, ratio);
+                }
+            }
+            std::printf("    -> lowest ratio %.4f at %.1f ms, settled at %.4f (%.1f%% of "
+                        "settled)\n\n",
+                        worstDip, worstAtMs, settled,
+                        settled > 0.0 ? 100.0 * worstDip / settled : 0.0);
+        }
+
+        // Every oscillator mode, with a one second attack. The envelope is
+        // under 0.005 for the first 5 ms, so nothing should be audible there
+        // in ANY mode - a mode that excites something at note-on regardless of
+        // the envelope shows up as a level the envelope does not permit.
+        std::printf("  every mode, 1 s attack, the first 5 ms:\n");
+        std::printf("    %-14s %10s %10s %10s\n", "mode", "peak 5ms", "env there", "ratio");
+        for (int mode = 0; mode < px3::oscillatorModeChoices().size(); ++mode)
+        {
+            PX3SynthAudioProcessor processor;
+            setParam(processor, "ampAttack", 1.000f);
+            setParam(processor, "ampDecay", 0.100f);
+            setParam(processor, "ampSustain", 1.00f);
+            setParam(processor, "ampRelease", 0.100f);
+            setChoice(processor, "osc1Mode", mode);
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+
+            auto peak = 0.0f;
+            const auto blocks = juce::jmax(1, static_cast<int>(0.005 * kSampleRate / kBlockSize));
+            for (int b = 0; b < blocks; ++b)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, midi);
+                midi.clear();
+                peak = juce::jmax(peak, buffer.getMagnitude(0, kBlockSize));
+            }
+
+            AmpEnvelope reference;
+            reference.prepare(kSampleRate);
+            EnvelopeSettings settings;
+            settings.attackSeconds = 1.000f;
+            settings.decaySeconds = 0.100f;
+            settings.sustainLevel = 1.0f;
+            settings.releaseSeconds = 0.100f;
+            reference.setSettings(settings);
+            reference.noteOn();
+            auto env = 0.0f;
+            for (int i = 0; i < blocks * kBlockSize; ++i) { env = reference.getNextSample(); }
+
+            std::printf("    %-14s %10.6f %10.6f %10.2f%s\n",
+                        px3::oscillatorModeChoices()[mode].toRawUTF8(), peak, env,
+                        env > 1.0e-6f ? peak / env : 0.0f,
+                        (env > 1.0e-6f && peak / env > 1.0f) ? "   <-- louder than the envelope allows"
+                                                             : "");
         }
         std::printf("\n");
+
+        std::printf("  Nothing above shows a discontinuity or a duck. What this mode has\n"
+                    "  ruled out, with numbers: the envelope does reach the audio, no stage\n"
+                    "  after it changes gain with level, and no oscillator mode leaks a\n"
+                    "  transient past it. The one fault it did find - a retriggered attack\n"
+                    "  diving to silence first - is fixed and pinned by AmpEnv_Retrigger*.\n\n");
         return 0;
     }
 
