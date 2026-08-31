@@ -58,7 +58,13 @@ public:
     // The editor now draws the held phase explicitly, as a flat stretch after
     // the decay, and puts the sustain handle on it. The breakpoint itself is
     // then the decay handle alone.
-    enum class Target { none, point, curve, sustain };
+    // `sustain` is the bar on the held stretch: the sustain LEVEL.
+    // `releaseStart` is the far end of that stretch: where the release begins.
+    //
+    // Neither has a breakpoint of its own. The sustain level and the decay time
+    // are the two coordinates of one point, and the held stretch is drawn
+    // rather than stored - so both need a handle the model does not provide.
+    enum class Target { none, point, curve, sustain, releaseStart };
     struct Hit
     {
         Target target { Target::none };
@@ -79,6 +85,7 @@ public:
     // The sustain handle, on the held stretch. Only meaningful for an ADSR
     // skeleton, where a held phase is a thing that exists.
     juce::Point<float> sustainHandlePosition() const;
+    juce::Point<float> releaseStartHandlePosition() const;
     bool hasSustainHandle() const;
 
     // What each breakpoint of a plain ADSR shape controls. Empty for points
@@ -90,6 +97,10 @@ public:
     // there for as long as the key is down, which is not a duration the model
     // has or should have.
     double heldDisplaySeconds() const;
+
+    // How wide the held stretch is, once the user has said. Negative means
+    // "not yet said", and the width follows the envelope's own length.
+    double heldSecondsOverride { -1.0 };
 
     // Where a point is drawn on the time axis, which is its real time plus the
     // held stretch once past the sustain point.

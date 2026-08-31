@@ -1809,6 +1809,90 @@ void testBreakpointEnvelope()
         }
     }
 
+    // ---- the release-start handle -------------------------------------------
+    // The far end of the held stretch, which is where the release begins. It
+    // exists so the sustain plateau can be collapsed to nothing - "no sustain"
+    // - and so that end of it can be grabbed at all.
+    {
+        EnvelopeSettings settings;
+        settings.attackSeconds = 0.05f;
+        settings.decaySeconds = 0.10f;
+        settings.sustainLevel = 0.60f;
+        settings.releaseSeconds = 0.13f;
+
+        BreakpointEnvelopeEditor editor;
+        editor.setSize(400, 200);
+        editor.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+
+        const auto event = [&editor](juce::Point<float> at)
+        {
+            return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), at,
+                                    juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                    &editor, &editor, juce::Time::getCurrentTime(), at,
+                                    juce::Time::getCurrentTime(), 1, false);
+        };
+
+        const auto decayAt = editor.drawnPointPosition(editor.getEnvelope().getSustainPoint());
+        const auto sustainAt = editor.sustainHandlePosition();
+        const auto releaseAt = editor.releaseStartHandlePosition();
+
+        check("EnvelopeEditor_TheHeldStretchHasAHandleAtEachEnd",
+              releaseAt.x > sustainAt.x && sustainAt.x > decayAt.x,
+              "decay at " + fmt(decayAt.x, 0) + ", sustain bar at " + fmt(sustainAt.x, 0)
+                  + ", release start at " + fmt(releaseAt.x, 0));
+
+        check("EnvelopeEditor_TheReleaseStartHandleGrabsItself",
+              editor.grabAt(releaseAt).target
+                  == BreakpointEnvelopeEditor::Target::releaseStart,
+              "grabbing the far end of the held stretch selects the release start");
+
+        // Dragged right: the plateau widens and the ENVELOPE is untouched.
+        const auto before = editor.getEnvelope().toAdsr();
+        editor.mouseDown(event(releaseAt));
+        editor.mouseDrag(event(releaseAt.translated(40.0f, 0.0f)));
+        editor.mouseUp(event(releaseAt.translated(40.0f, 0.0f)));
+
+        const auto widened = editor.releaseStartHandlePosition();
+        const auto afterWidening = editor.getEnvelope().toAdsr();
+        check("EnvelopeEditor_DraggingTheReleaseStartRightWidensTheHeldStretch",
+              widened.x > releaseAt.x
+                  && std::abs(afterWidening.decaySeconds - before.decaySeconds) < 1.0e-6f,
+              "the handle moved " + fmt(widened.x - releaseAt.x, 0)
+                  + " px right with the decay still at " + fmt(afterWidening.decaySeconds, 3)
+                  + " s");
+
+        // Dragged hard left: the plateau collapses, and only then does the
+        // decay start shortening.
+        const auto grabAgain = editor.releaseStartHandlePosition();
+        editor.mouseDown(event(grabAgain));
+        editor.mouseDrag(event(grabAgain.translated(-4000.0f, 0.0f)));
+        editor.mouseUp(event(grabAgain.translated(-4000.0f, 0.0f)));
+
+        const auto collapsed = editor.releaseStartHandlePosition();
+
+        // The TRUE position of the decay point, not the drawn one. Collapsing
+        // the decay puts it on top of the attack, so the drawn position carries
+        // the coincident-point nudge and would report a 10 px gap that is not
+        // the held stretch.
+        const auto decayNow = editor.pointToScreen(editor.getEnvelope().getSustainPoint());
+        const auto afterCollapse = editor.getEnvelope().toAdsr();
+
+        check("EnvelopeEditor_DraggingItLeftGivesNoSustain",
+              std::abs(collapsed.x - decayNow.x) < 2.0f,
+              "the held stretch collapses to " + fmt(std::abs(collapsed.x - decayNow.x), 1)
+                  + " px - the decay meets the release with nothing between");
+
+        check("EnvelopeEditor_PastThatItShortensTheDecay",
+              afterCollapse.decaySeconds < before.decaySeconds,
+              "and past that the decay pulls in, " + fmt(before.decaySeconds, 3) + " s -> "
+                  + fmt(afterCollapse.decaySeconds, 3) + " s");
+
+        check("EnvelopeEditor_TheDecayNeverPassesTheAttack",
+              editor.getEnvelope().getPoint(2).timeSeconds
+                  >= editor.getEnvelope().getPoint(1).timeSeconds - 1.0e-9,
+              "the decay point stops at the attack rather than crossing it");
+    }
+
     // ---- every stage is its OWN control -------------------------------------
     //
     // This is the regression suite for the thing that went round in circles.

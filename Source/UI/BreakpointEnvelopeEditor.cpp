@@ -177,6 +177,11 @@ double BreakpointEnvelopeEditor::heldDisplaySeconds() const
     // A fraction of the envelope's own length rather than a constant, so it
     // stays proportionate on a 60 ms envelope and an 8 second one alike.
     if (! hasSustainHandle()) { return 0.0; }
+
+    // Once the release-start handle has been dragged the width is whatever the
+    // user set, down to and including zero - which is what "no sustain" is.
+    if (heldSecondsOverride >= 0.0) { return heldSecondsOverride; }
+
     return juce::jmax(0.04, envelope.getTotalSeconds() * 0.22);
 }
 
@@ -197,6 +202,14 @@ juce::Point<float> BreakpointEnvelopeEditor::pointToScreen(int index) const
     // Arriving, so the sustain breakpoint sits at the END of the decay - the
     // left edge of the held stretch - which is what makes it the decay handle.
     return toScreen(displayTimeArriving(index), envelope.getPoint(index).value);
+}
+
+juce::Point<float> BreakpointEnvelopeEditor::releaseStartHandlePosition() const
+{
+    if (! hasSustainHandle()) { return {}; }
+
+    const auto sustain = envelope.getSustainPoint();
+    return toScreen(displayTimeLeaving(sustain), envelope.getPoint(sustain).value);
 }
 
 juce::Point<float> BreakpointEnvelopeEditor::sustainHandlePosition() const
@@ -283,12 +296,22 @@ BreakpointEnvelopeEditor::Hit BreakpointEnvelopeEditor::grabAt(juce::Point<float
     // Points win over curve handles: a breakpoint and the handle of the segment
     // leaving it can overlap on a very short segment, and the point is what a
     // user is more likely to be reaching for.
-    // The sustain handle first. It sits on the held stretch, well clear of the
-    // breakpoints either side, so there is nothing for it to steal.
-    if (hasSustainHandle()
-        && sustainHandlePosition().getDistanceFrom(position) <= kPointGrabRadius)
+    // The two handles on the held stretch first. They sit clear of the
+    // breakpoints either side, so there is nothing for them to steal - except
+    // once the stretch has been dragged to nothing, where the release-start
+    // handle lands on the decay breakpoint and has to win, or it could never
+    // be dragged back out again.
+    if (hasSustainHandle())
     {
-        return { Target::sustain, envelope.getSustainPoint() };
+        if (releaseStartHandlePosition().getDistanceFrom(position) <= kPointGrabRadius)
+        {
+            return { Target::releaseStart, envelope.getSustainPoint() };
+        }
+
+        if (sustainHandlePosition().getDistanceFrom(position) <= kPointGrabRadius)
+        {
+            return { Target::sustain, envelope.getSustainPoint() };
+        }
     }
 
     // The CLOSEST point within reach, against the position it is DRAWN at.
@@ -597,6 +620,38 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
         }
     }
 
+    // ---- where the release begins ------------------------------------------
+    if (hasSustainHandle())
+    {
+        const auto position = releaseStartHandlePosition();
+        const auto active = hovered.target == Target::releaseStart
+                            || dragging.target == Target::releaseStart;
+
+        const auto radius = floatFor("pointRadius", 4.0f) * (active ? 1.4f : 1.0f);
+
+        g.setColour(colourFor("pointFillColor", juce::Colour::fromRGB(18, 18, 20)));
+        g.fillEllipse(position.x - radius, position.y - radius, radius * 2.0f, radius * 2.0f);
+        g.setColour(colourFor("sustainPointColor", curveColour().brighter(0.3f))
+                        .withAlpha(active ? 1.0f : 0.9f));
+        g.drawEllipse(position.x - radius, position.y - radius, radius * 2.0f, radius * 2.0f,
+                      floatFor("pointOutlineWidth", 1.8f));
+
+        if (active)
+        {
+            const auto labelSize = floatFor("roleLabelSize", 8.5f);
+            g.setFont(juce::FontOptions(labelSize));
+            constexpr auto width = 76.0f;
+            const auto above = position.y - radius - labelSize - 2.0f;
+            const auto y = above >= area.getY() ? above : position.y + radius + 2.0f;
+            const auto x = juce::jlimit(area.getX(), area.getRight() - width,
+                                        position.x - width * 0.5f);
+
+            g.setColour(colourFor("roleLabelColor", curveColour().withAlpha(0.95f)));
+            g.drawText("SUSTAIN TIME", juce::Rectangle<float>(x, y, width, labelSize + 2.0f),
+                       juce::Justification::centred, false);
+        }
+    }
+
     // ---- readout -----------------------------------------------------------
     // Only while dragging. A permanent readout is clutter on a graph this size,
     // and the numbers only matter while they are being changed.
@@ -606,6 +661,12 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
         if (dragging.target == Target::sustain)
         {
             text = "sustain " + juce::String(envelope.getPoint(dragging.index).value, 2);
+        }
+        else if (dragging.target == Target::releaseStart)
+        {
+            text = heldSecondsOverride > 0.0
+                     ? "sustain " + juce::String(heldSecondsOverride * 1000.0, 0) + " ms"
+                     : juce::String("no sustain");
         }
         else if (dragging.target == Target::point)
         {
@@ -658,7 +719,8 @@ void BreakpointEnvelopeEditor::mouseDown(const juce::MouseEvent& event)
                                  envelope.getTotalSeconds() + heldDisplaySeconds());
     showReadout = dragging.target != Target::none;
 
-    if (dragging.target == Target::point || dragging.target == Target::sustain)
+    if (dragging.target == Target::point || dragging.target == Target::sustain
+        || dragging.target == Target::releaseStart)
     {
         selectedPoint = dragging.index;
         dragStartTime = envelope.getPoint(dragging.index).timeSeconds;
@@ -684,7 +746,36 @@ void BreakpointEnvelopeEditor::mouseDrag(const juce::MouseEvent& event)
     const auto scale = event.mods.isShiftDown() ? 0.2f : 1.0f;
     const auto delta = (event.position - dragOrigin) * scale;
 
-    if (dragging.target == Target::sustain)
+    if (dragging.target == Target::releaseStart)
+    {
+        // Where the release begins, which is the far end of the held stretch.
+        //
+        // Dragging left collapses the stretch first - that is "no sustain",
+        // the decay meeting the release with nothing between them. Only once
+        // it has reached zero does further left pull the DECAY in, which is
+        // the same quantity the decay handle sets, reached from the other end.
+        const auto area = plotArea();
+        const auto wanted = juce::jmax(0.0, screenToTime(dragOrigin.x + delta.x));
+        const auto decayEnd = dragStartTime;
+
+        if (wanted >= decayEnd)
+        {
+            heldSecondsOverride = juce::jmin(kMaxDraggableSeconds, wanted - decayEnd);
+        }
+        else
+        {
+            heldSecondsOverride = 0.0;
+
+            // Never past the point before it: the decay cannot start before the
+            // attack has finished.
+            const auto floorTime = envelope.getPoint(dragging.index - 1).timeSeconds;
+            envelope.setPoint(dragging.index, juce::jmax(floorTime, wanted), dragStartValue);
+        }
+
+        juce::ignoreUnused(area);
+        notifyChanged();
+    }
+    else if (dragging.target == Target::sustain)
     {
         // Level only. The sustain handle names one thing and changes one
         // thing; the decay time stays exactly where the decay handle put it.
