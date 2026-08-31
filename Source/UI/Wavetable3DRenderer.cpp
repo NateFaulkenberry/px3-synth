@@ -1301,11 +1301,16 @@ void Wavetable3DRenderer::renderOpenGL()
         // Half a line width, in normalised device units, from a pixel width -
         // which is what keeps the ribbon the same thickness on a Retina panel
         // as on any other.
-        // Doubled from 1.1 px half-width. One uniform serves the waveform
-        // ribbons and the floor edges alike, so the whole picture thickens
-        // together rather than the floor turning into hairlines beside a
-        // heavier stack.
-        const auto pixels = 4.4f * scale;
+        // Halved back from 4.4. The doubling was asked for while the ribbon's
+        // antialiasing still scaled with its width, so thickness was the only
+        // way to make a line read as solid; now that the edge is a fixed half
+        // pixel and the stacking order is right, weight and crispness are
+        // independent and the thinner line is the sharper one.
+        //
+        // One uniform serves the waveform ribbons and the floor edges alike, so
+        // the whole picture thins together rather than the floor staying heavy
+        // beside a finer stack.
+        const auto pixels = 2.2f * scale;
         uniformHalfWidth->set(pixels / static_cast<float>(height));
 
         // The same width the fragment shader antialiases against. Half,

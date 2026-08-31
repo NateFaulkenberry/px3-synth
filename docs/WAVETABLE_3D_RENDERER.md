@@ -610,10 +610,26 @@ top 1% of adjacent-pixel luminance jumps - the sharpest edges in the picture:
 
 ## K. What was NOT changed, and why
 
-**The line width.** It measures 8.8 physical px, 4.4 logical. The brief warns
-against reaching for thickness to fix softness, and equally this is not the
-place to quietly reverse a width the user asked for - now that crispness no
-longer depends on width, thinner is a free choice rather than a fix.
+**The line width** - not changed as part of the diagnosis, then halved
+afterwards as its own decision, which is the right order. The doubling to 4.4
+logical px was asked for while the ribbon's antialiasing still scaled with its
+width, so thickness was the only way to make a line read as solid. With the
+edge fixed at half a pixel and the stacking order right, weight and crispness
+are independent, and the thinner line is simply the sharper one:
+
+```
+    isolated curve          4.4 px      2.2 px
+    core                      8 px        4 px
+    sharpest edges, real stack   0.2062      0.2971     +44%
+```
+
+For reference, the same measurement was 0.1793 before the stacking order was
+fixed - so order and width together account for a 66% improvement.
+
+One caveat on the profile: at 2.2 px the isolated horizontal line reports 0.00
+px of edge, which is this line's alignment with the pixel grid rather than the
+absence of antialiasing. The coverage ramp is still one physical pixel wide; a
+horizontal line simply lands on row boundaries where a diagonal one would not.
 
 **Multisampling.** The edge is already sub-pixel; MSAA would only help diagonal
 jaggies, at the cost of a multisample buffer for the whole panel.
