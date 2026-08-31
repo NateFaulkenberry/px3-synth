@@ -127,7 +127,7 @@ public:
     // How deep the box is. Enough that the corner posts are clearly posts and
     // the perspective on them is readable, which is what carries the sense of a
     // volume rather than an outline.
-    static constexpr float kFloorThickness = 0.20f;
+    static constexpr float kFloorThickness = 0.15f;
 
     static constexpr float kMinAzimuth = -0.30f;
     static constexpr float kMaxAzimuth = 1.55f;

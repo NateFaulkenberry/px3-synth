@@ -139,12 +139,14 @@ void main()
         // it reads as a wireframe; the attribute stays because varying it is how
         // any future emphasis would be expressed.
         float floorAlpha = 0.16 * depthFade * edge * vStored;
-        vec3 floorColour = mix(base, vec3(1.0), 0.25);
 
-        float floorLuma = dot(floorColour, vec3(0.299, 0.587, 0.114));
-        floorColour = mix(floorColour, vec3(floorLuma), uGrayscale);
-
-        gl_FragColor = vec4(floorColour, clamp(floorAlpha, 0.0, 1.0) * uAccent.a);
+        // White rather than tinted with the accent. The box is scenery, and
+        // sharing the waveform's hue made it read as part of the instrument;
+        // neutral, it stays behind the stack and lets the accent mean one
+        // thing. It needs no grayscale treatment either - white has no colour
+        // to drain, so a bypassed stack greys out around a floor that already
+        // matches it.
+        gl_FragColor = vec4(vec3(1.0), clamp(floorAlpha, 0.0, 1.0) * uAccent.a);
         return;
     }
 
