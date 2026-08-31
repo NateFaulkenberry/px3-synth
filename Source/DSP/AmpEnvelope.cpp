@@ -4,24 +4,10 @@
 
 #include <cmath>
 
-bool AmpEnvelope::paramsDiffer(const juce::ADSR::Parameters& a, const juce::ADSR::Parameters& b)
-{
-    constexpr float epsilon = 1.0e-6f;
-    return std::abs(a.attack - b.attack) > epsilon
-           || std::abs(a.decay - b.decay) > epsilon
-           || std::abs(a.sustain - b.sustain) > epsilon
-           || std::abs(a.release - b.release) > epsilon;
-}
-
 void AmpEnvelope::prepare(double sampleRate)
 {
     sampleRateHz = juce::jmax(1.0, sampleRate);
-    adsr.setSampleRate(sampleRateHz);
-
-    if (parametersInitialized)
-    {
-        adsr.setParameters(lastAppliedParameters);
-    }
+    snapshot.rebuild(envelope, sampleRateHz);
 
     // Keep this very short: enough to remove hard control-rate edges while
     // preserving audible ADSR timing and transient definition.
@@ -38,64 +24,71 @@ void AmpEnvelope::setSettings(const EnvelopeSettings& newSettings)
     settings.sustainLevel = juce::jlimit(0.0f, 1.0f, settings.sustainLevel);
     settings.releaseSeconds = juce::jmax(0.001f, settings.releaseSeconds);
 
-    adsrParameters.attack = settings.attackSeconds;
-    adsrParameters.decay = settings.decaySeconds;
-    adsrParameters.sustain = settings.sustainLevel;
-    adsrParameters.release = settings.releaseSeconds;
+    setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+}
 
-    if (!parametersInitialized || paramsDiffer(adsrParameters, lastAppliedParameters))
+void AmpEnvelope::setEnvelope(const px3::BreakpointEnvelope& newEnvelope)
+{
+    envelope = newEnvelope;
+    snapshot.rebuild(envelope, sampleRateHz);
+
+    // Whether the user has bent the release themselves, which decides if the
+    // perceptual reshaping below still applies.
+    const auto sustainIndex = envelope.getSustainPoint();
+    releaseIsCurved = false;
+    for (int i = sustainIndex; i + 1 < envelope.getPointCount(); ++i)
     {
-        adsr.setParameters(adsrParameters);
-        lastAppliedParameters = adsrParameters;
-        parametersInitialized = true;
+        if (std::abs(envelope.getPoint(i).curveToNext) > 1.0e-6)
+        {
+            releaseIsCurved = true;
+        }
     }
 }
 
 void AmpEnvelope::noteOn()
 {
     inRelease = false;
-    releaseRawAnchor = 0.0f;
-    releaseLevelAnchor = 0.0f;
+    noteHeld = true;
+    finished = false;
+    heldSeconds = 0.0;
+    releasedSeconds = 0.0;
     releaseProgress = 0.0f;
-    adsr.noteOn();
+    releaseLevelAnchor = 0.0f;
 }
 
 void AmpEnvelope::noteOff()
 {
-    // juce::ADSR restarts its linear release from wherever it currently is, so
-    // release progress is measured against that value.
-    releaseRawAnchor = lastRawAdsrValue;
-
-    // Scale the shaped curve from the level the envelope was ACTUALLY producing,
-    // which is no longer the same number as the raw ADSR value once the release
-    // is curve-shaped. Anchoring to the raw value here makes a tail jump back up
-    // to the linear ramp's height.
+    // Scaled from the level the envelope was ACTUALLY producing, which is no
+    // longer the same number as the underlying curve once the release is
+    // reshaped. Anchoring to the raw value makes a tail jump back up.
     //
     // This is reachable in normal playing: juce::Synthesiser::noteOff matches
-    // voices by getCurrentlyPlayingNote() regardless of key state, so replaying a
-    // pitch whose previous voice is still releasing delivers a second noteOff to
-    // that releasing voice.
-    releaseLevelAnchor = inRelease ? smoothedOutput : lastRawAdsrValue;
+    // voices by getCurrentlyPlayingNote() regardless of key state, so replaying
+    // a pitch whose previous voice is still releasing delivers a second noteOff
+    // to that releasing voice.
+    releaseLevelAnchor = inRelease ? smoothedOutput : lastRawValue;
     releaseProgress = 0.0f;
-    inRelease = releaseRawAnchor > 1.0e-6f && releaseLevelAnchor > 1.0e-6f;
+    releasedSeconds = 0.0;
+    noteHeld = false;
+    inRelease = releaseLevelAnchor > 1.0e-6f;
 
-    adsr.noteOff();
+    if (! inRelease)
+    {
+        finished = true;
+    }
 }
 
 void AmpEnvelope::reset()
 {
-    adsr.reset();
     smoothedOutput = 0.0f;
-    lastRawAdsrValue = 0.0f;
-    releaseRawAnchor = 0.0f;
-    releaseLevelAnchor = 0.0f;
+    lastRawValue = 0.0f;
     releaseProgress = 0.0f;
+    releaseLevelAnchor = 0.0f;
     inRelease = false;
-}
-
-float AmpEnvelope::getReleaseProgress() const
-{
-    return inRelease ? releaseProgress : 0.0f;
+    noteHeld = false;
+    finished = true;
+    heldSeconds = 0.0;
+    releasedSeconds = 0.0;
 }
 
 float AmpEnvelope::shapeReleaseProgress(float progress)
@@ -111,14 +104,36 @@ float AmpEnvelope::shapeReleaseProgress(float progress)
 
 bool AmpEnvelope::isActive() const
 {
-    return adsr.isActive() || std::abs(smoothedOutput) > 1.0e-5f;
+    return noteHeld || inRelease || std::abs(smoothedOutput) > 1.0e-5f;
+}
+
+float AmpEnvelope::getReleaseProgress() const
+{
+    return releaseProgress;
 }
 
 float AmpEnvelope::getNextSample()
 {
-    const auto raw = juce::jlimit(0.0f, 1.0f, adsr.getNextSample());
-    lastRawAdsrValue = raw;
+    const auto step = 1.0 / sampleRateHz;
 
+    float raw;
+    if (! inRelease)
+    {
+        raw = juce::jlimit(0.0f, 1.0f, snapshot.valueAtHeld(heldSeconds));
+        if (noteHeld)
+        {
+            heldSeconds += step;
+        }
+    }
+    else
+    {
+        releaseProgress = snapshot.releaseProgress(releasedSeconds);
+        raw = juce::jlimit(0.0f, 1.0f,
+                           snapshot.valueAtReleased(releasedSeconds, releaseLevelAnchor));
+        releasedSeconds += step;
+    }
+
+    lastRawValue = raw;
     auto shaped = raw;
 
 #if PX3_DIAGNOSTICS
@@ -129,18 +144,23 @@ float AmpEnvelope::getNextSample()
 
     if (inRelease)
     {
-        // The ADSR's own linear ramp doubles as the release progress clock.
-        releaseProgress = juce::jlimit(0.0f, 1.0f, 1.0f - raw / releaseRawAnchor);
-
-        if (!useLinearRelease)
+        // Reshaped to constant dB/second unless the user has bent this segment
+        // themselves - see shapeReleaseProgress.
+        if (! useLinearRelease && ! releaseIsCurved)
         {
             shaped = releaseLevelAnchor * shapeReleaseProgress(releaseProgress);
         }
 
-        if (!adsr.isActive())
+        if (releaseProgress >= 1.0f)
         {
             inRelease = false;
+            finished = true;
+            shaped = 0.0f;
         }
+    }
+    else if (finished)
+    {
+        shaped = 0.0f;
     }
 
     smoothedOutput += (shaped - smoothedOutput) * outputSmoothingCoefficient;

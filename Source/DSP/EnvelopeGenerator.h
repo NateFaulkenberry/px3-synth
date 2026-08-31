@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "EnvelopeTypes.h"
+#include "BreakpointEnvelope.h"
 
 // Generic runtime ADSR generator. It does not assume destination usage
 // (amplitude, filter cutoff modulation, etc.).
@@ -11,6 +12,10 @@ class EnvelopeGenerator
 public:
     void prepare(double sampleRateHz);
     void setSettings(const EnvelopeSettings& settings);
+
+    // The full shape, when the envelope is more than the four ADSR numbers can
+    // describe. setSettings is the same call with an ADSR built for it.
+    void setEnvelope(const px3::BreakpointEnvelope& envelope);
     void noteOn();
     void noteOff();
     void reset();
@@ -18,13 +23,18 @@ public:
     float getNextSample();
 
 private:
-    static bool paramsDiffer(const juce::ADSR::Parameters& a, const juce::ADSR::Parameters& b);
-
     double sampleRateHz { 44100.0 };
     EnvelopeSettings envelopeSettings;
-    juce::ADSR adsr;
-    juce::ADSR::Parameters adsrParameters;
-    juce::ADSR::Parameters lastAppliedParameters;
-    bool parametersInitialized { false };
+
+    px3::BreakpointEnvelope envelope;
+    px3::BreakpointEnvelope::Snapshot snapshot;
+
+    double heldSeconds { 0.0 };
+    double releasedSeconds { 0.0 };
+    bool noteHeld { false };
+    bool inRelease { false };
+    bool finished { true };
+    float releaseLevelAnchor { 0.0f };
+
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> outputSmoother;
 };

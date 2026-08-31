@@ -2,19 +2,10 @@
 
 #include <cmath>
 
-bool EnvelopeGenerator::paramsDiffer(const juce::ADSR::Parameters& a, const juce::ADSR::Parameters& b)
-{
-    constexpr float epsilon = 1.0e-6f;
-    return std::abs(a.attack - b.attack) > epsilon
-           || std::abs(a.decay - b.decay) > epsilon
-           || std::abs(a.sustain - b.sustain) > epsilon
-           || std::abs(a.release - b.release) > epsilon;
-}
-
 void EnvelopeGenerator::prepare(double sampleRate)
 {
     sampleRateHz = juce::jmax(1.0, sampleRate);
-    adsr.setSampleRate(sampleRateHz);
+    snapshot.rebuild(envelope, sampleRateHz);
 
     // Keep the ramp short: enough to kill clicks at very fast transients,
     // but not long enough to blur envelope timing.
@@ -25,44 +16,78 @@ void EnvelopeGenerator::prepare(double sampleRate)
 void EnvelopeGenerator::setSettings(const EnvelopeSettings& settings)
 {
     envelopeSettings = settings;
+    setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+}
 
-    adsrParameters.attack = envelopeSettings.attackSeconds;
-    adsrParameters.decay = envelopeSettings.decaySeconds;
-    adsrParameters.sustain = envelopeSettings.sustainLevel;
-    adsrParameters.release = envelopeSettings.releaseSeconds;
-
-    if (!parametersInitialized || paramsDiffer(adsrParameters, lastAppliedParameters))
-    {
-        adsr.setParameters(adsrParameters);
-        lastAppliedParameters = adsrParameters;
-        parametersInitialized = true;
-    }
+void EnvelopeGenerator::setEnvelope(const px3::BreakpointEnvelope& newEnvelope)
+{
+    envelope = newEnvelope;
+    snapshot.rebuild(envelope, sampleRateHz);
 }
 
 void EnvelopeGenerator::noteOn()
 {
-    adsr.noteOn();
+    heldSeconds = 0.0;
+    releasedSeconds = 0.0;
+    noteHeld = true;
+    inRelease = false;
+    finished = false;
+    releaseLevelAnchor = 0.0f;
 }
 
 void EnvelopeGenerator::noteOff()
 {
-    adsr.noteOff();
+    // From wherever the envelope actually is. A modulation envelope released
+    // during its attack must not jump to the sustain level on the way out any
+    // more than an amplitude one may.
+    releaseLevelAnchor = juce::jlimit(0.0f, 1.0f, snapshot.valueAtHeld(heldSeconds));
+    releasedSeconds = 0.0;
+    noteHeld = false;
+    inRelease = true;
 }
 
 void EnvelopeGenerator::reset()
 {
-    adsr.reset();
+    heldSeconds = 0.0;
+    releasedSeconds = 0.0;
+    noteHeld = false;
+    inRelease = false;
+    finished = true;
+    releaseLevelAnchor = 0.0f;
     outputSmoother.setCurrentAndTargetValue(0.0f);
 }
 
 bool EnvelopeGenerator::isActive() const
 {
-    return adsr.isActive() || std::abs(outputSmoother.getCurrentValue()) > 1.0e-5f;
+    return noteHeld || inRelease || std::abs(outputSmoother.getCurrentValue()) > 1.0e-5f;
 }
 
 float EnvelopeGenerator::getNextSample()
 {
-    const auto raw = juce::jlimit(0.0f, 1.0f, adsr.getNextSample());
+    const auto step = 1.0 / sampleRateHz;
+
+    float raw = 0.0f;
+    if (inRelease)
+    {
+        raw = juce::jlimit(0.0f, 1.0f,
+                           snapshot.valueAtReleased(releasedSeconds, releaseLevelAnchor));
+        releasedSeconds += step;
+
+        if (snapshot.releaseProgress(releasedSeconds) >= 1.0f)
+        {
+            inRelease = false;
+            finished = true;
+        }
+    }
+    else if (! finished)
+    {
+        raw = juce::jlimit(0.0f, 1.0f, snapshot.valueAtHeld(heldSeconds));
+        if (noteHeld)
+        {
+            heldSeconds += step;
+        }
+    }
+
     outputSmoother.setTargetValue(raw);
     return outputSmoother.getNextValue();
 }
