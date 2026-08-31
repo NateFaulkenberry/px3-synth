@@ -30,6 +30,7 @@ public:
     void setPosition(float base, float modulated);
 
     void setMissingTableName(const juce::String& name);
+    void setBypassed(bool shouldBeBypassed) { glView.setBypassed(shouldBeBypassed); }
 
     // Called on the message thread when a file is dropped. The component knows
     // nothing about importing - it reports the file and lets the editor decide.

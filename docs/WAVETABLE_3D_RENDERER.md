@@ -210,7 +210,46 @@ console test does not otherwise have.
   survived 20 more frames with the scan moving
 ```
 
-## H. Status
+## H. Framing
+
+The camera framed nothing correctly to begin with, and the numbers say so
+plainly. Projecting the geometry and reading its normalised device bounds - past
+±1 is off screen - every factory table was clipped:
+
+| table | minY before | needed distance |
+|---|---|---|
+| Saw Fold | -1.285 | 4.88 |
+| Vowel Morph | **-1.847** | **6.03** |
+| Comb Digital | -1.511 | 5.24 |
+
+The camera sat at 3.4. Vowel Morph hung 85% of its height off the bottom of the
+view.
+
+Rather than pick a bigger constant, the camera **frames itself**: on every
+geometry change it centres on the stack and bisects for the closest distance
+that still fits, with a 6% margin. Tables differ enough for that to matter -
+across the library the required distance ranges from 4.96 to 6.30.
+
+Two things were measured and rejected on the way:
+
+- **Widening the waveform** to use a graph twice as wide as it is tall. At 1.3x
+  the framing is unchanged and past that it gets worse, because the fit simply
+  pulls back to accommodate the wider silhouette. Width is free to look at; it
+  is not free to frame.
+- **Fitting the worst reachable orientation.** It never clips, and it costs a
+  fifth of the picture at the angle the stack is actually read from: 0.727 of
+  the frame against 0.939. The default view is fitted snugly instead, and
+  orbiting pulls back only as far as that particular orientation needs.
+
+Azimuth is clamped for the same reason elevation is. Allowing a full turn makes
+the framing obey a silhouette the user has to swing behind the stack to see -
+where the curves read back to front anyway.
+
+Result: every table fills **92.5-93.9%** of the frame, centred, at every
+orientation the camera can reach, at both a wide and a square aspect. Held by
+`Wavetable3D_EveryTableIsFullyInFrame` and `Wavetable3D_TheStackFillsTheView`.
+
+## I. Status
 
 Implemented and building for AU, VST3 and Standalone, with the camera under test
 (elevation clamped both ways, azimuth free, zoom stopped, reset, and data

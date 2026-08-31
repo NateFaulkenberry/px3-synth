@@ -670,6 +670,9 @@ void OscillatorComponent::applyEnabledUi()
     vowelBox.setEnabled(currentEnabled && vowelBox.isVisible());
     vowelLabel.setEnabled(currentEnabled && vowelLabel.isVisible());
 
+    // The stack greys out with the card, like every other control on it.
+    wavetableGraph.setBypassed(! currentEnabled);
+
     if (wtTableBox != nullptr)
     {
         const auto live = currentEnabled && wtTableBox->isVisible();

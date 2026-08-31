@@ -39,6 +39,9 @@ public:
     // hidden by the native layer, so the background has to come from here.
     void setBackgroundColour(juce::Colour colour);
 
+    // Drained of colour when the oscillator is bypassed, matching the knobs.
+    void setBypassed(bool shouldBeBypassed);
+
     // True once the GL context has produced a frame, so a caller can fall back
     // to something else if the context never came up.
     bool isRendering() const noexcept { return framesRendered.load() > 0; }
@@ -69,10 +72,41 @@ public:
     {
         float azimuth { 0.62f };     // radians, around the stack
         float elevation { 0.42f };   // radians, above it
-        float distance { 3.4f };
+        float distance { 5.0f };
+
+        // What the camera looks at. Not the origin: seen from above, the stack
+        // does not project symmetrically about it, so aiming at the origin
+        // leaves the picture low in the frame and the top of the view empty.
+        float targetY { 0.0f };
     };
     Camera getCamera() const noexcept { return camera; }
     void resetCamera();
+
+    // Builds the CPU geometry without needing a GL context, so the framing can
+    // be checked headlessly.
+    void buildGeometryForTesting() { rebuildVertices(); }
+
+    // Where the geometry lands in normalised device coordinates. Everything
+    // inside [-1, 1] on both axes is on screen; anything outside is clipped.
+    juce::Rectangle<float> projectedBounds(const Camera& forCamera, float aspect) const;
+
+    // The distance at which the whole stack fits, with `margin` of the viewport
+    // left around it, at the WORST orientation the camera can reach - so
+    // orbiting cannot push it off screen either.
+    // What one orientation needs, and what the worst reachable one needs.
+    float distanceToFit(const Camera& orientation, float aspect, float margin) const;
+    float distanceThatFits(float aspect, float margin) const;
+
+    // Centres the stack and pulls back far enough that all of it is on screen
+    // at any angle the camera can reach. Run when the geometry changes, because
+    // tables differ: measured, the distance needed across the factory library
+    // ranges from 4.85 to 6.03.
+    void autoFrame(float aspect);
+
+    // Around the default azimuth of 0.62, not the whole circle - see
+    // mouseDrag and distanceThatFits.
+    static constexpr float kMinAzimuth = -0.30f;
+    static constexpr float kMaxAzimuth = 1.55f;
 
     static constexpr float kMinElevation = -0.15f;
     static constexpr float kMaxElevation = 1.25f;
@@ -87,6 +121,7 @@ private:
     void rebuildVertices();
     void uploadGeometry();
     juce::Matrix3D<float> buildViewProjection(float aspect) const;
+    juce::Matrix3D<float> buildViewProjection(float aspect, const Camera& forCamera) const;
 
     juce::OpenGLContext context;
 
@@ -96,6 +131,7 @@ private:
     std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformHalfWidth;
     std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformAspect;
     std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformAccent;
+    std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformGrayscale;
 
     std::unique_ptr<juce::OpenGLShaderProgram::Attribute> attribPosition;
     std::unique_ptr<juce::OpenGLShaderProgram::Attribute> attribNeighbour;
@@ -140,13 +176,16 @@ private:
     std::atomic<float> selectedPosition { 0.0f };
     std::atomic<int> framesRendered { 0 };
     std::atomic<bool> pixelAudit { false };
+    std::atomic<bool> bypassed { false };
     std::atomic<int> litPixels { -1 };
     std::atomic<int> auditedPixels { 0 };
     juce::Colour accentColour { juce::Colour::fromRGB(96, 168, 255) };
     juce::Colour backgroundColour { juce::Colour::fromRGB(12, 12, 14) };
 
     Camera camera;
+    Camera framedCamera;   // what autoFrame worked out; what reset returns to
     Camera dragStartCamera;
+    float lastAspect { 0.0f };
     juce::Point<float> dragStart;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Wavetable3DRenderer)

@@ -12,6 +12,14 @@ constexpr int kPointsPerFrame = 128;
 // table, and 48 curves reads as a stack where 256 reads as a surface.
 constexpr int kDrawnFrames = 48;
 
+// How wide the waveform runs in model space.
+//
+// Widening it to use a graph that is twice as wide as it is tall was tried and
+// measured: at 1.3 the framing is unchanged and past that it gets worse, because
+// the auto-fit simply pulls back to accommodate the wider silhouette when the
+// camera swings round. The width is free to look at; it is not free to frame.
+constexpr float kWaveformHalfWidth = 1.0f;
+
 const char* kVertexShader = R"(
 attribute vec3 aPosition;
 attribute vec3 aNeighbour;
@@ -65,6 +73,7 @@ varying float vDepth;
 
 uniform float uSelected;
 uniform vec4 uAccent;
+uniform float uGrayscale;
 
 void main()
 {
@@ -113,6 +122,12 @@ void main()
     // Emissive lift on the selected frame, added rather than mixed so it reads
     // as light rather than as a lighter colour.
     colour += hot * selected * glow * 0.55;
+
+    // Drained of colour when the oscillator is bypassed, the same way the knobs
+    // grey out. Luminance-weighted rather than an average, so a bypassed stack
+    // keeps the same apparent brightness instead of going muddy.
+    float luma = dot(colour, vec3(0.299, 0.587, 0.114));
+    colour = mix(colour, vec3(luma), uGrayscale);
 
     gl_FragColor = vec4(colour, clamp(alpha, 0.0, 1.0) * uAccent.a);
 }
@@ -189,6 +204,12 @@ juce::String Wavetable3DRenderer::getShaderError() const
     return shaderError;
 }
 
+void Wavetable3DRenderer::setBypassed(bool shouldBeBypassed)
+{
+    if (bypassed.exchange(shouldBeBypassed) == shouldBeBypassed) { return; }
+    context.triggerRepaint();
+}
+
 void Wavetable3DRenderer::setBackgroundColour(juce::Colour colour)
 {
     if (backgroundColour == colour) { return; }
@@ -210,7 +231,9 @@ void Wavetable3DRenderer::resized()
 
 void Wavetable3DRenderer::resetCamera()
 {
-    camera = Camera {};
+    // Back to the FRAMED view, not to the struct's defaults - those do not know
+    // how big the loaded table is.
+    camera = framedCamera;
     context.triggerRepaint();
 }
 
@@ -224,7 +247,12 @@ void Wavetable3DRenderer::mouseDrag(const juce::MouseEvent& event)
 {
     const auto delta = event.position - dragStart;
 
-    camera.azimuth = dragStartCamera.azimuth + delta.x * 0.008f;
+    // Clamped like the elevation. The stack is meant to be read from roughly
+    // the front: swinging behind it shows the same curves back to front and is
+    // not a view worth the framing it would cost, since the camera has to pull
+    // back far enough to fit whatever orientation is reachable.
+    camera.azimuth = juce::jlimit(kMinAzimuth, kMaxAzimuth,
+                                  dragStartCamera.azimuth + delta.x * 0.008f);
 
     // Clamped rather than wrapped. Orbiting under the stack and back out the
     // other side is not a view anyone means to arrive at, and getting there by
@@ -234,6 +262,15 @@ void Wavetable3DRenderer::mouseDrag(const juce::MouseEvent& event)
     // it feels inverted against every other 3D view a user has ever used.
     camera.elevation = juce::jlimit(kMinElevation, kMaxElevation,
                                     dragStartCamera.elevation - delta.y * 0.006f);
+
+    // Pulled back only as far as THIS orientation needs. Framing the default
+    // view against the worst reachable one would shrink the picture by a fifth
+    // for an angle the user is not looking from.
+    if (lastAspect > 0.0f && ! vertices.empty())
+    {
+        camera.distance = juce::jmax(dragStartCamera.distance,
+                                     distanceToFit(camera, lastAspect, 0.06f));
+    }
 
     context.triggerRepaint();
 }
@@ -292,6 +329,7 @@ void Wavetable3DRenderer::newOpenGLContextCreated()
     uniformHalfWidth = uniform("uHalfWidth");
     uniformAspect = uniform("uAspect");
     uniformAccent = uniform("uAccent");
+    uniformGrayscale = uniform("uGrayscale");
 
     attribPosition = attribute("aPosition");
     attribNeighbour = attribute("aNeighbour");
@@ -319,6 +357,7 @@ void Wavetable3DRenderer::openGLContextClosing()
     uniformHalfWidth.reset();
     uniformAspect.reset();
     uniformAccent.reset();
+    uniformGrayscale.reset();
     attribPosition.reset();
     attribNeighbour.reset();
     attribSide.reset();
@@ -385,11 +424,11 @@ void Wavetable3DRenderer::rebuildVertices()
 
             // x across the waveform, y its amplitude, z the frame. A genuine
             // 3D position, not a 2D point with an offset added.
-            const auto x = t * 2.0f - 1.0f;
+            const auto x = (t * 2.0f - 1.0f) * kWaveformHalfWidth;
             const auto y = sampleAt(t) * 0.55f;
             const auto z = frameNorm * 2.0f - 1.0f;
 
-            const auto xNext = tNext * 2.0f - 1.0f;
+            const auto xNext = (tNext * 2.0f - 1.0f) * kWaveformHalfWidth;
             const auto yNext = sampleAt(tNext) * 0.55f;
 
             for (const auto side : { -1.0f, 1.0f })
@@ -429,7 +468,136 @@ void Wavetable3DRenderer::uploadGeometry()
     geometryUploaded = true;
 }
 
+juce::Rectangle<float> Wavetable3DRenderer::projectedBounds(const Camera& forCamera,
+                                                            float aspect) const
+{
+    if (vertices.empty())
+    {
+        return {};
+    }
+
+    const auto matrix = buildViewProjection(aspect, forCamera);
+
+    auto minX = 1.0e9f, maxX = -1.0e9f, minY = 1.0e9f, maxY = -1.0e9f;
+    for (const auto& vertex : vertices)
+    {
+        const auto* m = matrix.mat;
+        const auto x = vertex.position[0], y = vertex.position[1], z = vertex.position[2];
+
+        // Column-major, the same convention the shader multiplies in.
+        const auto cx = m[0] * x + m[4] * y + m[8] * z + m[12];
+        const auto cy = m[1] * x + m[5] * y + m[9] * z + m[13];
+        const auto cw = m[3] * x + m[7] * y + m[11] * z + m[15];
+
+        if (cw <= 1.0e-6f)
+        {
+            // Behind the camera: treat as maximally out of frame rather than
+            // letting a divide by a tiny w report it as comfortably inside.
+            return { -1.0e6f, -1.0e6f, 2.0e6f, 2.0e6f };
+        }
+
+        minX = juce::jmin(minX, cx / cw);
+        maxX = juce::jmax(maxX, cx / cw);
+        minY = juce::jmin(minY, cy / cw);
+        maxY = juce::jmax(maxY, cy / cw);
+    }
+
+    return { minX, minY, maxX - minX, maxY - minY };
+}
+
+void Wavetable3DRenderer::autoFrame(float aspect)
+{
+    if (vertices.empty() || aspect <= 0.0f)
+    {
+        return;
+    }
+
+    // Centre, then fit, then centre again. The two interact - pulling back
+    // changes where the stack sits in frame - so a couple of passes settles it
+    // where one would leave the picture slightly low.
+    framedCamera = Camera {};
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        framedCamera.distance = distanceToFit(framedCamera, aspect, 0.06f);
+
+        const auto bounds = projectedBounds(framedCamera, aspect);
+        if (bounds.getHeight() <= 0.0f || bounds.getHeight() > 1.0e5f)
+        {
+            break;
+        }
+
+        // Shift what the camera aims at until the stack sits in the middle of
+        // the frame rather than low in it.
+        const auto centreNdc = bounds.getY() + bounds.getHeight() * 0.5f;
+        framedCamera.targetY += centreNdc * framedCamera.distance * 0.35f;
+    }
+
+    // Only the framing moves; whatever the user has orbited to is left alone.
+    camera.distance = framedCamera.distance;
+    camera.targetY = framedCamera.targetY;
+}
+
+float Wavetable3DRenderer::distanceToFit(const Camera& orientation, float aspect,
+                                         float margin) const
+{
+    if (vertices.empty())
+    {
+        return Camera {}.distance;
+    }
+
+    // Extent shrinks monotonically as the camera pulls back, so bisection finds
+    // the closest distance that still fits rather than a hand-picked constant
+    // that happens to work for one table.
+    const auto extentAt = [this, aspect, &orientation](float distance)
+    {
+        auto probe = orientation;
+        probe.distance = distance;
+
+        const auto bounds = projectedBounds(probe, aspect);
+        return juce::jmax(juce::jmax(std::abs(bounds.getX()), std::abs(bounds.getRight())),
+                          juce::jmax(std::abs(bounds.getY()), std::abs(bounds.getBottom())));
+    };
+
+    const auto target = juce::jlimit(0.1f, 1.0f, 1.0f - margin);
+    auto low = 0.5f;
+    auto high = 40.0f;
+    for (int i = 0; i < 40; ++i)
+    {
+        const auto mid = 0.5f * (low + high);
+        if (extentAt(mid) > target) { low = mid; } else { high = mid; }
+    }
+    return high;
+}
+
+float Wavetable3DRenderer::distanceThatFits(float aspect, float margin) const
+{
+    // The worst orientation the camera can reach. This is what the framing is
+    // CHECKED against, not what sets the default view: fitting the default to
+    // the worst case costs a fifth of the picture at the angle it is actually
+    // seen from.
+    auto worst = 0.0f;
+    for (int a = 0; a <= 8; ++a)
+    {
+        for (const auto elevation : { kMinElevation, 0.5f * (kMinElevation + kMaxElevation),
+                                      kMaxElevation })
+        {
+            Camera probe = framedCamera;
+            probe.azimuth = kMinAzimuth
+                            + (kMaxAzimuth - kMinAzimuth) * static_cast<float>(a) / 8.0f;
+            probe.elevation = elevation;
+            worst = juce::jmax(worst, distanceToFit(probe, aspect, margin));
+        }
+    }
+    return worst;
+}
+
 juce::Matrix3D<float> Wavetable3DRenderer::buildViewProjection(float aspect) const
+{
+    return buildViewProjection(aspect, camera);
+}
+
+juce::Matrix3D<float> Wavetable3DRenderer::buildViewProjection(float aspect,
+                                                               const Camera& forCamera) const
 {
     // A restrained field of view. Wide angles make a wavetable look like a
     // fish-eye photograph of one; this is enough to say "depth" and no more.
@@ -444,12 +612,13 @@ juce::Matrix3D<float> Wavetable3DRenderer::buildViewProjection(float aspect) con
         0.0f, 0.0f, (farPlane + nearPlane) / (nearPlane - farPlane), -1.0f,
         0.0f, 0.0f, (2.0f * farPlane * nearPlane) / (nearPlane - farPlane), 0.0f);
 
-    const auto eyeX = std::sin(camera.azimuth) * std::cos(camera.elevation) * camera.distance;
-    const auto eyeY = std::sin(camera.elevation) * camera.distance;
-    const auto eyeZ = std::cos(camera.azimuth) * std::cos(camera.elevation) * camera.distance;
+    const auto eyeY0 = forCamera.targetY;
+    const auto eyeX = std::sin(forCamera.azimuth) * std::cos(forCamera.elevation) * forCamera.distance;
+    const auto eyeY = eyeY0 + std::sin(forCamera.elevation) * forCamera.distance;
+    const auto eyeZ = std::cos(forCamera.azimuth) * std::cos(forCamera.elevation) * forCamera.distance;
 
     const juce::Vector3D<float> eye(eyeX, eyeY, eyeZ);
-    const juce::Vector3D<float> target(0.0f, 0.0f, 0.0f);
+    const juce::Vector3D<float> target(0.0f, forCamera.targetY, 0.0f);
     const juce::Vector3D<float> up(0.0f, 1.0f, 0.0f);
 
     // Written out rather than using a cross-product helper: juce::Vector3D has
@@ -492,7 +661,12 @@ void Wavetable3DRenderer::renderOpenGL()
     juce::OpenGLHelpers::clear(backgroundColour);
     juce::gl::glViewport(0, 0, width, height);
 
+    const auto hadGeometry = ! vertices.empty();
     rebuildVertices();
+    if (! vertices.empty() && (! hadGeometry || ! geometryUploaded))
+    {
+        autoFrame(static_cast<float>(width) / static_cast<float>(height));
+    }
     uploadGeometry();
 
     // Nothing is drawn until the vertices are actually IN this context's buffer.
@@ -518,6 +692,7 @@ void Wavetable3DRenderer::renderOpenGL()
     program->use();
 
     const auto aspect = static_cast<float>(width) / static_cast<float>(height);
+    lastAspect = aspect;
     const auto viewProjection = buildViewProjection(aspect);
 
     if (uniformViewProjection != nullptr)
@@ -544,6 +719,10 @@ void Wavetable3DRenderer::renderOpenGL()
     {
         uniformAccent->set(accentColour.getFloatRed(), accentColour.getFloatGreen(),
                            accentColour.getFloatBlue(), 1.0f);
+    }
+    if (uniformGrayscale != nullptr)
+    {
+        uniformGrayscale->set(bypassed.load() ? 1.0f : 0.0f);
     }
 
     context.extensions.glBindBuffer(juce::gl::GL_ARRAY_BUFFER, vertexBuffer);

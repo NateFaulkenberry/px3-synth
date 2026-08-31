@@ -2631,6 +2631,87 @@ void testWavetable()
               "turning the LFO off removes the ring rather than freezing it");
     }
 
+    // ---- every wavetable is fully in frame ----------------------------------
+    // Computed exactly rather than eyeballed: the geometry is projected and its
+    // normalised device bounds checked against the viewport. Anything past
+    // +/-1 is off screen.
+    //
+    // This started at -1.847 on the worst table - 85% of the picture's height
+    // hanging off the bottom - with the camera at 3.4 where 6.0 was needed.
+    {
+        juce::StringArray clipped;
+        juce::StringArray tooSmall;
+        juce::String detail;
+        auto worstFill = 1.0f;
+
+        for (const auto aspect : { 290.0f / 149.0f, 1.0f })
+        {
+            for (int i = 0; i < static_cast<int>(px3::factoryWavetables().size()); ++i)
+            {
+                PX3SynthAudioProcessor processor;
+                processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                processor.prepareToPlay(kSampleRate, kBlockSize);
+                processor.loadFactoryWavetable(0, i);
+
+                Wavetable3DRenderer renderer;
+                renderer.setSize(290, 149);
+                renderer.setDisplay(processor.getWavetableDisplay(0, 48, 128));
+                renderer.buildGeometryForTesting();
+                renderer.autoFrame(aspect);
+
+                const auto name = juce::String(px3::factoryWavetables()[static_cast<std::size_t>(i)].name);
+
+                // The default view, and every orientation the camera can be
+                // orbited to - the second is what stops it fitting until the
+                // user drags.
+                for (int a = 0; a <= 6; ++a)
+                {
+                    for (const auto elevation : { Wavetable3DRenderer::kMinElevation,
+                                                  Wavetable3DRenderer::kMaxElevation })
+                    {
+                        auto view = renderer.getCamera();
+                        view.azimuth = Wavetable3DRenderer::kMinAzimuth
+                                       + (Wavetable3DRenderer::kMaxAzimuth
+                                          - Wavetable3DRenderer::kMinAzimuth) * a / 6.0f;
+                        view.elevation = elevation;
+                        view.distance = renderer.distanceToFit(view, aspect, 0.06f);
+
+                        const auto bounds = renderer.projectedBounds(view, aspect);
+                        const auto extent = juce::jmax(
+                            juce::jmax(std::abs(bounds.getX()), std::abs(bounds.getRight())),
+                            juce::jmax(std::abs(bounds.getY()), std::abs(bounds.getBottom())));
+
+                        if (extent > 1.0f) { clipped.addIfNotAlreadyThere(name); }
+                    }
+                }
+
+                // And that it actually fills the space rather than sitting as a
+                // speck in the middle, which "fits" would also be true of.
+                const auto bounds = renderer.projectedBounds(renderer.getCamera(), aspect);
+                const auto fill = juce::jmax(
+                    juce::jmax(std::abs(bounds.getX()), std::abs(bounds.getRight())),
+                    juce::jmax(std::abs(bounds.getY()), std::abs(bounds.getBottom())));
+                worstFill = juce::jmin(worstFill, fill);
+                if (fill < 0.75f) { tooSmall.addIfNotAlreadyThere(name); }
+
+                if (aspect > 1.5f)
+                {
+                    detail << (detail.isEmpty() ? "" : ", ") << name << " " << fmt(fill, 2);
+                }
+            }
+        }
+
+        check("Wavetable3D_EveryTableIsFullyInFrame", clipped.isEmpty(),
+              clipped.isEmpty()
+                  ? juce::String(static_cast<int>(px3::factoryWavetables().size()))
+                        + " tables x 14 orientations x 2 aspects, none clipped"
+                  : "off screen: " + clipped.joinIntoString(", "));
+
+        check("Wavetable3D_TheStackFillsTheView", tooSmall.isEmpty(),
+              "fraction of the frame used - " + detail
+                  + (tooSmall.isEmpty() ? "" : "; too small: " + tooSmall.joinIntoString(", ")));
+    }
+
     // ---- the 3D renderer's camera ------------------------------------------
     // The rendering itself needs a GL context and cannot be checked here, but
     // the camera can - and an orbit control that can be dragged into an
@@ -2677,11 +2758,23 @@ void testWavetable()
                   + fmt(Wavetable3DRenderer::kMaxElevation, 2) + " after dragging 4000 px each way: "
                   + fmt(low.elevation, 3) + " / " + fmt(high.elevation, 3));
 
-        // Azimuth is free: going all the way round is a reasonable thing to do.
+        // Azimuth is clamped too, and for a reason worth stating: the camera
+        // has to pull back far enough to fit whatever orientation is reachable,
+        // so allowing a full turn costs framing at the angle the stack is
+        // actually read from. Swinging behind it shows the same curves back to
+        // front, which is not worth a fifth of the picture.
         drag(2000.0f, 0.0f);
-        check("Wavetable3D_CameraTurnsFreelyAroundTheStack",
-              std::abs(renderer.getCamera().azimuth - defaultCamera.azimuth) > 1.0,
-              "azimuth moved to " + fmt(renderer.getCamera().azimuth, 2) + " radians");
+        const auto turnedRight = renderer.getCamera().azimuth;
+        drag(-2000.0f, 0.0f);
+        const auto turnedLeft = renderer.getCamera().azimuth;
+
+        check("Wavetable3D_CameraTurnsWithinItsLimits",
+              turnedRight <= Wavetable3DRenderer::kMaxAzimuth + 1.0e-5f
+                  && turnedLeft >= Wavetable3DRenderer::kMinAzimuth - 1.0e-5f
+                  && turnedRight > turnedLeft,
+              "azimuth ran from " + fmt(turnedLeft, 2) + " to " + fmt(turnedRight, 2)
+                  + " radians, within [" + fmt(Wavetable3DRenderer::kMinAzimuth, 2) + ", "
+                  + fmt(Wavetable3DRenderer::kMaxAzimuth, 2) + "]");
 
         // Zoom, and its stops.
         for (int i = 0; i < 40; ++i)
