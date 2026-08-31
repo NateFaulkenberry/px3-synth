@@ -49,6 +49,10 @@ public:
     // becomes exactly this and sounds as it always did.
     static BreakpointEnvelope fromAdsr(const EnvelopeSettings& settings);
 
+    // The same shape without the hold stage: four points, sustain at index 2.
+    // AMP ENV uses this; the modulation envelopes keep the five-point form.
+    static BreakpointEnvelope fromAdsrWithoutHold(const EnvelopeSettings& settings);
+
     // The reverse projection, so dragging a point can write the parameters back.
     // Only meaningful for an envelope that still has the ADSR shape.
     EnvelopeSettings toAdsr() const;

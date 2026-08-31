@@ -68,9 +68,44 @@ BreakpointEnvelope BreakpointEnvelope::fromAdsr(const EnvelopeSettings& settings
     return envelope;
 }
 
+BreakpointEnvelope BreakpointEnvelope::fromAdsrWithoutHold(const EnvelopeSettings& settings)
+{
+    const auto attack = clampTime(settings.attackSeconds);
+    const auto decay = clampTime(settings.decaySeconds);
+    const auto sustain = clampValue(settings.sustainLevel);
+    const auto release = clampTime(settings.releaseSeconds);
+
+    // Four points, and no hold stage at all - not a hold of zero length.
+    //
+    // AMP ENV is the contour of every note the instrument plays, and it is the
+    // one envelope where a fifth handle sitting invisibly on top of the attack
+    // handle is a cost with no benefit. The modulation envelopes keep theirs.
+    BreakpointEnvelope envelope;
+    envelope.pointCount = 4;
+    envelope.points[0] = { 0.0, 0.0, 0.0 };
+    envelope.points[1] = { attack, 1.0, 0.0 };
+    envelope.points[2] = { attack + decay, sustain, 0.0 };
+    envelope.points[3] = { attack + decay + release, 0.0, 0.0 };
+    envelope.sustainPoint = 2;
+    return envelope;
+}
+
 EnvelopeSettings BreakpointEnvelope::toAdsr() const
 {
     EnvelopeSettings settings;
+
+    // Two skeletons answer to this: four points without a hold stage, which is
+    // AMP ENV, and five with one, which is ENV 1-3.
+    if (pointCount == 4 && sustainPoint == 2)
+    {
+        settings.attackSeconds = static_cast<float>(points[1].timeSeconds - points[0].timeSeconds);
+        settings.holdSeconds = 0.0f;
+        settings.decaySeconds = static_cast<float>(points[2].timeSeconds - points[1].timeSeconds);
+        settings.sustainLevel = static_cast<float>(points[2].value);
+        settings.releaseSeconds = static_cast<float>(points[3].timeSeconds - points[2].timeSeconds);
+        return settings;
+    }
+
     if (pointCount < 5)
     {
         return settings;
@@ -87,7 +122,9 @@ EnvelopeSettings BreakpointEnvelope::toAdsr() const
 
 bool BreakpointEnvelope::isPlainAdsr() const
 {
-    if (pointCount != 5 || sustainPoint != 3)
+    const auto withHold = pointCount == 5 && sustainPoint == 3;
+    const auto withoutHold = pointCount == 4 && sustainPoint == 2;
+    if (! withHold && ! withoutHold)
     {
         return false;
     }
@@ -103,8 +140,8 @@ bool BreakpointEnvelope::isPlainAdsr() const
     return points[0].timeSeconds <= 1.0e-9
         && points[0].value <= 1.0e-9
         && points[1].value >= 1.0 - 1.0e-9
-        && points[2].value >= 1.0 - 1.0e-9
-        && points[4].value <= 1.0e-9;
+        && (! withHold || points[2].value >= 1.0 - 1.0e-9)
+        && points[static_cast<std::size_t>(pointCount - 1)].value <= 1.0e-9;
 }
 
 const BreakpointEnvelope::Point& BreakpointEnvelope::getPoint(int index) const noexcept

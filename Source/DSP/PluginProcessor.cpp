@@ -247,10 +247,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                  0.005f);
     // Zero by default, so an envelope that has never been touched has exactly
     // the shape it had before the stage existed.
-    holdParam = new juce::AudioParameterFloat("ampHold",
-                                               "Amp Hold",
-                                               juce::NormalisableRange<float>(0.0f, 4.0f, 0.001f, 0.45f),
-                                               0.0f);
     decayParam = new juce::AudioParameterFloat("ampDecay",
                                                 "Amp Decay",
                                                 juce::NormalisableRange<float>(0.005f, 4.0f, 0.001f, 0.45f),
@@ -638,7 +634,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(filterCombInvertParams[static_cast<std::size_t>(filterIndex)]);
     }
     addParameter(attackParam);
-    addParameter(holdParam);
     addParameter(decayParam);
     addParameter(sustainParam);
     addParameter(releaseParam);

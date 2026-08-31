@@ -1041,6 +1041,175 @@ void testBreakpointEnvelope()
               "absence of the node means ADSR, and clears whatever was shaped before");
     }
 
+    // ---- AMP ENV, measured from the audio it actually produces --------------
+    // The model tests above all pass on the shape. This asks the different
+    // question: does moving an ADSR parameter move the SOUND, after the
+    // breakpoint engine replaced the ADSR one underneath it.
+    {
+        struct Heard { double peakSeconds; double settled; double releaseSeconds; };
+
+        const auto play = [](float attack, float decay, float sustain, float release)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setParam(processor, "ampAttack", attack);
+            setParam(processor, "ampDecay", decay);
+            setParam(processor, "ampSustain", sustain);
+            setParam(processor, "ampRelease", release);
+
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+
+            const auto secondsPerBlock = static_cast<double>(kBlockSize) / kSampleRate;
+            std::vector<double> held;
+            for (int block = 0; block < static_cast<int>(3.0 / secondsPerBlock); ++block)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, midi);
+                midi.clear();
+                held.push_back(buffer.getMagnitude(0, kBlockSize));
+            }
+
+            Heard heard {};
+            auto peak = 0.0;
+            std::size_t peakBlock = 0;
+            for (std::size_t i = 0; i < held.size(); ++i)
+            {
+                if (held[i] > peak) { peak = held[i]; peakBlock = i; }
+            }
+            heard.peakSeconds = static_cast<double>(peakBlock + 1) * secondsPerBlock;
+
+            auto tail = 0.0;
+            auto count = 0;
+            for (auto i = held.size() > 45 ? held.size() - 45 : 0; i < held.size(); ++i)
+            {
+                tail += held[i]; ++count;
+            }
+            heard.settled = count > 0 ? tail / count : 0.0;
+
+            juce::MidiBuffer off;
+            off.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
+            const auto silence = heard.settled * 0.001;
+            auto blocks = 0;
+            for (int block = 0; block < static_cast<int>(12.0 / secondsPerBlock); ++block)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, off);
+                off.clear();
+                ++blocks;
+                if (buffer.getMagnitude(0, kBlockSize) <= silence) { break; }
+            }
+            heard.releaseSeconds = static_cast<double>(blocks) * secondsPerBlock;
+            return heard;
+        };
+
+        const auto full = play(0.010f, 0.100f, 1.00f, 0.100f);
+        const auto half = play(0.010f, 0.100f, 0.50f, 0.100f);
+        const auto none = play(0.010f, 0.100f, 0.00f, 0.100f);
+
+        // Ordered, not proportional. The ENVELOPE is exactly linear in sustain -
+        // pinned below - but the level you hear is not, because the signal path
+        // between the envelope and the output is not: at sustain 0.5 the audio
+        // settles at 0.64 of full, not 0.50. Asserting 0.50 here would be
+        // asserting that the analog stages do nothing.
+        check("AmpEnv_SustainSetsTheLevelTheNoteHoldsAt",
+              full.settled > 0.0
+                  && half.settled < full.settled * 0.95
+                  && half.settled > full.settled * 0.05
+                  && none.settled < full.settled * 0.02,
+              "sustain 1.0 holds at " + fmt(full.settled, 4) + ", 0.5 at "
+                  + fmt(half.settled, 4) + " (" + fmt(half.settled / full.settled, 2)
+                  + " of full through the signal path), 0.0 at " + fmt(none.settled, 4));
+
+        const auto slow = play(0.500f, 0.100f, 1.00f, 0.100f);
+        check("AmpEnv_AttackSetsHowLongItTakesToReachFullLevel",
+              full.peakSeconds < 0.06 && std::abs(slow.peakSeconds - 0.5) < 0.15,
+              "a 0.010 s attack peaks at " + fmt(full.peakSeconds, 3)
+                  + " s, a 0.500 s attack at " + fmt(slow.peakSeconds, 3) + " s");
+
+        const auto longTail = play(0.010f, 0.100f, 1.00f, 2.000f);
+        check("AmpEnv_ReleaseSetsHowLongTheTailLasts",
+              std::abs(full.releaseSeconds - 0.100) < 0.05
+                  && std::abs(longTail.releaseSeconds - 2.000) < 0.35,
+              "a 0.100 s release falls silent in " + fmt(full.releaseSeconds, 3)
+                  + " s, a 2.000 s release in " + fmt(longTail.releaseSeconds, 3) + " s");
+
+        // The envelope alone, with no oscillator in the way. Sustain is 1.0, so
+        // the level after the attack must be flat - the audio measurement shows
+        // a peak 1.35x the held level at short attacks, and this is what says
+        // that is the waveform's onset rather than the envelope overshooting.
+        auto worstOvershoot = 1.0f;
+        for (const auto attack : { 0.001f, 0.010f, 0.040f, 0.080f, 0.320f })
+        {
+            AmpEnvelope envelope;
+            envelope.prepare(kSampleRate);
+            EnvelopeSettings settings;
+            settings.attackSeconds = attack;
+            settings.decaySeconds = 0.100f;
+            settings.sustainLevel = 1.0f;
+            settings.releaseSeconds = 0.100f;
+            envelope.setSettings(settings);
+            envelope.noteOn();
+
+            auto peak = 0.0f;
+            auto settled = 0.0f;
+            const auto samples = static_cast<int>(kSampleRate * 2.0);
+            for (int i = 0; i < samples; ++i)
+            {
+                const auto value = envelope.getNextSample();
+                peak = juce::jmax(peak, value);
+                if (i > samples - 1000) { settled = value; }
+            }
+            if (settled > 1.0e-9f)
+            {
+                worstOvershoot = juce::jmax(worstOvershoot, peak / settled);
+            }
+        }
+
+        // And the envelope itself, which IS exactly proportional. This is what
+        // makes the ratio above attributable to the signal path rather than to
+        // the envelope, and it is the stronger claim of the two.
+        {
+            const auto settledAt = [](float sustain)
+            {
+                AmpEnvelope envelope;
+                envelope.prepare(kSampleRate);
+                EnvelopeSettings settings;
+                settings.attackSeconds = 0.010f;
+                settings.decaySeconds = 0.100f;
+                settings.sustainLevel = sustain;
+                settings.releaseSeconds = 0.100f;
+                envelope.setSettings(settings);
+                envelope.noteOn();
+                auto value = 0.0f;
+                for (int i = 0; i < static_cast<int>(kSampleRate * 2.0); ++i)
+                {
+                    value = envelope.getNextSample();
+                }
+                return value;
+            };
+            const auto atFull = settledAt(1.0f);
+            const auto atHalf = settledAt(0.5f);
+            const auto atQuarter = settledAt(0.25f);
+
+            check("AmpEnv_TheEnvelopeItselfIsExactlyItsSustainLevel",
+                  std::abs(atFull - 1.0f) < 1.0e-4f
+                      && std::abs(atHalf - 0.5f) < 1.0e-4f
+                      && std::abs(atQuarter - 0.25f) < 1.0e-4f,
+                  "sustain 1.0 -> " + fmt(atFull, 4) + ", 0.5 -> " + fmt(atHalf, 4)
+                      + ", 0.25 -> " + fmt(atQuarter, 4));
+        }
+
+        check("AmpEnv_DoesNotOvershootAtAnyAttackTime",
+              worstOvershoot < 1.001f,
+              "at sustain 1.0 the envelope is flat after the attack - worst peak "
+              "over held level " + fmt(worstOvershoot, 4));
+    }
+
     // ---- the editor ---------------------------------------------------------
     {
         BreakpointEnvelopeEditor editor;
@@ -1067,6 +1236,111 @@ void testBreakpointEnvelope()
                                     &editor, &editor, juce::Time::getCurrentTime(),
                                     position, juce::Time::getCurrentTime(), clicks, false);
         };
+
+        // ---- an INIT patch's hold point can actually be grabbed ----
+        // HOLD defaults to zero, which is right, but it puts the hold point at
+        // the same time and value as the attack point. One handle covering
+        // another is one handle you cannot reach: before this, grabbing there
+        // always returned the attack point and the hold was unreachable from
+        // the moment the plugin loaded.
+        {
+            EnvelopeSettings init;
+            init.attackSeconds = 0.1f;
+            init.holdSeconds = 0.0f;
+            init.decaySeconds = 0.2f;
+            init.sustainLevel = 0.5f;
+            init.releaseSeconds = 0.3f;
+
+            BreakpointEnvelopeEditor fresh;
+            fresh.setSize(400, 200);
+            fresh.setEnvelope(px3::BreakpointEnvelope::fromAdsr(init));
+
+            const auto& shape = fresh.getEnvelope();
+            const auto attackTime = shape.getPoint(1).timeSeconds;
+            const auto holdTime = shape.getPoint(2).timeSeconds;
+
+            const auto attackAt = fresh.drawnPointPosition(1);
+            const auto holdAt = fresh.drawnPointPosition(2);
+            const auto apart = holdAt.getDistanceFrom(attackAt);
+
+            const auto grabbedHold = fresh.grabAt(holdAt);
+            const auto grabbedAttack = fresh.grabAt(attackAt);
+
+            check("EnvelopeEditor_HoldAndAttackDoNotShareOnePixelAtInit",
+                  apart >= 6.0f,
+                  "hold starts at the same time as attack (" + fmt(holdTime - attackTime, 3)
+                      + " s apart) but is drawn " + fmt(apart, 1) + " px away");
+
+            check("EnvelopeEditor_TheHoldPointCanBeGrabbedAtInit",
+                  grabbedHold.target == BreakpointEnvelopeEditor::Target::point
+                      && grabbedHold.index == 2,
+                  grabbedHold.index == 2 ? "grabbing the hold handle selects the hold point"
+                                         : "grabbing the hold handle selected point "
+                                               + juce::String(grabbedHold.index));
+
+            check("EnvelopeEditor_TheAttackPointIsStillGrabbable",
+                  grabbedAttack.target == BreakpointEnvelopeEditor::Target::point
+                      && grabbedAttack.index == 1,
+                  "separating them did not cost the attack handle - point "
+                      + juce::String(grabbedAttack.index));
+        }
+
+        // ---- every handle says what it changes ----
+        {
+            EnvelopeSettings plain;
+            plain.attackSeconds = 0.1f;
+            plain.decaySeconds = 0.2f;
+            plain.sustainLevel = 0.5f;
+            plain.releaseSeconds = 0.3f;
+
+            BreakpointEnvelopeEditor labelled;
+            labelled.setSize(400, 200);
+            labelled.setEnvelope(px3::BreakpointEnvelope::fromAdsr(plain));
+
+            juce::StringArray roles;
+            for (int i = 1; i <= 4; ++i) { roles.add(labelled.roleLabelFor(i)); }
+
+            check("EnvelopeEditor_EveryModEnvelopeHandleIsLabelled",
+                  roles == juce::StringArray({ "ATTACK", "HOLD", "DECAY", "RELEASE" }),
+                  "handles 1-4 of a mod envelope read: " + roles.joinIntoString(", "));
+
+            // AMP ENV has no hold stage at all, so it has one fewer handle and
+            // the names shift down. A label naming a stage that is not there
+            // would be worse than none.
+            BreakpointEnvelopeEditor amp;
+            amp.setSize(400, 200);
+            amp.setEnvelope(px3::BreakpointEnvelope::fromAdsrWithoutHold(plain));
+
+            juce::StringArray ampRoles;
+            for (int i = 1; i <= 3; ++i) { ampRoles.add(amp.roleLabelFor(i)); }
+
+            check("EnvelopeEditor_TheAmpEnvelopeHasNoHoldStage",
+                  amp.getEnvelope().getPointCount() == 4
+                      && amp.getEnvelope().getSustainPoint() == 2
+                      && ampRoles == juce::StringArray({ "ATTACK", "DECAY", "RELEASE" }),
+                  juce::String(amp.getEnvelope().getPointCount()) + " points reading: "
+                      + ampRoles.joinIntoString(", "));
+
+            // And with no hold there is nothing to sit on top of the attack.
+            check("EnvelopeEditor_NothingOverlapsTheAmpAttackHandle",
+                  amp.drawnPointPosition(1) == amp.pointToScreen(1),
+                  "the amp attack handle is drawn where it actually is, un-nudged");
+
+            check("EnvelopeEditor_TheAnchorIsNotLabelled",
+                  labelled.roleLabelFor(0).isEmpty(),
+                  "the point at time zero is not a stage and carries no name");
+
+            // Added points change what the handles mean, so the names stop
+            // being true and are dropped rather than left saying the wrong
+            // thing.
+            auto edited = labelled.getEnvelope();
+            edited.addPoint(0.15, 0.8);
+            labelled.setEnvelope(edited);
+            check("EnvelopeEditor_LabelsStopOnceTheShapeIsNoLongerAdsr",
+                  labelled.roleLabelFor(1).isEmpty() && labelled.roleLabelFor(2).isEmpty(),
+                  "a " + juce::String(labelled.getEnvelope().getPointCount())
+                      + "-point envelope has no ADSR roles to name");
+        }
 
         // ---- the curve fills the width ----
         {
@@ -21754,6 +22028,157 @@ int main(int argc, char* argv[])
                                     ? "GPU renderer is working."
                                     : "GPU renderer is NOT drawing anything.");
         return rendering && error.isEmpty() && visible ? 0 : 1;
+    }
+
+    if (filter == "ampenv")
+    {
+        // The AMP ENV, measured from rendered AUDIO rather than from the model.
+        //
+        // The model tests pass; the report is about what you hear. So this sets
+        // the four ADSR parameters, plays a note, and reads the envelope back
+        // out of the signal - time to peak, the level it settles at, and how
+        // long the tail takes after note-off.
+        std::printf("\nAMP ENVELOPE, MEASURED FROM THE AUDIO\n\n");
+
+        struct Shape { double peakSeconds; double sustainLevel; double releaseSeconds;
+                       double peakLevel; };
+
+        const auto measure = [](float attack, float hold, float decay,
+                                float sustain, float release)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setParam(processor, "ampAttack", attack);
+            juce::ignoreUnused(hold);   // AMP ENV has no hold stage
+            setParam(processor, "ampDecay", decay);
+            setParam(processor, "ampSustain", sustain);
+            setParam(processor, "ampRelease", release);
+
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+
+            const auto secondsPerBlock = static_cast<double>(kBlockSize) / kSampleRate;
+            const auto heldBlocks = static_cast<int>(3.0 / secondsPerBlock);
+
+            std::vector<double> held;
+            for (int block = 0; block < heldBlocks; ++block)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, midi);
+                midi.clear();
+                held.push_back(buffer.getMagnitude(0, kBlockSize));
+            }
+
+            Shape shape {};
+            auto peak = 0.0;
+            std::size_t peakBlock = 0;
+            for (std::size_t i = 0; i < held.size(); ++i)
+            {
+                if (held[i] > peak) { peak = held[i]; peakBlock = i; }
+            }
+            shape.peakLevel = peak;
+            shape.peakSeconds = static_cast<double>(peakBlock + 1) * secondsPerBlock;
+
+            // Where it settles: the last half second of the held note.
+            auto tail = 0.0;
+            auto tailCount = 0;
+            for (std::size_t i = held.size() > 45 ? held.size() - 45 : 0; i < held.size(); ++i)
+            {
+                tail += held[i]; ++tailCount;
+            }
+            const auto settled = tailCount > 0 ? tail / tailCount : 0.0;
+            shape.sustainLevel = peak > 1.0e-9 ? settled / peak : 0.0;
+
+            // Release: note-off, then time until the tail is 60 dB down on
+            // where it started.
+            juce::MidiBuffer off;
+            off.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
+            const auto startOfRelease = settled;
+            const auto floorLevel = startOfRelease * 0.001;
+            auto releaseBlocks = 0;
+            for (int block = 0; block < static_cast<int>(12.0 / secondsPerBlock); ++block)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, off);
+                off.clear();
+                ++releaseBlocks;
+                if (buffer.getMagnitude(0, kBlockSize) <= floorLevel) { break; }
+            }
+            shape.releaseSeconds = static_cast<double>(releaseBlocks) * secondsPerBlock;
+            return shape;
+        };
+
+        struct Case { const char* label; float a, h, d, s, r; };
+        const Case cases[] = {
+            { "fast A, full S",     0.010f, 0.0f, 0.100f, 1.00f, 0.100f },
+            { "slow A, full S",     0.500f, 0.0f, 0.100f, 1.00f, 0.100f },
+            { "fast A, half S",     0.010f, 0.0f, 0.200f, 0.50f, 0.100f },
+            { "fast A, zero S",     0.010f, 0.0f, 0.300f, 0.00f, 0.100f },
+            { "long release",       0.010f, 0.0f, 0.100f, 1.00f, 2.000f },
+        };
+
+        std::printf("  %-18s %8s %8s  %8s %8s %8s  %8s %8s\n",
+                    "case", "attack", "peak at", "sustain", "peak abs", "held abs",
+                    "release", "tail");
+        for (const auto& c : cases)
+        {
+            const auto shape = measure(c.a, c.h, c.d, c.s, c.r);
+            std::printf("  %-18s %8.3f %8.3f  %8.2f %8.4f %8.4f  %8.3f %8.3f\n",
+                        c.label, c.a, shape.peakSeconds, c.s,
+                        shape.peakLevel, shape.peakLevel * shape.sustainLevel,
+                        c.r, shape.releaseSeconds);
+        }
+        // Where does the overshoot begin? Sustain is 1.0 throughout, so the
+        // envelope should be flat after the attack and peak == held.
+        std::printf("\n  attack sweep, sustain 1.0 (peak should equal held):\n");
+        std::printf("  %10s %10s %10s %8s\n", "attack", "peak abs", "held abs", "ratio");
+        for (const auto attack : { 0.001f, 0.005f, 0.010f, 0.020f, 0.040f,
+                                   0.080f, 0.160f, 0.320f })
+        {
+            const auto shape = measure(attack, 0.0f, 0.100f, 1.0f, 0.100f);
+            const auto held = shape.peakLevel * shape.sustainLevel;
+            std::printf("  %10.3f %10.4f %10.4f %8.3f%s\n",
+                        attack, shape.peakLevel, held,
+                        held > 1.0e-9 ? shape.peakLevel / held : 0.0,
+                        (held > 1.0e-9 && shape.peakLevel / held > 1.05) ? "  <- overshoot" : "");
+        }
+        // The envelope ALONE, with no oscillator in the way. If the overshoot
+        // is in the envelope it shows here; if it is the waveform's onset, this
+        // is flat and the audio measurement was measuring the wrong thing.
+        std::printf("\n  the AmpEnvelope on its own, sustain 1.0:\n");
+        std::printf("  %10s %10s %10s %8s\n", "attack", "peak", "settled", "ratio");
+        for (const auto attack : { 0.001f, 0.010f, 0.040f, 0.080f, 0.320f })
+        {
+            AmpEnvelope envelope;
+            envelope.prepare(kSampleRate);
+            EnvelopeSettings settings;
+            settings.attackSeconds = attack;
+            settings.decaySeconds = 0.100f;
+            settings.sustainLevel = 1.0f;
+            settings.releaseSeconds = 0.100f;
+            envelope.setSettings(settings);
+            envelope.noteOn();
+
+            auto peak = 0.0f;
+            auto settled = 0.0f;
+            const auto samples = static_cast<int>(kSampleRate * 2.0);
+            for (int i = 0; i < samples; ++i)
+            {
+                const auto value = envelope.getNextSample();
+                peak = juce::jmax(peak, value);
+                if (i > samples - 1000) { settled = value; }
+            }
+            std::printf("  %10.3f %10.4f %10.4f %8.3f%s\n",
+                        attack, peak, settled,
+                        settled > 1.0e-9f ? peak / settled : 0.0f,
+                        (settled > 1.0e-9f && peak / settled > 1.05f) ? "  <- overshoot" : "");
+        }
+        std::printf("\n");
+        return 0;
     }
 
     if (filter == "sharpcheck")

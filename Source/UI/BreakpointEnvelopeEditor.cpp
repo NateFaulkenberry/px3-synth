@@ -165,6 +165,67 @@ juce::Point<float> BreakpointEnvelopeEditor::pointToScreen(int index) const
     return toScreen(point.timeSeconds, point.value);
 }
 
+juce::Point<float> BreakpointEnvelopeEditor::drawnPointPosition(int index) const
+{
+    // Coincident points are nudged apart, cumulatively, in drawing order.
+    //
+    // HOLD defaults to zero seconds, which is correct - an INIT patch has no
+    // hold - but it puts the hold point at the same time AND the same value as
+    // the attack point. They land on one pixel, grabAt returns the first one it
+    // finds, and the hold point cannot be grabbed at all: the control exists
+    // and is unreachable.
+    //
+    // Nudging is honest here rather than a cheat, because the two points really
+    // are both at that instant. As soon as the hold is dragged out to a real
+    // duration they separate on their own and the nudge stops applying.
+    const auto spacing = floatFor("pointRadius", 4.0f) * 2.0f + 2.0f;
+
+    auto position = pointToScreen(index);
+    for (int i = 1; i <= index; ++i)
+    {
+        const auto previous = pointToScreen(i - 1).x;
+        if (std::abs(pointToScreen(i).x - previous) < spacing)
+        {
+            position.x += spacing;
+        }
+    }
+    return position;
+}
+
+juce::String BreakpointEnvelopeEditor::roleLabelFor(int index) const
+{
+    // Only for an ADSR skeleton. Once a point has been added the roles are no
+    // longer these, and a label that has stopped being true is worse than no
+    // label at all.
+    //
+    // Two skeletons: AMP ENV has four points and no hold stage, ENV 1-3 have
+    // five and do.
+    if (envelope.getPointCount() == 4 && envelope.getSustainPoint() == 2)
+    {
+        switch (index)
+        {
+            case 1:  return "ATTACK";
+            case 2:  return "DECAY";
+            case 3:  return "RELEASE";
+            default: return {};
+        }
+    }
+
+    if (envelope.getPointCount() == 5 && envelope.getSustainPoint() == 3)
+    {
+        switch (index)
+        {
+            case 1:  return "ATTACK";
+            case 2:  return "HOLD";
+            case 3:  return "DECAY";
+            case 4:  return "RELEASE";
+            default: return {};
+        }
+    }
+
+    return {};
+}
+
 juce::Point<float> BreakpointEnvelopeEditor::curveHandlePosition(int segment) const
 {
     const auto& a = envelope.getPoint(segment);
@@ -185,12 +246,27 @@ BreakpointEnvelopeEditor::Hit BreakpointEnvelopeEditor::grabAt(juce::Point<float
     // Points win over curve handles: a breakpoint and the handle of the segment
     // leaving it can overlap on a very short segment, and the point is what a
     // user is more likely to be reaching for.
+    // The CLOSEST point within reach, against the position it is DRAWN at.
+    //
+    // Both parts matter. Taking the first one within the radius meant that two
+    // points closer together than that radius - which is exactly what a
+    // zero-length hold produces - resolved to the same one whichever you
+    // aimed at, and the other was unreachable. Ties go to the later point,
+    // since that is the one a nudge moved.
+    auto bestPoint = -1;
+    auto bestDistance = kPointGrabRadius;
     for (int i = 0; i < envelope.getPointCount(); ++i)
     {
-        if (pointToScreen(i).getDistanceFrom(position) <= kPointGrabRadius)
+        const auto distance = drawnPointPosition(i).getDistanceFrom(position);
+        if (distance <= bestDistance)
         {
-            return { Target::point, i };
+            bestDistance = distance;
+            bestPoint = i;
         }
+    }
+    if (bestPoint >= 0)
+    {
+        return { Target::point, bestPoint };
     }
 
     for (int i = 0; i + 1 < envelope.getPointCount(); ++i)
@@ -367,7 +443,7 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
     const auto pointRadius = floatFor("pointRadius", 4.0f);
     for (int i = 0; i < envelope.getPointCount(); ++i)
     {
-        const auto position = pointToScreen(i);
+        const auto position = drawnPointPosition(i);
         const auto isHovered = hovered.target == Target::point && hovered.index == i;
         const auto isSelected = selectedPoint == i;
         const auto isSustain = i == sustainPoint;
@@ -381,6 +457,42 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
                               : colourFor("pointColor", curveColour()));
         g.drawEllipse(position.x - radius, position.y - radius, radius * 2.0f, radius * 2.0f,
                       floatFor("pointOutlineWidth", 1.8f));
+
+        // What this handle changes, said in words. Four unlabelled dots on a
+        // curve do not tell you which one is the hold, and with HOLD at zero
+        // two of them start in the same place.
+        // On hover only. Four names permanently printed across a graph this
+        // small is clutter; the question "which handle is this" is only ever
+        // asked about the one under the cursor.
+        const auto isBeingDragged = dragging.target == Target::point && dragging.index == i;
+        const auto role = (isHovered || isBeingDragged) ? roleLabelFor(i) : juce::String();
+        if (role.isNotEmpty())
+        {
+            const auto labelSize = floatFor("roleLabelSize", 8.5f);
+            g.setFont(juce::FontOptions(labelSize));
+
+            // A fixed box rather than a measured one: getStringWidthFloat is
+            // deprecated, and the four labels here are known and short, so
+            // measuring buys nothing a constant does not.
+            constexpr auto width = 46.0f;
+
+            // Above the point, unless that would put it outside the graph, in
+            // which case below. The attack point sits at the very top of the
+            // plot, so "above" is off the panel for the one label most likely
+            // to be read first.
+            const auto above = position.y - radius - labelSize - 2.0f;
+            const auto below = position.y + radius + 2.0f;
+            const auto y = above >= area.getY() ? above : below;
+
+            // Kept inside the plot horizontally too, so the RELEASE label at
+            // the right-hand edge is not half cut off.
+            const auto x = juce::jlimit(area.getX(), area.getRight() - width,
+                                        position.x - width * 0.5f);
+
+            g.setColour(colourFor("roleLabelColor", curveColour().withAlpha(0.95f)));
+            g.drawText(role, juce::Rectangle<float>(x, y, width, labelSize + 2.0f),
+                       juce::Justification::centred, false);
+        }
     }
 
     // ---- readout -----------------------------------------------------------

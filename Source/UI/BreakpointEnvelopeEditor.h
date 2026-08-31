@@ -60,6 +60,17 @@ public:
     Hit grabAt(juce::Point<float> position) const;
     juce::Point<float> pointToScreen(int index) const;
 
+    // Where a point is DRAWN, which is not always where it is. Two points at
+    // the same time land on the same pixel - HOLD defaults to zero, so at INIT
+    // the hold point sits exactly on the attack point - and one handle covering
+    // another is one handle you cannot reach. See the definition.
+    juce::Point<float> drawnPointPosition(int index) const;
+
+    // What each breakpoint of a plain ADSR shape controls. Empty for points
+    // whose role has no name, and for envelopes that have been edited past the
+    // shape these names describe.
+    juce::String roleLabelFor(int index) const;
+
 private:
     juce::Colour curveColour() const;
     juce::Colour fillColour() const;

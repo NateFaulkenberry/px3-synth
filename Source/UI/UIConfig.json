@@ -600,7 +600,9 @@
         "timeGridColor": "#FFFFFF1E",
         "timeLabelColor": "#D2D2DC96",
         "timeLabelHeight": 12.0,
-        "timeLabelSize": 9.0
+        "timeLabelSize": 9.0,
+        "roleLabelSize": 8.5,
+        "roleLabelColor": ""
       }
     },
     "env2": {
@@ -640,7 +642,9 @@
         "timeGridColor": "#FFFFFF1E",
         "timeLabelColor": "#D2D2DC96",
         "timeLabelHeight": 12.0,
-        "timeLabelSize": 9.0
+        "timeLabelSize": 9.0,
+        "roleLabelSize": 8.5,
+        "roleLabelColor": ""
       }
     },
     "env3": {
@@ -680,7 +684,9 @@
         "timeGridColor": "#FFFFFF1E",
         "timeLabelColor": "#D2D2DC96",
         "timeLabelHeight": 12.0,
-        "timeLabelSize": 9.0
+        "timeLabelSize": 9.0,
+        "roleLabelSize": 8.5,
+        "roleLabelColor": ""
       }
     },
     "env": {
@@ -753,7 +759,9 @@
         "timeGridColor": "#FFFFFF1E",
         "timeLabelColor": "#D2D2DC96",
         "timeLabelHeight": 12.0,
-        "timeLabelSize": 9.0
+        "timeLabelSize": 9.0,
+        "roleLabelSize": 8.5,
+        "roleLabelColor": ""
       }
     }
   },

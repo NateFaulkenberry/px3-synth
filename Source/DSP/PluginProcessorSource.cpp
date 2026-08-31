@@ -143,7 +143,6 @@ EnvelopeSettings PX3SynthAudioProcessor::currentAmpEnvelopeSettings() const
     // AMP ENV is a dedicated VCA contour and must remain independent of the
     // assignable modulation matrix destination path.
     settings.attackSeconds = attackParam->get();
-    settings.holdSeconds = holdParam->get();
     settings.decaySeconds = decayParam->get();
     settings.sustainLevel = sustainParam->get();
     settings.releaseSeconds = releaseParam->get();
@@ -153,8 +152,9 @@ EnvelopeSettings PX3SynthAudioProcessor::currentAmpEnvelopeSettings() const
 px3::BreakpointEnvelope PX3SynthAudioProcessor::currentAmpEnvelope() const
 {
     const auto& stored = shapedEnvelopes[0];
-    return stored.isPlainAdsr() ? px3::BreakpointEnvelope::fromAdsr(currentAmpEnvelopeSettings())
-                                : stored;
+    return stored.isPlainAdsr()
+               ? px3::BreakpointEnvelope::fromAdsrWithoutHold(currentAmpEnvelopeSettings())
+               : stored;
 }
 
 px3::BreakpointEnvelope PX3SynthAudioProcessor::currentModEnvelope(int envIndex) const
