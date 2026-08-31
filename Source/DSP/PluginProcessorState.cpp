@@ -418,6 +418,14 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         error->clear();
     }
 
+    // Both the DAW restore and the preset load land here, and both may have just
+    // changed which wavetable each oscillator wants. Building it now, on the
+    // thread that called us, means the next block plays the RESTORED table.
+    // Leaving it to the async path restores every number correctly and plays the
+    // previous table until the message thread catches up, which is a bug that
+    // looks like a working restore.
+    refreshWavetableSelections();
+
     return true;
 }
 

@@ -173,6 +173,11 @@ public:
     // Builds whatever each oscillator's Wavetable parameter currently names,
     // for any that have not been built yet. Message thread.
     void refreshWavetableSelections();
+
+    // Which table an oscillator is actually PLAYING, as opposed to which one its
+    // parameter names. The two differing is the whole failure mode this exists
+    // to make visible.
+    juce::String getLoadedWavetableName(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorHarmonicParam(int oscIndex, int harmonicIndex) const;
     juce::AudioParameterBool& getSubOscEnabledParam() const;
     juce::AudioParameterFloat& getSubOscPitchParam() const;

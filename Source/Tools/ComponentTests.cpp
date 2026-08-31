@@ -27,6 +27,7 @@
 #include "../DSP/WavetableReader.h"
 #include "../DSP/WavetableSlot.h"
 #include "../DSP/WavetableFactory.h"
+#include "../DSP/WavetableImporter.h"
 #include "../DSP/Lucy.h"
 #include "../DSP/StereoSpread.h"
 #include "../UI/FxCardComponent.h"
@@ -1197,6 +1198,237 @@ void testWavetable()
         for (const auto x : capture.left) { if (! std::isfinite(x)) { finite = false; break; } }
         check("Wavetable_FastPositionModulationStaysFinite", finite,
               "no non-finite samples across 3 seconds of modulated scanning");
+    }
+
+    // ---- persistence -------------------------------------------------------
+    // The generic round-trip test already covers the parameter VALUES. What it
+    // cannot see is whether the table those values name was actually rebuilt -
+    // a restore that leaves the previous table loaded restores every number
+    // correctly and plays the wrong sound.
+    //
+    // The order here is the HOST's order: prepare first, then restore. Calling
+    // prepare afterwards, as a test naturally would, rebuilds the table as a
+    // side effect and hides the bug entirely.
+    {
+        PX3SynthAudioProcessor source;
+        makePlainPatch(source);
+        setChoice(source, "osc1Mode", 8);
+        setChoice(source, "osc1WtTable", 4);       // Bell Partials, not the default
+        setParam(source, "osc1WtPos", 0.82f);
+
+        juce::MemoryBlock state;
+        source.getStateInformation(state);
+
+        PX3SynthAudioProcessor restored;
+        restored.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        restored.prepareToPlay(kSampleRate, kBlockSize);
+        const auto beforeRestore = restored.getLoadedWavetableName(0);
+
+        restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        check("Wavetable_SelectionSurvivesTheStateRoundTrip",
+              getParamValue(restored, "osc1WtTable") == getParamValue(source, "osc1WtTable")
+                  && std::abs(getParamValue(restored, "osc1WtPos") - 0.82f) < 1.0e-4f,
+              "table index and position restored");
+
+        check("Wavetable_RestoreLoadsTheTableItRestored",
+              restored.getLoadedWavetableName(0) == "Bell Partials",
+              "loaded '" + beforeRestore + "' before the restore, '"
+                  + restored.getLoadedWavetableName(0) + "' after");
+    }
+
+    // ---- import: pitch detection -------------------------------------------
+    {
+        // A saw, because it is the case zero-crossing counting gets wrong: it
+        // crosses zero once per cycle going up and once more coming down off
+        // every harmonic.
+        std::vector<float> saw(static_cast<std::size_t>(kSampleRate * 0.5), 0.0f);
+        const auto hz = 220.0;
+        for (std::size_t i = 0; i < saw.size(); ++i)
+        {
+            const auto phase = std::fmod(static_cast<double>(i) * hz / kSampleRate, 1.0);
+            saw[i] = static_cast<float>(2.0 * phase - 1.0);
+        }
+
+        const auto period = px3::WavetableImporter::detectPeriod(
+            saw.data(), static_cast<int>(saw.size()), kSampleRate);
+        const auto detected = period > 0.0 ? kSampleRate / period : 0.0;
+
+        check("WavetableImport_FindsThePitchOfPitchedMaterial",
+              std::abs(detected - hz) < 2.0,
+              "220 Hz saw detected at " + fmt(detected, 2) + " Hz");
+
+        // Noise has no period, and reporting one would make the importer cut
+        // 64 arbitrary fragments and call them cycles.
+        std::vector<float> noise(static_cast<std::size_t>(kSampleRate * 0.2), 0.0f);
+        juce::Random random(12345);
+        for (auto& v : noise) { v = random.nextFloat() * 2.0f - 1.0f; }
+        const auto noisePeriod = px3::WavetableImporter::detectPeriod(
+            noise.data(), static_cast<int>(noise.size()), kSampleRate);
+        const auto noiseHz = noisePeriod > 0.0 ? kSampleRate / noisePeriod : 0.0;
+        check("WavetableImport_DoesNotInventAPitchForNoise",
+              noisePeriod <= 0.0 || noiseHz < 60.0 || noiseHz > 1800.0,
+              noisePeriod <= 0.0 ? "no period reported"
+                                 : "reported " + fmt(noiseHz, 1) + " Hz, which no cycle extraction "
+                                   "would treat as pitched material");
+    }
+
+    // ---- import: a single cycle -------------------------------------------
+    {
+        std::vector<float> cycle(2048, 0.0f);
+        for (std::size_t i = 0; i < cycle.size(); ++i)
+        {
+            cycle[i] = static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * i / cycle.size()));
+        }
+
+        const auto imported = px3::WavetableImporter::fromAudio(
+            cycle.data(), static_cast<int>(cycle.size()), kSampleRate);
+
+        auto dominant = 0;
+        if (imported.ok())
+        {
+            auto peak = 0.0f;
+            for (int h = 1; h < imported.frames[0].harmonicCount(); ++h)
+            {
+                const auto a = imported.frames[0].amplitude[static_cast<std::size_t>(h)];
+                if (a > peak) { peak = a; dominant = h; }
+            }
+        }
+
+        check("WavetableImport_ReadsASingleCycleAsOneCycle",
+              imported.ok() && dominant == 1,
+              imported.description + " dominant harmonic " + juce::String(dominant));
+    }
+
+    // ---- import: evolving material ----------------------------------------
+    // The case the whole cycle-extraction pipeline exists for: a recording whose
+    // timbre changes has to become frames that change.
+    {
+        const auto hz = 150.0;
+        std::vector<float> sweep(static_cast<std::size_t>(kSampleRate * 2.0), 0.0f);
+        for (std::size_t i = 0; i < sweep.size(); ++i)
+        {
+            const auto t = static_cast<double>(i) / sweep.size();
+            const auto phase = juce::MathConstants<double>::twoPi * i * hz / kSampleRate;
+            // Harmonics arrive as the sound develops.
+            double v = std::sin(phase);
+            for (int h = 2; h <= 12; ++h)
+            {
+                v += std::sin(phase * h) * (t / h) * 1.2;
+            }
+            sweep[i] = static_cast<float>(v * 0.3);
+        }
+
+        const auto imported = px3::WavetableImporter::fromAudio(
+            sweep.data(), static_cast<int>(sweep.size()), kSampleRate);
+
+        auto brightness = [](const px3::FrameSpectrum& f)
+        {
+            double weighted = 0.0, total = 0.0;
+            for (int h = 1; h < f.harmonicCount(); ++h)
+            {
+                const auto a = static_cast<double>(f.amplitude[static_cast<std::size_t>(h)]);
+                weighted += a * a * h;
+                total += a * a;
+            }
+            return total > 0.0 ? weighted / total : 0.0;
+        };
+
+        const auto growth = imported.ok()
+                              ? brightness(imported.frames.back()) / juce::jmax(1.0e-9, brightness(imported.frames.front()))
+                              : 0.0;
+
+        check("WavetableImport_EvolvingAudioBecomesEvolvingFrames",
+              imported.ok() && growth > 1.5,
+              imported.description + " last frame is " + fmt(growth, 2)
+                  + "x the spectral centroid of the first");
+    }
+
+    // ---- import: phase alignment ------------------------------------------
+    {
+        px3::FrameSpectrum frame;
+        frame.amplitude = { 0.0f, 1.0f, 0.5f, 0.25f };
+        frame.phase = { 0.0f, 1.1f, -2.4f, 0.8f };
+        px3::WavetableImporter::alignFundamentalPhase(frame);
+
+        check("WavetableImport_AlignmentPutsTheFundamentalAtZeroPhase",
+              std::abs(frame.phase[1]) < 1.0e-5f,
+              "fundamental phase after alignment: " + fmt(frame.phase[1], 8));
+
+        // A pure time shift moves harmonic h by h times the fundamental's
+        // shift. If it did anything else the waveform's shape would change,
+        // which is exactly what alignment must not do.
+        check("WavetableImport_AlignmentIsAPureTimeShift",
+              std::abs(frame.phase[2] - (-2.4f - 2.0f * 1.1f)) < 1.0e-5f
+                  && std::abs(frame.phase[3] - (0.8f - 3.0f * 1.1f)) < 1.0e-5f,
+              "harmonics 2 and 3 moved by exactly 2x and 3x the fundamental's shift");
+    }
+
+    // ---- import: images ----------------------------------------------------
+    // A known image with a known answer: row y holds y+1 cycles across the
+    // width, so frame y must come out with harmonic y+1 dominant.
+    {
+        constexpr int rows = 6;
+        juce::Image image(juce::Image::ARGB, 512, rows, true);
+        {
+            juce::Image::BitmapData pixels(image, juce::Image::BitmapData::writeOnly);
+            for (int y = 0; y < rows; ++y)
+            {
+                for (int x = 0; x < image.getWidth(); ++x)
+                {
+                    const auto phase = juce::MathConstants<double>::twoPi * (y + 1) * x / image.getWidth();
+                    const auto brightness = static_cast<float>(0.5 + 0.5 * std::sin(phase));
+                    pixels.setPixelColour(x, y, juce::Colour::fromFloatRGBA(
+                        brightness, brightness, brightness, 1.0f));
+                }
+            }
+        }
+
+        px3::WavetableImporter::Options options;
+        options.frameCount = rows;
+        const auto imported = px3::WavetableImporter::fromImage(image, options);
+
+        juce::StringArray wrong;
+        if (imported.ok())
+        {
+            for (int f = 0; f < static_cast<int>(imported.frames.size()); ++f)
+            {
+                const auto& spectrum = imported.frames[static_cast<std::size_t>(f)];
+                auto dominant = 0;
+                auto peak = 0.0f;
+                for (int h = 1; h < spectrum.harmonicCount(); ++h)
+                {
+                    const auto a = spectrum.amplitude[static_cast<std::size_t>(h)];
+                    if (a > peak) { peak = a; dominant = h; }
+                }
+                if (dominant != f + 1)
+                {
+                    wrong.add("row " + juce::String(f) + " -> harmonic " + juce::String(dominant));
+                }
+            }
+        }
+
+        check("WavetableImport_ImageRowsBecomeTheWaveformsTheyDraw",
+              imported.ok() && wrong.isEmpty(),
+              wrong.isEmpty() ? imported.description + " every row produced the harmonic it drew"
+                              : wrong.joinIntoString(", "));
+    }
+
+    // ---- import: refuses what it cannot use --------------------------------
+    {
+        std::vector<float> silence(4096, 0.0f);
+        const auto quiet = px3::WavetableImporter::fromAudio(
+            silence.data(), static_cast<int>(silence.size()), kSampleRate);
+        check("WavetableImport_RejectsSilence", ! quiet.ok() && quiet.description.isNotEmpty(),
+              "silence: \"" + quiet.description + "\"");
+
+        const auto nothing = px3::WavetableImporter::fromAudio(nullptr, 0, kSampleRate);
+        check("WavetableImport_RejectsNoAudio", ! nothing.ok(),
+              "null input: \"" + nothing.description + "\"");
+
+        const auto noImage = px3::WavetableImporter::fromImage(juce::Image());
+        check("WavetableImport_RejectsAnInvalidImage", ! noImage.ok(),
+              "invalid image: \"" + noImage.description + "\"");
     }
 
     // ---- rejects what it cannot build --------------------------------------

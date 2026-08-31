@@ -147,6 +147,7 @@ set(PX3_SHARED_SOURCES
         Source/DSP/OscillatorUnit.cpp
         Source/DSP/Wavetable.cpp
         Source/DSP/WavetableFactory.cpp
+        Source/DSP/WavetableImporter.cpp
         Source/DSP/VoiceFilter.cpp
         Source/DSP/SynthVoice.cpp
         Source/DSP/PX3Diagnostics.cpp

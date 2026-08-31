@@ -433,6 +433,13 @@ void PX3SynthAudioProcessor::handleAsyncUpdate()
     collectRetiredWavetables();
 }
 
+juce::String PX3SynthAudioProcessor::getLoadedWavetableName(int oscIndex) const
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    const auto* table = wavetableSlots[static_cast<std::size_t>(idx)].current();
+    return table != nullptr ? table->getName() : juce::String();
+}
+
 void PX3SynthAudioProcessor::collectRetiredWavetables()
 {
     for (auto& slot : wavetableSlots)
