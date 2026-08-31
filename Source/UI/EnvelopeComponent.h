@@ -46,6 +46,9 @@ public:
     // actually sits. They have to be the same rectangle.
     juce::Rectangle<int> debugGraphFrameBounds() const;
     juce::Rectangle<int> debugEditorBounds() const { return breakpointEditor.getBounds(); }
+    // The editor itself, so a test can ask what the USER is looking at rather
+    // than what the processor would have built.
+    const BreakpointEnvelopeEditor& debugEditor() const { return breakpointEditor; }
 
     // The shape this card is editing. Handed in by the editor, which owns the
     // connection to the processor - this component knows about an envelope, not

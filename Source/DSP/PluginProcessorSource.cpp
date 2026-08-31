@@ -168,13 +168,46 @@ px3::BreakpointEnvelope PX3SynthAudioProcessor::currentModEnvelope(int envIndex)
 
 void PX3SynthAudioProcessor::setShapedEnvelope(int index, const px3::BreakpointEnvelope& envelope)
 {
+    // Slot 0 is AMP ENV, which has no hold stage.
+    //
+    // Normalised HERE, at the one door every shape comes through - the default
+    // construction of the array, a preset load, and the editor writing back.
+    // BreakpointEnvelope's default constructor builds the five-point form with
+    // a hold, so the amp slot started life holding a stage the amp envelope
+    // does not have. currentAmpEnvelope() rebuilt it correctly for the DSP,
+    // which is why the sound was right and only the picture was wrong: the
+    // editor is handed the STORED shape, so it drew a hold handle until the
+    // first refresh replaced it.
+    //
+    // Storing the right shape means the UI and the DSP cannot disagree even
+    // for one frame, rather than each caller having to remember to convert.
+    const auto slot = juce::jlimit(0, kShapedEnvelopeCount - 1, index);
+    if (slot == 0 && envelope.isPlainAdsr() && envelope.getPointCount() != 4)
+    {
+        shapedEnvelopes[static_cast<std::size_t>(slot)]
+            = px3::BreakpointEnvelope::fromAdsrWithoutHold(envelope.toAdsr());
+        return;
+    }
+
     shapedEnvelopes[static_cast<std::size_t>(juce::jlimit(0, kShapedEnvelopeCount - 1, index))]
         = envelope;
 }
 
 px3::BreakpointEnvelope PX3SynthAudioProcessor::getShapedEnvelope(int index) const
 {
-    return shapedEnvelopes[static_cast<std::size_t>(juce::jlimit(0, kShapedEnvelopeCount - 1, index))];
+    const auto slot = juce::jlimit(0, kShapedEnvelopeCount - 1, index);
+    const auto& stored = shapedEnvelopes[static_cast<std::size_t>(slot)];
+
+    // The array is default-constructed, and the default is the five-point form
+    // with a hold - so the amp slot answers with one until something writes to
+    // it. Converted on the way out as well as on the way in, so there is no
+    // window in which the wrong shape is visible.
+    if (slot == 0 && stored.isPlainAdsr() && stored.getPointCount() != 4)
+    {
+        return px3::BreakpointEnvelope::fromAdsrWithoutHold(stored.toAdsr());
+    }
+
+    return stored;
 }
 
 EnvelopeSettings PX3SynthAudioProcessor::currentModEnvelopeSettings(int envIndex) const

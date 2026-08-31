@@ -22,6 +22,9 @@ public:
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void refreshFromParameters();
 
+    // What the user is actually looking at, for the UI tests.
+    const EnvelopeComponent* debugGraph() const { return envelopeGraph.get(); }
+
 private:
     PX3SynthAudioProcessor& processor;
 

@@ -223,15 +223,21 @@ juce::Point<float> BreakpointEnvelopeEditor::drawnPointPosition(int index) const
     // duration they separate on their own and the nudge stops applying.
     const auto spacing = floatFor("pointRadius", 4.0f) * 2.0f + 2.0f;
 
-    auto position = pointToScreen(index);
-    for (int i = 1; i <= index; ++i)
+    // Only an UNBROKEN run of coincident points, counted backwards from this
+    // one. The first version added a nudge for every coincident pair anywhere
+    // before this index, so one crowded pair early in the envelope shifted
+    // every later handle - and the last handle is RELEASE, which was pushed
+    // clean off the right-hand edge of the panel. A control that is drawn
+    // outside the component is a control the user does not have.
+    auto run = 0;
+    for (int i = index; i >= 1; --i)
     {
-        const auto previous = pointToScreen(i - 1).x;
-        if (std::abs(pointToScreen(i).x - previous) < spacing)
-        {
-            position.x += spacing;
-        }
+        if (std::abs(pointToScreen(i).x - pointToScreen(i - 1).x) >= spacing) { break; }
+        ++run;
     }
+
+    auto position = pointToScreen(index);
+    position.x += spacing * static_cast<float>(run);
     return position;
 }
 

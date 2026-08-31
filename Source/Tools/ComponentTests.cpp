@@ -33,6 +33,7 @@
 #include "../DSP/WavetableFactory.h"
 #include "../DSP/WavetableImporter.h"
 #include "../DSP/WavetableLibrary.h"
+#include "../UI/AmpEnvelopeComponent.h"
 #include "../UI/WavetableGraph.h"
 #include "../UI/Wavetable3DRenderer.h"
 #include "../UI/OscillatorComponent.h"
@@ -1208,6 +1209,120 @@ void testBreakpointEnvelope()
               worstOvershoot < 1.001f,
               "at sustain 1.0 the envelope is flat after the attack - worst peak "
               "over held level " + fmt(worstOvershoot, 4));
+    }
+
+    // ---- what the AMP ENV editor actually SHOWS ------------------------------
+    // The processor builds the four-point shape; the question this answers is
+    // whether the editor on screen is showing that shape or a different one.
+    // Every previous test asked the processor, which is why a hold handle
+    // survived on the amp envelope through three rounds of fixes.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        AmpEnvelopeComponent amp(processor, juce::Colour::fromRGB(120, 186, 255));
+        amp.setSize(360, 220);
+
+        const auto* graph = amp.debugGraph();
+        if (graph == nullptr)
+        {
+            check("AmpEnvUi_TheEditorShowsFourStages", false, "no envelope graph was built");
+        }
+        else
+        {
+            // As constructed, before any refresh - which is what is on screen
+            // for the first frame after the plugin opens.
+            const auto asBuilt = graph->debugEditor().getEnvelope();
+
+            amp.refreshFromParameters();
+            const auto afterRefresh = graph->debugEditor().getEnvelope();
+
+            check("AmpEnvUi_TheEditorShowsFourStages",
+                  afterRefresh.getPointCount() == 4 && afterRefresh.getSustainPoint() == 2,
+                  "the amp editor holds " + juce::String(afterRefresh.getPointCount())
+                      + " points with sustain at "
+                      + juce::String(afterRefresh.getSustainPoint()));
+
+            juce::StringArray labels;
+            for (int i = 1; i < afterRefresh.getPointCount(); ++i)
+            {
+                const auto role = graph->debugEditor().roleLabelFor(i);
+                if (role.isNotEmpty())
+                {
+                    labels.add(role);
+                    if (i == afterRefresh.getSustainPoint()) { labels.add("SUSTAIN"); }
+                }
+            }
+            check("AmpEnvUi_TheEditorLabelsAreAdsr",
+                  labels == juce::StringArray({ "ATTACK", "DECAY", "SUSTAIN", "RELEASE" }),
+                  "the amp editor offers: " + labels.joinIntoString(", "));
+
+            check("AmpEnvUi_TheEditorHasNoHoldHandle",
+                  ! labels.contains("HOLD"),
+                  labels.contains("HOLD") ? "a HOLD handle is on the amp envelope"
+                                          : "no HOLD handle on the amp envelope");
+
+            // Every handle inside the panel and reachable, at the DEFAULT
+            // parameters - which is what the plugin opens with. A handle that
+            // exists but is drawn past the right-hand edge is a control the
+            // user does not have, and RELEASE is the last point, so it is the
+            // one that lands there.
+            {
+                const auto& editor = graph->debugEditor();
+                const auto bounds = editor.getLocalBounds().toFloat();
+
+                juce::StringArray offPanel;
+                juce::StringArray unreachable;
+                juce::String detail;
+
+                const auto examine = [&](const juce::String& role, juce::Point<float> at,
+                                         bool wantSustain, int wantIndex)
+                {
+                    detail << (detail.isEmpty() ? "" : ", ") << role << " at "
+                           << juce::String(juce::roundToInt(at.x)) << ","
+                           << juce::String(juce::roundToInt(at.y));
+
+                    if (! bounds.contains(at)) { offPanel.add(role); return; }
+
+                    const auto hit = editor.grabAt(at);
+                    const auto ok = wantSustain
+                                      ? hit.target == BreakpointEnvelopeEditor::Target::sustain
+                                      : (hit.target == BreakpointEnvelopeEditor::Target::point
+                                         && hit.index == wantIndex);
+                    if (! ok) { unreachable.add(role); }
+                };
+
+                for (int i = 1; i < afterRefresh.getPointCount(); ++i)
+                {
+                    const auto role = editor.roleLabelFor(i);
+                    if (role.isEmpty()) { continue; }
+                    examine(role, editor.drawnPointPosition(i), false, i);
+                    if (i == afterRefresh.getSustainPoint())
+                    {
+                        examine("SUSTAIN", editor.sustainHandlePosition(), true, i);
+                    }
+                }
+
+                check("AmpEnvUi_EveryHandleIsOnThePanelAtInit", offPanel.isEmpty(),
+                      offPanel.isEmpty() ? "all four are inside " + bounds.toString()
+                                             + " - " + detail
+                                         : "drawn outside the panel: "
+                                               + offPanel.joinIntoString(", "));
+
+                check("AmpEnvUi_EveryHandleIsReachableAtInit", unreachable.isEmpty(),
+                      unreachable.isEmpty()
+                          ? "all four can be grabbed where they are drawn"
+                          : "cannot be grabbed: " + unreachable.joinIntoString(", "));
+            }
+
+            // And it is right from the first frame, not only after a refresh.
+            check("AmpEnvUi_ItIsRightBeforeTheFirstRefreshToo",
+                  asBuilt.getPointCount() == 4 && asBuilt.getSustainPoint() == 2,
+                  "as constructed the amp editor holds "
+                      + juce::String(asBuilt.getPointCount()) + " points with sustain at "
+                      + juce::String(asBuilt.getSustainPoint()));
+        }
     }
 
     // ---- four envelopes, four sets of parameters ----------------------------
