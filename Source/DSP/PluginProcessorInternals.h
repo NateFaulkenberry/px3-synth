@@ -78,7 +78,9 @@ inline const juce::Identifier kEnvelopePointId("point");
 inline const juce::Identifier kEnvelopePointTimeId("t");
 inline const juce::Identifier kEnvelopePointValueId("v");
 inline const juce::Identifier kEnvelopePointCurveId("c");
-inline constexpr int kEnvelopeShapeVersion = 2;
+// 3 dropped the hold stage: versions 1 and 2 could store a five-point AHDSR
+// skeleton, and this build has only the four-point ADSR one.
+inline constexpr int kEnvelopeShapeVersion = 3;
 // Which preset the editor last loaded. UI session state like topMenuView: the
 // processor never reads it, and it is stripped from preset FILES - a preset
 // naming itself would be circular. It exists because the editor is rebuilt

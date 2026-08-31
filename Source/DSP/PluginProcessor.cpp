@@ -272,11 +272,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             labelPrefix + "Attack",
             juce::NormalisableRange<float>(0.001f, 3.0f, 0.001f, 0.45f),
             0.020f);
-        holdParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
-            idPrefix + "Hold",
-            labelPrefix + "Hold",
-            juce::NormalisableRange<float>(0.0f, 4.0f, 0.001f, 0.45f),
-            0.0f);
         decayParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
             idPrefix + "Decay",
             labelPrefix + "Decay",
@@ -642,7 +637,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
     {
         addParameter(attackParams[static_cast<std::size_t>(envIndex)]);
-        addParameter(holdParams[static_cast<std::size_t>(envIndex)]);
         addParameter(decayParams[static_cast<std::size_t>(envIndex)]);
         addParameter(sustainParams[static_cast<std::size_t>(envIndex)]);
         addParameter(releaseParams[static_cast<std::size_t>(envIndex)]);

@@ -607,37 +607,20 @@ void testBreakpointEnvelope()
         const auto back = envelope.toAdsr();
 
         check("Envelope_AdsrRoundTripsThroughTheBreakpointModel",
-              envelope.getPointCount() == 5
+              envelope.getPointCount() == 4
                   && std::abs(back.attackSeconds - 0.15f) < 1.0e-6f
                   && std::abs(back.decaySeconds - 0.25f) < 1.0e-6f
                   && std::abs(back.sustainLevel - 0.6f) < 1.0e-6f
                   && std::abs(back.releaseSeconds - 0.4f) < 1.0e-6f,
-              "five points in - attack, hold, decay, sustain, release - and the same "
-              "numbers back out");
+              "four points in - attack, decay, sustain, release - and the same numbers "
+              "back out");
 
         check("Envelope_AdsrIsRecognisedAsAdsr", envelope.isPlainAdsr(),
               "a freshly built ADSR reports itself as still parameter-describable");
 
-        check("Envelope_SustainPointIsTheOneAfterTheDecay", envelope.getSustainPoint() == 3,
-              "the envelope holds at point 3 - after attack, hold and decay");
+        check("Envelope_SustainPointIsTheOneAfterTheDecay", envelope.getSustainPoint() == 2,
+              "the envelope holds at point 2 - after the attack and the decay");
 
-        // Hold is a real stage now, and it survives the round trip.
-        EnvelopeSettings held = settings;
-        held.holdSeconds = 0.35f;
-        const auto withHold = px3::BreakpointEnvelope::fromAdsr(held);
-        check("Envelope_HoldSitsBetweenTheAttackAndTheDecay",
-              std::abs(withHold.getPoint(2).timeSeconds - (0.15 + 0.35)) < 1.0e-6
-                  && withHold.getPoint(2).value >= 1.0 - 1.0e-9
-                  && std::abs(withHold.toAdsr().holdSeconds - 0.35f) < 1.0e-6f,
-              "a 0.35 s hold keeps the envelope at full level until "
-                  + fmt(withHold.getPoint(2).timeSeconds, 3) + " s");
-
-        // And with hold at zero the shape is exactly what it was before the
-        // stage existed - which is why no preset changed.
-        const auto noHold = px3::BreakpointEnvelope::fromAdsr(settings);
-        check("Envelope_ZeroHoldIsAZeroLengthSegment",
-              std::abs(noHold.getPoint(1).timeSeconds - noHold.getPoint(2).timeSeconds) < 1.0e-12,
-              "the hold point sits on top of the peak, so nothing spends time there");
 
         // The shape the four parameters describe, sampled where it matters.
         const auto atPeak = envelope.valueAt(0.15);
@@ -669,8 +652,8 @@ void testBreakpointEnvelope()
                   && std::abs(envelope.getPoint(1).curveToNext - 0.5) < 1.0e-9,
               "both halves of a bent segment stay bent");
 
-        check("Envelope_SustainFollowsTheInsertion", envelope.getSustainPoint() == 4,
-              "the sustain moved from point 3 to point 4 with the point it marks");
+        check("Envelope_SustainFollowsTheInsertion", envelope.getSustainPoint() == 3,
+              "the sustain moved from point 2 to point 3 with the point it marks");
     }
 
     // ---- removal protects what the envelope needs ---------------------------
@@ -1324,17 +1307,28 @@ void testBreakpointEnvelope()
             {
                 EnvelopeSettings shaped;
                 shaped.attackSeconds = 0.10f;
-                shaped.holdSeconds = 0.15f;
                 shaped.decaySeconds = 0.17f;
                 shaped.sustainLevel = 0.55f;
                 shaped.releaseSeconds = 0.10f;
 
-                auto edited = px3::BreakpointEnvelope::fromAdsr(shaped);
-                edited.setPoint(1, edited.getPoint(1).timeSeconds, 0.82);   // peak dragged down
+                // Built by hand, because nothing constructs one any more - this
+                // is what arrives from state saved while the hold existed, and
+                // with its peak dragged off full level it is not a plain ADSR,
+                // which is what defeated the earlier conversion.
+                px3::BreakpointEnvelope::Point legacy[5];
+                legacy[0] = { 0.0, 0.0, 0.0 };
+                legacy[1] = { 0.10, 0.82, 0.0 };
+                legacy[2] = { 0.25, 1.0, 0.0 };
+                legacy[3] = { 0.42, 0.55, 0.0 };
+                legacy[4] = { 0.52, 0.0, 0.0 };
+
+                px3::BreakpointEnvelope edited;
+                edited.setPoints(legacy, 5, 3);
 
                 check("AmpEnvUi_TheScreenshotShapeIsNotAPlainAdsr",
                       ! edited.isPlainAdsr() && edited.getPointCount() == 5,
-                      "a five-point shape with the peak at 0.82 reports isPlainAdsr() = "
+                      "a saved five-point shape with the peak at 0.82 reports "
+                      "isPlainAdsr() = "
                           + juce::String(edited.isPlainAdsr() ? "true" : "false"));
 
                 processor.setShapedEnvelope(0, edited);
@@ -1348,18 +1342,19 @@ void testBreakpointEnvelope()
                     if (role.isNotEmpty()) { shownRoles.add(role); }
                 }
 
-                check("AmpEnvUi_AnEditedShapeStillHasNoHold",
-                      shown.getPointCount() == 4 && shown.getSustainPoint() == 2
-                          && ! shownRoles.contains("HOLD"),
-                      "after storing an edited five-point shape the amp editor holds "
-                          + juce::String(shown.getPointCount()) + " points offering "
-                          + shownRoles.joinIntoString(", "));
+                check("AmpEnvUi_LegacyShapesAreCollapsedOnLoad",
+                      px3::withoutHoldStage(edited).getPointCount() == 4
+                          && px3::withoutHoldStage(edited).getSustainPoint() == 2,
+                      "the migration turns that saved shape into "
+                          + juce::String(px3::withoutHoldStage(edited).getPointCount())
+                          + " points holding at "
+                          + juce::String(px3::withoutHoldStage(edited).getSustainPoint()));
 
-                // The editor is an ADSR editor whatever it is handed - the last
-                // line of defence, since a shape can always be built by hand.
+                // And whatever the editor is handed, it names no hold - the last
+                // line of defence, since a five-point shape can still be built
+                // by hand.
                 BreakpointEnvelopeEditor forced;
                 forced.setSize(400, 200);
-                forced.setStageModel(BreakpointEnvelopeEditor::StageModel::adsr);
                 forced.setEnvelope(edited);
 
                 juce::StringArray forcedRoles;
@@ -1368,13 +1363,13 @@ void testBreakpointEnvelope()
                     const auto role = forced.roleLabelFor(i);
                     if (role.isNotEmpty()) { forcedRoles.add(role); }
                 }
-                check("AmpEnvUi_AnAdsrEditorNeverSaysHold",
+                check("AmpEnvUi_AnEditorNeverSaysHold",
                       ! forcedRoles.contains("HOLD"),
-                      "handed a five-point shape directly, an ADSR editor offers: "
+                      "handed a five-point shape directly, the editor offers: "
                           + (forcedRoles.isEmpty() ? juce::String("nothing")
                                                    : forcedRoles.joinIntoString(", ")));
 
-                processor.setShapedEnvelope(0, px3::BreakpointEnvelope::fromAdsrWithoutHold(shaped));
+                processor.setShapedEnvelope(0, px3::BreakpointEnvelope::fromAdsr(shaped));
                 amp.refreshFromParameters();
             }
 
@@ -1408,7 +1403,6 @@ void testBreakpointEnvelope()
             const auto prefix = "env" + juce::String(env);
             const auto base = 0.200f * static_cast<float>(env);
             setParam(processor, prefix + "Attack", base + 0.001f);
-            setParam(processor, prefix + "Hold", base + 0.002f);
             setParam(processor, prefix + "Decay", base + 0.003f);
             setParam(processor, prefix + "Sustain", 0.10f * static_cast<float>(env));
             setParam(processor, prefix + "Release", base + 0.005f);
@@ -1424,7 +1418,6 @@ void testBreakpointEnvelope()
             for (int env = 0; env < 3; ++env)
             {
                 values.add(fmt(p.getEnvelopeAttackParam(env).get(), 3));
-                values.add(fmt(p.getEnvelopeHoldParam(env).get(), 3));
                 values.add(fmt(p.getEnvelopeDecayParam(env).get(), 3));
                 values.add(fmt(p.getEnvelopeSustainParam(env).get(), 3));
                 values.add(fmt(p.getEnvelopeReleaseParam(env).get(), 3));
@@ -1435,16 +1428,16 @@ void testBreakpointEnvelope()
         const auto written = readBack(processor);
         const juce::StringArray expected {
             "0.100", "0.110", "0.120", "0.130",
-            "0.201", "0.202", "0.203", "0.100", "0.205",
-            "0.401", "0.402", "0.403", "0.200", "0.405",
-            "0.601", "0.602", "0.603", "0.300", "0.605",
+            "0.201", "0.203", "0.100", "0.205",
+            "0.401", "0.403", "0.200", "0.405",
+            "0.601", "0.603", "0.300", "0.605",
         };
 
         check("Envelopes_EveryParameterIsItsOwn",
               written == expected,
               written == expected
-                  ? "19 values written and read back unchanged - AMP ENV's four and "
-                    "five each for ENV 1-3"
+                  ? "16 values written and read back unchanged - four for each of "
+                    "AMP ENV and ENV 1-3"
                   : "read back " + written.joinIntoString(", "));
 
         // And they survive a save/load round trip without crossing over.
@@ -1459,7 +1452,7 @@ void testBreakpointEnvelope()
         check("Envelopes_EveryParameterSurvivesASaveAndLoad",
               readBack(restored) == expected,
               readBack(restored) == expected
-                  ? "all 19 restored exactly, none overwritten by another envelope"
+                  ? "all 16 restored exactly, none overwritten by another envelope"
                   : "restored " + readBack(restored).joinIntoString(", "));
 
         // The shapes the DSP is handed reflect those parameters, and differ
@@ -1484,7 +1477,6 @@ void testBreakpointEnvelope()
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
         setParam(processor, "env1Attack", 0.310f);
-        setParam(processor, "env1Hold", 0.220f);
         setParam(processor, "env1Decay", 0.130f);
         setParam(processor, "env1Sustain", 0.44f);
         setParam(processor, "env1Release", 0.550f);
@@ -1498,37 +1490,26 @@ void testBreakpointEnvelope()
 
         check("Envelopes_TheEditorShowsTheParametersTheDspUses",
               std::abs(shown.attackSeconds - 0.310f) < 1.0e-3f
-                  && std::abs(shown.holdSeconds - 0.220f) < 1.0e-3f
                   && std::abs(shown.decaySeconds - 0.130f) < 1.0e-3f
                   && std::abs(shown.sustainLevel - 0.44f) < 1.0e-3f
                   && std::abs(shown.releaseSeconds - 0.550f) < 1.0e-3f,
-              "the editor reads back A " + fmt(shown.attackSeconds, 3) + " H "
-                  + fmt(shown.holdSeconds, 3) + " D " + fmt(shown.decaySeconds, 3)
+              "the editor reads back A " + fmt(shown.attackSeconds, 3)
+                  + " D " + fmt(shown.decaySeconds, 3)
                   + " S " + fmt(shown.sustainLevel, 2) + " R "
                   + fmt(shown.releaseSeconds, 3));
 
-        // And the graph moves the way section 27 says it must.
-        const auto widthOfHold = [](const px3::BreakpointEnvelope& shape)
-        {
-            return shape.getPoint(2).timeSeconds - shape.getPoint(1).timeSeconds;
-        };
-        setParam(processor, "env1Hold", 0.600f);
-        const auto longer = processor.currentModEnvelope(0);
-
-        check("Envelopes_MoreHoldMakesTheFlatSegmentLonger",
-              widthOfHold(longer) > widthOfHold(fromProcessor) + 0.3,
-              "the full-level segment grows from " + fmt(widthOfHold(fromProcessor), 3)
-                  + " s to " + fmt(widthOfHold(longer), 3) + " s");
-
+        // And the graph moves the way section 27 requires: sustain changes the
+        // plateau's height and not its place in time.
         setParam(processor, "env1Sustain", 0.80f);
         const auto higher = processor.currentModEnvelope(0);
+        const auto sustainIndex = higher.getSustainPoint();
         check("Envelopes_MoreSustainRaisesThePlateauWithoutMovingIt",
-              std::abs(higher.getPoint(3).value - 0.80) < 1.0e-3
-                  && std::abs(higher.getPoint(3).timeSeconds
-                              - longer.getPoint(3).timeSeconds) < 1.0e-6,
-              "the plateau rises from " + fmt(longer.getPoint(3).value, 2) + " to "
-                  + fmt(higher.getPoint(3).value, 2) + " at the same time, "
-                  + fmt(higher.getPoint(3).timeSeconds, 3) + " s");
+              std::abs(higher.getPoint(sustainIndex).value - 0.80) < 1.0e-3
+                  && std::abs(higher.getPoint(sustainIndex).timeSeconds
+                              - fromProcessor.getPoint(sustainIndex).timeSeconds) < 1.0e-6,
+              "the plateau rises from " + fmt(fromProcessor.getPoint(sustainIndex).value, 2)
+                  + " to " + fmt(higher.getPoint(sustainIndex).value, 2) + " at the same time, "
+                  + fmt(higher.getPoint(sustainIndex).timeSeconds, 3) + " s");
     }
 
     // ---- the two envelope MODELS, tested as state machines ------------------
@@ -1544,7 +1525,6 @@ void testBreakpointEnvelope()
         {
             EnvelopeSettings settings;
             settings.attackSeconds = attack;
-            settings.holdSeconds = hold;
             settings.decaySeconds = decay;
             settings.sustainLevel = sustain;
             settings.releaseSeconds = release;
@@ -1648,58 +1628,33 @@ void testBreakpointEnvelope()
                       + " - it has no hold stage to change");
         }
 
-        // ---- ENV 1-3: A -> H -> D -> S -> R, and the hold is FLAT ----
+        // ---- ENV 1-3: the same four stages ----
         {
-            // The brief's own example, chosen to catch hold implemented as a
-            // slow decay.
-            const auto settings = settingsFor(0.100f, 0.200f, 0.100f, 0.25f, 0.100f);
+            const auto settings = settingsFor(0.100f, 0.0f, 0.100f, 0.25f, 0.100f);
             const auto trace = runMod(settings, 600, 300);
 
             check("ModEnvDsp_RisesToFullOverTheAttack",
                   at(trace, 0) < 0.05f && at(trace, 100) > 0.98f,
                   "0 ms " + fmt(at(trace, 0), 3) + " -> 100 ms " + fmt(at(trace, 100), 3));
 
-            // Every sample of the hold, not just its ends: a hold implemented
-            // as a zero-slope decay passes an endpoint check and fails this.
-            auto lowestInHold = 1.0f;
-            for (int i = 100; i <= 300; ++i) { lowestInHold = juce::jmin(lowestInHold, at(trace, i)); }
-            check("ModEnvDsp_HoldIsAFlatPlateauAtFullLevel",
-                  lowestInHold > 0.98f,
-                  "across the whole 200 ms hold the lowest sample is "
-                      + fmt(lowestInHold, 4));
-
-            check("ModEnvDsp_DecaysToSustainAfterTheHold",
-                  at(trace, 350) < 0.98f && at(trace, 350) > 0.25f
-                      && std::abs(at(trace, 400) - 0.25f) < 0.02f,
-                  "mid-decay " + fmt(at(trace, 350), 3) + ", end of decay "
-                      + fmt(at(trace, 400), 3) + " (sustain 0.25)");
+            check("ModEnvDsp_DecaysToSustain",
+                  at(trace, 150) < 0.98f && at(trace, 150) > 0.25f
+                      && std::abs(at(trace, 200) - 0.25f) < 0.02f,
+                  "mid-decay " + fmt(at(trace, 150), 3) + ", end of decay "
+                      + fmt(at(trace, 200), 3) + " (sustain 0.25)");
 
             check("ModEnvDsp_HoldsAtSustainUntilNoteOff",
                   std::abs(at(trace, 599) - 0.25f) < 0.02f,
                   "still " + fmt(at(trace, 599), 3) + " at 600 ms");
 
-            check("ModEnvDsp_ReleasesToSilence",
-                  at(trace, 750) < 0.01f,
+            check("ModEnvDsp_ReleasesToSilence", at(trace, 750) < 0.01f,
                   "silent at " + fmt(at(trace, 750), 4) + " after the release");
         }
 
-        // ---- hold is a TIME, sustain is a LEVEL ----
+        // ---- sustain is a LEVEL ----
         {
-            const auto shortHold = runMod(settingsFor(0.100f, 0.100f, 0.100f, 0.25f, 0.100f), 600, 100);
-            const auto longHold = runMod(settingsFor(0.100f, 0.300f, 0.100f, 0.25f, 0.100f), 600, 100);
-
-            // At 350 ms the short-hold envelope has finished decaying
-            // (100 attack + 100 hold + 100 decay = 300) and the long-hold one
-            // is still at full level (100 attack + 300 hold = 400). That is
-            // hold changing a DURATION and nothing else.
-            check("ModEnvDsp_HoldChangesDurationNotLevel",
-                  std::abs(at(shortHold, 350) - 0.25f) < 0.02f && at(longHold, 350) > 0.98f,
-                  "at 350 ms: 100 ms hold is at " + fmt(at(shortHold, 350), 3)
-                      + " (decayed to sustain), 300 ms hold is at " + fmt(at(longHold, 350), 3)
-                      + " (still at full level)");
-
-            const auto quiet = runMod(settingsFor(0.100f, 0.100f, 0.100f, 0.25f, 0.100f), 600, 100);
-            const auto loud = runMod(settingsFor(0.100f, 0.100f, 0.100f, 0.75f, 0.100f), 600, 100);
+            const auto quiet = runMod(settingsFor(0.100f, 0.0f, 0.100f, 0.25f, 0.100f), 600, 100);
+            const auto loud = runMod(settingsFor(0.100f, 0.0f, 0.100f, 0.75f, 0.100f), 600, 100);
 
             check("ModEnvDsp_SustainChangesLevelNotDuration",
                   std::abs(at(quiet, 500) - 0.25f) < 0.02f
@@ -1865,7 +1820,6 @@ void testBreakpointEnvelope()
         {
             EnvelopeSettings settings;
             settings.attackSeconds = 0.10f;
-            settings.holdSeconds = 0.05f;
             settings.decaySeconds = 0.20f;
             settings.sustainLevel = 0.50f;
             settings.releaseSeconds = 0.30f;
@@ -1891,19 +1845,16 @@ void testBreakpointEnvelope()
               "ModEnv_HasOneHandlePerStage",
               "ModEnv_NoTwoHandlesShareASpot",
               "ModEnv_EveryHandleGrabsItself",
-              true,  { "ATTACK", "HOLD", "DECAY", "SUSTAIN", "RELEASE" } },
+              true,  { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" } },
         };
 
         for (const auto& rig : rigs)
         {
             BreakpointEnvelopeEditor editor;
             editor.setSize(400, 200);
-            editor.setStageModel(rig.withHold
-                                     ? BreakpointEnvelopeEditor::StageModel::ahdsr
-                                     : BreakpointEnvelopeEditor::StageModel::adsr);
             editor.setEnvelope(rig.withHold
                                    ? px3::BreakpointEnvelope::fromAdsr(adsr)
-                                   : px3::BreakpointEnvelope::fromAdsrWithoutHold(adsr));
+                                   : px3::BreakpointEnvelope::fromAdsr(adsr));
 
             const auto name = juce::String(rig.name);
             const auto sustainIndex = editor.getEnvelope().getSustainPoint();
@@ -1983,11 +1934,11 @@ void testBreakpointEnvelope()
                   + " points holding at index " + juce::String(amp.getSustainPoint())
                   + " - attack, decay, sustain, release");
 
-        check("ModEnv_HasAHoldStage",
-              mod.getPointCount() == 5 && mod.getSustainPoint() == 3,
+        check("ModEnv_HasNoHoldStageEither",
+              mod.getPointCount() == 4 && mod.getSustainPoint() == 2,
               "ENV 1 is " + juce::String(mod.getPointCount())
                   + " points holding at index " + juce::String(mod.getSustainPoint())
-                  + " - attack, hold, decay, sustain, release");
+                  + " - attack, decay, sustain, release, the same as AMP ENV");
 
         // The label on the sustain point claims it sets two things. It has to.
         {
@@ -1997,7 +1948,7 @@ void testBreakpointEnvelope()
             settings.sustainLevel = 0.5f;
             settings.releaseSeconds = 0.3f;
 
-            auto shape = px3::BreakpointEnvelope::fromAdsrWithoutHold(settings);
+            auto shape = px3::BreakpointEnvelope::fromAdsr(settings);
             const auto before = shape.toAdsr();
 
             // Sideways: decay only.
@@ -2056,7 +2007,6 @@ void testBreakpointEnvelope()
         {
             EnvelopeSettings init;
             init.attackSeconds = 0.1f;
-            init.holdSeconds = 0.0f;
             init.decaySeconds = 0.2f;
             init.sustainLevel = 0.5f;
             init.releaseSeconds = 0.3f;
@@ -2108,19 +2058,18 @@ void testBreakpointEnvelope()
             labelled.setEnvelope(px3::BreakpointEnvelope::fromAdsr(plain));
 
             juce::StringArray roles;
-            for (int i = 1; i <= 4; ++i) { roles.add(labelled.roleLabelFor(i)); }
+            for (int i = 1; i <= 3; ++i) { roles.add(labelled.roleLabelFor(i)); }
 
             check("EnvelopeEditor_EveryModEnvelopeHandleIsLabelled",
-                  roles == juce::StringArray({ "ATTACK", "HOLD", "DECAY", "RELEASE" }),
-                  "handles 1-4 of a mod envelope read: " + roles.joinIntoString(", "));
+                  roles == juce::StringArray({ "ATTACK", "DECAY", "RELEASE" }),
+                  "handles 1-3 of a mod envelope read: " + roles.joinIntoString(", "));
 
             // AMP ENV has no hold stage at all, so it has one fewer handle and
             // the names shift down. A label naming a stage that is not there
             // would be worse than none.
             BreakpointEnvelopeEditor amp;
             amp.setSize(400, 200);
-            amp.setStageModel(BreakpointEnvelopeEditor::StageModel::adsr);
-            amp.setEnvelope(px3::BreakpointEnvelope::fromAdsrWithoutHold(plain));
+            amp.setEnvelope(px3::BreakpointEnvelope::fromAdsr(plain));
 
             juce::StringArray ampRoles;
             for (int i = 1; i <= 3; ++i) { ampRoles.add(amp.roleLabelFor(i)); }
@@ -2449,8 +2398,8 @@ void testBreakpointEnvelope()
                 juce::Time::getCurrentTime(), 2, false));
 
             check("EnvelopeEditor_EditingOneDoesNotTouchAnother",
-                  first.getEnvelope().getPointCount() == 6
-                      && second.getEnvelope().getPointCount() == 5,
+                  first.getEnvelope().getPointCount() == 5
+                      && second.getEnvelope().getPointCount() == 4,
                   "first has " + juce::String(first.getEnvelope().getPointCount())
                       + " points, second still has "
                       + juce::String(second.getEnvelope().getPointCount()));
@@ -2555,7 +2504,7 @@ void testBreakpointEnvelope()
         second.setCurve(0, 0.9);
 
         check("Envelope_CopiesDoNotShareState",
-              first.getPointCount() == 5 && std::abs(first.getPoint(0).curveToNext) < 1.0e-12,
+              first.getPointCount() == 4 && std::abs(first.getPoint(0).curveToNext) < 1.0e-12,
               "editing a copy left the original at "
                   + juce::String(first.getPointCount()) + " points with no curve");
     }

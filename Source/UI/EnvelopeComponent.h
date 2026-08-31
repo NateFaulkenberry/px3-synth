@@ -54,13 +54,6 @@ public:
     // connection to the processor - this component knows about an envelope, not
     // about where it lives.
     void setShapedEnvelope(const px3::BreakpointEnvelope& envelope);
-
-    // AMP ENV is ADSR; ENV 1-3 are AHDSR. Told to the editor, not guessed from
-    // the shape it happens to be holding.
-    void setStageModel(BreakpointEnvelopeEditor::StageModel model)
-    {
-        breakpointEditor.setStageModel(model);
-    }
     std::function<void(const px3::BreakpointEnvelope&)> onEnvelopeEdited;
 
     void resized() override;

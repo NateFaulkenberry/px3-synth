@@ -160,21 +160,13 @@ double BreakpointEnvelopeEditor::screenToValue(float y) const
     return juce::jlimit(0.0, 1.0, static_cast<double>((area.getBottom() - y) / area.getHeight()));
 }
 
-void BreakpointEnvelopeEditor::setStageModel(StageModel model)
-{
-    if (stageModel == model) { return; }
-    stageModel = model;
-    repaint();
-}
-
 bool BreakpointEnvelopeEditor::hasSustainHandle() const
 {
     // Only where a held phase is a real stage. A free-form envelope that has
     // been edited past the ADSR skeleton has no "sustain level" to name.
     const auto count = envelope.getPointCount();
     const auto sustain = envelope.getSustainPoint();
-    return stageModel == StageModel::adsr ? (count == 4 && sustain == 2)
-                                          : (count == 5 && sustain == 3);
+    return count == 4 && sustain == 2;
 }
 
 double BreakpointEnvelopeEditor::heldDisplaySeconds() const
@@ -255,36 +247,20 @@ juce::String BreakpointEnvelopeEditor::roleLabelFor(int index) const
     // longer these, and a label that has stopped being true is worse than no
     // label at all.
     //
-    // Two skeletons: AMP ENV has four points and no hold stage, ENV 1-3 have
-    // five and do.
-    // The MODEL decides which names exist, not the shape. An ADSR editor never
-    // says HOLD however many points it has been handed.
-    if (stageModel == StageModel::adsr)
+    // One skeleton, so nothing has to be inferred and a HOLD cannot appear:
+    // four points holding at index 2, or no names at all. This used to switch
+    // on the point count, which is what let any five-point shape grow a hold
+    // handle - and a shape stops saying what it is the moment a point is
+    // dragged.
+    if (envelope.getPointCount() != 4 || envelope.getSustainPoint() != 2) { return {}; }
+
+    switch (index)
     {
-        if (envelope.getPointCount() != 4 || envelope.getSustainPoint() != 2) { return {}; }
-
-        switch (index)
-        {
-            case 1:  return "ATTACK";
-            case 2:  return "DECAY";
-            case 3:  return "RELEASE";
-            default: return {};
-        }
+        case 1:  return "ATTACK";
+        case 2:  return "DECAY";
+        case 3:  return "RELEASE";
+        default: return {};
     }
-
-    if (envelope.getPointCount() == 5 && envelope.getSustainPoint() == 3)
-    {
-        switch (index)
-        {
-            case 1:  return "ATTACK";
-            case 2:  return "HOLD";
-            case 3:  return "DECAY";
-            case 4:  return "RELEASE";
-            default: return {};
-        }
-    }
-
-    return {};
 }
 
 juce::Point<float> BreakpointEnvelopeEditor::curveHandlePosition(int segment) const

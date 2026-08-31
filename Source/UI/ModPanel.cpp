@@ -268,10 +268,6 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
     // different component entirely, which is what keeps the two systems from
     // acquiring a shared owner by accident.
     const auto slot = envIndex + 1;
-    // Five stages on the modulation envelopes, said explicitly rather than left
-    // to the default - the identity should not depend on which value a header
-    // happens to initialise.
-    bundle.component->setStageModel(BreakpointEnvelopeEditor::StageModel::ahdsr);
     bundle.component->setShapedEnvelope(processor.getShapedEnvelope(slot));
     bundle.component->onEnvelopeEdited = [this, envIndex, slot](const px3::BreakpointEnvelope& edited)
     {
@@ -287,7 +283,6 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
                 parameter.endChangeGesture();
             };
             write(processor.getEnvelopeAttackParam(envIndex), adsr.attackSeconds);
-            write(processor.getEnvelopeHoldParam(envIndex), adsr.holdSeconds);
             write(processor.getEnvelopeDecayParam(envIndex), adsr.decaySeconds);
             write(processor.getEnvelopeSustainParam(envIndex), adsr.sustainLevel);
             write(processor.getEnvelopeReleaseParam(envIndex), adsr.releaseSeconds);

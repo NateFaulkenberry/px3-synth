@@ -220,11 +220,6 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getEnvelopeAttackParam(int en
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     return *attackParams[static_cast<std::size_t>(idx)];
 }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getEnvelopeHoldParam(int envIndex) const
-{
-    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
-    return *holdParams[static_cast<std::size_t>(idx)];
-}
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getDecayParam() const { return *decayParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getEnvelopeDecayParam(int envIndex) const
 {

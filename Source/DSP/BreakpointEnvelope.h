@@ -49,9 +49,6 @@ public:
     // becomes exactly this and sounds as it always did.
     static BreakpointEnvelope fromAdsr(const EnvelopeSettings& settings);
 
-    // The same shape without the hold stage: four points, sustain at index 2.
-    // AMP ENV uses this; the modulation envelopes keep the five-point form.
-    static BreakpointEnvelope fromAdsrWithoutHold(const EnvelopeSettings& settings);
 
     // The reverse projection, so dragging a point can write the parameters back.
     // Only meaningful for an envelope that still has the ADSR shape.
@@ -172,14 +169,17 @@ private:
     int sustainPoint { 0 };
 };
 
-// Any envelope, with the hold stage taken out.
+// Any envelope, with a hold stage collapsed out of it.
 //
-// The AMP ENV slot must never hold one, and "is this a plain ADSR" is not a
-// safe test for that: the moment a point has been dragged the shape stops
-// answering yes, while still carrying the extra breakpoint. So this asks only
-// whether the AHDSR skeleton is present and collapses it if so, whatever the
-// values are. Anything else is returned untouched - a genuinely free-form
-// envelope has no hold stage to identify.
+// Nothing builds one any more, but state saved while the modulation envelopes
+// had a hold still contains five-point shapes, and they arrive through
+// setStateInformation. This is the migration.
+//
+// It keys on the SKELETON being present rather than on the values being
+// pristine: "is it still a plain ADSR" is not a safe test, because a shape
+// stops answering yes the moment a point is dragged while still carrying the
+// extra breakpoint. That distinction is what let a hold handle survive two
+// fixes.
 BreakpointEnvelope withoutHoldStage(const BreakpointEnvelope& envelope);
 
 } // namespace px3

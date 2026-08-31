@@ -153,7 +153,7 @@ px3::BreakpointEnvelope PX3SynthAudioProcessor::currentAmpEnvelope() const
 {
     const auto& stored = shapedEnvelopes[0];
     return stored.isPlainAdsr()
-               ? px3::BreakpointEnvelope::fromAdsrWithoutHold(currentAmpEnvelopeSettings())
+               ? px3::BreakpointEnvelope::fromAdsr(currentAmpEnvelopeSettings())
                : stored;
 }
 
@@ -168,52 +168,19 @@ px3::BreakpointEnvelope PX3SynthAudioProcessor::currentModEnvelope(int envIndex)
 
 void PX3SynthAudioProcessor::setShapedEnvelope(int index, const px3::BreakpointEnvelope& envelope)
 {
-    // Slot 0 is AMP ENV, which has no hold stage.
-    //
-    // Normalised HERE, at the one door every shape comes through - the default
-    // construction of the array, a preset load, and the editor writing back.
-    // BreakpointEnvelope's default constructor builds the five-point form with
-    // a hold, so the amp slot started life holding a stage the amp envelope
-    // does not have. currentAmpEnvelope() rebuilt it correctly for the DSP,
-    // which is why the sound was right and only the picture was wrong: the
-    // editor is handed the STORED shape, so it drew a hold handle until the
-    // first refresh replaced it.
-    //
-    // Storing the right shape means the UI and the DSP cannot disagree even
-    // for one frame, rather than each caller having to remember to convert.
-    const auto slot = juce::jlimit(0, kShapedEnvelopeCount - 1, index);
-    if (slot == 0)
-    {
-        shapedEnvelopes[static_cast<std::size_t>(slot)] = px3::withoutHoldStage(envelope);
-        return;
-    }
-
     shapedEnvelopes[static_cast<std::size_t>(juce::jlimit(0, kShapedEnvelopeCount - 1, index))]
         = envelope;
 }
 
 px3::BreakpointEnvelope PX3SynthAudioProcessor::getShapedEnvelope(int index) const
 {
-    const auto slot = juce::jlimit(0, kShapedEnvelopeCount - 1, index);
-    const auto& stored = shapedEnvelopes[static_cast<std::size_t>(slot)];
-
-    // The array is default-constructed, and the default is the five-point form
-    // with a hold - so the amp slot answers with one until something writes to
-    // it. Converted on the way out as well as on the way in, so there is no
-    // window in which the wrong shape is visible.
-    if (slot == 0)
-    {
-        return px3::withoutHoldStage(stored);
-    }
-
-    return stored;
+    return shapedEnvelopes[static_cast<std::size_t>(juce::jlimit(0, kShapedEnvelopeCount - 1, index))];
 }
 
 EnvelopeSettings PX3SynthAudioProcessor::currentModEnvelopeSettings(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     auto& attack = getEnvelopeAttackParam(idx);
-    auto& hold = getEnvelopeHoldParam(idx);
     auto& decay = getEnvelopeDecayParam(idx);
     auto& sustain = getEnvelopeSustainParam(idx);
     auto& release = getEnvelopeReleaseParam(idx);
@@ -225,7 +192,6 @@ EnvelopeSettings PX3SynthAudioProcessor::currentModEnvelopeSettings(int envIndex
     if (!envEnabled)
     {
         settings.attackSeconds = 0.001f;
-        settings.holdSeconds = 0.0f;
         settings.decaySeconds = 0.005f;
         settings.sustainLevel = 1.0f;
         settings.releaseSeconds = 0.010f;
@@ -234,8 +200,6 @@ EnvelopeSettings PX3SynthAudioProcessor::currentModEnvelopeSettings(int envIndex
 
     settings.attackSeconds = attack.convertFrom0to1(applyModulationToNormalizedValue(&attack,
                                                                                       static_cast<juce::RangedAudioParameter&>(attack).getValue()));
-    settings.holdSeconds = hold.convertFrom0to1(applyModulationToNormalizedValue(&hold,
-                                                                                  static_cast<juce::RangedAudioParameter&>(hold).getValue()));
     settings.decaySeconds = decay.convertFrom0to1(applyModulationToNormalizedValue(&decay,
                                                                                     static_cast<juce::RangedAudioParameter&>(decay).getValue()));
     settings.sustainLevel = sustain.convertFrom0to1(applyModulationToNormalizedValue(&sustain,

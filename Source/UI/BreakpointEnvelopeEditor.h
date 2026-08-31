@@ -28,15 +28,6 @@ public:
     void setEnvelopeEnabled(bool shouldBeEnabled);
     void setConfigPrefix(juce::String prefix);
 
-    // Which envelope this editor IS, told rather than inferred.
-    //
-    // The roles used to be worked out from the point count, so any five-point
-    // shape grew a HOLD handle - including one in the AMP ENV slot, which has
-    // no hold stage. Inferring identity from shape is why a hold kept coming
-    // back: a shape that has been edited no longer says what it is.
-    enum class StageModel { adsr, ahdsr };
-    void setStageModel(StageModel model);
-    StageModel getStageModel() const noexcept { return stageModel; }
 
     void setEnvelope(const px3::BreakpointEnvelope& envelope);
     const px3::BreakpointEnvelope& getEnvelope() const noexcept { return envelope; }
@@ -129,7 +120,6 @@ private:
     juce::String configPrefix { "mod.env1" };
     juce::Colour accent { juce::Colour::fromRGB(120, 186, 255) };
     bool envelopeEnabled { true };
-    StageModel stageModel { StageModel::ahdsr };
 
     Hit hovered;
     Hit dragging;

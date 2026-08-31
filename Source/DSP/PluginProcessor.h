@@ -259,7 +259,6 @@ public:
     juce::AudioParameterBool& getFilterCombInvertParam(int filterIndex) const;
     juce::AudioParameterFloat& getAttackParam() const;
     juce::AudioParameterFloat& getEnvelopeAttackParam(int envIndex) const;
-    juce::AudioParameterFloat& getEnvelopeHoldParam(int envIndex) const;
     juce::AudioParameterFloat& getDecayParam() const;
     juce::AudioParameterFloat& getEnvelopeDecayParam(int envIndex) const;
     juce::AudioParameterFloat& getSustainParam() const;
@@ -710,7 +709,6 @@ private:
     std::array<juce::AudioParameterBool*, kFilterInstanceCount> filterCombInvertParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterChoice*, kFilterInstanceCount> filterTypeParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> attackParams { { nullptr, nullptr, nullptr } };
-    std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> holdParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> decayParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> sustainParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> releaseParams { { nullptr, nullptr, nullptr } };

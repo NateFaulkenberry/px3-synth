@@ -37,7 +37,9 @@ All four envelopes (AMP and ENV 1–3) are now editable breakpoint curves rather
 than fixed ADSR.
 
 - Up to 16 points, each with an adjustable curve to the next.
-- A HOLD stage between ATTACK and DECAY.
+- Four handles - ATTACK, DECAY, SUSTAIN, RELEASE - each naming what it changes
+  on hover. Sustain sits on the held stretch and moves in level only; the
+  others move in time only, so no handle changes two things at once.
 - A time axis labelled in seconds, to a maximum of 8.
 - The curve is a rational (Möbius) function, chosen by measurement: monotone and
   bounded by construction, symmetric to 1.8e-15, and 26x cheaper than a

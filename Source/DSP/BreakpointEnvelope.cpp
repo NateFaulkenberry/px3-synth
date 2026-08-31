@@ -32,16 +32,14 @@ BreakpointEnvelope::BreakpointEnvelope()
     // stack overflow the moment anything made an envelope.
     const EnvelopeSettings defaults;
     const auto attack = static_cast<double>(defaults.attackSeconds);
-    const auto hold = static_cast<double>(defaults.holdSeconds);
     const auto decay = static_cast<double>(defaults.decaySeconds);
 
-    pointCount = 5;
+    pointCount = 4;
     points[0] = { 0.0, 0.0, 0.0 };
     points[1] = { attack, 1.0, 0.0 };
-    points[2] = { attack + hold, 1.0, 0.0 };
-    points[3] = { attack + hold + decay, defaults.sustainLevel, 0.0 };
-    points[4] = { attack + hold + decay + defaults.releaseSeconds, 0.0, 0.0 };
-    sustainPoint = 3;
+    points[2] = { attack + decay, defaults.sustainLevel, 0.0 };
+    points[3] = { attack + decay + defaults.releaseSeconds, 0.0, 0.0 };
+    sustainPoint = 2;
 }
 
 BreakpointEnvelope BreakpointEnvelope::fromAdsr(const EnvelopeSettings& settings)
@@ -51,35 +49,13 @@ BreakpointEnvelope BreakpointEnvelope::fromAdsr(const EnvelopeSettings& settings
     const auto sustain = clampValue(settings.sustainLevel);
     const auto release = clampTime(settings.releaseSeconds);
 
-    const auto hold = clampTime(settings.holdSeconds);
-
-    // Five points: the hold is a second point at full level, and with hold at
-    // zero it sits on top of the first one - a zero-length segment, which the
-    // evaluator already treats as an instant step. That is what makes adding
-    // the stage cost nothing to every preset that predates it.
-    BreakpointEnvelope envelope;
-    envelope.pointCount = 5;
-    envelope.points[0] = { 0.0, 0.0, 0.0 };
-    envelope.points[1] = { attack, 1.0, 0.0 };
-    envelope.points[2] = { attack + hold, 1.0, 0.0 };
-    envelope.points[3] = { attack + hold + decay, sustain, 0.0 };
-    envelope.points[4] = { attack + hold + decay + release, 0.0, 0.0 };
-    envelope.sustainPoint = 3;
-    return envelope;
-}
-
-BreakpointEnvelope BreakpointEnvelope::fromAdsrWithoutHold(const EnvelopeSettings& settings)
-{
-    const auto attack = clampTime(settings.attackSeconds);
-    const auto decay = clampTime(settings.decaySeconds);
-    const auto sustain = clampValue(settings.sustainLevel);
-    const auto release = clampTime(settings.releaseSeconds);
-
-    // Four points, and no hold stage at all - not a hold of zero length.
+    // The four points of section C: start, peak, sustain, end.
     //
-    // AMP ENV is the contour of every note the instrument plays, and it is the
-    // one envelope where a fifth handle sitting invisibly on top of the attack
-    // handle is a cost with no benefit. The modulation envelopes keep theirs.
+    // A hold stage was added between the attack and the decay and then removed
+    // from both envelopes. It defaulted to zero length, which put a fifth
+    // handle exactly on top of the attack handle, and it meant two skeletons
+    // existed - so every piece of code touching an envelope had to know which
+    // one it had. Neither cost bought anything.
     BreakpointEnvelope envelope;
     envelope.pointCount = 4;
     envelope.points[0] = { 0.0, 0.0, 0.0 };
@@ -94,37 +70,21 @@ EnvelopeSettings BreakpointEnvelope::toAdsr() const
 {
     EnvelopeSettings settings;
 
-    // Two skeletons answer to this: four points without a hold stage, which is
-    // AMP ENV, and five with one, which is ENV 1-3.
-    if (pointCount == 4 && sustainPoint == 2)
-    {
-        settings.attackSeconds = static_cast<float>(points[1].timeSeconds - points[0].timeSeconds);
-        settings.holdSeconds = 0.0f;
-        settings.decaySeconds = static_cast<float>(points[2].timeSeconds - points[1].timeSeconds);
-        settings.sustainLevel = static_cast<float>(points[2].value);
-        settings.releaseSeconds = static_cast<float>(points[3].timeSeconds - points[2].timeSeconds);
-        return settings;
-    }
-
-    if (pointCount < 5)
+    if (pointCount != 4 || sustainPoint != 2)
     {
         return settings;
     }
 
     settings.attackSeconds = static_cast<float>(points[1].timeSeconds - points[0].timeSeconds);
-    settings.holdSeconds = static_cast<float>(points[2].timeSeconds - points[1].timeSeconds);
-    settings.decaySeconds = static_cast<float>(points[3].timeSeconds - points[2].timeSeconds);
-    settings.sustainLevel = static_cast<float>(points[static_cast<std::size_t>(sustainPoint)].value);
-    settings.releaseSeconds = static_cast<float>(points[static_cast<std::size_t>(pointCount - 1)].timeSeconds
-                                                 - points[static_cast<std::size_t>(sustainPoint)].timeSeconds);
+    settings.decaySeconds = static_cast<float>(points[2].timeSeconds - points[1].timeSeconds);
+    settings.sustainLevel = static_cast<float>(points[2].value);
+    settings.releaseSeconds = static_cast<float>(points[3].timeSeconds - points[2].timeSeconds);
     return settings;
 }
 
 bool BreakpointEnvelope::isPlainAdsr() const
 {
-    const auto withHold = pointCount == 5 && sustainPoint == 3;
-    const auto withoutHold = pointCount == 4 && sustainPoint == 2;
-    if (! withHold && ! withoutHold)
+    if (pointCount != 4 || sustainPoint != 2)
     {
         return false;
     }
@@ -140,7 +100,6 @@ bool BreakpointEnvelope::isPlainAdsr() const
     return points[0].timeSeconds <= 1.0e-9
         && points[0].value <= 1.0e-9
         && points[1].value >= 1.0 - 1.0e-9
-        && (! withHold || points[2].value >= 1.0 - 1.0e-9)
         && points[static_cast<std::size_t>(pointCount - 1)].value <= 1.0e-9;
 }
 

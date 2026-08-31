@@ -530,7 +530,18 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                 px3::BreakpointEnvelope envelope;
                 envelope.setPoints(loaded.data(), static_cast<int>(loaded.size()),
                                    static_cast<int>(node.getProperty(kEnvelopeShapeSustainId, 2)));
-                setShapedEnvelope(index, envelope);
+
+                // Versions 1 and 2 could hold a five-point AHDSR skeleton;
+                // this build has only the four-point ADSR one, so the hold is
+                // collapsed out on the way in.
+                //
+                // Keyed on the saved VERSION rather than on the shape, and that
+                // distinction matters: a user who has added a point to an ADSR
+                // also has five points holding at index 3, and is indis-
+                // tinguishable from a legacy hold by inspection. Migrating by
+                // shape would silently delete their breakpoint.
+                setShapedEnvelope(index, version < 3 ? px3::withoutHoldStage(envelope)
+                                                     : envelope);
             }
         }
     }

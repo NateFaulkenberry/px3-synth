@@ -229,10 +229,20 @@ to detect.
 model and DSP first, behind the existing parameters, so audio kept working
 throughout.
 
-Two things changed during the build. A HOLD stage was added between ATTACK and
-DECAY, so the stages run ATTACK | HOLD | DECAY | SUSTAIN | RELEASE, and the
-editor gained a time axis labelled in seconds to a maximum of 8.
+One thing changed during the build and was then changed back. A HOLD stage was
+added between ATTACK and DECAY, and removed again from both envelope types: it
+defaulted to zero length, which put a fifth handle exactly on top of the attack
+handle, and having two skeletons meant every piece of code touching an envelope
+had to know which one it held. The shape is section C's four points, as
+designed.
 
-One thing described here is **not** implemented: the editor draws the curve but
-not a marker for where the envelope currently is. `setLivePosition` existed with
-no caller and was removed in the 0.4.0 cleanup rather than left looking wired.
+The editor gained a labelled time axis, and an explicit held stretch drawn
+after the decay. That stretch is display-only - the envelope holds there for as
+long as the key is down, which is not a duration the model has - and it exists
+so the SUSTAIN level has a handle of its own. Without it the decay time and the
+sustain level are the two coordinates of one breakpoint, which is one control
+doing two jobs.
+
+Not implemented: the editor draws the curve but not a marker for where the
+envelope currently is. `setLivePosition` existed with no caller and was removed
+in the 0.4.0 cleanup rather than left looking wired.

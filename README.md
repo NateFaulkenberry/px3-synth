@@ -21,7 +21,7 @@ For developer architecture, maintenance map, and release workflow, see `DEVELOPM
 - Dedicated SUB + OSC1/OSC2/OSC3 source channels.
 - Filter, amp envelope, and master gain section.
 - Graphical breakpoint envelopes on AMP ENV and ENV 1-3: up to 16 points, a
-  curve on every segment, a HOLD stage, and a labelled time axis.
+  curve on every segment, and a labelled time axis.
 - Bus inserts on the dry and FX buses: a four-band EQ with a playable graph, and
   an 1176-style FET compressor with a physically derived VU meter.
 - Three LFO modulation sources with assignable destinations.
@@ -513,7 +513,10 @@ UI:
 
 - AMP ENV is a graphical breakpoint editor, as are ENV 1-3. The default shape is
   ADSR, because ADSR is a special case of the model rather than a separate one.
-- Stages run ATTACK | HOLD | DECAY | SUSTAIN | RELEASE.
+- Stages run ATTACK | DECAY | SUSTAIN | RELEASE, and every handle names what
+  it changes when the mouse is over it. Sustain has its own handle, on the held
+  stretch after the decay, so the decay TIME and the sustain LEVEL are separate
+  controls rather than two axes of one point.
 - Drag a point to move it in time and level. Drag the curve between two points
   to bend it; the bend is symmetric, so equal numbers are equal bends either way.
 - Double-click empty space to add a point, double-click a point to remove it.
@@ -524,7 +527,6 @@ UI:
 Parameter mapping (unchanged source of truth):
 
 - Attack: 0.001s to 3.0s
-- Hold: 0.0s to 2.0s
 - Decay: 0.005s to 4.0s
 - Sustain: 0.0 to 1.0
 - Release: 0.010s to 5.0s
