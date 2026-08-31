@@ -2900,17 +2900,29 @@ void testWavetable()
             const auto floor = renderer.getFloorInfo();
             const auto name = juce::String(px3::factoryWavetables()[static_cast<std::size_t>(i)].name);
 
-            if (floor.edgeCount != 4)
+            // Twelve edges: a top face, a bottom face and the four corner posts
+            // between them. A single rectangle seen at a shallow angle is
+            // ambiguous - it could be lying flat or standing up - and the posts
+            // are what resolve it.
+            if (floor.edgeCount != 12)
             {
-                wrong.add(name + ": " + juce::String(floor.edgeCount) + " edges");
+                wrong.add(name + ": " + juce::String(floor.edgeCount) + " edges, expected 12");
             }
 
             // Beneath EVERY point the waveform reaches, at every scan position -
             // a floor the waveform passes through is not a floor.
-            if (floor.y >= floor.lowestWaveformY)
+            if (floor.topY >= floor.lowestWaveformY)
             {
-                wrong.add(name + ": floor at " + fmt(floor.y, 3) + " is not below the waveform at "
-                          + fmt(floor.lowestWaveformY, 3));
+                wrong.add(name + ": floor top at " + fmt(floor.topY, 3)
+                          + " is not below the waveform at " + fmt(floor.lowestWaveformY, 3));
+            }
+
+            // Shallow. Enough to read as a slab, not enough to become a plinth:
+            // deeper than the drop below the waveform and it would dominate.
+            const auto thickness = floor.topY - floor.bottomY;
+            if (thickness <= 0.0f || thickness > 0.5f * (floor.lowestWaveformY - floor.bottomY))
+            {
+                wrong.add(name + ": box is " + fmt(thickness, 3) + " deep");
             }
 
             if (floor.halfWidth < 0.9f || floor.halfDepth < 0.9f)
@@ -2921,13 +2933,14 @@ void testWavetable()
 
             if (i == 0)
             {
-                detail = "floor at y " + fmt(floor.y, 3) + ", waveform bottoms out at "
-                         + fmt(floor.lowestWaveformY, 3) + ", spans "
-                         + fmt(floor.halfWidth * 2.0f, 1) + " x " + fmt(floor.halfDepth * 2.0f, 1);
+                detail = "box from y " + fmt(floor.topY, 3) + " to " + fmt(floor.bottomY, 3)
+                         + " under a waveform bottoming out at " + fmt(floor.lowestWaveformY, 3)
+                         + ", spanning " + fmt(floor.halfWidth * 2.0f, 1) + " x "
+                         + fmt(floor.halfDepth * 2.0f, 1);
             }
         }
 
-        check("Wavetable3D_TheFloorIsARectangleBeneathTheStack", wrong.isEmpty(),
+        check("Wavetable3D_TheFloorIsAShallowBoxBeneathTheStack", wrong.isEmpty(),
               wrong.isEmpty() ? detail + ", on all "
                                     + juce::String(static_cast<int>(px3::factoryWavetables().size()))
                                     + " tables"

@@ -95,7 +95,8 @@ public:
     struct FloorInfo
     {
         int edgeCount { 0 };
-        float y { 0.0f };
+        float topY { 0.0f };
+        float bottomY { 0.0f };
         float lowestWaveformY { 0.0f };
         float halfWidth { 0.0f };
         float halfDepth { 0.0f };
@@ -121,6 +122,10 @@ public:
     // Named once and used once - the waveform must not intersect it at any
     // scan position, and that relationship should be adjustable in one place.
     static constexpr float kFloorDrop = 0.18f;
+
+    // How deep the floor's box is. Shallow on purpose: enough to read as a
+    // slab, not enough to become a plinth.
+    static constexpr float kFloorThickness = 0.09f;
 
     static constexpr float kMinAzimuth = -0.30f;
     static constexpr float kMaxAzimuth = 1.55f;

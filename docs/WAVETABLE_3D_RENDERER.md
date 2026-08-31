@@ -251,19 +251,26 @@ orientation the camera can reach, at both a wide and a square aspect. Held by
 
 ## I. The floor
 
-A rectangular perimeter beneath the stack, in the same coordinate system, so it
-turns with the camera and carries the perspective rather than being drawn on the
-glass.
+A shallow box beneath the stack, in the same coordinate system, so it turns with
+the camera and carries the perspective rather than being drawn on the glass.
 
-**Just the perimeter, and deliberately so.** The rectangle alone already says how
+**A box rather than a plane**, because a single rectangle seen at a shallow angle
+is ambiguous - it could be lying flat or standing up. A little thickness resolves
+that in one glance, and the four short corner posts are what say which way is
+down. Twelve edges in total: a top face, a bottom face, and the posts between
+them. The top perimeter carries the reading at full strength; the underside and
+the posts are drawn at 45% of it, so the result is a slab with thickness rather
+than a wireframe cage.
+
+**Only the perimeter of it, and deliberately so.** The rectangle alone already says how
 wide the waveform is, how deep the table is and which way the camera is looking.
 Subdividing it into cells would turn the picture into a graph, which is the one
 thing this is not meant to look like.
 
-Built as four separate ribbon edges rather than one closed loop: the ribbon takes
-its perpendicular from the direction to the next point, so a single strip running
-through the corners would pinch at each of them. Four straight runs leave a notch
-a couple of pixels across that nothing can see.
+Each edge is its own ribbon rather than one closed loop: the ribbon takes its
+perpendicular from the direction to the next point, so a strip running through a
+corner would pinch there. Straight runs leave a notch a couple of pixels across
+that nothing can see.
 
 It rides in the same vertex buffer and the same shader as the stack, flagged by
 one attribute. That flag gets it a fixed low alpha and none of the selection
@@ -276,8 +283,10 @@ environment, not part of the instrument.
 
 Its height is `lowest waveform point - kFloorDrop`, computed from the geometry
 rather than assumed, so it stays beneath the waveform whatever the table
-contains. Held by a test across all eight factory tables: floor at y -0.591 where
-the waveform bottoms out at -0.411, spanning the full 2.0 x 2.0 of the table.
+contains. Held by a test across all eight factory tables: the box runs from
+y -0.591 to -0.681 under a waveform bottoming out at -0.411, spanning the full
+2.0 x 2.0 of the table, and its depth is checked against the gap below the
+waveform so it can never grow from a slab into a plinth.
 
 Including it in the auto-fit costs a little of the stack's size - the framing has
 to hold the floor too - which is the honest trade for having it in frame at all.

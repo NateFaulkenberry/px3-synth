@@ -134,7 +134,11 @@ void main()
     if (vFloor > 0.5)
     {
         float edge = smoothstep(0.0, 0.7, across);
-        float floorAlpha = 0.16 * depthFade * edge;
+
+        // vStored carries the floor's emphasis - full for the top perimeter,
+        // less for the underside and the corner posts, so the box reads as a
+        // slab rather than a wireframe cage.
+        float floorAlpha = 0.16 * depthFade * edge * vStored;
         vec3 floorColour = mix(base, vec3(1.0), 0.25);
 
         float floorLuma = dot(floorColour, vec3(0.299, 0.587, 0.114));
@@ -491,28 +495,36 @@ Wavetable3DRenderer::FloorInfo Wavetable3DRenderer::getFloorInfo() const
                                           vertices[static_cast<std::size_t>(i)].position[1]);
     }
 
-    info.y = vertices[static_cast<std::size_t>(floorFirstVertex)].position[1];
+    info.topY = -1.0e9f;
+    info.bottomY = 1.0e9f;
     for (std::size_t i = static_cast<std::size_t>(floorFirstVertex); i < vertices.size(); ++i)
     {
         info.halfWidth = juce::jmax(info.halfWidth, std::abs(vertices[i].position[0]));
         info.halfDepth = juce::jmax(info.halfDepth, std::abs(vertices[i].position[2]));
+        info.topY = juce::jmax(info.topY, vertices[i].position[1]);
+        info.bottomY = juce::jmin(info.bottomY, vertices[i].position[1]);
     }
     return info;
 }
 
 void Wavetable3DRenderer::buildFloor()
 {
-    // A rectangular perimeter beneath the stack, in the same coordinate system,
-    // so it turns with the camera and carries the perspective rather than being
-    // drawn on the glass.
+    // A shallow box beneath the stack, in the same coordinate system, so it
+    // turns with the camera and carries the perspective rather than being drawn
+    // on the glass.
     //
-    // Deliberately just the perimeter. Subdividing it into cells would make the
-    // picture a graph; the rectangle alone already says how wide the waveform
-    // is, how deep the table is, and which way the camera is looking.
+    // A box rather than a plane because a single rectangle seen at a shallow
+    // angle is ambiguous - it could be lying flat or standing up. Giving it a
+    // little thickness resolves that in one glance: the four short corner edges
+    // are what say which way is down.
     //
-    // Four separate edges rather than one loop, because the ribbon takes its
-    // perpendicular from the direction to the NEXT point, and a single strip
-    // running through the corners would pinch at each of them.
+    // Still only the perimeter of it. Subdividing either face into cells would
+    // turn the picture into a graph, which is the one thing it is not meant to
+    // look like.
+    //
+    // Each edge is its own ribbon rather than one loop, because the ribbon takes
+    // its perpendicular from the direction to the NEXT point and a strip running
+    // through a corner would pinch there.
     floorFirstVertex = static_cast<int>(vertices.size());
     floorEdgeCount = 0;
 
@@ -526,44 +538,73 @@ void Wavetable3DRenderer::buildFloor()
     {
         lowest = juce::jmin(lowest, vertex.position[1]);
     }
-    const auto floorY = lowest - kFloorDrop;
 
-    const std::array<std::array<float, 4>, 4> edges { {
-        { { -kWaveformHalfWidth, -1.0f,  kWaveformHalfWidth, -1.0f } },
-        { {  kWaveformHalfWidth, -1.0f,  kWaveformHalfWidth,  1.0f } },
-        { {  kWaveformHalfWidth,  1.0f, -kWaveformHalfWidth,  1.0f } },
-        { { -kWaveformHalfWidth,  1.0f, -kWaveformHalfWidth, -1.0f } },
-    } };
+    const auto topY = lowest - kFloorDrop;
+    const auto bottomY = topY - kFloorThickness;
 
-    for (const auto& edge : edges)
+    const auto addEdge = [this](float x0, float y0, float z0,
+                                float x1, float y1, float z1,
+                                float emphasis)
     {
         for (int end = 0; end < 2; ++end)
         {
-            const auto hereX = end == 0 ? edge[0] : edge[2];
-            const auto hereZ = end == 0 ? edge[1] : edge[3];
-            const auto nextX = end == 0 ? edge[2] : edge[0];
-            const auto nextZ = end == 0 ? edge[3] : edge[1];
+            const auto hx = end == 0 ? x0 : x1;
+            const auto hy = end == 0 ? y0 : y1;
+            const auto hz = end == 0 ? z0 : z1;
+            const auto nx = end == 0 ? x1 : x0;
+            const auto ny = end == 0 ? y1 : y0;
+            const auto nz = end == 0 ? z1 : z0;
 
             for (const auto side : { -1.0f, 1.0f })
             {
                 Vertex vertex {};
-                vertex.position[0] = hereX;
-                vertex.position[1] = floorY;
-                vertex.position[2] = hereZ;
-                vertex.neighbour[0] = nextX;
-                vertex.neighbour[1] = floorY;
-                vertex.neighbour[2] = nextZ;
+                vertex.position[0] = hx;
+                vertex.position[1] = hy;
+                vertex.position[2] = hz;
+                vertex.neighbour[0] = nx;
+                vertex.neighbour[1] = ny;
+                vertex.neighbour[2] = nz;
                 vertex.side = side;
                 // Its own depth drives the same fade the stack uses, so the far
-                // edge sits back and the near edge comes forward - which is what
-                // makes it read as a plane rather than as an outline.
-                vertex.frame = (hereZ + 1.0f) * 0.5f;
-                vertex.stored = 1.0f;
+                // edge sits back and the near edge comes forward.
+                vertex.frame = (hz + 1.0f) * 0.5f;
+                // `stored` carries the emphasis for floor vertices. The
+                // waveform's meaning for it - whether the frame is a real one -
+                // does not apply here, and the fragment shader takes a different
+                // branch, so the slot is free.
+                vertex.stored = emphasis;
                 vertex.floorFlag = 1.0f;
                 vertices.push_back(vertex);
             }
         }
         ++floorEdgeCount;
+    };
+
+    const auto w = kWaveformHalfWidth;
+
+    // The top perimeter carries the reading; the underside and the corner posts
+    // are fainter, so the box reads as a slab with thickness rather than as a
+    // wireframe cage.
+    constexpr float kTopEmphasis = 1.0f;
+    constexpr float kUnderEmphasis = 0.45f;
+
+    for (const auto& face : { std::make_pair(topY, kTopEmphasis),
+                              std::make_pair(bottomY, kUnderEmphasis) })
+    {
+        addEdge(-w, face.first, -1.0f,  w, face.first, -1.0f, face.second);
+        addEdge( w, face.first, -1.0f,  w, face.first,  1.0f, face.second);
+        addEdge( w, face.first,  1.0f, -w, face.first,  1.0f, face.second);
+        addEdge(-w, face.first,  1.0f, -w, face.first, -1.0f, face.second);
+    }
+
+    // The four corner posts, which are what make it a box rather than two
+    // rectangles that happen to be near each other.
+    for (const auto cornerX : { -w, w })
+    {
+        for (const auto cornerZ : { -1.0f, 1.0f })
+        {
+            addEdge(cornerX, topY, cornerZ, cornerX, bottomY, cornerZ, kUnderEmphasis);
+        }
     }
 }
 
