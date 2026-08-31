@@ -30,7 +30,7 @@ public:
     void setPosition(float base, float modulated);
 
     void setMissingTableName(const juce::String& name);
-    void setBypassed(bool shouldBeBypassed) { glView.setBypassed(shouldBeBypassed); }
+    void setBypassed(bool shouldBeBypassed);
 
     // Called on the message thread when a file is dropped. The component knows
     // nothing about importing - it reports the file and lets the editor decide.
@@ -62,6 +62,9 @@ private:
 
     void paintOverlay(juce::Graphics& g);
     void rebuildSurface();
+    float cornerRadius() const;
+    juce::Colour borderColour() const;
+    int glInset() const;
     juce::Colour configColour(const juce::String& path, juce::Colour fallback) const;
     float configFloat(const juce::String& path, float fallback) const;
 
@@ -70,6 +73,7 @@ private:
 
     px3::WavetableDisplay display;
     juce::String missingTableName;
+    bool enabled { true };
 
     // The stack of frames, drawn once into an image.
     //

@@ -2442,6 +2442,64 @@ void testWavetable()
             if (accepts(name)) { wrong.add(juce::String(name) + " accepted"); }
         }
 
+    // ---- the GL rectangle stays inside the rounded panel --------------------
+    // An attached OpenGL context fills its own rectangle, corners included, and
+    // on macOS that native layer hides whatever is painted underneath it. So a
+    // rounded panel painted under a full-bounds GL view is square exactly where
+    // the rounding is meant to show, and no amount of drawing on top fixes it -
+    // the GL view has to be inset until its corners are inside the shape.
+    {
+        WavetableGraph graph;
+        graph.setSize(290, 149);
+
+        juce::Component* glView = nullptr;
+        for (auto* child : graph.getChildren())
+        {
+            if (dynamic_cast<Wavetable3DRenderer*>(child) != nullptr) { glView = child; }
+        }
+
+        if (glView == nullptr)
+        {
+            check("WavetableGraph_TheGlViewStaysInsideTheRoundedPanel", false,
+                  "no GL view found under the graph");
+        }
+        else
+        {
+            // The fallback in WavetableGraph::cornerRadius, which is what a
+            // graph with no UIConfig attached uses.
+            constexpr float radius = 7.0f;
+
+            const auto panel = graph.getLocalBounds().toFloat();
+            const auto gl = glView->getBounds().toFloat();
+
+            // A corner is inside a rounded rectangle when its distance from the
+            // nearest arc CENTRE is within the radius. Outside the corner
+            // quadrants both offsets are zero and the test is trivially true,
+            // which is correct - only the corners can escape.
+            auto worstOverhang = 0.0f;
+            for (const auto x : { gl.getX(), gl.getRight() })
+            {
+                for (const auto y : { gl.getY(), gl.getBottom() })
+                {
+                    const auto dx = juce::jmax(0.0f,
+                                               juce::jmax(panel.getX() + radius - x,
+                                                          x - (panel.getRight() - radius)));
+                    const auto dy = juce::jmax(0.0f,
+                                               juce::jmax(panel.getY() + radius - y,
+                                                          y - (panel.getBottom() - radius)));
+                    worstOverhang = juce::jmax(worstOverhang,
+                                               std::sqrt(dx * dx + dy * dy) - radius);
+                }
+            }
+
+            check("WavetableGraph_TheGlViewStaysInsideTheRoundedPanel",
+                  worstOverhang <= 0.0f && ! gl.isEmpty(),
+                  "GL view " + glView->getBounds().toString() + " in a panel "
+                      + graph.getLocalBounds().toString() + ", worst corner overhang "
+                      + fmt(worstOverhang, 3) + " px past the r=" + fmt(radius, 0) + " rounding");
+        }
+    }
+
         check("WavetableGraph_AcceptsOnlyAudioAndImageFiles", wrong.isEmpty(),
               wrong.isEmpty() ? "audio and image extensions accepted, everything else refused"
                               : wrong.joinIntoString(", "));

@@ -372,24 +372,22 @@
     "wavetable": {
       "graph": {
         "inset": 6.0,
-        "cornerRadius": 6.0,
-        "background": "#0C0C0EBE",
-        "borderColor": "#FFFFFF28",
+        "cornerRadius": 7,
+        "background": "#0C0C0E",
         "borderWidth": 1.0,
         "depthX": 0.28,
         "depthY": 0.42,
         "amplitude": 0.3,
         "nearColor": "",
         "farColor": "",
-        "markerColor": "",
-        "markerWidth": 1.6,
-        "baseMarkerColor": "",
-        "baseMarkerWidth": 1.0,
         "dropHighlightColor": "",
         "dropHighlightWidth": 2.0,
         "dropTextColor": "#F0F0F0",
         "emptyTextColor": "#C8C8C878",
-        "missingTextColor": "#F0AA5A"
+        "missingTextColor": "#F0AA5A",
+        "borderAlphaEnabled": 82,
+        "borderColorDisabled": "#888888",
+        "borderAlphaDisabled": 62
       }
     }
   },

@@ -120,18 +120,21 @@ bool WavetableGraph::isInterestedInFileDrag(const juce::StringArray& files)
 void WavetableGraph::fileDragEnter(const juce::StringArray&, int, int)
 {
     dragging = true;
+    repaint();
     overlay.repaint();
 }
 
 void WavetableGraph::fileDragExit(const juce::StringArray&)
 {
     dragging = false;
+    repaint();
     overlay.repaint();
 }
 
 void WavetableGraph::filesDropped(const juce::StringArray& files, int, int)
 {
     dragging = false;
+    repaint();
     overlay.repaint();
 
     for (const auto& path : files)
@@ -148,11 +151,62 @@ void WavetableGraph::filesDropped(const juce::StringArray& files, int, int)
     }
 }
 
+float WavetableGraph::cornerRadius() const
+{
+    return configFloat("osc.wavetable.graph.cornerRadius", 7.0f);
+}
+
+int WavetableGraph::glInset() const
+{
+    // How far the GL rectangle has to sit inside the rounded panel for its
+    // SQUARE corners to fall within the rounded shape.
+    //
+    // An attached GL context fills its own rectangle, corners included, and on
+    // macOS that native layer hides whatever is painted underneath it - so a
+    // rounded panel drawn under a full-bounds GL view was square exactly where
+    // the rounding was supposed to show.
+    //
+    // Inset by d, the rectangle's corner is at (d, d). The corner arc has
+    // centre (r, r) and radius r, so the corner is inside the shape when
+    // sqrt(2) * (r - d) <= r, that is d >= r * (1 - 1/sqrt(2)), about 0.293r.
+    // The extra pixel keeps the border stroke off the GL edge as well.
+    const auto radius = cornerRadius();
+    const auto minimum = radius * (1.0f - 1.0f / juce::MathConstants<float>::sqrt2);
+    return static_cast<int>(std::ceil(minimum)) + 1;
+}
+
 void WavetableGraph::resized()
 {
     surface = juce::Image();
-    glView.setBounds(getLocalBounds());
+    glView.setBounds(getLocalBounds().reduced(glInset()));
     overlay.setBounds(glView.getLocalBounds());
+}
+
+void WavetableGraph::setBypassed(bool shouldBeBypassed)
+{
+    if (enabled == ! shouldBeBypassed) { return; }
+
+    enabled = ! shouldBeBypassed;
+    glView.setBypassed(shouldBeBypassed);
+    repaint();
+}
+
+juce::Colour WavetableGraph::borderColour() const
+{
+    // The card's own accent, at the weight the envelope graphs already use, so
+    // an inner panel reads the same wherever it appears. This was a fixed white
+    // at alpha 40, which on the oscillator card was a colour belonging to
+    // nothing else on it.
+    if (! enabled)
+    {
+        return configColour("osc.wavetable.graph.borderColorDisabled",
+                            juce::Colour::fromRGB(136, 136, 136))
+                   .withAlpha(configFloat("osc.wavetable.graph.borderAlphaDisabled", 62.0f)
+                              / 255.0f);
+    }
+
+    return accent.withAlpha(configFloat("osc.wavetable.graph.borderAlphaEnabled", 82.0f)
+                            / 255.0f);
 }
 
 void WavetableGraph::rebuildSurface()
@@ -223,29 +277,50 @@ void WavetableGraph::rebuildSurface()
 
 void WavetableGraph::paint(juce::Graphics& g)
 {
-    // Only reachable before the GL view has any size. Once it covers this
-    // component the background comes from the GL clear, because the native
-    // layer hides whatever is painted underneath it.
-    if (glView.getBounds().isEmpty())
+    const auto bounds = getLocalBounds().toFloat();
+    const auto radius = cornerRadius();
+
+    // Opaque, matching what the GL clear actually produces. The configured
+    // alpha is ignored here on purpose: an attached context has no transparency
+    // to composite against, so honouring it would make the ring around the GL
+    // view a slightly different shade from the panel it is part of.
+    g.setColour(configColour("osc.wavetable.graph.background",
+                             juce::Colour::fromRGB(12, 12, 14)).withAlpha(1.0f));
+    g.fillRoundedRectangle(bounds, radius);
+
+    // The border is drawn HERE rather than in the overlay, even though a parent
+    // paints before its children: the overlay is a child of the GL view, so it
+    // is inset with it and could not reach the panel's edge. What makes this
+    // safe is that the stroke sits in the ring the GL view does not cover.
+    if (dragging)
     {
-        g.setColour(configColour("osc.wavetable.graph.background",
-                                 juce::Colour::fromRGBA(12, 12, 14, 190)));
-        g.fillRoundedRectangle(getLocalBounds().toFloat(),
-                               configFloat("osc.wavetable.graph.cornerRadius", 6.0f));
+        g.setColour(configColour("osc.wavetable.graph.dropHighlightColor",
+                                 accent.withAlpha(0.85f)));
+        g.drawRoundedRectangle(bounds.reduced(1.0f), radius,
+                               configFloat("osc.wavetable.graph.dropHighlightWidth", 2.0f));
+    }
+    else
+    {
+        g.setColour(borderColour());
+        g.drawRoundedRectangle(bounds.reduced(0.5f), radius,
+                               configFloat("osc.wavetable.graph.borderWidth", 1.0f));
     }
 }
 
 void WavetableGraph::paintOverlay(juce::Graphics& g)
 {
-    const auto bounds = getLocalBounds().toFloat();
-    const auto radius = configFloat("osc.wavetable.graph.cornerRadius", 6.0f);
+    // The OVERLAY's bounds, not this component's. They used to be the same
+    // rectangle; now that the GL view is inset inside the rounded panel they
+    // differ by that inset, and this paints into the overlay's coordinates.
+    const auto area = overlay.getLocalBounds();
+    const auto bounds = area.toFloat();
 
     if (display.isEmpty())
     {
         g.setColour(configColour("osc.wavetable.graph.emptyTextColor",
                                  juce::Colour::fromRGBA(200, 200, 200, 120)));
         g.setFont(juce::FontOptions(11.0f));
-        g.drawFittedText("DROP AUDIO OR IMAGE HERE", getLocalBounds(),
+        g.drawFittedText("DROP AUDIO OR IMAGE HERE", area,
                          juce::Justification::centred, 2);
     }
     else
@@ -284,7 +359,7 @@ void WavetableGraph::paintOverlay(juce::Graphics& g)
                                      juce::Colour::fromRGB(240, 170, 90)));
             g.setFont(juce::FontOptions(9.5f));
             g.drawFittedText("GPU: " + shaderError.upToFirstOccurrenceOf("\n", false, false),
-                             getLocalBounds().reduced(4), juce::Justification::bottomLeft, 2);
+                             area.reduced(4), juce::Justification::bottomLeft, 2);
         }
 
         if (missingTableName.isNotEmpty())
@@ -296,26 +371,18 @@ void WavetableGraph::paintOverlay(juce::Graphics& g)
                                      juce::Colour::fromRGB(240, 170, 90)));
             g.setFont(juce::FontOptions(10.0f));
             g.drawFittedText("MISSING: " + missingTableName,
-                             getLocalBounds().reduced(4), juce::Justification::topLeft, 2);
+                             area.reduced(4), juce::Justification::topLeft, 2);
         }
     }
 
+    // Only the text. Both strokes that used to be here are drawn by paint()
+    // now, because they belong on the panel's edge and this component is inset
+    // inside it.
     if (dragging)
     {
-        g.setColour(configColour("osc.wavetable.graph.dropHighlightColor",
-                                 accent.withAlpha(0.85f)));
-        g.drawRoundedRectangle(bounds.reduced(1.0f), radius,
-                               configFloat("osc.wavetable.graph.dropHighlightWidth", 2.0f));
         g.setColour(configColour("osc.wavetable.graph.dropTextColor",
                                  juce::Colour::fromRGB(240, 240, 240)));
         g.setFont(juce::FontOptions(11.0f));
-        g.drawFittedText("DROP TO IMPORT", getLocalBounds(), juce::Justification::centred, 1);
-    }
-    else
-    {
-        g.setColour(configColour("osc.wavetable.graph.borderColor",
-                                 juce::Colour::fromRGBA(255, 255, 255, 40)));
-        g.drawRoundedRectangle(bounds.reduced(0.5f), radius,
-                               configFloat("osc.wavetable.graph.borderWidth", 1.0f));
+        g.drawFittedText("DROP TO IMPORT", area, juce::Justification::centred, 1);
     }
 }
