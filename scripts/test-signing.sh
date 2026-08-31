@@ -147,6 +147,38 @@ else
 fi
 rm -f "${SIGN_PROBE}"
 
+# The same question for the INSTALLER certificate, which is a separate identity
+# used by a separate tool. Answered by actually signing a throwaway package,
+# because "the certificate is installed" did not turn out to mean the pkg would
+# be signed: the release script only ever read the installer identity from
+# $DEVELOPER_ID_INSTALLER, so on a machine with the certificate present and the
+# variable unset it silently produced an unsigned pkg, submitted it, and Apple
+# answered "The binary is not signed."
+PKG_PROBE_DIR="$(mktemp -d -t px3pkgprobe)"
+if ! pkgbuild --identifier com.px3.signprobe --version 1 --nopayload \
+              "${PKG_PROBE_DIR}/probe.pkg" >/dev/null 2>&1; then
+  check "Identity_CanActuallySignAnInstallerHere" false "pkgbuild could not create a probe package"
+elif [[ -z "${INSTALLER_IDENTITY}" ]]; then
+  check "Identity_CanActuallySignAnInstallerHere" false "no Developer ID Installer identity to try"
+else
+  PKG_PROBE_OUT="$(productsign --sign "${INSTALLER_IDENTITY}" \
+                               "${PKG_PROBE_DIR}/probe.pkg" \
+                               "${PKG_PROBE_DIR}/probe-signed.pkg" 2>&1)"
+  if [[ -f "${PKG_PROBE_DIR}/probe-signed.pkg" ]] \
+     && pkgutil --check-signature "${PKG_PROBE_DIR}/probe-signed.pkg" 2>/dev/null \
+        | grep -q "Developer ID Installer:"; then
+    check "Identity_CanActuallySignAnInstallerHere" true \
+          "signed a throwaway package with the real installer identity"
+  elif [[ "${PKG_PROBE_OUT}" == *"errSecInternalComponent"* ]]; then
+    check "Identity_CanActuallySignAnInstallerHere" false \
+          "errSecInternalComponent - same cause as the application identity above"
+  else
+    check "Identity_CanActuallySignAnInstallerHere" false \
+          "$(printf '%s' "${PKG_PROBE_OUT}" | head -n1)"
+  fi
+fi
+rm -rf "${PKG_PROBE_DIR}"
+
 # Credentials are proved against Apple rather than merely being present: a
 # stored profile whose app-specific password has been revoked looks identical
 # to a working one until something is submitted.

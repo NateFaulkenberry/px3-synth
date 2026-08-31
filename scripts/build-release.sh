@@ -209,7 +209,20 @@ inject_package_resources() {
 
 sign_product_if_requested() {
   local pkg="$1"
-  [[ -n "${INSTALLER_SIGN_IDENTITY}" ]] || return 0
+
+  # An installer that cannot be signed is a failure when signing was asked
+  # for, not something to pass over quietly. This returned 0 on an empty
+  # identity, so `--notarize` produced an unsigned pkg, submitted it, and let
+  # Apple deliver the news: "The binary is not signed."
+  if [[ -z "${INSTALLER_SIGN_IDENTITY}" ]]; then
+    if [[ "${SIGN_MODE}" == true ]]; then
+      die "No Developer ID Installer identity found, so the installer cannot be signed.
+Install one, or set DEVELOPER_ID_INSTALLER to its full name.
+Installed identities:
+$(security find-identity -v 2>/dev/null | sed 's/^/  /')"
+    fi
+    return 0
+  fi
   local signed="${pkg%.pkg}-signed.pkg"
   productsign --sign "${INSTALLER_SIGN_IDENTITY}" "${pkg}" "${signed}" \
     || die "productsign failed for ${pkg}"
@@ -341,11 +354,21 @@ prepare_installer_branding() {
 }
 
 maybe_autodetect_sign_identity() {
-  if [[ -n "${SIGN_IDENTITY}" ]]; then
-    return 0
+  if [[ -z "${SIGN_IDENTITY}" ]]; then
+    SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application:" | head -n1 | sed -E 's/.*\"(.*)\"/\1/' || true)"
   fi
 
-  SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application:" | head -n1 | sed -E 's/.*\"(.*)\"/\1/' || true)"
+  # The INSTALLER identity is discovered too, which it was not before: it came
+  # only from $DEVELOPER_ID_INSTALLER, so a machine with the certificate
+  # installed and the variable unset signed the app and left the pkg unsigned.
+  #
+  # Note the missing -p codesigning. That policy does not match installer
+  # certificates, so searching with it finds nothing however many are
+  # installed - which is presumably why this was left to an environment
+  # variable in the first place.
+  if [[ -z "${INSTALLER_SIGN_IDENTITY}" ]]; then
+    INSTALLER_SIGN_IDENTITY="$(security find-identity -v 2>/dev/null | grep "Developer ID Installer:" | head -n1 | sed -E 's/.*\"(.*)\"/\1/' || true)"
+  fi
 }
 
 sign_and_verify() {
@@ -856,6 +879,17 @@ PRODUCTBUILD_ARGS+=("${PKG_PATH}")
 
 productbuild "${PRODUCTBUILD_ARGS[@]}"
 sign_product_if_requested "${PKG_PATH}"
+
+# Checked here rather than discovered at Apple. Notarisation of an unsigned
+# package can only ever be rejected, so submitting one spends a round trip to
+# be told something that was knowable locally in a millisecond.
+if [[ "${NOTARIZE_MODE}" == true ]]; then
+  if ! pkgutil --check-signature "${PKG_PATH}" 2>/dev/null | grep -q "Developer ID Installer:"; then
+    die "The installer is not signed with a Developer ID Installer certificate, so notarisation would be rejected.
+$(pkgutil --check-signature "${PKG_PATH}" 2>&1 | sed 's/^/  /')"
+  fi
+fi
+
 notarize_if_requested "${PKG_PATH}" "Installer"
 
 [[ -f "${AU_COMPONENT_PKG}" ]] || die "AU component package not created: ${AU_COMPONENT_PKG}"
