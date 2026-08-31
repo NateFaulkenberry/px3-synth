@@ -200,12 +200,16 @@ juce::String BreakpointEnvelopeEditor::roleLabelFor(int index) const
     //
     // Two skeletons: AMP ENV has four points and no hold stage, ENV 1-3 have
     // five and do.
+    // The sustain point carries TWO of the named controls at once, which is why
+    // it reads as both: how far along it sits is the decay time, and how high
+    // it sits is the sustain level. Calling it "DECAY" alone hid the fact that
+    // dragging it upwards is the only way to set the sustain.
     if (envelope.getPointCount() == 4 && envelope.getSustainPoint() == 2)
     {
         switch (index)
         {
             case 1:  return "ATTACK";
-            case 2:  return "DECAY";
+            case 2:  return "DECAY / SUSTAIN";
             case 3:  return "RELEASE";
             default: return {};
         }
@@ -217,7 +221,7 @@ juce::String BreakpointEnvelopeEditor::roleLabelFor(int index) const
         {
             case 1:  return "ATTACK";
             case 2:  return "HOLD";
-            case 3:  return "DECAY";
+            case 3:  return "DECAY / SUSTAIN";
             case 4:  return "RELEASE";
             default: return {};
         }
@@ -472,9 +476,10 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
             g.setFont(juce::FontOptions(labelSize));
 
             // A fixed box rather than a measured one: getStringWidthFloat is
-            // deprecated, and the four labels here are known and short, so
-            // measuring buys nothing a constant does not.
-            constexpr auto width = 46.0f;
+            // deprecated, and the labels here are known, so measuring buys
+            // nothing a constant does not. Wide enough for the longest,
+            // "DECAY / SUSTAIN".
+            constexpr auto width = 84.0f;
 
             // Above the point, unless that would put it outside the graph, in
             // which case below. The attack point sits at the very top of the

@@ -1210,6 +1210,58 @@ void testBreakpointEnvelope()
               "over held level " + fmt(worstOvershoot, 4));
     }
 
+    // ---- the two shapes, as the processor actually hands them out -----------
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        const auto amp = processor.currentAmpEnvelope();
+        const auto mod = processor.currentModEnvelope(0);
+
+        check("AmpEnv_HasNoHoldStage",
+              amp.getPointCount() == 4 && amp.getSustainPoint() == 2,
+              "AMP ENV is " + juce::String(amp.getPointCount())
+                  + " points holding at index " + juce::String(amp.getSustainPoint())
+                  + " - attack, decay, sustain, release");
+
+        check("ModEnv_HasAHoldStage",
+              mod.getPointCount() == 5 && mod.getSustainPoint() == 3,
+              "ENV 1 is " + juce::String(mod.getPointCount())
+                  + " points holding at index " + juce::String(mod.getSustainPoint())
+                  + " - attack, hold, decay, sustain, release");
+
+        // The label on the sustain point claims it sets two things. It has to.
+        {
+            EnvelopeSettings settings;
+            settings.attackSeconds = 0.1f;
+            settings.decaySeconds = 0.2f;
+            settings.sustainLevel = 0.5f;
+            settings.releaseSeconds = 0.3f;
+
+            auto shape = px3::BreakpointEnvelope::fromAdsrWithoutHold(settings);
+            const auto before = shape.toAdsr();
+
+            // Sideways: decay only.
+            shape.setPoint(2, shape.getPoint(2).timeSeconds + 0.1, shape.getPoint(2).value);
+            const auto moved = shape.toAdsr();
+
+            // Upwards: sustain only.
+            shape.setPoint(2, shape.getPoint(2).timeSeconds, 0.8);
+            const auto raised = shape.toAdsr();
+
+            check("EnvelopeEditor_TheSustainHandleSetsBothDecayAndSustain",
+                  std::abs(moved.decaySeconds - (before.decaySeconds + 0.1f)) < 1.0e-3f
+                      && std::abs(moved.sustainLevel - before.sustainLevel) < 1.0e-3f
+                      && std::abs(raised.sustainLevel - 0.8f) < 1.0e-3f
+                      && std::abs(raised.decaySeconds - moved.decaySeconds) < 1.0e-3f,
+                  "sideways moved decay " + fmt(before.decaySeconds, 3) + " -> "
+                      + fmt(moved.decaySeconds, 3) + " s at the same level; upwards moved "
+                      "sustain " + fmt(moved.sustainLevel, 2) + " -> "
+                      + fmt(raised.sustainLevel, 2) + " at the same time");
+        }
+    }
+
     // ---- the editor ---------------------------------------------------------
     {
         BreakpointEnvelopeEditor editor;
@@ -1301,7 +1353,8 @@ void testBreakpointEnvelope()
             for (int i = 1; i <= 4; ++i) { roles.add(labelled.roleLabelFor(i)); }
 
             check("EnvelopeEditor_EveryModEnvelopeHandleIsLabelled",
-                  roles == juce::StringArray({ "ATTACK", "HOLD", "DECAY", "RELEASE" }),
+                  roles == juce::StringArray({ "ATTACK", "HOLD",
+                                               "DECAY / SUSTAIN", "RELEASE" }),
                   "handles 1-4 of a mod envelope read: " + roles.joinIntoString(", "));
 
             // AMP ENV has no hold stage at all, so it has one fewer handle and
@@ -1317,7 +1370,8 @@ void testBreakpointEnvelope()
             check("EnvelopeEditor_TheAmpEnvelopeHasNoHoldStage",
                   amp.getEnvelope().getPointCount() == 4
                       && amp.getEnvelope().getSustainPoint() == 2
-                      && ampRoles == juce::StringArray({ "ATTACK", "DECAY", "RELEASE" }),
+                      && ampRoles == juce::StringArray({ "ATTACK", "DECAY / SUSTAIN",
+                                                        "RELEASE" }),
                   juce::String(amp.getEnvelope().getPointCount()) + " points reading: "
                       + ampRoles.joinIntoString(", "));
 
