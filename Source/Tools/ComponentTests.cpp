@@ -1883,6 +1883,94 @@ void testBreakpointEnvelope()
               "10000 queued events overflow the ring and the audio stays finite");
     }
 
+    // ---- a note-on may not be louder than its own envelope ------------------
+    //
+    // The criterion comes from a real recording of the fault. In a standalone
+    // capture of this exact patch - one sine, no modulation, FX bypassed, a
+    // four second attack, a three note chord at full velocity - the first 100
+    // ms peaked at 0.289, a level the attack does not reach again until 2500
+    // ms. That burst lasted 492 samples, which is 0.96 of a 512 sample block:
+    // one block rendered as though the envelope were open, then the real
+    // attack.
+    //
+    // So the assertion is not "no discontinuity" - the burst was at the chord's
+    // own pitch with no step in it - but "no louder than the envelope allows".
+    // That is what a superimposed full-level block violates and an attack ramp
+    // never does.
+    {
+        PX3SynthAudioProcessor processor;
+        setParam(processor, "osc1Enabled", 1.0f);
+        setParam(processor, "osc2Enabled", 0.0f);
+        setParam(processor, "osc3Enabled", 0.0f);
+        setParam(processor, "subOscEnabled", 0.0f);
+        setParam(processor, "delayEnabled", 0.0f);
+        setParam(processor, "reverbEnabled", 0.0f);
+        setParam(processor, "moodEnabled", 0.0f);
+        setParam(processor, "vibeEnabled", 0.0f);
+        setChoice(processor, "osc1Mode", 0);
+        setParam(processor, "ampAttack", 4.000f);
+        setParam(processor, "ampDecay", 0.100f);
+        setParam(processor, "ampSustain", 1.00f);
+        setParam(processor, "ampRelease", 0.500f);
+
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        juce::AudioBuffer<float> buffer(2, kBlockSize);
+        juce::MidiBuffer empty;
+
+        // Idle first, the way a running plugin waits for a key.
+        for (int b = 0; b < static_cast<int>(0.5 * kSampleRate / kBlockSize); ++b)
+        {
+            buffer.clear();
+            processor.processBlock(buffer, empty);
+        }
+
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+        midi.addEvent(juce::MidiMessage::noteOn(1, 64, 1.0f), 0);
+        midi.addEvent(juce::MidiMessage::noteOn(1, 67, 1.0f), 0);
+
+        AmpEnvelope reference;
+        reference.prepare(kSampleRate);
+        EnvelopeSettings settings;
+        settings.attackSeconds = 4.000f;
+        settings.decaySeconds = 0.100f;
+        settings.sustainLevel = 1.0f;
+        settings.releaseSeconds = 0.500f;
+        reference.setSettings(settings);
+        reference.noteOn();
+
+        auto worstRatio = 0.0f;
+        auto worstAtMs = 0.0;
+        auto worstLevel = 0.0f;
+
+        for (int block = 0; block < static_cast<int>(0.10 * kSampleRate / kBlockSize); ++block)
+        {
+            buffer.clear();
+            processor.processBlock(buffer, midi);
+            midi.clear();
+
+            auto env = 0.0f;
+            for (int i = 0; i < kBlockSize; ++i) { env = reference.getNextSample(); }
+
+            const auto level = buffer.getMagnitude(0, kBlockSize);
+            const auto ratio = level / juce::jmax(1.0e-6f, env);
+            if (ratio > worstRatio)
+            {
+                worstRatio = ratio;
+                worstLevel = level;
+                worstAtMs = 1000.0 * (block + 1) * kBlockSize / kSampleRate;
+            }
+        }
+
+        // Three voices at unity would give 3; the recording's burst was 170.
+        check("Onset_ANoteIsNeverLouderThanItsEnvelopeAllows",
+              worstRatio < 5.0f,
+              "worst level against the envelope in the first 100 ms: " + fmt(worstRatio, 2)
+                  + "x (" + fmt(worstLevel, 6) + " at " + fmt(worstAtMs, 1) + " ms)");
+    }
+
     // ---- retriggering must not dive to silence first ------------------------
     // Reported as a click at note-on under a long attack. Restarting the
     // contour at zero means the level falls from wherever the release tail was
@@ -23806,6 +23894,117 @@ int main(int argc, char* argv[])
                     std::printf("    wrote %s\n\n", file.getFullPathName().toRawUTF8());
                 }
             }
+        }
+
+        // The realistic case: the synth has been RUNNING and idle for a while,
+        // then a note arrives. Every earlier render here fired the note in the
+        // first block or two after prepareToPlay.
+        {
+            PX3SynthAudioProcessor processor;
+            setParam(processor, "osc1Enabled", 1.0f);
+            setParam(processor, "osc2Enabled", 0.0f);
+            setParam(processor, "osc3Enabled", 0.0f);
+            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "delayEnabled", 0.0f);
+            setParam(processor, "reverbEnabled", 0.0f);
+            setParam(processor, "moodEnabled", 0.0f);
+            setParam(processor, "vibeEnabled", 0.0f);
+            setChoice(processor, "osc1Mode", 0);
+            setParam(processor, "ampAttack", 4.000f);
+            setParam(processor, "ampDecay", 0.100f);
+            setParam(processor, "ampSustain", 1.00f);
+            setParam(processor, "ampRelease", 0.500f);
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            juce::MidiBuffer empty;
+
+            // Two seconds of idle, the way a running plugin sits before a key
+            // is pressed.
+            for (int b = 0; b < static_cast<int>(2.0 * kSampleRate / kBlockSize); ++b)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, empty);
+            }
+
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+            midi.addEvent(juce::MidiMessage::noteOn(1, 64, 1.0f), 0);
+            midi.addEvent(juce::MidiMessage::noteOn(1, 67, 1.0f), 0);
+
+            std::printf("  after two seconds of idle, a 3 note chord, 4 s attack:\n");
+            std::printf("    %8s %14s\n", "block", "peak");
+            for (int b = 0; b < 12; ++b)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, midi);
+                midi.clear();
+                std::printf("    %8d %14.6f%s\n", b, buffer.getMagnitude(0, kBlockSize),
+                            b == 0 ? "   <-- the block containing the note-on" : "");
+            }
+            std::printf("\n");
+        }
+
+        // With the EDITOR OPEN and its timer running - which the standalone
+        // always has and every render here so far has not.
+        {
+            PX3SynthAudioProcessor processor;
+            setParam(processor, "osc1Enabled", 1.0f);
+            setParam(processor, "osc2Enabled", 0.0f);
+            setParam(processor, "osc3Enabled", 0.0f);
+            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "delayEnabled", 0.0f);
+            setParam(processor, "reverbEnabled", 0.0f);
+            setParam(processor, "moodEnabled", 0.0f);
+            setParam(processor, "vibeEnabled", 0.0f);
+            setChoice(processor, "osc1Mode", 0);
+            setParam(processor, "ampAttack", 4.000f);
+            setParam(processor, "ampDecay", 0.100f);
+            setParam(processor, "ampSustain", 1.00f);
+            setParam(processor, "ampRelease", 0.500f);
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+            if (editor != nullptr)
+            {
+                editor->setSize(1320, 798);
+            }
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            juce::MidiBuffer empty;
+
+            // Idle, letting the editor's timers run between blocks.
+            for (int b = 0; b < 60; ++b)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, empty);
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(2);
+            }
+
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+            midi.addEvent(juce::MidiMessage::noteOn(1, 64, 1.0f), 0);
+            midi.addEvent(juce::MidiMessage::noteOn(1, 67, 1.0f), 0);
+
+            std::printf("  with the editor open, a 3 note chord, 4 s attack:\n");
+            std::printf("    %8s %14s\n", "block", "peak");
+            auto worst = 0.0f;
+            for (int b = 0; b < 12; ++b)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, midi);
+                midi.clear();
+                const auto pk = buffer.getMagnitude(0, kBlockSize);
+                worst = juce::jmax(worst, pk);
+                std::printf("    %8d %14.6f%s\n", b, pk,
+                            b == 0 ? "   <-- the block containing the note-on" : "");
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(2);
+            }
+            std::printf("    peak over the first 12 blocks: %.6f%s\n\n", worst,
+                        worst > 0.1f ? "   *** a burst the envelope does not allow ***" : "");
+            editor.reset();
         }
 
         std::printf("  Nothing above shows a discontinuity or a duck. What this mode has\n"
