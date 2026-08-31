@@ -64,5 +64,10 @@ private:
     // The level the envelope was ACTUALLY producing at note-off, which the
     // release is scaled from. Anchoring to anything else makes a tail jump.
     float releaseLevelAnchor { 0.0f };
+
+    // Where the attack begins. Zero on a fresh voice; on a retrigger it is the
+    // level the envelope had reached, so the new attack rises from there
+    // rather than diving to silence first.
+    float attackLevelAnchor { 0.0f };
     bool inRelease { false };
 };

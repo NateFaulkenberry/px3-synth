@@ -54,6 +54,14 @@ void AmpEnvelope::noteOn()
     releasedSeconds = 0.0;
     releaseProgress = 0.0f;
     releaseLevelAnchor = 0.0f;
+
+    // Where the attack starts from.
+    //
+    // Zero on a fresh voice, so a first note still rises from silence. On a
+    // retrigger it is wherever the envelope had got to, which stops the level
+    // diving to nothing before the new attack begins - a dive of half the
+    // amplitude in 5 ms under a long attack, and audible as a click.
+    attackLevelAnchor = juce::jlimit(0.0f, 1.0f, smoothedOutput);
 }
 
 void AmpEnvelope::noteOff()
@@ -84,6 +92,7 @@ void AmpEnvelope::reset()
     lastRawValue = 0.0f;
     releaseProgress = 0.0f;
     releaseLevelAnchor = 0.0f;
+    attackLevelAnchor = 0.0f;
     inRelease = false;
     noteHeld = false;
     finished = true;
@@ -119,7 +128,7 @@ float AmpEnvelope::getNextSample()
     float raw;
     if (! inRelease)
     {
-        raw = juce::jlimit(0.0f, 1.0f, snapshot.valueAtHeld(heldSeconds));
+        raw = juce::jlimit(0.0f, 1.0f, snapshot.valueAtHeld(heldSeconds, attackLevelAnchor));
         if (noteHeld)
         {
             heldSeconds += step;

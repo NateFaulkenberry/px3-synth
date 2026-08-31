@@ -33,6 +33,9 @@ void EnvelopeGenerator::noteOn()
     inRelease = false;
     finished = false;
     releaseLevelAnchor = 0.0f;
+
+    // Where the attack starts from - see the member's comment.
+    attackLevelAnchor = juce::jlimit(0.0f, 1.0f, outputSmoother.getCurrentValue());
 }
 
 void EnvelopeGenerator::noteOff()
@@ -54,6 +57,7 @@ void EnvelopeGenerator::reset()
     inRelease = false;
     finished = true;
     releaseLevelAnchor = 0.0f;
+    attackLevelAnchor = 0.0f;
     outputSmoother.setCurrentAndTargetValue(0.0f);
 }
 
@@ -81,7 +85,7 @@ float EnvelopeGenerator::getNextSample()
     }
     else if (! finished)
     {
-        raw = juce::jlimit(0.0f, 1.0f, snapshot.valueAtHeld(heldSeconds));
+        raw = juce::jlimit(0.0f, 1.0f, snapshot.valueAtHeld(heldSeconds, attackLevelAnchor));
         if (noteHeld)
         {
             heldSeconds += step;

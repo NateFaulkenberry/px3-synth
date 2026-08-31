@@ -1809,6 +1809,103 @@ void testBreakpointEnvelope()
         }
     }
 
+    // ---- retriggering must not dive to silence first ------------------------
+    // Reported as a click at note-on under a long attack. Restarting the
+    // contour at zero means the level falls from wherever the release tail was
+    // down to nothing before the new attack begins - measured at 0.4934 to
+    // 0.0052 in 5 ms with a one second attack, which is what is heard.
+    {
+        const auto retrigger = [](auto& envelope, float attack)
+        {
+            EnvelopeSettings settings;
+            settings.attackSeconds = attack;
+            settings.decaySeconds = 0.100f;
+            settings.sustainLevel = 1.0f;
+            settings.releaseSeconds = 0.500f;
+            envelope.prepare(kSampleRate);
+            envelope.setSettings(settings);
+
+            envelope.noteOn();
+            for (int i = 0; i < static_cast<int>(kSampleRate * 1.2); ++i)
+            {
+                envelope.getNextSample();
+            }
+            envelope.noteOff();
+
+            auto atRetrigger = 0.0f;
+            for (int i = 0; i < static_cast<int>(kSampleRate * 0.05); ++i)
+            {
+                atRetrigger = envelope.getNextSample();
+            }
+
+            envelope.noteOn();
+
+            auto lowest = atRetrigger;
+            auto worstStep = 0.0f;
+            auto previous = atRetrigger;
+            for (int i = 0; i < static_cast<int>(kSampleRate * 0.05); ++i)
+            {
+                const auto value = envelope.getNextSample();
+                lowest = juce::jmin(lowest, value);
+                worstStep = juce::jmax(worstStep, std::abs(value - previous));
+                previous = value;
+            }
+
+            struct Result { float atRetrigger, lowest, worstStep; };
+            return Result { atRetrigger, lowest, worstStep };
+        };
+
+        {
+            AmpEnvelope envelope;
+            const auto result = retrigger(envelope, 1.000f);
+            check("AmpEnv_RetriggerDoesNotDiveToSilenceFirst",
+                  result.lowest > result.atRetrigger * 0.95f,
+                  "retriggered at " + fmt(result.atRetrigger, 4)
+                      + ", the lowest the envelope reaches over the next 50 ms is "
+                      + fmt(result.lowest, 4));
+
+            check("AmpEnv_RetriggerHasNoStep",
+                  result.worstStep < 0.005f,
+                  "largest sample-to-sample step through the retriggered attack: "
+                      + fmt(result.worstStep, 6));
+        }
+
+        {
+            EnvelopeGenerator envelope;
+            const auto result = retrigger(envelope, 1.000f);
+            check("ModEnv_RetriggerDoesNotDiveToSilenceFirst",
+                  result.lowest > result.atRetrigger * 0.95f,
+                  "retriggered at " + fmt(result.atRetrigger, 4)
+                      + ", lowest over the next 50 ms " + fmt(result.lowest, 4));
+        }
+
+        // And a FRESH voice still rises from silence - the anchor is zero
+        // there, so a first note is unchanged.
+        {
+            AmpEnvelope fresh;
+            EnvelopeSettings settings;
+            settings.attackSeconds = 1.000f;
+            settings.decaySeconds = 0.100f;
+            settings.sustainLevel = 1.0f;
+            settings.releaseSeconds = 0.100f;
+            fresh.prepare(kSampleRate);
+            fresh.setSettings(settings);
+            fresh.noteOn();
+
+            const auto first = fresh.getNextSample();
+            auto after10ms = 0.0f;
+            for (int i = 0; i < static_cast<int>(kSampleRate * 0.01); ++i)
+            {
+                after10ms = fresh.getNextSample();
+            }
+
+            check("AmpEnv_AFirstNoteStillRisesFromSilence",
+                  first < 1.0e-4f && after10ms < 0.02f,
+                  "a fresh voice starts at " + fmt(first, 6) + " and is only "
+                      + fmt(after10ms, 4) + " after 10 ms of a 1 s attack");
+        }
+    }
+
     // ---- the release-start handle -------------------------------------------
     // The far end of the held stretch, which is where the release begins. It
     // exists so the sustain plateau can be collapsed to nothing - "no sustain"
@@ -23100,6 +23197,206 @@ int main(int argc, char* argv[])
                         attack, peak, settled,
                         settled > 1.0e-9f ? peak / settled : 0.0f,
                         (settled > 1.0e-9f && peak / settled > 1.05f) ? "  <- overshoot" : "");
+        }
+        std::printf("\n");
+        return 0;
+    }
+
+    if (filter == "attackpop")
+    {
+        // A pop at note-on under a LONG attack.
+        //
+        // With a one-second attack the envelope is under 0.001 for the first
+        // millisecond, so nothing audible should be there at all. A pop means
+        // something in the voice is NOT being scaled by the envelope - so this
+        // measures the signal sample by sample rather than by peak, because a
+        // discontinuity is a step between neighbours and a peak reading cannot
+        // see one.
+        std::printf("\nATTACK POP\n\n");
+
+        const auto render = [](float attack, int samples, bool plain)
+        {
+            PX3SynthAudioProcessor processor;
+
+            // Factory defaults are what the plugin actually loads with, and
+            // makePlainPatch turns off most of the instrument - so a transient
+            // that only the full signal path produces is invisible under it.
+            if (plain) { makePlainPatch(processor); }
+            setParam(processor, "ampAttack", attack);
+            setParam(processor, "ampDecay", 0.100f);
+            setParam(processor, "ampSustain", 1.00f);
+            setParam(processor, "ampRelease", 0.100f);
+
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+
+            std::vector<float> trace;
+            trace.reserve(static_cast<std::size_t>(samples));
+            while (static_cast<int>(trace.size()) < samples)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, midi);
+                midi.clear();
+                for (int i = 0; i < kBlockSize && static_cast<int>(trace.size()) < samples; ++i)
+                {
+                    trace.push_back(buffer.getSample(0, i));
+                }
+            }
+            return trace;
+        };
+
+        for (const auto plain : { true, false })
+        {
+            std::printf("  %s\n", plain ? "stripped patch:" : "FACTORY DEFAULTS:");
+        for (const auto attack : { 1.000f, 0.500f, 0.100f, 0.010f })
+        {
+            const auto trace = render(attack, static_cast<int>(kSampleRate * 0.05), plain);
+
+            // The envelope's own value, for comparison: what the signal SHOULD
+            // be bounded by.
+            AmpEnvelope reference;
+            reference.prepare(kSampleRate);
+            EnvelopeSettings settings;
+            settings.attackSeconds = attack;
+            settings.decaySeconds = 0.100f;
+            settings.sustainLevel = 1.0f;
+            settings.releaseSeconds = 0.100f;
+            reference.setSettings(settings);
+            reference.noteOn();
+
+            auto worstStep = 0.0f;
+            auto worstAt = 0;
+            for (std::size_t i = 1; i < trace.size(); ++i)
+            {
+                const auto step = std::abs(trace[i] - trace[i - 1]);
+                if (step > worstStep) { worstStep = step; worstAt = static_cast<int>(i); }
+            }
+
+            auto envAtWorst = 0.0f;
+            for (int i = 0; i <= worstAt; ++i) { envAtWorst = reference.getNextSample(); }
+
+            std::printf("  attack %5.3f s: first sample %+.6f, largest step %.6f at sample %d "
+                        "(%.2f ms), envelope there %.6f\n",
+                        attack, trace.empty() ? 0.0f : trace[0], worstStep, worstAt,
+                        1000.0 * worstAt / kSampleRate, envAtWorst);
+        }
+        std::printf("\n");
+        }
+
+        // A SECOND note, after the first has been released. This is what a
+        // player actually does, and it is where a voice gets reused with its
+        // envelope part way through a release.
+        std::printf("  a second note while the first is still releasing:\n");
+        for (const auto gapSeconds : { 0.05, 0.20, 0.60 })
+        {
+            PX3SynthAudioProcessor processor;
+            setParam(processor, "ampAttack", 1.000f);
+            setParam(processor, "ampDecay", 0.100f);
+            setParam(processor, "ampSustain", 1.00f);
+            setParam(processor, "ampRelease", 0.500f);
+
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            juce::MidiBuffer midi;
+
+            const auto blocksFor = [](double seconds)
+            {
+                return static_cast<int>(seconds * kSampleRate / kBlockSize);
+            };
+
+            // Note on, hold, note off.
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+            for (int b = 0; b < blocksFor(0.8); ++b)
+            {
+                buffer.clear(); processor.processBlock(buffer, midi); midi.clear();
+            }
+            midi.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
+            for (int b = 0; b < blocksFor(gapSeconds); ++b)
+            {
+                buffer.clear(); processor.processBlock(buffer, midi); midi.clear();
+            }
+
+            // The level just before the second note, then the second note.
+            buffer.clear(); processor.processBlock(buffer, midi);
+            const auto levelBefore = buffer.getMagnitude(0, kBlockSize);
+
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+            std::vector<float> after;
+            for (int b = 0; b < blocksFor(0.05); ++b)
+            {
+                buffer.clear(); processor.processBlock(buffer, midi); midi.clear();
+                for (int i = 0; i < kBlockSize; ++i) { after.push_back(buffer.getSample(0, i)); }
+            }
+
+            auto worstStep = 0.0f;
+            auto worstAt = 0;
+            for (std::size_t i = 1; i < after.size(); ++i)
+            {
+                const auto step = std::abs(after[i] - after[i - 1]);
+                if (step > worstStep) { worstStep = step; worstAt = static_cast<int>(i); }
+            }
+            auto peakAfter = 0.0f;
+            for (const auto v : after) { peakAfter = juce::jmax(peakAfter, std::abs(v)); }
+
+            std::printf("    gap %4.0f ms: level before %.5f, peak in the first 50 ms %.5f, "
+                        "largest step %.5f at %.2f ms\n",
+                        gapSeconds * 1000.0, levelBefore, peakAfter, worstStep,
+                        1000.0 * worstAt / kSampleRate);
+        }
+        std::printf("\n");
+
+        // The envelope alone, retriggered during its release, with a long
+        // attack. This is where the shape of the artifact shows.
+        {
+            AmpEnvelope envelope;
+            envelope.prepare(kSampleRate);
+            EnvelopeSettings settings;
+            settings.attackSeconds = 1.000f;
+            settings.decaySeconds = 0.100f;
+            settings.sustainLevel = 1.0f;
+            settings.releaseSeconds = 0.500f;
+            envelope.setSettings(settings);
+
+            envelope.noteOn();
+            for (int i = 0; i < static_cast<int>(kSampleRate * 1.2); ++i)
+            {
+                envelope.getNextSample();
+            }
+            envelope.noteOff();
+
+            auto atNoteOff = 0.0f;
+            for (int i = 0; i < static_cast<int>(kSampleRate * 0.05); ++i)
+            {
+                atNoteOff = envelope.getNextSample();
+            }
+
+            std::printf("  the ENVELOPE retriggered during its release "
+                        "(1 s attack, level %.4f):\n", atNoteOff);
+            envelope.noteOn();
+            for (const auto ms : { 0.0, 0.5, 1.0, 2.0, 5.0, 10.0, 25.0, 50.0, 100.0 })
+            {
+                static double lastMs = -1.0;
+                const auto target = static_cast<int>(kSampleRate * ms / 1000.0);
+                const auto from = static_cast<int>(kSampleRate * juce::jmax(0.0, lastMs) / 1000.0);
+                auto value = 0.0f;
+                for (int i = from; i <= target; ++i) { value = envelope.getNextSample(); }
+                lastMs = ms;
+                std::printf("    %6.1f ms after the retrigger: %.5f\n", ms, value);
+            }
+            std::printf("\n");
+        }
+
+        std::printf("  the first 24 samples at a 1 s attack, factory defaults:\n");
+        const auto slow = render(1.000f, 24, false);
+        for (std::size_t i = 0; i < slow.size(); ++i)
+        {
+            std::printf("    %2d  %+.6f\n", static_cast<int>(i), slow[i]);
         }
         std::printf("\n");
         return 0;

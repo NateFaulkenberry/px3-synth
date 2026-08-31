@@ -373,6 +373,41 @@ double BreakpointEnvelope::Snapshot::evaluate(int first, int last, double second
     return fallbackValue;
 }
 
+double BreakpointEnvelope::Snapshot::firstSegmentEnd() const noexcept
+{
+    if (segmentCount <= 0) { return 0.0; }
+
+    const auto& first = segments[0];
+    return first.invDuration > 0.0 ? first.startTime + 1.0 / first.invDuration
+                                   : first.startTime;
+}
+
+float BreakpointEnvelope::Snapshot::valueAtHeld(double seconds, float fromValue) const noexcept
+{
+    const auto plain = valueAtHeld(seconds);
+
+    const auto attackEnd = firstSegmentEnd();
+    if (fromValue <= 1.0e-6f || attackEnd <= 0.0 || seconds >= attackEnd)
+    {
+        return plain;
+    }
+
+    // The attack, rescaled to run from `fromValue` to the peak instead of from
+    // zero to the peak. At the end of the segment the two agree exactly, so
+    // the lift disappears at the attack's own corner and nothing downstream of
+    // it moves.
+    const auto peak = static_cast<double>(segments[0].startValue + segments[0].valueSpan);
+    const auto span = peak - static_cast<double>(fromValue);
+    const auto reach = peak - segments[0].startValue;
+    if (std::abs(reach) < 1.0e-12)
+    {
+        return plain;
+    }
+
+    const auto travelled = (static_cast<double>(plain) - segments[0].startValue) / reach;
+    return static_cast<float>(static_cast<double>(fromValue) + travelled * span);
+}
+
 float BreakpointEnvelope::Snapshot::valueAtHeld(double seconds) const noexcept
 {
     if (segmentCount <= 0)

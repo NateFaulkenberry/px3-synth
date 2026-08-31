@@ -125,6 +125,22 @@ public:
         // since note-off for the release phase.
         float valueAtHeld(double seconds) const noexcept;
 
+        // The held phase, lifted so the FIRST segment begins at `fromValue`
+        // instead of at zero.
+        //
+        // The mirror of valueAtReleased, and for the same reason. Retriggering
+        // during a release restarts the contour at zero, so the level dives
+        // from wherever the tail was down to nothing before the new attack
+        // begins - measured, 0.4934 to 0.0052 in 5 ms under a one second
+        // attack, which is a click. Starting the attack from the current level
+        // removes the dive; the lift is gone by the end of the attack, so
+        // nothing after it is affected.
+        float valueAtHeld(double seconds, float fromValue) const noexcept;
+
+        // Where the first segment ends, so a caller can tell whether the lift
+        // above still applies.
+        double firstSegmentEnd() const noexcept;
+
         // The release phase, offset so it begins at `fromValue` rather than at
         // the sustain point.
         //

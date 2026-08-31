@@ -36,5 +36,10 @@ private:
     bool finished { true };
     float releaseLevelAnchor { 0.0f };
 
+    // Where the attack begins. Zero on a fresh voice; on a retrigger it is the
+    // level the envelope had reached, so the new attack rises from there
+    // rather than diving to silence first. Same reason as the amp envelope's.
+    float attackLevelAnchor { 0.0f };
+
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> outputSmoother;
 };
