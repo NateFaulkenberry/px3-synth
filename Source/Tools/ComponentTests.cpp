@@ -2615,6 +2615,151 @@ void testWavetable()
         }
     }
 
+    // ---- a sine LFO on the scan must not stall at the ends -------------------
+    // A sine slows at its extrema because its derivative goes to zero. It does
+    // not STOP there. Clamping a bipolar source that swings further than the
+    // base has room for turns it into a square with rounded shoulders, and
+    // measured, that pinned the scan for 65.6% of every cycle in stalls of
+    // 661 ms.
+    {
+        juce::StringArray stalled;
+        juce::StringArray offCentre;
+        juce::String detail;
+        auto worstStep = 0.0f;
+
+        for (const auto base : { 0.25f, 0.50f, 0.75f })
+        {
+            for (const auto amount : { 0.25f, 0.60f, 1.00f })
+            {
+                PX3SynthAudioProcessor processor;
+                makePlainPatch(processor);
+                setChoice(processor, "osc1Mode", 8);
+                setParam(processor, "osc1WtPos", base);
+                setParam(processor, "lfoEnabled", 1.0f);
+                setParam(processor, "lfoFrequency", 0.5f);
+                setParam(processor, "lfoAmount", amount);
+                setChoice(processor, "lfoWaveform", 0);
+                processor.setLfoAssignmentByParameterId("osc1WtPos");
+
+                processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                processor.prepareToPlay(kSampleRate, kBlockSize);
+
+                std::vector<float> trail;
+                juce::AudioBuffer<float> buffer(2, kBlockSize);
+                juce::MidiBuffer midi;
+                midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
+                for (int block = 0; block < static_cast<int>(4.0 * kSampleRate / kBlockSize); ++block)
+                {
+                    buffer.clear();
+                    processor.processBlock(buffer, midi);
+                    midi.clear();
+                    trail.push_back(processor.getModulatedWavetablePosition(0));
+                }
+
+                int longestRun = 0, run = 0;
+                auto low = 1.0f, high = 0.0f;
+                for (std::size_t i = 0; i < trail.size(); ++i)
+                {
+                    low = juce::jmin(low, trail[i]);
+                    high = juce::jmax(high, trail[i]);
+                    if (i == 0) { continue; }
+
+                    worstStep = juce::jmax(worstStep, std::abs(trail[i] - trail[i - 1]));
+
+                    const auto pinned = (trail[i] <= 1.0e-4f || trail[i] >= 1.0f - 1.0e-4f)
+                                        && std::abs(trail[i] - trail[i - 1]) < 1.0e-6f;
+                    if (pinned) { ++run; longestRun = juce::jmax(longestRun, run); }
+                    else { run = 0; }
+                }
+
+                const auto stallMs = longestRun * kBlockSize * 1000.0 / kSampleRate;
+                if (stallMs > 20.0)
+                {
+                    stalled.add("base " + fmt(base, 2) + " amount " + fmt(amount, 2)
+                                + " stalled " + fmt(stallMs, 0) + " ms");
+                }
+
+                // Centred on the base, which is what a bipolar source means -
+                // an implementation that assumed modulation starts at frame 0
+                // would fail here and nowhere else.
+                if (std::abs((low + high) * 0.5f - base) > 0.01f)
+                {
+                    offCentre.add("base " + fmt(base, 2) + " swings "
+                                  + fmt(low, 2) + ".." + fmt(high, 2));
+                }
+
+                if (std::abs(amount - 1.0f) < 1.0e-6f)
+                {
+                    detail << (detail.isEmpty() ? "" : ", ") << "base " << fmt(base, 2) << " -> "
+                           << fmt(low, 3) << ".." << fmt(high, 3);
+                }
+            }
+        }
+
+        check("WavetableMod_ASineLfoNeverStallsAtTheEnds", stalled.isEmpty(),
+              stalled.isEmpty() ? "9 base/amount combinations, no stall over 20 ms at either end"
+                                : stalled.joinIntoString("; "));
+
+        check("WavetableMod_ModulationStaysCentredOnTheBase", offCentre.isEmpty(),
+              offCentre.isEmpty() ? "at full amount - " + detail
+                                  : offCentre.joinIntoString("; "));
+
+        check("WavetableMod_ThePositionMovesContinuously", worstStep < 0.05f,
+              "largest change between consecutive blocks: " + fmt(worstStep, 5)
+                  + " of the table");
+    }
+
+    // ---- the oscillator actually follows it ---------------------------------
+    // The position moving is not the same claim as the SOUND moving. This
+    // renders audio and watches the timbre, so a fix that only reached the
+    // display would fail here.
+    {
+        PX3SynthAudioProcessor processor;
+        makePlainPatch(processor);
+        setChoice(processor, "osc1Mode", 8);
+        setChoice(processor, "osc1WtTable", 0);
+        setParam(processor, "osc1WtPos", 0.5f);
+        setParam(processor, "lfoEnabled", 1.0f);
+        setParam(processor, "lfoFrequency", 0.5f);
+        setParam(processor, "lfoAmount", 1.0f);
+        setChoice(processor, "lfoWaveform", 0);
+        setParam(processor, "analogEnabled", 0.0f);
+        processor.setLfoAssignmentByParameterId("osc1WtPos");
+
+        const auto capture = render(processor, static_cast<int>(kSampleRate * 4.0),
+                                    { { 1000, true, 45, 0.9f } });
+
+        // Brightness per 50 ms window. Sweeping a table from its soft end to its
+        // bright one and back has to show up as a rise and fall here.
+        std::vector<double> brightness;
+        const auto window = static_cast<int>(kSampleRate * 0.05);
+        for (int start = window; start + window < static_cast<int>(capture.left.size()); start += window)
+        {
+            double slope = 0.0, level = 0.0;
+            for (int i = 1; i < window; ++i)
+            {
+                const auto d = static_cast<double>(capture.left[static_cast<std::size_t>(start + i)])
+                             - capture.left[static_cast<std::size_t>(start + i - 1)];
+                slope += d * d;
+                level += static_cast<double>(capture.left[static_cast<std::size_t>(start + i)])
+                       * capture.left[static_cast<std::size_t>(start + i)];
+            }
+            brightness.push_back(level > 1.0e-12 ? std::sqrt(slope / level) : 0.0);
+        }
+
+        auto low = 1.0e9, high = 0.0;
+        for (const auto b : brightness) { low = juce::jmin(low, b); high = juce::jmax(high, b); }
+
+        check("WavetableMod_TheOscillatorFollowsTheScan", high > low * 1.5,
+              "timbre swept over a " + fmt(high / juce::jmax(1.0e-9, low), 2)
+                  + "x range of spectral slope while the LFO ran");
+
+        auto finite = true;
+        for (const auto x : capture.left) { if (! std::isfinite(x)) { finite = false; break; } }
+        check("WavetableMod_TheSweptOscillatorStaysFinite", finite,
+              "no non-finite samples across four seconds of full-range scanning");
+    }
+
     // ---- modulation rings on every knob -------------------------------------
     // The scan knob got a ring showing where modulation had actually pushed it;
     // this is the same treatment for any knob with a source pointed at it.

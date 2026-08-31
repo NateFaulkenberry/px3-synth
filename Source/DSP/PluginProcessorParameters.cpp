@@ -53,7 +53,14 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
         const auto samePointer = (target.parameter == parameter);
         if (sameId || samePointer)
         {
-            totalDelta += target.normalizedDepth * (signal * amount);
+            // Room the base has on its nearer side. A bipolar source scaled by
+            // this reaches the boundary exactly at full amount and turns around
+            // there, instead of driving past it and being clamped flat.
+            const auto headroom = target.centreOnBase
+                                    ? juce::jmin(base, 1.0f - base)
+                                    : 1.0f;
+
+            totalDelta += target.normalizedDepth * headroom * (signal * amount);
         }
     };
 
@@ -1051,10 +1058,15 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
             continue;
         }
 
+        // The wavetable scan is centred on its base. It is the destination where
+        // a clamped sine is most visible - the stack visibly stops at an end -
+        // but the same treatment suits any destination whose range is a position
+        // rather than an amount, and it is one flag to add.
         lfoAssignableTargets.push_back({ id,
                                          floatParam->getName(64),
                                          floatParam,
-                                         lfoDepthForParameterId(id) });
+                                         lfoDepthForParameterId(id),
+                                         id.endsWithIgnoreCase("WtPos") });
 
         lfoAssignmentDisplayNames.add(floatParam->getName(64));
     }

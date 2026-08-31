@@ -116,12 +116,10 @@ std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcess
                                              static_cast<juce::RangedAudioParameter&>(getOscillatorMacroCParam(oscIndex)).getValue())));
         settings.vowelIndex = getOscillatorVowelParam(oscIndex).getIndex();
 
-        // Modulated exactly like every other continuous control, which is what
-        // makes WT Position an ordinary modulation destination rather than a
-        // special case.
-        settings.wtPosition = clamp01(getOscillatorWtPositionParam(oscIndex).convertFrom0to1(
-            applyModulationToNormalizedValue(&getOscillatorWtPositionParam(oscIndex),
-                                             static_cast<juce::RangedAudioParameter&>(getOscillatorWtPositionParam(oscIndex)).getValue())));
+        // The SAME call the display makes, not the same expression written out
+        // twice. Two copies of this calculation is exactly how a visualisation
+        // drifts from the sound it claims to be showing; one function cannot.
+        settings.wtPosition = getModulatedWavetablePosition(oscIndex);
 
         // Borrowed for the duration of the block. See WavetableSlot.
         settings.table = wavetableSlots[static_cast<std::size_t>(oscIndex)].current();
