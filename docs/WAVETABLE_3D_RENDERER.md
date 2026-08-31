@@ -258,9 +258,11 @@ the camera and carries the perspective rather than being drawn on the glass.
 is ambiguous - it could be lying flat or standing up. A little thickness resolves
 that in one glance, and the four short corner posts are what say which way is
 down. Twelve edges in total: a top face, a bottom face, and the posts between
-them. The top perimeter carries the reading at full strength; the underside and
-the posts are drawn at 45% of it, so the result is a slab with thickness rather
-than a wireframe cage.
+them, every one at the same weight so it reads as a wireframe rather than a
+solid with a lit top. The underside and posts were drawn at 45% at first, on the
+theory that playing them down would make the box read as a slab - it does, and a
+slab is a surface, which is the opposite of what is wanted. Depth still separates
+near from far, but that is perspective rather than shading.
 
 **Only the perimeter of it, and deliberately so.** The rectangle alone already says how
 wide the waveform is, how deep the table is and which way the camera is looking.
@@ -284,9 +286,13 @@ environment, not part of the instrument.
 Its height is `lowest waveform point - kFloorDrop`, computed from the geometry
 rather than assumed, so it stays beneath the waveform whatever the table
 contains. Held by a test across all eight factory tables: the box runs from
-y -0.591 to -0.681 under a waveform bottoming out at -0.411, spanning the full
-2.0 x 2.0 of the table, and its depth is checked against the gap below the
-waveform so it can never grow from a slab into a plinth.
+y -0.466 to -0.666 under a waveform bottoming out at -0.411, spanning the full
+2.0 x 2.0 of the table.
+
+Its depth is checked against the WAVEFORM's height, not against the gap beneath
+it. Measuring against the gap - which the first version of that test did - made
+the two settings fight: moving the floor closer to the waveform shrank the gap,
+and so shrank the depth the box was allowed to have.
 
 Including it in the auto-fit costs a little of the stack's size - the framing has
 to hold the floor too - which is the honest trade for having it in frame at all.

@@ -135,9 +135,9 @@ void main()
     {
         float edge = smoothstep(0.0, 0.7, across);
 
-        // vStored carries the floor's emphasis - full for the top perimeter,
-        // less for the underside and the corner posts, so the box reads as a
-        // slab rather than a wireframe cage.
+        // vStored carries the floor's emphasis. Equal across the box today, so
+        // it reads as a wireframe; the attribute stays because varying it is how
+        // any future emphasis would be expressed.
         float floorAlpha = 0.16 * depthFade * edge * vStored;
         vec3 floorColour = mix(base, vec3(1.0), 0.25);
 
@@ -489,11 +489,14 @@ Wavetable3DRenderer::FloorInfo Wavetable3DRenderer::getFloorInfo() const
     }
 
     info.lowestWaveformY = 1.0e9f;
+    auto highestWaveformY = -1.0e9f;
     for (int i = 0; i < floorFirstVertex; ++i)
     {
-        info.lowestWaveformY = juce::jmin(info.lowestWaveformY,
-                                          vertices[static_cast<std::size_t>(i)].position[1]);
+        const auto y = vertices[static_cast<std::size_t>(i)].position[1];
+        info.lowestWaveformY = juce::jmin(info.lowestWaveformY, y);
+        highestWaveformY = juce::jmax(highestWaveformY, y);
     }
+    info.waveformHeight = highestWaveformY - info.lowestWaveformY;
 
     info.topY = -1.0e9f;
     info.bottomY = 1.0e9f;
@@ -582,11 +585,15 @@ void Wavetable3DRenderer::buildFloor()
 
     const auto w = kWaveformHalfWidth;
 
-    // The top perimeter carries the reading; the underside and the corner posts
-    // are fainter, so the box reads as a slab with thickness rather than as a
-    // wireframe cage.
+    // Every edge at the same weight, so the box reads as a wireframe rather
+    // than as a solid with a lit top.
+    //
+    // The underside and the posts were drawn at 45% at first, on the theory that
+    // playing them down would make the box read as a slab. It does - and a slab
+    // is a surface, which is the opposite of what is wanted here. Depth still
+    // separates near from far; that is perspective, not shading.
     constexpr float kTopEmphasis = 1.0f;
-    constexpr float kUnderEmphasis = 0.45f;
+    constexpr float kUnderEmphasis = 1.0f;
 
     for (const auto& face : { std::make_pair(topY, kTopEmphasis),
                               std::make_pair(bottomY, kUnderEmphasis) })

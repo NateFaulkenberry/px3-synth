@@ -2917,12 +2917,19 @@ void testWavetable()
                           + " is not below the waveform at " + fmt(floor.lowestWaveformY, 3));
             }
 
-            // Shallow. Enough to read as a slab, not enough to become a plinth:
-            // deeper than the drop below the waveform and it would dominate.
+            // Deep enough that the corner posts read as posts, shallow enough
+            // that the box stays subordinate to the waveform.
+            //
+            // Measured against the WAVEFORM's own height rather than against the
+            // gap beneath it, which is what the first version of this did - and
+            // that made the two settings fight each other: moving the floor
+            // closer to the waveform shrank the gap, and so shrank the depth the
+            // box was allowed to have.
             const auto thickness = floor.topY - floor.bottomY;
-            if (thickness <= 0.0f || thickness > 0.5f * (floor.lowestWaveformY - floor.bottomY))
+            if (thickness <= 0.0f || thickness > 0.5f * floor.waveformHeight)
             {
-                wrong.add(name + ": box is " + fmt(thickness, 3) + " deep");
+                wrong.add(name + ": box is " + fmt(thickness, 3) + " deep against a waveform "
+                          + fmt(floor.waveformHeight, 3) + " tall");
             }
 
             if (floor.halfWidth < 0.9f || floor.halfDepth < 0.9f)

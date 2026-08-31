@@ -98,6 +98,7 @@ public:
         float topY { 0.0f };
         float bottomY { 0.0f };
         float lowestWaveformY { 0.0f };
+        float waveformHeight { 0.0f };
         float halfWidth { 0.0f };
         float halfDepth { 0.0f };
     };
@@ -121,11 +122,12 @@ public:
     // How far the floor sits below the lowest point the waveform reaches.
     // Named once and used once - the waveform must not intersect it at any
     // scan position, and that relationship should be adjustable in one place.
-    static constexpr float kFloorDrop = 0.18f;
+    static constexpr float kFloorDrop = 0.055f;
 
-    // How deep the floor's box is. Shallow on purpose: enough to read as a
-    // slab, not enough to become a plinth.
-    static constexpr float kFloorThickness = 0.09f;
+    // How deep the box is. Enough that the corner posts are clearly posts and
+    // the perspective on them is readable, which is what carries the sense of a
+    // volume rather than an outline.
+    static constexpr float kFloorThickness = 0.20f;
 
     static constexpr float kMinAzimuth = -0.30f;
     static constexpr float kMaxAzimuth = 1.55f;
