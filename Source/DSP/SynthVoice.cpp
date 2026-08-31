@@ -1065,6 +1065,25 @@ void SynthVoice::setAmpEnvelope(const EnvelopeSettings& settings)
     }
 }
 
+void SynthVoice::setAmpEnvelopeShape(const px3::BreakpointEnvelope& envelope)
+{
+    if (ampEnvelopeEnabled)
+    {
+        ampEnvelope.setEnvelope(envelope);
+    }
+}
+
+void SynthVoice::setModEnvelopeShapes(const std::array<px3::BreakpointEnvelope, 3>& envelopes)
+{
+    for (std::size_t i = 0; i < modEnvelopeGenerators.size(); ++i)
+    {
+        if (modEnvelopeEnabled[i])
+        {
+            modEnvelopeGenerators[i].setEnvelope(envelopes[i]);
+        }
+    }
+}
+
 void SynthVoice::setAmpEnvelopeEnabled(bool shouldEnable)
 {
     ampEnvelopeEnabled = shouldEnable;

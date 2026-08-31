@@ -953,6 +953,71 @@ void testBreakpointEnvelope()
                   + fmt(generatorReference[12], 4));
     }
 
+    // ---- persistence --------------------------------------------------------
+    {
+        PX3SynthAudioProcessor source;
+
+        // A shape the four ADSR numbers cannot describe.
+        auto shaped = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+        const auto extra = shaped.addPoint(0.02, 0.35);
+        shaped.setCurve(0, 0.62);
+        if (extra >= 0) { shaped.setCurve(extra, -0.41); }
+        source.setShapedEnvelope(0, shaped);
+        source.setShapedEnvelope(2, shaped);
+
+        juce::MemoryBlock state;
+        source.getStateInformation(state);
+
+        PX3SynthAudioProcessor restored;
+        restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        const auto back = restored.getShapedEnvelope(0);
+        auto worstTime = 0.0, worstValue = 0.0, worstCurve = 0.0;
+        const auto sameCount = back.getPointCount() == shaped.getPointCount();
+        if (sameCount)
+        {
+            for (int i = 0; i < shaped.getPointCount(); ++i)
+            {
+                worstTime = juce::jmax(worstTime,
+                                       std::abs(back.getPoint(i).timeSeconds - shaped.getPoint(i).timeSeconds));
+                worstValue = juce::jmax(worstValue,
+                                        std::abs(back.getPoint(i).value - shaped.getPoint(i).value));
+                worstCurve = juce::jmax(worstCurve,
+                                        std::abs(back.getPoint(i).curveToNext - shaped.getPoint(i).curveToNext));
+            }
+        }
+
+        check("Envelope_ShapeSurvivesTheStateRoundTrip",
+              sameCount && worstTime < 1.0e-9 && worstValue < 1.0e-9 && worstCurve < 1.0e-9
+                  && back.getSustainPoint() == shaped.getSustainPoint(),
+              sameCount ? juce::String(back.getPointCount()) + " points restored, worst error "
+                              + fmt(juce::jmax(worstTime, juce::jmax(worstValue, worstCurve)), 12)
+                        : juce::String(back.getPointCount()) + " points back from "
+                              + juce::String(shaped.getPointCount()));
+
+        // Each envelope is its own. Shaping AMP ENV and ENV 2 must not have
+        // touched ENV 1 or ENV 3.
+        check("Envelope_ShapingOneDoesNotTouchTheOthers",
+              restored.getShapedEnvelope(1).isPlainAdsr()
+                  && restored.getShapedEnvelope(3).isPlainAdsr()
+                  && ! restored.getShapedEnvelope(2).isPlainAdsr(),
+              "AMP ENV and ENV 2 came back shaped, ENV 1 and ENV 3 came back plain");
+
+        // A preset from before the editor has no node at all, and must load as
+        // plain ADSR rather than as an error.
+        PX3SynthAudioProcessor legacy;
+        juce::MemoryBlock legacyState;
+        legacy.getStateInformation(legacyState);
+
+        PX3SynthAudioProcessor migrated;
+        migrated.setShapedEnvelope(0, shaped);   // something to be cleared
+        migrated.setStateInformation(legacyState.getData(), static_cast<int>(legacyState.getSize()));
+
+        check("Envelope_APresetWithNoShapeLoadsAsPlainAdsr",
+              migrated.getShapedEnvelope(0).isPlainAdsr(),
+              "absence of the node means ADSR, and clears whatever was shaped before");
+    }
+
     // ---- instances are independent ------------------------------------------
     {
         auto first = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});

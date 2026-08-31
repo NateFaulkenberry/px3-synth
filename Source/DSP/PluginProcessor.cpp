@@ -1195,6 +1195,16 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     const auto subOsc = currentSubOscillatorSettings();
     const auto oscillatorLayers = currentOscillatorLayerSettings();
 
+    const auto shapedAmp = currentAmpEnvelope();
+    std::array<px3::BreakpointEnvelope, kEnvelopeSourceCount> shapedMod;
+    auto anyEnvelopeIsShaped = ! shapedAmp.isPlainAdsr();
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        shapedMod[static_cast<std::size_t>(envIndex)] = currentModEnvelope(envIndex);
+        anyEnvelopeIsShaped = anyEnvelopeIsShaped
+                              || ! shapedMod[static_cast<std::size_t>(envIndex)].isPlainAdsr();
+    }
+
     for (auto* voice : typedVoices)
     {
         if (voice != nullptr)
@@ -1202,6 +1212,15 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
             voice->setAmpEnvelope(ampEnvelope);
             voice->setAmpEnvelopeEnabled(ampEnvelopeEnabled);
             voice->setModEnvelopeSettings(modEnvelopeSettings, modEnvelopeEnabled);
+
+            // Only when the envelope is more than ADSR. Pushing the full shape
+            // unconditionally would copy 384 bytes per envelope per voice per
+            // block to say what the four parameters just said.
+            if (anyEnvelopeIsShaped)
+            {
+                voice->setAmpEnvelopeShape(shapedAmp);
+                voice->setModEnvelopeShapes(shapedMod);
+            }
             voice->setFilterSettings(filter);
             voice->setSubtractiveSettings(subtractive);
             voice->setSubOscillatorSettings(subOsc);
@@ -1480,6 +1499,17 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     const auto vibeTuning = vibeComponent.getTuning();
     const auto vibeBypass = vibeComponent.isBypassed();
     const auto vibeAmount = vibeBypass ? 0.0f : vibeComponent.getEffectiveAmount();
+
+    const auto shapedAmp = currentAmpEnvelope();
+    std::array<px3::BreakpointEnvelope, kEnvelopeSourceCount> shapedMod;
+    auto anyEnvelopeIsShaped = ! shapedAmp.isPlainAdsr();
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        shapedMod[static_cast<std::size_t>(envIndex)] = currentModEnvelope(envIndex);
+        anyEnvelopeIsShaped = anyEnvelopeIsShaped
+                              || ! shapedMod[static_cast<std::size_t>(envIndex)].isPlainAdsr();
+    }
+
     for (int voiceIndex = 0; voiceIndex < kPolyphonyVoiceCount; ++voiceIndex)
     {
         if (auto* voice = typedVoices[static_cast<std::size_t>(voiceIndex)])
@@ -1487,6 +1517,15 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             voice->setAmpEnvelope(ampEnvelope);
             voice->setAmpEnvelopeEnabled(ampEnvelopeEnabled);
             voice->setModEnvelopeSettings(modEnvelopeSettings, modEnvelopeEnabled);
+
+            // Only when the envelope is more than ADSR. Pushing the full shape
+            // unconditionally would copy 384 bytes per envelope per voice per
+            // block to say what the four parameters just said.
+            if (anyEnvelopeIsShaped)
+            {
+                voice->setAmpEnvelopeShape(shapedAmp);
+                voice->setModEnvelopeShapes(shapedMod);
+            }
             voice->setFilterSettings(filter);
             voice->setSubtractiveSettings(subtractive);
             voice->setSubOscillatorSettings(subOsc);

@@ -151,6 +151,33 @@ EnvelopeSettings PX3SynthAudioProcessor::currentAmpEnvelopeSettings() const
     return settings;
 }
 
+px3::BreakpointEnvelope PX3SynthAudioProcessor::currentAmpEnvelope() const
+{
+    const auto& stored = shapedEnvelopes[0];
+    return stored.isPlainAdsr() ? px3::BreakpointEnvelope::fromAdsr(currentAmpEnvelopeSettings())
+                                : stored;
+}
+
+px3::BreakpointEnvelope PX3SynthAudioProcessor::currentModEnvelope(int envIndex) const
+{
+    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
+    const auto& stored = shapedEnvelopes[static_cast<std::size_t>(idx + 1)];
+    return stored.isPlainAdsr()
+             ? px3::BreakpointEnvelope::fromAdsr(currentModEnvelopeSettings(idx))
+             : stored;
+}
+
+void PX3SynthAudioProcessor::setShapedEnvelope(int index, const px3::BreakpointEnvelope& envelope)
+{
+    shapedEnvelopes[static_cast<std::size_t>(juce::jlimit(0, kShapedEnvelopeCount - 1, index))]
+        = envelope;
+}
+
+px3::BreakpointEnvelope PX3SynthAudioProcessor::getShapedEnvelope(int index) const
+{
+    return shapedEnvelopes[static_cast<std::size_t>(juce::jlimit(0, kShapedEnvelopeCount - 1, index))];
+}
+
 EnvelopeSettings PX3SynthAudioProcessor::currentModEnvelopeSettings(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);

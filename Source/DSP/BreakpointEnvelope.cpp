@@ -171,6 +171,23 @@ void BreakpointEnvelope::setSustainPoint(int index)
     sustainPoint = juce::jlimit(0, juce::jmax(0, pointCount - 2), index);
 }
 
+void BreakpointEnvelope::setPoints(const Point* newPoints, int count, int newSustainPoint)
+{
+    if (newPoints == nullptr || count < kMinPoints)
+    {
+        return;
+    }
+
+    pointCount = juce::jmin(count, kMaxPoints);
+    for (int i = 0; i < pointCount; ++i)
+    {
+        points[static_cast<std::size_t>(i)] = newPoints[i];
+    }
+
+    sustainPoint = newSustainPoint;
+    sortAndClamp();
+}
+
 int BreakpointEnvelope::addPoint(double timeSeconds, double value)
 {
     if (pointCount >= kMaxPoints)

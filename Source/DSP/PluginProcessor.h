@@ -19,6 +19,7 @@
 #include "SmoothedGain.h"
 #include "SynthVoice.h"
 #include "WavetableSlot.h"
+#include "BreakpointEnvelope.h"
 #include "Vibe.h"
 
 #include <array>
@@ -178,6 +179,16 @@ public:
     // parameter names. The two differing is the whole failure mode this exists
     // to make visible.
     juce::String getLoadedWavetableName(int oscIndex) const;
+
+    // The shaped envelopes. Index 0 is AMP ENV; 1..3 are ENV 1..3, which are
+    // kept in the same array only because they are the same kind of thing - the
+    // two systems stay separate everywhere it matters.
+    //
+    // Public because the editor owns the editing: it reads a shape, changes it,
+    // and hands it back. Message thread.
+    static constexpr int kShapedEnvelopeCount = 4;
+    void setShapedEnvelope(int index, const px3::BreakpointEnvelope& envelope);
+    px3::BreakpointEnvelope getShapedEnvelope(int index) const;
 
     // A user table is named, not indexed: the factory list has fixed positions
     // and the user library does not. Empty means "use the factory choice".
@@ -594,6 +605,16 @@ private:
     std::array<OscillatorLayerSettings, kOscillatorSourceCount> currentOscillatorLayerSettings() const;
     std::array<FilterSettings, kFilterInstanceCount> currentFilterSettings() const;
     EnvelopeSettings currentAmpEnvelopeSettings() const;
+
+    // The shape each envelope is actually running.
+    //
+    // While an envelope is still the four numbers ADSR describes - which is
+    // every preset that predates the editor - the PARAMETERS are authoritative,
+    // so automation keeps driving it. Once it has been shaped into something
+    // they cannot describe, the stored envelope is authoritative and the editor
+    // writes the parameters back to match.
+    px3::BreakpointEnvelope currentAmpEnvelope() const;
+    px3::BreakpointEnvelope currentModEnvelope(int envIndex) const;
     EnvelopeSettings currentModEnvelopeSettings(int envIndex) const;
     LfoSettings currentLfoSettings() const;
     LfoSettings currentLfoSettings(int lfoIndex) const;
@@ -840,6 +861,11 @@ private:
     std::array<int, kOscillatorSourceCount> loadedWavetableIndex { { -1, -1, -1 } };
     std::array<juce::String, kOscillatorSourceCount> userWavetableNames;
     std::array<juce::String, kOscillatorSourceCount> missingWavetableNames;
+
+    // AMP ENV at 0, ENV 1..3 after it. Each instance owns its own; nothing is
+    // shared between them, which is what keeps editing one from touching
+    // another.
+    std::array<px3::BreakpointEnvelope, kShapedEnvelopeCount> shapedEnvelopes;
 
     void handleAsyncUpdate() override;
 

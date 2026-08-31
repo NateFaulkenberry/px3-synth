@@ -7,6 +7,7 @@
 #include "PX3Diagnostics.h"
 #include "SmoothedGain.h"
 #include "EnvelopeTypes.h"
+#include "BreakpointEnvelope.h"
 #include "FilterTypes.h"
 #include "OscillatorTypes.h"
 #include "OscillatorUnit.h"
@@ -45,6 +46,13 @@ public:
 
     void setAmpEnvelope(const EnvelopeSettings& settings);
     void setAmpEnvelopeEnabled(bool shouldEnable);
+    // The shaped envelopes, when they are more than four numbers can describe.
+    // Kept alongside the ADSR setters rather than replacing them: an envelope
+    // that is still plain ADSR is driven by its parameters, so most of the time
+    // these are never called.
+    void setAmpEnvelopeShape(const px3::BreakpointEnvelope& envelope);
+    void setModEnvelopeShapes(const std::array<px3::BreakpointEnvelope, 3>& envelopes);
+
     void setModEnvelopeSettings(const std::array<EnvelopeSettings, 3>& settings,
                                 const std::array<bool, 3>& enabled);
     float getModEnvelopeValue(int envIndex) const;

@@ -61,6 +61,24 @@ inline const juce::Identifier kTopMenuViewId("topMenuView");
 inline const juce::Identifier kUserWavetablesId("userWavetables");
 inline const juce::Identifier kUserWavetableNameId("name");
 inline const juce::Identifier kUserWavetableOscId("osc");
+
+// Envelope shapes. Versioned from the start, because the point of the
+// breakpoint model is that it will grow - loop points, per-point modes - and a
+// reader that cannot tell which shape of data it is holding has to guess.
+//
+// Only envelopes that ADSR cannot describe are written. A preset from before
+// the editor has no node here at all, which is what makes the migration nothing:
+// absence is a valid state meaning "plain ADSR", not an error to detect.
+inline const juce::Identifier kEnvelopeShapesId("envelopeShapes");
+inline const juce::Identifier kEnvelopeShapeVersionId("version");
+inline const juce::Identifier kEnvelopeShapeId("envelope");
+inline const juce::Identifier kEnvelopeShapeIndexId("index");
+inline const juce::Identifier kEnvelopeShapeSustainId("sustain");
+inline const juce::Identifier kEnvelopePointId("point");
+inline const juce::Identifier kEnvelopePointTimeId("t");
+inline const juce::Identifier kEnvelopePointValueId("v");
+inline const juce::Identifier kEnvelopePointCurveId("c");
+inline constexpr int kEnvelopeShapeVersion = 2;
 // Which preset the editor last loaded. UI session state like topMenuView: the
 // processor never reads it, and it is stripped from preset FILES - a preset
 // naming itself would be circular. It exists because the editor is rebuilt

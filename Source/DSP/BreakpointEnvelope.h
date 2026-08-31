@@ -68,6 +68,14 @@ public:
     void setCurve(int index, double curve);
     void setSustainPoint(int index);
 
+    // Replaces every point at once.
+    //
+    // Deserialization needs this: building a stored envelope by removing the
+    // default points and adding the stored ones does not work, because the
+    // mutators correctly refuse to remove the anchor, the end and the sustain -
+    // which leaves the defaults mixed in with what was loaded.
+    void setPoints(const Point* newPoints, int count, int newSustainPoint);
+
     // Returns the index of the new point, or -1 if it could not be added. The
     // point is inserted in time order and SPLITS the segment it lands in rather
     // than being appended.

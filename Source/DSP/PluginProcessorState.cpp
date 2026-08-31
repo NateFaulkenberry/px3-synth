@@ -135,6 +135,45 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
         state.addChild(userWavetables, -1, nullptr);
     }
 
+    // Envelope shapes, and only the ones the four ADSR parameters cannot
+    // already describe.
+    {
+        juce::ValueTree shapes(kEnvelopeShapesId);
+        shapes.setProperty(kEnvelopeShapeVersionId, kEnvelopeShapeVersion, nullptr);
+
+        auto wroteAny = false;
+        for (int index = 0; index < kShapedEnvelopeCount; ++index)
+        {
+            const auto envelope = getShapedEnvelope(index);
+            if (envelope.isPlainAdsr())
+            {
+                continue;
+            }
+
+            juce::ValueTree node(kEnvelopeShapeId);
+            node.setProperty(kEnvelopeShapeIndexId, index, nullptr);
+            node.setProperty(kEnvelopeShapeSustainId, envelope.getSustainPoint(), nullptr);
+
+            for (int p = 0; p < envelope.getPointCount(); ++p)
+            {
+                const auto& point = envelope.getPoint(p);
+                juce::ValueTree entry(kEnvelopePointId);
+                entry.setProperty(kEnvelopePointTimeId, point.timeSeconds, nullptr);
+                entry.setProperty(kEnvelopePointValueId, point.value, nullptr);
+                entry.setProperty(kEnvelopePointCurveId, point.curveToNext, nullptr);
+                node.addChild(entry, -1, nullptr);
+            }
+
+            shapes.addChild(node, -1, nullptr);
+            wroteAny = true;
+        }
+
+        if (wroteAny)
+        {
+            state.addChild(shapes, -1, nullptr);
+        }
+    }
+
     // Keep modulation source states in dedicated nodes for backward-compatible evolution.
     juce::ValueTree lfoSources(kLfoSourcesStateId);
     for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
@@ -454,6 +493,45 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                                           static_cast<int>(entry.getProperty(kUserWavetableOscId, 0)));
             userWavetableNames[static_cast<std::size_t>(osc)] =
                 entry.getProperty(kUserWavetableNameId).toString();
+        }
+    }
+
+    // Envelope shapes. Cleared first, so a preset built from plain ADSR removes
+    // whatever the previous one had shaped - it does that by saying nothing.
+    for (int index = 0; index < kShapedEnvelopeCount; ++index)
+    {
+        setShapedEnvelope(index, px3::BreakpointEnvelope {});
+    }
+
+    if (const auto shapes = state.getChildWithName(kEnvelopeShapesId); shapes.isValid())
+    {
+        // A version this build does not know is left alone rather than read
+        // wrongly: the envelopes stay ADSR, which is a sound the preset at least
+        // partly intended, where misreading points is one that nobody did.
+        const auto version = static_cast<int>(shapes.getProperty(kEnvelopeShapeVersionId, 0));
+        if (version >= 1 && version <= kEnvelopeShapeVersion)
+        {
+            for (const auto& node : shapes)
+            {
+                const auto index = juce::jlimit(0, kShapedEnvelopeCount - 1,
+                                                static_cast<int>(node.getProperty(kEnvelopeShapeIndexId, 0)));
+
+                std::vector<px3::BreakpointEnvelope::Point> loaded;
+                loaded.reserve(static_cast<std::size_t>(px3::BreakpointEnvelope::kMaxPoints));
+                for (const auto& entry : node)
+                {
+                    px3::BreakpointEnvelope::Point point;
+                    point.timeSeconds = static_cast<double>(entry.getProperty(kEnvelopePointTimeId, 0.0));
+                    point.value = static_cast<double>(entry.getProperty(kEnvelopePointValueId, 0.0));
+                    point.curveToNext = static_cast<double>(entry.getProperty(kEnvelopePointCurveId, 0.0));
+                    loaded.push_back(point);
+                }
+
+                px3::BreakpointEnvelope envelope;
+                envelope.setPoints(loaded.data(), static_cast<int>(loaded.size()),
+                                   static_cast<int>(node.getProperty(kEnvelopeShapeSustainId, 2)));
+                setShapedEnvelope(index, envelope);
+            }
         }
     }
 
