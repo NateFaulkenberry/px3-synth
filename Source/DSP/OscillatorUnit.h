@@ -2,6 +2,7 @@
 
 #include "OscillatorMode.h"
 #include "OscillatorTypes.h"
+#include "WavetableReader.h"
 
 #include <array>
 #include <vector>
@@ -10,6 +11,14 @@
 class OscillatorUnit
 {
 public:
+    // How long the scan takes to reach a new position.
+    //
+    // Long enough that the once-per-block step in the modulation sum is gone -
+    // at 512 samples that step arrives at 93.75 Hz and is plainly audible as a
+    // zipper - and short enough that a fast envelope sweeping the scan still
+    // arrives when it should.
+    static constexpr double kWtPositionSmoothingSeconds = 0.003;
+
     // Lowest note frequency the Karplus delay must represent.
     static constexpr double kKarplusLowestFrequencyHz = 20.0;
 
@@ -137,6 +146,7 @@ private:
     float renderSuperSaw(double sampleRate, const RenderContext& context);
     float renderPwm(const RenderContext& context) const;
     float renderAdditive(const RenderContext& context, bool dynamic);
+    float renderWavetable(double sampleRate, const RenderContext& context);
     float renderFm(double sampleRate, const RenderContext& context);
     float renderHardSync(double sampleRate, const RenderContext& context);
     float renderKarplus(const RenderContext& context);
@@ -148,6 +158,10 @@ private:
 
     OscillatorSettings oscillatorSettings;
     DerivedCurves derived;
+
+    px3::WavetableReader wavetableReader;
+    float smoothedWtPosition { 0.0f };
+    float wtPositionCoeff { 1.0f };
     bool derivedValid { false };
     // The formant resonators are designed in hertz, so their coefficients need
     // the sample rate at the point the curves are built rather than at render.

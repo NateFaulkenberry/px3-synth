@@ -1072,6 +1072,133 @@ void testWavetable()
               juce::String(slot.getRetiredCount()) + " retired after 200 swaps");
     }
 
+    // ---- the oscillator, in the actual synth -------------------------------
+    // Everything above tests the wavetable machinery in isolation. This is the
+    // part that says the synth can play it.
+    {
+        const auto brightnessOf = [](const std::vector<float>& v)
+        {
+            double slope = 0.0;
+            for (std::size_t i = 1; i < v.size(); ++i)
+            {
+                const auto d = static_cast<double>(v[i]) - v[i - 1];
+                slope += d * d;
+            }
+            return std::sqrt(slope / static_cast<double>(std::max<std::size_t>(1, v.size())));
+        };
+
+        const auto renderAt = [](float position, int tableIndex)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "osc1Mode", 8);             // WAVETABLE
+            setChoice(processor, "osc1WtTable", tableIndex);
+            setParam(processor, "osc1WtPos", position);
+            setParam(processor, "analogEnabled", 0.0f);
+            return render(processor, static_cast<int>(kSampleRate * 1.0),
+                          { { 1000, true, 57, 0.9f } });
+        };
+
+        const auto quiet = renderAt(0.0f, 0);
+        check("Wavetable_ModeMakesSound", quiet.rms() > 0.01,
+              "RMS " + fmt(quiet.rms(), 6) + " playing the first factory table");
+
+        const auto bright = renderAt(1.0f, 0);
+        const auto travel = brightnessOf(bright.left) / juce::jmax(1.0e-9, brightnessOf(quiet.left));
+        check("Wavetable_PositionChangesTheTimbre", travel > 1.5,
+              "position 1.0 is " + fmt(travel, 2) + "x brighter than position 0.0");
+
+        const auto other = renderAt(0.5f, 4);   // Bell Partials
+        const auto same = renderAt(0.5f, 0);
+        double difference = 0.0, reference = 0.0;
+        const auto count = juce::jmin(other.left.size(), same.left.size());
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            const auto d = static_cast<double>(other.left[i]) - same.left[i];
+            difference += d * d;
+            reference += static_cast<double>(same.left[i]) * same.left[i];
+        }
+        check("Wavetable_ChangingTheSelectedTableChangesTheSound",
+              std::sqrt(difference / juce::jmax(1.0e-12, reference)) > 0.3,
+              "two factory tables differ by "
+                  + fmt(std::sqrt(difference / juce::jmax(1.0e-12, reference)), 2)
+                  + "x the signal");
+    }
+
+    // ---- WT Position is an ordinary modulation destination -----------------
+    // The point of making it a real parameter rather than folding it into a
+    // macro: the assignment list is built from the float parameters that exist,
+    // so this needed no plumbing of its own and would be a silent omission if
+    // it were ever moved.
+    {
+        PX3SynthAudioProcessor processor;
+        const auto& names = processor.getLfoAssignmentDisplayNames();
+        juce::StringArray found;
+        for (const auto& name : names)
+        {
+            if (name.containsIgnoreCase("WT Position")) { found.add(name); }
+        }
+        check("Wavetable_PositionIsAModulationDestination", found.size() == 3,
+              found.isEmpty() ? "WT Position is not assignable"
+                              : found.joinIntoString(", "));
+
+        check("Wavetable_PositionAcceptsAnLfoAssignment",
+              processor.setLfoAssignmentByParameterId("osc1WtPos"),
+              "an LFO can be pointed at osc1WtPos");
+    }
+
+    // ---- fast scanning must not click --------------------------------------
+    // Modulation is summed once per block, so an unsmoothed position steps 93.75
+    // times a second. That is a zipper, and it is exactly what a fast LFO on the
+    // scan would expose.
+    {
+        PX3SynthAudioProcessor processor;
+        makePlainPatch(processor);
+        setChoice(processor, "osc1Mode", 8);
+        setChoice(processor, "osc1WtTable", 0);
+        setParam(processor, "osc1WtPos", 0.5f);
+        setParam(processor, "analogEnabled", 0.0f);
+        setParam(processor, "lfoEnabled", 1.0f);
+        setParam(processor, "lfoFrequency", 9.0f);
+        setParam(processor, "lfoAmount", 1.0f);
+        processor.setLfoAssignmentByParameterId("osc1WtPos");
+
+        const auto capture = render(processor, static_cast<int>(kSampleRate * 3.0),
+                                    { { 1000, true, 57, 0.9f } });
+
+        // Same measure the delay's click tests use: a single-sample step
+        // against the level around it, so a loud passage is not flagged simply
+        // for being loud.
+        const auto worstStep = [](const std::vector<float>& v, int from)
+        {
+            constexpr int window = 256;
+            double worst = 0.0;
+            for (int i = std::max(from, window); i < static_cast<int>(v.size()); ++i)
+            {
+                double sum = 0.0;
+                for (int k = i - window; k < i; ++k)
+                {
+                    sum += static_cast<double>(v[static_cast<std::size_t>(k)])
+                         * v[static_cast<std::size_t>(k)];
+                }
+                const auto rms = std::sqrt(sum / window);
+                if (rms < 1.0e-5) { continue; }
+                worst = juce::jmax(worst, std::abs(static_cast<double>(v[static_cast<std::size_t>(i)])
+                                                   - v[static_cast<std::size_t>(i - 1)]) / rms);
+            }
+            return worst;
+        };
+
+        const auto worst = worstStep(capture.left, static_cast<int>(kSampleRate * 0.3));
+        check("Wavetable_FastPositionModulationDoesNotClick", worst < 6.0,
+              "worst single-sample step against the local level while an LFO sweeps the "
+              "scan at 9 Hz: " + fmt(worst, 2) + " (a click reads above 6)");
+        auto finite = true;
+        for (const auto x : capture.left) { if (! std::isfinite(x)) { finite = false; break; } }
+        check("Wavetable_FastPositionModulationStaysFinite", finite,
+              "no non-finite samples across 3 seconds of modulated scanning");
+    }
+
     // ---- rejects what it cannot build --------------------------------------
     // Returning an empty table instead of null would ship silence that looks
     // like a working oscillator.

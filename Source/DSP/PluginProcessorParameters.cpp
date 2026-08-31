@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "WavetableFactory.h"
 #include "PluginProcessorInternals.h"
 
 // File role: parameter accessors, modulation mapping, and FX order API.
@@ -384,6 +385,62 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadToneParam() const { 
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getSpreadModeParam() const { return *spreadModeParam; }
 
 juce::AudioParameterBool& PX3SynthAudioProcessor::getAnalogEnabledParam() const { return *analogEnabledParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorWtPositionParam(int oscIndex) const
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    return *oscWtPositionParams[static_cast<std::size_t>(idx)];
+}
+
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getOscillatorWtTableParam(int oscIndex) const
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    return *oscWtTableParams[static_cast<std::size_t>(idx)];
+}
+
+void PX3SynthAudioProcessor::loadFactoryWavetable(int oscIndex, int tableIndex)
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    // Built here, on the message thread, and published as an immutable table -
+    // the audio thread never sees this allocation.
+    if (auto table = px3::buildFactoryWavetable(tableIndex))
+    {
+        wavetableSlots[static_cast<std::size_t>(idx)].publish(std::move(table));
+        loadedWavetableIndex[static_cast<std::size_t>(idx)] = tableIndex;
+    }
+}
+
+void PX3SynthAudioProcessor::refreshWavetableSelections()
+{
+    for (int osc = 0; osc < kOscillatorSourceCount; ++osc)
+    {
+        const auto wanted = getOscillatorWtTableParam(osc).getIndex();
+        if (loadedWavetableIndex[static_cast<std::size_t>(osc)] == wanted)
+        {
+            continue;
+        }
+
+        if (auto table = px3::buildFactoryWavetable(wanted))
+        {
+            wavetableSlots[static_cast<std::size_t>(osc)].publish(std::move(table));
+            loadedWavetableIndex[static_cast<std::size_t>(osc)] = wanted;
+        }
+    }
+}
+
+void PX3SynthAudioProcessor::handleAsyncUpdate()
+{
+    refreshWavetableSelections();
+    collectRetiredWavetables();
+}
+
+void PX3SynthAudioProcessor::collectRetiredWavetables()
+{
+    for (auto& slot : wavetableSlots)
+    {
+        slot.collectRetired();
+    }
+}
+
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getAnalogProfileParam() const { return *analogProfileParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getLfoEnabledParam() const { return getLfoEnabledParam(0); }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getLfoEnabledParam(int lfoIndex) const

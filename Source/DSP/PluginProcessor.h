@@ -18,6 +18,7 @@
 #include "SynthSound.h"
 #include "SmoothedGain.h"
 #include "SynthVoice.h"
+#include "WavetableSlot.h"
 #include "Vibe.h"
 
 #include <array>
@@ -53,7 +54,12 @@
  * PluginProcessor*.cpp files by responsibility (audio, MIDI, state, debug,
  * source engines, and DSP effects).
  */
-class PX3SynthAudioProcessor final : public juce::AudioProcessor
+// AsyncUpdater is how a wavetable selection made on the audio thread's side of
+// the fence gets BUILT on the message thread. Building allocates megabytes, so
+// it cannot happen in processBlock; triggerAsyncUpdate is lock-free and safe to
+// call from there.
+class PX3SynthAudioProcessor final : public juce::AudioProcessor,
+                                     private juce::AsyncUpdater
 {
 public:
     static constexpr int kLfoSourceCount = 3;
@@ -153,6 +159,20 @@ public:
     juce::AudioParameterFloat& getOscillatorMacroBParam(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorMacroCParam(int oscIndex) const;
     juce::AudioParameterChoice& getOscillatorVowelParam(int oscIndex) const;
+    juce::AudioParameterFloat& getOscillatorWtPositionParam(int oscIndex) const;
+    juce::AudioParameterChoice& getOscillatorWtTableParam(int oscIndex) const;
+
+    // Loads a factory wavetable into one oscillator's slot. Message thread: it
+    // builds the table, which allocates.
+    void loadFactoryWavetable(int oscIndex, int tableIndex);
+
+    // Message thread housekeeping - frees tables the audio thread has moved
+    // past. Cheap enough to call from the editor's timer.
+    void collectRetiredWavetables();
+
+    // Builds whatever each oscillator's Wavetable parameter currently names,
+    // for any that have not been built yet. Message thread.
+    void refreshWavetableSelections();
     juce::AudioParameterFloat& getOscillatorHarmonicParam(int oscIndex, int harmonicIndex) const;
     juce::AudioParameterBool& getSubOscEnabledParam() const;
     juce::AudioParameterFloat& getSubOscPitchParam() const;
@@ -590,6 +610,14 @@ private:
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscMacroBParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscMacroCParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterChoice*, kOscillatorSourceCount> oscVowelParams { { nullptr, nullptr, nullptr } };
+
+    // WT Position is its OWN parameter rather than one of the macros, and that
+    // is the whole reason it can be modulated: buildLfoAssignableTargets builds
+    // the destination list from the float parameters that exist, so a real
+    // parameter is a modulation destination with no further plumbing, and a
+    // value folded into macroA would have no identity to assign to.
+    std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscWtPositionParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterChoice*, kOscillatorSourceCount> oscWtTableParams { { nullptr, nullptr, nullptr } };
     std::array<std::array<juce::AudioParameterFloat*, 8>, kOscillatorSourceCount> oscHarmonicParams { { { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } }, { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } }, { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } } } };
     juce::AudioParameterBool* subOscEnabledParam { nullptr };
     juce::AudioParameterFloat* subOscPitchParam { nullptr };
@@ -773,6 +801,16 @@ private:
         juce::RangedAudioParameter* parameter { nullptr };
         float normalizedDepth { 0.10f };
     };
+
+    // One slot per oscillator, each holding an immutable table shared by every
+    // voice rather than copied into it - a table is 2.25 MB.
+    std::array<px3::WavetableSlot, kOscillatorSourceCount> wavetableSlots;
+
+    // What is actually loaded, against what the parameter asks for. -1 means
+    // nothing has been built yet.
+    std::array<int, kOscillatorSourceCount> loadedWavetableIndex { { -1, -1, -1 } };
+
+    void handleAsyncUpdate() override;
 
     std::vector<LfoAssignableTarget> lfoAssignableTargets;
     juce::StringArray lfoAssignmentDisplayNames;

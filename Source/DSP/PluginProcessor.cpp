@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "WavetableFactory.h"
 
 #include "CombResonator.h"
 #include "PluginProcessorInternals.h"
@@ -107,6 +108,32 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                                                               labelPrefix + "Macro C",
                                                                                               juce::NormalisableRange<float>(0.0f, 1.0f),
                                                                                               0.5f);
+        {
+            juce::StringArray tableNames;
+            for (const auto& definition : px3::factoryWavetables())
+            {
+                tableNames.add(definition.name);
+            }
+
+            oscWtPositionParams[static_cast<std::size_t>(oscIndex)] =
+                new juce::AudioParameterFloat(idPrefix + "WtPos",
+                                              labelPrefix + "WT Position",
+                                              juce::NormalisableRange<float>(0.0f, 1.0f),
+                                              // Not 0. Frame 0 of the default
+                                              // table is deliberately close to a
+                                              // sine, so a scan that starts
+                                              // there makes selecting WAVETABLE
+                                              // sound like it did nothing.
+                                              // Partway in is where the table
+                                              // introduces itself.
+                                              0.5f);
+            oscWtTableParams[static_cast<std::size_t>(oscIndex)] =
+                new juce::AudioParameterChoice(idPrefix + "WtTable",
+                                               labelPrefix + "Wavetable",
+                                               tableNames,
+                                               0);
+        }
+
         oscVowelParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterChoice(idPrefix + "Vowel",
                                                                                               labelPrefix + "Vowel",
                                                                                               juce::StringArray { "A", "E", "I", "O", "U" },
@@ -570,6 +597,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(oscMacroBParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscMacroCParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscVowelParams[static_cast<std::size_t>(oscIndex)]);
+        addParameter(oscWtPositionParams[static_cast<std::size_t>(oscIndex)]);
+        addParameter(oscWtTableParams[static_cast<std::size_t>(oscIndex)]);
 
         for (auto* harmonicParam : oscHarmonicParams[static_cast<std::size_t>(oscIndex)])
         {
@@ -1039,6 +1068,10 @@ void PX3SynthAudioProcessor::updateBusInsertSettings(int bus)
 
 void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
+    // Synchronously, so the very first block already has a table to read rather
+    // than a block of silence while the message thread catches up.
+    refreshWavetableSelections();
+
     currentSampleRateHz = juce::jmax(1.0, sampleRate);
     soundingVoiceBudget.store(soundingVoiceBudgetForRate(currentSampleRateHz),
                               std::memory_order_relaxed);
@@ -1288,6 +1321,21 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 {
     juce::ScopedNoDenormals noDenormals;
     const auto blockStartTicks = juce::Time::getHighResolutionTicks();
+
+    // Once per block, before anything reads a table: this is the contract that
+    // lets WavetableSlot retire a replaced table safely - see its comment.
+    for (int osc = 0; osc < kOscillatorSourceCount; ++osc)
+    {
+        wavetableSlots[static_cast<std::size_t>(osc)].beginBlock();
+
+        // Asking for a table that has not been built yet cannot build it here -
+        // that allocates megabytes. Flagging the message thread is lock-free.
+        if (getOscillatorWtTableParam(osc).getIndex()
+            != loadedWavetableIndex[static_cast<std::size_t>(osc)])
+        {
+            triggerAsyncUpdate();
+        }
+    }
     const auto ticksPerSecond = juce::Time::getHighResolutionTicksPerSecond();
     const auto blockSamples = buffer.getNumSamples();
     const auto outputChannels = buffer.getNumChannels();

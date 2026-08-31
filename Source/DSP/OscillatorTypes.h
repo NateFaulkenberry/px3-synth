@@ -8,9 +8,21 @@
  * Mode-specific rendering functions interpret macroA/B/C differently, so these
  * are intentionally normalized control lanes rather than mode-specific structs.
  */
+namespace px3 { class Wavetable; }
+
 struct OscillatorSettings
 {
     int modeIndex { 0 };
+
+    // Borrowed, never owned. The table lives in the processor's WavetableSlot
+    // and outlives any block this pointer is used in - see WavetableSlot for
+    // why that is safe without a lock or a reference count.
+    const px3::Wavetable* table { nullptr };
+
+    // The scan, after modulation. Smoothed per sample by the oscillator rather
+    // than used as it arrives: modulation is summed once per block, and a
+    // position that steps 93.75 times a second is a zipper.
+    float wtPosition { 0.0f };
     float macroA { 0.5f };
     float macroB { 0.5f };
     float macroC { 0.5f };

@@ -69,8 +69,14 @@ std::vector<FrameSpectrum> sawFold()
 {
     return build([](FrameSpectrum& frame, double t)
     {
-        // Tilt from very steep (only the fundamental survives) to 1/h.
-        const auto tilt = 7.0 - 6.0 * std::pow(t, 0.7);
+        // Tilt from very steep (only the fundamental survives) to 1/h, the
+        // sawtooth.
+        //
+        // Curved so the interesting part is not squeezed into the last third.
+        // A linear tilt - or worse, one that eases IN - leaves the first half of
+        // the scan sounding like a sine with the volume changing, because a
+        // rolloff of 1/h^4 and one of 1/h^7 are both, to the ear, a sine.
+        const auto tilt = 1.0 + 6.0 * std::pow(1.0 - t, 2.2);
         for (int h = 1; h <= kHarmonics; ++h)
         {
             frame.amplitude[static_cast<std::size_t>(h)] =

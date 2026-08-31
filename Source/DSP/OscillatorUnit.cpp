@@ -31,6 +31,14 @@ void OscillatorUnit::setSettings(const OscillatorSettings& settings)
         h = clamp01(h);
     }
 
+    // The table and the scan position are assigned BEFORE the guard below.
+    // They are not derived state: the position moves under modulation on almost
+    // every block, so including it in the comparison would rebuild the derived
+    // curves constantly, and leaving it out of both would mean it never
+    // arrived at all.
+    oscillatorSettings.table = clamped.table;
+    oscillatorSettings.wtPosition = juce::jlimit(0.0f, 1.0f, clamped.wtPosition);
+
     // The processor pushes settings to every voice on every block, including
     // the ones playing nothing, so this runs 192 times per block at full
     // polyphony. Rebuilding the derived curves unconditionally would move the
@@ -336,6 +344,12 @@ void OscillatorUnit::updateDerivedCurves()
 
 void OscillatorUnit::prepare(double sampleRate)
 {
+    // One-pole toward the target. Expressed as a time so it means the same
+    // thing at every sample rate.
+    wtPositionCoeff = sampleRate > 0.0
+                        ? static_cast<float>(1.0 - std::exp(-1.0 / (kWtPositionSmoothingSeconds * sampleRate)))
+                        : 1.0f;
+
     const auto safeRate = juce::jmax(1.0, sampleRate);
     if (! juce::approximatelyEqual(preparedSampleRate, safeRate))
     {
@@ -353,6 +367,12 @@ void OscillatorUnit::prepare(double sampleRate)
 
 void OscillatorUnit::resetForNote(double sampleRate, double currentFrequencyHz)
 {
+    // Start AT the position rather than gliding to it from wherever the last
+    // note left off, which would make the first few milliseconds of every note
+    // depend on the one before it.
+    smoothedWtPosition = oscillatorSettings.wtPosition;
+    wavetableReader.reset();
+
     for (std::size_t i = 0; i < superSawAngles.size(); ++i)
     {
         const auto r = juce::Random::getSystemRandom().nextDouble();
@@ -490,6 +510,28 @@ float OscillatorUnit::renderAdditive(const RenderContext& context, bool dynamic)
 
     const auto shimmer = std::sin(context.currentAngle * 0.5 + static_cast<double>(context.noteAgeSamples) * 0.0007) * 0.15f;
     return softClip(static_cast<float>(base + shimmer * (0.18f + oscillatorSettings.macroC * 0.42f)));
+}
+
+float OscillatorUnit::renderWavetable(double sampleRate, const RenderContext& context)
+{
+    const auto* table = oscillatorSettings.table;
+    if (table == nullptr || sampleRate <= 0.0)
+    {
+        // No table loaded yet. Silence rather than a fallback waveform: a mode
+        // that quietly plays something else is harder to diagnose than one that
+        // plays nothing.
+        return 0.0f;
+    }
+
+    smoothedWtPosition += (oscillatorSettings.wtPosition - smoothedWtPosition) * wtPositionCoeff;
+
+    // Phase comes from the voice, which already owns it and already wraps it.
+    // Deriving it here rather than keeping a second accumulator is what makes
+    // phase continuous through a scan for free - there is nothing to reset.
+    const auto phase = context.currentAngle / juce::MathConstants<double>::twoPi;
+    const auto increment = context.currentFrequencyHz / sampleRate;
+
+    return wavetableReader.read(*table, phase, smoothedWtPosition, increment);
 }
 
 float OscillatorUnit::renderFm(double sampleRate, const RenderContext& context)
@@ -784,12 +826,8 @@ float OscillatorUnit::renderSample(double sampleRate, const RenderContext& conte
             sample = renderPwm(context);
             break;
         case px3::OscillatorMode::wavetable:
-        {
-            const auto pos = derived.wavetablePos;
-            const auto warp = std::sin(context.currentAngle * (1.0 + pos * 6.0));
-            sample = static_cast<float>(warp) * (0.35f - pos * 0.20f);
+            sample = renderWavetable(sampleRate, context);
             break;
-        }
         case px3::OscillatorMode::additive:
             sample = renderAdditive(context, false);
             break;
