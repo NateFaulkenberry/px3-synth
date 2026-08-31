@@ -115,6 +115,26 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
                       static_cast<int64_t>(fxOrderRevision.load(std::memory_order_relaxed)),
                       nullptr);
 
+    // Only oscillators actually using a user table appear, so a preset built
+    // entirely from factory tables carries nothing extra.
+    {
+        juce::ValueTree userWavetables(kUserWavetablesId);
+        for (int osc = 0; osc < kOscillatorSourceCount; ++osc)
+        {
+            const auto name = getUserWavetableName(osc);
+            if (name.isEmpty())
+            {
+                continue;
+            }
+
+            juce::ValueTree entry(kUserWavetableNameId);
+            entry.setProperty(kUserWavetableOscId, osc, nullptr);
+            entry.setProperty(kUserWavetableNameId, name, nullptr);
+            userWavetables.addChild(entry, -1, nullptr);
+        }
+        state.addChild(userWavetables, -1, nullptr);
+    }
+
     // Keep modulation source states in dedicated nodes for backward-compatible evolution.
     juce::ValueTree lfoSources(kLfoSourcesStateId);
     for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
@@ -416,6 +436,25 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
     if (error != nullptr)
     {
         error->clear();
+    }
+
+    // Cleared first: a preset that uses factory tables has to REMOVE whatever
+    // user table the previous one selected, and it does that by saying nothing.
+    for (int osc = 0; osc < kOscillatorSourceCount; ++osc)
+    {
+        userWavetableNames[static_cast<std::size_t>(osc)].clear();
+        missingWavetableNames[static_cast<std::size_t>(osc)].clear();
+    }
+
+    if (const auto userWavetables = state.getChildWithName(kUserWavetablesId); userWavetables.isValid())
+    {
+        for (const auto& entry : userWavetables)
+        {
+            const auto osc = juce::jlimit(0, kOscillatorSourceCount - 1,
+                                          static_cast<int>(entry.getProperty(kUserWavetableOscId, 0)));
+            userWavetableNames[static_cast<std::size_t>(osc)] =
+                entry.getProperty(kUserWavetableNameId).toString();
+        }
     }
 
     // Both the DAW restore and the preset load land here, and both may have just

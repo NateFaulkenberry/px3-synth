@@ -28,6 +28,8 @@
 #include "../DSP/WavetableSlot.h"
 #include "../DSP/WavetableFactory.h"
 #include "../DSP/WavetableImporter.h"
+#include "../DSP/WavetableLibrary.h"
+#include "../UI/WavetableGraph.h"
 #include "../DSP/Lucy.h"
 #include "../DSP/StereoSpread.h"
 #include "../UI/FxCardComponent.h"
@@ -1429,6 +1431,126 @@ void testWavetable()
         const auto noImage = px3::WavetableImporter::fromImage(juce::Image());
         check("WavetableImport_RejectsAnInvalidImage", ! noImage.ok(),
               "invalid image: \"" + noImage.description + "\"");
+    }
+
+    // ---- the user library --------------------------------------------------
+    {
+        // A name nothing else would use, and removed afterwards, so a test run
+        // does not leave tables in the user's own library.
+        const juce::String testName("px3-selftest-table");
+        px3::WavetableLibrary::remove(testName);
+
+        std::vector<px3::FrameSpectrum> frames;
+        for (int f = 0; f < 8; ++f)
+        {
+            px3::FrameSpectrum frame;
+            frame.amplitude = { 0.0f, 1.0f, 0.5f / (f + 1), 0.25f };
+            frame.phase = { 0.0f, 0.3f * f, -0.2f, 0.1f };
+            frames.push_back(std::move(frame));
+        }
+
+        juce::String error;
+        const auto saved = px3::WavetableLibrary::save(testName, frames, error);
+        check("WavetableLibrary_SavesAnImportedTable", saved,
+              saved ? "written to " + px3::WavetableLibrary::userDirectory().getFullPathName()
+                    : error);
+
+        check("WavetableLibrary_ListsWhatItSaved",
+              px3::WavetableLibrary::userTableNames().contains(testName),
+              "the saved table appears in the library listing");
+
+        const auto loaded = px3::WavetableLibrary::load(testName);
+        check("WavetableLibrary_LoadsItBackAsAPlayableTable",
+              loaded != nullptr && loaded->getFrameCount() == 8
+                  && loaded->getName() == testName,
+              loaded != nullptr
+                  ? juce::String(loaded->getFrameCount()) + " frames, category '"
+                        + loaded->getCategory() + "'"
+                  : "load returned null");
+
+        check("WavetableLibrary_MissingTableLoadsAsNullRatherThanSilence",
+              px3::WavetableLibrary::load("px3-nothing-here") == nullptr,
+              "an unknown name returns null, so the caller can say so");
+
+        px3::WavetableLibrary::remove(testName);
+        check("WavetableLibrary_RemovesWhatItSaved",
+              ! px3::WavetableLibrary::userTableNames().contains(testName),
+              "the test table is gone again");
+    }
+
+    // ---- a preset naming a table this machine does not have -----------------
+    // The one failure a reference-based library has to handle, and the one it
+    // must not handle silently.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        processor.setUserWavetableName(0, "px3-not-on-this-machine");
+
+        check("Wavetable_MissingUserTableFallsBackToAFactoryTable",
+              processor.getLoadedWavetableName(0).isNotEmpty()
+                  && processor.getUserWavetableName(0).isEmpty(),
+              "playing '" + processor.getLoadedWavetableName(0) + "' instead");
+
+        check("Wavetable_MissingUserTableIsReported",
+              processor.getMissingWavetableName(0) == "px3-not-on-this-machine",
+              "reported as missing: '" + processor.getMissingWavetableName(0) + "'");
+    }
+
+    // ---- the display snapshot ----------------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        const auto display = processor.getWavetableDisplay(0, 24, 128);
+        auto rowsCorrect = true;
+        for (const auto& row : display.frames)
+        {
+            if (static_cast<int>(row.size()) != 128) { rowsCorrect = false; }
+        }
+
+        check("Wavetable_DisplaySnapshotIsTheSizeTheUiAskedFor",
+              static_cast<int>(display.frames.size()) == 24 && rowsCorrect,
+              juce::String(static_cast<int>(display.frames.size())) + " frames of "
+                  + (display.frames.empty()
+                         ? juce::String("0")
+                         : juce::String(static_cast<int>(display.frames[0].size())))
+                  + " points, named '" + display.name + "'");
+
+        // Frames are copied out, so the UI never dereferences the pointer the
+        // audio thread is using.
+        auto anyContent = false;
+        for (const auto& row : display.frames)
+        {
+            for (const auto v : row) { if (std::abs(v) > 0.001f) { anyContent = true; break; } }
+        }
+        check("Wavetable_DisplaySnapshotCarriesTheWaveform", anyContent,
+              "the copied frames are not empty");
+    }
+
+    // ---- the graph's file filter -------------------------------------------
+    {
+        const auto accepts = [](const char* name)
+        {
+            return WavetableGraph::isSupportedFile(
+                juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile(name));
+        };
+
+        juce::StringArray wrong;
+        for (const auto* name : { "a.wav", "a.aif", "a.aiff", "a.flac", "a.png", "a.jpg", "a.JPEG" })
+        {
+            if (! accepts(name)) { wrong.add(juce::String(name) + " rejected"); }
+        }
+        for (const auto* name : { "a.txt", "a.px3preset", "a.exe", "a" })
+        {
+            if (accepts(name)) { wrong.add(juce::String(name) + " accepted"); }
+        }
+
+        check("WavetableGraph_AcceptsOnlyAudioAndImageFiles", wrong.isEmpty(),
+              wrong.isEmpty() ? "audio and image extensions accepted, everything else refused"
+                              : wrong.joinIntoString(", "));
     }
 
     // ---- rejects what it cannot build --------------------------------------

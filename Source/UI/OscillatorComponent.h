@@ -4,6 +4,7 @@
 
 #include "Card.h"
 #include "CardInner.h"
+#include "WavetableGraph.h"
 
 #include <array>
 #include <memory>
@@ -42,6 +43,18 @@ public:
     // The panel's content box: the only reference for percentage dimensions.
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
+
+    // The wavetable mode's own controls. Passed in rather than taken by the
+    // constructor, which already has eighteen arguments, and owned by the
+    // editor like every other parameter control.
+    void setWavetableControls(juce::ComboBox& tableBox,
+                              juce::Label& tableLabel,
+                              juce::Slider& positionSlider,
+                              juce::Label& positionLabel,
+                              juce::Label& positionValue);
+
+    WavetableGraph& getWavetableGraph() { return wavetableGraph; }
+    bool isWavetableMode() const noexcept;
     void refreshFromParameters(bool enabled, int modeIndex, int vowelIndex);
     void advanceAnimation(float deltaPhase);
     // The animation clock. Exposed so a test can assert it only ever moves
@@ -56,6 +69,12 @@ public:
 
 private:
     void applyModeUi();
+    WavetableGraph wavetableGraph;
+    juce::ComboBox* wtTableBox { nullptr };
+    juce::Label* wtTableLabel { nullptr };
+    juce::Slider* wtPositionSlider { nullptr };
+    juce::Label* wtPositionLabel { nullptr };
+    juce::Label* wtPositionValue { nullptr };
     void applyEnabledUi();
 
     juce::ToggleButton& enabledButton;

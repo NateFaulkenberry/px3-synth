@@ -380,6 +380,17 @@ const Scenario kScenarios[] = {
     { "16 voices + new FX only",       16, false , true  , false , false , false , false , false , false , true  , true  , false , false , false , -1 },
     { "16 voices + analog only",       16, false , true  , false , false , false , false , false , false , false , true  , false , false , false , -1 },
     { "16 voices, PX3",                16, false , true  , true  , false , false , false , false , false , false , false , false , false , false , 19 },
+    // WAVETABLE against the modes it has to live beside. SINE is the floor and
+    // SUPERSAW the ceiling among the cheap modes, so the interesting number is
+    // where the table lookup lands between them - and whether it scales with
+    // polyphony any differently, since it is the only mode that reads memory
+    // rather than computing a waveform.
+    { "1 voice, WAVETABLE",             1, false , true  , true  , false , false , false , false , false , false , false , false , false , false , 8 },
+    { "8 voices, WAVETABLE",            8, false , true  , true  , false , false , false , false , false , false , false , false , false , false , 8 },
+    { "16 voices, WAVETABLE",          16, false , true  , true  , false , false , false , false , false , false , false , false , false , false , 8 },
+    { "32 voices, WAVETABLE",          32, true  , true  , true  , false , false , false , false , false , false , false , false , false , false , 8 },
+    { "64 voices, WAVETABLE",          64, true  , true  , true  , false , false , false , false , false , false , false , false , false , false , 8 },
+    { "16 voices, WAVETABLE + LFO scan", 16, false, true  , true  , false , false , false , true  , false , false , false , false , false , false , 8 },
 
     // ---- bus inserts (v0.3.1) ------------------------------------------------
     // Measured against "16 voices, all 4 sources" - the row directly above the

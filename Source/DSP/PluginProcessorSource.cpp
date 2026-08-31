@@ -71,6 +71,15 @@ std::array<FilterSettings, kFilterInstanceCount> PX3SynthAudioProcessor::current
     return filterSettings;
 }
 
+float PX3SynthAudioProcessor::getModulatedWavetablePosition(int oscIndex) const
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    auto& parameter = getOscillatorWtPositionParam(idx);
+    return juce::jlimit(0.0f, 1.0f, parameter.convertFrom0to1(
+        applyModulationToNormalizedValue(&parameter,
+                                         static_cast<juce::RangedAudioParameter&>(parameter).getValue())));
+}
+
 std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcessor::currentOscillatorLayerSettings() const
 {
     std::array<OscillatorLayerSettings, kOscillatorSourceCount> layerSettings;

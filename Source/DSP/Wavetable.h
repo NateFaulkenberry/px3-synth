@@ -29,6 +29,23 @@ struct FrameSpectrum
     }
 };
 
+// A copy of a table, downsampled for drawing.
+//
+// The UI gets a copy rather than the live pointer. Not because reading it would
+// race - the message thread owns retirement, so it could read it safely - but
+// because a display wants 48 frames of 256 points and the table holds 64 frames
+// of up to 4096, and because taking the copy once per table change is cheaper
+// than walking the real thing on every repaint.
+struct WavetableDisplay
+{
+    juce::String name;
+    juce::String category;
+    bool fromUserLibrary { false };
+    std::vector<std::vector<float>> frames;
+
+    bool isEmpty() const { return frames.empty(); }
+};
+
 // The inverse of what Wavetable::build consumes: turns one cycle of samples into
 // the harmonics it is made of.
 //

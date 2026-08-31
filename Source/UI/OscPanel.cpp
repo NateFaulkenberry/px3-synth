@@ -243,6 +243,31 @@ void OscPanel::refreshOscillatorFromParameters(int oscIndex, bool enabled, int m
     }
 }
 
+void OscPanel::setWavetableControls(int oscIndex,
+                                    juce::ComboBox& tableBox,
+                                    juce::Label& tableLabel,
+                                    juce::Slider& positionSlider,
+                                    juce::Label& positionLabel,
+                                    juce::Label& positionValue)
+{
+    const auto idx = juce::jlimit(0, 2, oscIndex);
+    if (auto& component = oscillatorComponents[static_cast<std::size_t>(idx)])
+    {
+        component->setWavetableControls(tableBox, tableLabel, positionSlider,
+                                        positionLabel, positionValue);
+    }
+}
+
+WavetableGraph* OscPanel::getWavetableGraph(int oscIndex)
+{
+    const auto idx = juce::jlimit(0, 2, oscIndex);
+    if (auto& component = oscillatorComponents[static_cast<std::size_t>(idx)])
+    {
+        return &component->getWavetableGraph();
+    }
+    return nullptr;
+}
+
 void OscPanel::refreshSubOscFromParameters(bool enabled, int octaveIndex, int waveformIndex)
 {
     if (subOscComponent != nullptr)

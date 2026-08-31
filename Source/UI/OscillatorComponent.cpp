@@ -1,4 +1,5 @@
 #include "OscillatorComponent.h"
+#include "../DSP/OscillatorMode.h"
 
 #include "BypassButton.h"
 #include "CardInner.h"
@@ -50,6 +51,11 @@ OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
 
         addAndMakeVisible(enabledButton);
+    // Hidden until the mode calls for it, and a drop target when it is not, so
+    // it has to take mouse events - which also means the card's background
+    // click does not reach through it.
+    wavetableGraph.setVisible(false);
+    addChildComponent(wavetableGraph);
     addAndMakeVisible(pitch);
     addAndMakeVisible(pitchLabel);
     addAndMakeVisible(pitchValueLabel);
@@ -77,8 +83,33 @@ void OscillatorComponent::setAccentColour(juce::Colour accentIn)
     repaint();
 }
 
+void OscillatorComponent::setWavetableControls(juce::ComboBox& tableBox,
+                                               juce::Label& tableLabel,
+                                               juce::Slider& positionSlider,
+                                               juce::Label& positionLabel,
+                                               juce::Label& positionValue)
+{
+    wtTableBox = &tableBox;
+    wtTableLabel = &tableLabel;
+    wtPositionSlider = &positionSlider;
+    wtPositionLabel = &positionLabel;
+    wtPositionValue = &positionValue;
+
+    // The controls arrive after the first applyModeUi has already run and
+    // recorded the mode, so its "nothing changed" guard would skip them.
+    lastModeIndex = -1;
+    applyModeUi();
+}
+
+bool OscillatorComponent::isWavetableMode() const noexcept
+{
+    return juce::jmax(0, modeBox.getSelectedItemIndex())
+           == static_cast<int>(px3::OscillatorMode::wavetable);
+}
+
 void OscillatorComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
+    wavetableGraph.setUIConfig(configIn);
     uiConfig = std::move(configIn);
     card.setConfig(uiConfig);
     resized();
@@ -168,7 +199,8 @@ void OscillatorComponent::resized()
         const auto gap = inner.rowGap(0);
         const auto row = inner.rowContent(0);
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
-        const auto showVowel = vowelBox.isVisible();
+        const auto showTable = wtTableBox != nullptr && wtTableBox->isVisible();
+        const auto showVowel = vowelBox.isVisible() || showTable;
 
         const std::vector<float> natural = showVowel ? std::vector<float> { 84.0f, 84.0f }
                                                      : std::vector<float> { 116.0f };
@@ -185,7 +217,16 @@ void OscillatorComponent::resized()
                                        { &modeLabel, &modeBox, nullptr,
                                          ControlShape::stretch, 14, 0, 24 },
                                        inner.rowControl(0));
-        if (showVowel)
+        if (showTable)
+        {
+            px3::ui::layoutLabelledControl(cell(1),
+                                       { wtTableLabel, wtTableBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 24 },
+                                       inner.rowControl(0));
+            vowelLabel.setBounds(0, 0, 0, 0);
+            vowelBox.setBounds(0, 0, 0, 0);
+        }
+        else if (showVowel)
         {
             px3::ui::layoutLabelledControl(cell(1),
                                        { &vowelLabel, &vowelBox, nullptr,
@@ -225,8 +266,10 @@ void OscillatorComponent::resized()
         // modes show three macros, and pitch plus three natural cells is wider
         // than the row - which FlexBox would have let overflow rather than
         // shrink, because their sizes are set explicitly.
+        const auto showPosition = wtPositionSlider != nullptr && wtPositionSlider->isVisible();
+
         std::vector<float> natural { 72.0f };
-        natural.insert(natural.end(), visibleMacros.size(), 60.0f);
+        natural.insert(natural.end(), visibleMacros.size() + (showPosition ? 1u : 0u), 60.0f);
         const auto widths = px3::ui::fitRowItemWidths(natural, gap.left + gap.right,
                                                       static_cast<float>(juce::jmax(1, row.getWidth())));
         for (const auto width : widths)
@@ -242,10 +285,18 @@ void OscillatorComponent::resized()
                                          ControlShape::square, 16, 16, 56 },
                                        inner.rowControl(1));
 
+        if (showPosition)
+        {
+            px3::ui::layoutLabelledControl(cell(1),
+                                       { wtPositionLabel, wtPositionSlider, wtPositionValue,
+                                         ControlShape::square, 16, 16, 56 },
+                                       inner.rowControl(1));
+        }
+
         for (std::size_t i = 0; i < visibleMacros.size(); ++i)
         {
             const auto index = static_cast<std::size_t>(visibleMacros[i]);
-            px3::ui::layoutLabelledControl(cell(static_cast<int>(i) + 1),
+            px3::ui::layoutLabelledControl(cell(static_cast<int>(i) + 1 + (showPosition ? 1 : 0)),
                                        // Same cap as the pitch knob, so a mode with a
                                        // single macro - NOISE and PINK NOISE both show
                                        // only COLOR - does not render it larger than
@@ -260,7 +311,9 @@ void OscillatorComponent::resized()
     }
 
     // Row 3 is the wave graph, which paint() draws rather than a child
-    // component owning it.
+    // component owning it - except in wavetable mode, where a child component
+    // owns it because it also has to accept dropped files.
+    wavetableGraph.setBounds(inner.rowContent(2).reduced(0, 2));
 }
 
 void OscillatorComponent::mouseUp(const juce::MouseEvent& event)
@@ -549,8 +602,21 @@ void OscillatorComponent::applyModeUi()
         sliders[static_cast<std::size_t>(i)]->setTooltip(tooltipText);
     }
 
-    vowelBox.setVisible(ui.showVowel);
-    vowelLabel.setVisible(ui.showVowel);
+    // The table selector and the vowel selector share one slot: no mode has
+    // both, and giving each its own would leave a hole in every other mode.
+    const auto wavetable = modeIndex == static_cast<int>(px3::OscillatorMode::wavetable);
+    vowelBox.setVisible(ui.showVowel && ! wavetable);
+    vowelLabel.setVisible(ui.showVowel && ! wavetable);
+
+    if (wtTableBox != nullptr)
+    {
+        wtTableBox->setVisible(wavetable);
+        wtTableLabel->setVisible(wavetable);
+        wtPositionSlider->setVisible(wavetable);
+        wtPositionLabel->setVisible(wavetable);
+        wtPositionValue->setVisible(wavetable);
+    }
+    wavetableGraph.setVisible(wavetable);
 
     applyEnabledUi();
     resized();

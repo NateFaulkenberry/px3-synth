@@ -54,6 +54,13 @@ inline const juce::Identifier kSubOscPitchId("pitch");
 inline const juce::Identifier kSubOscOctaveId("octave");
 inline const juce::Identifier kSubOscWaveformId("waveform");
 inline const juce::Identifier kTopMenuViewId("topMenuView");
+
+// User wavetable selections. Stored as a NAME rather than an index because the
+// factory list has fixed positions and the user library does not - and stored
+// per oscillator, not once, because the three are independent.
+inline const juce::Identifier kUserWavetablesId("userWavetables");
+inline const juce::Identifier kUserWavetableNameId("name");
+inline const juce::Identifier kUserWavetableOscId("osc");
 // Which preset the editor last loaded. UI session state like topMenuView: the
 // processor never reads it, and it is stripped from preset FILES - a preset
 // naming itself would be circular. It exists because the editor is rebuilt

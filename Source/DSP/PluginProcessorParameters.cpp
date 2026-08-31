@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "WavetableFactory.h"
+#include "WavetableLibrary.h"
 #include "PluginProcessorInternals.h"
 
 // File role: parameter accessors, modulation mapping, and FX order API.
@@ -413,18 +414,83 @@ void PX3SynthAudioProcessor::refreshWavetableSelections()
 {
     for (int osc = 0; osc < kOscillatorSourceCount; ++osc)
     {
+        const auto index = static_cast<std::size_t>(osc);
+        const auto userName = userWavetableNames[index];
+
+        if (userName.isNotEmpty())
+        {
+            // Already loaded? getLoadedWavetableName is the authority, because
+            // the loaded index says nothing about user tables.
+            if (getLoadedWavetableName(osc) == userName)
+            {
+                continue;
+            }
+
+            if (auto table = px3::WavetableLibrary::load(userName))
+            {
+                wavetableSlots[index].publish(std::move(table));
+                loadedWavetableIndex[index] = -1;
+                missingWavetableNames[index].clear();
+                continue;
+            }
+
+            // A preset that names a table this machine does not have. Fall back
+            // to the factory selection and REMEMBER what was missing - falling
+            // back silently leaves the user with a preset that sounds wrong and
+            // nothing to explain why.
+            missingWavetableNames[index] = userName;
+            userWavetableNames[index].clear();
+            loadedWavetableIndex[index] = -1;
+        }
+
         const auto wanted = getOscillatorWtTableParam(osc).getIndex();
-        if (loadedWavetableIndex[static_cast<std::size_t>(osc)] == wanted)
+        if (loadedWavetableIndex[index] == wanted)
         {
             continue;
         }
 
         if (auto table = px3::buildFactoryWavetable(wanted))
         {
-            wavetableSlots[static_cast<std::size_t>(osc)].publish(std::move(table));
-            loadedWavetableIndex[static_cast<std::size_t>(osc)] = wanted;
+            wavetableSlots[index].publish(std::move(table));
+            loadedWavetableIndex[index] = wanted;
         }
     }
+}
+
+void PX3SynthAudioProcessor::setUserWavetableName(int oscIndex, const juce::String& name)
+{
+    const auto idx = static_cast<std::size_t>(juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex));
+    userWavetableNames[idx] = name;
+    missingWavetableNames[idx].clear();
+    refreshWavetableSelections();
+}
+
+juce::String PX3SynthAudioProcessor::getUserWavetableName(int oscIndex) const
+{
+    return userWavetableNames[static_cast<std::size_t>(
+        juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex))];
+}
+
+juce::String PX3SynthAudioProcessor::getMissingWavetableName(int oscIndex) const
+{
+    return missingWavetableNames[static_cast<std::size_t>(
+        juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex))];
+}
+
+bool PX3SynthAudioProcessor::importWavetable(int oscIndex,
+                                             const juce::String& name,
+                                             const std::vector<px3::FrameSpectrum>& frames,
+                                             juce::String& error)
+{
+    if (! px3::WavetableLibrary::save(name, frames, error))
+    {
+        return false;
+    }
+
+    // Saved before selected, so a table that cannot be written is never the one
+    // playing - otherwise it works until the session is reopened.
+    setUserWavetableName(oscIndex, name);
+    return true;
 }
 
 void PX3SynthAudioProcessor::handleAsyncUpdate()
@@ -438,6 +504,51 @@ juce::String PX3SynthAudioProcessor::getLoadedWavetableName(int oscIndex) const
     const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
     const auto* table = wavetableSlots[static_cast<std::size_t>(idx)].current();
     return table != nullptr ? table->getName() : juce::String();
+}
+
+px3::WavetableDisplay PX3SynthAudioProcessor::getWavetableDisplay(int oscIndex,
+                                                                  int frames,
+                                                                  int points) const
+{
+    px3::WavetableDisplay display;
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    const auto* table = wavetableSlots[static_cast<std::size_t>(idx)].current();
+    if (table == nullptr)
+    {
+        return display;
+    }
+
+    display.name = table->getName();
+    display.category = table->getCategory();
+    display.fromUserLibrary = table->getCategory() == "USER";
+
+    const auto wantedFrames = juce::jlimit(2, table->getFrameCount(), frames);
+    const auto wantedPoints = juce::jlimit(8, 2048, points);
+
+    // Drawn from the BRIGHTEST level, so the picture shows the waveform the
+    // table actually holds rather than whichever band-limited version the
+    // currently playing note happens to have selected.
+    const auto length = table->getLevelLength(0);
+
+    display.frames.reserve(static_cast<std::size_t>(wantedFrames));
+    for (int f = 0; f < wantedFrames; ++f)
+    {
+        const auto sourceFrame = wantedFrames > 1
+                                   ? f * (table->getFrameCount() - 1) / (wantedFrames - 1)
+                                   : 0;
+        const auto* samples = table->getFrame(0, sourceFrame);
+
+        std::vector<float> row(static_cast<std::size_t>(wantedPoints), 0.0f);
+        for (int i = 0; i < wantedPoints; ++i)
+        {
+            row[static_cast<std::size_t>(i)] =
+                samples[static_cast<std::size_t>(
+                    static_cast<long long>(i) * length / wantedPoints)];
+        }
+        display.frames.push_back(std::move(row));
+    }
+
+    return display;
 }
 
 void PX3SynthAudioProcessor::collectRetiredWavetables()

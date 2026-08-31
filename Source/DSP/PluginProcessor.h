@@ -178,6 +178,30 @@ public:
     // parameter names. The two differing is the whole failure mode this exists
     // to make visible.
     juce::String getLoadedWavetableName(int oscIndex) const;
+
+    // A user table is named, not indexed: the factory list has fixed positions
+    // and the user library does not. Empty means "use the factory choice".
+    void setUserWavetableName(int oscIndex, const juce::String& name);
+    juce::String getUserWavetableName(int oscIndex) const;
+
+    // Imports frames, saves them to the user library and selects them. Message
+    // thread - it builds, allocates and writes a file.
+    bool importWavetable(int oscIndex,
+                         const juce::String& name,
+                         const std::vector<px3::FrameSpectrum>& frames,
+                         juce::String& error);
+
+    // Set when a preset named a user table that is not on this machine. The UI
+    // reads it to say so rather than leaving the wrong sound playing silently.
+    juce::String getMissingWavetableName(int oscIndex) const;
+
+    // Message thread. A drawing-sized copy of what an oscillator is playing.
+    px3::WavetableDisplay getWavetableDisplay(int oscIndex, int frames, int points) const;
+
+    // Where the scan actually is, modulation included. The display draws this
+    // next to the base value so an LFO on the scan reads as a range rather than
+    // as an unexplained wobble.
+    float getModulatedWavetablePosition(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorHarmonicParam(int oscIndex, int harmonicIndex) const;
     juce::AudioParameterBool& getSubOscEnabledParam() const;
     juce::AudioParameterFloat& getSubOscPitchParam() const;
@@ -814,6 +838,8 @@ private:
     // What is actually loaded, against what the parameter asks for. -1 means
     // nothing has been built yet.
     std::array<int, kOscillatorSourceCount> loadedWavetableIndex { { -1, -1, -1 } };
+    std::array<juce::String, kOscillatorSourceCount> userWavetableNames;
+    std::array<juce::String, kOscillatorSourceCount> missingWavetableNames;
 
     void handleAsyncUpdate() override;
 

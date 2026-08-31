@@ -121,6 +121,7 @@ set(PX3_SHARED_SOURCES
         Source/UI/LfoComponent.cpp
         Source/UI/ReverbComponent.cpp
         Source/UI/UIConfig.cpp
+        Source/UI/WavetableGraph.cpp
         Source/UI/UIConfigManager.cpp
         Source/UI/SubOscComponent.cpp
         Source/UI/VibeComponent.cpp
@@ -148,6 +149,7 @@ set(PX3_SHARED_SOURCES
         Source/DSP/Wavetable.cpp
         Source/DSP/WavetableFactory.cpp
         Source/DSP/WavetableImporter.cpp
+        Source/DSP/WavetableLibrary.cpp
         Source/DSP/VoiceFilter.cpp
         Source/DSP/SynthVoice.cpp
         Source/DSP/PX3Diagnostics.cpp

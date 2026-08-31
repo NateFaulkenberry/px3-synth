@@ -79,6 +79,17 @@ public:
     void resized() override;
 
     void refreshOscillatorFromParameters(int oscIndex, bool enabled, int modeIndex, int vowelIndex);
+
+    // Passed in after construction rather than through the constructor, which
+    // already takes forty-odd references.
+    void setWavetableControls(int oscIndex,
+                              juce::ComboBox& tableBox,
+                              juce::Label& tableLabel,
+                              juce::Slider& positionSlider,
+                              juce::Label& positionLabel,
+                              juce::Label& positionValue);
+
+    WavetableGraph* getWavetableGraph(int oscIndex);
     void refreshSubOscFromParameters(bool enabled, int octaveIndex, int waveformIndex);
     void advanceAnimation(float oscDeltaPhase);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);

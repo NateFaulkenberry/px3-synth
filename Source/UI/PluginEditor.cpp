@@ -1,4 +1,7 @@
 #include "PluginEditor.h"
+#include "../DSP/WavetableLibrary.h"
+#include "../DSP/WavetableImporter.h"
+#include "../DSP/WavetableFactory.h"
 #include "ModalBackdrop.h"
 #include "RoundedRect.h"
 
@@ -1196,6 +1199,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           &knobLookAndFeel,
                                           kGroupAccents[2],
                                           kGroupAccents[3]);
+    // After the oscillator panel exists, since the controls are handed to the
+    // cards it owns.
+    configureWavetableControls();
+
     ampPanel = std::make_unique<AmpPanel>(audioProcessor, kGroupAccents[2]);
     fltPanel = std::make_unique<FltPanel>(std::array<juce::ToggleButton*, kFilterInstanceCount> { { &filter1EnabledButton, &filter2EnabledButton } },
                                           std::array<juce::Slider*, kFilterInstanceCount> { { &cutoffKnob, &cutoff2Knob } },
@@ -3213,6 +3220,259 @@ void PX3SynthAudioProcessorEditor::selectedRowsChanged(int lastRowSelected)
     presetBrowserDetails.setText(details, juce::dontSendNotification);
 }
 
+
+// ---------------------------------------------------------------- wavetable --
+namespace
+{
+// Factory tables take menu ids 1..N; user tables start here, so the two can
+// never be confused by an id that happens to collide after the library grows.
+constexpr int kUserWavetableMenuBase = 1000;
+} // namespace
+
+void PX3SynthAudioProcessorEditor::rebuildWavetableMenu(int oscIndex)
+{
+    const auto idx = juce::jlimit(0, 2, oscIndex);
+    auto& box = oscWtTableBoxes[static_cast<std::size_t>(idx)];
+
+    const auto previous = box.getSelectedId();
+    box.clear(juce::dontSendNotification);
+
+    const auto& factory = px3::factoryWavetables();
+    juce::String category;
+    for (int i = 0; i < static_cast<int>(factory.size()); ++i)
+    {
+        // Grouped by category, which is the only thing that keeps a list of
+        // tables navigable once there are more than a handful.
+        const juce::String next(factory[static_cast<std::size_t>(i)].category);
+        if (next != category)
+        {
+            category = next;
+            box.addSectionHeading(category);
+        }
+        box.addItem(factory[static_cast<std::size_t>(i)].name, i + 1);
+    }
+
+    const auto userTables = px3::WavetableLibrary::userTableNames();
+    if (! userTables.isEmpty())
+    {
+        box.addSectionHeading("IMPORTED");
+        for (int i = 0; i < userTables.size(); ++i)
+        {
+            box.addItem(userTables[i], kUserWavetableMenuBase + i);
+        }
+    }
+
+    // Whatever is actually loaded, which after a preset load is not
+    // necessarily what was selected a moment ago.
+    const auto userName = audioProcessor.getUserWavetableName(idx);
+    if (userName.isNotEmpty())
+    {
+        const auto found = userTables.indexOf(userName);
+        box.setSelectedId(found >= 0 ? kUserWavetableMenuBase + found : previous,
+                          juce::dontSendNotification);
+    }
+    else
+    {
+        box.setSelectedId(audioProcessor.getOscillatorWtTableParam(idx).getIndex() + 1,
+                          juce::dontSendNotification);
+    }
+}
+
+void PX3SynthAudioProcessorEditor::configureWavetableControls()
+{
+    for (int osc = 0; osc < 3; ++osc)
+    {
+        const auto index = static_cast<std::size_t>(osc);
+        auto& box = oscWtTableBoxes[index];
+        auto& knob = oscWtPositionKnobs[index];
+
+        box.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+        box.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+        box.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+
+        // Not attached to the choice parameter, because the menu holds user
+        // tables too and an AudioParameterChoice cannot grow a list at runtime.
+        // The two selections are kept in step by hand instead.
+        box.onChange = [this, osc]()
+        {
+            const auto id = oscWtTableBoxes[static_cast<std::size_t>(osc)].getSelectedId();
+            if (id <= 0)
+            {
+                return;
+            }
+
+            if (id >= kUserWavetableMenuBase)
+            {
+                const auto userTables = px3::WavetableLibrary::userTableNames();
+                const auto which = id - kUserWavetableMenuBase;
+                if (which >= 0 && which < userTables.size())
+                {
+                    audioProcessor.setUserWavetableName(osc, userTables[which]);
+                }
+                return;
+            }
+
+            // Back to a factory table: the user selection has to be cleared, or
+            // it would win again on the next refresh.
+            audioProcessor.setUserWavetableName(osc, {});
+            auto& parameter = audioProcessor.getOscillatorWtTableParam(osc);
+            parameter.beginChangeGesture();
+            parameter.setValueNotifyingHost(
+                parameter.convertTo0to1(static_cast<float>(id - 1)));
+            parameter.endChangeGesture();
+            audioProcessor.refreshWavetableSelections();
+        };
+
+        oscWtTableLabels[index].setText("TABLE", juce::dontSendNotification);
+        oscWtTableLabels[index].setJustificationType(juce::Justification::centred);
+        oscWtTableLabels[index].setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+        oscWtTableLabels[index].setFont(juce::FontOptions(11.5f));
+
+        knob.setSliderStyle(juce::Slider::RotaryVerticalDrag);
+        knob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        attachSlider(audioProcessor.getOscillatorWtPositionParam(osc), knob);
+        // Same readout as the macro knobs: a percentage, centred, not clickable.
+        auto& valueLabel = oscWtPositionValues[index];
+        valueLabel.setJustificationType(juce::Justification::centred);
+        valueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(214, 214, 224));
+        valueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+        valueLabel.setFont(juce::FontOptions(11.0f));
+        valueLabel.setInterceptsMouseClicks(false, false);
+        knob.onValueChange = [&knob, &valueLabel]()
+        {
+            valueLabel.setText(juce::String(juce::roundToInt(
+                juce::jlimit(0.0, 1.0, knob.getValue()) * 100.0)) + "%",
+                juce::dontSendNotification);
+        };
+        knob.onValueChange();
+
+        oscWtPositionLabels[index].setText("POSITION", juce::dontSendNotification);
+        oscWtPositionLabels[index].setJustificationType(juce::Justification::centred);
+        oscWtPositionLabels[index].setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+        oscWtPositionLabels[index].setFont(juce::FontOptions(11.5f));
+
+        rebuildWavetableMenu(osc);
+
+        if (oscPanel != nullptr)
+        {
+            oscPanel->setWavetableControls(osc, box, oscWtTableLabels[index], knob,
+                                           oscWtPositionLabels[index], oscWtPositionValues[index]);
+
+            if (auto* graph = oscPanel->getWavetableGraph(osc))
+            {
+                graph->onFileDropped = [this, osc](const juce::File& file)
+                {
+                    importWavetableFile(osc, file);
+                };
+            }
+        }
+    }
+}
+
+void PX3SynthAudioProcessorEditor::refreshWavetableDisplays()
+{
+    if (oscPanel == nullptr)
+    {
+        return;
+    }
+
+    for (int osc = 0; osc < 3; ++osc)
+    {
+        auto* graph = oscPanel->getWavetableGraph(osc);
+        if (graph == nullptr || ! graph->isVisible())
+        {
+            continue;
+        }
+
+        const auto index = static_cast<std::size_t>(osc);
+        const auto loaded = audioProcessor.getLoadedWavetableName(osc);
+
+        // Rebuilding the surface is the expensive part, so it happens when the
+        // TABLE changes - not on every frame because the scan moved.
+        if (loaded != shownWavetableNames[index])
+        {
+            shownWavetableNames[index] = loaded;
+            graph->setDisplay(audioProcessor.getWavetableDisplay(osc, 40, 192));
+            graph->setMissingTableName(audioProcessor.getMissingWavetableName(osc));
+            rebuildWavetableMenu(osc);
+        }
+
+        graph->setPosition(audioProcessor.getOscillatorWtPositionParam(osc).get(),
+                           audioProcessor.getModulatedWavetablePosition(osc));
+    }
+
+    audioProcessor.collectRetiredWavetables();
+}
+
+void PX3SynthAudioProcessorEditor::importWavetableFile(int oscIndex, const juce::File& file)
+{
+    const auto extension = file.getFileExtension().toLowerCase();
+    const auto isImage = extension == ".png" || extension == ".jpg"
+                      || extension == ".jpeg" || extension == ".gif";
+
+    px3::WavetableImporter::Result imported;
+
+    if (isImage)
+    {
+        imported = px3::WavetableImporter::fromImage(juce::ImageFileFormat::loadFrom(file));
+    }
+    else
+    {
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
+        if (reader == nullptr)
+        {
+            juce::NativeMessageBox::showMessageBoxAsync(
+                juce::MessageBoxIconType::WarningIcon, "Import failed",
+                "That file could not be read as audio.");
+            return;
+        }
+
+        // Read in full and summed to mono. A stereo source makes two different
+        // tables out of one sound if the channels are taken separately.
+        const auto length = static_cast<int>(juce::jmin<juce::int64>(reader->lengthInSamples,
+                                                                     48000 * 30));
+        juce::AudioBuffer<float> buffer(static_cast<int>(reader->numChannels), length);
+        reader->read(&buffer, 0, length, 0, true, true);
+
+        std::vector<float> mono(static_cast<std::size_t>(length), 0.0f);
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        {
+            const auto* source = buffer.getReadPointer(channel);
+            for (int i = 0; i < length; ++i)
+            {
+                mono[static_cast<std::size_t>(i)] +=
+                    source[i] / static_cast<float>(buffer.getNumChannels());
+            }
+        }
+
+        imported = px3::WavetableImporter::fromAudio(mono.data(), length, reader->sampleRate);
+    }
+
+    if (! imported.ok())
+    {
+        juce::NativeMessageBox::showMessageBoxAsync(
+            juce::MessageBoxIconType::WarningIcon, "Import failed", imported.description);
+        return;
+    }
+
+    juce::String error;
+    if (! audioProcessor.importWavetable(oscIndex, file.getFileNameWithoutExtension(),
+                                         imported.frames, error))
+    {
+        juce::NativeMessageBox::showMessageBoxAsync(
+            juce::MessageBoxIconType::WarningIcon, "Import failed", error);
+        return;
+    }
+
+    // Forces the display to notice, since the name may not have changed if the
+    // same file was dropped twice.
+    shownWavetableNames[static_cast<std::size_t>(juce::jlimit(0, 2, oscIndex))].clear();
+    rebuildWavetableMenu(oscIndex);
+    refreshWavetableDisplays();
+}
+
 void PX3SynthAudioProcessorEditor::refreshOscillatorModeUI()
 {
     for (int oscIndex = 0; oscIndex < 3; ++oscIndex)
@@ -3893,6 +4153,7 @@ void PX3SynthAudioProcessorEditor::refreshOscillatorEngagedState()
 void PX3SynthAudioProcessorEditor::timerCallback()
 {
     loadUiConfig(false);
+    refreshWavetableDisplays();
 
     const auto nowSeconds = juce::Time::getMillisecondCounterHiRes() * 0.001;
     const auto deltaSeconds = (lastAnimationTickSeconds > 0.0)

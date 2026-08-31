@@ -349,6 +349,21 @@ private:
     juce::ComboBox osc1VowelBox;
     juce::ComboBox osc2VowelBox;
     juce::ComboBox osc3VowelBox;
+    std::array<juce::ComboBox, 3> oscWtTableBoxes;
+    std::array<KnobLabel, 3> oscWtTableLabels;
+    std::array<juce::Slider, 3> oscWtPositionKnobs;
+    std::array<KnobLabel, 3> oscWtPositionLabels;
+    std::array<juce::Label, 3> oscWtPositionValues;
+
+    // What the graph is currently showing, so the display is rebuilt when the
+    // table changes and not sixty times a second.
+    std::array<juce::String, 3> shownWavetableNames;
+
+    void configureWavetableControls();
+    void refreshWavetableDisplays();
+    void importWavetableFile(int oscIndex, const juce::File& file);
+    void rebuildWavetableMenu(int oscIndex);
+
     KnobLabel osc1VowelLabel;
     KnobLabel osc2VowelLabel;
     KnobLabel osc3VowelLabel;
