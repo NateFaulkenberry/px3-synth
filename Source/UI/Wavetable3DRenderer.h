@@ -36,6 +36,10 @@ public:
 
     void setAccentColour(juce::Colour accent);
 
+    // Cleared by the GL pass. Anything painted underneath this component is
+    // hidden by the native layer, so the background has to come from here.
+    void setBackgroundColour(juce::Colour colour);
+
     // True once the GL context has produced a frame, so a caller can fall back
     // to something else if the context never came up.
     bool isRendering() const noexcept { return framesRendered.load() > 0; }
@@ -112,6 +116,7 @@ private:
     std::atomic<float> selectedPosition { 0.0f };
     std::atomic<int> framesRendered { 0 };
     juce::Colour accentColour { juce::Colour::fromRGB(96, 168, 255) };
+    juce::Colour backgroundColour { juce::Colour::fromRGB(12, 12, 14) };
 
     Camera camera;
     Camera dragStartCamera;

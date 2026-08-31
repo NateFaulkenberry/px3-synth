@@ -117,7 +117,14 @@ Wavetable3DRenderer::Wavetable3DRenderer()
 
     context.setRenderer(this);
     context.setContinuousRepainting(false);
-    context.setComponentPaintingEnabled(false);
+
+    // Component painting stays ON, and this is not a detail. On macOS an
+    // attached context creates a native layer that composites ABOVE sibling
+    // JUCE components regardless of z-order, so anything drawn beside this
+    // would simply disappear behind the stack. With component painting enabled
+    // JUCE draws this component and its children over the GL output instead,
+    // which is why the overlay is a child of this and not a sibling.
+    context.setComponentPaintingEnabled(true);
     context.attachTo(*this);
 
     // 60 Hz, and only while there is something to show. Continuous repainting
@@ -149,6 +156,13 @@ void Wavetable3DRenderer::setPosition(float position)
         return;
     }
     selectedPosition.store(clamped);
+    context.triggerRepaint();
+}
+
+void Wavetable3DRenderer::setBackgroundColour(juce::Colour colour)
+{
+    if (backgroundColour == colour) { return; }
+    backgroundColour = colour;
     context.triggerRepaint();
 }
 
@@ -423,7 +437,9 @@ void Wavetable3DRenderer::renderOpenGL()
     const auto width = juce::jmax(1, juce::roundToInt(static_cast<float>(getWidth()) * scale));
     const auto height = juce::jmax(1, juce::roundToInt(static_cast<float>(getHeight()) * scale));
 
-    juce::OpenGLHelpers::clear(juce::Colours::transparentBlack);
+    // The background is cleared here rather than painted by a component
+    // underneath, because the GL layer covers whatever is under it.
+    juce::OpenGLHelpers::clear(backgroundColour);
     juce::gl::glViewport(0, 0, width, height);
 
     rebuildGeometry();

@@ -20,15 +20,19 @@ WavetableGraph::WavetableGraph()
     setInterceptsMouseClicks(true, true);
     setOpaque(false);
 
-    // Order matters: the GL view first, the overlay after it, so the markers and
-    // the drop feedback land on top of the rendered stack.
+    // The overlay is a child of the GL view, not a sibling of it. An attached
+    // OpenGL context composites above sibling components on macOS whatever the
+    // z-order says, so a sibling overlay is simply invisible; a child is drawn
+    // over the GL output by JUCE's own component painting.
     addAndMakeVisible(glView);
-    addAndMakeVisible(overlay);
+    glView.addAndMakeVisible(overlay);
 }
 
 void WavetableGraph::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     config = std::move(configIn);
+    glView.setBackgroundColour(configColour("osc.wavetable.graph.background",
+                                            juce::Colour::fromRGB(12, 12, 14)));
     surface = juce::Image();
     repaint();
 }
@@ -147,9 +151,8 @@ void WavetableGraph::filesDropped(const juce::StringArray& files, int, int)
 void WavetableGraph::resized()
 {
     surface = juce::Image();
-    glView.setBounds(getLocalBounds().reduced(
-        juce::roundToInt(configFloat("osc.wavetable.graph.inset", 6.0f))));
-    overlay.setBounds(getLocalBounds());
+    glView.setBounds(getLocalBounds());
+    overlay.setBounds(glView.getLocalBounds());
 }
 
 void WavetableGraph::rebuildSurface()
@@ -220,13 +223,16 @@ void WavetableGraph::rebuildSurface()
 
 void WavetableGraph::paint(juce::Graphics& g)
 {
-    // Background only. Everything else is in paintOverlay, which runs on a child
-    // ABOVE the GL view - a JUCE parent paints before its children, so markers
-    // drawn here would be hidden by the rendered stack.
-    g.setColour(configColour("osc.wavetable.graph.background",
-                             juce::Colour::fromRGBA(12, 12, 14, 190)));
-    g.fillRoundedRectangle(getLocalBounds().toFloat(),
-                           configFloat("osc.wavetable.graph.cornerRadius", 6.0f));
+    // Only reachable before the GL view has any size. Once it covers this
+    // component the background comes from the GL clear, because the native
+    // layer hides whatever is painted underneath it.
+    if (glView.getBounds().isEmpty())
+    {
+        g.setColour(configColour("osc.wavetable.graph.background",
+                                 juce::Colour::fromRGBA(12, 12, 14, 190)));
+        g.fillRoundedRectangle(getLocalBounds().toFloat(),
+                               configFloat("osc.wavetable.graph.cornerRadius", 6.0f));
+    }
 }
 
 void WavetableGraph::paintOverlay(juce::Graphics& g)

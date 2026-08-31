@@ -126,3 +126,48 @@ New display data arrives on the message thread and is parked behind a lock with
 a dirty flag; the GL thread picks it up at the start of the next frame and
 rebuilds the buffer there. That is the only cross-thread hand-off, and it is a
 lock the audio thread never touches.
+
+### Component painting stays ON, and the overlay is a child
+
+On macOS an attached OpenGL context creates a native layer that composites
+**above sibling JUCE components regardless of z-order**. A scan marker drawn
+beside the GL view is therefore not merely behind it - it is invisible.
+
+So `setComponentPaintingEnabled(true)`, and the overlay carrying the markers,
+the drop feedback and the missing-table warning is a **child** of the GL
+component, which JUCE draws over the rendered output. The background is cleared
+by the GL pass for the same reason: anything painted underneath the layer is
+hidden by it.
+
+---
+
+## F. Why this is better than what it replaced
+
+| | Before | After |
+|---|---|---|
+| Depth | A constant 2D shear per frame | Perspective projection; the stack converges |
+| Camera | Two baked constants | Orbit, elevate and zoom, all constrained |
+| Line quality | 0.9-1.5 px `strokePath` hairlines | Ribbons with shader antialiasing, constant width in pixels at any depth |
+| Selected frame | Not distinguished | Emissive lift and a wider glow shoulder |
+| Hierarchy | Alpha by frame index only | One value - distance to the scan - drives grouping, selection and fade together |
+| Frame identity | None | Interpolated frames drawn weaker than stored ones |
+| Scan response | Redrawn image | A uniform; the buffer is untouched |
+| Cost per frame | 40 CPU polylines into a cached image | One uniform upload and 48 draw calls |
+
+The single most consequential difference is the projection. Everything else is
+treatment; the shear was the reason the old picture could not read as depth no
+matter how it was coloured.
+
+---
+
+## G. Status
+
+Implemented and building for AU, VST3 and Standalone, with the camera under test
+(elevation clamped both ways, azimuth free, zoom stopped, reset, and data
+accepted with no context attached).
+
+The CPU renderer is kept as a fallback for a machine whose context never comes
+up, selected on `isRendering()`. Two things are deliberately not done: no
+geometry shader (not available on the macOS core profile this targets), and no
+multisampling request - the ribbon's own edge falloff is doing that work, and
+asking for MSAA as well would cost fill rate for an effect already present.
