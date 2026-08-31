@@ -602,7 +602,9 @@
         "timeLabelHeight": 12.0,
         "timeLabelSize": 9.0,
         "roleLabelSize": 8.5,
-        "roleLabelColor": ""
+        "roleLabelColor": "",
+        "sustainBarWidth": 20.0,
+        "sustainBarHeight": 3.0
       }
     },
     "env2": {
@@ -644,7 +646,9 @@
         "timeLabelHeight": 12.0,
         "timeLabelSize": 9.0,
         "roleLabelSize": 8.5,
-        "roleLabelColor": ""
+        "roleLabelColor": "",
+        "sustainBarWidth": 20.0,
+        "sustainBarHeight": 3.0
       }
     },
     "env3": {
@@ -686,7 +690,9 @@
         "timeLabelHeight": 12.0,
         "timeLabelSize": 9.0,
         "roleLabelSize": 8.5,
-        "roleLabelColor": ""
+        "roleLabelColor": "",
+        "sustainBarWidth": 20.0,
+        "sustainBarHeight": 3.0
       }
     },
     "env": {
@@ -761,7 +767,9 @@
         "timeLabelHeight": 12.0,
         "timeLabelSize": 9.0,
         "roleLabelSize": 8.5,
-        "roleLabelColor": ""
+        "roleLabelColor": "",
+        "sustainBarWidth": 20.0,
+        "sustainBarHeight": 3.0
       }
     }
   },

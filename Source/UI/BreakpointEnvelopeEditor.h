@@ -48,7 +48,16 @@ public:
 
     // Exposed for the tests: what the mouse would grab at a point, and where a
     // given breakpoint has been drawn.
-    enum class Target { none, point, curve };
+    // `sustain` is a handle with no point of its own. The sustain LEVEL and the
+    // decay TIME are the same breakpoint's two coordinates, so one handle was
+    // the only control for both - drag it sideways for decay, upwards for
+    // sustain. That is one control doing two jobs, and it is why the label had
+    // to read "DECAY / SUSTAIN".
+    //
+    // The editor now draws the held phase explicitly, as a flat stretch after
+    // the decay, and puts the sustain handle on it. The breakpoint itself is
+    // then the decay handle alone.
+    enum class Target { none, point, curve, sustain };
     struct Hit
     {
         Target target { Target::none };
@@ -66,10 +75,25 @@ public:
     // another is one handle you cannot reach. See the definition.
     juce::Point<float> drawnPointPosition(int index) const;
 
+    // The sustain handle, on the held stretch. Only meaningful for an ADSR
+    // skeleton, where a held phase is a thing that exists.
+    juce::Point<float> sustainHandlePosition() const;
+    bool hasSustainHandle() const;
+
     // What each breakpoint of a plain ADSR shape controls. Empty for points
     // whose role has no name, and for envelopes that have been edited past the
     // shape these names describe.
     juce::String roleLabelFor(int index) const;
+
+    // How wide the held stretch is drawn. Display only: the envelope holds
+    // there for as long as the key is down, which is not a duration the model
+    // has or should have.
+    double heldDisplaySeconds() const;
+
+    // Where a point is drawn on the time axis, which is its real time plus the
+    // held stretch once past the sustain point.
+    double displayTimeArriving(int index) const;
+    double displayTimeLeaving(int index) const;
 
 private:
     juce::Colour curveColour() const;

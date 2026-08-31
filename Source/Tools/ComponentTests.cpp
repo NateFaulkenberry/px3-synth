@@ -1210,6 +1210,117 @@ void testBreakpointEnvelope()
               "over held level " + fmt(worstOvershoot, 4));
     }
 
+    // ---- every stage is its OWN control -------------------------------------
+    //
+    // This is the regression suite for the thing that went round in circles.
+    // The rule it encodes, in one sentence: AMP ENV has four separate controls
+    // and ENV 1-3 have five, no handle changes more than one of them, and the
+    // sustain LEVEL is never the same handle as the decay TIME.
+    {
+        const auto adsr = []
+        {
+            EnvelopeSettings settings;
+            settings.attackSeconds = 0.10f;
+            settings.holdSeconds = 0.05f;
+            settings.decaySeconds = 0.20f;
+            settings.sustainLevel = 0.50f;
+            settings.releaseSeconds = 0.30f;
+            return settings;
+        }();
+
+        struct Rig
+        {
+            const char* name;
+            const char* perStage;
+            const char* spacing;
+            const char* grabs;
+            bool withHold;
+            juce::StringArray expected;
+        };
+        const Rig rigs[] = {
+            { "AMP ENV",
+              "AmpEnv_HasOneHandlePerStage",
+              "AmpEnv_NoTwoHandlesShareASpot",
+              "AmpEnv_EveryHandleGrabsItself",
+              false, { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" } },
+            { "ENV 1-3",
+              "ModEnv_HasOneHandlePerStage",
+              "ModEnv_NoTwoHandlesShareASpot",
+              "ModEnv_EveryHandleGrabsItself",
+              true,  { "ATTACK", "HOLD", "DECAY", "SUSTAIN", "RELEASE" } },
+        };
+
+        for (const auto& rig : rigs)
+        {
+            BreakpointEnvelopeEditor editor;
+            editor.setSize(400, 200);
+            editor.setEnvelope(rig.withHold
+                                   ? px3::BreakpointEnvelope::fromAdsr(adsr)
+                                   : px3::BreakpointEnvelope::fromAdsrWithoutHold(adsr));
+
+            const auto name = juce::String(rig.name);
+            const auto sustainIndex = editor.getEnvelope().getSustainPoint();
+
+            // 1. Every named stage has a handle, and they are all different
+            //    places on the screen.
+            juce::StringArray found;
+            std::vector<juce::Point<float>> places;
+            for (int i = 1; i < editor.getEnvelope().getPointCount(); ++i)
+            {
+                const auto role = editor.roleLabelFor(i);
+                if (role.isNotEmpty())
+                {
+                    found.add(role);
+                    places.push_back(editor.drawnPointPosition(i));
+                    if (i == sustainIndex)
+                    {
+                        found.add("SUSTAIN");
+                        places.push_back(editor.sustainHandlePosition());
+                    }
+                }
+            }
+
+            check(rig.perStage,
+                  found == rig.expected,
+                  name + " offers: " + found.joinIntoString(", ")
+                      + "  (expected " + rig.expected.joinIntoString(", ") + ")");
+
+            auto closest = 1.0e9f;
+            for (std::size_t a = 0; a < places.size(); ++a)
+            {
+                for (auto b = a + 1; b < places.size(); ++b)
+                {
+                    closest = juce::jmin(closest, places[a].getDistanceFrom(places[b]));
+                }
+            }
+            check(rig.spacing,
+                  closest >= 6.0f,
+                  name + "'s closest two handles are " + fmt(closest, 1) + " px apart");
+
+            // 2. Each handle is reachable, and grabs ITSELF.
+            juce::StringArray misgrabs;
+            for (int i = 1; i < editor.getEnvelope().getPointCount(); ++i)
+            {
+                if (editor.roleLabelFor(i).isEmpty()) { continue; }
+                const auto hit = editor.grabAt(editor.drawnPointPosition(i));
+                if (hit.target != BreakpointEnvelopeEditor::Target::point || hit.index != i)
+                {
+                    misgrabs.add(editor.roleLabelFor(i));
+                }
+            }
+            const auto sustainHit = editor.grabAt(editor.sustainHandlePosition());
+            if (sustainHit.target != BreakpointEnvelopeEditor::Target::sustain)
+            {
+                misgrabs.add("SUSTAIN");
+            }
+            check(rig.grabs,
+                  misgrabs.isEmpty(),
+                  misgrabs.isEmpty() ? "every handle selects the stage it names"
+                                     : "these grabbed something else: "
+                                           + misgrabs.joinIntoString(", "));
+        }
+    }
+
     // ---- the two shapes, as the processor actually hands them out -----------
     {
         PX3SynthAudioProcessor processor;
@@ -1250,7 +1361,7 @@ void testBreakpointEnvelope()
             shape.setPoint(2, shape.getPoint(2).timeSeconds, 0.8);
             const auto raised = shape.toAdsr();
 
-            check("EnvelopeEditor_TheSustainHandleSetsBothDecayAndSustain",
+            check("Envelope_TheSustainPointCarriesBothDecayTimeAndSustainLevel",
                   std::abs(moved.decaySeconds - (before.decaySeconds + 0.1f)) < 1.0e-3f
                       && std::abs(moved.sustainLevel - before.sustainLevel) < 1.0e-3f
                       && std::abs(raised.sustainLevel - 0.8f) < 1.0e-3f
@@ -1353,8 +1464,7 @@ void testBreakpointEnvelope()
             for (int i = 1; i <= 4; ++i) { roles.add(labelled.roleLabelFor(i)); }
 
             check("EnvelopeEditor_EveryModEnvelopeHandleIsLabelled",
-                  roles == juce::StringArray({ "ATTACK", "HOLD",
-                                               "DECAY / SUSTAIN", "RELEASE" }),
+                  roles == juce::StringArray({ "ATTACK", "HOLD", "DECAY", "RELEASE" }),
                   "handles 1-4 of a mod envelope read: " + roles.joinIntoString(", "));
 
             // AMP ENV has no hold stage at all, so it has one fewer handle and
@@ -1370,8 +1480,7 @@ void testBreakpointEnvelope()
             check("EnvelopeEditor_TheAmpEnvelopeHasNoHoldStage",
                   amp.getEnvelope().getPointCount() == 4
                       && amp.getEnvelope().getSustainPoint() == 2
-                      && ampRoles == juce::StringArray({ "ATTACK", "DECAY / SUSTAIN",
-                                                        "RELEASE" }),
+                      && ampRoles == juce::StringArray({ "ATTACK", "DECAY", "RELEASE" }),
                   juce::String(amp.getEnvelope().getPointCount()) + " points reading: "
                       + ampRoles.joinIntoString(", "));
 
@@ -1499,10 +1608,60 @@ void testBreakpointEnvelope()
             editor.mouseUp(makeEvent(start.translated(20.0f, -20.0f), 1));
 
             const auto after = editor.getEnvelope().getPoint(3);
-            check("EnvelopeEditor_DraggingMovesAPointInTimeAndValue",
-                  after.timeSeconds > before.timeSeconds && after.value > before.value,
-                  "moved from " + fmt(before.timeSeconds, 4) + "s/" + fmt(before.value, 3)
-                      + " to " + fmt(after.timeSeconds, 4) + "s/" + fmt(after.value, 3));
+            // On an ADSR skeleton a breakpoint is a TIME, and only a time: the
+            // one level in the shape belongs to the sustain handle. Dragging
+            // diagonally moves it along the axis it owns and leaves the other
+            // alone, which is what "separate controls" has to mean when the
+            // mouse moves in two dimensions at once.
+            check("EnvelopeEditor_AnAdsrBreakpointMovesInTimeOnly",
+                  after.timeSeconds > before.timeSeconds
+                      && std::abs(after.value - before.value) < 1.0e-9,
+                  "dragged up and to the right: " + fmt(before.timeSeconds, 4) + "s/"
+                      + fmt(before.value, 3) + " -> " + fmt(after.timeSeconds, 4) + "s/"
+                      + fmt(after.value, 3));
+
+            // A free-form envelope has no stages to name, so nothing is locked.
+            {
+                auto freeform = px3::BreakpointEnvelope::fromAdsr(settings);
+                freeform.addPoint(0.15, 0.7);
+
+                BreakpointEnvelopeEditor loose;
+                loose.setSize(400, 200);
+                loose.setEnvelope(freeform);
+
+                // The point that was ADDED, found by position rather than by a
+                // guessed index: inserting it renumbers everything after it,
+                // and index 2 is the hold point, which sits on top of the
+                // attack point when the hold is zero.
+                auto addedIndex = 1;
+                auto closestToAdded = 1.0e9;
+                for (int i = 1; i + 1 < loose.getEnvelope().getPointCount(); ++i)
+                {
+                    const auto gap = std::abs(loose.getEnvelope().getPoint(i).timeSeconds - 0.15);
+                    if (gap < closestToAdded) { closestToAdded = gap; addedIndex = i; }
+                }
+
+                const auto grabPoint = loose.drawnPointPosition(addedIndex);
+                const auto was = loose.getEnvelope().getPoint(addedIndex);
+
+                const auto ev = [&loose](juce::Point<float> at)
+                {
+                    return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(),
+                                            at, juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f,
+                                            0.0f, &loose, &loose, juce::Time::getCurrentTime(),
+                                            at, juce::Time::getCurrentTime(), 1, false);
+                };
+                loose.mouseDown(ev(grabPoint));
+                loose.mouseDrag(ev(grabPoint.translated(15.0f, -25.0f)));
+                loose.mouseUp(ev(grabPoint.translated(15.0f, -25.0f)));
+
+                const auto now = loose.getEnvelope().getPoint(addedIndex);
+                check("EnvelopeEditor_AFreeFormPointStillMovesInBothAxes",
+                      now.timeSeconds > was.timeSeconds && now.value > was.value,
+                      "once a point is added the roles are gone and so is the lock: "
+                          + fmt(was.timeSeconds, 3) + "s/" + fmt(was.value, 2) + " -> "
+                          + fmt(now.timeSeconds, 3) + "s/" + fmt(now.value, 2));
+            }
 
             check("EnvelopeEditor_DraggingReportsTheChange", changeCount > 0,
                   juce::String(changeCount) + " change callbacks fired");
@@ -1579,9 +1738,39 @@ void testBreakpointEnvelope()
                   fmt(before, 4) + " -> " + fmt(afterUp, 4));
 
             const auto pointsBefore = editor.getEnvelope().getPointCount();
-            editor.mouseDoubleClick(makeEvent({ 150.0f, 90.0f }, 2));
-            editor.mouseDown(makeEvent({ 150.0f, 90.0f }, 1));
-            editor.mouseUp(makeEvent({ 150.0f, 90.0f }, 1));
+
+            // Somewhere provably empty, rather than a hard-coded pixel. The
+            // held stretch moved every handle along the axis, and a coordinate
+            // chosen when the geometry was different landed ON one - so the
+            // double-click removed a point instead of adding one.
+            auto emptySpot = juce::Point<float>(150.0f, 90.0f);
+            for (float x = 60.0f; x < 340.0f; x += 7.0f)
+            {
+                const auto candidate = juce::Point<float>(x, 90.0f);
+                if (editor.grabAt(candidate).target == BreakpointEnvelopeEditor::Target::none)
+                {
+                    emptySpot = candidate;
+                    break;
+                }
+            }
+
+            editor.mouseDoubleClick(makeEvent(emptySpot, 2));
+
+            // Adding a point ends the ADSR skeleton, which removes the held
+            // stretch and moves every handle along the axis. Clicking the same
+            // pixel again would no longer be clicking the new point, so it is
+            // located afresh.
+            auto addedAt = emptySpot;
+            auto nearest = 1.0e9f;
+            for (int i = 0; i < editor.getEnvelope().getPointCount(); ++i)
+            {
+                const auto where = editor.drawnPointPosition(i);
+                const auto gap = where.getDistanceFrom(emptySpot);
+                if (gap < nearest) { nearest = gap; addedAt = where; }
+            }
+
+            editor.mouseDown(makeEvent(addedAt, 1));
+            editor.mouseUp(makeEvent(addedAt, 1));
             editor.keyPressed(juce::KeyPress(juce::KeyPress::deleteKey));
 
             check("EnvelopeEditor_DeleteRemovesTheSelectedPoint",

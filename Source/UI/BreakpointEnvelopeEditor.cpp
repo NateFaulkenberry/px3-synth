@@ -133,7 +133,8 @@ double BreakpointEnvelopeEditor::visibleSeconds() const
     // axis grows with it) without the whole curve rescaling under the cursor
     // every time a point moves, and it snaps back to exactly full width the
     // moment the mouse is released.
-    const auto fitted = juce::jmax(kMinimumVisibleSeconds, envelope.getTotalSeconds());
+    const auto fitted = juce::jmax(kMinimumVisibleSeconds,
+                                   envelope.getTotalSeconds() + heldDisplaySeconds());
     return dragging.target != Target::none ? juce::jmax(fitted, dragAxisSeconds) : fitted;
 }
 
@@ -159,10 +160,52 @@ double BreakpointEnvelopeEditor::screenToValue(float y) const
     return juce::jlimit(0.0, 1.0, static_cast<double>((area.getBottom() - y) / area.getHeight()));
 }
 
+bool BreakpointEnvelopeEditor::hasSustainHandle() const
+{
+    // Only where a held phase is a real stage. A free-form envelope that has
+    // been edited past the ADSR skeleton has no "sustain level" to name.
+    const auto count = envelope.getPointCount();
+    const auto sustain = envelope.getSustainPoint();
+    return (count == 4 && sustain == 2) || (count == 5 && sustain == 3);
+}
+
+double BreakpointEnvelopeEditor::heldDisplaySeconds() const
+{
+    // Display only. The envelope holds at the sustain point for as long as the
+    // key is down - not a duration, and deliberately not in the model.
+    //
+    // A fraction of the envelope's own length rather than a constant, so it
+    // stays proportionate on a 60 ms envelope and an 8 second one alike.
+    if (! hasSustainHandle()) { return 0.0; }
+    return juce::jmax(0.04, envelope.getTotalSeconds() * 0.22);
+}
+
+double BreakpointEnvelopeEditor::displayTimeArriving(int index) const
+{
+    const auto time = envelope.getPoint(index).timeSeconds;
+    return index > envelope.getSustainPoint() ? time + heldDisplaySeconds() : time;
+}
+
+double BreakpointEnvelopeEditor::displayTimeLeaving(int index) const
+{
+    const auto time = envelope.getPoint(index).timeSeconds;
+    return index >= envelope.getSustainPoint() ? time + heldDisplaySeconds() : time;
+}
+
 juce::Point<float> BreakpointEnvelopeEditor::pointToScreen(int index) const
 {
-    const auto& point = envelope.getPoint(index);
-    return toScreen(point.timeSeconds, point.value);
+    // Arriving, so the sustain breakpoint sits at the END of the decay - the
+    // left edge of the held stretch - which is what makes it the decay handle.
+    return toScreen(displayTimeArriving(index), envelope.getPoint(index).value);
+}
+
+juce::Point<float> BreakpointEnvelopeEditor::sustainHandlePosition() const
+{
+    if (! hasSustainHandle()) { return {}; }
+
+    const auto sustain = envelope.getSustainPoint();
+    const auto middle = 0.5 * (displayTimeArriving(sustain) + displayTimeLeaving(sustain));
+    return toScreen(middle, envelope.getPoint(sustain).value);
 }
 
 juce::Point<float> BreakpointEnvelopeEditor::drawnPointPosition(int index) const
@@ -200,16 +243,12 @@ juce::String BreakpointEnvelopeEditor::roleLabelFor(int index) const
     //
     // Two skeletons: AMP ENV has four points and no hold stage, ENV 1-3 have
     // five and do.
-    // The sustain point carries TWO of the named controls at once, which is why
-    // it reads as both: how far along it sits is the decay time, and how high
-    // it sits is the sustain level. Calling it "DECAY" alone hid the fact that
-    // dragging it upwards is the only way to set the sustain.
     if (envelope.getPointCount() == 4 && envelope.getSustainPoint() == 2)
     {
         switch (index)
         {
             case 1:  return "ATTACK";
-            case 2:  return "DECAY / SUSTAIN";
+            case 2:  return "DECAY";
             case 3:  return "RELEASE";
             default: return {};
         }
@@ -221,7 +260,7 @@ juce::String BreakpointEnvelopeEditor::roleLabelFor(int index) const
         {
             case 1:  return "ATTACK";
             case 2:  return "HOLD";
-            case 3:  return "DECAY / SUSTAIN";
+            case 3:  return "DECAY";
             case 4:  return "RELEASE";
             default: return {};
         }
@@ -239,7 +278,7 @@ juce::Point<float> BreakpointEnvelopeEditor::curveHandlePosition(int segment) co
     // the user would grab to bend it. Putting it at the midpoint of the straight
     // line between the two points instead would leave it floating off a bent
     // segment, which reads as an unrelated control.
-    const auto midTime = 0.5 * (a.timeSeconds + b.timeSeconds);
+    const auto midTime = 0.5 * (displayTimeLeaving(segment) + displayTimeArriving(segment + 1));
     const auto midValue = a.value + (b.value - a.value)
                                         * px3::BreakpointEnvelope::shape(0.5, a.curveToNext);
     return toScreen(midTime, midValue);
@@ -250,6 +289,14 @@ BreakpointEnvelopeEditor::Hit BreakpointEnvelopeEditor::grabAt(juce::Point<float
     // Points win over curve handles: a breakpoint and the handle of the segment
     // leaving it can overlap on a very short segment, and the point is what a
     // user is more likely to be reaching for.
+    // The sustain handle first. It sits on the held stretch, well clear of the
+    // breakpoints either side, so there is nothing for it to steal.
+    if (hasSustainHandle()
+        && sustainHandlePosition().getDistanceFrom(position) <= kPointGrabRadius)
+    {
+        return { Target::sustain, envelope.getSustainPoint() };
+    }
+
     // The CLOSEST point within reach, against the position it is DRAWN at.
     //
     // Both parts matter. Taking the first one within the radius meant that two
@@ -297,8 +344,18 @@ void BreakpointEnvelopeEditor::buildCurvePath(juce::Path& path) const
         const auto& a = envelope.getPoint(i);
         const auto& b = envelope.getPoint(i + 1);
 
-        const auto from = toScreen(a.timeSeconds, a.value);
-        const auto to = toScreen(b.timeSeconds, b.value);
+        // Leaving i, arriving at i+1: the difference is the held stretch, drawn
+        // as a flat run at the sustain level before the release begins.
+        const auto fromTime = displayTimeLeaving(i);
+        const auto toTime = displayTimeArriving(i + 1);
+
+        if (i == envelope.getSustainPoint() && heldDisplaySeconds() > 0.0)
+        {
+            path.lineTo(toScreen(fromTime, a.value));
+        }
+
+        const auto from = toScreen(fromTime, a.value);
+        const auto to = toScreen(toTime, b.value);
 
         // Sampled at roughly one point per pixel of width. A curve drawn with a
         // handful of segments looks like a polygon at exactly the moment the
@@ -311,7 +368,7 @@ void BreakpointEnvelopeEditor::buildCurvePath(juce::Path& path) const
             const auto x = static_cast<double>(s) / steps;
             const auto value = a.value + (b.value - a.value)
                                              * px3::BreakpointEnvelope::shape(x, a.curveToNext);
-            const auto time = a.timeSeconds + (b.timeSeconds - a.timeSeconds) * x;
+            const auto time = fromTime + (toTime - fromTime) * x;
             path.lineTo(toScreen(time, value));
         }
     }
@@ -478,8 +535,8 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
             // A fixed box rather than a measured one: getStringWidthFloat is
             // deprecated, and the labels here are known, so measuring buys
             // nothing a constant does not. Wide enough for the longest,
-            // "DECAY / SUSTAIN".
-            constexpr auto width = 84.0f;
+            // "RELEASE".
+            constexpr auto width = 52.0f;
 
             // Above the point, unless that would put it outside the graph, in
             // which case below. The attack point sits at the very top of the
@@ -500,17 +557,58 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
         }
     }
 
+    // ---- the sustain handle ------------------------------------------------
+    // On the held stretch rather than on a breakpoint, because the level the
+    // envelope holds at is not an event in time. Drawn as a bar: it moves in
+    // one axis, and a round handle would suggest it moves in two.
+    if (hasSustainHandle())
+    {
+        const auto position = sustainHandlePosition();
+        const auto isHovered = hovered.target == Target::sustain;
+        const auto isBeingDragged = dragging.target == Target::sustain;
+        const auto active = isHovered || isBeingDragged;
+
+        const auto barWidth = floatFor("sustainBarWidth", 20.0f);
+        const auto barHeight = floatFor("sustainBarHeight", 3.0f) * (active ? 1.6f : 1.0f);
+
+        g.setColour(colourFor("sustainPointColor", curveColour().brighter(0.3f))
+                        .withAlpha(active ? 1.0f : 0.85f));
+        g.fillRoundedRectangle(position.x - barWidth * 0.5f, position.y - barHeight * 0.5f,
+                               barWidth, barHeight, barHeight * 0.5f);
+
+        if (active)
+        {
+            const auto labelSize = floatFor("roleLabelSize", 8.5f);
+            g.setFont(juce::FontOptions(labelSize));
+            constexpr auto width = 52.0f;
+            const auto above = position.y - barHeight - labelSize - 2.0f;
+            const auto y = above >= area.getY() ? above : position.y + barHeight + 2.0f;
+            const auto x = juce::jlimit(area.getX(), area.getRight() - width,
+                                        position.x - width * 0.5f);
+
+            g.setColour(colourFor("roleLabelColor", curveColour().withAlpha(0.95f)));
+            g.drawText("SUSTAIN", juce::Rectangle<float>(x, y, width, labelSize + 2.0f),
+                       juce::Justification::centred, false);
+        }
+    }
+
     // ---- readout -----------------------------------------------------------
     // Only while dragging. A permanent readout is clutter on a graph this size,
     // and the numbers only matter while they are being changed.
     if (showReadout && dragging.target != Target::none)
     {
         juce::String text;
-        if (dragging.target == Target::point)
+        if (dragging.target == Target::sustain)
+        {
+            text = "sustain " + juce::String(envelope.getPoint(dragging.index).value, 2);
+        }
+        else if (dragging.target == Target::point)
         {
             const auto& point = envelope.getPoint(dragging.index);
-            text = juce::String(point.timeSeconds * 1000.0, 0) + " ms   "
-                   + juce::String(point.value, 2);
+            text = hasSustainHandle()
+                     ? juce::String(point.timeSeconds * 1000.0, 0) + " ms"
+                     : juce::String(point.timeSeconds * 1000.0, 0) + " ms   "
+                           + juce::String(point.value, 2);
         }
         else
         {
@@ -551,10 +649,11 @@ void BreakpointEnvelopeEditor::mouseDown(const juce::MouseEvent& event)
 
     dragging = grabAt(event.position);
     dragOrigin = event.position;
-    dragAxisSeconds = juce::jmax(kMinimumVisibleSeconds, envelope.getTotalSeconds());
+    dragAxisSeconds = juce::jmax(kMinimumVisibleSeconds,
+                                 envelope.getTotalSeconds() + heldDisplaySeconds());
     showReadout = dragging.target != Target::none;
 
-    if (dragging.target == Target::point)
+    if (dragging.target == Target::point || dragging.target == Target::sustain)
     {
         selectedPoint = dragging.index;
         dragStartTime = envelope.getPoint(dragging.index).timeSeconds;
@@ -580,7 +679,19 @@ void BreakpointEnvelopeEditor::mouseDrag(const juce::MouseEvent& event)
     const auto scale = event.mods.isShiftDown() ? 0.2f : 1.0f;
     const auto delta = (event.position - dragOrigin) * scale;
 
-    if (dragging.target == Target::point)
+    if (dragging.target == Target::sustain)
+    {
+        // Level only. The sustain handle names one thing and changes one
+        // thing; the decay time stays exactly where the decay handle put it.
+        const auto area = plotArea();
+        const auto valueDelta = area.getHeight() > 0.0f
+                                  ? -static_cast<double>(delta.y) / area.getHeight()
+                                  : 0.0;
+
+        envelope.setPoint(dragging.index, dragStartTime, dragStartValue + valueDelta);
+        notifyChanged();
+    }
+    else if (dragging.target == Target::point)
     {
         const auto area = plotArea();
         const auto timeDelta = area.getWidth() > 0.0f
@@ -590,9 +701,19 @@ void BreakpointEnvelopeEditor::mouseDrag(const juce::MouseEvent& event)
                                   ? -static_cast<double>(delta.y) / area.getHeight()
                                   : 0.0;
 
+        // On an ADSR skeleton every breakpoint is a TIME control - attack,
+        // hold, decay and release are all durations - and the only level in
+        // the shape belongs to the sustain handle. Letting these move
+        // vertically as well is what made one handle mean two things, and it
+        // also breaks the skeleton: drag the peak down and the shape stops
+        // being an ADSR the parameters can describe.
+        //
+        // A free-form envelope has no such roles, so its points move freely.
+        const auto locked = hasSustainHandle();
+
         envelope.setPoint(dragging.index,
                           juce::jmin(kMaxDraggableSeconds, dragStartTime + timeDelta),
-                          dragStartValue + valueDelta);
+                          locked ? dragStartValue : dragStartValue + valueDelta);
         notifyChanged();
     }
     else if (dragging.target == Target::curve)
