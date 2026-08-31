@@ -2573,6 +2573,7 @@ void testWavetable()
                 setChoice(processor, "osc1Mode", 0);   // SINE: pitch only
                 card->refreshFromParameters(true, 0, 0);
                 const auto sineSliders = visibleSliders(*card);
+                const auto sineModeBounds = card->debugModeBoxBounds();
 
                 setChoice(processor, "osc1Mode", 8);   // WAVETABLE
                 card->refreshFromParameters(true, 8, 0);
@@ -2593,8 +2594,19 @@ void testWavetable()
                 check("WavetableCard_TableSelectorSitsBelowTheModeSelector",
                       tableBounds.getY() > modeBounds.getBottom()
                           && std::abs(tableBounds.getX() - modeBounds.getX()) <= 1
-                          && std::abs(tableBounds.getWidth() - modeBounds.getWidth()) <= 1,
+                          && std::abs(tableBounds.getWidth() - modeBounds.getWidth()) <= 1
+                          && std::abs(tableBounds.getHeight() - modeBounds.getHeight()) <= 1,
                       "mode " + modeBounds.toString() + ", table " + tableBounds.toString());
+
+                // The mode selector must not move or resize as a result of
+                // being used. It had a second layout path in wavetable mode
+                // that laid bands down from the top of the row, so choosing
+                // WAVETABLE jumped it from a centred cell to the full row
+                // width - the control under the cursor moving out from under it.
+                check("WavetableCard_TheModeSelectorDoesNotMoveWhenWavetableIsChosen",
+                      modeBounds == sineModeBounds,
+                      "mode box is " + modeBounds.toString() + " in WAVETABLE and "
+                          + sineModeBounds.toString() + " in SINE");
 
                 const auto* graph = &card->getWavetableGraph();
                 check("WavetableCard_GraphIsVisibleAndSizedInWavetableMode",
@@ -3087,6 +3099,8 @@ void testWavetable()
     // hanging off the bottom - with the camera at 3.4 where 6.0 was needed.
     {
         juce::StringArray clipped;
+        juce::StringArray outsideZoomStops;
+        auto worstDistance = 0.0f;
         juce::StringArray tooSmall;
         juce::String detail;
         auto worstFill = 1.0f;
@@ -3141,12 +3155,33 @@ void testWavetable()
                 worstFill = juce::jmin(worstFill, fill);
                 if (fill < 0.75f) { tooSmall.addIfNotAlreadyThere(name); }
 
+                // The framed distance has to be a distance the user can also
+                // zoom to. autoFrame is not clamped by the wheel's stops, so a
+                // deeper stack could be framed at a distance outside them - and
+                // then the FIRST wheel event snaps the view somewhere else.
+                const auto framedDistance = renderer.getCamera().distance;
+                if (framedDistance < Wavetable3DRenderer::kMinDistance
+                    || framedDistance > Wavetable3DRenderer::kMaxDistance)
+                {
+                    outsideZoomStops.addIfNotAlreadyThere(
+                        name + " framed at " + fmt(framedDistance, 2));
+                }
+                worstDistance = juce::jmax(worstDistance, framedDistance);
+
                 if (aspect > 1.5f)
                 {
                     detail << (detail.isEmpty() ? "" : ", ") << name << " " << fmt(fill, 2);
                 }
             }
         }
+
+        check("Wavetable3D_TheFramedDistanceIsInsideTheZoomStops",
+              outsideZoomStops.isEmpty(),
+              outsideZoomStops.isEmpty()
+                  ? "furthest table framed at " + fmt(worstDistance, 2) + ", stops are "
+                        + fmt(Wavetable3DRenderer::kMinDistance, 2) + ".."
+                        + fmt(Wavetable3DRenderer::kMaxDistance, 2)
+                  : outsideZoomStops.joinIntoString(", "));
 
         check("Wavetable3D_EveryTableIsFullyInFrame", clipped.isEmpty(),
               clipped.isEmpty()

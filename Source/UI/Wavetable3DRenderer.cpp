@@ -20,6 +20,20 @@ constexpr int kDrawnFrames = 48;
 // camera swings round. The width is free to look at; it is not free to frame.
 constexpr float kWaveformHalfWidth = 1.0f;
 
+// How far the stack runs front to back in model space, half-extent, so the
+// frames sit between -kStackHalfDepth and +kStackHalfDepth.
+//
+// It was 1.0, written as a bare -1..1 in three places. Spreading the frames
+// apart is the only way to put air between them: the COUNT is what makes the
+// picture read as a stack rather than a surface, so thinning it out is not an
+// option, and once the ribbons are drawn thicker the old spacing left the far
+// half of the table looking solid.
+//
+// The camera does not need a matching constant. autoFrame measures the
+// geometry it is actually given, so a deeper stack simply fits at a greater
+// distance.
+constexpr float kStackHalfDepth = 1.8f;
+
 const char* kVertexShader = R"(
 attribute vec3 aPosition;
 attribute vec3 aNeighbour;
@@ -455,7 +469,7 @@ void Wavetable3DRenderer::rebuildVertices()
             // 3D position, not a 2D point with an offset added.
             const auto x = (t * 2.0f - 1.0f) * kWaveformHalfWidth;
             const auto y = sampleAt(t) * 0.55f;
-            const auto z = frameNorm * 2.0f - 1.0f;
+            const auto z = (frameNorm * 2.0f - 1.0f) * kStackHalfDepth;
 
             const auto xNext = (tNext * 2.0f - 1.0f) * kWaveformHalfWidth;
             const auto yNext = sampleAt(tNext) * 0.55f;
@@ -572,7 +586,7 @@ void Wavetable3DRenderer::buildFloor()
                 vertex.side = side;
                 // Its own depth drives the same fade the stack uses, so the far
                 // edge sits back and the near edge comes forward.
-                vertex.frame = (hz + 1.0f) * 0.5f;
+                vertex.frame = (hz / kStackHalfDepth + 1.0f) * 0.5f;
                 // `stored` carries the emphasis for floor vertices. The
                 // waveform's meaning for it - whether the frame is a real one -
                 // does not apply here, and the fragment shader takes a different
@@ -586,6 +600,7 @@ void Wavetable3DRenderer::buildFloor()
     };
 
     const auto w = kWaveformHalfWidth;
+    const auto d = kStackHalfDepth;
 
     // Every edge at the same weight, so the box reads as a wireframe rather
     // than as a solid with a lit top.
@@ -600,17 +615,17 @@ void Wavetable3DRenderer::buildFloor()
     for (const auto& face : { std::make_pair(topY, kTopEmphasis),
                               std::make_pair(bottomY, kUnderEmphasis) })
     {
-        addEdge(-w, face.first, -1.0f,  w, face.first, -1.0f, face.second);
-        addEdge( w, face.first, -1.0f,  w, face.first,  1.0f, face.second);
-        addEdge( w, face.first,  1.0f, -w, face.first,  1.0f, face.second);
-        addEdge(-w, face.first,  1.0f, -w, face.first, -1.0f, face.second);
+        addEdge(-w, face.first, -d,  w, face.first, -d, face.second);
+        addEdge( w, face.first, -d,  w, face.first,  d, face.second);
+        addEdge( w, face.first,  d, -w, face.first,  d, face.second);
+        addEdge(-w, face.first,  d, -w, face.first, -d, face.second);
     }
 
     // The four corner posts, which are what make it a box rather than two
     // rectangles that happen to be near each other.
     for (const auto cornerX : { -w, w })
     {
-        for (const auto cornerZ : { -1.0f, 1.0f })
+        for (const auto cornerZ : { -d, d })
         {
             addEdge(cornerX, topY, cornerZ, cornerX, bottomY, cornerZ, kUnderEmphasis);
         }
@@ -874,7 +889,11 @@ void Wavetable3DRenderer::renderOpenGL()
         // Half a line width, in normalised device units, from a pixel width -
         // which is what keeps the ribbon the same thickness on a Retina panel
         // as on any other.
-        const auto pixels = 2.2f * scale;
+        // Doubled from 1.1 px half-width. One uniform serves the waveform
+        // ribbons and the floor edges alike, so the whole picture thickens
+        // together rather than the floor turning into hairlines beside a
+        // heavier stack.
+        const auto pixels = 4.4f * scale;
         uniformHalfWidth->set(pixels / static_cast<float>(height));
     }
     if (uniformAspect != nullptr)

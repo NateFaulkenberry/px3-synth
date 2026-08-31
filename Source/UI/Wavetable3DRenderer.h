@@ -135,7 +135,11 @@ public:
     static constexpr float kMinElevation = -0.15f;
     static constexpr float kMaxElevation = 1.25f;
     static constexpr float kMinDistance = 1.8f;
-    static constexpr float kMaxDistance = 7.0f;
+    // Has to stay clear of what autoFrame actually asks for, which is not
+    // clamped by these stops: spreading the stack apart pushed the framed
+    // distance to 7.62 while this still said 7.0, so the first wheel event
+    // would have snapped the view in from where it opened.
+    static constexpr float kMaxDistance = 9.0f;
 
 private:
     void newOpenGLContextCreated() override;

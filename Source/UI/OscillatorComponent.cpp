@@ -211,30 +211,13 @@ void OscillatorComponent::resized()
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
         const auto showTable = wtTableBox != nullptr && wtTableBox->isVisible();
 
-        // The table selector goes UNDER the mode selector rather than beside it.
-        // Both are "which kind of sound is this", and stacking them reads as one
-        // decision refined, where side by side reads as two unrelated ones. The
-        // row is 153 px tall and a labelled dropdown is 38, so this costs
-        // nothing that was being used.
-        if (showTable)
-        {
-            constexpr int bandHeight = 38;
-            auto band = row;
-
-            px3::ui::layoutLabelledControl(band.removeFromTop(bandHeight),
-                                           { &modeLabel, &modeBox, nullptr,
-                                             ControlShape::stretch, 14, 0, 24 },
-                                           inner.rowControl(0));
-            px3::ui::layoutLabelledControl(band.removeFromTop(bandHeight),
-                                           { wtTableLabel, wtTableBox, nullptr,
-                                             ControlShape::stretch, 14, 0, 24 },
-                                           inner.rowControl(0));
-
-            vowelLabel.setBounds(0, 0, 0, 0);
-            vowelBox.setBounds(0, 0, 0, 0);
-        }
-        else
-        {
+        // The mode selector is laid out the SAME WAY in every mode - one flex
+        // cell, whatever else is in the row. It used to have a second layout
+        // path for wavetable mode that built its own 38 px bands down from the
+        // top of the row, so choosing WAVETABLE jumped the control from a
+        // centred 116 px cell to the full row width and moved it upwards. The
+        // mode selector is the thing you just used; it must not move under the
+        // cursor as a result of being used.
         const auto showVowel = vowelBox.isVisible();
 
         const std::vector<float> natural = showVowel ? std::vector<float> { 84.0f, 84.0f }
@@ -264,6 +247,36 @@ void OscillatorComponent::resized()
             vowelLabel.setBounds(0, 0, 0, 0);
             vowelBox.setBounds(0, 0, 0, 0);
         }
+
+        // The table selector goes UNDER the mode selector rather than beside it.
+        // Both are "which kind of sound is this", and stacking them reads as one
+        // decision refined, where side by side reads as two unrelated ones.
+        //
+        // Anchored to where the mode BOX actually landed rather than laid out
+        // from the top of the row, which is what keeps the control above it
+        // still: this can only ever add something below.
+        if (showTable)
+        {
+            constexpr int labelHeight = 14;
+            constexpr int controlHeight = 24;
+            constexpr int stackGap = 6;
+
+            // The band has to include the label-to-control gap as well as the
+            // two heights, or the control is given what is left after the gap
+            // and comes out shorter than the mode box above it - 20 px against
+            // 24, which reads as a mistake rather than as a hierarchy.
+            const auto bandHeight = labelHeight + controlHeight
+                                    + juce::roundToInt(inner.rowControl(0).gap);
+
+            const juce::Rectangle<int> band(modeBox.getX(),
+                                            modeBox.getBottom() + stackGap,
+                                            modeBox.getWidth(),
+                                            bandHeight);
+            px3::ui::layoutLabelledControl(band,
+                                           { wtTableLabel, wtTableBox, nullptr,
+                                             ControlShape::stretch,
+                                             labelHeight, 0, controlHeight },
+                                           inner.rowControl(0));
         }
     }
 
