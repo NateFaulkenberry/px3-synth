@@ -75,7 +75,15 @@ void main()
 
     // The neighbourhood of the scan reads as a group; past about a fifth of the
     // table a frame is background.
-    float near = 1.0 - smoothstep(0.0, 0.22, toSelected);
+    //
+    // Called closeness rather than `near` as a precaution only. `near` and
+    // `far` are reserved in some GLSL profiles, and this was suspected of being
+    // why the renderer showed nothing - it was not. Tested both ways on this
+    // driver: the shader compiles either way, and the real cause was the buffer
+    // never being uploaded (see uploadGeometry). Kept because the name is still
+    // a portability risk on drivers this has not run on, not because it fixed
+    // anything.
+    float closeness = 1.0 - smoothstep(0.0, 0.22, toSelected);
     float selected = 1.0 - smoothstep(0.0, 0.035, toSelected);
 
     // Across the ribbon: 1 at the centre, 0 at the edges. This is the
@@ -98,7 +106,7 @@ void main()
     vec3 hot = mix(base, vec3(1.0), 0.65);
     vec3 colour = mix(base, hot, selected);
 
-    float alpha = storedWeight * depthFade * (0.16 + 0.84 * near);
+    float alpha = storedWeight * depthFade * (0.16 + 0.84 * closeness);
     alpha *= core * 0.85 + glow * 0.35;
     alpha += selected * glow * 0.5;
 
@@ -125,17 +133,33 @@ Wavetable3DRenderer::Wavetable3DRenderer()
     // JUCE draws this component and its children over the GL output instead,
     // which is why the overlay is a child of this and not a sibling.
     context.setComponentPaintingEnabled(true);
-    context.attachTo(*this);
 
-    // 60 Hz, and only while there is something to show. Continuous repainting
-    // would keep the GPU awake for a static picture.
-    startTimerHz(60);
+    // NOT attached here. There is one of these per oscillator card, so
+    // attaching on construction means three GL contexts and three render
+    // threads for a picture that at most one card is showing. The context
+    // follows visibility instead - see visibilityChanged.
 }
 
 Wavetable3DRenderer::~Wavetable3DRenderer()
 {
-    stopTimer();
+    // Blocks until the render thread has stopped, which is what makes it safe
+    // for the members below to be destroyed afterwards.
     context.detach();
+}
+
+void Wavetable3DRenderer::visibilityChanged()
+{
+    if (isVisible())
+    {
+        if (! context.isAttached())
+        {
+            context.attachTo(*this);
+        }
+    }
+    else if (context.isAttached())
+    {
+        context.detach();
+    }
 }
 
 void Wavetable3DRenderer::setDisplay(px3::WavetableDisplay display)
@@ -159,6 +183,12 @@ void Wavetable3DRenderer::setPosition(float position)
     context.triggerRepaint();
 }
 
+juce::String Wavetable3DRenderer::getShaderError() const
+{
+    const std::scoped_lock lock(displayMutex);
+    return shaderError;
+}
+
 void Wavetable3DRenderer::setBackgroundColour(juce::Colour colour)
 {
     if (backgroundColour == colour) { return; }
@@ -176,16 +206,6 @@ void Wavetable3DRenderer::setAccentColour(juce::Colour accent)
 void Wavetable3DRenderer::resized()
 {
     context.triggerRepaint();
-}
-
-void Wavetable3DRenderer::timerCallback()
-{
-    // Nothing to do unless something asked for a frame; triggerRepaint is what
-    // schedules work, and this only keeps the context ticking over.
-    if (! isShowing())
-    {
-        return;
-    }
 }
 
 void Wavetable3DRenderer::resetCamera()
@@ -239,10 +259,23 @@ void Wavetable3DRenderer::newOpenGLContextCreated()
         || ! program->addFragmentShader(juce::OpenGLHelpers::translateFragmentShaderToV3(kFragmentShader))
         || ! program->link())
     {
-        // A failed link leaves nothing to draw with, and drawing with a half
-        // built program is worse than drawing nothing.
+        // Recorded rather than swallowed. A shader that fails to compile leaves
+        // the CPU fallback drawing, which looks exactly like "the GPU renderer
+        // is not working" and says nothing about why - and the driver's message
+        // is the only thing that does.
+        {
+            const std::scoped_lock lock(displayMutex);
+            shaderError = program->getLastError();
+        }
+        DBG("Wavetable3DRenderer shader failed: " << program->getLastError());
+
         program.reset();
         return;
+    }
+
+    {
+        const std::scoped_lock lock(displayMutex);
+        shaderError.clear();
     }
 
     const auto uniform = [this](const char* name)
@@ -267,6 +300,9 @@ void Wavetable3DRenderer::newOpenGLContextCreated()
     attribStored = attribute("aStored");
 
     context.extensions.glGenBuffers(1, &vertexBuffer);
+
+    // A brand new buffer holds nothing, whatever the CPU vertices still say.
+    geometryUploaded = false;
 }
 
 void Wavetable3DRenderer::openGLContextClosing()
@@ -276,6 +312,7 @@ void Wavetable3DRenderer::openGLContextClosing()
         context.extensions.glDeleteBuffers(1, &vertexBuffer);
         vertexBuffer = 0;
     }
+    geometryUploaded = false;
 
     uniformViewProjection.reset();
     uniformSelected.reset();
@@ -290,7 +327,7 @@ void Wavetable3DRenderer::openGLContextClosing()
     program.reset();
 }
 
-void Wavetable3DRenderer::rebuildGeometry()
+void Wavetable3DRenderer::rebuildVertices()
 {
     px3::WavetableDisplay display;
     {
@@ -372,15 +409,24 @@ void Wavetable3DRenderer::rebuildGeometry()
         }
     }
 
-    if (vertexBuffer != 0 && ! vertices.empty())
+    geometryUploaded = false;
+}
+
+void Wavetable3DRenderer::uploadGeometry()
+{
+    if (geometryUploaded || vertexBuffer == 0 || vertices.empty())
     {
-        context.extensions.glBindBuffer(juce::gl::GL_ARRAY_BUFFER, vertexBuffer);
-        context.extensions.glBufferData(
-            juce::gl::GL_ARRAY_BUFFER,
-            static_cast<GLsizeiptr>(vertices.size() * sizeof(Vertex)),
-            vertices.data(),
-            juce::gl::GL_STATIC_DRAW);
+        return;
     }
+
+    context.extensions.glBindBuffer(juce::gl::GL_ARRAY_BUFFER, vertexBuffer);
+    context.extensions.glBufferData(
+        juce::gl::GL_ARRAY_BUFFER,
+        static_cast<GLsizeiptr>(vertices.size() * sizeof(Vertex)),
+        vertices.data(),
+        juce::gl::GL_STATIC_DRAW);
+
+    geometryUploaded = true;
 }
 
 juce::Matrix3D<float> Wavetable3DRenderer::buildViewProjection(float aspect) const
@@ -442,9 +488,17 @@ void Wavetable3DRenderer::renderOpenGL()
     juce::OpenGLHelpers::clear(backgroundColour);
     juce::gl::glViewport(0, 0, width, height);
 
-    rebuildGeometry();
+    rebuildVertices();
+    uploadGeometry();
 
-    if (program == nullptr || vertices.empty() || vertexBuffer == 0)
+    // Nothing is drawn until the vertices are actually IN this context's buffer.
+    //
+    // Without this the renderer crashed on a tab switch: the context is
+    // recreated, glGenBuffers hands back a new empty buffer, and the draw calls
+    // below were still issued for the ranges the old one held - so the GPU
+    // fetched vertices past the end of an empty buffer and took the process
+    // with it.
+    if (program == nullptr || vertexBuffer == 0 || vertices.empty() || ! geometryUploaded)
     {
         return;
     }
@@ -509,11 +563,20 @@ void Wavetable3DRenderer::renderOpenGL()
     bind(attribStored, 1, offsetof(Vertex, stored));
 
     // Back to front, so the nearer frames blend over the ones behind them.
+    //
+    // The range is clamped against what was actually uploaded rather than
+    // trusted from frameCount. A draw call reading past the end of a buffer is
+    // a segfault inside the driver, not an exception anything can catch, so the
+    // bound is checked here where it is cheap.
+    const auto uploadedVertices = static_cast<int>(vertices.size());
     for (int f = frameCount - 1; f >= 0; --f)
     {
-        juce::gl::glDrawArrays(juce::gl::GL_TRIANGLE_STRIP,
-                               f * verticesPerFrame,
-                               verticesPerFrame);
+        const auto first = f * verticesPerFrame;
+        if (first < 0 || first + verticesPerFrame > uploadedVertices)
+        {
+            continue;
+        }
+        juce::gl::glDrawArrays(juce::gl::GL_TRIANGLE_STRIP, first, verticesPerFrame);
     }
 
     const auto unbind = [this](const std::unique_ptr<juce::OpenGLShaderProgram::Attribute>& a)

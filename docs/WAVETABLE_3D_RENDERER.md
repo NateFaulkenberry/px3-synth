@@ -160,7 +160,57 @@ matter how it was coloured.
 
 ---
 
-## G. Status
+## G. The bug that made it look broken
+
+The first build showed nothing and then crashed on a tab switch. Both were one
+fault, in `glDrawArrays`, confirmed from the crash report rather than guessed:
+
+```
+Thread 14 "OpenGL Renderer"  EXC_BAD_ACCESS (SIGSEGV)
+  GLEngine   gleRunVertexSubmitImmediate
+  GLEngine   glDrawArrays_Exec
+  PX3 Synth  Wavetable3DRenderer::renderOpenGL()
+```
+
+Geometry upload was gated on the same `displayDirty` flag that guards building
+the CPU vertices, and that flag is consumed whether or not the upload can
+actually happen. Two ways that goes wrong, and both occurred:
+
+- **A display arrives before the context exists.** The vertices are built, the
+  flag is cleared, and there is no buffer to upload to. The context comes up
+  later, generates an empty buffer, and the draw calls run against it.
+- **The context is recreated.** Hiding and re-showing the oscillator tab does
+  exactly that. `glGenBuffers` hands back a new empty buffer while the vertices
+  still look perfectly valid.
+
+Either way the GPU was told to read 6144 vertices out of a buffer holding none.
+That is a fetch past the end of an allocation inside the driver — not an
+exception anything can catch.
+
+Fixed by tracking upload state separately from the display state, forcing a
+re-upload whenever a context is created, and clamping every draw range against
+what was actually uploaded.
+
+**A note on a wrong guess.** `near` was suspected of being a reserved GLSL word
+and the cause of a silent compile failure. Tested both ways on this driver: the
+shader compiles either way. The rename is kept as portability insurance and is
+commented as such, not as a fix.
+
+### Verifying it, rather than assuming
+
+`PX3Tests glcheck` opens a real off-screen window, attaches the context,
+compiles the shaders, renders, and moves the scan for twenty more frames — the
+draw-range fault would take the process down there. It is a separate mode rather
+than part of the suite because it needs a window and a message loop, which a
+console test does not otherwise have.
+
+```
+  rendering:    YES
+  shader error: (none)
+  survived 20 more frames with the scan moving
+```
+
+## H. Status
 
 Implemented and building for AU, VST3 and Standalone, with the camera under test
 (elevation clamped both ways, azimuth free, zoom stopped, reset, and data

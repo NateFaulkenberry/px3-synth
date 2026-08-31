@@ -288,6 +288,16 @@ void WavetableGraph::paintOverlay(juce::Graphics& g)
         g.drawLine(markerFor(modulatedPosition),
                    configFloat("osc.wavetable.graph.markerWidth", 1.6f));
 
+        const auto shaderError = glView.getShaderError();
+        if (shaderError.isNotEmpty())
+        {
+            g.setColour(configColour("osc.wavetable.graph.missingTextColor",
+                                     juce::Colour::fromRGB(240, 170, 90)));
+            g.setFont(juce::FontOptions(9.5f));
+            g.drawFittedText("GPU: " + shaderError.upToFirstOccurrenceOf("\n", false, false),
+                             getLocalBounds().reduced(4), juce::Justification::bottomLeft, 2);
+        }
+
         if (missingTableName.isNotEmpty())
         {
             // A preset asked for a table this machine does not have. Saying so

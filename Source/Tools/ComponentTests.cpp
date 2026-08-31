@@ -20705,6 +20705,74 @@ int main(int argc, char* argv[])
     std::printf("\nPX3 COMPONENT TESTS  (%.0f Hz, %d-sample blocks, shipping build)\n",
                 kSampleRate, kBlockSize);
 
+    if (filter == "glcheck")
+    {
+        // Does the shader actually compile on this machine's driver? Nothing
+        // else in the suite can answer that: a console test has no window, so
+        // one is made here on purpose.
+        std::printf("\nGPU SHADER CHECK\n\n");
+
+        struct Host final : public juce::DocumentWindow
+        {
+            Host() : juce::DocumentWindow("px3 gl", juce::Colours::black, 0)
+            {
+                renderer.setSize(320, 200);
+                setContentNonOwned(&renderer, true);
+                setOpaque(true);
+                setVisible(true);
+                setTopLeftPosition(-4000, -4000);   // off-screen, but real
+            }
+            void closeButtonPressed() override {}
+            Wavetable3DRenderer renderer;
+        };
+
+        auto host = std::make_unique<Host>();
+
+        px3::WavetableDisplay display;
+        display.name = "check";
+        for (int f = 0; f < 16; ++f)
+        {
+            std::vector<float> row(128, 0.0f);
+            for (std::size_t i = 0; i < row.size(); ++i)
+            {
+                row[i] = std::sin(juce::MathConstants<float>::twoPi * (f + 1) * i / row.size());
+            }
+            display.frames.push_back(std::move(row));
+        }
+        host->renderer.setDisplay(display);
+        host->renderer.setPosition(0.4f);
+
+        // The GL thread needs the message loop running to get going.
+        const auto deadline = juce::Time::getMillisecondCounter() + 4000;
+        while (juce::Time::getMillisecondCounter() < deadline
+               && ! host->renderer.isRendering()
+               && host->renderer.getShaderError().isEmpty())
+        {
+            juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+        }
+
+        const auto error = host->renderer.getShaderError();
+        const auto rendering = host->renderer.isRendering();
+
+        std::printf("  rendering:    %s\n", rendering ? "YES" : "no");
+        std::printf("  shader error: %s\n", error.isEmpty() ? "(none)" : error.toRawUTF8());
+
+        // A few more frames, which is where a bad draw range would take the
+        // process down rather than merely fail to draw.
+        for (int i = 0; i < 20; ++i)
+        {
+            host->renderer.setPosition(i / 20.0f);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil(16);
+        }
+        std::printf("  survived 20 more frames with the scan moving\n");
+
+        host.reset();
+        std::printf("\n  %s\n\n", rendering && error.isEmpty()
+                                    ? "GPU renderer is working."
+                                    : "GPU renderer is NOT working.");
+        return rendering && error.isEmpty() ? 0 : 1;
+    }
+
     if (filter == "installpresets")
     {
         // Runs the real factory-library install and reports what landed on

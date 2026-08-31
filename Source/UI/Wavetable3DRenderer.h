@@ -19,8 +19,7 @@
 // PIXELS regardless of depth, and a cross-ribbon coordinate that gives both
 // antialiasing and the glow falloff out of one smoothstep.
 class Wavetable3DRenderer final : public juce::Component,
-                                  private juce::OpenGLRenderer,
-                                  private juce::Timer
+                                  private juce::OpenGLRenderer
 {
 public:
     Wavetable3DRenderer();
@@ -44,7 +43,12 @@ public:
     // to something else if the context never came up.
     bool isRendering() const noexcept { return framesRendered.load() > 0; }
 
+    // Empty unless the shaders failed. Surfaced so a failure reads as a reason
+    // rather than as a renderer that quietly does nothing.
+    juce::String getShaderError() const;
+
     void resized() override;
+    void visibilityChanged() override;
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
     void mouseDoubleClick(const juce::MouseEvent& event) override;
@@ -72,9 +76,8 @@ private:
     void renderOpenGL() override;
     void openGLContextClosing() override;
 
-    void timerCallback() override;
-
-    void rebuildGeometry();
+    void rebuildVertices();
+    void uploadGeometry();
     juce::Matrix3D<float> buildViewProjection(float aspect) const;
 
     juce::OpenGLContext context;
@@ -109,7 +112,20 @@ private:
     int verticesPerFrame { 0 };
     int frameCount { 0 };
 
-    std::mutex displayMutex;
+    // Whether the CPU vertices have been uploaded to the CURRENT context's
+    // buffer.
+    //
+    // This has to be separate from displayDirty, and the two ways it goes wrong
+    // are both real. A context can be recreated - hiding and re-showing the tab
+    // does exactly that - which hands back a new empty buffer while the
+    // vertices still look valid. And a display can arrive BEFORE the context
+    // exists, which used to consume displayDirty with nowhere to upload to.
+    // Either way the draw calls were issued against an empty buffer, and a
+    // vertex fetch past the end of one is a segfault inside the driver.
+    bool geometryUploaded { false };
+
+    mutable std::mutex displayMutex;
+    juce::String shaderError;
     px3::WavetableDisplay pendingDisplay;
     bool displayDirty { false };
 

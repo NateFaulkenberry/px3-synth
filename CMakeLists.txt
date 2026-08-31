@@ -281,6 +281,10 @@ if (PX3_BUILD_DIAGNOSTIC)
             JUCE_STANDALONE_APPLICATION=1
             PX3_DEBUG_PANEL=0
             PX3_DIAGNOSTICS=0
+            # The GPU check needs to pump the message loop to let a GL context
+            # come up. Only the test tool - the plugin must never run a modal
+            # loop inside a host.
+            JUCE_MODAL_LOOPS_PERMITTED=1
             JucePlugin_Name="PX3 Synth"
     )
     target_link_libraries(PX3Tests
