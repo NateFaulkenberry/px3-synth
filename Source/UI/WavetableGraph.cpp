@@ -17,8 +17,13 @@ float displayScale()
 
 WavetableGraph::WavetableGraph()
 {
-    setInterceptsMouseClicks(true, false);
+    setInterceptsMouseClicks(true, true);
     setOpaque(false);
+
+    // Order matters: the GL view first, the overlay after it, so the markers and
+    // the drop feedback land on top of the rendered stack.
+    addAndMakeVisible(glView);
+    addAndMakeVisible(overlay);
 }
 
 void WavetableGraph::setUIConfig(std::shared_ptr<const UIConfig> configIn)
@@ -35,13 +40,15 @@ void WavetableGraph::setAccentColour(juce::Colour accentIn)
         return;
     }
     accent = accentIn;
+    glView.setAccentColour(accentIn);
     surface = juce::Image();
     repaint();
 }
 
 void WavetableGraph::setDisplay(px3::WavetableDisplay displayIn)
 {
-    display = std::move(displayIn);
+    display = displayIn;
+    glView.setDisplay(std::move(displayIn));
     surface = juce::Image();
     repaint();
 }
@@ -61,7 +68,8 @@ void WavetableGraph::setPosition(float base, float modulated)
 
     basePosition = clampedBase;
     modulatedPosition = clampedModulated;
-    repaint();
+    glView.setPosition(clampedModulated);
+    overlay.repaint();
 }
 
 void WavetableGraph::setMissingTableName(const juce::String& name)
@@ -71,7 +79,7 @@ void WavetableGraph::setMissingTableName(const juce::String& name)
         return;
     }
     missingTableName = name;
-    repaint();
+    overlay.repaint();
 }
 
 juce::Colour WavetableGraph::configColour(const juce::String& path, juce::Colour fallback) const
@@ -108,19 +116,19 @@ bool WavetableGraph::isInterestedInFileDrag(const juce::StringArray& files)
 void WavetableGraph::fileDragEnter(const juce::StringArray&, int, int)
 {
     dragging = true;
-    repaint();
+    overlay.repaint();
 }
 
 void WavetableGraph::fileDragExit(const juce::StringArray&)
 {
     dragging = false;
-    repaint();
+    overlay.repaint();
 }
 
 void WavetableGraph::filesDropped(const juce::StringArray& files, int, int)
 {
     dragging = false;
-    repaint();
+    overlay.repaint();
 
     for (const auto& path : files)
     {
@@ -139,6 +147,9 @@ void WavetableGraph::filesDropped(const juce::StringArray& files, int, int)
 void WavetableGraph::resized()
 {
     surface = juce::Image();
+    glView.setBounds(getLocalBounds().reduced(
+        juce::roundToInt(configFloat("osc.wavetable.graph.inset", 6.0f))));
+    overlay.setBounds(getLocalBounds());
 }
 
 void WavetableGraph::rebuildSurface()
@@ -209,12 +220,19 @@ void WavetableGraph::rebuildSurface()
 
 void WavetableGraph::paint(juce::Graphics& g)
 {
-    const auto bounds = getLocalBounds().toFloat();
-    const auto radius = configFloat("osc.wavetable.graph.cornerRadius", 6.0f);
-
+    // Background only. Everything else is in paintOverlay, which runs on a child
+    // ABOVE the GL view - a JUCE parent paints before its children, so markers
+    // drawn here would be hidden by the rendered stack.
     g.setColour(configColour("osc.wavetable.graph.background",
                              juce::Colour::fromRGBA(12, 12, 14, 190)));
-    g.fillRoundedRectangle(bounds, radius);
+    g.fillRoundedRectangle(getLocalBounds().toFloat(),
+                           configFloat("osc.wavetable.graph.cornerRadius", 6.0f));
+}
+
+void WavetableGraph::paintOverlay(juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat();
+    const auto radius = configFloat("osc.wavetable.graph.cornerRadius", 6.0f);
 
     if (display.isEmpty())
     {
@@ -226,43 +244,43 @@ void WavetableGraph::paint(juce::Graphics& g)
     }
     else
     {
-        const auto expectedWidth = juce::roundToInt(static_cast<float>(getWidth())
-                                                    * juce::jlimit(1.0f, 4.0f, displayScale()));
-        if (surface.isNull() || surface.getWidth() != expectedWidth)
+        // The CPU stack is now a FALLBACK, drawn only if the GL context never
+        // came up - a machine with no usable context still gets a picture rather
+        // than an empty panel.
+        if (! glView.isRendering())
         {
-            rebuildSurface();
-        }
-        if (surface.isValid())
-        {
-            g.drawImage(surface, bounds);
+            const auto expectedWidth = juce::roundToInt(static_cast<float>(getWidth())
+                                                        * juce::jlimit(1.0f, 4.0f, displayScale()));
+            if (surface.isNull() || surface.getWidth() != expectedWidth)
+            {
+                rebuildSurface();
+            }
+            if (surface.isValid())
+            {
+                g.drawImage(surface, bounds);
+            }
         }
 
         // The scan marker. Base and modulated are drawn separately so an LFO
         // sweeping the scan shows its range as well as its position.
         const auto area = bounds.reduced(configFloat("osc.wavetable.graph.inset", 6.0f));
-        const auto markerFor = [&area, this](float position)
+        const auto markerFor = [&area](float position)
         {
-            const auto depthX = configFloat("osc.wavetable.graph.depthX", 0.28f) * area.getWidth();
-            const auto depthY = configFloat("osc.wavetable.graph.depthY", 0.42f) * area.getHeight();
-            // Position 0 is the FRONT frame, which is where the scan starts.
-            const auto depth = 1.0f - position;
-            return juce::Line<float>(area.getX() + depthX * depth,
-                                     area.getBottom() - depthY * depth,
-                                     area.getX() + depthX * depth + (area.getWidth() - depthX),
-                                     area.getBottom() - depthY * depth);
+            const auto x = area.getX() + area.getWidth() * juce::jlimit(0.0f, 1.0f, position);
+            return juce::Line<float>(x, area.getY(), x, area.getBottom());
         };
 
         if (std::abs(modulatedPosition - basePosition) > 0.002f)
         {
-            const auto baseLine = markerFor(basePosition);
             g.setColour(configColour("osc.wavetable.graph.baseMarkerColor",
                                      accent.withAlpha(0.35f)));
-            g.drawLine(baseLine, configFloat("osc.wavetable.graph.baseMarkerWidth", 1.0f));
+            g.drawLine(markerFor(basePosition),
+                       configFloat("osc.wavetable.graph.baseMarkerWidth", 1.0f));
         }
 
-        const auto line = markerFor(modulatedPosition);
         g.setColour(configColour("osc.wavetable.graph.markerColor", accent.brighter(0.4f)));
-        g.drawLine(line, configFloat("osc.wavetable.graph.markerWidth", 1.6f));
+        g.drawLine(markerFor(modulatedPosition),
+                   configFloat("osc.wavetable.graph.markerWidth", 1.6f));
 
         if (missingTableName.isNotEmpty())
         {

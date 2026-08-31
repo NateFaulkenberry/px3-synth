@@ -122,6 +122,7 @@ set(PX3_SHARED_SOURCES
         Source/UI/ReverbComponent.cpp
         Source/UI/UIConfig.cpp
         Source/UI/BreakpointEnvelopeEditor.cpp
+        Source/UI/Wavetable3DRenderer.cpp
         Source/UI/WavetableGraph.cpp
         Source/UI/UIConfigManager.cpp
         Source/UI/SubOscComponent.cpp
@@ -183,6 +184,7 @@ target_link_libraries(PX3Synth
         PX3Assets
         juce::juce_audio_utils
         juce::juce_dsp
+        juce::juce_opengl
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
@@ -238,6 +240,7 @@ if (PX3_BUILD_DIAGNOSTIC)
             PX3Assets
             juce::juce_audio_utils
             juce::juce_dsp
+            juce::juce_opengl
         PUBLIC
             juce::juce_recommended_config_flags
     )
@@ -260,7 +263,7 @@ if (PX3_BUILD_DIAGNOSTIC)
             JucePlugin_Name="PX3 Synth"
     )
     target_link_libraries(PX3SmokeTest
-        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp
+        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_opengl
         PUBLIC juce::juce_recommended_config_flags)
 endif()
 
@@ -281,7 +284,7 @@ if (PX3_BUILD_DIAGNOSTIC)
             JucePlugin_Name="PX3 Synth"
     )
     target_link_libraries(PX3Tests
-        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp
+        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_opengl
         PUBLIC juce::juce_recommended_config_flags)
 endif()
 
@@ -304,7 +307,7 @@ if (PX3_BUILD_DIAGNOSTIC)
             JucePlugin_Name="PX3 Synth"
     )
     target_link_libraries(PX3MemBench
-        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp
+        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_opengl
         PUBLIC juce::juce_recommended_config_flags)
 endif()
 
@@ -326,7 +329,7 @@ if (PX3_BUILD_DIAGNOSTIC)
             JucePlugin_Name="PX3 Synth"
     )
     target_link_libraries(PX3Bench
-        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp
+        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_opengl
         PUBLIC juce::juce_recommended_config_flags)
 endif()
 

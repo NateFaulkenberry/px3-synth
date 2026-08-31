@@ -4,6 +4,7 @@
 
 #include "../DSP/Wavetable.h"
 #include "UIConfig.h"
+#include "Wavetable3DRenderer.h"
 
 // The wavetable display, and the thing files are dropped onto.
 //
@@ -45,6 +46,20 @@ public:
     static bool isSupportedFile(const juce::File& file);
 
 private:
+    // The GPU view sits between the background this component paints and the
+    // overlay above it, because a JUCE parent paints BEFORE its children - so
+    // markers and text drawn in paint() would end up underneath the GL view.
+    struct Overlay final : public juce::Component
+    {
+        explicit Overlay(WavetableGraph& ownerIn) : owner(ownerIn)
+        {
+            setInterceptsMouseClicks(false, false);
+        }
+        void paint(juce::Graphics& g) override { owner.paintOverlay(g); }
+        WavetableGraph& owner;
+    };
+
+    void paintOverlay(juce::Graphics& g);
     void rebuildSurface();
     juce::Colour configColour(const juce::String& path, juce::Colour fallback) const;
     float configFloat(const juce::String& path, float fallback) const;
@@ -64,6 +79,9 @@ private:
     // table drawn at full width is six times the geometry - not because the
     // present numbers justify it. If that stops being true, delete it.
     juce::Image surface;
+
+    Wavetable3DRenderer glView;
+    Overlay overlay { *this };
 
     float basePosition { 0.0f };
     float modulatedPosition { 0.0f };

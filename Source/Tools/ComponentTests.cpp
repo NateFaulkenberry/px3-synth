@@ -33,6 +33,7 @@
 #include "../DSP/WavetableImporter.h"
 #include "../DSP/WavetableLibrary.h"
 #include "../UI/WavetableGraph.h"
+#include "../UI/Wavetable3DRenderer.h"
 #include "../UI/OscillatorComponent.h"
 #include "../UI/BreakpointEnvelopeEditor.h"
 #include "../DSP/Lucy.h"
@@ -2488,6 +2489,108 @@ void testWavetable()
                       "no oscillator card found in the editor");
             }
         }
+    }
+
+    // ---- the 3D renderer's camera ------------------------------------------
+    // The rendering itself needs a GL context and cannot be checked here, but
+    // the camera can - and an orbit control that can be dragged into an
+    // unusable orientation is the failure that actually gets shipped.
+    {
+        Wavetable3DRenderer renderer;
+        renderer.setSize(300, 150);
+
+        const auto defaultCamera = renderer.getCamera();
+
+        const auto drag = [&renderer](float dx, float dy)
+        {
+            const juce::Point<float> from { 150.0f, 75.0f };
+            const auto to = from.translated(dx, dy);
+            const auto make = [&renderer](juce::Point<float> p)
+            {
+                return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), p,
+                                        juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                        &renderer, &renderer, juce::Time::getCurrentTime(),
+                                        p, juce::Time::getCurrentTime(), 1, false);
+            };
+            renderer.mouseDown(make(from));
+            renderer.mouseDrag(make(to));
+        };
+
+        // Dragged hard past the top and past the bottom. Up must RAISE the
+        // camera: the opposite is what a screen-space delta gives literally, and
+        // it feels inverted against every other 3D view.
+        drag(0.0f, -4000.0f);
+        const auto high = renderer.getCamera();
+        drag(0.0f, 4000.0f);
+        const auto low = renderer.getCamera();
+
+        check("Wavetable3D_DraggingUpRaisesTheCamera", high.elevation > low.elevation,
+              "up gives elevation " + fmt(high.elevation, 3) + ", down gives "
+                  + fmt(low.elevation, 3));
+
+        check("Wavetable3D_CameraCannotBeFlippedOverTheStack",
+              high.elevation >= Wavetable3DRenderer::kMinElevation
+                  && high.elevation <= Wavetable3DRenderer::kMaxElevation
+                  && low.elevation >= Wavetable3DRenderer::kMinElevation
+                  && low.elevation <= Wavetable3DRenderer::kMaxElevation,
+              "elevation held between " + fmt(Wavetable3DRenderer::kMinElevation, 2) + " and "
+                  + fmt(Wavetable3DRenderer::kMaxElevation, 2) + " after dragging 4000 px each way: "
+                  + fmt(low.elevation, 3) + " / " + fmt(high.elevation, 3));
+
+        // Azimuth is free: going all the way round is a reasonable thing to do.
+        drag(2000.0f, 0.0f);
+        check("Wavetable3D_CameraTurnsFreelyAroundTheStack",
+              std::abs(renderer.getCamera().azimuth - defaultCamera.azimuth) > 1.0,
+              "azimuth moved to " + fmt(renderer.getCamera().azimuth, 2) + " radians");
+
+        // Zoom, and its stops.
+        for (int i = 0; i < 40; ++i)
+        {
+            juce::MouseWheelDetails wheel;
+            wheel.deltaY = i % 2 == 0 ? 1.0f : -1.0f;
+            wheel.deltaX = 0.0f;
+            renderer.mouseWheelMove(
+                juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(),
+                                 { 150.0f, 75.0f }, juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f,
+                                 0.0f, &renderer, &renderer, juce::Time::getCurrentTime(),
+                                 { 150.0f, 75.0f }, juce::Time::getCurrentTime(), 1, false),
+                wheel);
+            if (renderer.getCamera().distance < Wavetable3DRenderer::kMinDistance
+                || renderer.getCamera().distance > Wavetable3DRenderer::kMaxDistance)
+            {
+                break;
+            }
+        }
+        check("Wavetable3D_ZoomStaysWithinItsStops",
+              renderer.getCamera().distance >= Wavetable3DRenderer::kMinDistance
+                  && renderer.getCamera().distance <= Wavetable3DRenderer::kMaxDistance,
+              "distance " + fmt(renderer.getCamera().distance, 2) + " after 40 wheel events");
+
+        // And a way back.
+        renderer.resetCamera();
+        const auto reset = renderer.getCamera();
+        check("Wavetable3D_CameraResets",
+              std::abs(reset.azimuth - defaultCamera.azimuth) < 1.0e-6f
+                  && std::abs(reset.elevation - defaultCamera.elevation) < 1.0e-6f
+                  && std::abs(reset.distance - defaultCamera.distance) < 1.0e-6f,
+              "back to the default view");
+
+        // Feeding it data must not require a context to be safe.
+        px3::WavetableDisplay display;
+        display.name = "test";
+        for (int f = 0; f < 8; ++f)
+        {
+            std::vector<float> row(64, 0.0f);
+            for (std::size_t i = 0; i < row.size(); ++i)
+            {
+                row[i] = std::sin(juce::MathConstants<float>::twoPi * (f + 1) * i / row.size());
+            }
+            display.frames.push_back(std::move(row));
+        }
+        renderer.setDisplay(display);
+        renderer.setPosition(0.5f);
+        check("Wavetable3D_AcceptsDataWithoutAContext", true,
+              "display and position handed over with no GL context attached");
     }
 
     // ---- rejects what it cannot build --------------------------------------
