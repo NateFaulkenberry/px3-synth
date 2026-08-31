@@ -24,12 +24,14 @@
 #include "../DSP/Chorus.h"
 #include "../Preset/FactoryPresets.h"
 #include "../DSP/Wavetable.h"
+#include "../DSP/BreakpointEnvelope.h"
 #include "../DSP/WavetableReader.h"
 #include "../DSP/WavetableSlot.h"
 #include "../DSP/WavetableFactory.h"
 #include "../DSP/WavetableImporter.h"
 #include "../DSP/WavetableLibrary.h"
 #include "../UI/WavetableGraph.h"
+#include "../UI/OscillatorComponent.h"
 #include "../DSP/Lucy.h"
 #include "../DSP/StereoSpread.h"
 #include "../UI/FxCardComponent.h"
@@ -500,6 +502,382 @@ void makePlainPatch(PX3SynthAudioProcessor& processor)
     }
     setParam(processor, "mix.fx.mute", 0.0f);
     setParam(processor, "mix.fx.solo", 0.0f);
+}
+} // namespace
+
+//==============================================================================
+// BREAKPOINT ENVELOPE
+//==============================================================================
+namespace
+{
+void testBreakpointEnvelope()
+{
+    suite("BREAKPOINT ENVELOPE");
+
+    // ---- the curve ---------------------------------------------------------
+    // The shape function is the whole envelope in miniature: everything else is
+    // bookkeeping around it, so its properties are asserted directly.
+    {
+        check("Envelope_ZeroCurveIsExactlyLinear",
+              std::abs(px3::BreakpointEnvelope::shape(0.25, 0.0) - 0.25) < 1.0e-12
+                  && std::abs(px3::BreakpointEnvelope::shape(0.75, 0.0) - 0.75) < 1.0e-12,
+              "curve 0 returns x unchanged, with no exp() taken");
+
+        // Endpoints have to be exact, not nearly exact: they are what makes the
+        // envelope continuous at every breakpoint without any clamping.
+        auto worstEndpoint = 0.0;
+        for (const auto curve : { -1.0, -0.5, 0.0, 0.5, 1.0 })
+        {
+            worstEndpoint = juce::jmax(worstEndpoint,
+                                       std::abs(px3::BreakpointEnvelope::shape(0.0, curve)));
+            worstEndpoint = juce::jmax(worstEndpoint,
+                                       std::abs(px3::BreakpointEnvelope::shape(1.0, curve) - 1.0));
+        }
+        check("Envelope_CurveHitsBothEndpointsExactly", worstEndpoint < 1.0e-12,
+              "worst endpoint error across the curve range: " + fmt(worstEndpoint, 15));
+
+        // Monotone and bounded at every setting including the stops, because an
+        // editor will be dragged to its stops.
+        juce::StringArray broken;
+        for (int c = -20; c <= 20; ++c)
+        {
+            const auto curve = c / 20.0;
+            auto previous = -1.0;
+            for (int i = 0; i <= 1000; ++i)
+            {
+                const auto y = px3::BreakpointEnvelope::shape(i / 1000.0, curve);
+                if (! std::isfinite(y)) { broken.addIfNotAlreadyThere("non-finite"); }
+                else if (y < -1.0e-9 || y > 1.0 + 1.0e-9) { broken.addIfNotAlreadyThere("out of range"); }
+                else if (y < previous - 1.0e-9) { broken.addIfNotAlreadyThere("not monotone"); }
+                previous = y;
+            }
+        }
+        check("Envelope_CurveIsMonotoneAndBoundedAtEverySetting", broken.isEmpty(),
+              broken.isEmpty() ? "41 curve settings x 1001 points, all finite, ordered and in range"
+                               : broken.joinIntoString(", "));
+
+        // Symmetry is what makes one normalised control feel like one control:
+        // +50% and -50% have to be the same amount of bend.
+        auto worstSymmetry = 0.0;
+        for (const auto curve : { -0.9, -0.5, -0.2, 0.2, 0.5, 0.9 })
+        {
+            for (int i = 0; i <= 100; ++i)
+            {
+                const auto x = i / 100.0;
+                const auto roundTrip = px3::BreakpointEnvelope::shape(
+                    px3::BreakpointEnvelope::shape(x, curve), -curve);
+                worstSymmetry = juce::jmax(worstSymmetry, std::abs(roundTrip - x));
+            }
+        }
+        check("Envelope_BendingUpAndDownAreMirrorImages", worstSymmetry < 1.0e-9,
+              "worst round-trip error bending by +c then -c: " + fmt(worstSymmetry, 12));
+
+        // A curve that can become a step is a click waiting to happen - which is
+        // what a power curve does at wide exponents.
+        auto worstStep = 0.0;
+        for (const auto curve : { -1.0, 1.0 })
+        {
+            for (int i = 1; i <= 4000; ++i)
+            {
+                worstStep = juce::jmax(worstStep,
+                                       std::abs(px3::BreakpointEnvelope::shape(i / 4000.0, curve)
+                                                - px3::BreakpointEnvelope::shape((i - 1) / 4000.0, curve)));
+            }
+        }
+        check("Envelope_CurveNeverDegeneratesIntoAStep", worstStep < 0.05,
+              "largest jump between adjacent samples at full curve: " + fmt(worstStep, 6));
+    }
+
+    // ---- ADSR is a special case, not a separate concept ---------------------
+    {
+        EnvelopeSettings settings;
+        settings.attackSeconds = 0.15f;
+        settings.decaySeconds = 0.25f;
+        settings.sustainLevel = 0.6f;
+        settings.releaseSeconds = 0.4f;
+
+        const auto envelope = px3::BreakpointEnvelope::fromAdsr(settings);
+        const auto back = envelope.toAdsr();
+
+        check("Envelope_AdsrRoundTripsThroughTheBreakpointModel",
+              envelope.getPointCount() == 4
+                  && std::abs(back.attackSeconds - 0.15f) < 1.0e-6f
+                  && std::abs(back.decaySeconds - 0.25f) < 1.0e-6f
+                  && std::abs(back.sustainLevel - 0.6f) < 1.0e-6f
+                  && std::abs(back.releaseSeconds - 0.4f) < 1.0e-6f,
+              "four points in, the same four numbers out");
+
+        check("Envelope_AdsrIsRecognisedAsAdsr", envelope.isPlainAdsr(),
+              "a freshly built ADSR reports itself as still parameter-describable");
+
+        check("Envelope_SustainPointIsTheThirdPoint", envelope.getSustainPoint() == 2,
+              "the envelope holds at point 2, which is the sustain level");
+
+        // The shape the four parameters describe, sampled where it matters.
+        const auto atPeak = envelope.valueAt(0.15);
+        const auto atSustain = envelope.valueAt(0.4);
+        check("Envelope_AdsrPassesThroughItsOwnCorners",
+              std::abs(atPeak - 1.0) < 1.0e-9 && std::abs(atSustain - 0.6) < 1.0e-9,
+              "peak " + fmt(atPeak, 6) + " at the end of the attack, "
+                  + fmt(atSustain, 6) + " at the end of the decay");
+    }
+
+    // ---- adding a point splits a segment ------------------------------------
+    {
+        auto envelope = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+        envelope.setCurve(0, 0.5);   // bend the attack
+
+        const auto before = envelope.getPointCount();
+        const auto added = envelope.addPoint(envelope.getPoint(1).timeSeconds * 0.5, 0.4);
+
+        check("Envelope_AddedPointSplitsTheSegmentItLandsIn",
+              added == 1 && envelope.getPointCount() == before + 1
+                  && envelope.getPoint(1).value > 0.39 && envelope.getPoint(1).value < 0.41,
+              "inserted at index " + juce::String(added) + ", not appended to the end");
+
+        check("Envelope_SplitInheritsTheCurveItSplit",
+              std::abs(envelope.getPoint(0).curveToNext - 0.5) < 1.0e-9
+                  && std::abs(envelope.getPoint(1).curveToNext - 0.5) < 1.0e-9,
+              "both halves of a bent segment stay bent");
+
+        check("Envelope_SustainFollowsTheInsertion", envelope.getSustainPoint() == 3,
+              "the sustain moved from point 2 to point 3 with the point it marks");
+    }
+
+    // ---- removal protects what the envelope needs ---------------------------
+    {
+        auto envelope = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+        envelope.addPoint(0.001, 0.5);
+
+        check("Envelope_TheAnchorCannotBeRemoved", ! envelope.removePoint(0),
+              "point 0 is the note-on instant, not a stage");
+        check("Envelope_TheEndCannotBeRemoved",
+              ! envelope.removePoint(envelope.getPointCount() - 1),
+              "the final point is where the release lands");
+        check("Envelope_TheSustainPointCannotBeRemoved",
+              ! envelope.removePoint(envelope.getSustainPoint()),
+              "removing the point the envelope holds at would leave nowhere to hold");
+
+        const auto before = envelope.getPointCount();
+        check("Envelope_AnOrdinaryPointCanBeRemoved",
+              envelope.removePoint(1) && envelope.getPointCount() == before - 1,
+              juce::String(before) + " points, then " + juce::String(envelope.getPointCount()));
+    }
+
+    // ---- points cannot cross their neighbours -------------------------------
+    {
+        auto envelope = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+        // Drag point 1 far past point 2.
+        envelope.setPoint(1, 99.0, 0.5);
+
+        auto ordered = true;
+        for (int i = 1; i < envelope.getPointCount(); ++i)
+        {
+            if (envelope.getPoint(i).timeSeconds < envelope.getPoint(i - 1).timeSeconds)
+            {
+                ordered = false;
+            }
+        }
+        check("Envelope_DraggingAPointPastItsNeighbourClampsInstead", ordered,
+              "point 1 stopped at point 2's time rather than reordering the envelope");
+
+        envelope.setPoint(0, 5.0, 0.5);
+        check("Envelope_TheAnchorStaysAtTimeZero",
+              std::abs(envelope.getPoint(0).timeSeconds) < 1.0e-12,
+              "point 0 ignores a time drag");
+    }
+
+    // ---- evaluation ---------------------------------------------------------
+    {
+        EnvelopeSettings settings;
+        settings.attackSeconds = 0.1f;
+        settings.decaySeconds = 0.1f;
+        settings.sustainLevel = 0.5f;
+        settings.releaseSeconds = 0.2f;
+
+        const auto envelope = px3::BreakpointEnvelope::fromAdsr(settings);
+        px3::BreakpointEnvelope::Snapshot snapshot;
+        snapshot.rebuild(envelope, kSampleRate);
+
+        check("Envelope_HeldPhaseReachesTheSustainAndStaysThere",
+              std::abs(snapshot.valueAtHeld(0.2) - 0.5f) < 1.0e-6f
+                  && std::abs(snapshot.valueAtHeld(10.0) - 0.5f) < 1.0e-6f,
+              "0.5 at the end of the decay and still 0.5 ten seconds later");
+
+        check("Envelope_HeldPhaseStartsAtZeroAndPeaksAtOne",
+              std::abs(snapshot.valueAtHeld(0.0)) < 1.0e-6f
+                  && std::abs(snapshot.valueAtHeld(0.1) - 1.0f) < 1.0e-6f,
+              "0 at note-on, 1 at the end of the attack");
+
+        check("Envelope_ReleaseReachesZero",
+              std::abs(snapshot.valueAtReleased(0.2, 0.5f)) < 1.0e-6f,
+              "the release lands exactly on zero at its full length");
+
+        // The one that matters: releasing early must start from where the
+        // envelope is, not jump to the sustain first.
+        const auto releasedFromPeak = snapshot.valueAtReleased(0.0, 1.0f);
+        check("Envelope_ReleaseBeginsFromTheCurrentValue",
+              std::abs(releasedFromPeak - 1.0f) < 1.0e-6f,
+              "releasing at full level starts the release from 1.0, measured "
+                  + fmt(releasedFromPeak, 6) + " - not from the 0.5 sustain");
+
+        // And it still arrives at zero from wherever it started.
+        auto worstEnd = 0.0f;
+        for (const auto from : { 0.0f, 0.15f, 0.5f, 0.83f, 1.0f })
+        {
+            worstEnd = juce::jmax(worstEnd, std::abs(snapshot.valueAtReleased(0.2, from)));
+        }
+        check("Envelope_ReleaseAlwaysArrivesAtZero", worstEnd < 1.0e-6f,
+              "worst end-of-release value across five starting levels: " + fmt(worstEnd, 9));
+
+        check("Envelope_ReleaseProgressIsIndependentOfTheCurve",
+              std::abs(snapshot.releaseProgress(0.0)) < 1.0e-9f
+                  && std::abs(snapshot.releaseProgress(0.1) - 0.5f) < 1.0e-6f
+                  && std::abs(snapshot.releaseProgress(0.2) - 1.0f) < 1.0e-9f,
+              "0, 0.5 and 1 at the start, middle and end of a 0.2 s release");
+    }
+
+    // ---- the release must not step ------------------------------------------
+    // A release that starts from the current value is where a discontinuity
+    // would come from, so it is scanned for one at every starting level.
+    {
+        EnvelopeSettings settings;
+        settings.attackSeconds = 0.05f;
+        settings.decaySeconds = 0.05f;
+        settings.sustainLevel = 0.4f;
+        settings.releaseSeconds = 0.3f;
+
+        auto envelope = px3::BreakpointEnvelope::fromAdsr(settings);
+        envelope.setCurve(2, 0.8);   // a strongly bent release
+
+        px3::BreakpointEnvelope::Snapshot snapshot;
+        snapshot.rebuild(envelope, kSampleRate);
+
+        auto worstStep = 0.0f;
+        juce::String offender;
+        for (const auto from : { 0.05f, 0.4f, 0.7f, 1.0f })
+        {
+            auto previous = snapshot.valueAtReleased(0.0, from);
+            for (int i = 1; i <= 6000; ++i)
+            {
+                const auto value = snapshot.valueAtReleased(i * 0.3 / 6000.0, from);
+                const auto step = std::abs(value - previous);
+                if (step > worstStep)
+                {
+                    worstStep = step;
+                    offender = "starting from " + fmt(from, 2);
+                }
+                previous = value;
+            }
+        }
+
+        // 6000 steps across a 0.3 s release: a smooth curve moves at most a few
+        // thousandths per step.
+        check("Envelope_ReleaseFromAnyLevelIsContinuous", worstStep < 0.01f,
+              "largest single step across the release: " + fmt(worstStep, 6)
+                  + " (" + offender + ")");
+    }
+
+    // ---- edge cases ---------------------------------------------------------
+    {
+        juce::StringArray failures;
+
+        // Zero-length segments, which are a legitimate instant jump.
+        {
+            EnvelopeSettings instant;
+            instant.attackSeconds = 0.0f;
+            instant.decaySeconds = 0.0f;
+            instant.sustainLevel = 1.0f;
+            instant.releaseSeconds = 0.0f;
+            const auto envelope = px3::BreakpointEnvelope::fromAdsr(instant);
+            px3::BreakpointEnvelope::Snapshot snapshot;
+            snapshot.rebuild(envelope, kSampleRate);
+            for (const auto t : { 0.0, 0.001, 1.0 })
+            {
+                if (! std::isfinite(snapshot.valueAtHeld(t))) { failures.add("zero-length held"); }
+                if (! std::isfinite(snapshot.valueAtReleased(t, 1.0f))) { failures.add("zero-length release"); }
+            }
+        }
+
+        // Non-finite input, which is what a broken preset or a divide upstream
+        // would deliver.
+        {
+            EnvelopeSettings nonsense;
+            nonsense.attackSeconds = std::numeric_limits<float>::quiet_NaN();
+            nonsense.decaySeconds = std::numeric_limits<float>::infinity();
+            nonsense.sustainLevel = -5.0f;
+            nonsense.releaseSeconds = -1.0f;
+            const auto envelope = px3::BreakpointEnvelope::fromAdsr(nonsense);
+            for (int i = 0; i < envelope.getPointCount(); ++i)
+            {
+                const auto& point = envelope.getPoint(i);
+                if (! std::isfinite(point.timeSeconds) || ! std::isfinite(point.value)
+                    || point.value < 0.0 || point.value > 1.0)
+                {
+                    failures.add("NaN/inf leaked into the model");
+                }
+            }
+        }
+
+        // Filling to the maximum and past it.
+        {
+            auto envelope = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+            for (int i = 0; i < 40; ++i)
+            {
+                envelope.addPoint(0.001 + i * 0.0001, 0.5);
+            }
+            if (envelope.getPointCount() > px3::BreakpointEnvelope::kMaxPoints)
+            {
+                failures.add("exceeded the point limit");
+            }
+            if (envelope.addPoint(0.002, 0.5) != -1) { failures.add("added past the limit"); }
+
+            px3::BreakpointEnvelope::Snapshot snapshot;
+            snapshot.rebuild(envelope, kSampleRate);
+            for (int i = 0; i <= 200; ++i)
+            {
+                if (! std::isfinite(snapshot.valueAtHeld(i * 0.01)))
+                {
+                    failures.addIfNotAlreadyThere("full envelope evaluated to non-finite");
+                }
+            }
+        }
+
+        // Points stacked at the same instant.
+        {
+            auto envelope = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+            envelope.addPoint(0.005, 0.3);
+            envelope.addPoint(0.005, 0.9);
+            px3::BreakpointEnvelope::Snapshot snapshot;
+            snapshot.rebuild(envelope, kSampleRate);
+            for (int i = 0; i <= 400; ++i)
+            {
+                if (! std::isfinite(snapshot.valueAtHeld(i * 0.001)))
+                {
+                    failures.addIfNotAlreadyThere("coincident points evaluated to non-finite");
+                }
+            }
+        }
+
+        check("Envelope_SurvivesItsEdgeCases", failures.isEmpty(),
+              failures.isEmpty()
+                  ? "zero-length segments, NaN and infinite input, a full point list and "
+                    "coincident points all evaluate finite and in range"
+                  : failures.joinIntoString(", "));
+    }
+
+    // ---- instances are independent ------------------------------------------
+    {
+        auto first = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+        auto second = first;
+        second.addPoint(0.01, 0.5);
+        second.setCurve(0, 0.9);
+
+        check("Envelope_CopiesDoNotShareState",
+              first.getPointCount() == 4 && std::abs(first.getPoint(0).curveToNext) < 1.0e-12,
+              "editing a copy left the original at "
+                  + juce::String(first.getPointCount()) + " points with no curve");
+    }
 }
 } // namespace
 
@@ -1621,6 +1999,92 @@ void testWavetable()
                 check("Wavetable_GraphRepaintsWellInsideAFrame", graph != nullptr,
                       graph == nullptr ? "no wavetable graph found in the editor"
                                        : "the graph has no size");
+            }
+        }
+    }
+
+    // ---- the oscillator card in wavetable mode ------------------------------
+    // Two regressions this pins, both of which looked fine in code and wrong on
+    // screen: the mode kept a macro labelled POSITION from when it was a swept
+    // sine, so the card grew a second position knob and the row squeezed until
+    // controls fell off it; and the card's own animated wave preview kept
+    // painting underneath the graph, which is translucent.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        if (editor != nullptr)
+        {
+            OscillatorComponent* card = nullptr;
+            std::function<void(juce::Component&)> find = [&](juce::Component& c)
+            {
+                for (auto* child : c.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* osc = dynamic_cast<OscillatorComponent*>(child))
+                    {
+                        if (card == nullptr) { card = osc; }
+                    }
+                    find(*child);
+                }
+            };
+            find(*editor);
+
+            if (card != nullptr)
+            {
+                const auto visibleSliders = [](juce::Component& c)
+                {
+                    int count = 0;
+                    std::function<void(juce::Component&)> walk = [&](juce::Component& parent)
+                    {
+                        for (auto* child : parent.getChildren())
+                        {
+                            if (child == nullptr || ! child->isVisible()) { continue; }
+                            if (dynamic_cast<juce::Slider*>(child) != nullptr
+                                && ! child->getBounds().isEmpty())
+                            {
+                                ++count;
+                            }
+                            walk(*child);
+                        }
+                    };
+                    walk(c);
+                    return count;
+                };
+
+                setChoice(processor, "osc1Mode", 0);   // SINE: pitch only
+                card->refreshFromParameters(true, 0, 0);
+                const auto sineSliders = visibleSliders(*card);
+
+                setChoice(processor, "osc1Mode", 8);   // WAVETABLE
+                card->refreshFromParameters(true, 8, 0);
+                const auto wavetableSliders = visibleSliders(*card);
+
+                // Pitch plus exactly one position knob. Three would mean the old
+                // macro came back.
+                check("WavetableCard_ShowsPitchAndOneScanKnob",
+                      wavetableSliders == sineSliders + 1,
+                      "SINE shows " + juce::String(sineSliders) + " knobs, WAVETABLE shows "
+                          + juce::String(wavetableSliders) + " - one more, not two");
+
+                const auto* graph = &card->getWavetableGraph();
+                check("WavetableCard_GraphIsVisibleAndSizedInWavetableMode",
+                      graph->isVisible() && ! graph->getBounds().isEmpty(),
+                      "graph bounds " + graph->getBounds().toString());
+
+                setChoice(processor, "osc1Mode", 1);   // SAW
+                card->refreshFromParameters(true, 1, 0);
+                check("WavetableCard_GraphAndScanKnobHideInOtherModes",
+                      ! graph->isVisible() && visibleSliders(*card) == sineSliders,
+                      "back to " + juce::String(visibleSliders(*card))
+                          + " knobs with the graph hidden");
+            }
+            else
+            {
+                check("WavetableCard_ShowsPitchAndOneScanKnob", false,
+                      "no oscillator card found in the editor");
             }
         }
     }
@@ -20488,6 +20952,7 @@ int main(int argc, char* argv[])
         return 0;
     }
 
+    if (wants("envelope")) testBreakpointEnvelope();
     if (wants("wavetable")) testWavetable();
     if (wants("subosc")) testSubOscillator();
     if (wants("osc")) testOscillators();

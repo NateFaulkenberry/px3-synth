@@ -357,6 +357,49 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
         g.strokePath(ring, juce::PathStrokeType(3.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
+    // Where the value actually is once modulation is applied, when something is
+    // driving this control.
+    //
+    // Drawn as an arc from the parameter's own position out to the modulated
+    // one, rather than by moving the knob: the knob shows what the user set and
+    // what a DAW would automate, and moving it would fight the parameter
+    // attachment and write the modulation back into the parameter. The arc
+    // reads as a range extending from the knob, which is also what makes the
+    // DEPTH of the modulation visible and not just its instantaneous value.
+    const auto modulatedPosition = static_cast<double>(
+        slider.getProperties().getWithDefault("modulatedPos", -1.0));
+    if (modulatedPosition >= 0.0 && ! renderGrayscale)
+    {
+        const auto modulatedAngle = rotaryStartAngle
+                                    + static_cast<float>(modulatedPosition)
+                                          * (rotaryEndAngle - rotaryStartAngle);
+
+        if (std::abs(modulatedAngle - angle) > 0.006f)
+        {
+            juce::Path modulationArc;
+            modulationArc.addCentredArc(center.x,
+                                        center.y,
+                                        radius * 1.02f,
+                                        radius * 1.02f,
+                                        0.0f,
+                                        juce::jmin(angle, modulatedAngle),
+                                        juce::jmax(angle, modulatedAngle),
+                                        true);
+            g.setColour(accentForHighlight.withAlpha(0.5f));
+            g.strokePath(modulationArc, juce::PathStrokeType(2.0f,
+                                                             juce::PathStrokeType::curved,
+                                                             juce::PathStrokeType::rounded));
+        }
+
+        // A dot at the live value, so the current position is readable even when
+        // the modulation depth is small enough that the arc is a sliver.
+        const auto dotRadius = radius * 1.02f;
+        g.setColour(accentForHighlight.brighter(0.35f));
+        g.fillEllipse(center.x + std::sin(modulatedAngle) * dotRadius - 1.7f,
+                      center.y - std::cos(modulatedAngle) * dotRadius - 1.7f,
+                      3.4f, 3.4f);
+    }
+
     juce::Path pointer;
     pointer.addRoundedRectangle(-2.1f, -radius * 0.56f, 4.2f, radius * 0.36f, 1.7f);
     g.setColour(renderGrayscale ? juce::Colour::fromRGB(200, 200, 200)
@@ -3397,8 +3440,21 @@ void PX3SynthAudioProcessorEditor::refreshWavetableDisplays()
             rebuildWavetableMenu(osc);
         }
 
-        graph->setPosition(audioProcessor.getOscillatorWtPositionParam(osc).get(),
-                           audioProcessor.getModulatedWavetablePosition(osc));
+        const auto base = audioProcessor.getOscillatorWtPositionParam(osc).get();
+        const auto modulated = audioProcessor.getModulatedWavetablePosition(osc);
+        graph->setPosition(base, modulated);
+
+        // The knob shows it too. The graph shows WHERE in the table the scan is;
+        // the knob shows how far modulation is pushing the control, which is
+        // what tells you the depth is set sensibly.
+        auto& knob = oscWtPositionKnobs[index];
+        const auto shown = static_cast<double>(
+            knob.getProperties().getWithDefault("modulatedPos", -1.0));
+        if (std::abs(shown - static_cast<double>(modulated)) > 0.001)
+        {
+            knob.getProperties().set("modulatedPos", static_cast<double>(modulated));
+            knob.repaint();
+        }
     }
 
     audioProcessor.collectRetiredWavetables();

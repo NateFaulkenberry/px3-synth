@@ -145,6 +145,7 @@ set(PX3_SHARED_SOURCES
         Source/DSP/PluginProcessorState.cpp
         Source/DSP/SynthSound.cpp
         Source/DSP/VibeEngine.cpp
+        Source/DSP/BreakpointEnvelope.cpp
         Source/DSP/OscillatorUnit.cpp
         Source/DSP/Wavetable.cpp
         Source/DSP/WavetableFactory.cpp

@@ -95,6 +95,16 @@ void OscillatorComponent::setWavetableControls(juce::ComboBox& tableBox,
     wtPositionLabel = &positionLabel;
     wtPositionValue = &positionValue;
 
+    // Adopted as children, like every other control the card is handed. Storing
+    // the pointers and laying them out is not enough: a component that belongs
+    // to no parent is never drawn, so the card laid out two controls that were
+    // not on screen and the row simply looked short.
+    addChildComponent(tableBox);
+    addChildComponent(tableLabel);
+    addChildComponent(positionSlider);
+    addChildComponent(positionLabel);
+    addChildComponent(positionValue);
+
     // The controls arrive after the first applyModeUi has already run and
     // recorded the mode, so its "nothing changed" guard would skip them.
     lastModeIndex = -1;
@@ -383,6 +393,14 @@ void OscillatorComponent::paint(juce::Graphics& g)
     // two copies of one layout kept in step by hand.
     const auto graph = inner.rowContent(2).toFloat().reduced(0.0f, 2.0f);
 
+    // In wavetable mode a child component owns row 3, and its panel is
+    // translucent - so painting the animated preview here as well leaves the old
+    // waveform moving underneath the new one.
+    if (wavetableGraph.isVisible())
+    {
+        return;
+    }
+
     if (graph.getWidth() <= 40 || graph.getHeight() <= 24)
     {
         return;
@@ -569,7 +587,12 @@ void OscillatorComponent::applyModeUi()
         { "COLOR", "", "", 1, false },
         { "SPREAD", "", "", 1, false },
         { "WIDTH", "", "", 1, false },
-        { "POSITION", "", "", 1, false },
+        // WAVETABLE shows no macro. It used to borrow macroA as its POSITION
+        // knob, back when the mode was a single swept sine; the scan is its own
+        // parameter now, so leaving that entry here put two knobs labelled
+        // POSITION in one row - one of which no longer did anything - and
+        // squeezed the row until controls fell off the end of it.
+        { "", "", "", 0, false },
         { "TILT", "ODD/EVEN", "ROLL", 3, false },
         { "MORPH", "COLOR", "", 2, true },
         { "RATIO", "INDEX", "", 2, false },
@@ -629,6 +652,16 @@ void OscillatorComponent::applyEnabledUi()
     modeLabel.setEnabled(currentEnabled);
     vowelBox.setEnabled(currentEnabled && vowelBox.isVisible());
     vowelLabel.setEnabled(currentEnabled && vowelLabel.isVisible());
+
+    if (wtTableBox != nullptr)
+    {
+        const auto live = currentEnabled && wtTableBox->isVisible();
+        wtTableBox->setEnabled(live);
+        wtTableLabel->setEnabled(live);
+        wtPositionSlider->setEnabled(live);
+        wtPositionLabel->setEnabled(live);
+        wtPositionValue->setEnabled(live);
+    }
     pitch.setEnabled(currentEnabled);
     pitchLabel.setEnabled(currentEnabled);
     pitchValueLabel.setEnabled(currentEnabled);
