@@ -72,14 +72,6 @@ void BreakpointEnvelopeEditor::setEnvelope(const px3::BreakpointEnvelope& newEnv
     repaint();
 }
 
-void BreakpointEnvelopeEditor::setLivePosition(float normalisedTime)
-{
-    const auto clamped = normalisedTime < 0.0f ? -1.0f : juce::jlimit(0.0f, 1.0f, normalisedTime);
-    if (std::abs(clamped - livePosition) < 0.002f) { return; }
-    livePosition = clamped;
-    repaint();
-}
-
 void BreakpointEnvelopeEditor::setEnvelopeEnabled(bool shouldBeEnabled)
 {
     if (envelopeEnabled == shouldBeEnabled) { return; }
@@ -353,14 +345,6 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
     g.strokePath(curve, juce::PathStrokeType(floatFor("lineWidth", 2.0f),
                                              juce::PathStrokeType::curved,
                                              juce::PathStrokeType::rounded));
-
-    // ---- where the envelope actually is ------------------------------------
-    if (livePosition >= 0.0f)
-    {
-        const auto x = area.getX() + area.getWidth() * livePosition;
-        g.setColour(colourFor("playheadColor", juce::Colour::fromRGBA(255, 255, 255, 90)));
-        g.fillRect(x, area.getY(), floatFor("playheadWidth", 1.0f), area.getHeight());
-    }
 
     // ---- curve handles -----------------------------------------------------
     const auto handleRadius = floatFor("curveHandleRadius", 3.0f);

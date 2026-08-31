@@ -256,7 +256,6 @@
       "menuButtonMinWidth": 64,
       "menuButtonMaxWidth": 400,
       "menuButtonInset": 0,
-      "gainLabelGap": 2,
       "stripPadX": 1,
       "stripPadY": 1,
       "presetMenuGap": 1,
@@ -566,11 +565,6 @@
     },
     "env1": {
       "visual": {
-        "cardCornerRadius": 8,
-        "outerStrokeThickness": 1.2,
-        "outerStrokeColour": "#BA70FF",
-        "outerStrokeAlphaEnabled": 88,
-        "outerStrokeAlphaDisabled": 66,
         "graph": {
           "cornerRadius": 7,
           "fillColour": "#0E0E12",
@@ -601,8 +595,6 @@
         "sustainLineWidth": 1.0,
         "curveHandleRadius": 3.0,
         "curveHandleColor": "",
-        "playheadColor": "#FFFFFF5A",
-        "playheadWidth": 1.0,
         "readoutColor": "#E8E8E8",
         "readoutSize": 10.5,
         "timeGridColor": "#FFFFFF1E",
@@ -613,11 +605,6 @@
     },
     "env2": {
       "visual": {
-        "cardCornerRadius": 8,
-        "outerStrokeThickness": 1.2,
-        "outerStrokeColour": "#BA70FF",
-        "outerStrokeAlphaEnabled": 88,
-        "outerStrokeAlphaDisabled": 66,
         "graph": {
           "cornerRadius": 7,
           "fillColour": "#0E0E12",
@@ -648,8 +635,6 @@
         "sustainLineWidth": 1.0,
         "curveHandleRadius": 3.0,
         "curveHandleColor": "",
-        "playheadColor": "#FFFFFF5A",
-        "playheadWidth": 1.0,
         "readoutColor": "#E8E8E8",
         "readoutSize": 10.5,
         "timeGridColor": "#FFFFFF1E",
@@ -660,11 +645,6 @@
     },
     "env3": {
       "visual": {
-        "cardCornerRadius": 8,
-        "outerStrokeThickness": 1.2,
-        "outerStrokeColour": "#BA70FF",
-        "outerStrokeAlphaEnabled": 88,
-        "outerStrokeAlphaDisabled": 66,
         "graph": {
           "cornerRadius": 7,
           "fillColour": "#0E0E12",
@@ -695,8 +675,6 @@
         "sustainLineWidth": 1.0,
         "curveHandleRadius": 3.0,
         "curveHandleColor": "",
-        "playheadColor": "#FFFFFF5A",
-        "playheadWidth": 1.0,
         "readoutColor": "#E8E8E8",
         "readoutSize": 10.5,
         "timeGridColor": "#FFFFFF1E",
@@ -707,11 +685,6 @@
     },
     "env": {
       "visual": {
-        "cardCornerRadius": 8,
-        "outerStrokeThickness": 1.2,
-        "outerStrokeColour": "#DCE8FC",
-        "outerStrokeAlphaEnabled": 88,
-        "outerStrokeAlphaDisabled": 66,
         "graph": {
           "cornerRadius": 7,
           "fillColour": "#0E0E12",
@@ -745,11 +718,6 @@
         "maxHeight": 340
       },
       "visual": {
-        "cardCornerRadius": 8,
-        "outerStrokeThickness": 1.2,
-        "outerStrokeColour": "#DCE8FC",
-        "outerStrokeAlphaEnabled": 88,
-        "outerStrokeAlphaDisabled": 66,
         "graph": {
           "cornerRadius": 7,
           "fillColour": "#0E0E12",
@@ -780,8 +748,6 @@
         "sustainLineWidth": 1.0,
         "curveHandleRadius": 3.0,
         "curveHandleColor": "",
-        "playheadColor": "#FFFFFF5A",
-        "playheadWidth": 1.0,
         "readoutColor": "#E8E8E8",
         "readoutSize": 10.5,
         "timeGridColor": "#FFFFFF1E",
@@ -917,9 +883,7 @@
       "meterGlowColor": "#FFF4CED2",
       "meterBandColor": "#B02E28C8",
       "meterScaleFontSize": 7.5,
-      "badgeColor": "#FFFFFF1E",
-      "badgeTextColor": "#E8EEF8",
-      "badgeFontSize": 7
+      "badgeTextColor": "#E8EEF8"
     }
   },
   "cards": {
@@ -1453,7 +1417,6 @@
         "paddingRight": 0,
         "paddingLeft": 0,
         "paddingBottom": 4,
-        "marginTop": 20,
         "display": "flex",
         "direction": "column",
         "wrap": "nowrap",
@@ -1559,7 +1522,6 @@
         "paddingRight": 0,
         "paddingLeft": 0,
         "paddingBottom": 4,
-        "marginTop": 20,
         "display": "flex",
         "direction": "column",
         "wrap": "nowrap",

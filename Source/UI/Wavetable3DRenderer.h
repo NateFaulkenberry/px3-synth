@@ -110,30 +110,17 @@ public:
     };
     Surface getSurface() const;
 
-    // A vertical slice of the framebuffer, in physical pixels, filled by the
-    // same audit readback. This is the instrument for line sharpness: a
-    // luminance profile across a line says how many pixels the edge takes,
-    // which is the whole difference between antialiasing and blur.
-    std::vector<float> getColumnProfile() const;
-
     // The whole framebuffer's luminance, row 0 at the BOTTOM, filled by the
     // audit. Expensive and diagnostic-only - but it is what lets a measurement
     // isolate one curve by subtracting two frames, rather than assuming where
     // in the picture the curve landed.
     std::vector<float> getFrameLuminance() const;
-    void setProfileColumn(int columnFromLeft);
 
     // Eye-space depth of a model-space z, for the current camera. Positive is
     // in front of the camera; SMALLER is nearer. Exposed because "which end of
     // the stack is nearest" decides both the draw order and the direction of
     // every depth cue, and getting it backwards is invisible in the code.
     float eyeDepthForModelZ(float z) const;
-
-    // Where a model-space point lands in normalised device coordinates, for
-    // the current camera and a given aspect. Lets a diagnostic say which pixel
-    // row a particular frame's curve is on, instead of guessing from a
-    // luminance profile which band belongs to which frame.
-    juce::Point<float> projectModelPoint(float x, float y, float z, float aspect) const;
 
     void resized() override;
     void visibilityChanged() override;
@@ -312,9 +299,7 @@ private:
     std::atomic<int> surfaceWidth { 0 };
     std::atomic<int> surfaceHeight { 0 };
     std::atomic<double> surfaceScale { 0.0 };
-    std::atomic<int> profileColumn { -1 };
     mutable std::mutex probeMutex;
-    std::vector<float> columnProfile;
     std::vector<float> frameLuminance;
     LuminanceProbe luminanceProbe;
     juce::Colour accentColour { juce::Colour::fromRGB(96, 168, 255) };

@@ -17721,10 +17721,6 @@ double filterGainDbAt(int mode, float cutoff, float q, double hz)
 
 
 
-// ---- TEMPORARY: REAL PRESET CLICK HUNT --------------------------------------
-
-
-
 // Output level of a steady tone through the compressor, measured over a window
 // that starts at `fromSeconds`. Output rather than the meter: the meter has VU
 // ballistics on purpose - about 300 ms to full deflection - so an early meter

@@ -35,9 +35,6 @@ public:
     // to write a parameter now or on mouse-up.
     std::function<void(const px3::BreakpointEnvelope&)> onEnvelopeChanged;
 
-    // Where the envelope currently is, drawn as a moving marker. -1 hides it.
-    void setLivePosition(float normalisedTime);
-
     void paint(juce::Graphics& g) override;
     void resized() override;
 
@@ -103,7 +100,6 @@ private:
     // curve does not rescale under the cursor as points move.
     double dragAxisSeconds { 0.0 };
 
-    float livePosition { -1.0f };
     bool showReadout { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BreakpointEnvelopeEditor)

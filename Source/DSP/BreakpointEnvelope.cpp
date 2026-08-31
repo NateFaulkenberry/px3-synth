@@ -177,11 +177,6 @@ void BreakpointEnvelope::setCurve(int index, double curve)
     points[static_cast<std::size_t>(index)].curveToNext = clampCurve(curve);
 }
 
-void BreakpointEnvelope::setSustainPoint(int index)
-{
-    sustainPoint = juce::jlimit(0, juce::jmax(0, pointCount - 2), index);
-}
-
 void BreakpointEnvelope::setPoints(const Point* newPoints, int count, int newSustainPoint)
 {
     if (newPoints == nullptr || count < kMinPoints)

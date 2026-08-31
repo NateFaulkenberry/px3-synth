@@ -66,7 +66,6 @@ public:
     // the DSP has to defend against, which is why the DSP does not.
     void setPoint(int index, double timeSeconds, double value);
     void setCurve(int index, double curve);
-    void setSustainPoint(int index);
 
     // Replaces every point at once.
     //
@@ -133,16 +132,12 @@ public:
         // multi-stage envelope sounds broken.
         float valueAtReleased(double seconds, float fromValue) const noexcept;
 
-        double getSustainSeconds() const noexcept { return sustainSeconds; }
-        double getReleaseSeconds() const noexcept { return releaseSeconds; }
-        float getSustainValue() const noexcept { return sustainValue; }
 
         // 0 at note-off, 1 at the end of the release. Kept because
         // release-dependent processing schedules off it deliberately, so its
         // timing does not move when the envelope's curve changes.
         float releaseProgress(double seconds) const noexcept;
 
-        int getSegmentCount() const noexcept { return segmentCount; }
 
     private:
         struct Segment

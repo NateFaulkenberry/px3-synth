@@ -606,34 +606,6 @@ void Wavetable3DRenderer::setEnvironmentEnabled(bool shouldBeEnabled)
     if (context.isAttached()) { context.triggerRepaint(); }
 }
 
-void Wavetable3DRenderer::setProfileColumn(int columnFromLeft)
-{
-    profileColumn.store(columnFromLeft);
-
-    // Continuous repainting is off, so asking for a profile has to ask for the
-    // frame that fills it in as well.
-    if (context.isAttached()) { context.triggerRepaint(); }
-}
-
-juce::Point<float> Wavetable3DRenderer::projectModelPoint(float x, float y, float z,
-                                                          float aspect) const
-{
-    const auto matrix = buildViewProjection(aspect, camera);
-    const auto* m = matrix.mat;
-
-    const auto cx = m[0] * x + m[4] * y + m[8] * z + m[12];
-    const auto cy = m[1] * x + m[5] * y + m[9] * z + m[13];
-    const auto cw = m[3] * x + m[7] * y + m[11] * z + m[15];
-    const auto w = std::abs(cw) > 1.0e-6f ? cw : 1.0e-6f;
-    return { cx / w, cy / w };
-}
-
-std::vector<float> Wavetable3DRenderer::getColumnProfile() const
-{
-    const std::scoped_lock lock(probeMutex);
-    return columnProfile;
-}
-
 std::vector<float> Wavetable3DRenderer::getFrameLuminance() const
 {
     const std::scoped_lock lock(probeMutex);
@@ -1535,25 +1507,8 @@ void Wavetable3DRenderer::renderOpenGL()
             steepest = static_cast<float>(total / static_cast<double>(top));
         }
 
-        // One column of the framebuffer, bottom row first, for the edge profile.
-        std::vector<float> profile;
-        {
-            const auto column = profileColumn.load();
-            if (column >= 0 && column < width)
-            {
-                profile.resize(static_cast<std::size_t>(height));
-                for (int y = 0; y < height; ++y)
-                {
-                    profile[static_cast<std::size_t>(y)] =
-                        luma[static_cast<std::size_t>(y) * static_cast<std::size_t>(width)
-                             + static_cast<std::size_t>(column)];
-                }
-            }
-        }
-
         {
             const std::scoped_lock lock(probeMutex);
-            columnProfile = std::move(profile);
             frameLuminance = luma;
             luminanceProbe.softFraction = pixelCount > 0
                                             ? static_cast<float>(soft)
