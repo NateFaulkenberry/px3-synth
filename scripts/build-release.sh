@@ -522,6 +522,7 @@ require_cmd xcodebuild
 require_cmd file
 require_cmd lipo
 require_cmd zip
+require_cmd unzip
 require_cmd pkgbuild
 require_cmd productbuild
 require_cmd productsign
@@ -663,6 +664,8 @@ fi
 echo "[6/8] Creating distribution and packaging"
 DIST_DIR="${DIST_ROOT}/PX3-v${PROJECT_VERSION}-macOS"
 ZIP_PATH="${DIST_ROOT}/P(X3)-v${PROJECT_VERSION}-macOS-arm64.zip"
+INSTALLER_ZIP_FOLDER="PX3-v${PROJECT_VERSION}-Installer"
+INSTALLER_ZIP_PATH="${DIST_ROOT}/P(X3)-v${PROJECT_VERSION}-macOS-arm64-Installer.zip"
 PKG_PATH="${DIST_ROOT}/PX3-v${PROJECT_VERSION}.pkg"
 PKG_WORK_DIR="${BUILD_DIR}/installer"
 PKG_COMPONENTS_DIR="${PKG_WORK_DIR}/packages"
@@ -1007,6 +1010,82 @@ fi
 )
 [[ -s "${ZIP_PATH}" ]] || die "Distribution archive was not created: ${ZIP_PATH}"
 
+# ---- the archive you actually hand to someone ------------------------------
+#
+# The installer and the uninstaller, together, in one file. Everything else in
+# dist/ is for installing by hand; this pair is what an end user needs, and
+# needing to find two separate downloads to install and remove one plugin is a
+# worse experience than one zip.
+#
+# Built after both have been notarised and stapled, which is what makes this
+# safe: the ticket lives inside the pkg and inside the app bundle, so it
+# travels with them into the archive. Zipping before stapling would produce an
+# archive that Gatekeeper refuses on a clean machine.
+INSTALLER_ZIP_STAGE="${BUILD_DIR}/installer-zip"
+rm -rf "${INSTALLER_ZIP_STAGE}"
+mkdir -p "${INSTALLER_ZIP_STAGE}/${INSTALLER_ZIP_FOLDER}"
+
+cp "${PKG_PATH}" "${INSTALLER_ZIP_STAGE}/${INSTALLER_ZIP_FOLDER}/" \
+  || die "Could not stage the installer for the distribution archive"
+
+if [[ "${BUILD_UNINSTALLER}" == true ]]; then
+  # -R rather than cp: an .app is a directory, and its signature depends on
+  # every byte inside it.
+  cp -R "${UNINSTALLER_APP_PATH}" "${INSTALLER_ZIP_STAGE}/${INSTALLER_ZIP_FOLDER}/" \
+    || die "Could not stage the uninstaller for the distribution archive"
+fi
+
+rm -f "${INSTALLER_ZIP_PATH}"
+(
+  # -y stores symlinks AS symlinks. Without it a bundle's internal links are
+  # copied as files, which changes the bundle and invalidates its signature.
+  cd "${INSTALLER_ZIP_STAGE}"
+  zip -qry "${INSTALLER_ZIP_PATH}" "${INSTALLER_ZIP_FOLDER}"
+) || die "Could not create the distribution archive"
+[[ -s "${INSTALLER_ZIP_PATH}" ]] \
+  || die "Distribution archive was not created: ${INSTALLER_ZIP_PATH}"
+
+# Verified by unpacking it, not by trusting zip. What matters is whether what
+# comes OUT still passes - an archive that quietly broke a signature looks
+# exactly like one that did not until someone else opens it.
+INSTALLER_ZIP_CHECK="${BUILD_DIR}/installer-zip-check"
+rm -rf "${INSTALLER_ZIP_CHECK}"
+mkdir -p "${INSTALLER_ZIP_CHECK}"
+unzip -qq "${INSTALLER_ZIP_PATH}" -d "${INSTALLER_ZIP_CHECK}" \
+  || die "Distribution archive could not be unpacked"
+
+UNPACKED_ROOT="${INSTALLER_ZIP_CHECK}/${INSTALLER_ZIP_FOLDER}"
+UNPACKED_PKG="${UNPACKED_ROOT}/$(basename "${PKG_PATH}")"
+[[ -f "${UNPACKED_PKG}" ]] || die "Distribution archive does not contain the installer"
+
+if [[ "${BUILD_UNINSTALLER}" == true ]]; then
+  UNPACKED_UNINSTALLER="${UNPACKED_ROOT}/$(basename "${UNINSTALLER_APP_PATH}")"
+  [[ -d "${UNPACKED_UNINSTALLER}" ]] \
+    || die "Distribution archive does not contain the uninstaller"
+fi
+
+if [[ "${PKG_SIGN_STATE}" != "unsigned" ]]; then
+  pkgutil --check-signature "${UNPACKED_PKG}" >/dev/null 2>&1 \
+    || die "The installer lost its signature inside the distribution archive"
+fi
+
+if [[ "${BUILD_UNINSTALLER}" == true && "${UNINSTALLER_SIGN_STATE}" != "unsigned" ]]; then
+  codesign --verify --deep --strict "${UNPACKED_UNINSTALLER}" >/dev/null 2>&1 \
+    || die "The uninstaller lost its signature inside the distribution archive"
+fi
+
+if [[ "${NOTARIZE_MODE}" == true ]]; then
+  xcrun stapler validate "${UNPACKED_PKG}" >/dev/null 2>&1 \
+    || die "The installer's notarisation ticket did not survive the distribution archive"
+  if [[ "${BUILD_UNINSTALLER}" == true ]]; then
+    xcrun stapler validate "${UNPACKED_UNINSTALLER}" >/dev/null 2>&1 \
+      || die "The uninstaller's notarisation ticket did not survive the distribution archive"
+  fi
+fi
+
+rm -rf "${INSTALLER_ZIP_CHECK}"
+echo "  Distribution:  ${INSTALLER_ZIP_PATH} (verified by unpacking)"
+
 echo "[8/8] Packaging validation"
 echo "  AU package:    ${AU_COMPONENT_PKG}"
 echo "  VST3 package:  ${VST3_COMPONENT_PKG}"
@@ -1041,7 +1120,10 @@ if [[ -n "${APP_BUNDLE}" ]]; then
 fi
 
 echo ""
-echo "ZIP:"
+echo "DISTRIBUTION ZIP (installer + uninstaller - this is the one to share):"
+echo "  ${INSTALLER_ZIP_PATH}"
+echo ""
+echo "ZIP (raw bundles, for installing by hand):"
 echo "  ${ZIP_PATH}"
 echo ""
 echo "PKG (installer, user selects AU / VST3 / Standalone):"
