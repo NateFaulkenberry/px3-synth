@@ -21760,6 +21760,205 @@ int main(int argc, char* argv[])
         return rendering && error.isEmpty() && visible ? 0 : 1;
     }
 
+    if (filter == "sharpcheck")
+    {
+        // Waveform line sharpness, diagnosed rather than adjusted.
+        //
+        // The measurement isolates ONE curve by subtracting two renders of the
+        // same scene - one with a frame selected, one without. Whatever differs
+        // is that curve and nothing else: not the floor, not the environment,
+        // not the other frames. Profiling a column of the difference then says
+        // how many physical pixels the curve's edge takes, which is the whole
+        // distinction between antialiasing and blur.
+        std::printf("\nWAVEFORM SHARPNESS\n\n");
+
+        struct Host final : public juce::DocumentWindow
+        {
+            Host() : juce::DocumentWindow("px3 sharp", juce::Colours::black, 0)
+            {
+                renderer.setSize(290, 149);
+                setContentNonOwned(&renderer, true);
+                setOpaque(true);
+                setVisible(true);
+                setTopLeftPosition(-4000, -4000);
+            }
+            void closeButtonPressed() override {}
+            Wavetable3DRenderer renderer;
+        };
+
+        auto host = std::make_unique<Host>();
+
+        // Two FLAT frames, so each curve is a straight horizontal line and a
+        // vertical profile crosses it square on. A real table was tried first
+        // and cannot isolate anything: moving the scan changes the whole
+        // neighbourhood of frames, so the difference spanned 119 px of picture
+        // rather than one curve.
+        px3::WavetableDisplay flat;
+        flat.name = "flat";
+        flat.frames.push_back(std::vector<float>(128, -0.45f));
+        flat.frames.push_back(std::vector<float>(128, 0.45f));
+
+        host->renderer.setPixelAudit(true);
+        host->renderer.setDisplay(flat);
+        host->renderer.setPosition(0.5f);
+
+        const auto deadline = juce::Time::getMillisecondCounter() + 4000;
+        while (juce::Time::getMillisecondCounter() < deadline
+               && ! host->renderer.isRendering()
+               && host->renderer.getShaderError().isEmpty())
+        {
+            juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+        }
+
+        if (! host->renderer.isRendering())
+        {
+            std::printf("  no GL context came up\n\n");
+            host.reset();
+            return 1;
+        }
+
+        const auto settle = []
+        {
+            for (int i = 0; i < 10; ++i)
+            {
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(25);
+            }
+        };
+        settle();
+
+        const auto surface = host->renderer.getSurface();
+        const auto W = surface.framebufferWidth;
+        const auto H = surface.framebufferHeight;
+
+        std::printf("  component      %d x %d points\n",
+                    surface.componentWidth, surface.componentHeight);
+        std::printf("  framebuffer    %d x %d px\n", W, H);
+        std::printf("  device scale   %.2f\n", surface.renderingScale);
+        const auto expectedW = juce::roundToInt(surface.componentWidth * surface.renderingScale);
+        const auto expectedH = juce::roundToInt(surface.componentHeight * surface.renderingScale);
+        std::printf("  viewport is %s the physical size (%d x %d expected)\n\n",
+                    (W == expectedW && H == expectedH) ? "EXACTLY" : "NOT",
+                    expectedW, expectedH);
+
+        std::printf("  eye depth at model z=+1.8: %.3f\n",
+                    host->renderer.eyeDepthForModelZ(1.8f));
+        std::printf("  eye depth at model z=-1.8: %.3f\n",
+                    host->renderer.eyeDepthForModelZ(-1.8f));
+        std::printf("  the frame at z=+1.8 (vFrame 1) is NEAREST the camera\n\n");
+
+        const auto frameAt = [&host, &settle](float position)
+        {
+            host->renderer.setPosition(position);
+            settle();
+            return host->renderer.getFrameLuminance();
+        };
+
+        // Two renders that differ only in which of the two frames is
+        // highlighted. The floor and the environment are identical in both and
+        // subtract away exactly.
+        const auto withA = frameAt(0.0f);
+        const auto withB = frameAt(1.0f);
+
+        if (withA.size() != static_cast<std::size_t>(W) * static_cast<std::size_t>(H)
+            || withB.size() != withA.size())
+        {
+            std::printf("  frame capture failed (%d vs %d px)\n\n",
+                        static_cast<int>(withA.size()), W * H);
+            host.reset();
+            return 1;
+        }
+
+        // The difference isolates the highlighted curve.
+        std::vector<float> difference(withA.size(), 0.0f);
+        auto peak = 0.0f;
+        auto peakIndex = std::size_t { 0 };
+        for (std::size_t i = 0; i < difference.size(); ++i)
+        {
+            difference[i] = std::abs(withA[i] - withB[i]);
+            if (difference[i] > peak) { peak = difference[i]; peakIndex = i; }
+        }
+
+        const auto peakColumn = static_cast<int>(peakIndex % static_cast<std::size_t>(W));
+        const auto peakRow = static_cast<int>(peakIndex / static_cast<std::size_t>(W));
+        std::printf("  the highlighted curve is strongest at column %d, row %d (%.4f)\n\n",
+                    peakColumn, peakRow, peak);
+
+        // A vertical profile of the isolated curve, through that column.
+        std::printf("  edge profile of the highlighted curve, physical pixel rows:\n");
+        auto first = -1, last = -1;
+        for (int dy = -12; dy <= 12; ++dy)
+        {
+            const auto row = peakRow + dy;
+            if (row < 0 || row >= H) { continue; }
+            const auto value = difference[static_cast<std::size_t>(row)
+                                          * static_cast<std::size_t>(W)
+                                          + static_cast<std::size_t>(peakColumn)];
+            const auto level = value / peak;
+            const auto bars = juce::jlimit(0, 52, juce::roundToInt(level * 52.0f));
+            std::printf("    %+3d  %.4f  %s\n", dy, value,
+                        juce::String::repeatedString("#", bars).toRawUTF8());
+            if (level >= 0.10f) { if (first < 0) { first = dy; } last = dy; }
+        }
+
+        // Core and edge, in physical pixels.
+        auto core = 0, total = 0;
+        for (int row = 0; row < H; ++row)
+        {
+            const auto value = difference[static_cast<std::size_t>(row)
+                                          * static_cast<std::size_t>(W)
+                                          + static_cast<std::size_t>(peakColumn)];
+            const auto level = value / peak;
+            if (level >= 0.90f) { ++core; }
+            if (level >= 0.10f) { ++total; }
+        }
+        std::printf("\n  core (>=90%% of peak): %d px    full extent (>=10%%): %d px\n",
+                    core, total);
+        std::printf("  so the edge takes %.2f px per side\n", (total - core) * 0.5);
+        const auto edgePerSide = (total - core) * 0.5;
+        const auto isAntialiased = edgePerSide <= 1.5;
+        std::printf("  %s\n\n",
+                    isAntialiased
+                        ? "that is antialiasing"
+                        : "*** that is blur: the transition is wider than an antialiased edge ***");
+
+        // And the real 48-frame stack, which is where stacking order matters.
+        // A crisp picture separates its frames; a muddy one averages them.
+        {
+            PX3SynthAudioProcessor processor;
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+            processor.loadFactoryWavetable(0, 0);
+
+            host->renderer.setDisplay(processor.getWavetableDisplay(0, 48, 128));
+            host->renderer.setPosition(0.45f);
+            settle();
+
+            const auto real = host->renderer.getLuminanceProbe();
+            std::printf("  the real 48-frame stack:\n");
+            std::printf("    steepest edges   %.4f  (higher is crisper)\n", real.steepestEdges);
+            std::printf("    brightest pixel  %.4f\n", real.brightest);
+
+            // How well the highlighted frame stands out from the frames around
+            // it. Averaged-together frames have nothing standing above them.
+            const auto frame = host->renderer.getFrameLuminance();
+            if (frame.size() == static_cast<std::size_t>(W) * static_cast<std::size_t>(H))
+            {
+                std::vector<float> sorted(frame);
+                std::sort(sorted.begin(), sorted.end());
+                const auto median = sorted[sorted.size() / 2];
+                const auto ninetyNinth = sorted[static_cast<std::size_t>(
+                    static_cast<double>(sorted.size()) * 0.99)];
+                std::printf("    median %.4f, 99th percentile %.4f, ratio %.2f\n",
+                            median, ninetyNinth,
+                            median > 1.0e-4f ? ninetyNinth / median : 0.0);
+            }
+            std::printf("\n");
+        }
+
+        host.reset();
+        return isAntialiased ? 0 : 1;
+    }
+
     if (filter == "envcheck")
     {
         // The environment, measured with it off and with it on.

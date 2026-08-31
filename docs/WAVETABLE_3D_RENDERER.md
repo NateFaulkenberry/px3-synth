@@ -506,3 +506,117 @@ The framing is now run twice: once from the default orientation, which is what
 `resetCamera` returns to, and once from the orientation actually on screen,
 which is what the camera gets. `envcheck` orbits the camera before sweeping the
 factory library, because at the defaults the check cannot fail.
+
+---
+
+# Line sharpness: the pipeline, and what was actually wrong
+
+Written as a diagnosis. Every claim here is a measurement from `PX3Tests
+sharpcheck`, which renders on a real context and reads the framebuffer back.
+
+## H. The pipeline, stage by stage
+
+```
+wavetable samples          px3::WavetableDisplay, 48 frames x 128 points
+    |                      nearest stored frame per drawn frame; linear
+    |                      interpolation BETWEEN samples only (sampleAt)
+CPU geometry               rebuildVertices: 2 vertices per point, side -1/+1
+    |                      12288 vertices + 48 floor vertices, rebuilt only
+    |                      when the TABLE changes
+GPU buffer                 one static VBO, glBufferData on change
+    |
+vertex shader              ribbon expansion AFTER projection, in NDC
+    |
+primitive                  GL_TRIANGLE_STRIP, one strip per frame
+    |                      *** not GL_LINES, not glLineWidth ***
+fragment shader            pixel-coverage antialiasing, depth fade, key light
+    |
+framebuffer                the DEFAULT framebuffer, at physical resolution
+    |                      *** no offscreen FBO, no texture, no filtering ***
+presentation               JUCE OpenGLContext, component painting for overlays
+```
+
+Every stage that could introduce filtering was checked and ruled out:
+
+| Suspect | Finding |
+|---|---|
+| Low-resolution framebuffer | **Ruled out.** 290x149 points, 580x298 px, scale 2.00 - exactly physical |
+| Offscreen FBO / texture scaling | **Ruled out.** There is no FBO and no texture in this renderer |
+| Native GL lines | **Ruled out.** Ribbon triangle strips already; `glLineWidth` is never called |
+| Post-processing / bloom | **Ruled out.** Single pass, no blur, no accumulation |
+| CPU smoothing of samples | **Ruled out.** Linear interpolation between samples, no filtering |
+| Antialiasing width | **Ruled out.** Measured at 0.50 px per side (see below) |
+| Blend mode | Straight alpha, `GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA`, depth test off |
+
+## I. The edge, measured
+
+The measurement isolates ONE curve by subtracting two renders of the same
+scene that differ only in which frame is highlighted. Whatever differs is that
+curve and nothing else - not the floor, not the environment, not the other
+frames. A real table cannot be used for this: moving the scan changes a whole
+neighbourhood of frames, and the difference spanned 119 px of picture rather
+than one curve. Two flat frames give one straight line each.
+
+```
+    edge profile of the isolated curve, physical pixel rows
+     -1  0.0000
+     +0  0.8401  ####################################################
+     +1  0.8341  ####################################################
+     ...
+     +7  0.8341  ####################################################
+     +8  0.1266  ########
+     +9  0.0000
+
+    core (>=90% of peak): 8 px    full extent (>=10%): 9 px
+    the edge takes 0.50 px per side
+```
+
+**The edge was never the problem.** Half a pixel is antialiasing by any
+definition - the core is solid and the transition is sub-pixel.
+
+## J. The actual root cause: stacking order and depth cueing, both inverted
+
+`vFrame` is 0 at the table's first frame and 1 at its last. The geometry puts
+frame 0 at `z = -kStackHalfDepth`, and the camera sits on the POSITIVE z side.
+Measured eye depths: 2.755 at z=+1.8 against 5.430 at z=-1.8. **vFrame 1 is the
+end nearest the viewer.**
+
+Against that, the renderer was doing three things backwards:
+
+```
+    depthFade = mix(1.0, 0.22, vFrame)     faded the NEAR end to nothing
+    haze      = 0.38 * vFrame              hazed the NEAR frames
+    for (f = frameCount - 1; f >= 0; --f)  drew NEAREST first
+```
+
+The first is measurable on its own. In a two-frame scene, with neither frame
+selected, the near curve read **0.0480 against a background of 0.0480** - it was
+not visible at all - while the far curve read 0.1499.
+
+The third is the one that destroys sharpness. With the depth test off and
+straight alpha, drawing nearest-first means every one of the other 47
+translucent ribbons is painted **on top of** the curve you are looking at. No
+antialiasing can make a line crisp when 47 semi-transparent ribbons are
+composited over it afterwards.
+
+Fixed by counting up instead of down, and by reversing the two depth cues so
+they run toward the camera. Measured on the real 48-frame stack, the mean of the
+top 1% of adjacent-pixel luminance jumps - the sharpest edges in the picture:
+
+```
+    before   0.1793
+    after    0.2062      +15%
+```
+
+## K. What was NOT changed, and why
+
+**The line width.** It measures 8.8 physical px, 4.4 logical. The brief warns
+against reaching for thickness to fix softness, and equally this is not the
+place to quietly reverse a width the user asked for - now that crispness no
+longer depends on width, thinner is a free choice rather than a fix.
+
+**Multisampling.** The edge is already sub-pixel; MSAA would only help diagonal
+jaggies, at the cost of a multisample buffer for the whole panel.
+
+**Glow.** Already a separate layer: the core alpha is coverage alone, and the
+halo is added on top only for the selected frame, bounded at 2.5 px.

@@ -235,9 +235,18 @@ void main()
     // curve is a stored waveform.
     float storedWeight = mix(0.45, 1.0, vStored);
 
-    // Depth: further back is dimmer and less saturated, which is what makes the
-    // stack recede without any fog geometry.
-    float depthFade = mix(1.0, 0.22, vFrame);
+    // Depth: further back is dimmer, which is what makes the stack recede
+    // without any fog geometry.
+    //
+    // vFrame is 0 at the FIRST frame of the table and 1 at the last, and the
+    // geometry puts frame 0 at z = -kStackHalfDepth with the camera on the
+    // positive z side - so vFrame 1 is the end NEAREST the viewer. Measured:
+    // eye depth 2.755 at z=+1.8 against 5.430 at z=-1.8.
+    //
+    // This read mix(1.0, 0.22, vFrame), which faded the near end to nothing:
+    // in a two-frame scene the near curve measured 0.0480 against a background
+    // of 0.0480 - invisible - while the far one sat at 0.1499.
+    float depthFade = mix(0.22, 1.0, vFrame);
 
     vec3 base = uAccent.rgb;
     vec3 hot = mix(base, vec3(1.0), 0.65);
@@ -278,7 +287,7 @@ void main()
         // Deliberately not compensated for the environment: the brief is
         // explicit that a lit scene should let the floor be MORE subtle, not
         // less, so this only ever scales the floor down.
-        float floorLit = mix(1.0, mix(1.15, 0.55, vFrame), uEnvironment);
+        float floorLit = mix(1.0, mix(0.55, 1.15, vFrame), uEnvironment);
         floorAlpha *= floorLit;
 
         // The wavetable itself as a light source.
@@ -320,7 +329,7 @@ void main()
     // Atmospheric perspective, applied to the BACK of the stack only and never
     // to the selected frame. Fading everything uniformly would flatten the
     // hierarchy the frame weighting just established; this deepens it.
-    float haze = uEnvironment * 0.38 * vFrame * (1.0 - selected);
+    float haze = uEnvironment * 0.38 * (1.0 - vFrame) * (1.0 - selected);
     colour = mix(colour, uHaze, haze);
 
     // Drained of colour when the oscillator is bypassed, the same way the knobs
@@ -595,6 +604,68 @@ void Wavetable3DRenderer::setEnvironmentEnabled(bool shouldBeEnabled)
 
     environmentEnabled.store(shouldBeEnabled);
     if (context.isAttached()) { context.triggerRepaint(); }
+}
+
+void Wavetable3DRenderer::setProfileColumn(int columnFromLeft)
+{
+    profileColumn.store(columnFromLeft);
+
+    // Continuous repainting is off, so asking for a profile has to ask for the
+    // frame that fills it in as well.
+    if (context.isAttached()) { context.triggerRepaint(); }
+}
+
+juce::Point<float> Wavetable3DRenderer::projectModelPoint(float x, float y, float z,
+                                                          float aspect) const
+{
+    const auto matrix = buildViewProjection(aspect, camera);
+    const auto* m = matrix.mat;
+
+    const auto cx = m[0] * x + m[4] * y + m[8] * z + m[12];
+    const auto cy = m[1] * x + m[5] * y + m[9] * z + m[13];
+    const auto cw = m[3] * x + m[7] * y + m[11] * z + m[15];
+    const auto w = std::abs(cw) > 1.0e-6f ? cw : 1.0e-6f;
+    return { cx / w, cy / w };
+}
+
+std::vector<float> Wavetable3DRenderer::getColumnProfile() const
+{
+    const std::scoped_lock lock(probeMutex);
+    return columnProfile;
+}
+
+std::vector<float> Wavetable3DRenderer::getFrameLuminance() const
+{
+    const std::scoped_lock lock(probeMutex);
+    return frameLuminance;
+}
+
+Wavetable3DRenderer::Surface Wavetable3DRenderer::getSurface() const
+{
+    Surface surface;
+    surface.componentWidth = getWidth();
+    surface.componentHeight = getHeight();
+    surface.framebufferWidth = surfaceWidth.load();
+    surface.framebufferHeight = surfaceHeight.load();
+    surface.renderingScale = surfaceScale.load();
+    return surface;
+}
+
+float Wavetable3DRenderer::eyeDepthForModelZ(float z) const
+{
+    // The view basis, exactly as buildViewProjection forms it - the distance
+    // along `forward` from the eye to the point.
+    const auto eyeX = std::sin(camera.azimuth) * std::cos(camera.elevation) * camera.distance;
+    const auto eyeY = camera.targetY + std::sin(camera.elevation) * camera.distance;
+    const auto eyeZ = std::cos(camera.azimuth) * std::cos(camera.elevation) * camera.distance;
+
+    const juce::Vector3D<float> eye(eyeX, eyeY, eyeZ);
+    const juce::Vector3D<float> target(0.0f, camera.targetY, 0.0f);
+    const auto forward = (target - eye).normalised();
+
+    const juce::Vector3D<float> point(0.0f, 0.0f, z);
+    const auto toPoint = point - eye;
+    return toPoint.x * forward.x + toPoint.y * forward.y + toPoint.z * forward.z;
 }
 
 Wavetable3DRenderer::LuminanceProbe Wavetable3DRenderer::getLuminanceProbe() const
@@ -1174,6 +1245,10 @@ void Wavetable3DRenderer::renderOpenGL()
     juce::OpenGLHelpers::clear(backgroundColour);
     juce::gl::glViewport(0, 0, width, height);
 
+    surfaceWidth.store(width);
+    surfaceHeight.store(height);
+    surfaceScale.store(context.getRenderingScale());
+
     // The environment is drawn before anything else and covers every pixel, so
     // the clear above is what shows only when the environment shader failed to
     // build.
@@ -1299,14 +1374,21 @@ void Wavetable3DRenderer::renderOpenGL()
         }
     }
 
-    // Back to front, so the nearer frames blend over the ones behind them.
+    // Back to front, so the nearer frames blend OVER the ones behind them.
+    //
+    // Frame 0 is the far end - see the depth fade in the fragment shader - so
+    // back to front counts UP. This loop counted down, which painted every far
+    // frame on top of the near ones through straight alpha blending with the
+    // depth test off. With 48 translucent ribbons that is not a subtle error:
+    // the frame you are looking at was veiled by everything behind it, which no
+    // amount of antialiasing can make crisp.
     //
     // The range is clamped against what was actually uploaded rather than
     // trusted from frameCount. A draw call reading past the end of a buffer is
     // a segfault inside the driver, not an exception anything can catch, so the
     // bound is checked here where it is cheap.
     const auto uploadedVertices = static_cast<int>(vertices.size());
-    for (int f = frameCount - 1; f >= 0; --f)
+    for (int f = 0; f < frameCount; ++f)
     {
         const auto first = f * verticesPerFrame;
         if (first < 0 || first + verticesPerFrame > uploadedVertices)
@@ -1448,8 +1530,26 @@ void Wavetable3DRenderer::renderOpenGL()
             steepest = static_cast<float>(total / static_cast<double>(top));
         }
 
+        // One column of the framebuffer, bottom row first, for the edge profile.
+        std::vector<float> profile;
+        {
+            const auto column = profileColumn.load();
+            if (column >= 0 && column < width)
+            {
+                profile.resize(static_cast<std::size_t>(height));
+                for (int y = 0; y < height; ++y)
+                {
+                    profile[static_cast<std::size_t>(y)] =
+                        luma[static_cast<std::size_t>(y) * static_cast<std::size_t>(width)
+                             + static_cast<std::size_t>(column)];
+                }
+            }
+        }
+
         {
             const std::scoped_lock lock(probeMutex);
+            columnProfile = std::move(profile);
+            frameLuminance = luma;
             luminanceProbe.softFraction = pixelCount > 0
                                             ? static_cast<float>(soft)
                                               / static_cast<float>(pixelCount)
