@@ -1223,6 +1223,39 @@ void testBreakpointEnvelope()
         }
     }
 
+    // ---- evaluation cost ----------------------------------------------------
+    // Every active voice evaluates four of these per sample, so the per-sample
+    // cost is multiplied by 64 voices and again by the sample rate before it
+    // reaches the CPU meter.
+    {
+        auto shaped = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+        for (int i = 0; i < 8; ++i)
+        {
+            const auto added = shaped.addPoint(0.002 + i * 0.004, 0.4 + 0.05 * i);
+            if (added >= 0) { shaped.setCurve(added, i % 2 == 0 ? 0.7 : -0.6); }
+        }
+
+        px3::BreakpointEnvelope::Snapshot snapshot;
+        snapshot.rebuild(shaped, kSampleRate);
+
+        constexpr int iterations = 2000000;
+        volatile float sink = 0.0f;
+        const auto start = juce::Time::getMillisecondCounterHiRes();
+        for (int i = 0; i < iterations; ++i)
+        {
+            sink = sink + snapshot.valueAtHeld((i % 4800) / kSampleRate);
+        }
+        const auto nanos = (juce::Time::getMillisecondCounterHiRes() - start)
+                           * 1.0e6 / iterations;
+
+        // A full 64-voice patch with all four envelopes running is 256
+        // evaluations per sample; at 48 kHz that is 12.3 million a second, so
+        // 20 ns each would be a quarter of the entire CPU budget.
+        check("Envelope_EvaluationIsCheapEnoughForEveryVoice", nanos < 20.0,
+              fmt(nanos, 2) + " ns per sample on a twelve-point envelope with curves "
+              "on every segment");
+    }
+
     // ---- instances are independent ------------------------------------------
     {
         auto first = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
