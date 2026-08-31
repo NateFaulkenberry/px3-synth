@@ -509,6 +509,10 @@ switch them off first.
   high-frequency tone.
 - **Not tested on hardware other than arm64 macOS.** No CI exists for this
   repository, so the suite is run by hand.
-- **Meter ballistics are not calibrated to a VU standard.** They are a smoothed
-  gain-reduction readout with roughly VU timing, which is what the hardware's
-  meter shows, but no standards-based calibration was performed or claimed.
+- ~~Meter ballistics are not calibrated to a VU standard.~~ **Superseded.** The
+  meter was rebuilt after this document was written: the detector and the
+  ballistics are now separate operations, the movement is derived from the VU
+  specification as a second-order system rather than smoothed by ear, and it
+  measures a 302 ms rise to 99% against the specification's 300 ms. See
+  VU_METER_IMPLEMENTATION.md. What remains uncalibrated is the *reference
+  level* - 0 VU = -18 dBFS is a declaration, not a measurement.

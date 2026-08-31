@@ -509,6 +509,11 @@ Settled by measurement, not argument. Items 1-4 are answered above.
 
 ## Status
 
-Research and design only. No implementation has been written. The next step is
-prototyping items 1–2 in §E, since the sample interpolator and the band-limit
-strategy determine the shape of everything built on top of them.
+**Shipped in v0.4.0.** The design here was implemented as written, with one
+correction found by measurement during the build: the first attempt derived
+each mip level's length from the frame size, which left a headroom of 1 and
+measured 45–55 dB of alias rejection. Deriving the length from the harmonic
+count at 4x oversampling instead gives 68–98 dB. See §D.
+
+The GPU display that replaced the original 2D preview is documented separately
+in WAVETABLE_3D_RENDERER.md.

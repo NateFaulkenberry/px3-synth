@@ -12,10 +12,18 @@ For developer architecture, maintenance map, and release workflow, see `DEVELOPM
 ## What You Get
 
 - 64-voice poly synth engine.
-- 20 oscillator modes (classic + experimental + PX3).
+- 20 oscillator modes (classic + experimental + PX3), including a band-limited
+  WAVETABLE mode with eight factory tables, audio and image import, and a user
+  library.
+- A GPU-rendered 3D wavetable display: real perspective, a lit floor, a
+  procedural environment, and an orbiting camera.
 - Three macro knobs whose meaning changes by oscillator mode.
 - Dedicated SUB + OSC1/OSC2/OSC3 source channels.
 - Filter, amp envelope, and master gain section.
+- Graphical breakpoint envelopes on AMP ENV and ENV 1-3: up to 16 points, a
+  curve on every segment, a HOLD stage, and a labelled time axis.
+- Bus inserts on the dry and FX buses: a four-band EQ with a playable graph, and
+  an 1176-style FET compressor with a physically derived VU meter.
 - Three LFO modulation sources with assignable destinations.
 - Eight FX blocks with bypass, and a signal-flow strip for setting the processing order.
 - DOOM: a two-channel ambient processor - an always-listening micro-looper and a
@@ -503,25 +511,35 @@ Behavior notes:
 
 UI:
 
-- AMP ENV now uses a single interactive ADSR graph in place of four separate knobs.
-- Drag handles to edit stages:
-  - Attack handle sets attack time.
-  - Decay/Sustain handle sets decay time and sustain level together.
-  - Release handle sets release time.
-- Double-click a handle to reset that stage to its default parameter value.
+- AMP ENV is a graphical breakpoint editor, as are ENV 1-3. The default shape is
+  ADSR, because ADSR is a special case of the model rather than a separate one.
+- Stages run ATTACK | HOLD | DECAY | SUSTAIN | RELEASE.
+- Drag a point to move it in time and level. Drag the curve between two points
+  to bend it; the bend is symmetric, so equal numbers are equal bends either way.
+- Double-click empty space to add a point, double-click a point to remove it.
+  Structural points - the first, the sustain point and the last - cannot be
+  removed.
+- Up to 16 points. The time axis is labelled in seconds, to a maximum of 8.
 
 Parameter mapping (unchanged source of truth):
 
 - Attack: 0.001s to 3.0s
+- Hold: 0.0s to 2.0s
 - Decay: 0.005s to 4.0s
 - Sustain: 0.0 to 1.0
 - Release: 0.010s to 5.0s
 
 Architecture guarantee:
 
-- The graph is a view/controller for existing plugin parameters only.
-- DSP, host automation, presets, and state serialization continue using the same ADSR parameters.
-- No parallel ADSR state was introduced in the editor.
+- The four ADSR parameters remain the authoritative representation of the four
+  points they describe, so host automation and existing presets are unaffected.
+- Extra points and curve amounts live in a versioned state node. An old preset
+  has no such node, which is a valid state meaning "plain ADSR" - not an error.
+- The curve the editor draws is the same function the DSP evaluates, sampled
+  into a path, so there is no drawn shape and played shape to drift apart.
+
+Release starts from wherever the envelope actually is, not from the sustain
+level, so releasing during a slow attack does not jump first.
 
 This envelope remains per voice and shapes oscillator loudness before FX.
 

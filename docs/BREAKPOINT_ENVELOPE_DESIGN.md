@@ -225,6 +225,14 @@ to detect.
 
 ## Status
 
-Research and design complete; the curve decision is measured. Implementation
-follows the staged path in §57 — model and DSP first, behind the existing
-parameters, so audio keeps working throughout.
+**Shipped in v0.4.0**, on all four envelopes, following the staged path in §57 —
+model and DSP first, behind the existing parameters, so audio kept working
+throughout.
+
+Two things changed during the build. A HOLD stage was added between ATTACK and
+DECAY, so the stages run ATTACK | HOLD | DECAY | SUSTAIN | RELEASE, and the
+editor gained a time axis labelled in seconds to a maximum of 8.
+
+One thing described here is **not** implemented: the editor draws the curve but
+not a marker for where the envelope currently is. `setLivePosition` existed with
+no caller and was removed in the 0.4.0 cleanup rather than left looking wired.

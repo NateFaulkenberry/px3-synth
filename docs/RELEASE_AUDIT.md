@@ -1,5 +1,69 @@
 # Release Audit
 
+> **This document is the 0.2.1 audit, kept as history.** The current audit is
+> the section below, added for 0.4.0. Figures in the 0.2.1 body have not been
+> re-measured and should not be read as current.
+
+---
+
+# v0.4.0 audit
+
+Measured on this machine, on the release build, at the 0.4.0 cleanup pass.
+
+## Build
+
+| | |
+|---|---|
+| From-scratch Release build | clean, exit 0 |
+| Warnings in our own sources | **0** |
+| Warnings in JUCE's sources | present in harfbuzz only, not ours |
+| `TODO` / `FIXME` / `HACK` / `XXX` | **0** in the whole tree |
+
+## Tests
+
+| Suite | Result |
+|---|---|
+| `PX3Tests` (full) | **864 passed, 0 failed** |
+| `PX3SmokeTest` | 0 failures across 6 rate/block combinations |
+| `PX3Diag rtsafety` | **0 allocations** in `processBlock`, all 8 configurations |
+| `PX3Diag persistence` | 0 failures; preset wins over defaults; +6.000 dB boost exact |
+| `PX3Tests glcheck` | GPU renders on a real context, no shader error |
+| `PX3Tests envcheck` | 5/5 environment criteria |
+| `PX3Tests sharpcheck` | edge measured at 0.50 px per side - antialiasing, not blur |
+
+## Memory
+
+Heap in use returns to **within 0.0 MB of baseline** after destroying all
+instances — 0.0% of a 175.8 MB peak. Footprint stays +1.0 MB above baseline
+because the allocator keeps freed pages mapped, which is not a leak.
+
+Voice pool at 48 kHz: 0.68 MB structs + 1.76 MB heap = **2.44 MB**.
+
+## CPU, against the 10.67 ms budget at 48 kHz / 512 samples
+
+| Scenario | mean | p99 | max |
+|---|---|---|---|
+| 16 voices (typical) | 5.67% | 6.34% | 9.86% |
+| 64 voices (max) | 16.00% | 17.53% | 39.94% |
+| 16 voices, WAVETABLE | 16.88% | 18.23% | 19.27% |
+| 64 voices, WAVETABLE | 50.54% | 53.35% | 94.37% |
+| 32 voices, EVERYTHING on | 57.11% | 59.81% | 100.04% |
+| 40 voices, EVERYTHING on | 69.22% | 72.02% | 118.78% |
+| 64 voices + both bus inserts | 83.41% | 87.40% | 187.37% |
+
+**Read the p99 column, not the max.** Every scenario, including the worst,
+stays inside budget at p99 — 87.4% at the extreme. The max column is single
+outlier blocks; since `rtsafety` shows zero allocations in `processBlock`,
+those are scheduling artifacts of the harness rather than systematic overruns.
+
+Typical use is comfortable. The configurations that approach the budget are
+40+ voices with every effect and both bus inserts engaged simultaneously,
+which is not a normal patch but is reachable.
+
+---
+
+# v0.2.1 audit (historical)
+
 Audit of `px3-synth` at version **0.2.1**, branch `main`, performed as a
 pre-release readiness pass. Every figure below was measured on this machine
 during the audit; nothing is estimated from code inspection alone. Where
