@@ -375,8 +375,22 @@ or set NOTARY_KEY/NOTARY_KEY_ID/NOTARY_ISSUER, or APPLE_ID/APPLE_APP_PASSWORD/AP
 
   # Proves the credentials work before anything is submitted, so a bad password
   # costs a second rather than a full build.
-  xcrun notarytool history "${NOTARY_AUTH_ARGS[@]}" --limit 1 >/dev/null 2>&1 \
-    || die "Notarisation credentials were rejected by Apple. Check the profile or password."
+  #
+  # No --limit: notarytool 1.1.2 does not have that option, and passing it made
+  # this abort every build on that version while blaming the credentials. The
+  # output is read rather than just the exit status so a usage error can be
+  # told apart from a refusal, and an account with nothing submitted answers
+  # "No submission history" - which is an authenticated round-trip, so a pass.
+  local notary_out
+  notary_out="$(xcrun notarytool history "${NOTARY_AUTH_ARGS[@]}" 2>&1)"
+  case "${notary_out}" in
+    *"Unknown option"*|*"Usage:"*)
+      die "notarytool rejected the command, not the credentials: $(printf '%s' "${notary_out}" | head -n1)" ;;
+    *"No submission history"*|*"createdDate"*|*"id: "*)
+      : ;;
+    *)
+      die "Notarisation credentials were rejected by Apple: $(printf '%s' "${notary_out}" | head -n1)" ;;
+  esac
 }
 
 # Submits one artifact, waits for the verdict, and staples the ticket to it.
