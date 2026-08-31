@@ -23508,6 +23508,232 @@ int main(int argc, char* argv[])
         }
         std::printf("\n");
 
+        // The reported repro, exactly: one sine oscillator, no sub, no
+        // modulation, FX bypassed, a 4 second attack, and a THREE NOTE CHORD
+        // at full velocity. Every measurement above played a single note.
+        {
+            PX3SynthAudioProcessor processor;
+
+            // NOT makePlainPatch. That helper also drops the master gain to
+            // 0.6, silences the filters and zeroes every send - so it turns off
+            // things the report did not say to turn off. This switches off only
+            // what was described and leaves everything else where the plugin
+            // loads it, including the analog engine.
+            setParam(processor, "osc1Enabled", 1.0f);
+            setParam(processor, "osc2Enabled", 0.0f);
+            setParam(processor, "osc3Enabled", 0.0f);
+            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "delayEnabled", 0.0f);
+            setParam(processor, "reverbEnabled", 0.0f);
+            setParam(processor, "moodEnabled", 0.0f);
+            setParam(processor, "vibeEnabled", 0.0f);
+            for (int i = 0; i < 3; ++i)
+            {
+                const auto slot = juce::String(i + 1);
+                setParam(processor, "env" + slot + "Enabled", 0.0f);
+                const auto lfoPrefix = i == 0 ? juce::String("lfo") : "lfo" + slot;
+                setParam(processor, i == 0 ? juce::String("lfoEnabled") : lfoPrefix + "Enabled",
+                         0.0f);
+            }
+
+            setChoice(processor, "osc1Mode", 0);           // SINE
+            setParam(processor, "ampAttack", 4.000f);
+            setParam(processor, "ampDecay", 0.100f);
+            setParam(processor, "ampSustain", 1.00f);
+            setParam(processor, "ampRelease", 0.500f);
+
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+            midi.addEvent(juce::MidiMessage::noteOn(1, 64, 1.0f), 0);
+            midi.addEvent(juce::MidiMessage::noteOn(1, 67, 1.0f), 0);
+
+            std::vector<float> trace;
+            const auto seconds = 0.5;
+            for (int b = 0; b < static_cast<int>(seconds * kSampleRate / kBlockSize); ++b)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, midi);
+                midi.clear();
+                for (int i = 0; i < kBlockSize; ++i) { trace.push_back(buffer.getSample(0, i)); }
+            }
+
+            AmpEnvelope reference;
+            reference.prepare(kSampleRate);
+            EnvelopeSettings settings;
+            settings.attackSeconds = 4.000f;
+            settings.decaySeconds = 0.100f;
+            settings.sustainLevel = 1.0f;
+            settings.releaseSeconds = 0.500f;
+            reference.setSettings(settings);
+            reference.noteOn();
+
+            std::printf("  THE REPRO: sine, no sub, no modulation, FX off, 4 s attack,\n"
+                        "  a three note chord at full velocity.\n\n");
+            std::printf("    %8s %12s %12s %10s\n", "ms", "signal", "envelope x3", "ratio");
+
+            auto worstStep = 0.0f;
+            auto worstAtMs = 0.0;
+            auto previous = 0.0f;
+            auto peakEarly = 0.0f;
+            auto envAtPeak = 0.0f;
+
+            for (std::size_t i = 0; i < trace.size(); ++i)
+            {
+                const auto env = reference.getNextSample();
+                const auto step = std::abs(trace[i] - previous);
+                if (step > worstStep)
+                {
+                    worstStep = step;
+                    worstAtMs = 1000.0 * static_cast<double>(i) / kSampleRate;
+                }
+                previous = trace[i];
+
+                if (i < static_cast<std::size_t>(kSampleRate * 0.02)
+                    && std::abs(trace[i]) > peakEarly)
+                {
+                    peakEarly = std::abs(trace[i]);
+                    envAtPeak = env;
+                }
+
+                const auto ms = 1000.0 * static_cast<double>(i) / kSampleRate;
+                if (i % static_cast<std::size_t>(kSampleRate * 0.02) == 0)
+                {
+                    std::printf("    %8.1f %12.6f %12.6f %10.3f\n", ms, trace[i], env * 3.0f,
+                                env > 1.0e-7f ? std::abs(trace[i]) / env : 0.0f);
+                }
+            }
+
+            // The first 48 samples, and the steps AT block boundaries.
+            //
+            // setSettings runs once per block, so a 4 second attack rebuilds
+            // the envelope 93 times a second. If a rebuild loses the envelope's
+            // position, the artifact lands on block boundaries and nowhere else.
+            std::printf("\n    the first 32 samples:\n     ");
+            for (std::size_t i = 0; i < 32 && i < trace.size(); ++i)
+            {
+                std::printf("%s%+.6f", (i % 4 == 0 ? "\n      " : "  "), trace[i]);
+            }
+            std::printf("\n\n");
+
+            auto worstBoundary = 0.0f;
+            auto worstBoundaryAt = 0;
+            auto worstInterior = 0.0f;
+            for (std::size_t i = 1; i < trace.size(); ++i)
+            {
+                const auto step = std::abs(trace[i] - trace[i - 1]);
+                if (static_cast<int>(i) % kBlockSize == 0)
+                {
+                    if (step > worstBoundary)
+                    {
+                        worstBoundary = step;
+                        worstBoundaryAt = static_cast<int>(i);
+                    }
+                }
+                else if (step > worstInterior)
+                {
+                    worstInterior = step;
+                }
+            }
+            std::printf("    largest step AT a block boundary: %.6f (sample %d, %.1f ms)\n",
+                        worstBoundary, worstBoundaryAt,
+                        1000.0 * worstBoundaryAt / kSampleRate);
+            std::printf("    largest step anywhere else:       %.6f\n", worstInterior);
+            std::printf("    %s\n",
+                        worstBoundary > worstInterior * 2.0f
+                            ? "*** the artifact is on block boundaries - a per-block rebuild ***"
+                            : "block boundaries are no worse than anywhere else");
+
+            // Other buffer sizes. The harness runs 512; a standalone commonly
+            // runs 128 or 256, and the envelope is re-sent once per block, so
+            // the rate of that changes with the buffer.
+            std::printf("\n    the same chord at other buffer sizes:\n");
+            std::printf("      %8s %14s %14s\n", "block", "worst step", "peak 20 ms");
+            for (const auto block : { 32, 64, 128, 256, 512 })
+            {
+                PX3SynthAudioProcessor other;
+                setParam(other, "osc1Enabled", 1.0f);
+                setParam(other, "osc2Enabled", 0.0f);
+                setParam(other, "osc3Enabled", 0.0f);
+                setParam(other, "subOscEnabled", 0.0f);
+                setParam(other, "delayEnabled", 0.0f);
+                setParam(other, "reverbEnabled", 0.0f);
+                setParam(other, "moodEnabled", 0.0f);
+                setParam(other, "vibeEnabled", 0.0f);
+                setChoice(other, "osc1Mode", 0);
+                setParam(other, "ampAttack", 4.000f);
+                setParam(other, "ampDecay", 0.100f);
+                setParam(other, "ampSustain", 1.00f);
+                setParam(other, "ampRelease", 0.500f);
+
+                other.setPlayConfigDetails(0, 2, kSampleRate, block);
+                other.prepareToPlay(kSampleRate, block);
+
+                juce::AudioBuffer<float> b(2, block);
+                juce::MidiBuffer m;
+                m.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+                m.addEvent(juce::MidiMessage::noteOn(1, 64, 1.0f), 0);
+                m.addEvent(juce::MidiMessage::noteOn(1, 67, 1.0f), 0);
+
+                auto step = 0.0f;
+                auto early = 0.0f;
+                auto prev = 0.0f;
+                auto index = 0;
+                for (int n = 0; n < static_cast<int>(0.3 * kSampleRate) / block; ++n)
+                {
+                    b.clear();
+                    other.processBlock(b, m);
+                    m.clear();
+                    for (int i = 0; i < block; ++i)
+                    {
+                        const auto v = b.getSample(0, i);
+                        step = juce::jmax(step, std::abs(v - prev));
+                        prev = v;
+                        if (index < static_cast<int>(kSampleRate * 0.02))
+                        {
+                            early = juce::jmax(early, std::abs(v));
+                        }
+                        ++index;
+                    }
+                }
+                std::printf("      %8d %14.6f %14.6f\n", block, step, early);
+            }
+
+            std::printf("\n    peak in the first 20 ms: %.6f, envelope there %.6f",
+                        peakEarly, envAtPeak);
+            if (envAtPeak > 1.0e-7f)
+            {
+                std::printf("  (%.1fx what one voice at that envelope would give)",
+                            peakEarly / envAtPeak);
+            }
+            std::printf("\n    largest sample-to-sample step: %.6f at %.2f ms\n\n",
+                        worstStep, worstAtMs);
+
+            // Written out so it can be listened to.
+            const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                  .getChildFile("px3-chord-attack.wav");
+            juce::AudioBuffer<float> whole(1, static_cast<int>(trace.size()));
+            for (std::size_t i = 0; i < trace.size(); ++i)
+            {
+                whole.setSample(0, static_cast<int>(i), trace[i]);
+            }
+            juce::WavAudioFormat wav;
+            file.deleteFile();
+            if (auto stream = std::unique_ptr<juce::FileOutputStream>(file.createOutputStream()))
+            {
+                if (auto* writer = wav.createWriterFor(stream.get(), kSampleRate, 1, 24, {}, 0))
+                {
+                    stream.release();
+                    writer->writeFromAudioSampleBuffer(whole, 0, whole.getNumSamples());
+                    delete writer;
+                    std::printf("    wrote %s\n\n", file.getFullPathName().toRawUTF8());
+                }
+            }
+        }
+
         std::printf("  Nothing above shows a discontinuity or a duck. What this mode has\n"
                     "  ruled out, with numbers: the envelope does reach the audio, no stage\n"
                     "  after it changes gain with level, and no oscillator mode leaks a\n"
