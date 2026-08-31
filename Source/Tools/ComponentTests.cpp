@@ -1048,6 +1048,19 @@ void testBreakpointEnvelope()
                                     position, juce::Time::getCurrentTime(), clicks, false);
         };
 
+        // ---- the curve fills the width ----
+        {
+            const auto lastPoint = editor.pointToScreen(editor.getEnvelope().getPointCount() - 1);
+            const auto firstPoint = editor.pointToScreen(0);
+            const auto span = lastPoint.x - firstPoint.x;
+            const auto available = 400.0f - 2.0f * 8.0f;   // width less the inset
+
+            check("EnvelopeEditor_TheCurveFillsTheWidth",
+                  span > available * 0.98f,
+                  "the envelope spans " + fmt(span, 1) + " px of " + fmt(available, 1)
+                      + " available");
+        }
+
         // ---- hit testing ----
         {
             const auto onPoint = editor.pointToScreen(1);
@@ -1071,8 +1084,28 @@ void testBreakpointEnvelope()
 
         // ---- adding and removing ----
         {
+            // Somewhere provably empty. A fixed coordinate is fragile here: the
+            // curve handles sit ON the curve, and double-clicking one of those
+            // straightens its segment rather than adding a point.
+            const auto emptySpot = [&editor]
+            {
+                for (int y = 20; y < 180; y += 3)
+                {
+                    for (int x = 30; x < 370; x += 3)
+                    {
+                        const juce::Point<float> probe { static_cast<float>(x),
+                                                         static_cast<float>(y) };
+                        if (editor.grabAt(probe).target == BreakpointEnvelopeEditor::Target::none)
+                        {
+                            return probe;
+                        }
+                    }
+                }
+                return juce::Point<float>(200.0f, 100.0f);
+            }();
+
             const auto before = editor.getEnvelope().getPointCount();
-            editor.mouseDoubleClick(makeEvent({ 200.0f, 100.0f }, 2));
+            editor.mouseDoubleClick(makeEvent(emptySpot, 2));
             const auto afterAdd = editor.getEnvelope().getPointCount();
             check("EnvelopeEditor_DoubleClickingEmptySpaceAddsAPoint", afterAdd == before + 1,
                   juce::String(before) + " points, then " + juce::String(afterAdd));
@@ -1104,14 +1137,20 @@ void testBreakpointEnvelope()
 
         // ---- dragging a breakpoint ----
         {
-            const auto start = editor.pointToScreen(1);
-            const auto before = editor.getEnvelope().getPoint(1);
+            // Reset first, and grab the SUSTAIN point rather than the peak: the
+            // peak is already at 1.0, so dragging it up measures the clamp. The
+            // earlier version of this depended on whatever the add/remove tests
+            // above happened to leave behind.
+            editor.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+
+            const auto start = editor.pointToScreen(2);
+            const auto before = editor.getEnvelope().getPoint(2);
 
             editor.mouseDown(makeEvent(start, 1));
             editor.mouseDrag(makeEvent(start.translated(20.0f, -20.0f), 1));
             editor.mouseUp(makeEvent(start.translated(20.0f, -20.0f), 1));
 
-            const auto after = editor.getEnvelope().getPoint(1);
+            const auto after = editor.getEnvelope().getPoint(2);
             check("EnvelopeEditor_DraggingMovesAPointInTimeAndValue",
                   after.timeSeconds > before.timeSeconds && after.value > before.value,
                   "moved from " + fmt(before.timeSeconds, 4) + "s/" + fmt(before.value, 3)
@@ -1210,10 +1249,18 @@ void testBreakpointEnvelope()
             first.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
             second.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
 
+            juce::Point<float> spot { 200.0f, 40.0f };
+            for (int y = 20; y < 180 && first.grabAt(spot).target
+                                            != BreakpointEnvelopeEditor::Target::none; y += 3)
+            {
+                spot = { 200.0f, static_cast<float>(y) };
+                if (first.grabAt(spot).target == BreakpointEnvelopeEditor::Target::none) { break; }
+            }
+
             first.mouseDoubleClick(juce::MouseEvent(
-                juce::Desktop::getInstance().getMainMouseSource(), { 200.0f, 100.0f },
+                juce::Desktop::getInstance().getMainMouseSource(), spot,
                 juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &first, &first,
-                juce::Time::getCurrentTime(), { 200.0f, 100.0f },
+                juce::Time::getCurrentTime(), spot,
                 juce::Time::getCurrentTime(), 2, false));
 
             check("EnvelopeEditor_EditingOneDoesNotTouchAnother",

@@ -8,9 +8,6 @@ namespace
 constexpr float kPointGrabRadius = 11.0f;
 constexpr float kCurveGrabRadius = 9.0f;
 
-// Headroom past the last point, so the final breakpoint is not pinned to the
-// right edge with nowhere to be dragged.
-constexpr double kTimeHeadroom = 1.12;
 constexpr double kMinimumVisibleSeconds = 0.05;
 } // namespace
 
@@ -106,7 +103,17 @@ juce::Rectangle<float> BreakpointEnvelopeEditor::plotArea() const
 
 double BreakpointEnvelopeEditor::visibleSeconds() const
 {
-    return juce::jmax(kMinimumVisibleSeconds, envelope.getTotalSeconds() * kTimeHeadroom);
+    // The envelope fills the width. It used to be drawn into 89% of it, with
+    // headroom past the last point so that point was not pinned to the edge -
+    // which left the curve visibly short of its own background.
+    //
+    // The axis is instead held at whatever it was when a drag STARTED, and only
+    // allowed to grow. That keeps the last point draggable to the right (the
+    // axis grows with it) without the whole curve rescaling under the cursor
+    // every time a point moves, and it snaps back to exactly full width the
+    // moment the mouse is released.
+    const auto fitted = juce::jmax(kMinimumVisibleSeconds, envelope.getTotalSeconds());
+    return dragging.target != Target::none ? juce::jmax(fitted, dragAxisSeconds) : fitted;
 }
 
 juce::Point<float> BreakpointEnvelopeEditor::toScreen(double timeSeconds, double value) const
@@ -386,6 +393,7 @@ void BreakpointEnvelopeEditor::mouseDown(const juce::MouseEvent& event)
 
     dragging = grabAt(event.position);
     dragOrigin = event.position;
+    dragAxisSeconds = juce::jmax(kMinimumVisibleSeconds, envelope.getTotalSeconds());
     showReadout = dragging.target != Target::none;
 
     if (dragging.target == Target::point)

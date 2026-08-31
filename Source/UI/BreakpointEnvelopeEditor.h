@@ -99,6 +99,10 @@ private:
     double dragStartValue { 0.0 };
     double dragStartCurve { 0.0 };
 
+    // The time axis at the moment a drag began. Held for the drag so the
+    // curve does not rescale under the cursor as points move.
+    double dragAxisSeconds { 0.0 };
+
     float livePosition { -1.0f };
     bool showReadout { false };
 
