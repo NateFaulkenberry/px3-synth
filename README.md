@@ -329,7 +329,7 @@ MIDI/Virtual Keyboard
   -> Voice Stems (SUB, OSC1, OSC2, OSC3)
   -> DRY BUS (channel pan/mute/solo applied)
   -> FX SEND BUS (channel sends + send gates)
-  -> FX Chain (user-order: VIBE / CHORUS / DOOM / LUCY / Delay / Mood / Reverb / SPREAD)
+  -> FX Chain (user-order: VIBE / CHORUS / DOOM / LUCY / DELAY / MOOD / REVERB / SPREAD)
   -> FX RETURN (return gain/pan/mute/solo applied)
   -> MASTER BUS (DRY + FX RETURN)
   -> Master Output
