@@ -1394,9 +1394,6 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     px3::diag::state().beginBlock(blockSamples);
 #endif
 
-    juce::MidiBuffer combinedMidi;
-    combinedMidi.addEvents(midiMessages, 0, buffer.getNumSamples(), 0);
-
     {
         // Virtual keyboard events are produced on the message thread and drained
         // here without a lock - see the ring's declaration for why that matters.
@@ -1406,7 +1403,22 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         while (read != write)
         {
             const auto& event = virtualNotes[static_cast<std::size_t>(read)];
-            combinedMidi.addEvent(event.isNoteOn
+
+            // Added straight into the host's buffer.
+            //
+            // This used to build a second juce::MidiBuffer per block, copy the
+            // host's events into it, add these, and swap it back. That copy
+            // allocated: MidiBuffer grows its storage on insertion, so EVERY
+            // block carrying MIDI called into the allocator on the audio
+            // thread - measured at 1.2 allocations per block. malloc can block
+            // for as long as its own lock is held, and a missed deadline is a
+            // dropout heard as a click, at exactly the moment a note starts.
+            //
+            // It was invisible because the real-time safety check reset its
+            // counter AFTER triggering notes and then measured only blocks with
+            // an empty MidiBuffer - so the one block a player notices was the
+            // one block never measured.
+            midiMessages.addEvent(event.isNoteOn
                                       ? juce::MidiMessage::noteOn(1, event.note, event.velocity)
                                       : juce::MidiMessage::noteOff(1, event.note),
                                   0);
@@ -1416,7 +1428,6 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         virtualNoteRead.store(read, std::memory_order_release);
     }
 
-    midiMessages.swapWith(combinedMidi);
     updateActiveNotesFromMidi(midiMessages);
 
     // MOD ENV signals are voice-owned and sampled from active voices.

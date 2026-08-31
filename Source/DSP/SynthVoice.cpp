@@ -120,12 +120,45 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
         }
         modEnvelopePreparedSampleRate = sampleRate;
     }
+    // Filters are PREPARED in setCurrentPlaybackSampleRate, not here.
+    //
+    // VoiceFilter::prepare reaches CombResonator::prepare, which sizes a delay
+    // line with std::vector::assign - a 3856 byte heap allocation, taken on the
+    // audio thread at the exact moment a note starts. Captured at the
+    // allocation:
+    //
+    //     SynthVoice::startNote
+    //       -> VoiceFilter::prepare
+    //         -> px3::CombResonator::prepare
+    //           -> std::vector<float>::assign
+    //             -> operator new
+    //
+    // malloc can block for as long as the allocator's own lock is held, and a
+    // missed deadline is a dropout, heard as a click on every note.
+    //
+    // The guard below is a safety net for a rate that changed without
+    // setCurrentPlaybackSampleRate being called; in normal operation it never
+    // fires. What genuinely belongs per note is the state clearing and the
+    // settings, and both stay - reset() fills the same delay line with
+    // std::fill and allocates nothing, which is what prepare() called it for.
+    if (std::abs(sampleRate - filtersPreparedSampleRate) > 0.5)
+    {
+        for (auto& sourceRow : sourceFilters)
+        {
+            for (auto& filter : sourceRow)
+            {
+                filter.prepare(sampleRate);
+            }
+        }
+        filtersPreparedSampleRate = sampleRate;
+    }
+
     for (int sourceIndex = 0; sourceIndex < kVoiceMixerSourceCount; ++sourceIndex)
     {
         for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
         {
             auto& filter = sourceFilters[static_cast<std::size_t>(sourceIndex)][static_cast<std::size_t>(filterIndex)];
-            filter.prepare(sampleRate);
+            filter.reset();
             filter.setCurrentSettingsImmediate(filterSettings[static_cast<std::size_t>(filterIndex)]);
         }
     }
@@ -248,6 +281,19 @@ void SynthVoice::setCurrentPlaybackSampleRate(double newRate)
     {
         oscillatorUnit.prepare(newRate);
     }
+
+    // The filters belong here for the same reason the oscillators do, and did
+    // not: VoiceFilter::prepare reaches CombResonator::prepare, which sizes a
+    // delay line with std::vector::assign. Preparing them from startNote put
+    // that allocation on the audio thread, at note-on.
+    for (auto& sourceRow : sourceFilters)
+    {
+        for (auto& filter : sourceRow)
+        {
+            filter.prepare(newRate);
+        }
+    }
+    filtersPreparedSampleRate = newRate;
 }
 
 void SynthVoice::retireVoice()

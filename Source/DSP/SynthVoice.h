@@ -192,6 +192,7 @@ private:
     double masterGainPreparedSampleRate { 0.0 };
     double ampEnvelopePreparedSampleRate { 0.0 };
     double modEnvelopePreparedSampleRate { 0.0 };
+    double filtersPreparedSampleRate { 0.0 };
     bool ampEnvelopeEnabled { true };
 
     float vibeGlobalAmount { 0.0f };

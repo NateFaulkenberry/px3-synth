@@ -32,16 +32,39 @@
 // Replacing global operator new/delete lets processBlock be measured directly,
 // rather than inferred by reading headers.
 // ---------------------------------------------------------------------------
+#include <execinfo.h>
+
 namespace px3rt
 {
 std::atomic<long long> allocationCount { 0 };
 std::atomic<bool> counting { false };
+
+// The first allocation seen while counting, captured as a backtrace. Counting
+// says an allocation happened; this says WHERE, which is the difference
+// between knowing there is a real-time violation and being able to fix it.
+std::atomic<bool> captureTrace { false };
+std::array<void*, 32> traceFrames {};
+std::atomic<int> traceDepth { 0 };
+std::atomic<std::size_t> traceSize { 0 };
 }
 
 void* operator new(std::size_t size)
 {
     if (px3rt::counting.load(std::memory_order_relaxed))
+    {
         px3rt::allocationCount.fetch_add(1, std::memory_order_relaxed);
+
+        if (px3rt::captureTrace.load(std::memory_order_relaxed)
+            && px3rt::traceDepth.load(std::memory_order_relaxed) == 0)
+        {
+            px3rt::captureTrace.store(false, std::memory_order_relaxed);
+            px3rt::traceSize.store(size, std::memory_order_relaxed);
+            px3rt::traceDepth.store(
+                backtrace(px3rt::traceFrames.data(),
+                          static_cast<int>(px3rt::traceFrames.size())),
+                std::memory_order_relaxed);
+        }
+    }
     if (auto* p = std::malloc(size == 0 ? 1 : size)) return p;
     throw std::bad_alloc();
 }
@@ -2275,6 +2298,64 @@ int main(int argc, char* argv[])
                     if (releaseVoices && i == 30 + v) midi.addEvent(juce::MidiMessage::noteOff(1, 36 + v * 2), 0);
                 }
                 processor.processBlock(buffer, midi);
+            }
+
+            // Blocks that CARRY MIDI, measured separately.
+            //
+            // The measured window below feeds an empty MidiBuffer every block,
+            // so until now nothing here has ever checked the one block a player
+            // actually notices: the one containing a note-on. processBlock
+            // builds a juce::MidiBuffer per block and copies the incoming
+            // events into it, and juce::MidiBuffer allocates on first
+            // insertion - so a block with MIDI in it can allocate on the audio
+            // thread where an empty one does not.
+            {
+                // The MidiBuffers are built BEFORE counting starts. Building
+                // one allocates, and counting that would measure this harness
+                // rather than processBlock - which is exactly the mistake the
+                // first version of this check made.
+                constexpr int midiBlocks = 40;
+                std::vector<juce::MidiBuffer> prepared(midiBlocks);
+                for (int i = 0; i < midiBlocks; ++i)
+                {
+                    prepared[(std::size_t) i].addEvent(
+                        juce::MidiMessage::noteOn(1, 60 + (i % 5), 1.0f), 0);
+                    prepared[(std::size_t) i].addEvent(
+                        juce::MidiMessage::noteOff(1, 60 + (i % 5)), 200);
+                }
+
+                px3rt::allocationCount.store(0, std::memory_order_relaxed);
+                px3rt::traceDepth.store(0, std::memory_order_relaxed);
+                px3rt::captureTrace.store(true, std::memory_order_relaxed);
+                px3rt::counting.store(true, std::memory_order_relaxed);
+
+                for (int i = 0; i < midiBlocks; ++i)
+                {
+                    buffer.clear();
+                    processor.processBlock(buffer, prepared[(std::size_t) i]);
+                }
+
+                px3rt::counting.store(false, std::memory_order_relaxed);
+                const auto withMidi = px3rt::allocationCount.load(std::memory_order_relaxed);
+
+                if (const auto depth = px3rt::traceDepth.load(std::memory_order_relaxed);
+                    depth > 0)
+                {
+                    std::printf("    first allocation was %zu bytes, from:\n",
+                                px3rt::traceSize.load(std::memory_order_relaxed));
+                    auto** symbols = backtrace_symbols(px3rt::traceFrames.data(), depth);
+                    for (int f = 0; f < depth && f < 14; ++f)
+                    {
+                        std::printf("      %s\n", symbols != nullptr ? symbols[f] : "?");
+                    }
+                    std::free(symbols);
+                    px3rt::traceDepth.store(0, std::memory_order_relaxed);
+                }
+                std::printf("  %-42s %8lld allocations over %d blocks WITH MIDI (%.1f per "
+                            "block)  %s\n",
+                            label, withMidi, midiBlocks, (double) withMidi / midiBlocks,
+                            withMidi == 0 ? "ok"
+                                          : "*** ALLOCATING ON THE AUDIO THREAD ***");
             }
 
             constexpr int measuredBlocks = 200;
