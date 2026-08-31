@@ -606,7 +606,11 @@
         "playheadColor": "#FFFFFF5A",
         "playheadWidth": 1.0,
         "readoutColor": "#E8E8E8",
-        "readoutSize": 10.5
+        "readoutSize": 10.5,
+        "timeGridColor": "#FFFFFF1E",
+        "timeLabelColor": "#D2D2DC96",
+        "timeLabelHeight": 12.0,
+        "timeLabelSize": 9.0
       }
     },
     "env2": {
@@ -649,7 +653,11 @@
         "playheadColor": "#FFFFFF5A",
         "playheadWidth": 1.0,
         "readoutColor": "#E8E8E8",
-        "readoutSize": 10.5
+        "readoutSize": 10.5,
+        "timeGridColor": "#FFFFFF1E",
+        "timeLabelColor": "#D2D2DC96",
+        "timeLabelHeight": 12.0,
+        "timeLabelSize": 9.0
       }
     },
     "env3": {
@@ -692,7 +700,11 @@
         "playheadColor": "#FFFFFF5A",
         "playheadWidth": 1.0,
         "readoutColor": "#E8E8E8",
-        "readoutSize": 10.5
+        "readoutSize": 10.5,
+        "timeGridColor": "#FFFFFF1E",
+        "timeLabelColor": "#D2D2DC96",
+        "timeLabelHeight": 12.0,
+        "timeLabelSize": 9.0
       }
     },
     "env": {
@@ -773,7 +785,11 @@
         "playheadColor": "#FFFFFF5A",
         "playheadWidth": 1.0,
         "readoutColor": "#E8E8E8",
-        "readoutSize": 10.5
+        "readoutSize": 10.5,
+        "timeGridColor": "#FFFFFF1E",
+        "timeLabelColor": "#D2D2DC96",
+        "timeLabelHeight": 12.0,
+        "timeLabelSize": 9.0
       }
     }
   },

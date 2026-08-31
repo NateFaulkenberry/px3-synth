@@ -65,6 +65,7 @@ AmpEnvelopeComponent::AmpEnvelopeComponent(PX3SynthAudioProcessor& processorIn, 
                 parameter.endChangeGesture();
             };
             write(processor.getAttackParam(), adsr.attackSeconds);
+            write(processor.getHoldParam(), adsr.holdSeconds);
             write(processor.getDecayParam(), adsr.decaySeconds);
             write(processor.getSustainParam(), adsr.sustainLevel);
             write(processor.getReleaseParam(), adsr.releaseSeconds);

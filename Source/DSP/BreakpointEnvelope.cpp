@@ -31,15 +31,17 @@ BreakpointEnvelope::BreakpointEnvelope()
     // these and would call straight back into here - infinite recursion, and a
     // stack overflow the moment anything made an envelope.
     const EnvelopeSettings defaults;
-    pointCount = 4;
+    const auto attack = static_cast<double>(defaults.attackSeconds);
+    const auto hold = static_cast<double>(defaults.holdSeconds);
+    const auto decay = static_cast<double>(defaults.decaySeconds);
+
+    pointCount = 5;
     points[0] = { 0.0, 0.0, 0.0 };
-    points[1] = { defaults.attackSeconds, 1.0, 0.0 };
-    points[2] = { static_cast<double>(defaults.attackSeconds) + defaults.decaySeconds,
-                  defaults.sustainLevel, 0.0 };
-    points[3] = { static_cast<double>(defaults.attackSeconds) + defaults.decaySeconds
-                      + defaults.releaseSeconds,
-                  0.0, 0.0 };
-    sustainPoint = 2;
+    points[1] = { attack, 1.0, 0.0 };
+    points[2] = { attack + hold, 1.0, 0.0 };
+    points[3] = { attack + hold + decay, defaults.sustainLevel, 0.0 };
+    points[4] = { attack + hold + decay + defaults.releaseSeconds, 0.0, 0.0 };
+    sustainPoint = 3;
 }
 
 BreakpointEnvelope BreakpointEnvelope::fromAdsr(const EnvelopeSettings& settings)
@@ -49,26 +51,34 @@ BreakpointEnvelope BreakpointEnvelope::fromAdsr(const EnvelopeSettings& settings
     const auto sustain = clampValue(settings.sustainLevel);
     const auto release = clampTime(settings.releaseSeconds);
 
+    const auto hold = clampTime(settings.holdSeconds);
+
+    // Five points: the hold is a second point at full level, and with hold at
+    // zero it sits on top of the first one - a zero-length segment, which the
+    // evaluator already treats as an instant step. That is what makes adding
+    // the stage cost nothing to every preset that predates it.
     BreakpointEnvelope envelope;
-    envelope.pointCount = 4;
+    envelope.pointCount = 5;
     envelope.points[0] = { 0.0, 0.0, 0.0 };
     envelope.points[1] = { attack, 1.0, 0.0 };
-    envelope.points[2] = { attack + decay, sustain, 0.0 };
-    envelope.points[3] = { attack + decay + release, 0.0, 0.0 };
-    envelope.sustainPoint = 2;
+    envelope.points[2] = { attack + hold, 1.0, 0.0 };
+    envelope.points[3] = { attack + hold + decay, sustain, 0.0 };
+    envelope.points[4] = { attack + hold + decay + release, 0.0, 0.0 };
+    envelope.sustainPoint = 3;
     return envelope;
 }
 
 EnvelopeSettings BreakpointEnvelope::toAdsr() const
 {
     EnvelopeSettings settings;
-    if (pointCount < 4)
+    if (pointCount < 5)
     {
         return settings;
     }
 
     settings.attackSeconds = static_cast<float>(points[1].timeSeconds - points[0].timeSeconds);
-    settings.decaySeconds = static_cast<float>(points[2].timeSeconds - points[1].timeSeconds);
+    settings.holdSeconds = static_cast<float>(points[2].timeSeconds - points[1].timeSeconds);
+    settings.decaySeconds = static_cast<float>(points[3].timeSeconds - points[2].timeSeconds);
     settings.sustainLevel = static_cast<float>(points[static_cast<std::size_t>(sustainPoint)].value);
     settings.releaseSeconds = static_cast<float>(points[static_cast<std::size_t>(pointCount - 1)].timeSeconds
                                                  - points[static_cast<std::size_t>(sustainPoint)].timeSeconds);
@@ -77,7 +87,7 @@ EnvelopeSettings BreakpointEnvelope::toAdsr() const
 
 bool BreakpointEnvelope::isPlainAdsr() const
 {
-    if (pointCount != 4 || sustainPoint != 2)
+    if (pointCount != 5 || sustainPoint != 3)
     {
         return false;
     }
@@ -93,7 +103,8 @@ bool BreakpointEnvelope::isPlainAdsr() const
     return points[0].timeSeconds <= 1.0e-9
         && points[0].value <= 1.0e-9
         && points[1].value >= 1.0 - 1.0e-9
-        && points[3].value <= 1.0e-9;
+        && points[2].value >= 1.0 - 1.0e-9
+        && points[4].value <= 1.0e-9;
 }
 
 const BreakpointEnvelope::Point& BreakpointEnvelope::getPoint(int index) const noexcept

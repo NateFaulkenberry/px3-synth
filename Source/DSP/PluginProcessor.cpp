@@ -245,6 +245,12 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                  "Amp Attack",
                                                  juce::NormalisableRange<float>(0.001f, 3.0f, 0.001f, 0.45f),
                                                  0.005f);
+    // Zero by default, so an envelope that has never been touched has exactly
+    // the shape it had before the stage existed.
+    holdParam = new juce::AudioParameterFloat("ampHold",
+                                               "Amp Hold",
+                                               juce::NormalisableRange<float>(0.0f, 4.0f, 0.001f, 0.45f),
+                                               0.0f);
     decayParam = new juce::AudioParameterFloat("ampDecay",
                                                 "Amp Decay",
                                                 juce::NormalisableRange<float>(0.005f, 4.0f, 0.001f, 0.45f),
@@ -270,6 +276,11 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             labelPrefix + "Attack",
             juce::NormalisableRange<float>(0.001f, 3.0f, 0.001f, 0.45f),
             0.020f);
+        holdParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
+            idPrefix + "Hold",
+            labelPrefix + "Hold",
+            juce::NormalisableRange<float>(0.0f, 4.0f, 0.001f, 0.45f),
+            0.0f);
         decayParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
             idPrefix + "Decay",
             labelPrefix + "Decay",
@@ -627,6 +638,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(filterCombInvertParams[static_cast<std::size_t>(filterIndex)]);
     }
     addParameter(attackParam);
+    addParameter(holdParam);
     addParameter(decayParam);
     addParameter(sustainParam);
     addParameter(releaseParam);
@@ -635,6 +647,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
     {
         addParameter(attackParams[static_cast<std::size_t>(envIndex)]);
+        addParameter(holdParams[static_cast<std::size_t>(envIndex)]);
         addParameter(decayParams[static_cast<std::size_t>(envIndex)]);
         addParameter(sustainParams[static_cast<std::size_t>(envIndex)]);
         addParameter(releaseParams[static_cast<std::size_t>(envIndex)]);

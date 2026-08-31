@@ -283,6 +283,7 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
                 parameter.endChangeGesture();
             };
             write(processor.getEnvelopeAttackParam(envIndex), adsr.attackSeconds);
+            write(processor.getEnvelopeHoldParam(envIndex), adsr.holdSeconds);
             write(processor.getEnvelopeDecayParam(envIndex), adsr.decaySeconds);
             write(processor.getEnvelopeSustainParam(envIndex), adsr.sustainLevel);
             write(processor.getEnvelopeReleaseParam(envIndex), adsr.releaseSeconds);

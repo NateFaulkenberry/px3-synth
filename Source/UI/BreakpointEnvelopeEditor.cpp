@@ -9,6 +9,35 @@ constexpr float kPointGrabRadius = 11.0f;
 constexpr float kCurveGrabRadius = 9.0f;
 
 constexpr double kMinimumVisibleSeconds = 0.05;
+
+// The longest envelope the editor will let you drag to. The parameters can
+// describe more than this between them, so the model is not capped - an existing
+// session that is longer still draws correctly, the axis simply grows.
+constexpr double kMaxDraggableSeconds = 8.0;
+
+// A round interval for the time grid, chosen so the axis carries a readable
+// number of divisions at any length. Second-level ticks are the point, but a
+// 200 ms envelope would show none of them.
+double niceTimeInterval(double span)
+{
+    for (const auto candidate : { 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0 })
+    {
+        if (span / candidate <= 8.0)
+        {
+            return candidate;
+        }
+    }
+    return 10.0;
+}
+
+juce::String timeLabelFor(double seconds)
+{
+    if (seconds >= 1.0)
+    {
+        return juce::String(seconds, seconds < 10.0 && seconds != std::floor(seconds) ? 1 : 0) + "s";
+    }
+    return juce::String(juce::roundToInt(seconds * 1000.0)) + "ms";
+}
 } // namespace
 
 BreakpointEnvelopeEditor::BreakpointEnvelopeEditor()
@@ -247,12 +276,40 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
     g.drawRoundedRectangle(frame, frameRadius, configFor("strokeThickness", 1.0f));
 
     // ---- grid -------------------------------------------------------------
-    g.setColour(colourFor("gridColor", juce::Colour::fromRGBA(255, 255, 255, 24)));
     const auto gridWidth = floatFor("gridWidth", 1.0f);
+    g.setColour(colourFor("gridColor", juce::Colour::fromRGBA(255, 255, 255, 24)));
     for (int i = 1; i < 4; ++i)
     {
         const auto y = area.getY() + area.getHeight() * static_cast<float>(i) / 4.0f;
         g.fillRect(area.getX(), y, area.getWidth(), gridWidth);
+    }
+
+    // ---- the time axis ----------------------------------------------------
+    // Vertical rules on round times, labelled along the bottom INSIDE the graph.
+    // Without them the horizontal axis is unitless and a 40 ms attack looks the
+    // same as a four second one.
+    {
+        const auto span = visibleSeconds();
+        const auto interval = niceTimeInterval(span);
+        const auto labelHeight = floatFor("timeLabelHeight", 12.0f);
+        const auto labelSize = floatFor("timeLabelSize", 9.0f);
+
+        g.setFont(juce::FontOptions(labelSize));
+
+        for (int i = 1; i * interval <= span + 1.0e-9; ++i)
+        {
+            const auto seconds = i * interval;
+            const auto x = toScreen(seconds, 0.0).x;
+
+            g.setColour(colourFor("timeGridColor", juce::Colour::fromRGBA(255, 255, 255, 30)));
+            g.fillRect(x, area.getY(), gridWidth, area.getHeight() - labelHeight);
+
+            g.setColour(colourFor("timeLabelColor", juce::Colour::fromRGBA(210, 210, 220, 150)));
+            g.drawText(timeLabelFor(seconds),
+                       juce::Rectangle<float>(x - 22.0f, area.getBottom() - labelHeight,
+                                              44.0f, labelHeight),
+                       juce::Justification::centred, false);
+        }
     }
 
     // ---- the sustain region -----------------------------------------------
@@ -432,7 +489,9 @@ void BreakpointEnvelopeEditor::mouseDrag(const juce::MouseEvent& event)
                                   ? -static_cast<double>(delta.y) / area.getHeight()
                                   : 0.0;
 
-        envelope.setPoint(dragging.index, dragStartTime + timeDelta, dragStartValue + valueDelta);
+        envelope.setPoint(dragging.index,
+                          juce::jmin(kMaxDraggableSeconds, dragStartTime + timeDelta),
+                          dragStartValue + valueDelta);
         notifyChanged();
     }
     else if (dragging.target == Target::curve)
@@ -485,8 +544,9 @@ void BreakpointEnvelopeEditor::mouseDoubleClick(const juce::MouseEvent& event)
         return;
     }
 
-    const auto added = envelope.addPoint(screenToTime(event.position.x),
-                                         screenToValue(event.position.y));
+    const auto added = envelope.addPoint(
+        juce::jmin(kMaxDraggableSeconds, screenToTime(event.position.x)),
+        screenToValue(event.position.y));
     if (added >= 0)
     {
         selectedPoint = added;

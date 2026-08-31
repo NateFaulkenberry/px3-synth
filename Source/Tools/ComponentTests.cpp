@@ -605,18 +605,37 @@ void testBreakpointEnvelope()
         const auto back = envelope.toAdsr();
 
         check("Envelope_AdsrRoundTripsThroughTheBreakpointModel",
-              envelope.getPointCount() == 4
+              envelope.getPointCount() == 5
                   && std::abs(back.attackSeconds - 0.15f) < 1.0e-6f
                   && std::abs(back.decaySeconds - 0.25f) < 1.0e-6f
                   && std::abs(back.sustainLevel - 0.6f) < 1.0e-6f
                   && std::abs(back.releaseSeconds - 0.4f) < 1.0e-6f,
-              "four points in, the same four numbers out");
+              "five points in - attack, hold, decay, sustain, release - and the same "
+              "numbers back out");
 
         check("Envelope_AdsrIsRecognisedAsAdsr", envelope.isPlainAdsr(),
               "a freshly built ADSR reports itself as still parameter-describable");
 
-        check("Envelope_SustainPointIsTheThirdPoint", envelope.getSustainPoint() == 2,
-              "the envelope holds at point 2, which is the sustain level");
+        check("Envelope_SustainPointIsTheOneAfterTheDecay", envelope.getSustainPoint() == 3,
+              "the envelope holds at point 3 - after attack, hold and decay");
+
+        // Hold is a real stage now, and it survives the round trip.
+        EnvelopeSettings held = settings;
+        held.holdSeconds = 0.35f;
+        const auto withHold = px3::BreakpointEnvelope::fromAdsr(held);
+        check("Envelope_HoldSitsBetweenTheAttackAndTheDecay",
+              std::abs(withHold.getPoint(2).timeSeconds - (0.15 + 0.35)) < 1.0e-6
+                  && withHold.getPoint(2).value >= 1.0 - 1.0e-9
+                  && std::abs(withHold.toAdsr().holdSeconds - 0.35f) < 1.0e-6f,
+              "a 0.35 s hold keeps the envelope at full level until "
+                  + fmt(withHold.getPoint(2).timeSeconds, 3) + " s");
+
+        // And with hold at zero the shape is exactly what it was before the
+        // stage existed - which is why no preset changed.
+        const auto noHold = px3::BreakpointEnvelope::fromAdsr(settings);
+        check("Envelope_ZeroHoldIsAZeroLengthSegment",
+              std::abs(noHold.getPoint(1).timeSeconds - noHold.getPoint(2).timeSeconds) < 1.0e-12,
+              "the hold point sits on top of the peak, so nothing spends time there");
 
         // The shape the four parameters describe, sampled where it matters.
         const auto atPeak = envelope.valueAt(0.15);
@@ -648,8 +667,8 @@ void testBreakpointEnvelope()
                   && std::abs(envelope.getPoint(1).curveToNext - 0.5) < 1.0e-9,
               "both halves of a bent segment stay bent");
 
-        check("Envelope_SustainFollowsTheInsertion", envelope.getSustainPoint() == 3,
-              "the sustain moved from point 2 to point 3 with the point it marks");
+        check("Envelope_SustainFollowsTheInsertion", envelope.getSustainPoint() == 4,
+              "the sustain moved from point 3 to point 4 with the point it marks");
     }
 
     // ---- removal protects what the envelope needs ---------------------------
@@ -1143,14 +1162,14 @@ void testBreakpointEnvelope()
             // above happened to leave behind.
             editor.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
 
-            const auto start = editor.pointToScreen(2);
-            const auto before = editor.getEnvelope().getPoint(2);
+            const auto start = editor.pointToScreen(3);
+            const auto before = editor.getEnvelope().getPoint(3);
 
             editor.mouseDown(makeEvent(start, 1));
             editor.mouseDrag(makeEvent(start.translated(20.0f, -20.0f), 1));
             editor.mouseUp(makeEvent(start.translated(20.0f, -20.0f), 1));
 
-            const auto after = editor.getEnvelope().getPoint(2);
+            const auto after = editor.getEnvelope().getPoint(3);
             check("EnvelopeEditor_DraggingMovesAPointInTimeAndValue",
                   after.timeSeconds > before.timeSeconds && after.value > before.value,
                   "moved from " + fmt(before.timeSeconds, 4) + "s/" + fmt(before.value, 3)
@@ -1217,15 +1236,15 @@ void testBreakpointEnvelope()
         // ---- keyboard ----
         {
             editor.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
-            // Point 2, the sustain: point 1 is the ADSR peak at 1.0 and has
-            // nowhere to be nudged, so testing there measures the clamp rather
-            // than the nudge.
-            editor.mouseDown(makeEvent(editor.pointToScreen(2), 1));
-            editor.mouseUp(makeEvent(editor.pointToScreen(2), 1));
+            // Point 3, the sustain. Points 1 and 2 are the peak and the hold,
+            // both at 1.0 with nowhere to be nudged, so testing there would
+            // measure the clamp rather than the nudge.
+            editor.mouseDown(makeEvent(editor.pointToScreen(3), 1));
+            editor.mouseUp(makeEvent(editor.pointToScreen(3), 1));
 
-            const auto before = editor.getEnvelope().getPoint(2).value;
+            const auto before = editor.getEnvelope().getPoint(3).value;
             editor.keyPressed(juce::KeyPress(juce::KeyPress::upKey));
-            const auto afterUp = editor.getEnvelope().getPoint(2).value;
+            const auto afterUp = editor.getEnvelope().getPoint(3).value;
 
             check("EnvelopeEditor_ArrowKeysNudgeTheSelectedPoint", afterUp > before,
                   fmt(before, 4) + " -> " + fmt(afterUp, 4));
@@ -1264,8 +1283,8 @@ void testBreakpointEnvelope()
                 juce::Time::getCurrentTime(), 2, false));
 
             check("EnvelopeEditor_EditingOneDoesNotTouchAnother",
-                  first.getEnvelope().getPointCount() == 5
-                      && second.getEnvelope().getPointCount() == 4,
+                  first.getEnvelope().getPointCount() == 6
+                      && second.getEnvelope().getPointCount() == 5,
                   "first has " + juce::String(first.getEnvelope().getPointCount())
                       + " points, second still has "
                       + juce::String(second.getEnvelope().getPointCount()));
@@ -1370,7 +1389,7 @@ void testBreakpointEnvelope()
         second.setCurve(0, 0.9);
 
         check("Envelope_CopiesDoNotShareState",
-              first.getPointCount() == 4 && std::abs(first.getPoint(0).curveToNext) < 1.0e-12,
+              first.getPointCount() == 5 && std::abs(first.getPoint(0).curveToNext) < 1.0e-12,
               "editing a copy left the original at "
                   + juce::String(first.getPointCount()) + " points with no curve");
     }

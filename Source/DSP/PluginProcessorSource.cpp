@@ -145,6 +145,7 @@ EnvelopeSettings PX3SynthAudioProcessor::currentAmpEnvelopeSettings() const
     // AMP ENV is a dedicated VCA contour and must remain independent of the
     // assignable modulation matrix destination path.
     settings.attackSeconds = attackParam->get();
+    settings.holdSeconds = holdParam->get();
     settings.decaySeconds = decayParam->get();
     settings.sustainLevel = sustainParam->get();
     settings.releaseSeconds = releaseParam->get();
@@ -182,6 +183,7 @@ EnvelopeSettings PX3SynthAudioProcessor::currentModEnvelopeSettings(int envIndex
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     auto& attack = getEnvelopeAttackParam(idx);
+    auto& hold = getEnvelopeHoldParam(idx);
     auto& decay = getEnvelopeDecayParam(idx);
     auto& sustain = getEnvelopeSustainParam(idx);
     auto& release = getEnvelopeReleaseParam(idx);
@@ -193,6 +195,7 @@ EnvelopeSettings PX3SynthAudioProcessor::currentModEnvelopeSettings(int envIndex
     if (!envEnabled)
     {
         settings.attackSeconds = 0.001f;
+        settings.holdSeconds = 0.0f;
         settings.decaySeconds = 0.005f;
         settings.sustainLevel = 1.0f;
         settings.releaseSeconds = 0.010f;
@@ -201,6 +204,8 @@ EnvelopeSettings PX3SynthAudioProcessor::currentModEnvelopeSettings(int envIndex
 
     settings.attackSeconds = attack.convertFrom0to1(applyModulationToNormalizedValue(&attack,
                                                                                       static_cast<juce::RangedAudioParameter&>(attack).getValue()));
+    settings.holdSeconds = hold.convertFrom0to1(applyModulationToNormalizedValue(&hold,
+                                                                                  static_cast<juce::RangedAudioParameter&>(hold).getValue()));
     settings.decaySeconds = decay.convertFrom0to1(applyModulationToNormalizedValue(&decay,
                                                                                     static_cast<juce::RangedAudioParameter&>(decay).getValue()));
     settings.sustainLevel = sustain.convertFrom0to1(applyModulationToNormalizedValue(&sustain,
