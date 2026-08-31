@@ -55,9 +55,14 @@ private:
     px3::WavetableDisplay display;
     juce::String missingTableName;
 
-    // The stack of frames, drawn once into an image. Regenerating this geometry
-    // on every repaint is what makes a wavetable display expensive, and the
-    // position marker moving is not a reason to redraw sixty polylines.
+    // The stack of frames, drawn once into an image.
+    //
+    // Measured, this does NOT currently pay for itself: repainting the graph's
+    // region in situ costs 0.898 ms with the cache and 0.819 ms without it, both
+    // dominated by the editor beneath rather than by forty polylines of 192
+    // points. It is kept because the display size is a parameter - a 256-frame
+    // table drawn at full width is six times the geometry - not because the
+    // present numbers justify it. If that stops being true, delete it.
     juce::Image surface;
 
     float basePosition { 0.0f };

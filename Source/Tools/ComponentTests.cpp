@@ -1553,6 +1553,78 @@ void testWavetable()
                               : wrong.joinIntoString(", "));
     }
 
+    // ---- the graph has to be able to animate -------------------------------
+    // Measured IN SITU, through the editor, because repainting a component
+    // redraws everything beneath it - the same measurement taken on a component
+    // in isolation once read 0.02 ms where the real figure was 27.6 ms.
+    {
+        PX3SynthAudioProcessor processor;
+        setChoice(processor, "osc1Mode", 8);   // WAVETABLE, or the graph is hidden
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        if (editor != nullptr)
+        {
+            editor->setSize(editor->getWidth(), editor->getHeight());
+
+            WavetableGraph* graph = nullptr;
+            std::function<void(juce::Component&)> find = [&](juce::Component& c)
+            {
+                for (auto* child : c.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* g = dynamic_cast<WavetableGraph*>(child))
+                    {
+                        if (graph == nullptr) { graph = g; }
+                    }
+                    find(*child);
+                }
+            };
+            find(*editor);
+
+            if (graph != nullptr && graph->getWidth() > 0)
+            {
+                const auto area = editor->getLocalArea(graph, graph->getLocalBounds());
+                juce::Image target(juce::Image::ARGB,
+                                   juce::jmax(1, area.getWidth()),
+                                   juce::jmax(1, area.getHeight()), true);
+
+                for (int i = 0; i < 5; ++i)
+                {
+                    juce::Graphics g(target);
+                    g.setOrigin(-area.getX(), -area.getY());
+                    editor->paintEntireComponent(g, true);
+                }
+
+                // The scan moving is the animated case, and it must NOT rebuild
+                // the cached surface - that is the whole reason the surface is
+                // cached separately from the marker.
+                const auto start = juce::Time::getMillisecondCounterHiRes();
+                constexpr int frames = 40;
+                for (int i = 0; i < frames; ++i)
+                {
+                    graph->setPosition(static_cast<float>(i) / frames,
+                                       static_cast<float>(i) / frames);
+                    juce::Graphics g(target);
+                    g.setOrigin(-area.getX(), -area.getY());
+                    editor->paintEntireComponent(g, true);
+                }
+                const auto ms = (juce::Time::getMillisecondCounterHiRes() - start) / frames;
+
+                check("Wavetable_GraphRepaintsWellInsideAFrame", ms < 5.0,
+                      "repainting the graph's region while the scan moves costs "
+                          + fmt(ms, 3) + " ms per frame (16.7 ms is a 60 Hz budget)");
+            }
+            else
+            {
+                check("Wavetable_GraphRepaintsWellInsideAFrame", graph != nullptr,
+                      graph == nullptr ? "no wavetable graph found in the editor"
+                                       : "the graph has no size");
+            }
+        }
+    }
+
     // ---- rejects what it cannot build --------------------------------------
     // Returning an empty table instead of null would ship silence that looks
     // like a working oscillator.

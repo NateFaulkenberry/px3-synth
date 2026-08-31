@@ -176,7 +176,9 @@ void WavetableGraph::rebuildSurface()
     // Back to front, so nearer frames overlap the ones behind them.
     for (int f = frameCount - 1; f >= 0; --f)
     {
-        const auto depth = frameCount > 1 ? static_cast<float>(f) / (frameCount - 1) : 0.0f;
+        const auto depth = frameCount > 1
+                             ? static_cast<float>(f) / static_cast<float>(frameCount - 1)
+                             : 0.0f;
         const auto& points = display.frames[static_cast<std::size_t>(f)];
         if (points.size() < 2)
         {
@@ -190,7 +192,8 @@ void WavetableGraph::rebuildSurface()
         juce::Path path;
         for (std::size_t i = 0; i < points.size(); ++i)
         {
-            const auto x = originX + width * static_cast<float>(i) / (points.size() - 1);
+            const auto x = originX + width * static_cast<float>(i)
+                                       / static_cast<float>(points.size() - 1);
             const auto y = originY - points[i] * amplitude;
             if (i == 0) { path.startNewSubPath(x, y); }
             else { path.lineTo(x, y); }
