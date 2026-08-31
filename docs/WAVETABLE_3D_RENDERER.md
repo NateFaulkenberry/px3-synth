@@ -308,3 +308,111 @@ up, selected on `isRendering()`. Two things are deliberately not done: no
 geometry shader (not available on the macOS core profile this targets), and no
 multisampling request - the ribbon's own edge falloff is doing that work, and
 asking for MSAA as well would cost fill rate for an effect already present.
+
+---
+
+# The environment
+
+Research and design for the scene treatment around the stack. Written against
+the brief's section numbers.
+
+## A. What creates depth without a scene (§1)
+
+Product renders, studio photography and the better plugin UIs all reach for the
+same small set of tricks, and almost none of them involve modelling anything:
+
+| Technique | What it actually does | Cost here |
+|---|---|---|
+| Gradient background | Stands in for a large diffuse source behind the subject | 1 exp() per fragment |
+| Vignette | Lowers edge luminance so fixation moves inward | 1 smoothstep |
+| Ambient | Fills the black, so nothing reads as a hole | 1 add |
+| Key light | Gives the scene a direction | 1 dot per **vertex** |
+| Atmospheric perspective | Distance = loss of contrast, not loss of light | 1 mix |
+| Depth haze | The same thing, applied to the air | folded into the above |
+| Bloom | Needs a second framebuffer pass | **rejected**, see below |
+| Soft shadows | Needs a shadow map and surfaces to receive them | **rejected**, no surfaces |
+| Ambient occlusion | Needs depth/normal buffers | **rejected**, no normals |
+
+The three rejections are not cost-cutting; they are category errors here. The
+stack is **line geometry**: ribbons with no surface, no normals and no volume.
+Shadows, occlusion and physically based materials all describe how light meets
+a surface, and there isn't one. Anything claiming to do them would be decorating
+rather than lighting.
+
+**Bloom is rejected on architecture.** It needs the scene rendered to a texture,
+a bright-pass, a separable blur and a composite - four passes and two
+framebuffers, in a UI panel that repaints continuously. §12 asks whether it
+would improve the selected frame; the selected frame already gets an additive
+emissive lift in the fragment shader (`colour += hot * selected * glow`), which
+is what bloom would be approximating, at one multiply-add.
+
+## B. What was implemented
+
+Ordered as §18 asks, though with one pass rather than several:
+
+1. **Environmental background** - its own program, four static clip-space
+   vertices, no camera and no depth. Three terms: an ambient lift everywhere, a
+   soft pool of light behind where the stack actually projected, and a vertical
+   gradient lighter at the bottom. The pool follows `projectedBounds`, not the
+   centre of the panel, because the stack does not project symmetrically about
+   the centre and a pool that ignores that lights the empty half of the frame.
+2. **Vignette** - applied to the composed background.
+3. **Key light** - one dot product per vertex against a fixed direction (up,
+   left, toward the viewer). Ribbons have no normal, but they have a position,
+   and a light that brightens one side of the scene reads as direction just as
+   well. Range 0.86..1.14: wider and the stack starts to look like chrome.
+4. **Atmospheric haze** - the back of the stack fades **toward the environment
+   colour**, not toward black. Excluded from the selected frame, so the effect
+   deepens the existing hierarchy instead of flattening it.
+5. **Floor illumination** - near edge up, far edge down, from the depth
+   attenuation already there. Scaled so the environment can only make the floor
+   more subtle, never brighter, per §16.
+
+## C. The tuning, measured (§21)
+
+`PX3Tests envcheck` renders the real scene twice on a real context, with the
+environment off and on, and reports mean luminance by region. That is the §23
+final quality test, run as a command rather than by eye.
+
+The first version applied the vignette to the whole background:
+
+```
+  darkest pixel           0.0480    0.0401   -0.0078
+```
+
+The darkest pixel in the frame got **darker** when the environment was switched
+on - the vignette was taking light out of the corners rather than the
+environment putting light in, which is the opposite of §5. An ambient term was
+added and the vignette reduced from 0.18 to 0.14:
+
+```
+                             OFF        ON     delta
+  centre luminance        0.1572    0.2076   +0.0503
+  corner luminance        0.0480    0.0767   +0.0287
+  lower luminance         0.0490    0.0981   +0.0491
+  upper luminance         0.0819    0.1108   +0.0290
+  darkest pixel           0.0480    0.0625   +0.0145
+
+  centre over corners:   +0.1093 off, +0.1309 on
+```
+
+Which is the shape the brief describes: nothing anywhere is darker than it was,
+the centre lifts most, the bottom lifts more than the top, and the middle now
+stands further above the edges than it did on flat black.
+
+Three of those are checked as pass/fail by `envcheck`, and the check was
+confirmed to fail against the version without the ambient term.
+
+## D. Consequences worth knowing
+
+**`glcheck`'s lit-pixel count is taken with the environment off, deliberately.**
+That figure means "how much of the frame differs from the cleared background",
+which is a measurement of whether the STACK drew. The environment lifts almost
+every pixel off the clear colour, which took the number from 31% to 82% without
+one extra ribbon being drawn. With the environment off it reads 95688 pixels,
+identical to before the environment existed - which is also the evidence that
+none of this changed how the stack itself draws.
+
+**No new per-frame allocation and no new geometry.** The environment's four
+vertices are uploaded once when the context is created. A resize, a camera move
+and a new table all cost nothing extra.

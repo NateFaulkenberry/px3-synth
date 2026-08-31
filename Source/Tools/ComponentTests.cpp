@@ -2667,6 +2667,20 @@ void testWavetable()
                           + sineModeBounds.toString() + " in SINE");
 
                 const auto* graph = &card->getWavetableGraph();
+
+                // The panel's border has to be the CARD's colour, not the
+                // graph's own default. Nobody was wiring it up, so the panel
+                // drew in RGB(90,160,240) beside a card outlined in #68C2FF -
+                // near enough to read as a mistake rather than as a choice.
+                const auto cardAccent = card->cardAccentColour();
+                const auto graphBorder = graph->getBorderColour();
+                check("WavetableCard_ThePanelBorderIsTheCardsOwnColour",
+                      graphBorder.getRed() == cardAccent.getRed()
+                          && graphBorder.getGreen() == cardAccent.getGreen()
+                          && graphBorder.getBlue() == cardAccent.getBlue(),
+                      "panel border " + graphBorder.toDisplayString(false)
+                          + ", card border " + cardAccent.toDisplayString(false));
+
                 check("WavetableCard_GraphIsVisibleAndSizedInWavetableMode",
                       graph->isVisible() && ! graph->getBounds().isEmpty(),
                       "graph bounds " + graph->getBounds().toString());
@@ -3440,6 +3454,42 @@ void testWavetable()
         }
         renderer.setDisplay(display);
         renderer.setPosition(0.5f);
+        // The environment is on unless something turns it off, and turning it
+        // off changes nothing about the geometry - it is shading, not shape.
+        // A renderer that rebuilt its stack when the environment toggled would
+        // be doing work per frame that belongs in a uniform.
+        {
+            PX3SynthAudioProcessor host;
+            host.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            host.prepareToPlay(kSampleRate, kBlockSize);
+            host.loadFactoryWavetable(0, 0);
+
+            Wavetable3DRenderer renderer;
+            renderer.setSize(290, 149);
+            renderer.setDisplay(host.getWavetableDisplay(0, 48, 128));
+            renderer.buildGeometryForTesting();
+
+            const auto floorWithEnvironment = renderer.getFloorInfo();
+            const auto framedWithEnvironment = renderer.getCamera();
+            const auto onByDefault = renderer.isEnvironmentEnabled();
+
+            renderer.setEnvironmentEnabled(false);
+            renderer.buildGeometryForTesting();
+            const auto floorWithout = renderer.getFloorInfo();
+
+            check("Wavetable3D_TheEnvironmentIsShadingRatherThanGeometry",
+                  onByDefault
+                      && ! renderer.isEnvironmentEnabled()
+                      && floorWithout.edgeCount == floorWithEnvironment.edgeCount
+                      && std::abs(floorWithout.topY - floorWithEnvironment.topY) < 1.0e-6f
+                      && std::abs(renderer.getCamera().distance
+                                  - framedWithEnvironment.distance) < 1.0e-6f,
+                  juce::String(onByDefault ? "on by default, " : "OFF by default, ")
+                      + "and switching it off left the floor at "
+                      + juce::String(floorWithout.edgeCount) + " edges and the camera at "
+                      + fmt(renderer.getCamera().distance, 2));
+        }
+
         check("Wavetable3D_AcceptsDataWithoutAContext", true,
               "display and position handed over with no GL context attached");
     }
@@ -21594,6 +21644,14 @@ int main(int argc, char* argv[])
         host->renderer.setDisplay(display);
         host->renderer.setPosition(0.4f);
 
+        // The environment is off for this check, and has to be. The lit-pixel
+        // count is "how much of the frame differs from the cleared background",
+        // which is a measurement of whether the STACK drew - and the
+        // environment lifts almost every pixel off the clear colour, which took
+        // the figure from 31% to 82% without a single extra ribbon being drawn.
+        // See the envcheck mode for the environment's own measurements.
+        host->renderer.setEnvironmentEnabled(false);
+
         // The GL thread needs the message loop running to get going.
         const auto deadline = juce::Time::getMillisecondCounter() + 4000;
         while (juce::Time::getMillisecondCounter() < deadline
@@ -21637,6 +21695,133 @@ int main(int argc, char* argv[])
                                     ? "GPU renderer is working."
                                     : "GPU renderer is NOT drawing anything.");
         return rendering && error.isEmpty() && visible ? 0 : 1;
+    }
+
+    if (filter == "envcheck")
+    {
+        // The environment, measured with it off and with it on.
+        //
+        // This is the brief's own acceptance test, and it needs a real context:
+        // the whole effect is a fragment shader, so there is nothing to
+        // evaluate without a driver. It prints the numbers rather than a
+        // verdict, because "too strong" and "too weak" are judgements about a
+        // picture - but the numbers are what say whether the picture changed at
+        // all, and by how much.
+        std::printf("\nENVIRONMENT A/B\n\n");
+
+        struct Host final : public juce::DocumentWindow
+        {
+            Host() : juce::DocumentWindow("px3 env", juce::Colours::black, 0)
+            {
+                renderer.setSize(320, 200);
+                setContentNonOwned(&renderer, true);
+                setOpaque(true);
+                setVisible(true);
+                setTopLeftPosition(-4000, -4000);
+            }
+            void closeButtonPressed() override {}
+            Wavetable3DRenderer renderer;
+        };
+
+        auto host = std::make_unique<Host>();
+
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+        processor.loadFactoryWavetable(0, 0);
+
+        host->renderer.setPixelAudit(true);
+        host->renderer.setDisplay(processor.getWavetableDisplay(0, 48, 128));
+        host->renderer.setPosition(0.4f);
+
+        const auto deadline = juce::Time::getMillisecondCounter() + 4000;
+        while (juce::Time::getMillisecondCounter() < deadline
+               && ! host->renderer.isRendering()
+               && host->renderer.getShaderError().isEmpty())
+        {
+            juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+        }
+
+        if (! host->renderer.isRendering())
+        {
+            std::printf("  no GL context came up - %s\n\n",
+                        host->renderer.getShaderError().isEmpty()
+                            ? "no shader error either"
+                            : host->renderer.getShaderError().toRawUTF8());
+            host.reset();
+            return 1;
+        }
+
+        const auto settle = []
+        {
+            for (int i = 0; i < 12; ++i)
+            {
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(25);
+            }
+        };
+
+        host->renderer.setEnvironmentEnabled(false);
+        settle();
+        const auto off = host->renderer.getLuminanceProbe();
+        const auto litOff = host->renderer.getLitPixelCount();
+
+        host->renderer.setEnvironmentEnabled(true);
+        settle();
+        const auto on = host->renderer.getLuminanceProbe();
+        const auto litOn = host->renderer.getLitPixelCount();
+
+        const auto row = [](const char* label, float a, float b)
+        {
+            std::printf("  %-22s %7.4f   %7.4f   %+7.4f\n", label, a, b, b - a);
+        };
+
+        std::printf("  %-22s %7s   %7s   %7s\n", "", "OFF", "ON", "delta");
+        row("centre luminance", off.centre, on.centre);
+        row("corner luminance", off.corners, on.corners);
+        row("upper luminance", off.upper, on.upper);
+        row("lower luminance", off.lower, on.lower);
+        row("darkest pixel", off.darkest, on.darkest);
+        row("brightest pixel", off.brightest, on.brightest);
+        std::printf("\n");
+
+        const auto vignetteOff = off.centre - off.corners;
+        const auto vignetteOn = on.centre - on.corners;
+        std::printf("  centre over corners:   %+.4f off, %+.4f on\n",
+                    vignetteOff, vignetteOn);
+        std::printf("  lower over upper:      %+.4f off, %+.4f on\n",
+                    off.lower - off.upper, on.lower - on.upper);
+        std::printf("  lit pixels:            %d off, %d on\n\n", litOff, litOn);
+
+        // The three properties the brief actually specifies, as pass/fail. The
+        // rest of the numbers are for judging the picture; these are the ones
+        // that can be wrong.
+        struct Criterion { const char* what; bool ok; };
+        const Criterion criteria[] = {
+            // Section 5: ambient illumination, so nothing is a pure black void.
+            // The trap this catches is a vignette applied to the whole scene
+            // rather than to the light it adds, which darkens the corners BELOW
+            // where they started - measured at 0.0401 against 0.0480 before an
+            // ambient term was added.
+            { "nothing is darker than it was without the environment",
+              on.darkest >= off.darkest },
+            // Section 4: the vignette has to actually focus the middle.
+            { "the centre stands further above the corners than it did",
+              (on.centre - on.corners) > (off.centre - off.corners) },
+            // Section 3: an environment, not a flat rectangle.
+            { "the corners are lifted off the flat background",
+              on.corners > off.corners + 0.005f },
+        };
+
+        auto allOk = true;
+        for (const auto& criterion : criteria)
+        {
+            std::printf("  %-4s %s\n", criterion.ok ? "ok" : "FAIL", criterion.what);
+            allOk = allOk && criterion.ok;
+        }
+        std::printf("\n");
+
+        host.reset();
+        return allOk ? 0 : 1;
     }
 
     if (filter == "installpresets")

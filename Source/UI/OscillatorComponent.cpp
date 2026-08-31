@@ -189,6 +189,13 @@ void OscillatorComponent::resized()
         power->setAccentColour(card.style().border.colour);
     }
 
+    // So does the wavetable panel's border. This was never wired up, so the
+    // panel fell back to the graph's own default blue - close enough to the
+    // card's to look like a mistake rather than a choice, which is exactly what
+    // it was. Taken from the same place the power glyph takes it, so the two
+    // cannot drift apart.
+    wavetableGraph.setAccentColour(card.style().border.colour);
+
     inner.setStylePath("cards.osc.cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(3);

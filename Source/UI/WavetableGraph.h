@@ -20,6 +20,11 @@ public:
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void setAccentColour(juce::Colour accentIn);
 
+    // What the panel's border is drawn in. Exposed so the card can be held to
+    // supplying it: the graph has a default accent, and a default is exactly
+    // what you get when nobody wires the real one up.
+    juce::Colour getBorderColour() const { return borderColour(); }
+
     // Rebuilding the surface is the expensive part, so it happens when the
     // TABLE changes and not when the position does.
     void setDisplay(px3::WavetableDisplay displayIn);

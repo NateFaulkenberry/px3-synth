@@ -42,6 +42,13 @@ public:
     // Drained of colour when the oscillator is bypassed, matching the knobs.
     void setBypassed(bool shouldBeBypassed);
 
+    // The environment: a procedural background, a vignette, a key light and a
+    // depth haze. On by default. The setter exists because the only honest way
+    // to judge an effect this subtle is to measure the scene with it and
+    // without it - see the environment A/B in the tests.
+    void setEnvironmentEnabled(bool shouldBeEnabled);
+    bool isEnvironmentEnabled() const noexcept { return environmentEnabled.load(); }
+
     // True once the GL context has produced a frame, so a caller can fall back
     // to something else if the context never came up.
     bool isRendering() const noexcept { return framesRendered.load() > 0; }
@@ -57,6 +64,21 @@ public:
     void setPixelAudit(bool shouldAudit) { pixelAudit.store(shouldAudit); }
     int getLitPixelCount() const noexcept { return litPixels.load(); }
     int getAuditedPixelCount() const noexcept { return auditedPixels.load(); }
+
+    // Mean luminance of a few regions of the framebuffer, filled by the same
+    // audit readback. "Looks more dimensional" is not a measurement; this is
+    // what lets the vignette, the ambient pool and the haze be checked as
+    // numbers - the edges darker than the middle, the void no longer at zero.
+    struct LuminanceProbe
+    {
+        float centre { 0.0f };
+        float corners { 0.0f };
+        float upper { 0.0f };
+        float lower { 0.0f };
+        float darkest { 0.0f };
+        float brightest { 0.0f };
+    };
+    LuminanceProbe getLuminanceProbe() const;
 
     void resized() override;
     void visibilityChanged() override;
@@ -149,10 +171,24 @@ private:
     void rebuildVertices();
     void buildFloor();
     void uploadGeometry();
+    void drawEnvironment(float aspect);
     juce::Matrix3D<float> buildViewProjection(float aspect) const;
     juce::Matrix3D<float> buildViewProjection(float aspect, const Camera& forCamera) const;
 
     juce::OpenGLContext context;
+
+    // The environment is its own program and its own four vertices. It shares
+    // nothing with the stack: it is drawn in clip space with no camera, no
+    // depth and no blending, so folding it into the ribbon shader would mean a
+    // branch per fragment on geometry that has none of those properties.
+    std::unique_ptr<juce::OpenGLShaderProgram> environmentProgram;
+    std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformEnvSubject;
+    std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformEnvAspect;
+    std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformEnvBase;
+    std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformEnvGlow;
+    std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformEnvAmount;
+    std::unique_ptr<juce::OpenGLShaderProgram::Attribute> attribEnvCorner;
+    GLuint environmentBuffer { 0 };
 
     std::unique_ptr<juce::OpenGLShaderProgram> program;
     std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformViewProjection;
@@ -161,6 +197,8 @@ private:
     std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformAspect;
     std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformAccent;
     std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformGrayscale;
+    std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformEnvironment;
+    std::unique_ptr<juce::OpenGLShaderProgram::Uniform> uniformHaze;
 
     std::unique_ptr<juce::OpenGLShaderProgram::Attribute> attribPosition;
     std::unique_ptr<juce::OpenGLShaderProgram::Attribute> attribNeighbour;
@@ -212,8 +250,11 @@ private:
     std::atomic<int> framesRendered { 0 };
     std::atomic<bool> pixelAudit { false };
     std::atomic<bool> bypassed { false };
+    std::atomic<bool> environmentEnabled { true };
     std::atomic<int> litPixels { -1 };
     std::atomic<int> auditedPixels { 0 };
+    mutable std::mutex probeMutex;
+    LuminanceProbe luminanceProbe;
     juce::Colour accentColour { juce::Colour::fromRGB(96, 168, 255) };
     juce::Colour backgroundColour { juce::Colour::fromRGB(12, 12, 14) };
 

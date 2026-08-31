@@ -54,6 +54,9 @@ public:
                               juce::Label& positionValue);
 
     WavetableGraph& getWavetableGraph() { return wavetableGraph; }
+    // This card's identity colour - the one its border, its power glyph and its
+    // wavetable panel all have to share.
+    juce::Colour cardAccentColour() const { return card.style().border.colour; }
     // For the layout tests: where the two selectors ended up.
     juce::Rectangle<int> debugModeBoxBounds() const { return modeBox.getBounds(); }
     juce::Rectangle<int> debugTableBoxBounds() const

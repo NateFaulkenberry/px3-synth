@@ -34,6 +34,71 @@ constexpr float kWaveformHalfWidth = 1.0f;
 // distance.
 constexpr float kStackHalfDepth = 1.8f;
 
+// The environment.
+//
+// A procedural background rather than a texture or a skybox: it is four
+// vertices and one screen-space evaluation per fragment, it costs nothing to
+// resize, and it can follow the subject around the frame - which a texture
+// cannot. The research note in docs/WAVETABLE_3D_RENDERER.md has the reasoning
+// behind each term; what they are is:
+//
+//   pool      a soft light behind the subject, the way a product render puts a
+//             large diffuse source behind what it is lighting. Aspect-corrected
+//             so it stays round in a wide panel.
+//   vertical  a gentle floor-to-ceiling gradient, lighter low, which is what
+//             makes the floor read as standing ON something.
+//   vignette  edges a few percent down, so the eye settles in the middle.
+//
+// All three are additions to the configured background colour, never
+// replacements for it, so turning the environment off returns exactly the flat
+// colour that was there before.
+const char* kEnvironmentVertexShader = R"(
+attribute vec2 aCorner;
+varying vec2 vNdc;
+
+void main()
+{
+    vNdc = aCorner;
+    gl_Position = vec4(aCorner, 0.0, 1.0);
+}
+)";
+
+const char* kEnvironmentFragmentShader = R"(
+varying vec2 vNdc;
+
+uniform vec2 uSubject;
+uniform float uAspect;
+uniform vec3 uBase;
+uniform vec3 uGlow;
+uniform float uAmount;
+
+void main()
+{
+    vec2 toSubject = vec2((vNdc.x - uSubject.x) * uAspect, vNdc.y - uSubject.y);
+    float pool = exp(-dot(toSubject, toSubject) * 1.15);
+
+    // Lighter at the bottom of the frame. The stack sits above its floor, so a
+    // gradient the other way would light the scene from under the floor.
+    float vertical = 0.5 - 0.5 * vNdc.y;
+
+    // Ambient: a flat lift applied everywhere, which is the term that stops the
+    // scene having a true void in it. Without it the vignette is free to take
+    // the extreme corners BELOW the background colour, and measured, it did -
+    // the darkest pixel in the frame fell from 0.0480 to 0.0401 when the
+    // environment was switched on, which is the opposite of what an
+    // environment is for.
+    vec3 colour = uBase + uGlow * (0.30 + 0.62 * pool + 0.38 * vertical);
+
+    // Restrained on purpose. At 0.30 the panel reads as a photograph with a
+    // filter on it; at 0.14, against the ambient lift above, the corners
+    // settle back without falling below where they started.
+    vec2 fromCentre = vec2(vNdc.x * uAspect, vNdc.y);
+    colour *= 1.0 - 0.14 * smoothstep(0.55, 1.45, length(fromCentre));
+
+    gl_FragColor = vec4(mix(uBase, colour, uAmount), 1.0);
+}
+)";
+
 const char* kVertexShader = R"(
 attribute vec3 aPosition;
 attribute vec3 aNeighbour;
@@ -51,9 +116,21 @@ varying float vSide;
 varying float vStored;
 varying float vFloor;
 varying float vDepth;
+varying float vKey;
 
 void main()
 {
+    // The key light, per vertex. Ribbons have no surface and so no normal to
+    // shade against, but they do have a POSITION, and a light that brightens
+    // one side of the scene and lets the other fall away gives the same
+    // directional information a shaded surface would - at the cost of one dot
+    // product on 12288 vertices rather than on every fragment.
+    //
+    // Up, left and toward the viewer: the direction a key light sits in for
+    // almost every product render, because it is where the sun is not.
+    vec3 lightDirection = normalize(vec3(-0.55, 0.72, 0.42));
+    vKey = 0.5 + 0.5 * dot(lightDirection, normalize(aPosition + vec3(0.0, 0.35, 0.0)));
+
     vec4 here = uViewProjection * vec4(aPosition, 1.0);
     vec4 next = uViewProjection * vec4(aNeighbour, 1.0);
 
@@ -88,10 +165,20 @@ varying float vSide;
 varying float vStored;
 varying float vFloor;
 varying float vDepth;
+varying float vKey;
 
 uniform float uSelected;
 uniform vec4 uAccent;
 uniform float uGrayscale;
+
+// How much of the environment to apply: the key light, the haze and the
+// floor's near-to-far illumination. 0 restores exactly the flat-lit scene.
+uniform float uEnvironment;
+
+// What distant geometry fades TOWARDS. Atmospheric perspective is not things
+// going dark, it is things taking on the colour of the air between - fading to
+// black is a fade-out, fading to the environment is distance.
+uniform vec3 uHaze;
 
 void main()
 {
@@ -154,6 +241,17 @@ void main()
         // any future emphasis would be expressed.
         float floorAlpha = 0.16 * depthFade * edge * vStored;
 
+        // The near edge is lit and the far edge falls away, which is what makes
+        // the box read as a SURFACE occupying space rather than as an outline
+        // drawn around one. Depth attenuation does the whole job; there is no
+        // light to sample and no shadow to cast.
+        //
+        // Deliberately not compensated for the environment: the brief is
+        // explicit that a lit scene should let the floor be MORE subtle, not
+        // less, so this only ever scales the floor down.
+        float floorLit = mix(1.0, mix(1.15, 0.55, vFrame), uEnvironment);
+        floorAlpha *= floorLit;
+
         // White rather than tinted with the accent. The box is scenery, and
         // sharing the waveform's hue made it read as part of the instrument;
         // neutral, it stays behind the stack and lets the accent mean one
@@ -163,6 +261,17 @@ void main()
         gl_FragColor = vec4(vec3(1.0), clamp(floorAlpha, 0.0, 1.0) * uAccent.a);
         return;
     }
+
+    // The key light. A narrow range on purpose - the scene should read as
+    // illuminated from somewhere, which needs far less contrast than it sounds
+    // like. Wider than this and the stack starts to look like a chrome object.
+    colour *= mix(1.0, mix(0.86, 1.14, vKey), uEnvironment);
+
+    // Atmospheric perspective, applied to the BACK of the stack only and never
+    // to the selected frame. Fading everything uniformly would flatten the
+    // hierarchy the frame weighting just established; this deepens it.
+    float haze = uEnvironment * 0.38 * vFrame * (1.0 - selected);
+    colour = mix(colour, uHaze, haze);
 
     // Drained of colour when the oscillator is bypassed, the same way the knobs
     // grey out. Luminance-weighted rather than an average, so a bypassed stack
@@ -371,6 +480,8 @@ void Wavetable3DRenderer::newOpenGLContextCreated()
     uniformAspect = uniform("uAspect");
     uniformAccent = uniform("uAccent");
     uniformGrayscale = uniform("uGrayscale");
+    uniformEnvironment = uniform("uEnvironment");
+    uniformHaze = uniform("uHaze");
 
     attribPosition = attribute("aPosition");
     attribNeighbour = attribute("aNeighbour");
@@ -383,6 +494,142 @@ void Wavetable3DRenderer::newOpenGLContextCreated()
 
     // A brand new buffer holds nothing, whatever the CPU vertices still say.
     geometryUploaded = false;
+
+    // The environment. A failure here is not fatal the way the stack's is: the
+    // scene simply keeps the flat background it had, which is why this does not
+    // record into shaderError and does not return early.
+    environmentProgram = std::make_unique<juce::OpenGLShaderProgram>(context);
+    if (environmentProgram->addVertexShader(
+            juce::OpenGLHelpers::translateVertexShaderToV3(kEnvironmentVertexShader))
+        && environmentProgram->addFragmentShader(
+            juce::OpenGLHelpers::translateFragmentShaderToV3(kEnvironmentFragmentShader))
+        && environmentProgram->link())
+    {
+        uniformEnvSubject = std::make_unique<juce::OpenGLShaderProgram::Uniform>(
+            *environmentProgram, "uSubject");
+        uniformEnvAspect = std::make_unique<juce::OpenGLShaderProgram::Uniform>(
+            *environmentProgram, "uAspect");
+        uniformEnvBase = std::make_unique<juce::OpenGLShaderProgram::Uniform>(
+            *environmentProgram, "uBase");
+        uniformEnvGlow = std::make_unique<juce::OpenGLShaderProgram::Uniform>(
+            *environmentProgram, "uGlow");
+        uniformEnvAmount = std::make_unique<juce::OpenGLShaderProgram::Uniform>(
+            *environmentProgram, "uAmount");
+        attribEnvCorner = std::make_unique<juce::OpenGLShaderProgram::Attribute>(
+            *environmentProgram, "aCorner");
+
+        // Four corners of clip space, uploaded once. The environment never
+        // changes shape, so there is nothing here to rebuild on a resize, on a
+        // camera move or on a new table.
+        constexpr float corners[] = { -1.0f, -1.0f,  1.0f, -1.0f,
+                                      -1.0f,  1.0f,  1.0f,  1.0f };
+        context.extensions.glGenBuffers(1, &environmentBuffer);
+        context.extensions.glBindBuffer(juce::gl::GL_ARRAY_BUFFER, environmentBuffer);
+        context.extensions.glBufferData(juce::gl::GL_ARRAY_BUFFER,
+                                        static_cast<GLsizeiptr>(sizeof(corners)),
+                                        corners, juce::gl::GL_STATIC_DRAW);
+        context.extensions.glBindBuffer(juce::gl::GL_ARRAY_BUFFER, 0);
+    }
+    else
+    {
+        DBG("Wavetable3DRenderer environment shader failed: "
+            << environmentProgram->getLastError());
+        environmentProgram.reset();
+    }
+}
+
+void Wavetable3DRenderer::setEnvironmentEnabled(bool shouldBeEnabled)
+{
+    if (environmentEnabled.load() == shouldBeEnabled) { return; }
+
+    environmentEnabled.store(shouldBeEnabled);
+    if (context.isAttached()) { context.triggerRepaint(); }
+}
+
+Wavetable3DRenderer::LuminanceProbe Wavetable3DRenderer::getLuminanceProbe() const
+{
+    const std::scoped_lock lock(probeMutex);
+    return luminanceProbe;
+}
+
+void Wavetable3DRenderer::drawEnvironment(float aspect)
+{
+    if (environmentProgram == nullptr || environmentBuffer == 0)
+    {
+        return;
+    }
+
+    environmentProgram->use();
+
+    if (uniformEnvAspect != nullptr) { uniformEnvAspect->set(aspect); }
+
+    // Where the light sits, in normalised device coordinates. Behind the
+    // SUBJECT, not behind the middle of the panel: the stack does not project
+    // symmetrically about the centre, and a pool that ignores where it actually
+    // landed lights the empty half of the frame.
+    //
+    // Lifted a little above it, which is where a key light goes.
+    auto subjectX = 0.0f;
+    auto subjectY = 0.12f;
+    if (! vertices.empty() && aspect > 0.0f)
+    {
+        const auto bounds = projectedBounds(camera, aspect);
+        if (bounds.getWidth() > 0.0f && bounds.getWidth() < 1.0e5f)
+        {
+            subjectX = bounds.getCentreX();
+            subjectY = bounds.getCentreY() + 0.12f;
+        }
+    }
+    if (uniformEnvSubject != nullptr) { uniformEnvSubject->set(subjectX, subjectY); }
+
+    if (uniformEnvBase != nullptr)
+    {
+        uniformEnvBase->set(backgroundColour.getFloatRed(),
+                            backgroundColour.getFloatGreen(),
+                            backgroundColour.getFloatBlue());
+    }
+    if (uniformEnvGlow != nullptr)
+    {
+        // Built from the accent, but mostly drained of it. A background that
+        // carries the accent at strength competes with the waveform for the
+        // same hue; at a fifth saturation it reads as "the air in here is
+        // faintly the colour of the instrument", which is what a studio
+        // backdrop does.
+        const auto glow = accentColour.withMultipliedSaturation(0.22f);
+        constexpr auto lift = 0.085f;
+        uniformEnvGlow->set(glow.getFloatRed() * lift,
+                            glow.getFloatGreen() * lift,
+                            glow.getFloatBlue() * lift);
+    }
+    if (uniformEnvAmount != nullptr)
+    {
+        uniformEnvAmount->set(environmentEnabled.load() ? 1.0f : 0.0f);
+    }
+
+    // No depth, no blend: this is the deepest thing in the scene and it covers
+    // every pixel, so there is nothing to test against and nothing to blend
+    // with.
+    juce::gl::glDisable(juce::gl::GL_DEPTH_TEST);
+    juce::gl::glDisable(juce::gl::GL_BLEND);
+
+    context.extensions.glBindBuffer(juce::gl::GL_ARRAY_BUFFER, environmentBuffer);
+    if (attribEnvCorner != nullptr)
+    {
+        context.extensions.glVertexAttribPointer(
+            static_cast<GLuint>(attribEnvCorner->attributeID), 2, juce::gl::GL_FLOAT,
+            juce::gl::GL_FALSE, 2 * static_cast<GLsizei>(sizeof(float)), nullptr);
+        context.extensions.glEnableVertexAttribArray(
+            static_cast<GLuint>(attribEnvCorner->attributeID));
+    }
+
+    juce::gl::glDrawArrays(juce::gl::GL_TRIANGLE_STRIP, 0, 4);
+
+    if (attribEnvCorner != nullptr)
+    {
+        context.extensions.glDisableVertexAttribArray(
+            static_cast<GLuint>(attribEnvCorner->attributeID));
+    }
+    context.extensions.glBindBuffer(juce::gl::GL_ARRAY_BUFFER, 0);
 }
 
 void Wavetable3DRenderer::openGLContextClosing()
@@ -394,12 +641,28 @@ void Wavetable3DRenderer::openGLContextClosing()
     }
     geometryUploaded = false;
 
+    if (environmentBuffer != 0)
+    {
+        context.extensions.glDeleteBuffers(1, &environmentBuffer);
+        environmentBuffer = 0;
+    }
+
+    uniformEnvSubject.reset();
+    uniformEnvAspect.reset();
+    uniformEnvBase.reset();
+    uniformEnvGlow.reset();
+    uniformEnvAmount.reset();
+    attribEnvCorner.reset();
+    environmentProgram.reset();
+
     uniformViewProjection.reset();
     uniformSelected.reset();
     uniformHalfWidth.reset();
     uniformAspect.reset();
     uniformAccent.reset();
     uniformGrayscale.reset();
+    uniformEnvironment.reset();
+    uniformHaze.reset();
     attribPosition.reset();
     attribNeighbour.reset();
     attribSide.reset();
@@ -842,6 +1105,11 @@ void Wavetable3DRenderer::renderOpenGL()
     juce::OpenGLHelpers::clear(backgroundColour);
     juce::gl::glViewport(0, 0, width, height);
 
+    // The environment is drawn before anything else and covers every pixel, so
+    // the clear above is what shows only when the environment shader failed to
+    // build.
+    drawEnvironment(static_cast<float>(width) / static_cast<float>(height));
+
     const auto hadGeometry = ! vertices.empty();
     rebuildVertices();
     if (! vertices.empty() && (! hadGeometry || ! geometryUploaded))
@@ -908,6 +1176,18 @@ void Wavetable3DRenderer::renderOpenGL()
     if (uniformGrayscale != nullptr)
     {
         uniformGrayscale->set(bypassed.load() ? 1.0f : 0.0f);
+    }
+    if (uniformEnvironment != nullptr)
+    {
+        uniformEnvironment->set(environmentEnabled.load() ? 1.0f : 0.0f);
+    }
+    if (uniformHaze != nullptr)
+    {
+        // What distance fades towards: the background, lifted slightly, so the
+        // back of the stack settles INTO the environment rather than being
+        // subtracted from it.
+        const auto haze = backgroundColour.brighter(0.22f);
+        uniformHaze->set(haze.getFloatRed(), haze.getFloatGreen(), haze.getFloatBlue());
     }
 
     context.extensions.glBindBuffer(juce::gl::GL_ARRAY_BUFFER, vertexBuffer);
@@ -1002,6 +1282,64 @@ void Wavetable3DRenderer::renderOpenGL()
             }
         }
         litPixels.store(lit);
+
+        // Regions, so the environment can be checked as numbers. A vignette
+        // that is "clearly there" and one that is not are the same sentence;
+        // corner luminance against centre luminance is not.
+        //
+        // Every pixel, geometry included. Masking the stack out was tried and
+        // is worse: the regions then measure different SAMPLE SETS as the
+        // camera moves, so a number changing tells you nothing about whether
+        // the picture changed. What the environment does to the whole frame is
+        // the honest measurement, and the stack is a fixed contribution to it
+        // while the camera is still.
+        struct Accumulator { double sum { 0.0 }; int count { 0 };
+                             float mean() const { return count > 0
+                                                    ? static_cast<float>(sum / count) : 0.0f; } };
+        Accumulator centre, corners, upper, lower;
+        auto darkest = 1.0f;
+        auto brightest = 0.0f;
+
+        const auto halfW = width * 0.5;
+        const auto halfH = height * 0.5;
+        for (int y = 0; y < height; ++y)
+        {
+            for (int x = 0; x < width; ++x)
+            {
+                const auto i = static_cast<std::size_t>(y) * static_cast<std::size_t>(width)
+                               + static_cast<std::size_t>(x);
+                const auto r = pixels[i * 4];
+                const auto g = pixels[i * 4 + 1];
+                const auto b = pixels[i * 4 + 2];
+
+                const auto luma = static_cast<float>(0.299 * r + 0.587 * g + 0.114 * b) / 255.0f;
+                darkest = juce::jmin(darkest, luma);
+                brightest = juce::jmax(brightest, luma);
+
+                // Normalised distance from the middle, 0 at the centre and 1 at
+                // a corner, aspect-corrected so the regions are not skewed by a
+                // wide panel.
+                const auto dx = (static_cast<double>(x) - halfW) / halfW;
+                const auto dy = (static_cast<double>(y) - halfH) / halfH;
+                const auto radius = std::sqrt(dx * dx + dy * dy) / std::sqrt(2.0);
+
+                if (radius < 0.25) { centre.sum += luma; ++centre.count; }
+                else if (radius > 0.80) { corners.sum += luma; ++corners.count; }
+
+                if (dy > 0.6) { upper.sum += luma; ++upper.count; }
+                else if (dy < -0.6) { lower.sum += luma; ++lower.count; }
+            }
+        }
+
+        {
+            const std::scoped_lock lock(probeMutex);
+            luminanceProbe.centre = centre.mean();
+            luminanceProbe.corners = corners.mean();
+            luminanceProbe.upper = upper.mean();
+            luminanceProbe.lower = lower.mean();
+            luminanceProbe.darkest = darkest;
+            luminanceProbe.brightest = brightest;
+        }
         // Recorded from the READ size, not the component size: the
         // framebuffer is at the display scale, so a Retina panel audits four
         // times as many pixels as the component has points.
