@@ -114,6 +114,39 @@ else
         "application team '${APP_TEAM}' vs installer team '${INSTALLER_TEAM}'"
 fi
 
+# The certificate being INSTALLED and the certificate being USABLE HERE are
+# different claims, and only the second one matters.
+#
+# codesign needs authorised access to the private key, which needs a security
+# session to grant it. A shell without one - anything not launched from the
+# user's own Terminal, which is to say most automation - fails with
+# `errSecInternalComponent` while `find-identity` still cheerfully reports the
+# identity as valid. That cost a full eight-minute release build here before it
+# surfaced, at the signing step, after everything had been compiled.
+#
+# So this signs something. A throwaway file, ad-hoc first to prove codesign
+# itself works, then for real.
+SIGN_PROBE="$(mktemp -t px3signprobe)"
+printf 'probe' > "${SIGN_PROBE}"
+if ! codesign --force --sign - "${SIGN_PROBE}" >/dev/null 2>&1; then
+  check "Identity_CanActuallySignHere" false "codesign cannot sign at all, even ad-hoc"
+elif [[ -z "${APP_IDENTITY}" ]]; then
+  check "Identity_CanActuallySignHere" false "no Developer ID Application identity to try"
+else
+  SIGN_PROBE_OUT="$(codesign --force --options runtime --sign "${APP_IDENTITY}" \
+                             "${SIGN_PROBE}" 2>&1)"
+  if [[ $? -eq 0 && "${SIGN_PROBE_OUT}" != *"errSec"* ]]; then
+    check "Identity_CanActuallySignHere" true "signed a throwaway file with the real identity"
+  elif [[ "${SIGN_PROBE_OUT}" == *"errSecInternalComponent"* ]]; then
+    check "Identity_CanActuallySignHere" false \
+          "errSecInternalComponent - the key exists but this shell has no security session to unlock it. Run the release from your own Terminal, or grant non-interactive access with: security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k <login-password> ~/Library/Keychains/login.keychain-db"
+  else
+    check "Identity_CanActuallySignHere" false \
+          "$(printf '%s' "${SIGN_PROBE_OUT}" | head -n1)"
+  fi
+fi
+rm -f "${SIGN_PROBE}"
+
 # Credentials are proved against Apple rather than merely being present: a
 # stored profile whose app-specific password has been revoked looks identical
 # to a working one until something is submitted.
