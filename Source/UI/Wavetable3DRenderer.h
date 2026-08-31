@@ -90,6 +90,18 @@ public:
     // inside [-1, 1] on both axes is on screen; anything outside is clipped.
     juce::Rectangle<float> projectedBounds(const Camera& forCamera, float aspect) const;
 
+    // The floor, for the tests: it has to sit beneath every point the waveform
+    // reaches and span the table, or it is not a floor.
+    struct FloorInfo
+    {
+        int edgeCount { 0 };
+        float y { 0.0f };
+        float lowestWaveformY { 0.0f };
+        float halfWidth { 0.0f };
+        float halfDepth { 0.0f };
+    };
+    FloorInfo getFloorInfo() const;
+
     // The distance at which the whole stack fits, with `margin` of the viewport
     // left around it, at the WORST orientation the camera can reach - so
     // orbiting cannot push it off screen either.
@@ -105,6 +117,11 @@ public:
 
     // Around the default azimuth of 0.62, not the whole circle - see
     // mouseDrag and distanceThatFits.
+    // How far the floor sits below the lowest point the waveform reaches.
+    // Named once and used once - the waveform must not intersect it at any
+    // scan position, and that relationship should be adjustable in one place.
+    static constexpr float kFloorDrop = 0.18f;
+
     static constexpr float kMinAzimuth = -0.30f;
     static constexpr float kMaxAzimuth = 1.55f;
 
@@ -119,6 +136,7 @@ private:
     void openGLContextClosing() override;
 
     void rebuildVertices();
+    void buildFloor();
     void uploadGeometry();
     juce::Matrix3D<float> buildViewProjection(float aspect) const;
     juce::Matrix3D<float> buildViewProjection(float aspect, const Camera& forCamera) const;
@@ -138,6 +156,7 @@ private:
     std::unique_ptr<juce::OpenGLShaderProgram::Attribute> attribSide;
     std::unique_ptr<juce::OpenGLShaderProgram::Attribute> attribFrame;
     std::unique_ptr<juce::OpenGLShaderProgram::Attribute> attribStored;
+    std::unique_ptr<juce::OpenGLShaderProgram::Attribute> attribFloor;
 
     GLuint vertexBuffer { 0 };
 
@@ -148,6 +167,7 @@ private:
         float side;
         float frame;
         float stored;
+        float floorFlag;
     };
 
     // Rebuilt only when the TABLE changes. Scanning, orbiting and resizing are
@@ -155,6 +175,10 @@ private:
     std::vector<Vertex> vertices;
     int verticesPerFrame { 0 };
     int frameCount { 0 };
+
+    // The floor's vertices live in the same buffer, after the frames.
+    int floorFirstVertex { 0 };
+    int floorEdgeCount { 0 };
 
     // Whether the CPU vertices have been uploaded to the CURRENT context's
     // buffer.

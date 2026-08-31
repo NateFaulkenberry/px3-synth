@@ -2876,6 +2876,64 @@ void testWavetable()
                   + (tooSmall.isEmpty() ? "" : "; too small: " + tooSmall.joinIntoString(", ")));
     }
 
+    // ---- the floor ----------------------------------------------------------
+    // A rectangular perimeter beneath the stack, in the same coordinate system
+    // so it turns with the camera. Four edges, not a grid: the rectangle alone
+    // carries the width, the depth and the perspective, and subdividing it
+    // would turn the picture into a graph.
+    {
+        juce::StringArray wrong;
+        juce::String detail;
+
+        for (int i = 0; i < static_cast<int>(px3::factoryWavetables().size()); ++i)
+        {
+            PX3SynthAudioProcessor processor;
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+            processor.loadFactoryWavetable(0, i);
+
+            Wavetable3DRenderer renderer;
+            renderer.setSize(290, 149);
+            renderer.setDisplay(processor.getWavetableDisplay(0, 48, 128));
+            renderer.buildGeometryForTesting();
+
+            const auto floor = renderer.getFloorInfo();
+            const auto name = juce::String(px3::factoryWavetables()[static_cast<std::size_t>(i)].name);
+
+            if (floor.edgeCount != 4)
+            {
+                wrong.add(name + ": " + juce::String(floor.edgeCount) + " edges");
+            }
+
+            // Beneath EVERY point the waveform reaches, at every scan position -
+            // a floor the waveform passes through is not a floor.
+            if (floor.y >= floor.lowestWaveformY)
+            {
+                wrong.add(name + ": floor at " + fmt(floor.y, 3) + " is not below the waveform at "
+                          + fmt(floor.lowestWaveformY, 3));
+            }
+
+            if (floor.halfWidth < 0.9f || floor.halfDepth < 0.9f)
+            {
+                wrong.add(name + ": spans only " + fmt(floor.halfWidth, 2) + " x "
+                          + fmt(floor.halfDepth, 2));
+            }
+
+            if (i == 0)
+            {
+                detail = "floor at y " + fmt(floor.y, 3) + ", waveform bottoms out at "
+                         + fmt(floor.lowestWaveformY, 3) + ", spans "
+                         + fmt(floor.halfWidth * 2.0f, 1) + " x " + fmt(floor.halfDepth * 2.0f, 1);
+            }
+        }
+
+        check("Wavetable3D_TheFloorIsARectangleBeneathTheStack", wrong.isEmpty(),
+              wrong.isEmpty() ? detail + ", on all "
+                                    + juce::String(static_cast<int>(px3::factoryWavetables().size()))
+                                    + " tables"
+                              : wrong.joinIntoString("; "));
+    }
+
     // ---- the 3D renderer's camera ------------------------------------------
     // The rendering itself needs a GL context and cannot be checked here, but
     // the camera can - and an orbit control that can be dragged into an

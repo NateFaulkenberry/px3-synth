@@ -26,6 +26,7 @@ attribute vec3 aNeighbour;
 attribute float aSide;
 attribute float aFrame;
 attribute float aStored;
+attribute float aFloor;
 
 uniform mat4 uViewProjection;
 uniform float uHalfWidth;
@@ -34,6 +35,7 @@ uniform float uAspect;
 varying float vFrame;
 varying float vSide;
 varying float vStored;
+varying float vFloor;
 varying float vDepth;
 
 void main()
@@ -61,6 +63,7 @@ void main()
     vFrame = aFrame;
     vSide = aSide;
     vStored = aStored;
+    vFloor = aFloor;
     vDepth = clamp(here.z / max(here.w, 0.0001) * 0.5 + 0.5, 0.0, 1.0);
 }
 )";
@@ -69,6 +72,7 @@ const char* kFragmentShader = R"(
 varying float vFrame;
 varying float vSide;
 varying float vStored;
+varying float vFloor;
 varying float vDepth;
 
 uniform float uSelected;
@@ -122,6 +126,23 @@ void main()
     // Emissive lift on the selected frame, added rather than mixed so it reads
     // as light rather than as a lighter colour.
     colour += hot * selected * glow * 0.55;
+
+    // The floor is a spatial reference, not part of the instrument. It takes
+    // the same depth fade as the stack - so the far edge sits back and the near
+    // edge comes forward, which is what makes it read as a plane rather than as
+    // a rectangle drawn on the glass - and none of the selection treatment.
+    if (vFloor > 0.5)
+    {
+        float edge = smoothstep(0.0, 0.7, across);
+        float floorAlpha = 0.16 * depthFade * edge;
+        vec3 floorColour = mix(base, vec3(1.0), 0.25);
+
+        float floorLuma = dot(floorColour, vec3(0.299, 0.587, 0.114));
+        floorColour = mix(floorColour, vec3(floorLuma), uGrayscale);
+
+        gl_FragColor = vec4(floorColour, clamp(floorAlpha, 0.0, 1.0) * uAccent.a);
+        return;
+    }
 
     // Drained of colour when the oscillator is bypassed, the same way the knobs
     // grey out. Luminance-weighted rather than an average, so a bypassed stack
@@ -336,6 +357,7 @@ void Wavetable3DRenderer::newOpenGLContextCreated()
     attribSide = attribute("aSide");
     attribFrame = attribute("aFrame");
     attribStored = attribute("aStored");
+    attribFloor = attribute("aFloor");
 
     context.extensions.glGenBuffers(1, &vertexBuffer);
 
@@ -363,6 +385,7 @@ void Wavetable3DRenderer::openGLContextClosing()
     attribSide.reset();
     attribFrame.reset();
     attribStored.reset();
+    attribFloor.reset();
     program.reset();
 }
 
@@ -448,7 +471,100 @@ void Wavetable3DRenderer::rebuildVertices()
         }
     }
 
+    buildFloor();
     geometryUploaded = false;
+}
+
+Wavetable3DRenderer::FloorInfo Wavetable3DRenderer::getFloorInfo() const
+{
+    FloorInfo info;
+    info.edgeCount = floorEdgeCount;
+    if (floorEdgeCount <= 0 || floorFirstVertex <= 0)
+    {
+        return info;
+    }
+
+    info.lowestWaveformY = 1.0e9f;
+    for (int i = 0; i < floorFirstVertex; ++i)
+    {
+        info.lowestWaveformY = juce::jmin(info.lowestWaveformY,
+                                          vertices[static_cast<std::size_t>(i)].position[1]);
+    }
+
+    info.y = vertices[static_cast<std::size_t>(floorFirstVertex)].position[1];
+    for (std::size_t i = static_cast<std::size_t>(floorFirstVertex); i < vertices.size(); ++i)
+    {
+        info.halfWidth = juce::jmax(info.halfWidth, std::abs(vertices[i].position[0]));
+        info.halfDepth = juce::jmax(info.halfDepth, std::abs(vertices[i].position[2]));
+    }
+    return info;
+}
+
+void Wavetable3DRenderer::buildFloor()
+{
+    // A rectangular perimeter beneath the stack, in the same coordinate system,
+    // so it turns with the camera and carries the perspective rather than being
+    // drawn on the glass.
+    //
+    // Deliberately just the perimeter. Subdividing it into cells would make the
+    // picture a graph; the rectangle alone already says how wide the waveform
+    // is, how deep the table is, and which way the camera is looking.
+    //
+    // Four separate edges rather than one loop, because the ribbon takes its
+    // perpendicular from the direction to the NEXT point, and a single strip
+    // running through the corners would pinch at each of them.
+    floorFirstVertex = static_cast<int>(vertices.size());
+    floorEdgeCount = 0;
+
+    if (vertices.empty())
+    {
+        return;
+    }
+
+    auto lowest = 0.0f;
+    for (const auto& vertex : vertices)
+    {
+        lowest = juce::jmin(lowest, vertex.position[1]);
+    }
+    const auto floorY = lowest - kFloorDrop;
+
+    const std::array<std::array<float, 4>, 4> edges { {
+        { { -kWaveformHalfWidth, -1.0f,  kWaveformHalfWidth, -1.0f } },
+        { {  kWaveformHalfWidth, -1.0f,  kWaveformHalfWidth,  1.0f } },
+        { {  kWaveformHalfWidth,  1.0f, -kWaveformHalfWidth,  1.0f } },
+        { { -kWaveformHalfWidth,  1.0f, -kWaveformHalfWidth, -1.0f } },
+    } };
+
+    for (const auto& edge : edges)
+    {
+        for (int end = 0; end < 2; ++end)
+        {
+            const auto hereX = end == 0 ? edge[0] : edge[2];
+            const auto hereZ = end == 0 ? edge[1] : edge[3];
+            const auto nextX = end == 0 ? edge[2] : edge[0];
+            const auto nextZ = end == 0 ? edge[3] : edge[1];
+
+            for (const auto side : { -1.0f, 1.0f })
+            {
+                Vertex vertex {};
+                vertex.position[0] = hereX;
+                vertex.position[1] = floorY;
+                vertex.position[2] = hereZ;
+                vertex.neighbour[0] = nextX;
+                vertex.neighbour[1] = floorY;
+                vertex.neighbour[2] = nextZ;
+                vertex.side = side;
+                // Its own depth drives the same fade the stack uses, so the far
+                // edge sits back and the near edge comes forward - which is what
+                // makes it read as a plane rather than as an outline.
+                vertex.frame = (hereZ + 1.0f) * 0.5f;
+                vertex.stored = 1.0f;
+                vertex.floorFlag = 1.0f;
+                vertices.push_back(vertex);
+            }
+        }
+        ++floorEdgeCount;
+    }
 }
 
 void Wavetable3DRenderer::uploadGeometry()
@@ -744,6 +860,18 @@ void Wavetable3DRenderer::renderOpenGL()
     bind(attribSide, 1, offsetof(Vertex, side));
     bind(attribFrame, 1, offsetof(Vertex, frame));
     bind(attribStored, 1, offsetof(Vertex, stored));
+    bind(attribFloor, 1, offsetof(Vertex, floorFlag));
+
+    // The floor first, so the stack blends over it rather than the other way
+    // round - it is the environment, not part of the instrument.
+    for (int e = 0; e < floorEdgeCount; ++e)
+    {
+        const auto first = floorFirstVertex + e * 4;
+        if (first >= 0 && first + 4 <= static_cast<int>(vertices.size()))
+        {
+            juce::gl::glDrawArrays(juce::gl::GL_TRIANGLE_STRIP, first, 4);
+        }
+    }
 
     // Back to front, so the nearer frames blend over the ones behind them.
     //
@@ -774,6 +902,7 @@ void Wavetable3DRenderer::renderOpenGL()
     unbind(attribSide);
     unbind(attribFrame);
     unbind(attribStored);
+    unbind(attribFloor);
 
     context.extensions.glBindBuffer(juce::gl::GL_ARRAY_BUFFER, 0);
 

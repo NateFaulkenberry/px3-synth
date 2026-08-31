@@ -249,7 +249,40 @@ Result: every table fills **92.5-93.9%** of the frame, centred, at every
 orientation the camera can reach, at both a wide and a square aspect. Held by
 `Wavetable3D_EveryTableIsFullyInFrame` and `Wavetable3D_TheStackFillsTheView`.
 
-## I. Status
+## I. The floor
+
+A rectangular perimeter beneath the stack, in the same coordinate system, so it
+turns with the camera and carries the perspective rather than being drawn on the
+glass.
+
+**Just the perimeter, and deliberately so.** The rectangle alone already says how
+wide the waveform is, how deep the table is and which way the camera is looking.
+Subdividing it into cells would turn the picture into a graph, which is the one
+thing this is not meant to look like.
+
+Built as four separate ribbon edges rather than one closed loop: the ribbon takes
+its perpendicular from the direction to the next point, so a single strip running
+through the corners would pinch at each of them. Four straight runs leave a notch
+a couple of pixels across that nothing can see.
+
+It rides in the same vertex buffer and the same shader as the stack, flagged by
+one attribute. That flag gets it a fixed low alpha and none of the selection
+treatment, while it keeps the stack's depth fade - so the far edge sits back and
+the near edge comes forward, which is what makes it read as a plane rather than
+as an outline. It greys out with the oscillator like everything else.
+
+Drawn first, before the frames, so the stack blends over it: it is the
+environment, not part of the instrument.
+
+Its height is `lowest waveform point - kFloorDrop`, computed from the geometry
+rather than assumed, so it stays beneath the waveform whatever the table
+contains. Held by a test across all eight factory tables: floor at y -0.591 where
+the waveform bottoms out at -0.411, spanning the full 2.0 x 2.0 of the table.
+
+Including it in the auto-fit costs a little of the stack's size - the framing has
+to hold the floor too - which is the honest trade for having it in frame at all.
+
+## J. Status
 
 Implemented and building for AU, VST3 and Standalone, with the camera under test
 (elevation clamped both ways, azimuth free, zoom stopped, reset, and data
