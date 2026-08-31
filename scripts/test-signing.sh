@@ -129,10 +129,29 @@ fi
 if [[ ${#NOTARY_AUTH[@]} -eq 0 ]]; then
   check "Notary_CredentialsAreConfigured" false \
         "set NOTARY_PROFILE (see: xcrun notarytool store-credentials), or NOTARY_KEY/NOTARY_KEY_ID/NOTARY_ISSUER, or APPLE_ID/APPLE_APP_PASSWORD/APPLE_TEAM_ID"
-elif xcrun notarytool history "${NOTARY_AUTH[@]}" --limit 1 >/dev/null 2>&1; then
-  check "Notary_CredentialsAreAcceptedByApple" true "authenticated, history readable"
 else
-  check "Notary_CredentialsAreAcceptedByApple" false "Apple rejected these credentials"
+  # No --limit. notarytool 1.1.2 does not have that option, and passing it made
+  # this check fail on every machine with that version while reporting the
+  # reason as "Apple rejected these credentials" - a working profile
+  # misdiagnosed as a revoked one, which is the most expensive kind of wrong
+  # answer a preflight can give.
+  #
+  # The output is captured so a usage error can be told apart from a refusal.
+  # An empty account still authenticates and answers "No submission history",
+  # which is a pass: the round-trip is the proof, not the contents.
+  NOTARY_OUT="$(xcrun notarytool history "${NOTARY_AUTH[@]}" 2>&1)"
+  if [[ "${NOTARY_OUT}" == *"Unknown option"* || "${NOTARY_OUT}" == *"Usage:"* ]]; then
+    check "Notary_CredentialsAreAcceptedByApple" false \
+          "notarytool rejected the command, not the credentials: $(printf '%s' "${NOTARY_OUT}" | head -n1)"
+  elif [[ "${NOTARY_OUT}" == *"No submission history"* ]]; then
+    check "Notary_CredentialsAreAcceptedByApple" true \
+          "authenticated; no submissions yet"
+  elif [[ "${NOTARY_OUT}" == *"createdDate"* || "${NOTARY_OUT}" == *"id: "* ]]; then
+    check "Notary_CredentialsAreAcceptedByApple" true "authenticated, history readable"
+  else
+    check "Notary_CredentialsAreAcceptedByApple" false \
+          "Apple rejected these credentials: $(printf '%s' "${NOTARY_OUT}" | head -n1)"
+  fi
 fi
 
 if [[ "${MODE}" == "preflight" ]]; then
