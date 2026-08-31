@@ -474,7 +474,11 @@ juce::Matrix3D<float> Wavetable3DRenderer::buildViewProjection(float aspect) con
         (forward.x * eye.x + forward.y * eye.y + forward.z * eye.z),
         1.0f);
 
-    return view * projection;
+    // projection * view, not the other way round. juce::Matrix3D multiplies in
+    // the column-major convention, so a * b applies b FIRST - and the reversed
+    // order projected the stack somewhere off screen entirely, which looked
+    // exactly like a renderer that was running and drawing nothing.
+    return projection * view;
 }
 
 void Wavetable3DRenderer::renderOpenGL()
@@ -595,4 +599,35 @@ void Wavetable3DRenderer::renderOpenGL()
     context.extensions.glBindBuffer(juce::gl::GL_ARRAY_BUFFER, 0);
 
     framesRendered.fetch_add(1);
+
+    if (pixelAudit.load())
+    {
+        // Read back and count anything brighter than the cleared background.
+        // Expensive, and only ever on for the diagnostic.
+        const auto pixelCount = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+        std::vector<juce::uint8> pixels(pixelCount * 4, 0);
+        juce::gl::glReadPixels(0, 0, width, height, juce::gl::GL_RGBA,
+                               juce::gl::GL_UNSIGNED_BYTE, pixels.data());
+
+        const auto backR = backgroundColour.getRed();
+        const auto backG = backgroundColour.getGreen();
+        const auto backB = backgroundColour.getBlue();
+
+        int lit = 0;
+        for (std::size_t i = 0; i < pixelCount; ++i)
+        {
+            const auto r = pixels[i * 4];
+            const auto g = pixels[i * 4 + 1];
+            const auto b = pixels[i * 4 + 2];
+            if (std::abs(r - backR) > 8 || std::abs(g - backG) > 8 || std::abs(b - backB) > 8)
+            {
+                ++lit;
+            }
+        }
+        litPixels.store(lit);
+        // Recorded from the READ size, not the component size: the
+        // framebuffer is at the display scale, so a Retina panel audits four
+        // times as many pixels as the component has points.
+        auditedPixels.store(static_cast<int>(pixelCount));
+    }
 }

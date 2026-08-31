@@ -47,6 +47,14 @@ public:
     // rather than as a renderer that quietly does nothing.
     juce::String getShaderError() const;
 
+    // Diagnostics. Counting render CALLS proves only that the thread is alive -
+    // it says nothing about whether anything was drawn, which is exactly the
+    // failure this had. With the audit on, the framebuffer is read back and the
+    // lit pixels counted.
+    void setPixelAudit(bool shouldAudit) { pixelAudit.store(shouldAudit); }
+    int getLitPixelCount() const noexcept { return litPixels.load(); }
+    int getAuditedPixelCount() const noexcept { return auditedPixels.load(); }
+
     void resized() override;
     void visibilityChanged() override;
     void mouseDown(const juce::MouseEvent& event) override;
@@ -131,6 +139,9 @@ private:
 
     std::atomic<float> selectedPosition { 0.0f };
     std::atomic<int> framesRendered { 0 };
+    std::atomic<bool> pixelAudit { false };
+    std::atomic<int> litPixels { -1 };
+    std::atomic<int> auditedPixels { 0 };
     juce::Colour accentColour { juce::Colour::fromRGB(96, 168, 255) };
     juce::Colour backgroundColour { juce::Colour::fromRGB(12, 12, 14) };
 

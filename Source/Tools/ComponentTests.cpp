@@ -20739,6 +20739,7 @@ int main(int argc, char* argv[])
             }
             display.frames.push_back(std::move(row));
         }
+        host->renderer.setPixelAudit(true);
         host->renderer.setDisplay(display);
         host->renderer.setPosition(0.4f);
 
@@ -20757,6 +20758,19 @@ int main(int argc, char* argv[])
         std::printf("  rendering:    %s\n", rendering ? "YES" : "no");
         std::printf("  shader error: %s\n", error.isEmpty() ? "(none)" : error.toRawUTF8());
 
+        // A few frames with the audit on, then ask what actually reached the
+        // framebuffer. "It rendered" and "something is visible" are different
+        // claims and only the second one matters.
+        for (int i = 0; i < 10; ++i)
+        {
+            juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
+        }
+        const auto lit = host->renderer.getLitPixelCount();
+        const auto audited = host->renderer.getAuditedPixelCount();
+        std::printf("  lit pixels:   %d of %d (%.1f%% of the framebuffer)\n",
+                    lit, audited,
+                    audited > 0 ? 100.0 * lit / audited : 0.0);
+
         // A few more frames, which is where a bad draw range would take the
         // process down rather than merely fail to draw.
         for (int i = 0; i < 20; ++i)
@@ -20767,10 +20781,11 @@ int main(int argc, char* argv[])
         std::printf("  survived 20 more frames with the scan moving\n");
 
         host.reset();
-        std::printf("\n  %s\n\n", rendering && error.isEmpty()
+        const auto visible = lit > 200;
+        std::printf("\n  %s\n\n", rendering && error.isEmpty() && visible
                                     ? "GPU renderer is working."
-                                    : "GPU renderer is NOT working.");
-        return rendering && error.isEmpty() ? 0 : 1;
+                                    : "GPU renderer is NOT drawing anything.");
+        return rendering && error.isEmpty() && visible ? 0 : 1;
     }
 
     if (filter == "installpresets")
