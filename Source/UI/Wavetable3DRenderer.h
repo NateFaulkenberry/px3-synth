@@ -4,6 +4,7 @@
 
 #include "../DSP/Wavetable.h"
 
+#include <algorithm>
 #include <mutex>
 
 // The wavetable stack, rendered on the GPU.
@@ -77,6 +78,21 @@ public:
         float lower { 0.0f };
         float darkest { 0.0f };
         float brightest { 0.0f };
+
+        // How crisp the lines are, which "looks blurry" needs turning into
+        // before it can be acted on.
+        //
+        // softFraction: the share of the frame sitting at a PARTIAL brightness
+        // between background and full - which is exactly what a soft edge is.
+        // A crisp picture is close to bimodal, so this is small.
+        //
+        // steepestEdges: the mean of the top 1% of adjacent-pixel luminance
+        // jumps. Total variation across a line is the same however soft it is
+        // - up and back down - so an average gradient cannot tell sharp from
+        // blurred. The size of the BIGGEST jumps can: a hard edge spends it in
+        // one step, a soft one spreads it over several.
+        float softFraction { 0.0f };
+        float steepestEdges { 0.0f };
     };
     LuminanceProbe getLuminanceProbe() const;
 

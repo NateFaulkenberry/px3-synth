@@ -219,11 +219,16 @@ void main()
     float across01 = clamp(across * uHalfWidthPixels, 0.0, 1.0);
     float core = across01 * across01 * (3.0 - 2.0 * across01);
 
-    // The halo, still measured across the whole ribbon - because a glow SHOULD
-    // be soft. Kept off the base alpha of every ribbon, where it was the other
-    // half of the blur, and spent only where it means something: the emissive
-    // lift on the selected frame and the light spilling off the floor's rails.
-    float glow = smoothstep(0.0, 1.0, across);
+    // The halo. Soft, because a glow should be - but bounded in PIXELS like
+    // the core, not spread across the ribbon's width.
+    //
+    // Spreading it across the width is what made thickening the lines make
+    // them blurrier: the halo on the selected frame grew with the ribbon, so
+    // the brightest thing on screen picked up an aura twice the size while its
+    // core got sharper. Two and a half pixels, whatever the line weight.
+    float glowPixels = min(uHalfWidthPixels, 2.5);
+    float glow01 = clamp(across * uHalfWidthPixels / glowPixels, 0.0, 1.0);
+    float glow = smoothstep(0.0, 1.0, glow01);
 
     // Frames the table does not actually contain are drawn weaker, so the
     // picture says what is in the wavetable rather than implying that every
@@ -289,10 +294,6 @@ void main()
         // instrument is.
         float pool = exp(-toSelected * toSelected * 30.0) * uEnvironment;
         floorAlpha += pool * (0.26 * core + 0.16 * glow);
-
-        // The rim. Broader than the core and much weaker, so an edge reads as
-        // having a little light spilling off it rather than as a thicker line.
-        floorAlpha += uEnvironment * 0.05 * glow * depthFade * vStored;
 
         // Light adds colour as well as brightness: a white rail under a blue
         // source is not white. Away from the pool the box stays neutral, which
@@ -1010,26 +1011,43 @@ void Wavetable3DRenderer::autoFrame(float aspect)
     // Centre, then fit, then centre again. The two interact - pulling back
     // changes where the stack sits in frame - so a couple of passes settles it
     // where one would leave the picture slightly low.
-    framedCamera = Camera {};
-    for (int pass = 0; pass < 3; ++pass)
+    const auto frame = [this, aspect](Camera start)
     {
-        framedCamera.distance = distanceToFit(framedCamera, aspect, 0.06f);
-
-        const auto bounds = projectedBounds(framedCamera, aspect);
-        if (bounds.getHeight() <= 0.0f || bounds.getHeight() > 1.0e5f)
+        start.targetY = 0.0f;
+        for (int pass = 0; pass < 3; ++pass)
         {
-            break;
+            start.distance = distanceToFit(start, aspect, 0.06f);
+
+            const auto bounds = projectedBounds(start, aspect);
+            if (bounds.getHeight() <= 0.0f || bounds.getHeight() > 1.0e5f)
+            {
+                break;
+            }
+
+            // Shift what the camera aims at until the stack sits in the middle
+            // of the frame rather than low in it.
+            const auto centreNdc = bounds.getY() + bounds.getHeight() * 0.5f;
+            start.targetY += centreNdc * start.distance * 0.35f;
         }
+        return start;
+    };
 
-        // Shift what the camera aims at until the stack sits in the middle of
-        // the frame rather than low in it.
-        const auto centreNdc = bounds.getY() + bounds.getHeight() * 0.5f;
-        framedCamera.targetY += centreNdc * framedCamera.distance * 0.35f;
-    }
+    // The default view, which is what resetCamera returns to.
+    framedCamera = frame(Camera {});
 
-    // Only the framing moves; whatever the user has orbited to is left alone.
-    camera.distance = framedCamera.distance;
-    camera.targetY = framedCamera.targetY;
+    // And the view actually on screen, framed for ITS orientation.
+    //
+    // These were the same calculation, and that was the bug: the fit was
+    // computed for the default orientation and its distance handed to a camera
+    // pointing somewhere else. Loading a new table while the view was orbited
+    // put every factory table off screen - measured, extents of 1.005 to 1.205
+    // against a limit of 1.0 - and it stayed that way until the user dragged
+    // back towards the default, which is exactly how it was reported.
+    //
+    // Only the framing moves. Whatever the user has orbited to is left alone.
+    const auto fitted = frame(camera);
+    camera.distance = fitted.distance;
+    camera.targetY = fitted.targetY;
 }
 
 float Wavetable3DRenderer::distanceToFit(const Camera& orientation, float aspect,
@@ -1390,8 +1408,53 @@ void Wavetable3DRenderer::renderOpenGL()
             }
         }
 
+        // Sharpness, from the same readback. Two passes over the luminance
+        // rather than one, because both measures need the frame's peak first.
+        std::vector<float> luma(pixelCount, 0.0f);
+        for (std::size_t i = 0; i < pixelCount; ++i)
+        {
+            luma[i] = static_cast<float>(0.299 * pixels[i * 4]
+                                         + 0.587 * pixels[i * 4 + 1]
+                                         + 0.114 * pixels[i * 4 + 2]) / 255.0f;
+        }
+
+        const auto floorLuma = darkest;
+        const auto span = juce::jmax(1.0e-4f, brightest - floorLuma);
+
+        auto soft = 0;
+        std::vector<float> jumps;
+        jumps.reserve(pixelCount);
+        for (int y = 0; y < height; ++y)
+        {
+            for (int x = 0; x < width; ++x)
+            {
+                const auto i = static_cast<std::size_t>(y) * static_cast<std::size_t>(width)
+                               + static_cast<std::size_t>(x);
+                const auto normalised = (luma[i] - floorLuma) / span;
+                if (normalised > 0.15f && normalised < 0.85f) { ++soft; }
+
+                if (x + 1 < width) { jumps.push_back(std::abs(luma[i + 1] - luma[i])); }
+            }
+        }
+
+        auto steepest = 0.0f;
+        if (! jumps.empty())
+        {
+            const auto top = std::max<std::size_t>(1, jumps.size() / 100);
+            std::nth_element(jumps.begin(), jumps.begin() + static_cast<long>(top),
+                             jumps.end(), std::greater<float>());
+            auto total = 0.0;
+            for (std::size_t i = 0; i < top; ++i) { total += jumps[i]; }
+            steepest = static_cast<float>(total / static_cast<double>(top));
+        }
+
         {
             const std::scoped_lock lock(probeMutex);
+            luminanceProbe.softFraction = pixelCount > 0
+                                            ? static_cast<float>(soft)
+                                              / static_cast<float>(pixelCount)
+                                            : 0.0f;
+            luminanceProbe.steepestEdges = steepest;
             luminanceProbe.centre = centre.mean();
             luminanceProbe.corners = corners.mean();
             luminanceProbe.upper = upper.mean();

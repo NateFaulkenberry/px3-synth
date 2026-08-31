@@ -597,10 +597,6 @@ void OscillatorComponent::paint(juce::Graphics& g)
                                       juce::PathStrokeType::curved,
                                       juce::PathStrokeType::rounded));
 
-    g.setColour(juce::Colour::fromRGBA(255, 255, 255, 120));
-    g.setFont(juce::FontOptions(10.0f));
-    auto titleRow = graph.toNearestInt().removeFromTop(14);
-    g.drawText("Mode Visual", titleRow, juce::Justification::centredTop);
 }
 
 void OscillatorComponent::applyModeUi()

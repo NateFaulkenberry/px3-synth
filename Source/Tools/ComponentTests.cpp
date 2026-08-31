@@ -21776,7 +21776,10 @@ int main(int argc, char* argv[])
         {
             Host() : juce::DocumentWindow("px3 env", juce::Colours::black, 0)
             {
-                renderer.setSize(320, 200);
+                // The real panel's size, not a round number. The framing is a
+                // function of aspect, so a harness at 1.6 says nothing about a
+                // panel at 1.95.
+                renderer.setSize(290, 149);
                 setContentNonOwned(&renderer, true);
                 setOpaque(true);
                 setVisible(true);
@@ -21845,7 +21848,28 @@ int main(int argc, char* argv[])
         row("lower luminance", off.lower, on.lower);
         row("darkest pixel", off.darkest, on.darkest);
         row("brightest pixel", off.brightest, on.brightest);
+        row("soft-edge fraction", off.softFraction, on.softFraction);
+        row("steepest edges", off.steepestEdges, on.steepestEdges);
         std::printf("\n");
+
+        // What the framebuffer is actually being rendered at. A picture drawn
+        // at one resolution and shown at another is blurred by the resample,
+        // whatever the shader does - so this has to be ruled in or out before
+        // any amount of shader tuning means anything.
+        std::printf("  component %d x %d, framebuffer %d px",
+                    host->renderer.getWidth(), host->renderer.getHeight(),
+                    host->renderer.getAuditedPixelCount());
+        const auto expected = host->renderer.getWidth() * host->renderer.getHeight();
+        if (expected > 0)
+        {
+            const auto ratio = static_cast<double>(host->renderer.getAuditedPixelCount())
+                               / static_cast<double>(expected);
+            std::printf(" - %.2f px per point, so scale %.2f\n\n", ratio, std::sqrt(ratio));
+        }
+        else
+        {
+            std::printf("\n\n");
+        }
 
         const auto vignetteOff = off.centre - off.corners;
         const auto vignetteOn = on.centre - on.corners;
@@ -21877,6 +21901,67 @@ int main(int argc, char* argv[])
         host->renderer.setPosition(0.4f);
         settle();
 
+        // Changing the TABLE has to re-fit the camera. Reported by a user as
+        // "it doesn't resize until I click and drag it", which is a claim about
+        // the render loop and can only be checked on a real context.
+        juce::StringArray refitFailures;
+
+        // Orbited first, because that is the state the report came from - the
+        // user was dragging the view. autoFrame fits the DEFAULT orientation;
+        // whether it fits the one actually on screen is the question.
+        {
+            const juce::Point<float> from { 145.0f, 74.0f };
+            const auto to = from.translated(220.0f, -60.0f);
+            const auto make = [&host](juce::Point<float> p)
+            {
+                return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), p,
+                                        juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                        &host->renderer, &host->renderer,
+                                        juce::Time::getCurrentTime(), p,
+                                        juce::Time::getCurrentTime(), 1, false);
+            };
+            host->renderer.mouseDown(make(from));
+            host->renderer.mouseDrag(make(to));
+            settle();
+            std::printf("  camera orbited to azimuth %.2f, elevation %.2f\n",
+                        host->renderer.getCamera().azimuth,
+                        host->renderer.getCamera().elevation);
+        }
+
+        std::printf("  changing table:\n");
+        std::printf("    %-16s %9s %9s %9s\n", "table", "framed", "extent", "fits");
+        for (int table = 0; table < static_cast<int>(px3::factoryWavetables().size()); ++table)
+        {
+            processor.loadFactoryWavetable(0, table);
+            host->renderer.setDisplay(processor.getWavetableDisplay(0, 48, 128));
+            settle();
+
+            const auto framed = host->renderer.getCamera().distance;
+            const auto needed = host->renderer.distanceThatFits(
+                static_cast<float>(host->renderer.getWidth())
+                    / static_cast<float>(host->renderer.getHeight()),
+                0.06f);
+            const auto name = juce::String(
+                px3::factoryWavetables()[static_cast<std::size_t>(table)].name);
+
+            // Where the geometry actually lands at the camera the renderer is
+            // using right now. Anything past 1.0 on either axis is off screen -
+            // which is the whole of the report, in one number.
+            const auto aspect = static_cast<float>(host->renderer.getWidth())
+                                / static_cast<float>(host->renderer.getHeight());
+            const auto bounds = host->renderer.projectedBounds(
+                host->renderer.getCamera(), aspect);
+            const auto extent = juce::jmax(
+                juce::jmax(std::abs(bounds.getX()), std::abs(bounds.getRight())),
+                juce::jmax(std::abs(bounds.getY()), std::abs(bounds.getBottom())));
+
+            std::printf("    %-16s %9.3f %9.3f %9s\n", name.toRawUTF8(), framed, extent,
+                        extent <= 1.0f ? "yes" : "NO");
+            juce::ignoreUnused(needed);
+            if (extent > 1.0f) { refitFailures.add(name); }
+        }
+        std::printf("\n");
+
         // The three properties the brief actually specifies, as pass/fail. The
         // rest of the numbers are for judging the picture; these are the ones
         // that can be wrong.
@@ -21902,6 +21987,12 @@ int main(int argc, char* argv[])
             // removed and 0.0097 with it.
             { "the floor is lit by the scan moving over it",
               (highestLower - lowestLower) > 0.003f },
+            // Loading a table re-fits the view that is ON SCREEN, not the
+            // default one. Checked with the camera orbited, because with it at
+            // the defaults the two are the same calculation and the bug is
+            // invisible.
+            { "every table fits the frame after a table change, camera orbited",
+              refitFailures.isEmpty() },
         };
 
         auto allOk = true;

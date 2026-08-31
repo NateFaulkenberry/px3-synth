@@ -475,3 +475,34 @@ The other half of the blur was `alpha *= core * 0.85 + glow * 0.35`, which put a
 full-ribbon-width halo under *every* line. The halo is kept, because a glow
 should be soft, but it is now spent only where it means something: the emissive
 lift on the selected frame, and the light spilling off the floor's rails.
+
+## G. Framing follows the camera that is on screen
+
+`autoFrame` used to compute the fit for the DEFAULT orientation and hand that
+distance to `camera`, whose azimuth and elevation are wherever the user last
+dragged them. With the view at its defaults the two are the same calculation,
+which is why this survived: it is invisible until you orbit.
+
+Orbited, and measured at the real panel's 290x149, loading a table put every
+factory table off screen:
+
+```
+    table              extent, orbited      after
+    Saw Fold                     1.039      0.942
+    Pulse Width                  1.205      0.936
+    Drawbars                     1.102      0.934
+    Vowel Morph                  1.089      0.939
+    Bell Partials                1.005      0.942
+    Comb Digital                 1.136      0.937
+    Wave Folder                  1.047      0.942
+    Warm Asymmetry               1.012      0.943
+```
+
+Anything past 1.0 is outside the viewport. It stayed that way until the user
+dragged back toward the default orientation - which is exactly how it was
+reported: "it doesn't resize until I click and drag it".
+
+The framing is now run twice: once from the default orientation, which is what
+`resetCamera` returns to, and once from the orientation actually on screen,
+which is what the camera gets. `envcheck` orbits the camera before sweeping the
+factory library, because at the defaults the check cannot fail.
