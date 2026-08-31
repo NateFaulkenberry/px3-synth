@@ -54,6 +54,12 @@ public:
                               juce::Label& positionValue);
 
     WavetableGraph& getWavetableGraph() { return wavetableGraph; }
+    // For the layout tests: where the two selectors ended up.
+    juce::Rectangle<int> debugModeBoxBounds() const { return modeBox.getBounds(); }
+    juce::Rectangle<int> debugTableBoxBounds() const
+    {
+        return wtTableBox != nullptr ? wtTableBox->getBounds() : juce::Rectangle<int>();
+    }
     bool isWavetableMode() const noexcept;
     void refreshFromParameters(bool enabled, int modeIndex, int vowelIndex);
     void advanceAnimation(float deltaPhase);

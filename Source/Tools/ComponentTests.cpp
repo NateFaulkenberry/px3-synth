@@ -25,6 +25,8 @@
 #include "../Preset/FactoryPresets.h"
 #include "../DSP/Wavetable.h"
 #include "../DSP/BreakpointEnvelope.h"
+#include "../DSP/AmpEnvelope.h"
+#include "../DSP/EnvelopeGenerator.h"
 #include "../DSP/WavetableReader.h"
 #include "../DSP/WavetableSlot.h"
 #include "../DSP/WavetableFactory.h"
@@ -616,8 +618,11 @@ void testBreakpointEnvelope()
         // The shape the four parameters describe, sampled where it matters.
         const auto atPeak = envelope.valueAt(0.15);
         const auto atSustain = envelope.valueAt(0.4);
+        // Float tolerance, not double: the sustain arrives as a float parameter,
+        // so 0.6f is 0.60000002 by the time it is a double and a 1e-9 bar fails
+        // on precision rather than on behaviour.
         check("Envelope_AdsrPassesThroughItsOwnCorners",
-              std::abs(atPeak - 1.0) < 1.0e-9 && std::abs(atSustain - 0.6) < 1.0e-9,
+              std::abs(atPeak - 1.0) < 1.0e-6 && std::abs(atSustain - 0.6) < 1.0e-6,
               "peak " + fmt(atPeak, 6) + " at the end of the attack, "
                   + fmt(atSustain, 6) + " at the end of the decay");
     }
@@ -864,6 +869,88 @@ void testBreakpointEnvelope()
                   ? "zero-length segments, NaN and infinite input, a full point list and "
                     "coincident points all evaluate finite and in range"
                   : failures.joinIntoString(", "));
+    }
+
+    // ---- the swap must not change how anything sounds -----------------------
+    // Captured from the juce::ADSR implementation BEFORE the breakpoint model
+    // replaced it, and asserted against ever since. Rewriting the engine under
+    // every preset in the library is the risk this whole exercise carries, and
+    // "it still sounds fine to me" is not a way to manage it.
+    //
+    // The two engines differ deliberately and the reference shows it: AMP ENV
+    // releases exponentially, because it drives a VCA and perceived loudness is
+    // logarithmic, while ENV 1/2/3 release linearly.
+    {
+        EnvelopeSettings settings;
+        settings.attackSeconds = 0.05f;
+        settings.decaySeconds = 0.10f;
+        settings.sustainLevel = 0.6f;
+        settings.releaseSeconds = 0.20f;
+
+        static const std::array<float, 20> ampReference {
+            { 0.000011f, 0.984644f, 0.803088f, 0.603104f, 0.600001f, 0.600001f, 0.600001f,
+              0.600001f, 0.600001f, 0.600001f, 0.599990f, 0.109073f, 0.018905f, 0.002868f,
+              0.000016f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f }
+        };
+        static const std::array<float, 20> generatorReference {
+            { 0.000011f, 0.985019f, 0.803013f, 0.603029f, 0.600000f, 0.600000f, 0.600000f,
+              0.600000f, 0.600000f, 0.600000f, 0.599998f, 0.452213f, 0.302224f, 0.152235f,
+              0.002235f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f }
+        };
+
+        const auto compare = [&settings](bool ampPath, const std::array<float, 20>& reference)
+        {
+            AmpEnvelope amp;
+            EnvelopeGenerator generator;
+            amp.prepare(kSampleRate);
+            generator.prepare(kSampleRate);
+            amp.setSettings(settings);
+            generator.setSettings(settings);
+            amp.noteOn();
+            generator.noteOn();
+
+            auto worst = 0.0;
+            int at = -1;
+            std::size_t slot = 0;
+            for (int i = 0; i < 48000; ++i)
+            {
+                if (i == 24000)
+                {
+                    if (ampPath) { amp.noteOff(); } else { generator.noteOff(); }
+                }
+                const auto v = ampPath ? amp.getNextSample() : generator.getNextSample();
+                if (i % 2400 == 0 && slot < reference.size())
+                {
+                    const auto error = std::abs(static_cast<double>(v) - reference[slot]);
+                    if (error > worst) { worst = error; at = i; }
+                    ++slot;
+                }
+            }
+            return std::make_pair(worst, at);
+        };
+
+        const auto ampResult = compare(true, ampReference);
+        check("Envelope_AmpEnvelopeStillSoundsAsItDid", ampResult.first < 0.002,
+              "worst deviation from the pre-change reference: " + fmt(ampResult.first, 6)
+                  + (ampResult.second >= 0
+                         ? " at sample " + juce::String(ampResult.second)
+                         : juce::String()));
+
+        const auto generatorResult = compare(false, generatorReference);
+        check("Envelope_ModEnvelopesStillSoundAsTheyDid", generatorResult.first < 0.002,
+              "worst deviation from the pre-change reference: " + fmt(generatorResult.first, 6)
+                  + (generatorResult.second >= 0
+                         ? " at sample " + juce::String(generatorResult.second)
+                         : juce::String()));
+
+        // The distinction itself, asserted rather than left to the two reference
+        // arrays: an amp release that stopped being exponential would still
+        // match its own reference if the reference were regenerated by mistake.
+        check("Envelope_AmpReleaseIsExponentialAndTheModReleaseIsNot",
+              ampReference[12] < generatorReference[12] * 0.25f,
+              "a quarter of the way through the release the amp envelope is at "
+                  + fmt(ampReference[12], 4) + " and a mod envelope at "
+                  + fmt(generatorReference[12], 4));
     }
 
     // ---- instances are independent ------------------------------------------
@@ -2068,6 +2155,17 @@ void testWavetable()
                       wavetableSliders == sineSliders + 1,
                       "SINE shows " + juce::String(sineSliders) + " knobs, WAVETABLE shows "
                           + juce::String(wavetableSliders) + " - one more, not two");
+
+                // The table selector sits under the mode selector, not beside
+                // it: both answer "what kind of sound is this", and stacking
+                // reads as one decision refined rather than two unrelated ones.
+                const auto modeBounds = card->debugModeBoxBounds();
+                const auto tableBounds = card->debugTableBoxBounds();
+                check("WavetableCard_TableSelectorSitsBelowTheModeSelector",
+                      tableBounds.getY() > modeBounds.getBottom()
+                          && std::abs(tableBounds.getX() - modeBounds.getX()) <= 1
+                          && std::abs(tableBounds.getWidth() - modeBounds.getWidth()) <= 1,
+                      "mode " + modeBounds.toString() + ", table " + tableBounds.toString());
 
                 const auto* graph = &card->getWavetableGraph();
                 check("WavetableCard_GraphIsVisibleAndSizedInWavetableMode",

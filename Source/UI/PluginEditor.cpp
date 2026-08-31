@@ -3371,8 +3371,12 @@ void PX3SynthAudioProcessorEditor::configureWavetableControls()
         oscWtTableLabels[index].setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
         oscWtTableLabels[index].setFont(juce::FontOptions(11.5f));
 
-        knob.setSliderStyle(juce::Slider::RotaryVerticalDrag);
-        knob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        // Through the shared knob path, not styled by hand. It is what applies
+        // knobLookAndFeel - the brushed face, the ring, the pointer - so a knob
+        // configured any other way is a plain JUCE rotary sitting among this
+        // synth's own, which is exactly how it looked.
+        configureEffectKnob(knob, oscWtPositionLabels[index], "POSITION",
+                            audioProcessor.getOscillatorWtPositionParam(osc));
         attachSlider(audioProcessor.getOscillatorWtPositionParam(osc), knob);
         // Same readout as the macro knobs: a percentage, centred, not clickable.
         auto& valueLabel = oscWtPositionValues[index];
@@ -3388,11 +3392,6 @@ void PX3SynthAudioProcessorEditor::configureWavetableControls()
                 juce::dontSendNotification);
         };
         knob.onValueChange();
-
-        oscWtPositionLabels[index].setText("POSITION", juce::dontSendNotification);
-        oscWtPositionLabels[index].setJustificationType(juce::Justification::centred);
-        oscWtPositionLabels[index].setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-        oscWtPositionLabels[index].setFont(juce::FontOptions(11.5f));
 
         rebuildWavetableMenu(osc);
 

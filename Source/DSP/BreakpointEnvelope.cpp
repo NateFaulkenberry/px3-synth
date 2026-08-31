@@ -27,7 +27,19 @@ double clampCurve(double c)
 
 BreakpointEnvelope::BreakpointEnvelope()
 {
-    *this = fromAdsr(EnvelopeSettings {});
+    // Written out rather than delegating to fromAdsr, which constructs one of
+    // these and would call straight back into here - infinite recursion, and a
+    // stack overflow the moment anything made an envelope.
+    const EnvelopeSettings defaults;
+    pointCount = 4;
+    points[0] = { 0.0, 0.0, 0.0 };
+    points[1] = { defaults.attackSeconds, 1.0, 0.0 };
+    points[2] = { static_cast<double>(defaults.attackSeconds) + defaults.decaySeconds,
+                  defaults.sustainLevel, 0.0 };
+    points[3] = { static_cast<double>(defaults.attackSeconds) + defaults.decaySeconds
+                      + defaults.releaseSeconds,
+                  0.0, 0.0 };
+    sustainPoint = 2;
 }
 
 BreakpointEnvelope BreakpointEnvelope::fromAdsr(const EnvelopeSettings& settings)

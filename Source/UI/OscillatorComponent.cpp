@@ -210,7 +210,32 @@ void OscillatorComponent::resized()
         const auto row = inner.rowContent(0);
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
         const auto showTable = wtTableBox != nullptr && wtTableBox->isVisible();
-        const auto showVowel = vowelBox.isVisible() || showTable;
+
+        // The table selector goes UNDER the mode selector rather than beside it.
+        // Both are "which kind of sound is this", and stacking them reads as one
+        // decision refined, where side by side reads as two unrelated ones. The
+        // row is 153 px tall and a labelled dropdown is 38, so this costs
+        // nothing that was being used.
+        if (showTable)
+        {
+            constexpr int bandHeight = 38;
+            auto band = row;
+
+            px3::ui::layoutLabelledControl(band.removeFromTop(bandHeight),
+                                           { &modeLabel, &modeBox, nullptr,
+                                             ControlShape::stretch, 14, 0, 24 },
+                                           inner.rowControl(0));
+            px3::ui::layoutLabelledControl(band.removeFromTop(bandHeight),
+                                           { wtTableLabel, wtTableBox, nullptr,
+                                             ControlShape::stretch, 14, 0, 24 },
+                                           inner.rowControl(0));
+
+            vowelLabel.setBounds(0, 0, 0, 0);
+            vowelBox.setBounds(0, 0, 0, 0);
+        }
+        else
+        {
+        const auto showVowel = vowelBox.isVisible();
 
         const std::vector<float> natural = showVowel ? std::vector<float> { 84.0f, 84.0f }
                                                      : std::vector<float> { 116.0f };
@@ -227,16 +252,7 @@ void OscillatorComponent::resized()
                                        { &modeLabel, &modeBox, nullptr,
                                          ControlShape::stretch, 14, 0, 24 },
                                        inner.rowControl(0));
-        if (showTable)
-        {
-            px3::ui::layoutLabelledControl(cell(1),
-                                       { wtTableLabel, wtTableBox, nullptr,
-                                         ControlShape::stretch, 14, 0, 24 },
-                                       inner.rowControl(0));
-            vowelLabel.setBounds(0, 0, 0, 0);
-            vowelBox.setBounds(0, 0, 0, 0);
-        }
-        else if (showVowel)
+        if (showVowel)
         {
             px3::ui::layoutLabelledControl(cell(1),
                                        { &vowelLabel, &vowelBox, nullptr,
@@ -247,6 +263,7 @@ void OscillatorComponent::resized()
         {
             vowelLabel.setBounds(0, 0, 0, 0);
             vowelBox.setBounds(0, 0, 0, 0);
+        }
         }
     }
 
