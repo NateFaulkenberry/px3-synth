@@ -182,10 +182,9 @@ void PX3SynthAudioProcessor::setShapedEnvelope(int index, const px3::BreakpointE
     // Storing the right shape means the UI and the DSP cannot disagree even
     // for one frame, rather than each caller having to remember to convert.
     const auto slot = juce::jlimit(0, kShapedEnvelopeCount - 1, index);
-    if (slot == 0 && envelope.isPlainAdsr() && envelope.getPointCount() != 4)
+    if (slot == 0)
     {
-        shapedEnvelopes[static_cast<std::size_t>(slot)]
-            = px3::BreakpointEnvelope::fromAdsrWithoutHold(envelope.toAdsr());
+        shapedEnvelopes[static_cast<std::size_t>(slot)] = px3::withoutHoldStage(envelope);
         return;
     }
 
@@ -202,9 +201,9 @@ px3::BreakpointEnvelope PX3SynthAudioProcessor::getShapedEnvelope(int index) con
     // with a hold - so the amp slot answers with one until something writes to
     // it. Converted on the way out as well as on the way in, so there is no
     // window in which the wrong shape is visible.
-    if (slot == 0 && stored.isPlainAdsr() && stored.getPointCount() != 4)
+    if (slot == 0)
     {
-        return px3::BreakpointEnvelope::fromAdsrWithoutHold(stored.toAdsr());
+        return px3::withoutHoldStage(stored);
     }
 
     return stored;

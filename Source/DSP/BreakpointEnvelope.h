@@ -172,4 +172,14 @@ private:
     int sustainPoint { 0 };
 };
 
+// Any envelope, with the hold stage taken out.
+//
+// The AMP ENV slot must never hold one, and "is this a plain ADSR" is not a
+// safe test for that: the moment a point has been dragged the shape stops
+// answering yes, while still carrying the extra breakpoint. So this asks only
+// whether the AHDSR skeleton is present and collapses it if so, whatever the
+// values are. Anything else is returned untouched - a genuinely free-form
+// envelope has no hold stage to identify.
+BreakpointEnvelope withoutHoldStage(const BreakpointEnvelope& envelope);
+
 } // namespace px3

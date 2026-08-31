@@ -1316,6 +1316,68 @@ void testBreakpointEnvelope()
                           : "cannot be grabbed: " + unreachable.joinIntoString(", "));
             }
 
+            // The case from the screenshot: a five-point shape whose peak has
+            // been dragged off full level, so isPlainAdsr() says no. The
+            // earlier fix converted the amp slot only when the shape WAS a
+            // plain ADSR, so this walked straight past it and the editor drew
+            // a HOLD handle - which is what was on screen.
+            {
+                EnvelopeSettings shaped;
+                shaped.attackSeconds = 0.10f;
+                shaped.holdSeconds = 0.15f;
+                shaped.decaySeconds = 0.17f;
+                shaped.sustainLevel = 0.55f;
+                shaped.releaseSeconds = 0.10f;
+
+                auto edited = px3::BreakpointEnvelope::fromAdsr(shaped);
+                edited.setPoint(1, edited.getPoint(1).timeSeconds, 0.82);   // peak dragged down
+
+                check("AmpEnvUi_TheScreenshotShapeIsNotAPlainAdsr",
+                      ! edited.isPlainAdsr() && edited.getPointCount() == 5,
+                      "a five-point shape with the peak at 0.82 reports isPlainAdsr() = "
+                          + juce::String(edited.isPlainAdsr() ? "true" : "false"));
+
+                processor.setShapedEnvelope(0, edited);
+                amp.refreshFromParameters();
+
+                const auto shown = graph->debugEditor().getEnvelope();
+                juce::StringArray shownRoles;
+                for (int i = 1; i < shown.getPointCount(); ++i)
+                {
+                    const auto role = graph->debugEditor().roleLabelFor(i);
+                    if (role.isNotEmpty()) { shownRoles.add(role); }
+                }
+
+                check("AmpEnvUi_AnEditedShapeStillHasNoHold",
+                      shown.getPointCount() == 4 && shown.getSustainPoint() == 2
+                          && ! shownRoles.contains("HOLD"),
+                      "after storing an edited five-point shape the amp editor holds "
+                          + juce::String(shown.getPointCount()) + " points offering "
+                          + shownRoles.joinIntoString(", "));
+
+                // The editor is an ADSR editor whatever it is handed - the last
+                // line of defence, since a shape can always be built by hand.
+                BreakpointEnvelopeEditor forced;
+                forced.setSize(400, 200);
+                forced.setStageModel(BreakpointEnvelopeEditor::StageModel::adsr);
+                forced.setEnvelope(edited);
+
+                juce::StringArray forcedRoles;
+                for (int i = 1; i < forced.getEnvelope().getPointCount(); ++i)
+                {
+                    const auto role = forced.roleLabelFor(i);
+                    if (role.isNotEmpty()) { forcedRoles.add(role); }
+                }
+                check("AmpEnvUi_AnAdsrEditorNeverSaysHold",
+                      ! forcedRoles.contains("HOLD"),
+                      "handed a five-point shape directly, an ADSR editor offers: "
+                          + (forcedRoles.isEmpty() ? juce::String("nothing")
+                                                   : forcedRoles.joinIntoString(", ")));
+
+                processor.setShapedEnvelope(0, px3::BreakpointEnvelope::fromAdsrWithoutHold(shaped));
+                amp.refreshFromParameters();
+            }
+
             // And it is right from the first frame, not only after a refresh.
             check("AmpEnvUi_ItIsRightBeforeTheFirstRefreshToo",
                   asBuilt.getPointCount() == 4 && asBuilt.getSustainPoint() == 2,
@@ -1836,6 +1898,9 @@ void testBreakpointEnvelope()
         {
             BreakpointEnvelopeEditor editor;
             editor.setSize(400, 200);
+            editor.setStageModel(rig.withHold
+                                     ? BreakpointEnvelopeEditor::StageModel::ahdsr
+                                     : BreakpointEnvelopeEditor::StageModel::adsr);
             editor.setEnvelope(rig.withHold
                                    ? px3::BreakpointEnvelope::fromAdsr(adsr)
                                    : px3::BreakpointEnvelope::fromAdsrWithoutHold(adsr));
@@ -2054,6 +2119,7 @@ void testBreakpointEnvelope()
             // would be worse than none.
             BreakpointEnvelopeEditor amp;
             amp.setSize(400, 200);
+            amp.setStageModel(BreakpointEnvelopeEditor::StageModel::adsr);
             amp.setEnvelope(px3::BreakpointEnvelope::fromAdsrWithoutHold(plain));
 
             juce::StringArray ampRoles;

@@ -465,4 +465,29 @@ float BreakpointEnvelope::Snapshot::releaseProgress(double seconds) const noexce
     return static_cast<float>(juce::jlimit(0.0, 1.0, seconds / releaseSeconds));
 }
 
+BreakpointEnvelope withoutHoldStage(const BreakpointEnvelope& envelope)
+{
+    // The five-point AHDSR skeleton: point 2 ends the hold, and the envelope
+    // holds at point 3. Removing point 2 leaves attack, decay, sustain and
+    // release, with the sustain index moving down with it.
+    if (envelope.getPointCount() != 5 || envelope.getSustainPoint() != 3)
+    {
+        return envelope;
+    }
+
+    BreakpointEnvelope::Point points[4];
+    points[0] = envelope.getPoint(0);
+    points[1] = envelope.getPoint(1);
+    points[2] = envelope.getPoint(3);
+    points[3] = envelope.getPoint(4);
+
+    // The attack keeps its own curve; the hold segment's is dropped with the
+    // hold, and the decay is the segment that used to leave point 2.
+    points[1].curveToNext = envelope.getPoint(2).curveToNext;
+
+    BreakpointEnvelope result;
+    result.setPoints(points, 4, 2);
+    return result;
+}
+
 } // namespace px3

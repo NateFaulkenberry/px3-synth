@@ -160,13 +160,21 @@ double BreakpointEnvelopeEditor::screenToValue(float y) const
     return juce::jlimit(0.0, 1.0, static_cast<double>((area.getBottom() - y) / area.getHeight()));
 }
 
+void BreakpointEnvelopeEditor::setStageModel(StageModel model)
+{
+    if (stageModel == model) { return; }
+    stageModel = model;
+    repaint();
+}
+
 bool BreakpointEnvelopeEditor::hasSustainHandle() const
 {
     // Only where a held phase is a real stage. A free-form envelope that has
     // been edited past the ADSR skeleton has no "sustain level" to name.
     const auto count = envelope.getPointCount();
     const auto sustain = envelope.getSustainPoint();
-    return (count == 4 && sustain == 2) || (count == 5 && sustain == 3);
+    return stageModel == StageModel::adsr ? (count == 4 && sustain == 2)
+                                          : (count == 5 && sustain == 3);
 }
 
 double BreakpointEnvelopeEditor::heldDisplaySeconds() const
@@ -249,8 +257,12 @@ juce::String BreakpointEnvelopeEditor::roleLabelFor(int index) const
     //
     // Two skeletons: AMP ENV has four points and no hold stage, ENV 1-3 have
     // five and do.
-    if (envelope.getPointCount() == 4 && envelope.getSustainPoint() == 2)
+    // The MODEL decides which names exist, not the shape. An ADSR editor never
+    // says HOLD however many points it has been handed.
+    if (stageModel == StageModel::adsr)
     {
+        if (envelope.getPointCount() != 4 || envelope.getSustainPoint() != 2) { return {}; }
+
         switch (index)
         {
             case 1:  return "ATTACK";
@@ -577,10 +589,21 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
         const auto barWidth = floatFor("sustainBarWidth", 20.0f);
         const auto barHeight = floatFor("sustainBarHeight", 3.0f) * (active ? 1.6f : 1.0f);
 
+        // Filled, then outlined the way the breakpoints are. A 3 px bar in the
+        // curve's own colour, sitting on the curve, reads as part of the line
+        // rather than as something you can grab.
+        const auto bar = juce::Rectangle<float>(position.x - barWidth * 0.5f,
+                                                position.y - barHeight * 0.5f,
+                                                barWidth, barHeight);
+
+        g.setColour(colourFor("pointFillColor", juce::Colour::fromRGB(18, 18, 20)));
+        g.fillRoundedRectangle(bar.expanded(1.5f), (barHeight + 3.0f) * 0.5f);
+
         g.setColour(colourFor("sustainPointColor", curveColour().brighter(0.3f))
-                        .withAlpha(active ? 1.0f : 0.85f));
-        g.fillRoundedRectangle(position.x - barWidth * 0.5f, position.y - barHeight * 0.5f,
-                               barWidth, barHeight, barHeight * 0.5f);
+                        .withAlpha(active ? 1.0f : 0.9f));
+        g.fillRoundedRectangle(bar, barHeight * 0.5f);
+        g.drawRoundedRectangle(bar.expanded(1.5f), (barHeight + 3.0f) * 0.5f,
+                               floatFor("pointOutlineWidth", 1.8f));
 
         if (active)
         {

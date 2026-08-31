@@ -50,6 +50,8 @@ AmpEnvelopeComponent::AmpEnvelopeComponent(PX3SynthAudioProcessor& processorIn, 
     // still ADSR, which is what keeps a DAW's automation of ampAttack and the
     // rest meaningful; once the envelope is more than they can describe, the
     // stored shape is what plays.
+    // Four stages, said once. Everything else about this editor follows from it.
+    envelopeGraph->setStageModel(BreakpointEnvelopeEditor::StageModel::adsr);
     envelopeGraph->setShapedEnvelope(processor.getShapedEnvelope(0));
     envelopeGraph->onEnvelopeEdited = [this](const px3::BreakpointEnvelope& edited)
     {
