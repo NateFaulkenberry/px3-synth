@@ -65,6 +65,11 @@ public:
     { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].label.getText(); }
     const juce::Label& debugAdsrKnobLabel(int i) const
     { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].label; }
+    // For the tests: the mode selector, and whether the ADSR knobs are showing.
+    juce::ComboBox& debugModeBox() { return modeBox; }
+    bool debugAdsrKnobsVisible() const
+    { return adsrKnobsBuilt && adsrKnobs[0].knob.isVisible(); }
+
     const juce::Label& debugAdsrKnobReadout(int i) const
     { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].readout; }
 
@@ -76,6 +81,12 @@ public:
     // ATTACK | DECAY | SUSTAIN | RELEASE below the graph, bound to the same
     // four parameters it edits. Off unless the owning card asks.
     void setAdsrKnobsVisible(bool shouldShow);
+
+    // The envelope mode selector. The card owns the box; the owner supplies
+    // what happens when it changes, because only the owner knows which slot
+    // this card is editing.
+    void setEnvelopeMode(px3::BreakpointEnvelope::Mode mode);
+    std::function<void(px3::BreakpointEnvelope::Mode)> onEnvelopeModeChanged;
 
     // The editor's shared rotary look-and-feel. Handed down rather than
     // constructed here: every knob in the plugin is drawn by ONE of these, and
@@ -186,6 +197,14 @@ private:
     // Where the editor sits: its row, less a gap at the bottom when the knob
     // row is below it.
     juce::Rectangle<int> graphBounds() const;
+
+    // ADSR | Breakpoint. Styled through the shared combo style, like the
+    // assignment boxes beside it.
+    juce::ComboBox modeBox;
+    px3::ui::ChipLabel modeLabel;
+    px3::BreakpointEnvelope::Mode envelopeMode { px3::BreakpointEnvelope::Mode::adsr };
+    void applyModeToControls();
+    void layoutModeSelector();
 
     juce::Slider* amountKnob { nullptr };
     juce::Label* amountLabel { nullptr };

@@ -18974,6 +18974,95 @@ void testEnvelopeModes()
         }
     }
 
+    // ---- the selector, on both cards ----------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kRate, kBlock);
+        processor.prepareToPlay(kRate, kBlock);
+
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+
+        if (editor != nullptr)
+        {
+            editor->setSize(1400, 900);
+
+            std::vector<EnvelopeComponent*> cards;
+            std::function<void(juce::Component&)> walk = [&](juce::Component& parent)
+            {
+                for (auto* child : parent.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* env = dynamic_cast<EnvelopeComponent*>(child)) { cards.push_back(env); }
+                    walk(*child);
+                }
+            };
+            walk(*editor);
+
+            juce::StringArray offered;
+            auto everyCardHasOne = ! cards.empty();
+            for (auto* card : cards)
+            {
+                auto& box = card->debugModeBox();
+                everyCardHasOne = everyCardHasOne && box.getNumItems() == 2;
+                if (offered.isEmpty())
+                {
+                    for (int i = 0; i < box.getNumItems(); ++i) { offered.add(box.getItemText(i)); }
+                }
+            }
+
+            check("EnvMode_EveryEnvelopeCardOffersTheTwoModes",
+                  everyCardHasOne && offered.size() == 2,
+                  juce::String(static_cast<int>(cards.size())) + " cards offering "
+                      + offered.joinIntoString(" / "));
+
+            if (! cards.empty())
+            {
+                auto* card = cards.front();
+
+                // ADSR: the four knobs are there.
+                card->setEnvelopeMode(px3::BreakpointEnvelope::Mode::adsr);
+                const auto knobsInAdsr = card->debugAdsrKnobsVisible();
+
+                // Breakpoint: they are gone. Leaving them on screen showing
+                // values that no longer describe the envelope is the defect
+                // this whole change removes.
+                card->setEnvelopeMode(px3::BreakpointEnvelope::Mode::breakpoint);
+                const auto knobsInBreakpoint = card->debugAdsrKnobsVisible();
+
+                card->setEnvelopeMode(px3::BreakpointEnvelope::Mode::adsr);
+                const auto knobsBack = card->debugAdsrKnobsVisible();
+
+                check("EnvMode_TheAdsrKnobsAppearOnlyInAdsrMode",
+                      knobsInAdsr && ! knobsInBreakpoint && knobsBack,
+                      juce::String("ADSR: ") + (knobsInAdsr ? "shown" : "hidden")
+                          + ", Breakpoint: " + (knobsInBreakpoint ? "shown" : "hidden")
+                          + ", back to ADSR: " + (knobsBack ? "shown" : "hidden"));
+            }
+
+            // Choosing a mode on the card reaches the processor slot it edits,
+            // and only that slot.
+            if (cards.size() >= 2)
+            {
+                cards[0]->debugModeBox().setSelectedId(2, juce::sendNotificationSync);
+
+                juce::StringArray slots;
+                for (int slot = 0; slot < 4; ++slot)
+                {
+                    slots.add(processor.getEnvelopeMode(slot)
+                                  == px3::BreakpointEnvelope::Mode::breakpoint ? "B" : "A");
+                }
+
+                check("EnvMode_ChoosingAModeReachesOnlyThatEnvelope",
+                      slots.joinIntoString("").contains("B")
+                          && slots.joinIntoString("").indexOf("B")
+                                 == slots.joinIntoString("").lastIndexOf("B"),
+                      "after one card switched, the four slots read "
+                          + slots.joinIntoString(", "));
+            }
+        }
+    }
+
     // ---- the four slots stay independent ------------------------------------
     {
         PX3SynthAudioProcessor processor;

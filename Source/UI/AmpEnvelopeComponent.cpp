@@ -90,6 +90,14 @@ AmpEnvelopeComponent::AmpEnvelopeComponent(PX3SynthAudioProcessor& processorIn, 
     // height and the graph gives the room up, so nothing below AMP ENV moves.
     envelopeGraph->setAdsrKnobsVisible(true);
 
+    // Slot 0 is AMP ENV. The card owns the selector; which slot it edits is
+    // the owner's business.
+    envelopeGraph->setEnvelopeMode(processor.getEnvelopeMode(0));
+    envelopeGraph->onEnvelopeModeChanged = [this](px3::BreakpointEnvelope::Mode mode)
+    {
+        processor.setEnvelopeMode(0, mode);
+    };
+
     addAndMakeVisible(*envelopeGraph);
 }
 
@@ -149,6 +157,7 @@ void AmpEnvelopeComponent::refreshFromParameters()
         // Where the envelope being played has got to, taken from the DSP's own
         // runtime state rather than from a clock of the UI's - the graph
         // follows the sound instead of guessing alongside it.
+        envelopeGraph->setEnvelopeMode(processor.getEnvelopeMode(0));
         envelopeGraph->setEnvelopeProgress(processor.getEnvelopeProgress(0));
     }
     repaint();

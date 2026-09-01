@@ -55,6 +55,20 @@ holding the same four knobs wherever you are.
 
 AMP ENV and ENV 1–3 were rebuilt from the design document.
 
+- **Two explicit envelope types**, chosen from a TYPE menu on every envelope
+  card. **ADSR** is the four-stage envelope with its three handles and four
+  knobs. **BREAKPOINT** is up to sixteen points, each with its own time, level
+  and curve, and the knobs are hidden because four numbers cannot describe it.
+
+  This replaces an implicit switch: the editor used to behave as an ADSR until
+  a point was added, at which point the shape quietly took over and the four
+  knobs stopped meaning anything while still sitting under the graph. Nothing
+  said so.
+
+  Switching is non-destructive in both directions. BREAKPOINT starts from the
+  ADSR shape, curves included; going back to ADSR reduces the shape but keeps
+  the drawing, and returning to BREAKPOINT restores it exactly — including
+  after a save and reload.
 - **Three handles for four parameters.** ATTACK and RELEASE are durations,
   pinned to the top and the bottom. DECAY / SUSTAIN is one handle moving in
   both axes, because they are the two coordinates of one point. The separate
@@ -71,8 +85,8 @@ AMP ENV and ENV 1–3 were rebuilt from the design document.
   follows the drawn shape exactly, bends included, because the fill and the
   curve come from one sampler. It reads the voice's own position rather than a
   UI clock, so it cannot drift.
-- The first and last points are anchored at silence, and on the ADSR skeleton
-  the peak is anchored at the top.
+- The first and last points are anchored at silence, and in ADSR mode the peak
+  is anchored at the top.
 
 ---
 
@@ -148,7 +162,7 @@ AMP ENV and ENV 1–3 were rebuilt from the design document.
 
 ## Testing
 
-1055 component tests pass, and `PX3Diag rtsafety` reports 0 allocations per
+1083 component tests pass, and `PX3Diag rtsafety` reports 0 allocations per
 block on the audio thread — including blocks carrying MIDI, which is where the
 allocation fixed below was hiding.
 

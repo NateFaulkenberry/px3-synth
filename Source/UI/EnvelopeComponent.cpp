@@ -41,6 +41,33 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
     addAndMakeVisible(breakpointEditor);
     breakpointEditor.setConfigPrefix(configPrefixIn);
 
+    // The mode selector. Two entries, because there are two representations
+    // and the user picks one; nothing here infers a mode from the shape.
+    modeBox.addItem("ADSR", 1);
+    modeBox.addItem("BREAKPOINT", 2);
+    modeBox.setSelectedId(1, juce::dontSendNotification);
+    modeBox.onChange = [this]
+    {
+        const auto chosen = modeBox.getSelectedId() == 2
+                              ? px3::BreakpointEnvelope::Mode::breakpoint
+                              : px3::BreakpointEnvelope::Mode::adsr;
+
+        if (chosen == envelopeMode) { return; }
+
+        envelopeMode = chosen;
+        applyModeToControls();
+
+        if (onEnvelopeModeChanged != nullptr) { onEnvelopeModeChanged(chosen); }
+    };
+    addAndMakeVisible(modeBox);
+
+    modeLabel.setText("TYPE", juce::dontSendNotification);
+    modeLabel.setJustificationType(juce::Justification::centred);
+    modeLabel.setFont(juce::FontOptions(11.0f));
+    modeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    modeLabel.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(modeLabel);
+
     // The card's accent, handed over here as well as in setAccentColour - that
     // only fires on a change, so a card whose colour never changes left the
     // editor on its own default and the curve came out the wrong blue.
@@ -88,6 +115,14 @@ void EnvelopeComponent::setAccentColour(juce::Colour accentIn)
 void EnvelopeComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     breakpointEditor.setUIConfig(configIn);
+
+    // The mode box takes the same combo styling as the assignment boxes, so it
+    // reads as part of the card rather than as a control from somewhere else.
+    if (configIn != nullptr)
+    {
+        configIn->applyComboStyle(configIn->getObject("styles.combos.default"), modeBox);
+    }
+
     uiConfig = std::move(configIn);
 
     // As above: cardInner's rows come from resized(), so a reload has to redo
@@ -823,6 +858,7 @@ void EnvelopeComponent::resized()
 
     buildAdsrKnobs();
     layoutAdsrKnobs();
+    layoutModeSelector();
 
     // AMP ENV is the deliberate exception: one full-size graph, no rows of
     // controls above it, so there is nothing further to place. `fullHeightGraph`
@@ -895,6 +931,68 @@ EnvelopeComponent::~EnvelopeComponent()
     {
         entry.knob.setLookAndFeel(nullptr);
     }
+}
+
+void EnvelopeComponent::setEnvelopeMode(px3::BreakpointEnvelope::Mode mode)
+{
+    envelopeMode = mode;
+    modeBox.setSelectedId(mode == px3::BreakpointEnvelope::Mode::breakpoint ? 2 : 1,
+                          juce::dontSendNotification);
+    applyModeToControls();
+}
+
+void EnvelopeComponent::layoutModeSelector()
+{
+    // Along the bottom row, beside the knobs in ADSR mode and alone in
+    // Breakpoint mode - where the knobs would otherwise be. Sized from the same
+    // cardInner row the knobs use, so there is no new geometry to keep in step.
+    if (! adsrKnobsWanted())
+    {
+        modeBox.setVisible(false);
+        modeLabel.setVisible(false);
+        return;
+    }
+
+    auto row = inner.rowContent(inner.rowCount() - 1);
+    if (row.isEmpty()) { return; }
+
+    const auto width = uiConfig != nullptr
+                         ? uiConfig->getInt("envelope.modeSelector.width", 104)
+                         : 104;
+    const auto height = uiConfig != nullptr
+                          ? uiConfig->getInt("envelope.modeSelector.height", 20)
+                          : 20;
+    const auto captionHeight = 12;
+
+    auto cell = row.removeFromLeft(juce::jmin(width, row.getWidth()));
+    const auto stack = juce::Rectangle<int>(cell.getWidth(), height + captionHeight)
+                           .withCentre(cell.getCentre());
+
+    modeLabel.setBounds(stack.withHeight(captionHeight));
+    modeBox.setBounds(stack.withTrimmedTop(captionHeight));
+    modeLabel.setVisible(true);
+    modeBox.setVisible(true);
+}
+
+void EnvelopeComponent::applyModeToControls()
+{
+    // The four knobs describe an ADSR. In Breakpoint mode they do not describe
+    // the envelope any more, so they go - leaving them on screen showing values
+    // that no longer mean anything is the defect this whole change removes.
+    const auto showKnobs = envelopeMode == px3::BreakpointEnvelope::Mode::adsr;
+
+    if (adsrKnobsBuilt)
+    {
+        for (auto& entry : adsrKnobs)
+        {
+            entry.knob.setVisible(showKnobs && showAdsrKnobs);
+            entry.label.setVisible(showKnobs && showAdsrKnobs);
+            entry.readout.setVisible(showKnobs && showAdsrKnobs);
+        }
+    }
+
+    resized();
+    repaint();
 }
 
 void EnvelopeComponent::setKnobLookAndFeel(juce::LookAndFeel* lookAndFeel)
@@ -992,7 +1090,13 @@ void EnvelopeComponent::layoutAdsrKnobs()
     const auto row = inner.rowCount() - 1;
     auto flex = inner.rowFlex(row);
     const auto gap = inner.rowGap(row);
-    const auto content = inner.rowContent(row);
+
+    // What the mode selector leaves. It sits at the left of the same row.
+    auto content = inner.rowContent(row);
+    const auto selectorWidth = uiConfig != nullptr
+                                 ? uiConfig->getInt("envelope.modeSelector.width", 104)
+                                 : 104;
+    content.removeFromLeft(juce::jmin(selectorWidth, content.getWidth()));
     const auto cellHeight = static_cast<float>(juce::jmax(1, content.getHeight()));
     const auto cellWidth = static_cast<float>(juce::jmax(1, content.getWidth() / 4));
 

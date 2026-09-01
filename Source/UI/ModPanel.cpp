@@ -274,6 +274,12 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
     bundle.component->setKnobLookAndFeel(lfoKnobLookAndFeel);
     bundle.component->setAdsrKnobsVisible(true);
 
+    bundle.component->setEnvelopeMode(processor.getEnvelopeMode(slot));
+    bundle.component->onEnvelopeModeChanged = [this, slot](px3::BreakpointEnvelope::Mode mode)
+    {
+        processor.setEnvelopeMode(slot, mode);
+    };
+
     bundle.component->setShapedEnvelope(processor.getShapedEnvelope(slot));
     bundle.component->onEnvelopeEdited = [this, envIndex, slot](const px3::BreakpointEnvelope& edited)
     {
@@ -459,6 +465,7 @@ void ModPanel::refreshFromParameters()
 
             // And how far the playing note has taken this envelope, read from
             // the voice itself rather than clocked alongside it in the UI.
+            bundle.component->setEnvelopeMode(processor.getEnvelopeMode(slot));
             bundle.component->setEnvelopeProgress(processor.getEnvelopeProgress(slot));
         }
     }

@@ -2711,5 +2711,11 @@
       "labelBackground": "#E2F9F6DB",
       "labelText": "#0C2E2B"
     }
+  },
+  "envelope": {
+    "modeSelector": {
+      "width": 104,
+      "height": 20
+    }
   }
 }

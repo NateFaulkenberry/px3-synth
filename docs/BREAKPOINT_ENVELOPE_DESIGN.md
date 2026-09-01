@@ -418,9 +418,14 @@ directions:
 
 That narrows the authority rule of the section below rather than breaking it:
 on the ADSR skeleton the four parameters and the four points are the same
-numbers and either may be moved; the shape additionally owns the curves. Only
-when a point is ADDED does the shape take over entirely, because there is then
-no set of four parameters that describes it — and the knobs stop writing to it.
+numbers and either may be moved; the shape additionally owns the curves.
+
+> **Superseded.** This paragraph used to continue: "only when a point is ADDED
+> does the shape take over entirely… and the knobs stop writing to it". That
+> implicit switch was the defect — nothing told the user it had happened, and
+> the knobs stayed on screen meaning nothing. Authority now follows an explicit
+> **mode** the user chooses, and in Breakpoint mode the knobs are hidden rather
+> than left stale. See [envelope-editor-design.md](envelope-editor-design.md).
 
 The click this rule was written for is unaffected: the voice plays the shaped
 envelope whenever one is present, and never rebuilds it from the parameters at
