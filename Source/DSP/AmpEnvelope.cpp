@@ -74,6 +74,14 @@ void AmpEnvelope::noteOff()
     // voices by getCurrentlyPlayingNote() regardless of key state, so replaying
     // a pitch whose previous voice is still releasing delivers a second noteOff
     // to that releasing voice.
+    // A one-shot envelope ignores note-off: it plays its trajectory out. The
+    // note is over when the envelope is, not when the key comes up.
+    if (snapshot.isOneShot())
+    {
+        noteHeld = false;
+        return;
+    }
+
     releaseLevelAnchor = inRelease ? smoothedOutput : lastRawValue;
     releaseProgress = 0.0f;
     releasedSeconds = 0.0;
@@ -126,7 +134,25 @@ float AmpEnvelope::getNextSample()
     const auto step = 1.0 / sampleRateHz;
 
     float raw;
-    if (! inRelease)
+
+    // A breakpoint envelope is a trajectory on one clock. It advances whether
+    // or not the key is still down - the key triggered it, it does not gate it
+    // - and it ends when it reaches its last point, which is anchored at
+    // silence. There is no hold and no separate release.
+    if (snapshot.isOneShot())
+    {
+        raw = juce::jlimit(0.0f, 1.0f, snapshot.valueAtElapsed(heldSeconds));
+        heldSeconds += step;
+
+        if (heldSeconds >= snapshot.totalSeconds())
+        {
+            // Done travelling. The key may still be down; the note is over
+            // when the envelope is, so the voice must be allowed to retire.
+            finished = true;
+            noteHeld = false;
+        }
+    }
+    else if (! inRelease)
     {
         raw = juce::jlimit(0.0f, 1.0f, snapshot.valueAtHeld(heldSeconds, attackLevelAnchor));
         if (noteHeld)

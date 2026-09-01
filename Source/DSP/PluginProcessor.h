@@ -990,8 +990,20 @@ private:
     // envelope is already a valid four-point ADSR, so "does this slot have
     // something retained" cannot be answered by looking at the points - asking
     // that way restored a default ADSR over a shape that had curves.
-    std::array<px3::BreakpointEnvelope, kShapedEnvelopeCount> retainedBreakpointShapes;
-    std::array<bool, kShapedEnvelopeCount> hasRetainedBreakpointShape { { false, false, false, false } };
+    // The breakpoint shape each slot holds, whether or not it is the active
+    // mode, and whether it has ever been seeded from the ADSR.
+    //
+    // The two modes keep SEPARATE state. Switching is a change of which one is
+    // active, never a conversion of one into the other - editing a breakpoint
+    // envelope must not rewrite ADSR settings the user did not touch, and
+    // returning to Breakpoint must not re-derive the shape over their work.
+    //
+    // Seeding is tracked by a flag rather than inferred from the shape: a
+    // default-constructed envelope is already a valid four-point ADSR, so "has
+    // this been initialised" cannot be answered by looking at the points.
+    std::array<px3::BreakpointEnvelope, kShapedEnvelopeCount> adsrShapes;
+    std::array<px3::BreakpointEnvelope, kShapedEnvelopeCount> breakpointShapes;
+    std::array<bool, kShapedEnvelopeCount> breakpointInitialised { { false, false, false, false } };
 
     void handleAsyncUpdate() override;
 

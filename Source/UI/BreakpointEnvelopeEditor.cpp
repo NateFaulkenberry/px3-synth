@@ -200,6 +200,11 @@ juce::String BreakpointEnvelopeEditor::roleLabelFor(int index) const
     // on the point count, which is what let any five-point shape grow a hold
     // handle - and a shape stops saying what it is the moment a point is
     // dragged.
+    // ADSR's vocabulary belongs to ADSR mode. A breakpoint envelope has points,
+    // times and levels; naming one of them RELEASE would be describing a model
+    // it does not have.
+    if (envelope.isBreakpointMode()) { return {}; }
+
     if (envelope.getPointCount() != 4 || envelope.getSustainPoint() != 2) { return {}; }
 
     switch (index)
@@ -359,6 +364,14 @@ void BreakpointEnvelopeEditor::setProgress(EnvelopePosition progress)
 double BreakpointEnvelopeEditor::progressDisplayTime() const
 {
     if (! liveProgress.active) { return 0.0; }
+
+    // A breakpoint envelope is a trajectory on one clock, so the fill's edge is
+    // simply where that clock has got to. No stage to be in, nothing to hold
+    // at, and crossing a point is not an event - it is just a value of t.
+    if (envelope.isBreakpointMode())
+    {
+        return liveProgress.heldSeconds;
+    }
 
     const auto sustain = envelope.getSustainPoint();
 

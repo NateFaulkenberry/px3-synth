@@ -158,8 +158,11 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
         for (int index = 0; index < kShapedEnvelopeCount; ++index)
         {
             const auto envelope = getShapedEnvelope(index);
-            const auto& retained = retainedBreakpointShapes[static_cast<std::size_t>(index)];
-            const auto hasRetained = hasRetainedBreakpointShape[static_cast<std::size_t>(index)];
+            // Both modes' state is written, not only the active one, so a
+            // preset saved in ADSR mode with a breakpoint envelope behind it
+            // reopens with both and switching reveals exactly what was stored.
+            const auto& retained = breakpointShapes[static_cast<std::size_t>(index)];
+            const auto hasRetained = breakpointInitialised[static_cast<std::size_t>(index)];
 
             // A plain straight-line ADSR in ADSR mode says nothing the four
             // parameters do not already say, and is rebuilt from them on load.
@@ -704,8 +707,9 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
     for (int index = 0; index < kShapedEnvelopeCount; ++index)
     {
         setShapedEnvelope(index, px3::BreakpointEnvelope {});
-        retainedBreakpointShapes[static_cast<std::size_t>(index)] = px3::BreakpointEnvelope {};
-        hasRetainedBreakpointShape[static_cast<std::size_t>(index)] = false;
+        adsrShapes[static_cast<std::size_t>(index)] = px3::BreakpointEnvelope {};
+        breakpointShapes[static_cast<std::size_t>(index)] = px3::BreakpointEnvelope {};
+        breakpointInitialised[static_cast<std::size_t>(index)] = false;
     }
 
     if (const auto shapes = state.getChildWithName(kEnvelopeShapesId); shapes.isValid())
@@ -762,7 +766,7 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                 }
 
                 // The shape waiting to be switched back to, if there is one.
-                hasRetainedBreakpointShape[static_cast<std::size_t>(index)] = false;
+                breakpointInitialised[static_cast<std::size_t>(index)] = false;
                 if (const auto keep = node.getChildWithName(kEnvelopeRetainedShapeId); keep.isValid())
                 {
                     const auto retainedPoints = readPoints(keep);
@@ -773,8 +777,8 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                                            static_cast<int>(retainedPoints.size()),
                                            static_cast<int>(keep.getProperty(kEnvelopeShapeSustainId, 2)));
                         retained.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
-                        retainedBreakpointShapes[static_cast<std::size_t>(index)] = retained;
-                        hasRetainedBreakpointShape[static_cast<std::size_t>(index)] = true;
+                        breakpointShapes[static_cast<std::size_t>(index)] = retained;
+                        breakpointInitialised[static_cast<std::size_t>(index)] = true;
                     }
                 }
 
@@ -787,8 +791,22 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                 // also has five points holding at index 3, and is indis-
                 // tinguishable from a legacy hold by inspection. Migrating by
                 // shape would silently delete their breakpoint.
-                setShapedEnvelope(index, version < 3 ? px3::withoutHoldStage(envelope)
-                                                     : envelope);
+                const auto restored = version < 3 ? px3::withoutHoldStage(envelope) : envelope;
+                setShapedEnvelope(index, restored);
+
+                // Whichever mode is NOT active still needs its state, or
+                // switching after a reload would find nothing there. The active
+                // one is the shape just restored; the other comes from the
+                // retained child, or from the ADSR the parameters describe.
+                if (restored.isBreakpointMode())
+                {
+                    breakpointShapes[static_cast<std::size_t>(index)] = restored;
+                    breakpointInitialised[static_cast<std::size_t>(index)] = true;
+                }
+                else
+                {
+                    adsrShapes[static_cast<std::size_t>(index)] = restored;
+                }
             }
         }
     }

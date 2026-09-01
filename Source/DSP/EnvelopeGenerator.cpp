@@ -43,6 +43,14 @@ void EnvelopeGenerator::noteOff()
     // From wherever the envelope actually is. A modulation envelope released
     // during its attack must not jump to the sustain level on the way out any
     // more than an amplitude one may.
+    // A one-shot envelope ignores note-off and plays its trajectory out. The
+    // key triggered it; it does not gate it.
+    if (snapshot.isOneShot())
+    {
+        noteHeld = false;
+        return;
+    }
+
     releaseLevelAnchor = juce::jlimit(0.0f, 1.0f, snapshot.valueAtHeld(heldSeconds));
     releasedSeconds = 0.0;
     noteHeld = false;
@@ -71,7 +79,23 @@ float EnvelopeGenerator::getNextSample()
     const auto step = 1.0 / sampleRateHz;
 
     float raw = 0.0f;
-    if (inRelease)
+
+    // level = f(t), on one clock, advancing whether or not the key is down.
+    if (snapshot.isOneShot())
+    {
+        if (! finished)
+        {
+            raw = juce::jlimit(0.0f, 1.0f, snapshot.valueAtElapsed(heldSeconds));
+            heldSeconds += step;
+
+            if (heldSeconds >= snapshot.totalSeconds())
+            {
+                finished = true;
+                noteHeld = false;
+            }
+        }
+    }
+    else if (inRelease)
     {
         raw = juce::jlimit(0.0f, 1.0f,
                            snapshot.valueAtReleased(releasedSeconds, releaseLevelAnchor));

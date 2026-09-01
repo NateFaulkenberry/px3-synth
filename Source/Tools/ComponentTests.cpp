@@ -969,6 +969,128 @@ void testBreakpointEnvelope()
                   + fmt(generatorReference[12], 4));
     }
 
+    // ---- switching is non-destructive in both directions --------------------
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        setParam(processor, "ampAttack", 0.120f);
+        setParam(processor, "ampDecay", 0.400f);
+        setParam(processor, "ampSustain", 0.60f);
+        setParam(processor, "ampRelease", 0.800f);
+
+        const auto adsrBefore = processor.currentAmpEnvelopeSettings();
+
+        // Bend the decay while still in ADSR mode. Curves live on the shape,
+        // not in the four parameters, so this is the part a round trip can
+        // actually lose.
+        {
+            auto bent = processor.getShapedEnvelope(0);
+            bent.setCurve(1, -0.7);
+            processor.setShapedEnvelope(0, bent);
+        }
+        constexpr double adsrCurveBefore = -0.7;
+
+        // First visit seeds from the ADSR, so the user starts somewhere
+        // familiar.
+        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+        const auto seeded = processor.getShapedEnvelope(0);
+
+        check("EnvBp_TheFirstVisitSeedsFromTheAdsrShape",
+              seeded.isBreakpointMode() && seeded.getPointCount() == 4,
+              "the breakpoint editor opens on " + juce::String(seeded.getPointCount())
+                  + " points taken from the ADSR");
+
+        // Draw something the four stages cannot say.
+        auto drawn = seeded;
+        drawn.addPoint(0.30, 0.95);
+        drawn.addPoint(0.55, 0.15);
+        drawn.addPoint(0.80, 0.70);
+        drawn.setCurve(2, 0.6);
+        processor.setShapedEnvelope(0, drawn);
+        const auto drawnCount = drawn.getPointCount();
+
+        // Editing the breakpoint envelope must not touch the ADSR settings.
+        const auto adsrAfterDrawing = processor.currentAmpEnvelopeSettings();
+        check("EnvBp_EditingTheBreakpointLeavesTheAdsrAlone",
+              std::abs(adsrAfterDrawing.attackSeconds - adsrBefore.attackSeconds) < 1.0e-6f
+                  && std::abs(adsrAfterDrawing.decaySeconds - adsrBefore.decaySeconds) < 1.0e-6f
+                  && std::abs(adsrAfterDrawing.sustainLevel - adsrBefore.sustainLevel) < 1.0e-6f
+                  && std::abs(adsrAfterDrawing.releaseSeconds - adsrBefore.releaseSeconds) < 1.0e-6f,
+              "after drawing a " + juce::String(drawnCount) + "-point envelope the ADSR still reads A "
+                  + fmt(adsrAfterDrawing.attackSeconds, 3) + " D " + fmt(adsrAfterDrawing.decaySeconds, 3)
+                  + " S " + fmt(adsrAfterDrawing.sustainLevel, 2) + " R "
+                  + fmt(adsrAfterDrawing.releaseSeconds, 3));
+
+        // Back to ADSR: the stored settings return, not values derived from
+        // the drawing.
+        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
+        const auto adsrParamsAfterReturn = processor.currentAmpEnvelopeSettings();
+        const auto running = processor.currentAmpEnvelope();
+
+        check("EnvBp_ReturningToAdsrDoesNotWriteDerivedValuesToTheParameters",
+              std::abs(adsrParamsAfterReturn.attackSeconds - adsrBefore.attackSeconds) < 1.0e-6f
+                  && std::abs(adsrParamsAfterReturn.decaySeconds - adsrBefore.decaySeconds) < 1.0e-6f
+                  && std::abs(adsrParamsAfterReturn.sustainLevel - adsrBefore.sustainLevel) < 1.0e-6f
+                  && std::abs(adsrParamsAfterReturn.releaseSeconds - adsrBefore.releaseSeconds) < 1.0e-6f,
+              "the parameters still read A " + fmt(adsrParamsAfterReturn.attackSeconds, 3) + " D "
+                  + fmt(adsrParamsAfterReturn.decaySeconds, 3) + " S "
+                  + fmt(adsrParamsAfterReturn.sustainLevel, 2) + " R "
+                  + fmt(adsrParamsAfterReturn.releaseSeconds, 3));
+
+        const auto backToAdsr = running.toAdsr();
+
+        check("EnvBp_ReturningToAdsrRestoresWhatWasStored",
+              std::abs(backToAdsr.attackSeconds - adsrBefore.attackSeconds) < 0.01f
+                  && std::abs(backToAdsr.decaySeconds - adsrBefore.decaySeconds) < 0.01f
+                  && std::abs(backToAdsr.sustainLevel - adsrBefore.sustainLevel) < 0.01f
+                  && std::abs(backToAdsr.releaseSeconds - adsrBefore.releaseSeconds) < 0.01f
+                  && running.getPointCount() == 4,
+              "the envelope the DSP runs comes back as A " + fmt(backToAdsr.attackSeconds, 3)
+                  + " D " + fmt(backToAdsr.decaySeconds, 3) + " S " + fmt(backToAdsr.sustainLevel, 2)
+                  + " R " + fmt(backToAdsr.releaseSeconds, 3) + " over "
+                  + juce::String(running.getPointCount()) + " points");
+
+        check("EnvBp_ReturningToAdsrKeepsTheCurvesDrawnInAdsrMode",
+              std::abs(running.getPoint(1).curveToNext - adsrCurveBefore) < 1.0e-9,
+              "the decay bend reads " + fmt(static_cast<float>(running.getPoint(1).curveToNext), 3)
+                  + " against the " + fmt(static_cast<float>(adsrCurveBefore), 3) + " it was drawn at");
+
+        // And back to Breakpoint: the drawing returns, not a fresh seed.
+        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+        const auto returned = processor.getShapedEnvelope(0);
+
+        auto identical = returned.getPointCount() == drawn.getPointCount();
+        for (int i = 0; identical && i < drawn.getPointCount(); ++i)
+        {
+            identical = std::abs(returned.getPoint(i).timeSeconds - drawn.getPoint(i).timeSeconds) < 1.0e-9
+                        && std::abs(returned.getPoint(i).value - drawn.getPoint(i).value) < 1.0e-9
+                        && std::abs(returned.getPoint(i).curveToNext - drawn.getPoint(i).curveToNext) < 1.0e-9;
+        }
+
+        check("EnvBp_ReturningToBreakpointRestoresTheDrawingNotAFreshSeed",
+              identical,
+              identical ? "all " + juce::String(returned.getPointCount()) + " points return unchanged"
+                        : "it came back with " + juce::String(returned.getPointCount())
+                              + " points against the " + juce::String(drawn.getPointCount())
+                              + " that were drawn");
+
+        // Repeated switching causes no drift.
+        for (int i = 0; i < 6; ++i)
+        {
+            processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
+            processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+        }
+        const auto afterSix = processor.getShapedEnvelope(0);
+
+        check("EnvBp_RepeatedSwitchingDoesNotDrift",
+              afterSix.getPointCount() == drawn.getPointCount()
+                  && std::abs(afterSix.getPoint(2).value - drawn.getPoint(2).value) < 1.0e-9,
+              "after six round trips the drawing still has "
+                  + juce::String(afterSix.getPointCount()) + " points");
+    }
+
     // ---- persistence --------------------------------------------------------
     {
         PX3SynthAudioProcessor source;
@@ -18779,6 +18901,161 @@ void testEnvelopeModes()
                         + " shapes agree with the drawn curve to "
                         + fmt(worstOverall, 9) + " over 2000 points each"
                   : divergent.joinIntoString("; "));
+    }
+
+    // ---- Breakpoint is a trajectory, not a gated ADSR -----------------------
+    //
+    // The behaviour this whole refactor is about. Before it, a breakpoint
+    // envelope played its points up to the sustain index, FROZE there for as
+    // long as the key was held, then played the rest on a second clock. The
+    // graph showed a shape the DSP never traversed.
+    {
+        // Two peaks - a shape no ADSR can express, and one whose second peak
+        // only exists if the envelope actually keeps travelling.
+        auto twoPeaks = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+        twoPeaks.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+        {
+            px3::BreakpointEnvelope::Point points[7] = {
+                { 0.00, 0.0, 0.0 },
+                { 0.10, 1.0, 0.0 },
+                { 0.25, 0.0, 0.0 },   // down to silence between the strikes
+                { 0.30, 0.0, 0.0 },
+                { 0.45, 0.9, 0.0 },   // the second peak
+                { 0.70, 0.3, 0.0 },
+                { 1.00, 0.0, 0.0 }
+            };
+            twoPeaks.setPoints(points, 7, 2);
+            twoPeaks.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+        }
+
+        AmpEnvelope amp;
+        amp.prepare(kRate);
+        amp.setEnvelope(twoPeaks);
+        amp.noteOn();
+
+        // Held throughout: the envelope must travel the whole trajectory
+        // rather than stopping at any point along it.
+        const auto sampleAt = [&](double seconds, std::vector<float>& trace)
+        {
+            const auto want = static_cast<int>(std::lround(seconds * kRate));
+            while (static_cast<int>(trace.size()) <= want) { trace.push_back(amp.getNextSample()); }
+            return trace[static_cast<std::size_t>(want)];
+        };
+
+        std::vector<float> held;
+        const auto atFirstPeak = sampleAt(0.10, held);
+        const auto atDip = sampleAt(0.27, held);
+        const auto atSecondPeak = sampleAt(0.45, held);
+        const auto atEnd = sampleAt(1.02, held);
+
+        check("EnvBp_AHeldNoteTravelsTheWholeTrajectory",
+              atFirstPeak > 0.8f && atDip < 1.0e-5f && atSecondPeak > 0.7f && atEnd < 0.05f,
+              "held throughout, the envelope reads " + fmt(atFirstPeak, 3) + " at the first peak, "
+                  + fmt(atDip, 5) + " in the silent gap, " + fmt(atSecondPeak, 3)
+                  + " at the second peak and " + fmt(atEnd, 3) + " at the end");
+
+        check("EnvBp_ItFinishesEvenWithTheKeyStillDown",
+              ! amp.isActive(),
+              amp.isActive() ? "the voice is still sounding after the envelope ended"
+                             : "the envelope ended and the voice retired, key still down");
+
+        // Releasing does not truncate it: the key triggers, it does not gate.
+        // Released INSIDE the silent gap, which is the case that bites - a
+        // note-off taken at a zero level reads as "nothing left to release"
+        // and would retire the voice before the second strike ever sounds.
+        AmpEnvelope released;
+        released.prepare(kRate);
+        released.setEnvelope(twoPeaks);
+        released.noteOn();
+
+        auto secondPeakAfterRelease = 0.0f;
+        {
+            const auto releaseAt = static_cast<int>(0.27 * kRate);
+            const auto peakAt = static_cast<int>(0.45 * kRate);
+
+            for (int i = 0; i <= peakAt; ++i)
+            {
+                if (i == releaseAt) { released.noteOff(); }
+                const auto value = released.getNextSample();
+                if (i == peakAt) { secondPeakAfterRelease = value; }
+            }
+        }
+
+        check("EnvBp_ReleasingTheKeyDoesNotTruncateTheTrajectory",
+              secondPeakAfterRelease > 0.7f,
+              "released into the silent gap at 0.27 s, the envelope still reaches "
+                  + fmt(secondPeakAfterRelease, 3) + " at its second peak");
+    }
+
+    // ---- the ADSR lifecycle is untouched ------------------------------------
+    {
+        auto adsr = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+
+        AmpEnvelope amp;
+        amp.prepare(kRate);
+        amp.setEnvelope(adsr);
+        amp.noteOn();
+
+        // Held well past the point an ADSR reaches its sustain.
+        for (int i = 0; i < static_cast<int>(2.0 * kRate); ++i) { amp.getNextSample(); }
+        const auto whileHeld = amp.getNextSample();
+
+        check("EnvBp_AnAdsrStillHoldsAtItsSustain",
+              std::abs(whileHeld - adsrSettings.sustainLevel) < 0.02f && amp.isActive(),
+              "held for two seconds, an ADSR sits at " + fmt(whileHeld, 3)
+                  + " against a sustain of " + fmt(adsrSettings.sustainLevel, 3));
+
+        amp.noteOff();
+        for (int i = 0; i < static_cast<int>(1.0 * kRate); ++i) { amp.getNextSample(); }
+
+        check("EnvBp_AnAdsrStillReleasesOnNoteOff",
+              ! amp.isActive(),
+              amp.isActive() ? "the ADSR did not finish its release"
+                             : "note-off released it to silence as before");
+    }
+
+    // ---- the fill follows elapsed time, not a stage --------------------------
+    {
+        auto trajectory = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+        {
+            px3::BreakpointEnvelope::Point points[5] = {
+                { 0.00, 0.0, 0.0 }, { 0.20, 1.0, 0.0 }, { 0.50, 0.3, 0.0 },
+                { 0.80, 0.8, 0.0 }, { 1.20, 0.0, 0.0 }
+            };
+            trajectory.setPoints(points, 5, 2);
+            trajectory.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+        }
+
+        BreakpointEnvelopeEditor graph;
+        graph.setSize(600, 240);
+        graph.setEnvelope(trajectory);
+
+        const auto fillAt = [&graph](double elapsed)
+        {
+            EnvelopePosition position;
+            position.active = true;
+            position.heldSeconds = elapsed;
+            position.sustainSeconds = 0.5;   // an ADSR would stop here
+            graph.setProgress(position);
+            return graph.progressDisplayTime();
+        };
+
+        juce::StringArray readings;
+        auto advancesThroughout = true;
+        auto previous = -1.0;
+        for (const auto elapsed : { 0.0, 0.25, 0.5, 0.75, 1.0, 1.15 })
+        {
+            const auto shown = fillAt(elapsed);
+            readings.add(fmt(shown, 2));
+            advancesThroughout = advancesThroughout && shown > previous
+                                 && std::abs(shown - elapsed) < 1.0e-6;
+            previous = shown;
+        }
+
+        check("EnvBp_TheFillFollowsElapsedTimePastEveryPoint",
+              advancesThroughout,
+              "the fill reads " + readings.joinIntoString(", ")
+                  + " s - it does not stop at the 0.50 s point an ADSR would hold at");
     }
 
     // ---- mode switching -----------------------------------------------------

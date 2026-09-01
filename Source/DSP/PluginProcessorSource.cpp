@@ -171,37 +171,39 @@ px3::BreakpointEnvelope::Mode PX3SynthAudioProcessor::getEnvelopeMode(int slot) 
 void PX3SynthAudioProcessor::setEnvelopeMode(int slot, px3::BreakpointEnvelope::Mode mode)
 {
     const auto index = static_cast<std::size_t>(juce::jlimit(0, kShapedEnvelopeCount - 1, slot));
-    auto& envelope = shapedEnvelopes[index];
+    auto& active = shapedEnvelopes[index];
 
-    if (envelope.getMode() == mode) { return; }
+    if (active.getMode() == mode) { return; }
 
     if (mode == px3::BreakpointEnvelope::Mode::breakpoint)
     {
-        // Switching TO breakpoint. If there is a shape waiting from a previous
-        // visit, restore it exactly; otherwise carry the ADSR shape across,
-        // curves and all, so the editor opens on what was already on screen.
-        if (hasRetainedBreakpointShape[index])
+        // Seed from the ADSR the FIRST time only, so the user starts somewhere
+        // familiar. Every switch after that restores their own shape - deriving
+        // it again would overwrite their work each time they glanced at the
+        // other mode.
+        if (! breakpointInitialised[index])
         {
-            envelope = retainedBreakpointShapes[index];
-            envelope.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
-            hasRetainedBreakpointShape[index] = false;
-        }
-        else
-        {
-            envelope.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+            breakpointShapes[index] = active;
+            breakpointInitialised[index] = true;
         }
 
+        // The ADSR shape stays where it is; only which one is active changes.
+        adsrShapes[index] = active;
+        active = breakpointShapes[index];
+        active.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
         return;
     }
 
-    // Switching TO adsr. Four points cannot hold sixteen, so the shape is
-    // reduced - and the original is kept, so this is never the only copy and
-    // switching back restores it rather than approximating it.
-    retainedBreakpointShapes[index] = envelope;
-    retainedBreakpointShapes[index].setMode(px3::BreakpointEnvelope::Mode::breakpoint);
-    hasRetainedBreakpointShape[index] = true;
+    // Back to ADSR. The breakpoint shape is kept as it stands, and the stored
+    // ADSR parameters come back unchanged - no attempt is made to derive four
+    // values from an arbitrary shape, which would be lossy and would rewrite
+    // settings the user never edited.
+    breakpointShapes[index] = active;
+    breakpointShapes[index].setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+    breakpointInitialised[index] = true;
 
-    envelope = envelope.reducedToAdsr();
+    active = adsrShapes[index];
+    active.setMode(px3::BreakpointEnvelope::Mode::adsr);
 }
 
 px3::BreakpointEnvelope PX3SynthAudioProcessor::currentAmpEnvelope() const

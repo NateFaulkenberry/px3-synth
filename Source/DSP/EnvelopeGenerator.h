@@ -29,7 +29,13 @@ public:
         position.active = ! finished;
         position.inRelease = inRelease;
         position.sustainSeconds = snapshot.sustainTimeSeconds();
-        position.heldSeconds = juce::jmin(heldSeconds, position.sustainSeconds);
+        // Clamped at the sustain point for an ADSR, because that is where an
+        // ADSR waits. A one-shot envelope never waits, so its elapsed time is
+        // reported whole - clamping it would stop the fill part way along a
+        // trajectory the envelope is still travelling.
+        position.heldSeconds = snapshot.isOneShot()
+                                 ? heldSeconds
+                                 : juce::jmin(heldSeconds, position.sustainSeconds);
         position.releasedSeconds = releasedSeconds;
         return position;
     }

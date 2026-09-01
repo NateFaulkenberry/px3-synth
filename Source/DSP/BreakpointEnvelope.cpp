@@ -455,6 +455,12 @@ void BreakpointEnvelope::Snapshot::rebuild(const BreakpointEnvelope& envelope, d
     sustainSeconds = envelope.getPoint(sustainIndex).timeSeconds;
     sustainValue = static_cast<float>(envelope.getPoint(sustainIndex).value);
     releaseSeconds = juce::jmax(0.0, envelope.getTotalSeconds() - sustainSeconds);
+
+    // A breakpoint envelope is a trajectory, not a gate. The sustain fields
+    // above are still filled in - the ADSR path reads them - but a one-shot
+    // envelope ignores them entirely and runs on elapsed time alone.
+    oneShot = envelope.isBreakpointMode();
+    totalTime = envelope.getTotalSeconds();
 }
 
 double BreakpointEnvelope::Snapshot::evaluate(int first, int last, double seconds,
@@ -484,6 +490,28 @@ double BreakpointEnvelope::Snapshot::evaluate(int first, int last, double second
     }
 
     return fallbackValue;
+}
+
+float BreakpointEnvelope::Snapshot::valueAtElapsed(double seconds) const noexcept
+{
+    if (segmentCount <= 0)
+    {
+        return 0.0f;
+    }
+
+    // Every segment, in order, on one clock. No hold at any point and no
+    // second clock after note-off: that is what makes this a time/level
+    // envelope rather than an ADSR with more points in it.
+    const auto& last = segments[static_cast<std::size_t>(segmentCount - 1)];
+    const auto finalValue = static_cast<float>(last.startValue + last.valueSpan);
+
+    if (seconds >= totalTime)
+    {
+        return finalValue;
+    }
+
+    return static_cast<float>(evaluate(0, segmentCount - 1, seconds,
+                                       static_cast<double>(finalValue)));
 }
 
 double BreakpointEnvelope::Snapshot::firstSegmentEnd() const noexcept

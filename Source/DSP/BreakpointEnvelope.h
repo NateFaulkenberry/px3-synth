@@ -207,6 +207,17 @@ public:
         // needs it to know when the held phase has stopped advancing.
         double sustainTimeSeconds() const noexcept { return sustainSeconds; }
 
+        // Breakpoint envelopes run as one shot: level = f(t) from note-on to
+        // the last point, with no hold and no separate release clock. The key
+        // TRIGGERS them; it does not gate them.
+        bool isOneShot() const noexcept { return oneShot; }
+        double totalSeconds() const noexcept { return totalTime; }
+
+        // f(t) over every segment, for a one-shot envelope. Past the last point
+        // it reports the final level, which is anchored at silence - so a voice
+        // always reaches zero and always retires.
+        float valueAtElapsed(double seconds) const noexcept;
+
 
     private:
         struct Segment
@@ -223,6 +234,8 @@ public:
 
         std::array<Segment, kMaxPoints> segments {};
         int segmentCount { 0 };
+        bool oneShot { false };
+        double totalTime { 0.0 };
         int sustainSegment { 0 };
         double sustainSeconds { 0.0 };
         double releaseSeconds { 0.0 };
