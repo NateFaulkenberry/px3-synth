@@ -969,6 +969,77 @@ void testBreakpointEnvelope()
                   + fmt(generatorReference[12], 4));
     }
 
+    // ---- both modes' state travels in a PRESET FILE too ---------------------
+    //
+    // Presets take everything the session tree carries bar the preset's own
+    // identity, so this holds by construction - which is not the same as
+    // holding, and a preset file is the artefact users actually trade.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        setParam(processor, "ampAttack", 0.180f);
+        {
+            auto bent = processor.getShapedEnvelope(0);
+            bent.setCurve(0, 0.62);
+            processor.setShapedEnvelope(0, bent);
+        }
+
+        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+        {
+            auto drawn = processor.getShapedEnvelope(0);
+            drawn.addPoint(0.35, 0.88);
+            drawn.addPoint(0.58, 0.12);
+            drawn.setCurve(3, -0.4);
+            processor.setShapedEnvelope(0, drawn);
+        }
+
+        auto tempDirectory = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                 .getChildFile("px3-component-tests");
+        tempDirectory.createDirectory();
+        const auto presetFile = tempDirectory.getChildFile("envelope-modes.px3preset");
+        presetFile.deleteFile();
+
+        PresetManager manager(processor);
+        juce::String error;
+        PresetManager::PresetMetadata metadata;
+        metadata.name = "Envelope Modes";
+        metadata.category = "Test";
+        metadata.author = "component tests";
+
+        const auto saved
+            = manager.dumpCurrentStateToPresetFile(presetFile, metadata, true, true, error, nullptr);
+
+        PX3SynthAudioProcessor target;
+        target.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        target.prepareToPlay(kSampleRate, kBlockSize);
+        PresetManager targetManager(target);
+        juce::String loadError;
+        const auto loaded = saved && targetManager.loadPresetFile(presetFile, loadError);
+
+        const auto live = target.getShapedEnvelope(0);
+        check("EnvBp_APresetFileCarriesTheActiveBreakpointShape",
+              loaded && live.isBreakpointMode() && live.getPointCount() == 6
+                  && std::abs(live.getPoint(3).curveToNext + 0.4) < 1.0e-9,
+              loaded ? "it loads in Breakpoint mode on " + juce::String(live.getPointCount())
+                           + " points with the drawn bend at "
+                           + fmt(static_cast<float>(live.getPoint(3).curveToNext), 2)
+                     : "the preset did not round-trip: " + error + loadError);
+
+        target.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
+        const auto adsrAfter = target.currentAmpEnvelope();
+        check("EnvBp_APresetFileCarriesTheAdsrPutAsideBehindIt",
+              loaded && adsrAfter.getPointCount() == 4
+                  && std::abs(adsrAfter.getPoint(0).curveToNext - 0.62) < 1.0e-9
+                  && std::abs(target.currentAmpEnvelopeSettings().attackSeconds - 0.180f) < 1.0e-4f,
+              "switching back gives " + juce::String(adsrAfter.getPointCount()) + " points bending "
+                  + fmt(static_cast<float>(adsrAfter.getPoint(0).curveToNext), 2) + " at A "
+                  + fmt(target.currentAmpEnvelopeSettings().attackSeconds, 3));
+
+        presetFile.deleteFile();
+    }
+
     // ---- no sustain region in Breakpoint mode -------------------------------
     //
     // The shaded band from the sustain point to the right edge means "the
