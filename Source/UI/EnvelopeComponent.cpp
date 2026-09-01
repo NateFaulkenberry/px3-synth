@@ -1091,12 +1091,20 @@ void EnvelopeComponent::layoutAdsrKnobs()
     auto flex = inner.rowFlex(row);
     const auto gap = inner.rowGap(row);
 
-    // What the mode selector leaves. It sits at the left of the same row.
+    // What the mode selector leaves, less a gap. The knobs used to start
+    // immediately where the selector ended, so the ATTACK cell sat hard against
+    // the TYPE box and the two read as one run of controls. The gap comes off
+    // the knobs' share of the row, which is why they are capped smaller than a
+    // row of four otherwise allows.
     auto content = inner.rowContent(row);
     const auto selectorWidth = uiConfig != nullptr
                                  ? uiConfig->getInt("envelope.modeSelector.width", 104)
                                  : 104;
+    const auto selectorGap = uiConfig != nullptr
+                               ? uiConfig->getInt("envelope.modeSelector.gapAfter", 16)
+                               : 16;
     content.removeFromLeft(juce::jmin(selectorWidth, content.getWidth()));
+    content.removeFromLeft(juce::jmin(selectorGap, content.getWidth()));
     const auto cellHeight = static_cast<float>(juce::jmax(1, content.getHeight()));
     const auto cellWidth = static_cast<float>(juce::jmax(1, content.getWidth() / 4));
 
@@ -1106,12 +1114,23 @@ void EnvelopeComponent::layoutAdsrKnobs()
     }
     flex.performLayout(content.toFloat());
 
+    const auto labelHeight = uiConfig != nullptr
+                               ? uiConfig->getInt("envelope.adsrKnobs.labelHeight", 11)
+                               : 11;
+    const auto readoutHeight = uiConfig != nullptr
+                                 ? uiConfig->getInt("envelope.adsrKnobs.readoutHeight", 11)
+                                 : 11;
+    const auto maxKnobSize = uiConfig != nullptr
+                               ? uiConfig->getInt("envelope.adsrKnobs.maxSize", 54)
+                               : 54;
+
     for (int i = 0; i < 4; ++i)
     {
         auto& entry = adsrKnobs[static_cast<std::size_t>(i)];
         px3::ui::layoutLabelledControl(
             flex.items.getReference(i).currentBounds.toNearestInt(),
-            { &entry.label, &entry.knob, &entry.readout, ControlShape::square, 12, 12, 64 },
+            { &entry.label, &entry.knob, &entry.readout, ControlShape::square,
+              labelHeight, readoutHeight, maxKnobSize },
             inner.rowControl(row));
     }
 }

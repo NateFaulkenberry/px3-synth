@@ -73,6 +73,23 @@ public:
     const juce::Label& debugAdsrKnobReadout(int i) const
     { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].readout; }
 
+    // Everything the ADSR group occupies - labels, knobs and readouts - as one
+    // rectangle, so a test can measure the gap between it and the TYPE
+    // selector rather than recompute the layout's own arithmetic.
+    juce::Rectangle<int> debugAdsrGroupBounds() const
+    {
+        if (! adsrKnobsBuilt) { return {}; }
+
+        juce::Rectangle<int> group;
+        for (const auto& entry : adsrKnobs)
+        {
+            group = group.getUnion(entry.label.getBounds())
+                         .getUnion(entry.knob.getBounds())
+                         .getUnion(entry.readout.getBounds());
+        }
+        return group;
+    }
+
     // The shape this card is editing. Handed in by the editor, which owns the
     // connection to the processor - this component knows about an envelope, not
     // about where it lives.

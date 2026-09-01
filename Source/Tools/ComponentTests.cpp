@@ -19546,6 +19546,47 @@ void testEnvelopeModes()
                 }
             }
 
+            // The ADSR group must not sit hard against the TYPE selector. The
+            // gap is read from the config rather than restated here, so this
+            // measures the layout instead of reproducing its arithmetic.
+            {
+                // From the shipped file, so the number this asserts is the
+                // number the plugin lays out with.
+                auto configured = 16;
+                {
+                    const auto configFile = juce::File::getCurrentWorkingDirectory()
+                                                .getChildFile("Source/UI/UIConfig.json");
+                    juce::String configError;
+                    if (configFile.existsAsFile())
+                    {
+                        if (auto config = UIConfig::fromJsonText(configFile.loadFileAsString(),
+                                                                 configError))
+                        {
+                            configured = config->getInt("envelope.modeSelector.gapAfter", 16);
+                        }
+                    }
+                }
+                auto worst = 100000;
+                auto measuredOn = 0;
+                for (auto* card : cards)
+                {
+                    card->setEnvelopeMode(px3::BreakpointEnvelope::Mode::adsr);
+                    const auto group = card->debugAdsrGroupBounds();
+                    const auto box = card->debugModeBox().getBounds();
+                    if (group.isEmpty() || box.isEmpty()) { continue; }
+                    worst = juce::jmin(worst, group.getX() - box.getRight());
+                    ++measuredOn;
+                }
+
+                check("EnvKnobs_TheAdsrGroupClearsTheTypeSelector",
+                      measuredOn > 0 && worst >= configured,
+                      measuredOn > 0
+                          ? "the tightest of " + juce::String(measuredOn) + " cards leaves "
+                                + juce::String(worst) + " px after TYPE, against the "
+                                + juce::String(configured) + " px configured"
+                          : "no card reported both a TYPE box and an ADSR group");
+            }
+
             check("EnvMode_EveryEnvelopeCardOffersTheTwoModes",
                   everyCardHasOne && offered.size() == 2,
                   juce::String(static_cast<int>(cards.size())) + " cards offering "

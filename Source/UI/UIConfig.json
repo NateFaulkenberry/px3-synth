@@ -2715,7 +2715,13 @@
   "envelope": {
     "modeSelector": {
       "width": 104,
-      "height": 20
+      "height": 20,
+      "gapAfter": 16
+    },
+    "adsrKnobs": {
+      "maxSize": 54,
+      "labelHeight": 11,
+      "readoutHeight": 11
     }
   }
 }
