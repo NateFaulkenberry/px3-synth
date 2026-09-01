@@ -121,6 +121,42 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
     // behaviour across multiple sources - and the pre-clamp value is reported
     // so a test can tell "modulation stayed in range" from "modulation was cut
     // off at the edge", which look identical afterwards.
+    // ---- macros -----------------------------------------------------------
+    //
+    // A third source kind in the same accumulation, on the same terms: a
+    // unipolar 0..1 signal with a signed per-destination depth, which is
+    // exactly the envelope case above. Summing rather than replacing is what
+    // lets two macros, an LFO and an envelope all reach one parameter and
+    // still produce a defined value.
+    //
+    // Pointer compares, not string compares. The table is resolved on the
+    // message thread whenever an assignment changes, so this loop allocates
+    // nothing, locks nothing and touches no strings.
+    {
+        const auto routes = juce::jlimit(0, kMacroRouteSlots,
+                                         macroRouteCount.load(std::memory_order_acquire));
+
+        for (int i = 0; i < routes; ++i)
+        {
+            const auto& route = macroRoutes[static_cast<std::size_t>(i)];
+            if (route.parameter.load(std::memory_order_relaxed) != parameter) { continue; }
+
+            const auto macroIndex = route.macroIndex.load(std::memory_order_relaxed);
+            if (! juce::isPositiveAndBelow(macroIndex, kMacroCount)) { continue; }
+
+            const auto depth = route.depth.load(std::memory_order_relaxed);
+            const auto signal = juce::jlimit(0.0f, 1.0f,
+                                             macroParams[static_cast<std::size_t>(macroIndex)]->get());
+
+            // Unipolar, so the whole of the side the depth points at - the
+            // same headroom rule the envelopes use, and for the same reason:
+            // a source driving past the end gets clamped flat instead of
+            // arriving at the boundary and stopping there.
+            const auto headroom = depth >= 0.0f ? 1.0f - base : base;
+            totalDelta += depth * headroom * signal;
+        }
+    }
+
     if (outUnclampedNormalized != nullptr)
     {
         *outUnclampedNormalized = base + totalDelta;
@@ -448,6 +484,15 @@ bool PX3SynthAudioProcessor::isParameterModulated(const juce::String& parameterI
         return lfoAssignableTargets[static_cast<std::size_t>(assignment)]
             .parameterId.equalsIgnoreCase(parameterId);
     };
+
+    // A macro counts as modulation for this purpose: the question this answers
+    // is "does the knob need a moving ring", and a macro moves the value just
+    // as an LFO does. Without this the ring stayed dark and a macro-driven
+    // parameter looked untouched however far the macro was turned.
+    if (getMacroMaskForParameter(parameterId) != 0)
+    {
+        return true;
+    }
 
     for (int i = 0; i < kLfoSourceCount; ++i)
     {
@@ -1153,7 +1198,7 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
 
 float PX3SynthAudioProcessor::lfoDepthForParameterId(const juce::String& parameterId) const
 {
-    juce::ignoreUnused(parameterId);
+
     // Source amount is already user-scaled (-100%..+100%).
     // Use full normalized depth here so routing is clearly audible and
     // modulation behavior is consistent across destinations.
@@ -1219,3 +1264,127 @@ void PX3SynthAudioProcessor::setFxProcessingOrderWithReason(const px3::FxOrder& 
     updateHostDisplay(juce::AudioProcessor::ChangeDetails().withProgramChanged(true));
 }
 
+
+//==============================================================================
+// Macro control system. See docs/macro-system-design.md.
+//==============================================================================
+
+juce::String PX3SynthAudioProcessor::macroParameterId(int macroIndex)
+{
+    return "macro" + juce::String(juce::jlimit(0, kMacroCount - 1, macroIndex) + 1);
+}
+
+juce::String PX3SynthAudioProcessor::macroDisplayName(int macroIndex)
+{
+    return "MACRO " + juce::String(juce::jlimit(0, kMacroCount - 1, macroIndex) + 1);
+}
+
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getMacroParam(int macroIndex) const
+{
+    return *macroParams[static_cast<std::size_t>(juce::jlimit(0, kMacroCount - 1, macroIndex))];
+}
+
+bool PX3SynthAudioProcessor::isMacroDestination(int macroIndex,
+                                                const juce::String& parameterId) const
+{
+    if (! juce::isPositiveAndBelow(macroIndex, kMacroCount)) { return false; }
+
+    const auto& list = macroDestinations[static_cast<std::size_t>(macroIndex)];
+    return std::any_of(list.begin(), list.end(),
+                       [&parameterId](const MacroDestination& destination)
+                       { return destination.parameterId == parameterId; });
+}
+
+bool PX3SynthAudioProcessor::toggleMacroDestination(int macroIndex,
+                                                    const juce::String& parameterId)
+{
+    if (! juce::isPositiveAndBelow(macroIndex, kMacroCount) || parameterId.isEmpty())
+    {
+        return false;
+    }
+
+    // A macro cannot drive a macro. Not a scope decision so much as a loop
+    // waiting to happen.
+    for (int macro = 0; macro < kMacroCount; ++macro)
+    {
+        if (parameterId == macroParameterId(macro)) { return false; }
+    }
+
+    if (findParameterById(parameterId) == nullptr) { return false; }
+
+    auto& list = macroDestinations[static_cast<std::size_t>(macroIndex)];
+    const auto existing = std::find_if(list.begin(), list.end(),
+                                       [&parameterId](const MacroDestination& destination)
+                                       { return destination.parameterId == parameterId; });
+
+    auto assigned = false;
+    if (existing != list.end())
+    {
+        list.erase(existing);
+    }
+    else
+    {
+        // Full depth, positive. There is no depth editor in this version; the
+        // field exists so that adding one later changes the UI and not the
+        // stored format.
+        list.push_back({ parameterId, 1.0f });
+        assigned = true;
+    }
+
+    rebuildMacroRoutes();
+    return assigned;
+}
+
+std::vector<PX3SynthAudioProcessor::MacroDestination>
+PX3SynthAudioProcessor::getMacroDestinations(int macroIndex) const
+{
+    if (! juce::isPositiveAndBelow(macroIndex, kMacroCount)) { return {}; }
+    return macroDestinations[static_cast<std::size_t>(macroIndex)];
+}
+
+void PX3SynthAudioProcessor::clearMacroDestinations(int macroIndex)
+{
+    if (! juce::isPositiveAndBelow(macroIndex, kMacroCount)) { return; }
+
+    macroDestinations[static_cast<std::size_t>(macroIndex)].clear();
+    rebuildMacroRoutes();
+}
+
+int PX3SynthAudioProcessor::getMacroMaskForParameter(const juce::String& parameterId) const
+{
+    auto mask = 0;
+    for (int macro = 0; macro < kMacroCount; ++macro)
+    {
+        if (isMacroDestination(macro, parameterId)) { mask |= (1 << macro); }
+    }
+    return mask;
+}
+
+void PX3SynthAudioProcessor::rebuildMacroRoutes()
+{
+    // Message thread. Resolves IDs to pointers ONCE, here, so the audio thread
+    // never touches a string. The count is published last with a release, so a
+    // slot the audio thread can see is a slot that has been filled in.
+    auto slot = 0;
+
+    for (int macro = 0; macro < kMacroCount && slot < kMacroRouteSlots; ++macro)
+    {
+        for (const auto& destination : macroDestinations[static_cast<std::size_t>(macro)])
+        {
+            if (slot >= kMacroRouteSlots) { break; }
+
+            auto* parameter = findParameterById(destination.parameterId);
+            if (parameter == nullptr) { continue; }
+
+            macroRoutes[static_cast<std::size_t>(slot)].parameter.store(parameter,
+                                                                        std::memory_order_relaxed);
+            macroRoutes[static_cast<std::size_t>(slot)].depth.store(destination.depth,
+                                                                    std::memory_order_relaxed);
+            macroRoutes[static_cast<std::size_t>(slot)].macroIndex.store(macro,
+                                                                         std::memory_order_relaxed);
+            ++slot;
+        }
+    }
+
+    macroRouteCount.store(slot, std::memory_order_release);
+}

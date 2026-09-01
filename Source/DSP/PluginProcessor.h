@@ -198,6 +198,39 @@ public:
     px3::BreakpointEnvelope currentAmpEnvelope() const;
 
     //==========================================================================
+    // Macro control system. See docs/macro-system-design.md.
+    //
+    // Four control sources, not four aliases. A macro never becomes a
+    // parameter's value; it adds to it, the way an LFO does, which is what
+    // lets a cutoff be moved by its own knob, an automation lane, a MIDI CC,
+    // an LFO and two macros at once without any of them destroying the others.
+    //==========================================================================
+
+    static constexpr int kMacroCount = 4;
+
+    juce::AudioParameterFloat& getMacroParam(int macroIndex) const;
+    static juce::String macroParameterId(int macroIndex);
+    // "MACRO 1".."MACRO 4", for the indicator inside a destination knob.
+    static juce::String macroDisplayName(int macroIndex);
+
+    struct MacroDestination
+    {
+        juce::String parameterId;
+        float depth { 1.0f };
+    };
+
+    // Assignment is a toggle: assigning what is already assigned removes it.
+    // Returns true if the parameter is assigned AFTER the call.
+    bool toggleMacroDestination(int macroIndex, const juce::String& parameterId);
+    bool isMacroDestination(int macroIndex, const juce::String& parameterId) const;
+    std::vector<MacroDestination> getMacroDestinations(int macroIndex) const;
+    void clearMacroDestinations(int macroIndex);
+
+    // Which macros drive this parameter, as a bitmask of (1 << macroIndex).
+    // Cheap enough for the editor to ask once per knob per refresh.
+    int getMacroMaskForParameter(const juce::String& parameterId) const;
+
+    //==========================================================================
     // MIDI parameter mapping. See docs/midi-mapping-design.md.
     //
     // All of it is per-instance member state: no statics, no singleton, no
@@ -1030,6 +1063,29 @@ private:
     std::uint32_t seenTouchedSequence { 0 };
 
     // Message thread only.
+    //---- macro routing ---------------------------------------------------
+    // Message thread owns the destination lists; the audio thread reads the
+    // resolved table. Pointers rather than IDs there, so accumulating a delta
+    // is a pointer compare - no strings, no allocation, no lock, and a fixed
+    // size that never grows under the audio thread's feet.
+    static constexpr int kMacroRouteSlots = 64;
+
+    struct MacroRoute
+    {
+        std::atomic<juce::RangedAudioParameter*> parameter { nullptr };
+        std::atomic<float> depth { 0.0f };
+        std::atomic<int> macroIndex { -1 };
+    };
+
+    std::array<MacroRoute, kMacroRouteSlots> macroRoutes;
+    std::atomic<int> macroRouteCount { 0 };
+    std::array<std::vector<MacroDestination>, kMacroCount> macroDestinations;
+    std::array<juce::AudioParameterFloat*, kMacroCount> macroParams { { nullptr, nullptr, nullptr, nullptr } };
+
+    // Rebuilds the audio thread's table from the destination lists. Message
+    // thread only, called whenever an assignment changes or state is restored.
+    void rebuildMacroRoutes();
+
     std::vector<px3::MidiMapping> midiMappings;
     juce::StringArray midiLearnTargets;
 

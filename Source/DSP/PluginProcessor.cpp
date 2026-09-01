@@ -296,6 +296,20 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             labelPrefix + "Enabled",
             true);
     }
+    // The four macros are ordinary parameters, and that is the point: being
+    // parameters makes them automatable, serialized into session and preset
+    // state, and MIDI-mappable through the existing system without a line of
+    // new code in any of those places.
+    for (int macro = 0; macro < kMacroCount; ++macro)
+    {
+        macroParams[static_cast<std::size_t>(macro)] = new juce::AudioParameterFloat(
+            macroParameterId(macro),
+            macroDisplayName(macro),
+            juce::NormalisableRange<float>(0.0f, 1.0f),
+            0.0f);
+        addParameter(macroParams[static_cast<std::size_t>(macro)]);
+    }
+
     masterGainParam = new juce::AudioParameterFloat("masterGain", "Master Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
 
     vibeAmountParam = new juce::AudioParameterFloat("vibeAmount", "Vibe", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);

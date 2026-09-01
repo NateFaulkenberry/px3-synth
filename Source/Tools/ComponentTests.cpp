@@ -18516,6 +18516,439 @@ void testStereoSpread()
 // FACTORY PRESETS
 // ============================================================================
 
+// Macro control system. See docs/macro-system-design.md.
+void testMacroSystem()
+{
+    suite("MACRO SYSTEM");
+
+    constexpr double kRate = 48000.0;
+    constexpr int kBlock = 256;
+
+    const auto prepared = [](PX3SynthAudioProcessor& processor)
+    {
+        processor.setPlayConfigDetails(0, 2, kRate, kBlock);
+        processor.prepareToPlay(kRate, kBlock);
+    };
+
+    // ---- four macros, with stable identities --------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+
+        juce::StringArray ids;
+        juce::StringArray names;
+        auto allParameters = true;
+        for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+        {
+            ids.add(PX3SynthAudioProcessor::macroParameterId(macro));
+            names.add(PX3SynthAudioProcessor::macroDisplayName(macro));
+            allParameters = allParameters
+                            && processor.getMacroParam(macro).getParameterID()
+                                   == PX3SynthAudioProcessor::macroParameterId(macro);
+        }
+
+        check("Macro_ThereAreExactlyFourWithStableIds",
+              PX3SynthAudioProcessor::kMacroCount == 4 && allParameters
+                  && ids == juce::StringArray({ "macro1", "macro2", "macro3", "macro4" })
+                  && names[0] == "MACRO 1" && names[3] == "MACRO 4",
+              "ids " + ids.joinIntoString(", ") + " named " + names.joinIntoString(", "));
+
+        // Being real parameters is what makes them automatable, serialized and
+        // MIDI-mappable for free. Check they are actually registered as such.
+        auto found = 0;
+        for (auto* parameter : processor.getParameters())
+        {
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+            {
+                if (ids.contains(ranged->getParameterID())) { ++found; }
+            }
+        }
+
+        check("Macro_TheyAreRealParametersNotUiState",
+              found == 4,
+              juce::String(found) + " of 4 macros are registered parameters");
+    }
+
+    // ---- a macro moves what it is assigned to, and nothing else -------------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        auto& resonance = processor.getFilterResonanceParam(0);
+        auto& reverb = processor.getReverbAmountParam();
+
+        const auto cutoffId = cutoff.getParameterID();
+        const auto resonanceId = resonance.getParameterID();
+        const auto reverbId = reverb.getParameterID();
+
+        const auto assigned = processor.toggleMacroDestination(0, cutoffId)
+                              && processor.toggleMacroDestination(0, resonanceId);
+
+        const auto baseCutoff = processor.getModulatedNormalisedValue(cutoff);
+        const auto baseReverb = processor.getModulatedNormalisedValue(reverb);
+
+        processor.getMacroParam(0).setValueNotifyingHost(1.0f);
+        const auto drivenCutoff = processor.getModulatedNormalisedValue(cutoff);
+        const auto drivenResonance = processor.getModulatedNormalisedValue(resonance);
+        const auto drivenReverb = processor.getModulatedNormalisedValue(reverb);
+
+        check("Macro_MovingItMovesEveryDestination",
+              assigned && drivenCutoff > baseCutoff + 0.01f
+                  && drivenResonance > 0.5f,
+              "the cutoff went from " + fmt(baseCutoff, 3) + " to " + fmt(drivenCutoff, 3)
+                  + " and the resonance reached " + fmt(drivenResonance, 3));
+
+        check("Macro_AnUnassignedParameterIsUntouched",
+              std::abs(drivenReverb - baseReverb) < 1.0e-6f,
+              "the unassigned reverb stayed at " + fmt(drivenReverb, 4));
+
+        // The BASE is untouched: a macro is a control source, not an alias.
+        // This is what lets the knob, automation and a CC keep owning the
+        // parameter while the macro moves the sound.
+        const auto rawBase = static_cast<juce::RangedAudioParameter&>(cutoff).getValue();
+        check("Macro_TheBaseParameterIsNotOverwritten",
+              std::abs(rawBase - baseCutoff) < 1.0e-6f,
+              "the cutoff parameter itself still reads " + fmt(rawBase, 4)
+                  + " while its effective value is " + fmt(drivenCutoff, 4));
+
+        // Toggling removes it again.
+        const auto stillAssigned = processor.toggleMacroDestination(0, cutoffId);
+        check("Macro_AssignmentIsAToggle",
+              ! stillAssigned && ! processor.isMacroDestination(0, cutoffId)
+                  && processor.isMacroDestination(0, resonanceId),
+              "clicking the cutoff twice leaves it "
+                  + juce::String(processor.isMacroDestination(0, cutoffId) ? "assigned" : "unassigned")
+                  + " with the resonance still "
+                  + juce::String(processor.isMacroDestination(0, resonanceId) ? "assigned" : "unassigned"));
+
+        check("Macro_AMacroCannotDriveAMacro",
+              ! processor.toggleMacroDestination(0, PX3SynthAudioProcessor::macroParameterId(1))
+                  && ! processor.isMacroDestination(0, PX3SynthAudioProcessor::macroParameterId(1)),
+              "assigning macro 2 to macro 1 was refused");
+    }
+
+    // ---- two macros on one parameter sum ------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        const auto cutoffId = cutoff.getParameterID();
+
+        // Start the base low, so there is room above it to measure into.
+        cutoff.setValueNotifyingHost(0.1f);
+        const auto base = processor.getModulatedNormalisedValue(cutoff);
+
+        processor.toggleMacroDestination(0, cutoffId);
+        processor.getMacroParam(0).setValueNotifyingHost(0.5f);
+        const auto oneMacro = processor.getModulatedNormalisedValue(cutoff);
+
+        processor.toggleMacroDestination(1, cutoffId);
+        processor.getMacroParam(1).setValueNotifyingHost(0.5f);
+        const auto twoMacros = processor.getModulatedNormalisedValue(cutoff);
+
+        check("Macro_TwoMacrosOnOneParameterSumRatherThanFight",
+              oneMacro > base + 0.01f && twoMacros > oneMacro + 0.01f,
+              "base " + fmt(base, 3) + ", one macro " + fmt(oneMacro, 3)
+                  + ", two macros " + fmt(twoMacros, 3));
+
+        check("Macro_TheMaskNamesEveryMacroDrivingAParameter",
+              processor.getMacroMaskForParameter(cutoffId) == 0b0011,
+              "the cutoff reports mask "
+                  + juce::String(processor.getMacroMaskForParameter(cutoffId)));
+    }
+
+    // ---- a macro coexists with an LFO, an envelope and a direct MIDI CC ------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        const auto cutoffId = cutoff.getParameterID();
+        cutoff.setValueNotifyingHost(0.2f);
+
+        // Direct MIDI onto the same parameter the macro drives. The CC writes
+        // the BASE; the macro adds on top. Neither clears the other.
+        processor.setMidiLearnTargets({ cutoffId });
+        juce::MidiBuffer learn;
+        learn.addEvent(juce::MidiMessage::controllerEvent(1, 22, 40), 0);
+        buffer.clear();
+        processor.processBlock(buffer, learn);
+        processor.applyPendingMidiMappings();
+
+        processor.toggleMacroDestination(0, cutoffId);
+        processor.getMacroParam(0).setValueNotifyingHost(1.0f);
+
+        juce::MidiBuffer sweep;
+        sweep.addEvent(juce::MidiMessage::controllerEvent(1, 22, 100), 0);
+        buffer.clear();
+        processor.processBlock(buffer, sweep);
+        processor.applyPendingMidiMappings();
+
+        const auto baseAfterCc = static_cast<juce::RangedAudioParameter&>(cutoff).getValue();
+        const auto effective = processor.getModulatedNormalisedValue(cutoff);
+
+        check("Macro_ADirectMidiMappingAndAMacroBothKeepWorking",
+              processor.getMidiCcForParameter(cutoffId) == 22
+                  && processor.isMacroDestination(0, cutoffId)
+                  && baseAfterCc > 0.5f && effective > baseAfterCc,
+              "CC 22 moved the base to " + fmt(baseAfterCc, 3)
+                  + " and the macro raised the effective value to " + fmt(effective, 3));
+
+        // And the LFO/envelope path is untouched: assigning a macro to a
+        // parameter does not disturb what modulation does to it.
+        setChoice(processor, "lfo1Assign", 1);
+        const auto withLfo = processor.getModulatedNormalisedValue(cutoff);
+        check("Macro_ModulationStillReachesAMacroDrivenParameter",
+              std::isfinite(withLfo) && withLfo >= 0.0f && withLfo <= 1.0f,
+              "with an LFO assigned as well the effective value is " + fmt(withLfo, 3));
+    }
+
+    // ---- MIDI onto the macros themselves ------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        const auto sendAndApply = [&](const juce::MidiMessage& message)
+        {
+            juce::MidiBuffer midi;
+            midi.addEvent(message, 0);
+            buffer.clear();
+            processor.processBlock(buffer, midi);
+            processor.applyPendingMidiMappings();
+        };
+
+        juce::StringArray mapped;
+        for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+        {
+            processor.setMidiLearnTargets({ PX3SynthAudioProcessor::macroParameterId(macro) });
+            sendAndApply(juce::MidiMessage::controllerEvent(1, 21 + macro, 64));
+            mapped.add(juce::String(processor.getMidiCcForParameter(
+                PX3SynthAudioProcessor::macroParameterId(macro))));
+        }
+
+        check("Macro_EveryMacroCanBeMidiMapped",
+              mapped == juce::StringArray({ "21", "22", "23", "24" }),
+              "macros 1-4 map to CC " + mapped.joinIntoString(", "));
+
+        // The whole chain: CC -> macro -> parameter -> effective value.
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        cutoff.setValueNotifyingHost(0.1f);
+        processor.toggleMacroDestination(0, cutoff.getParameterID());
+
+        const auto before = processor.getModulatedNormalisedValue(cutoff);
+        sendAndApply(juce::MidiMessage::controllerEvent(1, 21, 127));
+        const auto macroValue = processor.getMacroParam(0).get();
+        const auto after = processor.getModulatedNormalisedValue(cutoff);
+
+        check("Macro_TheChainFromCcToMacroToParameterWorks",
+              macroValue > 0.9f && after > before + 0.05f,
+              "CC 21 took macro 1 to " + fmt(macroValue, 3)
+                  + " and the cutoff's effective value from " + fmt(before, 3)
+                  + " to " + fmt(after, 3));
+    }
+
+    // ---- it reaches the audio ----------------------------------------------
+    {
+        const auto renderWithMacro = [&](float macroValue)
+        {
+            PX3SynthAudioProcessor processor;
+            prepared(processor);
+            setParam(processor, "filter1Enabled", 1.0f);
+            setChoice(processor, "filter1Type", 0);
+            setParam(processor, "filter1Resonance", 0.2f);
+            processor.getFilterCutoffParam(0).setValueNotifyingHost(0.05f);
+
+            processor.toggleMacroDestination(0, processor.getFilterCutoffParam(0).getParameterID());
+            processor.getMacroParam(0).setValueNotifyingHost(macroValue);
+
+            juce::AudioBuffer<float> buffer(2, kBlock);
+            juce::MidiBuffer notes;
+            notes.addEvent(juce::MidiMessage::noteOn(1, 45, 1.0f), 0);
+            buffer.clear();
+            processor.processBlock(buffer, notes);
+
+            juce::MidiBuffer empty;
+            for (int b = 0; b < 20; ++b) { buffer.clear(); processor.processBlock(buffer, empty); }
+
+            auto brightness = 0.0;
+            auto previous = 0.0f;
+            for (int b = 0; b < 20; ++b)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, empty);
+                const auto* data = buffer.getReadPointer(0);
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                {
+                    brightness += std::abs(data[i] - previous);
+                    previous = data[i];
+                }
+            }
+            return brightness;
+        };
+
+        const auto closed = renderWithMacro(0.0f);
+        const auto open = renderWithMacro(1.0f);
+
+        check("Macro_TheChangeReachesTheAudio",
+              open > closed * 2.0,
+              "a note rendered with the macro at 0 carries " + fmt(closed, 1)
+                  + " of high-frequency energy against " + fmt(open, 1) + " at 1");
+    }
+
+    // ---- persistence: values and destinations, session and preset -----------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        auto& reverb = processor.getReverbAmountParam();
+        const auto cutoffId = cutoff.getParameterID();
+        const auto reverbId = reverb.getParameterID();
+
+        processor.toggleMacroDestination(0, cutoffId);
+        processor.toggleMacroDestination(0, reverbId);
+        processor.toggleMacroDestination(2, reverbId);
+        processor.getMacroParam(0).setValueNotifyingHost(0.72f);
+        processor.getMacroParam(2).setValueNotifyingHost(0.35f);
+
+        juce::MemoryBlock saved;
+        processor.getStateInformation(saved);
+
+        PX3SynthAudioProcessor reopened;
+        prepared(reopened);
+        reopened.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+
+        check("Macro_AssignmentsAndValuesSurviveASession",
+              reopened.isMacroDestination(0, cutoffId)
+                  && reopened.isMacroDestination(0, reverbId)
+                  && reopened.isMacroDestination(2, reverbId)
+                  && std::abs(reopened.getMacroParam(0).get() - 0.72f) < 0.01f
+                  && std::abs(reopened.getMacroParam(2).get() - 0.35f) < 0.01f,
+              "macro 1 holds " + juce::String(static_cast<int>(reopened.getMacroDestinations(0).size()))
+                  + " destinations at " + fmt(reopened.getMacroParam(0).get(), 2)
+                  + " and macro 3 holds "
+                  + juce::String(static_cast<int>(reopened.getMacroDestinations(2).size()))
+                  + " at " + fmt(reopened.getMacroParam(2).get(), 2));
+
+        // A preset ships its performance controls.
+        const auto preset = processor.createPresetStateTree();
+        PX3SynthAudioProcessor loaded;
+        prepared(loaded);
+        juce::String error;
+        loaded.applyParameterStateTree(preset, &error, false);
+
+        check("Macro_APresetCarriesItsAssignmentsAndValues",
+              preset.getChildWithName(px3::processor_internal::kMacroRoutesId).isValid()
+                  && loaded.isMacroDestination(0, cutoffId)
+                  && loaded.isMacroDestination(2, reverbId)
+                  && std::abs(loaded.getMacroParam(0).get() - 0.72f) < 0.01f,
+              "the preset restores " + juce::String(static_cast<int>(loaded.getMacroDestinations(0).size()))
+                  + " destinations on macro 1 at " + fmt(loaded.getMacroParam(0).get(), 2));
+
+        // Loading a preset must not take the MIDI mapping of a macro away:
+        // the preset says what macro 1 DOES, the instance says what moves it.
+        juce::AudioBuffer<float> buffer(2, kBlock);
+        loaded.setMidiLearnTargets({ PX3SynthAudioProcessor::macroParameterId(0) });
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::controllerEvent(1, 31, 64), 0);
+        buffer.clear();
+        loaded.processBlock(buffer, midi);
+        loaded.applyPendingMidiMappings();
+
+        auto bare = processor.createPresetStateTree();
+        bare.removeChild(bare.getChildWithName(px3::processor_internal::kMidiMappingsId), nullptr);
+        loaded.applyParameterStateTree(bare, &error, false);
+
+        check("Macro_APresetLoadKeepsTheMidiMappingOfAMacro",
+              loaded.getMidiCcForParameter(PX3SynthAudioProcessor::macroParameterId(0)) == 31,
+              "after a preset load macro 1 is still on CC "
+                  + juce::String(loaded.getMidiCcForParameter(
+                        PX3SynthAudioProcessor::macroParameterId(0))));
+    }
+
+    // ---- state that is missing, unknown or malformed ------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::String error;
+
+        // Nothing at all: what a project written before macros existed says.
+        PX3SynthAudioProcessor older;
+        prepared(older);
+        older.toggleMacroDestination(0, older.getFilterCutoffParam(0).getParameterID());
+
+        auto legacy = processor.createParameterStateTree();
+        legacy.removeChild(legacy.getChildWithName(px3::processor_internal::kMacroRoutesId), nullptr);
+        const auto legacyApplied = older.applyParameterStateTree(legacy, &error, true);
+
+        auto empty = true;
+        for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+        {
+            empty = empty && older.getMacroDestinations(macro).empty();
+        }
+
+        check("Macro_StateWithoutMacrosLoadsToFourEmptyMacros",
+              legacyApplied && empty,
+              legacyApplied ? "an older project leaves every macro empty"
+                            : "an older project failed to load: " + error);
+
+        // A destination naming something that does not exist, and a macro
+        // index out of range.
+        processor.toggleMacroDestination(1, processor.getReverbAmountParam().getParameterID());
+        auto tree = processor.createParameterStateTree();
+        auto routes = tree.getChildWithName(px3::processor_internal::kMacroRoutesId);
+
+        juce::ValueTree ghost(px3::processor_internal::kMacroDestId);
+        ghost.setProperty(px3::processor_internal::kMacroDestParamId, "noSuchParameter", nullptr);
+        routes.getChild(0).appendChild(ghost, nullptr);
+
+        juce::ValueTree impossible(px3::processor_internal::kMacroEntryId);
+        impossible.setProperty(px3::processor_internal::kMacroIndexId, 97, nullptr);
+        routes.appendChild(impossible, nullptr);
+
+        PX3SynthAudioProcessor restored;
+        prepared(restored);
+        const auto applied = restored.applyParameterStateTree(tree, &error, true);
+
+        check("Macro_MalformedStateDegradesRatherThanFails",
+              applied && restored.getMacroDestinations(1).size() == 1
+                  && restored.isMacroDestination(1, processor.getReverbAmountParam().getParameterID()),
+              "state applied " + juce::String(applied ? "cleanly" : "with an error")
+                  + " keeping " + juce::String(static_cast<int>(restored.getMacroDestinations(1).size()))
+                  + " real destination of 2 offered");
+    }
+
+    // ---- two instances, no leakage ------------------------------------------
+    {
+        PX3SynthAudioProcessor a;
+        PX3SynthAudioProcessor b;
+        prepared(a);
+        prepared(b);
+
+        const auto cutoffId = a.getFilterCutoffParam(0).getParameterID();
+        const auto reverbId = a.getReverbAmountParam().getParameterID();
+
+        a.toggleMacroDestination(0, cutoffId);
+        a.getMacroParam(0).setValueNotifyingHost(0.9f);
+        b.toggleMacroDestination(0, reverbId);
+        b.getMacroParam(0).setValueNotifyingHost(0.1f);
+
+        check("Macro_TwoInstancesKeepTheirOwnMacros",
+              a.isMacroDestination(0, cutoffId) && ! a.isMacroDestination(0, reverbId)
+                  && b.isMacroDestination(0, reverbId) && ! b.isMacroDestination(0, cutoffId)
+                  && std::abs(a.getMacroParam(0).get() - 0.9f) < 0.01f
+                  && std::abs(b.getMacroParam(0).get() - 0.1f) < 0.01f,
+              "A's macro 1 is at " + fmt(a.getMacroParam(0).get(), 2) + " driving "
+                  + juce::String(static_cast<int>(a.getMacroDestinations(0).size()))
+                  + ", B's at " + fmt(b.getMacroParam(0).get(), 2) + " driving "
+                  + juce::String(static_cast<int>(b.getMacroDestinations(0).size())));
+    }
+}
+
 // MIDI parameter mapping. See docs/midi-mapping-design.md.
 void testMidiMapping()
 {
@@ -27613,6 +28046,7 @@ int main(int argc, char* argv[])
     if (wants("preset")) testPresets();
     if (wants("factorypresets")) testFactoryPresets();
     if (wants("midimapping")) testMidiMapping();
+    if (wants("macro")) testMacroSystem();
     if (wants("vumeter")) testVuBallistics();
     if (wants("businserts")) testBusInserts();
     if (wants("filters")) testFilters();

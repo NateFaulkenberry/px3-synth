@@ -74,6 +74,16 @@ inline const juce::Identifier kEnvelopeShapesId("envelopeShapes");
 // MIDI mappings. Carried by both the DAW session and preset files, but
 // restored differently: a session is applied whole, while a preset replaces
 // them only if it has some of its own. See docs/midi-mapping-design.md.
+// Macro destinations. Carried by presets as well as sessions: a preset ships
+// the performance controls the sound was designed around. Macro VALUES need
+// nothing here - they are parameters, so they are already in the tree.
+inline const juce::Identifier kMacroRoutesId("macroRoutes");
+inline const juce::Identifier kMacroEntryId("macro");
+inline const juce::Identifier kMacroIndexId("index");
+inline const juce::Identifier kMacroDestId("dest");
+inline const juce::Identifier kMacroDestParamId("param");
+inline const juce::Identifier kMacroDestDepthId("depth");
+
 inline const juce::Identifier kMidiMappingsId("midiMappings");
 inline const juce::Identifier kMidiMappingId("mapping");
 inline const juce::Identifier kMidiCcId("cc");

@@ -175,6 +175,35 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
     }
 
     // Keep modulation source states in dedicated nodes for backward-compatible evolution.
+    // Macro destinations. In the preset as well as the session, so a patch
+    // ships with its performance controls already wired.
+    {
+        juce::ValueTree routes(kMacroRoutesId);
+        auto any = false;
+
+        for (int macro = 0; macro < kMacroCount; ++macro)
+        {
+            const auto& list = macroDestinations[static_cast<std::size_t>(macro)];
+            if (list.empty()) { continue; }
+
+            juce::ValueTree node(kMacroEntryId);
+            node.setProperty(kMacroIndexId, macro, nullptr);
+
+            for (const auto& destination : list)
+            {
+                juce::ValueTree dest(kMacroDestId);
+                dest.setProperty(kMacroDestParamId, destination.parameterId, nullptr);
+                dest.setProperty(kMacroDestDepthId, destination.depth, nullptr);
+                node.appendChild(dest, nullptr);
+            }
+
+            routes.appendChild(node, nullptr);
+            any = true;
+        }
+
+        if (any) { state.appendChild(routes, nullptr); }
+    }
+
     // MIDI mappings. Written here because this tree is what a DAW project
     // stores, and removed again in createPresetStateTree because a preset is
     // the sound rather than the user's hardware.
@@ -482,6 +511,48 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
             const auto waveform = px3::clampSubOscWaveformIndex(static_cast<int>(subOscState[kSubOscWaveformId]));
             subOscWaveformParam->setValueNotifyingHost(subOscWaveformParam->convertTo0to1(static_cast<float>(waveform)));
         }
+    }
+
+    // Macro destinations, restored on both paths. A preset defines the
+    // performance controls its sound was built around, and a session is the
+    // whole truth for its instance - both replace what is there.
+    //
+    // State with no macroRoutes leaves all four macros empty, which is what a
+    // project or preset written before this existed means.
+    {
+        for (auto& list : macroDestinations) { list.clear(); }
+
+        if (const auto routes = state.getChildWithName(kMacroRoutesId); routes.isValid())
+        {
+            for (const auto& node : routes)
+            {
+                const auto macro = static_cast<int>(node.getProperty(kMacroIndexId, -1));
+                if (! juce::isPositiveAndBelow(macro, kMacroCount)) { continue; }
+
+                for (const auto& dest : node)
+                {
+                    const auto parameterId
+                        = dest.getProperty(kMacroDestParamId, juce::String()).toString();
+
+                    // A destination naming a parameter this build does not have
+                    // is dropped and the rest of the macro still loads.
+                    if (parameterId.isEmpty() || findParameterById(parameterId) == nullptr)
+                    {
+                        continue;
+                    }
+
+                    if (isMacroDestination(macro, parameterId)) { continue; }
+
+                    MacroDestination destination;
+                    destination.parameterId = parameterId;
+                    destination.depth = juce::jlimit(-1.0f, 1.0f,
+                                                     static_cast<float>(dest.getProperty(kMacroDestDepthId, 1.0f)));
+                    macroDestinations[static_cast<std::size_t>(macro)].push_back(destination);
+                }
+            }
+        }
+
+        rebuildMacroRoutes();
     }
 
     // MIDI mappings. Restored on both paths, but they mean different things.
