@@ -175,38 +175,18 @@ juce::Point<float> BreakpointEnvelopeEditor::pointToScreen(int index) const
 
 juce::Point<float> BreakpointEnvelopeEditor::drawnPointPosition(int index) const
 {
-    // Two CONTROLS that would land on one pixel are nudged apart, cumulatively,
-    // in drawing order: grabAt would otherwise resolve both to the same one
-    // whichever you aimed at, leaving the other unreachable.
+    // Where the point IS. Nothing is nudged aside.
     //
-    // Nudging is honest there rather than a cheat, because the two points
-    // really are both at that instant, and they separate on their own the
-    // moment either is dragged out to a real duration.
-    const auto spacing = floatFor("pointRadius", 4.0f) * 2.0f + 2.0f;
-
-    // Crowded means close on BOTH axes, which is the only way two handles are
-    // hard to tell apart. Comparing the time axis alone called the anchor and
-    // the ATTACK peak crowded on a short attack - they share a column and sit
-    // at opposite ends of the graph - and pushed the attack handle a whole
-    // spacing to the RIGHT of the corner it marks. The line turned in one
-    // place and the handle sat in another.
+    // Coincident handles used to be pushed apart in drawing order so that
+    // grabAt could tell them apart. It cost the truth of the picture for a
+    // case the user is entitled to ask for: a decay that starts the instant
+    // the attack ends is a zero-length stage, and the two handles belong on
+    // the same pixel because the two points are at the same time.
     //
-    // Only an UNBROKEN run, counted backwards from this one. The first version
-    // added a nudge for every coincident pair anywhere before this index, so
-    // one crowded pair early in the envelope shifted every later handle - and
-    // the last handle is RELEASE, which was pushed clean off the right-hand
-    // edge of the panel. A control that is drawn outside the component is a
-    // control the user does not have.
-    auto run = 0;
-    for (int i = index; i >= 1; --i)
-    {
-        if (pointToScreen(i).getDistanceFrom(pointToScreen(i - 1)) >= spacing) { break; }
-        ++run;
-    }
-
-    auto position = pointToScreen(index);
-    position.x += spacing * static_cast<float>(run);
-    return position;
+    // Nothing is stranded by dropping it. grabAt breaks a tie in favour of the
+    // LATER point, and dragging that one sideways always separates the pair -
+    // so the handle underneath is one drag away rather than unreachable.
+    return pointToScreen(index);
 }
 
 juce::String BreakpointEnvelopeEditor::roleLabelFor(int index) const

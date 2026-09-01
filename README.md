@@ -557,6 +557,10 @@ UI:
   Structural points - the first, the sustain point and the last - cannot be
   removed.
 - Up to 16 points. The time axis is labelled in seconds, to a maximum of 8.
+- Handles may sit on top of one another: drag the decay onto the attack and the
+  stage has no length, which is what both the graph and the DSP then give you.
+  The handle underneath is one drag away - grabbing a shared spot takes the
+  later of the two, and moving it uncovers the other.
 - While a note is sounding, the area under the part of the envelope it has
   already been through fills in behind the curve. All four envelopes do this -
   AMP ENV and ENV 1-3 alike, each following its own envelope. It follows the shape exactly,

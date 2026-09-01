@@ -243,13 +243,17 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     }
     attackParam = new juce::AudioParameterFloat("ampAttack",
                                                  "Amp Attack",
-                                                 juce::NormalisableRange<float>(0.001f, 3.0f, 0.001f, 0.45f),
+                                                 juce::NormalisableRange<float>(0.0f, 3.0f, 0.001f, 0.45f),
                                                  0.005f);
     // Zero by default, so an envelope that has never been touched has exactly
     // the shape it had before the stage existed.
+    // From ZERO, not from 5 ms. A decay handle dragged onto the attack is a
+    // stage of no length - the envelope steps from the peak to the sustain -
+    // and a floor here would quietly give it back a length the graph is not
+    // showing. Same for attack and release below.
     decayParam = new juce::AudioParameterFloat("ampDecay",
                                                 "Amp Decay",
-                                                juce::NormalisableRange<float>(0.005f, 4.0f, 0.001f, 0.45f),
+                                                juce::NormalisableRange<float>(0.0f, 4.0f, 0.001f, 0.45f),
                                                 0.050f);
     sustainParam = new juce::AudioParameterFloat("ampSustain",
                                                   "Amp Sustain",
@@ -257,7 +261,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                   0.8f);
     releaseParam = new juce::AudioParameterFloat("ampRelease",
                                                   "Amp Release",
-                                                  juce::NormalisableRange<float>(0.010f, 5.0f, 0.001f, 0.45f),
+                                                  juce::NormalisableRange<float>(0.0f, 5.0f, 0.001f, 0.45f),
                                                   0.100f);
     ampEnvEnabledParam = new juce::AudioParameterBool("ampEnvEnabled", "Amp Enabled", true);
 
@@ -270,12 +274,12 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         attackParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
             idPrefix + "Attack",
             labelPrefix + "Attack",
-            juce::NormalisableRange<float>(0.001f, 3.0f, 0.001f, 0.45f),
+            juce::NormalisableRange<float>(0.0f, 3.0f, 0.001f, 0.45f),
             0.020f);
         decayParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
             idPrefix + "Decay",
             labelPrefix + "Decay",
-            juce::NormalisableRange<float>(0.005f, 4.0f, 0.001f, 0.45f),
+            juce::NormalisableRange<float>(0.0f, 4.0f, 0.001f, 0.45f),
             0.120f);
         sustainParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
             idPrefix + "Sustain",
@@ -285,7 +289,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         releaseParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
             idPrefix + "Release",
             labelPrefix + "Release",
-            juce::NormalisableRange<float>(0.010f, 5.0f, 0.001f, 0.45f),
+            juce::NormalisableRange<float>(0.0f, 5.0f, 0.001f, 0.45f),
             0.220f);
         envelopeEnabledParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterBool(
             idPrefix + "Enabled",

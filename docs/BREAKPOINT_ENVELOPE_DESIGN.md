@@ -296,15 +296,32 @@ and the arrow keys. One existing test had to be corrected with the fix — it
 nudged "point 3, the sustain", a comment left from the five-point AHDSR shape,
 where point 3 is now the end point. It was asserting the bug.
 
-### Handles sit on the curve
+### Handles sit on the curve, and may share a spot
 
-Two coincident *controls* are nudged apart in drawing order, because `grabAt`
-would otherwise resolve both to the same one whichever you aimed at and leave
-the other unreachable. Crowded means close on BOTH axes. Measuring the time
-axis alone called the anchor and the peak crowded on a short attack — they
+`drawnPointPosition` is `pointToScreen`. Nothing is nudged aside.
+
+Coincident handles used to be pushed apart in drawing order so `grabAt` could
+tell them apart, and that went wrong twice. First it measured the time axis
+alone, which called the anchor and the peak crowded on a short attack — they
 share a column and sit at opposite ends of the graph — and pushed the ATTACK
-handle a full spacing to the right of the corner it marks, so the line turned
-in one place and the handle sat in another.
+handle a full spacing right of the corner it marks. Then, with that corrected,
+it still denied something the user is entitled to ask for: a decay that begins
+the instant the attack ends is a stage of no length, and the two handles belong
+on the same pixel because the two points are at the same time.
+
+Nothing is stranded by dropping it. `grabAt` breaks a tie in favour of the
+LATER point, and dragging that one sideways always separates the pair, so the
+handle underneath is one drag away rather than unreachable.
+
+For the DSP to show what the graph shows, the four stages reach ZERO: the
+attack, decay and release parameters all start at 0.0 rather than at 1, 5 and
+10 ms. A floor there quietly hands back a length the graph is not drawing —
+before this, dragging the decay onto the attack came back as a 5 ms decay.
+
+A vertical edge in a gain envelope is the shape of a click, and this does not
+make one: the envelope's output smoother rounds the corner, so a zero release
+falls about four times faster than a 10 ms one — a 0.021 step against 0.006,
+where a hard cut from a 0.80 sustain would be 0.80.
 
 The anchor is also skipped by `grabAt`: it is pinned in both axes, so a hit on
 it would hand back a handle that goes nowhere. Double-clicking it does nothing

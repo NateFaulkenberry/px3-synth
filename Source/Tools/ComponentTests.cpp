@@ -2771,6 +2771,173 @@ void testBreakpointEnvelope()
         }
     }
 
+    // ---- a stage of no length is still not a discontinuity ------------------
+    //
+    // Letting the stages reach zero means the user can draw a vertical edge,
+    // and a vertical edge in a gain envelope is the shape of a click. It is not
+    // one here: the envelope's output smoother rounds the corner, so a zero
+    // release falls about four times faster than a 10 ms one rather than
+    // stepping. Measured, because "it sounds fine" is not a number.
+    {
+        constexpr double kRate = 48000.0;
+        juce::StringArray steps;
+        auto worstOverall = 0.0f;
+
+        for (float release : { 0.0f, 0.001f, 0.010f })
+        {
+            EnvelopeSettings settings;
+            settings.attackSeconds = 0.010f;
+            settings.decaySeconds = 0.050f;
+            settings.sustainLevel = 0.80f;
+            settings.releaseSeconds = release;
+
+            AmpEnvelope env;
+            env.prepare(kRate);
+            env.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+            env.noteOn();
+            for (int i = 0; i < 4800; ++i) { env.getNextSample(); }
+
+            auto previous = env.getNextSample();
+            env.noteOff();
+            auto worst = 0.0f;
+            for (int i = 0; i < 480; ++i)
+            {
+                const auto value = env.getNextSample();
+                worst = juce::jmax(worst, std::abs(value - previous));
+                previous = value;
+            }
+
+            steps.add(fmt(release, 3) + " s -> " + fmt(worst, 4));
+            worstOverall = juce::jmax(worstOverall, worst);
+        }
+
+        check("EnvelopeOverlap_AZeroLengthReleaseDoesNotStep",
+              worstOverall < 0.05f,
+              "largest one-sample step at note-off: " + steps.joinIntoString(", ")
+                  + " (a hard cut from the 0.80 sustain would be 0.80)");
+    }
+
+    // ---- handles may share a spot, and the DSP gets what is drawn -----------
+    //
+    // A decay that begins the instant the attack ends is a stage of no length.
+    // Two things used to deny it: the drawing nudged coincident handles apart,
+    // so the picture showed a gap that was not there, and the decay parameter
+    // had a 5 ms floor, so the round trip through it handed back a length the
+    // graph was not showing.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        if (editor != nullptr)
+        {
+            ModPanel* panel = nullptr;
+            std::vector<EnvelopeComponent*> cards;
+            std::function<void(juce::Component&)> find = [&](juce::Component& c)
+            {
+                for (auto* child : c.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* p = dynamic_cast<ModPanel*>(child)) { panel = p; }
+                    if (auto* e = dynamic_cast<EnvelopeComponent*>(child)) { cards.push_back(e); }
+                    find(*child);
+                }
+            };
+            find(*editor);
+
+            auto* card = cards.empty() ? nullptr : cards[0];
+            if (card != nullptr && panel != nullptr)
+            {
+                auto& graph = const_cast<BreakpointEnvelopeEditor&>(card->debugEditor());
+
+                const auto event = [&graph](juce::Point<float> at)
+                {
+                    return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), at,
+                                            juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                            &graph, &graph, juce::Time::getCurrentTime(), at,
+                                            juce::Time::getCurrentTime(), 1, false);
+                };
+                const auto drag = [&](int index, float dx)
+                {
+                    const auto from = graph.drawnPointPosition(index);
+                    graph.mouseDown(event(from));
+                    graph.mouseDrag(event(from.translated(dx, 0.0f)));
+                    graph.mouseUp(event(from.translated(dx, 0.0f)));
+                };
+                const auto reset = [&](float sustainLevel)
+                {
+                    EnvelopeSettings settings;
+                    settings.attackSeconds = 0.300f;
+                    settings.decaySeconds = 0.400f;
+                    settings.sustainLevel = sustainLevel;
+                    settings.releaseSeconds = 0.500f;
+                    graph.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+                };
+
+                // DECAY dragged onto ATTACK. Same time, same pixel, and both
+                // handles drawn where their points actually are.
+                reset(1.00f);
+                drag(2, -4000.0f);
+                const auto stacked = graph.getEnvelope();
+                check("EnvelopeOverlap_TheDecayMayLandOnTheAttack",
+                      std::abs(stacked.getPoint(2).timeSeconds
+                               - stacked.getPoint(1).timeSeconds) < 1.0e-9
+                          && graph.drawnPointPosition(2).getDistanceFrom(
+                                 graph.drawnPointPosition(1)) < 0.01f
+                          && graph.drawnPointPosition(1).getDistanceFrom(
+                                 graph.pointToScreen(1)) < 0.01f,
+                      "attack at " + fmt(stacked.getPoint(1).timeSeconds, 3) + " s and decay at "
+                          + fmt(stacked.getPoint(2).timeSeconds, 3) + " s, drawn "
+                          + fmt(graph.drawnPointPosition(2).getDistanceFrom(
+                                    graph.drawnPointPosition(1)), 2) + " px apart");
+
+                // What the DSP is handed matches: the round trip through the
+                // parameters keeps the stage at no length.
+                panel->refreshFromParameters();
+                const auto played = card->debugEditor().getEnvelope();
+                check("EnvelopeOverlap_AZeroLengthStageSurvivesTheRoundTrip",
+                      std::abs(played.getPoint(2).timeSeconds
+                               - played.getPoint(1).timeSeconds) < 1.0e-6
+                          && processor.getEnvelopeDecayParam(0).get() < 1.0e-6f,
+                      "after the round trip the decay is "
+                          + fmt(played.getPoint(2).timeSeconds - played.getPoint(1).timeSeconds, 4)
+                          + " s long and the parameter reads "
+                          + fmt(processor.getEnvelopeDecayParam(0).get(), 4) + " s");
+
+                // The buried handle is one drag away, not lost: a grab on the
+                // shared spot takes the later point, and moving it uncovers
+                // the one underneath.
+                const auto shared = graph.drawnPointPosition(2);
+                const auto hit = graph.grabAt(shared);
+                drag(2, 60.0f);
+                const auto separated = graph.getEnvelope();
+                check("EnvelopeOverlap_TheHandleUnderneathIsOneDragAway",
+                      hit.target == BreakpointEnvelopeEditor::Target::point && hit.index == 2
+                          && separated.getPoint(2).timeSeconds
+                                 > separated.getPoint(1).timeSeconds + 1.0e-6,
+                      "grabbing the shared spot takes point " + juce::String(hit.index)
+                          + ", and dragging it right leaves the attack at "
+                          + fmt(separated.getPoint(1).timeSeconds, 3) + " s with the decay at "
+                          + fmt(separated.getPoint(2).timeSeconds, 3) + " s");
+
+                // RELEASE onto DECAY is the same story at the other end.
+                reset(0.00f);
+                drag(3, -4000.0f);
+                const auto collapsed = graph.getEnvelope();
+                check("EnvelopeOverlap_TheReleaseMayLandOnTheDecay",
+                      std::abs(collapsed.getPoint(3).timeSeconds
+                               - collapsed.getPoint(2).timeSeconds) < 1.0e-9
+                          && graph.drawnPointPosition(3).getDistanceFrom(
+                                 graph.drawnPointPosition(2)) < 0.01f,
+                      "decay at " + fmt(collapsed.getPoint(2).timeSeconds, 3)
+                          + " s and release ending at " + fmt(collapsed.getPoint(3).timeSeconds, 3)
+                          + " s, drawn " + fmt(graph.drawnPointPosition(3).getDistanceFrom(
+                                                   graph.drawnPointPosition(2)), 2) + " px apart");
+            }
+        }
+    }
+
     // ---- the knobs under the graph ------------------------------------------
     //
     // ATTACK | DECAY | SUSTAIN | RELEASE, bound to the same parameters the
