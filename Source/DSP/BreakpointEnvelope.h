@@ -58,6 +58,19 @@ public:
     // fully described by the four parameters.
     bool isPlainAdsr() const;
 
+    // The four-point skeleton, curves and all. isPlainAdsr is this AND every
+    // segment straight: a bent skeleton is still four points describing an
+    // ATTACK, a DECAY, a SUSTAIN and a RELEASE, which is what the knobs under
+    // the graph need in order to keep working once a segment has been bent.
+    bool isAdsrSkeleton() const noexcept
+    { return pointCount == 4 && sustainPoint == 2; }
+
+    // This shape with the four times and the level taken from `settings` and
+    // its own CURVES kept. Turning a knob has to move the graph without
+    // straightening what the user drew. Returns the shape untouched if it is
+    // no longer a skeleton, because then there is no ADSR to apply.
+    BreakpointEnvelope withAdsrApplied(const EnvelopeSettings& settings) const;
+
     int getPointCount() const noexcept { return pointCount; }
     const Point& getPoint(int index) const noexcept;
     int getSustainPoint() const noexcept { return sustainPoint; }

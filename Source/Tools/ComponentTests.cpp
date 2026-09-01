@@ -2453,6 +2453,146 @@ void testBreakpointEnvelope()
         }
     }
 
+    // ---- the knobs under the graph ------------------------------------------
+    //
+    // ATTACK | DECAY | SUSTAIN | RELEASE, bound to the same parameters the
+    // graph edits. Two views of one thing, so a drag has to move the knobs and
+    // a knob has to move the graph - and neither may straighten a curve the
+    // user drew.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        if (editor != nullptr)
+        {
+            std::vector<EnvelopeComponent*> cards;
+            std::function<void(juce::Component&)> find = [&](juce::Component& c)
+            {
+                for (auto* child : c.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* env = dynamic_cast<EnvelopeComponent*>(child)) { cards.push_back(env); }
+                    find(*child);
+                }
+            };
+            find(*editor);
+
+            // Named by what carries them rather than by position in the list.
+            const EnvelopeComponent* ampGraph = nullptr;
+            std::function<void(juce::Component&)> findAmp = [&](juce::Component& c)
+            {
+                for (auto* child : c.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* amp = dynamic_cast<AmpEnvelopeComponent*>(child))
+                    {
+                        ampGraph = amp->debugGraph();
+                    }
+                    findAmp(*child);
+                }
+            };
+            findAmp(*editor);
+
+            juce::StringArray names;
+            if (ampGraph != nullptr)
+            {
+                for (int k = 0; k < ampGraph->debugAdsrKnobCount(); ++k)
+                {
+                    names.add(ampGraph->debugAdsrKnobName(k));
+                }
+            }
+
+            check("EnvelopeKnobs_AmpEnvCarriesTheFour",
+                  ampGraph != nullptr && ampGraph->debugAdsrKnobCount() == 4
+                      && names == juce::StringArray({ "ATTACK", "DECAY", "SUSTAIN", "RELEASE" }),
+                  ampGraph == nullptr ? "no AMP ENV card found"
+                                      : "AMP ENV offers: " + names.joinIntoString(", "));
+
+            // The knob row sits below the graph and inside the card, on every
+            // card that has one - which is the whole layout requirement.
+            juce::StringArray misplaced;
+            for (std::size_t i = 0; i < cards.size(); ++i)
+            {
+                auto* card = cards[i];
+                if (card->debugAdsrKnobCount() != 4) { continue; }
+
+                const auto graph = card->debugEditorBounds();
+                for (int k = 0; k < 4; ++k)
+                {
+                    const auto knob = card->debugAdsrKnob(k).getBounds();
+                    if (knob.isEmpty() || knob.getY() < graph.getBottom()
+                        || ! card->getLocalBounds().contains(knob))
+                    {
+                        misplaced.add("card " + juce::String(static_cast<int>(i)) + " knob "
+                                      + juce::String(k) + " at " + knob.toString()
+                                      + ", graph ends at " + juce::String(graph.getBottom())
+                                      + ", card is " + card->getLocalBounds().toString());
+                    }
+                }
+            }
+
+            check("EnvelopeKnobs_TheRowSitsBelowTheGraphInsideTheCard",
+                  misplaced.isEmpty(),
+                  misplaced.isEmpty() ? "every knob row is under its graph and inside its card"
+                                      : misplaced.joinIntoString("; "));
+        }
+    }
+
+    // ---- the knobs and the graph are two views of one thing -----------------
+    {
+        EnvelopeSettings settings;
+        settings.attackSeconds = 0.100f;
+        settings.decaySeconds = 0.200f;
+        settings.sustainLevel = 0.50f;
+        settings.releaseSeconds = 0.300f;
+
+        // A knob turn reaches the graph without straightening a bend. This is
+        // the whole reason withAdsrApplied exists rather than fromAdsr.
+        auto bent = px3::BreakpointEnvelope::fromAdsr(settings);
+        bent.setCurve(0, 0.7);
+        bent.setCurve(2, -0.5);
+
+        EnvelopeSettings turned = settings;
+        turned.decaySeconds = 0.450f;
+        turned.sustainLevel = 0.20f;
+        const auto applied = bent.withAdsrApplied(turned);
+        const auto readBack = applied.toAdsr();
+
+        check("EnvelopeKnobs_AKnobMovesTheGraphAndLeavesTheCurvesAlone",
+              std::abs(readBack.decaySeconds - 0.450f) < 1.0e-4f
+                  && std::abs(readBack.sustainLevel - 0.20f) < 1.0e-4f
+                  && std::abs(applied.getPoint(0).curveToNext - 0.7) < 1.0e-9
+                  && std::abs(applied.getPoint(2).curveToNext + 0.5) < 1.0e-9,
+              "decay " + fmt(readBack.decaySeconds, 3) + " s, sustain "
+                  + fmt(readBack.sustainLevel, 2) + ", curves "
+                  + fmt(applied.getPoint(0).curveToNext, 2) + " and "
+                  + fmt(applied.getPoint(2).curveToNext, 2));
+
+        // Once a point has been ADDED there is no ADSR left to apply, so the
+        // knobs stop writing rather than flattening the shape into four points.
+        auto freeForm = px3::BreakpointEnvelope::fromAdsr(settings);
+        freeForm.addPoint(0.150, 0.8);
+        const auto untouched = freeForm.withAdsrApplied(turned);
+        check("EnvelopeKnobs_TheyStopWritingOnceTheShapeIsFreeForm",
+              untouched.getPointCount() == freeForm.getPointCount()
+                  && std::abs(untouched.getPoint(2).timeSeconds
+                              - freeForm.getPoint(2).timeSeconds) < 1.0e-9,
+              "a five-point shape comes back with "
+                  + juce::String(untouched.getPointCount()) + " points, unchanged");
+
+        // And the other direction: a shape that has been BENT still reports the
+        // four numbers, so a drag keeps the knobs in step. isPlainAdsr, which
+        // the write used to be gated on, says no the moment a curve is bent.
+        check("EnvelopeKnobs_ABentShapeStillWritesTheParameters",
+              bent.isAdsrSkeleton() && ! bent.isPlainAdsr()
+                  && std::abs(bent.toAdsr().decaySeconds - 0.200f) < 1.0e-4f,
+              "a bent skeleton reports a decay of " + fmt(bent.toAdsr().decaySeconds, 3)
+                  + " s while isPlainAdsr says "
+                  + juce::String(bent.isPlainAdsr() ? "yes" : "no"));
+    }
+
     // ---- DECAY and SUSTAIN are one handle -----------------------------------
     //
     // They are the two coordinates of point 2, so the handle takes both axes:

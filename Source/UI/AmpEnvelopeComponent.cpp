@@ -46,16 +46,17 @@ AmpEnvelopeComponent::AmpEnvelopeComponent(PX3SynthAudioProcessor& processorIn, 
                                                         accentIn,
                                                         "amp.env");
 
-    // Slot 0 is AMP ENV. The parameters are written back only while the shape is
-    // still ADSR, which is what keeps a DAW's automation of ampAttack and the
-    // rest meaningful; once the envelope is more than they can describe, the
-    // stored shape is what plays.
+    // Slot 0 is AMP ENV. The parameters are written back for any four-point
+    // skeleton, curved or not, which is what keeps the knobs under the graph
+    // and a DAW's automation of ampAttack in step with a drag. Only once a
+    // point has been ADDED is there no ADSR left to write, and the stored shape
+    // is then the whole truth.
     envelopeGraph->setShapedEnvelope(processor.getShapedEnvelope(0));
     envelopeGraph->onEnvelopeEdited = [this](const px3::BreakpointEnvelope& edited)
     {
         processor.setShapedEnvelope(0, edited);
 
-        if (edited.isPlainAdsr())
+        if (edited.isAdsrSkeleton())
         {
             const auto adsr = edited.toAdsr();
             const auto write = [](juce::AudioParameterFloat& parameter, float value)
@@ -84,6 +85,10 @@ AmpEnvelopeComponent::AmpEnvelopeComponent(PX3SynthAudioProcessor& processorIn, 
     // does not exist - so the graph fell back to cards.defaults for both its
     // frame and its row heights. It carries the AMP ENV identity instead.
     envelopeGraph->setCardIdentity("ampEnv", "AMP ENV");
+
+    // ATTACK | DECAY | SUSTAIN | RELEASE under the graph. The card keeps its
+    // height and the graph gives the room up, so nothing below AMP ENV moves.
+    envelopeGraph->setAdsrKnobsVisible(true);
 
     addAndMakeVisible(*envelopeGraph);
 }
@@ -132,9 +137,14 @@ void AmpEnvelopeComponent::refreshFromParameters()
         // While the shape is still ADSR the parameters are authoritative, so the
         // graph is rebuilt from them - that is what makes a knob move the curve
         // and a DAW's automation move it too.
+        // The parameters carry the four times and the level; the stored shape
+        // carries the curves. On a skeleton they are applied together, so
+        // turning a knob moves the graph without straightening what was drawn.
         const auto stored = processor.getShapedEnvelope(0);
         envelopeGraph->setShapedEnvelope(
-            stored.isPlainAdsr() ? processor.currentAmpEnvelope() : stored);
+            stored.isAdsrSkeleton()
+                ? stored.withAdsrApplied(processor.currentAmpEnvelopeSettings())
+                : stored);
 
         // Where the envelope being played has got to, taken from the DSP's own
         // runtime state rather than from a clock of the UI's - the graph

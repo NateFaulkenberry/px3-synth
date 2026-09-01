@@ -3,8 +3,10 @@
 #include <JuceHeader.h>
 
 #include "Card.h"
+#include "ChipLabel.h"
 #include "CardInner.h"
 
+#include <array>
 #include <memory>
 
 class UIConfig;
@@ -50,10 +52,22 @@ public:
     // than what the processor would have built.
     const BreakpointEnvelopeEditor& debugEditor() const { return breakpointEditor; }
 
+    // The knob row under the graph, for the tests: how many were built, where
+    // they sit, and what they read.
+    int debugAdsrKnobCount() const { return adsrKnobsBuilt ? 4 : 0; }
+    const juce::Slider& debugAdsrKnob(int i) const
+    { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].knob; }
+    juce::String debugAdsrKnobName(int i) const
+    { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].label.getText(); }
+
     // The shape this card is editing. Handed in by the editor, which owns the
     // connection to the processor - this component knows about an envelope, not
     // about where it lives.
     void setShapedEnvelope(const px3::BreakpointEnvelope& envelope);
+
+    // ATTACK | DECAY | SUSTAIN | RELEASE below the graph, bound to the same
+    // four parameters it edits. Off unless the owning card asks.
+    void setAdsrKnobsVisible(bool shouldShow);
 
     void setEnvelopeProgress(EnvelopePosition progress)
     {
@@ -130,6 +144,31 @@ private:
     juce::ToggleButton& enabledButton;
     juce::Label& assignLabel;
     juce::ComboBox& assignBox;
+    // ATTACK | DECAY | SUSTAIN | RELEASE, under the graph. Owned here rather
+    // than handed in like the amount knob, because both cards want the same
+    // four and neither has anywhere else to put them. Built only when the
+    // card's config asks for them: see adsrKnobsWanted().
+    struct AdsrKnob
+    {
+        juce::Slider knob;
+        px3::ui::ChipLabel label;
+        juce::Label readout;
+        std::unique_ptr<juce::SliderParameterAttachment> attachment;
+    };
+    std::array<AdsrKnob, 4> adsrKnobs;
+    bool adsrKnobsBuilt { false };
+    bool showAdsrKnobs { false };
+
+    bool adsrKnobsWanted() const;
+    void buildAdsrKnobs();
+    void layoutAdsrKnobs();
+    void refreshAdsrReadouts();
+
+    // Which cardInner row holds what. The graph is the last row when there are
+    // no knobs and the second to last when there are; deriving it in one place
+    // is what keeps the drawn graph and the draggable graph on one rectangle.
+    int graphRowIndex() const;
+
     juce::Slider* amountKnob { nullptr };
     juce::Label* amountLabel { nullptr };
     juce::Label* amountValueLabel { nullptr };

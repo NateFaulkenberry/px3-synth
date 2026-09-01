@@ -273,7 +273,7 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
     {
         processor.setShapedEnvelope(slot, edited);
 
-        if (edited.isPlainAdsr())
+        if (edited.isAdsrSkeleton())
         {
             const auto adsr = edited.toAdsr();
             const auto write = [](juce::AudioParameterFloat& parameter, float value)
@@ -428,9 +428,15 @@ void ModPanel::refreshFromParameters()
             // Rebuilt from the parameters while the shape is still ADSR, so a
             // knob or a DAW automation lane moves the curve.
             const auto slot = static_cast<int>(&bundle - envelopes.data()) + 1;
+            // The parameters carry the four times and the level; the stored
+            // shape carries the curves. On a skeleton they are applied
+            // together, so turning a knob moves the graph without
+            // straightening what was drawn.
             const auto stored = processor.getShapedEnvelope(slot);
             bundle.component->setShapedEnvelope(
-                stored.isPlainAdsr() ? processor.currentModEnvelope(slot - 1) : stored);
+                stored.isAdsrSkeleton()
+                    ? stored.withAdsrApplied(processor.currentModEnvelopeSettings(slot - 1))
+                    : stored);
 
             // And how far the playing note has taken this envelope, read from
             // the voice itself rather than clocked alongside it in the UI.

@@ -195,6 +195,11 @@ public:
     // envelope is built from them, so a knob and a DAW automation lane both
     // still move the curve.
     px3::BreakpointEnvelope currentAmpEnvelope() const;
+
+    // The four parameters, for a card that has to apply them to a stored shape
+    // without disturbing its curves.
+    EnvelopeSettings currentAmpEnvelopeSettings() const;
+    EnvelopeSettings currentModEnvelopeSettings(int envIndex) const;
     px3::BreakpointEnvelope currentModEnvelope(int envIndex) const;
 
     // A user table is named, not indexed: the factory list has fixed positions
@@ -628,17 +633,15 @@ private:
     SubOscSettings currentSubOscillatorSettings() const;
     std::array<OscillatorLayerSettings, kOscillatorSourceCount> currentOscillatorLayerSettings() const;
     std::array<FilterSettings, kFilterInstanceCount> currentFilterSettings() const;
-    EnvelopeSettings currentAmpEnvelopeSettings() const;
-
     // The shape each envelope is actually running.
     //
-    // While an envelope is still the four numbers ADSR describes - which is
-    // every preset that predates the editor - the PARAMETERS are authoritative,
-    // so automation keeps driving it. Once it has been shaped into something
-    // they cannot describe, the stored envelope is authoritative and the editor
-    // writes the parameters back to match.
+    // While an envelope is still the four-point skeleton ADSR describes - which
+    // is every preset that predates the editor - the PARAMETERS carry the four
+    // times and the level, so automation and the knobs under the graph keep
+    // driving it, and the stored shape carries the curves. Once a point has
+    // been ADDED there is no ADSR left to describe it and the stored envelope
+    // is the whole truth.
 
-    EnvelopeSettings currentModEnvelopeSettings(int envIndex) const;
     LfoSettings currentLfoSettings() const;
     LfoSettings currentLfoSettings(int lfoIndex) const;
     VibeSettings currentVibeSettings() const;

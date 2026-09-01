@@ -66,6 +66,22 @@ BreakpointEnvelope BreakpointEnvelope::fromAdsr(const EnvelopeSettings& settings
     return envelope;
 }
 
+BreakpointEnvelope BreakpointEnvelope::withAdsrApplied(const EnvelopeSettings& settings) const
+{
+    if (! isAdsrSkeleton())
+    {
+        return *this;
+    }
+
+    auto out = fromAdsr(settings);
+    for (int i = 0; i < pointCount; ++i)
+    {
+        out.points[static_cast<std::size_t>(i)].curveToNext
+            = points[static_cast<std::size_t>(i)].curveToNext;
+    }
+    return out;
+}
+
 EnvelopeSettings BreakpointEnvelope::toAdsr() const
 {
     EnvelopeSettings settings;

@@ -145,6 +145,7 @@ void EnvelopeComponent::refreshFromParameters()
         }
         repaint();
     }
+    refreshAdsrReadouts();
 }
 
 void EnvelopeComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
@@ -478,11 +479,11 @@ float EnvelopeComponent::visualNormToTime(float norm, float minValue, float maxV
 EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
 {
     Geometry geom;
-    // The graph is the last row of cardInner - the only row, for AMP ENV.
+    // The graph's own row - the last one, or the one before the knobs.
     // Deriving it here a second time, by replaying the same sequence of
     // removeFromTop calls resized() used, is what let the drawn graph and the
     // draggable graph disagree.
-    const auto graphLayout = inner.rowContent(inner.rowCount() - 1).toFloat();
+    const auto graphLayout = inner.rowContent(graphRowIndex()).toFloat();
 
     geom.left = graphLayout.getX() + 6.0f;
     geom.right = graphLayout.getRight() - 6.0f;
@@ -781,9 +782,12 @@ void EnvelopeComponent::resized()
                                        .toNearestInt());
     }
 
+    buildAdsrKnobs();
+    layoutAdsrKnobs();
+
     // AMP ENV is the deliberate exception: one full-size graph, no rows of
-    // controls, so there is nothing to place here. `fullHeightGraph` is the
-    // switch that already distinguished it, and it still is.
+    // controls above it, so there is nothing further to place. `fullHeightGraph`
+    // is the switch that already distinguished it, and it still is.
     if (isFullHeightGraph())
     {
         return;
@@ -830,6 +834,115 @@ void EnvelopeComponent::resized()
 
     // Row 3 is the ADSR graph. computeGeometry() reads its bounds, which is
     // what keeps the drawing and the mouse hit-testing in agreement.
+}
+
+void EnvelopeComponent::setAdsrKnobsVisible(bool shouldShow)
+{
+    // Asked for in code by whoever owns the card, not read from UIConfig.
+    // Whether a row of controls EXISTS decides how many rows cardInner has, and
+    // a card whose row count depends on a file that may not have loaded yet is
+    // a card that lays itself out differently depending on timing. The config
+    // still says how tall the row is.
+    if (showAdsrKnobs == shouldShow) { return; }
+
+    showAdsrKnobs = shouldShow;
+    resized();
+    repaint();
+}
+
+bool EnvelopeComponent::adsrKnobsWanted() const
+{
+    return showAdsrKnobs;
+}
+
+int EnvelopeComponent::graphRowIndex() const
+{
+    // The knobs take the last row when they are there, so the graph is the one
+    // before it. Both cards ask this rather than assuming, because AMP ENV and
+    // ENV 1-3 have different numbers of rows above the graph.
+    return juce::jmax(0, inner.rowCount() - (adsrKnobsWanted() ? 2 : 1));
+}
+
+void EnvelopeComponent::buildAdsrKnobs()
+{
+    if (adsrKnobsBuilt || ! adsrKnobsWanted()) { return; }
+
+    juce::AudioParameterFloat* params[4] = { &attack, &decay, &sustain, &release };
+    const char* names[4] = { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" };
+
+    for (int i = 0; i < 4; ++i)
+    {
+        auto& entry = adsrKnobs[static_cast<std::size_t>(i)];
+
+        entry.knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        entry.knob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        addAndMakeVisible(entry.knob);
+
+        entry.label.setText(names[i], juce::dontSendNotification);
+        entry.label.setJustificationType(juce::Justification::centred);
+        addAndMakeVisible(entry.label);
+
+        entry.readout.setJustificationType(juce::Justification::centred);
+        entry.readout.setInterceptsMouseClicks(false, false);
+        addAndMakeVisible(entry.readout);
+
+        // The attachment carries the knob to the parameter. The parameter
+        // reaching the SHAPE is the card's job, in refreshFromParameters,
+        // because that is where the curves the knob must not straighten live.
+        entry.attachment = std::make_unique<juce::SliderParameterAttachment>(
+            *params[i], entry.knob, nullptr);
+    }
+
+    adsrKnobsBuilt = true;
+    refreshAdsrReadouts();
+}
+
+void EnvelopeComponent::refreshAdsrReadouts()
+{
+    if (! adsrKnobsBuilt) { return; }
+
+    // Times in the unit that reads without a decimal point at the value's own
+    // size, and the sustain as a percentage, which is what it is.
+    const auto asTime = [](float seconds)
+    {
+        return seconds < 1.0f ? juce::String(juce::roundToInt(seconds * 1000.0f)) + " ms"
+                              : juce::String(seconds, 2) + " s";
+    };
+
+    adsrKnobs[0].readout.setText(asTime(attack.get()), juce::dontSendNotification);
+    adsrKnobs[1].readout.setText(asTime(decay.get()), juce::dontSendNotification);
+    adsrKnobs[2].readout.setText(juce::String(juce::roundToInt(sustain.get() * 100.0f)) + "%",
+                                 juce::dontSendNotification);
+    adsrKnobs[3].readout.setText(asTime(release.get()), juce::dontSendNotification);
+}
+
+void EnvelopeComponent::layoutAdsrKnobs()
+{
+    if (! adsrKnobsBuilt) { return; }
+
+    using px3::ui::ControlShape;
+
+    const auto row = inner.rowCount() - 1;
+    auto flex = inner.rowFlex(row);
+    const auto gap = inner.rowGap(row);
+    const auto content = inner.rowContent(row);
+    const auto cellHeight = static_cast<float>(juce::jmax(1, content.getHeight()));
+    const auto cellWidth = static_cast<float>(juce::jmax(1, content.getWidth() / 4));
+
+    for (int i = 0; i < 4; ++i)
+    {
+        flex.items.add(juce::FlexItem(cellWidth, cellHeight).withMargin(gap));
+    }
+    flex.performLayout(content.toFloat());
+
+    for (int i = 0; i < 4; ++i)
+    {
+        auto& entry = adsrKnobs[static_cast<std::size_t>(i)];
+        px3::ui::layoutLabelledControl(
+            flex.items.getReference(i).currentBounds.toNearestInt(),
+            { &entry.label, &entry.knob, &entry.readout, ControlShape::square, 12, 12, 64 },
+            inner.rowControl(row));
+    }
 }
 
 bool EnvelopeComponent::isFullHeightGraph() const
@@ -890,7 +1003,7 @@ void EnvelopeComponent::layoutCardInner()
 
     inner.setStylePath("cards." + px3::ui::cardTypeKey(cardStyleKey) + ".cardInner");
     inner.setConfig(uiConfig);
-    inner.setRowCount(isFullHeightGraph() ? 1 : 3);
+    inner.setRowCount((isFullHeightGraph() ? 1 : 3) + (adsrKnobsWanted() ? 1 : 0));
     inner.layout(card.contentBelowTitle());
 
     // The power toggle is pinned to cardInner's corner, outside the flex flow,

@@ -361,6 +361,12 @@ inside cardInner. ENV 1-3 grow taller to make room; AMP ENV keeps its height
 and gives the room up from the graph, so the editor no longer reaches the
 bottom of the card.
 
+The row is asked for in code — `setAdsrKnobsVisible` — rather than read from
+UIConfig. Whether a row of controls EXISTS decides how many rows cardInner has,
+and a card whose row count depends on a file that may not have loaded yet lays
+itself out differently depending on timing. The config still says how tall the
+row is.
+
 The knobs and the graph are two views of one thing, so they are bound in both
 directions:
 
