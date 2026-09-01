@@ -58,6 +58,8 @@ public:
     void paintOverChildren(juce::Graphics&) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& event) override;
+    // Escape leaves Select Mode without assigning anything.
+    bool keyPressed(const juce::KeyPress& key) override;
     void mouseDrag(const juce::MouseEvent& event) override;
     void mouseUp(const juce::MouseEvent& event) override;
 
@@ -124,6 +126,68 @@ private:
 
         juce::Component& owner;
     };
+
+    //==========================================================================
+    // MIDI mapping Select Mode. See docs/midi-mapping-design.md.
+    //
+    // The selection is UI state and lives here; the mappings themselves live
+    // on the processor, which is why they survive this window closing.
+    //==========================================================================
+
+    // Listens on every parameter knob so the editor's own mouse handling is
+    // left alone. A shift-click reaches handleParameterKnobClick; everything
+    // else falls through to the slider exactly as before.
+    struct MidiSelectListener final : public juce::MouseListener
+    {
+        explicit MidiSelectListener(PX3SynthAudioProcessorEditor& ownerIn) : owner(ownerIn) {}
+        void mouseDown(const juce::MouseEvent& event) override
+        {
+            owner.handleParameterKnobClick(event);
+        }
+        PX3SynthAudioProcessorEditor& owner;
+    };
+    MidiSelectListener midiSelectListener { *this };
+
+    juce::StringArray midiSelection;
+    std::vector<juce::Component::SafePointer<juce::Slider>> midiKnobs;
+
+    void handleParameterKnobClick(const juce::MouseEvent& event);
+
+public:
+    // For the tests: what Select Mode currently holds, and the pass that
+    // publishes it to the knobs. Read-only views of UI state - nothing here
+    // is a second copy of anything.
+    juce::StringArray debugMidiSelection() const { return midiSelection; }
+    void debugRefreshMidiMappingUI() { refreshMidiMappingUI(); }
+    juce::String debugKeyboardNotice() const { return pianoKeyboard.getNotice(); }
+
+    // How many knobs the editor has registered its listener on. The wiring
+    // itself - addMouseListener - is what a test cannot drive through JUCE's
+    // dispatch headlessly, so it is asserted by count instead.
+    int debugRegisteredKnobCount() const { return static_cast<int>(midiKnobs.size()); }
+
+    // The shared rotary look-and-feel, so a test can render one knob through
+    // the same code every knob in the synth is drawn by.
+    juce::LookAndFeel* debugKnobLookAndFeel() { return &knobLookAndFeel; }
+
+    // The same call JUCE's dispatch makes when a listener sees a click on a
+    // knob. Constructing the event here is the one step the test cannot get
+    // JUCE to do for it.
+    void debugSimulateKnobClick(juce::Slider& slider, bool shiftDown)
+    {
+        const auto at = slider.getLocalBounds().getCentre().toFloat();
+        const auto mods = shiftDown ? juce::ModifierKeys(juce::ModifierKeys::shiftModifier)
+                                    : juce::ModifierKeys();
+        handleParameterKnobClick(juce::MouseEvent(
+            juce::Desktop::getInstance().getMainMouseSource(), at, mods,
+            1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &slider, &slider,
+            juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 1, false));
+    }
+
+private:
+    void refreshMidiMappingUI();
+    void endMidiSelectMode();
+    bool isMidiSelectModeActive() const { return ! midiSelection.isEmpty(); }
 
     struct KnobBinding
     {

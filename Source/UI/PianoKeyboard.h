@@ -100,6 +100,13 @@ public:
     // does can make a sound, so it stops animating, greys out, stops responding
     // to the mouse, and says why.
     void setSilenced(bool shouldBeSilenced);
+
+    // A message in the same banner the silenced warning uses, over a keyboard
+    // that is still playable. Select Mode needs to say something without
+    // taking the keys away - the user may well want to play while assigning.
+    // Empty clears it.
+    void setNotice(juce::String text);
+    juce::String getNotice() const { return notice; }
     bool isSilenced() const noexcept { return silenced; }
 
     void paint(juce::Graphics& g) override;
@@ -160,6 +167,8 @@ private:
     int heldMidiNote { -1 };
     float clickVelocityNorm { 0.65f };
     bool silenced { false };
+    juce::String notice;
+    void paintBanner(juce::Graphics& g, const juce::String& text);
     Style style;
     bool hadSparksLastFrame { false };
     WarningStyle warningStyle;

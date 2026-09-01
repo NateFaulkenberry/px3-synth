@@ -45,6 +45,7 @@
 #include "../UI/FxChainLayout.h"
 #include "../UI/ChipLabel.h"
 #include "../UI/ParameterKnob.h"
+#include "../UI/PluginEditor.h"
 #include "../UI/ModPanel.h"
 #include "../UI/PianoKeyboard.h"
 #include "../UI/TopMenuBar.h"
@@ -18593,6 +18594,228 @@ void testMidiMapping()
         processor.setPlayConfigDetails(0, 2, kRate, kBlock);
         processor.prepareToPlay(kRate, kBlock);
     };
+
+    // ---- what a mapped knob looks like --------------------------------------
+    //
+    // The label and the selection ring come from the shared rotary
+    // look-and-feel, so this renders one knob through it and looks at the
+    // pixels rather than trusting that the code was reached.
+    {
+        PX3SynthAudioProcessor processor;
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+
+        if (editor != nullptr)
+        {
+            const auto render = [&](int cc, bool selected)
+            {
+                juce::Slider knob;
+                knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+                knob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+                knob.setLookAndFeel(editor->debugKnobLookAndFeel());
+                knob.setSize(64, 64);
+                knob.setValue(0.5, juce::dontSendNotification);
+                knob.getProperties().set(px3::knob_properties::midiCc, cc);
+                knob.getProperties().set(px3::knob_properties::midiSelected, selected);
+
+                const auto image = knob.createComponentSnapshot(knob.getLocalBounds());
+                knob.setLookAndFeel(nullptr);
+                return image;
+            };
+
+            const auto plain = render(-1, false);
+            const auto mapped = render(21, false);
+            const auto chosen = render(-1, true);
+
+            const auto differs = [](const juce::Image& a, const juce::Image& b)
+            {
+                auto changed = 0;
+                for (int y = 0; y < a.getHeight(); ++y)
+                {
+                    for (int x = 0; x < a.getWidth(); ++x)
+                    {
+                        if (a.getPixelAt(x, y) != b.getPixelAt(x, y)) { ++changed; }
+                    }
+                }
+                return changed;
+            };
+
+            const auto labelPixels = differs(plain, mapped);
+            const auto ringPixels = differs(plain, chosen);
+
+            check("MidiMapUi_AMappedKnobDrawsItsCcAndASelectedOneItsRing",
+                  plain.isValid() && labelPixels > 20 && ringPixels > 20,
+                  "the CC label changes " + juce::String(labelPixels)
+                      + " pixels and the selection ring " + juce::String(ringPixels)
+                      + " against an unmapped knob");
+        }
+    }
+
+    // ---- the interaction, through the real editor ---------------------------
+    //
+    // Shift-click knobs, move a control, and the assignment lands. Driven
+    // through the editor's own components rather than through the processor's
+    // API, because the gesture is the feature.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kRate, kBlock);
+        processor.prepareToPlay(kRate, kBlock);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+
+        if (editor != nullptr)
+        {
+            editor->debugRefreshMidiMappingUI();
+
+            std::vector<juce::Slider*> knobs;
+            std::function<void(juce::Component&)> walk = [&](juce::Component& parent)
+            {
+                for (auto* child : parent.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* slider = dynamic_cast<juce::Slider*>(child))
+                    {
+                        if (px3::ui::isParameterKnob(*slider)) { knobs.push_back(slider); }
+                    }
+                    walk(*child);
+                }
+            };
+            walk(*editor);
+
+            const auto clickOn = [&](juce::Slider& slider, bool shift)
+            {
+                editor->debugSimulateKnobClick(slider, shift);
+            };
+
+            const auto ccOf = [&](const juce::Slider& slider)
+            {
+                return static_cast<int>(
+                    slider.getProperties().getWithDefault(px3::knob_properties::midiCc, -1));
+            };
+            const auto isSelected = [&](const juce::Slider& slider)
+            {
+                return static_cast<bool>(
+                    slider.getProperties().getWithDefault(px3::knob_properties::midiSelected, false));
+            };
+
+            // Every mappable knob has the editor listening on it. This is the
+            // wiring a headless test cannot drive through JUCE's own dispatch,
+            // so it is asserted by count: a knob the editor never registered
+            // is a knob shift-click could never reach.
+            check("MidiMapUi_TheEditorListensOnEveryMappableKnob",
+                  knobs.size() >= 3
+                      && editor->debugRegisteredKnobCount() == static_cast<int>(knobs.size()),
+                  juce::String(editor->debugRegisteredKnobCount()) + " listeners registered across "
+                      + juce::String(static_cast<int>(knobs.size())) + " mappable knobs");
+
+            if (knobs.size() >= 3)
+            {
+                auto& first = *knobs[0];
+                auto& second = *knobs[1];
+                auto& third = *knobs[2];
+
+                // A PLAIN click must change nothing about mapping: ordinary
+                // knob use has to be exactly what it was.
+                clickOn(first, false);
+                editor->debugRefreshMidiMappingUI();
+                check("MidiMapUi_APlainClickDoesNotSelectAnything",
+                      editor->debugMidiSelection().isEmpty()
+                          && editor->debugKeyboardNotice().isEmpty(),
+                      "a plain click left "
+                          + juce::String(editor->debugMidiSelection().size())
+                          + " knobs selected");
+
+                // Shift-click enters Select Mode and says so on the keyboard.
+                clickOn(first, true);
+                editor->debugRefreshMidiMappingUI();
+                check("MidiMapUi_ShiftClickEntersSelectModeAndSaysSo",
+                      editor->debugMidiSelection().size() == 1 && isSelected(first)
+                          && editor->debugKeyboardNotice().containsIgnoreCase("MIDI"),
+                      "selection of " + juce::String(editor->debugMidiSelection().size())
+                          + " with the keyboard reading \"" + editor->debugKeyboardNotice() + "\"");
+
+                // More knobs join, from wherever they are in the UI.
+                clickOn(second, true);
+                clickOn(third, true);
+                editor->debugRefreshMidiMappingUI();
+                check("MidiMapUi_MoreKnobsJoinTheSelection",
+                      editor->debugMidiSelection().size() == 3
+                          && isSelected(second) && isSelected(third),
+                      juce::String(editor->debugMidiSelection().size()) + " knobs selected");
+
+                // Shift-clicking a selected knob takes it back out.
+                clickOn(third, true);
+                editor->debugRefreshMidiMappingUI();
+                check("MidiMapUi_ShiftClickingASelectedKnobRemovesIt",
+                      editor->debugMidiSelection().size() == 2 && ! isSelected(third),
+                      juce::String(editor->debugMidiSelection().size())
+                          + " left after clicking one twice");
+
+                // Move a control: everything selected lands on that CC, Select
+                // Mode ends, and the knobs say what they are on.
+                juce::MidiBuffer midi;
+                midi.addEvent(juce::MidiMessage::controllerEvent(1, 41, 70), 0);
+                buffer.clear();
+                processor.processBlock(buffer, midi);
+                processor.applyPendingMidiMappings();
+                editor->debugRefreshMidiMappingUI();
+
+                check("MidiMapUi_MovingAControlAssignsEverythingSelected",
+                      ccOf(first) == 41 && ccOf(second) == 41
+                          && editor->debugMidiSelection().isEmpty()
+                          && editor->debugKeyboardNotice().isEmpty(),
+                      "the two selected knobs read CC " + juce::String(ccOf(first)) + " and CC "
+                          + juce::String(ccOf(second)) + ", with "
+                          + juce::String(editor->debugMidiSelection().size())
+                          + " still selected");
+
+                check("MidiMapUi_AnUnselectedKnobIsLeftUnmapped",
+                      ccOf(third) == -1,
+                      "the knob taken back out of the selection reads CC "
+                          + juce::String(ccOf(third)));
+
+                // The physical control moves the UI, through the parameter and
+                // its own attachment - there is no second value being drawn.
+                const auto before = first.getValue();
+                juce::MidiBuffer sweep;
+                sweep.addEvent(juce::MidiMessage::controllerEvent(1, 41, 127), 0);
+                buffer.clear();
+                processor.processBlock(buffer, sweep);
+                processor.applyPendingMidiMappings();
+
+                check("MidiMapUi_TheControlMovesTheKnobThroughTheParameter",
+                      std::abs(first.getValue() - before) > 1.0e-6,
+                      "the knob moved from " + fmt(before, 4) + " to " + fmt(first.getValue(), 4)
+                          + " when the controller swept");
+
+                // Shift-clicking a mapped knob drops its assignment and selects
+                // it, ready for a new one.
+                clickOn(first, true);
+                editor->debugRefreshMidiMappingUI();
+                check("MidiMapUi_ShiftClickingAMappedKnobClearsAndSelectsIt",
+                      ccOf(first) == -1 && isSelected(first)
+                          && editor->debugMidiSelection().size() == 1
+                          && ccOf(second) == 41,
+                      "the clicked knob reads CC " + juce::String(ccOf(first))
+                          + " and is " + (isSelected(first) ? "selected" : "not selected")
+                          + ", while its neighbour keeps CC " + juce::String(ccOf(second)));
+
+                // Escape leaves Select Mode with nothing assigned.
+                editor->keyPressed(juce::KeyPress(juce::KeyPress::escapeKey));
+                editor->debugRefreshMidiMappingUI();
+                check("MidiMapUi_EscapeLeavesSelectModeWithoutAssigning",
+                      editor->debugMidiSelection().isEmpty() && ccOf(first) == -1
+                          && editor->debugKeyboardNotice().isEmpty()
+                          && ! processor.isMidiLearnArmed(),
+                      "after Escape the selection holds "
+                          + juce::String(editor->debugMidiSelection().size())
+                          + " and learn is "
+                          + (processor.isMidiLearnArmed() ? "still armed" : "disarmed"));
+            }
+        }
+    }
 
     // ---- learning one parameter, and then several --------------------------
     {

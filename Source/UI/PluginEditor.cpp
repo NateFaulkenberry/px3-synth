@@ -410,6 +410,50 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
     g.setColour(renderGrayscale ? juce::Colour::fromRGB(170, 170, 170)
                                 : juce::Colour::fromRGB(210, 210, 210));
     g.fillEllipse(center.x - 3.1f, center.y - 3.1f, 6.2f, 6.2f);
+
+    // ---- MIDI mapping ------------------------------------------------------
+    //
+    // Drawn here so every knob in the synth gets it from one place: this
+    // look-and-feel already draws the modulation ring and the bypassed state
+    // the same way, from the same property bag.
+    const auto midiCc = static_cast<int>(
+        slider.getProperties().getWithDefault(px3::knob_properties::midiCc, -1));
+    const auto midiSelected = static_cast<bool>(
+        slider.getProperties().getWithDefault(px3::knob_properties::midiSelected, false));
+
+    if (midiSelected)
+    {
+        // A dashed ring outside the knob rather than a fill over it: the value
+        // and the modulation ring both still have to be readable while the
+        // user is picking which knobs to assign.
+        juce::Path ring;
+        ring.addEllipse(bounds.expanded(2.0f));
+
+        const float dashes[] = { 4.0f, 3.0f };
+        juce::Path dashed;
+        juce::PathStrokeType(1.6f).createDashedStroke(dashed, ring, dashes, 2);
+
+        g.setColour(juce::Colour::fromRGB(255, 214, 92));
+        g.fillPath(dashed);
+    }
+
+    if (midiCc >= 0)
+    {
+        // Inside the knob, under the spindle, where no readout sits. Small and
+        // quiet: it has to say "this is on a controller" at a glance without
+        // competing with the value the knob is actually showing.
+        const auto text = "CC" + juce::String(midiCc);
+        const auto fontHeight = juce::jlimit(6.5f, 9.0f, radius * 0.40f);
+        const auto label = juce::Rectangle<float>(bounds.getX(),
+                                                  center.y + radius * 0.30f,
+                                                  bounds.getWidth(),
+                                                  fontHeight + 2.0f);
+
+        g.setFont(juce::FontOptions(fontHeight));
+        g.setColour(renderGrayscale ? juce::Colour::fromRGBA(200, 200, 200, 190)
+                                    : juce::Colour::fromRGBA(255, 214, 92, 225));
+        g.drawFittedText(text, label.toNearestInt(), juce::Justification::centred, 1, 0.75f);
+    }
 }
 
 
@@ -1645,12 +1689,39 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 #endif
     audioProcessor.debugNotifyEditorCreated(this);
 
+    // Select Mode ends when the assignment lands, without polling for it. The
+    // processor OUTLIVES this editor, so the destructor clears this again -
+    // a std::function holding `this` on an object that survives us is a
+    // dangling call waiting for the next CC.
+    audioProcessor.onMidiMappingAssigned = [this](int)
+    {
+        midiSelection.clear();
+        refreshMidiMappingUI();
+    };
+
+    setWantsKeyboardFocus(true);
+
     startTimerHz(30);
 }
 
 PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
 {
     stopTimer();
+
+    // Before anything else: the processor outlives us and would otherwise call
+    // into a destroyed editor on the next CC. Select Mode is UI state, so it
+    // is dropped with the window; the mappings themselves are not.
+    audioProcessor.onMidiMappingAssigned = nullptr;
+    audioProcessor.setMidiLearnTargets({});
+
+    for (auto& knob : midiKnobs)
+    {
+        if (auto* slider = knob.getComponent())
+        {
+            slider->removeMouseListener(&midiSelectListener);
+        }
+    }
+    midiKnobs.clear();
 
     // Attachments FIRST, before anything that owns a control they point at.
     //
@@ -4245,6 +4316,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     loadUiConfig(false);
     refreshWavetableDisplays();
     refreshModulationRings();
+    refreshMidiMappingUI();
 
     const auto nowSeconds = juce::Time::getMillisecondCounterHiRes() * 0.001;
     const auto deltaSeconds = (lastAnimationTickSeconds > 0.0)
@@ -4429,4 +4501,130 @@ void PX3SynthAudioProcessorEditor::refreshDebugPerformanceOverlay()
                                              + " (" + (deltaMb >= 0.0 ? "+" : "") + juce::String(deltaMb, 1) + ")",
                                          juce::dontSendNotification);
 #endif
+}
+
+//==============================================================================
+// MIDI mapping Select Mode. See docs/midi-mapping-design.md.
+//==============================================================================
+
+void PX3SynthAudioProcessorEditor::handleParameterKnobClick(const juce::MouseEvent& event)
+{
+    auto* slider = dynamic_cast<juce::Slider*>(event.eventComponent);
+    if (slider == nullptr) { return; }
+
+    // Shift only. Every other click reaches the slider untouched, so ordinary
+    // knob dragging is exactly what it was.
+    if (! event.mods.isShiftDown()) { return; }
+
+    const auto parameterId = px3::ui::parameterIdOf(*slider);
+    if (parameterId.isEmpty()) { return; }
+
+    if (midiSelection.contains(parameterId))
+    {
+        // Clicking a selected knob takes it back out. Emptying the set leaves
+        // Select Mode, which is how a user backs out of the whole gesture
+        // without reaching for Escape.
+        midiSelection.removeString(parameterId);
+    }
+    else
+    {
+        // Selecting a MAPPED knob drops its assignment there and then. It is
+        // destructive by design - it is the only gesture that ends with a
+        // parameter unmapped - but not silent: the CC label leaves the knob in
+        // the same moment, so the user sees the cost of the click as they make
+        // it.
+        audioProcessor.clearMidiMappingForParameter(parameterId);
+        midiSelection.add(parameterId);
+    }
+
+    audioProcessor.setMidiLearnTargets(midiSelection);
+    refreshMidiMappingUI();
+}
+
+void PX3SynthAudioProcessorEditor::endMidiSelectMode()
+{
+    if (midiSelection.isEmpty()) { return; }
+
+    midiSelection.clear();
+    audioProcessor.setMidiLearnTargets({});
+    refreshMidiMappingUI();
+}
+
+bool PX3SynthAudioProcessorEditor::keyPressed(const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress::escapeKey && isMidiSelectModeActive())
+    {
+        endMidiSelectMode();
+        return true;
+    }
+
+    return false;
+}
+
+void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
+{
+    // Walks the tree rather than holding a list built at construction: panels
+    // and overlays create knobs after the editor exists, and a list would only
+    // be right until the next one appeared.
+    //
+    // Registration is idempotent - a listener already added is not added again
+    // - so this doubles as the discovery pass.
+    std::vector<juce::Component::SafePointer<juce::Slider>> found;
+
+    std::function<void(juce::Component&)> walk = [&](juce::Component& parent)
+    {
+        for (auto* child : parent.getChildren())
+        {
+            if (child == nullptr) { continue; }
+
+            if (auto* slider = dynamic_cast<juce::Slider*>(child))
+            {
+                if (px3::ui::isParameterKnob(*slider))
+                {
+                    found.push_back(slider);
+                }
+            }
+
+            walk(*child);
+        }
+    };
+    walk(*this);
+
+    for (auto& knob : found)
+    {
+        auto* slider = knob.getComponent();
+        if (slider == nullptr) { continue; }
+
+        const auto alreadyKnown = std::any_of(midiKnobs.begin(), midiKnobs.end(),
+                                              [slider](const auto& known)
+                                              { return known.getComponent() == slider; });
+
+        if (! alreadyKnown)
+        {
+            slider->addMouseListener(&midiSelectListener, false);
+            midiKnobs.push_back(knob);
+        }
+
+        const auto parameterId = px3::ui::parameterIdOf(*slider);
+        const auto cc = audioProcessor.getMidiCcForParameter(parameterId);
+        const auto selected = midiSelection.contains(parameterId);
+
+        // Only on a change: a repaint per knob per frame for a picture that
+        // has not moved is how a UI ends up costing more than the synth.
+        const auto shownCc = static_cast<int>(
+            slider->getProperties().getWithDefault(px3::knob_properties::midiCc, -1));
+        const auto shownSelected = static_cast<bool>(
+            slider->getProperties().getWithDefault(px3::knob_properties::midiSelected, false));
+
+        if (shownCc != cc || shownSelected != selected)
+        {
+            slider->getProperties().set(px3::knob_properties::midiCc, cc);
+            slider->getProperties().set(px3::knob_properties::midiSelected, selected);
+            slider->repaint();
+        }
+    }
+
+    pianoKeyboard.setNotice(isMidiSelectModeActive()
+                                ? juce::String("Select knobs, then move a MIDI control to assign")
+                                : juce::String());
 }

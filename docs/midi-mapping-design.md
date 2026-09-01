@@ -57,9 +57,11 @@ that belong to the session rather than to the sound — the open panel, the
 loaded preset's name, category, author and path. `applyParameterStateTree`
 takes a `restoreUiSessionState` flag, and `PresetManager` passes `false`.
 
-That is precisely the shape requirement §10 describes, already built. MIDI
-mappings join it: written into the parameter state tree, stripped from the
-preset tree, and applied only when the session flag is set.
+That mechanism is what the mapping persistence hangs off. Note that the brief's
+§10 asked for mappings to be session-only, and that was reversed during
+implementation: they are now written into BOTH the session tree and preset
+files. The `restoreUiSessionState` flag still matters, because it is what tells
+the two restore paths apart — see Persistence.
 
 **Modulation is applied at read time, not written into parameters.**
 `applyModulationToNormalizedValue(&param, param.getValue())` layers LFO and
@@ -140,9 +142,10 @@ at all times.
 
 ## UI behaviour
 
-**Selected knobs** draw a selection ring in the editor's accent colour, from
-the shared rotary look-and-feel, so every knob in the synth gets it without
-per-panel code.
+**Selected knobs** draw a dashed amber ring just outside the knob, from the
+shared rotary look-and-feel, so every knob in the synth gets it without
+per-panel code. Outside rather than over: the value and the modulation ring
+both still have to be readable while the user is choosing what to assign.
 
 **The keyboard notice** reads:
 
@@ -154,9 +157,9 @@ ends it. The banner uses the existing `WarningStyle` geometry and colours, so
 it sits where the "engage an oscillator" message sits. The keyboard is NOT
 silenced during Select Mode: the user can still play while assigning.
 
-**Mapped knobs** draw `CC21` inside the knob, below the pointer, in the same
-look-and-feel. It is small, low-contrast until hovered, and positioned where
-no existing readout sits.
+**Mapped knobs** draw `CC21` inside the knob, under the spindle, in the same
+look-and-feel. Small and quiet: it has to say "this is on a controller" at a
+glance without competing with the value the knob is showing.
 
 ---
 

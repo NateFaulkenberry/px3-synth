@@ -342,6 +342,14 @@ void PianoKeyboard::setSilenced(bool shouldBeSilenced)
     repaint();
 }
 
+void PianoKeyboard::setNotice(juce::String text)
+{
+    if (notice == text) { return; }
+
+    notice = std::move(text);
+    repaint();
+}
+
 void PianoKeyboard::paint(juce::Graphics& g)
 {
     // Drawn once normally; when silenced the same drawing is taken into an
@@ -351,8 +359,16 @@ void PianoKeyboard::paint(juce::Graphics& g)
     {
         paintKeyboard(g);
     }
+
+    // A live keyboard with something to say: the same banner, drawn over keys
+    // that still work. The silenced path below draws its own.
     if (! silenced)
     {
+        if (notice.isNotEmpty())
+        {
+            paintBanner(g, notice);
+        }
+
         return;
     }
 
@@ -372,6 +388,13 @@ void PianoKeyboard::paint(juce::Graphics& g)
     }
 
     // ---- the warning ------------------------------------------------------
+    // The notice wins while it is showing: Select Mode is the thing the user
+    // is doing right now, where "engage an oscillator" is a standing state.
+    paintBanner(g, notice.isNotEmpty() ? notice : warningStyle.text);
+}
+
+void PianoKeyboard::paintBanner(juce::Graphics& g, const juce::String& text)
+{
     const auto host = warningStyle.margin.shrink(keyboardArea().toFloat());
     if (host.isEmpty())
     {
@@ -409,7 +432,7 @@ void PianoKeyboard::paint(juce::Graphics& g)
     }
 
     g.setColour(warningStyle.textColour);
-    g.drawFittedText(warningStyle.text,
+    g.drawFittedText(text,
                      warningStyle.padding.shrink(box).toNearestInt(),
                      juce::Justification::centred,
                      1,
