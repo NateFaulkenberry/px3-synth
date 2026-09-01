@@ -1198,6 +1198,7 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
 
 float PX3SynthAudioProcessor::lfoDepthForParameterId(const juce::String& parameterId) const
 {
+    juce::ignoreUnused(parameterId);
 
     // Source amount is already user-scaled (-100%..+100%).
     // Use full normalized depth here so routing is clearly audible and

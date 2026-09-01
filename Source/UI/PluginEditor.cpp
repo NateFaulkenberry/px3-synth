@@ -437,6 +437,58 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
         g.fillPath(dashed);
     }
 
+    // ---- macros ------------------------------------------------------------
+    //
+    // Violet throughout, where MIDI is amber, so the three states the brief
+    // asks to be distinguishable - driven by a macro, mapped to a CC, both -
+    // are told apart by colour before anything is read.
+    const auto macroMask = static_cast<int>(
+        slider.getProperties().getWithDefault(px3::knob_properties::macroMask, 0));
+    const auto macroAssignable = static_cast<bool>(
+        slider.getProperties().getWithDefault(px3::knob_properties::macroAssignable, false));
+
+    if (macroAssignable)
+    {
+        // Every eligible knob says so while assigning. A solid ring, against
+        // MIDI Learn's dashed one, so the two modes never look alike.
+        const auto alreadyAssigned = macroMask != 0;
+        juce::Path ring;
+        ring.addEllipse(bounds.expanded(alreadyAssigned ? 3.0f : 2.0f));
+
+        g.setColour(juce::Colour::fromRGBA(168, 130, 255, alreadyAssigned ? 235 : 120));
+        g.strokePath(ring, juce::PathStrokeType(alreadyAssigned ? 2.2f : 1.3f));
+    }
+
+    if (macroMask != 0)
+    {
+        // One macro names itself in full; several become "M1+", which is the
+        // compact form §21 asks for once more than one will not fit.
+        auto first = -1;
+        auto count = 0;
+        for (int macro = 0; macro < 4; ++macro)
+        {
+            if ((macroMask & (1 << macro)) == 0) { continue; }
+            if (first < 0) { first = macro; }
+            ++count;
+        }
+
+        const auto text = count > 1 ? "M" + juce::String(first + 1) + "+"
+                                    : "MACRO " + juce::String(first + 1);
+        const auto fontHeight = juce::jlimit(6.0f, 8.5f, radius * 0.36f);
+
+        // Above the spindle, where the CC label sits below it, so a knob that
+        // is both macro-driven and CC-mapped shows both without overlap.
+        const auto label = juce::Rectangle<float>(bounds.getX(),
+                                                  center.y - radius * 0.58f - fontHeight,
+                                                  bounds.getWidth(),
+                                                  fontHeight + 2.0f);
+
+        g.setFont(juce::FontOptions(fontHeight));
+        g.setColour(renderGrayscale ? juce::Colour::fromRGBA(200, 200, 200, 190)
+                                    : juce::Colour::fromRGBA(186, 156, 255, 235));
+        g.drawFittedText(text, label.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+    }
+
     if (midiCc >= 0)
     {
         // Inside the knob, under the spindle, where no readout sits. Small and
@@ -1290,6 +1342,12 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     // After the oscillator panel exists, since the controls are handed to the
     // cards it owns.
     configureWavetableControls();
+
+    macroStrip = std::make_unique<MacroStrip>(audioProcessor, &knobLookAndFeel);
+    addAndMakeVisible(*macroStrip);
+
+    macroAssignOverlay = std::make_unique<MacroAssignOverlay>(*this);
+    addChildComponent(*macroAssignOverlay);
 
     ampPanel = std::make_unique<AmpPanel>(audioProcessor, kGroupAccents[2]);
     ampPanel->setKnobLookAndFeel(&knobLookAndFeel);
@@ -2172,6 +2230,25 @@ void PX3SynthAudioProcessorEditor::resized()
     // `bounds`, so any extra horizontal reduce on the panel area misaligns the
     // two edges.
     panelViewportArea = controlsArea.reduced(0, 8);
+
+    // The macro strip comes off the LEFT of the one rectangle every panel is
+    // laid out in. Doing it here rather than in each panel is what puts the
+    // same four knobs on OSC, MOD, FLT, FX, AMP and MIX with one instance and
+    // no panel needing to know they exist.
+    macroStripArea = panelViewportArea.removeFromLeft(
+        MacroStrip::preferredWidth(uiConfig.get()));
+    panelViewportArea.removeFromLeft(2);
+
+    if (macroStrip != nullptr)
+    {
+        macroStrip->setBounds(macroStripArea);
+    }
+
+    if (macroAssignOverlay != nullptr)
+    {
+        macroAssignOverlay->setBounds(getLocalBounds());
+        macroAssignOverlay->toFront(false);
+    }
     // panels.osc: a declared height wins over the editor's allocation, and
     // overflowY decides whether the panel scrolls when its content is taller
     // than the space it has.
@@ -4512,12 +4589,28 @@ void PX3SynthAudioProcessorEditor::handleParameterKnobClick(const juce::MouseEve
     auto* slider = dynamic_cast<juce::Slider*>(event.eventComponent);
     if (slider == nullptr) { return; }
 
-    // Shift only. Every other click reaches the slider untouched, so ordinary
-    // knob dragging is exactly what it was.
-    if (! event.mods.isShiftDown()) { return; }
-
     const auto parameterId = px3::ui::parameterIdOf(*slider);
     if (parameterId.isEmpty()) { return; }
+
+    // Cmd on a MACRO knob starts assigning to it. Checked before Shift so the
+    // two modifiers stay separate gestures rather than one shadowing the
+    // other, and only on a macro knob so Cmd is free everywhere else.
+    if (event.mods.isCommandDown())
+    {
+        for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+        {
+            if (parameterId == PX3SynthAudioProcessor::macroParameterId(macro))
+            {
+                enterMacroAssignMode(macro);
+                return;
+            }
+        }
+        return;
+    }
+
+    // Shift only, for MIDI Learn. Every other click reaches the slider
+    // untouched, so ordinary knob dragging is exactly what it was.
+    if (! event.mods.isShiftDown()) { return; }
 
     if (midiSelection.contains(parameterId))
     {
@@ -4537,6 +4630,7 @@ void PX3SynthAudioProcessorEditor::handleParameterKnobClick(const juce::MouseEve
         midiSelection.add(parameterId);
     }
 
+    exitMacroAssignMode();
     audioProcessor.setMidiLearnTargets(midiSelection);
     refreshMidiMappingUI();
 }
@@ -4552,6 +4646,14 @@ void PX3SynthAudioProcessorEditor::endMidiSelectMode()
 
 bool PX3SynthAudioProcessorEditor::keyPressed(const juce::KeyPress& key)
 {
+    if (key == juce::KeyPress::escapeKey && assigningMacro >= 0)
+    {
+        // Assignments already clicked stay: each one committed as it was made,
+        // so there is no pending set to roll back.
+        exitMacroAssignMode();
+        return true;
+    }
+
     if (key == juce::KeyPress::escapeKey && isMidiSelectModeActive())
     {
         endMidiSelectMode();
@@ -4609,6 +4711,34 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
         const auto cc = audioProcessor.getMidiCcForParameter(parameterId);
         const auto selected = midiSelection.contains(parameterId);
 
+        // Which macros drive this knob, and whether it can be clicked right
+        // now. The look-and-feel draws both; the editor only decides them.
+        auto macroMask = audioProcessor.getMacroMaskForParameter(parameterId);
+        auto assignable = false;
+
+        if (assigningMacro >= 0)
+        {
+            auto isMacroKnob = false;
+            for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+            {
+                isMacroKnob = isMacroKnob
+                              || parameterId == PX3SynthAudioProcessor::macroParameterId(macro);
+            }
+            assignable = ! isMacroKnob;
+        }
+
+        const auto shownMask = static_cast<int>(
+            slider->getProperties().getWithDefault(px3::knob_properties::macroMask, 0));
+        const auto shownAssignable = static_cast<bool>(
+            slider->getProperties().getWithDefault(px3::knob_properties::macroAssignable, false));
+
+        if (shownMask != macroMask || shownAssignable != assignable)
+        {
+            slider->getProperties().set(px3::knob_properties::macroMask, macroMask);
+            slider->getProperties().set(px3::knob_properties::macroAssignable, assignable);
+            slider->repaint();
+        }
+
         // Only on a change: a repaint per knob per frame for a picture that
         // has not moved is how a UI ends up costing more than the synth.
         const auto shownCc = static_cast<int>(
@@ -4624,7 +4754,118 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
         }
     }
 
-    pianoKeyboard.setNotice(isMidiSelectModeActive()
-                                ? juce::String("Select knobs, then move a MIDI control to assign")
-                                : juce::String());
+    // One notice, decided in one place. Setting it in enterMacroAssignMode and
+    // then calling this was two owners for one string, and this one won.
+    if (assigningMacro >= 0)
+    {
+        pianoKeyboard.setNotice("Click knobs to assign them to "
+                                + PX3SynthAudioProcessor::macroDisplayName(assigningMacro));
+    }
+    else if (isMidiSelectModeActive())
+    {
+        pianoKeyboard.setNotice("Select knobs, then move a MIDI control to assign");
+    }
+    else
+    {
+        pianoKeyboard.setNotice({});
+    }
+}
+
+//==============================================================================
+// Macro assignment. See docs/macro-system-design.md.
+//==============================================================================
+
+void PX3SynthAudioProcessorEditor::enterMacroAssignMode(int macroIndex)
+{
+    if (! juce::isPositiveAndBelow(macroIndex, PX3SynthAudioProcessor::kMacroCount)) { return; }
+
+    // Only one learning mode at a time. A MIDI selection in progress is
+    // dropped rather than left armed behind this one, or the next CC would
+    // assign parameters the user has stopped thinking about.
+    endMidiSelectMode();
+
+    assigningMacro = macroIndex;
+
+    if (macroStrip != nullptr) { macroStrip->setAssigningMacro(macroIndex); }
+    if (macroAssignOverlay != nullptr)
+    {
+        macroAssignOverlay->setBounds(getLocalBounds());
+        macroAssignOverlay->setVisible(true);
+        macroAssignOverlay->toFront(true);
+    }
+
+    refreshMidiMappingUI();
+}
+
+void PX3SynthAudioProcessorEditor::exitMacroAssignMode()
+{
+    if (assigningMacro < 0) { return; }
+
+    assigningMacro = -1;
+
+    if (macroStrip != nullptr) { macroStrip->setAssigningMacro(-1); }
+    if (macroAssignOverlay != nullptr) { macroAssignOverlay->setVisible(false); }
+
+    refreshMidiMappingUI();
+}
+
+juce::Slider* PX3SynthAudioProcessorEditor::findParameterKnobAt(juce::Point<int> positionInEditor) const
+{
+    // Deepest hit wins, so a knob inside a panel inside a viewport is found
+    // rather than the container around it.
+    juce::Slider* found = nullptr;
+
+    std::function<void(const juce::Component&)> walk = [&](const juce::Component& parent)
+    {
+        for (auto* child : parent.getChildren())
+        {
+            if (child == nullptr || ! child->isVisible()) { continue; }
+            if (child == macroAssignOverlay.get()) { continue; }
+
+            const auto local = child->getLocalPoint(this, positionInEditor);
+            if (! child->getLocalBounds().contains(local)) { continue; }
+
+            if (auto* slider = dynamic_cast<juce::Slider*>(child))
+            {
+                if (px3::ui::isParameterKnob(*slider)) { found = slider; }
+            }
+
+            walk(*child);
+        }
+    };
+    walk(*this);
+
+    return found;
+}
+
+void PX3SynthAudioProcessorEditor::handleMacroAssignClick(juce::Point<int> positionInEditor)
+{
+    if (! juce::isPositiveAndBelow(assigningMacro, PX3SynthAudioProcessor::kMacroCount))
+    {
+        return;
+    }
+
+    auto* slider = findParameterKnobAt(positionInEditor);
+    if (slider == nullptr)
+    {
+        return;   // empty space: stay in the mode rather than losing it to a stray click
+    }
+
+    const auto parameterId = px3::ui::parameterIdOf(*slider);
+
+    // Clicking a macro knob leaves the mode. That is the documented exit, and
+    // it is why the overlay swallows the click instead of letting it through:
+    // exiting must not also nudge the macro's value.
+    for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+    {
+        if (parameterId == PX3SynthAudioProcessor::macroParameterId(macro))
+        {
+            if (macro == assigningMacro) { exitMacroAssignMode(); }
+            else                         { enterMacroAssignMode(macro); }
+            return;
+        }
+    }
+
+    audioProcessor.toggleMacroDestination(assigningMacro, parameterId);
+    refreshMidiMappingUI();
 }

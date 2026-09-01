@@ -57,6 +57,13 @@ inline const juce::Identifier parameterId { "px3ParamId" };
 // assignment.
 inline const juce::Identifier midiCc { "px3MidiCc" };
 inline const juce::Identifier midiSelected { "px3MidiSelected" };
+
+// Macro state, drawn by the same look-and-feel: a bitmask of the macros
+// driving this knob, and whether it can be clicked in the active assignment
+// mode. Deliberately separate identifiers from the MIDI ones, so the two
+// systems cannot end up drawing over each other.
+inline const juce::Identifier macroMask { "px3MacroMask" };
+inline const juce::Identifier macroAssignable { "px3MacroAssignable" };
 } // namespace knob_properties
 
 } // namespace px3

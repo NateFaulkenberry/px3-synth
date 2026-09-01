@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "PerformanceControls.h"
+#include "MacroStrip.h"
 #include "PianoKeyboard.h"
 #include "PresetManager.h"
 #include "PluginProcessor.h"
@@ -148,6 +149,41 @@ private:
     };
     MidiSelectListener midiSelectListener { *this };
 
+    //==========================================================================
+    // Macro assignment. See docs/macro-system-design.md.
+    //==========================================================================
+
+    // A transparent sheet over the whole editor while assigning.
+    //
+    // A juce::MouseListener cannot consume an event, so without this every
+    // assignment click would ALSO drag the knob it landed on - which is the
+    // one thing §13 says must not happen. The sheet takes the click, finds the
+    // knob underneath and toggles it, and the knob never sees the mouse.
+    struct MacroAssignOverlay final : public juce::Component
+    {
+        explicit MacroAssignOverlay(PX3SynthAudioProcessorEditor& ownerIn) : owner(ownerIn)
+        {
+            setInterceptsMouseClicks(true, false);
+            setWantsKeyboardFocus(true);
+        }
+        void mouseDown(const juce::MouseEvent& event) override
+        {
+            owner.handleMacroAssignClick(event.getEventRelativeTo(&owner).getPosition());
+        }
+        void paint(juce::Graphics&) override {}
+        PX3SynthAudioProcessorEditor& owner;
+    };
+
+    std::unique_ptr<MacroStrip> macroStrip;
+    std::unique_ptr<MacroAssignOverlay> macroAssignOverlay;
+    juce::Rectangle<int> macroStripArea;
+    int assigningMacro { -1 };
+
+    void enterMacroAssignMode(int macroIndex);
+    void exitMacroAssignMode();
+    void handleMacroAssignClick(juce::Point<int> positionInEditor);
+    juce::Slider* findParameterKnobAt(juce::Point<int> positionInEditor) const;
+
     juce::StringArray midiSelection;
     std::vector<juce::Component::SafePointer<juce::Slider>> midiKnobs;
 
@@ -160,6 +196,25 @@ public:
     juce::StringArray debugMidiSelection() const { return midiSelection; }
     void debugRefreshMidiMappingUI() { refreshMidiMappingUI(); }
     juce::String debugKeyboardNotice() const { return pianoKeyboard.getNotice(); }
+
+    // For the tests: the macro strip and the assignment state.
+    MacroStrip* debugMacroStrip() const { return macroStrip.get(); }
+    int debugAssigningMacro() const { return assigningMacro; }
+    juce::Rectangle<int> debugMacroStripArea() const { return macroStripArea; }
+    juce::Rectangle<int> debugPanelArea() const { return panelViewportArea; }
+    // Switch panel the way the top menu does, so a test exercises the real
+    // path rather than poking the index.
+    void debugSelectSection(int sectionIndex) { applyTopMenuSectionSelection(sectionIndex, false); }
+    // What a click at this point would land on - the same hit test the overlay
+    // uses, so a test can pick knobs that are actually reachable right now.
+    juce::Slider* debugKnobAt(juce::Point<int> positionInEditor) const
+    { return findParameterKnobAt(positionInEditor); }
+    void debugEnterMacroAssignMode(int macroIndex) { enterMacroAssignMode(macroIndex); }
+    void debugMacroAssignClickOn(juce::Component& target)
+    {
+        handleMacroAssignClick(
+            getLocalPoint(&target, target.getLocalBounds().getCentre()));
+    }
 
     // How many knobs the editor has registered its listener on. The wiring
     // itself - addMouseListener - is what a test cannot drive through JUCE's

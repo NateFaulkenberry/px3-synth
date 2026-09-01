@@ -432,6 +432,80 @@ Accuracy notes:
 - RAM is an estimate, not exact per-instance ownership, because process memory is shared and cannot be perfectly partitioned by plugin instance.
 - In standalone with one instance, RAM estimate effectively matches app RSS.
 
+## Macros: Four Performance Controls
+
+Four knobs sit on the left of every panel — OSC, MOD, FLT, FX, AMP and MIX.
+They are the same four wherever you are: switch panels and they keep their
+values and their assignments, because there is only one set of them.
+
+Each Macro can move any number of parameters anywhere in the synth at once.
+
+### Assigning
+
+1. **Cmd-click a Macro knob.** It lights violet, and the keyboard says
+   *"Click knobs to assign them to MACRO 1"*.
+2. **Click any knob** to assign it. Click it again to remove it. The knob does
+   not move while you are assigning — the click assigns, it does not drag.
+3. **Switch panels and keep going.** Assignment stays active, so one Macro can
+   collect an oscillator detune, a filter cutoff, a delay mix and a mixer send
+   without leaving the mode.
+4. **Click the Macro knob** again to finish, or press **Escape**. Everything
+   you clicked is already assigned; Escape does not undo it.
+
+### Reading a knob
+
+| The knob shows | It means |
+|---|---|
+| `MACRO 1` above the spindle, violet | one Macro drives it |
+| `M1+`, violet | several Macros drive it; the first is named |
+| `CC21` below the spindle, amber | a MIDI control is mapped to it directly |
+| both labels | both, and they add together |
+| a solid violet ring | assignable right now, in the active Macro mode |
+| a dashed amber ring | selected for MIDI Learn |
+
+Violet is always Macro, amber is always MIDI.
+
+### What a Macro does to a parameter
+
+A Macro does not take a parameter over. It adds to it, the way an LFO does, so
+the knob, a DAW automation lane, a mapped MIDI CC, the LFOs, the envelopes and
+up to four Macros can all reach the same parameter and the result is the sum of
+what each is asking for. The destination knob stays where you set it and its
+ring shows where the sound actually is — the same convention modulation already
+uses.
+
+Turning a Macro to zero returns its destinations to exactly the values their
+own knobs show.
+
+### Macros and MIDI
+
+Macros are parameters like any other, so they are MIDI-mappable with the same
+gesture: **Shift-click a Macro knob, move a hardware control**. That gives you
+one physical knob moving one Macro moving a dozen parameters.
+
+A Macro can also be automated by your DAW.
+
+### What gets saved
+
+- **Presets** carry Macro assignments *and* Macro values, so a patch ships with
+  the performance controls it was designed around.
+- **DAW sessions** carry both as well.
+- **MIDI mappings** of the Macros belong to the instance and are not replaced
+  by loading a preset. `CC 21 → Macro 1` survives while the preset decides what
+  Macro 1 does — which is the point of a Macro being its own control source.
+
+Projects and presets saved before Macros existed load with four empty Macros.
+
+### Limits
+
+- Four Macros, no more; a Macro cannot drive another Macro.
+- Assignments are at full positive depth. The stored format carries a per
+  destination depth so an editor for it can be added without breaking presets.
+- Macro knobs are not themselves assignable to Macros.
+
+The design and the reasoning behind it are in
+[docs/macro-system-design.md](docs/macro-system-design.md).
+
 ## MIDI Learn: Mapping Hardware Controls
 
 Any knob in the synth can be driven by a hardware controller. There is no CC

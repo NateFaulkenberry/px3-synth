@@ -18530,6 +18530,352 @@ void testMacroSystem()
         processor.prepareToPlay(kRate, kBlock);
     };
 
+    // ---- the strip: one instance, on every panel, inside its budget ---------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+
+        if (editor != nullptr)
+        {
+            editor->setSize(1400, 900);
+            auto* strip = editor->debugMacroStrip();
+
+            check("MacroUi_TheStripExistsWithFourKnobs",
+                  strip != nullptr,
+                  strip != nullptr ? "the editor owns a macro strip" : "no macro strip");
+
+            if (strip != nullptr)
+            {
+                const auto stripArea = editor->debugMacroStripArea();
+
+                check("MacroUi_TheStripStaysInsideItsWidthBudget",
+                      stripArea.getWidth() > 0 && stripArea.getWidth() <= 40,
+                      "the strip is " + juce::String(stripArea.getWidth())
+                          + " px wide against a budget of 40");
+
+                // It sits to the LEFT of the rectangle every panel is laid out
+                // in, which is what puts it on all six without any panel
+                // knowing it exists.
+                const auto panelArea = editor->debugPanelArea();
+                check("MacroUi_TheStripIsLeftOfEveryPanelsRectangle",
+                      stripArea.getRight() <= panelArea.getX()
+                          && stripArea.getY() <= panelArea.getY() + 2
+                          && panelArea.getWidth() > 200,
+                      "the strip ends at x " + juce::String(stripArea.getRight())
+                          + " and the panel rectangle starts at x "
+                          + juce::String(panelArea.getX()) + " with "
+                          + juce::String(panelArea.getWidth()) + " px left for content");
+
+                // Every knob inside the strip, and every one bound to its own
+                // macro parameter.
+                juce::StringArray bound;
+                auto insideStrip = true;
+                for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+                {
+                    const auto& knob = strip->knob(macro);
+                    bound.add(px3::ui::parameterIdOf(knob));
+                    insideStrip = insideStrip
+                                  && strip->getLocalBounds().contains(knob.getBounds())
+                                  && ! knob.getBounds().isEmpty();
+                }
+
+                check("MacroUi_EachKnobIsBoundToItsOwnMacroAndFitsTheStrip",
+                      insideStrip
+                          && bound == juce::StringArray({ "macro1", "macro2", "macro3", "macro4" }),
+                      "the strip's knobs are bound to " + bound.joinIntoString(", "));
+
+                // Switching panels cannot reset or duplicate them: the strip is
+                // not inside a panel, so panel changes do not reach it.
+                strip->knob(0).setValue(0.62, juce::sendNotificationSync);
+                juce::StringArray afterSwitching;
+                for (int section = 0; section < 6; ++section)
+                {
+                    editor->debugSelectSection(section);
+                    editor->resized();
+                    afterSwitching.add(fmt(strip->knob(0).getValue(), 2));
+                }
+
+                check("MacroUi_PanelSwitchingLeavesTheMacrosAlone",
+                      afterSwitching == juce::StringArray({ "0.62", "0.62", "0.62",
+                                                            "0.62", "0.62", "0.62" })
+                          && std::abs(processor.getMacroParam(0).get() - 0.62f) < 0.01f,
+                      "macro 1 across OSC/MOD/FLT/FX/AMP/MIX reads "
+                          + afterSwitching.joinIntoString(", "));
+            }
+        }
+    }
+
+    // ---- assignment mode ----------------------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+
+        if (editor != nullptr)
+        {
+            editor->setSize(1400, 900);
+            editor->debugRefreshMidiMappingUI();
+            auto* strip = editor->debugMacroStrip();
+
+            std::vector<juce::Slider*> knobs;
+            std::function<void(juce::Component&)> walk = [&](juce::Component& parent)
+            {
+                for (auto* child : parent.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* slider = dynamic_cast<juce::Slider*>(child))
+                    {
+                        const auto id = px3::ui::parameterIdOf(*slider);
+                        // Only knobs a click could actually reach right now:
+                        // the ones on the visible panel. A knob on a hidden
+                        // panel is not clickable, so using one would test the
+                        // assignment call rather than the interaction.
+                        const auto centre = editor->getLocalPoint(
+                            slider, slider->getLocalBounds().getCentre());
+                        if (id.isNotEmpty() && ! id.startsWith("macro")
+                            && ! slider->getBounds().isEmpty()
+                            && editor->debugKnobAt(centre) == slider)
+                        {
+                            knobs.push_back(slider);
+                        }
+                    }
+                    walk(*child);
+                }
+            };
+            walk(*editor);
+
+            const auto maskOf = [](const juce::Slider& slider)
+            {
+                return static_cast<int>(
+                    slider.getProperties().getWithDefault(px3::knob_properties::macroMask, 0));
+            };
+            const auto assignableOf = [](const juce::Slider& slider)
+            {
+                return static_cast<bool>(
+                    slider.getProperties().getWithDefault(px3::knob_properties::macroAssignable, false));
+            };
+
+            if (strip != nullptr && knobs.size() >= 3)
+            {
+                // Each of the four enters its own mode.
+                juce::StringArray entered;
+                for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+                {
+                    editor->debugEnterMacroAssignMode(macro);
+                    entered.add(juce::String(editor->debugAssigningMacro()));
+                }
+
+                check("MacroUi_EachMacroEntersItsOwnAssignmentMode",
+                      entered == juce::StringArray({ "0", "1", "2", "3" }),
+                      "entering each macro's mode reports " + entered.joinIntoString(", "));
+
+                editor->debugEnterMacroAssignMode(0);
+                editor->debugRefreshMidiMappingUI();
+
+                check("MacroUi_EligibleKnobsSayTheyCanBeAssigned",
+                      assignableOf(*knobs[0]) && assignableOf(*knobs[1])
+                          && ! assignableOf(strip->knob(1)),
+                      juce::String("eligible knobs are marked assignable and a macro knob is ")
+                          + (assignableOf(strip->knob(1)) ? "wrongly assignable" : "correctly not"));
+
+                check("MacroUi_TheKeyboardNamesTheMacroBeingAssigned",
+                      editor->debugKeyboardNotice().contains("MACRO 1"),
+                      "the keyboard reads \"" + editor->debugKeyboardNotice() + "\"");
+
+                // Clicking a knob assigns it, and does not move it.
+                const auto valueBefore = knobs[0]->getValue();
+                editor->debugMacroAssignClickOn(*knobs[0]);
+                editor->debugRefreshMidiMappingUI();
+
+                check("MacroUi_ClickingAKnobAssignsItWithoutMovingIt",
+                      processor.isMacroDestination(0, px3::ui::parameterIdOf(*knobs[0]))
+                          && maskOf(*knobs[0]) == 0b0001
+                          && std::abs(knobs[0]->getValue() - valueBefore) < 1.0e-9,
+                      "the knob is assigned, shows mask " + juce::String(maskOf(*knobs[0]))
+                          + ", and its value is still " + fmt(knobs[0]->getValue(), 4));
+
+                // Clicking again removes it.
+                editor->debugMacroAssignClickOn(*knobs[0]);
+                editor->debugRefreshMidiMappingUI();
+                check("MacroUi_ClickingItAgainRemovesTheAssignment",
+                      ! processor.isMacroDestination(0, px3::ui::parameterIdOf(*knobs[0]))
+                          && maskOf(*knobs[0]) == 0,
+                      "after a second click the mask reads " + juce::String(maskOf(*knobs[0])));
+
+                // Cross-panel: assign on one panel, switch, assign a knob that
+                // belongs to the NEW panel, switch again. One macro, three
+                // panels, one uninterrupted assignment session.
+                //
+                // The knob has to be chosen after each switch: a knob on a
+                // panel that is no longer showing is not something a user
+                // could click, so using one would prove nothing.
+                const auto clickAKnobOnThisPanel = [&]
+                {
+                    juce::Slider* target = nullptr;
+                    std::function<void(juce::Component&)> find = [&](juce::Component& parent)
+                    {
+                        for (auto* child : parent.getChildren())
+                        {
+                            if (child == nullptr || target != nullptr) { continue; }
+                            if (auto* slider = dynamic_cast<juce::Slider*>(child))
+                            {
+                                const auto id = px3::ui::parameterIdOf(*slider);
+                                const auto centre = editor->getLocalPoint(
+                                    slider, slider->getLocalBounds().getCentre());
+                                if (id.isNotEmpty() && ! id.startsWith("macro")
+                                    && ! slider->getBounds().isEmpty()
+                                    && ! processor.isMacroDestination(0, id)
+                                    && editor->debugKnobAt(centre) == slider)
+                                {
+                                    target = slider;
+                                }
+                            }
+                            find(*child);
+                        }
+                    };
+                    find(*editor);
+
+                    if (target != nullptr) { editor->debugMacroAssignClickOn(*target); }
+                    return target != nullptr;
+                };
+
+                juce::StringArray panelsAssigned;
+                auto stayedActive = true;
+                for (const auto section : { 0, 3, 5 })
+                {
+                    editor->debugSelectSection(section);
+                    editor->resized();
+                    stayedActive = stayedActive && editor->debugAssigningMacro() == 0;
+                    if (clickAKnobOnThisPanel()) { panelsAssigned.add(juce::String(section)); }
+                }
+                editor->debugRefreshMidiMappingUI();
+
+                check("MacroUi_AssignmentModeSurvivesPanelChanges",
+                      stayedActive && editor->debugAssigningMacro() == 0
+                          && panelsAssigned.size() == 3
+                          && processor.getMacroDestinations(0).size() == 3,
+                      "one macro collected "
+                          + juce::String(static_cast<int>(processor.getMacroDestinations(0).size()))
+                          + " destinations from panels " + panelsAssigned.joinIntoString(", ")
+                          + " without leaving assignment mode");
+
+                // Clicking the active macro knob leaves the mode, without
+                // changing its value - which is why the overlay eats the click.
+                const auto macroValueBefore = strip->knob(0).getValue();
+                editor->debugMacroAssignClickOn(strip->knob(0));
+                check("MacroUi_ClickingTheActiveMacroExitsWithoutMovingIt",
+                      editor->debugAssigningMacro() == -1
+                          && std::abs(strip->knob(0).getValue() - macroValueBefore) < 1.0e-9,
+                      "the mode is "
+                          + juce::String(editor->debugAssigningMacro() < 0 ? "off" : "still on")
+                          + " and the macro still reads " + fmt(strip->knob(0).getValue(), 4));
+
+                // Escape leaves the mode and keeps what was already clicked.
+                const auto keptBefore = processor.getMacroDestinations(0).size();
+                editor->debugEnterMacroAssignMode(1);
+                editor->keyPressed(juce::KeyPress(juce::KeyPress::escapeKey));
+                check("MacroUi_EscapeExitsAndKeepsWhatWasAlreadyAssigned",
+                      editor->debugAssigningMacro() == -1
+                          && processor.getMacroDestinations(0).size() == keptBefore,
+                      "after Escape the mode is off and macro 1 still holds "
+                          + juce::String(static_cast<int>(processor.getMacroDestinations(0).size())));
+
+                // Only one learning mode at a time.
+                editor->debugEnterMacroAssignMode(2);
+                editor->debugSimulateKnobClick(*knobs[0], true);   // shift = MIDI Learn
+                check("MacroUi_StartingMidiLearnLeavesMacroAssignment",
+                      editor->debugAssigningMacro() == -1
+                          && editor->debugMidiSelection().size() == 1,
+                      "a shift-click left macro mode "
+                          + juce::String(editor->debugAssigningMacro() < 0 ? "off" : "on")
+                          + " with " + juce::String(editor->debugMidiSelection().size())
+                          + " knobs selected for MIDI");
+
+                editor->debugEnterMacroAssignMode(2);
+                check("MacroUi_EnteringMacroAssignmentLeavesMidiLearn",
+                      editor->debugMidiSelection().isEmpty()
+                          && editor->debugAssigningMacro() == 2,
+                      "entering macro mode left "
+                          + juce::String(editor->debugMidiSelection().size())
+                          + " knobs selected for MIDI");
+                editor->keyPressed(juce::KeyPress(juce::KeyPress::escapeKey));
+            }
+        }
+    }
+
+    // ---- the three states look different ------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+
+        if (editor != nullptr)
+        {
+            const auto render = [&](int cc, int macroMask, bool macroAssignable, bool midiSelected)
+            {
+                juce::Slider knob;
+                knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+                knob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+                knob.setLookAndFeel(editor->debugKnobLookAndFeel());
+                knob.setSize(64, 64);
+                knob.setValue(0.5, juce::dontSendNotification);
+                knob.getProperties().set(px3::knob_properties::midiCc, cc);
+                knob.getProperties().set(px3::knob_properties::midiSelected, midiSelected);
+                knob.getProperties().set(px3::knob_properties::macroMask, macroMask);
+                knob.getProperties().set(px3::knob_properties::macroAssignable, macroAssignable);
+                const auto image = knob.createComponentSnapshot(knob.getLocalBounds());
+                knob.setLookAndFeel(nullptr);
+                return image;
+            };
+
+            const auto differs = [](const juce::Image& a, const juce::Image& b)
+            {
+                auto changed = 0;
+                for (int y = 0; y < a.getHeight(); ++y)
+                {
+                    for (int x = 0; x < a.getWidth(); ++x)
+                    {
+                        if (a.getPixelAt(x, y) != b.getPixelAt(x, y)) { ++changed; }
+                    }
+                }
+                return changed;
+            };
+
+            const auto plain = render(-1, 0, false, false);
+            const auto macroDriven = render(-1, 0b0001, false, false);
+            const auto midiMapped = render(21, 0, false, false);
+            const auto both = render(21, 0b0001, false, false);
+            const auto assignHighlight = render(-1, 0, true, false);
+            const auto midiHighlight = render(-1, 0, false, true);
+
+            check("MacroUi_AMacroDrivenKnobLooksDifferentFromAMidiMappedOne",
+                  differs(plain, macroDriven) > 20 && differs(plain, midiMapped) > 20
+                      && differs(macroDriven, midiMapped) > 20,
+                  "macro " + juce::String(differs(plain, macroDriven)) + " px, MIDI "
+                      + juce::String(differs(plain, midiMapped)) + " px, and "
+                      + juce::String(differs(macroDriven, midiMapped))
+                      + " px between the two");
+
+            check("MacroUi_AKnobThatIsBothShowsBoth",
+                  differs(both, macroDriven) > 20 && differs(both, midiMapped) > 20,
+                  "a knob on both differs from macro-only by "
+                      + juce::String(differs(both, macroDriven))
+                      + " px and from MIDI-only by " + juce::String(differs(both, midiMapped)));
+
+            check("MacroUi_TheAssignmentHighlightDiffersFromTheMidiOne",
+                  differs(plain, assignHighlight) > 20
+                      && differs(assignHighlight, midiHighlight) > 20,
+                  "the macro highlight changes " + juce::String(differs(plain, assignHighlight))
+                      + " px and differs from the MIDI highlight by "
+                      + juce::String(differs(assignHighlight, midiHighlight)));
+        }
+    }
+
     // ---- four macros, with stable identities --------------------------------
     {
         PX3SynthAudioProcessor processor;
