@@ -18552,9 +18552,28 @@ void testMacroSystem()
                 const auto stripArea = editor->debugMacroStripArea();
 
                 check("MacroUi_TheStripStaysInsideItsWidthBudget",
-                      stripArea.getWidth() > 0 && stripArea.getWidth() <= 40,
+                      stripArea.getWidth() > 0 && stripArea.getWidth() <= 70,
                       "the strip is " + juce::String(stripArea.getWidth())
-                          + " px wide against a budget of 40");
+                          + " px wide against a budget of 70");
+
+                // The caption sits directly under its knob, with nothing
+                // between them - they are one control, not two things.
+                juce::StringArray gaps;
+                for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+                {
+                    const auto knobBottom = strip->knob(macro).getBounds().getBottom();
+                    const auto captionTop = strip->debugCaption(macro).getBounds().getY();
+                    if (captionTop - knobBottom != 0)
+                    {
+                        gaps.add("M" + juce::String(macro + 1) + " leaves "
+                                 + juce::String(captionTop - knobBottom) + " px");
+                    }
+                }
+
+                check("MacroUi_TheCaptionSitsOnItsKnob",
+                      gaps.isEmpty(),
+                      gaps.isEmpty() ? "every caption starts where its knob ends"
+                                     : gaps.joinIntoString(", "));
 
                 // It sits to the LEFT of the rectangle every panel is laid out
                 // in, which is what puts it on all six without any panel

@@ -34,10 +34,14 @@ public:
     void setAssigningMacro(int macroIndex);
     int getAssigningMacro() const noexcept { return assigningMacro; }
 
+    // For the layout tests: the caption under a knob.
+    const juce::Label& debugCaption(int macroIndex) const
+    { return entries[static_cast<std::size_t>(juce::jlimit(0, 3, macroIndex))].caption; }
+
     juce::Slider& knob(int macroIndex);
     const juce::Slider& knob(int macroIndex) const;
 
-    // The width the strip wants, from config. The brief's budget is 40 px.
+    // The width the strip wants, from config.
     static int preferredWidth(const UIConfig* config);
 
 private:

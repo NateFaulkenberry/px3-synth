@@ -17,7 +17,7 @@ MacroStrip::MacroStrip(PX3SynthAudioProcessor& processorIn, juce::LookAndFeel* k
 
         entry.caption.setText("M" + juce::String(macro + 1), juce::dontSendNotification);
         entry.caption.setJustificationType(juce::Justification::centred);
-        entry.caption.setFont(juce::FontOptions(9.0f));
+        entry.caption.setFont(juce::FontOptions(11.0f));
         entry.caption.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
         entry.caption.setInterceptsMouseClicks(false, false);
         addAndMakeVisible(entry.caption);
@@ -38,9 +38,7 @@ MacroStrip::~MacroStrip()
 
 int MacroStrip::preferredWidth(const UIConfig* config)
 {
-    // The brief's budget is "approximately 40px or less". 38 leaves the panel
-    // beside it two pixels it would not otherwise have.
-    return config != nullptr ? config->getInt("editor.layout.macroStripWidth", 38) : 38;
+    return config != nullptr ? config->getInt("editor.layout.macroStripWidth", 70) : 70;
 }
 
 void MacroStrip::setUIConfig(std::shared_ptr<const UIConfig> configIn)
@@ -73,12 +71,12 @@ const juce::Slider& MacroStrip::knob(int macroIndex) const
 void MacroStrip::resized()
 {
     // Four cells down the strip. The knob takes a square of whatever width is
-    // left after padding, and the caption sits under it - so the strip stays
-    // inside its budget at any height rather than assuming one.
-    auto area = getLocalBounds().reduced(3, 6);
+    // left after padding, and its caption sits directly beneath it - so the
+    // strip fills the width it is given at any height rather than assuming one.
+    auto area = getLocalBounds().reduced(4, 6);
     if (area.isEmpty()) { return; }
 
-    const auto captionHeight = 11;
+    const auto captionHeight = 14;
     const auto cellHeight = juce::jmax(1, area.getHeight() / PX3SynthAudioProcessor::kMacroCount);
 
     for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
@@ -89,8 +87,14 @@ void MacroStrip::resized()
         auto caption = cell.removeFromBottom(juce::jmin(captionHeight, cell.getHeight()));
         entry.caption.setBounds(caption);
 
+        // Sat ON its caption rather than centred in what is left. Centring put
+        // whatever the cell had spare between the knob and the label it
+        // belongs to, which reads as two things rather than one control.
         const auto side = juce::jmin(cell.getWidth(), cell.getHeight());
-        entry.knob.setBounds(juce::Rectangle<int>(side, side).withCentre(cell.getCentre()));
+        entry.knob.setBounds(cell.getCentreX() - side / 2,
+                             cell.getBottom() - side,
+                             side,
+                             side);
     }
 }
 

@@ -57,7 +57,7 @@ Six buttons across the top switch what fills the main area:
 
 Two things never go away:
 
-- **The Macro strip** down the left edge — four small knobs, the same four on
+- **The Macro strip** down the left edge — four knobs, the same four on
   every panel. See [section 9](#9-macros--four-performance-controls).
 - **The keyboard** across the bottom, which also shows you messages when the
   synth needs to tell you something.

@@ -119,15 +119,20 @@ because the Macro never writes them.
 
 ## UI layout
 
-`panelViewportArea` loses `editor.layout.macroStripWidth` (default **38 px**)
+`panelViewportArea` loses `editor.layout.macroStripWidth` (default **70 px**)
 from its left edge before any panel is placed in it. Every panel — OSC, MOD,
 FLT, FX, AMP, MIX — therefore has the strip to its left, in the same place, at
 the same size, without any panel knowing about it.
 
-The strip is 38 px wide including padding, holding four 26 px knobs stacked
-vertically with an `M1`..`M4` caption under each. That is roughly a third the
-diameter of a primary knob, which is the point: they are always present and
-must not compete.
+The strip is 70 px wide including padding, holding four knobs stacked
+vertically with an `M1`..`M4` caption under each. The knob takes the width the
+padding leaves and the caption sits directly beneath it, touching — centring
+the knob in what the cell had spare put a gap between a knob and the label it
+belongs to, which reads as two things rather than one control.
+
+The width started at 38 px, against the brief's "approximately 40 px or less".
+It was widened on request: at that size the knobs were too small to play, and a
+performance control that is awkward to reach for is not doing its job.
 
 ---
 
