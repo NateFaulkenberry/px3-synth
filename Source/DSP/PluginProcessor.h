@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MidiMapping.h"
 #include <JuceHeader.h>
 
 #include "Delay.h"
@@ -195,6 +196,39 @@ public:
     // envelope is built from them, so a knob and a DAW automation lane both
     // still move the curve.
     px3::BreakpointEnvelope currentAmpEnvelope() const;
+
+    //==========================================================================
+    // MIDI parameter mapping. See docs/midi-mapping-design.md.
+    //
+    // All of it is per-instance member state: no statics, no singleton, no
+    // global listener. Two instances of the plugin in one project cannot see
+    // each other's mappings because there is nothing shared to see through.
+    //==========================================================================
+
+    // Arm MIDI learn for a set of parameter IDs. The next CC that MOVES is
+    // assigned to all of them. An empty set disarms.
+    void setMidiLearnTargets(const juce::StringArray& parameterIds);
+    juce::StringArray getMidiLearnTargets() const;
+    bool isMidiLearnArmed() const;
+
+    // Which CC drives this parameter, or -1. Cheap enough for the editor to
+    // ask once per knob per refresh.
+    int getMidiCcForParameter(const juce::String& parameterId) const;
+    void clearMidiMappingForParameter(const juce::String& parameterId);
+    void clearAllMidiMappings();
+    std::vector<px3::MidiMapping> getMidiMappings() const;
+
+    // Drains what the audio thread recorded: assigns if learn is armed, then
+    // writes every CC that has MOVED to its destinations.
+    //
+    // Public because the processor's own timer is a CALLER of this rather than
+    // the mechanism - a test with no message loop drives it directly, and so
+    // does anything else that needs mappings applied at a known moment.
+    void applyPendingMidiMappings();
+
+    // Called by the learn path when an assignment completes, so the editor can
+    // leave Select Mode without polling for it.
+    std::function<void(int ccNumber)> onMidiMappingAssigned;
 
     // The four parameters, for a card that has to apply them to a stored shape
     // without disturbing its curves.
@@ -979,6 +1013,40 @@ private:
         std::atomic<double> sustain { 0.0 };
     };
     std::array<ProgressSlot, kEnvelopeSlots> envelopeProgress;
+
+    //---- MIDI mapping ---------------------------------------------------
+    // Written on the audio thread, read on the message thread. The audio
+    // thread records and nothing else: it never walks the mapping list, never
+    // takes a lock and never allocates, which is why the list below can be a
+    // plain vector.
+    static constexpr int kMidiCcCount = 128;
+    std::array<std::atomic<int>, kMidiCcCount> ccValues {};
+    std::array<std::atomic<std::uint32_t>, kMidiCcCount> ccSequence {};
+    std::array<std::uint32_t, kMidiCcCount> ccSeenSequence {};
+
+    std::atomic<int> lastTouchedCc { -1 };
+    std::atomic<int> lastTouchedChannel { 1 };
+    std::atomic<std::uint32_t> lastTouchedSequence { 0 };
+    std::uint32_t seenTouchedSequence { 0 };
+
+    // Message thread only.
+    std::vector<px3::MidiMapping> midiMappings;
+    juce::StringArray midiLearnTargets;
+
+    void recordMidiController(int ccNumber, int channel, int value);
+    void assignMidiLearnTo(int ccNumber, int channel);
+    void writeParameterFromCc(const juce::String& parameterId, int ccValue);
+    juce::RangedAudioParameter* findParameterById(const juce::String& parameterId) const;
+
+    // The message-thread pump. Owned here rather than by the editor, so
+    // mappings keep working with the window closed.
+    struct MidiMappingTimer final : public juce::Timer
+    {
+        explicit MidiMappingTimer(PX3SynthAudioProcessor& ownerIn) : owner(ownerIn) {}
+        void timerCallback() override { owner.applyPendingMidiMappings(); }
+        PX3SynthAudioProcessor& owner;
+    };
+    MidiMappingTimer midiMappingTimer { *this };
     void publishEnvelopeProgress();
 
     // Onset capture, for diagnosing a fault that only appears in a real host.

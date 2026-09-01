@@ -175,6 +175,34 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
     }
 
     // Keep modulation source states in dedicated nodes for backward-compatible evolution.
+    // MIDI mappings. Written here because this tree is what a DAW project
+    // stores, and removed again in createPresetStateTree because a preset is
+    // the sound rather than the user's hardware.
+    if (! midiMappings.empty())
+    {
+        juce::ValueTree mappings(kMidiMappingsId);
+
+        for (const auto& mapping : midiMappings)
+        {
+            if (! mapping.isValid()) { continue; }
+
+            juce::ValueTree node(kMidiMappingId);
+            node.setProperty(kMidiCcId, mapping.ccNumber, nullptr);
+            node.setProperty(kMidiChannelId, mapping.learnedChannel, nullptr);
+
+            for (const auto& parameterId : mapping.parameterIds)
+            {
+                juce::ValueTree destination(kMidiDestinationId);
+                destination.setProperty(kMidiParameterId, parameterId, nullptr);
+                node.appendChild(destination, nullptr);
+            }
+
+            mappings.appendChild(node, nullptr);
+        }
+
+        state.appendChild(mappings, nullptr);
+    }
+
     juce::ValueTree lfoSources(kLfoSourcesStateId);
     for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
     {
@@ -227,6 +255,12 @@ juce::ValueTree PX3SynthAudioProcessor::createPresetStateTree() const
 {
     auto state = createParameterStateTree();
     state.removeProperty(kTopMenuViewId, nullptr);
+
+    // A preset must not carry MIDI mappings. They belong to the instance and
+    // to whatever hardware is plugged into it - loading somebody else's sound
+    // has no business reassigning your controller, and saving yours has no
+    // business shipping your hardware layout to them.
+    state.removeChild(state.getChildWithName(kMidiMappingsId), nullptr);
     // A preset file must not name itself: the identity belongs to the session,
     // not to the sound. Saving it would mean a preset loaded, edited and saved
     // under a new name still claimed to be the old one.
@@ -449,6 +483,69 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         {
             const auto waveform = px3::clampSubOscWaveformIndex(static_cast<int>(subOscState[kSubOscWaveformId]));
             subOscWaveformParam->setValueNotifyingHost(subOscWaveformParam->convertTo0to1(static_cast<float>(waveform)));
+        }
+    }
+
+    // MIDI mappings, session state only. A preset load reaches here with
+    // restoreUiSessionState false and must neither bring mappings in nor take
+    // the ones already there away - so the whole block, clear included, sits
+    // behind the flag.
+    if (restoreUiSessionState)
+    {
+        midiMappings.clear();
+
+        if (const auto mappings = state.getChildWithName(kMidiMappingsId); mappings.isValid())
+        {
+            for (const auto& node : mappings)
+            {
+                px3::MidiMapping mapping;
+                mapping.ccNumber = juce::jlimit(-1, 127,
+                                                static_cast<int>(node.getProperty(kMidiCcId, -1)));
+                mapping.learnedChannel = juce::jlimit(1, 16,
+                                                      static_cast<int>(node.getProperty(kMidiChannelId, 1)));
+
+                for (const auto& destination : node)
+                {
+                    const auto parameterId
+                        = destination.getProperty(kMidiParameterId, juce::String()).toString();
+
+                    // A destination naming a parameter this build does not
+                    // have is dropped and the rest of the mapping still loads.
+                    // A state file from a later build, or one whose parameter
+                    // was renamed, should cost that mapping a destination -
+                    // not the whole session's worth of assignments.
+                    if (parameterId.isNotEmpty() && findParameterById(parameterId) != nullptr)
+                    {
+                        mapping.parameterIds.addIfNotAlreadyThere(parameterId);
+                    }
+                }
+
+                if (! mapping.isValid()) { continue; }
+
+                // Two nodes claiming one CC are merged rather than kept apart,
+                // so the invariant that one CC is one mapping holds however the
+                // file was written.
+                auto existing = std::find_if(midiMappings.begin(), midiMappings.end(),
+                                              [&mapping](const px3::MidiMapping& m)
+                                              { return m.ccNumber == mapping.ccNumber; });
+
+                if (existing != midiMappings.end())
+                {
+                    existing->parameterIds.addArray(mapping.parameterIds);
+                    existing->parameterIds.removeDuplicates(false);
+                }
+                else
+                {
+                    midiMappings.push_back(mapping);
+                }
+            }
+        }
+
+        // Restored mappings must not fire on the first tick just because the
+        // controller happens to sit somewhere: they drive on the next MOVEMENT.
+        for (std::size_t i = 0; i < ccSeenSequence.size(); ++i)
+        {
+            ccSeenSequence[i] = ccSequence[i].load(std::memory_order_acquire);
         }
     }
 

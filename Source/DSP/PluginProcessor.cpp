@@ -839,6 +839,11 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     synth.setNoteStealingEnabled(false);
     clearAllActiveNotes();
 
+    // Owned by the processor, not the editor, so a mapped controller keeps
+    // working with the window closed. 30 Hz matches the editor's own refresh;
+    // a CC lands within a tick of arriving.
+    midiMappingTimer.startTimerHz(30);
+
     debugLogEvent("LIFECYCLE", "PROCESSOR_CREATED",
                   "id=" + debugInstanceId + " order=" + debugDescribeOrder(getFxProcessingOrder()));
 }

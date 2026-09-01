@@ -18514,6 +18514,430 @@ void testStereoSpread()
 // FACTORY PRESETS
 // ============================================================================
 
+// MIDI parameter mapping. See docs/midi-mapping-design.md.
+void testMidiMapping()
+{
+    suite("MIDI MAPPING");
+
+    constexpr double kRate = 48000.0;
+    constexpr int kBlock = 256;
+
+    // A controller message, as a hardware knob would send it.
+    const auto ccMessage = [](int cc, int value, int channel = 1)
+    {
+        return juce::MidiMessage::controllerEvent(channel, cc, value);
+    };
+
+    // One block carrying MIDI, then the message-thread pump the processor's
+    // own timer would call. Split out because a test has no message loop.
+    const auto sendAndApply = [&](PX3SynthAudioProcessor& processor,
+                                  juce::AudioBuffer<float>& buffer,
+                                  const juce::MidiMessage& message)
+    {
+        juce::MidiBuffer midi;
+        midi.addEvent(message, 0);
+        buffer.clear();
+        processor.processBlock(buffer, midi);
+        processor.applyPendingMidiMappings();
+    };
+
+    const auto prepared = [](PX3SynthAudioProcessor& processor)
+    {
+        processor.setPlayConfigDetails(0, 2, kRate, kBlock);
+        processor.prepareToPlay(kRate, kBlock);
+    };
+
+    // ---- learning one parameter, and then several --------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        const auto cutoffId = processor.getFilterCutoffParam(0).getParameterID();
+        const auto resonanceId = processor.getFilterResonanceParam(0).getParameterID();
+        const auto reverbId = processor.getReverbAmountParam().getParameterID();
+
+        processor.setMidiLearnTargets({ cutoffId });
+        sendAndApply(processor, buffer, ccMessage(21, 64));
+
+        check("MidiMap_ASingleParameterLearnsTheCcThatMoved",
+              processor.getMidiCcForParameter(cutoffId) == 21
+                  && ! processor.isMidiLearnArmed(),
+              "cutoff is on CC " + juce::String(processor.getMidiCcForParameter(cutoffId))
+                  + " and learn is "
+                  + (processor.isMidiLearnArmed() ? "still armed" : "disarmed"));
+
+        // Three at once, which is the interaction the whole feature is for.
+        processor.setMidiLearnTargets({ cutoffId, resonanceId, reverbId });
+        sendAndApply(processor, buffer, ccMessage(22, 40));
+
+        check("MidiMap_EverySelectedParameterLandsOnOneCc",
+              processor.getMidiCcForParameter(cutoffId) == 22
+                  && processor.getMidiCcForParameter(resonanceId) == 22
+                  && processor.getMidiCcForParameter(reverbId) == 22,
+              "cutoff " + juce::String(processor.getMidiCcForParameter(cutoffId))
+                  + ", resonance " + juce::String(processor.getMidiCcForParameter(resonanceId))
+                  + ", reverb " + juce::String(processor.getMidiCcForParameter(reverbId)));
+
+        // And the cutoff left CC 21 when it joined CC 22: one parameter, one
+        // CC, so "what drives this knob" always has a single answer.
+        auto onTwentyOne = 0;
+        for (const auto& mapping : processor.getMidiMappings())
+        {
+            if (mapping.ccNumber == 21) { onTwentyOne = mapping.parameterIds.size(); }
+        }
+        check("MidiMap_ReassigningLeavesTheOldCcBehind",
+              onTwentyOne == 0,
+              juce::String(onTwentyOne) + " destinations left on CC 21");
+    }
+
+    // ---- the controller moves the parameter, in each destination's units ----
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        auto& resonance = processor.getFilterResonanceParam(0);
+
+        processor.setMidiLearnTargets({ cutoff.getParameterID(), resonance.getParameterID() });
+        sendAndApply(processor, buffer, ccMessage(21, 0));
+
+        sendAndApply(processor, buffer, ccMessage(21, 127));
+        const auto cutoffHigh = cutoff.get();
+        const auto resonanceHigh = resonance.get();
+
+        sendAndApply(processor, buffer, ccMessage(21, 0));
+        const auto cutoffLow = cutoff.get();
+        const auto resonanceLow = resonance.get();
+
+        // Full travel in each destination's OWN range, not one shared number.
+        const auto& cutoffRange = cutoff.getNormalisableRange();
+        const auto& resonanceRange = resonance.getNormalisableRange();
+
+        check("MidiMap_OneCcSweepsEachDestinationThroughItsOwnRange",
+              std::abs(cutoffHigh - cutoffRange.end) < cutoffRange.end * 0.01f
+                  && std::abs(cutoffLow - cutoffRange.start) < 1.0f
+                  && std::abs(resonanceHigh - resonanceRange.end) < 0.01f
+                  && std::abs(resonanceLow - resonanceRange.start) < 0.01f,
+              "cutoff swept " + fmt(cutoffLow, 1) + " -> " + fmt(cutoffHigh, 1)
+                  + " Hz and resonance " + fmt(resonanceLow, 3) + " -> "
+                  + fmt(resonanceHigh, 3));
+    }
+
+    // ---- two CCs at once, and note input untouched --------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        auto& reverb = processor.getReverbAmountParam();
+
+        processor.setMidiLearnTargets({ cutoff.getParameterID() });
+        sendAndApply(processor, buffer, ccMessage(21, 10));
+        processor.setMidiLearnTargets({ reverb.getParameterID() });
+        sendAndApply(processor, buffer, ccMessage(22, 10));
+
+        sendAndApply(processor, buffer, ccMessage(21, 100));
+        const auto cutoffAfter = cutoff.get();
+        const auto reverbBefore = reverb.get();
+        sendAndApply(processor, buffer, ccMessage(22, 120));
+
+        check("MidiMap_TwoCcsDriveTheirOwnDestinations",
+              processor.getMidiCcForParameter(cutoff.getParameterID()) == 21
+                  && processor.getMidiCcForParameter(reverb.getParameterID()) == 22
+                  && cutoffAfter > 1000.0f && reverb.get() > reverbBefore,
+              "CC 21 took the cutoff to " + fmt(cutoffAfter, 0) + " Hz and CC 22 took the reverb to "
+                  + fmt(reverb.get(), 3));
+
+        // A note still plays while mappings exist: the CC scan reads the
+        // buffer and consumes nothing.
+        juce::MidiBuffer notes;
+        notes.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+        buffer.clear();
+        processor.processBlock(buffer, notes);
+
+        auto sounded = false;
+        juce::MidiBuffer empty;
+        for (int b = 0; b < 20 && ! sounded; ++b)
+        {
+            buffer.clear();
+            processor.processBlock(buffer, empty);
+            sounded = buffer.getMagnitude(0, buffer.getNumSamples()) > 1.0e-4f;
+        }
+
+        check("MidiMap_NoteInputStillWorksAlongsideMappings",
+              sounded,
+              sounded ? "a note still sounds with two CCs mapped"
+                      : "the synth went silent once mappings existed");
+    }
+
+    // ---- the change reaches the AUDIO, not just the parameter ---------------
+    //
+    // A mapping that moved a number and nothing else would pass every test
+    // above. This one listens.
+    {
+        const auto renderWithCc = [&](int ccValue)
+        {
+            PX3SynthAudioProcessor processor;
+            prepared(processor);
+            setParam(processor, "filter1Enabled", 1.0f);
+            setChoice(processor, "filter1Type", 0);           // low pass
+            setParam(processor, "filter1Resonance", 0.2f);
+
+            juce::AudioBuffer<float> buffer(2, kBlock);
+
+            processor.setMidiLearnTargets({ processor.getFilterCutoffParam(0).getParameterID() });
+            sendAndApply(processor, buffer, ccMessage(30, 64));
+            sendAndApply(processor, buffer, ccMessage(30, ccValue));
+
+            juce::MidiBuffer notes;
+            notes.addEvent(juce::MidiMessage::noteOn(1, 45, 1.0f), 0);
+            buffer.clear();
+            processor.processBlock(buffer, notes);
+
+            // Settle, then measure how much high-frequency energy survives the
+            // filter - a first difference is a crude but honest high-pass.
+            juce::MidiBuffer empty;
+            for (int b = 0; b < 20; ++b)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, empty);
+            }
+
+            auto brightness = 0.0;
+            auto previous = 0.0f;
+            for (int b = 0; b < 20; ++b)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, empty);
+                const auto* data = buffer.getReadPointer(0);
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                {
+                    brightness += std::abs(data[i] - previous);
+                    previous = data[i];
+                }
+            }
+
+            return brightness;
+        };
+
+        const auto closed = renderWithCc(0);
+        const auto open = renderWithCc(127);
+
+        check("MidiMap_TheChangeReachesTheAudioNotJustTheParameter",
+              open > closed * 2.0,
+              "a note rendered with the mapped cutoff CC at 0 carries " + fmt(closed, 1)
+                  + " of high-frequency energy against " + fmt(open, 1) + " at 127");
+    }
+
+    // ---- clearing ----------------------------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        const auto cutoffId = processor.getFilterCutoffParam(0).getParameterID();
+        const auto resonanceId = processor.getFilterResonanceParam(0).getParameterID();
+
+        processor.setMidiLearnTargets({ cutoffId, resonanceId });
+        sendAndApply(processor, buffer, ccMessage(21, 64));
+
+        // What a shift-click on a mapped knob does.
+        processor.clearMidiMappingForParameter(cutoffId);
+
+        check("MidiMap_ClearingOneParameterLeavesTheOthersMapped",
+              processor.getMidiCcForParameter(cutoffId) == -1
+                  && processor.getMidiCcForParameter(resonanceId) == 21,
+              "cutoff reads " + juce::String(processor.getMidiCcForParameter(cutoffId))
+                  + " and resonance reads "
+                  + juce::String(processor.getMidiCcForParameter(resonanceId)));
+
+        processor.clearMidiMappingForParameter(resonanceId);
+        check("MidiMap_TheLastDestinationLeavingRemovesTheMapping",
+              processor.getMidiMappings().empty(),
+              juce::String(static_cast<int>(processor.getMidiMappings().size()))
+                  + " mappings left once nothing points at CC 21");
+    }
+
+    // ---- two instances, one CC, no leakage ----------------------------------
+    {
+        PX3SynthAudioProcessor instanceA;
+        PX3SynthAudioProcessor instanceB;
+        prepared(instanceA);
+        prepared(instanceB);
+        juce::AudioBuffer<float> bufferA(2, kBlock);
+        juce::AudioBuffer<float> bufferB(2, kBlock);
+
+        const auto cutoffId = instanceA.getFilterCutoffParam(0).getParameterID();
+        const auto reverbId = instanceB.getReverbAmountParam().getParameterID();
+
+        instanceA.setMidiLearnTargets({ cutoffId });
+        sendAndApply(instanceA, bufferA, ccMessage(21, 64));
+        instanceB.setMidiLearnTargets({ reverbId });
+        sendAndApply(instanceB, bufferB, ccMessage(21, 64));
+
+        check("MidiMap_TwoInstancesKeepSeparateMappingsForOneCc",
+              instanceA.getMidiCcForParameter(cutoffId) == 21
+                  && instanceA.getMidiCcForParameter(reverbId) == -1
+                  && instanceB.getMidiCcForParameter(reverbId) == 21
+                  && instanceB.getMidiCcForParameter(cutoffId) == -1,
+              "A maps cutoff=" + juce::String(instanceA.getMidiCcForParameter(cutoffId))
+                  + " reverb=" + juce::String(instanceA.getMidiCcForParameter(reverbId))
+                  + "; B maps cutoff=" + juce::String(instanceB.getMidiCcForParameter(cutoffId))
+                  + " reverb=" + juce::String(instanceB.getMidiCcForParameter(reverbId)));
+
+        // And driving one does not move the other.
+        const auto reverbInABefore = instanceA.getReverbAmountParam().get();
+        sendAndApply(instanceB, bufferB, ccMessage(21, 127));
+        check("MidiMap_DrivingOneInstanceDoesNotMoveTheOther",
+              std::abs(instanceA.getReverbAmountParam().get() - reverbInABefore) < 1.0e-6f,
+              "A's reverb stayed at " + fmt(instanceA.getReverbAmountParam().get(), 4)
+                  + " while B's CC 21 swept");
+    }
+
+    // ---- persistence, and the preset boundary -------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        const auto cutoffId = processor.getFilterCutoffParam(0).getParameterID();
+        const auto resonanceId = processor.getFilterResonanceParam(0).getParameterID();
+
+        processor.setMidiLearnTargets({ cutoffId, resonanceId });
+        sendAndApply(processor, buffer, ccMessage(21, 64));
+
+        // A DAW project round trip.
+        juce::MemoryBlock saved;
+        processor.getStateInformation(saved);
+
+        PX3SynthAudioProcessor reopened;
+        prepared(reopened);
+        reopened.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+
+        check("MidiMap_MappingsSurviveASessionRoundTrip",
+              reopened.getMidiCcForParameter(cutoffId) == 21
+                  && reopened.getMidiCcForParameter(resonanceId) == 21,
+              "after reload cutoff reads " + juce::String(reopened.getMidiCcForParameter(cutoffId))
+                  + " and resonance reads "
+                  + juce::String(reopened.getMidiCcForParameter(resonanceId)));
+
+        // A preset is the sound, not the hardware: the mappings must not be in
+        // the file at all.
+        const auto presetTree = processor.createPresetStateTree();
+        check("MidiMap_APresetCarriesNoMappings",
+              ! presetTree.getChildWithName(px3::processor_internal::kMidiMappingsId).isValid(),
+              presetTree.getChildWithName(px3::processor_internal::kMidiMappingsId).isValid()
+                  ? "the preset tree contains a midiMappings child"
+                  : "no midiMappings child in the preset tree");
+
+        // And loading one leaves the mappings alone, in both directions: it
+        // brings none in and takes none away.
+        juce::String error;
+        processor.applyParameterStateTree(presetTree, &error, false);
+        check("MidiMap_LoadingAPresetLeavesMappingsAlone",
+              processor.getMidiCcForParameter(cutoffId) == 21
+                  && processor.getMidiCcForParameter(resonanceId) == 21,
+              "after a preset load cutoff reads "
+                  + juce::String(processor.getMidiCcForParameter(cutoffId))
+                  + " and resonance reads "
+                  + juce::String(processor.getMidiCcForParameter(resonanceId)));
+    }
+
+    // ---- state naming a parameter that does not exist -----------------------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        const auto cutoffId = processor.getFilterCutoffParam(0).getParameterID();
+        processor.setMidiLearnTargets({ cutoffId });
+        sendAndApply(processor, buffer, ccMessage(21, 64));
+
+        auto tree = processor.createParameterStateTree();
+        auto mappings = tree.getChildWithName(px3::processor_internal::kMidiMappingsId);
+        auto mapping = mappings.getChild(0);
+
+        juce::ValueTree ghost(px3::processor_internal::kMidiDestinationId);
+        ghost.setProperty(px3::processor_internal::kMidiParameterId,
+                          "aParameterThatDoesNotExist", nullptr);
+        mapping.appendChild(ghost, nullptr);
+
+        PX3SynthAudioProcessor reopened;
+        prepared(reopened);
+        juce::String error;
+        const auto applied = reopened.applyParameterStateTree(tree, &error, true);
+
+        const auto restored = reopened.getMidiMappings();
+        const auto destinations = restored.empty() ? 0 : restored.front().parameterIds.size();
+
+        check("MidiMap_AnUnknownParameterIdIsDroppedNotFatal",
+              applied && destinations == 1
+                  && reopened.getMidiCcForParameter(cutoffId) == 21,
+              "state applied " + juce::String(applied ? "cleanly" : "with an error")
+                  + " and the mapping kept " + juce::String(destinations)
+                  + " of 2 destinations");
+    }
+
+    // ---- doing nothing when nothing is mapped -------------------------------
+    {
+        PX3SynthAudioProcessor mapped;
+        PX3SynthAudioProcessor untouched;
+        prepared(mapped);
+        prepared(untouched);
+
+        juce::AudioBuffer<float> a(2, kBlock);
+        juce::AudioBuffer<float> b(2, kBlock);
+
+        // The same CC into both: one has learned nothing and must not move.
+        const auto cutoffBefore = untouched.getFilterCutoffParam(0).get();
+        sendAndApply(untouched, b, ccMessage(21, 127));
+
+        mapped.setMidiLearnTargets({ mapped.getFilterCutoffParam(0).getParameterID() });
+        sendAndApply(mapped, a, ccMessage(21, 127));
+        sendAndApply(mapped, a, ccMessage(21, 20));
+
+        check("MidiMap_AnUnmappedSynthIgnoresControllers",
+              std::abs(untouched.getFilterCutoffParam(0).get() - cutoffBefore) < 1.0e-6f
+                  && untouched.getMidiMappings().empty(),
+              "an unmapped synth's cutoff stayed at "
+                  + fmt(untouched.getFilterCutoffParam(0).get(), 1) + " Hz through a full CC sweep");
+
+        // A CC arriving with nothing selected never learns.
+        check("MidiMap_ACcArrivingWithNoSelectionNeverLearns",
+              untouched.getMidiMappings().empty() && ! untouched.isMidiLearnArmed(),
+              juce::String(static_cast<int>(untouched.getMidiMappings().size()))
+                  + " mappings created by a controller nobody asked to learn");
+    }
+
+    // ---- the CC that taught a mapping does not also jump it ------------------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        const auto before = cutoff.get();
+
+        processor.setMidiLearnTargets({ cutoff.getParameterID() });
+        sendAndApply(processor, buffer, ccMessage(21, 127));
+
+        check("MidiMap_TheTeachingMoveDoesNotAlsoJumpTheKnob",
+              std::abs(cutoff.get() - before) < 1.0e-6f,
+              "the cutoff stayed at " + fmt(cutoff.get(), 1)
+                  + " Hz when the controller taught the mapping, rather than jumping to "
+                  + fmt(cutoff.getNormalisableRange().end, 1));
+
+        // The NEXT movement drives it.
+        sendAndApply(processor, buffer, ccMessage(21, 20));
+        check("MidiMap_TheNextMoveDrivesIt",
+              std::abs(cutoff.get() - before) > 1.0f,
+              "the cutoff moved to " + fmt(cutoff.get(), 1) + " Hz on the following movement");
+    }
+}
+
 void testFactoryPresets()
 {
     suite("FACTORY PRESETS");
@@ -26825,6 +27249,7 @@ int main(int argc, char* argv[])
     if (wants("fx")) testEffectIndependence();
     if (wants("preset")) testPresets();
     if (wants("factorypresets")) testFactoryPresets();
+    if (wants("midimapping")) testMidiMapping();
     if (wants("vumeter")) testVuBallistics();
     if (wants("businserts")) testBusInserts();
     if (wants("filters")) testFilters();

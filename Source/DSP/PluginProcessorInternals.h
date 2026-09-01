@@ -70,6 +70,16 @@ inline const juce::Identifier kUserWavetableOscId("osc");
 // the editor has no node here at all, which is what makes the migration nothing:
 // absence is a valid state meaning "plain ADSR", not an error to detect.
 inline const juce::Identifier kEnvelopeShapesId("envelopeShapes");
+
+// MIDI mappings. Session state, not preset state: they describe the user's
+// hardware rather than the sound, so createPresetStateTree strips this child
+// and only the DAW-session restore path applies it.
+inline const juce::Identifier kMidiMappingsId("midiMappings");
+inline const juce::Identifier kMidiMappingId("mapping");
+inline const juce::Identifier kMidiCcId("cc");
+inline const juce::Identifier kMidiChannelId("channel");
+inline const juce::Identifier kMidiDestinationId("dest");
+inline const juce::Identifier kMidiParameterId("param");
 inline const juce::Identifier kEnvelopeShapeVersionId("version");
 inline const juce::Identifier kEnvelopeShapeId("envelope");
 inline const juce::Identifier kEnvelopeShapeIndexId("index");
