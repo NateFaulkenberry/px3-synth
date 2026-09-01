@@ -369,8 +369,21 @@ void ModPanel::resized()
     const auto minEnvHeight = uiConfig != nullptr ? uiConfig->getInt("mod.grid.minEnvHeight", 280) : 280;
 
     const auto colWidth = juce::jmax(minColWidth, juce::jmax(1, (panelArea.getWidth() - (2 * colGap)) / 3));
-    const auto lfoRowHeight = juce::jmax(minLfoHeight, juce::jmax(1, (panelArea.getHeight() - rowGap) / 2));
-    const auto envRowHeight = juce::jmax(minEnvHeight, juce::jmax(1, panelArea.getHeight() - rowGap - lfoRowHeight));
+    // Each row takes its own minimum first and only then shares what is left
+    // over. Halving the panel and giving the LFO row the first half meant that
+    // once the envelope cards grew, the ENV row's minimum pushed it PAST the
+    // bottom of the content - so the cards were cut off and there was nothing
+    // to scroll to, because the panel did not know it needed to be taller.
+    //
+    // A tail is held back below the last row, so there is somewhere to scroll
+    // to rather than the cards ending flush against the edge. It reads the same
+    // key the viewport adds to the content height, so the two cannot disagree.
+    const auto scrollTail = uiConfig != nullptr ? uiConfig->getInt("editor.layout.scrollTail", 30) : 30;
+    const auto usable = juce::jmax(1, panelArea.getHeight() - scrollTail);
+    const auto surplus = juce::jmax(0, usable - rowGap - minLfoHeight - minEnvHeight);
+
+    const auto lfoRowHeight = minLfoHeight + surplus / 2;
+    const auto envRowHeight = minEnvHeight + (surplus - surplus / 2);
     const auto totalGridWidth = colWidth * 3 + colGap * 2;
     const auto gridX = panelArea.getX() + juce::jmax(0, (panelArea.getWidth() - totalGridWidth) / 2);
 

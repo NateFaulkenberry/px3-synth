@@ -44,6 +44,7 @@
 #include "../UI/FxCardComponent.h"
 #include "../UI/FxChainLayout.h"
 #include "../UI/ChipLabel.h"
+#include "../UI/ModPanel.h"
 #include "../UI/PianoKeyboard.h"
 #include "../UI/TopMenuBar.h"
 #include "../UI/FilterComponent.h"
@@ -2450,6 +2451,230 @@ void testBreakpointEnvelope()
                   first < 1.0e-4f && after10ms < 0.02f,
                   "a fresh voice starts at " + fmt(first, 6) + " and is only "
                       + fmt(after10ms, 4) + " after 10 ms of a 1 s attack");
+        }
+    }
+
+    // ---- the mod panel scrolls past its last card ---------------------------
+    //
+    // The ENV cards grew and the panel did not: the LFO row took half the
+    // panel, the ENV row then took its own minimum, and the pair added up to
+    // more than the content - so the envelope cards ran off the bottom with
+    // nothing to scroll to.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        if (editor != nullptr)
+        {
+            ModPanel* panel = nullptr;
+            std::function<void(juce::Component&)> findPanel = [&](juce::Component& c)
+            {
+                for (auto* child : c.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* p = dynamic_cast<ModPanel*>(child)) { panel = p; }
+                    findPanel(*child);
+                }
+            };
+            findPanel(*editor);
+
+            if (panel != nullptr)
+            {
+                // Sized the way the viewport sizes it: the panel's own
+                // preferred height plus the tail it scrolls to.
+                constexpr int kTail = 30;
+                const auto width = panel->getPreferredContentWidth();
+                const auto height = panel->getPreferredContentHeight() + kTail;
+                panel->setBounds(0, 0, width, height);
+                panel->resized();
+
+                std::vector<EnvelopeComponent*> cards;
+                std::function<void(juce::Component&)> find = [&](juce::Component& c)
+                {
+                    for (auto* child : c.getChildren())
+                    {
+                        if (child == nullptr) { continue; }
+                        if (auto* env = dynamic_cast<EnvelopeComponent*>(child))
+                        {
+                            cards.push_back(env);
+                        }
+                        find(*child);
+                    }
+                };
+                find(*panel);
+
+                auto lowest = 0;
+                for (auto* card : cards) { lowest = juce::jmax(lowest, card->getBounds().getBottom()); }
+
+                check("ModPanel_ScrollsPastTheBottomOfTheEnvelopeCards",
+                      ! cards.empty() && lowest > 0 && height - lowest >= kTail,
+                      cards.empty()
+                          ? "no envelope cards on the mod panel"
+                          : juce::String(static_cast<int>(cards.size())) + " cards, the lowest ending at "
+                                + juce::String(lowest) + " in a panel " + juce::String(height)
+                                + " tall - " + juce::String(height - lowest) + " px below it");
+            }
+        }
+    }
+
+    // ---- bypassing an envelope does not discard its shape -------------------
+    //
+    // Toggling BYPASS is a mute, not a reset: the curve has to be exactly where
+    // it was when the card comes back.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        if (editor != nullptr)
+        {
+            std::vector<EnvelopeComponent*> cards;
+            std::function<void(juce::Component&)> find = [&](juce::Component& c)
+            {
+                for (auto* child : c.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* env = dynamic_cast<EnvelopeComponent*>(child)) { cards.push_back(env); }
+                    find(*child);
+                }
+            };
+            find(*editor);
+
+            // A click on the GRAPH is not a click on the card background, so it
+            // must not toggle the envelope off. The test drives the card's own
+            // mouseUp rather than the editor's, because that is the handler
+            // that decides - and it asked for the LAST cardInner row, which is
+            // the knob row now that there is one.
+            if (! cards.empty())
+            {
+                auto* card = cards[0];
+                const auto onTheGraph = card->debugEditorBounds().getCentre().toFloat();
+                const auto wasEnabled = processor.getEnvelopeEnabledParam(0).get();
+
+                const auto click = juce::MouseEvent(
+                    juce::Desktop::getInstance().getMainMouseSource(), onTheGraph,
+                    juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, card, card,
+                    juce::Time::getCurrentTime(), onTheGraph,
+                    juce::Time::getCurrentTime(), 1, false);
+                card->mouseUp(click);
+
+                check("EnvelopeBypass_AClickOnTheGraphDoesNotToggleTheCard",
+                      processor.getEnvelopeEnabledParam(0).get() == wasEnabled,
+                      juce::String("clicking the graph at ") + onTheGraph.toString()
+                          + " left the envelope "
+                          + (processor.getEnvelopeEnabledParam(0).get() ? "on" : "off")
+                          + ", was " + (wasEnabled ? "on" : "off"));
+            }
+
+            // Slot 1 is ENV 1. Edited the way a drag leaves it: a shape stored
+            // with a bend, and the four parameters written back to match.
+            EnvelopeSettings edited;
+            edited.attackSeconds = 0.250f;
+            edited.decaySeconds = 0.400f;
+            edited.sustainLevel = 0.35f;
+            edited.releaseSeconds = 0.700f;
+
+            auto shape = px3::BreakpointEnvelope::fromAdsr(edited);
+            shape.setCurve(0, 0.6);
+            shape.setCurve(2, -0.4);
+            processor.setShapedEnvelope(1, shape);
+
+            const auto write = [](juce::AudioParameterFloat& parameter, float value)
+            {
+                parameter.beginChangeGesture();
+                parameter.setValueNotifyingHost(parameter.convertTo0to1(value));
+                parameter.endChangeGesture();
+            };
+            write(processor.getEnvelopeAttackParam(0), edited.attackSeconds);
+            write(processor.getEnvelopeDecayParam(0), edited.decaySeconds);
+            write(processor.getEnvelopeSustainParam(0), edited.sustainLevel);
+            write(processor.getEnvelopeReleaseParam(0), edited.releaseSeconds);
+
+            auto& enabled = processor.getEnvelopeEnabledParam(0);
+            // Through ModPanel, which is what actually hands the stored shape
+            // to the cards - refreshing the cards directly would only exercise
+            // the half of the path that reads parameters.
+            ModPanel* panel = nullptr;
+            std::function<void(juce::Component&)> findPanel = [&](juce::Component& c)
+            {
+                for (auto* child : c.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* p = dynamic_cast<ModPanel*>(child)) { panel = p; }
+                    findPanel(*child);
+                }
+            };
+            findPanel(*editor);
+
+            const auto refresh = [&]
+            {
+                if (panel != nullptr) { panel->refreshFromParameters(); }
+            };
+            const auto setEnabled = [&](bool on)
+            {
+                enabled.beginChangeGesture();
+                enabled.setValueNotifyingHost(on ? 1.0f : 0.0f);
+                enabled.endChangeGesture();
+            };
+
+            refresh();
+            const auto before = processor.getShapedEnvelope(1).toAdsr();
+
+            setEnabled(false);
+            refresh();
+            setEnabled(true);
+            refresh();
+
+            const auto after = processor.getShapedEnvelope(1);
+            const auto readBack = after.toAdsr();
+
+            // What the user is looking at, not only what the processor holds.
+            const auto shown = cards.empty() ? px3::BreakpointEnvelope()
+                                             : cards[0]->debugEditor().getEnvelope();
+            check("EnvelopeBypass_TheGraphStillShowsTheEditedShape",
+                  panel != nullptr && ! cards.empty()
+                      && std::abs(shown.toAdsr().decaySeconds - before.decaySeconds) < 1.0e-4f
+                      && std::abs(shown.getPoint(0).curveToNext - 0.6) < 1.0e-6,
+                  "the graph reads a decay of " + fmt(shown.toAdsr().decaySeconds, 3)
+                      + " s with a first curve of " + fmt(shown.getPoint(0).curveToNext, 2));
+
+            // And a shape the four parameters CANNOT describe, which is the one
+            // with no parameters to be rebuilt from if anything drops it.
+            auto freeForm = px3::BreakpointEnvelope::fromAdsr(edited);
+            freeForm.addPoint(0.320, 0.85);
+            processor.setShapedEnvelope(1, freeForm);
+            refresh();
+
+            setEnabled(false);
+            refresh();
+            setEnabled(true);
+            refresh();
+
+            const auto freeAfter = cards.empty() ? px3::BreakpointEnvelope()
+                                                 : cards[0]->debugEditor().getEnvelope();
+            check("EnvelopeBypass_AFreeFormShapeSurvivesItToo",
+                  freeAfter.getPointCount() == freeForm.getPointCount(),
+                  "a " + juce::String(freeForm.getPointCount()) + "-point shape comes back with "
+                      + juce::String(freeAfter.getPointCount()) + " points");
+
+            check("EnvelopeBypass_TheShapeSurvivesABypassAndBack",
+                  std::abs(readBack.attackSeconds - before.attackSeconds) < 1.0e-4f
+                      && std::abs(readBack.decaySeconds - before.decaySeconds) < 1.0e-4f
+                      && std::abs(readBack.sustainLevel - before.sustainLevel) < 1.0e-4f
+                      && std::abs(readBack.releaseSeconds - before.releaseSeconds) < 1.0e-4f
+                      && std::abs(after.getPoint(0).curveToNext - 0.6) < 1.0e-6
+                      && std::abs(after.getPoint(2).curveToNext + 0.4) < 1.0e-6,
+                  "A " + fmt(readBack.attackSeconds, 3) + " D " + fmt(readBack.decaySeconds, 3)
+                      + " S " + fmt(readBack.sustainLevel, 2) + " R "
+                      + fmt(readBack.releaseSeconds, 3) + ", curves "
+                      + fmt(after.getPoint(0).curveToNext, 2) + "/"
+                      + fmt(after.getPoint(2).curveToNext, 2) + " (was A "
+                      + fmt(before.attackSeconds, 3) + " D " + fmt(before.decaySeconds, 3)
+                      + " S " + fmt(before.sustainLevel, 2) + " R "
+                      + fmt(before.releaseSeconds, 3) + ", curves 0.60/-0.40)");
         }
     }
 

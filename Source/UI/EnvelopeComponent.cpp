@@ -408,7 +408,10 @@ void EnvelopeComponent::mouseUp(const juce::MouseEvent& event)
     const auto forceEnabled = uiConfig != nullptr
                                   ? uiConfig->getBool(configPrefix + ".behavior.alwaysEnabled", false)
                                   : false;
-    const auto onGraph = inner.rowContent(inner.rowCount() - 1).contains(event.getPosition());
+    // The GRAPH's row, which is no longer the last one now that the knobs sit
+    // below it. Asking for the last row made a click on the graph read as a
+    // click on the card background - which toggles the envelope off.
+    const auto onGraph = inner.rowContent(graphRowIndex()).contains(event.getPosition());
 
     if (! forceEnabled && dragHandle == DragHandle::none && ! onGraph
         && px3::ui::isCardBackgroundToggleClick(event))

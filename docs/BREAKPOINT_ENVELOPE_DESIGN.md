@@ -361,6 +361,14 @@ inside cardInner. ENV 1-3 grow taller to make room; AMP ENV keeps its height
 and gives the room up from the graph, so the editor no longer reaches the
 bottom of the card.
 
+Adding the row moved the graph off the last cardInner row, and everything that
+had been asking for "the last row" had to be corrected to ask for
+`graphRowIndex()`. One place was missed at first: the card's own `mouseUp`,
+which uses that row to decide whether a click was on the graph or on the card
+background — and a click on the background toggles the envelope off. With the
+knobs there, a click on the GRAPH read as a click on the background and
+bypassed the card.
+
 The row is asked for in code — `setAdsrKnobsVisible` — rather than read from
 UIConfig. Whether a row of controls EXISTS decides how many rows cardInner has,
 and a card whose row count depends on a file that may not have loaded yet lays
