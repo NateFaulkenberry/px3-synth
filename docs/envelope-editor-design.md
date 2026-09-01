@@ -147,7 +147,59 @@ cross: the point stops.
 **Ordering is by index, not by time.** Two points at the same time keep their
 order, so the envelope's traversal is always defined.
 
-## Sustain and release
+## The ADSR assumptions found inside Breakpoint mode
+
+Traced in the code before anything was changed. Breakpoint mode was not an
+arbitrary time/level envelope; it was the ADSR machinery with the point count
+relaxed.
+
+| Where | The assumption |
+|---|---|
+| `BreakpointEnvelope` | `sustainPoint` is an intrinsic index, and `canRemovePoint` protects it |
+| `Snapshot` | Split in two at `sustainSegment`, with `sustainSeconds`, `sustainValue`, `releaseSeconds` |
+| `AmpEnvelope` / `EnvelopeGenerator` | `heldSeconds` **stops advancing** at the sustain point; note-off flips `inRelease` and starts a *second* clock, `releasedSeconds` |
+| `AmpEnvelope` | The release is reshaped to constant dB/second unless the user bent it |
+| Editor | `roleLabelFor` returns ATTACK / DECAY / SUSTAIN / RELEASE |
+| Fill animation | `progressDisplayTime()` is built from those two clocks, not from elapsed time |
+
+The consequence: a six-point breakpoint envelope did not play its trajectory. It
+played points 0–2, froze at point 2 for as long as the key was held, and then
+played points 2–5 on a different clock with a different curve law. The graph
+showed a shape the DSP never traversed.
+
+## Two models, stated
+
+**ADSR** is a semantic four-stage envelope. The user edits attack time, decay
+time, sustain level and release time; the points are a *rendering* of those four
+parameters. The key gates it: it holds at sustain until note-off.
+
+**Breakpoint** is `level = f(time)`. An ordered sequence of points, each with a
+time, a level and a curve to the next. There is no attack, no decay, no sustain
+and no release — those are ADSR's vocabulary. The key **triggers** it; it does
+not gate it.
+
+## Breakpoint note lifecycle
+
+One clock. `t` starts at zero on note-on and advances while the voice lives.
+`level = f(t)`. That is the whole model, and every question the brief asks falls
+out of it rather than needing a rule of its own:
+
+| Situation | Behaviour |
+|---|---|
+| The envelope reaches its final point while the key is held | It is finished. The last point is anchored at zero, so the voice reaches silence and retires. Holding longer does not extend it. |
+| The key is released before the envelope finishes | The trajectory continues to its end. Breakpoint is one-shot: the key triggers, it does not gate. |
+| Retrigger before completion | `t` resets to zero and the envelope starts again **from the level it had reached**, using the same anchor that keeps an ADSR retrigger from clicking. |
+| Legato | Nothing special. Each note gets its own voice; there is no per-voice glide to interact with. |
+
+The last point stays anchored at zero in Breakpoint mode, and that anchor is
+what makes the model safe: `f(t)` always ends at silence, so a voice always
+retires and no "release" concept is needed to stop it.
+
+> This is a deliberate choice, and it is the one that follows from
+> `level = f(time)`. A gated breakpoint envelope would need a point to hold at —
+> which is a sustain point, which is the ADSR model wearing different words.
+
+## ADSR sustain and release
 
 The **sustain point** is one index into the points. Everything before it is
 traversed while the key is held; everything after it is the release.
@@ -167,29 +219,32 @@ segment. In Breakpoint mode it can be any index from 1 to `pointCount − 2`.
 
 ## Mode switching
 
-**ADSR → Breakpoint** keeps the shape exactly: the same four points, the same
-curves. The user can then add points.
+The two modes keep **separate state**. Switching is a change of which one is
+active, never a conversion of one into the other.
 
-**Breakpoint → ADSR** cannot keep an arbitrary shape — four points cannot
-express sixteen. Rather than choose between destroying the work and refusing the
-switch, the envelope does both things that matter:
+```
+Envelope slot
+  ├── mode              adsr | breakpoint
+  ├── adsr shape        four points + curves, driven by the four parameters
+  └── breakpoint shape  arbitrary points, initialised once
+```
 
-1. The full breakpoint shape is **retained**, stored alongside the active one.
-2. The active shape is reduced to a four-point ADSR that preserves what can be
-   preserved: the attack reaches the first peak, the sustain takes the sustain
-   point's time and level, the release ends where the envelope ended, and the
-   three curves are taken from the corresponding segments.
+**ADSR → Breakpoint, the first time**, seeds the breakpoint shape from the
+current ADSR so the user starts from something familiar rather than an unrelated
+default. The seeded points carry no ADSR identity — they are simply where the
+first arrangement came from.
 
-Switching back to Breakpoint restores the retained shape exactly. The reduction
-is never destructive, because the original is still there.
+**ADSR → Breakpoint, afterwards**, restores the breakpoint shape as the user
+last left it. Seeding happens once, tracked by an explicit
+`breakpointInitialised` flag; it is not re-derived on every switch, or a user's
+work would be overwritten every time they looked at the other mode.
 
-The retained shape is serialized, so the round trip survives saving and
-reloading.
+**Breakpoint → ADSR** restores the stored ADSR parameters unchanged. No attempt
+is made to derive four values from an arbitrary shape: that would be lossy,
+unpredictable, and would quietly rewrite settings the user did not touch.
 
-> This is §12's "store the advanced representation and restore it if the user
-> switches back", combined with its "reduce to an ADSR-compatible
-> representation" — the two are not alternatives, and doing both costs one extra
-> stored shape per envelope.
+Editing in one mode never mutates the other. Repeated switching is lossless in
+both directions.
 
 ## Parameter synchronisation
 
@@ -209,8 +264,13 @@ the knobs stayed on screen after they stopped meaning anything.
 
 ## Persistence and migration
 
-The `envelopeShapes` node gains a `mode` property per envelope and an optional
-retained-shape child. The version goes to **4**.
+The `envelopeShapes` node carries, per envelope: the active `mode`, the ADSR
+shape's curves, the breakpoint shape as its own child, and whether the
+breakpoint shape has been initialised. The version is **4**.
+
+**Both modes' state is saved**, not only the active one. A preset saved in ADSR
+mode with a seven-point breakpoint envelope behind it reopens with both, and
+switching reveals exactly what was stored.
 
 **Migration from version 3 and earlier**, which is every preset and project that
 exists today: an envelope with no recorded mode takes the mode its shape
@@ -221,6 +281,20 @@ That is exactly what the implicit rule did, so **every existing preset loads
 with the behaviour it had before**, now stated rather than inferred. A preset
 whose envelope was a plain ADSR is still skipped by the writer and rebuilt from
 the parameters; it loads in ADSR mode.
+
+## Fill animation
+
+**ADSR mode** keeps its stage-aware progress: held time clamped at the sustain
+point, then release time from there. That works and is left alone.
+
+**Breakpoint mode** is driven by elapsed time and nothing else. The fill's right
+edge is at `t`, found by the same `buildCurvePath` walk that draws the curve —
+so it stops on the curve, part way through a curved segment if that is where `t`
+falls, rather than at a point boundary or a percentage of the width. Crossing a
+breakpoint is not an event; it is just a value of `t` like any other.
+
+Both are fed from the DSP's own position, published once per block into
+atomics — never a UI clock counting alongside the audio.
 
 ## Thread safety and real-time behaviour
 
