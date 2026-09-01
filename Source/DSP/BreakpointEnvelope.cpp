@@ -136,10 +136,10 @@ void BreakpointEnvelope::sortAndClamp()
     // A sustain on the last point would leave nothing to release through.
     sustainPoint = juce::jlimit(0, pointCount - 2, sustainPoint);
 
-    anchorEnds();
+    anchorStructuralPoints();
 }
 
-void BreakpointEnvelope::anchorEnds()
+void BreakpointEnvelope::anchorStructuralPoints()
 {
     // The envelope begins and ends at silence. Both are structural rather than
     // editable: the first point is the note-on instant, and the last is where
@@ -154,6 +154,19 @@ void BreakpointEnvelope::anchorEnds()
     points[0].timeSeconds = 0.0;
     points[0].value = 0.0;
     points[static_cast<std::size_t>(pointCount - 1)].value = 0.0;
+
+    // On the ADSR skeleton the peak is structural too. ATTACK is a DURATION,
+    // so its handle moves along the time axis and stays pinned to the top -
+    // the mirror of RELEASE, which moves in time along the bottom. Letting it
+    // drop turns one handle into two controls and leaves a shape the four
+    // parameters can no longer describe.
+    //
+    // A free-form envelope has no peak to speak of, so this applies only where
+    // the skeleton is intact.
+    if (pointCount == 4 && sustainPoint == 2)
+    {
+        points[1].value = 1.0;
+    }
 }
 
 void BreakpointEnvelope::setPoint(int index, double timeSeconds, double value)
@@ -184,7 +197,7 @@ void BreakpointEnvelope::setPoint(int index, double timeSeconds, double value)
 
     // Deliberately not sortAndClamp(): re-sorting here would renumber points
     // under the mouse mid-drag. The ends still have to hold.
-    anchorEnds();
+    anchorStructuralPoints();
 }
 
 void BreakpointEnvelope::setCurve(int index, double curve)

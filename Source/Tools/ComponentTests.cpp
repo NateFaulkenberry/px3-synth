@@ -3142,6 +3142,186 @@ void testBreakpointEnvelope()
         }
     }
 
+    // ---- every handle sits on the curve it controls -------------------------
+    //
+    // A short ATTACK put the anchor within a handle's width of the attack
+    // point, and the anchor - which is not a control and cannot be dragged -
+    // nudged the attack handle a whole spacing to the RIGHT of the corner it
+    // marks. The line turned in one place and the handle sat in another.
+    //
+    // Checked at rest and again after each handle has been dragged, because
+    // "in the right spot" has to hold while the mouse is down as well.
+    {
+        const float attacks[] = { 0.001f, 0.005f, 0.020f, 0.200f, 2.000f, 4.000f };
+        juce::StringArray offences;
+
+        for (const auto attack : attacks)
+        {
+            EnvelopeSettings settings;
+            settings.attackSeconds = attack;
+            settings.decaySeconds = 0.300f;
+            settings.sustainLevel = 0.60f;
+            settings.releaseSeconds = 0.400f;
+
+            BreakpointEnvelopeEditor editor;
+            editor.setSize(600, 240);
+            editor.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+
+            const auto makeEvent = [&editor](juce::Point<float> at, int clicks)
+            {
+                return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), at,
+                                        juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                        &editor, &editor, juce::Time::getCurrentTime(), at,
+                                        juce::Time::getCurrentTime(), clicks, false);
+            };
+
+            const auto handlesOnTheCurve = [&](const juce::String& when)
+            {
+                for (int i = 0; i < editor.getEnvelope().getPointCount(); ++i)
+                {
+                    const auto drawn = editor.drawnPointPosition(i);
+                    const auto real = editor.pointToScreen(i);
+                    if (drawn.getDistanceFrom(real) > 0.01f)
+                    {
+                        offences.add("attack " + fmt(attack, 3) + " s " + when + ": handle "
+                                     + juce::String(i) + " drawn at " + fmt(drawn.x, 1) + ","
+                                     + fmt(drawn.y, 1) + " but its point is at " + fmt(real.x, 1)
+                                     + "," + fmt(real.y, 1));
+                    }
+                }
+            };
+
+            handlesOnTheCurve("at rest");
+
+            // Drag each handle in turn and look again - a handle that only
+            // agrees with its point when nothing is happening is no use.
+            for (int i = 1; i < editor.getEnvelope().getPointCount(); ++i)
+            {
+                const auto from = editor.drawnPointPosition(i);
+                const auto to = from.translated(-14.0f, -9.0f);
+                editor.mouseDown(makeEvent(from, 1));
+                editor.mouseDrag(makeEvent(to, 1));
+                handlesOnTheCurve("dragging handle " + juce::String(i));
+                editor.mouseUp(makeEvent(to, 1));
+                handlesOnTheCurve("after dragging handle " + juce::String(i));
+            }
+
+            // The sustain and release-start handles ride the held stretch, so
+            // they belong on the flat run at the sustain's own level.
+            const auto sustain = editor.getEnvelope().getSustainPoint();
+            const auto level = editor.pointToScreen(sustain).y;
+            if (std::abs(editor.sustainHandlePosition().y - level) > 0.01f
+                || std::abs(editor.releaseStartHandlePosition().y - level) > 0.01f)
+            {
+                offences.add("attack " + fmt(attack, 3) + " s: the sustain bar's handles sit at y "
+                             + fmt(editor.sustainHandlePosition().y, 1) + " and "
+                             + fmt(editor.releaseStartHandlePosition().y, 1) + ", the level is "
+                             + fmt(level, 1));
+            }
+        }
+
+        check("EnvelopeEditor_EveryHandleSitsOnTheCurveItControls",
+              offences.isEmpty(),
+              offences.isEmpty()
+                  ? "six attack times, every handle on its point at rest and through a drag"
+                  : offences.joinIntoString("; "));
+    }
+
+    // The anchor is not a control: it cannot be grabbed, so it cannot take the
+    // ATTACK handle away from the user on a short attack, and double-clicking
+    // it neither removes it nor drops a new point on top of it.
+    {
+        EnvelopeSettings settings;
+        settings.attackSeconds = 0.001f;
+        settings.decaySeconds = 0.300f;
+        settings.sustainLevel = 0.60f;
+        settings.releaseSeconds = 0.400f;
+
+        BreakpointEnvelopeEditor editor;
+        editor.setSize(600, 240);
+        editor.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+
+        // The anchor hands back nothing: it is pinned at time zero and value
+        // zero, so a hit on it would be a handle that goes nowhere. The ATTACK
+        // corner directly above it is still the attack.
+        const auto onAnchor = editor.grabAt(editor.pointToScreen(0));
+        const auto hit = editor.grabAt(editor.pointToScreen(1));
+
+        const auto before = editor.getEnvelope().getPointCount();
+        editor.mouseDoubleClick(juce::MouseEvent(
+            juce::Desktop::getInstance().getMainMouseSource(), editor.pointToScreen(0),
+            juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &editor, &editor,
+            juce::Time::getCurrentTime(), editor.pointToScreen(0),
+            juce::Time::getCurrentTime(), 2, false));
+
+        check("EnvelopeEditor_TheAnchorIsNotAControl",
+              onAnchor.target == BreakpointEnvelopeEditor::Target::none
+                  && hit.target == BreakpointEnvelopeEditor::Target::point && hit.index == 1
+                  && editor.getEnvelope().getPointCount() == before,
+              "the anchor grabs nothing, a 1 ms attack grabs point "
+                  + juce::String(hit.index) + ", and double-clicking the anchor leaves "
+                  + juce::String(editor.getEnvelope().getPointCount()) + " points");
+    }
+
+    // ---- ATTACK moves in time along the top ---------------------------------
+    //
+    // The mirror of RELEASE, which moves in time along the bottom. The peak is
+    // where the attack has FINISHED, so the handle is a duration and nothing
+    // else; dragging it down would make one handle two controls and leave a
+    // shape the four parameters can no longer describe.
+    {
+        EnvelopeSettings settings;
+        settings.attackSeconds = 0.400f;
+        settings.decaySeconds = 0.300f;
+        settings.sustainLevel = 0.60f;
+        settings.releaseSeconds = 0.500f;
+
+        BreakpointEnvelopeEditor editor;
+        editor.setSize(600, 240);
+        editor.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+
+        const auto makeEvent = [&editor](juce::Point<float> at, int clicks)
+        {
+            return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), at,
+                                    juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                    &editor, &editor, juce::Time::getCurrentTime(), at,
+                                    juce::Time::getCurrentTime(), clicks, false);
+        };
+
+        const auto from = editor.pointToScreen(1);
+        const auto to = from.translated(60.0f, 70.0f);   // right AND a long way down
+        editor.mouseDown(makeEvent(from, 1));
+        editor.mouseDrag(makeEvent(to, 1));
+        const auto duringDrag = editor.getEnvelope().getPoint(1);
+        editor.mouseUp(makeEvent(to, 1));
+        const auto afterDrag = editor.getEnvelope().getPoint(1);
+
+        check("EnvelopeEditor_TheAttackHandleMovesInTimeAlongTheTop",
+              duringDrag.value >= 1.0 - 1.0e-9 && afterDrag.value >= 1.0 - 1.0e-9
+                  && afterDrag.timeSeconds > 0.400 + 1.0e-6,
+              "dragging down and right leaves the peak at " + fmt(afterDrag.value, 3)
+                  + " and the attack at " + fmt(afterDrag.timeSeconds, 3) + " s");
+
+        // Arrow keys are the same control by another route.
+        editor.mouseDown(makeEvent(editor.pointToScreen(1), 1));
+        editor.mouseUp(makeEvent(editor.pointToScreen(1), 1));
+        editor.keyPressed(juce::KeyPress(juce::KeyPress::downKey));
+        check("EnvelopeEditor_ArrowKeysCannotPullTheAttackOffTheTop",
+              editor.getEnvelope().getPoint(1).value >= 1.0 - 1.0e-9,
+              "after a down-arrow the peak is at "
+                  + fmt(editor.getEnvelope().getPoint(1).value, 3));
+
+        // And a skeleton restored with a lowered peak comes back pinned, so an
+        // envelope already stored that way is repaired rather than left short.
+        px3::BreakpointEnvelope::Point raw[4] = { { 0.0, 0.0, 0.0 }, { 0.02, 0.756, 0.0 },
+                                                  { 0.14, 0.7, 0.0 }, { 0.36, 0.0, 0.0 } };
+        px3::BreakpointEnvelope restored;
+        restored.setPoints(raw, 4, 2);
+        check("EnvelopeEditor_ARestoredSkeletonComesBackWithItsPeakOnTheTop",
+              restored.getPoint(1).value >= 1.0 - 1.0e-9,
+              "a stored peak of 0.756 comes back at " + fmt(restored.getPoint(1).value, 3));
+    }
+
     // ---- an envelope starts and ends at silence -----------------------------
     //
     // A curve that begins at 0.44 and ends at 0.68 is drawn faithfully - and

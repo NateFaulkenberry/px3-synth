@@ -184,9 +184,10 @@ public:
 private:
     void sortAndClamp();
 
-    // The first point is the note-on instant and the last is silence after the
-    // release. Neither is editable; see the definition.
-    void anchorEnds();
+    // The first point is the note-on instant, the last is silence after the
+    // release, and on an ADSR skeleton the peak is the top. None of the three
+    // carries an editable level; see the definition.
+    void anchorStructuralPoints();
 
     std::array<Point, kMaxPoints> points {};
     int pointCount { 0 };

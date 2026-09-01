@@ -274,10 +274,13 @@ in the 0.4.0 cleanup rather than left looking wired.
 
 ## G2. The ends are structural
 
-The first point is the note-on instant and the last is silence after the
-release. Neither carries an editable level, and `anchorEnds()` holds both at
-zero on every path into the model — `setPoint` during a drag, and
-`sortAndClamp` for adds, removes and anything restored from saved state.
+Three points in the shape carry no editable level. The first is the note-on
+instant and the last is silence after the release, both held at zero; on the
+ADSR skeleton the peak is held at one. ATTACK is a DURATION, so its handle
+moves along the time axis pinned to the top — the mirror of RELEASE, which
+moves in time along the bottom. `anchorStructuralPoints()` holds all three on
+every path into the model: `setPoint` during a drag, and `sortAndClamp` for
+adds, removes and anything restored from saved state.
 
 Free-form editing got past this for a while. Adding a point takes the shape off
 the ADSR skeleton, which unlocks every point's LEVEL; the ends could then be
@@ -287,11 +290,29 @@ as a curve that has come away from the bottom of its own graph — the drawing i
 faithful, the data is not — and in the DSP it is a step at note-on and a note
 that never reaches silence.
 
-Two tests pin it: the editing route in, and a shape restored from state, which
-comes back repaired rather than floating. One existing test had to be corrected
-with the fix — it nudged "point 3, the sustain", a comment left from the
-five-point AHDSR shape, where point 3 is now the end point. It was asserting
-the bug.
+Tests pin each route: the editing path in, a shape restored from state (which
+comes back repaired rather than floating), the attack dragged down and right,
+and the arrow keys. One existing test had to be corrected with the fix — it
+nudged "point 3, the sustain", a comment left from the five-point AHDSR shape,
+where point 3 is now the end point. It was asserting the bug.
+
+### Handles sit on the curve
+
+Two coincident *controls* are nudged apart in drawing order, because `grabAt`
+would otherwise resolve both to the same one whichever you aimed at and leave
+the other unreachable. Crowded means close on BOTH axes. Measuring the time
+axis alone called the anchor and the peak crowded on a short attack — they
+share a column and sit at opposite ends of the graph — and pushed the ATTACK
+handle a full spacing to the right of the corner it marks, so the line turned
+in one place and the handle sat in another.
+
+The anchor is also skipped by `grabAt`: it is pinned in both axes, so a hit on
+it would hand back a handle that goes nowhere. Double-clicking it does nothing
+rather than dropping a new point on top of it.
+
+`EnvelopeEditor_EveryHandleSitsOnTheCurveItControls` checks six attack times,
+at rest and through a drag of every handle, that each is drawn on its own
+point — the check is against the point, not against a screenshot.
 
 ## H. Showing where the playing note has got to
 

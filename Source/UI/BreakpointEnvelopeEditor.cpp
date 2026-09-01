@@ -223,29 +223,32 @@ juce::Point<float> BreakpointEnvelopeEditor::sustainHandlePosition() const
 
 juce::Point<float> BreakpointEnvelopeEditor::drawnPointPosition(int index) const
 {
-    // Coincident points are nudged apart, cumulatively, in drawing order.
+    // Two CONTROLS that would land on one pixel are nudged apart, cumulatively,
+    // in drawing order: grabAt would otherwise resolve both to the same one
+    // whichever you aimed at, leaving the other unreachable.
     //
-    // HOLD defaults to zero seconds, which is correct - an INIT patch has no
-    // hold - but it puts the hold point at the same time AND the same value as
-    // the attack point. They land on one pixel, grabAt returns the first one it
-    // finds, and the hold point cannot be grabbed at all: the control exists
-    // and is unreachable.
-    //
-    // Nudging is honest here rather than a cheat, because the two points really
-    // are both at that instant. As soon as the hold is dragged out to a real
-    // duration they separate on their own and the nudge stops applying.
+    // Nudging is honest there rather than a cheat, because the two points
+    // really are both at that instant, and they separate on their own the
+    // moment either is dragged out to a real duration.
     const auto spacing = floatFor("pointRadius", 4.0f) * 2.0f + 2.0f;
 
-    // Only an UNBROKEN run of coincident points, counted backwards from this
-    // one. The first version added a nudge for every coincident pair anywhere
-    // before this index, so one crowded pair early in the envelope shifted
-    // every later handle - and the last handle is RELEASE, which was pushed
-    // clean off the right-hand edge of the panel. A control that is drawn
-    // outside the component is a control the user does not have.
+    // Crowded means close on BOTH axes, which is the only way two handles are
+    // hard to tell apart. Comparing the time axis alone called the anchor and
+    // the ATTACK peak crowded on a short attack - they share a column and sit
+    // at opposite ends of the graph - and pushed the attack handle a whole
+    // spacing to the RIGHT of the corner it marks. The line turned in one
+    // place and the handle sat in another.
+    //
+    // Only an UNBROKEN run, counted backwards from this one. The first version
+    // added a nudge for every coincident pair anywhere before this index, so
+    // one crowded pair early in the envelope shifted every later handle - and
+    // the last handle is RELEASE, which was pushed clean off the right-hand
+    // edge of the panel. A control that is drawn outside the component is a
+    // control the user does not have.
     auto run = 0;
     for (int i = index; i >= 1; --i)
     {
-        if (std::abs(pointToScreen(i).x - pointToScreen(i - 1).x) >= spacing) { break; }
+        if (pointToScreen(i).getDistanceFrom(pointToScreen(i - 1)) >= spacing) { break; }
         ++run;
     }
 
@@ -321,9 +324,12 @@ BreakpointEnvelopeEditor::Hit BreakpointEnvelopeEditor::grabAt(juce::Point<float
     // zero-length hold produces - resolved to the same one whichever you
     // aimed at, and the other was unreachable. Ties go to the later point,
     // since that is the one a nudge moved.
+    // From point 1: point 0 is the anchor, pinned at time zero and value zero,
+    // so there is nothing there to drag. Letting it be grabbed only took the
+    // ATTACK handle away from the user on a short attack.
     auto bestPoint = -1;
     auto bestDistance = kPointGrabRadius;
-    for (int i = 0; i < envelope.getPointCount(); ++i)
+    for (int i = 1; i < envelope.getPointCount(); ++i)
     {
         const auto distance = drawnPointPosition(i).getDistanceFrom(position);
         if (distance <= bestDistance)
@@ -951,6 +957,13 @@ void BreakpointEnvelopeEditor::mouseDoubleClick(const juce::MouseEvent& event)
         envelope.setCurve(hit.index, 0.0);
         notifyChanged();
         repaint();
+        return;
+    }
+
+    // The anchor is not grabbable, but double-clicking it must still do
+    // nothing rather than drop a new point on top of it.
+    if (drawnPointPosition(0).getDistanceFrom(event.position) <= kPointGrabRadius)
+    {
         return;
     }
 

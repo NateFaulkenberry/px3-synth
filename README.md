@@ -546,6 +546,9 @@ UI:
   it changes when the mouse is over it. Sustain has its own handle, on the held
   stretch after the decay, so the decay TIME and the sustain LEVEL are separate
   controls rather than two axes of one point.
+- ATTACK moves in time along the top and RELEASE in time along the bottom:
+  both are durations, and neither carries a level. SUSTAIN is the only level in
+  the skeleton, and it has a handle of its own.
 - Drag a point to move it in time and level. Drag the curve between two points
   to bend it; the bend is symmetric, so equal numbers are equal bends either way.
 - Double-click empty space to add a point, double-click a point to remove it.
