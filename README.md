@@ -9,6 +9,13 @@ For preset system format and storage details, see `docs/PRESETS.md`.
 The shipped factory presets are defined in `Source/Preset/FactoryPresets.cpp`.
 For developer architecture, maintenance map, and release workflow, see `DEVELOPMENT.md`.
 
+## Start Here
+
+**Playing it?** [docs/USER_MANUAL.md](docs/USER_MANUAL.md) — every section and
+control, written for a musician.
+
+**Building or changing it?** Carry on below.
+
 ## What You Get
 
 - 64-voice poly synth engine.
