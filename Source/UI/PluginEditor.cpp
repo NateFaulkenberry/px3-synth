@@ -4765,6 +4765,24 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
             slider->repaint();
         }
 
+        // The modulation ring, on EVERY parameter knob rather than the two
+        // dozen that happen to be registered as knobBindings. A macro can be
+        // assigned to any knob in the synth, so any knob has to be able to
+        // show that something is moving it - the AMP ENV knobs had no ring at
+        // all, which made a macro assigned to them look like it did nothing.
+        if (auto* parameter = audioProcessor.findRangedParameterById(parameterId))
+        {
+            const auto modulated = audioProcessor.getModulatedNormalisedValue(*parameter);
+            const auto shown = static_cast<double>(
+                slider->getProperties().getWithDefault("modulatedPos", -1.0));
+
+            if (std::abs(shown - static_cast<double>(modulated)) > 0.002)
+            {
+                slider->getProperties().set("modulatedPos", static_cast<double>(modulated));
+                slider->repaint();
+            }
+        }
+
         // Only on a change: a repaint per knob per frame for a picture that
         // has not moved is how a UI ends up costing more than the synth.
         const auto shownCc = static_cast<int>(

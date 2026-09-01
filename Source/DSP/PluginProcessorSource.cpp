@@ -138,22 +138,40 @@ std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcess
 
 EnvelopeSettings PX3SynthAudioProcessor::currentAmpEnvelopeSettings() const
 {
-    EnvelopeSettings settings;
+    // Read through the control-source accumulator, so a MACRO assigned to one
+    // of these reaches the sound. Reading the parameters raw is why it did not:
+    // a macro is applied when a parameter is read, and this was the one place
+    // that skipped the read.
+    //
+    // AMP ENV stays independent of the assignable modulation matrix, as it must
+    // - and it does so without a special case here, because ampAttack/Decay/
+    // Sustain/Release are excluded from lfoAssignableTargets. An LFO or a mod
+    // envelope cannot name them, so the accumulator's only contribution to
+    // these four is the macro one.
+    const auto through = [this](juce::AudioParameterFloat* parameter)
+    {
+        return parameter->convertFrom0to1(applyModulationToNormalizedValue(
+            parameter, static_cast<juce::RangedAudioParameter*>(parameter)->getValue()));
+    };
 
-    // AMP ENV is a dedicated VCA contour and must remain independent of the
-    // assignable modulation matrix destination path.
-    settings.attackSeconds = attackParam->get();
-    settings.decaySeconds = decayParam->get();
-    settings.sustainLevel = sustainParam->get();
-    settings.releaseSeconds = releaseParam->get();
+    EnvelopeSettings settings;
+    settings.attackSeconds = through(attackParam);
+    settings.decaySeconds = through(decayParam);
+    settings.sustainLevel = through(sustainParam);
+    settings.releaseSeconds = through(releaseParam);
     return settings;
 }
 
 px3::BreakpointEnvelope PX3SynthAudioProcessor::currentAmpEnvelope() const
 {
+    // A skeleton takes its times and level from the parameters and keeps its
+    // own curves, which is how a macro reaches an envelope somebody has bent.
+    // Testing isPlainAdsr instead meant a single curve handle being dragged
+    // froze the envelope against everything the parameters did afterwards -
+    // automation and macros alike.
     const auto& stored = shapedEnvelopes[0];
-    return stored.isPlainAdsr()
-               ? px3::BreakpointEnvelope::fromAdsr(currentAmpEnvelopeSettings())
+    return stored.isAdsrSkeleton()
+               ? stored.withAdsrApplied(currentAmpEnvelopeSettings())
                : stored;
 }
 
@@ -161,8 +179,8 @@ px3::BreakpointEnvelope PX3SynthAudioProcessor::currentModEnvelope(int envIndex)
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     const auto& stored = shapedEnvelopes[static_cast<std::size_t>(idx + 1)];
-    return stored.isPlainAdsr()
-             ? px3::BreakpointEnvelope::fromAdsr(currentModEnvelopeSettings(idx))
+    return stored.isAdsrSkeleton()
+             ? stored.withAdsrApplied(currentModEnvelopeSettings(idx))
              : stored;
 }
 

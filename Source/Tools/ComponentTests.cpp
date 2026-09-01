@@ -2218,21 +2218,33 @@ void testBreakpointEnvelope()
         setParam(processor, "vibeEnabled", 0.0f);
         setChoice(processor, "osc1Mode", 0);
 
-        // The parameters say a short attack...
+        // The parameters say a short attack, the stored shape says four seconds,
+        // and the shape is FREE-FORM - a point has been added, so it is no
+        // longer anything the four parameters can describe.
+        //
+        // That last part is what makes this a real state rather than a
+        // contrived one. On a four-point skeleton the two can no longer
+        // disagree: the editor writes both, and the graph and the DSP both
+        // apply the parameters over the stored curves. Once a point is ADDED
+        // the parameters stop being written, the shape is the whole truth, and
+        // the disagreement this test needs is exactly what the user has.
+        //
+        // The defect was startNote rebuilding from the ADSR settings instead of
+        // playing that shape, which starts a four second attack at full level.
         setParam(processor, "ampAttack", 0.012f);
         setParam(processor, "ampDecay", 0.100f);
         setParam(processor, "ampSustain", 1.00f);
         setParam(processor, "ampRelease", 0.500f);
 
-        // ...while the stored SHAPE says four seconds, and is bent so it is no
-        // longer a plain ADSR, exactly as a dragged curve would be.
         EnvelopeSettings slow;
         slow.attackSeconds = 4.000f;
         slow.decaySeconds = 0.100f;
         slow.sustainLevel = 1.0f;
         slow.releaseSeconds = 0.500f;
+
         auto shaped = px3::BreakpointEnvelope::fromAdsr(slow);
         shaped.setCurve(0, 0.25);
+        shaped.addPoint(2.000, 0.55);        // free-form: the parameters cannot say this
         processor.setShapedEnvelope(0, shaped);
 
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
@@ -2258,9 +2270,7 @@ void testBreakpointEnvelope()
             else { laterPeak = juce::jmax(laterPeak, level); }
         }
 
-        // With a four second attack the first block cannot be louder than the
-        // twenty after it. If it is, the note started on the wrong envelope.
-        // A four second attack means the first block is the QUIETEST, by a wide
+        // With a four second attack the first block is the QUIETEST, by a wide
         // margin. 1.5x was too loose to fail against the defect it describes -
         // the bug measured 1.3x - which is the mistake this investigation has
         // made more than once.
@@ -19140,6 +19150,163 @@ void testMacroSystem()
               ! processor.toggleMacroDestination(0, PX3SynthAudioProcessor::macroParameterId(1))
                   && ! processor.isMacroDestination(0, PX3SynthAudioProcessor::macroParameterId(1)),
               "assigning macro 2 to macro 1 was refused");
+    }
+
+    // ---- a macro on the AMP ENV knobs -------------------------------------
+    //
+    // Reported as "the AMP ENV ADSR knobs do not respond to the macro they are
+    // assigned to", and they did not: currentAmpEnvelopeSettings read the four
+    // parameters RAW, and a macro is applied when a parameter is READ. It was
+    // the one place in the synth that skipped the read.
+    {
+        const auto renderWithMacro = [&](float macroValue, float* attackSeconds)
+        {
+            PX3SynthAudioProcessor processor;
+            prepared(processor);
+            setParam(processor, "osc1Enabled", 1.0f);
+            setChoice(processor, "osc1Mode", 0);
+            setParam(processor, "ampAttack", 0.005f);
+            setParam(processor, "ampDecay", 0.100f);
+            setParam(processor, "ampSustain", 1.00f);
+            setParam(processor, "ampRelease", 0.300f);
+
+            processor.toggleMacroDestination(0, processor.getAttackParam().getParameterID());
+            processor.getMacroParam(0).setValueNotifyingHost(macroValue);
+
+            if (attackSeconds != nullptr)
+            {
+                *attackSeconds = processor.currentAmpEnvelopeSettings().attackSeconds;
+            }
+
+            juce::AudioBuffer<float> buffer(2, kBlock);
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 69, 1.0f), 0);
+
+            // How loud the note is a short way in. A long attack is quiet here;
+            // a short one has already arrived.
+            buffer.clear();
+            processor.processBlock(buffer, midi);
+
+            juce::MidiBuffer empty;
+            auto level = 0.0f;
+            for (int block = 0; block < 6; ++block)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, empty);
+                level = buffer.getMagnitude(0, buffer.getNumSamples());
+            }
+            return level;
+        };
+
+        float shortAttack = 0.0f;
+        float longAttack = 0.0f;
+        const auto loudAtZero = renderWithMacro(0.0f, &shortAttack);
+        const auto quietAtFull = renderWithMacro(1.0f, &longAttack);
+
+        check("Macro_ReachesTheAmpEnvelopeSettings",
+              longAttack > shortAttack * 10.0f,
+              "the macro takes the amp attack from " + fmt(shortAttack, 4)
+                  + " s to " + fmt(longAttack, 4) + " s");
+
+        check("Macro_OnTheAmpEnvelopeChangesTheSound",
+              loudAtZero > quietAtFull * 4.0f,
+              "a note 32 ms in reads " + fmt(loudAtZero, 5)
+                  + " with the macro at 0 and " + fmt(quietAtFull, 5) + " at 1");
+
+        // A BENT envelope follows its parameters too, keeping its curves.
+        //
+        // The graph already did this - it applies the parameters over the
+        // stored curves - while the DSP tested isPlainAdsr and used the stored
+        // shape as-is. So on a bent envelope, turning an ADSR knob moved the
+        // picture and not the sound. Both sides read it the same way now.
+        {
+            PX3SynthAudioProcessor processor;
+            prepared(processor);
+
+            EnvelopeSettings stale;
+            stale.attackSeconds = 0.500f;
+            stale.decaySeconds = 0.100f;
+            stale.sustainLevel = 0.80f;
+            stale.releaseSeconds = 0.300f;
+
+            auto bent = px3::BreakpointEnvelope::fromAdsr(stale);
+            bent.setCurve(0, 0.6);
+            processor.setShapedEnvelope(0, bent);
+
+            setParam(processor, "ampAttack", 2.500f);
+            processor.toggleMacroDestination(0, processor.getAttackParam().getParameterID());
+            processor.getMacroParam(0).setValueNotifyingHost(0.0f);
+
+            const auto played = processor.currentAmpEnvelope();
+            const auto adsr = played.toAdsr();
+
+            check("Macro_ABentAmpEnvelopeStillFollowsItsParameters",
+                  played.isAdsrSkeleton()
+                      && std::abs(adsr.attackSeconds - 2.500f) < 0.01f
+                      && std::abs(played.getPoint(0).curveToNext - 0.6) < 1.0e-6,
+                  "the played envelope has a " + fmt(adsr.attackSeconds, 3)
+                      + " s attack against the parameter's 2.500, with its curve at "
+                      + fmt(played.getPoint(0).curveToNext, 2));
+
+            // And the macro moves it from there, curve intact.
+            processor.getMacroParam(0).setValueNotifyingHost(1.0f);
+            const auto driven = processor.currentAmpEnvelope();
+
+            check("Macro_MovesABentAmpEnvelopeWithoutStraighteningIt",
+                  driven.toAdsr().attackSeconds > adsr.attackSeconds + 0.05f
+                      && std::abs(driven.getPoint(0).curveToNext - 0.6) < 1.0e-6,
+                  "the macro takes the bent envelope's attack to "
+                      + fmt(driven.toAdsr().attackSeconds, 3) + " s with its curve still "
+                      + fmt(driven.getPoint(0).curveToNext, 2));
+        }
+
+        // And the knob shows it. The knob itself does not move - that is the
+        // rule for every control source - but its ring must, or a macro
+        // assigned to it looks like it did nothing at all.
+        {
+            PX3SynthAudioProcessor processor;
+            prepared(processor);
+            std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+            auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+
+            if (editor != nullptr)
+            {
+                editor->setSize(1400, 900);
+                processor.toggleMacroDestination(0, processor.getAttackParam().getParameterID());
+                processor.getMacroParam(0).setValueNotifyingHost(0.8f);
+                editor->debugRefreshMidiMappingUI();
+
+                juce::Slider* attackKnob = nullptr;
+                std::function<void(juce::Component&)> walk = [&](juce::Component& parent)
+                {
+                    for (auto* child : parent.getChildren())
+                    {
+                        if (child == nullptr) { continue; }
+                        if (auto* slider = dynamic_cast<juce::Slider*>(child))
+                        {
+                            if (px3::ui::parameterIdOf(*slider)
+                                == processor.getAttackParam().getParameterID())
+                            {
+                                attackKnob = slider;
+                            }
+                        }
+                        walk(*child);
+                    }
+                };
+                walk(*editor);
+
+                const auto ring = attackKnob != nullptr
+                                    ? static_cast<double>(attackKnob->getProperties()
+                                          .getWithDefault("modulatedPos", -1.0))
+                                    : -1.0;
+
+                check("Macro_TheAmpEnvelopeKnobShowsItsRing",
+                      attackKnob != nullptr && ring > 0.0,
+                      attackKnob == nullptr
+                          ? "no amp attack knob found in the editor"
+                          : "the amp attack knob's ring reads " + fmt(ring, 3));
+            }
+        }
     }
 
     // ---- all four, each minding only its own business -----------------------

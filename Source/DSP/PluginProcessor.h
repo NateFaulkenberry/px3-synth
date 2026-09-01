@@ -273,6 +273,11 @@ public:
     // should run - and substitutes a neutral contour while bypassed, which is
     // right for the DSP and wrong for anything drawing the user's envelope.
     EnvelopeSettings envelopeParameterSettings(int envIndex) const;
+
+    // A parameter by its ID, for the UI. The lookup the MIDI and macro systems
+    // already do internally, exposed so the editor does not need its own.
+    juce::RangedAudioParameter* findRangedParameterById(const juce::String& parameterId) const
+    { return findParameterById(parameterId); }
     px3::BreakpointEnvelope currentModEnvelope(int envIndex) const;
 
     // A user table is named, not indexed: the factory list has fixed positions
