@@ -158,6 +158,17 @@ relaxed.
 | `BreakpointEnvelope` | `sustainPoint` is an intrinsic index, and `canRemovePoint` protects it |
 | `Snapshot` | Split in two at `sustainSegment`, with `sustainSeconds`, `sustainValue`, `releaseSeconds` |
 | `AmpEnvelope` / `EnvelopeGenerator` | `heldSeconds` **stops advancing** at the sustain point; note-off flips `inRelease` and starts a *second* clock, `releasedSeconds` |
+
+In the one-shot path the single clock keeps running and `inRelease` is never
+consulted, because the one-shot branch is taken first. That, not the guard in
+`noteOff`, is what keeps a released note travelling — mutating the guard away
+changes no observable behaviour in `EnvelopeGenerator`. The guard stays so that
+no release state is written which nothing will read; a stale anchor sitting
+behind a live `inRelease` flag is the kind of thing that returns once something
+else moves. In `AmpEnvelope` the guard *is* load-bearing: without it, a
+note-off taken where the shape passes through zero reads as "nothing left to
+release" and retires the voice, so a double-strike envelope released in the
+silent gap would never sound its second peak.
 | `AmpEnvelope` | The release is reshaped to constant dB/second unless the user bent it |
 | Editor | `roleLabelFor` returns ATTACK / DECAY / SUSTAIN / RELEASE |
 | Fill animation | `progressDisplayTime()` is built from those two clocks, not from elapsed time |
@@ -264,9 +275,19 @@ the knobs stayed on screen after they stopped meaning anything.
 
 ## Persistence and migration
 
-The `envelopeShapes` node carries, per envelope: the active `mode`, the ADSR
-shape's curves, the breakpoint shape as its own child, and whether the
-breakpoint shape has been initialised. The version is **4**.
+The `envelopeShapes` node carries, per envelope: the active `mode`, the active
+shape's points and curves, and a `retained` child holding the shape of the mode
+that is **not** active, tagged with which mode that is. The version is **4**.
+Whether the breakpoint shape has been initialised is carried by the presence of
+a breakpoint-tagged shape — active or retained — rather than inferred from the
+points, because a default `BreakpointEnvelope` is itself a valid four-point
+ADSR and so cannot be told apart from an untouched one by inspection.
+
+The retained child has to be symmetric, and the first implementation was not:
+it always held the breakpoint shape. Saving while a drawing was live therefore
+wrote a second copy of the active shape and left the stored ADSR's curves with
+nowhere to go, so they reloaded straight. A `retained` child with no mode tag
+is a breakpoint shape, which is all it used to hold.
 
 **Both modes' state is saved**, not only the active one. A preset saved in ADSR
 mode with a seven-point breakpoint envelope behind it reopens with both, and
@@ -281,6 +302,21 @@ That is exactly what the implicit rule did, so **every existing preset loads
 with the behaviour it had before**, now stated rather than inferred. A preset
 whose envelope was a plain ADSR is still skipped by the writer and rebuilt from
 the parameters; it loads in ADSR mode.
+
+## What Breakpoint mode does not draw
+
+The **sustain region** — the shaded band from the sustain point to the right
+edge — is ADSR-only. It means "the envelope holds here for as long as the key
+is down", which is exactly what a breakpoint envelope never does; drawn there it
+describes a stage the DSP does not have. The sustain point also loses its
+distinct marker colour in Breakpoint mode.
+
+The model still keeps a sustain index in Breakpoint mode, because that point is
+structural and may not be deleted. That is bookkeeping, and bookkeeping is not
+something to put on screen.
+
+Role labels are likewise blank: a breakpoint has a time, a level and a curve,
+and calling one of them RELEASE would name a model it does not have.
 
 ## Fill animation
 
