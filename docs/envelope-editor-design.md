@@ -273,6 +273,94 @@ moment they are visible again.
 This is what removes the original defect. Stale knobs were possible only because
 the knobs stayed on screen after they stopped meaning anything.
 
+## Mode State Isolation
+
+**ADSR and Breakpoint are two independent envelope representations sharing one
+editor and one component. The active mode selects the representation. Point
+count never determines semantic mode.**
+
+This is a permanent architectural rule. A Breakpoint envelope with two points is
+a Breakpoint envelope. So is one with three, four, or sixteen. There is no count
+at which ADSR meaning returns.
+
+### What is shared, and what is not
+
+| Shared infrastructure | ADSR-only | Breakpoint-only |
+|---|---|---|
+| the active mode | attack, decay, sustain, release **parameters** | the point list: time, level, curve per point |
+| graph geometry and the row it lives in | the four knobs and their readouts | arbitrary point count, 2..16 |
+| mouse framework, hit testing, selection, drag | stage roles (ATTACK / DECAY / SUSTAIN / RELEASE labels) | elapsed-time playback position |
+| curve rendering and `shape()` | the sustain region and its marker colour | one-shot lifecycle: no hold, no separate release clock |
+| the fill renderer | the peak pinned to 1.0 | |
+| serialization framework | the sustain index as a *stage* boundary | |
+| `Snapshot` and the DSP evaluator | | |
+
+The **sustain index** is the subtle one. In ADSR mode it is a stage boundary: the
+envelope holds there. In Breakpoint mode it is bookkeeping — the model keeps the
+field so `Snapshot` has one shape to build from, but nothing in Breakpoint mode
+may read it as meaning. It must not protect a point from deletion, must not be
+drawn, and must not be consulted by the evaluator, which takes the one-shot path
+and ignores it.
+
+### The coupling that was found, and how it behaved
+
+`isAdsrSkeleton()` was `pointCount == 4 && sustainPoint == 2` — a pure shape
+test with no mode in it. That is *exactly* the shape seeding from an ADSR
+produces, and exactly the shape deleting points lands back on, so the coupling
+fired on the states users actually reach rather than on some corner. Three
+consumers turned it into behaviour:
+
+1. **The edit write-back** (`AmpEnvelopeComponent`, `ModPanel`): dragging a point
+   wrote `ampAttack` / `ampDecay` / `ampSustain` / `ampRelease` from the drawn
+   points.
+2. **The refresh** (same two files): the stored shape was rebuilt from those
+   parameters, discarding the drawn times and levels.
+
+   Together these are a loop. Drag a point in Breakpoint mode; the drag writes
+   the ADSR parameters; the next refresh rebuilds the shape from them. The
+   editor becomes a partially working ADSR editor, which is the reported
+   symptom.
+3. **The DSP gate**: `anyEnvelopeIsShaped` is `! isPlainAdsr()`, and
+   `isPlainAdsr()` carried the same count test. A straight four-point Breakpoint
+   envelope reported itself a plain ADSR, so `setAmpEnvelopeShape` was never
+   called and the voice ran the ADSR path — holding at the sustain point. The
+   shape was not merely mis-drawn; it was not played.
+
+A fourth site applied ADSR constraints to Breakpoint editing: `canRemovePoint`
+protected the sustain index and floored the count at `kMinPoints + 1`, so
+deletion stopped at three points and could not reach two.
+
+### The rule as code
+
+Shape questions and semantic questions are now different questions:
+
+- `hasAdsrSkeletonShape()` — pure geometry, four points with the sustain at
+  index 2. Used **only** by `impliedModeFor`, which infers a mode for states
+  saved before modes existed. That is the one legitimate place a count may
+  suggest a mode, and it runs only when no mode was recorded.
+- `isAdsrSkeleton()` and `isPlainAdsr()` — semantic, and therefore
+  `mode == Mode::adsr &&` the geometry. Every consumer above asks a semantic
+  question, so every consumer is now mode-gated at the source rather than at
+  each call site, where one missed site reintroduces the bug.
+
+`toAdsr()` stays a pure converter: it is named for what it does, and its only
+production caller is already behind `isAdsrSkeleton()`.
+
+### Minimum points is a Breakpoint rule
+
+Two, because a function of time needs a start and an end. Not because an ADSR
+editor needs four. The first and last points stay anchored at silence in both
+modes — an envelope begins and ends at rest — but that is a Breakpoint rule
+stated for Breakpoint reasons, not an ADSR remnant.
+
+### Mode switching
+
+Unchanged by this work and restated here because it is part of the same rule:
+Breakpoint seeds from the ADSR on the **first** entry only, tracked by an
+explicit flag; returning to ADSR restores the stored ADSR and never derives it
+from the drawing; returning to Breakpoint restores the drawing and never
+re-seeds. A two-point drawing comes back as two points.
+
 ## Persistence and migration
 
 The `envelopeShapes` node carries, per envelope: the active `mode`, the active
