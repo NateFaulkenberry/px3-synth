@@ -45,6 +45,8 @@ public:
     void setCurrentPlaybackSampleRate(double newRate) override;
 
     void setAmpEnvelope(const EnvelopeSettings& settings);
+    // The amp envelope's last output, for the onset capture.
+    float currentAmpEnvelopeLevel() const noexcept { return currentAmpEnvelopeValue; }
     void setAmpEnvelopeEnabled(bool shouldEnable);
     // The shaped envelopes, when they are more than four numbers can describe.
     // Kept alongside the ADSR setters rather than replacing them: an envelope

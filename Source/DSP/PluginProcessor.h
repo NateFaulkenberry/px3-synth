@@ -941,6 +941,31 @@ private:
 
     void pushVirtualNote(VirtualNote event);
 
+    // Onset capture, for diagnosing a fault that only appears in a real host.
+    //
+    // Off unless PX3_ONSET_CAPTURE is set in the environment. When on, the
+    // first note-on starts recording per-sample: the final output, the amp
+    // envelope of the voice that took the note, and how many voices are
+    // sounding. Written to the path in PX3_ONSET_CAPTURE once full.
+    //
+    // The point is that the fault does not reproduce offline. Reading the code
+    // has not found it and neither has rendering; this makes the failing
+    // environment measurable instead.
+    static constexpr int kOnsetCaptureSamples = 8192;
+    struct OnsetCapture
+    {
+        std::array<float, kOnsetCaptureSamples> output {};
+        std::array<float, kOnsetCaptureSamples> ampEnvelope {};
+        std::array<float, kOnsetCaptureSamples> voiceCount {};
+        int written { 0 };
+        bool armed { false };
+        bool recording { false };
+        bool done { false };
+        juce::String path;
+    };
+    OnsetCapture onsetCapture;
+    void writeOnsetCapture();
+
     std::atomic<float> pitchBendNormalized { 0.0f };
     std::atomic<float> modWheelNormalized { 0.0f };
     std::atomic<float> pitchBendActivity { 0.0f };

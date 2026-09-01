@@ -1077,6 +1077,16 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     currentSampleRateHz = juce::jmax(1.0, sampleRate);
     soundingVoiceBudget.store(soundingVoiceBudgetForRate(currentSampleRateHz),
                               std::memory_order_relaxed);
+    if (! onsetCapture.armed && ! onsetCapture.done)
+    {
+        if (const auto path = juce::SystemStats::getEnvironmentVariable("PX3_ONSET_CAPTURE", {});
+            path.isNotEmpty())
+        {
+            onsetCapture.path = path;
+            onsetCapture.armed = true;
+        }
+    }
+
     synth.setCurrentPlaybackSampleRate(sampleRate);
     for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
     {
@@ -1712,6 +1722,20 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     // Each voice now explicitly mixes oscillator sources -> filter -> amp before
     // contributing here, so future sources can sum in parallel at the same point.
     synth.renderNextBlock(oscillatorBusBuffer, midiMessages, 0, blockSamples);
+
+    // Start recording on the first note-on we see, so the capture is aligned
+    // with the event rather than with the transport.
+    if (onsetCapture.armed && ! onsetCapture.recording && ! onsetCapture.done)
+    {
+        for (const auto metadata : midiMessages)
+        {
+            if (metadata.getMessage().isNoteOn())
+            {
+                onsetCapture.recording = true;
+                break;
+            }
+        }
+    }
 
     auto prePolyPeak = 0.0f;
     auto prePolyClipSamples = 0;
@@ -2372,6 +2396,36 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         auto masterL = (dryL + fxL) * outputBoostGain;
         auto masterR = (dryR + fxR) * outputBoostGain;
         analogEngine.processBusSample(px3::AnalogEngine::Context::master, masterL, masterR);
+
+        // Onset capture: the final sample, the amp envelope of the first voice
+        // that is sounding, and how many are. Recorded per sample so the shape
+        // of the fault is visible rather than inferred from block peaks.
+        if (onsetCapture.recording && onsetCapture.written < kOnsetCaptureSamples)
+        {
+            auto envelopeValue = 0.0f;
+            auto sounding = 0;
+            for (auto* voice : typedVoices)
+            {
+                if (voice != nullptr && voice->isVoiceActive())
+                {
+                    if (sounding == 0) { envelopeValue = voice->currentAmpEnvelopeLevel(); }
+                    ++sounding;
+                }
+            }
+
+            const auto index = static_cast<std::size_t>(onsetCapture.written);
+            onsetCapture.output[index] = applyCeiling(masterL);
+            onsetCapture.ampEnvelope[index] = envelopeValue;
+            onsetCapture.voiceCount[index] = static_cast<float>(sounding);
+            ++onsetCapture.written;
+
+            if (onsetCapture.written >= kOnsetCaptureSamples)
+            {
+                onsetCapture.recording = false;
+                onsetCapture.done = true;
+                triggerAsyncUpdate();   // written on the message thread, not here
+            }
+        }
 
         masterBusBuffer.setSample(0, sample, applyCeiling(masterL));
         if (outputChannels > 1)
