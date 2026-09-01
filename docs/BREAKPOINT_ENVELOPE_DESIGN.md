@@ -274,8 +274,8 @@ in the 0.4.0 cleanup rather than left looking wired.
 
 ## H. Showing where the playing note has got to
 
-The AMP ENV graph fills the area under the part of the envelope the sounding
-note has already traversed. Three decisions carry the design.
+All four envelope graphs fill the area under the part of the envelope the
+sounding note has already traversed. Three decisions carry the design.
 
 **One sampler, not two.** `buildCurvePath` takes an optional stopping time on
 the display axis and an optional "close down to the baseline" flag. The curve
@@ -290,11 +290,20 @@ At the stopping point the path lands on the exact interpolated value rather
 than on the last sample before it. Without that, the fill's edge steps forward
 one path sample at a time and visibly stutters against a curve that does not.
 
-**Progress comes from the DSP, not from a clock.** `AmpEnvelope::Position` is a
+**Progress comes from the DSP, not from a clock.** `EnvelopePosition` is a
 read-only snapshot — active, in-release, held seconds, released seconds,
-sustain time. `SynthVoice` exposes it along with the sequence number its note
-started with; the processor picks the newest sounding voice once per block and
-stores the five fields into atomics. The editor reads them on the UI timer.
+sustain time. It lives in `EnvelopeTypes.h` and both `AmpEnvelope` and
+`EnvelopeGenerator` report it, so the graph that draws AMP ENV and the one that
+draws ENV 1–3 are the same graph rather than two that happen to agree today.
+The editor takes that type directly, so nothing is copied field by field on the
+way from the voice to the picture.
+
+`SynthVoice` exposes each of its envelopes' positions along with the sequence
+number its note started with; the processor picks the newest sounding voice
+once per block and stores four slots of atomics — slot 0 is AMP ENV, slots 1–3
+are ENV 1–3, the same numbering the shaped-envelope accessors already use. When
+no voice is sounding every slot is marked idle, so the graphs clear instead of
+keeping the last note's fill. The editors read the slots on the UI timer.
 A UI-side timer counting seconds alongside the envelope would be a second
 implementation of the envelope's own timing, and would drift from it under load
 or a change of buffer size — the same class of mistake as the two-samplers one.
@@ -315,8 +324,18 @@ unprompted jump of about a fifth of the graph's width.
 A note released during the attack is treated the same way: it has left the held
 part of the envelope behind, so the fill moves to the release segment.
 
-Eight tests pin this (`AmpProgress_*` in `ComponentTests.cpp`), each verified to
-fail against the fault it names: a progress that never advances, one that
-resets per stage, a sustain that creeps, a release that restarts at zero, a
-fill drawn from a flat approximation instead of the curve, an idle envelope
-that still fills, and a retrigger that continues rather than starting over.
+Eleven tests pin this (`AmpProgress_*` and `ModProgress_*` in
+`ComponentTests.cpp`), each verified to fail against the fault it names: a
+progress that never advances, one that resets per stage, a sustain that creeps,
+a release that restarts at zero, a fill drawn from a flat approximation instead
+of the curve, an idle envelope that still fills, a retrigger that continues
+rather than starting over, a mod envelope that does not report its position,
+slots that all carry the same envelope, and slots that never clear when the
+note ends.
+
+Two of those needed a second attempt to earn their keep. The sustain-creep
+mutation was masked because the editor clamps at the sustain point
+independently of the envelope, so both clamps have to go before the test fails
+— it does. And the "slots clear when silent" check originally sampled the slots
+before anything had ever been written to them, where their defaults made it
+pass for free; it now plays a note, waits for it to end, and looks again.

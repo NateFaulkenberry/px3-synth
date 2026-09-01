@@ -48,11 +48,11 @@ time and sustain level are never the same control.
   constrained cubic Bezier, which needs a cubic inverted per sample per voice.
 - ADSR is a special case of the model, not a separate path, so existing presets
   load and sound exactly as they did.
-- AMP ENV fills in the area under the part of the envelope the sounding note
-  has already been through, following the shape exactly, bends included. It
-  reads the playing voice's own envelope position rather than a UI clock
-  counting alongside it, so it cannot drift; it stops at the sustain for as
-  long as the note is held, and the release runs on from there.
+- All four graphs fill in the area under the part of the envelope the sounding
+  note has already been through, following the shape exactly, bends included.
+  Each reads its own envelope's position from the playing voice rather than a
+  UI clock counting alongside it, so it cannot drift; the fill stops at the
+  sustain for as long as the note is held, and the release runs on from there.
 
 ## New: GPU wavetable renderer
 
@@ -139,7 +139,5 @@ The wavetable display is drawn by OpenGL rather than by JUCE primitives.
 - **Worst-case CPU at extreme polyphony.** Sustained load is comfortable, but
   isolated blocks at 40+ voices with every effect enabled can exceed the
   real-time budget. See the audit below.
-- **Envelope progress on AMP ENV only.** ENV 1-3 draw the curve but not how far
-  the modulating envelope has got.
 - **EQ spectrum visualiser** items from its design brief remain open: FFT size
   as a user setting, decoupled hop, screen-space curve interpolation.

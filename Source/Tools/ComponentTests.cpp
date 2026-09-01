@@ -1695,6 +1695,143 @@ void testBreakpointEnvelope()
         }
     }
 
+    // ---- ENV 1-3 report their progress the same way -------------------------
+    //
+    // The mod envelopes use a different class from AMP ENV, so the graph's
+    // guarantees only hold if that class reports the same shape of answer.
+    {
+        constexpr double kRate = 1000.0;
+
+        EnvelopeSettings settings;
+        settings.attackSeconds = 2.0f;
+        settings.decaySeconds = 1.0f;
+        settings.sustainLevel = 0.4f;
+        settings.releaseSeconds = 1.5f;
+        const auto shape = px3::BreakpointEnvelope::fromAdsr(settings);
+
+        BreakpointEnvelopeEditor graph;
+        graph.setSize(400, 200);
+        graph.setEnvelope(shape);
+
+        EnvelopeGenerator modEnvelope;
+        modEnvelope.prepare(kRate);
+        modEnvelope.setEnvelope(shape);
+
+        const auto advance = [&modEnvelope](double seconds)
+        {
+            const auto samples = static_cast<int>(std::lround(seconds * kRate));
+            for (int i = 0; i < samples; ++i) { modEnvelope.getNextSample(); }
+        };
+        const auto displayTimeNow = [&graph, &modEnvelope]
+        {
+            graph.setProgress(modEnvelope.currentPosition());
+            return graph.progressDisplayTime();
+        };
+
+        const auto idle = displayTimeNow();
+        modEnvelope.noteOn();
+        advance(1.0);
+        const auto midAttack = displayTimeNow();
+        advance(2.0);
+        const auto atSustain = displayTimeNow();
+        advance(4.0);
+        const auto stillHeld = displayTimeNow();
+        modEnvelope.noteOff();
+        advance(0.5);
+        const auto inRelease = displayTimeNow();
+
+        check("ModProgress_TheModEnvelopeReportsProgressLikeTheAmpEnvelope",
+              idle < 1.0e-9 && std::abs(midAttack - 1.0) < 0.02
+                  && std::abs(atSustain - 3.0) < 0.02
+                  && std::abs(stillHeld - atSustain) < 1.0e-6 && inRelease > atSustain,
+              "idle " + fmt(idle, 2) + ", attack " + fmt(midAttack, 2) + ", sustain "
+                  + fmt(atSustain, 2) + " held to " + fmt(stillHeld, 2) + ", release "
+                  + fmt(inRelease, 2));
+    }
+
+    // ---- the four progress slots carry four different envelopes -------------
+    //
+    // AMP ENV is slot 0 and ENV 1-3 are slots 1-3. Give each a sustain time no
+    // other envelope has and the routing cannot pass by accident.
+    {
+        constexpr double kRate = 48000.0;
+        constexpr int kBlock = 256;
+
+        PX3SynthAudioProcessor processor;
+        setParam(processor, "ampAttack", 1.000f);
+        setParam(processor, "ampDecay", 1.000f);   // AMP sustains at 2.0 s
+
+        const float attacks[3] = { 0.200f, 0.400f, 0.800f };
+        const float decays[3] = { 0.100f, 0.200f, 0.400f };
+        for (int env = 0; env < 3; ++env)
+        {
+            const auto name = juce::String("env") + juce::String(env + 1);
+            setParam(processor, name + "Attack", attacks[static_cast<std::size_t>(env)]);
+            setParam(processor, name + "Decay", decays[static_cast<std::size_t>(env)]);
+        }
+
+        processor.setPlayConfigDetails(0, 2, kRate, kBlock);
+        processor.prepareToPlay(kRate, kBlock);
+
+        juce::AudioBuffer<float> buffer(2, kBlock);
+        juce::MidiBuffer empty;
+
+        setParam(processor, "ampSustain", 0.60f);
+        setParam(processor, "ampRelease", 0.100f);
+
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+        buffer.clear();
+        processor.processBlock(buffer, midi);
+
+        for (int b = 0; b < static_cast<int>(0.05 * kRate / kBlock); ++b)
+        {
+            buffer.clear();
+            processor.processBlock(buffer, empty);
+        }
+
+        const double expected[4] = { 2.0, 0.300, 0.600, 1.200 };
+        auto worst = 0.0;
+        auto allActive = true;
+        juce::String reported;
+        for (int slot = 0; slot < 4; ++slot)
+        {
+            const auto position = processor.getEnvelopeProgress(slot);
+            allActive = allActive && position.active;
+            worst = std::max(worst, std::abs(position.sustainSeconds
+                                             - expected[static_cast<std::size_t>(slot)]));
+            reported += (slot > 0 ? ", " : "") + fmt(position.sustainSeconds, 3);
+        }
+
+        check("ModProgress_EachEnvelopeSlotReportsItsOwnEnvelope",
+              allActive && worst < 1.0e-3,
+              "slots 0-3 sustain at " + reported + " s (want 2.000, 0.300, 0.600, 1.200)");
+
+        // Once the note has finished, every slot goes idle - so the graphs
+        // clear rather than keeping the last note's fill on screen forever.
+        juce::MidiBuffer off;
+        off.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
+        buffer.clear();
+        processor.processBlock(buffer, off);
+
+        for (int b = 0; b < static_cast<int>(1.0 * kRate / kBlock); ++b)
+        {
+            buffer.clear();
+            processor.processBlock(buffer, empty);
+        }
+
+        auto stillActive = 0;
+        for (int slot = 0; slot < 4; ++slot)
+        {
+            if (processor.getEnvelopeProgress(slot).active) { ++stillActive; }
+        }
+
+        check("ModProgress_TheSlotsGoIdleWhenTheNoteHasFinished",
+              stillActive == 0,
+              juce::String(stillActive) + " of 4 slots still report a playing envelope "
+                  + "a second after the note ended");
+    }
+
     // ---- the two envelope MODELS, tested as state machines ------------------
     //
     // At 1000 Hz, so a 100 ms stage is exactly 100 samples and a stage boundary

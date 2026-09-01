@@ -553,7 +553,8 @@ UI:
   removed.
 - Up to 16 points. The time axis is labelled in seconds, to a maximum of 8.
 - While a note is sounding, the area under the part of the envelope it has
-  already been through fills in behind the curve. It follows the shape exactly,
+  already been through fills in behind the curve. All four envelopes do this -
+  AMP ENV and ENV 1-3 alike, each following its own envelope. It follows the shape exactly,
   bends included, because the fill and the curve come from one sampler. The
   fill stops dead at the sustain point for as long as the note is held - the
   sustain bar's drawn width is not a duration, so creeping across it would be
@@ -577,8 +578,9 @@ Architecture guarantee:
   has no such node, which is a valid state meaning "plain ADSR" - not an error.
 - The curve the editor draws is the same function the DSP evaluates, sampled
   into a path, so there is no drawn shape and played shape to drift apart.
-- The progress fill reads the playing voice's own envelope position, published
-  once per block into atomics; it is not a UI clock counting alongside the DSP,
+- The progress fill reads the playing voice's own envelope position - four
+  slots, AMP ENV and ENV 1-3 - published once per block into atomics; it is not
+  a UI clock counting alongside the DSP,
   so it cannot drift, and it is read-only - exposing it changed no audio
   behaviour and added no work to the audio thread beyond five atomic stores.
 
