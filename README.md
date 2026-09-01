@@ -543,12 +543,14 @@ UI:
 - AMP ENV is a graphical breakpoint editor, as are ENV 1-3. The default shape is
   ADSR, because ADSR is a special case of the model rather than a separate one.
 - Stages run ATTACK | DECAY | SUSTAIN | RELEASE, and every handle names what
-  it changes when the mouse is over it. Sustain has its own handle, on the held
-  stretch after the decay, so the decay TIME and the sustain LEVEL are separate
-  controls rather than two axes of one point.
-- ATTACK moves in time along the top and RELEASE in time along the bottom:
-  both are durations, and neither carries a level. SUSTAIN is the only level in
-  the skeleton, and it has a handle of its own.
+  it changes when the mouse is over it.
+- Three handles. ATTACK moves in time along the top and RELEASE in time along
+  the bottom - both are durations, and neither carries a level. DECAY / SUSTAIN
+  is one handle moving in both: sideways is the decay time, upwards the sustain
+  level, because they are the two coordinates of one breakpoint.
+- ATTACK, DECAY, SUSTAIN and RELEASE knobs sit under the graph. They and the
+  curve are two views of one thing: a drag moves the knobs, a knob moves the
+  curve, and turning a knob does not straighten a bend you drew.
 - Drag a point to move it in time and level. Drag the curve between two points
   to bend it; the bend is symmetric, so equal numbers are equal bends either way.
 - Double-click empty space to add a point, double-click a point to remove it.

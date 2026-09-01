@@ -561,7 +561,7 @@
       "rowGap": 10,
       "minColWidth": 280,
       "minLfoHeight": 360,
-      "minEnvHeight": 400
+      "minEnvHeight": 490
     },
     "env1": {
       "visual": {
@@ -2300,14 +2300,18 @@
             }
           },
           "row1": {
-            "height": "16%",
+            "height": "13%",
             "gap": 8
           },
           "row2": {
-            "height": "32%"
+            "height": "26%"
           },
           "row3": {
-            "height": "52%",
+            "height": "42%",
+            "padding": 2
+          },
+          "row4": {
+            "height": "19%",
             "padding": 2
           }
         }

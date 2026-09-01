@@ -268,6 +268,10 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
     // different component entirely, which is what keeps the two systems from
     // acquiring a shared owner by accident.
     const auto slot = envIndex + 1;
+    // ATTACK | DECAY | SUSTAIN | RELEASE under the graph. The card is taller
+    // than it was to make the room, rather than taking it from the graph.
+    bundle.component->setAdsrKnobsVisible(true);
+
     bundle.component->setShapedEnvelope(processor.getShapedEnvelope(slot));
     bundle.component->onEnvelopeEdited = [this, envIndex, slot](const px3::BreakpointEnvelope& edited)
     {

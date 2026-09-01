@@ -2510,6 +2510,32 @@ void testBreakpointEnvelope()
                   ampGraph == nullptr ? "no AMP ENV card found"
                                       : "AMP ENV offers: " + names.joinIntoString(", "));
 
+            // And every other envelope card too - AMP ENV and ENV 1-3 carry the
+            // same four, because they are the same component asked for them.
+            juce::StringArray without;
+            for (std::size_t i = 0; i < cards.size(); ++i)
+            {
+                juce::StringArray theirs;
+                for (int k = 0; k < cards[i]->debugAdsrKnobCount(); ++k)
+                {
+                    theirs.add(cards[i]->debugAdsrKnobName(k));
+                }
+                if (theirs != names)
+                {
+                    without.add("card " + juce::String(static_cast<int>(i)) + " offers "
+                                + (theirs.isEmpty() ? juce::String("nothing")
+                                                    : theirs.joinIntoString("/")));
+                }
+            }
+
+            check("EnvelopeKnobs_EveryEnvelopeCardCarriesTheFour",
+                  ! cards.empty() && without.isEmpty(),
+                  cards.empty() ? "no envelope cards found"
+                                : (without.isEmpty()
+                                       ? juce::String(static_cast<int>(cards.size()))
+                                             + " cards, each with ATTACK, DECAY, SUSTAIN, RELEASE"
+                                       : without.joinIntoString("; ")));
+
             // The knob row sits below the graph and inside the card, on every
             // card that has one - which is the whole layout requirement.
             juce::StringArray misplaced;
