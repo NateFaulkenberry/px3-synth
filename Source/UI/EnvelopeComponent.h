@@ -183,6 +183,10 @@ private:
     // is what keeps the drawn graph and the draggable graph on one rectangle.
     int graphRowIndex() const;
 
+    // Where the editor sits: its row, less a gap at the bottom when the knob
+    // row is below it.
+    juce::Rectangle<int> graphBounds() const;
+
     juce::Slider* amountKnob { nullptr };
     juce::Label* amountLabel { nullptr };
     juce::Label* amountValueLabel { nullptr };

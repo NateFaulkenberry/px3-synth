@@ -453,7 +453,7 @@ void ModPanel::refreshFromParameters()
             const auto stored = processor.getShapedEnvelope(slot);
             bundle.component->setShapedEnvelope(
                 stored.isAdsrSkeleton()
-                    ? stored.withAdsrApplied(processor.currentModEnvelopeSettings(slot - 1))
+                    ? stored.withAdsrApplied(processor.envelopeParameterSettings(slot - 1))
                     : stored);
 
             // And how far the playing note has taken this envelope, read from

@@ -776,11 +776,33 @@ void EnvelopeComponent::applyDragPosition(juce::Point<float> mousePos,
 
 juce::Rectangle<int> EnvelopeComponent::debugGraphFrameBounds() const
 {
+    return graphBounds();
+}
+
+juce::Rectangle<int> EnvelopeComponent::graphBounds() const
+{
+    // One expression, used by resized() to place the editor and by paint() to
+    // check it - they were the same arithmetic written twice, which is how a
+    // frame and the thing inside it drift apart.
     const auto geom = computeGeometry();
-    return juce::Rectangle<float>(geom.left - 6.0f,
-                                  geom.top - 5.0f,
-                                  (geom.right - geom.left) + 12.0f,
-                                  (geom.bottom - geom.top) + 10.0f).toNearestInt();
+    auto bounds = juce::Rectangle<float>(geom.left - 6.0f,
+                                         geom.top - 5.0f,
+                                         (geom.right - geom.left) + 12.0f,
+                                         (geom.bottom - geom.top) + 10.0f).toNearestInt();
+
+    // With knobs below, the graph stops short of its row so the two are not
+    // hard against each other. The row's own gap and padding cannot do this:
+    // the editor fills its row, and the knob stack is centred in the next one,
+    // so both only move the caption by a fraction of what they are given.
+    if (adsrKnobsWanted())
+    {
+        const auto gap = uiConfig != nullptr
+                           ? uiConfig->getInt(configPrefix + ".visual.graph.bottomGap", 12)
+                           : 12;
+        bounds.setHeight(juce::jmax(1, bounds.getHeight() - gap));
+    }
+
+    return bounds;
 }
 
 void EnvelopeComponent::setShapedEnvelope(const px3::BreakpointEnvelope& envelope)
@@ -796,14 +818,7 @@ void EnvelopeComponent::resized()
     // inner.rowContent, which only holds the right values once the card has
     // been laid out - positioning the editor first gave it the PREVIOUS
     // layout's graph rectangle, so the curve drew outside the frame.
-    {
-        const auto geom = computeGeometry();
-        breakpointEditor.setBounds(juce::Rectangle<float>(geom.left - 6.0f,
-                                                          geom.top - 5.0f,
-                                                          (geom.right - geom.left) + 12.0f,
-                                                          (geom.bottom - geom.top) + 10.0f)
-                                       .toNearestInt());
-    }
+    breakpointEditor.setBounds(graphBounds());
 
     buildAdsrKnobs();
     layoutAdsrKnobs();

@@ -230,27 +230,15 @@ px3::BreakpointEnvelope PX3SynthAudioProcessor::getShapedEnvelope(int index) con
     return shapedEnvelopes[static_cast<std::size_t>(juce::jlimit(0, kShapedEnvelopeCount - 1, index))];
 }
 
-EnvelopeSettings PX3SynthAudioProcessor::currentModEnvelopeSettings(int envIndex) const
+EnvelopeSettings PX3SynthAudioProcessor::envelopeParameterSettings(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     auto& attack = getEnvelopeAttackParam(idx);
     auto& decay = getEnvelopeDecayParam(idx);
     auto& sustain = getEnvelopeSustainParam(idx);
     auto& release = getEnvelopeReleaseParam(idx);
-    auto& enabledParam = getEnvelopeEnabledParam(idx);
 
     EnvelopeSettings settings;
-    const auto envEnabled = enabledParam.get();
-
-    if (!envEnabled)
-    {
-        settings.attackSeconds = 0.001f;
-        settings.decaySeconds = 0.005f;
-        settings.sustainLevel = 1.0f;
-        settings.releaseSeconds = 0.010f;
-        return settings;
-    }
-
     settings.attackSeconds = attack.convertFrom0to1(applyModulationToNormalizedValue(&attack,
                                                                                       static_cast<juce::RangedAudioParameter&>(attack).getValue()));
     settings.decaySeconds = decay.convertFrom0to1(applyModulationToNormalizedValue(&decay,
@@ -260,6 +248,30 @@ EnvelopeSettings PX3SynthAudioProcessor::currentModEnvelopeSettings(int envIndex
     settings.releaseSeconds = release.convertFrom0to1(applyModulationToNormalizedValue(&release,
                                                                                         static_cast<juce::RangedAudioParameter&>(release).getValue()));
     return settings;
+}
+
+EnvelopeSettings PX3SynthAudioProcessor::currentModEnvelopeSettings(int envIndex) const
+{
+    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
+
+    // What the VOICE should run. A bypassed modulation envelope has to sit at
+    // full level and get out of the way, which is a contour of its own rather
+    // than the one the parameters describe.
+    //
+    // Not what the GRAPH should draw: bypass is a mute, not an edit, and
+    // drawing this collapsed the curve the moment a card was switched off.
+    // Anything showing the user their envelope wants envelopeParameterSettings.
+    if (! getEnvelopeEnabledParam(idx).get())
+    {
+        EnvelopeSettings bypassed;
+        bypassed.attackSeconds = 0.001f;
+        bypassed.decaySeconds = 0.005f;
+        bypassed.sustainLevel = 1.0f;
+        bypassed.releaseSeconds = 0.010f;
+        return bypassed;
+    }
+
+    return envelopeParameterSettings(idx);
 }
 
 LfoSettings PX3SynthAudioProcessor::currentLfoSettings() const

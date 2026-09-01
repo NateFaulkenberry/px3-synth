@@ -2480,6 +2480,21 @@ void testBreakpointEnvelope()
             };
             findPanel(*editor);
 
+            // The REAL UIConfig, because every number this checks lives in
+            // that file: the row percentages, the card minimums and the tail.
+            // Without it the panel falls back to the defaults compiled in and
+            // the test guards numbers nobody ships.
+            const auto configFile = juce::File::getCurrentWorkingDirectory()
+                                        .getChildFile("Source/UI/UIConfig.json");
+            if (panel != nullptr && configFile.existsAsFile())
+            {
+                juce::String configError;
+                if (auto config = UIConfig::fromJsonText(configFile.loadFileAsString(), configError))
+                {
+                    panel->setUIConfig(config);
+                }
+            }
+
             if (panel != nullptr)
             {
                 // Sized the way the viewport sizes it: the panel's own
@@ -2507,6 +2522,54 @@ void testBreakpointEnvelope()
 
                 auto lowest = 0;
                 for (auto* card : cards) { lowest = juce::jmax(lowest, card->getBounds().getBottom()); }
+
+                // The knobs sit clear of the graph rather than hard against
+                // it, and the whole row is inside the card.
+                juce::StringArray cramped;
+                for (std::size_t i = 0; i < cards.size(); ++i)
+                {
+                    auto* card = cards[i];
+                    if (card->debugAdsrKnobCount() != 4) { continue; }
+
+                    const auto graphBottom = card->debugEditorBounds().getBottom();
+                    auto highestKnob = card->getHeight();
+                    for (int k = 0; k < 4; ++k)
+                    {
+                        highestKnob = juce::jmin(highestKnob,
+                                                 juce::jmin(card->debugAdsrKnob(k).getBounds().getY(),
+                                                            card->debugAdsrKnobLabel(k).getBounds().getY()));
+                    }
+                    if (highestKnob - graphBottom < 20)
+                    {
+                        cramped.add("card " + juce::String(static_cast<int>(i)) + ": graph ends at "
+                                    + juce::String(graphBottom) + ", knobs start at "
+                                    + juce::String(highestKnob) + " - only "
+                                    + juce::String(highestKnob - graphBottom) + " px between");
+                    }
+                }
+
+                auto tightest = 10000;
+                for (std::size_t i = 0; i < cards.size(); ++i)
+                {
+                    auto* card = cards[i];
+                    if (card->debugAdsrKnobCount() != 4) { continue; }
+                    auto highestKnob = card->getHeight();
+                    for (int k = 0; k < 4; ++k)
+                    {
+                        highestKnob = juce::jmin(highestKnob,
+                                                 juce::jmin(card->debugAdsrKnob(k).getBounds().getY(),
+                                                            card->debugAdsrKnobLabel(k).getBounds().getY()));
+                    }
+                    tightest = juce::jmin(tightest,
+                                          highestKnob - card->debugEditorBounds().getBottom());
+                }
+
+                check("EnvelopeKnobs_TheRowIsNotHardAgainstTheGraph",
+                      ! cards.empty() && cramped.isEmpty(),
+                      cramped.isEmpty()
+                          ? "every knob row sits clear of its graph, tightest "
+                                + juce::String(tightest) + " px"
+                          : cramped.joinIntoString("; "));
 
                 check("ModPanel_ScrollsPastTheBottomOfTheEnvelopeCards",
                       ! cards.empty() && lowest > 0 && height - lowest >= kTail,
@@ -2625,6 +2688,36 @@ void testBreakpointEnvelope()
 
             setEnabled(false);
             refresh();
+
+            // WHILE bypassed, which is where this went wrong: the graph was
+            // drawn from what the VOICE runs, and a bypassed modulation
+            // envelope runs a neutral contour that gets out of the way. Bypass
+            // is a mute, so the curve has to stay exactly where it was.
+            const auto whileOff = cards.empty() ? px3::BreakpointEnvelope()
+                                                : cards[0]->debugEditor().getEnvelope();
+            const auto offAdsr = whileOff.toAdsr();
+            check("EnvelopeBypass_TheGraphKeepsItsShapeWhileBypassed",
+                  ! cards.empty()
+                      && std::abs(offAdsr.attackSeconds - before.attackSeconds) < 1.0e-4f
+                      && std::abs(offAdsr.decaySeconds - before.decaySeconds) < 1.0e-4f
+                      && std::abs(offAdsr.sustainLevel - before.sustainLevel) < 1.0e-4f
+                      && std::abs(offAdsr.releaseSeconds - before.releaseSeconds) < 1.0e-4f,
+                  "bypassed, the graph reads A " + fmt(offAdsr.attackSeconds, 3) + " D "
+                      + fmt(offAdsr.decaySeconds, 3) + " S " + fmt(offAdsr.sustainLevel, 2)
+                      + " R " + fmt(offAdsr.releaseSeconds, 3) + " (edited to A "
+                      + fmt(before.attackSeconds, 3) + " D " + fmt(before.decaySeconds, 3)
+                      + " S " + fmt(before.sustainLevel, 2) + " R "
+                      + fmt(before.releaseSeconds, 3) + ")");
+
+            // And the VOICE still gets the neutral contour, which is what
+            // bypass means to the DSP - the two answers stay different.
+            const auto played = processor.currentModEnvelopeSettings(0);
+            check("EnvelopeBypass_TheVoiceStillGetsTheNeutralContour",
+                  played.sustainLevel >= 1.0f - 1.0e-6f
+                      && played.attackSeconds < 0.01f && played.releaseSeconds < 0.05f,
+                  "a bypassed envelope plays A " + fmt(played.attackSeconds, 3) + " S "
+                      + fmt(played.sustainLevel, 2) + " R " + fmt(played.releaseSeconds, 3));
+
             setEnabled(true);
             refresh();
 

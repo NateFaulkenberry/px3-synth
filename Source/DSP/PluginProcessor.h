@@ -200,6 +200,12 @@ public:
     // without disturbing its curves.
     EnvelopeSettings currentAmpEnvelopeSettings() const;
     EnvelopeSettings currentModEnvelopeSettings(int envIndex) const;
+
+    // What the four knobs SAY, whether or not the envelope is switched on.
+    // currentModEnvelopeSettings answers a different question - what the voice
+    // should run - and substitutes a neutral contour while bypassed, which is
+    // right for the DSP and wrong for anything drawing the user's envelope.
+    EnvelopeSettings envelopeParameterSettings(int envIndex) const;
     px3::BreakpointEnvelope currentModEnvelope(int envIndex) const;
 
     // A user table is named, not indexed: the factory list has fixed positions

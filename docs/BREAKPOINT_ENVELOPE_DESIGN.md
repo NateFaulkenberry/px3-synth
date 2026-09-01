@@ -369,6 +369,20 @@ background — and a click on the background toggles the envelope off. With the
 knobs there, a click on the GRAPH read as a click on the background and
 bypassed the card.
 
+Bypass is a mute, not an edit, so the graph keeps its shape while the card is
+switched off. Getting that wrong is easy: `currentModEnvelopeSettings` answers
+"what should the VOICE run", and a bypassed modulation envelope runs a neutral
+contour that sits at full level and gets out of the way. Drawing that collapsed
+the curve the moment a card was switched off, and restored it on the way back.
+Anything showing the user their envelope asks `envelopeParameterSettings`
+instead, which is what the four knobs say whether or not the card is on.
+
+The space between the graph and the knobs comes from insetting the editor
+inside its own row, not from the row's gap, margin or padding. The editor fills
+its row and the knob stack is centred in the next one, so each of those moves
+the caption by only a fraction of what it is given — measured at 2 to 3 px per
+10. `visual.graph.bottomGap` moves it one for one.
+
 The row is asked for in code — `setAdsrKnobsVisible` — rather than read from
 UIConfig. Whether a row of controls EXISTS decides how many rows cardInner has,
 and a card whose row count depends on a file that may not have loaded yet lays
