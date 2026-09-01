@@ -34,7 +34,9 @@ A fourth oscillator mode, band-limited and importable.
 ## New: breakpoint envelopes
 
 All four envelopes (AMP and ENV 1–3) are now editable breakpoint curves rather
-than fixed ADSR.
+than fixed ADSR. Each has four separate controls — ATTACK, DECAY, SUSTAIN,
+RELEASE — where sustain has a handle of its own on the held stretch, so decay
+time and sustain level are never the same control.
 
 - Up to 16 points, each with an adjustable curve to the next.
 - Four handles - ATTACK, DECAY, SUSTAIN, RELEASE - each naming what it changes
@@ -72,6 +74,28 @@ The wavetable display is drawn by OpenGL rather than by JUCE primitives.
   LFO on the filter cutoff is visible on the control it is moving.
 
 ## Fixed
+
+- **A click on every note.** `SynthVoice::startNote` rebuilt the amp envelope
+  from the four ADSR parameters even when the envelope had been drawn past what
+  they can describe. Those parameters stop being written back at that point, so
+  every note began on a stale envelope and was corrected one block later.
+  Captured from a running standalone: the voice held a 12 ms attack while the
+  drawn envelope had a 4 second one, so each note opened at 77% level and then
+  collapsed to where the real attack had reached. It scaled with the buffer
+  size - 492 samples of 512, ~960 of 1024 - because it was always exactly one
+  block.
+- **Allocation on the audio thread at note-on.** `startNote` prepared every
+  filter on every note, and `CombResonator::prepare` sizes its delay line with
+  `vector::assign` - a 3856 byte `malloc` inside the audio callback. Filters are
+  prepared in `prepareToPlay` now. The real-time safety check had never caught
+  it because it measured only blocks with an empty MIDI buffer.
+- **A lock on the audio thread.** The on-screen keyboard handed its notes over
+  through a `MidiBuffer` behind a `CriticalSection` that `processBlock` locked
+  every block. Replaced with a lock-free single-producer ring.
+- **A retriggered note dived to silence** before its attack began - 0.4934 to
+  0.0052 in 5 ms under a long attack. The attack now starts from the level the
+  envelope had reached, mirroring what the design document already specified for
+  release.
 
 - **Wavetable stacking order.** The frames were drawn nearest-first with the
   depth test off and straight alpha, so all 47 other translucent ribbons were

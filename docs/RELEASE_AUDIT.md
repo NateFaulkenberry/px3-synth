@@ -23,13 +23,14 @@ Measured on this machine, on the release build, at the 0.4.0 cleanup pass.
 
 | Suite | Result |
 |---|---|
-| `PX3Tests` (full) | **864 passed, 0 failed** |
+| `PX3Tests` (full) | **930 passed, 0 failed** |
 | `PX3SmokeTest` | 0 failures across 6 rate/block combinations |
-| `PX3Diag rtsafety` | **0 allocations** in `processBlock`, all 8 configurations |
+| `PX3Diag rtsafety` | **0 allocations** in `processBlock`, all 8 configurations, blocks with MIDI included |
 | `PX3Diag persistence` | 0 failures; preset wins over defaults; +6.000 dB boost exact |
 | `PX3Tests glcheck` | GPU renders on a real context, no shader error |
 | `PX3Tests envcheck` | 5/5 environment criteria |
 | `PX3Tests sharpcheck` | edge measured at 0.50 px per side - antialiasing, not blur |
+| `PX3Tests attackpop` / `onsethunt` | no onset discontinuity or duck across every sweep |
 
 ## Memory
 
@@ -37,7 +38,17 @@ Heap in use returns to **within 0.0 MB of baseline** after destroying all
 instances — 0.0% of a 175.8 MB peak. Footprint stays +1.0 MB above baseline
 because the allocator keeps freed pages mapped, which is not a leak.
 
-Voice pool at 48 kHz: 0.68 MB structs + 1.76 MB heap = **2.44 MB**.
+Voice pool at 48 kHz: 0.68 MB structs + 1.76 MB heap = **2.44 MB**. The
+processor object is 130.87 KB.
+
+### A note on what rtsafety used to miss
+
+It reset its allocation counter *after* triggering notes and then measured only
+blocks carrying an empty MIDI buffer - so the one block a player notices, the
+one containing a note-on, was the one block never measured. It hid a 3856 byte
+`malloc` on the audio thread at every note. It now measures MIDI-carrying blocks
+too, and captures a backtrace at the first allocation so the next one names its
+own location.
 
 ## CPU, against the 10.67 ms budget at 48 kHz / 512 samples
 

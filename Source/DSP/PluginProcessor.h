@@ -965,7 +965,10 @@ private:
         bool done { false };
         juce::String path;
     };
-    OnsetCapture onsetCapture;
+    // Allocated only when armed. The arrays are 160 KB and the processor object
+    // is 128 KB, so holding them unconditionally would more than double it for
+    // a tool that is off in every normal run.
+    std::unique_ptr<OnsetCapture> onsetCapture;
     void writeOnsetCapture();
 
     std::atomic<float> pitchBendNormalized { 0.0f };

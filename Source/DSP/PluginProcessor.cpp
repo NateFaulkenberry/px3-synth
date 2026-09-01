@@ -1077,13 +1077,14 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     currentSampleRateHz = juce::jmax(1.0, sampleRate);
     soundingVoiceBudget.store(soundingVoiceBudgetForRate(currentSampleRateHz),
                               std::memory_order_relaxed);
-    if (! onsetCapture.armed && ! onsetCapture.done)
+    if (onsetCapture == nullptr)
     {
         if (const auto path = juce::SystemStats::getEnvironmentVariable("PX3_ONSET_CAPTURE", {});
             path.isNotEmpty())
         {
-            onsetCapture.path = path;
-            onsetCapture.armed = true;
+            onsetCapture = std::make_unique<OnsetCapture>();
+            onsetCapture->path = path;
+            onsetCapture->armed = true;
         }
     }
 
@@ -1725,13 +1726,14 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     // Start recording on the first note-on we see, so the capture is aligned
     // with the event rather than with the transport.
-    if (onsetCapture.armed && ! onsetCapture.recording && ! onsetCapture.done)
+    if (onsetCapture != nullptr && onsetCapture->armed && ! onsetCapture->recording
+        && ! onsetCapture->done)
     {
         for (const auto metadata : midiMessages)
         {
             if (metadata.getMessage().isNoteOn())
             {
-                onsetCapture.recording = true;
+                onsetCapture->recording = true;
                 break;
             }
         }
@@ -2400,7 +2402,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         // Onset capture: the final sample, the amp envelope of the first voice
         // that is sounding, and how many are. Recorded per sample so the shape
         // of the fault is visible rather than inferred from block peaks.
-        if (onsetCapture.recording && onsetCapture.written < kOnsetCaptureSamples)
+        if (onsetCapture != nullptr && onsetCapture->recording
+            && onsetCapture->written < kOnsetCaptureSamples)
         {
             auto envelopeValue = 0.0f;
             auto attack = 0.0f;
@@ -2420,18 +2423,18 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                 }
             }
 
-            const auto index = static_cast<std::size_t>(onsetCapture.written);
-            onsetCapture.output[index] = applyCeiling(masterL);
-            onsetCapture.ampEnvelope[index] = envelopeValue;
-            onsetCapture.voiceCount[index] = static_cast<float>(sounding);
-            onsetCapture.attackSeconds[index] = attack;
-            onsetCapture.heldSeconds[index] = held;
-            ++onsetCapture.written;
+            const auto index = static_cast<std::size_t>(onsetCapture->written);
+            onsetCapture->output[index] = applyCeiling(masterL);
+            onsetCapture->ampEnvelope[index] = envelopeValue;
+            onsetCapture->voiceCount[index] = static_cast<float>(sounding);
+            onsetCapture->attackSeconds[index] = attack;
+            onsetCapture->heldSeconds[index] = held;
+            ++onsetCapture->written;
 
-            if (onsetCapture.written >= kOnsetCaptureSamples)
+            if (onsetCapture->written >= kOnsetCaptureSamples)
             {
-                onsetCapture.recording = false;
-                onsetCapture.done = true;
+                onsetCapture->recording = false;
+                onsetCapture->done = true;
                 triggerAsyncUpdate();   // written on the message thread, not here
             }
         }

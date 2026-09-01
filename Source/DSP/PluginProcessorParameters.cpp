@@ -606,25 +606,26 @@ void PX3SynthAudioProcessor::handleAsyncUpdate()
 void PX3SynthAudioProcessor::writeOnsetCapture()
 {
     // Message thread. The audio thread only fills the arrays and flags them.
-    if (! onsetCapture.done || onsetCapture.path.isEmpty()) { return; }
+    if (onsetCapture == nullptr || ! onsetCapture->done
+        || onsetCapture->path.isEmpty()) { return; }
 
-    const juce::File file(onsetCapture.path);
+    const juce::File file(onsetCapture->path);
     file.deleteFile();
 
     juce::String text;
     text << "sample\toutput\tampEnvelope\tvoices\tattackSeconds\theldSeconds\n";
-    for (int i = 0; i < onsetCapture.written; ++i)
+    for (int i = 0; i < onsetCapture->written; ++i)
     {
         const auto index = static_cast<std::size_t>(i);
-        text << i << "\t" << juce::String(onsetCapture.output[index], 8)
-             << "\t" << juce::String(onsetCapture.ampEnvelope[index], 8)
-             << "\t" << juce::String(static_cast<int>(onsetCapture.voiceCount[index]))
-             << "\t" << juce::String(onsetCapture.attackSeconds[index], 4)
-             << "\t" << juce::String(onsetCapture.heldSeconds[index], 6) << "\n";
+        text << i << "\t" << juce::String(onsetCapture->output[index], 8)
+             << "\t" << juce::String(onsetCapture->ampEnvelope[index], 8)
+             << "\t" << juce::String(static_cast<int>(onsetCapture->voiceCount[index]))
+             << "\t" << juce::String(onsetCapture->attackSeconds[index], 4)
+             << "\t" << juce::String(onsetCapture->heldSeconds[index], 6) << "\n";
     }
 
     file.replaceWithText(text);
-    onsetCapture.path.clear();   // once only
+    onsetCapture->path.clear();   // once only
 }
 
 juce::String PX3SynthAudioProcessor::getLoadedWavetableName(int oscIndex) const

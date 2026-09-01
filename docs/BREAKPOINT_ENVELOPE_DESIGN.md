@@ -243,6 +243,31 @@ so the SUSTAIN level has a handle of its own. Without it the decay time and the
 sustain level are the two coordinates of one breakpoint, which is one control
 doing two jobs.
 
+## Which representation is authoritative
+
+This is the rule the whole design turns on, and getting it wrong produced the
+worst bug in the project's history - an audible click on every note that took
+eight rounds of investigation to find.
+
+    the shape is a plain ADSR   ->  the four parameters are authoritative
+    the shape is anything else  ->  the STORED SHAPE is authoritative
+
+The switch happens the moment a curve is bent or a point is added, because at
+that instant four numbers can no longer describe the envelope. From then on the
+parameters are frozen at whatever they last held - the editor stops writing
+them back, deliberately, since writing a lossy projection would destroy the
+shape.
+
+Everything that builds an envelope has to honour that. `SynthVoice::startNote`
+did not: it rebuilt from the parameters unconditionally, so every note began on
+a stale ADSR and was corrected one block later by the next settings push. With
+a drawn four second attack and parameters left at twelve milliseconds, each
+note opened at 77% level and then collapsed - which is what was heard.
+
+Anything reading an envelope should go through `currentAmpEnvelope()` or
+`currentModEnvelope()`, which apply this rule, rather than reading the
+parameters directly.
+
 Not implemented: the editor draws the curve but not a marker for where the
 envelope currently is. `setLivePosition` existed with no caller and was removed
 in the 0.4.0 cleanup rather than left looking wired.

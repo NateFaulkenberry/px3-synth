@@ -220,6 +220,35 @@ packages simply build without a background.
 Signing: Developer ID installer signing is applied when `DEVELOPER_ID_INSTALLER`
 is set. Notarization can be added later in the release pipeline.
 
+## Diagnostics
+
+Beyond the test suite, `PX3Tests` and `PX3Diag` carry diagnostic modes that
+measure things a pass/fail assertion cannot:
+
+| command | what it measures |
+|---|---|
+| `PX3Tests glcheck` | whether the GPU renderer draws, by reading pixels back |
+| `PX3Tests envcheck` | the wavetable environment, off against on |
+| `PX3Tests sharpcheck` | waveform line sharpness, by edge profile in physical pixels |
+| `PX3Tests attackpop` | the note onset - first samples, largest step, signal against the envelope |
+| `PX3Tests onsethunt` | onset discontinuity swept over MIDI offset, velocity, attack, voices |
+| `PX3Diag rtsafety` | allocations inside `processBlock`, with a backtrace at the first |
+| `PX3Diag memory` | per-object and per-voice memory |
+
+There is also an in-process onset capture for faults that only appear in a real
+host. Set `PX3_ONSET_CAPTURE` to a file path and the first note-on records 8192
+samples of the final output, the amp envelope of the voice that took the note,
+its attack setting, how far into the note its envelope believes it is, and the
+sounding voice count:
+
+```bash
+PX3_ONSET_CAPTURE=/tmp/onset.tsv "…/PX3 Synth.app/Contents/MacOS/PX3 Synth"
+```
+
+It allocates nothing unless the variable is set, and the file is written on the
+message thread. It is how the note-on click was found: the capture showed a
+voice holding a 12 ms attack while the drawn envelope had a 4 second one.
+
 ## Debug Mode
 
 The in-plugin DEBUG panel is controlled at build time and is OFF by default.
