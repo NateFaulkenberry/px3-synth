@@ -204,6 +204,8 @@ public:
     juce::StringArray debugMidiSelection() const { return midiSelection; }
     void debugRefreshMidiMappingUI() { refreshMidiMappingUI(); }
     juce::String debugKeyboardNotice() const { return pianoKeyboard.getNotice(); }
+    PianoKeyboard::BannerFit debugKeyboardBannerFit(const juce::String& text)
+    { return pianoKeyboard.debugBannerFit(text); }
 
     // For the tests: the macro strip and the assignment state.
     MacroStrip* debugMacroStrip() const { return macroStrip.get(); }

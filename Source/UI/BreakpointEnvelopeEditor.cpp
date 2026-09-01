@@ -291,8 +291,8 @@ void BreakpointEnvelopeEditor::buildCurvePath(juce::Path& path, double untilDisp
         // Sampled at roughly one point per pixel of width. A curve drawn with a
         // handful of segments looks like a polygon at exactly the moment the
         // user is bending it, which is when they are looking hardest.
-        const auto span = juce::jmax(1.0f, to.x - from.x);
-        const auto steps = juce::jlimit(2, 256, juce::roundToInt(span));
+        const auto widthPixels = juce::jmax(1.0f, to.x - from.x);
+        const auto steps = juce::jlimit(2, 256, juce::roundToInt(widthPixels));
 
         for (int s = 1; s <= steps; ++s)
         {
@@ -306,8 +306,13 @@ void BreakpointEnvelopeEditor::buildCurvePath(juce::Path& path, double untilDisp
                 // Land exactly on the stopping point rather than at the last
                 // sample before it, so the fill's edge tracks the envelope
                 // smoothly instead of stepping once per sample.
-                const auto span = toTime - fromTime;
-                const auto atStop = span > 1.0e-12 ? (untilDisplayTime - fromTime) / span : 0.0;
+                // Seconds, where the one above is pixels - two different
+                // quantities that were both called `span`, which is what the
+                // shadow warning was pointing at.
+                const auto segmentSeconds = toTime - fromTime;
+                const auto atStop = segmentSeconds > 1.0e-12
+                                      ? (untilDisplayTime - fromTime) / segmentSeconds
+                                      : 0.0;
                 const auto stopValue = a.value + (b.value - a.value)
                                                      * px3::BreakpointEnvelope::shape(
                                                            juce::jlimit(0.0, 1.0, atStop),

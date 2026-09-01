@@ -393,6 +393,32 @@ void PianoKeyboard::paint(juce::Graphics& g)
     paintBanner(g, notice.isNotEmpty() ? notice : warningStyle.text);
 }
 
+PianoKeyboard::BannerFit PianoKeyboard::debugBannerFit(const juce::String& text)
+{
+    // Draws the banner for real and reports what the DRAWING decided.
+    //
+    // The first version of this recomputed the box width alongside paintBanner,
+    // which meant it reproduced whatever paintBanner did - including sizing the
+    // box to the wrong string, the exact bug it existed to catch. The width
+    // below is the one the drawing used; only the text measurement is the
+    // test's own, and that is the comparison that matters.
+    juce::Image scratch(juce::Image::ARGB,
+                        juce::jmax(1, getWidth()),
+                        juce::jmax(1, getHeight()),
+                        true);
+    {
+        juce::Graphics g(scratch);
+        paintBanner(g, text);
+    }
+
+    BannerFit fit;
+    const juce::Font font(juce::FontOptions(warningStyle.fontSize, juce::Font::bold));
+    fit.textWidth = juce::GlyphArrangement::getStringWidth(font, text);
+    fit.paddingWidth = warningStyle.padding.horizontal();
+    fit.boxWidth = lastBannerBoxWidth;
+    return fit;
+}
+
 void PianoKeyboard::paintBanner(juce::Graphics& g, const juce::String& text)
 {
     const auto host = warningStyle.margin.shrink(keyboardArea().toFloat());
@@ -402,11 +428,19 @@ void PianoKeyboard::paintBanner(juce::Graphics& g, const juce::String& text)
     }
 
     g.setFont(juce::FontOptions(warningStyle.fontSize, juce::Font::bold));
-    const auto textWidth = juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), warningStyle.text);
+
+    // Sized to the text being DRAWN, not to the configured warning string.
+    // The banner started life showing one fixed message, so measuring that one
+    // was the same thing; it stopped being the same thing the moment MIDI and
+    // macro assignment started putting their own, longer messages in it, and
+    // those were squeezed and then cut off.
+    const auto textWidth = juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), text);
     const auto boxWidth = juce::jmin(host.getWidth(),
                                      textWidth + warningStyle.padding.horizontal());
     const auto boxHeight = juce::jmin(host.getHeight(),
                                       warningStyle.fontSize + warningStyle.padding.vertical());
+
+    lastBannerBoxWidth = boxWidth;
 
     auto box = juce::Rectangle<float>(boxWidth, boxHeight).withY(host.getCentreY() - boxHeight * 0.5f);
     if (warningStyle.alignment == juce::Justification::left)
@@ -432,11 +466,15 @@ void PianoKeyboard::paintBanner(juce::Graphics& g, const juce::String& text)
     }
 
     g.setColour(warningStyle.textColour);
+
+    // The box fits the text at full size unless the keyboard itself is too
+    // narrow for it, where the box is clamped to the available width. Shrink
+    // further rather than truncate: a message read at 70% is a message read.
     g.drawFittedText(text,
                      warningStyle.padding.shrink(box).toNearestInt(),
                      juce::Justification::centred,
                      1,
-                     0.8f);
+                     0.7f);
 
 }
 

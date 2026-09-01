@@ -168,7 +168,27 @@ private:
     float clickVelocityNorm { 0.65f };
     bool silenced { false };
     juce::String notice;
+
+    // What paintBanner last worked out, so a test can read the drawing's own
+    // numbers instead of recomputing them. Recomputing them is how the first
+    // version of this test reproduced the very bug it was meant to catch.
+    float lastBannerBoxWidth { 0.0f };
     void paintBanner(juce::Graphics& g, const juce::String& text);
+
+public:
+    // For the tests: how wide the banner would be for a given message, and how
+    // wide that message needs. The first must not be less than the second, or
+    // the message is being cut off.
+    struct BannerFit
+    {
+        float boxWidth { 0.0f };
+        float textWidth { 0.0f };
+        float paddingWidth { 0.0f };
+        bool fits() const noexcept { return boxWidth + 0.5f >= textWidth + paddingWidth; }
+    };
+    BannerFit debugBannerFit(const juce::String& text);
+
+private:
     Style style;
     bool hadSparksLastFrame { false };
     WarningStyle warningStyle;

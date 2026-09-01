@@ -15645,11 +15645,20 @@ void testDoom()
         // leaves slack that shows up as vertical gap, and it was 16px between
         // the chip lines and 50px above the dropdowns before that change.
         //
-        // The remaining gap above the dropdowns is mostly their own 12px label,
-        // which is a real element rather than slack.
+        // The remaining gap above the dropdowns is their own 12px label, which
+        // is a real element rather than slack, plus whatever paddingTop the
+        // card's config asks for. The padding is READ rather than budgeted for:
+        // this test exists to catch slack nobody asked for, and hard-coding an
+        // allowance would make it fail the next time somebody deliberately
+        // spaces the row - which is exactly what happened.
+        const auto configuredPadding =
+            config != nullptr ? config->getInt("cards.doom.cardInner.rows.row2.paddingTop", 0) : 0;
+
         check("FxCard_TopBlockIsVerticallyTight",
-              (line2Top - line1Bottom) <= 4 && (choiceTop - line2Bottom) <= 28,
-              detail);
+              (line2Top - line1Bottom) <= 4
+                  && (choiceTop - line2Bottom) <= 28 + configuredPadding,
+              detail + "\n      allowed 28 + " + juce::String(configuredPadding)
+                  + "px of configured paddingTop");
     }
 
     {
@@ -18784,6 +18793,45 @@ void testMacroSystem()
                           && ! assignableOf(strip->knob(1)),
                       juce::String("eligible knobs are marked assignable and a macro knob is ")
                           + (assignableOf(strip->knob(1)) ? "wrongly assignable" : "correctly not"));
+
+                // Every message the keyboard can show has to FIT. The banner
+                // used to size itself to the one fixed warning it was built
+                // for, so the longer assignment messages were squeezed and
+                // then cut off - and a message you cannot read is worse than
+                // no message, because it looks like something is broken.
+                {
+                    juce::StringArray clipped;
+                    juce::StringArray widths;
+
+                    juce::StringArray messages;
+                    messages.add("Select knobs, then move a MIDI control to assign");
+                    for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+                    {
+                        messages.add("Click knobs to assign them to "
+                                     + PX3SynthAudioProcessor::macroDisplayName(macro));
+                    }
+                    messages.add("Please engage an oscillator!");
+
+                    for (const auto& message : messages)
+                    {
+                        const auto fit = editor->debugKeyboardBannerFit(message);
+                        widths.add(fmt(fit.boxWidth, 0));
+                        if (! fit.fits())
+                        {
+                            clipped.add("\"" + message + "\" needs "
+                                        + fmt(fit.textWidth + fit.paddingWidth, 0)
+                                        + " px and gets " + fmt(fit.boxWidth, 0));
+                        }
+                    }
+
+                    check("MacroUi_EveryKeyboardMessageFitsItsBanner",
+                          clipped.isEmpty(),
+                          clipped.isEmpty()
+                              ? juce::String(messages.size())
+                                    + " messages fit, at widths " + widths.joinIntoString(", ")
+                                    + " px"
+                              : clipped.joinIntoString("; "));
+                }
 
                 check("MacroUi_TheKeyboardNamesTheMacroBeingAssigned",
                       editor->debugKeyboardNotice().contains("MACRO 1"),
