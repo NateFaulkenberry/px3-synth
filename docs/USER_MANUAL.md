@@ -359,15 +359,14 @@ values and their assignments.
 
 | The knob shows | Meaning |
 |---|---|
-| `MACRO 1` on a pale plate, above the spindle | one Macro drives it |
+| `MACRO 1` on a pale plate, above the spindle | Macro 1 drives it |
 | `M1+` on that plate | several Macros drive it |
 | `CC21`, amber, below the spindle | a MIDI control is mapped to it |
 | both | both, and they add together |
 | solid teal ring | assignable right now |
 | dashed amber ring | selected for MIDI Learn |
 
-**Teal is always Macro. Amber is always MIDI.** Purple belongs to the LFOs
-and envelopes, and means something else entirely.
+**Teal is always Macro. Amber is always MIDI.**
 
 ### What a Macro does
 
