@@ -47,6 +47,12 @@ public:
     void setAmpEnvelope(const EnvelopeSettings& settings);
     // The amp envelope's last output, for the onset capture.
     float currentAmpEnvelopeLevel() const noexcept { return currentAmpEnvelopeValue; }
+    // The attack the voice is holding, and how long its envelope thinks the
+    // note has been running. Together these separate "the voice was given the
+    // wrong settings" from "the voice has the right settings but its envelope
+    // is in the wrong place".
+    float currentAmpAttackSeconds() const noexcept { return envelopeSettings.attackSeconds; }
+    double currentAmpHeldSeconds() const noexcept { return ampEnvelope.heldSecondsForDebug(); }
     void setAmpEnvelopeEnabled(bool shouldEnable);
     // The shaped envelopes, when they are more than four numbers can describe.
     // Kept alongside the ADSR setters rather than replacing them: an envelope
@@ -195,6 +201,17 @@ private:
     double ampEnvelopePreparedSampleRate { 0.0 };
     double modEnvelopePreparedSampleRate { 0.0 };
     double filtersPreparedSampleRate { 0.0 };
+
+    // The shape the processor last handed this voice, and whether it has one.
+    //
+    // startNote must not rebuild the envelope from the four ADSR parameters
+    // when a full shape is in use: the parameters stop being authoritative the
+    // moment a curve is edited past what they can describe, and rebuilding
+    // from them starts the note on a different envelope entirely.
+    px3::BreakpointEnvelope shapedAmpEnvelope;
+    bool hasShapedAmpEnvelope { false };
+    std::array<px3::BreakpointEnvelope, 3> shapedModEnvelopes;
+    bool hasShapedModEnvelopes { false };
     bool ampEnvelopeEnabled { true };
 
     float vibeGlobalAmount { 0.0f };

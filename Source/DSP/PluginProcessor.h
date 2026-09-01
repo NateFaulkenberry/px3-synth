@@ -957,6 +957,8 @@ private:
         std::array<float, kOnsetCaptureSamples> output {};
         std::array<float, kOnsetCaptureSamples> ampEnvelope {};
         std::array<float, kOnsetCaptureSamples> voiceCount {};
+        std::array<float, kOnsetCaptureSamples> attackSeconds {};
+        std::array<float, kOnsetCaptureSamples> heldSeconds {};
         int written { 0 };
         bool armed { false };
         bool recording { false };

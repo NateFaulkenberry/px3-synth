@@ -612,13 +612,15 @@ void PX3SynthAudioProcessor::writeOnsetCapture()
     file.deleteFile();
 
     juce::String text;
-    text << "sample\toutput\tampEnvelope\tvoices\n";
+    text << "sample\toutput\tampEnvelope\tvoices\tattackSeconds\theldSeconds\n";
     for (int i = 0; i < onsetCapture.written; ++i)
     {
         const auto index = static_cast<std::size_t>(i);
         text << i << "\t" << juce::String(onsetCapture.output[index], 8)
              << "\t" << juce::String(onsetCapture.ampEnvelope[index], 8)
-             << "\t" << juce::String(static_cast<int>(onsetCapture.voiceCount[index])) << "\n";
+             << "\t" << juce::String(static_cast<int>(onsetCapture.voiceCount[index]))
+             << "\t" << juce::String(onsetCapture.attackSeconds[index], 4)
+             << "\t" << juce::String(onsetCapture.heldSeconds[index], 6) << "\n";
     }
 
     file.replaceWithText(text);

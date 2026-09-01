@@ -1883,6 +1883,78 @@ void testBreakpointEnvelope()
               "10000 queued events overflow the ring and the audio stays finite");
     }
 
+    // ---- a SHAPED envelope must survive note-on -----------------------------
+    // Captured from the standalone: the voice held attackSeconds 0.0120 while
+    // the user's envelope had a four second attack, and only for the first
+    // block. That is the ADSR parameters and the drawn shape disagreeing -
+    // which happens the moment the curve is edited past what the four
+    // parameters can describe, because the write-back only runs while the
+    // shape is still a plain ADSR.
+    {
+        PX3SynthAudioProcessor processor;
+        setParam(processor, "osc1Enabled", 1.0f);
+        setParam(processor, "osc2Enabled", 0.0f);
+        setParam(processor, "osc3Enabled", 0.0f);
+        setParam(processor, "subOscEnabled", 0.0f);
+        setParam(processor, "delayEnabled", 0.0f);
+        setParam(processor, "reverbEnabled", 0.0f);
+        setParam(processor, "moodEnabled", 0.0f);
+        setParam(processor, "vibeEnabled", 0.0f);
+        setChoice(processor, "osc1Mode", 0);
+
+        // The parameters say a short attack...
+        setParam(processor, "ampAttack", 0.012f);
+        setParam(processor, "ampDecay", 0.100f);
+        setParam(processor, "ampSustain", 1.00f);
+        setParam(processor, "ampRelease", 0.500f);
+
+        // ...while the stored SHAPE says four seconds, and is bent so it is no
+        // longer a plain ADSR, exactly as a dragged curve would be.
+        EnvelopeSettings slow;
+        slow.attackSeconds = 4.000f;
+        slow.decaySeconds = 0.100f;
+        slow.sustainLevel = 1.0f;
+        slow.releaseSeconds = 0.500f;
+        auto shaped = px3::BreakpointEnvelope::fromAdsr(slow);
+        shaped.setCurve(0, 0.25);
+        processor.setShapedEnvelope(0, shaped);
+
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        juce::AudioBuffer<float> buffer(2, kBlockSize);
+        juce::MidiBuffer midi;
+        for (const auto note : { 72, 76, 79 })
+        {
+            midi.addEvent(juce::MidiMessage::noteOn(1, note, 1.0f), 0);
+        }
+
+        auto firstBlock = 0.0f;
+        auto laterPeak = 0.0f;
+        for (int block = 0; block < 20; ++block)
+        {
+            buffer.clear();
+            processor.processBlock(buffer, midi);
+            midi.clear();
+
+            const auto level = buffer.getMagnitude(0, kBlockSize);
+            if (block == 0) { firstBlock = level; }
+            else { laterPeak = juce::jmax(laterPeak, level); }
+        }
+
+        // With a four second attack the first block cannot be louder than the
+        // twenty after it. If it is, the note started on the wrong envelope.
+        // A four second attack means the first block is the QUIETEST, by a wide
+        // margin. 1.5x was too loose to fail against the defect it describes -
+        // the bug measured 1.3x - which is the mistake this investigation has
+        // made more than once.
+        check("Onset_ASharedEnvelopeIsNotClobberedAtNoteOn",
+              firstBlock < laterPeak * 0.5f,
+              "first block peaks at " + fmt(firstBlock, 6)
+                  + " against " + fmt(laterPeak, 6) + " over the next 20 - "
+                  + fmt(laterPeak > 1.0e-9f ? firstBlock / laterPeak : 0.0f, 1) + "x");
+    }
+
     // ---- a note-on may not be louder than its own envelope ------------------
     //
     // The criterion comes from a real recording of the fault. In a standalone

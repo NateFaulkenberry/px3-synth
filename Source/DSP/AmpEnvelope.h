@@ -27,6 +27,9 @@ public:
     // so its timing does not change when the envelope curve changes.
     float getReleaseProgress() const;
 
+    // How far into the held phase the envelope believes it is. Diagnostic only.
+    double heldSecondsForDebug() const noexcept { return heldSeconds; }
+
 private:
     // juce::ADSR ramps the release linearly in amplitude. Perceived loudness is
     // logarithmic, so a linear ramp spends half the release time in its top 6 dB

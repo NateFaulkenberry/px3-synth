@@ -2403,12 +2403,19 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         if (onsetCapture.recording && onsetCapture.written < kOnsetCaptureSamples)
         {
             auto envelopeValue = 0.0f;
+            auto attack = 0.0f;
+            auto held = 0.0f;
             auto sounding = 0;
             for (auto* voice : typedVoices)
             {
                 if (voice != nullptr && voice->isVoiceActive())
                 {
-                    if (sounding == 0) { envelopeValue = voice->currentAmpEnvelopeLevel(); }
+                    if (sounding == 0)
+                    {
+                        envelopeValue = voice->currentAmpEnvelopeLevel();
+                        attack = voice->currentAmpAttackSeconds();
+                        held = static_cast<float>(voice->currentAmpHeldSeconds());
+                    }
                     ++sounding;
                 }
             }
@@ -2417,6 +2424,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             onsetCapture.output[index] = applyCeiling(masterL);
             onsetCapture.ampEnvelope[index] = envelopeValue;
             onsetCapture.voiceCount[index] = static_cast<float>(sounding);
+            onsetCapture.attackSeconds[index] = attack;
+            onsetCapture.heldSeconds[index] = held;
             ++onsetCapture.written;
 
             if (onsetCapture.written >= kOnsetCaptureSamples)

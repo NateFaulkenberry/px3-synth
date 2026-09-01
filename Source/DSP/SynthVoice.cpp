@@ -182,11 +182,40 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     // previous note left the smoother.
     masterGainSmoother.setCurrent(subtractiveSettings.masterGain);
 
-    ampEnvelope.setSettings(envelopeSettings);
+    // The SHAPE when there is one, the parameters otherwise.
+    //
+    // This rebuilt from envelopeSettings unconditionally, which threw away the
+    // shape the processor had just handed the voice. Once a curve is edited
+    // past what four numbers can describe, the parameters are no longer
+    // written back - so they keep whatever they last held, and the note began
+    // on that instead.
+    //
+    // Captured from a real host: the voice held attackSeconds 0.0120 while the
+    // drawn envelope had a four second attack, and only for its first block -
+    // the next block's push reinstated the shape. A 12 ms attack is ~90% done
+    // by the end of a 512 sample block, which is the 0.771 the capture read,
+    // and then the level collapsed to where the real attack had got to. That
+    // is the click.
+    if (hasShapedAmpEnvelope)
+    {
+        ampEnvelope.setEnvelope(shapedAmpEnvelope);
+    }
+    else
+    {
+        ampEnvelope.setSettings(envelopeSettings);
+    }
     ampEnvelope.noteOn();
     for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
     {
-        modEnvelopeGenerators[envIndex].setSettings(modEnvelopeSettings[envIndex]);
+        // The shape when there is one, for the same reason as the amp envelope.
+        if (hasShapedModEnvelopes)
+        {
+            modEnvelopeGenerators[envIndex].setEnvelope(shapedModEnvelopes[envIndex]);
+        }
+        else
+        {
+            modEnvelopeGenerators[envIndex].setSettings(modEnvelopeSettings[envIndex]);
+        }
         if (modEnvelopeEnabled[envIndex])
         {
             modEnvelopeGenerators[envIndex].noteOn();
@@ -1105,6 +1134,12 @@ void SynthVoice::diagNoteEnvelopeInactiveClear(int sampleIndex)
 void SynthVoice::setAmpEnvelope(const EnvelopeSettings& settings)
 {
     envelopeSettings = settings;
+
+    // The processor pushes the ADSR settings every block and follows them with
+    // the full shape only when there is one, so this is where "there is no
+    // shape any more" is learned.
+    hasShapedAmpEnvelope = false;
+
     if (ampEnvelopeEnabled)
     {
         ampEnvelope.setSettings(settings);
@@ -1113,6 +1148,9 @@ void SynthVoice::setAmpEnvelope(const EnvelopeSettings& settings)
 
 void SynthVoice::setAmpEnvelopeShape(const px3::BreakpointEnvelope& envelope)
 {
+    shapedAmpEnvelope = envelope;
+    hasShapedAmpEnvelope = true;
+
     if (ampEnvelopeEnabled)
     {
         ampEnvelope.setEnvelope(envelope);
@@ -1121,6 +1159,9 @@ void SynthVoice::setAmpEnvelopeShape(const px3::BreakpointEnvelope& envelope)
 
 void SynthVoice::setModEnvelopeShapes(const std::array<px3::BreakpointEnvelope, 3>& envelopes)
 {
+    shapedModEnvelopes = envelopes;
+    hasShapedModEnvelopes = true;
+
     for (std::size_t i = 0; i < modEnvelopeGenerators.size(); ++i)
     {
         if (modEnvelopeEnabled[i])
@@ -1148,6 +1189,7 @@ void SynthVoice::setModEnvelopeSettings(const std::array<EnvelopeSettings, 3>& s
 {
     modEnvelopeSettings = settings;
     modEnvelopeEnabled = enabled;
+    hasShapedModEnvelopes = false;
 
     for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
     {
