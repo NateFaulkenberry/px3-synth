@@ -458,7 +458,13 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
     // Shaded rather than marked with a line, because it is a REGION - the
     // envelope holds here for as long as the key is down, which a single
     // vertical rule does not say.
-    const auto sustainPoint = envelope.getSustainPoint();
+    //
+    // Only in ADSR mode. A breakpoint envelope has no sustain - it never holds
+    // - so shading the graph from one of its points to the right edge would be
+    // drawing a stage that does not exist. The model still keeps a sustain
+    // index because the point is structural and may not be deleted, but that
+    // is bookkeeping, not something to show.
+    const auto sustainPoint = envelope.isBreakpointMode() ? -1 : envelope.getSustainPoint();
     if (sustainPoint >= 0 && sustainPoint < envelope.getPointCount())
     {
         const auto sustainX = pointToScreen(sustainPoint).x;

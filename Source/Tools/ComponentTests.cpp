@@ -969,6 +969,193 @@ void testBreakpointEnvelope()
                   + fmt(generatorReference[12], 4));
     }
 
+    // ---- no sustain region in Breakpoint mode -------------------------------
+    //
+    // The shaded band from the sustain point to the right edge means "the
+    // envelope holds here for as long as the key is down". A breakpoint
+    // envelope never holds, so drawing it there states something untrue about
+    // what the DSP will do.
+    {
+        EnvelopeSettings settings;
+        settings.attackSeconds = 0.20f;
+        settings.decaySeconds = 0.30f;
+        settings.sustainLevel = 0.5f;
+        settings.releaseSeconds = 0.40f;
+
+        const auto sample = [](px3::BreakpointEnvelope::Mode mode)
+        {
+            EnvelopeSettings local;
+            local.attackSeconds = 0.20f;
+            local.decaySeconds = 0.30f;
+            local.sustainLevel = 0.5f;
+            local.releaseSeconds = 0.40f;
+
+            auto shape = px3::BreakpointEnvelope::fromAdsr(local);
+            shape.setMode(mode);
+
+            BreakpointEnvelopeEditor graph;
+            graph.setSize(400, 200);
+            graph.setEnvelope(shape);
+
+            const auto image = graph.createComponentSnapshot(graph.getLocalBounds());
+
+            // Top right: inside the shaded region in ADSR mode, and well clear
+            // of the curve, which has fallen to silence by then.
+            const auto insideRegion = image.getPixelAt(380, 14).getBrightness();
+            // Top left: outside the region in both modes, so it says whether
+            // anything ELSE changed between the two renders.
+            const auto outsideRegion = image.getPixelAt(12, 14).getBrightness();
+            return std::pair<float, float> { insideRegion, outsideRegion };
+        };
+
+        const auto adsr = sample(px3::BreakpointEnvelope::Mode::adsr);
+        const auto bp = sample(px3::BreakpointEnvelope::Mode::breakpoint);
+
+        check("EnvBp_TheSustainRegionIsDrawnInAdsrMode",
+              adsr.first > adsr.second + 0.004f,
+              "in ADSR mode the band reads " + fmt(adsr.first, 4) + " against "
+                  + fmt(adsr.second, 4) + " outside it");
+
+        check("EnvBp_NoSustainRegionIsDrawnInBreakpointMode",
+              std::abs(bp.first - bp.second) < 1.0e-4f,
+              "in Breakpoint mode the same band reads " + fmt(bp.first, 4) + " against "
+                  + fmt(bp.second, 4) + " outside it");
+
+        check("EnvBp_TheRestOfTheGraphIsUnchangedBetweenModes",
+              std::abs(adsr.second - bp.second) < 1.0e-4f,
+              "outside the region both modes read " + fmt(adsr.second, 4));
+    }
+
+    // ---- ENV 1-3 travel the same trajectory ---------------------------------
+    //
+    // The mod envelopes are a different class from AMP ENV, so nothing about
+    // the amp envelope's behaviour carries over on its own.
+    {
+        constexpr double kRate = 1000.0;
+
+        EnvelopeSettings base;
+        base.attackSeconds = 0.10f;
+        base.decaySeconds = 0.20f;
+        base.sustainLevel = 0.5f;
+        base.releaseSeconds = 0.30f;
+
+        auto twoPeaks = px3::BreakpointEnvelope::fromAdsr(base);
+        {
+            px3::BreakpointEnvelope::Point points[7] = {
+                { 0.00, 0.0, 0.0 },
+                { 0.10, 1.0, 0.0 },
+                { 0.25, 0.0, 0.0 },
+                { 0.30, 0.0, 0.0 },
+                { 0.45, 0.9, 0.0 },
+                { 0.70, 0.3, 0.0 },
+                { 1.00, 0.0, 0.0 }
+            };
+            twoPeaks.setPoints(points, 7, 2);
+            twoPeaks.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+        }
+
+        const auto trace = [&](bool releaseInTheGap)
+        {
+            EnvelopeGenerator env;
+            env.prepare(kRate);
+            env.setEnvelope(twoPeaks);
+            env.noteOn();
+
+            struct { float firstPeak, gap, secondPeak, end; bool stillActive; } out {};
+            const auto at = [](double seconds) { return static_cast<int>(std::lround(seconds * kRate)); };
+
+            for (int i = 0; i <= at(1.02); ++i)
+            {
+                if (releaseInTheGap && i == at(0.27)) { env.noteOff(); }
+                const auto value = env.getNextSample();
+                if (i == at(0.10)) { out.firstPeak = value; }
+                if (i == at(0.27)) { out.gap = value; }
+                if (i == at(0.45)) { out.secondPeak = value; }
+                if (i == at(1.02)) { out.end = value; }
+            }
+            out.stillActive = env.isActive();
+            return out;
+        };
+
+        const auto held = trace(false);
+        check("EnvBp_AModEnvelopeTravelsTheWholeTrajectory",
+              held.firstPeak > 0.8f && held.gap < 1.0e-5f && held.secondPeak > 0.7f
+                  && held.end < 0.05f,
+              "ENV reads " + fmt(held.firstPeak, 3) + " at the first peak, " + fmt(held.gap, 5)
+                  + " in the silent gap, " + fmt(held.secondPeak, 3) + " at the second peak and "
+                  + fmt(held.end, 3) + " at the end");
+
+        check("EnvBp_AModEnvelopeFinishesWithTheKeyStillDown",
+              ! held.stillActive,
+              held.stillActive ? "ENV is still running after the envelope ended"
+                               : "ENV ended and stopped running, key still down");
+
+        const auto released = trace(true);
+        check("EnvBp_ReleasingAModEnvelopeDoesNotTruncateIt",
+              released.secondPeak > 0.7f,
+              "released into the silent gap, ENV still reaches " + fmt(released.secondPeak, 3)
+                  + " at its second peak");
+    }
+
+    // ---- both modes' state survives a session, whichever is active ----------
+    //
+    // Saving in ADSR mode and keeping the drawing is covered elsewhere. This is
+    // the mirror: saved while the BREAKPOINT shape is the live one, the ADSR
+    // put aside - curves and all - has to come back too.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        setParam(processor, "env1Attack", 0.250f);
+        setParam(processor, "env1Sustain", 0.35f);
+        {
+            auto bent = processor.getShapedEnvelope(1);
+            bent.setCurve(0, 0.55);
+            bent.setCurve(2, -0.45);
+            processor.setShapedEnvelope(1, bent);
+        }
+
+        processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
+        {
+            auto drawn = processor.getShapedEnvelope(1);
+            drawn.addPoint(0.40, 0.85);
+            drawn.addPoint(0.62, 0.10);
+            processor.setShapedEnvelope(1, drawn);
+        }
+
+        juce::MemoryBlock saved;
+        processor.getStateInformation(saved);
+
+        PX3SynthAudioProcessor reloaded;
+        reloaded.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        reloaded.prepareToPlay(kSampleRate, kBlockSize);
+        reloaded.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+
+        const auto liveAfter = reloaded.getShapedEnvelope(1);
+        check("EnvBp_TheActiveBreakpointShapeSurvivesTheSession",
+              liveAfter.isBreakpointMode() && liveAfter.getPointCount() == 6,
+              "it reloads in Breakpoint mode on " + juce::String(liveAfter.getPointCount())
+                  + " points");
+
+        reloaded.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::adsr);
+        const auto adsrAfter = reloaded.currentModEnvelope(0);
+
+        check("EnvBp_TheStoredAdsrSurvivesASaveMadeInBreakpointMode",
+              adsrAfter.getPointCount() == 4
+                  && std::abs(adsrAfter.getPoint(0).curveToNext - 0.55) < 1.0e-9
+                  && std::abs(adsrAfter.getPoint(2).curveToNext + 0.45) < 1.0e-9,
+              "the ADSR comes back over " + juce::String(adsrAfter.getPointCount())
+                  + " points bending " + fmt(static_cast<float>(adsrAfter.getPoint(0).curveToNext), 3)
+                  + " / " + fmt(static_cast<float>(adsrAfter.getPoint(2).curveToNext), 3));
+
+        const auto settingsAfter = reloaded.envelopeParameterSettings(0);
+        check("EnvBp_TheStoredAdsrParametersSurviveThatSaveToo",
+              std::abs(settingsAfter.attackSeconds - 0.250f) < 1.0e-4f
+                  && std::abs(settingsAfter.sustainLevel - 0.35f) < 1.0e-4f,
+              "A " + fmt(settingsAfter.attackSeconds, 3) + " S " + fmt(settingsAfter.sustainLevel, 2));
+    }
+
     // ---- switching is non-destructive in both directions --------------------
     {
         PX3SynthAudioProcessor processor;

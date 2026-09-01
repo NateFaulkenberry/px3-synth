@@ -45,6 +45,12 @@ void EnvelopeGenerator::noteOff()
     // more than an amplitude one may.
     // A one-shot envelope ignores note-off and plays its trajectory out. The
     // key triggered it; it does not gate it.
+    //
+    // What actually keeps it travelling is the one-shot branch in
+    // getNextSample, which is taken before inRelease is ever consulted. This
+    // early return is here so no release state is written that nothing will
+    // read - a stale anchor sitting behind a live inRelease flag is the kind
+    // of thing that comes back once something else changes.
     if (snapshot.isOneShot())
     {
         noteHeld = false;

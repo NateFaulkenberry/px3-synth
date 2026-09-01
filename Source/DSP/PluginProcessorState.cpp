@@ -161,8 +161,18 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
             // Both modes' state is written, not only the active one, so a
             // preset saved in ADSR mode with a breakpoint envelope behind it
             // reopens with both and switching reveals exactly what was stored.
-            const auto& retained = breakpointShapes[static_cast<std::size_t>(index)];
-            const auto hasRetained = breakpointInitialised[static_cast<std::size_t>(index)];
+            // The retained child carries whichever mode is NOT active - the
+            // ADSR put aside while a drawing is being played, or the drawing
+            // put aside while the ADSR is. It used to carry the breakpoint
+            // shape either way, which in Breakpoint mode wrote a second copy
+            // of the active shape and left the stored ADSR's curves nowhere to
+            // go: they came back straight.
+            const auto inBreakpoint = envelope.isBreakpointMode();
+            const auto& retained = inBreakpoint
+                                       ? adsrShapes[static_cast<std::size_t>(index)]
+                                       : breakpointShapes[static_cast<std::size_t>(index)];
+            const auto hasRetained
+                = inBreakpoint || breakpointInitialised[static_cast<std::size_t>(index)];
 
             // A plain straight-line ADSR in ADSR mode says nothing the four
             // parameters do not already say, and is rebuilt from them on load.
@@ -187,6 +197,7 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
             {
                 juce::ValueTree keep(kEnvelopeRetainedShapeId);
                 keep.setProperty(kEnvelopeShapeSustainId, retained.getSustainPoint(), nullptr);
+                keep.setProperty(kEnvelopeShapeModeId, inBreakpoint ? "adsr" : "breakpoint", nullptr);
                 writePoints(keep, retained);
                 node.addChild(keep, -1, nullptr);
             }
@@ -776,9 +787,23 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                         retained.setPoints(retainedPoints.data(),
                                            static_cast<int>(retainedPoints.size()),
                                            static_cast<int>(keep.getProperty(kEnvelopeShapeSustainId, 2)));
-                        retained.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
-                        breakpointShapes[static_cast<std::size_t>(index)] = retained;
-                        breakpointInitialised[static_cast<std::size_t>(index)] = true;
+                        // A child with no mode is the breakpoint shape, which
+                        // is the only thing this child used to hold.
+                        const auto retainedIsAdsr
+                            = keep.getProperty(kEnvelopeShapeModeId).toString() == "adsr";
+                        retained.setMode(retainedIsAdsr
+                                             ? px3::BreakpointEnvelope::Mode::adsr
+                                             : px3::BreakpointEnvelope::Mode::breakpoint);
+
+                        if (retainedIsAdsr)
+                        {
+                            adsrShapes[static_cast<std::size_t>(index)] = retained;
+                        }
+                        else
+                        {
+                            breakpointShapes[static_cast<std::size_t>(index)] = retained;
+                            breakpointInitialised[static_cast<std::size_t>(index)] = true;
+                        }
                     }
                 }
 
