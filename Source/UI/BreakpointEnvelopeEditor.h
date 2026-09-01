@@ -32,6 +32,11 @@ public:
 
 
     void setEnvelope(const px3::BreakpointEnvelope& envelope);
+
+    // The mode the envelope is in. Read from the envelope rather than held
+    // separately, so the editor cannot disagree with the shape it is drawing.
+    px3::BreakpointEnvelope::Mode getMode() const noexcept { return envelope.getMode(); }
+    bool isBreakpointMode() const noexcept { return envelope.isBreakpointMode(); }
     const px3::BreakpointEnvelope& getEnvelope() const noexcept { return envelope; }
 
     // How far the envelope being played has got, in its OWN seconds. Fed from

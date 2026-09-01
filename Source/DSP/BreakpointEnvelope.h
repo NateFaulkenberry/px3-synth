@@ -56,6 +56,41 @@ public:
 
     // True when this is still four points in the ADSR arrangement, and so is
     // fully described by the four parameters.
+    // Which representation the user chose.
+    //
+    // ADSR is this same structure with a topology constraint: four points, no
+    // adding, no removing, the peak pinned at the top, and the four parameters
+    // owning the times and the sustain level while the shape owns the curves.
+    // Breakpoint lifts the constraint and makes the shape the whole truth.
+    //
+    // The mode lives HERE rather than beside the envelope so it travels with
+    // the shape through every path that already carries one - the editor, the
+    // processor's slot, serialization, mode switching - with no second thing to
+    // keep in step.
+    enum class Mode
+    {
+        adsr,
+        breakpoint
+    };
+
+    Mode getMode() const noexcept { return mode; }
+    void setMode(Mode newMode) noexcept { mode = newMode; }
+    bool isBreakpointMode() const noexcept { return mode == Mode::breakpoint; }
+
+    // What an envelope with no recorded mode means. Every preset and project
+    // written before modes existed reaches this: four points holding at index
+    // two behaved as an ADSR, anything else behaved as a free-form shape, so
+    // that is the mode it takes. Existing presets keep the behaviour they have.
+    static Mode impliedModeFor(const BreakpointEnvelope& envelope) noexcept
+    {
+        return envelope.isAdsrSkeleton() ? Mode::adsr : Mode::breakpoint;
+    }
+
+    // Reduce an arbitrary shape to four points, keeping what four points can
+    // keep. Used when switching to ADSR mode; the original is retained
+    // separately, so this is never the only copy.
+    BreakpointEnvelope reducedToAdsr() const;
+
     bool isPlainAdsr() const;
 
     // The four-point skeleton, curves and all. isPlainAdsr is this AND every
@@ -205,6 +240,7 @@ private:
     std::array<Point, kMaxPoints> points {};
     int pointCount { 0 };
     int sustainPoint { 0 };
+    Mode mode { Mode::adsr };
 };
 
 // Any envelope, with a hold stage collapsed out of it.

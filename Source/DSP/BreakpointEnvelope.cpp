@@ -98,6 +98,50 @@ EnvelopeSettings BreakpointEnvelope::toAdsr() const
     return settings;
 }
 
+BreakpointEnvelope BreakpointEnvelope::reducedToAdsr() const
+{
+    // Four points that keep what four points can keep: the attack reaches the
+    // highest point in the held part, the sustain takes the sustain point's own
+    // time and level, the release ends where the envelope ended, and the three
+    // curves come from the corresponding segments.
+    //
+    // Lossy by definition - sixteen points do not fit in four - which is why
+    // the caller retains the original rather than replacing it.
+    if (pointCount <= 1) { return *this; }
+
+    const auto sustainIndex = juce::jlimit(1, pointCount - 2, sustainPoint);
+
+    // The tallest point up to the sustain is the peak the attack aims at.
+    auto peakIndex = 1;
+    for (int i = 1; i <= sustainIndex; ++i)
+    {
+        if (points[static_cast<std::size_t>(i)].value
+            > points[static_cast<std::size_t>(peakIndex)].value)
+        {
+            peakIndex = i;
+        }
+    }
+
+    const auto& peak = points[static_cast<std::size_t>(peakIndex)];
+    const auto& sustain = points[static_cast<std::size_t>(sustainIndex)];
+    const auto& last = points[static_cast<std::size_t>(pointCount - 1)];
+
+    BreakpointEnvelope out;
+    out.pointCount = 4;
+    out.sustainPoint = 2;
+    out.mode = Mode::adsr;
+
+    out.points[0] = { 0.0, 0.0, points[0].curveToNext };
+    out.points[1] = { juce::jmax(0.0, peak.timeSeconds), 1.0, peak.curveToNext };
+    out.points[2] = { juce::jmax(out.points[1].timeSeconds, sustain.timeSeconds),
+                      sustain.value,
+                      sustain.curveToNext };
+    out.points[3] = { juce::jmax(out.points[2].timeSeconds, last.timeSeconds), 0.0, 0.0 };
+
+    out.sortAndClamp();
+    return out;
+}
+
 bool BreakpointEnvelope::isPlainAdsr() const
 {
     if (pointCount != 4 || sustainPoint != 2)
@@ -179,7 +223,10 @@ void BreakpointEnvelope::anchorStructuralPoints()
     //
     // A free-form envelope has no peak to speak of, so this applies only where
     // the skeleton is intact.
-    if (pointCount == 4 && sustainPoint == 2)
+    // Only in ADSR mode. There, ATTACK is a duration and its handle moves in
+    // time along the top. In Breakpoint mode point 1 is an ordinary point and a
+    // drawn envelope may rise to any level it likes.
+    if (mode == Mode::adsr && pointCount == 4 && sustainPoint == 2)
     {
         points[1].value = 1.0;
     }
@@ -244,6 +291,15 @@ void BreakpointEnvelope::setPoints(const Point* newPoints, int count, int newSus
 
 int BreakpointEnvelope::addPoint(double timeSeconds, double value)
 {
+    // Topology is what the mode constrains. ADSR is four points and stays four
+    // points - that is the whole difference between the modes, and enforcing it
+    // in the model rather than in the editor means no other caller can get
+    // around it either.
+    if (mode == Mode::adsr)
+    {
+        return -1;
+    }
+
     if (pointCount >= kMaxPoints)
     {
         return -1;
@@ -290,6 +346,11 @@ int BreakpointEnvelope::addPoint(double timeSeconds, double value)
 
 bool BreakpointEnvelope::canRemovePoint(int index) const
 {
+    if (mode == Mode::adsr)
+    {
+        return false;   // the four stages are the envelope; none of them goes
+    }
+
     if (index <= 0 || index >= pointCount)
     {
         return false;   // the anchor is structural

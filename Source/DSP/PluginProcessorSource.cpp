@@ -162,6 +162,48 @@ EnvelopeSettings PX3SynthAudioProcessor::currentAmpEnvelopeSettings() const
     return settings;
 }
 
+px3::BreakpointEnvelope::Mode PX3SynthAudioProcessor::getEnvelopeMode(int slot) const
+{
+    return shapedEnvelopes[static_cast<std::size_t>(
+               juce::jlimit(0, kShapedEnvelopeCount - 1, slot))].getMode();
+}
+
+void PX3SynthAudioProcessor::setEnvelopeMode(int slot, px3::BreakpointEnvelope::Mode mode)
+{
+    const auto index = static_cast<std::size_t>(juce::jlimit(0, kShapedEnvelopeCount - 1, slot));
+    auto& envelope = shapedEnvelopes[index];
+
+    if (envelope.getMode() == mode) { return; }
+
+    if (mode == px3::BreakpointEnvelope::Mode::breakpoint)
+    {
+        // Switching TO breakpoint. If there is a shape waiting from a previous
+        // visit, restore it exactly; otherwise carry the ADSR shape across,
+        // curves and all, so the editor opens on what was already on screen.
+        if (hasRetainedBreakpointShape[index])
+        {
+            envelope = retainedBreakpointShapes[index];
+            envelope.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+            hasRetainedBreakpointShape[index] = false;
+        }
+        else
+        {
+            envelope.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+        }
+
+        return;
+    }
+
+    // Switching TO adsr. Four points cannot hold sixteen, so the shape is
+    // reduced - and the original is kept, so this is never the only copy and
+    // switching back restores it rather than approximating it.
+    retainedBreakpointShapes[index] = envelope;
+    retainedBreakpointShapes[index].setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+    hasRetainedBreakpointShape[index] = true;
+
+    envelope = envelope.reducedToAdsr();
+}
+
 px3::BreakpointEnvelope PX3SynthAudioProcessor::currentAmpEnvelope() const
 {
     // A skeleton takes its times and level from the parameters and keeps its
@@ -169,19 +211,23 @@ px3::BreakpointEnvelope PX3SynthAudioProcessor::currentAmpEnvelope() const
     // Testing isPlainAdsr instead meant a single curve handle being dragged
     // froze the envelope against everything the parameters did afterwards -
     // automation and macros alike.
+    // In ADSR mode the parameters own the times and the level and the shape
+    // owns the curves. In Breakpoint mode the shape owns everything and the
+    // parameters are neither read nor written - which is the whole point of
+    // having a mode, and what stops the knobs going stale.
     const auto& stored = shapedEnvelopes[0];
-    return stored.isAdsrSkeleton()
-               ? stored.withAdsrApplied(currentAmpEnvelopeSettings())
-               : stored;
+    return stored.isBreakpointMode()
+               ? stored
+               : stored.withAdsrApplied(currentAmpEnvelopeSettings());
 }
 
 px3::BreakpointEnvelope PX3SynthAudioProcessor::currentModEnvelope(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     const auto& stored = shapedEnvelopes[static_cast<std::size_t>(idx + 1)];
-    return stored.isAdsrSkeleton()
-             ? stored.withAdsrApplied(currentModEnvelopeSettings(idx))
-             : stored;
+    return stored.isBreakpointMode()
+             ? stored
+             : stored.withAdsrApplied(currentModEnvelopeSettings(idx));
 }
 
 void PX3SynthAudioProcessor::publishEnvelopeProgress()

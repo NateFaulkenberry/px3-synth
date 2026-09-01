@@ -643,6 +643,8 @@ void testBreakpointEnvelope()
         envelope.setCurve(0, 0.5);   // bend the attack
 
         const auto before = envelope.getPointCount();
+        // Adding points is a Breakpoint-mode capability.
+        envelope.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
         const auto added = envelope.addPoint(envelope.getPoint(1).timeSeconds * 0.5, 0.4);
 
         check("Envelope_AddedPointSplitsTheSegmentItLandsIn",
@@ -662,6 +664,7 @@ void testBreakpointEnvelope()
     // ---- removal protects what the envelope needs ---------------------------
     {
         auto envelope = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+        envelope.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
         envelope.addPoint(0.001, 0.5);
 
         check("Envelope_TheAnchorCannotBeRemoved", ! envelope.removePoint(0),
@@ -839,6 +842,7 @@ void testBreakpointEnvelope()
             auto envelope = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
             for (int i = 0; i < 40; ++i)
             {
+                envelope.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
                 envelope.addPoint(0.001 + i * 0.0001, 0.5);
             }
             if (envelope.getPointCount() > px3::BreakpointEnvelope::kMaxPoints)
@@ -861,7 +865,9 @@ void testBreakpointEnvelope()
         // Points stacked at the same instant.
         {
             auto envelope = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+            envelope.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
             envelope.addPoint(0.005, 0.3);
+            envelope.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
             envelope.addPoint(0.005, 0.9);
             px3::BreakpointEnvelope::Snapshot snapshot;
             snapshot.rebuild(envelope, kSampleRate);
@@ -969,6 +975,8 @@ void testBreakpointEnvelope()
 
         // A shape the four ADSR numbers cannot describe.
         auto shaped = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+        // Adding points is a Breakpoint-mode capability.
+        shaped.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
         const auto extra = shaped.addPoint(0.02, 0.35);
         shaped.setCurve(0, 0.62);
         if (extra >= 0) { shaped.setCurve(extra, -0.41); }
@@ -2244,6 +2252,7 @@ void testBreakpointEnvelope()
 
         auto shaped = px3::BreakpointEnvelope::fromAdsr(slow);
         shaped.setCurve(0, 0.25);
+        shaped.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
         shaped.addPoint(2.000, 0.55);        // free-form: the parameters cannot say this
         processor.setShapedEnvelope(0, shaped);
 
@@ -2749,6 +2758,8 @@ void testBreakpointEnvelope()
             // And a shape the four parameters CANNOT describe, which is the one
             // with no parameters to be rebuilt from if anything drops it.
             auto freeForm = px3::BreakpointEnvelope::fromAdsr(edited);
+            // Adding points is a Breakpoint-mode capability.
+            freeForm.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
             freeForm.addPoint(0.320, 0.85);
             processor.setShapedEnvelope(1, freeForm);
             refresh();
@@ -3134,6 +3145,7 @@ void testBreakpointEnvelope()
         // Once a point has been ADDED there is no ADSR left to apply, so the
         // knobs stop writing rather than flattening the shape into four points.
         auto freeForm = px3::BreakpointEnvelope::fromAdsr(settings);
+        freeForm.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
         freeForm.addPoint(0.150, 0.8);
         const auto untouched = freeForm.withAdsrApplied(turned);
         check("EnvelopeKnobs_TheyStopWritingOnceTheShapeIsFreeForm",
@@ -3513,6 +3525,8 @@ void testBreakpointEnvelope()
             // being true and are dropped rather than left saying the wrong
             // thing.
             auto edited = labelled.getEnvelope();
+            // Adding points is a Breakpoint-mode capability.
+            edited.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
             edited.addPoint(0.15, 0.8);
             labelled.setEnvelope(edited);
             check("EnvelopeEditor_LabelsStopOnceTheShapeIsNoLongerAdsr",
@@ -3577,6 +3591,13 @@ void testBreakpointEnvelope()
                 return juce::Point<float>(200.0f, 100.0f);
             }();
 
+            // Adding points by double-click is a Breakpoint-mode capability.
+            {
+                auto breakpointShape = editor.getEnvelope();
+                breakpointShape.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+                editor.setEnvelope(breakpointShape);
+            }
+
             const auto before = editor.getEnvelope().getPointCount();
             editor.mouseDoubleClick(makeEvent(emptySpot, 2));
             const auto afterAdd = editor.getEnvelope().getPointCount();
@@ -3639,6 +3660,8 @@ void testBreakpointEnvelope()
             // A free-form envelope has no stages to name, so nothing is locked.
             {
                 auto freeform = px3::BreakpointEnvelope::fromAdsr(settings);
+                // Adding points is a Breakpoint-mode capability.
+                freeform.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
                 freeform.addPoint(0.15, 0.7);
 
                 BreakpointEnvelopeEditor loose;
@@ -3800,8 +3823,13 @@ void testBreakpointEnvelope()
             BreakpointEnvelopeEditor first, second;
             first.setSize(400, 200);
             second.setSize(400, 200);
-            first.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
-            second.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+
+            // Both in Breakpoint mode, since the point of the test is that
+            // adding a point to one leaves the other alone.
+            auto breakpointShape = px3::BreakpointEnvelope::fromAdsr(settings);
+            breakpointShape.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+            first.setEnvelope(breakpointShape);
+            second.setEnvelope(breakpointShape);
 
             juce::Point<float> spot { 200.0f, 40.0f };
             for (int y = 20; y < 180 && first.grabAt(spot).target
@@ -4013,6 +4041,8 @@ void testBreakpointEnvelope()
         adsr.releaseSeconds = 0.220f;
 
         auto shape = px3::BreakpointEnvelope::fromAdsr(adsr);
+        // Adding points is a Breakpoint-mode capability.
+        shape.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
         const auto added = shape.addPoint(0.060, 0.5);
         juce::ignoreUnused(added);
 
@@ -4075,7 +4105,9 @@ void testBreakpointEnvelope()
             out.emplace_back("curved", curved);
 
             auto freeForm = px3::BreakpointEnvelope::fromAdsr(adsr);
+            freeForm.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
             freeForm.addPoint(0.060, 0.5);
+            freeForm.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
             freeForm.addPoint(0.200, 0.9);
             out.emplace_back("free-form", freeForm);
 
@@ -4227,6 +4259,7 @@ void testBreakpointEnvelope()
         auto shaped = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
         for (int i = 0; i < 8; ++i)
         {
+            shaped.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
             const auto added = shaped.addPoint(0.002 + i * 0.004, 0.4 + 0.05 * i);
             if (added >= 0) { shaped.setCurve(added, i % 2 == 0 ? 0.7 : -0.6); }
         }
@@ -4256,6 +4289,8 @@ void testBreakpointEnvelope()
     {
         auto first = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
         auto second = first;
+        // Adding points is a Breakpoint-mode capability.
+        second.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
         second.addPoint(0.01, 0.5);
         second.setCurve(0, 0.9);
 
@@ -18535,6 +18570,432 @@ void testStereoSpread()
 // FACTORY PRESETS
 // ============================================================================
 
+// Envelope modes. See docs/envelope-editor-design.md.
+void testEnvelopeModes()
+{
+    suite("ENVELOPE MODES");
+
+    constexpr double kRate = 48000.0;
+    constexpr int kBlock = 256;
+
+    const auto adsrSettings = []
+    {
+        EnvelopeSettings settings;
+        settings.attackSeconds = 0.200f;
+        settings.decaySeconds = 0.300f;
+        settings.sustainLevel = 0.60f;
+        settings.releaseSeconds = 0.400f;
+        return settings;
+    }();
+
+    // ---- ADSR mode is a topology constraint ---------------------------------
+    {
+        auto envelope = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+
+        check("EnvMode_ADSRIsTheDefault",
+              envelope.getMode() == px3::BreakpointEnvelope::Mode::adsr
+                  && ! envelope.isBreakpointMode() && envelope.getPointCount() == 4,
+              "a new envelope has " + juce::String(envelope.getPointCount())
+                  + " points and is in "
+                  + juce::String(envelope.isBreakpointMode() ? "Breakpoint" : "ADSR") + " mode");
+
+        const auto refused = envelope.addPoint(0.25, 0.5);
+        check("EnvMode_ADSRRefusesExtraPoints",
+              refused < 0 && envelope.getPointCount() == 4,
+              "adding a point returned " + juce::String(refused) + " and left "
+                  + juce::String(envelope.getPointCount()) + " points");
+
+        juce::StringArray removable;
+        for (int i = 0; i < envelope.getPointCount(); ++i)
+        {
+            if (envelope.canRemovePoint(i)) { removable.add(juce::String(i)); }
+        }
+        check("EnvMode_ADSRRefusesToRemoveAnyPoint",
+              removable.isEmpty(),
+              removable.isEmpty() ? "none of the four stages can be removed"
+                                  : "these could be removed: " + removable.joinIntoString(", "));
+
+        // Curves are fully available - the topology is fixed, the shape is not.
+        envelope.setCurve(0, 0.7);
+        envelope.setCurve(1, -0.4);
+        envelope.setCurve(2, 0.55);
+        check("EnvMode_ADSRKeepsItsCurves",
+              std::abs(envelope.getPoint(0).curveToNext - 0.7) < 1.0e-9
+                  && std::abs(envelope.getPoint(1).curveToNext + 0.4) < 1.0e-9
+                  && std::abs(envelope.getPoint(2).curveToNext - 0.55) < 1.0e-9
+                  && envelope.getPointCount() == 4,
+              "all three segments bend and the shape is still four points");
+
+        // The peak is pinned in ADSR mode: ATTACK is a duration.
+        envelope.setPoint(1, envelope.getPoint(1).timeSeconds, 0.3);
+        check("EnvMode_ADSRPinsThePeakToTheTop",
+              envelope.getPoint(1).value >= 1.0 - 1.0e-9,
+              "the peak reads " + fmt(envelope.getPoint(1).value, 3));
+    }
+
+    // ---- Breakpoint mode lifts it ------------------------------------------
+    {
+        auto envelope = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+        envelope.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+
+        check("EnvMode_BreakpointStartsFromTheAdsrShape",
+              envelope.getPointCount() == 4 && envelope.isBreakpointMode(),
+              "it opens on the same " + juce::String(envelope.getPointCount())
+                  + " points");
+
+        const auto added = envelope.addPoint(0.25, 0.85);
+        check("EnvMode_BreakpointAcceptsPoints",
+              added > 0 && envelope.getPointCount() == 5,
+              "adding a point returned index " + juce::String(added) + " for "
+                  + juce::String(envelope.getPointCount()) + " points");
+
+        // Up to sixteen, and no further.
+        while (envelope.getPointCount() < px3::BreakpointEnvelope::kMaxPoints)
+        {
+            const auto at = 0.02 * envelope.getPointCount();
+            if (envelope.addPoint(at, 0.5) < 0) { break; }
+        }
+
+        const auto atLimit = envelope.getPointCount();
+        const auto seventeenth = envelope.addPoint(0.9, 0.4);
+
+        check("EnvMode_BreakpointStopsAtSixteenPoints",
+              atLimit == 16 && seventeenth < 0 && envelope.getPointCount() == 16,
+              "filled to " + juce::String(atLimit)
+                  + " points and the next attempt returned " + juce::String(seventeenth));
+
+        // The peak is NOT pinned here - a drawn envelope rises where it likes.
+        envelope.setPoint(1, envelope.getPoint(1).timeSeconds, 0.42);
+        check("EnvMode_BreakpointDoesNotPinThePeak",
+              std::abs(envelope.getPoint(1).value - 0.42) < 1.0e-6,
+              "point 1 reads " + fmt(envelope.getPoint(1).value, 3));
+
+        // The structural points still hold: an envelope starts and ends at
+        // silence, and the point it holds at cannot be removed.
+        juce::StringArray protectedPoints;
+        if (envelope.canRemovePoint(0)) { protectedPoints.add("the first"); }
+        if (envelope.canRemovePoint(envelope.getPointCount() - 1)) { protectedPoints.add("the last"); }
+        if (envelope.canRemovePoint(envelope.getSustainPoint())) { protectedPoints.add("the sustain"); }
+
+        check("EnvMode_BreakpointStillProtectsTheStructuralPoints",
+              protectedPoints.isEmpty()
+                  && envelope.getPoint(0).value <= 1.0e-9
+                  && envelope.getPoint(envelope.getPointCount() - 1).value <= 1.0e-9,
+              protectedPoints.isEmpty()
+                  ? "the first, last and sustain points are all protected"
+                  : "these could be removed: " + protectedPoints.joinIntoString(", "));
+    }
+
+    // ---- the DSP traverses what was drawn -----------------------------------
+    //
+    // Not "audio came out". The audio thread's Snapshot is compared against the
+    // model's own valueAt across a dense sweep, for every kind of segment the
+    // editor can produce.
+    {
+        struct Case { const char* name; px3::BreakpointEnvelope envelope; };
+        std::vector<Case> cases;
+
+        {
+            auto straight = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+            cases.push_back({ "a straight ADSR", straight });
+        }
+        {
+            auto bent = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+            bent.setCurve(0, 0.85);
+            bent.setCurve(1, -0.7);
+            bent.setCurve(2, 0.4);
+            cases.push_back({ "every segment bent", bent });
+        }
+        {
+            EnvelopeSettings tiny;
+            tiny.attackSeconds = 0.0008f;
+            tiny.decaySeconds = 0.0011f;
+            tiny.sustainLevel = 0.5f;
+            tiny.releaseSeconds = 0.0015f;
+            cases.push_back({ "very short segments", px3::BreakpointEnvelope::fromAdsr(tiny) });
+        }
+        {
+            auto zero = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+            // Decay dragged onto the attack: a stage of no length.
+            zero.setPoint(2, zero.getPoint(1).timeSeconds, 0.45);
+            cases.push_back({ "a zero-length decay", zero });
+        }
+        {
+            auto stacked = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+            stacked.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+            stacked.addPoint(0.25, 0.9);
+            stacked.addPoint(0.26, 0.2);
+            stacked.addPoint(0.26, 0.8);     // two points sharing a time
+            cases.push_back({ "coincident points", stacked });
+        }
+        {
+            auto many = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+            many.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+            for (int i = 0; i < 8; ++i)
+            {
+                many.addPoint(0.05 + 0.06 * i, (i % 2 == 0) ? 0.85 : 0.25);
+            }
+            for (int i = 0; i + 1 < many.getPointCount(); ++i)
+            {
+                many.setCurve(i, (i % 2 == 0) ? 0.6 : -0.5);
+            }
+            cases.push_back({ "a twelve-point shape with alternating curves", many });
+        }
+
+        juce::StringArray divergent;
+        auto worstOverall = 0.0;
+
+        for (const auto& testCase : cases)
+        {
+            px3::BreakpointEnvelope::Snapshot snapshot;
+            snapshot.rebuild(testCase.envelope, kRate);
+
+            // The held phase, through the accessor the audio thread actually
+            // calls. Everything before the sustain point is where a drawn
+            // multi-point shape lives, and it is directly comparable with the
+            // model's own reading of the same curve.
+            const auto sustainTime = snapshot.sustainTimeSeconds();
+            auto worst = 0.0;
+
+            for (int step = 0; step < 2000; ++step)
+            {
+                const auto seconds = sustainTime * static_cast<double>(step) / 2000.0;
+                const auto fromModel = testCase.envelope.valueAt(seconds);
+                const auto fromDsp = static_cast<double>(snapshot.valueAtHeld(seconds));
+                worst = juce::jmax(worst, std::abs(fromDsp - fromModel));
+            }
+
+            worstOverall = juce::jmax(worstOverall, worst);
+            if (worst > 1.0e-6)
+            {
+                divergent.add(juce::String(testCase.name) + " by " + fmt(worst, 9));
+            }
+        }
+
+        check("EnvMode_TheDspTraversesExactlyWhatWasDrawn",
+              divergent.isEmpty(),
+              divergent.isEmpty()
+                  ? juce::String(static_cast<int>(cases.size()))
+                        + " shapes agree with the drawn curve to "
+                        + fmt(worstOverall, 9) + " over 2000 points each"
+                  : divergent.joinIntoString("; "));
+    }
+
+    // ---- mode switching -----------------------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kRate, kBlock);
+        processor.prepareToPlay(kRate, kBlock);
+
+        // Start from an ADSR with curves, switch to Breakpoint, and draw.
+        auto shape = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+        shape.setCurve(0, 0.65);
+        shape.setCurve(2, -0.35);
+        processor.setShapedEnvelope(0, shape);
+
+        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+        const auto entered = processor.getShapedEnvelope(0);
+
+        check("EnvMode_SwitchingToBreakpointKeepsTheShape",
+              entered.isBreakpointMode() && entered.getPointCount() == 4
+                  && std::abs(entered.getPoint(0).curveToNext - 0.65) < 1.0e-9
+                  && std::abs(entered.getPoint(2).curveToNext + 0.35) < 1.0e-9,
+              "it opens in " + juce::String(entered.isBreakpointMode() ? "Breakpoint" : "ADSR")
+                  + " mode on " + juce::String(entered.getPointCount())
+                  + " points with curves " + fmt(entered.getPoint(0).curveToNext, 3)
+                  + " / " + fmt(entered.getPoint(1).curveToNext, 3)
+                  + " / " + fmt(entered.getPoint(2).curveToNext, 3));
+
+        auto drawn = entered;
+        drawn.addPoint(0.12, 0.92);
+        drawn.addPoint(0.40, 0.15);
+        drawn.setCurve(1, 0.8);
+        processor.setShapedEnvelope(0, drawn);
+        const auto drawnPoints = drawn.getPointCount();
+
+        // Back to ADSR: reduced, not destroyed.
+        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
+        const auto reduced = processor.getShapedEnvelope(0);
+
+        check("EnvMode_SwitchingToAdsrReducesRatherThanRefusing",
+              ! reduced.isBreakpointMode() && reduced.getPointCount() == 4
+                  && reduced.getPoint(0).value <= 1.0e-9
+                  && reduced.getPoint(3).value <= 1.0e-9,
+              "a " + juce::String(drawnPoints) + "-point shape reduces to "
+                  + juce::String(reduced.getPointCount()) + " points");
+
+        // And back again: the drawing returns exactly.
+        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+        const auto restored = processor.getShapedEnvelope(0);
+
+        auto identical = restored.getPointCount() == drawn.getPointCount();
+        for (int i = 0; identical && i < drawn.getPointCount(); ++i)
+        {
+            identical = std::abs(restored.getPoint(i).timeSeconds - drawn.getPoint(i).timeSeconds) < 1.0e-9
+                        && std::abs(restored.getPoint(i).value - drawn.getPoint(i).value) < 1.0e-9
+                        && std::abs(restored.getPoint(i).curveToNext - drawn.getPoint(i).curveToNext) < 1.0e-9;
+        }
+
+        check("EnvMode_SwitchingBackRestoresTheDrawingExactly",
+              identical,
+              identical ? "all " + juce::String(restored.getPointCount())
+                              + " points return unchanged"
+                        : "the restored shape has " + juce::String(restored.getPointCount())
+                              + " points against the " + juce::String(drawn.getPointCount())
+                              + " that were drawn");
+    }
+
+    // ---- persistence --------------------------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kRate, kBlock);
+        processor.prepareToPlay(kRate, kBlock);
+
+        // AMP ENV drawn in Breakpoint mode; ENV 2 left in ADSR with a curve.
+        auto drawn = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+        drawn.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+        drawn.addPoint(0.15, 0.88);
+        drawn.addPoint(0.35, 0.22);
+        drawn.setCurve(1, 0.75);
+        processor.setShapedEnvelope(0, drawn);
+
+        auto curvedAdsr = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+        curvedAdsr.setCurve(0, -0.6);
+        processor.setShapedEnvelope(2, curvedAdsr);
+
+        juce::MemoryBlock saved;
+        processor.getStateInformation(saved);
+
+        PX3SynthAudioProcessor reopened;
+        reopened.setPlayConfigDetails(0, 2, kRate, kBlock);
+        reopened.prepareToPlay(kRate, kBlock);
+        reopened.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+
+        const auto amp = reopened.getShapedEnvelope(0);
+        const auto env2 = reopened.getShapedEnvelope(2);
+
+        auto pointsMatch = amp.getPointCount() == drawn.getPointCount();
+        for (int i = 0; pointsMatch && i < drawn.getPointCount(); ++i)
+        {
+            pointsMatch = std::abs(amp.getPoint(i).timeSeconds - drawn.getPoint(i).timeSeconds) < 1.0e-6
+                          && std::abs(amp.getPoint(i).value - drawn.getPoint(i).value) < 1.0e-6
+                          && std::abs(amp.getPoint(i).curveToNext - drawn.getPoint(i).curveToNext) < 1.0e-6;
+        }
+
+        check("EnvMode_ABreakpointEnvelopeSurvivesASessionExactly",
+              amp.isBreakpointMode() && pointsMatch,
+              "it comes back in " + juce::String(amp.isBreakpointMode() ? "Breakpoint" : "ADSR")
+                  + " mode with " + juce::String(amp.getPointCount()) + " of "
+                  + juce::String(drawn.getPointCount()) + " points"
+                  + (pointsMatch ? ", all matching" : ", not all matching"));
+
+        check("EnvMode_AnAdsrEnvelopeComesBackAsAdsrWithItsCurves",
+              ! env2.isBreakpointMode() && env2.getPointCount() == 4
+                  && std::abs(env2.getPoint(0).curveToNext + 0.6) < 1.0e-6,
+              "ENV 2 comes back as " + juce::String(env2.isBreakpointMode() ? "Breakpoint" : "ADSR")
+                  + " with its first curve at " + fmt(env2.getPoint(0).curveToNext, 2));
+
+        // The retained shape round-trips too, so switching back after a reload
+        // still restores the drawing.
+        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
+        juce::MemoryBlock savedInAdsr;
+        processor.getStateInformation(savedInAdsr);
+
+        PX3SynthAudioProcessor afterReload;
+        afterReload.setPlayConfigDetails(0, 2, kRate, kBlock);
+        afterReload.prepareToPlay(kRate, kBlock);
+        afterReload.setStateInformation(savedInAdsr.getData(),
+                                        static_cast<int>(savedInAdsr.getSize()));
+        afterReload.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+        const auto recovered = afterReload.getShapedEnvelope(0);
+
+        check("EnvMode_TheRetainedDrawingSurvivesASaveAndReload",
+              recovered.getPointCount() == drawn.getPointCount(),
+              "after saving in ADSR mode and reloading, switching back gives "
+                  + juce::String(recovered.getPointCount()) + " of "
+                  + juce::String(drawn.getPointCount()) + " points");
+    }
+
+    // ---- migration ----------------------------------------------------------
+    //
+    // Every preset that exists records no mode. It must take the mode its shape
+    // implies, which is exactly what the old implicit rule did.
+    {
+        auto skeleton = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+        skeleton.setCurve(0, 0.5);
+
+        auto freeForm = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
+        freeForm.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+        freeForm.addPoint(0.25, 0.7);
+
+        check("EnvMode_AnUnmarkedShapeTakesTheModeItImplies",
+              px3::BreakpointEnvelope::impliedModeFor(skeleton)
+                      == px3::BreakpointEnvelope::Mode::adsr
+                  && px3::BreakpointEnvelope::impliedModeFor(freeForm)
+                         == px3::BreakpointEnvelope::Mode::breakpoint,
+              "a four-point shape implies ADSR and a five-point shape implies Breakpoint");
+
+        // And through the actual load path, from a tree written the way this
+        // build's predecessor wrote them: version 3, no mode recorded anywhere.
+        {
+            PX3SynthAudioProcessor writer;
+            writer.setPlayConfigDetails(0, 2, kRate, kBlock);
+            writer.prepareToPlay(kRate, kBlock);
+            writer.setShapedEnvelope(0, freeForm);      // five points
+            writer.setShapedEnvelope(2, skeleton);      // four points, curved
+
+            auto legacy = writer.createParameterStateTree();
+            auto shapes = legacy.getChildWithName(px3::processor_internal::kEnvelopeShapesId);
+            shapes.setProperty(px3::processor_internal::kEnvelopeShapeVersionId, 3, nullptr);
+            for (auto node : shapes)
+            {
+                node.removeProperty(px3::processor_internal::kEnvelopeShapeModeId, nullptr);
+            }
+
+            PX3SynthAudioProcessor reader;
+            reader.setPlayConfigDetails(0, 2, kRate, kBlock);
+            reader.prepareToPlay(kRate, kBlock);
+            juce::String error;
+            const auto applied = reader.applyParameterStateTree(legacy, &error, true);
+
+            check("EnvMode_AVersionThreeStateMigratesToTheModeItsShapeImplies",
+                  applied
+                      && reader.getEnvelopeMode(0) == px3::BreakpointEnvelope::Mode::breakpoint
+                      && reader.getEnvelopeMode(2) == px3::BreakpointEnvelope::Mode::adsr
+                      && reader.getShapedEnvelope(0).getPointCount() == 5,
+                  "a version 3 state loads its five-point envelope as "
+                      + juce::String(reader.getEnvelopeMode(0)
+                                         == px3::BreakpointEnvelope::Mode::breakpoint
+                                     ? "Breakpoint" : "ADSR")
+                      + " and its four-point one as "
+                      + juce::String(reader.getEnvelopeMode(2)
+                                         == px3::BreakpointEnvelope::Mode::breakpoint
+                                     ? "Breakpoint" : "ADSR"));
+        }
+    }
+
+    // ---- the four slots stay independent ------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kRate, kBlock);
+        processor.prepareToPlay(kRate, kBlock);
+
+        processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
+        processor.setEnvelopeMode(3, px3::BreakpointEnvelope::Mode::breakpoint);
+
+        juce::StringArray modes;
+        for (int slot = 0; slot < 4; ++slot)
+        {
+            modes.add(processor.getEnvelopeMode(slot) == px3::BreakpointEnvelope::Mode::breakpoint
+                          ? "B" : "A");
+        }
+
+        check("EnvMode_EachSlotKeepsItsOwnMode",
+              modes == juce::StringArray({ "A", "B", "A", "B" }),
+              "AMP/ENV1/ENV2/ENV3 read " + modes.joinIntoString(", "));
+    }
+}
+
 // Macro control system. See docs/macro-system-design.md.
 void testMacroSystem()
 {
@@ -28978,6 +29439,7 @@ int main(int argc, char* argv[])
     if (wants("factorypresets")) testFactoryPresets();
     if (wants("midimapping")) testMidiMapping();
     if (wants("macro")) testMacroSystem();
+    if (wants("envmode")) testEnvelopeModes();
     if (wants("vumeter")) testVuBallistics();
     if (wants("businserts")) testBusInserts();
     if (wants("filters")) testFilters();

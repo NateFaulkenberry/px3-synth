@@ -141,19 +141,8 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
         juce::ValueTree shapes(kEnvelopeShapesId);
         shapes.setProperty(kEnvelopeShapeVersionId, kEnvelopeShapeVersion, nullptr);
 
-        auto wroteAny = false;
-        for (int index = 0; index < kShapedEnvelopeCount; ++index)
+        const auto writePoints = [](juce::ValueTree& into, const px3::BreakpointEnvelope& envelope)
         {
-            const auto envelope = getShapedEnvelope(index);
-            if (envelope.isPlainAdsr())
-            {
-                continue;
-            }
-
-            juce::ValueTree node(kEnvelopeShapeId);
-            node.setProperty(kEnvelopeShapeIndexId, index, nullptr);
-            node.setProperty(kEnvelopeShapeSustainId, envelope.getSustainPoint(), nullptr);
-
             for (int p = 0; p < envelope.getPointCount(); ++p)
             {
                 const auto& point = envelope.getPoint(p);
@@ -161,7 +150,42 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
                 entry.setProperty(kEnvelopePointTimeId, point.timeSeconds, nullptr);
                 entry.setProperty(kEnvelopePointValueId, point.value, nullptr);
                 entry.setProperty(kEnvelopePointCurveId, point.curveToNext, nullptr);
-                node.addChild(entry, -1, nullptr);
+                into.addChild(entry, -1, nullptr);
+            }
+        };
+
+        auto wroteAny = false;
+        for (int index = 0; index < kShapedEnvelopeCount; ++index)
+        {
+            const auto envelope = getShapedEnvelope(index);
+            const auto& retained = retainedBreakpointShapes[static_cast<std::size_t>(index)];
+            const auto hasRetained = hasRetainedBreakpointShape[static_cast<std::size_t>(index)];
+
+            // A plain straight-line ADSR in ADSR mode says nothing the four
+            // parameters do not already say, and is rebuilt from them on load.
+            // Anything else - a curve, extra points, Breakpoint mode, or a
+            // retained shape waiting to be switched back to - is written.
+            if (envelope.isPlainAdsr() && ! envelope.isBreakpointMode() && ! hasRetained)
+            {
+                continue;
+            }
+
+            juce::ValueTree node(kEnvelopeShapeId);
+            node.setProperty(kEnvelopeShapeIndexId, index, nullptr);
+            node.setProperty(kEnvelopeShapeSustainId, envelope.getSustainPoint(), nullptr);
+            node.setProperty(kEnvelopeShapeModeId,
+                             envelope.isBreakpointMode() ? "breakpoint" : "adsr", nullptr);
+
+            writePoints(node, envelope);
+
+            // The shape the user had before switching to ADSR, so switching
+            // back restores it exactly rather than approximately.
+            if (hasRetained)
+            {
+                juce::ValueTree keep(kEnvelopeRetainedShapeId);
+                keep.setProperty(kEnvelopeShapeSustainId, retained.getSustainPoint(), nullptr);
+                writePoints(keep, retained);
+                node.addChild(keep, -1, nullptr);
             }
 
             shapes.addChild(node, -1, nullptr);
@@ -680,6 +704,8 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
     for (int index = 0; index < kShapedEnvelopeCount; ++index)
     {
         setShapedEnvelope(index, px3::BreakpointEnvelope {});
+        retainedBreakpointShapes[static_cast<std::size_t>(index)] = px3::BreakpointEnvelope {};
+        hasRetainedBreakpointShape[static_cast<std::size_t>(index)] = false;
     }
 
     if (const auto shapes = state.getChildWithName(kEnvelopeShapesId); shapes.isValid())
@@ -695,20 +721,62 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                 const auto index = juce::jlimit(0, kShapedEnvelopeCount - 1,
                                                 static_cast<int>(node.getProperty(kEnvelopeShapeIndexId, 0)));
 
-                std::vector<px3::BreakpointEnvelope::Point> loaded;
-                loaded.reserve(static_cast<std::size_t>(px3::BreakpointEnvelope::kMaxPoints));
-                for (const auto& entry : node)
+                const auto readPoints = [](const juce::ValueTree& from)
                 {
-                    px3::BreakpointEnvelope::Point point;
-                    point.timeSeconds = static_cast<double>(entry.getProperty(kEnvelopePointTimeId, 0.0));
-                    point.value = static_cast<double>(entry.getProperty(kEnvelopePointValueId, 0.0));
-                    point.curveToNext = static_cast<double>(entry.getProperty(kEnvelopePointCurveId, 0.0));
-                    loaded.push_back(point);
-                }
+                    std::vector<px3::BreakpointEnvelope::Point> points;
+                    points.reserve(static_cast<std::size_t>(px3::BreakpointEnvelope::kMaxPoints));
+
+                    for (const auto& entry : from)
+                    {
+                        if (! entry.hasType(kEnvelopePointId)) { continue; }
+
+                        px3::BreakpointEnvelope::Point point;
+                        point.timeSeconds = static_cast<double>(entry.getProperty(kEnvelopePointTimeId, 0.0));
+                        point.value = static_cast<double>(entry.getProperty(kEnvelopePointValueId, 0.0));
+                        point.curveToNext = static_cast<double>(entry.getProperty(kEnvelopePointCurveId, 0.0));
+                        points.push_back(point);
+                    }
+
+                    return points;
+                };
+
+                const auto loaded = readPoints(node);
 
                 px3::BreakpointEnvelope envelope;
                 envelope.setPoints(loaded.data(), static_cast<int>(loaded.size()),
                                    static_cast<int>(node.getProperty(kEnvelopeShapeSustainId, 2)));
+
+                // The mode. A tree written before modes existed records none,
+                // and the envelope takes the mode its shape implies - which is
+                // what the old implicit rule did, so those presets keep the
+                // behaviour they have.
+                if (node.hasProperty(kEnvelopeShapeModeId))
+                {
+                    envelope.setMode(node.getProperty(kEnvelopeShapeModeId).toString() == "breakpoint"
+                                         ? px3::BreakpointEnvelope::Mode::breakpoint
+                                         : px3::BreakpointEnvelope::Mode::adsr);
+                }
+                else
+                {
+                    envelope.setMode(px3::BreakpointEnvelope::impliedModeFor(envelope));
+                }
+
+                // The shape waiting to be switched back to, if there is one.
+                hasRetainedBreakpointShape[static_cast<std::size_t>(index)] = false;
+                if (const auto keep = node.getChildWithName(kEnvelopeRetainedShapeId); keep.isValid())
+                {
+                    const auto retainedPoints = readPoints(keep);
+                    if (retainedPoints.size() >= 2)
+                    {
+                        px3::BreakpointEnvelope retained;
+                        retained.setPoints(retainedPoints.data(),
+                                           static_cast<int>(retainedPoints.size()),
+                                           static_cast<int>(keep.getProperty(kEnvelopeShapeSustainId, 2)));
+                        retained.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+                        retainedBreakpointShapes[static_cast<std::size_t>(index)] = retained;
+                        hasRetainedBreakpointShape[static_cast<std::size_t>(index)] = true;
+                    }
+                }
 
                 // Versions 1 and 2 could hold a five-point AHDSR skeleton;
                 // this build has only the four-point ADSR one, so the hold is

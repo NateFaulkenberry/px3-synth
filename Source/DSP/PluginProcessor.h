@@ -195,6 +195,11 @@ public:
     // still plain ADSR - in which case the parameters describe it and the
     // envelope is built from them, so a knob and a DAW automation lane both
     // still move the curve.
+    // The envelope mode for a slot: 0 is AMP ENV, 1-3 are ENV 1-3, the same
+    // numbering the shaped-envelope accessors use.
+    px3::BreakpointEnvelope::Mode getEnvelopeMode(int slot) const;
+    void setEnvelopeMode(int slot, px3::BreakpointEnvelope::Mode mode);
+
     px3::BreakpointEnvelope currentAmpEnvelope() const;
 
     //==========================================================================
@@ -975,6 +980,18 @@ private:
     // shared between them, which is what keeps editing one from touching
     // another.
     std::array<px3::BreakpointEnvelope, kShapedEnvelopeCount> shapedEnvelopes;
+
+    // The breakpoint shape each slot had before it was switched to ADSR mode.
+    // Kept so switching back restores it exactly rather than approximately -
+    // sixteen points do not fit in four, and reducing them must not be the only
+    // record of what the user drew.
+    //
+    // Presence is a FLAG, not a property of the shape. A default-constructed
+    // envelope is already a valid four-point ADSR, so "does this slot have
+    // something retained" cannot be answered by looking at the points - asking
+    // that way restored a default ADSR over a shape that had curves.
+    std::array<px3::BreakpointEnvelope, kShapedEnvelopeCount> retainedBreakpointShapes;
+    std::array<bool, kShapedEnvelopeCount> hasRetainedBreakpointShape { { false, false, false, false } };
 
     void handleAsyncUpdate() override;
 

@@ -91,6 +91,8 @@ inline const juce::Identifier kMidiChannelId("channel");
 inline const juce::Identifier kMidiDestinationId("dest");
 inline const juce::Identifier kMidiParameterId("param");
 inline const juce::Identifier kEnvelopeShapeVersionId("version");
+inline const juce::Identifier kEnvelopeShapeModeId("mode");
+inline const juce::Identifier kEnvelopeRetainedShapeId("retained");
 inline const juce::Identifier kEnvelopeShapeId("envelope");
 inline const juce::Identifier kEnvelopeShapeIndexId("index");
 inline const juce::Identifier kEnvelopeShapeSustainId("sustain");
@@ -100,7 +102,11 @@ inline const juce::Identifier kEnvelopePointValueId("v");
 inline const juce::Identifier kEnvelopePointCurveId("c");
 // 3 dropped the hold stage: versions 1 and 2 could store a five-point AHDSR
 // skeleton, and this build has only the four-point ADSR one.
-inline constexpr int kEnvelopeShapeVersion = 3;
+// 4 adds the explicit envelope mode and the retained breakpoint shape. A tree
+// at 3 or below records no mode, and each envelope takes the mode its shape
+// implies - which is exactly what the old implicit rule did, so those presets
+// keep the behaviour they have.
+inline constexpr int kEnvelopeShapeVersion = 4;
 // Which preset the editor last loaded. UI session state like topMenuView: the
 // processor never reads it, and it is stripped from preset FILES - a preset
 // naming itself would be circular. It exists because the editor is rebuilt
