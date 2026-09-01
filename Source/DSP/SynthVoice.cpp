@@ -580,7 +580,25 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         if (diag.capturing && !isKeyDown())
         {
             ++diag.releaseSamplesTotal;
-            if (releaseTailShape < 0.1f)
+
+            // Only where there is still something to filter.
+            //
+            // The fault this counts was the tail filter pinned at its most
+            // aggressive setting while the tail was still LOUD - scheduled off
+            // the envelope VALUE, which an exponential release crosses less
+            // than halfway through. Counting every heavily-filtered sample
+            // instead measured the last sliver of every tail, which is a
+            // fixed slice of release PROGRESS and therefore a large fraction
+            // of a short release and a negligible one of a long release. A
+            // clean 10 ms release scored 19.5% against a 10% threshold with
+            // its loudest heavily-filtered sample at 0.0017 - about -55 dBFS,
+            // which is the voice on its way out rather than an artifact.
+            //
+            // Gated at -60 dBFS the same case scores 3.9%, and the reproduced
+            // fault (PX3Diag regress-tailbug) scores 41% at -26 dBFS. The two
+            // are no longer told apart by how long the release happens to be.
+            constexpr auto kAudibleTailFloor = 0.001f;
+            if (releaseTailShape < 0.1f && env > kAudibleTailFloor)
             {
                 ++diag.releaseSamplesHeavilyFiltered;
             }

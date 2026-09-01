@@ -19150,6 +19150,65 @@ void testMidiMapping()
                   + " mappings survived restoring a session that had none");
     }
 
+    // ---- through the preset MANAGER, to a real file and back ----------------
+    //
+    // The tests above exercise the state tree. This one writes an actual
+    // .px3preset to disk and loads it into a synth that has never seen a
+    // controller, because "saved to presets" is a claim about the file.
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        PresetManager manager(processor);
+        juce::String error;
+        manager.initialise(error);
+
+        const auto cutoffId = processor.getFilterCutoffParam(0).getParameterID();
+        const auto reverbId = processor.getReverbAmountParam().getParameterID();
+
+        processor.setMidiLearnTargets({ cutoffId, reverbId });
+        sendAndApply(processor, buffer, ccMessage(53, 64, 7));
+
+        PresetManager::PresetMetadata metadata;
+        metadata.name = "MidiMappingRoundTrip";
+        metadata.category = "TEST";
+        metadata.author = "PX3Tests";
+        metadata.description = "Written by the MIDI mapping suite.";
+
+        juce::File written;
+        const auto saved = manager.saveUserPreset(metadata, true, error, &written);
+
+        // A fresh synth, no mappings of its own, loading that file.
+        PX3SynthAudioProcessor reopened;
+        prepared(reopened);
+        PresetManager reopenedManager(reopened);
+        reopenedManager.initialise(error);
+        const auto loaded = saved && reopenedManager.loadPresetFile(written, error);
+
+        const auto restored = reopened.getMidiMappings();
+        const auto channel = restored.empty() ? -1 : restored.front().learnedChannel;
+
+        check("MidiMap_APresetFileCarriesTheAssignmentsToAnotherSynth",
+              saved && loaded
+                  && reopened.getMidiCcForParameter(cutoffId) == 53
+                  && reopened.getMidiCcForParameter(reverbId) == 53,
+              saved ? (loaded ? "after loading " + written.getFileName() + " the cutoff reads CC "
+                                    + juce::String(reopened.getMidiCcForParameter(cutoffId))
+                                    + " and the reverb reads CC "
+                                    + juce::String(reopened.getMidiCcForParameter(reverbId))
+                              : "the preset failed to load: " + error)
+                    : "the preset failed to save: " + error);
+
+        // The channel it was taught on rides along, for the strict matching
+        // the design leaves the door open to.
+        check("MidiMap_ThePresetRemembersTheChannelItLearnedOn",
+              channel == 7,
+              "the restored mapping was learned on channel " + juce::String(channel));
+
+        if (written.existsAsFile()) { written.deleteFile(); }
+    }
+
     // ---- state naming a parameter that does not exist -----------------------
     {
         PX3SynthAudioProcessor processor;

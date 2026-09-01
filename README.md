@@ -432,6 +432,87 @@ Accuracy notes:
 - RAM is an estimate, not exact per-instance ownership, because process memory is shared and cannot be perfectly partitioned by plugin instance.
 - In standalone with one instance, RAM estimate effectively matches app RSS.
 
+## MIDI Learn: Mapping Hardware Controls
+
+Any knob in the synth can be driven by a hardware controller. There is no CC
+number to type and no dialog to open.
+
+### Assigning
+
+1. **Shift-click a knob.** It gets a dashed amber ring, and the keyboard shows
+   *"Select knobs, then move a MIDI control to assign"*.
+2. **Shift-click more knobs** if you want several on one control. They can be
+   anywhere - a filter cutoff, a reverb mix and an oscillator macro at once.
+   The selection follows you between panels.
+3. **Move the hardware control.** Every selected knob is assigned to it, the
+   selection clears, and each knob shows `CC21` (or whichever it was) under
+   its pointer.
+
+The controller's full travel sweeps each destination through its own range, so
+a cutoff in hertz and a resonance in 0-1 both get the whole sweep in their own
+units.
+
+The movement that *teaches* the mapping does not also jump the knobs - they
+stay where you left them, and the next movement drives them.
+
+### Removing and reassigning
+
+**Shift-click a mapped knob.** Its assignment is dropped there and then, and it
+joins the selection ready for a new one. Move a control to give it one, or
+press **Escape** to leave it unmapped.
+
+That gesture is deliberately destructive - it is the only way to end up with a
+parameter unmapped - but never silent: the `CC` label leaves the knob in the
+same click. You never need to click a knob to find out what it is on, because a
+mapped knob always shows it.
+
+### While selecting
+
+- Shift-clicking a knob that is already selected takes it back out.
+- Emptying the selection leaves Select Mode.
+- Escape leaves Select Mode without assigning anything.
+- Ordinary clicks and drags are untouched: without Shift, a knob behaves
+  exactly as it always did.
+- The keyboard still plays while you are selecting.
+
+### What gets saved
+
+MIDI assignments are saved in **both** places:
+
+- **DAW sessions.** Close the project, reopen it, the assignments are back.
+- **Preset files.** Saving a patch saves the hardware layout it was designed
+  around, and loading that patch on another machine brings the assignments
+  with it.
+
+A preset that carries no assignments leaves yours alone, so auditioning factory
+sounds never costs you your controller setup. A DAW session is the whole truth
+for that instance: one saved with no assignments restores none.
+
+Assignments are **per plugin instance**. Two copies of PX3 in one project can
+map the same CC to completely different parameters without affecting each
+other.
+
+### Notes and limits
+
+- Any MIDI channel drives a mapping; the channel it was learned on is recorded
+  for future use but not matched against.
+- A CC arriving when nothing is selected only drives existing assignments - it
+  never learns by itself.
+- Note input, the mod wheel and pitch bend are unaffected. Mapping CC 1 gives
+  you both the mod wheel's usual modulation and the mapped parameter.
+- MIDI mapping is separate from the LFO and envelope modulation matrix. A
+  mapped control moves the parameter itself, the way your hand or a DAW
+  automation lane would; modulation is layered on top of that, unchanged.
+- A control change reaches the parameter on the next UI tick rather than
+  sample-accurately. For a knob gesture this is imperceptible; it is not a
+  sample-accurate modulation path, by design.
+- The synth cannot tell your controllers apart - a plugin receives all MIDI
+  devices merged into one stream - so a mapping is to a CC number, not to a
+  particular box.
+
+The design and the reasoning behind it are in
+[docs/midi-mapping-design.md](docs/midi-mapping-design.md).
+
 ## UI Guide: Every Section And Control
 
 ## OSC Section

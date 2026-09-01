@@ -341,6 +341,45 @@ Additional harnesses, all passing with 0 failures: `PX3Diag rtsafety`,
 
 ## Regression Results
 
+### The tail-filter metric counted silence (fixed)
+
+`PX3Diag regress` reported eleven `FAIL(tail-overfiltered)` cases, all of them
+short-release. The metric counts release samples where the tail lowpass is
+fully engaged, as a fraction of all key-up samples, and fails above 10%.
+
+Measured rather than assumed: in every failing case the loudest sample the
+filter was fully engaged over sat at 0.0017 — about −55 dBFS — and only 176 of
+888 were above −60 dB at all. The engaged region is a fixed slice of release
+PROGRESS, so it is a large fraction of a 10 ms release and a negligible one of
+a 4 s release. Nothing audible differed between the cases that passed and the
+cases that failed.
+
+The fault the metric exists to catch is the filter pinned at its most
+aggressive setting while the tail is still LOUD. Gating the count at −60 dBFS
+measures that and nothing else: the same short releases now score 3.9%, and the
+reproduced fault (`PX3Diag regress-tailbug`) scores 41% with its loudest
+engaged sample at −26 dBFS. The two are no longer told apart by how long the
+release happens to be, and `regress-tailbug` still fails 66 cases.
+
+### `N sine key-release, sustain=0` — still failing, and not yet explained
+
+One case remains, at a note-off transient ratio of 7.7 against a threshold of
+6.0. It is pre-existing: an identical failing set was measured at `699aa8c`,
+before any of this work.
+
+What was ruled out. It is not the envelope: traced directly, an AmpEnvelope
+with sustain 0 held past its decay sits at 2.7e-44 and moves by exactly zero
+across note-off. It is not an FX tail: the voice stage carries the same 0.0347
+the master does. It is not silence being scored — the gate already excludes
+that, and the signal is at −29 dBFS.
+
+What is known. The absolute second difference at the worst sample is 0.00026,
+against 0.00024 in the passing `rel=0.010` case — the same size of wiggle. The
+case reads worse because its local curvature baseline is lower, the 20 ms mean
+sitting at 3.6e-5 against 9.4e-5. That is suggestive of a metric that is
+level-relative where it should be, and simply meeting a quieter passage, but it
+was not proven either way and the threshold has NOT been moved to make it pass.
+
 No regressions. The suite was run before any audit change, after the dead-code
 removal, and again after the tooling fixes — 629/0 each time.
 
