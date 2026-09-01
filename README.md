@@ -11,8 +11,9 @@ For developer architecture, maintenance map, and release workflow, see `DEVELOPM
 
 ## Start Here
 
-**Playing it?** [docs/USER_MANUAL.md](docs/USER_MANUAL.md) — every section and
-control, written for a musician.
+**Playing it?** [docs/USER_MANUAL.md](docs/USER_MANUAL.md) — the full user
+manual: quick start, every panel and control, the Macro and MIDI systems, sound
+design walkthroughs, troubleshooting and a glossary.
 
 **Building or changing it?** Carry on below.
 
