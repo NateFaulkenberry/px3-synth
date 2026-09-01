@@ -35,7 +35,7 @@ public:
     int getAssigningMacro() const noexcept { return assigningMacro; }
 
     // For the layout tests: the caption under a knob.
-    const juce::Label& debugCaption(int macroIndex) const
+    juce::Label& debugCaption(int macroIndex)
     { return entries[static_cast<std::size_t>(juce::jlimit(0, 3, macroIndex))].caption; }
 
     juce::Slider& knob(int macroIndex);

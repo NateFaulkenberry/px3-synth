@@ -1,3 +1,4 @@
+#include "MacroLook.h"
 #include "ParameterKnob.h"
 #include "PluginEditor.h"
 #include "../DSP/WavetableLibrary.h"
@@ -455,7 +456,7 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
         juce::Path ring;
         ring.addEllipse(bounds.expanded(alreadyAssigned ? 3.0f : 2.0f));
 
-        g.setColour(juce::Colour::fromRGBA(168, 130, 255, alreadyAssigned ? 235 : 120));
+        g.setColour(macroAccent.withAlpha(alreadyAssigned ? 0.92f : 0.47f));
         g.strokePath(ring, juce::PathStrokeType(alreadyAssigned ? 2.2f : 1.3f));
     }
 
@@ -478,15 +479,23 @@ void PX3SynthAudioProcessorEditor::KnobLookAndFeel::drawRotarySlider(juce::Graph
 
         // Above the spindle, where the CC label sits below it, so a knob that
         // is both macro-driven and CC-mapped shows both without overlap.
-        const auto label = juce::Rectangle<float>(bounds.getX(),
-                                                  center.y - radius * 0.58f - fontHeight,
-                                                  bounds.getWidth(),
-                                                  fontHeight + 2.0f);
-
         g.setFont(juce::FontOptions(fontHeight));
-        g.setColour(renderGrayscale ? juce::Colour::fromRGBA(200, 200, 200, 190)
-                                    : juce::Colour::fromRGBA(186, 156, 255, 235));
-        g.drawFittedText(text, label.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+        const auto textWidth = juce::jmin(bounds.getWidth() - 4.0f,
+                                          juce::GlyphArrangement::getStringWidth(
+                                              g.getCurrentFont(), text) + 8.0f);
+
+        const auto plate = juce::Rectangle<float>(textWidth, fontHeight + 4.0f)
+                               .withCentre({ center.x, center.y - radius * 0.52f });
+
+        // On a plate rather than straight onto the knob. A knob is busy and
+        // mostly dark, with a ring and a pointer moving over it; light chip,
+        // dark text stays readable across all of that.
+        g.setColour(renderGrayscale ? juce::Colour::fromRGBA(232, 232, 232, 200)
+                                    : macroLabelBackground);
+        g.fillRoundedRectangle(plate, plate.getHeight() * 0.5f);
+
+        g.setColour(renderGrayscale ? juce::Colour::fromRGB(40, 40, 40) : macroLabelText);
+        g.drawFittedText(text, plate.toNearestInt(), juce::Justification::centred, 1, 0.7f);
     }
 
     if (midiCc >= 0)
@@ -2235,6 +2244,12 @@ void PX3SynthAudioProcessorEditor::resized()
     // laid out in. Doing it here rather than in each panel is what puts the
     // same four knobs on OSC, MOD, FLT, FX, AMP and MIX with one instance and
     // no panel needing to know they exist.
+    // The look-and-feel is shared by every knob and has no config prefix of
+    // its own, so the macro colours are resolved here and handed to it.
+    knobLookAndFeel.macroAccent = px3::ui::macroAccentColour(uiConfig.get());
+    knobLookAndFeel.macroLabelBackground = px3::ui::macroLabelBackgroundColour(uiConfig.get());
+    knobLookAndFeel.macroLabelText = px3::ui::macroLabelTextColour(uiConfig.get());
+
     macroStripArea = panelViewportArea.removeFromLeft(
         MacroStrip::preferredWidth(uiConfig.get()));
     panelViewportArea.removeFromLeft(2);
@@ -2246,7 +2261,13 @@ void PX3SynthAudioProcessorEditor::resized()
 
     if (macroAssignOverlay != nullptr)
     {
-        macroAssignOverlay->setBounds(getLocalBounds());
+        // Over the knobs and the macro strip, and NOTHING else.
+        //
+        // Covering the whole editor swallowed the top menu, so a user could not
+        // change panel while assigning - which is most of the point of a macro
+        // that reaches across the synth. It also swallowed the keyboard, so
+        // they could not hear what they were building either.
+        macroAssignOverlay->setBounds(macroStripArea.getUnion(panelViewportArea));
         macroAssignOverlay->toFront(false);
     }
     // panels.osc: a declared height wins over the editor's allocation, and
@@ -2542,6 +2563,11 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
     if (fxPanel != nullptr)
     {
         fxPanel->setUIConfig(uiConfig);
+    }
+
+    if (macroStrip != nullptr)
+    {
+        macroStrip->setUIConfig(uiConfig);
     }
     if (modPanel != nullptr)
     {
@@ -4789,7 +4815,7 @@ void PX3SynthAudioProcessorEditor::enterMacroAssignMode(int macroIndex)
     if (macroStrip != nullptr) { macroStrip->setAssigningMacro(macroIndex); }
     if (macroAssignOverlay != nullptr)
     {
-        macroAssignOverlay->setBounds(getLocalBounds());
+        macroAssignOverlay->setBounds(macroStripArea.getUnion(panelViewportArea));
         macroAssignOverlay->setVisible(true);
         macroAssignOverlay->toFront(true);
     }

@@ -124,6 +124,22 @@ from its left edge before any panel is placed in it. Every panel — OSC, MOD,
 FLT, FX, AMP, MIX — therefore has the strip to its left, in the same place, at
 the same size, without any panel knowing about it.
 
+Padding comes from `macro.strip.padX` (4) and `macro.strip.padY` (10), with
+`macro.strip.captionHeight` (14), so the captions are not pressed against the
+strip's edge and the sizes are one place rather than several.
+
+The colour is **teal** (`macro.colors.accent`), and the choice matters: purple
+is the modulation family's colour throughout this UI, so a purple macro
+indicator read as a modulated knob. Amber is MIDI. Teal was unused — the
+palette runs blue (OSC), red (FILTER), green (AMP), purple (LFO/ENV), amber
+(MIDI).
+
+The label inside a destination knob sits on a translucent pale plate with dark
+text (`macro.colors.labelBackground`, `macro.colors.labelText`) rather than
+being coloured text on the knob. A knob is busy and mostly dark, with a ring
+and a pointer moving over it; a light chip reads as a tag stuck on top, which
+is what it is.
+
 The strip is 70 px wide including padding, holding four knobs stacked
 vertically with an `M1`..`M4` caption under each. The knob takes the width the
 padding leaves and the caption sits directly beneath it, touching — centring

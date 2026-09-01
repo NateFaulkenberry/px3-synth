@@ -2697,5 +2697,17 @@
         }
       }
     }
+  },
+  "macro": {
+    "strip": {
+      "padX": 4,
+      "padY": 10,
+      "captionHeight": 14
+    },
+    "colors": {
+      "accent": "#22D6C8",
+      "labelBackground": "#E2F9F6DB",
+      "labelText": "#0C2E2B"
+    }
   }
 }

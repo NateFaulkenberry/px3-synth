@@ -68,6 +68,14 @@ private:
     class KnobLookAndFeel final : public juce::LookAndFeel_V4
     {
     public:
+        // The macro colours, handed in from UIConfig by the editor. The
+        // look-and-feel does not read config itself - it is shared by every
+        // knob and has no prefix of its own - so the editor resolves them once
+        // and sets them here.
+        juce::Colour macroAccent { juce::Colour::fromRGB(34, 214, 200) };
+        juce::Colour macroLabelBackground { juce::Colour::fromRGBA(226, 249, 246, 219) };
+        juce::Colour macroLabelText { juce::Colour::fromRGB(12, 46, 43) };
+
         void drawRotarySlider(juce::Graphics& g,
                               int x,
                               int y,
@@ -201,6 +209,10 @@ public:
     MacroStrip* debugMacroStrip() const { return macroStrip.get(); }
     int debugAssigningMacro() const { return assigningMacro; }
     juce::Rectangle<int> debugMacroStripArea() const { return macroStripArea; }
+    juce::Rectangle<int> debugMacroOverlayBounds() const
+    { return macroAssignOverlay != nullptr ? macroAssignOverlay->getBounds() : juce::Rectangle<int>(); }
+    juce::Rectangle<int> debugKeyboardBounds() const { return pianoKeyboard.getBounds(); }
+    juce::Rectangle<int> debugTopMenuBounds() const { return topMenuStripArea; }
     juce::Rectangle<int> debugPanelArea() const { return panelViewportArea; }
     // Switch panel the way the top menu does, so a test exercises the real
     // path rather than poking the index.

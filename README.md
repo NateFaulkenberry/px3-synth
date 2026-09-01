@@ -449,7 +449,7 @@ Each Macro can move any number of parameters anywhere in the synth at once.
 
 ### Assigning
 
-1. **Cmd-click a Macro knob.** It lights violet, and the keyboard says
+1. **Cmd-click a Macro knob.** It and its label light teal, and the keyboard says
    *"Click knobs to assign them to MACRO 1"*.
 2. **Click any knob** to assign it. Click it again to remove it. The knob does
    not move while you are assigning — the click assigns, it does not drag.
@@ -463,14 +463,15 @@ Each Macro can move any number of parameters anywhere in the synth at once.
 
 | The knob shows | It means |
 |---|---|
-| `MACRO 1` above the spindle, violet | one Macro drives it |
-| `M1+`, violet | several Macros drive it; the first is named |
+| `MACRO 1` on a pale plate above the spindle | one Macro drives it |
+| `M1+` on that plate | several Macros drive it; the first is named |
 | `CC21` below the spindle, amber | a MIDI control is mapped to it directly |
 | both labels | both, and they add together |
-| a solid violet ring | assignable right now, in the active Macro mode |
+| a solid teal ring | assignable right now, in the active Macro mode |
 | a dashed amber ring | selected for MIDI Learn |
 
-Violet is always Macro, amber is always MIDI.
+Teal is always Macro, amber is always MIDI. Purple is the LFOs and
+envelopes, and means something else.
 
 ### What a Macro does to a parameter
 

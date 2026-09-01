@@ -18556,6 +18556,89 @@ void testMacroSystem()
                       "the strip is " + juce::String(stripArea.getWidth())
                           + " px wide against a budget of 70");
 
+                // The padding keys do something, ONE AT A TIME.
+                //
+                // Moving all three at once proved nothing: changing the caption
+                // height alone moves the knob, so a padding key that had
+                // stopped being read still looked like it worked. Each key is
+                // now checked against the number it was given.
+                {
+                    juce::String configError;
+                    const auto configured = [&](const char* json)
+                    { return UIConfig::fromJsonText(json, configError); };
+
+                    strip->setUIConfig(configured(R"({"macro":{"strip":{"padX":18}}})"));
+                    const auto wideX = strip->knob(0).getBounds().getX();
+
+                    strip->setUIConfig(configured(R"({"macro":{"strip":{"padY":44}}})"));
+                    const auto lastCaptionBottom = strip->debugCaption(3).getBounds().getBottom();
+
+                    strip->setUIConfig(configured(R"({"macro":{"strip":{"captionHeight":22}}})"));
+                    const auto tallCaption = strip->debugCaption(0).getHeight();
+
+                    check("MacroUi_TheStripsPaddingComesFromConfig",
+                          wideX >= 18
+                              && lastCaptionBottom <= strip->getHeight() - 44
+                              && tallCaption == 22,
+                          "padX 18 puts the knob at x " + juce::String(wideX)
+                              + ", padY 44 ends the last caption "
+                              + juce::String(strip->getHeight() - lastCaptionBottom)
+                              + " px above the bottom, and captionHeight 22 gives "
+                              + juce::String(tallCaption) + " px");
+
+                    strip->setUIConfig(nullptr);
+                }
+
+                // The assignment highlight has to cover the caption as well as
+                // the knob: they are one control, and a box round half of it
+                // looks like the label belongs to something else.
+                //
+                // Measured BELOW the knob's own outline, not across the whole
+                // caption band - the ring around the knob is drawn a few pixels
+                // proud and bleeds into the top of that band, so measuring the
+                // band as a whole passed whether the caption was covered or not.
+                {
+                    editor->debugEnterMacroAssignMode(1);
+                    const auto lit = strip->createComponentSnapshot(strip->getLocalBounds());
+                    editor->keyPressed(juce::KeyPress(juce::KeyPress::escapeKey));
+                    const auto dark = strip->createComponentSnapshot(strip->getLocalBounds());
+
+                    const auto caption = strip->debugCaption(1).getBounds();
+                    const auto clearOfTheKnob = strip->knob(1).getBounds().getBottom() + 6;
+
+                    auto changed = 0;
+                    for (int y = juce::jmax(caption.getY(), clearOfTheKnob);
+                         y < caption.getBottom(); ++y)
+                    {
+                        for (int x = caption.getX(); x < caption.getRight(); ++x)
+                        {
+                            if (lit.getPixelAt(x, y) != dark.getPixelAt(x, y)) { ++changed; }
+                        }
+                    }
+
+                    check("MacroUi_TheAssignmentHighlightCoversTheCaptionToo",
+                          changed > 20,
+                          juce::String(changed)
+                              + " pixels change well below the knob, behind the caption, "
+                              + "when its macro is armed");
+                }
+
+                // Hovering anywhere over the control says which macro it is.
+                juce::StringArray tips;
+                auto tipsCorrect = true;
+                for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+                {
+                    const auto wanted = "Macro " + juce::String(macro + 1);
+                    tips.add(strip->debugCaption(macro).getTooltip());
+                    tipsCorrect = tipsCorrect
+                                  && strip->debugCaption(macro).getTooltip() == wanted
+                                  && strip->knob(macro).getTooltip() == wanted;
+                }
+
+                check("MacroUi_TheKnobsAndCaptionsSayWhichMacroTheyAre",
+                      tipsCorrect,
+                      "hovering reads " + tips.joinIntoString(", "));
+
                 // The caption sits directly under its knob, with nothing
                 // between them - they are one control, not two things.
                 juce::StringArray gaps;
@@ -18774,6 +18857,24 @@ void testMacroSystem()
                 }
                 editor->debugRefreshMidiMappingUI();
 
+                // The overlay must leave the top menu and the keyboard alone,
+                // or the user cannot change panel or hear what they are
+                // building - and a macro that cannot reach across panels is
+                // most of the feature gone.
+                editor->debugEnterMacroAssignMode(0);
+                const auto overlay = editor->debugMacroOverlayBounds();
+                const auto menu = editor->debugTopMenuBounds();
+                const auto keys = editor->debugKeyboardBounds();
+
+                check("MacroUi_TheOverlayLeavesTheTopMenuAndKeyboardClickable",
+                      ! overlay.isEmpty() && ! menu.isEmpty() && ! keys.isEmpty()
+                          && ! overlay.intersects(menu) && ! overlay.intersects(keys)
+                          && overlay.contains(editor->debugMacroStripArea())
+                          && overlay.contains(editor->debugPanelArea()),
+                      "the overlay covers " + overlay.toString()
+                          + ", the top menu is at " + menu.toString()
+                          + " and the keyboard at " + keys.toString());
+
                 check("MacroUi_AssignmentModeSurvivesPanelChanges",
                       stayedActive && editor->debugAssigningMacro() == 0
                           && panelsAssigned.size() == 3
@@ -18991,6 +19092,256 @@ void testMacroSystem()
               ! processor.toggleMacroDestination(0, PX3SynthAudioProcessor::macroParameterId(1))
                   && ! processor.isMacroDestination(0, PX3SynthAudioProcessor::macroParameterId(1)),
               "assigning macro 2 to macro 1 was refused");
+    }
+
+    // ---- all four, each minding only its own business -----------------------
+    //
+    // Everything above leans on macro 1. This gives each of the four a
+    // destination of its own, sweeps them one at a time, and checks that the
+    // other three destinations do not move - which is the difference between
+    // four macros and one macro drawn four times.
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+
+        // Four parameters from four different corners of the synth, so a
+        // routing mistake cannot hide behind two of them being neighbours.
+        juce::RangedAudioParameter* destinations[4] = {
+            &processor.getFilterCutoffParam(0),
+            &processor.getFilterResonanceParam(0),
+            &processor.getReverbAmountParam(),
+            &processor.getFilterCutoffParam(1)
+        };
+
+        juce::StringArray ids;
+        for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+        {
+            const auto id = destinations[macro]->getParameterID();
+            ids.add(id);
+
+            // Start each base low, so there is room above it to measure into.
+            destinations[macro]->setValueNotifyingHost(0.1f);
+            processor.toggleMacroDestination(macro, id);
+        }
+
+        const auto effective = [&](int index)
+        {
+            return processor.getModulatedNormalisedValue(*destinations[index]);
+        };
+
+        // Each destination belongs to exactly one macro.
+        juce::StringArray masks;
+        auto masksCorrect = true;
+        for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+        {
+            const auto mask = processor.getMacroMaskForParameter(ids[macro]);
+            masks.add(juce::String(mask));
+            masksCorrect = masksCorrect && mask == (1 << macro);
+        }
+
+        check("Macro_EachDestinationBelongsToExactlyOneMacro",
+              masksCorrect,
+              "the four destinations report masks " + masks.joinIntoString(", ")
+                  + " (want 1, 2, 4, 8)");
+
+        // Sweep one macro at a time and watch all four destinations.
+        juce::StringArray crosstalk;
+        for (int moving = 0; moving < PX3SynthAudioProcessor::kMacroCount; ++moving)
+        {
+            float before[4];
+            for (int i = 0; i < 4; ++i) { before[i] = effective(i); }
+
+            processor.getMacroParam(moving).setValueNotifyingHost(1.0f);
+
+            for (int i = 0; i < 4; ++i)
+            {
+                const auto after = effective(i);
+                const auto moved = std::abs(after - before[i]) > 0.01f;
+
+                if (i == moving && ! moved)
+                {
+                    crosstalk.add("macro " + juce::String(moving + 1)
+                                  + " did not move its own destination");
+                }
+                if (i != moving && moved)
+                {
+                    crosstalk.add("macro " + juce::String(moving + 1) + " moved macro "
+                                  + juce::String(i + 1) + "'s destination from "
+                                  + fmt(before[i], 3) + " to " + fmt(after, 3));
+                }
+            }
+
+            processor.getMacroParam(moving).setValueNotifyingHost(0.0f);
+        }
+
+        check("Macro_EachMacroMovesOnlyItsOwnDestinations",
+              crosstalk.isEmpty(),
+              crosstalk.isEmpty()
+                  ? "all four macros swept independently with no crosstalk"
+                  : crosstalk.joinIntoString("; "));
+
+        // Turning one macro does not disturb another macro's VALUE either.
+        processor.getMacroParam(2).setValueNotifyingHost(0.8f);
+        juce::StringArray values;
+        auto othersUntouched = true;
+        for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+        {
+            const auto value = processor.getMacroParam(macro).get();
+            values.add(fmt(value, 2));
+            if (macro != 2) { othersUntouched = othersUntouched && value < 0.01f; }
+        }
+
+        check("Macro_MovingOneMacroDoesNotMoveTheOthers",
+              othersUntouched && processor.getMacroParam(2).get() > 0.7f,
+              "with macro 3 at 0.8 the four read " + values.joinIntoString(", "));
+        processor.getMacroParam(2).setValueNotifyingHost(0.0f);
+
+        // And their destination LISTS are separate: clearing one leaves the
+        // other three exactly as they were.
+        processor.clearMacroDestinations(1);
+
+        juce::StringArray sizes;
+        for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+        {
+            sizes.add(juce::String(static_cast<int>(processor.getMacroDestinations(macro).size())));
+        }
+
+        check("Macro_ClearingOneMacroLeavesTheOthersIntact",
+              sizes == juce::StringArray({ "1", "0", "1", "1" })
+                  && processor.isMacroDestination(0, ids[0])
+                  && processor.isMacroDestination(2, ids[2])
+                  && processor.isMacroDestination(3, ids[3]),
+              "after clearing macro 2 the four hold " + sizes.joinIntoString(", ")
+                  + " destinations");
+
+        // The one that was cleared really is inert now. Checked against the
+        // parameter's own value rather than the modulated read, because the
+        // modulated read returns its "nothing is driving this" sentinel once
+        // the macro is gone - which would make this pass for the wrong reason.
+        const auto clearedBase = destinations[1]->getValue();
+        processor.getMacroParam(1).setValueNotifyingHost(1.0f);
+        check("Macro_AClearedMacroDrivesNothing",
+              std::abs(destinations[1]->getValue() - clearedBase) < 1.0e-6f
+                  && processor.getMacroMaskForParameter(ids[1]) == 0
+                  && processor.getModulatedNormalisedValue(*destinations[1]) < 0.0f,
+              "the cleared macro reports mask "
+                  + juce::String(processor.getMacroMaskForParameter(ids[1]))
+                  + " and its old destination is no longer driven at all");
+
+        // ---- and the same four, driven by the actual knobs ------------------
+        //
+        // Everything above sets the parameter directly. This turns the knob a
+        // player would turn, through its attachment, which is the path the
+        // question is really about.
+        {
+            PX3SynthAudioProcessor knobProcessor;
+            prepared(knobProcessor);
+
+            std::unique_ptr<juce::AudioProcessorEditor> base(knobProcessor.createEditor());
+            auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+            auto* strip = editor != nullptr ? editor->debugMacroStrip() : nullptr;
+
+            if (strip != nullptr)
+            {
+                juce::RangedAudioParameter* targets[4] = {
+                    &knobProcessor.getFilterCutoffParam(0),
+                    &knobProcessor.getFilterResonanceParam(0),
+                    &knobProcessor.getReverbAmountParam(),
+                    &knobProcessor.getFilterCutoffParam(1)
+                };
+
+                for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+                {
+                    targets[macro]->setValueNotifyingHost(0.1f);
+                    knobProcessor.toggleMacroDestination(macro, targets[macro]->getParameterID());
+                }
+
+                juce::StringArray knobFaults;
+                for (int moving = 0; moving < PX3SynthAudioProcessor::kMacroCount; ++moving)
+                {
+                    float before[4];
+                    for (int i = 0; i < 4; ++i)
+                    {
+                        before[i] = knobProcessor.getModulatedNormalisedValue(*targets[i]);
+                    }
+
+                    strip->knob(moving).setValue(1.0, juce::sendNotificationSync);
+
+                    for (int i = 0; i < 4; ++i)
+                    {
+                        const auto after = knobProcessor.getModulatedNormalisedValue(*targets[i]);
+                        const auto moved = std::abs(after - before[i]) > 0.01f;
+
+                        if (i == moving && ! moved)
+                        {
+                            knobFaults.add("turning the M" + juce::String(moving + 1)
+                                           + " knob moved nothing");
+                        }
+                        if (i != moving && moved)
+                        {
+                            knobFaults.add("the M" + juce::String(moving + 1)
+                                           + " knob moved macro " + juce::String(i + 1)
+                                           + "'s destination");
+                        }
+                    }
+
+                    strip->knob(moving).setValue(0.0, juce::sendNotificationSync);
+                }
+
+                check("Macro_TurningEachKnobDrivesOnlyThatMacrosDestinations",
+                      knobFaults.isEmpty(),
+                      knobFaults.isEmpty()
+                          ? "all four knobs drive their own destinations and nothing else"
+                          : knobFaults.joinIntoString("; "));
+            }
+        }
+
+        // ---- and each comes back on its OWN index after a round trip --------
+        //
+        // A serialization bug that wrote the index wrongly would put macro 4's
+        // destinations on macro 1, which every single-macro test would miss.
+        {
+            PX3SynthAudioProcessor saver;
+            prepared(saver);
+
+            juce::RangedAudioParameter* targets[4] = {
+                &saver.getFilterCutoffParam(0),
+                &saver.getFilterResonanceParam(0),
+                &saver.getReverbAmountParam(),
+                &saver.getFilterCutoffParam(1)
+            };
+
+            for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+            {
+                saver.toggleMacroDestination(macro, targets[macro]->getParameterID());
+                saver.getMacroParam(macro).setValueNotifyingHost(0.2f * static_cast<float>(macro + 1));
+            }
+
+            juce::MemoryBlock saved;
+            saver.getStateInformation(saved);
+
+            PX3SynthAudioProcessor loader;
+            prepared(loader);
+            loader.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+
+            juce::StringArray restored;
+            auto correct = true;
+            for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+            {
+                const auto id = targets[macro]->getParameterID();
+                const auto mask = loader.getMacroMaskForParameter(id);
+                const auto value = loader.getMacroParam(macro).get();
+
+                restored.add("M" + juce::String(macro + 1) + " mask " + juce::String(mask)
+                             + " at " + fmt(value, 2));
+                correct = correct && mask == (1 << macro)
+                          && std::abs(value - 0.2f * static_cast<float>(macro + 1)) < 0.02f;
+            }
+
+            check("Macro_EachComesBackOnItsOwnIndex",
+                  correct,
+                  "after a round trip: " + restored.joinIntoString(", "));
+        }
     }
 
     // ---- two macros on one parameter sum ------------------------------------

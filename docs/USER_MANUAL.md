@@ -347,7 +347,7 @@ values and their assignments.
 
 ### Assigning
 
-1. **Cmd-click a Macro knob.** It lights violet and the keyboard says *"Click
+1. **Cmd-click a Macro knob.** It and its label light teal, and the keyboard says *"Click
    knobs to assign them to MACRO 1"*.
 2. **Click any knob** to assign it. Click it again to remove it. The knob does
    not move while you assign — the click assigns, it does not drag.
@@ -359,14 +359,15 @@ values and their assignments.
 
 | The knob shows | Meaning |
 |---|---|
-| `MACRO 1`, violet, above the spindle | one Macro drives it |
-| `M1+`, violet | several Macros drive it |
+| `MACRO 1` on a pale plate, above the spindle | one Macro drives it |
+| `M1+` on that plate | several Macros drive it |
 | `CC21`, amber, below the spindle | a MIDI control is mapped to it |
 | both | both, and they add together |
-| solid violet ring | assignable right now |
+| solid teal ring | assignable right now |
 | dashed amber ring | selected for MIDI Learn |
 
-**Violet is always Macro. Amber is always MIDI.**
+**Teal is always Macro. Amber is always MIDI.** Purple belongs to the LFOs
+and envelopes, and means something else entirely.
 
 ### What a Macro does
 
