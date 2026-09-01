@@ -604,7 +604,9 @@
         "roleLabelSize": 8.5,
         "roleLabelColor": "",
         "sustainBarWidth": 20.0,
-        "sustainBarHeight": 3.0
+        "sustainBarHeight": 3.0,
+        "progressFillColor": "",
+        "progressFillAlpha": 0.28
       }
     },
     "env2": {
@@ -648,7 +650,9 @@
         "roleLabelSize": 8.5,
         "roleLabelColor": "",
         "sustainBarWidth": 20.0,
-        "sustainBarHeight": 3.0
+        "sustainBarHeight": 3.0,
+        "progressFillColor": "",
+        "progressFillAlpha": 0.28
       }
     },
     "env3": {
@@ -692,7 +696,9 @@
         "roleLabelSize": 8.5,
         "roleLabelColor": "",
         "sustainBarWidth": 20.0,
-        "sustainBarHeight": 3.0
+        "sustainBarHeight": 3.0,
+        "progressFillColor": "",
+        "progressFillAlpha": 0.28
       }
     },
     "env": {
@@ -769,7 +775,9 @@
         "roleLabelSize": 8.5,
         "roleLabelColor": "",
         "sustainBarWidth": 20.0,
-        "sustainBarHeight": 3.0
+        "sustainBarHeight": 3.0,
+        "progressFillColor": "",
+        "progressFillAlpha": 0.28
       }
     }
   },

@@ -1512,6 +1512,189 @@ void testBreakpointEnvelope()
                   + fmt(higher.getPoint(sustainIndex).timeSeconds, 3) + " s");
     }
 
+    // ---- the AMP ENV progress fill -----------------------------------------
+    //
+    // The graph fills in the area under the part of the envelope the playing
+    // note has already been through. The fill is driven by the DSP's own
+    // runtime position, so these tests run a real AmpEnvelope and read the
+    // display time the editor derives from it - the same number that decides
+    // where the fill stops.
+    {
+        constexpr double kRate = 1000.0;
+
+        px3::BreakpointEnvelope shape;
+        {
+            EnvelopeSettings settings;
+            settings.attackSeconds = 3.0f;
+            settings.decaySeconds = 1.0f;
+            settings.sustainLevel = 0.5f;
+            settings.releaseSeconds = 2.0f;
+            shape = px3::BreakpointEnvelope::fromAdsr(settings);
+        }
+
+        BreakpointEnvelopeEditor graph;
+        graph.setSize(400, 200);
+        graph.setEnvelope(shape);
+
+        AmpEnvelope voice;
+        voice.prepare(kRate);
+        voice.setEnvelope(shape);
+
+        const auto advance = [&voice](double seconds)
+        {
+            const auto samples = static_cast<int>(std::lround(seconds * kRate));
+            for (int i = 0; i < samples; ++i) { voice.getNextSample(); }
+        };
+
+        // Push whatever the voice currently reports into the graph, exactly as
+        // the editor's timer does, and read back where the fill would stop.
+        const auto displayTimeNow = [&graph, &voice]
+        {
+            const auto position = voice.currentPosition();
+            EnvelopePosition progress;
+            progress.active = position.active;
+            progress.inRelease = position.inRelease;
+            progress.heldSeconds = position.heldSeconds;
+            progress.releasedSeconds = position.releasedSeconds;
+            progress.sustainSeconds = position.sustainSeconds;
+            graph.setProgress(progress);
+            return graph.progressDisplayTime();
+        };
+
+        // Idle: nothing is playing, so there is nothing to fill.
+        juce::Path idle;
+        graph.buildCurvePath(idle, displayTimeNow(), true);
+        check("AmpProgress_NothingIsFilledWhileTheEnvelopeIsIdle",
+              idle.isEmpty(),
+              "an untriggered envelope draws no progress fill");
+
+        // Through the attack: a third of a 3 s attack is a third of the way.
+        voice.noteOn();
+        const auto atOnset = displayTimeNow();
+        advance(1.0);
+        const auto atOneSecond = displayTimeNow();
+        advance(1.0);
+        const auto atTwoSeconds = displayTimeNow();
+        advance(1.0);
+        const auto atAttackEnd = displayTimeNow();
+
+        check("AmpProgress_TheFillAdvancesWithTheAttack",
+              atOnset < 1.0e-6 && std::abs(atOneSecond - 1.0) < 0.02
+                  && std::abs(atTwoSeconds - 2.0) < 0.02
+                  && std::abs(atAttackEnd - 3.0) < 0.02,
+              "a 3 s attack reads " + fmt(atOnset, 2) + " / " + fmt(atOneSecond, 2)
+                  + " / " + fmt(atTwoSeconds, 2) + " / " + fmt(atAttackEnd, 2) + " s");
+
+        // Into the decay: the fill carries on across the stage boundary rather
+        // than restarting, which is what a per-stage progress would do.
+        advance(0.5);
+        const auto midDecay = displayTimeNow();
+        check("AmpProgress_TheFillCarriesOnThroughTheDecay",
+              midDecay > atAttackEnd && std::abs(midDecay - 3.5) < 0.02,
+              "half a second into the decay the fill is at " + fmt(midDecay, 2)
+                  + " s, not back at " + fmt(midDecay - atAttackEnd, 2));
+
+        // Holding at the sustain: the envelope is waiting, not advancing, so
+        // the fill must stop moving however long the note is held.
+        advance(0.5);
+        const auto atSustain = displayTimeNow();
+        advance(5.0);
+        const auto muchLater = displayTimeNow();
+        check("AmpProgress_TheFillStopsMovingAtTheSustain",
+              std::abs(muchLater - atSustain) < 1.0e-6 && std::abs(atSustain - 4.0) < 0.02,
+              "five further seconds of holding leave the fill at " + fmt(muchLater, 3)
+                  + " s, where it was at " + fmt(atSustain, 3));
+
+        // Release picks up from the sustain edge and runs on - it does not
+        // start over at the left of the graph.
+        voice.noteOff();
+        const auto releaseStart = displayTimeNow();
+        advance(1.0);
+        const auto midRelease = displayTimeNow();
+        // The sustain bar fills in at note-off, and the release runs on from
+        // its far edge - a second of release is a second further along.
+        check("AmpProgress_TheReleaseResumesFromTheSustainRatherThanRestarting",
+              releaseStart > atSustain && std::abs(midRelease - (releaseStart + 1.0)) < 0.02,
+              "release begins at " + fmt(releaseStart, 2) + " s and reaches "
+                  + fmt(midRelease, 2) + " s after a second");
+
+        // The fill's upper edge is the curve. Not an approximation of it: the
+        // point the truncated path stops at has to lie on the full curve.
+        {
+            juce::Path full, partial;
+            graph.buildCurvePath(full);
+            graph.buildCurvePath(partial, 1.5, false);
+
+            const auto lastPointOf = [](const juce::Path& path)
+            {
+                juce::Point<float> last;
+                juce::PathFlatteningIterator it(path);
+                while (it.next()) { last = { it.x2, it.y2 }; }
+                return last;
+            };
+
+            // Where the full curve is at the x the fill stopped at.
+            const auto stop = lastPointOf(partial);
+            auto onCurve = 0.0f;
+            auto bestDx = 1.0e9f;
+            juce::PathFlatteningIterator walk(full);
+            while (walk.next())
+            {
+                const auto dx = std::abs(walk.x2 - stop.x);
+                if (dx < bestDx) { bestDx = dx; onCurve = walk.y2; }
+            }
+
+            check("AmpProgress_TheFillsEdgeIsTheEnvelopeCurveItself",
+                  bestDx < 2.0f && std::abs(onCurve - stop.y) < 1.0f,
+                  "the fill stops at (" + fmt(stop.x, 1) + ", " + fmt(stop.y, 1)
+                      + ") and the curve passes through y " + fmt(onCurve, 1) + " there");
+        }
+
+        // A note released during the attack has left the held part of the
+        // envelope behind, so the fill moves on to the release segment instead
+        // of staying where the attack was cut short.
+        {
+            AmpEnvelope shortened;
+            shortened.prepare(kRate);
+            shortened.setEnvelope(shape);
+            shortened.noteOn();
+            for (int i = 0; i < 500; ++i) { shortened.getNextSample(); }
+            shortened.noteOff();
+
+            const auto position = shortened.currentPosition();
+            EnvelopePosition progress;
+            progress.active = position.active;
+            progress.inRelease = position.inRelease;
+            progress.heldSeconds = position.heldSeconds;
+            progress.releasedSeconds = position.releasedSeconds;
+            progress.sustainSeconds = position.sustainSeconds;
+            graph.setProgress(progress);
+
+            check("AmpProgress_AnEarlyNoteOffMovesTheFillIntoTheRelease",
+                  progress.inRelease
+                      && std::abs(graph.progressDisplayTime() - releaseStart) < 0.02,
+                  "a note released half a second in fills to " + fmt(graph.progressDisplayTime(), 2)
+                      + " s, the start of the release");
+        }
+
+        // Retriggering starts the fill over rather than continuing where the
+        // last note had got to.
+        {
+            AmpEnvelope retriggered;
+            retriggered.prepare(kRate);
+            retriggered.setEnvelope(shape);
+            retriggered.noteOn();
+            for (int i = 0; i < 2000; ++i) { retriggered.getNextSample(); }
+            const auto before = retriggered.currentPosition().heldSeconds;
+            retriggered.noteOn();
+            const auto after = retriggered.currentPosition().heldSeconds;
+            check("AmpProgress_ARetriggerStartsTheFillOver",
+                  before > 1.9 && after < 1.0e-6,
+                  "a retrigger takes the fill from " + fmt(before, 2) + " s back to "
+                      + fmt(after, 2) + " s");
+        }
+    }
+
     // ---- the two envelope MODELS, tested as state machines ------------------
     //
     // At 1000 Hz, so a 100 ms stage is exactly 100 samples and a stage boundary

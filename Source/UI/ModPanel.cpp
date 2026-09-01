@@ -431,6 +431,10 @@ void ModPanel::refreshFromParameters()
             const auto stored = processor.getShapedEnvelope(slot);
             bundle.component->setShapedEnvelope(
                 stored.isPlainAdsr() ? processor.currentModEnvelope(slot - 1) : stored);
+
+            // And how far the playing note has taken this envelope, read from
+            // the voice itself rather than clocked alongside it in the UI.
+            bundle.component->setEnvelopeProgress(processor.getEnvelopeProgress(slot));
         }
     }
 }

@@ -155,6 +155,10 @@ public:
         // timing does not move when the envelope's curve changes.
         float releaseProgress(double seconds) const noexcept;
 
+        // Where the envelope holds, on its own time axis. The visualisation
+        // needs it to know when the held phase has stopped advancing.
+        double sustainTimeSeconds() const noexcept { return sustainSeconds; }
+
 
     private:
         struct Segment

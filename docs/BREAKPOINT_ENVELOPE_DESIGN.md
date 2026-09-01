@@ -271,3 +271,52 @@ parameters directly.
 Not implemented: the editor draws the curve but not a marker for where the
 envelope currently is. `setLivePosition` existed with no caller and was removed
 in the 0.4.0 cleanup rather than left looking wired.
+
+## H. Showing where the playing note has got to
+
+The AMP ENV graph fills the area under the part of the envelope the sounding
+note has already traversed. Three decisions carry the design.
+
+**One sampler, not two.** `buildCurvePath` takes an optional stopping time on
+the display axis and an optional "close down to the baseline" flag. The curve
+is that function with no stopping time; the fill is the same function stopped
+part way and closed. The fill's upper edge therefore *is* the curve — including
+every bend — rather than a second approximation that could be drawn from the
+same numbers and still disagree. The alternative, a fill built from its own
+walk of the points, is the kind of duplicate that stays correct until someone
+changes one of the two.
+
+At the stopping point the path lands on the exact interpolated value rather
+than on the last sample before it. Without that, the fill's edge steps forward
+one path sample at a time and visibly stutters against a curve that does not.
+
+**Progress comes from the DSP, not from a clock.** `AmpEnvelope::Position` is a
+read-only snapshot — active, in-release, held seconds, released seconds,
+sustain time. `SynthVoice` exposes it along with the sequence number its note
+started with; the processor picks the newest sounding voice once per block and
+stores the five fields into atomics. The editor reads them on the UI timer.
+A UI-side timer counting seconds alongside the envelope would be a second
+implementation of the envelope's own timing, and would drift from it under load
+or a change of buffer size — the same class of mistake as the two-samplers one.
+
+Exposure is strictly read-only: no envelope, voice, or processor behaviour
+changed, and the audio thread does five relaxed stores per block.
+
+**The sustain bar is not a duration.** While the note is held the fill advances
+in real time up to the sustain point and then stops, however long the key is
+down. The held stretch drawn after the decay is display-only — the envelope
+holds there for an unbounded time — so creeping across it would be inventing
+time the envelope is not spending. The bar fills in at note-off, and the
+release runs on from its far edge. That leaves one discontinuity, and it is
+placed at note-off, a moment the picture is expected to change because the
+player caused it, rather than at the arrival at sustain, where it would be an
+unprompted jump of about a fifth of the graph's width.
+
+A note released during the attack is treated the same way: it has left the held
+part of the envelope behind, so the fill moves to the release segment.
+
+Eight tests pin this (`AmpProgress_*` in `ComponentTests.cpp`), each verified to
+fail against the fault it names: a progress that never advances, one that
+resets per stage, a sustain that creeps, a release that restarts at zero, a
+fill drawn from a flat approximation instead of the curve, an idle envelope
+that still fills, and a retrigger that continues rather than starting over.

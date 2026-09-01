@@ -98,6 +98,7 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     currentFrequencyHz = baseFrequencyHz;
     level = velocity;
     const auto sequence = gNoteStartSequence.fetch_add(1u, std::memory_order_relaxed);
+    startSequence = sequence;
     auto hash = static_cast<uint32_t>(voiceIndex + 1) * 747796405u;
     hash ^= sequence * 2891336453u;
     hash ^= static_cast<uint32_t>(midiNoteNumber + 1) * 277803737u;

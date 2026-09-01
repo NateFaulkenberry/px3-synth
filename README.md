@@ -552,6 +552,15 @@ UI:
   Structural points - the first, the sustain point and the last - cannot be
   removed.
 - Up to 16 points. The time axis is labelled in seconds, to a maximum of 8.
+- While a note is sounding, the area under the part of the envelope it has
+  already been through fills in behind the curve. It follows the shape exactly,
+  bends included, because the fill and the curve come from one sampler. The
+  fill stops dead at the sustain point for as long as the note is held - the
+  sustain bar's drawn width is not a duration, so creeping across it would be
+  inventing time the envelope is not spending - and the bar fills in at
+  note-off as the release runs on from its far edge. Retriggering starts it
+  over; when nothing is sounding there is no fill. It shows the most recently
+  triggered voice, which is the one a player has just pressed.
 
 Parameter mapping (unchanged source of truth):
 
@@ -568,6 +577,10 @@ Architecture guarantee:
   has no such node, which is a valid state meaning "plain ADSR" - not an error.
 - The curve the editor draws is the same function the DSP evaluates, sampled
   into a path, so there is no drawn shape and played shape to drift apart.
+- The progress fill reads the playing voice's own envelope position, published
+  once per block into atomics; it is not a UI clock counting alongside the DSP,
+  so it cannot drift, and it is read-only - exposing it changed no audio
+  behaviour and added no work to the audio thread beyond five atomic stores.
 
 Release starts from wherever the envelope actually is, not from the sustain
 level, so releasing during a slow attack does not jump first.

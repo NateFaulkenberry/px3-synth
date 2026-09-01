@@ -53,6 +53,21 @@ public:
     // is in the wrong place".
     float currentAmpAttackSeconds() const noexcept { return envelopeSettings.attackSeconds; }
     double currentAmpHeldSeconds() const noexcept { return ampEnvelope.heldSecondsForDebug(); }
+
+    // For the envelope visualisations: where this voice's envelopes are, and
+    // when the voice was started, so the newest one can be picked to draw.
+    EnvelopePosition currentAmpEnvelopePosition() const noexcept
+    {
+        return ampEnvelope.currentPosition();
+    }
+
+    EnvelopePosition currentModEnvelopePosition(int envIndex) const noexcept
+    {
+        return juce::isPositiveAndBelow(envIndex, 3)
+                   ? modEnvelopeGenerators[static_cast<std::size_t>(envIndex)].currentPosition()
+                   : EnvelopePosition {};
+    }
+    std::uint32_t noteStartSequence() const noexcept { return startSequence; }
     void setAmpEnvelopeEnabled(bool shouldEnable);
     // The shaped envelopes, when they are more than four numbers can describe.
     // Kept alongside the ADSR setters rather than replacing them: an envelope
@@ -201,6 +216,7 @@ private:
     double ampEnvelopePreparedSampleRate { 0.0 };
     double modEnvelopePreparedSampleRate { 0.0 };
     double filtersPreparedSampleRate { 0.0 };
+    std::uint32_t startSequence { 0u };
 
     // The shape the processor last handed this voice, and whether it has one.
     //

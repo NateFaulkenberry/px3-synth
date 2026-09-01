@@ -30,6 +30,18 @@ public:
     // How far into the held phase the envelope believes it is. Diagnostic only.
     double heldSecondsForDebug() const noexcept { return heldSeconds; }
 
+    // Where the envelope currently is, for drawing it. See EnvelopePosition.
+    EnvelopePosition currentPosition() const noexcept
+    {
+        EnvelopePosition position;
+        position.active = ! finished;
+        position.inRelease = inRelease;
+        position.sustainSeconds = snapshot.sustainTimeSeconds();
+        position.heldSeconds = juce::jmin(heldSeconds, position.sustainSeconds);
+        position.releasedSeconds = releasedSeconds;
+        return position;
+    }
+
 private:
     // juce::ADSR ramps the release linearly in amplitude. Perceived loudness is
     // logarithmic, so a linear ramp spends half the release time in its top 6 dB

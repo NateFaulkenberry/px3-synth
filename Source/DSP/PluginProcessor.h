@@ -941,6 +941,37 @@ private:
 
     void pushVirtualNote(VirtualNote event);
 
+public:
+    // Where the AMP ENV currently is, for the graph to paint.
+    //
+    // The MOST RECENTLY TRIGGERED sounding voice, chosen by note-start
+    // sequence. One envelope is drawn rather than all of them: the graph is a
+    // picture of the shape, and stacking sixty-four progress fills on it would
+    // say less than one does.
+    //
+    // Published once per block from the audio thread into plain atomics and
+    // read by the editor's timer. Nothing flows the other way.
+    // Where the newest sounding voice's envelopes are, for the graphs that draw
+    // them. Slot 0 is AMP ENV and 1-3 are ENV 1-3, the same numbering the
+    // shaped-envelope accessors use.
+    static constexpr int kEnvelopeSlots = 4;
+    EnvelopePosition getEnvelopeProgress(int slot) const;
+
+private:
+    // One slot per envelope. Written on the audio thread, read on the message
+    // thread; each field is independently atomic and `active` is the release
+    // store that publishes the rest.
+    struct ProgressSlot
+    {
+        std::atomic<bool> active { false };
+        std::atomic<bool> inRelease { false };
+        std::atomic<double> held { 0.0 };
+        std::atomic<double> released { 0.0 };
+        std::atomic<double> sustain { 0.0 };
+    };
+    std::array<ProgressSlot, kEnvelopeSlots> envelopeProgress;
+    void publishEnvelopeProgress();
+
     // Onset capture, for diagnosing a fault that only appears in a real host.
     //
     // Off unless PX3_ONSET_CAPTURE is set in the environment. When on, the

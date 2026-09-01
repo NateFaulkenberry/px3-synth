@@ -1739,6 +1739,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
     }
 
+    publishEnvelopeProgress();
+
     auto prePolyPeak = 0.0f;
     auto prePolyClipSamples = 0;
     for (int sourceIndex = 0; sourceIndex < kMixerSourceCount; ++sourceIndex)

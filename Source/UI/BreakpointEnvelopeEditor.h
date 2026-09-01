@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include <limits>
+
 #include "../DSP/BreakpointEnvelope.h"
 #include "UIConfig.h"
 
@@ -31,6 +33,26 @@ public:
 
     void setEnvelope(const px3::BreakpointEnvelope& envelope);
     const px3::BreakpointEnvelope& getEnvelope() const noexcept { return envelope; }
+
+    // How far the envelope being played has got, in its OWN seconds. Fed from
+    // the DSP's runtime state, never from a timer of the editor's own - a
+    // second clock would drift against the one making the sound.
+    // Where the playing envelope has got to. The DSP's own position type, so
+    // there is nothing to copy field by field and nothing to fall out of step.
+    void setProgress(EnvelopePosition progress);
+    EnvelopePosition getProgress() const noexcept { return liveProgress; }
+
+    // Where the fill currently reaches, on the DISPLAY time axis. Exposed so a
+    // test can check it against the curve rather than against a screenshot.
+    double progressDisplayTime() const;
+
+    // The drawn curve, optionally stopped part way and closed down to the
+    // baseline - which is how the progress fill is made. One sampler serves
+    // both, so the fill's upper edge IS the curve rather than a second
+    // approximation of it that could drift out of agreement.
+    void buildCurvePath(juce::Path& path,
+                        double untilDisplayTime = std::numeric_limits<double>::max(),
+                        bool closeToBaseline = false) const;
 
     // Fires on every edit, including during a drag: the caller decides whether
     // to write a parameter now or on mouse-up.
@@ -116,7 +138,10 @@ private:
     double screenToValue(float y) const;
     double visibleSeconds() const;
 
-    void buildCurvePath(juce::Path& path) const;
+    // One sampler for both the drawn curve and the progress fill.
+    //
+    // `untilDisplayTime` stops the walk part way along; `closeToBaseline` drops
+    // to the bottom of the plot and closes, turning the same points into an
     juce::Point<float> curveHandlePosition(int segment) const;
 
     juce::Colour colourFor(const juce::String& key, juce::Colour fallback) const;
@@ -148,6 +173,11 @@ private:
     double dragAxisSeconds { 0.0 };
 
     bool showReadout { false };
+    EnvelopePosition liveProgress;
+
+    // Reused across paints. Path::clear keeps the storage, so the fill costs no
+    // allocation per frame once the shape has been drawn once.
+    juce::Path progressFillPath;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BreakpointEnvelopeEditor)
 };

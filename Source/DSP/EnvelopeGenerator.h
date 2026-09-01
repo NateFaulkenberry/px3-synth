@@ -22,6 +22,18 @@ public:
     bool isActive() const;
     float getNextSample();
 
+    // Where the envelope currently is, for drawing it. See EnvelopePosition.
+    EnvelopePosition currentPosition() const noexcept
+    {
+        EnvelopePosition position;
+        position.active = ! finished;
+        position.inRelease = inRelease;
+        position.sustainSeconds = snapshot.sustainTimeSeconds();
+        position.heldSeconds = juce::jmin(heldSeconds, position.sustainSeconds);
+        position.releasedSeconds = releasedSeconds;
+        return position;
+    }
+
 private:
     double sampleRateHz { 44100.0 };
     EnvelopeSettings envelopeSettings;

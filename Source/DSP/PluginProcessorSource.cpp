@@ -166,6 +166,59 @@ px3::BreakpointEnvelope PX3SynthAudioProcessor::currentModEnvelope(int envIndex)
              : stored;
 }
 
+void PX3SynthAudioProcessor::publishEnvelopeProgress()
+{
+    // Audio thread. Picks the newest sounding voice and stores where each of
+    // its envelopes has got to; stores "idle" when nothing is sounding, so the
+    // graphs clear rather than keeping the last note's fill.
+    const SynthVoice* newest = nullptr;
+    for (auto* voice : typedVoices)
+    {
+        if (voice == nullptr || ! voice->isVoiceActive()) { continue; }
+        if (newest == nullptr || voice->noteStartSequence() > newest->noteStartSequence())
+        {
+            newest = voice;
+        }
+    }
+
+    const auto store = [](ProgressSlot& target, const EnvelopePosition& position)
+    {
+        target.inRelease.store(position.inRelease, std::memory_order_relaxed);
+        target.held.store(position.heldSeconds, std::memory_order_relaxed);
+        target.released.store(position.releasedSeconds, std::memory_order_relaxed);
+        target.sustain.store(position.sustainSeconds, std::memory_order_relaxed);
+        target.active.store(position.active, std::memory_order_release);
+    };
+
+    if (newest == nullptr)
+    {
+        for (auto& slot : envelopeProgress) { slot.active.store(false, std::memory_order_relaxed); }
+        return;
+    }
+
+    store(envelopeProgress[0], newest->currentAmpEnvelopePosition());
+
+    for (int env = 0; env < kEnvelopeSlots - 1; ++env)
+    {
+        store(envelopeProgress[static_cast<std::size_t>(env + 1)],
+              newest->currentModEnvelopePosition(env));
+    }
+}
+
+EnvelopePosition PX3SynthAudioProcessor::getEnvelopeProgress(int slot) const
+{
+    const auto& source = envelopeProgress[
+        static_cast<std::size_t>(juce::jlimit(0, kEnvelopeSlots - 1, slot))];
+
+    EnvelopePosition position;
+    position.active = source.active.load(std::memory_order_acquire);
+    position.inRelease = source.inRelease.load(std::memory_order_relaxed);
+    position.heldSeconds = source.held.load(std::memory_order_relaxed);
+    position.releasedSeconds = source.released.load(std::memory_order_relaxed);
+    position.sustainSeconds = source.sustain.load(std::memory_order_relaxed);
+    return position;
+}
+
 void PX3SynthAudioProcessor::setShapedEnvelope(int index, const px3::BreakpointEnvelope& envelope)
 {
     shapedEnvelopes[static_cast<std::size_t>(juce::jlimit(0, kShapedEnvelopeCount - 1, index))]

@@ -348,10 +348,13 @@ BreakpointEnvelopeEditor::Hit BreakpointEnvelopeEditor::grabAt(juce::Point<float
     return {};
 }
 
-void BreakpointEnvelopeEditor::buildCurvePath(juce::Path& path) const
+void BreakpointEnvelopeEditor::buildCurvePath(juce::Path& path, double untilDisplayTime,
+                                              bool closeToBaseline) const
 {
     const auto area = plotArea();
     if (area.isEmpty() || envelope.getPointCount() < 2) { return; }
+
+    if (closeToBaseline && untilDisplayTime <= 0.0) { return; }
 
     const auto start = pointToScreen(0);
     path.startNewSubPath(start);
@@ -386,9 +389,75 @@ void BreakpointEnvelopeEditor::buildCurvePath(juce::Path& path) const
             const auto value = a.value + (b.value - a.value)
                                              * px3::BreakpointEnvelope::shape(x, a.curveToNext);
             const auto time = fromTime + (toTime - fromTime) * x;
+
+            if (time > untilDisplayTime)
+            {
+                // Land exactly on the stopping point rather than at the last
+                // sample before it, so the fill's edge tracks the envelope
+                // smoothly instead of stepping once per sample.
+                const auto span = toTime - fromTime;
+                const auto atStop = span > 1.0e-12 ? (untilDisplayTime - fromTime) / span : 0.0;
+                const auto stopValue = a.value + (b.value - a.value)
+                                                     * px3::BreakpointEnvelope::shape(
+                                                           juce::jlimit(0.0, 1.0, atStop),
+                                                           a.curveToNext);
+                path.lineTo(toScreen(untilDisplayTime, stopValue));
+
+                if (closeToBaseline)
+                {
+                    path.lineTo(toScreen(untilDisplayTime, 0.0));
+                    path.lineTo(toScreen(0.0, 0.0));
+                    path.closeSubPath();
+                }
+                return;
+            }
+
             path.lineTo(toScreen(time, value));
         }
     }
+
+    if (closeToBaseline)
+    {
+        const auto last = envelope.getPointCount() - 1;
+        path.lineTo(toScreen(displayTimeArriving(last), 0.0));
+        path.lineTo(toScreen(0.0, 0.0));
+        path.closeSubPath();
+    }
+}
+
+void BreakpointEnvelopeEditor::setProgress(EnvelopePosition progress)
+{
+    // Only repaint when the picture would actually change. A fill that redraws
+    // on every timer tick regardless costs the same as one that is moving.
+    const auto before = progressDisplayTime();
+    const auto wasActive = liveProgress.active;
+    liveProgress = progress;
+
+    if (wasActive != liveProgress.active
+        || std::abs(progressDisplayTime() - before) > 1.0e-4)
+    {
+        repaint();
+    }
+}
+
+double BreakpointEnvelopeEditor::progressDisplayTime() const
+{
+    if (! liveProgress.active) { return 0.0; }
+
+    const auto sustain = envelope.getSustainPoint();
+
+    if (liveProgress.inRelease)
+    {
+        // Release begins where the held stretch ends, and runs from there.
+        return displayTimeLeaving(sustain) + liveProgress.releasedSeconds;
+    }
+
+    // Held. The fill stops dead at the sustain point: the sustain bar's drawn
+    // width is not a duration, so creeping across it would be inventing time
+    // the envelope is not spending. It stays there however long the note is
+    // held, and the bar fills in at note-off - a moment the picture is
+    // expected to change anyway, rather than an unprompted jump on arrival.
+    return juce::jmin(liveProgress.heldSeconds, displayTimeArriving(sustain));
 }
 
 void BreakpointEnvelopeEditor::resized()
@@ -493,6 +562,29 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
             colourFor("fillBottomColor", fillColour().withMultipliedAlpha(0.08f)),
             area.getX(), area.getBottom(), false));
         g.fillPath(filled);
+    }
+
+    // ---- how far the envelope being played has got -------------------------
+    //
+    // The area under the part of the curve already traversed - not a playhead
+    // line, and not a rectangle. Built from the SAME sampler as the curve
+    // above, stopped part way, so its upper edge is the curve by construction
+    // rather than by a second approximation that could disagree.
+    //
+    // Drawn after the resting fill and before the line, so the envelope stays
+    // crisp on top of it.
+    if (liveProgress.active)
+    {
+        progressFillPath.clear();
+        buildCurvePath(progressFillPath, progressDisplayTime(), true);
+
+        if (! progressFillPath.isEmpty())
+        {
+            g.setColour(colourFor("progressFillColor",
+                                  curveColour().withAlpha(
+                                      floatFor("progressFillAlpha", 0.28f))));
+            g.fillPath(progressFillPath);
+        }
     }
 
     g.setColour(colourFor("lineColor", curveColour()));

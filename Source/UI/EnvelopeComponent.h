@@ -54,6 +54,11 @@ public:
     // connection to the processor - this component knows about an envelope, not
     // about where it lives.
     void setShapedEnvelope(const px3::BreakpointEnvelope& envelope);
+
+    void setEnvelopeProgress(EnvelopePosition progress)
+    {
+        breakpointEditor.setProgress(progress);
+    }
     std::function<void(const px3::BreakpointEnvelope&)> onEnvelopeEdited;
 
     void resized() override;

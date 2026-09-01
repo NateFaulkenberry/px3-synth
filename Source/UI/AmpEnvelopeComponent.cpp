@@ -135,6 +135,11 @@ void AmpEnvelopeComponent::refreshFromParameters()
         const auto stored = processor.getShapedEnvelope(0);
         envelopeGraph->setShapedEnvelope(
             stored.isPlainAdsr() ? processor.currentAmpEnvelope() : stored);
+
+        // Where the envelope being played has got to, taken from the DSP's own
+        // runtime state rather than from a clock of the UI's - the graph
+        // follows the sound instead of guessing alongside it.
+        envelopeGraph->setEnvelopeProgress(processor.getEnvelopeProgress(0));
     }
     repaint();
 }
