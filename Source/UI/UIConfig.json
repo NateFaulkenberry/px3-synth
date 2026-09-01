@@ -1478,7 +1478,8 @@
           },
           "row2": {
             "height": 65,
-            "gap": 10
+            "gap": 10,
+            "paddingTop": 20
           },
           "row3": {
             "height": "30%",
@@ -1584,7 +1585,8 @@
           },
           "row2": {
             "height": 65,
-            "gap": 10
+            "gap": 10,
+            "paddingTop": 20
           },
           "row3": {
             "height": "30%",
