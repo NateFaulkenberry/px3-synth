@@ -3056,15 +3056,16 @@ void testBreakpointEnvelope()
         // ---- keyboard ----
         {
             editor.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
-            // Point 3, the sustain. Points 1 and 2 are the peak and the hold,
-            // both at 1.0 with nowhere to be nudged, so testing there would
-            // measure the clamp rather than the nudge.
-            editor.mouseDown(makeEvent(editor.pointToScreen(3), 1));
-            editor.mouseUp(makeEvent(editor.pointToScreen(3), 1));
+            // Point 2, the sustain - the only point in the skeleton with a
+            // level to nudge. Point 1 is the peak, already at 1.0 with nowhere
+            // to go, and points 0 and 3 are anchored at silence, so testing
+            // any of those would measure a clamp rather than the nudge.
+            editor.mouseDown(makeEvent(editor.pointToScreen(2), 1));
+            editor.mouseUp(makeEvent(editor.pointToScreen(2), 1));
 
-            const auto before = editor.getEnvelope().getPoint(3).value;
+            const auto before = editor.getEnvelope().getPoint(2).value;
             editor.keyPressed(juce::KeyPress(juce::KeyPress::upKey));
-            const auto afterUp = editor.getEnvelope().getPoint(3).value;
+            const auto afterUp = editor.getEnvelope().getPoint(2).value;
 
             check("EnvelopeEditor_ArrowKeysNudgeTheSelectedPoint", afterUp > before,
                   fmt(before, 4) + " -> " + fmt(afterUp, 4));
@@ -3139,6 +3140,174 @@ void testBreakpointEnvelope()
                       + " points, second still has "
                       + juce::String(second.getEnvelope().getPointCount()));
         }
+    }
+
+    // ---- an envelope starts and ends at silence -----------------------------
+    //
+    // A curve that begins at 0.44 and ends at 0.68 is drawn faithfully - and
+    // looks like the line has come away from the bottom of its own graph,
+    // because it has. On AMP ENV it is also a click at note-on and a note that
+    // never stops.
+    //
+    // The route in: add a point, which makes the shape free-form and unlocks
+    // every point's LEVEL, drag the ends up, then remove the added point. The
+    // skeleton is back to four points with a sustain bar, carrying levels the
+    // skeleton could never have been given directly.
+    {
+        EnvelopeSettings adsr;
+        adsr.attackSeconds = 0.020f;
+        adsr.decaySeconds = 0.120f;
+        adsr.sustainLevel = 0.7f;
+        adsr.releaseSeconds = 0.220f;
+
+        auto shape = px3::BreakpointEnvelope::fromAdsr(adsr);
+        const auto added = shape.addPoint(0.060, 0.5);
+        juce::ignoreUnused(added);
+
+        shape.setPoint(0, 0.0, 0.44);
+        shape.setPoint(shape.getPointCount() - 1,
+                       shape.getPoint(shape.getPointCount() - 1).timeSeconds, 0.68);
+        shape.removePoint(1);
+
+        const auto last = shape.getPointCount() - 1;
+        check("EnvelopeEditor_TheCurveStartsAndEndsOnTheBaseline",
+              shape.getPoint(0).value <= 1.0e-9 && shape.getPoint(last).value <= 1.0e-9
+                  && shape.getPoint(0).timeSeconds <= 1.0e-9,
+              "after free-form editing the shape runs from " + fmt(shape.getPoint(0).value, 3)
+                  + " to " + fmt(shape.getPoint(last).value, 3) + " over "
+                  + juce::String(shape.getPointCount()) + " points");
+
+        // The same has to hold for a shape restored from saved state, so an
+        // envelope already stored this way comes back repaired rather than
+        // floating.
+        px3::BreakpointEnvelope::Point raw[4] = { { 0.0, 0.44, 0.0 }, { 0.02, 1.0, 0.0 },
+                                                  { 0.14, 0.7, 0.0 }, { 0.36, 0.68, 0.0 } };
+        px3::BreakpointEnvelope restored;
+        restored.setPoints(raw, 4, 2);
+        check("EnvelopeEditor_ARestoredEnvelopeIsBroughtBackToTheBaseline",
+              restored.getPoint(0).value <= 1.0e-9
+                  && restored.getPoint(restored.getPointCount() - 1).value <= 1.0e-9,
+              "restored shape runs from " + fmt(restored.getPoint(0).value, 3) + " to "
+                  + fmt(restored.getPoint(restored.getPointCount() - 1).value, 3));
+    }
+
+    // ---- the curve is drawn on the graph it is drawn in ---------------------
+    //
+    // Everything inside the editor - frame, grid, time rules, labels, curve -
+    // is placed from plotArea(). If any one of them used a different rectangle
+    // the picture would show a curve floating inside its own background, so
+    // the invariants are checked against the rectangle rather than against
+    // each other.
+    {
+        const auto shapes = [] {
+            std::vector<std::pair<juce::String, px3::BreakpointEnvelope>> out;
+
+            EnvelopeSettings adsr;
+            adsr.attackSeconds = 0.020f;
+            adsr.decaySeconds = 0.120f;
+            adsr.sustainLevel = 0.7f;
+            adsr.releaseSeconds = 0.220f;
+            out.emplace_back("plain ADSR", px3::BreakpointEnvelope::fromAdsr(adsr));
+
+            EnvelopeSettings slow;
+            slow.attackSeconds = 4.000f;
+            slow.decaySeconds = 1.000f;
+            slow.sustainLevel = 0.35f;
+            slow.releaseSeconds = 3.000f;
+            out.emplace_back("slow ADSR", px3::BreakpointEnvelope::fromAdsr(slow));
+
+            auto curved = px3::BreakpointEnvelope::fromAdsr(adsr);
+            curved.setCurve(0, 0.8);
+            curved.setCurve(1, -0.6);
+            curved.setCurve(2, 0.4);
+            out.emplace_back("curved", curved);
+
+            auto freeForm = px3::BreakpointEnvelope::fromAdsr(adsr);
+            freeForm.addPoint(0.060, 0.5);
+            freeForm.addPoint(0.200, 0.9);
+            out.emplace_back("free-form", freeForm);
+
+            return out;
+        }();
+
+        juce::StringArray offences;
+
+        for (const auto& [name, shape] : shapes)
+        {
+            for (const auto size : { juce::Point<int>(395, 119), juce::Point<int>(524, 89),
+                                     juce::Point<int>(1650, 221), juce::Point<int>(200, 60) })
+            {
+                BreakpointEnvelopeEditor editor;
+                editor.setSize(size.x, size.y);
+                editor.setEnvelope(shape);
+
+                const auto area = editor.debugPlotArea();
+                const auto describe = [&](const juce::String& what)
+                {
+                    return name + " at " + juce::String(size.x) + "x" + juce::String(size.y)
+                         + ": " + what;
+                };
+
+                // The value axis fills the plot area exactly: 0 on the bottom
+                // edge, 1 on the top. A curve that floats inside its own
+                // background is this pair of numbers disagreeing.
+                if (std::abs(editor.debugToScreen(0.0, 0.0).y - area.getBottom()) > 0.01f)
+                {
+                    offences.add(describe("value 0 lands at y "
+                                          + fmt(editor.debugToScreen(0.0, 0.0).y, 2)
+                                          + ", not on the plot bottom " + fmt(area.getBottom(), 2)));
+                }
+                if (std::abs(editor.debugToScreen(0.0, 1.0).y - area.getY()) > 0.01f)
+                {
+                    offences.add(describe("value 1 lands at y "
+                                          + fmt(editor.debugToScreen(0.0, 1.0).y, 2)
+                                          + ", not on the plot top " + fmt(area.getY(), 2)));
+                }
+
+                // Every breakpoint sits where its own value says, so the
+                // handles cannot drift from the line they mark.
+                for (int i = 0; i < shape.getPointCount(); ++i)
+                {
+                    const auto drawn = editor.pointToScreen(i);
+                    const auto wanted = area.getBottom()
+                                      - area.getHeight()
+                                            * static_cast<float>(shape.getPoint(i).value);
+                    if (std::abs(drawn.y - wanted) > 0.01f)
+                    {
+                        offences.add(describe("point " + juce::String(i) + " drawn at y "
+                                              + fmt(drawn.y, 2) + ", value says " + fmt(wanted, 2)));
+                    }
+                }
+
+                // And the whole drawn curve stays inside the frame it is drawn
+                // in - no part of it outside its own background.
+                juce::Path curve;
+                editor.buildCurvePath(curve);
+                const auto bounds = curve.getBounds();
+                if (! area.expanded(0.51f).contains(bounds))
+                {
+                    offences.add(describe("the curve covers " + bounds.toString()
+                                          + " but the plot is " + area.toString()));
+                }
+
+                // The first and last points anchor the curve to the ends of the
+                // axis, so the shape spans the graph rather than sitting in it.
+                if (std::abs(bounds.getX() - area.getX()) > 0.51f
+                    || std::abs(bounds.getRight() - area.getRight()) > 0.51f)
+                {
+                    offences.add(describe("the curve runs x " + fmt(bounds.getX(), 1) + ".."
+                                          + fmt(bounds.getRight(), 1) + ", the plot "
+                                          + fmt(area.getX(), 1) + ".." + fmt(area.getRight(), 1)));
+                }
+            }
+        }
+
+        check("EnvelopeEditor_TheCurveIsDrawnOnTheGraphItIsDrawnIn",
+              offences.isEmpty(),
+              offences.isEmpty()
+                  ? juce::String(shapes.size() * 4) + " shape/size combinations, "
+                        + "every curve, handle and axis on the plot rectangle"
+                  : offences.joinIntoString("; "));
     }
 
     // ---- the editor sits inside the frame the card draws --------------------

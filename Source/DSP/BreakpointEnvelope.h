@@ -184,6 +184,10 @@ public:
 private:
     void sortAndClamp();
 
+    // The first point is the note-on instant and the last is silence after the
+    // release. Neither is editable; see the definition.
+    void anchorEnds();
+
     std::array<Point, kMaxPoints> points {};
     int pointCount { 0 };
     int sustainPoint { 0 };

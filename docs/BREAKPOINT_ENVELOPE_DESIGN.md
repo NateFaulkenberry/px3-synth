@@ -272,6 +272,27 @@ Not implemented: the editor draws the curve but not a marker for where the
 envelope currently is. `setLivePosition` existed with no caller and was removed
 in the 0.4.0 cleanup rather than left looking wired.
 
+## G2. The ends are structural
+
+The first point is the note-on instant and the last is silence after the
+release. Neither carries an editable level, and `anchorEnds()` holds both at
+zero on every path into the model — `setPoint` during a drag, and
+`sortAndClamp` for adds, removes and anything restored from saved state.
+
+Free-form editing got past this for a while. Adding a point takes the shape off
+the ADSR skeleton, which unlocks every point's LEVEL; the ends could then be
+dragged up, and removing the added point put the skeleton back carrying levels
+the skeleton could never have been given directly. The result reads on screen
+as a curve that has come away from the bottom of its own graph — the drawing is
+faithful, the data is not — and in the DSP it is a step at note-on and a note
+that never reaches silence.
+
+Two tests pin it: the editing route in, and a shape restored from state, which
+comes back repaired rather than floating. One existing test had to be corrected
+with the fix — it nudged "point 3, the sustain", a comment left from the
+five-point AHDSR shape, where point 3 is now the end point. It was asserting
+the bug.
+
 ## H. Showing where the playing note has got to
 
 All four envelope graphs fill the area under the part of the envelope the

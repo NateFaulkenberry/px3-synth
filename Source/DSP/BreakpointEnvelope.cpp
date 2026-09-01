@@ -135,6 +135,25 @@ void BreakpointEnvelope::sortAndClamp()
 
     // A sustain on the last point would leave nothing to release through.
     sustainPoint = juce::jlimit(0, pointCount - 2, sustainPoint);
+
+    anchorEnds();
+}
+
+void BreakpointEnvelope::anchorEnds()
+{
+    // The envelope begins and ends at silence. Both are structural rather than
+    // editable: the first point is the note-on instant, and the last is where
+    // the release has finished.
+    //
+    // Free-form editing is what got past this. Adding a point unlocks every
+    // point's LEVEL, so the ends could be dragged up; removing the added point
+    // put the ADSR skeleton back carrying levels the skeleton could never have
+    // been given directly. On screen that is a curve that has come away from
+    // the bottom of its own graph. In the DSP it is a click at note-on, and a
+    // note that never reaches silence.
+    points[0].timeSeconds = 0.0;
+    points[0].value = 0.0;
+    points[static_cast<std::size_t>(pointCount - 1)].value = 0.0;
 }
 
 void BreakpointEnvelope::setPoint(int index, double timeSeconds, double value)
@@ -162,6 +181,10 @@ void BreakpointEnvelope::setPoint(int index, double timeSeconds, double value)
         point.timeSeconds = juce::jmin(point.timeSeconds,
                                        points[static_cast<std::size_t>(index + 1)].timeSeconds);
     }
+
+    // Deliberately not sortAndClamp(): re-sorting here would renumber points
+    // under the mouse mid-drag. The ends still have to hold.
+    anchorEnds();
 }
 
 void BreakpointEnvelope::setCurve(int index, double curve)

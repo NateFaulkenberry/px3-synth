@@ -98,6 +98,13 @@ public:
     Hit grabAt(juce::Point<float> position) const;
     juce::Point<float> pointToScreen(int index) const;
 
+    // The rectangle everything inside the editor is placed from, and the
+    // mapping onto it. Exposed so a test can check the frame, the grid, the
+    // axis and the curve against ONE rectangle rather than against each other.
+    juce::Rectangle<float> debugPlotArea() const { return plotArea(); }
+    juce::Point<float> debugToScreen(double timeSeconds, double value) const
+    { return toScreen(timeSeconds, value); }
+
     // Where a point is DRAWN, which is not always where it is. Two points at
     // the same time land on the same pixel - HOLD defaults to zero, so at INIT
     // the hold point sits exactly on the attack point - and one handle covering
