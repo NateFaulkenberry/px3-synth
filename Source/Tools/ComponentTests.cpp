@@ -2559,6 +2559,44 @@ void testBreakpointEnvelope()
                 }
             }
 
+            // Styled like every other knob in the plugin: the editor's shared
+            // rotary look-and-feel, not each card's own. A knob drawn by a
+            // different one is a knob that looks like a different plugin.
+            juce::StringArray unstyled;
+            for (std::size_t i = 0; i < cards.size(); ++i)
+            {
+                auto* card = cards[i];
+                for (int k = 0; k < card->debugAdsrKnobCount(); ++k)
+                {
+                    const auto& knob = card->debugAdsrKnob(k);
+                    const auto& label = card->debugAdsrKnobLabel(k);
+                    const auto& readout = card->debugAdsrKnobReadout(k);
+
+                    const auto sharedLook = &knob.getLookAndFeel() != &juce::LookAndFeel::getDefaultLookAndFeel();
+                    const auto chip = dynamic_cast<const px3::ui::ChipLabel*>(&label) != nullptr;
+                    const auto captionColour = label.findColour(juce::Label::textColourId)
+                                               == juce::Colour::fromRGB(232, 232, 232);
+                    const auto readoutColour = readout.findColour(juce::Label::textColourId)
+                                               == juce::Colour::fromRGB(218, 218, 228);
+
+                    if (! sharedLook || ! chip || ! captionColour || ! readoutColour)
+                    {
+                        unstyled.add("card " + juce::String(static_cast<int>(i)) + " knob "
+                                     + juce::String(k)
+                                     + (sharedLook ? "" : " has the default look-and-feel")
+                                     + (chip ? "" : " has a plain caption")
+                                     + (captionColour ? "" : " caption colour")
+                                     + (readoutColour ? "" : " readout colour"));
+                    }
+                }
+            }
+
+            check("EnvelopeKnobs_TheyAreStyledLikeEveryOtherKnob",
+                  ! cards.empty() && unstyled.isEmpty(),
+                  unstyled.isEmpty()
+                      ? "shared rotary look-and-feel, chip captions and readouts throughout"
+                      : unstyled.joinIntoString("; "));
+
             check("EnvelopeKnobs_TheRowSitsBelowTheGraphInsideTheCard",
                   misplaced.isEmpty(),
                   misplaced.isEmpty() ? "every knob row is under its graph and inside its card"

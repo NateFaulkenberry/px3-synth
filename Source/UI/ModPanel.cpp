@@ -270,6 +270,7 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
     const auto slot = envIndex + 1;
     // ATTACK | DECAY | SUSTAIN | RELEASE under the graph. The card is taller
     // than it was to make the room, rather than taking it from the graph.
+    bundle.component->setKnobLookAndFeel(lfoKnobLookAndFeel);
     bundle.component->setAdsrKnobsVisible(true);
 
     bundle.component->setShapedEnvelope(processor.getShapedEnvelope(slot));

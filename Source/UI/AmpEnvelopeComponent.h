@@ -25,6 +25,11 @@ public:
     // What the user is actually looking at, for the UI tests.
     const EnvelopeComponent* debugGraph() const { return envelopeGraph.get(); }
 
+    void setKnobLookAndFeel(juce::LookAndFeel* lookAndFeel)
+    {
+        if (envelopeGraph != nullptr) { envelopeGraph->setKnobLookAndFeel(lookAndFeel); }
+    }
+
 private:
     PX3SynthAudioProcessor& processor;
 

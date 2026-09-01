@@ -12,6 +12,11 @@ class UIConfig;
 class AmpPanel final : public juce::Component
 {
 public:
+    // The editor's shared rotary look-and-feel, for the ADSR knobs under the
+    // graph. Handed down rather than constructed here, so every knob in the
+    // plugin is drawn by one of these.
+    void setKnobLookAndFeel(juce::LookAndFeel* lookAndFeel);
+
     AmpPanel(PX3SynthAudioProcessor& processorIn, juce::Colour panelAccent);
 
     void paint(juce::Graphics& g) override;

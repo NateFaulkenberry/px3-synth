@@ -19,6 +19,14 @@ AmpPanel::AmpPanel(PX3SynthAudioProcessor& processorIn, juce::Colour panelAccent
     addAndMakeVisible(*ampEnvelopeComponent);
 }
 
+void AmpPanel::setKnobLookAndFeel(juce::LookAndFeel* lookAndFeel)
+{
+    if (ampEnvelopeComponent != nullptr)
+    {
+        ampEnvelopeComponent->setKnobLookAndFeel(lookAndFeel);
+    }
+}
+
 void AmpPanel::paint(juce::Graphics& g)
 {
     const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("amp.panel.fillAlpha", 0.0f) : 0.0f;

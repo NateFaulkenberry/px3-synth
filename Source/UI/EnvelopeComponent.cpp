@@ -137,6 +137,26 @@ void EnvelopeComponent::refreshFromParameters()
             const auto amountPrefix = amountPercent > 0 ? juce::String("+") : juce::String();
             amountValueLabel->setText(amountPrefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
         }
+        // Greyed with the rest of the card when the envelope is bypassed, by
+        // the same two properties the AMOUNT knob uses - otherwise a bypassed
+        // card would carry four knobs still drawn as if they were live.
+        if (adsrKnobsBuilt)
+        {
+            for (auto& entry : adsrKnobs)
+            {
+                entry.knob.setEnabled(currentEnabled);
+                entry.knob.setInterceptsMouseClicks(currentEnabled, currentEnabled);
+                entry.knob.getProperties().set("knobBypassed", ! currentEnabled);
+                entry.knob.getProperties().set("psychedelicBypassGray", ! currentEnabled);
+                entry.label.setEnabled(currentEnabled);
+                entry.readout.setEnabled(currentEnabled);
+                entry.readout.setColour(juce::Label::textColourId,
+                                        currentEnabled
+                                            ? juce::Colour::fromRGB(218, 218, 228)
+                                            : juce::Colour::fromRGB(176, 176, 176));
+            }
+        }
+
         if (!currentEnabled)
         {
             hoverHandle = DragHandle::none;
@@ -850,6 +870,24 @@ void EnvelopeComponent::setAdsrKnobsVisible(bool shouldShow)
     repaint();
 }
 
+EnvelopeComponent::~EnvelopeComponent()
+{
+    for (auto& entry : adsrKnobs)
+    {
+        entry.knob.setLookAndFeel(nullptr);
+    }
+}
+
+void EnvelopeComponent::setKnobLookAndFeel(juce::LookAndFeel* lookAndFeel)
+{
+    knobLookAndFeel = lookAndFeel;
+
+    for (auto& entry : adsrKnobs)
+    {
+        if (adsrKnobsBuilt) { entry.knob.setLookAndFeel(knobLookAndFeel); }
+    }
+}
+
 bool EnvelopeComponent::adsrKnobsWanted() const
 {
     return showAdsrKnobs;
@@ -874,15 +912,26 @@ void EnvelopeComponent::buildAdsrKnobs()
     {
         auto& entry = adsrKnobs[static_cast<std::size_t>(i)];
 
+        // Styled exactly as the AMOUNT knob beside them, which is the same
+        // styling every other knob in the plugin carries: the shared rotary
+        // look-and-feel, a chip caption above and a plain readout below.
         entry.knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
         entry.knob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        if (knobLookAndFeel != nullptr) { entry.knob.setLookAndFeel(knobLookAndFeel); }
         addAndMakeVisible(entry.knob);
 
         entry.label.setText(names[i], juce::dontSendNotification);
         entry.label.setJustificationType(juce::Justification::centred);
+        entry.label.setFont(juce::FontOptions(11.0f));
+        entry.label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+        entry.label.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+        entry.label.setInterceptsMouseClicks(false, false);
         addAndMakeVisible(entry.label);
 
         entry.readout.setJustificationType(juce::Justification::centred);
+        entry.readout.setFont(juce::FontOptions(11.0f));
+        entry.readout.setColour(juce::Label::textColourId, juce::Colour::fromRGB(218, 218, 228));
+        entry.readout.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
         entry.readout.setInterceptsMouseClicks(false, false);
         addAndMakeVisible(entry.readout);
 

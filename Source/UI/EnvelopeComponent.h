@@ -31,6 +31,10 @@ public:
                       juce::Colour accentIn,
                       const juce::String& configPrefixIn = "mod.env1");
 
+    // The knobs are drawn by a look-and-feel this component does not own, so
+    // they let go of it before it can outlive them.
+    ~EnvelopeComponent() override;
+
     void setAccentColour(juce::Colour accentIn);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
@@ -59,6 +63,10 @@ public:
     { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].knob; }
     juce::String debugAdsrKnobName(int i) const
     { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].label.getText(); }
+    const juce::Label& debugAdsrKnobLabel(int i) const
+    { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].label; }
+    const juce::Label& debugAdsrKnobReadout(int i) const
+    { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].readout; }
 
     // The shape this card is editing. Handed in by the editor, which owns the
     // connection to the processor - this component knows about an envelope, not
@@ -68,6 +76,11 @@ public:
     // ATTACK | DECAY | SUSTAIN | RELEASE below the graph, bound to the same
     // four parameters it edits. Off unless the owning card asks.
     void setAdsrKnobsVisible(bool shouldShow);
+
+    // The editor's shared rotary look-and-feel. Handed down rather than
+    // constructed here: every knob in the plugin is drawn by ONE of these, and
+    // a second instance is a second set of colours to keep in step.
+    void setKnobLookAndFeel(juce::LookAndFeel* lookAndFeel);
 
     void setEnvelopeProgress(EnvelopePosition progress)
     {
@@ -158,6 +171,7 @@ private:
     std::array<AdsrKnob, 4> adsrKnobs;
     bool adsrKnobsBuilt { false };
     bool showAdsrKnobs { false };
+    juce::LookAndFeel* knobLookAndFeel { nullptr };
 
     bool adsrKnobsWanted() const;
     void buildAdsrKnobs();

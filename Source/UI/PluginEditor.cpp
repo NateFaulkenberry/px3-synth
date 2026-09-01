@@ -1247,6 +1247,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     configureWavetableControls();
 
     ampPanel = std::make_unique<AmpPanel>(audioProcessor, kGroupAccents[2]);
+    ampPanel->setKnobLookAndFeel(&knobLookAndFeel);
     fltPanel = std::make_unique<FltPanel>(std::array<juce::ToggleButton*, kFilterInstanceCount> { { &filter1EnabledButton, &filter2EnabledButton } },
                                           std::array<juce::Slider*, kFilterInstanceCount> { { &cutoffKnob, &cutoff2Knob } },
                                           std::array<juce::Label*, kFilterInstanceCount> { { &cutoffLabel, &cutoff2Label } },
