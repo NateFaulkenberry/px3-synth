@@ -246,17 +246,25 @@ the test suite asserts it rather than trusting the reasoning.
 
 ## Persistence
 
-`createParameterStateTree()` gains a `MIDI_MAPPINGS` child holding one
-`MAPPING` node per CC, each with `cc`, `channel` and one `DEST` child per
-parameter ID.
+`createParameterStateTree()` gains a `midiMappings` child holding one
+`mapping` node per CC, each with `cc`, `channel` and one `dest` child per
+parameter ID. Both the DAW-session path and preset files carry it: saving a
+patch saves the hardware layout it was designed around.
 
-`createPresetStateTree()` removes that child. A preset is the sound; a mapping
-is the user's hardware. Loading a preset therefore cannot carry someone else's
-CC assignments in, and — because `PresetManager` passes
-`restoreUiSessionState = false` — cannot clear the ones you have either.
+The two paths restore it differently, because they mean different things.
 
-`applyParameterStateTree` restores the child only when `restoreUiSessionState`
-is true, which is the DAW-session path and not the preset path.
+**A DAW session is the whole truth for that instance**, so it is applied whole.
+A session saved with no mappings restores none.
+
+**A preset is a sound that may bring a layout with it.** One that carries
+mappings replaces what is there; one that carries none leaves your controller
+alone. The alternative — absent meaning "clear" — would have every factory
+preset wipe the assignments of anyone who merely auditioned one, and there is
+no gesture in the UI that would put them back.
+
+The cost of that choice, stated: a preset cannot express "this sound uses no
+controller". Removing every assignment is done in the UI, by shift-clicking the
+mapped knobs, which is where the user is already looking.
 
 A destination naming a parameter that no longer exists is dropped on load; the
 rest of the mapping survives. A mapping left with no destinations is dropped.
@@ -356,8 +364,8 @@ Unit and integration, in `ComponentTests` alongside the rest of the suite:
 - clearing by shift-click
 - two processor instances, same CC, different destinations, no leakage
 - state round trip: save, reload, mappings return
-- preset round trip: mappings are absent from preset state and survive a
-  preset load
+- preset round trip: a preset carries its mappings, loading one brings them
+  in, and a preset carrying none leaves existing assignments alone
 - unknown parameter ID in loaded state degrades gracefully
 - with no mappings, parameters and rendered audio are bit-identical to before
 - note input still works while mappings exist

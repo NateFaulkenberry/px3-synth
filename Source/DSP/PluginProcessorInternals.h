@@ -71,9 +71,9 @@ inline const juce::Identifier kUserWavetableOscId("osc");
 // absence is a valid state meaning "plain ADSR", not an error to detect.
 inline const juce::Identifier kEnvelopeShapesId("envelopeShapes");
 
-// MIDI mappings. Session state, not preset state: they describe the user's
-// hardware rather than the sound, so createPresetStateTree strips this child
-// and only the DAW-session restore path applies it.
+// MIDI mappings. Carried by both the DAW session and preset files, but
+// restored differently: a session is applied whole, while a preset replaces
+// them only if it has some of its own. See docs/midi-mapping-design.md.
 inline const juce::Identifier kMidiMappingsId("midiMappings");
 inline const juce::Identifier kMidiMappingId("mapping");
 inline const juce::Identifier kMidiCcId("cc");

@@ -1,3 +1,4 @@
+#include "ParameterKnob.h"
 #include "MixPanel.h"
 
 #include "PluginProcessorInternals.h"
@@ -29,29 +30,29 @@ MixPanel::MixPanel(PX3SynthAudioProcessor& processorIn,
         configureChannelWidgets(dryChannel, "DRY", false, true);
         configureChannelWidgets(fxChannel, "FX", false, true);
 
-        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerLevelParam(0), subChannel.fader, nullptr));
-        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerLevelParam(1), osc1Channel.fader, nullptr));
-        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerLevelParam(2), osc2Channel.fader, nullptr));
-        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerLevelParam(3), osc3Channel.fader, nullptr));
-        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getDryBusGainParam(), dryChannel.fader, nullptr));
-        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getFxReturnGainParam(), fxChannel.fader, nullptr));
+        px3::ui::attachParameterKnob(processor.getMixerLevelParam(0), subChannel.fader, sliderAttachments);
+        px3::ui::attachParameterKnob(processor.getMixerLevelParam(1), osc1Channel.fader, sliderAttachments);
+        px3::ui::attachParameterKnob(processor.getMixerLevelParam(2), osc2Channel.fader, sliderAttachments);
+        px3::ui::attachParameterKnob(processor.getMixerLevelParam(3), osc3Channel.fader, sliderAttachments);
+        px3::ui::attachParameterKnob(processor.getDryBusGainParam(), dryChannel.fader, sliderAttachments);
+        px3::ui::attachParameterKnob(processor.getFxReturnGainParam(), fxChannel.fader, sliderAttachments);
 
         for (int sourceIndex = 0; sourceIndex < PX3SynthAudioProcessor::kMixerSourceCount; ++sourceIndex)
         {
             auto* channel = channels[static_cast<std::size_t>(sourceIndex)];
-            sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerPanParam(sourceIndex), channel->pan, nullptr));
-            sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getMixerSendParam(sourceIndex), channel->send, nullptr));
+            px3::ui::attachParameterKnob(processor.getMixerPanParam(sourceIndex), channel->pan, sliderAttachments);
+            px3::ui::attachParameterKnob(processor.getMixerSendParam(sourceIndex), channel->send, sliderAttachments);
             buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getMixerMuteParam(sourceIndex), channel->mute, nullptr));
             buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getMixerSoloParam(sourceIndex), channel->solo, nullptr));
             buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getMixerPhaseInvertParam(sourceIndex), channel->phase, nullptr));
         }
 
-        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getDryBusPanParam(), dryChannel.pan, nullptr));
+        px3::ui::attachParameterKnob(processor.getDryBusPanParam(), dryChannel.pan, sliderAttachments);
         buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getDryBusMuteParam(), dryChannel.mute, nullptr));
         buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getDryBusSoloParam(), dryChannel.solo, nullptr));
         buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getDryBusPhaseInvertParam(), dryChannel.phase, nullptr));
 
-        sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(processor.getFxReturnPanParam(), fxChannel.pan, nullptr));
+        px3::ui::attachParameterKnob(processor.getFxReturnPanParam(), fxChannel.pan, sliderAttachments);
         buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getFxReturnMuteParam(), fxChannel.mute, nullptr));
         buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getFxReturnSoloParam(), fxChannel.solo, nullptr));
         buttonAttachments.push_back(std::make_unique<juce::ButtonParameterAttachment>(processor.getFxReturnPhaseInvertParam(), fxChannel.phase, nullptr));

@@ -1,3 +1,4 @@
+#include "ParameterKnob.h"
 #include "PluginEditor.h"
 #include "../DSP/WavetableLibrary.h"
 #include "../DSP/WavetableImporter.h"
@@ -475,7 +476,7 @@ void PX3SynthAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
 
 void PX3SynthAudioProcessorEditor::attachSlider(juce::RangedAudioParameter& parameter, juce::Slider& slider)
 {
-    sliderAttachments.push_back(std::make_unique<juce::SliderParameterAttachment>(parameter, slider, nullptr));
+    px3::ui::attachParameterKnob(parameter, slider, sliderAttachments);
 }
 
 void PX3SynthAudioProcessorEditor::attachComboBox(juce::RangedAudioParameter& parameter, juce::ComboBox& comboBox)

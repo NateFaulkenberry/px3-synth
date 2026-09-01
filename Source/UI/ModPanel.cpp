@@ -1,3 +1,4 @@
+#include "ParameterKnob.h"
 #include "ModPanel.h"
 
 #include "UIConfig.h"
@@ -167,8 +168,8 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
     };
 
     bundle.enabledAttachment = std::make_unique<juce::ButtonParameterAttachment>(processor.getLfoEnabledParam(lfoIndex), bundle.enabledButton, nullptr);
-    bundle.rateAttachment = std::make_unique<juce::SliderParameterAttachment>(processor.getLfoFrequencyParam(lfoIndex), bundle.rateKnob, nullptr);
-    bundle.amountAttachment = std::make_unique<juce::SliderParameterAttachment>(processor.getLfoAmountParam(lfoIndex), bundle.amountKnob, nullptr);
+    bundle.rateAttachment = px3::ui::makeParameterKnobAttachment(processor.getLfoFrequencyParam(lfoIndex), bundle.rateKnob);
+    bundle.amountAttachment = px3::ui::makeParameterKnobAttachment(processor.getLfoAmountParam(lfoIndex), bundle.amountKnob);
     bundle.waveformAttachment = std::make_unique<juce::ComboBoxParameterAttachment>(processor.getLfoWaveformParam(lfoIndex), bundle.waveformBox, nullptr);
 
     bundle.component = std::make_unique<LfoComponent>(bundle.enabledButton,
@@ -248,7 +249,7 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
     };
 
     bundle.enabledAttachment = std::make_unique<juce::ButtonParameterAttachment>(processor.getEnvelopeEnabledParam(envIndex), bundle.enabledButton, nullptr);
-    bundle.amountAttachment = std::make_unique<juce::SliderParameterAttachment>(processor.getEnvelopeAmountParam(envIndex), bundle.amountKnob, nullptr);
+    bundle.amountAttachment = px3::ui::makeParameterKnobAttachment(processor.getEnvelopeAmountParam(envIndex), bundle.amountKnob);
 
     bundle.component = std::make_unique<EnvelopeComponent>(processor.getEnvelopeAttackParam(envIndex),
                                                            processor.getEnvelopeDecayParam(envIndex),

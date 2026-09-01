@@ -1,3 +1,4 @@
+#include "ParameterKnob.h"
 #include "EnvelopeComponent.h"
 
 #include "BypassButton.h"
@@ -956,8 +957,7 @@ void EnvelopeComponent::buildAdsrKnobs()
         // The attachment carries the knob to the parameter. The parameter
         // reaching the SHAPE is the card's job, in refreshFromParameters,
         // because that is where the curves the knob must not straighten live.
-        entry.attachment = std::make_unique<juce::SliderParameterAttachment>(
-            *params[i], entry.knob, nullptr);
+        entry.attachment = px3::ui::makeParameterKnobAttachment(*params[i], entry.knob);
     }
 
     adsrKnobsBuilt = true;

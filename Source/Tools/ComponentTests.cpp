@@ -44,6 +44,7 @@
 #include "../UI/FxCardComponent.h"
 #include "../UI/FxChainLayout.h"
 #include "../UI/ChipLabel.h"
+#include "../UI/ParameterKnob.h"
 #include "../UI/ModPanel.h"
 #include "../UI/PianoKeyboard.h"
 #include "../UI/TopMenuBar.h"
@@ -18522,6 +18523,52 @@ void testMidiMapping()
     constexpr double kRate = 48000.0;
     constexpr int kBlock = 256;
 
+    // ---- what counts as a mappable knob ------------------------------------
+    //
+    // Eligibility is a property of the control, not a list: every slider bound
+    // through attachParameterKnob carries its parameter's ID, and that is what
+    // makes it mappable. This counts them, so a future knob bound the old way
+    // shows up as a number that went down rather than as a knob that silently
+    // will not map.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kRate, kBlock);
+        processor.prepareToPlay(kRate, kBlock);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        if (editor != nullptr)
+        {
+            auto sliders = 0;
+            auto mappable = 0;
+            juce::StringArray unknownIds;
+
+            std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+            {
+                for (auto* child : c.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* slider = dynamic_cast<juce::Slider*>(child))
+                    {
+                        ++sliders;
+                        const auto id = px3::ui::parameterIdOf(*slider);
+                        if (id.isNotEmpty())
+                        {
+                            ++mappable;
+                            if (processor.getMidiCcForParameter(id) == -2) { unknownIds.add(id); }
+                        }
+                    }
+                    walk(*child);
+                }
+            };
+            walk(*editor);
+
+            check("MidiMap_KnobsCarryTheirParameterIdSoNoListIsNeeded",
+                  mappable >= 40 && unknownIds.isEmpty(),
+                  juce::String(mappable) + " of " + juce::String(sliders)
+                      + " sliders in the editor carry a parameter ID");
+        }
+    }
+
     // A controller message, as a hardware knob would send it.
     const auto ccMessage = [](int cc, int value, int channel = 1)
     {
@@ -18824,26 +18871,60 @@ void testMidiMapping()
                   + " and resonance reads "
                   + juce::String(reopened.getMidiCcForParameter(resonanceId)));
 
-        // A preset is the sound, not the hardware: the mappings must not be in
-        // the file at all.
+        // A preset carries the hardware layout the sound was designed around.
         const auto presetTree = processor.createPresetStateTree();
-        check("MidiMap_APresetCarriesNoMappings",
-              ! presetTree.getChildWithName(px3::processor_internal::kMidiMappingsId).isValid(),
+        check("MidiMap_APresetCarriesItsMappings",
+              presetTree.getChildWithName(px3::processor_internal::kMidiMappingsId).isValid(),
               presetTree.getChildWithName(px3::processor_internal::kMidiMappingsId).isValid()
-                  ? "the preset tree contains a midiMappings child"
+                  ? "the preset tree carries a midiMappings child"
                   : "no midiMappings child in the preset tree");
 
-        // And loading one leaves the mappings alone, in both directions: it
-        // brings none in and takes none away.
+        // Loading it into a synth that has never seen a controller brings the
+        // assignments with it.
+        PX3SynthAudioProcessor loaded;
+        prepared(loaded);
         juce::String error;
-        processor.applyParameterStateTree(presetTree, &error, false);
-        check("MidiMap_LoadingAPresetLeavesMappingsAlone",
-              processor.getMidiCcForParameter(cutoffId) == 21
-                  && processor.getMidiCcForParameter(resonanceId) == 21,
-              "after a preset load cutoff reads "
-                  + juce::String(processor.getMidiCcForParameter(cutoffId))
+        loaded.applyParameterStateTree(presetTree, &error, false);
+
+        check("MidiMap_LoadingAPresetBringsItsMappingsWithIt",
+              loaded.getMidiCcForParameter(cutoffId) == 21
+                  && loaded.getMidiCcForParameter(resonanceId) == 21,
+              "after loading the preset cutoff reads "
+                  + juce::String(loaded.getMidiCcForParameter(cutoffId))
                   + " and resonance reads "
-                  + juce::String(processor.getMidiCcForParameter(resonanceId)));
+                  + juce::String(loaded.getMidiCcForParameter(resonanceId)));
+
+        // A preset that carries NONE leaves the controller alone rather than
+        // wiping it - otherwise auditioning a factory sound would cost the
+        // user every assignment they had made.
+        PX3SynthAudioProcessor mapped;
+        prepared(mapped);
+        juce::AudioBuffer<float> mappedBuffer(2, kBlock);
+        mapped.setMidiLearnTargets({ cutoffId });
+        sendAndApply(mapped, mappedBuffer, ccMessage(30, 64));
+
+        auto bare = processor.createPresetStateTree();
+        bare.removeChild(bare.getChildWithName(px3::processor_internal::kMidiMappingsId), nullptr);
+        mapped.applyParameterStateTree(bare, &error, false);
+
+        check("MidiMap_APresetWithNoMappingsLeavesYoursAlone",
+              mapped.getMidiCcForParameter(cutoffId) == 30,
+              "after a preset carrying no mappings, the cutoff still reads CC "
+                  + juce::String(mapped.getMidiCcForParameter(cutoffId)));
+
+        // A DAW session, by contrast, IS the whole truth: one saved with no
+        // mappings restores none.
+        PX3SynthAudioProcessor session;
+        prepared(session);
+        juce::AudioBuffer<float> sessionBuffer(2, kBlock);
+        session.setMidiLearnTargets({ cutoffId });
+        sendAndApply(session, sessionBuffer, ccMessage(30, 64));
+        session.applyParameterStateTree(bare, &error, true);
+
+        check("MidiMap_ASessionWithNoMappingsRestoresNone",
+              session.getMidiMappings().empty(),
+              juce::String(static_cast<int>(session.getMidiMappings().size()))
+                  + " mappings survived restoring a session that had none");
     }
 
     // ---- state naming a parameter that does not exist -----------------------

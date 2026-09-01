@@ -256,11 +256,9 @@ juce::ValueTree PX3SynthAudioProcessor::createPresetStateTree() const
     auto state = createParameterStateTree();
     state.removeProperty(kTopMenuViewId, nullptr);
 
-    // A preset must not carry MIDI mappings. They belong to the instance and
-    // to whatever hardware is plugged into it - loading somebody else's sound
-    // has no business reassigning your controller, and saving yours has no
-    // business shipping your hardware layout to them.
-    state.removeChild(state.getChildWithName(kMidiMappingsId), nullptr);
+    // MIDI mappings stay in the preset. Saving a patch saves the hardware
+    // layout that goes with it, so a sound designed around a controller
+    // arrives with that controller already wired up.
     // A preset file must not name itself: the identity belongs to the session,
     // not to the sound. Saving it would mean a preset loaded, edited and saved
     // under a new name still claimed to be the old one.
@@ -486,15 +484,25 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         }
     }
 
-    // MIDI mappings, session state only. A preset load reaches here with
-    // restoreUiSessionState false and must neither bring mappings in nor take
-    // the ones already there away - so the whole block, clear included, sits
-    // behind the flag.
-    if (restoreUiSessionState)
+    // MIDI mappings. Restored on both paths, but they mean different things.
+    //
+    // A DAW session IS the whole truth for this instance, so it is applied
+    // whole: whatever it holds, including nothing, is what you get back.
+    //
+    // A preset is a sound that MAY bring a hardware layout with it. One that
+    // does replaces what is there; one that does not leaves your controller
+    // alone. The alternative - absent meaning "clear" - would have every
+    // factory preset wipe the assignments of anyone who auditioned one.
     {
-        midiMappings.clear();
+        const auto mappings = state.getChildWithName(kMidiMappingsId);
+        const auto shouldApply = restoreUiSessionState || mappings.isValid();
 
-        if (const auto mappings = state.getChildWithName(kMidiMappingsId); mappings.isValid())
+        if (shouldApply)
+        {
+            midiMappings.clear();
+        }
+
+        if (shouldApply && mappings.isValid())
         {
             for (const auto& node : mappings)
             {
@@ -543,9 +551,12 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
 
         // Restored mappings must not fire on the first tick just because the
         // controller happens to sit somewhere: they drive on the next MOVEMENT.
-        for (std::size_t i = 0; i < ccSeenSequence.size(); ++i)
+        if (shouldApply)
         {
-            ccSeenSequence[i] = ccSequence[i].load(std::memory_order_acquire);
+            for (std::size_t i = 0; i < ccSeenSequence.size(); ++i)
+            {
+                ccSeenSequence[i] = ccSequence[i].load(std::memory_order_acquire);
+            }
         }
     }
 

@@ -1,3 +1,4 @@
+#include "ParameterKnob.h"
 #include "BusInsertOverlay.h"
 
 #include "../DSP/PluginProcessor.h"
@@ -451,18 +452,15 @@ void BusEqOverlay::rebuildForBus()
 
         if (params.bandFreq[b] != nullptr)
         {
-            sliderAttachments.push_back(
-                std::make_unique<juce::SliderParameterAttachment>(*params.bandFreq[b], strip.frequency, nullptr));
+            px3::ui::attachParameterKnob(*params.bandFreq[b], strip.frequency, sliderAttachments);
         }
         if (params.bandGain[b] != nullptr)
         {
-            sliderAttachments.push_back(
-                std::make_unique<juce::SliderParameterAttachment>(*params.bandGain[b], strip.gain, nullptr));
+            px3::ui::attachParameterKnob(*params.bandGain[b], strip.gain, sliderAttachments);
         }
         if (params.bandQ[b] != nullptr)
         {
-            sliderAttachments.push_back(
-                std::make_unique<juce::SliderParameterAttachment>(*params.bandQ[b], strip.q, nullptr));
+            px3::ui::attachParameterKnob(*params.bandQ[b], strip.q, sliderAttachments);
         }
     }
 
@@ -774,16 +772,11 @@ void BusCompOverlay::rebuildForBus()
     buttonAttachments.push_back(
         std::make_unique<juce::ButtonParameterAttachment>(*params.compLink, linkButton, nullptr));
 
-    sliderAttachments.push_back(
-        std::make_unique<juce::SliderParameterAttachment>(*params.compInput, input, nullptr));
-    sliderAttachments.push_back(
-        std::make_unique<juce::SliderParameterAttachment>(*params.compOutput, output, nullptr));
-    sliderAttachments.push_back(
-        std::make_unique<juce::SliderParameterAttachment>(*params.compAttack, attack, nullptr));
-    sliderAttachments.push_back(
-        std::make_unique<juce::SliderParameterAttachment>(*params.compRelease, release, nullptr));
-    sliderAttachments.push_back(
-        std::make_unique<juce::SliderParameterAttachment>(*params.compMix, mix, nullptr));
+    px3::ui::attachParameterKnob(*params.compInput, input, sliderAttachments);
+    px3::ui::attachParameterKnob(*params.compOutput, output, sliderAttachments);
+    px3::ui::attachParameterKnob(*params.compAttack, attack, sliderAttachments);
+    px3::ui::attachParameterKnob(*params.compRelease, release, sliderAttachments);
+    px3::ui::attachParameterKnob(*params.compMix, mix, sliderAttachments);
 }
 
 // A bypassed compressor's controls are dead, exactly as the EQ's are: a knob
