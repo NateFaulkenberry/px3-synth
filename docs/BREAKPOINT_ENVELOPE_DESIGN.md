@@ -314,6 +314,74 @@ rather than dropping a new point on top of it.
 at rest and through a drag of every handle, that each is drawn on its own
 point — the check is against the point, not against a screenshot.
 
+## G3. Four controls, three handles
+
+The editor offered five drag controls — ATTACK, DECAY, SUSTAIN, SUSTAIN TIME
+and RELEASE — for four parameters. SUSTAIN TIME was a bar whose width stood for
+a duration the model does not have: the envelope holds at the sustain for as
+long as the key is down. A control for a quantity that does not exist is a
+control that cannot be right.
+
+The shape is unchanged — the four points of section C. What changes is how many
+handles reach them.
+
+**ATTACK** is point 1. A duration, so it moves in time along the top; the peak
+is pinned at one. Unchanged.
+
+**DECAY / SUSTAIN** is point 2, and it moves in **both** axes: sideways is the
+decay TIME, upwards is the sustain LEVEL. They are the two coordinates of one
+breakpoint, and this is the merge that the separate sustain bar existed to
+avoid. It was split because a handle that changes two things needs its label to
+say so, and because the level had no handle of its own once the point was
+reduced to a time. Merged back, the trade is the other way round: one handle
+where the shape has one point, at the cost of a label that names two things.
+The hover label reads DECAY / SUSTAIN, because it does.
+
+**RELEASE** is point 3. A duration, moving in time along the bottom, with the
+end pinned at zero. Unchanged.
+
+The held stretch goes with the bar. Nothing is drawn between the decay and the
+release any more: the curve runs from the sustain point straight into the
+release, and the shaded region to the right of the sustain point is what says
+"held from here". Every display time is now the point's own time, so
+`displayTimeArriving`, `displayTimeLeaving`, `heldDisplaySeconds` and
+`heldSecondsOverride` all go, and `visibleSeconds` is the envelope's own length.
+
+Curves are untouched: every segment still has its own curve handle.
+
+The progress fill follows the same simplification. Held, it advances to the
+sustain point and stops; released, it resumes from the sustain point and runs
+on. There is no bar to fill in at note-off, so the discontinuity that placing
+had to work around is gone with it.
+
+## G4. Knobs under the graph
+
+Both cards carry ATTACK, DECAY, SUSTAIN and RELEASE knobs below the editor,
+inside cardInner. ENV 1-3 grow taller to make room; AMP ENV keeps its height
+and gives the room up from the graph, so the editor no longer reaches the
+bottom of the card.
+
+The knobs and the graph are two views of one thing, so they are bound in both
+directions:
+
+- A knob writes its parameter. The card applies the parameters to the stored
+  shape's point times and levels while **keeping its curves**, so bending a
+  segment does not put the knobs out of reach.
+- A drag writes the shape, and the card writes the four values back to the
+  parameters — for any four-point skeleton, curved or not, where before it only
+  did so for a shape with no curves at all.
+
+That narrows the authority rule of the section below rather than breaking it:
+on the ADSR skeleton the four parameters and the four points are the same
+numbers and either may be moved; the shape additionally owns the curves. Only
+when a point is ADDED does the shape take over entirely, because there is then
+no set of four parameters that describes it — and the knobs stop writing to it.
+
+The click this rule was written for is unaffected: the voice plays the shaped
+envelope whenever one is present, and never rebuilds it from the parameters at
+note-on. The parameters and the shape agreeing more often is a strictly weaker
+requirement than the one the fix relies on.
+
 ## H. Showing where the playing note has got to
 
 All four envelope graphs fill the area under the part of the envelope the

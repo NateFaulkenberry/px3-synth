@@ -603,8 +603,6 @@
         "timeLabelSize": 9.0,
         "roleLabelSize": 8.5,
         "roleLabelColor": "",
-        "sustainBarWidth": 20.0,
-        "sustainBarHeight": 3.0,
         "progressFillColor": "",
         "progressFillAlpha": 0.28
       }
@@ -649,8 +647,6 @@
         "timeLabelSize": 9.0,
         "roleLabelSize": 8.5,
         "roleLabelColor": "",
-        "sustainBarWidth": 20.0,
-        "sustainBarHeight": 3.0,
         "progressFillColor": "",
         "progressFillAlpha": 0.28
       }
@@ -695,8 +691,6 @@
         "timeLabelSize": 9.0,
         "roleLabelSize": 8.5,
         "roleLabelColor": "",
-        "sustainBarWidth": 20.0,
-        "sustainBarHeight": 3.0,
         "progressFillColor": "",
         "progressFillAlpha": 0.28
       }
@@ -774,8 +768,6 @@
         "timeLabelSize": 9.0,
         "roleLabelSize": 8.5,
         "roleLabelColor": "",
-        "sustainBarWidth": 20.0,
-        "sustainBarHeight": 3.0,
         "progressFillColor": "",
         "progressFillAlpha": 0.28
       }

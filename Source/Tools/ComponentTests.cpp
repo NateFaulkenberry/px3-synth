@@ -1231,14 +1231,10 @@ void testBreakpointEnvelope()
             for (int i = 1; i < afterRefresh.getPointCount(); ++i)
             {
                 const auto role = graph->debugEditor().roleLabelFor(i);
-                if (role.isNotEmpty())
-                {
-                    labels.add(role);
-                    if (i == afterRefresh.getSustainPoint()) { labels.add("SUSTAIN"); }
-                }
+                if (role.isNotEmpty()) { labels.add(role); }
             }
             check("AmpEnvUi_TheEditorLabelsAreAdsr",
-                  labels == juce::StringArray({ "ATTACK", "DECAY", "SUSTAIN", "RELEASE" }),
+                  labels == juce::StringArray({ "ATTACK", "DECAY / SUSTAIN", "RELEASE" }),
                   "the amp editor offers: " + labels.joinIntoString(", "));
 
             check("AmpEnvUi_TheEditorHasNoHoldHandle",
@@ -1260,7 +1256,7 @@ void testBreakpointEnvelope()
                 juce::String detail;
 
                 const auto examine = [&](const juce::String& role, juce::Point<float> at,
-                                         bool wantSustain, int wantIndex)
+                                         int wantIndex)
                 {
                     detail << (detail.isEmpty() ? "" : ", ") << role << " at "
                            << juce::String(juce::roundToInt(at.x)) << ","
@@ -1269,33 +1265,29 @@ void testBreakpointEnvelope()
                     if (! bounds.contains(at)) { offPanel.add(role); return; }
 
                     const auto hit = editor.grabAt(at);
-                    const auto ok = wantSustain
-                                      ? hit.target == BreakpointEnvelopeEditor::Target::sustain
-                                      : (hit.target == BreakpointEnvelopeEditor::Target::point
-                                         && hit.index == wantIndex);
-                    if (! ok) { unreachable.add(role); }
+                    if (hit.target != BreakpointEnvelopeEditor::Target::point
+                        || hit.index != wantIndex)
+                    {
+                        unreachable.add(role);
+                    }
                 };
 
                 for (int i = 1; i < afterRefresh.getPointCount(); ++i)
                 {
                     const auto role = editor.roleLabelFor(i);
                     if (role.isEmpty()) { continue; }
-                    examine(role, editor.drawnPointPosition(i), false, i);
-                    if (i == afterRefresh.getSustainPoint())
-                    {
-                        examine("SUSTAIN", editor.sustainHandlePosition(), true, i);
-                    }
+                    examine(role, editor.drawnPointPosition(i), i);
                 }
 
                 check("AmpEnvUi_EveryHandleIsOnThePanelAtInit", offPanel.isEmpty(),
-                      offPanel.isEmpty() ? "all four are inside " + bounds.toString()
+                      offPanel.isEmpty() ? "all three are inside " + bounds.toString()
                                              + " - " + detail
                                          : "drawn outside the panel: "
                                                + offPanel.joinIntoString(", "));
 
                 check("AmpEnvUi_EveryHandleIsReachableAtInit", unreachable.isEmpty(),
                       unreachable.isEmpty()
-                          ? "all four can be grabbed where they are drawn"
+                          ? "all three can be grabbed where they are drawn"
                           : "cannot be grabbed: " + unreachable.joinIntoString(", "));
             }
 
@@ -1611,10 +1603,11 @@ void testBreakpointEnvelope()
         const auto releaseStart = displayTimeNow();
         advance(1.0);
         const auto midRelease = displayTimeNow();
-        // The sustain bar fills in at note-off, and the release runs on from
-        // its far edge - a second of release is a second further along.
+        // The release picks up at the sustain point - not back at the left of
+        // the graph - and a second of release is a second further along.
         check("AmpProgress_TheReleaseResumesFromTheSustainRatherThanRestarting",
-              releaseStart > atSustain && std::abs(midRelease - (releaseStart + 1.0)) < 0.02,
+              std::abs(releaseStart - atSustain) < 0.02
+                  && std::abs(midRelease - (releaseStart + 1.0)) < 0.02,
               "release begins at " + fmt(releaseStart, 2) + " s and reaches "
                   + fmt(midRelease, 2) + " s after a second");
 
@@ -2460,10 +2453,12 @@ void testBreakpointEnvelope()
         }
     }
 
-    // ---- the release-start handle -------------------------------------------
-    // The far end of the held stretch, which is where the release begins. It
-    // exists so the sustain plateau can be collapsed to nothing - "no sustain"
-    // - and so that end of it can be grabbed at all.
+    // ---- DECAY and SUSTAIN are one handle -----------------------------------
+    //
+    // They are the two coordinates of point 2, so the handle takes both axes:
+    // sideways is the decay TIME, upwards the sustain LEVEL. This replaced a
+    // separate sustain bar on a drawn held stretch, which needed a fifth
+    // control standing for a duration the model does not have.
     {
         EnvelopeSettings settings;
         settings.attackSeconds = 0.05f;
@@ -2483,73 +2478,75 @@ void testBreakpointEnvelope()
                                     juce::Time::getCurrentTime(), 1, false);
         };
 
-        const auto decayAt = editor.drawnPointPosition(editor.getEnvelope().getSustainPoint());
-        const auto sustainAt = editor.sustainHandlePosition();
-        const auto releaseAt = editor.releaseStartHandlePosition();
+        const auto drag = [&](juce::Point<float> from, float dx, float dy)
+        {
+            editor.mouseDown(event(from));
+            editor.mouseDrag(event(from.translated(dx, dy)));
+            editor.mouseUp(event(from.translated(dx, dy)));
+            return editor.getEnvelope().toAdsr();
+        };
 
-        check("EnvelopeEditor_TheHeldStretchHasAHandleAtEachEnd",
-              releaseAt.x > sustainAt.x && sustainAt.x > decayAt.x,
-              "decay at " + fmt(decayAt.x, 0) + ", sustain bar at " + fmt(sustainAt.x, 0)
-                  + ", release start at " + fmt(releaseAt.x, 0));
-
-        check("EnvelopeEditor_TheReleaseStartHandleGrabsItself",
-              editor.grabAt(releaseAt).target
-                  == BreakpointEnvelopeEditor::Target::releaseStart,
-              "grabbing the far end of the held stretch selects the release start");
-
-        // Dragged right: the plateau widens and the ENVELOPE is untouched.
+        const auto sustainIndex = editor.getEnvelope().getSustainPoint();
         const auto before = editor.getEnvelope().toAdsr();
-        editor.mouseDown(event(releaseAt));
-        editor.mouseDrag(event(releaseAt.translated(40.0f, 0.0f)));
-        editor.mouseUp(event(releaseAt.translated(40.0f, 0.0f)));
 
-        const auto widened = editor.releaseStartHandlePosition();
-        const auto afterWidening = editor.getEnvelope().toAdsr();
-        check("EnvelopeEditor_DraggingTheReleaseStartRightWidensTheHeldStretch",
-              widened.x > releaseAt.x
-                  && std::abs(afterWidening.decaySeconds - before.decaySeconds) < 1.0e-6f,
-              "the handle moved " + fmt(widened.x - releaseAt.x, 0)
-                  + " px right with the decay still at " + fmt(afterWidening.decaySeconds, 3)
-                  + " s");
+        check("EnvelopeEditor_TheDecaySustainHandleIsOnTheSustainPoint",
+              editor.grabAt(editor.drawnPointPosition(sustainIndex)).index == sustainIndex
+                  && editor.roleLabelFor(sustainIndex) == "DECAY / SUSTAIN",
+              "the handle at the sustain point grabs point "
+                  + juce::String(editor.grabAt(editor.drawnPointPosition(sustainIndex)).index)
+                  + " and names itself " + editor.roleLabelFor(sustainIndex));
 
-        // Dragged hard left: the plateau collapses, and only then does the
-        // decay start shortening.
-        const auto grabAgain = editor.releaseStartHandlePosition();
-        editor.mouseDown(event(grabAgain));
-        editor.mouseDrag(event(grabAgain.translated(-4000.0f, 0.0f)));
-        editor.mouseUp(event(grabAgain.translated(-4000.0f, 0.0f)));
+        // Sideways only: the decay time moves and the level does not.
+        const auto sideways = drag(editor.drawnPointPosition(sustainIndex), 30.0f, 0.0f);
+        check("EnvelopeEditor_DraggingItSidewaysChangesTheDecayTime",
+              sideways.decaySeconds > before.decaySeconds + 1.0e-4f
+                  && std::abs(sideways.sustainLevel - before.sustainLevel) < 1.0e-4f,
+              "decay " + fmt(before.decaySeconds, 3) + " -> " + fmt(sideways.decaySeconds, 3)
+                  + " s with sustain still " + fmt(sideways.sustainLevel, 3));
 
-        const auto collapsed = editor.releaseStartHandlePosition();
+        // Upwards only: the level moves and the decay time does not.
+        const auto upwards = drag(editor.drawnPointPosition(sustainIndex), 0.0f, -25.0f);
+        check("EnvelopeEditor_DraggingItUpChangesTheSustainLevel",
+              upwards.sustainLevel > sideways.sustainLevel + 1.0e-4f
+                  && std::abs(upwards.decaySeconds - sideways.decaySeconds) < 1.0e-4f,
+              "sustain " + fmt(sideways.sustainLevel, 3) + " -> " + fmt(upwards.sustainLevel, 3)
+                  + " with decay still " + fmt(upwards.decaySeconds, 3) + " s");
 
-        // The TRUE position of the decay point, not the drawn one. Collapsing
-        // the decay puts it on top of the attack, so the drawn position carries
-        // the coincident-point nudge and would report a 10 px gap that is not
-        // the held stretch.
-        const auto decayNow = editor.pointToScreen(editor.getEnvelope().getSustainPoint());
-        const auto afterCollapse = editor.getEnvelope().toAdsr();
+        // And both at once, which is the point of merging them.
+        const auto both = drag(editor.drawnPointPosition(sustainIndex), 20.0f, 18.0f);
+        check("EnvelopeEditor_DraggingItDiagonallyChangesBoth",
+              both.decaySeconds > upwards.decaySeconds + 1.0e-4f
+                  && both.sustainLevel < upwards.sustainLevel - 1.0e-4f,
+              "decay " + fmt(upwards.decaySeconds, 3) + " -> " + fmt(both.decaySeconds, 3)
+                  + " s and sustain " + fmt(upwards.sustainLevel, 3) + " -> "
+                  + fmt(both.sustainLevel, 3));
 
-        check("EnvelopeEditor_DraggingItLeftGivesNoSustain",
-              std::abs(collapsed.x - decayNow.x) < 2.0f,
-              "the held stretch collapses to " + fmt(std::abs(collapsed.x - decayNow.x), 1)
-                  + " px - the decay meets the release with nothing between");
-
-        check("EnvelopeEditor_PastThatItShortensTheDecay",
-              afterCollapse.decaySeconds < before.decaySeconds,
-              "and past that the decay pulls in, " + fmt(before.decaySeconds, 3) + " s -> "
-                  + fmt(afterCollapse.decaySeconds, 3) + " s");
-
+        // Dragged hard left it stops at the attack rather than crossing it.
+        drag(editor.drawnPointPosition(sustainIndex), -4000.0f, 0.0f);
         check("EnvelopeEditor_TheDecayNeverPassesTheAttack",
               editor.getEnvelope().getPoint(2).timeSeconds
                   >= editor.getEnvelope().getPoint(1).timeSeconds - 1.0e-9,
               "the decay point stops at the attack rather than crossing it");
+
+        // Nothing is drawn between the decay and the release any more: the
+        // curve runs from the sustain point straight into it.
+        editor.setEnvelope(px3::BreakpointEnvelope::fromAdsr(settings));
+        const auto shape = editor.getEnvelope();
+        check("EnvelopeEditor_NothingIsDrawnBetweenTheDecayAndTheRelease",
+              std::abs(editor.pointToScreen(sustainIndex).x
+                       - editor.debugToScreen(shape.getPoint(sustainIndex).timeSeconds,
+                                              shape.getPoint(sustainIndex).value).x) < 0.01f
+                  && std::abs(editor.pointToScreen(3).x
+                              - editor.debugToScreen(shape.getPoint(3).timeSeconds, 0.0).x) < 0.01f,
+              "every point is drawn at its own time, with no stretch inserted");
     }
 
     // ---- every stage is its OWN control -------------------------------------
     //
     // This is the regression suite for the thing that went round in circles.
-    // The rule it encodes, in one sentence: AMP ENV has four separate controls
-    // and ENV 1-3 have five, no handle changes more than one of them, and the
-    // sustain LEVEL is never the same handle as the decay TIME.
+    // The rule it encodes, in one sentence: both envelopes offer the same three
+    // handles, ATTACK and RELEASE change one thing each, and DECAY / SUSTAIN
+    // changes the two coordinates of the one point it sits on.
     {
         const auto adsr = []
         {
@@ -2567,7 +2564,6 @@ void testBreakpointEnvelope()
             const char* perStage;
             const char* spacing;
             const char* grabs;
-            bool withHold;
             juce::StringArray expected;
         };
         const Rig rigs[] = {
@@ -2575,24 +2571,21 @@ void testBreakpointEnvelope()
               "AmpEnv_HasOneHandlePerStage",
               "AmpEnv_NoTwoHandlesShareASpot",
               "AmpEnv_EveryHandleGrabsItself",
-              false, { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" } },
+              { "ATTACK", "DECAY / SUSTAIN", "RELEASE" } },
             { "ENV 1-3",
               "ModEnv_HasOneHandlePerStage",
               "ModEnv_NoTwoHandlesShareASpot",
               "ModEnv_EveryHandleGrabsItself",
-              true,  { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" } },
+              { "ATTACK", "DECAY / SUSTAIN", "RELEASE" } },
         };
 
         for (const auto& rig : rigs)
         {
             BreakpointEnvelopeEditor editor;
             editor.setSize(400, 200);
-            editor.setEnvelope(rig.withHold
-                                   ? px3::BreakpointEnvelope::fromAdsr(adsr)
-                                   : px3::BreakpointEnvelope::fromAdsr(adsr));
+            editor.setEnvelope(px3::BreakpointEnvelope::fromAdsr(adsr));
 
             const auto name = juce::String(rig.name);
-            const auto sustainIndex = editor.getEnvelope().getSustainPoint();
 
             // 1. Every named stage has a handle, and they are all different
             //    places on the screen.
@@ -2605,11 +2598,6 @@ void testBreakpointEnvelope()
                 {
                     found.add(role);
                     places.push_back(editor.drawnPointPosition(i));
-                    if (i == sustainIndex)
-                    {
-                        found.add("SUSTAIN");
-                        places.push_back(editor.sustainHandlePosition());
-                    }
                 }
             }
 
@@ -2640,11 +2628,6 @@ void testBreakpointEnvelope()
                 {
                     misgrabs.add(editor.roleLabelFor(i));
                 }
-            }
-            const auto sustainHit = editor.grabAt(editor.sustainHandlePosition());
-            if (sustainHit.target != BreakpointEnvelopeEditor::Target::sustain)
-            {
-                misgrabs.add("SUSTAIN");
             }
             check(rig.grabs,
                   misgrabs.isEmpty(),
@@ -2796,12 +2779,12 @@ void testBreakpointEnvelope()
             for (int i = 1; i <= 3; ++i) { roles.add(labelled.roleLabelFor(i)); }
 
             check("EnvelopeEditor_EveryModEnvelopeHandleIsLabelled",
-                  roles == juce::StringArray({ "ATTACK", "DECAY", "RELEASE" }),
+                  roles == juce::StringArray({ "ATTACK", "DECAY / SUSTAIN", "RELEASE" }),
                   "handles 1-3 of a mod envelope read: " + roles.joinIntoString(", "));
 
-            // AMP ENV has no hold stage at all, so it has one fewer handle and
-            // the names shift down. A label naming a stage that is not there
-            // would be worse than none.
+            // Both envelopes carry the same three handles: there is one
+            // skeleton, so a label that appears on one and not the other would
+            // mean the two had drifted apart.
             BreakpointEnvelopeEditor amp;
             amp.setSize(400, 200);
             amp.setEnvelope(px3::BreakpointEnvelope::fromAdsr(plain));
@@ -2809,10 +2792,10 @@ void testBreakpointEnvelope()
             juce::StringArray ampRoles;
             for (int i = 1; i <= 3; ++i) { ampRoles.add(amp.roleLabelFor(i)); }
 
-            check("EnvelopeEditor_TheAmpEnvelopeHasNoHoldStage",
+            check("EnvelopeEditor_TheAmpEnvelopeHasTheSameThreeHandles",
                   amp.getEnvelope().getPointCount() == 4
                       && amp.getEnvelope().getSustainPoint() == 2
-                      && ampRoles == juce::StringArray({ "ATTACK", "DECAY", "RELEASE" }),
+                      && ampRoles == roles,
                   juce::String(amp.getEnvelope().getPointCount()) + " points reading: "
                       + ampRoles.joinIntoString(", "));
 
@@ -3206,18 +3189,6 @@ void testBreakpointEnvelope()
                 handlesOnTheCurve("after dragging handle " + juce::String(i));
             }
 
-            // The sustain and release-start handles ride the held stretch, so
-            // they belong on the flat run at the sustain's own level.
-            const auto sustain = editor.getEnvelope().getSustainPoint();
-            const auto level = editor.pointToScreen(sustain).y;
-            if (std::abs(editor.sustainHandlePosition().y - level) > 0.01f
-                || std::abs(editor.releaseStartHandlePosition().y - level) > 0.01f)
-            {
-                offences.add("attack " + fmt(attack, 3) + " s: the sustain bar's handles sit at y "
-                             + fmt(editor.sustainHandlePosition().y, 1) + " and "
-                             + fmt(editor.releaseStartHandlePosition().y, 1) + ", the level is "
-                             + fmt(level, 1));
-            }
         }
 
         check("EnvelopeEditor_EveryHandleSitsOnTheCurveItControls",

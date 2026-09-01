@@ -71,22 +71,13 @@ public:
 
     // Exposed for the tests: what the mouse would grab at a point, and where a
     // given breakpoint has been drawn.
-    // `sustain` is a handle with no point of its own. The sustain LEVEL and the
-    // decay TIME are the same breakpoint's two coordinates, so one handle was
-    // the only control for both - drag it sideways for decay, upwards for
-    // sustain. That is one control doing two jobs, and it is why the label had
-    // to read "DECAY / SUSTAIN".
     //
-    // The editor now draws the held phase explicitly, as a flat stretch after
-    // the decay, and puts the sustain handle on it. The breakpoint itself is
-    // then the decay handle alone.
-    // `sustain` is the bar on the held stretch: the sustain LEVEL.
-    // `releaseStart` is the far end of that stretch: where the release begins.
-    //
-    // Neither has a breakpoint of its own. The sustain level and the decay time
-    // are the two coordinates of one point, and the held stretch is drawn
-    // rather than stored - so both need a handle the model does not provide.
-    enum class Target { none, point, curve, sustain, releaseStart };
+    // Three handles for four parameters. DECAY and SUSTAIN are the two
+    // coordinates of point 2 and share its handle: sideways is the decay TIME,
+    // upwards is the sustain LEVEL. They were split apart for a while, with the
+    // level given a bar of its own on a drawn held stretch, which cost a fifth
+    // control standing for a duration the model does not have.
+    enum class Target { none, point, curve };
     struct Hit
     {
         Target target { Target::none };
@@ -111,30 +102,14 @@ public:
     // another is one handle you cannot reach. See the definition.
     juce::Point<float> drawnPointPosition(int index) const;
 
-    // The sustain handle, on the held stretch. Only meaningful for an ADSR
-    // skeleton, where a held phase is a thing that exists.
-    juce::Point<float> sustainHandlePosition() const;
-    juce::Point<float> releaseStartHandlePosition() const;
-    bool hasSustainHandle() const;
+    // Whether this shape is the four-point ADSR skeleton, where the handles
+    // have the names below and the structural points are pinned.
+    bool hasAdsrSkeleton() const;
 
     // What each breakpoint of a plain ADSR shape controls. Empty for points
     // whose role has no name, and for envelopes that have been edited past the
     // shape these names describe.
     juce::String roleLabelFor(int index) const;
-
-    // How wide the held stretch is drawn. Display only: the envelope holds
-    // there for as long as the key is down, which is not a duration the model
-    // has or should have.
-    double heldDisplaySeconds() const;
-
-    // How wide the held stretch is, once the user has said. Negative means
-    // "not yet said", and the width follows the envelope's own length.
-    double heldSecondsOverride { -1.0 };
-
-    // Where a point is drawn on the time axis, which is its real time plus the
-    // held stretch once past the sustain point.
-    double displayTimeArriving(int index) const;
-    double displayTimeLeaving(int index) const;
 
 private:
     juce::Colour curveColour() const;
