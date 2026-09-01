@@ -24007,6 +24007,196 @@ int main(int argc, char* argv[])
             editor.reset();
         }
 
+        // The capture from a real host showed 2 voices already sounding at
+        // envelope 0.545 when the chord arrived, and gone one block later. So:
+        // press a chord, let it climb, then press the SAME chord again while
+        // it is still ringing.
+        {
+            PX3SynthAudioProcessor processor;
+            setParam(processor, "osc1Enabled", 1.0f);
+            setParam(processor, "osc2Enabled", 0.0f);
+            setParam(processor, "osc3Enabled", 0.0f);
+            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "delayEnabled", 0.0f);
+            setParam(processor, "reverbEnabled", 0.0f);
+            setParam(processor, "moodEnabled", 0.0f);
+            setParam(processor, "vibeEnabled", 0.0f);
+            setChoice(processor, "osc1Mode", 0);
+            setParam(processor, "ampAttack", 4.000f);
+            setParam(processor, "ampDecay", 0.100f);
+            setParam(processor, "ampSustain", 1.00f);
+            setParam(processor, "ampRelease", 0.500f);
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            juce::MidiBuffer midi;
+            const int notes[] = { 72, 76, 79 };
+            for (const auto note : notes)
+            {
+                midi.addEvent(juce::MidiMessage::noteOn(1, note, 1.0f), 0);
+            }
+
+            // Hold until the envelope is where the capture found it: 0.545 of
+            // a four second attack is about 2.2 seconds in.
+            for (int b = 0; b < static_cast<int>(2.2 * kSampleRate / kBlockSize); ++b)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, midi);
+                midi.clear();
+            }
+
+            buffer.clear();
+            processor.processBlock(buffer, midi);
+            const auto ringing = buffer.getMagnitude(0, kBlockSize);
+
+            // The same chord again, without releasing the first.
+            for (const auto note : notes)
+            {
+                midi.addEvent(juce::MidiMessage::noteOn(1, note, 1.0f), 0);
+            }
+
+            std::printf("  the SAME chord pressed again while still ringing at %.4f:\n",
+                        ringing);
+            std::printf("    %8s %14s\n", "block", "peak");
+            // Seeded from the LAST sample before the re-press, not from zero.
+            // Seeding with zero counts the first sample of an already-ringing
+            // chord as a step of its own amplitude - which is how this reported
+            // a 0.20 discontinuity that was never there.
+            auto worstStep = 0.0f;
+            auto previous = buffer.getSample(0, kBlockSize - 1);
+            for (int b = 0; b < 10; ++b)
+            {
+                buffer.clear();
+                processor.processBlock(buffer, midi);
+                midi.clear();
+                for (int i = 0; i < kBlockSize; ++i)
+                {
+                    worstStep = juce::jmax(worstStep,
+                                           std::abs(buffer.getSample(0, i) - previous));
+                    previous = buffer.getSample(0, i);
+                }
+                std::printf("    %8d %14.6f%s\n", b, buffer.getMagnitude(0, kBlockSize),
+                            b == 0 ? "   <-- the re-press" : "");
+            }
+            std::printf("    largest sample-to-sample step through it: %.6f\n\n", worstStep);
+        }
+
+        // Same notes versus DIFFERENT notes, which discriminates same-note
+        // voice reuse from ordinary polyphony.
+        {
+            const auto repress = [](const int* second)
+            {
+                PX3SynthAudioProcessor processor;
+                setParam(processor, "osc1Enabled", 1.0f);
+                setParam(processor, "osc2Enabled", 0.0f);
+                setParam(processor, "osc3Enabled", 0.0f);
+                setParam(processor, "subOscEnabled", 0.0f);
+                setParam(processor, "delayEnabled", 0.0f);
+                setParam(processor, "reverbEnabled", 0.0f);
+                setParam(processor, "moodEnabled", 0.0f);
+                setParam(processor, "vibeEnabled", 0.0f);
+                setChoice(processor, "osc1Mode", 0);
+                setParam(processor, "ampAttack", 4.000f);
+                setParam(processor, "ampDecay", 0.100f);
+                setParam(processor, "ampSustain", 1.00f);
+                setParam(processor, "ampRelease", 0.500f);
+                processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                processor.prepareToPlay(kSampleRate, kBlockSize);
+
+                juce::AudioBuffer<float> buffer(2, kBlockSize);
+                juce::MidiBuffer midi;
+                const int first[] = { 72, 76, 79 };
+                for (const auto note : first)
+                {
+                    midi.addEvent(juce::MidiMessage::noteOn(1, note, 1.0f), 0);
+                }
+                for (int b = 0; b < static_cast<int>(2.2 * kSampleRate / kBlockSize); ++b)
+                {
+                    buffer.clear(); processor.processBlock(buffer, midi); midi.clear();
+                }
+
+                for (int i = 0; i < 3; ++i)
+                {
+                    midi.addEvent(juce::MidiMessage::noteOn(1, second[i], 1.0f), 0);
+                }
+
+                auto worst = 0.0f;
+                auto prev = buffer.getSample(0, kBlockSize - 1);   // not zero
+                for (int b = 0; b < 6; ++b)
+                {
+                    buffer.clear(); processor.processBlock(buffer, midi); midi.clear();
+                    for (int i = 0; i < kBlockSize; ++i)
+                    {
+                        worst = juce::jmax(worst, std::abs(buffer.getSample(0, i) - prev));
+                        prev = buffer.getSample(0, i);
+                    }
+                }
+                return worst;
+            };
+
+            const int same[] = { 72, 76, 79 };
+            const int other[] = { 74, 77, 81 };
+            // The samples either side of the worst step.
+            {
+                PX3SynthAudioProcessor processor;
+                setParam(processor, "osc1Enabled", 1.0f);
+                setParam(processor, "osc2Enabled", 0.0f);
+                setParam(processor, "osc3Enabled", 0.0f);
+                setParam(processor, "subOscEnabled", 0.0f);
+                setParam(processor, "delayEnabled", 0.0f);
+                setParam(processor, "reverbEnabled", 0.0f);
+                setParam(processor, "moodEnabled", 0.0f);
+                setParam(processor, "vibeEnabled", 0.0f);
+                setChoice(processor, "osc1Mode", 0);
+                setParam(processor, "ampAttack", 4.000f);
+                setParam(processor, "ampSustain", 1.00f);
+                setParam(processor, "ampRelease", 0.500f);
+                processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                processor.prepareToPlay(kSampleRate, kBlockSize);
+
+                juce::AudioBuffer<float> buffer(2, kBlockSize);
+                juce::MidiBuffer midi;
+                const int chord[] = { 72, 76, 79 };
+                for (const auto note : chord)
+                { midi.addEvent(juce::MidiMessage::noteOn(1, note, 1.0f), 0); }
+                for (int b = 0; b < static_cast<int>(2.2 * kSampleRate / kBlockSize); ++b)
+                { buffer.clear(); processor.processBlock(buffer, midi); midi.clear(); }
+
+                for (const auto note : chord)
+                { midi.addEvent(juce::MidiMessage::noteOn(1, note, 1.0f), 0); }
+
+                std::vector<float> trace;
+                for (int b = 0; b < 40; ++b)
+                {
+                    buffer.clear(); processor.processBlock(buffer, midi); midi.clear();
+                    for (int i = 0; i < kBlockSize; ++i)
+                    { trace.push_back(buffer.getSample(0, i)); }
+                }
+
+                auto at = 1; auto worst = 0.0f;
+                for (std::size_t i = 1; i < trace.size(); ++i)
+                {
+                    const auto d = std::abs(trace[i] - trace[i-1]);
+                    if (d > worst) { worst = d; at = static_cast<int>(i); }
+                }
+                std::printf("  worst step %.6f at sample %d of the re-press "
+                            "(block %d, offset %d):\n", worst, at, at / kBlockSize,
+                            at % kBlockSize);
+                for (int i = juce::jmax(0, at - 5); i <= at + 5
+                     && i < static_cast<int>(trace.size()); ++i)
+                {
+                    std::printf("    %5d  %+.6f%s\n", i, trace[static_cast<std::size_t>(i)],
+                                i == at ? "   <-- here" : "");
+                }
+                std::printf("\n");
+            }
+
+            std::printf("  largest step when the second chord is:\n");
+            std::printf("    the SAME notes:      %.6f\n", repress(same));
+            std::printf("    DIFFERENT notes:     %.6f\n\n", repress(other));
+        }
+
         std::printf("  Nothing above shows a discontinuity or a duck. What this mode has\n"
                     "  ruled out, with numbers: the envelope does reach the audio, no stage\n"
                     "  after it changes gain with level, and no oscillator mode leaks a\n"
