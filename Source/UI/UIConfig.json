@@ -1433,6 +1433,7 @@
         "paddingRight": 0,
         "paddingLeft": 0,
         "paddingBottom": 4,
+        "paddingTop": 20,
         "display": "flex",
         "direction": "column",
         "wrap": "nowrap",
@@ -1442,7 +1443,7 @@
         "gap": 0,
         "power": {
           "x": 0,
-          "y": 9,
+          "y": -32,
           "size": 25
         },
         "rows": {
@@ -1538,6 +1539,7 @@
         "paddingRight": 0,
         "paddingLeft": 0,
         "paddingBottom": 4,
+        "paddingTop": 20,
         "display": "flex",
         "direction": "column",
         "wrap": "nowrap",
