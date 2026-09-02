@@ -370,6 +370,162 @@ void testEditorLayout()
                       + digests.joinIntoString(" "));
         }
     }
+
+    // ========================================================================
+    // The order the constructor and destructor depend on
+    // ========================================================================
+    //
+    // The constructor is 1,270 lines and three of its steps have to happen in
+    // a particular order. Each one says so in a comment, which is the weakest
+    // form a constraint can take: a comment does not fail when it stops being
+    // true, and every one of these fails SILENTLY - no crash, no assertion, a
+    // control that quietly is not there or a layer that quietly is underneath.
+    //
+    // These are written so that splitting the constructor into per-panel
+    // methods, which is the next thing anyone will want to do to that file,
+    // cannot reorder them without a test going red.
+
+    // ---- the wavetable controls are handed to the panel that shows them ----
+    //
+    // configureWavetableControls() ends with `if (oscPanel != nullptr)`, and
+    // that is the whole of its protection. Called before the oscillator panel
+    // is constructed it does not crash and does not complain: it configures
+    // three combo boxes and three knobs, hands them to nobody, and returns.
+    // The TABLE menu and the POSITION knob then simply do not exist on screen.
+    //
+    // The knobs carry their parameter IDs, so finding them in the editor's
+    // component tree answers "did they reach a parent" exactly.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, 48000.0, 256);
+        processor.prepareToPlay(48000.0, 256);
+
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+
+        if (editor != nullptr)
+        {
+            juce::StringArray wanted;
+            for (int osc = 0; osc < 3; ++osc)
+            {
+                wanted.add(processor.getOscillatorWtPositionParam(osc).getParameterID());
+            }
+
+            // Being present in the tree is not the question - the knobs are
+            // constructed as editor members either way, and something else
+            // parents them. The question is whether they are UNDER the
+            // oscillator panel, which is what setWavetableControls does and
+            // what the early call skips.
+            juce::StringArray inTree;
+            juce::StringArray underOscPanel;
+            std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+            {
+                for (auto* child : c.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* slider = dynamic_cast<juce::Slider*>(child))
+                    {
+                        const auto id = px3::ui::parameterIdOf(*slider);
+                        if (wanted.contains(id))
+                        {
+                            inTree.addIfNotAlreadyThere(id);
+                            for (auto* up = slider->getParentComponent(); up != nullptr;
+                                 up = up->getParentComponent())
+                            {
+                                if (dynamic_cast<OscPanel*>(up) != nullptr)
+                                {
+                                    underOscPanel.addIfNotAlreadyThere(id);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    walk(*child);
+                }
+            };
+            walk(*editor);
+
+            check("EditorOrder_WavetableControlsReachTheOscillatorPanel",
+                  underOscPanel.size() == 3,
+                  juce::String(underOscPanel.size())
+                      + " of 3 wavetable POSITION knobs are under the oscillator panel ("
+                      + juce::String(inTree.size()) + " exist anywhere in the tree)"
+                      + (underOscPanel.size() == 3
+                             ? ""
+                             : " - configureWavetableControls ran before oscPanel existed"));
+        }
+    }
+
+    // ---- the third constraint is not a unit test, and cannot be -------------
+    //
+    // The destructor clears the parameter attachments BEFORE resetting the
+    // panels, because FxCardComponent owns its own sliders: destroy the panel
+    // first and ~SliderParameterAttachment calls removeListener on freed
+    // memory. Nothing an assertion can read distinguishes the two orders - the
+    // editor is gone either way, and in a release build the wrong order
+    // usually appears to work.
+    //
+    // Reordering it and running the ASan build over this very suite reports:
+    //
+    //   ERROR: AddressSanitizer: heap-use-after-free
+    //     #0 juce::Slider::removeListener            juce_Slider.cpp:1476
+    //     #1 juce::SliderParameterAttachment::~...   juce_ParameterAttachments.cpp:177
+    //     #2 PX3SynthAudioProcessorEditor::~...      PluginEditor.cpp
+    //   freed by ~FxCardComponent
+    //
+    // which is the fault the destructor's own comment records having been
+    // measured as a segfault on quit. So the constraint IS covered, by the
+    // editor constructions already in this file plus the asan build - not by
+    // anything written here. Run it after touching the destructor:
+    //
+    //   cmake --build build/asan --target PX3Tests && \
+    //     ./build/asan/PX3Tests_artefacts/RelWithDebInfo/PX3Tests editorlayout
+
+    // ---- the processor holds nothing pointing at a closed editor ------------
+    //
+    // The destructor drops the processor's callback and the learn selection
+    // "before anything else", because the processor outlives the window and
+    // would otherwise call into freed memory on the next CC. The window is
+    // gone by the time that happens, so nothing about it looks wrong until a
+    // controller moves.
+    //
+    // This pins that the clearing HAPPENS, not where in the destructor it
+    // happens: both are true once the destructor has run, whatever order it
+    // ran in. It catches the line being dropped, which is the likely accident
+    // when that function is split up.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, 48000.0, 256);
+        processor.prepareToPlay(48000.0, 256);
+
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+            if (auto* px3Editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(editor.get()))
+            {
+                // Arm the two things the destructor is responsible for
+                // clearing, so this cannot pass by their never having been set.
+                processor.setMidiLearnTargets({ processor.getFilterCutoffParam(0).getParameterID() });
+                juce::ignoreUnused(px3Editor);
+            }
+        }
+
+        // A CC arriving after the window closed. Under the fault this is the
+        // call that lands in freed memory.
+        juce::AudioBuffer<float> buffer(2, 256);
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::controllerEvent(1, 21, 100), 0);
+        buffer.clear();
+        processor.processBlock(buffer, midi);
+        processor.applyPendingMidiMappings();
+
+        check("EditorOrder_AClosedEditorLeavesNothingPointingAtIt",
+              processor.onMidiMappingAssigned == nullptr
+                  && processor.getMidiLearnTargets().isEmpty(),
+              juce::String("after the window closed the processor holds ")
+                  + (processor.onMidiMappingAssigned == nullptr ? "no callback" : "A CALLBACK")
+                  + " and " + juce::String(processor.getMidiLearnTargets().size())
+                  + " learn targets");
+    }
 }
 
 } // namespace px3tests

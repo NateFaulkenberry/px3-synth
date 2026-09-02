@@ -1194,8 +1194,12 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     applyTopMenuSectionSelection(audioProcessor.getTopMenuViewIndex(), false);
 
-    // Added before the panel so that, with both marked always-on-top, the panel
-    // still sits above the scrim.
+    // The order these two are added does NOT decide which ends up on top.
+    // openPresetBrowser() raises the scrim and then the panel with explicit
+    // toFront calls every time it opens, so that is where the z-order is
+    // decided and Editor_PresetSheetItselfStaysClickable is what holds it.
+    // This comment used to claim the opposite; splitting the constructor is a
+    // good moment to stop believing it.
     addChildComponent(presetBrowserScrim);
 
     presetBrowserPanel.setInterceptsMouseClicks(false, true);
