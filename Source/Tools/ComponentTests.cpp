@@ -16,6 +16,7 @@
 #include "../DSP/PluginProcessor.h"
 #include "../DSP/PluginProcessorInternals.h"
 #include "../DSP/AmpEnvelope.h"
+#include "../Core/GlobalSettings.h"
 #include "../UI/Card.h"
 #include "../UI/MacroLook.h"
 #include "../UI/CardInner.h"
@@ -461,6 +462,24 @@ double harmonicToFundamentalRatio(const std::vector<float>& signal,
 // Configures a processor into a plain, predictable state: one oscillator, no
 // filters, no FX, no modulation, full sustain. Tests then change exactly the
 // one thing they are measuring.
+// The animation preference is process-wide now, so a test that changes it
+// changes it for every test that runs afterwards. This puts it back.
+struct ScopedAnimationPreference
+{
+    explicit ScopedAnimationPreference(bool value)
+        : previous(px3::GlobalSettings::getInstance().areAnimationsEnabled())
+    {
+        px3::GlobalSettings::getInstance().setAnimationsEnabled(value);
+    }
+
+    ~ScopedAnimationPreference()
+    {
+        px3::GlobalSettings::getInstance().setAnimationsEnabled(previous);
+    }
+
+    bool previous;
+};
+
 void makePlainPatch(PX3SynthAudioProcessor& processor)
 {
     setParam(processor, "ampAttack", 0.001f);
@@ -1211,6 +1230,185 @@ void testBreakpointEnvelope()
         }
     }
 
+    // ---- the animation preference is one value, shared by every instance ----
+    //
+    // The requirement is that turning it off in one open window turns it off in
+    // all of them. Instances know about the settings service; they never know
+    // about each other.
+    {
+        // Onto a scratch file first: without this the suite reads and writes
+        // the developer's own preference.
+        auto scratch = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                           .getChildFile("px3-component-tests")
+                           .getChildFile("global-settings.xml");
+        scratch.getParentDirectory().createDirectory();
+        scratch.deleteFile();
+        px3::GlobalSettings::debugUseSettingsFile(scratch);
+        px3::GlobalSettings::getInstance().debugReloadFromDisk();
+
+        const ScopedAnimationPreference restoreAfterwards(true);
+
+        PX3SynthAudioProcessor processorA, processorB, processorC;
+        for (auto* p : { &processorA, &processorB, &processorC })
+        {
+            p->setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            p->prepareToPlay(kSampleRate, kBlockSize);
+        }
+
+        std::unique_ptr<juce::AudioProcessorEditor> baseA(processorA.createEditor());
+        std::unique_ptr<juce::AudioProcessorEditor> baseB(processorB.createEditor());
+        std::unique_ptr<juce::AudioProcessorEditor> baseC(processorC.createEditor());
+
+        auto* editorA = dynamic_cast<PX3SynthAudioProcessorEditor*>(baseA.get());
+        auto* editorB = dynamic_cast<PX3SynthAudioProcessorEditor*>(baseB.get());
+        auto* editorC = dynamic_cast<PX3SynthAudioProcessorEditor*>(baseC.get());
+
+        if (editorA != nullptr && editorB != nullptr && editorC != nullptr)
+        {
+            for (auto* e : { editorA, editorB, editorC }) { e->setSize(1400, 900); }
+
+            // Whether an instance's own keyboard will spark is the observable
+            // end of the chain, so that is what every case below reads.
+            const auto animatesIn = [](PX3SynthAudioProcessorEditor* editor)
+            {
+                // Ask the keyboard to spark and see whether it did. When the
+                // preference is off the propagation has already cleared any
+                // live sparks and the spawn is refused, so this reads false;
+                // when it is on the spawn succeeds and it reads true.
+                auto& keyboard = editor->debugPianoKeyboard();
+                keyboard.debugSpawnSparks(60);
+                return keyboard.hasSparks();
+            };
+
+            // A: they start agreeing.
+            check("GlobalSettings_EveryInstanceStartsWithTheSameValue",
+                  animatesIn(editorA) && animatesIn(editorB) && animatesIn(editorC),
+                  "all three instances animate at startup");
+
+            // B: turning it off in the first reaches the other two.
+            editorA->debugSettingsPanel()->debugAnimationsToggle()
+                .setToggleState(false, juce::sendNotificationSync);
+
+            const auto offEverywhere = ! animatesIn(editorA) && ! animatesIn(editorB)
+                                       && ! animatesIn(editorC);
+            check("GlobalSettings_TurningItOffInOneInstanceReachesTheOthers",
+                  offEverywhere,
+                  offEverywhere ? "all three stopped"
+                                : juce::String("A ") + (animatesIn(editorA) ? "on" : "off")
+                                      + ", B " + (animatesIn(editorB) ? "on" : "off")
+                                      + ", C " + (animatesIn(editorC) ? "on" : "off"));
+
+            // C: and back on from a DIFFERENT instance.
+            editorC->debugSettingsPanel()->debugAnimationsToggle()
+                .setToggleState(true, juce::sendNotificationSync);
+
+            const auto onEverywhere = animatesIn(editorA) && animatesIn(editorB)
+                                      && animatesIn(editorC);
+            check("GlobalSettings_TurningItOnFromAnotherInstanceReachesThemAll",
+                  onEverywhere,
+                  onEverywhere ? "all three resumed" : "they did not all resume");
+
+            // The checkbox on every open page shows the current value, not the
+            // one it had when the page was drawn.
+            const auto boxesAgree
+                = editorA->debugSettingsPanel()->debugAnimationsToggle().getToggleState()
+                  && editorB->debugSettingsPanel()->debugAnimationsToggle().getToggleState()
+                  && editorC->debugSettingsPanel()->debugAnimationsToggle().getToggleState();
+
+            check("GlobalSettings_EveryOpenCheckboxFollowsTheValue",
+                  boxesAgree,
+                  boxesAgree ? "all three checkboxes show it on"
+                             : "a checkbox is showing a stale value");
+
+            // D: closing one must not leave a listener behind. If it did, the
+            // next change would call into freed memory - so the change AFTER
+            // the destruction is the test.
+            baseB.reset();
+
+            editorA->debugSettingsPanel()->debugAnimationsToggle()
+                .setToggleState(false, juce::sendNotificationSync);
+
+            check("GlobalSettings_ClosingAnEditorLeavesNoListenerBehind",
+                  ! animatesIn(editorA) && ! animatesIn(editorC),
+                  "with one editor destroyed, the remaining two still follow the setting");
+
+            // E: persistence. The value is on disk, and a fresh session picks
+            // it up - which is what debugReloadFromDisk stands in for.
+            const auto written = scratch.existsAsFile()
+                                 && scratch.loadFileAsString().contains("animationsEnabled");
+            px3::GlobalSettings::getInstance().debugReloadFromDisk();
+
+            check("GlobalSettings_ThePreferencePersistsAcrossSessions",
+                  written && ! px3::GlobalSettings::getInstance().areAnimationsEnabled(),
+                  written ? juce::String("reloaded from disk as ")
+                                + (px3::GlobalSettings::getInstance().areAnimationsEnabled()
+                                       ? "on" : "off")
+                          : "nothing was written to the settings file");
+        }
+
+        // Back to the real file for anything that follows.
+        px3::GlobalSettings::debugUseSettingsFile({});
+        scratch.deleteFile();
+    }
+
+    // ---- the animation preference reaches the things that animate -----------
+    //
+    // Checked THROUGH THE EDITOR, which is the part that was broken while the
+    // component-level tests passed: PianoKeyboard and PerformanceControls have
+    // to be told, and the push lived in the constructor instead of the tick, so
+    // toggling the setting never reached them. The logo reads the flag itself
+    // and so appeared to work, which is exactly what made the fault look like
+    // "only the logo is gated".
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+
+        if (editor != nullptr)
+        {
+            editor->setSize(1400, 900);
+
+            auto& keyboard = editor->debugPianoKeyboard();
+            auto& wheels = editor->debugPerformanceControls();
+
+            // Long enough for the editor's timer to tick at least once.
+            const auto settle = []
+            { juce::MessageManager::getInstance()->runDispatchLoopUntil(120); };
+
+            settle();
+            keyboard.debugSpawnSparks(60);
+            wheels.debugSpawnSparkles();
+            const auto sparkedWhileOn = keyboard.hasSparks() && wheels.hasSparkles();
+
+            px3::GlobalSettings::getInstance().setAnimationsEnabled(false);
+            settle();
+
+            const auto clearedByTheSetting = ! keyboard.hasSparks() && ! wheels.hasSparkles();
+
+            keyboard.debugSpawnSparks(60);
+            wheels.debugSpawnSparkles();
+            const auto sparkedWhileOff = keyboard.hasSparks() || wheels.hasSparkles();
+
+            px3::GlobalSettings::getInstance().setAnimationsEnabled(true);
+            settle();
+            keyboard.debugSpawnSparks(60);
+            wheels.debugSpawnSparkles();
+            const auto sparkedAgain = keyboard.hasSparks() && wheels.hasSparkles();
+
+            check("Settings_TurningAnimationsOffReachesTheKeyboardAndTheWheels",
+                  sparkedWhileOn && clearedByTheSetting && ! sparkedWhileOff && sparkedAgain,
+                  juce::String(sparkedWhileOn ? "sparks while on" : "no sparks even while on")
+                      + ", " + (clearedByTheSetting ? "cleared when turned off"
+                                                    : "left running when turned off")
+                      + ", " + (sparkedWhileOff ? "still sparks while off" : "silent while off")
+                      + ", " + (sparkedAgain ? "sparks again when re-enabled"
+                                             : "stayed silent when re-enabled"));
+        }
+    }
+
     // ---- SETTINGS: what the two controls actually do ------------------------
     {
         // ---- animations ----------------------------------------------------
@@ -1257,8 +1455,8 @@ void testBreakpointEnvelope()
             processor.prepareToPlay(kSampleRate, kBlockSize);
 
             check("Settings_AnimationsAreOnByDefault",
-                  processor.areAnimationsEnabled(),
-                  processor.areAnimationsEnabled() ? "on" : "off");
+                  px3::GlobalSettings::getInstance().areAnimationsEnabled(),
+                  px3::GlobalSettings::getInstance().areAnimationsEnabled() ? "on" : "off");
 
             check("Settings_TheAnalogConsoleIsOnByDefault",
                   processor.getAnalogEnabledParam().get(),
@@ -1271,7 +1469,7 @@ void testBreakpointEnvelope()
                   "the default profile is "
                       + processor.getAnalogProfileParam().getCurrentChoiceName());
 
-            processor.setAnimationsEnabled(false);
+            const ScopedAnimationPreference animationsOff(false);
             setChoice(processor, "analogProfile", 3);
 
             juce::MemoryBlock session;
@@ -1282,9 +1480,15 @@ void testBreakpointEnvelope()
             reloaded.prepareToPlay(kSampleRate, kBlockSize);
             reloaded.setStateInformation(session.getData(), static_cast<int>(session.getSize()));
 
-            check("Settings_TheAnimationPreferenceSurvivesASession",
-                  ! reloaded.areAnimationsEnabled(),
-                  reloaded.areAnimationsEnabled() ? "it came back on" : "it came back off");
+            // The preference is not IN the session any more - it is global - so
+            // what matters here is that restoring a session does not disturb
+            // it. Its own persistence is tested against the settings file
+            // below.
+            check("Settings_RestoringASessionLeavesThePreferenceAlone",
+                  ! px3::GlobalSettings::getInstance().areAnimationsEnabled(),
+                  px3::GlobalSettings::getInstance().areAnimationsEnabled()
+                      ? "a session restore turned it back on"
+                      : "the session restore left it off");
 
             check("Settings_TheAnalogProfileSurvivesASession",
                   reloaded.getAnalogProfileParam().getIndex() == 3,
@@ -1322,30 +1526,30 @@ void testBreakpointEnvelope()
                   read ? "the preset restores " + loader.getAnalogProfileParam().getCurrentChoiceName()
                        : "the preset did not round-trip: " + error + loadError);
 
-            check("Settings_APresetDoesNotCarryTheAnimationPreference",
-                  read && loader.areAnimationsEnabled(),
-                  loader.areAnimationsEnabled()
-                      ? "the loader kept its own preference"
-                      : "the preset turned the loader's animations off");
+            // There is no per-loader preference to keep any more, so the claim
+            // is about the GLOBAL one: loading a patch must not move it. It is
+            // off for this block, and it has to still be off afterwards.
+            check("Settings_LoadingAPresetDoesNotMoveTheGlobalPreference",
+                  read && ! px3::GlobalSettings::getInstance().areAnimationsEnabled(),
+                  px3::GlobalSettings::getInstance().areAnimationsEnabled()
+                      ? "the preset load turned animations back on"
+                      : "the preset load left the preference where it was");
 
-            // And it is not WRITTEN into the preset either, not merely ignored
-            // on the way in. A preset load already skips UI session state, so
-            // the check above passes whether or not the property is stripped -
-            // verified: removing the strip did not fail it. This is what the
-            // strip actually does, and the session tree is the control that
-            // stops it passing on a property nothing ever writes.
+            // Not in EITHER tree now, which is stronger than "a preset does not
+            // carry it": the property left the plugin's state entirely when the
+            // setting became global, so there is nothing to strip and nothing
+            // that could come back.
             const auto presetTree = processor.createPresetStateTree();
             const auto sessionTree = processor.createParameterStateTree();
+            const juce::Identifier animationsProperty("animationsEnabled");
 
-            check("Settings_ThePresetFileDoesNotEvenContainThePreference",
-                  ! presetTree.hasProperty(px3::processor_internal::kAnimationsEnabledId)
-                      && sessionTree.hasProperty(px3::processor_internal::kAnimationsEnabledId),
+            check("Settings_NoPluginStateCarriesThePreferenceAtAll",
+                  ! presetTree.hasProperty(animationsProperty)
+                      && ! sessionTree.hasProperty(animationsProperty),
                   juce::String("the preset tree ")
-                      + (presetTree.hasProperty(px3::processor_internal::kAnimationsEnabledId)
-                             ? "carries it" : "omits it")
+                      + (presetTree.hasProperty(animationsProperty) ? "carries it" : "omits it")
                       + " and the session tree "
-                      + (sessionTree.hasProperty(px3::processor_internal::kAnimationsEnabledId)
-                             ? "carries it" : "omits it"));
+                      + (sessionTree.hasProperty(animationsProperty) ? "carries it" : "omits it"));
 
             presetFile.deleteFile();
         }
@@ -1627,16 +1831,16 @@ void testBreakpointEnvelope()
                     auto& profiles = panel->debugAnalogProfileBox();
 
                     check("Settings_TheCheckboxStartsCheckedLikeTheSetting",
-                          toggle.getToggleState() && processor.areAnimationsEnabled(),
+                          toggle.getToggleState() && px3::GlobalSettings::getInstance().areAnimationsEnabled(),
                           juce::String("the box is ")
                               + (toggle.getToggleState() ? "checked" : "clear")
                               + " and the setting is "
-                              + (processor.areAnimationsEnabled() ? "on" : "off"));
+                              + (px3::GlobalSettings::getInstance().areAnimationsEnabled() ? "on" : "off"));
 
                     toggle.setToggleState(false, juce::sendNotificationSync);
-                    const auto turnedOff = ! processor.areAnimationsEnabled();
+                    const auto turnedOff = ! px3::GlobalSettings::getInstance().areAnimationsEnabled();
                     toggle.setToggleState(true, juce::sendNotificationSync);
-                    const auto turnedBackOn = processor.areAnimationsEnabled();
+                    const auto turnedBackOn = px3::GlobalSettings::getInstance().areAnimationsEnabled();
 
                     check("Settings_TheCheckboxDrivesTheSetting",
                           turnedOff && turnedBackOn,
@@ -26776,7 +26980,12 @@ void testBusInserts()
             const auto jump = std::abs(static_cast<double>(out[(std::size_t) i]) - out[(std::size_t)(i - 1)]);
             double sum = 0.0;
             int count = 0;
-            for (int k = i - window; k < i + window; ++k)
+            // From 1, not from i - window: the outer loop starts at i == window,
+            // so k begins at 0 and k - 1 reads one float BEFORE the buffer.
+            // AddressSanitizer caught it - the garbage it read went into the
+            // reference this compares against, so the number the test reported
+            // was never quite the number it claimed.
+            for (int k = juce::jmax(1, i - window); k < i + window; ++k)
             {
                 if (k == i || k == i - 1) continue;
                 const auto d = static_cast<double>(out[(std::size_t) k]) - out[(std::size_t)(k - 1)];

@@ -31,7 +31,11 @@ SettingsPanel::SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour p
     animationsToggle.onClick = [this]
     {
         if (updatingFromProcessor) { return; }
-        processor.setAnimationsEnabled(animationsToggle.getToggleState());
+
+        // To the global service, not to this processor: the preference belongs
+        // to the install, and every other open window is listening to it.
+        px3::GlobalSettings::getInstance().setAnimationsEnabled(
+            animationsToggle.getToggleState());
     };
     addAndMakeVisible(animationsToggle);
 
@@ -80,10 +84,19 @@ SettingsPanel::SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour p
            "Console colour on the output. Saved with the patch.",
            analogProfileBox);
 
+    px3::GlobalSettings::getInstance().addChangeListener(this);
     refreshFromParameters();
 }
 
-SettingsPanel::~SettingsPanel() = default;
+SettingsPanel::~SettingsPanel()
+{
+    px3::GlobalSettings::getInstance().removeChangeListener(this);
+}
+
+void SettingsPanel::changeListenerCallback(juce::ChangeBroadcaster*)
+{
+    refreshFromParameters();
+}
 
 void SettingsPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
@@ -128,7 +141,7 @@ void SettingsPanel::refreshFromParameters()
     // moving them and written straight back.
     const juce::ScopedValueSetter<bool> guard(updatingFromProcessor, true);
 
-    animationsToggle.setToggleState(processor.areAnimationsEnabled(),
+    animationsToggle.setToggleState(px3::GlobalSettings::getInstance().areAnimationsEnabled(),
                                     juce::dontSendNotification);
 
     const auto profile = processor.getAnalogProfileParam().getIndex();

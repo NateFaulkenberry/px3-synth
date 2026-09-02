@@ -746,9 +746,16 @@ there is no Macro strip beside it, because nothing here is a Macro destination.
 On by default. Turns off the keyboard's sparks, the sparkles around the pitch
 and mod wheels, and the logo's movement while a note is held.
 
-This is a preference for **your install**, not part of a sound. It is remembered
-between sessions and is not written into presets, so loading somebody else's
-patch never changes it.
+This is a preference for **your install**, not part of a sound. Three things
+follow from that:
+
+- It is **shared by every open instance.** Turn it off in one and every other
+  P(X3) window in the session follows immediately — you do not have to visit
+  them.
+- It is **remembered between sessions**, in P(X3)'s own settings file rather
+  than in the project.
+- It is **not written into presets**, so loading somebody else's patch never
+  changes it.
 
 ## Analog Engine
 

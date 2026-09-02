@@ -20,9 +20,13 @@ surface and there is nothing on this page to assign a Macro to.
 - **Enable animations** (on by default) gates the keyboard sparks, the sparkles
   around the pitch and mod wheels, and the logo's movement. It is gated at the
   source, not the draw: a keyboard still spawning particles nobody paints is
-  still doing the work. This is an install preference — kept between sessions,
-  never written into a preset, so loading somebody else's patch cannot change
-  it.
+  still doing the work.
+
+  It is a **global** preference, not per-instance state. Turn it off in one open
+  window and every other P(X3) window follows immediately; it is kept in P(X3)'s
+  own settings file beside the preset and wavetable libraries, and it is never
+  written into a preset or a project. Instances subscribe to one settings
+  service — they never reference each other.
 - **Analog Engine** chooses the console profile: CLEAN, BRITISH, AMERICAN,
   TRANSFORMER or MODERN. Unlike the animation setting this *is* part of the
   sound — an automatable parameter that travels in sessions and presets.

@@ -696,15 +696,6 @@ public:
     int getTopMenuViewIndex() const;
     void setTopMenuViewIndex(int index, bool notifyHost = true);
 
-    // Whether the editor runs its idle animations - the oscillator's rotating
-    // wavetable, the LFO traces, the mixer meters.
-    //
-    // Session state, not a parameter and not part of a preset. It says how this
-    // user wants their editor to behave on this machine; a patch has no opinion
-    // about it, and loading someone else's sound should not turn their
-    // animation preference into yours.
-    bool areAnimationsEnabled() const;
-    void setAnimationsEnabled(bool shouldBeEnabled, bool notifyHost = true);
 
     // The preset the editor last loaded. The processor does not use any of it;
     // it is carried here purely so it survives in DAW state, because the editor
@@ -1210,7 +1201,6 @@ private:
     std::atomic<float> pitchBendActivity { 0.0f };
     std::atomic<float> modWheelActivity { 0.0f };
     std::atomic<int> topMenuViewIndex { 0 };
-    std::atomic<bool> animationsEnabled { true };
     // Guarded because the host may serialise state off the message thread while
     // the editor is writing this from it.
     mutable std::mutex loadedPresetMutex;

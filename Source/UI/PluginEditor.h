@@ -28,6 +28,7 @@
 #include "BusInsertOverlay.h"
 #include "ModalBackdrop.h"
 #include "OscPanel.h"
+#include "../Core/GlobalSettings.h"
 #include "SettingsPanel.h"
 #include "TopMenuBar.h"
 #include "DelayComponent.h"
@@ -272,6 +273,12 @@ public:
     juce::TextButton& debugPresetDumpButton() { return debugDumpPresetButton; }
     PresetManager::PresetMetadata debugPresetDumpMetadata() const { return debugDumpPresetMetadata(); }
 
+    // The two components that are TOLD whether to animate, so a test can check
+    // the preference reaches them through the editor rather than only that
+    // their own setters work.
+    PianoKeyboard& debugPianoKeyboard() { return pianoKeyboard; }
+    PerformanceControls& debugPerformanceControls() { return performanceControls; }
+
     TopMenuBar* debugTopMenuBar() { return topMenuBar.get(); }
     SettingsPanel* debugSettingsPanel() { return settingsPanel.get(); }
     juce::Rectangle<int> debugPanelViewportArea() const { return panelViewportArea; }
@@ -372,6 +379,22 @@ private:
     // Pushes the animation preference down to the things that animate. One
     // call site for the flag, so the three of them cannot drift apart.
     void applyAnimationPreference();
+
+    // Told when the global animation preference moves, rather than asking every
+    // tick. One notification per change beats thirty polls a second finding
+    // nothing has happened.
+    struct AnimationPreferenceListener final : public juce::ChangeListener
+    {
+        explicit AnimationPreferenceListener(PX3SynthAudioProcessorEditor& ownerIn)
+            : owner(ownerIn) {}
+        void changeListenerCallback(juce::ChangeBroadcaster*) override
+        {
+            owner.applyAnimationPreference();
+        }
+        PX3SynthAudioProcessorEditor& owner;
+    };
+
+    AnimationPreferenceListener animationPreferenceListener { *this };
     void refreshTopMenuSelectionFromProcessor();
     void updatePresetDirtyState();
     juce::String computeCurrentStateHash() const;

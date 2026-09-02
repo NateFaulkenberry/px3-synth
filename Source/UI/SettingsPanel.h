@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 
+#include "../Core/GlobalSettings.h"
 #include "PluginProcessor.h"
 
 class UIConfig;
@@ -16,7 +17,8 @@ class UIConfig;
 // macro - and its contents are a form rather than an instrument. Rows of a
 // label and a control, laid out and styled from UIConfig under
 // "settings.<key>" the same way every other panel reads its own prefix.
-class SettingsPanel final : public juce::Component
+class SettingsPanel final : public juce::Component,
+                           private juce::ChangeListener
 {
 public:
     explicit SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour panelAccent);
@@ -45,6 +47,11 @@ private:
     };
 
     void layoutRow(Row& row, juce::Rectangle<int> area);
+
+    // The animation preference is global, so another window can move it while
+    // this page is open. The checkbox follows rather than showing what it was
+    // when the page was drawn.
+    void changeListenerCallback(juce::ChangeBroadcaster* source) override;
 
     PX3SynthAudioProcessor& processor;
     juce::Colour accent;

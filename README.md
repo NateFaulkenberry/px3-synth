@@ -239,8 +239,10 @@ The gear at the right of the top bar opens SETTINGS: a full-width page with no
 Macro strip, because nothing on it is a Macro destination.
 
 - **Enable animations** (on by default) gates the keyboard sparks, the wheel
-  sparkles and the logo movement. It is an install preference: kept between
-  sessions, never written into a preset.
+  sparkles and the logo movement. It is a global install preference rather than
+  per-instance state: changing it in one open plugin window changes it in all of
+  them, it is kept in `~/Library/Application Support/P(X3)/settings.xml`, and it
+  is never written into a preset or a project.
 - **Analog Engine** selects the console profile - CLEAN, BRITISH, AMERICAN,
   TRANSFORMER or MODERN. This one IS part of the sound: it is an automatable
   parameter and travels in sessions and presets. The console is enabled by

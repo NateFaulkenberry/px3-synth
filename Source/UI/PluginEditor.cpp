@@ -1640,9 +1640,11 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     // Before the first timer tick: a patch loaded with every source bypassed
     // must come up greyed and warning, not animate for a frame first.
-    // Cheap enough to do every tick, and doing it here rather than through a
-    // callback from the settings panel means it also follows a preset load, a
-    // session restore, or anything else that moves the flag.
+    //
+    // The editor takes the CURRENT global preference on open - which is how a
+    // window opened after the setting changed comes up matching the others -
+    // and is told about every change after that.
+    px3::GlobalSettings::getInstance().addChangeListener(&animationPreferenceListener);
     applyAnimationPreference();
 
     refreshOscillatorEngagedState();
@@ -1695,6 +1697,13 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
 {
     stopTimer();
+
+    // Off the global preference's list before anything else. The settings
+    // service outlives every editor, so a listener left registered here is a
+    // call into freed memory the next time any OTHER window changes the
+    // setting - which is exactly the case closing one window and toggling from
+    // another produces.
+    px3::GlobalSettings::getInstance().removeChangeListener(&animationPreferenceListener);
 
     // Before anything else: the processor outlives us and would otherwise call
     // into a destroyed editor on the next CC. Select Mode is UI state, so it
@@ -3890,7 +3899,7 @@ void PX3SynthAudioProcessorEditor::updatePanelVisibility()
 
 void PX3SynthAudioProcessorEditor::applyAnimationPreference()
 {
-    const auto enabled = audioProcessor.areAnimationsEnabled();
+    const auto enabled = px3::GlobalSettings::getInstance().areAnimationsEnabled();
 
     pianoKeyboard.setAnimationsEnabled(enabled);
     performanceControls.setAnimationsEnabled(enabled);
@@ -4529,7 +4538,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
 
     refreshOscillatorEngagedState();
 
-    if (audioProcessor.areAnimationsEnabled()
+    if (px3::GlobalSettings::getInstance().areAnimationsEnabled()
         && anyOscillatorEngaged
         && (logoVibrationIntensity > 0.001f || anyKeyDown))
     {

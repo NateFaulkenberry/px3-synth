@@ -789,24 +789,6 @@ std::atomic<int> const& PX3SynthAudioProcessor::envelopeAssignmentAtomic(int env
 }
 
 
-bool PX3SynthAudioProcessor::areAnimationsEnabled() const
-{
-    return animationsEnabled.load(std::memory_order_relaxed);
-}
-
-void PX3SynthAudioProcessor::setAnimationsEnabled(bool shouldBeEnabled, bool notifyHost)
-{
-    if (animationsEnabled.exchange(shouldBeEnabled, std::memory_order_relaxed) == shouldBeEnabled)
-    {
-        return;
-    }
-
-    if (notifyHost)
-    {
-        updateHostDisplay(juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged(true));
-    }
-}
-
 int PX3SynthAudioProcessor::getTopMenuViewIndex() const
 {
     return juce::jlimit(0, kTopMenuViewCount - 1,
