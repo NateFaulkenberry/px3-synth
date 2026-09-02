@@ -1108,6 +1108,104 @@ void testBreakpointEnvelope()
               "outside the region both modes read " + fmt(adsr.second, 4));
     }
 
+    // ---- the ADSR knobs answer to bypass AND mode, together -----------------
+    //
+    // Two independent things gate these knobs, and refreshFromParameters runs
+    // on a timer. If the mode state is applied anywhere but alongside bypass,
+    // the next refresh re-enables the knobs in Breakpoint mode within a frame -
+    // and a test that only sets the mode and looks immediately would never see
+    // it. So every case here ends with a refresh through ModPanel.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        if (editor != nullptr)
+        {
+            editor->setSize(1400, 900);
+
+            ModPanel* panel = nullptr;
+            std::function<void(juce::Component&)> findPanel = [&](juce::Component& c)
+            {
+                for (auto* child : c.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* p = dynamic_cast<ModPanel*>(child)) { panel = p; }
+                    findPanel(*child);
+                }
+            };
+            findPanel(*editor);
+
+            EnvelopeComponent* env1 = nullptr;
+            std::function<void(juce::Component&)> findEnv = [&](juce::Component& c)
+            {
+                for (auto* child : c.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* e = dynamic_cast<EnvelopeComponent*>(child))
+                    {
+                        if (env1 == nullptr) { env1 = e; }
+                    }
+                    findEnv(*child);
+                }
+            };
+            if (panel != nullptr) { findEnv(*panel); }
+
+            if (panel != nullptr && env1 != nullptr)
+            {
+                auto& enabledParam = processor.getEnvelopeEnabledParam(0);
+
+                const auto stateFor = [&](bool cardEnabled, px3::BreakpointEnvelope::Mode mode)
+                {
+                    enabledParam.setValueNotifyingHost(cardEnabled ? 1.0f : 0.0f);
+                    processor.setEnvelopeMode(1, mode);
+                    env1->setEnvelopeMode(mode);
+
+                    // The refresh is the point: it is what would undo a mode
+                    // state applied on its own.
+                    panel->refreshFromParameters();
+                    return env1->debugAdsrKnobsLive();
+                };
+
+                const auto onAdsr = stateFor(true, px3::BreakpointEnvelope::Mode::adsr);
+                const auto onBreakpoint = stateFor(true, px3::BreakpointEnvelope::Mode::breakpoint);
+                const auto offBreakpoint = stateFor(false, px3::BreakpointEnvelope::Mode::breakpoint);
+                const auto offAdsr = stateFor(false, px3::BreakpointEnvelope::Mode::adsr);
+                const auto onAdsrAgain = stateFor(true, px3::BreakpointEnvelope::Mode::adsr);
+
+                check("EnvMode_TheKnobsAreLiveOnlyWhenEnabledAndInAdsrMode",
+                      onAdsr && ! onBreakpoint && ! offBreakpoint && ! offAdsr && onAdsrAgain,
+                      juce::String("enabled+ADSR ") + (onAdsr ? "live" : "dead")
+                          + ", enabled+Breakpoint " + (onBreakpoint ? "live" : "dead")
+                          + ", bypassed+Breakpoint " + (offBreakpoint ? "live" : "dead")
+                          + ", bypassed+ADSR " + (offAdsr ? "live" : "dead")
+                          + ", back to enabled+ADSR " + (onAdsrAgain ? "live" : "dead"));
+
+                // Un-bypassing while in Breakpoint mode must not wake them.
+                // This is the exact ordering that breaks if bypass is applied
+                // without consulting the mode.
+                processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
+                env1->setEnvelopeMode(px3::BreakpointEnvelope::Mode::breakpoint);
+                enabledParam.setValueNotifyingHost(0.0f);
+                panel->refreshFromParameters();
+                enabledParam.setValueNotifyingHost(1.0f);
+                panel->refreshFromParameters();
+
+                check("EnvMode_UnBypassingInBreakpointModeLeavesTheKnobsDead",
+                      ! env1->debugAdsrKnobsLive(),
+                      env1->debugAdsrKnobsLive()
+                          ? "the knobs woke up when the card was re-enabled"
+                          : "the knobs stay disabled when the card is re-enabled");
+
+                // And they are still SHOWN through all of it.
+                check("EnvMode_TheKnobsStayOnScreenThroughBypassAndMode",
+                      env1->debugAdsrKnobsVisible(),
+                      env1->debugAdsrKnobsVisible() ? "still on screen" : "they disappeared");
+            }
+        }
+    }
+
     // ---- mode is the authority, not the point count -------------------------
     //
     // A breakpoint envelope with four points is EXACTLY what seeding from an
@@ -20348,24 +20446,31 @@ void testEnvelopeModes()
             {
                 auto* card = cards.front();
 
-                // ADSR: the four knobs are there.
+                // ADSR: the four knobs are there and live.
                 card->setEnvelopeMode(px3::BreakpointEnvelope::Mode::adsr);
-                const auto knobsInAdsr = card->debugAdsrKnobsVisible();
+                const auto shownInAdsr = card->debugAdsrKnobsVisible();
+                const auto liveInAdsr = card->debugAdsrKnobsLive();
 
-                // Breakpoint: they are gone. Leaving them on screen showing
-                // values that no longer describe the envelope is the defect
-                // this whole change removes.
+                // Breakpoint: still on screen, but dead. They are kept rather
+                // than hidden because a control that vanishes says nothing
+                // about why; greyed in place says the mode does not use them.
                 card->setEnvelopeMode(px3::BreakpointEnvelope::Mode::breakpoint);
-                const auto knobsInBreakpoint = card->debugAdsrKnobsVisible();
+                const auto shownInBreakpoint = card->debugAdsrKnobsVisible();
+                const auto liveInBreakpoint = card->debugAdsrKnobsLive();
 
                 card->setEnvelopeMode(px3::BreakpointEnvelope::Mode::adsr);
-                const auto knobsBack = card->debugAdsrKnobsVisible();
+                const auto liveAgain = card->debugAdsrKnobsLive();
 
-                check("EnvMode_TheAdsrKnobsAppearOnlyInAdsrMode",
-                      knobsInAdsr && ! knobsInBreakpoint && knobsBack,
-                      juce::String("ADSR: ") + (knobsInAdsr ? "shown" : "hidden")
-                          + ", Breakpoint: " + (knobsInBreakpoint ? "shown" : "hidden")
-                          + ", back to ADSR: " + (knobsBack ? "shown" : "hidden"));
+                check("EnvMode_TheAdsrKnobsAreShownInBothModes",
+                      shownInAdsr && shownInBreakpoint,
+                      juce::String("ADSR: ") + (shownInAdsr ? "shown" : "hidden")
+                          + ", Breakpoint: " + (shownInBreakpoint ? "shown" : "hidden"));
+
+                check("EnvMode_TheAdsrKnobsAreLiveOnlyInAdsrMode",
+                      liveInAdsr && ! liveInBreakpoint && liveAgain,
+                      juce::String("ADSR: ") + (liveInAdsr ? "live" : "disabled")
+                          + ", Breakpoint: " + (liveInBreakpoint ? "live" : "disabled")
+                          + ", back to ADSR: " + (liveAgain ? "live" : "disabled"));
             }
 
             // Choosing a mode on the card reaches the processor slot it edits,

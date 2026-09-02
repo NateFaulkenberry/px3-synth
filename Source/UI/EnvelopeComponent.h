@@ -71,6 +71,25 @@ public:
     bool debugAdsrKnobsVisible() const
     { return adsrKnobsBuilt && adsrKnobs[0].knob.isVisible(); }
 
+    // Live means the knob accepts input: enabled AND taking clicks. Checking
+    // isEnabled alone would miss a knob left interactive while drawn grey.
+    bool debugAdsrKnobsLive() const
+    {
+        if (! adsrKnobsBuilt) { return false; }
+        for (const auto& entry : adsrKnobs)
+        {
+            auto takesClicks = false;
+            auto takesChildClicks = false;
+            entry.knob.getInterceptsMouseClicks(takesClicks, takesChildClicks);
+
+            if (! entry.knob.isEnabled() || ! takesClicks)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     const juce::Label& debugAdsrKnobReadout(int i) const
     { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].readout; }
 
@@ -172,6 +191,9 @@ private:
     juce::LookAndFeel* knobLookAndFeel { nullptr };
 
     bool adsrKnobsWanted() const;
+    // The one place that decides whether the four knobs are live: bypass AND
+    // mode, together. See the comment on the definition.
+    void applyAdsrKnobState();
     void buildAdsrKnobs();
     void layoutAdsrKnobs();
     void refreshAdsrReadouts();

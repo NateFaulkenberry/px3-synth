@@ -173,25 +173,7 @@ void EnvelopeComponent::refreshFromParameters()
             const auto amountPrefix = amountPercent > 0 ? juce::String("+") : juce::String();
             amountValueLabel->setText(amountPrefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
         }
-        // Greyed with the rest of the card when the envelope is bypassed, by
-        // the same two properties the AMOUNT knob uses - otherwise a bypassed
-        // card would carry four knobs still drawn as if they were live.
-        if (adsrKnobsBuilt)
-        {
-            for (auto& entry : adsrKnobs)
-            {
-                entry.knob.setEnabled(currentEnabled);
-                entry.knob.setInterceptsMouseClicks(currentEnabled, currentEnabled);
-                entry.knob.getProperties().set("knobBypassed", ! currentEnabled);
-                entry.knob.getProperties().set("psychedelicBypassGray", ! currentEnabled);
-                entry.label.setEnabled(currentEnabled);
-                entry.readout.setEnabled(currentEnabled);
-                entry.readout.setColour(juce::Label::textColourId,
-                                        currentEnabled
-                                            ? juce::Colour::fromRGB(218, 218, 228)
-                                            : juce::Colour::fromRGB(176, 176, 176));
-            }
-        }
+        applyAdsrKnobState();
 
         repaint();
     }
@@ -502,22 +484,47 @@ void EnvelopeComponent::layoutModeSelector()
     modeBox.setVisible(true);
 }
 
+void EnvelopeComponent::applyAdsrKnobState()
+{
+    if (! adsrKnobsBuilt) { return; }
+
+    // TWO things gate these knobs, and both have to be consulted every time.
+    //
+    // The card's bypass greys them, by the same two properties the AMOUNT knob
+    // uses, or a bypassed card carries four knobs still drawn as if they were
+    // live. Breakpoint mode disables them because four numbers do not describe
+    // that envelope.
+    //
+    // They are computed together, in one place, because applying either on its
+    // own means whichever ran last wins - and refreshFromParameters runs on a
+    // timer, so "last" is always bypass. Setting the mode state anywhere else
+    // would be undone within a frame.
+    const auto live = currentEnabled && envelopeMode == px3::BreakpointEnvelope::Mode::adsr;
+
+    for (auto& entry : adsrKnobs)
+    {
+        // Shown in both modes. They used to be hidden in Breakpoint mode; a
+        // control that vanishes tells you nothing about why, and the row is
+        // laid out the same either way, so it left a hole.
+        entry.knob.setVisible(showAdsrKnobs);
+        entry.label.setVisible(showAdsrKnobs);
+        entry.readout.setVisible(showAdsrKnobs);
+
+        entry.knob.setEnabled(live);
+        entry.knob.setInterceptsMouseClicks(live, live);
+        entry.knob.getProperties().set("knobBypassed", ! live);
+        entry.knob.getProperties().set("psychedelicBypassGray", ! live);
+        entry.label.setEnabled(live);
+        entry.readout.setEnabled(live);
+        entry.readout.setColour(juce::Label::textColourId,
+                                live ? juce::Colour::fromRGB(218, 218, 228)
+                                     : juce::Colour::fromRGB(176, 176, 176));
+    }
+}
+
 void EnvelopeComponent::applyModeToControls()
 {
-    // The four knobs describe an ADSR. In Breakpoint mode they do not describe
-    // the envelope any more, so they go - leaving them on screen showing values
-    // that no longer mean anything is the defect this whole change removes.
-    const auto showKnobs = envelopeMode == px3::BreakpointEnvelope::Mode::adsr;
-
-    if (adsrKnobsBuilt)
-    {
-        for (auto& entry : adsrKnobs)
-        {
-            entry.knob.setVisible(showKnobs && showAdsrKnobs);
-            entry.label.setVisible(showKnobs && showAdsrKnobs);
-            entry.readout.setVisible(showKnobs && showAdsrKnobs);
-        }
-    }
+    applyAdsrKnobState();
 
     resized();
     repaint();
