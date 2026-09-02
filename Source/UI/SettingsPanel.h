@@ -34,9 +34,15 @@ public:
     void refreshFromParameters();
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
+    // Raised when the Close button is pressed. The panel does not know what
+    // "closing" means - the editor decides which view to go back to - so it
+    // asks rather than acting.
+    std::function<void()> onCloseRequested;
+
     // For the tests: the two controls, by the setting they carry.
     juce::ToggleButton& debugAnimationsToggle() { return animationsToggle; }
     juce::ComboBox& debugAnalogProfileBox() { return analogProfileBox; }
+    juce::TextButton& debugCloseButton() { return closeButton; }
 
 private:
     struct Row
@@ -62,6 +68,7 @@ private:
 
     juce::ToggleButton animationsToggle;
     juce::ComboBox analogProfileBox;
+    juce::TextButton closeButton { "CLOSE" };
 
     // Set while a refresh is writing the controls, so the change callbacks can
     // tell a user's edit from the panel catching up with the processor. Without

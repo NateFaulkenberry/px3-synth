@@ -1060,6 +1060,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     settingsPanel = std::make_unique<SettingsPanel>(audioProcessor,
                                                     juce::Colour::fromRGB(190, 196, 206));
+    settingsPanel->onCloseRequested = [this]() { toggleSettingsView(); };
     addAndMakeVisible(*settingsPanel);
 
     oscPanelViewport.setViewedComponent(oscPanel.get(), false);
@@ -1220,10 +1221,7 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     topMenuBar->setOnPresetName([this]() { openPresetBrowser(); });
     topMenuBar->setOnPresetMenu([this]() { showPresetMenu(); });
-    topMenuBar->setOnSettings([this]()
-    {
-        applyTopMenuSectionSelection(kSectionSettings, true);
-    });
+    topMenuBar->setOnSettings([this]() { toggleSettingsView(); });
     topMenuBar->setOnSectionSelected([this](int sectionIndex)
     {
         applyTopMenuSectionSelection(sectionIndex, true);
@@ -2688,6 +2686,21 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
                        });
 }
 
+void PX3SynthAudioProcessorEditor::toggleSettingsView()
+{
+    // A true toggle: the gear opens SETTINGS and closes it again. Closing
+    // returns to the panel you came from rather than to a fixed one, because
+    // SETTINGS is a detour - you were doing something before you opened it.
+    if (selectedTopMenuSection == kSectionSettings)
+    {
+        applyTopMenuSectionSelection(sectionBeforeSettings, true);
+        return;
+    }
+
+    sectionBeforeSettings = selectedTopMenuSection;
+    applyTopMenuSectionSelection(kSectionSettings, true);
+}
+
 void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex, bool pushToProcessor)
 {
     const auto clamped = juce::jlimit(0, kSectionSettings, sectionIndex);
@@ -2699,6 +2712,13 @@ void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex
     }
 
     updatePanelVisibility();
+
+    // And RE-LAY OUT, not just re-show. Which rows the window has depends on
+    // the section: SETTINGS drops the macro strip and takes its width back for
+    // the panel, and that decision lives in resized(). Without this, choosing
+    // SETTINGS left the strip on screen and the panel at its narrower size
+    // until something else happened to resize the window.
+    resized();
 
     // The six panels are stacked in the same rectangle and swapped by
     // visibility, and paint() draws the FX section cards into that rectangle

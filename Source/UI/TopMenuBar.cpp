@@ -408,7 +408,8 @@ TopMenuBar::TopMenuBar()
 
     // A gear rather than a legend, and a lamp of its own: SETTINGS is a view
     // like the six sections, so it reports whether it is the open one.
-    settingsButton.setIcon(TopMenuTabButton::gearIcon());
+    // 0.46 of the face, less 15%.
+    settingsButton.setIcon(TopMenuTabButton::gearIcon(), 0.391f);
     settingsButton.setShowLed(false);
     settingsButton.setShowSeam(false);
     settingsButton.setButtonText("SETTINGS");

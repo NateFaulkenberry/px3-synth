@@ -282,6 +282,7 @@ public:
     TopMenuBar* debugTopMenuBar() { return topMenuBar.get(); }
     SettingsPanel* debugSettingsPanel() { return settingsPanel.get(); }
     juce::Rectangle<int> debugPanelViewportArea() const { return panelViewportArea; }
+    int debugSelectedSection() const { return selectedTopMenuSection; }
 
     // The same call JUCE's dispatch makes when a listener sees a click on a
     // knob. Constructing the event here is the one step the test cannot get
@@ -376,6 +377,8 @@ private:
     void exportCurrentPreset();
     void showPresetMenu();
     void applyTopMenuSectionSelection(int sectionIndex, bool pushToProcessor);
+    // Open SETTINGS, or close it and go back to where you were.
+    void toggleSettingsView();
     // Pushes the animation preference down to the things that animate. One
     // call site for the flag, so the three of them cannot drift apart.
     void applyAnimationPreference();
@@ -766,6 +769,9 @@ private:
     int dirtyUpdateCounter { 0 };
 
     int selectedTopMenuSection { 0 };
+    // Where the gear was pressed from, so closing SETTINGS returns there. Not
+    // a fixed panel: SETTINGS is a detour from whatever you were doing.
+    int sectionBeforeSettings { 0 };
 
     PresetBrowserPanelComponent presetBrowserPanel;
     juce::Label presetBrowserTitle;

@@ -1418,7 +1418,6 @@ void testMacroSystem()
                 for (int section = 0; section < 6; ++section)
                 {
                     editor->debugSelectSection(section);
-                    editor->resized();
                     afterSwitching.add(fmt(strip->knob(0).getValue(), 2));
                 }
 
@@ -1660,7 +1659,6 @@ void testMacroSystem()
                 for (const auto section : { 0, 3, 5 })
                 {
                     editor->debugSelectSection(section);
-                    editor->resized();
                     stayedActive = stayedActive && editor->debugAssigningMacro() == 0;
                     if (clickAKnobOnThisPanel()) { panelsAssigned.add(juce::String(section)); }
                 }

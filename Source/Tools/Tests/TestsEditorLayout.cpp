@@ -46,7 +46,6 @@ void testEditorLayout()
                 {
                     editor->setSize(size[0], size[1]);
                     editor->debugSelectSection(section);
-                    editor->resized();
                     ++checked;
 
                     const auto where = juce::String(size[0]) + "x" + juce::String(size[1])
@@ -108,7 +107,6 @@ void testEditorLayout()
                 for (int section = 0; section <= 6; ++section)
                 {
                     editor->debugSelectSection(section);
-                    editor->resized();
 
                     const auto strip = editor->debugMacroStripArea();
                     const auto panel = editor->debugPanelViewportArea();
@@ -131,6 +129,60 @@ void testEditorLayout()
               editor != nullptr && faults.isEmpty(),
               faults.isEmpty() ? "the strip is placed correctly at every width and section"
                                : faults.joinIntoString("; "));
+    }
+
+    // ---- the gear is a toggle, and remembers where you were ----------------
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+
+        if (editor != nullptr)
+        {
+            editor->setSize(1400, 900);
+            auto* bar = editor->debugTopMenuBar();
+            auto* settings = editor->debugSettingsPanel();
+
+            if (bar != nullptr && settings != nullptr)
+            {
+                const auto pressGear = [&] { bar->getSettingsButton().onClick(); };
+
+                // From FLT, not from the default, so "it went back" cannot pass
+                // by returning to a fixed panel.
+                editor->debugSelectSection(3);
+                pressGear();
+                const auto opened = editor->debugSelectedSection();
+                pressGear();
+                const auto returned = editor->debugSelectedSection();
+
+                check("Settings_TheGearTogglesAndReturnsToWhereYouWere",
+                      opened == 6 && returned == 3,
+                      "from FLT the gear opened section " + juce::String(opened)
+                          + " and came back to " + juce::String(returned));
+
+                // The Close button does the same thing, from a different panel.
+                editor->debugSelectSection(5);
+                pressGear();
+                const auto openedAgain = editor->debugSelectedSection();
+                settings->debugCloseButton().onClick();
+                const auto closed = editor->debugSelectedSection();
+
+                check("Settings_TheCloseButtonReturnsToWhereYouWere",
+                      openedAgain == 6 && closed == 5,
+                      "from MIX, Close came back to section " + juce::String(closed));
+
+                // And the strip comes back with the panel, without anything
+                // else having to resize the window.
+                check("Settings_ClosingBringsTheMacroStripBack",
+                      ! editor->debugMacroStripArea().isEmpty(),
+                      editor->debugMacroStripArea().isEmpty()
+                          ? "the strip stayed hidden after closing"
+                          : "the strip is back");
+            }
+        }
     }
 
     // ---- the first frame is coherent ---------------------------------------
@@ -161,7 +213,6 @@ void testEditorLayout()
 
             // Read BEFORE any timer tick: this is the first frame.
             editor->debugSelectSection(6);
-            editor->resized();
             auto* settings = editor->debugSettingsPanel();
 
             const auto profileShown = settings != nullptr
@@ -219,7 +270,6 @@ void testEditorLayout()
             const auto hashOfPanel = [&](int section)
             {
                 editor->debugSelectSection(section);
-                editor->resized();
 
                 const auto area = editor->debugPanelViewportArea();
                 const auto image = editor->createComponentSnapshot(area);
@@ -272,7 +322,6 @@ void testEditorLayout()
                 const auto visiblePanelFor = [&](int section)
                 {
                     editor->debugSelectSection(section);
-                    editor->resized();
 
                     juce::String found;
                     std::function<void(juce::Component&, bool)> walk =

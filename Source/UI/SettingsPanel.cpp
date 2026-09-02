@@ -84,6 +84,13 @@ SettingsPanel::SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour p
            "Console colour on the output. Saved with the patch.",
            analogProfileBox);
 
+    closeButton.setButtonText("CLOSE");
+    closeButton.onClick = [this]
+    {
+        if (onCloseRequested != nullptr) { onCloseRequested(); }
+    };
+    addAndMakeVisible(closeButton);
+
     px3::GlobalSettings::getInstance().addChangeListener(this);
     refreshFromParameters();
 }
@@ -125,6 +132,13 @@ void SettingsPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
         row->help.setFont(juce::FontOptions(static_cast<float>(
             intFrom(uiConfig.get(), "settings.layout.helpFontSize", 11))));
     }
+
+    closeButton.setColour(juce::TextButton::buttonColourId,
+                          colourFrom(uiConfig.get(), "settings.colors.closeButton",
+                                     juce::Colour::fromRGBA(52, 56, 64, 235)));
+    closeButton.setColour(juce::TextButton::textColourOffId,
+                          colourFrom(uiConfig.get(), "settings.colors.closeButtonText",
+                                     juce::Colour::fromRGB(232, 236, 242)));
 
     animationsToggle.setColour(juce::ToggleButton::tickColourId, accent);
     animationsToggle.setColour(juce::ToggleButton::tickDisabledColourId,
@@ -223,6 +237,16 @@ void SettingsPanel::resized()
     auto area = getLocalBounds().reduced(padX, padY);
     title.setBounds(area.removeFromTop(titleHeight));
     area.removeFromTop(rowGap);
+
+    // Along the bottom, before the rows are laid out into what is left, so it
+    // stays put however many settings there are.
+    {
+        const auto closeWidth = intFrom(uiConfig.get(), "settings.layout.closeWidth", 120);
+        const auto closeHeight = intFrom(uiConfig.get(), "settings.layout.closeHeight", 28);
+        auto closeRow = area.removeFromBottom(juce::jmin(closeHeight, area.getHeight()));
+        closeButton.setBounds(closeRow.removeFromLeft(juce::jmin(closeWidth, closeRow.getWidth())));
+        area.removeFromBottom(rowGap);
+    }
 
     for (auto& row : rows)
     {

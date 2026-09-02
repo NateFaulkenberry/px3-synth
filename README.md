@@ -236,7 +236,9 @@ is set. Notarization can be added later in the release pipeline.
 ## Settings
 
 The gear at the right of the top bar opens SETTINGS: a full-width page with no
-Macro strip, because nothing on it is a Macro destination.
+Macro strip, because nothing on it is a Macro destination. It is a toggle -
+pressing it again, or CLOSE at the bottom of the page, returns to the panel you
+came from.
 
 - **Enable animations** (on by default) gates the keyboard sparks, the wheel
   sparkles and the logo movement. It is a global install preference rather than

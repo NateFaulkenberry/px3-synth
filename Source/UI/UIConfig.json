@@ -2696,6 +2696,16 @@
       "pointerDisabled": "#96969A"
     }
   },
+  "settings": {
+    "layout": {
+      "closeWidth": 120,
+      "closeHeight": 28
+    },
+    "colors": {
+      "closeButton": "#343840EB",
+      "closeButtonText": "#E8ECF2"
+    }
+  },
   "envelope": {
     "modeSelector": {
       "width": 104,

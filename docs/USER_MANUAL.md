@@ -741,6 +741,9 @@ FX bus to even out a reverb tail without touching the dry signal.
 The gear at the right of the top bar. A full-width page rather than a panel:
 there is no Macro strip beside it, because nothing here is a Macro destination.
 
+The gear is a toggle — press it again, or the **CLOSE** button at the bottom of
+the page, and you go back to the panel you were on when you opened it.
+
 ## Enable animations
 
 On by default. Turns off the keyboard's sparks, the wiggle of a held key, the

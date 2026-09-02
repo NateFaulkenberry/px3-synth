@@ -5,6 +5,9 @@
 namespace px3tests
 {
 
+// The gear's share of its button face, matching TopMenuBar's setIcon call.
+constexpr float kGearIconScale = 0.391f;
+
 void testBreakpointEnvelope()
 {
     suite("BREAKPOINT ENVELOPE");
@@ -1378,7 +1381,6 @@ void testBreakpointEnvelope()
                 // Selecting SETTINGS lights the gear and unlights every panel
                 // tab: the strip must not claim a panel is open when it is not.
                 editor->debugSelectSection(6);
-                editor->resized();
 
                 auto anySectionLit = false;
                 for (int i = 0; i < 6; ++i)
@@ -1401,11 +1403,9 @@ void testBreakpointEnvelope()
                 const auto stripHiddenHere = strip == nullptr || ! strip->isVisible();
 
                 editor->debugSelectSection(0);
-                editor->resized();
                 const auto stripBackOnPanels = strip != nullptr && strip->isVisible();
 
                 editor->debugSelectSection(6);
-                editor->resized();
 
                 check("Settings_TheMacroStripIsNotShownHere",
                       stripHiddenHere && stripBackOnPanels,
@@ -1476,7 +1476,6 @@ void testBreakpointEnvelope()
                 // requirement is about what it looks like.
                 {
                     editor->debugSelectSection(6);
-                    editor->resized();
 
                     const auto image = gear.createComponentSnapshot(gear.getLocalBounds());
                     const auto w = image.getWidth();
@@ -1507,12 +1506,48 @@ void testBreakpointEnvelope()
                         // the side puts the ring outside the gear entirely,
                         // which is how the first version of this read 2 lit
                         // samples out of 24 and looked like a drawing bug.
-                        const auto outerRadius = static_cast<float>(side) * 0.46f * 0.5f;
+                        // The icon's own scale, kept in step with the look:
+                        // a stale constant here silently moves the ring off
+                        // the gear and the test starts measuring the bezel.
+                        const auto outerRadius = static_cast<float>(side)
+                                                 * kGearIconScale * 0.5f;
                         const auto r = outerRadius * 0.55f;
                         const auto x = w / 2 + juce::roundToInt(std::cos(theta) * r);
                         const auto y = h / 2 + juce::roundToInt(std::sin(theta) * r);
                         ++bodySamples;
                         if (brightnessAt(x, y) > face + 0.25f) { ++litBody; }
+                    }
+
+                    // The icon's drawn size, against the scale it is given. This
+                    // is what a change to that scale has to move.
+                    {
+                        // Inset, and looking only for pixels BRIGHTER than the
+                        // face: the tab draws its own inset hairline a pixel in
+                        // and a lit accent edge along the top, and a scan of the
+                        // whole face measures those instead of the icon - which
+                        // is how the first version of this reported the button's
+                        // full width.
+                        constexpr int margin = 6;
+                        auto minX = w, maxX = 0;
+                        for (int y = margin; y < h - margin; ++y)
+                        {
+                            for (int x = margin; x < w - margin; ++x)
+                            {
+                                if (brightnessAt(x, y) > face + 0.25f)
+                                {
+                                    minX = juce::jmin(minX, x);
+                                    maxX = juce::jmax(maxX, x);
+                                }
+                            }
+                        }
+
+                        const auto drawn = static_cast<float>(maxX - minX + 1);
+                        const auto expected = static_cast<float>(juce::jmin(w, h)) * kGearIconScale;
+
+                        check("Settings_TheGearIsDrawnAtItsConfiguredScale",
+                              maxX > minX && std::abs(drawn - expected) <= 3.0f,
+                              "the gear spans " + fmt(drawn, 0) + " px against the "
+                                  + fmt(expected, 1) + " its scale asks for");
                     }
 
                     check("Settings_TheGearHasALitBodyAndAHoleThroughIt",
