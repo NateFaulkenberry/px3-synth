@@ -1303,6 +1303,198 @@ void testBreakpointEnvelope()
         }
     }
 
+    // ---- the card's own legacy ADSR handles must not be reachable -----------
+    //
+    // EnvelopeComponent carries a second, older ADSR editor of its own: it
+    // paints an A / D-S / R handle path and drags those handles straight into
+    // the four parameters. BreakpointEnvelopeEditor superseded it for BOTH
+    // modes, and the child covers most of the graph - but only most. The band
+    // between the child's bounds and the parent's own graph rectangle still
+    // reaches the old code, and in Breakpoint mode that is ADSR editing on an
+    // envelope that has no ADSR.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        setParam(processor, "env1Attack", 0.120f);
+        setParam(processor, "env1Decay", 0.240f);
+        setParam(processor, "env1Sustain", 0.55f);
+        setParam(processor, "env1Release", 0.360f);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        if (editor != nullptr)
+        {
+            editor->setSize(1400, 900);
+
+            EnvelopeComponent* card = nullptr;
+            std::function<void(juce::Component&)> walk = [&](juce::Component& parent)
+            {
+                for (auto* child : parent.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* env = dynamic_cast<EnvelopeComponent*>(child))
+                    {
+                        if (card == nullptr) { card = env; }
+                    }
+                    walk(*child);
+                }
+            };
+            walk(*editor);
+
+            if (card != nullptr)
+            {
+                processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
+                card->setEnvelopeMode(px3::BreakpointEnvelope::Mode::breakpoint);
+
+                const auto before = processor.envelopeParameterSettings(0);
+
+                const auto event = [card](juce::Point<float> at)
+                {
+                    return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), at,
+                                            juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                            card, card, juce::Time::getCurrentTime(), at,
+                                            juce::Time::getCurrentTime(), 1, false);
+                };
+
+                // Sweep the band just outside the child editor, where the
+                // parent still gets the click.
+                const auto ed = card->debugEditorBounds().toFloat();
+                auto moved = 0;
+                for (auto dy : { -4.0f, -2.0f, 2.0f, 4.0f, 6.0f, 8.0f })
+                {
+                    for (auto fx : { 0.15f, 0.35f, 0.55f, 0.75f, 0.95f })
+                    {
+                        const auto y = dy < 0.0f ? ed.getY() + dy : ed.getBottom() + dy;
+                        const juce::Point<float> at(ed.getX() + ed.getWidth() * fx, y);
+                        card->mouseDown(event(at));
+                        card->mouseDrag(event(at.translated(-25.0f, -18.0f)));
+                        card->mouseUp(event(at.translated(-25.0f, -18.0f)));
+                    }
+                }
+
+                const auto after = processor.envelopeParameterSettings(0);
+                const auto unchanged
+                    = std::abs(after.attackSeconds - before.attackSeconds) < 1.0e-5f
+                      && std::abs(after.decaySeconds - before.decaySeconds) < 1.0e-5f
+                      && std::abs(after.sustainLevel - before.sustainLevel) < 1.0e-5f
+                      && std::abs(after.releaseSeconds - before.releaseSeconds) < 1.0e-5f;
+
+                check("EnvIso_TheCardsLegacyAdsrHandlesAreNotReachableInBreakpointMode",
+                      unchanged,
+                      unchanged
+                          ? "30 drags around the graph's edge moved no ADSR parameter"
+                          : "a drag outside the editor moved the ADSR to A "
+                                + fmt(after.attackSeconds, 3) + " D " + fmt(after.decaySeconds, 3)
+                                + " S " + fmt(after.sustainLevel, 2) + " R "
+                                + fmt(after.releaseSeconds, 3));
+            }
+        }
+    }
+
+    // ---- ADSR -> BP -> ADSR -> BP, editing at every stop --------------------
+    //
+    // Each mode has to survive edits made in the other, in both directions,
+    // repeatedly. Run on every slot, because the four cards are one component
+    // and a per-slot mistake would otherwise hide behind AMP ENV passing.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        juce::StringArray failures;
+
+        for (int slot = 0; slot < 4; ++slot)
+        {
+            const juce::String prefix = slot == 0 ? "amp" : "env" + juce::String(slot);
+            const auto attackId = slot == 0 ? juce::String("ampAttack") : prefix + "Attack";
+            const auto sustainId = slot == 0 ? juce::String("ampSustain") : prefix + "Sustain";
+
+            const auto attackWanted = 0.080f + 0.020f * static_cast<float>(slot);
+            const auto sustainWanted = 0.30f + 0.10f * static_cast<float>(slot);
+            setParam(processor, attackId, attackWanted);
+            setParam(processor, sustainId, sustainWanted);
+
+            const auto settingsNow = [&]
+            { return slot == 0 ? processor.currentAmpEnvelopeSettings()
+                               : processor.envelopeParameterSettings(slot - 1); };
+
+            // ADSR: bend a segment.
+            {
+                auto shape = processor.getShapedEnvelope(slot);
+                shape.setCurve(1, 0.45);
+                processor.setShapedEnvelope(slot, shape);
+            }
+
+            // -> Breakpoint, and draw something no ADSR can say.
+            processor.setEnvelopeMode(slot, px3::BreakpointEnvelope::Mode::breakpoint);
+            {
+                auto drawn = processor.getShapedEnvelope(slot);
+                drawn.addPoint(0.18, 0.93);
+                drawn.addPoint(0.30, 0.11);
+                processor.setShapedEnvelope(slot, drawn);
+            }
+            const auto drawnCount = processor.getShapedEnvelope(slot).getPointCount();
+
+            // -> ADSR. The parameters and the bend must be exactly as left.
+            processor.setEnvelopeMode(slot, px3::BreakpointEnvelope::Mode::adsr);
+            const auto adsrBack = settingsNow();
+            const auto runningAdsr = slot == 0 ? processor.currentAmpEnvelope()
+                                               : processor.currentModEnvelope(slot - 1);
+            if (std::abs(adsrBack.attackSeconds - attackWanted) > 1.0e-4f
+                || std::abs(adsrBack.sustainLevel - sustainWanted) > 1.0e-4f
+                || runningAdsr.getPointCount() != 4
+                || std::abs(runningAdsr.getPoint(1).curveToNext - 0.45) > 1.0e-9)
+            {
+                failures.add(prefix + " lost its ADSR on the way back");
+            }
+
+            // Edit the ADSR while it is live.
+            setParam(processor, attackId, attackWanted + 0.030f);
+
+            // -> Breakpoint. The drawing returns untouched by that edit.
+            processor.setEnvelopeMode(slot, px3::BreakpointEnvelope::Mode::breakpoint);
+            const auto drawingBack = processor.getShapedEnvelope(slot);
+            // By value, not by index: where an added point lands depends on the
+            // seeded times, which differ per slot, so an index here tests the
+            // seed rather than the round trip.
+            auto foundTheDrawnPeak = false;
+            for (int i = 0; i < drawingBack.getPointCount(); ++i)
+            {
+                foundTheDrawnPeak = foundTheDrawnPeak
+                                    || std::abs(drawingBack.getPoint(i).value - 0.93) < 1.0e-9;
+            }
+
+            if (drawingBack.getPointCount() != drawnCount
+                || ! drawingBack.isBreakpointMode()
+                || ! foundTheDrawnPeak)
+            {
+                failures.add(prefix + " lost its drawing on the way back ("
+                             + juce::String(drawingBack.getPointCount()) + " of "
+                             + juce::String(drawnCount) + " points, peak "
+                             + (foundTheDrawnPeak ? "kept" : "gone") + ")");
+            }
+
+            // Edit the drawing, then -> ADSR: the ADSR must show the edit made
+            // to IT, not anything derived from the drawing.
+            {
+                auto more = drawingBack;
+                more.addPoint(0.44, 0.66);
+                processor.setShapedEnvelope(slot, more);
+            }
+            processor.setEnvelopeMode(slot, px3::BreakpointEnvelope::Mode::adsr);
+            if (std::abs(settingsNow().attackSeconds - (attackWanted + 0.030f)) > 1.0e-4f)
+            {
+                failures.add(prefix + " did not keep the ADSR edit");
+            }
+        }
+
+        check("EnvIso_EveryCardSurvivesRepeatedSwitchingWithEditsBetween",
+              failures.isEmpty(),
+              failures.isEmpty() ? "all four cards round-tripped twice with edits at every stop"
+                                 : failures.joinIntoString("; "));
+    }
+
     // ---- a two-point breakpoint envelope is a first-class envelope ----------
     //
     // P0 ---------------- P1. The brief's critical case: two points must not

@@ -375,6 +375,31 @@ had set up. The seed applies the parameters first, so it starts from the ADSR
 the user can see — which is what "initialise from the current ADSR shape" has to
 mean in an architecture where the shape is not where those numbers live.
 
+### The card's own legacy ADSR editor
+
+`EnvelopeComponent` still carries an older ADSR editor of its own, predating
+`BreakpointEnvelopeEditor`: it paints an A / D-S / R handle path in `paint()`
+and its `mouseDown`/`mouseDrag` write those handles straight into the four
+parameters. None of it was mode-gated.
+
+It is **inert**, and not for the reason it appears to be. The obvious story is
+that the child editor covers the graph and takes the clicks — but the child does
+not cover the whole of the parent's graph rectangle, so that would leave a
+reachable band. The real reason is that the handle positions `computeGeometry()`
+produces are **NaN**, so every distance test in `pickHandle` is false and
+nothing is ever picked, in either mode. The rectangle fields of the same
+geometry are fine, which is why `graphBounds()` still works.
+
+That is an accident rather than a design, and one arithmetic fix away from a
+second ADSR editor waking up underneath the real one. Both the picker and the
+handle drawing are now gated on ADSR mode, so waking it could at worst affect
+the mode it belongs to, and a regression test drags thirty times around the
+graph's edge in Breakpoint mode and asserts no ADSR parameter moves. The test
+was verified against a `pickHandle` forced to claim every point.
+
+The right end state is deleting this path outright — it is superseded in both
+modes — but that is a removal of its own rather than part of this fix.
+
 ### Mode switching
 
 Unchanged by this work and restated here because it is part of the same rule:

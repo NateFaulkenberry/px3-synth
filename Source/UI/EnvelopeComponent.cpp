@@ -309,6 +309,10 @@ void EnvelopeComponent::paint(juce::Graphics& g)
     g.setColour(currentEnabled ? accent.brighter(0.25f) : juce::Colour::fromRGB(176, 176, 176));
     g.strokePath(envPath, juce::PathStrokeType(2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
+    // Same gate on the drawing: an ATTACK marker on a breakpoint trajectory
+    // labels a stage the envelope does not have.
+    if (envelopeMode != px3::BreakpointEnvelope::Mode::adsr) { return; }
+
     drawHandleMarker(g, geom.attackPoint, DragHandle::attack);
     drawHandleMarker(g, geom.decaySustainPoint, DragHandle::decaySustain);
     drawHandleMarker(g, geom.releasePoint, DragHandle::release);
@@ -608,6 +612,21 @@ float EnvelopeComponent::distToSegmentSq(juce::Point<float> p, juce::Point<float
 EnvelopeComponent::DragHandle EnvelopeComponent::pickHandle(juce::Point<float> p,
                                                                           const Geometry& geom) const
 {
+    // This card carries an older ADSR editor of its own - an A / D-S / R handle
+    // path it paints and drags straight into the four parameters.
+    // BreakpointEnvelopeEditor superseded it for both modes.
+    //
+    // It is currently inert, and not for the reason it looks: the handle
+    // positions computeGeometry produces are NaN, so every distance test below
+    // is false and nothing is ever picked, in either mode. That is an accident,
+    // not a design - one arithmetic fix away from a second ADSR editor waking
+    // up underneath the real one. Gated on the mode as well, so waking it could
+    // at worst affect the mode it belongs to.
+    if (envelopeMode != px3::BreakpointEnvelope::Mode::adsr)
+    {
+        return DragHandle::none;
+    }
+
     constexpr float hitRadius = 13.0f;
     const auto hitSq = hitRadius * hitRadius;
 

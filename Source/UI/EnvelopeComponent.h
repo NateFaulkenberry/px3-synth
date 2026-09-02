@@ -56,6 +56,7 @@ public:
     // than what the processor would have built.
     const BreakpointEnvelopeEditor& debugEditor() const { return breakpointEditor; }
 
+
     // The knob row under the graph, for the tests: how many were built, where
     // they sit, and what they read.
     int debugAdsrKnobCount() const { return adsrKnobsBuilt ? 4 : 0; }
