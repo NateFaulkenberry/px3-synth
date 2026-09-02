@@ -259,6 +259,19 @@ public:
     // draws them on screen.
     px3::ui::MacroKnobLookAndFeel* debugMacroKnobLookAndFeel() { return &macroKnobLookAndFeel; }
 
+    // The preset dump fields in the debug panel, for the tests.
+    // The debug panel is only wired up in a PX3_DEBUG_PANEL build, so its
+    // controls are unconfigured in a normal one. The tests run the setup
+    // themselves rather than being confined to a build that nobody runs the
+    // suite in - which would leave this code with no coverage at all.
+    void debugForceSetupPanel() { setupDebugPanel(); }
+
+    juce::TextEditor& debugPresetNameField() { return debugDumpPresetNameEditor; }
+    juce::TextEditor& debugPresetAuthorField() { return debugDumpPresetAuthorEditor; }
+    juce::ComboBox& debugPresetCategoryField() { return debugDumpPresetCategoryBox; }
+    juce::TextButton& debugPresetDumpButton() { return debugDumpPresetButton; }
+    PresetManager::PresetMetadata debugPresetDumpMetadata() const { return debugDumpPresetMetadata(); }
+
     TopMenuBar* debugTopMenuBar() { return topMenuBar.get(); }
     SettingsPanel* debugSettingsPanel() { return settingsPanel.get(); }
     juce::Rectangle<int> debugPanelViewportArea() const { return panelViewportArea; }
@@ -434,6 +447,15 @@ private:
     void debugCompareWithSnapshot();
     void debugForceSerializationTest();
     void debugDumpPresetToFile();
+    // DUMP PRESET needs a name and an author before it can write anything
+    // worth keeping, so it is disabled until it has both. Called whenever
+    // either field changes.
+    void refreshDebugDumpPresetEnablement();
+    // The metadata the fields describe, as one value. Pulled out of the file
+    // chooser's callback so it can be tested: the chooser is a modal, async
+    // dialog and nothing headless can drive it, but the mapping from fields to
+    // metadata is the part that can be got wrong.
+    PresetManager::PresetMetadata debugDumpPresetMetadata() const;
     void debugWriteDeterministicTestValues();
     void debugRandomizeParameters();
     void debugResetParameters();
@@ -884,6 +906,8 @@ private:
     juce::Label debugEnvelopeLabel;
     juce::Label debugPresetToolsLabel;
     juce::Label debugDumpPresetNameLabel;
+    juce::Label debugDumpPresetAuthorLabel;
+    juce::Label debugDumpPresetCategoryLabel;
     juce::TextEditor debugInstanceText;
     juce::TextEditor debugModuleOrderText;
     juce::TextEditor debugValueTreeText;
@@ -894,6 +918,8 @@ private:
     juce::TextEditor debugLfoText;
     juce::TextEditor debugEnvelopeText;
     juce::TextEditor debugDumpPresetNameEditor;
+    juce::TextEditor debugDumpPresetAuthorEditor;
+    juce::ComboBox debugDumpPresetCategoryBox;
     juce::ComboBox debugLfoAssignBox;
     juce::TextButton debugDumpPresetButton;
     juce::Viewport debugParamViewport;

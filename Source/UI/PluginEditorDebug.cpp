@@ -152,6 +152,57 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     debugDumpPresetNameEditor.setColour(juce::TextEditor::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 100));
     debugDumpPresetNameEditor.setFont(juce::FontOptions(11.0f));
 
+    // Author and category, so a dumped preset arrives with the metadata the
+    // browser sorts and credits by rather than inheriting whatever happened to
+    // be loaded.
+    const auto styleFieldLabel = [](juce::Label& label, const juce::String& text)
+    {
+        label.setText(text, juce::dontSendNotification);
+        label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(236, 236, 236));
+        label.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        label.setJustificationType(juce::Justification::centredLeft);
+    };
+
+    const auto styleFieldEditor = [](juce::TextEditor& editor, const juce::String& placeholder)
+    {
+        editor.setMultiLine(false);
+        editor.setReturnKeyStartsNewLine(false);
+        editor.setReadOnly(false);
+        editor.setTextToShowWhenEmpty(placeholder, juce::Colour::fromRGBA(220, 220, 220, 130));
+        editor.setColour(juce::TextEditor::backgroundColourId, juce::Colour::fromRGBA(14, 14, 14, 220));
+        editor.setColour(juce::TextEditor::textColourId, juce::Colour::fromRGB(232, 232, 232));
+        editor.setColour(juce::TextEditor::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 100));
+        editor.setFont(juce::FontOptions(11.0f));
+    };
+
+    styleFieldLabel(debugDumpPresetAuthorLabel, "Author");
+    styleFieldLabel(debugDumpPresetCategoryLabel, "Category");
+    styleFieldEditor(debugDumpPresetAuthorEditor, "Required");
+
+    // Both fields are required now, so the name says so rather than claiming
+    // to be optional.
+    debugDumpPresetNameEditor.setTextToShowWhenEmpty("Required",
+                                                     juce::Colour::fromRGBA(220, 220, 220, 130));
+
+    // The categories that actually exist, from the library itself - a
+    // hard-coded list here would drift from the browser the moment one is
+    // added.
+    {
+        juce::StringArray categoryNames;
+        for (const auto& category : presetManager.getAllCategories())
+        {
+            categoryNames.add(category);
+        }
+        debugDumpPresetCategoryBox.addItemList(categoryNames, 1);
+    }
+    debugDumpPresetCategoryBox.setSelectedId(1, juce::dontSendNotification);
+    debugDumpPresetCategoryBox.setColour(juce::ComboBox::backgroundColourId,
+                                         juce::Colour::fromRGBA(14, 14, 14, 220));
+    debugDumpPresetCategoryBox.setColour(juce::ComboBox::textColourId,
+                                         juce::Colour::fromRGB(232, 232, 232));
+    debugDumpPresetCategoryBox.setColour(juce::ComboBox::outlineColourId,
+                                         juce::Colour::fromRGBA(255, 255, 255, 100));
+
     debugLfoAssignLabel.setText("LFO Assignment", juce::dontSendNotification);
     debugLfoAssignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(236, 236, 236));
     debugLfoAssignLabel.setFont(juce::FontOptions(11.0f, juce::Font::bold));
@@ -233,6 +284,8 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     addToSections(debugEnvelopeLabel);
     addToSections(debugPresetToolsLabel);
     addToSections(debugDumpPresetNameLabel);
+    addToSections(debugDumpPresetAuthorLabel);
+    addToSections(debugDumpPresetCategoryLabel);
     addToSections(debugSnapshotLabel);
     addToSections(debugEventLogLabel);
     addToSections(debugInstanceText);
@@ -244,6 +297,8 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     addToSections(debugLfoText);
     addToSections(debugEnvelopeText);
     addToSections(debugDumpPresetNameEditor);
+    addToSections(debugDumpPresetAuthorEditor);
+    addToSections(debugDumpPresetCategoryBox);
     addToSections(debugLfoAssignLabel);
     addToSections(debugLfoAssignBox);
     addToSections(debugDumpPresetButton);
@@ -286,6 +341,12 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
 
     debugForceSerializeTestButton.onClick = [this]() { debugForceSerializationTest(); };
     debugDumpPresetButton.onClick = [this]() { debugDumpPresetToFile(); };
+
+    // Live, on every keystroke: a button that only notices what you typed once
+    // you click elsewhere reads as broken.
+    debugDumpPresetNameEditor.onTextChange = [this]() { refreshDebugDumpPresetEnablement(); };
+    debugDumpPresetAuthorEditor.onTextChange = [this]() { refreshDebugDumpPresetEnablement(); };
+    refreshDebugDumpPresetEnablement();
     debugRestoreLastSerializedButton.onClick = [this]()
     {
         juce::String report;
@@ -935,10 +996,18 @@ void PX3SynthAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& 
     // inspector swapped places, letters included, so the headings still read in
     // order down the page.
     debugPresetToolsLabel.setBounds(right.removeFromTop(18));
-    auto presetNameRow = right.removeFromTop(24);
-    debugDumpPresetNameLabel.setBounds(presetNameRow.removeFromLeft(96));
-    debugDumpPresetNameEditor.setBounds(presetNameRow.reduced(1, 0));
-    right.removeFromTop(4);
+
+    const auto fieldRow = [&right](juce::Label& label, juce::Component& field)
+    {
+        auto row = right.removeFromTop(24);
+        label.setBounds(row.removeFromLeft(96));
+        field.setBounds(row.reduced(1, 0));
+        right.removeFromTop(4);
+    };
+
+    fieldRow(debugDumpPresetNameLabel, debugDumpPresetNameEditor);
+    fieldRow(debugDumpPresetAuthorLabel, debugDumpPresetAuthorEditor);
+    fieldRow(debugDumpPresetCategoryLabel, debugDumpPresetCategoryBox);
     debugDumpPresetButton.setBounds(right.removeFromTop(24));
     right.removeFromTop(4);
 
@@ -1539,16 +1608,53 @@ void PX3SynthAudioProcessorEditor::debugForceSerializationTest()
     audioProcessor.debugLogEvent("DEBUG_PANEL", "FORCE_SERIALIZATION_TEST", report.replaceCharacters("\n", " | "));
 }
 
+void PX3SynthAudioProcessorEditor::refreshDebugDumpPresetEnablement()
+{
+    // A dumped preset with no name or no author is one nobody can find or
+    // credit later, so the button waits for both rather than inventing them.
+    // The file chooser is the expensive, interrupting part of this action; the
+    // check belongs before it, not after.
+    const auto hasName = debugDumpPresetNameEditor.getText().trim().isNotEmpty();
+    const auto hasAuthor = debugDumpPresetAuthorEditor.getText().trim().isNotEmpty();
+
+    debugDumpPresetButton.setEnabled(hasName && hasAuthor);
+    debugDumpPresetButton.setTooltip(hasName && hasAuthor
+                                         ? juce::String()
+                                         : juce::String("A preset name and an author are required"));
+}
+
+PresetManager::PresetMetadata PX3SynthAudioProcessorEditor::debugDumpPresetMetadata() const
+{
+    PresetManager::PresetMetadata metadata;
+    metadata.name = debugDumpPresetNameEditor.getText().trim();
+    metadata.author = debugDumpPresetAuthorEditor.getText().trim();
+
+    // From the dropdown, which is filled from the categories the library
+    // actually has. It used to inherit whatever preset happened to be loaded,
+    // which meant a dump was filed under a category nobody chose.
+    metadata.category = debugDumpPresetCategoryBox.getText().trim();
+    if (metadata.category.isEmpty())
+    {
+        metadata.category = "EXPERIMENTAL";
+    }
+
+    metadata.description = hasCurrentPreset ? currentPreset.metadata.description : juce::String();
+    return metadata;
+}
+
 void PX3SynthAudioProcessorEditor::debugDumpPresetToFile()
 {
-    auto suggestedName = debugDumpPresetNameEditor.getText().trim();
-    if (suggestedName.isEmpty())
+    // Both are required and the button is disabled without them, so there is
+    // no fallback chain here any more: whatever is in the fields is what the
+    // preset is called and who it is by.
+    const auto suggestedName = debugDumpPresetNameEditor.getText().trim();
+    const auto author = debugDumpPresetAuthorEditor.getText().trim();
+
+    if (suggestedName.isEmpty() || author.isEmpty())
     {
-        suggestedName = hasCurrentPreset ? currentPreset.metadata.name.trim() : juce::String();
-    }
-    if (suggestedName.isEmpty())
-    {
-        suggestedName = "PX3_Preset_" + juce::Time::getCurrentTime().formatted("%Y-%m-%d");
+        audioProcessor.debugLogEvent("DEBUG_PANEL", "DUMP_PRESET_BLOCKED",
+                                     "name and author are both required");
+        return;
     }
 
     auto defaultFile = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
@@ -1578,20 +1684,7 @@ void PX3SynthAudioProcessorEditor::debugDumpPresetToFile()
                                  destination = destination.withFileExtension(PresetManager::presetFileExtension);
                              }
 
-                             PresetManager::PresetMetadata metadata;
-                             metadata.name = debugDumpPresetNameEditor.getText().trim();
-                             if (metadata.name.isEmpty())
-                             {
-                                 metadata.name = destination.getFileNameWithoutExtension();
-                             }
-                             // A real category, not an invented one. This used to
-                             // write "USER_DUMP", which put a category in the
-                             // browser that exists nowhere else and holds nothing
-                             // but debug dumps.
-                             metadata.category = hasCurrentPreset ? currentPreset.metadata.category
-                                                                  : juce::String("EXPERIMENTAL");
-                             metadata.author = hasCurrentPreset ? currentPreset.metadata.author : juce::String();
-                             metadata.description = hasCurrentPreset ? currentPreset.metadata.description : juce::String();
+                             const auto metadata = debugDumpPresetMetadata();
 
                              const auto overwrite = destination.existsAsFile();
                              juce::String error;

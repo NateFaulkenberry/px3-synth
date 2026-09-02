@@ -1351,6 +1351,133 @@ void testBreakpointEnvelope()
         }
     }
 
+    // ---- the debug panel's preset dump needs a name and an author -----------
+    //
+    // The dump itself goes through a modal file chooser, which nothing headless
+    // can drive. What CAN be tested is the part that gets got wrong: whether
+    // the button is available, and what metadata the fields describe.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+
+        if (editor != nullptr)
+        {
+            editor->setSize(1400, 900);
+
+            // This build has PX3_DEBUG_PANEL off, so the panel's controls have
+            // never been configured. Run the setup here rather than skipping
+            // the tests in the build the suite is actually run in.
+            editor->debugForceSetupPanel();
+
+            auto& name = editor->debugPresetNameField();
+            auto& author = editor->debugPresetAuthorField();
+            auto& category = editor->debugPresetCategoryField();
+            auto& dump = editor->debugPresetDumpButton();
+
+            const auto setFields = [&](const juce::String& n, const juce::String& a)
+            {
+                name.setText(n, true);
+                author.setText(a, true);
+
+                // TextEditor::textChanged POSTS its notification rather than
+                // calling it, so onTextChange lands on the next message-loop
+                // pump. In the plugin that is immediate; here it has to be
+                // asked for, or the button never sees the typing and this
+                // reads as a wiring bug.
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+                return dump.isEnabled();
+            };
+
+            const auto empty = setFields("", "");
+            const auto nameOnly = setFields("Glass Filament", "");
+            const auto authorOnly = setFields("", "Nate");
+            const auto whitespaceOnly = setFields("   ", "   ");
+            const auto both = setFields("Glass Filament", "Nate");
+
+            check("DebugPreset_DumpNeedsBothANameAndAnAuthor",
+                  ! empty && ! nameOnly && ! authorOnly && ! whitespaceOnly && both,
+                  juce::String("empty ") + (empty ? "enabled" : "disabled")
+                      + ", name only " + (nameOnly ? "enabled" : "disabled")
+                      + ", author only " + (authorOnly ? "enabled" : "disabled")
+                      + ", whitespace " + (whitespaceOnly ? "enabled" : "disabled")
+                      + ", both " + (both ? "enabled" : "disabled"));
+
+            // The categories offered are the ones the library actually has, so
+            // a dump cannot be filed under a category that exists nowhere else.
+            PresetManager manager(processor);
+            juce::StringArray libraryCategories;
+            for (const auto& entry : manager.getAllCategories())
+            {
+                libraryCategories.add(entry);
+            }
+
+            juce::StringArray offered;
+            for (int i = 0; i < category.getNumItems(); ++i)
+            {
+                offered.add(category.getItemText(i));
+            }
+
+            check("DebugPreset_TheCategoryDropdownOffersTheLibrarysCategories",
+                  offered.size() > 0 && offered == libraryCategories,
+                  juce::String(offered.size()) + " offered: " + offered.joinIntoString(", "));
+
+            // What the fields describe is what a dump would carry.
+            // Deliberately NOT the second entry, which is EXPERIMENTAL - the
+            // same value the empty-category fallback produces. Selecting it
+            // would let this pass with the dropdown never being read.
+            category.setSelectedId(3, juce::sendNotificationSync);
+            const auto metadata = editor->debugPresetDumpMetadata();
+
+            check("DebugPreset_TheFieldsBecomeThePresetsMetadata",
+                  metadata.name == "Glass Filament"
+                      && metadata.author == "Nate"
+                      && metadata.category == category.getText()
+                      && metadata.category != "EXPERIMENTAL",
+                  "name \"" + metadata.name + "\", author \"" + metadata.author
+                      + "\", category \"" + metadata.category + "\"");
+
+            // And a file written with that metadata reads back with it, which
+            // is the half the chooser would have done.
+            auto tempDirectory = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                     .getChildFile("px3-component-tests");
+            tempDirectory.createDirectory();
+            const auto dumpFile = tempDirectory.getChildFile("dumped.px3preset");
+            dumpFile.deleteFile();
+
+            juce::String error;
+            const auto wrote = manager.dumpCurrentStateToPresetFile(dumpFile, metadata, true, true,
+                                                                    error, nullptr);
+
+            // Read straight out of the file, which is what a browser or
+            // another install would see.
+            juce::String writtenName, writtenAuthor, writtenCategory;
+            if (wrote)
+            {
+                if (auto xml = juce::XmlDocument::parse(dumpFile))
+                {
+                    const auto tree = juce::ValueTree::fromXml(*xml);
+                    writtenName = tree.getProperty("name").toString();
+                    writtenAuthor = tree.getProperty("author").toString();
+                    writtenCategory = tree.getProperty("category").toString();
+                }
+            }
+
+            check("DebugPreset_ADumpedFileCarriesTheAuthorAndCategory",
+                  wrote && writtenAuthor == "Nate"
+                      && writtenCategory == metadata.category
+                      && writtenName == "Glass Filament",
+                  wrote ? "the file reads \"" + writtenName + "\" by \"" + writtenAuthor
+                              + "\" in " + writtenCategory
+                        : "the dump was not written: " + error);
+
+            dumpFile.deleteFile();
+        }
+    }
+
     // ---- SETTINGS: a view of its own ----------------------------------------
     {
         PX3SynthAudioProcessor processor;
