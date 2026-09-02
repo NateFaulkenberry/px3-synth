@@ -4,6 +4,9 @@
 #include "MacroLook.h"
 #include "UIConfig.h"
 
+static_assert(MacroStrip::kCount == PX3SynthAudioProcessor::kMacroCount,
+              "The strip must hold exactly one cell per macro.");
+
 MacroStrip::MacroStrip(PX3SynthAudioProcessor& processorIn, juce::LookAndFeel* knobLookAndFeel)
     : processor(processorIn)
 {
@@ -78,7 +81,7 @@ const juce::Slider& MacroStrip::knob(int macroIndex) const
 
 void MacroStrip::resized()
 {
-    // Four cells down the strip. The knob takes a square of whatever width is
+    // One cell per macro down the strip. The knob takes a square of whatever width is
     // left after padding, and its caption sits directly beneath it - so the
     // strip fills the width it is given at any height rather than assuming one.
     // Padding from config: a few pixels at the sides, more at the top and
@@ -92,24 +95,36 @@ void MacroStrip::resized()
     const auto captionHeight = uiConfig != nullptr
                                  ? uiConfig->getInt("macro.strip.captionHeight", 14)
                                  : 14;
-    const auto cellHeight = juce::jmax(1, area.getHeight() / PX3SynthAudioProcessor::kMacroCount);
+    // Each cell's edges come from the strip's own height rather than from a
+    // rounded-down cell height taken N times: integer division leaves up to
+    // N-1 pixels, and removeFromTop pools all of them at the bottom, so the
+    // last macro sits high in a taller gap. Dividing by position spreads that
+    // remainder one pixel at a time and the cells stay even.
+    const auto count = PX3SynthAudioProcessor::kMacroCount;
+    const auto top = area.getY();
+    const auto span = area.getHeight();
 
-    for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+    for (int macro = 0; macro < count; ++macro)
     {
-        auto cell = area.removeFromTop(cellHeight);
+        const auto cellTop = top + (span * macro) / count;
+        const auto cellBottom = top + (span * (macro + 1)) / count;
+        auto cell = juce::Rectangle<int>(area.getX(), cellTop,
+                                         area.getWidth(), cellBottom - cellTop);
         auto& entry = entries[static_cast<std::size_t>(macro)];
 
-        auto caption = cell.removeFromBottom(juce::jmin(captionHeight, cell.getHeight()));
-        entry.caption.setBounds(caption);
+        // The knob sits directly ON its caption - no gap - because they are one
+        // control, and whatever the cell has spare goes ABOVE and BELOW that
+        // pair rather than between them. Bottom-aligning the pair instead left
+        // every cell's slack above the knob, so the whole column sat low in the
+        // strip: 53 px of air over the first macro against 10 under the last.
+        const auto captionCellHeight = juce::jmin(captionHeight, cell.getHeight());
+        const auto side = juce::jmax(0, juce::jmin(cell.getWidth(),
+                                                   cell.getHeight() - captionCellHeight));
+        const auto groupTop = cell.getY() + (cell.getHeight() - (side + captionCellHeight)) / 2;
 
-        // Sat ON its caption rather than centred in what is left. Centring put
-        // whatever the cell had spare between the knob and the label it
-        // belongs to, which reads as two things rather than one control.
-        const auto side = juce::jmin(cell.getWidth(), cell.getHeight());
-        entry.knob.setBounds(cell.getCentreX() - side / 2,
-                             cell.getBottom() - side,
-                             side,
-                             side);
+        entry.knob.setBounds(cell.getCentreX() - side / 2, groupTop, side, side);
+        entry.caption.setBounds(cell.getX(), groupTop + side,
+                                cell.getWidth(), captionCellHeight);
     }
 }
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Four knobs on the left of every panel, each able to move any number of
+Five knobs on the left of every panel, each able to move any number of
 parameters anywhere in the synth. They are a performance layer: always in
 reach, configured once, played constantly.
 
@@ -140,8 +140,8 @@ being coloured text on the knob. A knob is busy and mostly dark, with a ring
 and a pointer moving over it; a light chip reads as a tag stuck on top, which
 is what it is.
 
-The strip is 70 px wide including padding, holding four knobs stacked
-vertically with an `M1`..`M4` caption under each. The knob takes the width the
+The strip is 70 px wide including padding, holding five knobs stacked
+vertically with an `M1`..`M5` caption under each. The knob takes the width the
 padding leaves and the caption sits directly beneath it, touching — centring
 the knob in what the cell had spare put a gap between a knob and the label it
 belongs to, which reads as two things rather than one control.
@@ -151,6 +151,29 @@ It was widened on request: at that size the knobs were too small to play, and a
 performance control that is awkward to reach for is not doing its job.
 
 ---
+
+## Adding a Macro
+
+`kMacroCount` is the only number. Parameter creation, the routing table, the
+accumulator, serialization, the MIDI layer and the strip's layout are all
+written against it, so raising it is a one-line change in the processor plus a
+`static_assert` in `MacroStrip` — the strip's array cannot be sized from
+`kMacroCount` directly because the processor is only forward-declared in that
+header, so the assert fails the build rather than letting the two drift.
+
+Going from four to five found nothing wrong in the product and five things
+wrong in the **tests**: fixed `[4]` arrays indexed by macro (three of them,
+which segfaulted rather than failed), and hard-coded expectation lists of four
+IDs, four CCs and four destination counts. Those now derive from `kMacroCount`,
+so the next one is a one-line change everywhere.
+
+The strip lays out one cell per macro, each cell's edges computed from the
+strip's height by position — `top + span * i / count` — rather than from a
+rounded-down cell height taken N times, which pooled its remainder at the
+bottom. Within a cell the knob sits directly on its caption with the slack
+above and below the pair, not between them: bottom-aligning the pair left every
+cell's slack above the knob and the whole column sat low, 53 px of air over the
+first macro against 10 under the last.
 
 ## Macro component architecture
 
@@ -201,7 +224,7 @@ MIDI selection, and starting a MIDI selection leaves Macro assign.
 ## Parameter eligibility
 
 A control is eligible if it is a `juce::Slider` carrying a parameter ID from
-`attachParameterKnob`, and is not one of the four Macro knobs. That is the same
+`attachParameterKnob`, and is not one of the Macro knobs themselves. That is the same
 rule MIDI mapping uses, minus the Macros themselves. Nothing is hard-coded:
 navigation, panel selectors and read-only displays are not parameter knobs and
 so are never eligible.
@@ -273,7 +296,7 @@ the route table is fixed-size and never allocates after construction.
 | Destination names an unknown parameter | dropped on load, rest of the Macro survives |
 | Macro index out of range in state | that node ignored |
 | More destinations than slots | extras dropped, existing kept |
-| State with no macroRoutes | all four Macros empty, values default |
+| State with no macroRoutes | every Macro empty, values default |
 | Assignment to a Macro knob | refused |
 
 ---
@@ -286,6 +309,6 @@ eligible knobs highlighting distinctly from MIDI; click toggling assignment;
 cross-panel assignment in one Macro; the Macro moving its destinations and the
 DSP; unassigned parameters unaffected; two Macros on one parameter summing;
 Macro plus LFO, Macro plus ENV, Macro plus direct MIDI; MIDI onto each of the
-four Macros; the whole CC → Macro → parameter → DSP chain; preset and session
+every Macro; the whole CC → Macro → parameter → DSP chain; preset and session
 round trips for both values and assignments; two instances isolated; state
 missing, unknown or malformed; and the existing suite unchanged.

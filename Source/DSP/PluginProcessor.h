@@ -211,11 +211,11 @@ public:
     // an LFO and two macros at once without any of them destroying the others.
     //==========================================================================
 
-    static constexpr int kMacroCount = 4;
+    static constexpr int kMacroCount = 5;
 
     juce::AudioParameterFloat& getMacroParam(int macroIndex) const;
     static juce::String macroParameterId(int macroIndex);
-    // "MACRO 1".."MACRO 4", for the indicator inside a destination knob.
+    // "MACRO 1".."MACRO 5", for the indicator inside a destination knob.
     static juce::String macroDisplayName(int macroIndex);
 
     struct MacroDestination
@@ -1114,7 +1114,7 @@ private:
     std::array<MacroRoute, kMacroRouteSlots> macroRoutes;
     std::atomic<int> macroRouteCount { 0 };
     std::array<std::vector<MacroDestination>, kMacroCount> macroDestinations;
-    std::array<juce::AudioParameterFloat*, kMacroCount> macroParams { { nullptr, nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kMacroCount> macroParams {};
 
     // Rebuilds the audio thread's table from the destination lists. Message
     // thread only, called whenever an assignment changes or state is restored.

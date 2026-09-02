@@ -20287,7 +20287,7 @@ void testMacroSystem()
             editor->setSize(1400, 900);
             auto* strip = editor->debugMacroStrip();
 
-            check("MacroUi_TheStripExistsWithFourKnobs",
+            check("MacroUi_TheStripExists",
                   strip != nullptr,
                   strip != nullptr ? "the editor owns a macro strip" : "no macro strip");
 
@@ -20418,19 +20418,54 @@ void testMacroSystem()
                 // Every knob inside the strip, and every one bound to its own
                 // macro parameter.
                 juce::StringArray bound;
+                juce::StringArray expectedStripIds;
                 auto insideStrip = true;
                 for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
                 {
                     const auto& knob = strip->knob(macro);
                     bound.add(px3::ui::parameterIdOf(knob));
+                    expectedStripIds.add("macro" + juce::String(macro + 1));
                     insideStrip = insideStrip
                                   && strip->getLocalBounds().contains(knob.getBounds())
                                   && ! knob.getBounds().isEmpty();
                 }
 
+                // Evenly distributed down the strip: equal centre-to-centre
+                // spacing, and the same margin above the first as below the
+                // last. Integer division used to pool its remainder at the
+                // bottom, which left the last macro sitting high.
+                {
+                    std::vector<juce::Rectangle<int>> groups;
+                    for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+                    {
+                        groups.push_back(strip->knob(macro).getBounds()
+                                             .getUnion(strip->debugCaption(macro).getBounds()));
+                    }
+
+                    auto worstSpacingSkew = 0;
+                    for (std::size_t i = 2; i < groups.size(); ++i)
+                    {
+                        const auto a = groups[i - 1].getCentreY() - groups[i - 2].getCentreY();
+                        const auto b = groups[i].getCentreY() - groups[i - 1].getCentreY();
+                        worstSpacingSkew = juce::jmax(worstSpacingSkew, std::abs(a - b));
+                    }
+
+                    const auto above = groups.front().getY() - strip->getLocalBounds().getY();
+                    const auto below = strip->getLocalBounds().getBottom() - groups.back().getBottom();
+
+                    check("MacroUi_TheKnobsAreEvenlyDistributedDownTheStrip",
+                          groups.size() == static_cast<std::size_t>(
+                              PX3SynthAudioProcessor::kMacroCount)
+                              && worstSpacingSkew <= 1 && std::abs(above - below) <= 1,
+                          juce::String(static_cast<int>(groups.size())) + " macros, spacing varies by "
+                              + juce::String(worstSpacingSkew) + " px, with " + juce::String(above)
+                              + " px above the first and " + juce::String(below)
+                              + " px below the last");
+                }
+
                 check("MacroUi_EachKnobIsBoundToItsOwnMacroAndFitsTheStrip",
                       insideStrip
-                          && bound == juce::StringArray({ "macro1", "macro2", "macro3", "macro4" }),
+                          && bound == expectedStripIds,
                       "the strip's knobs are bound to " + bound.joinIntoString(", "));
 
                 // Switching panels cannot reset or duplicate them: the strip is
@@ -20508,16 +20543,18 @@ void testMacroSystem()
 
             if (strip != nullptr && knobs.size() >= 3)
             {
-                // Each of the four enters its own mode.
+                // Each enters its own mode, and reports its own index.
                 juce::StringArray entered;
+                juce::StringArray expectedEntered;
                 for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
                 {
                     editor->debugEnterMacroAssignMode(macro);
                     entered.add(juce::String(editor->debugAssigningMacro()));
+                    expectedEntered.add(juce::String(macro));
                 }
 
                 check("MacroUi_EachMacroEntersItsOwnAssignmentMode",
-                      entered == juce::StringArray({ "0", "1", "2", "3" }),
+                      entered == expectedEntered,
                       "entering each macro's mode reports " + entered.joinIntoString(", "));
 
                 editor->debugEnterMacroAssignMode(0);
@@ -20779,7 +20816,7 @@ void testMacroSystem()
         }
     }
 
-    // ---- four macros, with stable identities --------------------------------
+    // ---- one macro per count, with stable identities ------------------------
     {
         PX3SynthAudioProcessor processor;
         prepared(processor);
@@ -20796,11 +20833,23 @@ void testMacroSystem()
                                    == PX3SynthAudioProcessor::macroParameterId(macro);
         }
 
-        check("Macro_ThereAreExactlyFourWithStableIds",
-              PX3SynthAudioProcessor::kMacroCount == 4 && allParameters
-                  && ids == juce::StringArray({ "macro1", "macro2", "macro3", "macro4" })
-                  && names[0] == "MACRO 1" && names[3] == "MACRO 4",
-              "ids " + ids.joinIntoString(", ") + " named " + names.joinIntoString(", "));
+        // The IDs are the serialization keys, so their FORM is the contract -
+        // macroN, one-based, in order - rather than a list that has to be
+        // rewritten every time a macro is added. Pinning the list instead is
+        // what makes adding one look like a test failure.
+        juce::StringArray expectedIds;
+        juce::StringArray expectedNames;
+        for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+        {
+            expectedIds.add("macro" + juce::String(macro + 1));
+            expectedNames.add("MACRO " + juce::String(macro + 1));
+        }
+
+        check("Macro_EachHasAStableIdAndName",
+              PX3SynthAudioProcessor::kMacroCount >= 4 && allParameters
+                  && ids == expectedIds && names == expectedNames,
+              juce::String(PX3SynthAudioProcessor::kMacroCount) + " macros: ids "
+                  + ids.joinIntoString(", ") + " named " + names.joinIntoString(", "));
 
         // Being real parameters is what makes them automatable, serialized and
         // MIDI-mappable for free. Check they are actually registered as such.
@@ -20814,8 +20863,9 @@ void testMacroSystem()
         }
 
         check("Macro_TheyAreRealParametersNotUiState",
-              found == 4,
-              juce::String(found) + " of 4 macros are registered parameters");
+              found == PX3SynthAudioProcessor::kMacroCount,
+              juce::String(found) + " of " + juce::String(PX3SynthAudioProcessor::kMacroCount)
+                  + " macros are registered parameters");
     }
 
     // ---- a macro moves what it is assigned to, and nothing else -------------
@@ -21034,24 +21084,34 @@ void testMacroSystem()
         }
     }
 
-    // ---- all four, each minding only its own business -----------------------
+    // ---- every macro, each minding only its own business --------------------
     //
-    // Everything above leans on macro 1. This gives each of the four a
-    // destination of its own, sweeps them one at a time, and checks that the
-    // other three destinations do not move - which is the difference between
-    // four macros and one macro drawn four times.
+    // Everything above leans on macro 1. This gives each macro a destination of
+    // its own, sweeps them one at a time, and checks that the others do not
+    // move - which is the difference between N macros and one macro drawn N
+    // times.
     {
         PX3SynthAudioProcessor processor;
         prepared(processor);
 
-        // Four parameters from four different corners of the synth, so a
-        // routing mistake cannot hide behind two of them being neighbours.
-        juce::RangedAudioParameter* destinations[4] = {
+        // One parameter per macro, each from a different corner of the synth, so
+        // a routing mistake cannot hide behind two of them being neighbours.
+        // Sized from the macro count rather than written out, because a fixed
+        // array here is indexed by macro and overruns the moment one is added.
+        std::vector<juce::RangedAudioParameter*> destinations {
             &processor.getFilterCutoffParam(0),
             &processor.getFilterResonanceParam(0),
             &processor.getReverbAmountParam(),
-            &processor.getFilterCutoffParam(1)
+            &processor.getFilterCutoffParam(1),
+            &processor.getDelayAmountParam()
         };
+
+        check("Macro_TheIsolationTestCoversEveryMacro",
+              destinations.size() >= static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount),
+              juce::String(static_cast<int>(destinations.size())) + " destinations for "
+                  + juce::String(PX3SynthAudioProcessor::kMacroCount) + " macros");
+
+        destinations.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount));
 
         juce::StringArray ids;
         for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
@@ -21081,22 +21141,27 @@ void testMacroSystem()
 
         check("Macro_EachDestinationBelongsToExactlyOneMacro",
               masksCorrect,
-              "the four destinations report masks " + masks.joinIntoString(", ")
-                  + " (want 1, 2, 4, 8)");
+              "the destinations report masks " + masks.joinIntoString(", ")
+                  + ", one bit each");
 
-        // Sweep one macro at a time and watch all four destinations.
+        // Sweep one macro at a time and watch every destination.
+        const auto destinationCount = static_cast<int>(destinations.size());
         juce::StringArray crosstalk;
         for (int moving = 0; moving < PX3SynthAudioProcessor::kMacroCount; ++moving)
         {
-            float before[4];
-            for (int i = 0; i < 4; ++i) { before[i] = effective(i); }
+            std::vector<float> before(destinations.size(), 0.0f);
+            for (int i = 0; i < destinationCount; ++i)
+            {
+                before[static_cast<std::size_t>(i)] = effective(i);
+            }
 
             processor.getMacroParam(moving).setValueNotifyingHost(1.0f);
 
-            for (int i = 0; i < 4; ++i)
+            for (int i = 0; i < destinationCount; ++i)
             {
                 const auto after = effective(i);
-                const auto moved = std::abs(after - before[i]) > 0.01f;
+                const auto moved
+                    = std::abs(after - before[static_cast<std::size_t>(i)]) > 0.01f;
 
                 if (i == moving && ! moved)
                 {
@@ -21107,7 +21172,8 @@ void testMacroSystem()
                 {
                     crosstalk.add("macro " + juce::String(moving + 1) + " moved macro "
                                   + juce::String(i + 1) + "'s destination from "
-                                  + fmt(before[i], 3) + " to " + fmt(after, 3));
+                                  + fmt(before[static_cast<std::size_t>(i)], 3) + " to "
+                                  + fmt(after, 3));
                 }
             }
 
@@ -21133,11 +21199,11 @@ void testMacroSystem()
 
         check("Macro_MovingOneMacroDoesNotMoveTheOthers",
               othersUntouched && processor.getMacroParam(2).get() > 0.7f,
-              "with macro 3 at 0.8 the four read " + values.joinIntoString(", "));
+              "with macro 3 at 0.8 they read " + values.joinIntoString(", "));
         processor.getMacroParam(2).setValueNotifyingHost(0.0f);
 
-        // And their destination LISTS are separate: clearing one leaves the
-        // other three exactly as they were.
+        // And their destination LISTS are separate: clearing one leaves every
+        // other exactly as it was.
         processor.clearMacroDestinations(1);
 
         juce::StringArray sizes;
@@ -21146,12 +21212,21 @@ void testMacroSystem()
             sizes.add(juce::String(static_cast<int>(processor.getMacroDestinations(macro).size())));
         }
 
+        juce::StringArray expectedSizes;
+        auto othersKeptTheirs = true;
+        for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+        {
+            expectedSizes.add(macro == 1 ? "0" : "1");
+            if (macro != 1)
+            {
+                othersKeptTheirs = othersKeptTheirs
+                                   && processor.isMacroDestination(macro, ids[macro]);
+            }
+        }
+
         check("Macro_ClearingOneMacroLeavesTheOthersIntact",
-              sizes == juce::StringArray({ "1", "0", "1", "1" })
-                  && processor.isMacroDestination(0, ids[0])
-                  && processor.isMacroDestination(2, ids[2])
-                  && processor.isMacroDestination(3, ids[3]),
-              "after clearing macro 2 the four hold " + sizes.joinIntoString(", ")
+              sizes == expectedSizes && othersKeptTheirs,
+              "after clearing macro 2 they hold " + sizes.joinIntoString(", ")
                   + " destinations");
 
         // The one that was cleared really is inert now. Checked against the
@@ -21168,7 +21243,7 @@ void testMacroSystem()
                   + juce::String(processor.getMacroMaskForParameter(ids[1]))
                   + " and its old destination is no longer driven at all");
 
-        // ---- and the same four, driven by the actual knobs ------------------
+        // ---- and the same set, driven by the actual knobs -------------------
         //
         // Everything above sets the parameter directly. This turns the knob a
         // player would turn, through its attachment, which is the path the
@@ -21183,12 +21258,17 @@ void testMacroSystem()
 
             if (strip != nullptr)
             {
-                juce::RangedAudioParameter* targets[4] = {
+                // Sized from the macro count: a fixed array indexed by macro
+                // overruns the moment one is added.
+                std::vector<juce::RangedAudioParameter*> targets {
                     &knobProcessor.getFilterCutoffParam(0),
                     &knobProcessor.getFilterResonanceParam(0),
                     &knobProcessor.getReverbAmountParam(),
-                    &knobProcessor.getFilterCutoffParam(1)
+                    &knobProcessor.getFilterCutoffParam(1),
+                    &knobProcessor.getDelayAmountParam()
                 };
+                targets.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount));
+                const auto targetCount = static_cast<int>(targets.size());
 
                 for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
                 {
@@ -21199,18 +21279,21 @@ void testMacroSystem()
                 juce::StringArray knobFaults;
                 for (int moving = 0; moving < PX3SynthAudioProcessor::kMacroCount; ++moving)
                 {
-                    float before[4];
-                    for (int i = 0; i < 4; ++i)
+                    std::vector<float> before(targets.size(), 0.0f);
+                    for (int i = 0; i < targetCount; ++i)
                     {
-                        before[i] = knobProcessor.getModulatedNormalisedValue(*targets[i]);
+                        before[static_cast<std::size_t>(i)]
+                            = knobProcessor.getModulatedNormalisedValue(*targets[static_cast<std::size_t>(i)]);
                     }
 
                     strip->knob(moving).setValue(1.0, juce::sendNotificationSync);
 
-                    for (int i = 0; i < 4; ++i)
+                    for (int i = 0; i < targetCount; ++i)
                     {
-                        const auto after = knobProcessor.getModulatedNormalisedValue(*targets[i]);
-                        const auto moved = std::abs(after - before[i]) > 0.01f;
+                        const auto after
+                            = knobProcessor.getModulatedNormalisedValue(*targets[static_cast<std::size_t>(i)]);
+                        const auto moved
+                            = std::abs(after - before[static_cast<std::size_t>(i)]) > 0.01f;
 
                         if (i == moving && ! moved)
                         {
@@ -21244,12 +21327,14 @@ void testMacroSystem()
             PX3SynthAudioProcessor saver;
             prepared(saver);
 
-            juce::RangedAudioParameter* targets[4] = {
+            std::vector<juce::RangedAudioParameter*> targets {
                 &saver.getFilterCutoffParam(0),
                 &saver.getFilterResonanceParam(0),
                 &saver.getReverbAmountParam(),
-                &saver.getFilterCutoffParam(1)
+                &saver.getFilterCutoffParam(1),
+                &saver.getDelayAmountParam()
             };
+            targets.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount));
 
             for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
             {
@@ -21378,17 +21463,20 @@ void testMacroSystem()
         };
 
         juce::StringArray mapped;
+        juce::StringArray expectedCcs;
         for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
         {
             processor.setMidiLearnTargets({ PX3SynthAudioProcessor::macroParameterId(macro) });
             sendAndApply(juce::MidiMessage::controllerEvent(1, 21 + macro, 64));
             mapped.add(juce::String(processor.getMidiCcForParameter(
                 PX3SynthAudioProcessor::macroParameterId(macro))));
+            expectedCcs.add(juce::String(21 + macro));
         }
 
         check("Macro_EveryMacroCanBeMidiMapped",
-              mapped == juce::StringArray({ "21", "22", "23", "24" }),
-              "macros 1-4 map to CC " + mapped.joinIntoString(", "));
+              mapped == expectedCcs,
+              "each of the " + juce::String(PX3SynthAudioProcessor::kMacroCount)
+                  + " macros maps to its own CC: " + mapped.joinIntoString(", "));
 
         // The whole chain: CC -> macro -> parameter -> effective value.
         auto& cutoff = processor.getFilterCutoffParam(0);
@@ -21504,6 +21592,76 @@ void testMacroSystem()
                   && std::abs(loaded.getMacroParam(0).get() - 0.72f) < 0.01f,
               "the preset restores " + juce::String(static_cast<int>(loaded.getMacroDestinations(0).size()))
                   + " destinations on macro 1 at " + fmt(loaded.getMacroParam(0).get(), 2));
+
+        // Every macro through a PRESET FILE, not only macro 1 and not only the
+        // session tree. A preset is what users trade, and an off-by-one in the
+        // index would put the last macro's destinations on the first - which a
+        // single-macro check cannot see.
+        {
+            PX3SynthAudioProcessor saver;
+            prepared(saver);
+
+            std::vector<juce::RangedAudioParameter*> targets {
+                &saver.getFilterCutoffParam(0),
+                &saver.getFilterResonanceParam(0),
+                &saver.getReverbAmountParam(),
+                &saver.getFilterCutoffParam(1),
+                &saver.getDelayAmountParam()
+            };
+            targets.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount));
+
+            juce::StringArray targetIds;
+            for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+            {
+                const auto id = targets[static_cast<std::size_t>(macro)]->getParameterID();
+                targetIds.add(id);
+                saver.toggleMacroDestination(macro, id);
+                saver.getMacroParam(macro).setValueNotifyingHost(
+                    0.10f + 0.15f * static_cast<float>(macro));
+            }
+
+            auto tempDirectory = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                     .getChildFile("px3-component-tests");
+            tempDirectory.createDirectory();
+            const auto presetFile = tempDirectory.getChildFile("macros.px3preset");
+            presetFile.deleteFile();
+
+            PresetManager manager(saver);
+            juce::String error;
+            PresetManager::PresetMetadata metadata;
+            metadata.name = "Macros";
+            metadata.category = "Test";
+            metadata.author = "component tests";
+            const auto wrote = manager.dumpCurrentStateToPresetFile(presetFile, metadata, true,
+                                                                    true, error, nullptr);
+
+            PX3SynthAudioProcessor loader;
+            prepared(loader);
+            PresetManager loaderManager(loader);
+            juce::String loadError;
+            const auto read = wrote && loaderManager.loadPresetFile(presetFile, loadError);
+
+            juce::StringArray report;
+            auto allCorrect = read;
+            for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+            {
+                const auto mask = loader.getMacroMaskForParameter(targetIds[macro]);
+                const auto value = loader.getMacroParam(macro).get();
+                const auto wantValue = 0.10f + 0.15f * static_cast<float>(macro);
+
+                allCorrect = allCorrect && mask == (1 << macro)
+                             && std::abs(value - wantValue) < 0.01f;
+                report.add("M" + juce::String(macro + 1) + " mask " + juce::String(mask)
+                           + " at " + fmt(value, 2));
+            }
+
+            check("Macro_EveryMacroSurvivesAPresetFile",
+                  allCorrect,
+                  read ? "after a preset file round trip: " + report.joinIntoString(", ")
+                       : "the preset did not round-trip: " + error + loadError);
+
+            presetFile.deleteFile();
+        }
 
         // Loading a preset must not take the MIDI mapping of a macro away:
         // the preset says what macro 1 DOES, the instance says what moves it.

@@ -22,6 +22,11 @@ class UIConfig;
 class MacroStrip final : public juce::Component
 {
 public:
+    // The processor is only forward-declared here, so its kMacroCount cannot
+    // size this strip's array. A static_assert in the .cpp keeps the two in
+    // step, and fails the build rather than silently sizing the strip wrong.
+    static constexpr int kCount = 5;
+
     MacroStrip(PX3SynthAudioProcessor& processorIn, juce::LookAndFeel* knobLookAndFeel);
     ~MacroStrip() override;
 
@@ -36,7 +41,7 @@ public:
 
     // For the layout tests: the caption under a knob.
     juce::Label& debugCaption(int macroIndex)
-    { return entries[static_cast<std::size_t>(juce::jlimit(0, 3, macroIndex))].caption; }
+    { return entries[static_cast<std::size_t>(juce::jlimit(0, kCount - 1, macroIndex))].caption; }
 
     juce::Slider& knob(int macroIndex);
     const juce::Slider& knob(int macroIndex) const;
@@ -52,7 +57,7 @@ private:
         juce::Slider knob;
         px3::ui::ChipLabel caption;
     };
-    std::array<Entry, 4> entries;
+    std::array<Entry, kCount> entries;
     std::vector<std::unique_ptr<juce::SliderParameterAttachment>> attachments;
 
     std::shared_ptr<const UIConfig> uiConfig;

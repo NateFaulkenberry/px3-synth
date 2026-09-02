@@ -296,7 +296,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             labelPrefix + "Enabled",
             true);
     }
-    // The four macros are ordinary parameters, and that is the point: being
+    // The macros are ordinary parameters, and that is the point: being
     // parameters makes them automatable, serialized into session and preset
     // state, and MIDI-mappable through the existing system without a line of
     // new code in any of those places.

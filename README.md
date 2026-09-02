@@ -442,7 +442,7 @@ Accuracy notes:
 
 ## Macros: Four Performance Controls
 
-Four knobs sit on the left of every panel — OSC, MOD, FLT, FX, AMP and MIX.
+Five knobs sit on the left of every panel — OSC, MOD, FLT, FX, AMP and MIX.
 They are the same four wherever you are: switch panels and they keep their
 values and their assignments, because there is only one set of them.
 
@@ -478,7 +478,7 @@ envelopes, and means something else.
 
 A Macro does not take a parameter over. It adds to it, the way an LFO does, so
 the knob, a DAW automation lane, a mapped MIDI CC, the LFOs, the envelopes and
-up to four Macros can all reach the same parameter and the result is the sum of
+all five Macros can reach the same parameter and the result is the sum of
 what each is asking for. The destination knob stays where you set it and its
 ring shows where the sound actually is — the same convention modulation already
 uses.
@@ -507,7 +507,7 @@ Projects and presets saved before Macros existed load with four empty Macros.
 
 ### Limits
 
-- Four Macros, no more; a Macro cannot drive another Macro.
+- Five Macros, no more; a Macro cannot drive another Macro.
 - Assignments are at full positive depth. The stored format carries a per
   destination depth so an editor for it can be added without breaking presets.
 - Macro knobs are not themselves assignable to Macros.

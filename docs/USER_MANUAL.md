@@ -37,7 +37,7 @@ edit directly — bend a stage, add a point, watch the fill track a note as it
 plays — while the familiar four knobs sit beneath the graph, showing and setting
 the same shape.
 
-**A performance layer that reaches everywhere.** Four Macros sit on the left of
+**A performance layer that reaches everywhere.** Five Macros sit on the left of
 every panel and can move any number of parameters at once, anywhere in the
 instrument. A single hardware knob can drive a Macro, and that Macro can
 transform the whole patch.
@@ -108,7 +108,7 @@ Six buttons across the top switch the main area between panels:
 
 Two things stay on screen whatever panel you are viewing.
 
-**The Macro strip**, down the left edge — four knobs that are the same four
+**The Macro strip**, down the left edge — five knobs that are the same five
 everywhere. See [Macros](#macros).
 
 **The keyboard**, across the bottom, with the pitch and mod wheels beside it. It
@@ -714,7 +714,7 @@ FX bus to even out a reverb tail without touching the dry signal.
 
 # Macros
 
-Four knobs down the left of every panel. Each can move any number of parameters
+Five knobs down the left of every panel. Each can move any number of parameters
 at once, anywhere in the instrument.
 
 They are the same four wherever you are. Switch panels and they keep their values
@@ -792,7 +792,7 @@ so a patch arrives with the performance controls it was designed around.
 Loading a preset does not change which hardware knob drives a Macro. The preset
 says what the Macro *does*; your instance says what *moves* it.
 
-> **Note:** There are four Macros, and a Macro cannot drive another Macro.
+> **Note:** There are five Macros, and a Macro cannot drive another Macro.
 
 ---
 
