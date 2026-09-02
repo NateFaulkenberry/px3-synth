@@ -20502,6 +20502,157 @@ void testMacroSystem()
                       "the strip's knob renders at brightness " + fmt(macroBrightness, 3)
                           + " against a panel knob's " + fmt(panelBrightness, 3));
 
+                // The dots: recessed and grey when empty, lit through as the
+                // knob turns, and DOTTED rather than an arc.
+                {
+                    const auto renderMacroKnob = [&](double value)
+                    {
+                        auto image = std::make_unique<juce::Image>();
+                        juce::Slider probe;
+                        probe.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+                        probe.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+                        probe.setLookAndFeel(editor->debugMacroKnobLookAndFeel());
+                        probe.setSize(140, 140);
+                        probe.setRange(0.0, 1.0);
+                        probe.setValue(value, juce::dontSendNotification);
+                        *image = probe.createComponentSnapshot(probe.getLocalBounds());
+                        probe.setLookAndFeel(nullptr);
+                        return image;
+                    };
+
+                    // Geometry the look uses: diameter is the 140 px box less
+                    // the 10 px inset, and the dots sit at 0.86 of the radius.
+                    const auto radius = (140.0f - 10.0f) * 0.5f;
+                    const juce::Point<float> knobCentre(70.0f, 70.0f);
+                    const auto dotRing = radius * 0.86f;
+
+                    const auto isAccent = [](juce::Colour c)
+                    {
+                        return c.getGreen() > c.getRed() + 55 && c.getBlue() > c.getRed() + 35;
+                    };
+
+                    const auto sampleRing = [&](const juce::Image& image, float atRadius)
+                    {
+                        struct { int accentSamples, runs; float darkest, bezel; } out { 0, 0, 1.0f, 0.0f };
+                        auto wasAccent = false;
+                        auto bezelTotal = 0.0f;
+                        auto bezelCount = 0;
+
+                        constexpr int steps = 720;
+                        for (int i = 0; i < steps; ++i)
+                        {
+                            const auto theta = juce::MathConstants<float>::twoPi
+                                               * static_cast<float>(i) / static_cast<float>(steps);
+                            const auto px = juce::roundToInt(knobCentre.x + std::sin(theta) * atRadius);
+                            const auto py = juce::roundToInt(knobCentre.y - std::cos(theta) * atRadius);
+                            if (px < 0 || py < 0 || px >= image.getWidth() || py >= image.getHeight())
+                            {
+                                continue;
+                            }
+
+                            const auto c = image.getPixelAt(px, py);
+                            const auto accented = isAccent(c);
+                            if (accented) { ++out.accentSamples; }
+                            if (accented && ! wasAccent) { ++out.runs; }
+                            wasAccent = accented;
+
+                            out.darkest = juce::jmin(out.darkest, c.getBrightness());
+                        }
+
+                        // The bezel, sampled between the dots and the knob's
+                        // outer edge, as the surface the holes are cut into.
+                        for (int i = 0; i < steps; ++i)
+                        {
+                            const auto theta = juce::MathConstants<float>::twoPi
+                                               * static_cast<float>(i) / static_cast<float>(steps);
+                            const auto px = juce::roundToInt(knobCentre.x + std::sin(theta) * (radius * 0.96f));
+                            const auto py = juce::roundToInt(knobCentre.y - std::cos(theta) * (radius * 0.96f));
+                            if (px < 0 || py < 0 || px >= image.getWidth() || py >= image.getHeight())
+                            {
+                                continue;
+                            }
+                            bezelTotal += image.getPixelAt(px, py).getBrightness();
+                            ++bezelCount;
+                        }
+                        out.bezel = bezelCount > 0 ? bezelTotal / static_cast<float>(bezelCount) : 0.0f;
+                        return out;
+                    };
+
+                    const auto atZero = sampleRing(*renderMacroKnob(0.0), dotRing);
+                    const auto atFull = sampleRing(*renderMacroKnob(1.0), dotRing);
+
+                    // Recess, measured INSIDE the holes rather than around the
+                    // ring. The darkest point on the ring is the drilled edge,
+                    // which stays dark however the interior is filled - a
+                    // version of this test that used it passed with the hole
+                    // painted lighter than the bezel.
+                    {
+                        juce::Slider probe;
+                        probe.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+                        probe.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+                        probe.setLookAndFeel(editor->debugMacroKnobLookAndFeel());
+                        probe.setSize(300, 300);
+                        probe.setRange(0.0, 1.0);
+                        probe.setValue(0.0, juce::dontSendNotification);
+
+                        const auto rotary = probe.getRotaryParameters();
+                        const auto image = probe.createComponentSnapshot(probe.getLocalBounds());
+                        probe.setLookAndFeel(nullptr);
+
+                        const auto bigRadius = (300.0f - 10.0f) * 0.5f;
+                        const juce::Point<float> bigCentre(150.0f, 150.0f);
+                        const auto bigDotRing = bigRadius * 0.86f;
+                        const auto bigDotRadius = juce::jmax(0.9f, bigRadius * 0.042f);
+
+                        auto topTotal = 0.0f;
+                        auto bottomTotal = 0.0f;
+                        auto samples = 0;
+                        for (int i = 0; i < 21; ++i)
+                        {
+                            const auto t = static_cast<float>(i) / 20.0f;
+                            const auto a = rotary.startAngleRadians
+                                           + t * (rotary.endAngleRadians - rotary.startAngleRadians);
+                            const auto cx = bigCentre.x + std::sin(a) * bigDotRing;
+                            const auto cy = bigCentre.y - std::cos(a) * bigDotRing;
+
+                            const auto readAt = [&](float dy)
+                            {
+                                return image.getPixelAt(juce::roundToInt(cx),
+                                                        juce::roundToInt(cy + dy)).getBrightness();
+                            };
+
+                            topTotal += readAt(-bigDotRadius * 0.40f);
+                            bottomTotal += readAt(bigDotRadius * 0.35f);
+                            ++samples;
+                        }
+
+                        const auto holeTop = samples > 0 ? topTotal / static_cast<float>(samples) : 0.0f;
+                        const auto holeBottom = samples > 0 ? bottomTotal / static_cast<float>(samples) : 0.0f;
+
+                        check("MacroUi_TheEmptyDotsAreRecessedAndGrey",
+                              atZero.accentSamples == 0
+                                  && holeTop < atZero.bezel - 0.15f
+                                  && holeTop < holeBottom - 0.05f,
+                              "at zero the holes are grey and darker at the top than the bottom - "
+                                  + fmt(holeTop, 3) + " against " + fmt(holeBottom, 3)
+                                  + ", in a bezel of " + fmt(atZero.bezel, 3));
+                    }
+
+                    check("MacroUi_TheDotsLightUpAsTheKnobTurns",
+                          atFull.accentSamples > 200,
+                          juce::String(atFull.accentSamples)
+                              + " of 720 samples around the dot ring are lit at full, against "
+                              + juce::String(atZero.accentSamples) + " at zero");
+
+                    // Dotted, not a curved line: walking the ring at full value
+                    // crosses into the highlight colour once per DOT. An arc
+                    // would be one unbroken run.
+                    check("MacroUi_TheHighlightIsDottedRatherThanAnArc",
+                          atFull.runs >= 10,
+                          "the lit highlight breaks into " + juce::String(atFull.runs)
+                              + " separate runs around the ring, not one continuous arc");
+                }
+
                 // And it keeps every indicator the shared look draws: a macro
                 // knob mapped to a CC still says so.
                 const auto amberPixels = [&](bool mapped, juce::LookAndFeel* laf)

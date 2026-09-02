@@ -143,9 +143,25 @@ palette runs blue (OSC), red (FILTER), green (AMP), purple (LFO/ENV), amber
 Every other knob in this synth is dark on a dark panel. The macros are a
 performance layer that sits outside the panels and stays put while they change,
 so `MacroKnobLookAndFeel` draws them as a pale hardware knob instead: a light
-bezel carrying a ring of value dots, a raised off-white cap with a domed
-highlight, a thin accent arc, and a tick cut into the cap near its edge. They
-read as a different KIND of control before anything is read.
+bezel drilled with a ring of holes, a raised off-white cap with a domed
+highlight, and a tick cut into the cap near its edge. They read as a different
+KIND of control before anything is read.
+
+**The holes are the value indicator.** They are grey and empty by default, lit
+from behind up to the value, so the reading is a ring of lit dots rather than a
+drawn arc — which is what the arc used to be, and it is gone. Every hole is
+drawn identically whether lit or not, same recess and same rim, and only what
+shows *through* it changes; two different kinds of dot would stop reading as one
+row of holes with a light behind some of them.
+
+The recess is a gradient dark at the top and lighter at the bottom, with the
+catch light on the LOWER rim — the inverse of the cap above it, because this is
+a dent and that is a dome. Flipping that one relationship is the whole
+difference between a hole and a stud.
+
+Nothing is lit at zero. A level meter's convention is to keep one LED on, but
+the rule here is that the holes are grey by default and the light comes up
+through them as the knob turns, so zero means none.
 
 The indicators are NOT duplicated into it. The MIDI and macro overlays — the
 dashed amber ring, the CC label, the assign-mode ring, the `M1+` chip — moved

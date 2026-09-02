@@ -45,30 +45,68 @@ void MacroKnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
     g.setColour(juce::Colour::fromRGBA(0, 0, 0, 40));
     g.drawEllipse(bounds.reduced(0.5f), 1.0f);
 
-    // ---- the value dots around the bezel ------------------------------------
-    // The row of dots is what makes the value readable at this size: the arc
-    // alone is a few pixels thick on a 60 px knob.
+    // ---- the value dots -----------------------------------------------------
+    //
+    // The dots ARE the value indicator. They are drilled holes in the bezel:
+    // grey and empty by default, and lit from behind up to the value, so the
+    // reading is a ring of dots rather than a drawn arc.
+    //
+    // Every dot is drawn the same way whether lit or not - same recess, same
+    // rim - and only what shows through the hole changes. That is what keeps
+    // them reading as one row of holes with a light behind some of them,
+    // instead of two different kinds of dot.
     constexpr int dotCount = 21;
     const auto dotRadius = juce::jmax(0.9f, radius * 0.042f);
     const auto dotRing = radius * 0.86f;
+    const auto dotSize = dotRadius * 2.0f;
+
+    // Clearly darker than the bezel around them (198-238), or the hole reads as
+    // a ring drawn on the surface rather than a recess cut into it.
+    const auto emptyTop = juce::Colour::fromRGB(112, 112, 117);
+    const auto emptyBottom = juce::Colour::fromRGB(163, 163, 168);
 
     for (int i = 0; i < dotCount; ++i)
     {
         const auto t = static_cast<float>(i) / static_cast<float>(dotCount - 1);
         const auto dotAngle = rotaryStartAngle + t * (rotaryEndAngle - rotaryStartAngle);
-        const auto lit = enabled && t <= sliderPos + 1.0e-4f;
+        // Nothing lit at zero. Lighting the first dot there would be a level
+        // meter's convention - always one LED on - but the brief for these is
+        // that the holes are grey by DEFAULT and the light comes up through
+        // them as the knob turns, so zero has to mean none.
+        const auto lit = enabled && sliderPos > 1.0e-4f && t <= sliderPos + 1.0e-4f;
 
         const juce::Point<float> at(centre.x + std::sin(dotAngle) * dotRing,
                                     centre.y - std::cos(dotAngle) * dotRing);
+        const auto hole = juce::Rectangle<float>(dotSize, dotSize).withCentre(at);
 
+        // Light spilling out of a lit hole, onto the bezel around it.
         if (lit)
         {
-            g.setColour(accent.withAlpha(0.28f));
-            g.fillEllipse(juce::Rectangle<float>(dotRadius * 4.0f, dotRadius * 4.0f).withCentre(at));
+            g.setColour(accent.withAlpha(0.30f));
+            g.fillEllipse(juce::Rectangle<float>(dotSize * 2.1f, dotSize * 2.1f).withCentre(at));
         }
 
-        g.setColour(lit ? accent.brighter(0.15f) : juce::Colour::fromRGBA(120, 120, 124, 168));
-        g.fillEllipse(juce::Rectangle<float>(dotRadius * 2.0f, dotRadius * 2.0f).withCentre(at));
+        // The catch light on the LOWER rim, which is what says "recess". A
+        // raised stud takes its light on the upper rim; this is the same
+        // gradient upside down, and the two read completely differently.
+        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 190));
+        g.fillEllipse(hole.translated(0.0f, juce::jmax(0.5f, dotRadius * 0.35f)));
+
+        // What is behind the hole: the accent where the light is on, the dark
+        // of an empty hole where it is not. Dark at the top, lighter at the
+        // bottom - the inverse of the cap above it, because this is a dent and
+        // that is a dome.
+        juce::ColourGradient inside(lit ? accent.darker(0.35f) : emptyTop,
+                                    at.x, hole.getY(),
+                                    lit ? accent.brighter(0.30f) : emptyBottom,
+                                    at.x, hole.getBottom(),
+                                    false);
+        g.setGradientFill(inside);
+        g.fillEllipse(hole);
+
+        // The drilled edge itself, darkest where the bezel overhangs it.
+        g.setColour(juce::Colour::fromRGBA(0, 0, 0, lit ? 70 : 95));
+        g.drawEllipse(hole.reduced(0.25f), juce::jmax(0.6f, dotRadius * 0.28f));
     }
 
     // ---- the cap ------------------------------------------------------------
@@ -97,26 +135,6 @@ void MacroKnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
 
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 150));
     g.drawEllipse(cap.reduced(0.5f), 1.0f);
-
-    // ---- the value arc ------------------------------------------------------
-    // After the cap, in the gap between it and the dots. Drawn before, the cap
-    // covered the inner half of it and left a hairline.
-    const auto arcRadius = radius * 0.775f;
-    if (sliderPos > 1.0e-4f && enabled)
-    {
-        juce::Path arc;
-        arc.addCentredArc(centre.x, centre.y, arcRadius, arcRadius, 0.0f,
-                          rotaryStartAngle, angle, true);
-
-        g.setColour(accent.withAlpha(0.30f));
-        g.strokePath(arc, juce::PathStrokeType(juce::jmax(2.4f, radius * 0.10f),
-                                               juce::PathStrokeType::curved,
-                                               juce::PathStrokeType::rounded));
-        g.setColour(accent);
-        g.strokePath(arc, juce::PathStrokeType(juce::jmax(1.1f, radius * 0.045f),
-                                               juce::PathStrokeType::curved,
-                                               juce::PathStrokeType::rounded));
-    }
 
     // ---- the pointer --------------------------------------------------------
     // A tick cut into the cap near its edge, the way a hardware knob marks its
