@@ -25,11 +25,16 @@ design walkthroughs, troubleshooting and a glossary.
   library.
 - A GPU-rendered 3D wavetable display: real perspective, a lit floor, a
   procedural environment, and an orbiting camera.
-- Three macro knobs whose meaning changes by oscillator mode.
+- Three per-oscillator macro knobs whose meaning changes by oscillator mode, and
+  five global Macros that reach any parameter in the synth.
 - Dedicated SUB + OSC1/OSC2/OSC3 source channels.
 - Filter, amp envelope, and master gain section.
-- Graphical breakpoint envelopes on AMP ENV and ENV 1-3: up to 16 points, a
-  curve on every segment, and a labelled time axis.
+- Two envelope types on ENV 1-3, chosen from a TYPE menu: a four-stage ADSR, or
+  a graphical breakpoint envelope of up to 16 points with a curve on every
+  segment. AMP ENV is always an ADSR - a breakpoint envelope is a one-shot the
+  key does not gate, which is a modulation shape rather than an amplitude one.
+- A SETTINGS page behind the gear in the top bar: animation preferences, and the
+  analog console's profile.
 - Bus inserts on the dry and FX buses: a four-band EQ with a playable graph, and
   an 1176-style FET compressor with a physically derived VU meter.
 - Three LFO modulation sources with assignable destinations.
@@ -228,6 +233,19 @@ packages simply build without a background.
 Signing: Developer ID installer signing is applied when `DEVELOPER_ID_INSTALLER`
 is set. Notarization can be added later in the release pipeline.
 
+## Settings
+
+The gear at the right of the top bar opens SETTINGS: a full-width page with no
+Macro strip, because nothing on it is a Macro destination.
+
+- **Enable animations** (on by default) gates the keyboard sparks, the wheel
+  sparkles and the logo movement. It is an install preference: kept between
+  sessions, never written into a preset.
+- **Analog Engine** selects the console profile - CLEAN, BRITISH, AMERICAN,
+  TRANSFORMER or MODERN. This one IS part of the sound: it is an automatable
+  parameter and travels in sessions and presets. The console is enabled by
+  default as of 0.6.0.
+
 ## Diagnostics
 
 Beyond the test suite, `PX3Tests` and `PX3Diag` carry diagnostic modes that
@@ -343,8 +361,10 @@ Production packaging:
 
 When DEBUG mode is enabled, the detached P(X3) DEBUG CONSOLE includes a `PRESET / STATE TOOLS` block with:
 
-- `Preset Name` (optional suggested preset/file name)
-- `DUMP PRESET`
+- `Preset Name` (required)
+- `Author` (required)
+- `Category` (a dropdown of the categories the library actually has)
+- `DUMP PRESET`, disabled until the name and the author are both filled in
 
 `DUMP PRESET` behavior:
 
@@ -440,9 +460,10 @@ Accuracy notes:
 - RAM is an estimate, not exact per-instance ownership, because process memory is shared and cannot be perfectly partitioned by plugin instance.
 - In standalone with one instance, RAM estimate effectively matches app RSS.
 
-## Macros: Four Performance Controls
+## Macros: Five Performance Controls
 
-Five knobs sit on the left of every panel — OSC, MOD, FLT, FX, AMP and MIX.
+Five knobs sit on the left of every panel — OSC, MOD, FLT, FX, AMP and MIX. Not
+on SETTINGS, which is full width and has no Macro destinations on it.
 They are the same four wherever you are: switch panels and they keep their
 values and their assignments, because there is only one set of them.
 
@@ -504,7 +525,7 @@ A Macro can also be automated by your DAW.
   by loading a preset. `CC 21 → Macro 1` survives while the preset decides what
   Macro 1 does — which is the point of a Macro being its own control source.
 
-Projects and presets saved before Macros existed load with four empty Macros.
+Projects and presets saved before Macros existed load with five empty Macros.
 
 ### Limits
 

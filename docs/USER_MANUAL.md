@@ -8,7 +8,7 @@
 [Welcome](#welcome) · [Quick start](#quick-start) · [The interface](#the-interface) · [Signal flow](#signal-flow)
 
 **The panels**
-[OSC](#osc--oscillators) · [MOD](#mod--modulation) · [AMP](#amp--amplitude) · [FLT](#flt--filters) · [FX](#fx--effects) · [MIX](#mix--mixer)
+[OSC](#osc--oscillators) · [MOD](#mod--modulation) · [AMP](#amp--amplitude) · [FLT](#flt--filters) · [FX](#fx--effects) · [MIX](#mix--mixer) · [SETTINGS](#settings)
 
 **Performance**
 [Macros](#macros) · [MIDI Learn](#midi-learn) · [MIDI and Macros together](#midi-and-macros-together) · [Playing](#playing) · [Presets](#presets)
@@ -106,16 +106,21 @@ Six buttons across the top switch the main area between panels:
 | **FX** | Eight effects and their order |
 | **MIX** | Levels, pan, sends, solo, and the bus inserts |
 
+A **gear button** at the right of the top bar opens [SETTINGS](#settings), which
+is a full-width page rather than a panel.
+
 Two things stay on screen whatever panel you are viewing.
 
 **The Macro strip**, down the left edge — five knobs that are the same five
-everywhere. See [Macros](#macros).
+everywhere. See [Macros](#macros). The one page without it is SETTINGS, which
+has nothing on it to assign a Macro to.
 
 **The keyboard**, across the bottom, with the pitch and mod wheels beside it. It
 also carries messages when the instrument has something to tell you.
 
 The top bar holds the preset controls: the current preset's name, `<` and `>` to
-step through the library, and **MENU** for saving and browsing.
+step through the library, **MENU** for saving and browsing, and the gear that
+opens SETTINGS.
 
 ---
 
@@ -727,6 +732,40 @@ follows an averaging detector.
 
 **Use them for:** EQ on the dry bus to carve room for a bass; compression on the
 FX bus to even out a reverb tail without touching the dry signal.
+
+---
+
+
+# SETTINGS
+
+The gear at the right of the top bar. A full-width page rather than a panel:
+there is no Macro strip beside it, because nothing here is a Macro destination.
+
+## Enable animations
+
+On by default. Turns off the keyboard's sparks, the sparkles around the pitch
+and mod wheels, and the logo's movement while a note is held.
+
+This is a preference for **your install**, not part of a sound. It is remembered
+between sessions and is not written into presets, so loading somebody else's
+patch never changes it.
+
+## Analog Engine
+
+The console colour applied to the whole output. Five voicings, none of them an
+emulation of a specific piece of hardware:
+
+| Profile | Character |
+| --- | --- |
+| **CLEAN** | Modern large-format VCA. Nearly transparent — the default. |
+| **BRITISH** | Discrete and transformer-coupled: second-harmonic warmth, weight low down. |
+| **AMERICAN** | Discrete op-amp: a harder knee, odd harmonics, fast slew. |
+| **TRANSFORMER** | Transformer-heavy. The strongest even-harmonic content, and a narrower band. |
+| **MODERN** | A later clean VCA: tight and fast, with the most headroom. |
+
+Unlike the animation setting, this **is** part of the sound: it is saved with
+your patch and travels with a preset, and it is automatable from your DAW like
+any other control.
 
 ---
 
