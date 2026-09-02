@@ -66,9 +66,19 @@ BreakpointEnvelope BreakpointEnvelope::fromAdsr(const EnvelopeSettings& settings
     return envelope;
 }
 
-void BreakpointEnvelope::ensureBreakpointHasAMovablePoint()
+void BreakpointEnvelope::normaliseForBreakpointEditing()
 {
-    if (mode != Mode::breakpoint || pointCount != kMinPoints)
+    if (mode != Mode::breakpoint)
+    {
+        return;
+    }
+
+    // sortAndClamp applies the duration floor, but only once the mode says
+    // Breakpoint - and state is restored points-first, mode-second, so this is
+    // where a collapsed envelope off disk gets its length back.
+    sortAndClamp();
+
+    if (pointCount != kMinPoints)
     {
         return;
     }
@@ -215,6 +225,18 @@ void BreakpointEnvelope::sortAndClamp()
         auto& point = points[static_cast<std::size_t>(i)];
         point.value = clampValue(point.value);
         point.curveToNext = clampCurve(point.curveToNext);
+    }
+
+    // A Breakpoint envelope may not be collapsed to nothing. It is a one-shot,
+    // so no duration means a note that never sounds - and the last point can be
+    // dragged to the left edge like any other. ADSR is left alone: its times
+    // come from parameters with ranges of their own, a zero-length stage there
+    // is deliberate and tested, and it holds at its sustain rather than
+    // retiring, so it has no equivalent trap.
+    if (mode == Mode::breakpoint && pointCount > 0)
+    {
+        auto& last = points[static_cast<std::size_t>(pointCount - 1)];
+        last.timeSeconds = juce::jmax(last.timeSeconds, kMinBreakpointSeconds);
     }
 
     // A sustain on the last point would leave nothing to release through.

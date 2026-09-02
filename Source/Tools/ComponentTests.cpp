@@ -1770,6 +1770,83 @@ void testBreakpointEnvelope()
               "the envelope still runs " + fmt(loaded.getTotalSeconds(), 2) + " s");
     }
 
+    // ---- the duration floor is Breakpoint's, and reaches saved state --------
+    {
+        // ADSR is untouched by it. Its times come from parameters with ranges
+        // of their own, a zero-length stage there is deliberate and tested, and
+        // an ADSR holds at its sustain rather than retiring - so it has none of
+        // the trap the floor exists to close.
+        EnvelopeSettings zeroed;
+        zeroed.attackSeconds = 0.0f;
+        zeroed.decaySeconds = 0.0f;
+        zeroed.sustainLevel = 0.5f;
+        zeroed.releaseSeconds = 0.0f;
+
+        // Through setPoints, which is what runs sortAndClamp - the floor lives
+        // there. fromAdsr builds its points directly and never reaches it, so
+        // asserting on a shape straight out of fromAdsr tests nothing about the
+        // gate: it passes whether the floor is gated on the mode or not.
+        auto adsr = px3::BreakpointEnvelope::fromAdsr(zeroed);
+        {
+            px3::BreakpointEnvelope::Point flat[4] = {
+                { 0.0, 0.0, 0.0 },
+                { 0.0, 1.0, 0.0 },
+                { 0.0, 0.5, 0.0 },
+                { 0.0, 0.0, 0.0 }
+            };
+            adsr.setPoints(flat, 4, 2);
+        }
+
+        check("EnvFloor_TheFloorDoesNotReachAdsrMode",
+              ! adsr.isBreakpointMode()
+                  && adsr.getTotalSeconds() < px3::BreakpointEnvelope::kMinBreakpointSeconds,
+              "an all-zero ADSR still runs " + fmt(adsr.getTotalSeconds() * 1000.0, 1)
+                  + " ms, under the " + fmt(px3::BreakpointEnvelope::kMinBreakpointSeconds * 1000.0, 0)
+                  + " ms Breakpoint floor");
+
+        // And a collapsed envelope in SAVED state is put right on the way in.
+        // The restore path sets the points and only then the mode, so the floor
+        // inside sortAndClamp has not seen a Breakpoint envelope at that point:
+        // without the repair on load, such a state would come back collapsed.
+        PX3SynthAudioProcessor saver;
+        saver.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        saver.prepareToPlay(kSampleRate, kBlockSize);
+        saver.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+
+        {
+            // Built points-first so it escapes the floor, which is exactly the
+            // shape older state can carry.
+            auto collapsed = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+            px3::BreakpointEnvelope::Point points[3] = {
+                { 0.0, 0.0, 0.0 },
+                { 0.0, 0.8, 0.0 },
+                { 0.0, 0.0, 0.0 }
+            };
+            collapsed.setPoints(points, 3, 1);
+            collapsed.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+            saver.setShapedEnvelope(0, collapsed);
+
+            check("EnvFloor_SuchAStateIsRepresentable",
+                  saver.getShapedEnvelope(0).getTotalSeconds() < 1.0e-9,
+                  "the stored shape runs "
+                      + fmt(saver.getShapedEnvelope(0).getTotalSeconds() * 1000.0, 1) + " ms");
+        }
+
+        juce::MemoryBlock saved;
+        saver.getStateInformation(saved);
+
+        PX3SynthAudioProcessor loader;
+        loader.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        loader.prepareToPlay(kSampleRate, kBlockSize);
+        loader.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+
+        const auto reloaded = loader.getShapedEnvelope(0);
+        check("EnvFloor_ACollapsedEnvelopeIsRepairedOnLoad",
+              reloaded.getTotalSeconds()
+                  >= px3::BreakpointEnvelope::kMinBreakpointSeconds - 1.0e-9,
+              "it reloads running " + fmt(reloaded.getTotalSeconds() * 1000.0, 1) + " ms");
+    }
+
     // ---- what the smallest envelope does to the DSP -------------------------
     //
     // The three-point floor lets the user leave the middle point ON the line,
@@ -1779,16 +1856,20 @@ void testBreakpointEnvelope()
     {
         constexpr double kRate = 48000.0;
 
+        // Mode FIRST, then the points - which is the order the app works in,
+        // and the order that matters now the duration floor lives in
+        // sortAndClamp: points set while the shape still calls itself an ADSR
+        // are not floored, and that is a state editing cannot produce.
         const auto build = [](double t1, double v1, double t2)
         {
             auto env = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+            env.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
             px3::BreakpointEnvelope::Point points[3] = {
                 { 0.00, 0.0, 0.0 },
                 { t1, v1, 0.0 },
                 { t2, 0.0, 0.0 }
             };
             env.setPoints(points, 3, 1);
-            env.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
             return env;
         };
 
@@ -1825,14 +1906,22 @@ void testBreakpointEnvelope()
               "it peaks at " + fmt(flat.peak, 6) + " and the voice "
                   + (flat.stillActive ? "is still running" : "retired"));
 
-        // 2. Collapsed in time: every point at zero, so the envelope has no
-        //    duration at all. Reachable by dragging the end point to the left
-        //    edge, and reachable before this change too.
-        const auto collapsed = play(build(0.0, 0.9, 0.0), 0.10);
-        check("EnvFloor_AZeroLengthEnvelopeIsSilentNotADiscontinuity",
-              collapsed.finite && collapsed.peak < 1.0e-4f && ! collapsed.stillActive,
-              "it peaks at " + fmt(collapsed.peak, 6) + " with a worst step of "
-                  + fmt(collapsed.worstStep, 6) + "; the voice "
+        // 2. Asked to collapse in time - every point dragged to zero - the
+        //    envelope keeps its 10 ms floor instead. A one-shot with no
+        //    duration is a note that never sounds, and on screen it looks like
+        //    a very short envelope rather than a broken one.
+        const auto shortest = build(0.0, 0.9, 0.0);
+        check("EnvFloor_ABreakpointEnvelopeCannotCollapseToNothing",
+              std::abs(shortest.getTotalSeconds()
+                       - px3::BreakpointEnvelope::kMinBreakpointSeconds) < 1.0e-9,
+              "collapsed to zero it still runs " + fmt(shortest.getTotalSeconds() * 1000.0, 1)
+                  + " ms");
+
+        const auto collapsed = play(shortest, 0.10);
+        check("EnvFloor_TheShortestEnvelopeStillSounds",
+              collapsed.finite && collapsed.peak > 0.1f && ! collapsed.stillActive,
+              "it peaks at " + fmt(collapsed.peak, 4) + " with a worst step of "
+                  + fmt(collapsed.worstStep, 5) + "; the voice "
                   + (collapsed.stillActive ? "is still running" : "retired"));
 
         // 3. A zero-length FIRST segment - an instant jump to full at note-on,

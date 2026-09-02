@@ -377,9 +377,26 @@ measured rather than assumed harmless:
 
 So none of it clicks and none of it is a special case in the DSP: a flat
 envelope is silence, and an instant jump is rate-limited by the smoothing that
-was already there. **A zero-duration envelope is a silent note**, which is a
-usability trap rather than a defect — and it predates this rule, since the end
-point could always be dragged to the left edge. Nothing here introduces it.
+was already there.
+
+#### The 10 ms floor
+
+A zero-duration envelope was a silent note — a one-shot with no length plays
+nothing and retires — reachable by dragging the last point to the left edge, and
+indistinguishable on screen from a very short envelope. `kMinBreakpointSeconds`
+(10 ms) is the floor, applied in `sortAndClamp` so every edit goes through it.
+The shortest envelope now sounds: measured at a peak of 0.71 over its 10 ms.
+
+**Breakpoint only.** ADSR times come from parameters with ranges of their own, a
+zero-length stage there is deliberate and tested, and an ADSR holds at its
+sustain rather than retiring — so it has none of the trap the floor exists to
+close.
+
+The floor also has to reach **saved state**, because restore sets the points and
+only then the mode: at the moment `sortAndClamp` runs, the shape does not yet
+call itself a Breakpoint envelope. `normaliseForBreakpointEditing()` re-clamps on
+the way in, which is the same function that puts a movable point back — both are
+"make this shape fit to hand to the editor".
 
 The step measurement includes the **first** sample, compared against silence.
 Skipping it — the obvious way to write that loop — skips exactly the sample a

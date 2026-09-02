@@ -36,6 +36,14 @@ public:
     // either.
     static constexpr int kMinBreakpointPoints = 3;
 
+    // The shortest a Breakpoint envelope may be, in seconds.
+    //
+    // It is a one-shot: it plays its trajectory and the voice retires at the
+    // end, so an envelope collapsed to no duration is a note that never sounds.
+    // That is reachable by dragging the last point to the left edge, and on
+    // screen it looks like a very short envelope rather than a broken one.
+    static constexpr double kMinBreakpointSeconds = 0.010;
+
     // How far the curve amount bends a segment. exp(-3) to exp(3) is a range of
     // 20:1 either way, which reaches a convincing exponential without ever
     // approaching the step function a power curve degenerates into.
@@ -132,11 +140,18 @@ public:
     // its own CURVES kept. Turning a knob has to move the graph without
     // straightening what the user drew. Returns the shape untouched if it is
     // no longer a skeleton, because then there is no ADSR to apply.
-    // If this is a Breakpoint envelope down to its two anchored ends, put a
-    // point back in the middle of the line so there is something to drag. The
-    // new point sits ON the line - same time midpoint, same interpolated value -
-    // so the shape and everything the DSP does with it are unchanged.
-    void ensureBreakpointHasAMovablePoint();
+    // Make a Breakpoint envelope fit to hand to the editor. Two jobs, both of
+    // which the mode needs and neither of which the shape can be trusted to
+    // have:
+    //
+    //  - down to its two anchored ends, put a point back in the middle of the
+    //    line so there is something to drag. It sits ON the line - same time
+    //    midpoint, same interpolated value - so the shape and everything the
+    //    DSP does with it are unchanged.
+    //  - enforce kMinBreakpointSeconds, because state can carry a collapsed
+    //    envelope: the restore path sets the points and only then the mode, so
+    //    the floor inside sortAndClamp has not seen a Breakpoint envelope yet.
+    void normaliseForBreakpointEditing();
 
     BreakpointEnvelope withAdsrApplied(const EnvelopeSettings& settings) const;
 
