@@ -1478,6 +1478,63 @@ void testBreakpointEnvelope()
         }
     }
 
+    // ---- every graph key in the shipped config does something ---------------
+    //
+    // The project's rule is that a property in UIConfig.json corresponds to
+    // real behaviour. Four stroke keys under every envelope's visual.graph
+    // block did not: the card read them into locals and discarded all of them,
+    // and the editor that took over the drawing reads a different set. Editing
+    // them changed nothing.
+    //
+    // This walks the shipped file and asserts that each graph key it finds is
+    // one some component actually reads.
+    {
+        const auto configFile = juce::File::getCurrentWorkingDirectory()
+                                    .getChildFile("Source/UI/UIConfig.json");
+
+        juce::StringArray orphaned;
+        auto checked = 0;
+
+        if (configFile.existsAsFile())
+        {
+            const auto text = configFile.loadFileAsString();
+            const auto sources = juce::File::getCurrentWorkingDirectory()
+                                     .getChildFile("Source/UI/EnvelopeComponent.cpp")
+                                     .loadFileAsString()
+                                 + juce::File::getCurrentWorkingDirectory()
+                                       .getChildFile("Source/UI/BreakpointEnvelopeEditor.cpp")
+                                       .loadFileAsString();
+
+            // The keys the envelope graphs ship under visual.graph.
+            const juce::StringArray graphKeys { "cornerRadius", "fillColour", "fillAlpha",
+                                                "strokeThickness", "strokeAlphaEnabled",
+                                                "strokeAlphaDisabled", "strokeColourEnabled",
+                                                "strokeColourDisabled", "bottomGap" };
+
+            for (const auto& key : graphKeys)
+            {
+                const auto inConfig = text.contains("\"" + key + "\"");
+                if (! inConfig) { continue; }
+
+                ++checked;
+
+                // Read by name somewhere in the two files that draw an
+                // envelope graph.
+                if (! sources.contains("\"" + key + "\"")
+                    && ! sources.contains("." + key + "\""))
+                {
+                    orphaned.add(key);
+                }
+            }
+        }
+
+        check("Config_EveryEnvelopeGraphKeyIsRead",
+              checked > 0 && orphaned.isEmpty(),
+              orphaned.isEmpty()
+                  ? juce::String(checked) + " graph keys in the shipped config are all read"
+                  : "shipped but read by nobody: " + orphaned.joinIntoString(", "));
+    }
+
     // ---- SETTINGS: a view of its own ----------------------------------------
     {
         PX3SynthAudioProcessor processor;

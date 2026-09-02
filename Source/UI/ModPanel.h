@@ -38,7 +38,10 @@ public:
     void resized() override;
 
     void refreshFromParameters();
-    void refreshLfoFromParameters(bool enabled, float rateHz, int waveformIndex);
+    // No arguments: it reads the parameters itself. It used to take three that
+    // it ignored while reading the same values from the processor, so the
+    // caller computed and passed state that was thrown away.
+    void refreshLfoFromParameters();
     void advanceAnimation(float lfoDeltaSeconds);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     int getPreferredContentWidth() const;

@@ -215,39 +215,14 @@ void EnvelopeComponent::paint(juce::Graphics& g)
         card.drawInactive(g, title);
     }
 
-    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
-    juce::ignoreUnused(effectiveAccent);
-
-    const auto geom = computeGeometry();
-    const auto graphArea = juce::Rectangle<float>(geom.left - 6.0f,
-                                                  geom.top - 5.0f,
-                                                  (geom.right - geom.left) + 12.0f,
-                                                  (geom.bottom - geom.top) + 10.0f);
-    const auto graphCornerRadius = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.graph.cornerRadius", 7.0f) : 7.0f;
-    const auto graphFillColour = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.graph.fillColour", juce::Colour::fromRGB(14, 14, 18))
-                                                     : juce::Colour::fromRGB(14, 14, 18);
-    const auto graphFillAlpha = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".visual.graph.fillAlpha", 170) : 170;
-    const auto graphStrokeThickness = uiConfig != nullptr ? uiConfig->getFloat(configPrefix + ".visual.graph.strokeThickness", 1.0f) : 1.0f;
-    const auto graphStrokeAlphaEnabled = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".visual.graph.strokeAlphaEnabled", 82) : 82;
-    const auto graphStrokeAlphaDisabled = uiConfig != nullptr ? uiConfig->getInt(configPrefix + ".visual.graph.strokeAlphaDisabled", 62) : 62;
-    const auto graphStrokeColourEnabled = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.graph.strokeColourEnabled", effectiveAccent)
-                                                              : effectiveAccent;
-    const auto graphStrokeColourDisabled = uiConfig != nullptr ? uiConfig->getColour(configPrefix + ".visual.graph.strokeColourDisabled", juce::Colour::fromRGB(136, 136, 136))
-                                                               : juce::Colour::fromRGB(136, 136, 136);
-    const auto graphStrokeColour = currentEnabled ? graphStrokeColourEnabled : graphStrokeColourDisabled;
-    const auto graphStrokeAlpha = currentEnabled ? graphStrokeAlphaEnabled : graphStrokeAlphaDisabled;
-
-    // The graph's fill, frame and grid all belong to the breakpoint editor
-    // now. Drawing them here as well meant one rectangle computed in two
-    // places, which is how the curve ended up outside its own background.
-    juce::ignoreUnused(graphFillColour, graphFillAlpha, graphStrokeColour,
-                       graphStrokeAlpha, graphCornerRadius, graphStrokeThickness,
-                       graphArea);
-
-    // The curve, the breakpoints, the grid and the handles all belong to the
-    // breakpoint editor sitting on top of this. There used to be a second ADSR
-    // drawing here - a fixed A / D-S / R handle path - left behind an
-    // unconditional return, so it had not been drawn for some time.
+    // Everything inside the graph - fill, frame, grid, curve, breakpoints and
+    // handles - belongs to the breakpoint editor sitting on top of this, so the
+    // card paints its own face and stops.
+    //
+    // This used to read eight config keys for a graph it no longer draws and
+    // discard all eight through ignoreUnused. Four of them were shipped in
+    // UIConfig.json and changed nothing when edited; the editor reads the four
+    // that are real, and the other four are gone from the file.
 }
 
 void EnvelopeComponent::setCardIdentity(juce::String styleKey, juce::String title)

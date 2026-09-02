@@ -784,6 +784,14 @@ private:
                                            float* outEffectiveNormalized = nullptr,
                                            float* outUnclampedNormalized = nullptr) const;
     float currentLfoSignalForBlock(int numSamples);
+    // Advance every LFO by one block and publish what it reads.
+    //
+    // Called for its EFFECT: the phase moves and lfoCurrentValues is written,
+    // which is where the modulation accumulator reads from. It used to be a
+    // loop calling currentLfoSignalForBlock and discarding the result through
+    // ignoreUnused, which reads exactly like dead code and is the opposite -
+    // it is what makes the LFOs run.
+    void advanceLfosForBlock(int numSamples);
     float currentLfoSignalForBlock(int lfoIndex, int numSamples);
     void collectModulationEnvelopeValuesFromVoices();
 

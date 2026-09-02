@@ -471,10 +471,8 @@ void ModPanel::refreshFromParameters()
     }
 }
 
-void ModPanel::refreshLfoFromParameters(bool enabled, float rateHz, int waveformIndex)
+void ModPanel::refreshLfoFromParameters()
 {
-    juce::ignoreUnused(enabled, rateHz, waveformIndex);
-
     if (lfoComponent != nullptr)
     {
         lfoComponent->refreshFromParameters(processor.getLfoEnabledParam(0).get(),

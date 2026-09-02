@@ -571,10 +571,6 @@
           "fillColour": "#0E0E12",
           "fillAlpha": 170,
           "strokeThickness": 1,
-          "strokeColourEnabled": "#BA70FF",
-          "strokeAlphaEnabled": 82,
-          "strokeColourDisabled": "#888888",
-          "strokeAlphaDisabled": 62,
           "bottomGap": 12
         }
       },
@@ -616,10 +612,6 @@
           "fillColour": "#0E0E12",
           "fillAlpha": 170,
           "strokeThickness": 1,
-          "strokeColourEnabled": "#BA70FF",
-          "strokeAlphaEnabled": 82,
-          "strokeColourDisabled": "#888888",
-          "strokeAlphaDisabled": 62,
           "bottomGap": 12
         }
       },
@@ -661,10 +653,6 @@
           "fillColour": "#0E0E12",
           "fillAlpha": 170,
           "strokeThickness": 1,
-          "strokeColourEnabled": "#BA70FF",
-          "strokeAlphaEnabled": 82,
-          "strokeColourDisabled": "#888888",
-          "strokeAlphaDisabled": 62,
           "bottomGap": 12
         }
       },
@@ -705,11 +693,7 @@
           "cornerRadius": 7,
           "fillColour": "#0E0E12",
           "fillAlpha": 170,
-          "strokeThickness": 1,
-          "strokeColourEnabled": "#49DE79",
-          "strokeAlphaEnabled": 82,
-          "strokeColourDisabled": "#888888",
-          "strokeAlphaDisabled": 62
+          "strokeThickness": 1
         }
       }
     }
@@ -739,10 +723,6 @@
           "fillColour": "#0E0E12",
           "fillAlpha": 170,
           "strokeThickness": 1,
-          "strokeColourEnabled": "#49DE79",
-          "strokeAlphaEnabled": 82,
-          "strokeColourDisabled": "#888888",
-          "strokeAlphaDisabled": 62,
           "bottomGap": 12
         }
       },

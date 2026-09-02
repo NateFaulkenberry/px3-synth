@@ -3822,9 +3822,7 @@ void PX3SynthAudioProcessorEditor::refreshLfoUI()
 
     if (modPanel != nullptr)
     {
-        modPanel->refreshLfoFromParameters(audioProcessor.getLfoEnabledParam().get(),
-                                           audioProcessor.getLfoFrequencyParam().get(),
-                                           audioProcessor.getLfoWaveformParam().getIndex());
+        modPanel->refreshLfoFromParameters();
     }
 }
 

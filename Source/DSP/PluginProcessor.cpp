@@ -1279,6 +1279,17 @@ bool PX3SynthAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) 
            || layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
 }
 
+void PX3SynthAudioProcessor::advanceLfosForBlock(int numSamples)
+{
+    for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
+    {
+        // The RETURN is not what this is for. Advancing the generator and
+        // publishing lfoCurrentValues is, and that is what the modulation
+        // accumulator reads a moment later.
+        currentLfoSignalForBlock(lfoIndex, numSamples);
+    }
+}
+
 float PX3SynthAudioProcessor::currentLfoSignalForBlock(int numSamples)
 {
     return currentLfoSignalForBlock(0, numSamples);
@@ -1476,11 +1487,17 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     constexpr float vibratoRateHz = 5.0f;
     constexpr float vibratoMaxDepthSemitones = 1.0f;
 
-    for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
-    {
-        juce::ignoreUnused(currentLfoSignalForBlock(lfoIndex, buffer.getNumSamples()));
-    }
+    advanceLfosForBlock(buffer.getNumSamples());
 
+#if PX3_DEBUG_PANEL
+    // Read ONLY by the debug panel's LFO and envelope sections, and computed
+    // here on the audio thread every block. applyModulationToNormalizedValue
+    // walks the LFO, envelope and macro source lists on each of these four
+    // calls, and in a shipping build - where there is no debug panel to read
+    // the result - all of it was thrown away.
+    //
+    // Gated on the same flag that decides whether anything can read it, so the
+    // two cannot disagree about whether the work is worth doing.
     const auto lfoAssignedIndex = getLfoAssignmentIndex(0);
     if (lfoAssignedIndex > 0 && lfoAssignedIndex < static_cast<int>(lfoAssignableTargets.size()))
     {
@@ -1536,6 +1553,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         debugEnvelopeDestinationEffectiveNormalized[static_cast<std::size_t>(envIndex)].store(effectiveNorm,
                                                                                                std::memory_order_relaxed);
     }
+#endif
+
 
     const auto ampEnvelope = currentAmpEnvelopeSettings();
     const auto ampEnvelopeEnabled = ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true;
