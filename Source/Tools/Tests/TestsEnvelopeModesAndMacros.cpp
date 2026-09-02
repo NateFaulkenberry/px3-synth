@@ -3533,6 +3533,327 @@ void testMidiMapping()
               std::abs(cutoff.get() - before) > 1.0f,
               "the cutoff moved to " + fmt(cutoff.get(), 1) + " Hz on the following movement");
     }
+
+    // ========================================================================
+    // A CC drives the DSP from the block it arrives in
+    // ========================================================================
+    //
+    // The message-thread pump is what tells the HOST a parameter moved, and a
+    // DAW records automation from it, so it stays. What it must no longer be
+    // is the only thing that moves the DSP: at 30 Hz that put up to 33 ms
+    // between a controller and the sound, which is audible as a step on a
+    // sweep.
+    //
+    // Every test below renders WITHOUT calling applyPendingMidiMappings, so
+    // anything it observes came from the audio thread.
+
+    // One block carrying MIDI, and no pump.
+    const auto sendOnly = [](PX3SynthAudioProcessor& processor,
+                             juce::AudioBuffer<float>& buffer,
+                             const juce::MidiMessage& message)
+    {
+        juce::MidiBuffer midi;
+        midi.addEvent(message, 0);
+        buffer.clear();
+        processor.processBlock(buffer, midi);
+    };
+
+    // Arm, teach, and settle the mapping - the teaching move never drives, so
+    // this leaves the parameter where it was.
+    const auto learnCc = [&](PX3SynthAudioProcessor& processor,
+                             juce::AudioBuffer<float>& buffer,
+                             const juce::String& parameterId,
+                             int cc)
+    {
+        processor.setMidiLearnTargets({ parameterId });
+        sendAndApply(processor, buffer, ccMessage(cc, 127));
+    };
+
+    // ---- the parameter itself moves inside processBlock ---------------------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        learnCc(processor, buffer, cutoff.getParameterID(), 21);
+
+        const auto before = cutoff.get();
+        sendOnly(processor, buffer, ccMessage(21, 20));
+
+        check("MidiMap_ACcReachesItsParameterWithoutWaitingForThePump",
+              std::abs(cutoff.get() - before) > 1.0f,
+              "the cutoff moved from " + fmt(before, 1) + " Hz to " + fmt(cutoff.get(), 1)
+                  + " Hz inside processBlock, with no message-thread tick in between");
+    }
+
+    // ---- and the audio of that same block is rendered with it ---------------
+    //
+    // The parameter check above proves the write happened; it does not prove
+    // the block that carried the CC was rendered with the new value rather
+    // than the next one. Two synths in identical states, one block apart:
+    // only one gets the CC, and the difference has to be in the audio of THAT
+    // block.
+    //
+    // Master gain, because it is unconditionally in the path and needs no
+    // panel enabled. Its 15 ms smoother is why the block is long enough to
+    // hear a change across.
+    {
+        constexpr int kLongBlock = 1024;
+
+        const auto renderRms = [&](bool sendTheCc)
+        {
+            PX3SynthAudioProcessor processor;
+            processor.setPlayConfigDetails(0, 2, kRate, kLongBlock);
+            processor.prepareToPlay(kRate, kLongBlock);
+
+            juce::AudioBuffer<float> buffer(2, kLongBlock);
+            auto& gain = processor.getMasterGainParam();
+            gain.setValueNotifyingHost(1.0f);
+            learnCc(processor, buffer, gain.getParameterID(), 21);
+
+            // A note, held past its attack so the measured block is steady.
+            juce::MidiBuffer noteOn;
+            noteOn.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+            buffer.clear();
+            processor.processBlock(buffer, noteOn);
+
+            for (int i = 0; i < 12; ++i)
+            {
+                juce::MidiBuffer empty;
+                buffer.clear();
+                processor.processBlock(buffer, empty);
+            }
+
+            juce::MidiBuffer midi;
+            if (sendTheCc) { midi.addEvent(juce::MidiMessage::controllerEvent(1, 21, 0), 0); }
+            buffer.clear();
+            processor.processBlock(buffer, midi);
+
+            return buffer.getRMSLevel(0, 0, kLongBlock);
+        };
+
+        const auto quiet = renderRms(true);
+        const auto loud = renderRms(false);
+
+        check("MidiMap_TheDspRendersTheNewValueInTheBlockTheCcArrivesIn",
+              loud > 1.0e-4f && quiet < loud * 0.75f,
+              "the block carrying CC 21 -> 0 rendered at RMS " + fmt(quiet, 5)
+                  + " against " + fmt(loud, 5) + " for the identical block without it");
+    }
+
+    // ---- authoritative, not additive ---------------------------------------
+    //
+    // A CC OWNS its parameter's base value. Sending the same value three times
+    // has to land in the same place three times; a CC accumulated as a delta
+    // would walk the parameter up the range instead.
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        learnCc(processor, buffer, cutoff.getParameterID(), 21);
+
+        sendOnly(processor, buffer, ccMessage(21, 90));
+        const auto first = cutoff.get();
+        sendOnly(processor, buffer, ccMessage(21, 90));
+        sendOnly(processor, buffer, ccMessage(21, 90));
+        const auto third = cutoff.get();
+
+        // And it is the value the controller asked for, not one relative to
+        // wherever the knob happened to be.
+        const auto expected
+            = static_cast<juce::RangedAudioParameter&>(cutoff).convertTo0to1(cutoff.get());
+
+        check("MidiMap_ACcIsAuthoritativeNotAdditive",
+              std::abs(third - first) < 1.0e-3f
+                  && std::abs(expected - 90.0f / 127.0f) < 1.0e-3f,
+              "three identical CC 90 messages all landed on " + fmt(third, 1)
+                  + " Hz, at normalised " + fmt(expected, 4) + " for 90/127");
+    }
+
+    // ---- and modulation still sums on top of it -----------------------------
+    //
+    // Base, modulation and the CC override stay three separate things. The CC
+    // replaces the base; an LFO, envelope or macro still adds to whatever the
+    // controller last asked for.
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        const auto cutoffId = cutoff.getParameterID();
+        learnCc(processor, buffer, cutoffId, 21);
+
+        processor.toggleMacroDestination(0, cutoffId);
+        processor.getMacroParam(0).setValueNotifyingHost(1.0f);
+
+        sendOnly(processor, buffer, ccMessage(21, 40));
+
+        const auto base = static_cast<juce::RangedAudioParameter&>(cutoff).getValue();
+        const auto effective = processor.getModulatedNormalisedValue(cutoff);
+
+        check("MidiMap_ModulationStillSumsOnTopOfACcSetBase",
+              std::abs(base - 40.0f / 127.0f) < 1.0e-3f && effective > base + 0.05f,
+              "CC 40/127 set the base to " + fmt(base, 4)
+                  + " and the macro carried the effective value to " + fmt(effective, 4));
+    }
+
+    // ---- clearing ONE knob's mapping stops that knob and nothing else -------
+    //
+    // Shift-clicking a mapped knob clears it, and that path does not go
+    // through MIDI learn - it is the one place a route can be left behind
+    // while the mapping it came from is gone. The knob that kept its mapping
+    // has to keep moving, so this cannot pass by tearing the whole table down.
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        auto& resonance = processor.getFilterResonanceParam(0);
+
+        processor.setMidiLearnTargets({ cutoff.getParameterID(), resonance.getParameterID() });
+        sendAndApply(processor, buffer, ccMessage(21, 127));
+        sendOnly(processor, buffer, ccMessage(21, 30));
+
+        processor.clearMidiMappingForParameter(cutoff.getParameterID());
+
+        const auto cutoffAfterClear = cutoff.get();
+        const auto resonanceAfterClear = resonance.get();
+        sendOnly(processor, buffer, ccMessage(21, 110));
+
+        check("MidiMap_ClearingOneKnobsMappingStopsOnlyThatKnob",
+              std::abs(cutoff.get() - cutoffAfterClear) < 1.0e-6f
+                  && std::abs(resonance.get() - resonanceAfterClear) > 1.0e-3f,
+              "the cleared cutoff held at " + fmt(cutoff.get(), 1)
+                  + " Hz while the resonance that kept its mapping moved to "
+                  + fmt(resonance.get(), 3));
+    }
+
+    // ---- clearing a mapping takes the audio thread's route with it ----------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        learnCc(processor, buffer, cutoff.getParameterID(), 21);
+        sendOnly(processor, buffer, ccMessage(21, 30));
+
+        const auto driven = cutoff.get();
+        processor.clearAllMidiMappings();
+        sendOnly(processor, buffer, ccMessage(21, 110));
+
+        check("MidiMap_ClearingAMappingStopsTheAudioThreadDrive",
+              std::abs(cutoff.get() - driven) < 1.0e-6f,
+              "the cutoff held at " + fmt(cutoff.get(), 1)
+                  + " Hz when a CC arrived for a mapping that had been cleared");
+    }
+
+    // ---- a restored mapping drives without a pump tick ----------------------
+    //
+    // The route table is a view of the mapping list, so every path that
+    // changes the list has to rebuild it - including the one that does not go
+    // through MIDI learn at all.
+    {
+        PX3SynthAudioProcessor source;
+        prepared(source);
+        juce::AudioBuffer<float> sourceBuffer(2, kBlock);
+        learnCc(source, sourceBuffer, source.getFilterCutoffParam(0).getParameterID(), 21);
+
+        juce::MemoryBlock state;
+        source.getStateInformation(state);
+
+        PX3SynthAudioProcessor reopened;
+        prepared(reopened);
+        reopened.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        juce::AudioBuffer<float> buffer(2, kBlock);
+        auto& cutoff = reopened.getFilterCutoffParam(0);
+        const auto before = cutoff.get();
+        sendOnly(reopened, buffer, ccMessage(21, 25));
+
+        check("MidiMap_ARestoredMappingDrivesWithoutAPumpTick",
+              reopened.getMidiCcForParameter(cutoff.getParameterID()) == 21
+                  && std::abs(cutoff.get() - before) > 1.0f,
+              "a mapping restored from session state moved the cutoff from "
+                  + fmt(before, 1) + " Hz to " + fmt(cutoff.get(), 1)
+                  + " Hz with no message-thread tick");
+    }
+
+    // ---- and the host is still told, which is what records automation -------
+    //
+    // Logic's Touch, Latch and Write read a parameter change through the
+    // host's own notification, which only setValueNotifyingHost sends and
+    // which must never be called from the audio thread. So the pump keeps
+    // doing exactly what it did: the audio-thread write is in addition to it,
+    // not instead of it. Without this the CC would move the sound and record
+    // nothing.
+    {
+        struct Watcher final : public juce::AudioProcessorParameter::Listener
+        {
+            void parameterValueChanged(int, float newValue) override
+            {
+                ++values;
+                last = newValue;
+            }
+            void parameterGestureChanged(int, bool starting) override
+            {
+                starting ? ++begins : ++ends;
+            }
+
+            int values { 0 };
+            int begins { 0 };
+            int ends { 0 };
+            float last { -1.0f };
+        };
+
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        learnCc(processor, buffer, cutoff.getParameterID(), 21);
+
+        Watcher watcher;
+        cutoff.addListener(&watcher);
+        sendAndApply(processor, buffer, ccMessage(21, 64));
+        cutoff.removeListener(&watcher);
+
+        check("MidiMap_ThePumpStillNotifiesTheHostSoAutomationRecords",
+              watcher.values >= 1 && watcher.begins == 1 && watcher.ends == 1
+                  && std::abs(watcher.last - 64.0f / 127.0f) < 1.0e-3f,
+              juce::String(watcher.values) + " value notifications inside "
+                  + juce::String(watcher.begins) + " begin / " + juce::String(watcher.ends)
+                  + " end gesture, carrying " + fmt(watcher.last, 4));
+    }
+
+    // ---- one CC, several destinations, all from the audio thread ------------
+    {
+        PX3SynthAudioProcessor processor;
+        prepared(processor);
+        juce::AudioBuffer<float> buffer(2, kBlock);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        auto& resonance = processor.getFilterResonanceParam(0);
+
+        processor.setMidiLearnTargets({ cutoff.getParameterID(), resonance.getParameterID() });
+        sendAndApply(processor, buffer, ccMessage(21, 127));
+
+        const auto cutoffBefore = cutoff.get();
+        const auto resonanceBefore = resonance.get();
+        sendOnly(processor, buffer, ccMessage(21, 15));
+
+        check("MidiMap_OneCcDrivesEveryDestinationFromTheAudioThread",
+              std::abs(cutoff.get() - cutoffBefore) > 1.0f
+                  && std::abs(resonance.get() - resonanceBefore) > 1.0e-3f,
+              "cutoff " + fmt(cutoffBefore, 1) + " -> " + fmt(cutoff.get(), 1)
+                  + " Hz and resonance " + fmt(resonanceBefore, 3) + " -> "
+                  + fmt(resonance.get(), 3) + " in one block");
+    }
 }
 
 } // namespace px3tests

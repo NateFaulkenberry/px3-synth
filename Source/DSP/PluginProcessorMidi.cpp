@@ -267,6 +267,68 @@ void PX3SynthAudioProcessor::setModWheelNormalizedFromUI(float normalized)
 // MIDI parameter mapping. See docs/midi-mapping-design.md.
 //==============================================================================
 
+void PX3SynthAudioProcessor::rebuildCcRoutes()
+{
+    // Message thread. Resolves IDs to pointers ONCE, here, so the audio thread
+    // never touches a string. The count is published last with a release, so a
+    // slot the audio thread can see is a slot that has been filled in. This is
+    // the macro table's contract, for the same reason.
+    auto slot = 0;
+
+    for (const auto& mapping : midiMappings)
+    {
+        if (! juce::isPositiveAndBelow(mapping.ccNumber, kMidiCcCount)) { continue; }
+
+        for (const auto& parameterId : mapping.parameterIds)
+        {
+            if (slot >= kCcRouteSlots) { break; }
+
+            auto* parameter = findParameterById(parameterId);
+            if (parameter == nullptr) { continue; }
+
+            ccRoutes[static_cast<std::size_t>(slot)].parameter.store(parameter,
+                                                                     std::memory_order_relaxed);
+            ccRoutes[static_cast<std::size_t>(slot)].ccNumber.store(mapping.ccNumber,
+                                                                    std::memory_order_relaxed);
+            ++slot;
+        }
+
+        if (slot >= kCcRouteSlots) { break; }
+    }
+
+    ccRouteCount.store(slot, std::memory_order_release);
+}
+
+void PX3SynthAudioProcessor::applyCcToRoutedParameters(int ccNumber, int value) noexcept
+{
+    // Audio thread. setValue() on a JUCE parameter is an atomic store and a
+    // virtual that does nothing here - no listener list, no message to the
+    // host, no lock and no allocation. setValueNotifyingHost is the one that
+    // would call into the host, and it stays on the message thread.
+    //
+    // Writing the parameter itself, rather than intercepting each DSP read,
+    // is what makes this reach EVERY reader: the modulation seam, the direct
+    // ->get() calls in the effects, and anything added later. A parameter
+    // cannot be forgotten because there is no per-parameter list to forget it
+    // from.
+    const auto routes = juce::jlimit(0, kCcRouteSlots,
+                                     ccRouteCount.load(std::memory_order_acquire));
+    if (routes <= 0) { return; }
+
+    const auto normalised = juce::jlimit(0.0f, 1.0f, static_cast<float>(value) / 127.0f);
+
+    for (int i = 0; i < routes; ++i)
+    {
+        const auto& route = ccRoutes[static_cast<std::size_t>(i)];
+        if (route.ccNumber.load(std::memory_order_relaxed) != ccNumber) { continue; }
+
+        if (auto* parameter = route.parameter.load(std::memory_order_relaxed))
+        {
+            parameter->setValue(normalised);
+        }
+    }
+}
+
 void PX3SynthAudioProcessor::recordMidiController(int ccNumber, int channel, int value)
 {
     // Audio thread. Records and nothing else - two relaxed stores and two
@@ -279,8 +341,16 @@ void PX3SynthAudioProcessor::recordMidiController(int ccNumber, int channel, int
     }
 
     const auto index = static_cast<std::size_t>(ccNumber);
-    ccValues[index].store(juce::jlimit(0, 127, value), std::memory_order_relaxed);
+    const auto clamped = juce::jlimit(0, 127, value);
+    ccValues[index].store(clamped, std::memory_order_relaxed);
     ccSequence[index].fetch_add(1, std::memory_order_release);
+
+    // And drive the DSP now, from this block, rather than leaving it to the
+    // message-thread pump up to 33 ms later. The pump still runs: it is what
+    // notifies the host and the UI, and it is what a DAW records automation
+    // from. Both write the same normalised number, so the CC is applied once
+    // however many times it is written.
+    applyCcToRoutedParameters(ccNumber, clamped);
 
     lastTouchedCc.store(ccNumber, std::memory_order_relaxed);
     lastTouchedChannel.store(juce::jlimit(1, 16, channel), std::memory_order_relaxed);
@@ -329,11 +399,14 @@ void PX3SynthAudioProcessor::clearMidiMappingForParameter(const juce::String& pa
         // A mapping with nothing left to drive is not a mapping.
         entry = entry->parameterIds.isEmpty() ? midiMappings.erase(entry) : entry + 1;
     }
+
+    rebuildCcRoutes();
 }
 
 void PX3SynthAudioProcessor::clearAllMidiMappings()
 {
     midiMappings.clear();
+    rebuildCcRoutes();
 }
 
 std::vector<px3::MidiMapping> PX3SynthAudioProcessor::getMidiMappings() const
@@ -390,6 +463,7 @@ void PX3SynthAudioProcessor::assignMidiLearnTo(int ccNumber, int channel)
     }
 
     midiLearnTargets.clear();
+    rebuildCcRoutes();
 
     if (onMidiMappingAssigned != nullptr)
     {

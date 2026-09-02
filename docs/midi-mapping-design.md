@@ -87,16 +87,42 @@ knob uses shift for anything, so shift-click is available.
 
 ## Phase 2 findings — technical constraints and risks
 
-**Parameter writes belong on the message thread.** `setValueNotifyingHost`
+**Host notification belongs on the message thread.** `setValueNotifyingHost`
 calls listeners and, in a plugin, calls into the host. Doing that from the
 audio thread is the classic way to get a lock or an allocation in a real-time
-path. The design therefore never writes a parameter from the audio thread.
+path. It is never called from the audio thread, and it is what a DAW records
+Touch, Latch and Write automation from, so the message-thread write stays
+exactly where it was.
 
-**Consequence, stated plainly:** a MIDI CC reaches the parameter on the next
-message-thread tick rather than sample-accurately. At the 30 Hz tick this
-synth already runs, that is up to ~33 ms. For a control gesture on a knob this
-is not perceptible; for anything wanting sample accuracy it would be wrong,
-and this feature is explicitly not that. Recorded as a limitation.
+**Superseded:** the original design let that same write be the ONLY thing that
+moved the DSP, which put up to ~33 ms between a controller and the sound - a
+step on a sweep rather than a sweep. `setValueNotifyingHost` is two things
+bolted together: `setValue(v)`, an atomic store into the parameter, and
+`sendValueChangedMessageToListeners(v)`, the part that talks to the host. Only
+the second is unsafe on the audio thread.
+
+So the audio thread now calls `setValue` directly when the CC arrives, and the
+message-thread pump still runs unchanged. A CC is applied from the block it
+arrives in, and the host is still told on the next tick. Both write the same
+normalised number, so applying it twice is applying it once - and JUCE's
+`setValueNotifyingHost` has no early-out on an unchanged value, so the earlier
+store cannot swallow the host's notification.
+
+Writing the PARAMETER, rather than intercepting each DSP read, is what makes
+this reach every reader: the modulation seam, the direct `->get()` calls in
+the effects, and anything added later. There is no per-parameter list to
+forget a parameter from.
+
+**A CC is authoritative, not additive.** It sets the parameter's base value.
+It is not a modulation source and contributes no delta, so
+`applyModulationToNormalizedValue` is untouched and an LFO, envelope or macro
+still sums on top of whatever the controller last asked for. Base, modulation
+and effective stay three distinct things.
+
+**What is still not sample-accurate.** `processBlock` samples its parameters
+once, before rendering, so the floor is one block rather than one sample. The
+CC ingestion runs before that sampling, so a CC arriving anywhere in a block
+takes effect from that block's first sample - slightly early, never late.
 
 **MIDI device identity is not available.** In a plugin, every input device is
 merged into one `MidiBuffer` before `processBlock` sees it; JUCE exposes no
@@ -174,15 +200,20 @@ glance without competing with the value the knob is showing.
         ▼
    ccValues[128] / ccSequence[128] / lastTouched      atomics, no locks
         │
-        ▼
-   applyPendingMidiMappings()         [message thread, 30 Hz timer]
-        │
-        ├── learn armed?  →  assign every selected parameter to the touched CC
-        │
-        └── for each CC that moved  →  for each mapped parameter
-                                       setValueNotifyingHost(cc / 127)
-        │
-        ▼
+        ├───────────────────────────────┐
+        │                               │
+        ▼                               ▼
+   applyCcToRoutedParameters       applyPendingMidiMappings()
+        [audio thread, now]            [message thread, 30 Hz timer]
+        │                               │
+        │  ccRoutes[128]: the mapping   ├── learn armed?  →  assign every
+        │  list resolved to pointers    │   selected parameter to the touched CC
+        │  on the message thread        │
+        │                               └── for each CC that moved  →
+        └── setValue(cc / 127)              setValueNotifyingHost(cc / 127)
+            atomic store, no listeners      tells the host, moves the knob
+        │                               │
+        ▼                               ▼
    Parameter  →  DSP, DAW automation, and the knob's own attachment
         │
         ▼

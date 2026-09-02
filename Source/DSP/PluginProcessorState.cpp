@@ -666,6 +666,11 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
             {
                 ccSeenSequence[i] = ccSequence[i].load(std::memory_order_acquire);
             }
+
+            // The audio thread's table follows the list it is a view of. A
+            // restored mapping drives from the block its CC next arrives in,
+            // exactly as a freshly learned one does.
+            rebuildCcRoutes();
         }
     }
 

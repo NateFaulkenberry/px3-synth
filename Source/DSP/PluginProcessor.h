@@ -1150,6 +1150,32 @@ private:
     std::vector<px3::MidiMapping> midiMappings;
     juce::StringArray midiLearnTargets;
 
+    //---- CC routing ------------------------------------------------------
+    // The audio thread's view of the mapping list, resolved to pointers on
+    // the message thread exactly as the macro table is. A mapped CC drives
+    // its parameter from the block it arrives in rather than waiting for the
+    // 30 Hz pump below, which cost up to 33 ms.
+    //
+    // A CC is AUTHORITATIVE: it sets the parameter's base value. It is not a
+    // modulation source and adds nothing, so modulation still sums on top of
+    // whatever the controller last asked for.
+    struct CcRoute
+    {
+        std::atomic<juce::RangedAudioParameter*> parameter { nullptr };
+        std::atomic<int> ccNumber { -1 };
+    };
+
+    static constexpr int kCcRouteSlots = 128;
+    std::array<CcRoute, kCcRouteSlots> ccRoutes;
+    std::atomic<int> ccRouteCount { 0 };
+
+    // Message thread only, called whenever a mapping changes or is restored.
+    void rebuildCcRoutes();
+
+    // Audio thread. Writes the parameter's value directly - a plain atomic
+    // store with no listener call - for every mapping this CC drives.
+    void applyCcToRoutedParameters(int ccNumber, int value) noexcept;
+
     void recordMidiController(int ccNumber, int channel, int value);
     void assignMidiLearnTo(int ccNumber, int channel);
     void writeParameterFromCc(const juce::String& parameterId, int ccValue);

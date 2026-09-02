@@ -913,9 +913,10 @@ factory sounds never costs you your controller setup.
   never learns by itself.
 - Note input, the mod wheel and pitch bend are unaffected. Mapping CC 1 gives you
   both the mod wheel's usual behaviour and the mapped parameter.
-- A control change reaches its parameter on the next interface update. For a knob
-  gesture this is imperceptible; it is not a sample-accurate modulation path, by
-  design.
+- A control change reaches the sound in the same buffer it arrives in, so a
+  sweep is a sweep rather than a staircase. The knob and your DAW's automation
+  lane catch up on the next interface update, which is where a recorded
+  automation move comes from.
 - The instrument cannot tell your controllers apart — a plugin receives all MIDI
   devices merged into one stream — so a mapping is to a CC number, not to a
   particular device.
