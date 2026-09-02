@@ -375,30 +375,42 @@ had set up. The seed applies the parameters first, so it starts from the ADSR
 the user can see — which is what "initialise from the current ADSR shape" has to
 mean in an architecture where the shape is not where those numbers live.
 
-### The card's own legacy ADSR editor
+### The card's second ADSR editor, removed
 
-`EnvelopeComponent` still carries an older ADSR editor of its own, predating
-`BreakpointEnvelopeEditor`: it paints an A / D-S / R handle path in `paint()`
-and its `mouseDown`/`mouseDrag` write those handles straight into the four
-parameters. None of it was mode-gated.
+`EnvelopeComponent` carried an older ADSR editor of its own, predating
+`BreakpointEnvelopeEditor`: an A / D-S / R handle path it painted in `paint()`,
+with `mouseDown`/`mouseDrag`/`mouseDoubleClick` writing those handles straight
+into the four parameters. None of it was mode-gated, and it has been deleted —
+534 lines, along with `DragHandle`, `pickHandle`, the two hit-test helpers, the
+handle drawing and readout, the log-scaled time↔pixel mapping and the drag
+application. `Geometry` is now just the graph's rectangle, which is all
+`graphBounds()` ever wanted from it.
 
-It is **inert**, and not for the reason it appears to be. The obvious story is
-that the child editor covers the graph and takes the clicks — but the child does
-not cover the whole of the parent's graph rectangle, so that would leave a
-reachable band. The real reason is that the handle positions `computeGeometry()`
-produces are **NaN**, so every distance test in `pickHandle` is false and
-nothing is ever picked, in either mode. The rectangle fields of the same
-geometry are fine, which is why `graphBounds()` still works.
+It was dead, in two independent ways, and the reasons are worth recording
+because both were invisible from the call sites:
 
-That is an accident rather than a design, and one arithmetic fix away from a
-second ADSR editor waking up underneath the real one. Both the picker and the
-handle drawing are now gated on ADSR mode, so waking it could at worst affect
-the mode it belongs to, and a regression test drags thirty times around the
-graph's edge in Breakpoint mode and asserts no ADSR parameter moves. The test
-was verified against a `pickHandle` forced to claim every point.
+1. **The drawing half sat after an unconditional `return;`** in `paint()`, so it
+   had not been executed for some time.
+2. **The interaction half could never pick a handle**, in either mode:
+   `timeToVisualNorm` computes `log(seconds / minValue)`, and the attack, decay
+   and release parameters had their floors removed so they can reach zero. With
+   `minValue == 0` that is `log(inf) / log(inf)` — NaN. Every distance test in
+   `pickHandle` compared against NaN and was false.
 
-The right end state is deleting this path outright — it is superseded in both
-modes — but that is a removal of its own rather than part of this fix.
+So the code was inert by accident rather than by design, and a single
+arithmetic change would have woken a second ADSR editor underneath the real one,
+in both modes. Deleting it is what actually removes that.
+
+What remains is a regression test that drags thirty times around the graph's
+edge and asserts no ADSR parameter moves — verified against a `mouseDown` made
+to write one — so the card cannot quietly acquire parameter-writing powers
+again.
+
+Removing it also corrected `updateCursorFor`, which asked for
+`rowCount() - 1` — the last row, which became the KNOB row when the knobs were
+added. The graph therefore showed a pointing-hand cursor claiming a drag that
+did not exist, while the knob row, which does toggle bypass on a background
+click, showed a plain arrow. It uses `graphRowIndex()` now, matching `mouseUp`.
 
 ### Mode switching
 

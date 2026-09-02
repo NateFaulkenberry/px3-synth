@@ -1303,15 +1303,14 @@ void testBreakpointEnvelope()
         }
     }
 
-    // ---- the card's own legacy ADSR handles must not be reachable -----------
+    // ---- the card itself edits no ADSR parameter ----------------------------
     //
-    // EnvelopeComponent carries a second, older ADSR editor of its own: it
-    // paints an A / D-S / R handle path and drags those handles straight into
-    // the four parameters. BreakpointEnvelopeEditor superseded it for BOTH
-    // modes, and the child covers most of the graph - but only most. The band
-    // between the child's bounds and the parent's own graph rectangle still
-    // reaches the old code, and in Breakpoint mode that is ADSR editing on an
-    // envelope that has no ADSR.
+    // EnvelopeComponent used to carry a second, older ADSR editor: it painted
+    // an A / D-S / R handle path and dragged those handles straight into the
+    // four parameters. That is deleted; this is the guard that keeps card-level
+    // dragging from acquiring parameter-writing powers again. The band just
+    // outside the child editor is where such a thing would live, because the
+    // child does not cover the whole of the card's graph rectangle.
     {
         PX3SynthAudioProcessor processor;
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
@@ -1380,11 +1379,11 @@ void testBreakpointEnvelope()
                       && std::abs(after.sustainLevel - before.sustainLevel) < 1.0e-5f
                       && std::abs(after.releaseSeconds - before.releaseSeconds) < 1.0e-5f;
 
-                check("EnvIso_TheCardsLegacyAdsrHandlesAreNotReachableInBreakpointMode",
+                check("EnvIso_DraggingTheCardItselfMovesNoAdsrParameter",
                       unchanged,
                       unchanged
                           ? "30 drags around the graph's edge moved no ADSR parameter"
-                          : "a drag outside the editor moved the ADSR to A "
+                          : "a drag on the card moved the ADSR to A "
                                 + fmt(after.attackSeconds, 3) + " D " + fmt(after.decaySeconds, 3)
                                 + " S " + fmt(after.sustainLevel, 2) + " R "
                                 + fmt(after.releaseSeconds, 3));
