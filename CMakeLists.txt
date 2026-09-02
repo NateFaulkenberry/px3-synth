@@ -277,7 +277,10 @@ endif()
 if (PX3_BUILD_DIAGNOSTIC)
     juce_add_console_app(PX3Tests PRODUCT_NAME "PX3Tests")
     juce_generate_juce_header(PX3Tests)
-    target_sources(PX3Tests PRIVATE ${PX3_SHARED_SOURCES} Source/Tools/ComponentTests.cpp)
+    # One module per area rather than one 32,000-line translation unit. They
+    # share Source/Tools/Tests/TestSupport.h for the counters and fixtures.
+    file(GLOB PX3_TEST_SOURCES CONFIGURE_DEPENDS Source/Tools/Tests/*.cpp)
+    target_sources(PX3Tests PRIVATE ${PX3_SHARED_SOURCES} ${PX3_TEST_SOURCES})
     target_include_directories(PX3Tests PRIVATE ${PX3_INCLUDE_DIRS})
     target_compile_definitions(PX3Tests
         PRIVATE
