@@ -125,6 +125,9 @@ public:
     // For the tests: fire a burst directly, without needing a real key press
     // routed through the mouse or MIDI.
     void debugSpawnSparks(int midiNote) { spawnLightningBurst(midiNote, false, 1.0f); }
+
+    // For the tests: one animation frame, without waiting on the timer.
+    void debugAdvanceAnimationFrame() { timerCallback(); }
     // The area the live sparks actually occupy, in this component's
     // coordinates. Empty when there are none.
     juce::Rectangle<float> sparkBounds() const;

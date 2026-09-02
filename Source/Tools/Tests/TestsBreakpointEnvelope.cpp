@@ -811,6 +811,135 @@ void testBreakpointEnvelope()
         scratch.deleteFile();
     }
 
+    // ---- a held key still lights up with animations off ---------------------
+    //
+    // Two halves to this, and they must not be confused: the WIGGLE is an
+    // animation, the colour is feedback. Turning animations off should stop the
+    // key moving without taking away the thing that tells you which note is
+    // sounding.
+    {
+        const auto renderHeldKey = [](bool animations)
+        {
+            PianoKeyboard keyboard;
+            keyboard.setAnimationsEnabled(animations);
+            keyboard.setSize(900, 120);
+
+            std::array<bool, PianoKeyboard::totalKeys> held {};
+            std::array<float, PianoKeyboard::totalKeys> velocities {};
+            held[static_cast<std::size_t>(60 - PianoKeyboard::firstMidiNote)] = true;
+            velocities[static_cast<std::size_t>(60 - PianoKeyboard::firstMidiNote)] = 1.0f;
+            keyboard.setActiveNotes(held, velocities);
+
+            // Two frames apart: with the wiggle running the key has moved
+            // between them, so the images differ. Static, they are identical.
+            const auto first = keyboard.createComponentSnapshot(keyboard.getLocalBounds());
+            for (int i = 0; i < 12; ++i) { keyboard.debugAdvanceAnimationFrame(); }
+            const auto second = keyboard.createComponentSnapshot(keyboard.getLocalBounds());
+
+            auto movedPixels = 0;
+            for (int y = 0; y < first.getHeight(); y += 2)
+            {
+                for (int x = 0; x < first.getWidth(); x += 2)
+                {
+                    if (first.getPixelAt(x, y) != second.getPixelAt(x, y)) { ++movedPixels; }
+                }
+            }
+            return std::pair<juce::Image, int> { first, movedPixels };
+        };
+
+        const auto animated = renderHeldKey(true);
+        const auto still = renderHeldKey(false);
+
+        check("Keyboard_TheHeldKeyStopsWigglingWithAnimationsOff",
+              animated.second > 0 && still.second == 0,
+              juce::String(animated.second) + " pixels move between frames with animations on, "
+                  + juce::String(still.second) + " with them off");
+
+        // And it is still lit: the held key differs from the same key unheld,
+        // by the same amount either way. Without this the test above would
+        // pass on a keyboard that had stopped drawing the key at all.
+        const auto renderIdleKeyboard = [](bool animations)
+        {
+            PianoKeyboard keyboard;
+            keyboard.setAnimationsEnabled(animations);
+            keyboard.setSize(900, 120);
+            return keyboard.createComponentSnapshot(keyboard.getLocalBounds());
+        };
+
+        const auto litPixels = [](const juce::Image& held, const juce::Image& idle)
+        {
+            auto differing = 0;
+            for (int y = 0; y < held.getHeight(); y += 2)
+            {
+                for (int x = 0; x < held.getWidth(); x += 2)
+                {
+                    if (held.getPixelAt(x, y) != idle.getPixelAt(x, y)) { ++differing; }
+                }
+            }
+            return differing;
+        };
+
+        const auto litWithAnimations = litPixels(animated.first, renderIdleKeyboard(true));
+        const auto litWithout = litPixels(still.first, renderIdleKeyboard(false));
+
+        // And it comes to rest in the right PLACE.
+        //
+        // Freezing the wiggle's clock is not the same as not applying it: with
+        // the clock stopped but the offset still applied, the key sits
+        // permanently displaced by whatever phase it happened to stop at. The
+        // check above cannot see that - both frames are identical either way -
+        // so this compares a keyboard that animated for a while before being
+        // turned off against one that never animated at all. They must be the
+        // same picture.
+        {
+            const auto restingImage = [](int framesBeforeTurningOff)
+            {
+                PianoKeyboard keyboard;
+                keyboard.setSize(900, 120);
+
+                std::array<bool, PianoKeyboard::totalKeys> held {};
+                std::array<float, PianoKeyboard::totalKeys> velocities {};
+                held[static_cast<std::size_t>(60 - PianoKeyboard::firstMidiNote)] = true;
+                velocities[static_cast<std::size_t>(60 - PianoKeyboard::firstMidiNote)] = 1.0f;
+                keyboard.setActiveNotes(held, velocities);
+
+                for (int i = 0; i < framesBeforeTurningOff; ++i)
+                {
+                    keyboard.debugAdvanceAnimationFrame();
+                }
+
+                keyboard.setAnimationsEnabled(false);
+                return keyboard.createComponentSnapshot(keyboard.getLocalBounds());
+            };
+
+            const auto neverAnimated = restingImage(0);
+            const auto animatedFirst = restingImage(37);
+
+            auto differing = 0;
+            for (int y = 0; y < neverAnimated.getHeight(); y += 2)
+            {
+                for (int x = 0; x < neverAnimated.getWidth(); x += 2)
+                {
+                    if (neverAnimated.getPixelAt(x, y) != animatedFirst.getPixelAt(x, y))
+                    {
+                        ++differing;
+                    }
+                }
+            }
+
+            check("Keyboard_TheHeldKeyRestsInThePlaceItBelongs",
+                  differing == 0,
+                  differing == 0
+                      ? "the key rests in the same place however long it animated first"
+                      : juce::String(differing) + " pixels differ, so it froze mid-wiggle");
+        }
+
+        check("Keyboard_TheHeldKeyStillLightsUpWithAnimationsOff",
+              litWithout > 0 && std::abs(litWithout - litWithAnimations) < litWithAnimations / 2 + 8,
+              juce::String(litWithout) + " pixels mark the held key with animations off, against "
+                  + juce::String(litWithAnimations) + " with them on");
+    }
+
     // ---- the animation preference reaches the things that animate -----------
     //
     // Checked THROUGH THE EDITOR, which is the part that was broken while the

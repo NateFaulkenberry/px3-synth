@@ -74,8 +74,12 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
     {
         const auto noteIndex = key.midiNote - firstMidiNote;
         const auto isActive = activeNotes[static_cast<std::size_t>(noteIndex)];
-        const auto shakeX = isActive ? std::sin(vibrationPhase * 10.5f + static_cast<float>(key.midiNote) * 0.73f) * 1.3f : 0.0f;
-        const auto shakeY = isActive ? std::cos(vibrationPhase * 8.1f + static_cast<float>(key.midiNote) * 0.51f) * 0.45f : 0.0f;
+        // The held key LIGHTS UP either way; only the wiggle is an animation.
+        // Turning animations off should not cost you the feedback that tells
+        // you which note is sounding.
+        const auto shaking = isActive && animationsEnabled;
+        const auto shakeX = shaking ? std::sin(vibrationPhase * 10.5f + static_cast<float>(key.midiNote) * 0.73f) * 1.3f : 0.0f;
+        const auto shakeY = shaking ? std::cos(vibrationPhase * 8.1f + static_cast<float>(key.midiNote) * 0.51f) * 0.45f : 0.0f;
         const auto drawBounds = key.bounds.translated(shakeX, shakeY);
 
         g.setColour(isActive ? style.whiteActiveFill : style.whiteFill);
@@ -102,8 +106,9 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
     {
         const auto noteIndex = key.midiNote - firstMidiNote;
         const auto isActive = activeNotes[static_cast<std::size_t>(noteIndex)];
-        const auto shakeX = isActive ? std::sin(vibrationPhase * 11.7f + static_cast<float>(key.midiNote) * 0.57f) * 0.9f : 0.0f;
-        const auto shakeY = isActive ? std::cos(vibrationPhase * 9.6f + static_cast<float>(key.midiNote) * 0.63f) * 0.35f : 0.0f;
+        const auto shaking = isActive && animationsEnabled;
+        const auto shakeX = shaking ? std::sin(vibrationPhase * 11.7f + static_cast<float>(key.midiNote) * 0.57f) * 0.9f : 0.0f;
+        const auto shakeY = shaking ? std::cos(vibrationPhase * 9.6f + static_cast<float>(key.midiNote) * 0.63f) * 0.35f : 0.0f;
         const auto drawBounds = key.bounds.translated(shakeX, shakeY);
 
         g.setColour(isActive ? style.blackActiveFill : style.blackFill);
@@ -570,7 +575,13 @@ void PianoKeyboard::timerCallback()
 
     constexpr float dt = 1.0f / 60.0f;
 
-    vibrationPhase += dt;
+    // The wiggle's clock. Left alone when animations are off, so it does not
+    // wander while nothing reads it and the keys do not jump when it comes
+    // back on.
+    if (animationsEnabled)
+    {
+        vibrationPhase += dt;
+    }
 
     bool anyActive = false;
 
@@ -617,7 +628,11 @@ void PianoKeyboard::timerCallback()
         sparks.erase(sparks.begin(), sparks.begin() + static_cast<std::ptrdiff_t>(sparks.size() - 450));
     }
 
-    if (anyActive)
+    // Only while something is actually moving. With animations off the held
+    // key is a static colour, and setActiveNotes already repaints when a key
+    // goes down or comes up - so repainting the whole keyboard sixty times a
+    // second would be redrawing an unchanged picture.
+    if (anyActive && animationsEnabled)
     {
         repaint();
     }

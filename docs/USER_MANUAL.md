@@ -743,8 +743,11 @@ there is no Macro strip beside it, because nothing here is a Macro destination.
 
 ## Enable animations
 
-On by default. Turns off the keyboard's sparks, the sparkles around the pitch
-and mod wheels, and the logo's movement while a note is held.
+On by default. Turns off the keyboard's sparks, the wiggle of a held key, the
+sparkles around the pitch and mod wheels, and the logo's movement.
+
+A held key still **lights up** with animations off — that is feedback telling
+you which note is sounding, not decoration. Only the movement stops.
 
 This is a preference for **your install**, not part of a sound. Three things
 follow from that:
