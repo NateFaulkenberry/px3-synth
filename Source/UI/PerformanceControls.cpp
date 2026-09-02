@@ -519,8 +519,23 @@ void PerformanceControls::timerCallback()
 // Emitted in every direction, not along one. The angle is drawn from the whole
 // circle, so a burst is a starburst around the handle rather than a stream
 // leaving it - which is what the two shape animations did before.
+void PerformanceControls::setAnimationsEnabled(bool shouldBeEnabled)
+{
+    if (animationsEnabled == shouldBeEnabled) { return; }
+
+    animationsEnabled = shouldBeEnabled;
+
+    if (! animationsEnabled)
+    {
+        sparkles.clear();
+        if (onSparklesChanged != nullptr) { onSparklesChanged(); }
+    }
+}
+
 void PerformanceControls::emitSparkles(juce::Point<float> centre, float radius, float intensity)
 {
+    if (! animationsEnabled) { return; }
+
     intensity = juce::jlimit(0.0f, 1.0f, intensity);
     if (intensity <= 0.001f)
     {

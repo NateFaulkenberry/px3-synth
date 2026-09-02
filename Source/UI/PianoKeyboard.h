@@ -115,12 +115,27 @@ public:
     // this component's own paint any more.
     void paintSparksInto(juce::Graphics& g, juce::Point<int> offset) const;
     bool hasSparks() const noexcept { return ! sparks.empty(); }
+
+    // Off means no new sparks and none left running. Gated at the SOURCE
+    // rather than at the draw: a keyboard that keeps spawning particles nobody
+    // paints is still doing the work every frame, and turning animations off
+    // is meant to stop the work, not hide it.
+    void setAnimationsEnabled(bool shouldBeEnabled);
+
+    // For the tests: fire a burst directly, without needing a real key press
+    // routed through the mouse or MIDI.
+    void debugSpawnSparks(int midiNote) { spawnLightningBurst(midiNote, false, 1.0f); }
     // The area the live sparks actually occupy, in this component's
     // coordinates. Empty when there are none.
     juce::Rectangle<float> sparkBounds() const;
     // Raised on every animation frame that changed something, so the overlay
     // that draws the sparks knows to repaint.
     std::function<void()> onSparksChanged;
+
+private:
+    bool animationsEnabled { true };
+
+public:
     // The headroom is not part of the instrument, so clicks pass through it to
     // whatever is behind.
     void mouseDown(const juce::MouseEvent& event) override;

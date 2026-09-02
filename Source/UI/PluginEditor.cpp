@@ -46,6 +46,14 @@ constexpr int kSectionAmp = 2;
 constexpr int kSectionFilter = 3;
 constexpr int kSectionFx = 4;
 constexpr int kSectionMix = 5;
+// A view like the six panels, but reached from its own button rather than the
+// section row - and laid out full width, because the macro strip is a
+// performance surface and SETTINGS has nothing to assign to a macro.
+constexpr int kSectionSettings = 6;
+static_assert(kSectionSettings == PX3SynthAudioProcessor::kTopMenuViewCount - 1,
+              "The processor's view count and the editor's section indices must agree.");
+static_assert(kSectionSettings == TopMenuBar::kSettingsSection,
+              "The bar and the editor must agree on which index SETTINGS is.");
 
 juce::String moduleIdFromSectionId(int sectionId)
 {
@@ -1342,6 +1350,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
                                           &knobLookAndFeel,
                                           juce::Colour::fromRGB(212, 212, 212));
 
+    settingsPanel = std::make_unique<SettingsPanel>(audioProcessor,
+                                                    juce::Colour::fromRGB(190, 196, 206));
+    addAndMakeVisible(*settingsPanel);
+
     oscPanelViewport.setViewedComponent(oscPanel.get(), false);
     oscPanelViewport.setScrollBarThickness(10);
     oscPanelViewport.setSingleStepSizes(16, 24);
@@ -1500,6 +1512,10 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     topMenuBar->setOnPresetName([this]() { openPresetBrowser(); });
     topMenuBar->setOnPresetMenu([this]() { showPresetMenu(); });
+    topMenuBar->setOnSettings([this]()
+    {
+        applyTopMenuSectionSelection(kSectionSettings, true);
+    });
     topMenuBar->setOnSectionSelected([this](int sectionIndex)
     {
         applyTopMenuSectionSelection(sectionIndex, true);
@@ -1624,6 +1640,11 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 
     // Before the first timer tick: a patch loaded with every source bypassed
     // must come up greyed and warning, not animate for a frame first.
+    // Cheap enough to do every tick, and doing it here rather than through a
+    // callback from the settings panel means it also follows a preset load, a
+    // session restore, or anything else that moves the flag.
+    applyAnimationPreference();
+
     refreshOscillatorEngagedState();
 
     refreshOscillatorModeUI();
@@ -2159,12 +2180,26 @@ void PX3SynthAudioProcessorEditor::resized()
     macroKnobLookAndFeel.pointerDisabledColour
         = px3::ui::macroPointerDisabledColour(uiConfig.get());
 
-    macroStripArea = panelViewportArea.removeFromLeft(
-        MacroStrip::preferredWidth(uiConfig.get()));
-    panelViewportArea.removeFromLeft(2);
+    // SETTINGS is the one view without the macro strip: it is a form, and a
+    // performance surface beside it would be four knobs with nothing on this
+    // page to assign them to. The strip's width goes back to the panel rather
+    // than being left as a gap, so the form is genuinely full width.
+    const auto showMacroStrip = selectedTopMenuSection != kSectionSettings;
+
+    if (showMacroStrip)
+    {
+        macroStripArea = panelViewportArea.removeFromLeft(
+            MacroStrip::preferredWidth(uiConfig.get()));
+        panelViewportArea.removeFromLeft(2);
+    }
+    else
+    {
+        macroStripArea = {};
+    }
 
     if (macroStrip != nullptr)
     {
+        macroStrip->setVisible(showMacroStrip);
         macroStrip->setBounds(macroStripArea);
     }
 
@@ -2211,6 +2246,10 @@ void PX3SynthAudioProcessorEditor::resized()
     fltPanel->setBounds(panelViewportArea);
     fxPanel->setBounds(panelViewportArea);
     mixPanel->setBounds(panelViewportArea);
+    if (settingsPanel != nullptr)
+    {
+        settingsPanel->setBounds(panelViewportArea);
+    }
 
     layoutOscPanel();
     layoutModPanel();
@@ -2497,6 +2536,10 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
     if (mixPanel != nullptr)
     {
         mixPanel->setUIConfig(uiConfig);
+    }
+    if (settingsPanel != nullptr)
+    {
+        settingsPanel->setUIConfig(uiConfig);
     }
     for (auto* sheet : { static_cast<px3::ui::BusInsertOverlay*>(busEqOverlay.get()),
                          static_cast<px3::ui::BusInsertOverlay*>(busCompOverlay.get()) })
@@ -3185,7 +3228,7 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
 
 void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex, bool pushToProcessor)
 {
-    const auto clamped = juce::jlimit(0, 5, sectionIndex);
+    const auto clamped = juce::jlimit(0, kSectionSettings, sectionIndex);
     selectedTopMenuSection = clamped;
 
     if (topMenuBar != nullptr)
@@ -3243,6 +3286,10 @@ void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex
     else if (clamped == kSectionMix)
     {
         refreshSubOscUI();
+    }
+    else if (clamped == kSectionSettings)
+    {
+        if (settingsPanel != nullptr) { settingsPanel->refreshFromParameters(); }
     }
 
     if (pushToProcessor)
@@ -3817,7 +3864,7 @@ void PX3SynthAudioProcessorEditor::refreshFilterUI()
 
 bool PX3SynthAudioProcessorEditor::isPanelVisible(int sectionIndex) const
 {
-    return selectedTopMenuSection == juce::jlimit(0, 5, sectionIndex);
+    return selectedTopMenuSection == juce::jlimit(0, kSectionSettings, sectionIndex);
 }
 
 void PX3SynthAudioProcessorEditor::updatePanelVisibility()
@@ -3836,6 +3883,29 @@ void PX3SynthAudioProcessorEditor::updatePanelVisibility()
     fltPanel->setVisible(isPanelVisible(kSectionFilter));
     fxPanel->setVisible(isPanelVisible(kSectionFx));
     mixPanel->setVisible(isPanelVisible(kSectionMix));
+
+    if (settingsPanel != nullptr)
+    {
+        settingsPanel->setVisible(isPanelVisible(kSectionSettings));
+    }
+}
+
+void PX3SynthAudioProcessorEditor::applyAnimationPreference()
+{
+    const auto enabled = audioProcessor.areAnimationsEnabled();
+
+    pianoKeyboard.setAnimationsEnabled(enabled);
+    performanceControls.setAnimationsEnabled(enabled);
+
+    // The logo settles rather than freezing mid-shake: the timer stops
+    // advancing its phase, so without this it would hold whatever offset it
+    // had when the setting changed.
+    if (! enabled)
+    {
+        logoVibrationIntensity = 0.0f;
+        logoVibrationPhase = 0.0f;
+        repaint(logoPanelArea.expanded(8));
+    }
 }
 
 void PX3SynthAudioProcessorEditor::layoutOscPanel()
@@ -4461,7 +4531,9 @@ void PX3SynthAudioProcessorEditor::timerCallback()
 
     refreshOscillatorEngagedState();
 
-    if (anyOscillatorEngaged && (logoVibrationIntensity > 0.001f || anyKeyDown))
+    if (audioProcessor.areAnimationsEnabled()
+        && anyOscillatorEngaged
+        && (logoVibrationIntensity > 0.001f || anyKeyDown))
     {
         logoVibrationPhase += 0.38f;
 

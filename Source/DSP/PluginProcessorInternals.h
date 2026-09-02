@@ -54,6 +54,7 @@ inline const juce::Identifier kSubOscPitchId("pitch");
 inline const juce::Identifier kSubOscOctaveId("octave");
 inline const juce::Identifier kSubOscWaveformId("waveform");
 inline const juce::Identifier kTopMenuViewId("topMenuView");
+inline const juce::Identifier kAnimationsEnabledId("animationsEnabled");
 
 // User wavetable selections. Stored as a NAME rather than an index because the
 // factory list has fixed positions and the user library does not - and stored

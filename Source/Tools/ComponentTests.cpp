@@ -470,6 +470,11 @@ void makePlainPatch(PX3SynthAudioProcessor& processor)
     setParam(processor, "ampEnvEnabled", 1.0f);
     setParam(processor, "masterGain", 0.6f);
 
+    // The analog console is a colour stage, and "plain" means no colour. It
+    // ships ON now that SETTINGS can turn it off, so a plain patch has to say
+    // so rather than relying on a default.
+    setParam(processor, "analogEnabled", 0.0f);
+
     setParam(processor, "osc1Enabled", 1.0f);
     setParam(processor, "osc2Enabled", 0.0f);
     setParam(processor, "osc3Enabled", 0.0f);
@@ -1202,6 +1207,351 @@ void testBreakpointEnvelope()
                 check("EnvMode_TheKnobsStayOnScreenThroughBypassAndMode",
                       env1->debugAdsrKnobsVisible(),
                       env1->debugAdsrKnobsVisible() ? "still on screen" : "they disappeared");
+            }
+        }
+    }
+
+    // ---- SETTINGS: what the two controls actually do ------------------------
+    {
+        // ---- animations ----------------------------------------------------
+        {
+            PianoKeyboard keyboard;
+            keyboard.setSize(600, 80);
+
+            keyboard.debugSpawnSparks(60);
+            const auto sparkedWhenOn = keyboard.hasSparks();
+
+            keyboard.setAnimationsEnabled(false);
+            const auto clearedWhenTurnedOff = ! keyboard.hasSparks();
+            keyboard.debugSpawnSparks(60);
+            const auto sparkedWhenOff = keyboard.hasSparks();
+
+            check("Settings_TheKeyboardStopsSparkingWhenAnimationsAreOff",
+                  sparkedWhenOn && clearedWhenTurnedOff && ! sparkedWhenOff,
+                  juce::String(sparkedWhenOn ? "sparks when on" : "no sparks even when on")
+                      + ", " + (clearedWhenTurnedOff ? "cleared on turning off" : "left running")
+                      + ", " + (sparkedWhenOff ? "still sparks when off" : "silent when off"));
+
+            PerformanceControls wheels;
+            wheels.setSize(120, 120);
+
+            wheels.debugSpawnSparkles();
+            const auto sparkledWhenOn = wheels.hasSparkles();
+
+            wheels.setAnimationsEnabled(false);
+            const auto sparklesCleared = ! wheels.hasSparkles();
+            wheels.debugSpawnSparkles();
+            const auto sparkledWhenOff = wheels.hasSparkles();
+
+            check("Settings_ThePerformanceWheelsStopSparklingWhenAnimationsAreOff",
+                  sparkledWhenOn && sparklesCleared && ! sparkledWhenOff,
+                  juce::String(sparkledWhenOn ? "sparkles when on" : "none even when on")
+                      + ", " + (sparklesCleared ? "cleared on turning off" : "left running")
+                      + ", " + (sparkledWhenOff ? "still sparkles when off" : "silent when off"));
+        }
+
+        // ---- the setting itself, and where it is kept ----------------------
+        {
+            PX3SynthAudioProcessor processor;
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            check("Settings_AnimationsAreOnByDefault",
+                  processor.areAnimationsEnabled(),
+                  processor.areAnimationsEnabled() ? "on" : "off");
+
+            check("Settings_TheAnalogConsoleIsOnByDefault",
+                  processor.getAnalogEnabledParam().get(),
+                  processor.getAnalogEnabledParam().get() ? "the console runs by default"
+                                                          : "the console is off by default");
+
+            check("Settings_TheAnalogProfileStartsClean",
+                  processor.getAnalogProfileParam().getIndex() == 0
+                      && processor.getAnalogProfileParam().getCurrentChoiceName() == "CLEAN",
+                  "the default profile is "
+                      + processor.getAnalogProfileParam().getCurrentChoiceName());
+
+            processor.setAnimationsEnabled(false);
+            setChoice(processor, "analogProfile", 3);
+
+            juce::MemoryBlock session;
+            processor.getStateInformation(session);
+
+            PX3SynthAudioProcessor reloaded;
+            reloaded.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            reloaded.prepareToPlay(kSampleRate, kBlockSize);
+            reloaded.setStateInformation(session.getData(), static_cast<int>(session.getSize()));
+
+            check("Settings_TheAnimationPreferenceSurvivesASession",
+                  ! reloaded.areAnimationsEnabled(),
+                  reloaded.areAnimationsEnabled() ? "it came back on" : "it came back off");
+
+            check("Settings_TheAnalogProfileSurvivesASession",
+                  reloaded.getAnalogProfileParam().getIndex() == 3,
+                  "it comes back as "
+                      + reloaded.getAnalogProfileParam().getCurrentChoiceName());
+
+            // A preset carries the profile - it is part of the sound - but NOT
+            // the animation preference, which belongs to this editor on this
+            // machine. Loading someone else's patch must not turn their
+            // preference into yours.
+            auto tempDirectory = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                     .getChildFile("px3-component-tests");
+            tempDirectory.createDirectory();
+            const auto presetFile = tempDirectory.getChildFile("settings.px3preset");
+            presetFile.deleteFile();
+
+            PresetManager manager(processor);
+            juce::String error;
+            PresetManager::PresetMetadata metadata;
+            metadata.name = "Settings";
+            metadata.category = "Test";
+            metadata.author = "component tests";
+            const auto wrote = manager.dumpCurrentStateToPresetFile(presetFile, metadata, true,
+                                                                    true, error, nullptr);
+
+            PX3SynthAudioProcessor loader;
+            loader.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            loader.prepareToPlay(kSampleRate, kBlockSize);
+            PresetManager loaderManager(loader);
+            juce::String loadError;
+            const auto read = wrote && loaderManager.loadPresetFile(presetFile, loadError);
+
+            check("Settings_APresetCarriesTheAnalogProfile",
+                  read && loader.getAnalogProfileParam().getIndex() == 3,
+                  read ? "the preset restores " + loader.getAnalogProfileParam().getCurrentChoiceName()
+                       : "the preset did not round-trip: " + error + loadError);
+
+            check("Settings_APresetDoesNotCarryTheAnimationPreference",
+                  read && loader.areAnimationsEnabled(),
+                  loader.areAnimationsEnabled()
+                      ? "the loader kept its own preference"
+                      : "the preset turned the loader's animations off");
+
+            // And it is not WRITTEN into the preset either, not merely ignored
+            // on the way in. A preset load already skips UI session state, so
+            // the check above passes whether or not the property is stripped -
+            // verified: removing the strip did not fail it. This is what the
+            // strip actually does, and the session tree is the control that
+            // stops it passing on a property nothing ever writes.
+            const auto presetTree = processor.createPresetStateTree();
+            const auto sessionTree = processor.createParameterStateTree();
+
+            check("Settings_ThePresetFileDoesNotEvenContainThePreference",
+                  ! presetTree.hasProperty(px3::processor_internal::kAnimationsEnabledId)
+                      && sessionTree.hasProperty(px3::processor_internal::kAnimationsEnabledId),
+                  juce::String("the preset tree ")
+                      + (presetTree.hasProperty(px3::processor_internal::kAnimationsEnabledId)
+                             ? "carries it" : "omits it")
+                      + " and the session tree "
+                      + (sessionTree.hasProperty(px3::processor_internal::kAnimationsEnabledId)
+                             ? "carries it" : "omits it"));
+
+            presetFile.deleteFile();
+        }
+    }
+
+    // ---- SETTINGS: a view of its own ----------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+
+        if (editor != nullptr)
+        {
+            editor->setSize(1400, 900);
+
+            auto* bar = editor->debugTopMenuBar();
+            auto* strip = editor->debugMacroStrip();
+            auto* panel = editor->debugSettingsPanel();
+
+            check("Settings_TheEditorHasASettingsButtonAndPanel",
+                  bar != nullptr && panel != nullptr,
+                  juce::String(bar != nullptr ? "bar" : "no bar") + ", "
+                      + (panel != nullptr ? "panel" : "no panel"));
+
+            if (bar != nullptr && panel != nullptr)
+            {
+                auto& gear = bar->getSettingsButton();
+
+                check("Settings_TheButtonSaysWhatItIs",
+                      gear.getTooltip() == "Settings",
+                      "hovering reads \"" + gear.getTooltip() + "\"");
+
+                // About as wide as a section tab, which is the requirement -
+                // measured against the tab rather than against a number, so it
+                // stays true when the bar is resized.
+                const auto oscWidth = bar->getSectionButtonBounds(0).getWidth();
+                const auto gearWidth = gear.getWidth();
+                check("Settings_TheButtonIsAboutAsWideAsASectionTab",
+                      oscWidth > 0 && std::abs(gearWidth - oscWidth) <= 2,
+                      juce::String(gearWidth) + " px against OSC's " + juce::String(oscWidth));
+
+                // It sits after MENU, which is what "between the menu and the
+                // master gain" means inside the bar.
+                check("Settings_TheButtonSitsAfterTheMenuButton",
+                      gear.getX() >= bar->getPresetMenuButtonBounds().getRight(),
+                      "the gear starts at x " + juce::String(gear.getX())
+                          + " and MENU ends at "
+                          + juce::String(bar->getPresetMenuButtonBounds().getRight()));
+
+                // Selecting SETTINGS lights the gear and unlights every panel
+                // tab: the strip must not claim a panel is open when it is not.
+                editor->debugSelectSection(6);
+                editor->resized();
+
+                auto anySectionLit = false;
+                for (int i = 0; i < 6; ++i)
+                {
+                    anySectionLit = anySectionLit || bar->getSectionButton(i).getToggleState();
+                }
+
+                check("Settings_SelectingItUnlightsEveryPanelTab",
+                      gear.getToggleState() && ! anySectionLit,
+                      juce::String(gear.getToggleState() ? "the gear is lit" : "the gear is dark")
+                          + ", and a panel tab is "
+                          + (anySectionLit ? "still lit" : "not lit"));
+
+                check("Settings_ThePanelIsTheVisibleOne",
+                      panel->isVisible(),
+                      panel->isVisible() ? "the settings panel is showing" : "it is hidden");
+
+                // Full width: no macro strip beside it.
+                const auto settingsWidth = panel->getWidth();
+                const auto stripHiddenHere = strip == nullptr || ! strip->isVisible();
+
+                editor->debugSelectSection(0);
+                editor->resized();
+                const auto stripBackOnPanels = strip != nullptr && strip->isVisible();
+
+                editor->debugSelectSection(6);
+                editor->resized();
+
+                check("Settings_TheMacroStripIsNotShownHere",
+                      stripHiddenHere && stripBackOnPanels,
+                      juce::String(stripHiddenHere ? "hidden on SETTINGS" : "still on SETTINGS")
+                          + ", " + (stripBackOnPanels ? "back on OSC" : "gone from OSC too"));
+
+                // The controls drive the processor, which is the whole
+                // point of the panel: a form that displays state without
+                // writing it is a picture of a settings page.
+                {
+                    auto& toggle = panel->debugAnimationsToggle();
+                    auto& profiles = panel->debugAnalogProfileBox();
+
+                    check("Settings_TheCheckboxStartsCheckedLikeTheSetting",
+                          toggle.getToggleState() && processor.areAnimationsEnabled(),
+                          juce::String("the box is ")
+                              + (toggle.getToggleState() ? "checked" : "clear")
+                              + " and the setting is "
+                              + (processor.areAnimationsEnabled() ? "on" : "off"));
+
+                    toggle.setToggleState(false, juce::sendNotificationSync);
+                    const auto turnedOff = ! processor.areAnimationsEnabled();
+                    toggle.setToggleState(true, juce::sendNotificationSync);
+                    const auto turnedBackOn = processor.areAnimationsEnabled();
+
+                    check("Settings_TheCheckboxDrivesTheSetting",
+                          turnedOff && turnedBackOn,
+                          juce::String("unchecking ")
+                              + (turnedOff ? "turned it off" : "did nothing")
+                              + ", rechecking "
+                              + (turnedBackOn ? "turned it back on" : "did nothing"));
+
+                    const auto names = px3::AnalogEngine::profileNames();
+                    juce::StringArray listed;
+                    for (int i = 0; i < profiles.getNumItems(); ++i)
+                    {
+                        listed.add(profiles.getItemText(i));
+                    }
+
+                    check("Settings_TheDropdownListsEveryAnalogProfile",
+                          listed == names,
+                          juce::String(profiles.getNumItems()) + " profiles: "
+                              + listed.joinIntoString(", "));
+
+                    profiles.setSelectedId(2, juce::sendNotificationSync);
+                    const auto movedToBritish = processor.getAnalogProfileParam().getIndex() == 1;
+
+                    check("Settings_TheDropdownDrivesTheParameter",
+                          movedToBritish,
+                          "choosing the second profile leaves the parameter at "
+                              + processor.getAnalogProfileParam().getCurrentChoiceName());
+
+                    // And it follows the parameter back, so host automation or
+                    // a preset load is reflected here rather than leaving the
+                    // menu showing something the synth is not doing.
+                    setChoice(processor, "analogProfile", 4);
+                    panel->refreshFromParameters();
+
+                    check("Settings_TheDropdownFollowsTheParameter",
+                          profiles.getSelectedId() == 5,
+                          "with the parameter on "
+                              + processor.getAnalogProfileParam().getCurrentChoiceName()
+                              + " the menu shows " + profiles.getText());
+                }
+
+                // The gear reads as a gear: teeth around the outside and a
+                // hole through the middle. Checked by rendering, because the
+                // requirement is about what it looks like.
+                {
+                    editor->debugSelectSection(6);
+                    editor->resized();
+
+                    const auto image = gear.createComponentSnapshot(gear.getLocalBounds());
+                    const auto w = image.getWidth();
+                    const auto h = image.getHeight();
+
+                    const auto brightnessAt = [&](int x, int y)
+                    {
+                        return image.getPixelAt(juce::jlimit(0, w - 1, x),
+                                                juce::jlimit(0, h - 1, y)).getBrightness();
+                    };
+
+                    // The face behind the icon, sampled in a corner well clear
+                    // of it.
+                    const auto face = brightnessAt(2, 2);
+                    const auto centre = brightnessAt(w / 2, h / 2);
+
+                    // A ring of samples between the bore and the teeth: the
+                    // body of the gear, which must be lit.
+                    const auto side = juce::jmin(w, h);
+                    auto bodySamples = 0;
+                    auto litBody = 0;
+                    for (int i = 0; i < 24; ++i)
+                    {
+                        const auto theta = juce::MathConstants<float>::twoPi
+                                           * static_cast<float>(i) / 24.0f;
+                        // The icon is scaled to a square of side*0.46, so its
+                        // outer RADIUS is half of that. Sampling at 0.46 of
+                        // the side puts the ring outside the gear entirely,
+                        // which is how the first version of this read 2 lit
+                        // samples out of 24 and looked like a drawing bug.
+                        const auto outerRadius = static_cast<float>(side) * 0.46f * 0.5f;
+                        const auto r = outerRadius * 0.55f;
+                        const auto x = w / 2 + juce::roundToInt(std::cos(theta) * r);
+                        const auto y = h / 2 + juce::roundToInt(std::sin(theta) * r);
+                        ++bodySamples;
+                        if (brightnessAt(x, y) > face + 0.25f) { ++litBody; }
+                    }
+
+                    check("Settings_TheGearHasALitBodyAndAHoleThroughIt",
+                          litBody > bodySamples * 3 / 4
+                              && std::abs(centre - face) < 0.12f,
+                          juce::String(litBody) + " of " + juce::String(bodySamples)
+                              + " body samples are lit, and the centre reads "
+                              + fmt(centre, 3) + " against a face of " + fmt(face, 3));
+                }
+
+                check("Settings_ThePanelIsFullWidth",
+                      strip != nullptr
+                          && settingsWidth > editor->debugPanelViewportArea().getWidth()
+                                                 - 4,
+                      juce::String(settingsWidth) + " px wide against the viewport's "
+                          + juce::String(editor->debugPanelViewportArea().getWidth()));
             }
         }
     }
@@ -8564,6 +8914,9 @@ void testOscillators()
             setParam(processor, "moodEnabled", 0.0f);
             setParam(processor, "filter1Enabled", 0.0f);
             setParam(processor, "filter2Enabled", 0.0f);
+            // Same reason as makePlainPatch: these numbers are the MIXER's gain
+            // structure, measured with every colour stage out of the way.
+            setParam(processor, "analogEnabled", 0.0f);
             setParam(processor, "ampSustain", 1.0f);
             setChoice(processor, "osc1Mode", 0);
             if (faderAtMaximum)

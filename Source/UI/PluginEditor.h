@@ -28,6 +28,7 @@
 #include "BusInsertOverlay.h"
 #include "ModalBackdrop.h"
 #include "OscPanel.h"
+#include "SettingsPanel.h"
 #include "TopMenuBar.h"
 #include "DelayComponent.h"
 #include "UIConfigManager.h"
@@ -258,6 +259,10 @@ public:
     // draws them on screen.
     px3::ui::MacroKnobLookAndFeel* debugMacroKnobLookAndFeel() { return &macroKnobLookAndFeel; }
 
+    TopMenuBar* debugTopMenuBar() { return topMenuBar.get(); }
+    SettingsPanel* debugSettingsPanel() { return settingsPanel.get(); }
+    juce::Rectangle<int> debugPanelViewportArea() const { return panelViewportArea; }
+
     // The same call JUCE's dispatch makes when a listener sees a click on a
     // knob. Constructing the event here is the one step the test cannot get
     // JUCE to do for it.
@@ -351,6 +356,9 @@ private:
     void exportCurrentPreset();
     void showPresetMenu();
     void applyTopMenuSectionSelection(int sectionIndex, bool pushToProcessor);
+    // Pushes the animation preference down to the things that animate. One
+    // call site for the flag, so the three of them cannot drift apart.
+    void applyAnimationPreference();
     void refreshTopMenuSelectionFromProcessor();
     void updatePresetDirtyState();
     juce::String computeCurrentStateHash() const;
@@ -651,6 +659,7 @@ private:
     px3::ui::FxCardComponent* chorusCard { nullptr };
     px3::ui::FxCardComponent* spreadCard { nullptr };
     std::unique_ptr<MixPanel> mixPanel;
+    std::unique_ptr<SettingsPanel> settingsPanel;
     std::unique_ptr<TopMenuBar> topMenuBar;
 
     juce::Slider vibeAmountKnob;

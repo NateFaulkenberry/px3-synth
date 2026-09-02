@@ -64,6 +64,68 @@ void TopMenuTabButton::setContentStyle(const ContentStyle& styleIn)
     repaint();
 }
 
+void TopMenuTabButton::setIcon(const juce::Path& path, float scaleOfFace)
+{
+    icon = path;
+    iconScale = juce::jlimit(0.1f, 1.0f, scaleOfFace);
+    repaint();
+}
+
+juce::Path TopMenuTabButton::gearIcon()
+{
+    // Drawn on a unit circle and scaled at paint time. Eight teeth reads as a
+    // gear at 20 px; more become a blur, fewer read as a star.
+    constexpr int teeth = 8;
+    constexpr float outerR = 1.0f;
+    constexpr float rootR = 0.76f;
+    constexpr float holeR = 0.34f;
+
+    const auto sector = juce::MathConstants<float>::twoPi / static_cast<float>(teeth);
+    const auto tipHalf = sector * 0.19f;
+    const auto rootHalf = sector * 0.31f;
+
+    const auto at = [](float radius, float angle)
+    {
+        return juce::Point<float>(std::cos(angle) * radius, std::sin(angle) * radius);
+    };
+
+    juce::Path gear;
+
+    for (int i = 0; i < teeth; ++i)
+    {
+        const auto centre = sector * static_cast<float>(i);
+
+        // Up the leading flank, across the tip, down the trailing flank.
+        if (i == 0) { gear.startNewSubPath(at(rootR, centre - rootHalf)); }
+        else        { gear.lineTo(at(rootR, centre - rootHalf)); }
+
+        gear.lineTo(at(outerR, centre - tipHalf));
+        gear.lineTo(at(outerR, centre + tipHalf));
+        gear.lineTo(at(rootR, centre + rootHalf));
+
+        // The valley between this tooth and the next, as a short arc rather
+        // than one chord: a straight line across that span reads as a flat
+        // spot and the ring stops looking round.
+        constexpr int valleySteps = 4;
+        const auto valleyStart = centre + rootHalf;
+        const auto valleyEnd = centre + sector - rootHalf;
+        for (int step = 1; step <= valleySteps; ++step)
+        {
+            const auto t = static_cast<float>(step) / static_cast<float>(valleySteps);
+            gear.lineTo(at(rootR, valleyStart + (valleyEnd - valleyStart) * t));
+        }
+    }
+
+    gear.closeSubPath();
+
+    // The bore. Even-odd winding turns this second subpath into a hole; with
+    // the default non-zero rule it would simply be filled over.
+    gear.setUsingNonZeroWinding(false);
+    gear.addEllipse(-holeR, -holeR, holeR * 2.0f, holeR * 2.0f);
+
+    return gear;
+}
+
 void TopMenuTabButton::paintButton(juce::Graphics& g,
                                    bool shouldDrawButtonAsHighlighted,
                                    bool shouldDrawButtonAsDown)
@@ -118,6 +180,17 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
     // so butted neighbours do not draw two lines against each other.
     g.setColour(on ? style.insetActive : style.inset);
     g.drawRect(area.reduced(1.0f), 1.0f);
+
+    // ---- icon --------------------------------------------------------------
+    if (! icon.isEmpty())
+    {
+        const auto side = juce::jmin(area.getWidth(), area.getHeight()) * iconScale;
+        const auto target = juce::Rectangle<float>(side, side).withCentre(area.getCentre());
+
+        g.setColour((on || alwaysActiveText) ? style.textActive : style.text);
+        g.fillPath(icon, icon.getTransformToScaleToFit(target, true));
+        return;
+    }
 
     // ---- LED ---------------------------------------------------------------
     const auto ledDiameter = juce::jmin(7.0f, area.getHeight() * 0.16f);
@@ -333,10 +406,27 @@ TopMenuBar::TopMenuBar()
         }
     };
 
+    // A gear rather than a legend, and a lamp of its own: SETTINGS is a view
+    // like the six sections, so it reports whether it is the open one.
+    settingsButton.setIcon(TopMenuTabButton::gearIcon());
+    settingsButton.setShowLed(false);
+    settingsButton.setShowSeam(false);
+    settingsButton.setButtonText("SETTINGS");
+    settingsButton.setTooltip("Settings");
+    settingsButton.setClickingTogglesState(false);
+    settingsButton.onClick = [this]()
+    {
+        if (onSettings != nullptr)
+        {
+            onSettings();
+        }
+    };
+
     addAndMakeVisible(presetPrevButton);
     addAndMakeVisible(presetNameButton);
     addAndMakeVisible(presetNextButton);
     addAndMakeVisible(presetMenuButton);
+    addAndMakeVisible(settingsButton);
     addAndMakeVisible(topMenuOscButton);
     addAndMakeVisible(topMenuModButton);
     addAndMakeVisible(topMenuAmpButton);
@@ -458,6 +548,21 @@ void TopMenuBar::resized()
 
         auto presetLayout = topMenuPresetClusterArea;
         presetLayout.removeFromLeft(clusterGap);
+
+        // SETTINGS sits at the right end of the bar, between MENU and the
+        // master gain beyond it. Its width is taken from the preset selector
+        // rather than added to the bar, so nothing outside this cluster moves.
+        //
+        // Sized from an actual section tab rather than a number of its own:
+        // "about as wide as OSC" is the requirement, and reading the tab's own
+        // width keeps it true when the row is resized. The sections are laid
+        // out above, so the width is known by the time this runs.
+        const auto settingsWidth = topMenuSectionButtons[0] != nullptr
+                                       ? juce::jmax(24, topMenuSectionButtons[0]->getWidth())
+                                       : 48;
+        auto settingsArea = presetLayout.removeFromRight(settingsWidth);
+        settingsButton.setBounds(settingsArea);
+
         auto menuSectionArea = presetLayout.removeFromRight(menuWidth);
         presetLayout.removeFromRight(menuGap);
         auto selector = presetLayout.reduced(horizontalPad, 0);
@@ -496,6 +601,11 @@ void TopMenuBar::setOnPresetName(std::function<void()> callback)
     onPresetName = std::move(callback);
 }
 
+void TopMenuBar::setOnSettings(std::function<void()> callback)
+{
+    onSettings = std::move(callback);
+}
+
 void TopMenuBar::setOnPresetMenu(std::function<void()> callback)
 {
     onPresetMenu = std::move(callback);
@@ -503,11 +613,18 @@ void TopMenuBar::setOnPresetMenu(std::function<void()> callback)
 
 void TopMenuBar::setSelectedSection(int sectionIndex)
 {
-    const auto clamped = juce::jlimit(0, 5, sectionIndex);
+    const auto clamped = juce::jlimit(0, kSettingsSection, sectionIndex);
+
+    // SETTINGS is one of the views, so selecting it unlights every panel tab.
+    // Leaving the last panel lit while its panel is not the one on screen is
+    // the strip lying about what is open.
     for (int i = 0; i < 6; ++i)
     {
-        topMenuSectionButtons[static_cast<std::size_t>(i)]->setToggleState(i == clamped, juce::dontSendNotification);
+        topMenuSectionButtons[static_cast<std::size_t>(i)]->setToggleState(i == clamped,
+                                                                          juce::dontSendNotification);
     }
+
+    settingsButton.setToggleState(clamped == kSettingsSection, juce::dontSendNotification);
 }
 
 void TopMenuBar::setPresetName(const juce::String& name)
@@ -550,9 +667,19 @@ void TopMenuBar::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     {
         button->applyStyle(tabStyle);
     }
-    for (auto* button : { &presetPrevButton, &presetNameButton, &presetNextButton, &presetMenuButton })
+    // SETTINGS included: it is a tab like the rest, and the whole point of it
+    // wearing this face is that its hover and active states match.
+    for (auto* button : { &presetPrevButton, &presetNameButton, &presetNextButton,
+                          &presetMenuButton, &settingsButton })
     {
         button->applyStyle(tabStyle);
+    }
+
+    if (uiConfig != nullptr)
+    {
+        settingsButton.setAccentColour(
+            uiConfig->getColour("topMenu.sections.accents.settings",
+                                juce::Colour::fromRGB(190, 196, 206)));
     }
 
     // The preset tab carries three strings in a fixed 32px face, so where they
@@ -686,6 +813,22 @@ juce::TextButton& TopMenuBar::getPresetNameButton()
 juce::TextButton& TopMenuBar::getPresetNextButton()
 {
     return presetNextButton;
+}
+
+juce::TextButton& TopMenuBar::getSettingsButton()
+{
+    return settingsButton;
+}
+
+juce::TextButton& TopMenuBar::getSectionButton(int sectionIndex)
+{
+    return *topMenuSectionButtons[static_cast<std::size_t>(juce::jlimit(0, 5, sectionIndex))];
+}
+
+juce::Rectangle<int> TopMenuBar::getSectionButtonBounds(int sectionIndex) const
+{
+    return topMenuSectionButtons[static_cast<std::size_t>(juce::jlimit(0, 5, sectionIndex))]
+        ->getBounds();
 }
 
 juce::TextButton& TopMenuBar::getPresetPrevButton()

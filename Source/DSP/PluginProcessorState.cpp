@@ -306,6 +306,7 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
     state.addChild(vibeState, -1, nullptr);
 
     state.setProperty(kTopMenuViewId, getTopMenuViewIndex(), nullptr);
+    state.setProperty(kAnimationsEnabledId, areAnimationsEnabled(), nullptr);
 
     if (const auto preset = getLoadedPreset(); preset.valid)
     {
@@ -322,6 +323,11 @@ juce::ValueTree PX3SynthAudioProcessor::createPresetStateTree() const
 {
     auto state = createParameterStateTree();
     state.removeProperty(kTopMenuViewId, nullptr);
+
+    // Whether animations run is a property of this editor on this machine, not
+    // of the sound. A preset that carried it would impose its author's
+    // preference on everyone who loaded it.
+    state.removeProperty(kAnimationsEnabledId, nullptr);
 
     // MIDI mappings stay in the preset. Saving a patch saves the hardware
     // layout that goes with it, so a sound designed around a controller
@@ -667,6 +673,11 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                 ccSeenSequence[i] = ccSequence[i].load(std::memory_order_acquire);
             }
         }
+    }
+
+    if (restoreUiSessionState && state.hasProperty(kAnimationsEnabledId))
+    {
+        setAnimationsEnabled(static_cast<bool>(state.getProperty(kAnimationsEnabledId)), false);
     }
 
     if (restoreUiSessionState && state.hasProperty(kTopMenuViewId))

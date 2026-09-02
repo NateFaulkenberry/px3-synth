@@ -634,8 +634,23 @@ void PianoKeyboard::timerCallback()
     hadSparksLastFrame = ! sparks.empty();
 }
 
+void PianoKeyboard::setAnimationsEnabled(bool shouldBeEnabled)
+{
+    if (animationsEnabled == shouldBeEnabled) { return; }
+
+    animationsEnabled = shouldBeEnabled;
+
+    if (! animationsEnabled)
+    {
+        sparks.clear();
+        if (onSparksChanged != nullptr) { onSparksChanged(); }
+    }
+}
+
 void PianoKeyboard::spawnLightningBurst(int midiNote, bool keyIsBlack, float velocityNorm)
 {
+    if (! animationsEnabled) { return; }
+
     juce::Rectangle<float> keyBounds;
     bool actualBlack = false;
 

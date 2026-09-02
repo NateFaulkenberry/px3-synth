@@ -106,8 +106,20 @@ public:
     // translated by `offset`.
     void paintSparklesInto(juce::Graphics& g, juce::Point<int> offset) const;
     bool hasSparkles() const noexcept { return ! sparkles.empty(); }
+
+    // Off means no new sparkles and none left running - the same gate the
+    // keyboard has, at the same place: the source, not the draw.
+    void setAnimationsEnabled(bool shouldBeEnabled);
+
+    // For the tests: fire a burst directly, without driving a wheel gesture.
+    void debugSpawnSparkles() { emitSparkles({ 20.0f, 20.0f }, 8.0f, 1.0f); }
     juce::Rectangle<float> sparkleBounds() const;
     std::function<void()> onSparklesChanged;
+
+private:
+    bool animationsEnabled { true };
+
+public:
 
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;

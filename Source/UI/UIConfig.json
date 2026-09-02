@@ -277,7 +277,8 @@
         "amp": "#49DE79",
         "flt": "#FF5858",
         "fx": "#FFC66E",
-        "mix": "#EDF1F7"
+        "mix": "#EDF1F7",
+        "settings": "#BEC4CE"
       }
     },
     "preset": {

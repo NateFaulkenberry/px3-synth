@@ -131,6 +131,20 @@ public:
 
     void setContentStyle(const ContentStyle& styleIn);
 
+    // An icon in place of the legend. A tab with one draws neither a lamp nor
+    // text: the glyph is the whole content, centred in the face. Everything
+    // else - the face, the hover and pressed glows, the lit top edge, the
+    // inset hairline - is the tab's as usual, which is what makes an icon tab
+    // read as a member of the strip rather than a button added beside it.
+    //
+    // The path is given in any coordinates; it is scaled to fit.
+    void setIcon(const juce::Path& path, float scaleOfFace = 0.46f);
+
+    // A gear, built rather than loaded: a ring of trapezoidal teeth with a
+    // hole through the middle. Even-odd winding is what makes the hole a hole
+    // instead of a filled disc.
+    static juce::Path gearIcon();
+
 private:
     void paintButton(juce::Graphics& g,
                      bool shouldDrawButtonAsHighlighted,
@@ -144,6 +158,8 @@ private:
     juce::String subtitleRight;
     bool alwaysActiveText { false };
     ContentStyle content;
+    juce::Path icon;
+    float iconScale { 0.46f };
 };
 
 class TopMenuBar final : public juce::Component
@@ -158,7 +174,11 @@ public:
     void setOnPresetNext(std::function<void()> callback);
     void setOnPresetName(std::function<void()> callback);
     void setOnPresetMenu(std::function<void()> callback);
+    void setOnSettings(std::function<void()> callback);
 
+    // 0..5 select a panel tab; kSettingsSection selects SETTINGS, which lights
+    // the gear and leaves every panel tab unlit.
+    static constexpr int kSettingsSection = 6;
     void setSelectedSection(int sectionIndex);
     void setPresetName(const juce::String& name);
     // Shown under the name, upper case and smaller: category on the left,
@@ -174,6 +194,10 @@ public:
     juce::TextButton& getPresetNameButton();
     juce::TextButton& getPresetNextButton();
     juce::TextButton& getPresetPrevButton();
+    juce::TextButton& getSettingsButton();
+    // For the tests: a section tab by index, and where it sits.
+    juce::TextButton& getSectionButton(int sectionIndex);
+    juce::Rectangle<int> getSectionButtonBounds(int sectionIndex) const;
 
 private:
     void configureTopMenuSectionButton(TopMenuTabButton& button,
@@ -184,6 +208,7 @@ private:
     TopMenuTabButton presetNameButton { "" };
     TopMenuTabButton presetNextButton { "" };
     TopMenuTabButton presetMenuButton { "MENU" };
+    TopMenuTabButton settingsButton { "SETTINGS" };
     TopMenuTabButton topMenuOscButton { "OSC" };
     TopMenuTabButton topMenuModButton { "MOD" };
     TopMenuTabButton topMenuAmpButton { "AMP" };
@@ -203,6 +228,7 @@ private:
     std::function<void()> onPresetNext;
     std::function<void()> onPresetName;
     std::function<void()> onPresetMenu;
+    std::function<void()> onSettings;
 
     std::shared_ptr<const UIConfig> uiConfig;
 };

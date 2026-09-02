@@ -541,7 +541,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     // Off by default: this changes the sound of every existing patch, so it is
     // opt-in until it has been listened to rather than silently rewriting the
     // instrument's tone on upgrade.
-    analogEnabledParam = new juce::AudioParameterBool("analogEnabled", "Analog Enabled", false);
+    // On by default now that the console has a control of its own in SETTINGS.
+    // It was off because nothing in the UI could turn it on, which made "off"
+    // the only state a user could ever hear.
+    analogEnabledParam = new juce::AudioParameterBool("analogEnabled", "Analog Enabled", true);
     analogProfileParam = new juce::AudioParameterChoice("analogProfile",
                                                          "Analog Profile",
                                                          px3::AnalogEngine::profileNames(),
