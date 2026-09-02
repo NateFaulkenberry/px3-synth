@@ -577,6 +577,20 @@ private:
     // table changes and not sixty times a second.
     std::array<juce::String, 3> shownWavetableNames;
 
+    // The constructor, in eleven pieces - see PluginEditorBuild.cpp. Called in
+    // this order and only from there; the order is a contract, not a style.
+    void buildImagesAndMasks();
+    void buildKeyboardCallbacks();
+    void buildParameterKnobs();
+    void buildEnvelopeAndLfoControls();
+    void buildSelectors();
+    void buildEffectControls();
+    void buildPanels();
+    void buildSettingsAndOverlays();
+    void buildTopMenuBar();
+    void buildPresetBar();
+    void finishConstruction();
+
     void configureWavetableControls();
     void refreshWavetableDisplays();
     void refreshModulationRings();
