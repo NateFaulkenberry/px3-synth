@@ -27,7 +27,7 @@ SettingsPanel::SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour p
 
     // ---- animations --------------------------------------------------------
     animationsToggle.setButtonText({});
-    animationsToggle.setTooltip("Keyboard sparks, performance sparkles and the logo animation");
+    animationsToggle.setTooltip("Display performance animations (global)");
     animationsToggle.onClick = [this]
     {
         if (updatingFromProcessor) { return; }
@@ -40,7 +40,7 @@ SettingsPanel::SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour p
     addAndMakeVisible(animationsToggle);
 
     // ---- analog engine profile ---------------------------------------------
-    analogProfileBox.setTooltip("The console colour applied to the whole output");
+    analogProfileBox.setTooltip("Console color applied to the whole output");
     analogProfileBox.addItemList(px3::AnalogEngine::profileNames(), 1);
     analogProfileBox.onChange = [this]
     {
@@ -78,10 +78,10 @@ SettingsPanel::SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour p
     };
 
     addRow("Enable animations",
-           "Keyboard sparks, performance sparkles and the logo. Kept per install, not per patch.",
+           "Display performance animations (global)",
            animationsToggle);
     addRow("Analog Engine",
-           "Console colour on the output. Saved with the patch.",
+           "Console color applied to the whole output",
            analogProfileBox);
 
     closeButton.setButtonText("CLOSE");
