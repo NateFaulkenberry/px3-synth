@@ -990,20 +990,20 @@ void testBreakpointEnvelope()
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
-        setParam(processor, "ampAttack", 0.180f);
+        setParam(processor, "env1Attack", 0.180f);
         {
-            auto bent = processor.getShapedEnvelope(0);
+            auto bent = processor.getShapedEnvelope(1);
             bent.setCurve(0, 0.62);
-            processor.setShapedEnvelope(0, bent);
+            processor.setShapedEnvelope(1, bent);
         }
 
-        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+        processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
         {
-            auto drawn = processor.getShapedEnvelope(0);
+            auto drawn = processor.getShapedEnvelope(1);
             drawn.addPoint(0.35, 0.88);
             drawn.addPoint(0.58, 0.12);
             drawn.setCurve(3, -0.4);
-            processor.setShapedEnvelope(0, drawn);
+            processor.setShapedEnvelope(1, drawn);
         }
 
         auto tempDirectory = juce::File::getSpecialLocation(juce::File::tempDirectory)
@@ -1029,7 +1029,7 @@ void testBreakpointEnvelope()
         juce::String loadError;
         const auto loaded = saved && targetManager.loadPresetFile(presetFile, loadError);
 
-        const auto live = target.getShapedEnvelope(0);
+        const auto live = target.getShapedEnvelope(1);
         check("EnvBp_APresetFileCarriesTheActiveBreakpointShape",
               loaded && live.isBreakpointMode() && live.getPointCount() == 6
                   && std::abs(live.getPoint(3).curveToNext + 0.4) < 1.0e-9,
@@ -1038,15 +1038,15 @@ void testBreakpointEnvelope()
                            + fmt(static_cast<float>(live.getPoint(3).curveToNext), 2)
                      : "the preset did not round-trip: " + error + loadError);
 
-        target.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
-        const auto adsrAfter = target.currentAmpEnvelope();
+        target.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::adsr);
+        const auto adsrAfter = target.currentModEnvelope(0);
         check("EnvBp_APresetFileCarriesTheAdsrPutAsideBehindIt",
               loaded && adsrAfter.getPointCount() == 4
                   && std::abs(adsrAfter.getPoint(0).curveToNext - 0.62) < 1.0e-9
-                  && std::abs(target.currentAmpEnvelopeSettings().attackSeconds - 0.180f) < 1.0e-4f,
+                  && std::abs(target.envelopeParameterSettings(0).attackSeconds - 0.180f) < 1.0e-4f,
               "switching back gives " + juce::String(adsrAfter.getPointCount()) + " points bending "
                   + fmt(static_cast<float>(adsrAfter.getPoint(0).curveToNext), 2) + " at A "
-                  + fmt(target.currentAmpEnvelopeSettings().attackSeconds, 3));
+                  + fmt(target.envelopeParameterSettings(0).attackSeconds, 3));
 
         presetFile.deleteFile();
     }
@@ -1283,10 +1283,10 @@ void testBreakpointEnvelope()
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
-        setParam(processor, "ampAttack", 0.100f);
-        setParam(processor, "ampDecay", 0.200f);
-        setParam(processor, "ampSustain", 0.50f);
-        setParam(processor, "ampRelease", 0.300f);
+        setParam(processor, "env1Attack", 0.100f);
+        setParam(processor, "env1Decay", 0.200f);
+        setParam(processor, "env1Sustain", 0.50f);
+        setParam(processor, "env1Release", 0.300f);
 
         std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
         if (editor != nullptr)
@@ -1305,31 +1305,35 @@ void testBreakpointEnvelope()
             };
             walk(*editor);
 
-            // By its owner, not by walk order: the first EnvelopeComponent the
-            // walk reaches is ENV 1, so cards.front() edits the wrong slot and
-            // every assertion about slot 0 then passes without touching it.
-            EnvelopeComponent* amp = nullptr;
-            std::function<void(juce::Component&)> findAmp = [&](juce::Component& parent)
+            // ENV 1, which is slot 1 - the loop this test is about only exists
+            // where Breakpoint mode does, and AMP ENV is ADSR-only. The first
+            // EnvelopeComponent the walk reaches IS ENV 1; naming that here
+            // rather than relying on it is what keeps the test honest if the
+            // order ever changes.
+            EnvelopeComponent* env1 = nullptr;
+            ModPanel* modPanel = nullptr;
+            std::function<void(juce::Component&)> findEnv1 = [&](juce::Component& parent)
             {
                 for (auto* child : parent.getChildren())
                 {
                     if (child == nullptr) { continue; }
-                    if (auto* owner = dynamic_cast<AmpEnvelopeComponent*>(child))
+                    if (auto* panel = dynamic_cast<ModPanel*>(child)) { modPanel = panel; }
+                    if (auto* env = dynamic_cast<EnvelopeComponent*>(child))
                     {
-                        if (amp == nullptr) { amp = owner->debugGraph(); }
+                        if (env1 == nullptr && ! env->isAdsrOnly()) { env1 = env; }
                     }
-                    findAmp(*child);
+                    findEnv1(*child);
                 }
             };
-            findAmp(*editor);
-            if (amp != nullptr && amp->onEnvelopeEdited != nullptr)
+            findEnv1(*editor);
+            if (env1 != nullptr && modPanel != nullptr && env1->onEnvelopeEdited != nullptr)
             {
-                processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+                processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
 
                 // Four points, the shape seeding produces - the exact geometry
                 // that used to read as an ADSR - dragged somewhere an ADSR
                 // cannot describe.
-                const auto seeded = processor.getShapedEnvelope(0);
+                const auto seeded = processor.getShapedEnvelope(1);
                 check("EnvIso_SeedingUsesTheAdsrTheUserCanSee",
                       std::abs(seeded.getPoint(1).timeSeconds - 0.100) < 1.0e-4
                           && std::abs(seeded.getPoint(2).value - 0.50) < 1.0e-4,
@@ -1342,9 +1346,9 @@ void testBreakpointEnvelope()
                 auto drawn = seeded;
                 drawn.setPoint(1, 0.040, 0.62);
                 drawn.setPoint(2, 0.220, 0.90);
-                amp->onEnvelopeEdited(drawn);
+                env1->onEnvelopeEdited(drawn);
 
-                const auto after = processor.currentAmpEnvelopeSettings();
+                const auto after = processor.envelopeParameterSettings(0);
                 check("EnvIso_DraggingInBreakpointModeDoesNotWriteTheAdsrParameters",
                       std::abs(after.attackSeconds - 0.100f) < 1.0e-4f
                           && std::abs(after.decaySeconds - 0.200f) < 1.0e-4f
@@ -1357,31 +1361,13 @@ void testBreakpointEnvelope()
 
                 // And the refresh must not rebuild the drawing from them.
                 for (auto* child : editor->getChildren())
-                {
-                    if (auto* ampCard = dynamic_cast<AmpEnvelopeComponent*>(child))
-                    {
-                        ampCard->refreshFromParameters();
-                    }
-                }
-                std::function<void(juce::Component&)> refreshAll = [&](juce::Component& parent)
-                {
-                    for (auto* child : parent.getChildren())
-                    {
-                        if (child == nullptr) { continue; }
-                        if (auto* ampCard = dynamic_cast<AmpEnvelopeComponent*>(child))
-                        {
-                            ampCard->refreshFromParameters();
-                        }
-                        refreshAll(*child);
-                    }
-                };
-                refreshAll(*editor);
+                modPanel->refreshFromParameters();
 
                 // What the GRAPH was handed, not what the processor stored. A
                 // refresh writes the component, so reading the processor here
                 // measured a value the refresh never touches - it passed with
                 // the rebuild fully in place.
-                const auto kept = amp->debugEditor().getEnvelope();
+                const auto kept = env1->debugEditor().getEnvelope();
                 check("EnvIso_ARefreshDoesNotRebuildABreakpointShapeFromTheAdsr",
                       kept.isBreakpointMode()
                           && std::abs(kept.getPoint(1).timeSeconds - 0.040) < 1.0e-6
@@ -1393,20 +1379,36 @@ void testBreakpointEnvelope()
                           + fmt(kept.getPoint(2).value, 2) + ")");
             }
 
-            // Every card, not only AMP ENV: they are one component, so the rule
-            // has to hold on all four or the abstraction is not the boundary.
+            // Every card that OFFERS the mode: they are one component, so the
+            // rule has to hold on all of them or the abstraction is not the
+            // boundary. AMP ENV is excluded because it has no Breakpoint mode
+            // to hold - and that exclusion is asserted rather than assumed,
+            // below, so this cannot quietly become a test of nothing.
+            auto capable = 0;
             auto cardsHolding = 0;
             for (std::size_t i = 0; i < cards.size(); ++i)
             {
                 const auto slot = static_cast<int>(i);
+                if (! PX3SynthAudioProcessor::envelopeSupportsBreakpointMode(slot)) { continue; }
+
+                ++capable;
                 processor.setEnvelopeMode(slot, px3::BreakpointEnvelope::Mode::breakpoint);
                 auto shape = processor.getShapedEnvelope(slot);
                 if (! shape.isAdsrSkeleton() && shape.isBreakpointMode()) { ++cardsHolding; }
             }
-            check("EnvIso_NoCardReadsAFourPointDrawingAsAnAdsr",
-                  ! cards.empty() && cardsHolding == static_cast<int>(cards.size()),
-                  juce::String(cardsHolding) + " of " + juce::String(static_cast<int>(cards.size()))
-                      + " cards keep Breakpoint semantics at four points");
+            check("EnvIso_NoCapableCardReadsAFourPointDrawingAsAnAdsr",
+                  capable > 0 && cardsHolding == capable,
+                  juce::String(cardsHolding) + " of " + juce::String(capable)
+                      + " breakpoint-capable cards keep Breakpoint semantics at four points");
+
+            // AMP ENV refuses the mode outright, whatever it is asked.
+            processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+            check("EnvIso_AmpEnvRefusesBreakpointMode",
+                  processor.getEnvelopeMode(0) == px3::BreakpointEnvelope::Mode::adsr
+                      && ! processor.getShapedEnvelope(0).isBreakpointMode(),
+                  processor.getEnvelopeMode(0) == px3::BreakpointEnvelope::Mode::adsr
+                      ? "asked for Breakpoint, AMP ENV stays ADSR"
+                      : "AMP ENV entered Breakpoint mode");
         }
     }
 
@@ -1510,9 +1512,12 @@ void testBreakpointEnvelope()
 
         juce::StringArray failures;
 
-        for (int slot = 0; slot < 4; ++slot)
+        // Slot 0 is AMP ENV, which has no Breakpoint mode to round-trip
+        // through. It gets its own check afterwards rather than being skipped
+        // silently.
+        for (int slot = 1; slot < 4; ++slot)
         {
-            const juce::String prefix = slot == 0 ? "amp" : "env" + juce::String(slot);
+            const juce::String prefix = "env" + juce::String(slot);
             const auto attackId = slot == 0 ? juce::String("ampAttack") : prefix + "Attack";
             const auto sustainId = slot == 0 ? juce::String("ampSustain") : prefix + "Sustain";
 
@@ -1595,10 +1600,37 @@ void testBreakpointEnvelope()
             }
         }
 
-        check("EnvIso_EveryCardSurvivesRepeatedSwitchingWithEditsBetween",
+        check("EnvIso_EveryCapableCardSurvivesRepeatedSwitchingWithEditsBetween",
               failures.isEmpty(),
-              failures.isEmpty() ? "all four cards round-tripped twice with edits at every stop"
-                                 : failures.joinIntoString("; "));
+              failures.isEmpty()
+                  ? "all three mod envelopes round-tripped twice with edits at every stop"
+                  : failures.joinIntoString("; "));
+
+        // AMP ENV has nothing to round-trip: asked repeatedly for Breakpoint,
+        // it stays ADSR and keeps the shape it had.
+        setParam(processor, "ampAttack", 0.135f);
+        {
+            auto bent = processor.getShapedEnvelope(0);
+            bent.setCurve(1, -0.55);
+            processor.setShapedEnvelope(0, bent);
+        }
+        for (int i = 0; i < 4; ++i)
+        {
+            processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+            processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
+        }
+
+        const auto ampAfter = processor.currentAmpEnvelope();
+        check("EnvIso_AmpEnvStaysAdsrThroughRepeatedRequests",
+              processor.getEnvelopeMode(0) == px3::BreakpointEnvelope::Mode::adsr
+                  && ampAfter.getPointCount() == 4
+                  && std::abs(ampAfter.getPoint(1).curveToNext + 0.55) < 1.0e-9
+                  && std::abs(processor.currentAmpEnvelopeSettings().attackSeconds - 0.135f)
+                         < 1.0e-4f,
+              "after four requests for Breakpoint it is still ADSR over "
+                  + juce::String(ampAfter.getPointCount()) + " points, bend "
+                  + fmt(static_cast<float>(ampAfter.getPoint(1).curveToNext), 2) + ", A "
+                  + fmt(processor.currentAmpEnvelopeSettings().attackSeconds, 3));
     }
 
     // ---- a two-point breakpoint envelope is a first-class envelope ----------
@@ -1723,25 +1755,25 @@ void testBreakpointEnvelope()
         PX3SynthAudioProcessor saver;
         saver.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         saver.prepareToPlay(kSampleRate, kBlockSize);
-        saver.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+        saver.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
 
         {
             // setPoints is the model's structural floor, which is still two -
             // that is what makes such a state representable and therefore
             // loadable.
-            auto bare = saver.getShapedEnvelope(0);
+            auto bare = saver.getShapedEnvelope(1);
             px3::BreakpointEnvelope::Point points[2] = {
                 { 0.00, 0.0, 0.0 },
                 { 0.80, 0.0, 0.0 }
             };
             bare.setPoints(points, 2, 0);
             bare.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
-            saver.setShapedEnvelope(0, bare);
+            saver.setShapedEnvelope(1, bare);
 
             check("EnvFloor_TheModelStillRepresentsTwoPoints",
-                  saver.getShapedEnvelope(0).getPointCount() == 2,
+                  saver.getShapedEnvelope(1).getPointCount() == 2,
                   "the stored shape holds "
-                      + juce::String(saver.getShapedEnvelope(0).getPointCount()) + " points");
+                      + juce::String(saver.getShapedEnvelope(1).getPointCount()) + " points");
         }
 
         juce::MemoryBlock saved;
@@ -1752,7 +1784,7 @@ void testBreakpointEnvelope()
         loader.prepareToPlay(kSampleRate, kBlockSize);
         loader.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
 
-        const auto loaded = loader.getShapedEnvelope(0);
+        const auto loaded = loader.getShapedEnvelope(1);
         const auto midpointOnTheLine
             = loaded.getPointCount() == 3
               && std::abs(loaded.getPoint(1).timeSeconds - 0.40) < 1.0e-9
@@ -1768,6 +1800,135 @@ void testBreakpointEnvelope()
         check("EnvFloor_TheRepairDoesNotChangeTheSound",
               loaded.getTotalSeconds() > 0.79 && loaded.getTotalSeconds() < 0.81,
               "the envelope still runs " + fmt(loaded.getTotalSeconds(), 2) + " s");
+    }
+
+    // ---- a session claiming AMP ENV is a breakpoint envelope ----------------
+    //
+    // The processor will not create such a state, so it is built by editing the
+    // saved tree - which is exactly how one would arrive: a project saved
+    // before AMP ENV became ADSR-only. The restore path does not go through
+    // setEnvelopeMode; it builds a shape, sets the mode on it and stores it. So
+    // this is the case that proves the rule lives at the STORE, not at the UI's
+    // door.
+    {
+        PX3SynthAudioProcessor writer;
+        writer.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        writer.prepareToPlay(kSampleRate, kBlockSize);
+
+        writer.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
+        {
+            auto drawn = writer.getShapedEnvelope(1);
+            drawn.addPoint(0.22, 0.90);
+            drawn.addPoint(0.48, 0.20);
+            writer.setShapedEnvelope(1, drawn);
+        }
+
+        auto tree = writer.createParameterStateTree();
+        auto shapes = tree.getChildWithName(px3::processor_internal::kEnvelopeShapesId);
+
+        auto rewrote = false;
+        if (shapes.isValid())
+        {
+            for (auto node : shapes)
+            {
+                const auto index = static_cast<int>(
+                    node.getProperty(px3::processor_internal::kEnvelopeShapeIndexId, -1));
+                if (index != 1) { continue; }
+
+                // The same six-point breakpoint envelope, relabelled as slot 0.
+                auto forged = node.createCopy();
+                forged.setProperty(px3::processor_internal::kEnvelopeShapeIndexId, 0, nullptr);
+                shapes.addChild(forged, -1, nullptr);
+                rewrote = true;
+                break;
+            }
+        }
+
+        PX3SynthAudioProcessor reader;
+        reader.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        reader.prepareToPlay(kSampleRate, kBlockSize);
+        juce::String error;
+        const auto applied = rewrote && reader.applyParameterStateTree(tree, &error, true);
+
+        const auto amp = reader.getShapedEnvelope(0);
+        check("EnvIso_AStateClaimingABreakpointAmpEnvLoadsAsAdsr",
+              applied && ! amp.isBreakpointMode()
+                  && reader.getEnvelopeMode(0) == px3::BreakpointEnvelope::Mode::adsr
+                  // Reduced to a shape the four knobs can actually drive, not
+                  // a six-point drawing wearing an ADSR label.
+                  && amp.getPointCount() == 4 && amp.isAdsrSkeleton(),
+              applied ? juce::String("it loads as ")
+                            + (amp.isBreakpointMode() ? "Breakpoint" : "ADSR")
+                            + " over " + juce::String(amp.getPointCount()) + " points"
+                      : "the forged state did not apply: " + error);
+
+        // The same forgery with a FOUR-point shape, which is what seeding a
+        // Breakpoint envelope from an ADSR produces. It needs no reduction -
+        // the geometry is already an ADSR skeleton - so nothing but the mode
+        // has to be corrected, and it is the only case that proves the mode is
+        // corrected at all. The six-point version above cannot: reducedToAdsr
+        // sets the mode itself on its way out.
+        {
+            PX3SynthAudioProcessor bentWriter;
+            bentWriter.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            bentWriter.prepareToPlay(kSampleRate, kBlockSize);
+
+            // Curved, so the writer stores a node for it at all - a plain ADSR
+            // says nothing the parameters do not and is skipped.
+            auto bent = bentWriter.getShapedEnvelope(0);
+            bent.setCurve(1, 0.48);
+            bentWriter.setShapedEnvelope(0, bent);
+
+            auto bentTree = bentWriter.createParameterStateTree();
+            auto bentShapes
+                = bentTree.getChildWithName(px3::processor_internal::kEnvelopeShapesId);
+
+            auto relabelled = false;
+            if (bentShapes.isValid())
+            {
+                for (auto node : bentShapes)
+                {
+                    const auto index = static_cast<int>(
+                        node.getProperty(px3::processor_internal::kEnvelopeShapeIndexId, -1));
+                    if (index != 0) { continue; }
+
+                    node.setProperty(px3::processor_internal::kEnvelopeShapeModeId,
+                                     "breakpoint", nullptr);
+                    relabelled = true;
+                    break;
+                }
+            }
+
+            PX3SynthAudioProcessor bentReader;
+            bentReader.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            bentReader.prepareToPlay(kSampleRate, kBlockSize);
+            juce::String bentError;
+            const auto bentApplied
+                = relabelled && bentReader.applyParameterStateTree(bentTree, &bentError, true);
+
+            const auto bentAmp = bentReader.getShapedEnvelope(0);
+            check("EnvIso_AFourPointShapeMarkedBreakpointStillLoadsAsAdsr",
+                  bentApplied && ! bentAmp.isBreakpointMode()
+                      && bentAmp.getPointCount() == 4
+                      && std::abs(bentAmp.getPoint(1).curveToNext - 0.48) < 1.0e-9,
+                  bentApplied
+                      ? juce::String("it loads as ")
+                            + (bentAmp.isBreakpointMode() ? "Breakpoint" : "ADSR")
+                            + " over " + juce::String(bentAmp.getPointCount())
+                            + " points, keeping its 0.48 bend at "
+                            + fmt(static_cast<float>(bentAmp.getPoint(1).curveToNext), 2)
+                      : "the relabelled state did not apply: " + bentError);
+        }
+
+        // ENV 1 is untouched by that rule and keeps its drawing.
+        check("EnvIso_TheSameStateStillGivesEnv1ItsBreakpointShape",
+              applied && reader.getShapedEnvelope(1).isBreakpointMode()
+                  && reader.getShapedEnvelope(1).getPointCount() == 6,
+              "ENV 1 comes back in "
+                  + juce::String(reader.getShapedEnvelope(1).isBreakpointMode() ? "Breakpoint"
+                                                                                : "ADSR")
+                  + " mode on " + juce::String(reader.getShapedEnvelope(1).getPointCount())
+                  + " points");
     }
 
     // ---- the duration floor is Breakpoint's, and reaches saved state --------
@@ -1811,7 +1972,7 @@ void testBreakpointEnvelope()
         PX3SynthAudioProcessor saver;
         saver.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         saver.prepareToPlay(kSampleRate, kBlockSize);
-        saver.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+        saver.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
 
         {
             // Built points-first so it escapes the floor, which is exactly the
@@ -1824,12 +1985,12 @@ void testBreakpointEnvelope()
             };
             collapsed.setPoints(points, 3, 1);
             collapsed.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
-            saver.setShapedEnvelope(0, collapsed);
+            saver.setShapedEnvelope(1, collapsed);
 
             check("EnvFloor_SuchAStateIsRepresentable",
-                  saver.getShapedEnvelope(0).getTotalSeconds() < 1.0e-9,
+                  saver.getShapedEnvelope(1).getTotalSeconds() < 1.0e-9,
                   "the stored shape runs "
-                      + fmt(saver.getShapedEnvelope(0).getTotalSeconds() * 1000.0, 1) + " ms");
+                      + fmt(saver.getShapedEnvelope(1).getTotalSeconds() * 1000.0, 1) + " ms");
         }
 
         juce::MemoryBlock saved;
@@ -1840,7 +2001,7 @@ void testBreakpointEnvelope()
         loader.prepareToPlay(kSampleRate, kBlockSize);
         loader.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
 
-        const auto reloaded = loader.getShapedEnvelope(0);
+        const auto reloaded = loader.getShapedEnvelope(1);
         check("EnvFloor_ACollapsedEnvelopeIsRepairedOnLoad",
               reloaded.getTotalSeconds()
                   >= px3::BreakpointEnvelope::kMinBreakpointSeconds - 1.0e-9,
@@ -1946,12 +2107,12 @@ void testBreakpointEnvelope()
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
-        setParam(processor, "ampAttack", 0.150f);
-        setParam(processor, "ampSustain", 0.45f);
+        setParam(processor, "env1Attack", 0.150f);
+        setParam(processor, "env1Sustain", 0.45f);
 
-        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+        processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
         {
-            auto two = processor.getShapedEnvelope(0);
+            auto two = processor.getShapedEnvelope(1);
             while (two.getPointCount() > 2)
             {
                 auto removed = false;
@@ -1966,10 +2127,10 @@ void testBreakpointEnvelope()
             // three points.
             two.setPoint(two.getPointCount() - 1, 0.42, 0.0);
             two.setCurve(0, -0.35);
-            processor.setShapedEnvelope(0, two);
+            processor.setShapedEnvelope(1, two);
         }
 
-        const auto beforeSave = processor.getShapedEnvelope(0);
+        const auto beforeSave = processor.getShapedEnvelope(1);
         check("EnvIso_DeletingDownToThreeInTheProcessorWorks",
               beforeSave.getPointCount() == 3 && beforeSave.isBreakpointMode(),
               juce::String(beforeSave.getPointCount()) + " points in Breakpoint mode");
@@ -1982,7 +2143,7 @@ void testBreakpointEnvelope()
         reloaded.prepareToPlay(kSampleRate, kBlockSize);
         reloaded.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
 
-        const auto back = reloaded.getShapedEnvelope(0);
+        const auto back = reloaded.getShapedEnvelope(1);
         const auto backLast = back.getPoint(back.getPointCount() - 1);
         check("EnvIso_TheSmallestEnvelopeSurvivesASession",
               back.getPointCount() == 3 && back.isBreakpointMode()
@@ -1995,18 +2156,18 @@ void testBreakpointEnvelope()
         // Out to ADSR and back: the two points must still be two points, and
         // the ADSR must be the stored one rather than anything derived from a
         // single ramp.
-        reloaded.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
-        const auto adsrSettings = reloaded.currentAmpEnvelopeSettings();
+        reloaded.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::adsr);
+        const auto adsrSettings = reloaded.envelopeParameterSettings(0);
         check("EnvIso_LeavingATwoPointDrawingRestoresTheStoredAdsr",
               std::abs(adsrSettings.attackSeconds - 0.150f) < 1.0e-4f
                   && std::abs(adsrSettings.sustainLevel - 0.45f) < 1.0e-4f
-                  && reloaded.currentAmpEnvelope().getPointCount() == 4,
+                  && reloaded.currentModEnvelope(0).getPointCount() == 4,
               "ADSR reads A " + fmt(adsrSettings.attackSeconds, 3) + " S "
                   + fmt(adsrSettings.sustainLevel, 2) + " over "
-                  + juce::String(reloaded.currentAmpEnvelope().getPointCount()) + " points");
+                  + juce::String(reloaded.currentModEnvelope(0).getPointCount()) + " points");
 
-        reloaded.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
-        const auto smallAgain = reloaded.getShapedEnvelope(0);
+        reloaded.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
+        const auto smallAgain = reloaded.getShapedEnvelope(1);
         check("EnvIso_ReturningToBreakpointGivesBackTheSameSmallEnvelope",
               smallAgain.getPointCount() == 3
                   && std::abs(smallAgain.getPoint(smallAgain.getPointCount() - 1).timeSeconds - 0.42)
@@ -2015,7 +2176,7 @@ void testBreakpointEnvelope()
 
         // And a save made while ADSR is live still carries the two-point
         // drawing behind it.
-        reloaded.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
+        reloaded.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::adsr);
         juce::MemoryBlock savedInAdsr;
         reloaded.getStateInformation(savedInAdsr);
 
@@ -2023,9 +2184,9 @@ void testBreakpointEnvelope()
         third.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         third.prepareToPlay(kSampleRate, kBlockSize);
         third.setStateInformation(savedInAdsr.getData(), static_cast<int>(savedInAdsr.getSize()));
-        third.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+        third.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
 
-        const auto retained = third.getShapedEnvelope(0);
+        const auto retained = third.getShapedEnvelope(1);
         check("EnvIso_TheSmallestDrawingSurvivesASaveMadeInAdsrMode",
               retained.getPointCount() == 3
                   && std::abs(retained.getPoint(retained.getPointCount() - 1).timeSeconds - 0.42)
@@ -2170,27 +2331,27 @@ void testBreakpointEnvelope()
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
-        setParam(processor, "ampAttack", 0.120f);
-        setParam(processor, "ampDecay", 0.400f);
-        setParam(processor, "ampSustain", 0.60f);
-        setParam(processor, "ampRelease", 0.800f);
+        setParam(processor, "env1Attack", 0.120f);
+        setParam(processor, "env1Decay", 0.400f);
+        setParam(processor, "env1Sustain", 0.60f);
+        setParam(processor, "env1Release", 0.800f);
 
-        const auto adsrBefore = processor.currentAmpEnvelopeSettings();
+        const auto adsrBefore = processor.envelopeParameterSettings(0);
 
         // Bend the decay while still in ADSR mode. Curves live on the shape,
         // not in the four parameters, so this is the part a round trip can
         // actually lose.
         {
-            auto bent = processor.getShapedEnvelope(0);
+            auto bent = processor.getShapedEnvelope(1);
             bent.setCurve(1, -0.7);
-            processor.setShapedEnvelope(0, bent);
+            processor.setShapedEnvelope(1, bent);
         }
         constexpr double adsrCurveBefore = -0.7;
 
         // First visit seeds from the ADSR, so the user starts somewhere
         // familiar.
-        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
-        const auto seeded = processor.getShapedEnvelope(0);
+        processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
+        const auto seeded = processor.getShapedEnvelope(1);
 
         check("EnvBp_TheFirstVisitSeedsFromTheAdsrShape",
               seeded.isBreakpointMode() && seeded.getPointCount() == 4,
@@ -2203,11 +2364,11 @@ void testBreakpointEnvelope()
         drawn.addPoint(0.55, 0.15);
         drawn.addPoint(0.80, 0.70);
         drawn.setCurve(2, 0.6);
-        processor.setShapedEnvelope(0, drawn);
+        processor.setShapedEnvelope(1, drawn);
         const auto drawnCount = drawn.getPointCount();
 
         // Editing the breakpoint envelope must not touch the ADSR settings.
-        const auto adsrAfterDrawing = processor.currentAmpEnvelopeSettings();
+        const auto adsrAfterDrawing = processor.envelopeParameterSettings(0);
         check("EnvBp_EditingTheBreakpointLeavesTheAdsrAlone",
               std::abs(adsrAfterDrawing.attackSeconds - adsrBefore.attackSeconds) < 1.0e-6f
                   && std::abs(adsrAfterDrawing.decaySeconds - adsrBefore.decaySeconds) < 1.0e-6f
@@ -2220,9 +2381,9 @@ void testBreakpointEnvelope()
 
         // Back to ADSR: the stored settings return, not values derived from
         // the drawing.
-        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
-        const auto adsrParamsAfterReturn = processor.currentAmpEnvelopeSettings();
-        const auto running = processor.currentAmpEnvelope();
+        processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::adsr);
+        const auto adsrParamsAfterReturn = processor.envelopeParameterSettings(0);
+        const auto running = processor.currentModEnvelope(0);
 
         check("EnvBp_ReturningToAdsrDoesNotWriteDerivedValuesToTheParameters",
               std::abs(adsrParamsAfterReturn.attackSeconds - adsrBefore.attackSeconds) < 1.0e-6f
@@ -2253,8 +2414,8 @@ void testBreakpointEnvelope()
                   + " against the " + fmt(static_cast<float>(adsrCurveBefore), 3) + " it was drawn at");
 
         // And back to Breakpoint: the drawing returns, not a fresh seed.
-        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
-        const auto returned = processor.getShapedEnvelope(0);
+        processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
+        const auto returned = processor.getShapedEnvelope(1);
 
         auto identical = returned.getPointCount() == drawn.getPointCount();
         for (int i = 0; identical && i < drawn.getPointCount(); ++i)
@@ -2274,10 +2435,10 @@ void testBreakpointEnvelope()
         // Repeated switching causes no drift.
         for (int i = 0; i < 6; ++i)
         {
-            processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
-            processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+            processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::adsr);
+            processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
         }
-        const auto afterSix = processor.getShapedEnvelope(0);
+        const auto afterSix = processor.getShapedEnvelope(1);
 
         check("EnvBp_RepeatedSwitchingDoesNotDrift",
               afterSix.getPointCount() == drawn.getPointCount()
@@ -2297,7 +2458,10 @@ void testBreakpointEnvelope()
         const auto extra = shaped.addPoint(0.02, 0.35);
         shaped.setCurve(0, 0.62);
         if (extra >= 0) { shaped.setCurve(extra, -0.41); }
-        source.setShapedEnvelope(0, shaped);
+        // Slots 1 and 2. Not slot 0: AMP ENV is ADSR-only, so a Breakpoint
+        // shape stored there is reduced on the way in and this would be
+        // measuring that instead of the round trip.
+        source.setShapedEnvelope(1, shaped);
         source.setShapedEnvelope(2, shaped);
 
         juce::MemoryBlock state;
@@ -2306,7 +2470,7 @@ void testBreakpointEnvelope()
         PX3SynthAudioProcessor restored;
         restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
 
-        const auto back = restored.getShapedEnvelope(0);
+        const auto back = restored.getShapedEnvelope(1);
         auto worstTime = 0.0, worstValue = 0.0, worstCurve = 0.0;
         const auto sameCount = back.getPointCount() == shaped.getPointCount();
         if (sameCount)
@@ -2330,13 +2494,14 @@ void testBreakpointEnvelope()
                         : juce::String(back.getPointCount()) + " points back from "
                               + juce::String(shaped.getPointCount()));
 
-        // Each envelope is its own. Shaping AMP ENV and ENV 2 must not have
-        // touched ENV 1 or ENV 3.
+        // Each envelope is its own. Shaping ENV 1 and ENV 2 must not have
+        // touched AMP ENV or ENV 3.
         check("Envelope_ShapingOneDoesNotTouchTheOthers",
-              restored.getShapedEnvelope(1).isPlainAdsr()
+              restored.getShapedEnvelope(0).isPlainAdsr()
                   && restored.getShapedEnvelope(3).isPlainAdsr()
+                  && ! restored.getShapedEnvelope(1).isPlainAdsr()
                   && ! restored.getShapedEnvelope(2).isPlainAdsr(),
-              "AMP ENV and ENV 2 came back shaped, ENV 1 and ENV 3 came back plain");
+              "ENV 1 and ENV 2 came back shaped, AMP ENV and ENV 3 came back plain");
 
         // A preset from before the editor has no node at all, and must load as
         // plain ADSR rather than as an error.
@@ -3567,10 +3732,20 @@ void testBreakpointEnvelope()
         slow.sustainLevel = 1.0f;
         slow.releaseSeconds = 0.500f;
 
+        // AMP ENV is ADSR-only now, so the four points and their times come from
+        // the parameters: the shape cannot disagree with them about timing any
+        // more, and that is the architecture, not a workaround. What the shape
+        // still owns alone is its CURVES - so the long attack is asked for
+        // through the parameters, and the bend is what a note-on must not
+        // throw away.
+        setParam(processor, "ampAttack", 4.000f);
+        setParam(processor, "ampDecay", 0.100f);
+        setParam(processor, "ampSustain", 1.00f);
+        setParam(processor, "ampRelease", 0.500f);
+        juce::ignoreUnused(slow);
+
         auto shaped = px3::BreakpointEnvelope::fromAdsr(slow);
-        shaped.setCurve(0, 0.25);
-        shaped.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
-        shaped.addPoint(2.000, 0.55);        // free-form: the parameters cannot say this
+        shaped.setCurve(0, 0.62);
         processor.setShapedEnvelope(0, shaped);
 
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
@@ -3600,11 +3775,21 @@ void testBreakpointEnvelope()
         // margin. 1.5x was too loose to fail against the defect it describes -
         // the bug measured 1.3x - which is the mistake this investigation has
         // made more than once.
-        check("Onset_ASharedEnvelopeIsNotClobberedAtNoteOn",
+        check("Onset_ANoteOnDoesNotJumpPastItsAttack",
               firstBlock < laterPeak * 0.5f,
               "first block peaks at " + fmt(firstBlock, 6)
                   + " against " + fmt(laterPeak, 6) + " over the next 20 - "
                   + fmt(laterPeak > 1.0e-9f ? firstBlock / laterPeak : 0.0f, 1) + "x");
+
+        // And the bend survived the note-on. This is what is left of the
+        // original defect on an ADSR-only card: startNote rebuilding the
+        // envelope from the four parameters would straighten a curve the
+        // parameters cannot describe.
+        const auto playedAfterNoteOn = processor.currentAmpEnvelope();
+        check("Onset_ANoteOnDoesNotStraightenADrawnCurve",
+              std::abs(playedAfterNoteOn.getPoint(0).curveToNext - 0.62) < 1.0e-9,
+              "after the note-on the played envelope's attack still bends "
+                  + fmt(static_cast<float>(playedAfterNoteOn.getPoint(0).curveToNext), 2));
     }
 
     // ---- a note-on may not be louder than its own envelope ------------------
@@ -20265,10 +20450,10 @@ void testEnvelopeModes()
         auto shape = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
         shape.setCurve(0, 0.65);
         shape.setCurve(2, -0.35);
-        processor.setShapedEnvelope(0, shape);
+        processor.setShapedEnvelope(1, shape);
 
-        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
-        const auto entered = processor.getShapedEnvelope(0);
+        processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
+        const auto entered = processor.getShapedEnvelope(1);
 
         check("EnvMode_SwitchingToBreakpointKeepsTheShape",
               entered.isBreakpointMode() && entered.getPointCount() == 4
@@ -20284,12 +20469,12 @@ void testEnvelopeModes()
         drawn.addPoint(0.12, 0.92);
         drawn.addPoint(0.40, 0.15);
         drawn.setCurve(1, 0.8);
-        processor.setShapedEnvelope(0, drawn);
+        processor.setShapedEnvelope(1, drawn);
         const auto drawnPoints = drawn.getPointCount();
 
         // Back to ADSR: reduced, not destroyed.
-        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
-        const auto reduced = processor.getShapedEnvelope(0);
+        processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::adsr);
+        const auto reduced = processor.getShapedEnvelope(1);
 
         check("EnvMode_SwitchingToAdsrReducesRatherThanRefusing",
               ! reduced.isBreakpointMode() && reduced.getPointCount() == 4
@@ -20299,8 +20484,8 @@ void testEnvelopeModes()
                   + juce::String(reduced.getPointCount()) + " points");
 
         // And back again: the drawing returns exactly.
-        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
-        const auto restored = processor.getShapedEnvelope(0);
+        processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
+        const auto restored = processor.getShapedEnvelope(1);
 
         auto identical = restored.getPointCount() == drawn.getPointCount();
         for (int i = 0; identical && i < drawn.getPointCount(); ++i)
@@ -20331,7 +20516,7 @@ void testEnvelopeModes()
         drawn.addPoint(0.15, 0.88);
         drawn.addPoint(0.35, 0.22);
         drawn.setCurve(1, 0.75);
-        processor.setShapedEnvelope(0, drawn);
+        processor.setShapedEnvelope(1, drawn);
 
         auto curvedAdsr = px3::BreakpointEnvelope::fromAdsr(adsrSettings);
         curvedAdsr.setCurve(0, -0.6);
@@ -20345,7 +20530,7 @@ void testEnvelopeModes()
         reopened.prepareToPlay(kRate, kBlock);
         reopened.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
 
-        const auto amp = reopened.getShapedEnvelope(0);
+        const auto amp = reopened.getShapedEnvelope(1);
         const auto env2 = reopened.getShapedEnvelope(2);
 
         auto pointsMatch = amp.getPointCount() == drawn.getPointCount();
@@ -20371,7 +20556,7 @@ void testEnvelopeModes()
 
         // The retained shape round-trips too, so switching back after a reload
         // still restores the drawing.
-        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
+        processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::adsr);
         juce::MemoryBlock savedInAdsr;
         processor.getStateInformation(savedInAdsr);
 
@@ -20380,8 +20565,8 @@ void testEnvelopeModes()
         afterReload.prepareToPlay(kRate, kBlock);
         afterReload.setStateInformation(savedInAdsr.getData(),
                                         static_cast<int>(savedInAdsr.getSize()));
-        afterReload.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
-        const auto recovered = afterReload.getShapedEnvelope(0);
+        afterReload.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
+        const auto recovered = afterReload.getShapedEnvelope(1);
 
         check("EnvMode_TheRetainedDrawingSurvivesASaveAndReload",
               recovered.getPointCount() == drawn.getPointCount(),
@@ -20415,7 +20600,10 @@ void testEnvelopeModes()
             PX3SynthAudioProcessor writer;
             writer.setPlayConfigDetails(0, 2, kRate, kBlock);
             writer.prepareToPlay(kRate, kBlock);
-            writer.setShapedEnvelope(0, freeForm);      // five points
+            // Slot 1, not slot 0: AMP ENV is ADSR-only, so a five-point
+            // shape stored there is forced back to ADSR on the way in and the
+            // migration this is testing never gets a chance to run.
+            writer.setShapedEnvelope(1, freeForm);      // five points
             writer.setShapedEnvelope(2, skeleton);      // four points, curved
 
             auto legacy = writer.createParameterStateTree();
@@ -20434,11 +20622,11 @@ void testEnvelopeModes()
 
             check("EnvMode_AVersionThreeStateMigratesToTheModeItsShapeImplies",
                   applied
-                      && reader.getEnvelopeMode(0) == px3::BreakpointEnvelope::Mode::breakpoint
+                      && reader.getEnvelopeMode(1) == px3::BreakpointEnvelope::Mode::breakpoint
                       && reader.getEnvelopeMode(2) == px3::BreakpointEnvelope::Mode::adsr
-                      && reader.getShapedEnvelope(0).getPointCount() == 5,
+                      && reader.getShapedEnvelope(1).getPointCount() == 5,
                   "a version 3 state loads its five-point envelope as "
-                      + juce::String(reader.getEnvelopeMode(0)
+                      + juce::String(reader.getEnvelopeMode(1)
                                          == px3::BreakpointEnvelope::Mode::breakpoint
                                      ? "Breakpoint" : "ADSR")
                       + " and its four-point one as "
@@ -20473,12 +20661,26 @@ void testEnvelopeModes()
             };
             walk(*editor);
 
+            // Two things, told apart: which cards SHOW the selector, and what it
+            // offers. Counting items alone passes on AMP ENV even now that the
+            // selector is not drawn there - the ComboBox still holds two items,
+            // it is simply never shown.
             juce::StringArray offered;
-            auto everyCardHasOne = ! cards.empty();
+            auto shownSelectors = 0;
+            auto hiddenSelectors = 0;
+            auto everyShownOneOffersBoth = true;
             for (auto* card : cards)
             {
                 auto& box = card->debugModeBox();
-                everyCardHasOne = everyCardHasOne && box.getNumItems() == 2;
+
+                if (card->isAdsrOnly())
+                {
+                    if (! box.isVisible()) { ++hiddenSelectors; }
+                    continue;
+                }
+
+                if (box.isVisible()) { ++shownSelectors; }
+                everyShownOneOffersBoth = everyShownOneOffersBoth && box.getNumItems() == 2;
                 if (offered.isEmpty())
                 {
                     for (int i = 0; i < box.getNumItems(); ++i) { offered.add(box.getItemText(i)); }
@@ -20526,9 +20728,54 @@ void testEnvelopeModes()
                           : "no card reported both a TYPE box and an ADSR group");
             }
 
-            check("EnvMode_EveryEnvelopeCardOffersTheTwoModes",
-                  everyCardHasOne && offered.size() == 2,
-                  juce::String(static_cast<int>(cards.size())) + " cards offering "
+            // AMP ENV's knobs take the whole row, because there is no selector
+            // sharing it. Measured against the row the knobs are laid out in
+            // rather than against a number: the point is that the group spans
+            // what it is given, whatever that happens to be.
+            {
+                EnvelopeComponent* ampCard = nullptr;
+                EnvelopeComponent* modCard = nullptr;
+                for (auto* card : cards)
+                {
+                    if (card->isAdsrOnly()) { if (ampCard == nullptr) { ampCard = card; } }
+                    else if (modCard == nullptr) { modCard = card; }
+                }
+
+                const auto spanOf = [](EnvelopeComponent* card)
+                {
+                    if (card == nullptr) { return 0.0; }
+                    card->setEnvelopeMode(px3::BreakpointEnvelope::Mode::adsr);
+                    const auto group = card->debugAdsrGroupBounds();
+                    const auto row = card->debugAdsrRowBounds();
+                    if (row.getWidth() <= 0) { return 0.0; }
+                    return static_cast<double>(group.getWidth())
+                           / static_cast<double>(row.getWidth());
+                };
+
+                const auto ampSpan = spanOf(ampCard);
+                const auto modSpan = spanOf(modCard);
+
+                check("EnvKnobs_AmpEnvKnobsTakeTheWholeRow",
+                      ampCard != nullptr && ampSpan > 0.97,
+                      "AMP ENV's four knobs span " + fmt(ampSpan * 100.0, 1)
+                          + "% of their row");
+
+                // And the mod cards are NOT changed by this: theirs still stop
+                // short, because the TYPE selector is still there.
+                check("EnvKnobs_ModEnvKnobsStillShareTheirRow",
+                      modCard != nullptr && modSpan > 0.2 && modSpan < 0.9,
+                      "ENV 1's four knobs span " + fmt(modSpan * 100.0, 1)
+                          + "% of their row, the rest being the TYPE selector");
+            }
+
+            check("EnvMode_TheModeSelectorAppearsOnlyWhereBothModesExist",
+                  shownSelectors == 3 && hiddenSelectors == 1,
+                  juce::String(shownSelectors) + " cards show a TYPE selector and "
+                      + juce::String(hiddenSelectors) + " ADSR-only card hides it");
+
+            check("EnvMode_TheSelectorOffersTheTwoModes",
+                  shownSelectors > 0 && everyShownOneOffersBoth && offered.size() == 2,
+                  juce::String(shownSelectors) + " cards offering "
                       + offered.joinIntoString(" / "));
 
             if (! cards.empty())

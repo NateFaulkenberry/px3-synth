@@ -46,6 +46,10 @@ AmpEnvelopeComponent::AmpEnvelopeComponent(PX3SynthAudioProcessor& processorIn, 
                                                         accentIn,
                                                         "amp.env");
 
+    // AMP ENV is an ADSR and nothing else: no TYPE selector, and the four knobs
+    // take the whole width the selector would have shared.
+    envelopeGraph->setAdsrOnly(true);
+
     // Slot 0 is AMP ENV. The parameters are written back for any four-point
     // skeleton, curved or not, which is what keeps the knobs under the graph
     // and a DAW's automation of ampAttack in step with a drag. Only once a

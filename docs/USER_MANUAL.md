@@ -326,9 +326,50 @@ on a pad — a triangle at 0.1 Hz on cutoff. A wobble on a wavetable position.
 An envelope runs once per note, from the moment the key goes down. Where an LFO
 repeats, an envelope describes a journey with a beginning and an end.
 
-ENV 1–3 use the same editor as the amplitude envelope, including the ADSR and
-BREAKPOINT types — see [AMP](#amp--amplitude) for how to draw one. Each has an
-ASSIGN menu and an AMOUNT knob of its own, and each keeps its own type.
+ENV 1–3 use the same editor as the amplitude envelope — see [AMP](#amp--amplitude)
+for the handles, the knobs and the curves. Each has an ASSIGN menu and an AMOUNT
+knob of its own.
+
+### Envelope type
+
+A **TYPE** menu beneath the graph chooses how the envelope is built. Both
+choices are drawn on the same graph and both support curves; they differ in how
+many points the envelope may have, and therefore in whether four knobs can
+describe it.
+
+This menu is on ENV 1–3 only. The amplitude envelope is always an ADSR.
+
+| Type | What it is | When to use it |
+| --- | --- | --- |
+| **ADSR** | The traditional four-stage envelope: attack, decay, sustain, release. Three handles and four knobs. | Almost always. It is quick to set, easy to read, and covers most sounds. |
+| **BREAKPOINT** | A free-form envelope of up to 16 points, each with its own time, level and curve. It plays its whole trajectory once and does not hold: the key triggers it, it does not gate it. | Multi-stage swells, rhythmic shapes, anything the four stages cannot say. |
+
+**Switching between them is safe.** Choosing BREAKPOINT starts from exactly the
+ADSR shape you were looking at, curves included, and you can then add points.
+Choosing ADSR again brings back the ADSR you had — your breakpoint drawing is
+kept, and switching back to BREAKPOINT restores it exactly, even after saving
+and reloading.
+
+> **Note:** The four knobs are greyed out in BREAKPOINT mode. They stay on
+> screen so you can see the mode is not using them; four numbers cannot describe
+> a sixteen-point envelope.
+
+### Extra points
+
+In **BREAKPOINT** mode, double-click empty space in the graph to add a point,
+and double-click a point to remove it. Up to sixteen.
+
+The first and last points are structural and cannot be removed: the note begins
+at silence and ends at silence. Nor can the last point between them — an
+envelope with only its two ends has nothing you can move and nothing it can say,
+so the editor always keeps one point in the middle for you to drag.
+
+Each point has its own time and level, and each segment between points has its
+own curve, so a breakpoint envelope can rise, fall, hold and rise again as many
+times as sixteen points allow. The shortest it can be is 10 ms.
+
+In **ADSR** mode, double-clicking does nothing. The envelope is the four stages,
+and that is the whole point of choosing it.
 
 **How they differ from the amp envelope:** The amplitude envelope always shapes
 the volume of every note; it is not assignable, because it always has the same
@@ -362,27 +403,20 @@ The amplitude envelope shapes the volume of every note, from the moment the key
 goes down to the moment the sound finally disappears. It is drawn as a curve you
 edit directly.
 
-## Envelope type
+## Always an ADSR
 
-A **TYPE** menu beneath the graph chooses how the envelope is built. Both
-choices are drawn on the same graph and both support curves; they differ in how
-many points the envelope may have, and therefore in whether four knobs can
-describe it.
+The amplitude envelope is an ADSR: an attack, a decay, a sustain level and a
+release. Three handles on the graph, four knobs beneath it, and a curve on every
+segment.
 
-| Type | What it is | When to use it |
-| --- | --- | --- |
-| **ADSR** | The traditional four-stage envelope: attack, decay, sustain, release. Three handles and four knobs. | Almost always. It is quick to set, easy to read, and covers most sounds. |
-| **BREAKPOINT** | A free-form envelope of up to 16 points, each with its own time, level and curve. | Multi-stage swells, rhythmic shapes, anything the four stages cannot say. |
+It has no TYPE menu, because it has no second type to choose. A **BREAKPOINT**
+envelope is a one-shot — it plays its whole trajectory and the voice retires at
+the end, whatever the key is doing — which is a modulation shape. As an
+*amplitude* envelope it would mean a note whose length the keyboard does not
+control, so AMP ENV does not offer it.
 
-**Switching between them is safe.** Choosing BREAKPOINT starts from exactly the
-ADSR shape you were looking at, curves included, and you can then add points.
-Choosing ADSR again reduces the shape back to four stages — but your breakpoint
-drawing is kept, and switching back to BREAKPOINT restores it exactly, even
-after saving and reloading.
-
-> **Note:** The four knobs appear in ADSR mode only. In BREAKPOINT mode they are
-> hidden, because four numbers cannot describe a sixteen-point envelope, and a
-> knob that no longer describes anything is worse than no knob.
+**ENV 1–3 do.** See [Modulation envelopes](#modulation-envelopes) for the TYPE
+menu and how to draw a free-form shape.
 
 ## The handles
 
@@ -421,10 +455,11 @@ overlaps the next note.
 **How to use it:** Drag left and right along the bottom of the graph. Like
 attack, it is a duration and stays pinned.
 
-## The knobs — ADSR mode
+## The knobs
 
-**ATTACK**, **DECAY**, **SUSTAIN** and **RELEASE** knobs sit beneath the graph
-in ADSR mode. They and the curve are two views of the same thing: dragging the
+**ATTACK**, **DECAY**, **SUSTAIN** and **RELEASE** knobs sit beneath the graph.
+On AMP ENV they span its whole width, there being no TYPE menu to share the row
+with. They and the curve are two views of the same thing: dragging the
 graph moves the knobs, and turning a knob moves the graph. They cannot fall out
 of step, because neither is a copy of the other.
 
@@ -435,23 +470,6 @@ Turning a knob does not straighten a curve you have drawn.
 Drag the line *between* two handles to bend that stage. A bent attack can rise
 quickly then ease into its peak, or hang low and arrive suddenly. Double-click
 the small handle on a bent segment to straighten it again.
-
-## Extra points — BREAKPOINT mode
-
-In **BREAKPOINT** mode, double-click empty space in the graph to add a point,
-and double-click a point to remove it. Up to sixteen.
-
-Three points are structural and cannot be removed: the first, which is where the
-note begins at silence; the sustain point, which is where the envelope holds;
-and the last, which is where the note ends at silence. Everything between them
-is yours.
-
-Each point has its own time and level, and each segment between points has its
-own curve, so a breakpoint envelope can rise, fall, hold and rise again as many
-times as sixteen points allow.
-
-In **ADSR** mode, double-clicking does nothing. The envelope is the four stages,
-and that is the whole point of choosing it.
 
 ## Overlapping handles
 
@@ -1040,7 +1058,7 @@ hand.
 | Click a knob during Macro assignment | Assign or unassign it |
 | Click the active Macro knob | Leave Macro assignment |
 | **Escape** | Leave any assignment mode |
-| Double-click empty envelope space | Add a point (BREAKPOINT mode) |
+| Double-click empty envelope space | Add a point (ENV 1–3, BREAKPOINT mode) |
 | Double-click an envelope point | Remove it (BREAKPOINT mode) |
 | Double-click a curve handle | Straighten that segment |
 | Double-click the pitch wheel | Return it to centre |

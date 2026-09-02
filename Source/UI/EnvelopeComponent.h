@@ -96,6 +96,11 @@ public:
     // Everything the ADSR group occupies - labels, knobs and readouts - as one
     // rectangle, so a test can measure the gap between it and the TYPE
     // selector rather than recompute the layout's own arithmetic.
+    // The row the four knobs are laid out in, so a test can ask what share of
+    // it they take without recomputing the layout.
+    juce::Rectangle<int> debugAdsrRowBounds() const
+    { return inner.rowContent(juce::jmax(0, inner.rowCount() - 1)); }
+
     juce::Rectangle<int> debugAdsrGroupBounds() const
     {
         if (! adsrKnobsBuilt) { return {}; }
@@ -123,6 +128,14 @@ public:
     // what happens when it changes, because only the owner knows which slot
     // this card is editing.
     void setEnvelopeMode(px3::BreakpointEnvelope::Mode mode);
+
+    // Drop the TYPE selector and stay in ADSR. Asked for in code by whoever
+    // owns the card rather than read from UIConfig, for the same reason the
+    // knob row is: it changes what the bottom row contains, and a card whose
+    // layout depends on a file that may not have loaded yet lays itself out
+    // differently depending on timing.
+    void setAdsrOnly(bool shouldBeAdsrOnly);
+    bool isAdsrOnly() const { return adsrOnly; }
     std::function<void(px3::BreakpointEnvelope::Mode)> onEnvelopeModeChanged;
 
     // The editor's shared rotary look-and-feel. Handed down rather than
@@ -226,6 +239,7 @@ private:
     float lastSustain { -1.0f };
     float lastRelease { -1.0f };
     bool currentEnabled { true };
+    bool adsrOnly { false };
     juce::String configPrefix;
     juce::String cardStyleKey;
     juce::String cardTitle;

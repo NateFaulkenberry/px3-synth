@@ -173,6 +173,12 @@ void PX3SynthAudioProcessor::setEnvelopeMode(int slot, px3::BreakpointEnvelope::
     const auto index = static_cast<std::size_t>(juce::jlimit(0, kShapedEnvelopeCount - 1, slot));
     auto& active = shapedEnvelopes[index];
 
+    if (mode == px3::BreakpointEnvelope::Mode::breakpoint
+        && ! envelopeSupportsBreakpointMode(slot))
+    {
+        return;
+    }
+
     if (active.getMode() == mode) { return; }
 
     if (mode == px3::BreakpointEnvelope::Mode::breakpoint)
@@ -298,8 +304,36 @@ EnvelopePosition PX3SynthAudioProcessor::getEnvelopeProgress(int slot) const
 
 void PX3SynthAudioProcessor::setShapedEnvelope(int index, const px3::BreakpointEnvelope& envelope)
 {
-    shapedEnvelopes[static_cast<std::size_t>(juce::jlimit(0, kShapedEnvelopeCount - 1, index))]
-        = envelope;
+    const auto slot = juce::jlimit(0, kShapedEnvelopeCount - 1, index);
+    auto stored = envelope;
+
+    // The choke point for the stored shape, which is what makes AMP ENV's
+    // restriction hold everywhere. setEnvelopeMode is the UI's door; state
+    // restore does not use it - it builds a shape, sets the mode on it and
+    // stores it here - so a session or preset carrying a breakpoint AMP ENV
+    // would otherwise walk straight past the rule.
+    if (! envelopeSupportsBreakpointMode(slot))
+    {
+        // A shape that ARRIVES claiming Breakpoint mode is reduced, not just
+        // relabelled: a six-point drawing wearing an ADSR label is a worse
+        // state than the one it came from, because isAdsrSkeleton is then false
+        // and the four knobs stop reaching it - the stale-knob defect the mode
+        // work removed.
+        //
+        // Only that case. A shape already calling itself an ADSR is stored
+        // exactly as given, however many points it has, so nothing this slot
+        // already plays is changed by the restriction. That matters: AMP ENV
+        // becoming ADSR-only is a UI rule, and it must not quietly rewrite
+        // envelopes that were never in Breakpoint mode to begin with.
+        if (stored.isBreakpointMode() && ! stored.hasAdsrSkeletonShape())
+        {
+            stored = stored.reducedToAdsr();
+        }
+
+        stored.setMode(px3::BreakpointEnvelope::Mode::adsr);
+    }
+
+    shapedEnvelopes[static_cast<std::size_t>(slot)] = stored;
 }
 
 px3::BreakpointEnvelope PX3SynthAudioProcessor::getShapedEnvelope(int index) const

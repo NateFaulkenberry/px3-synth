@@ -273,6 +273,49 @@ moment they are visible again.
 This is what removes the original defect. Stale knobs were possible only because
 the knobs stayed on screen after they stopped meaning anything.
 
+## AMP ENV is ADSR-only
+
+The amplitude envelope offers one type. A breakpoint envelope is a one-shot — it
+plays its whole trajectory and the voice retires at the end, whatever the key is
+doing — which is a modulation shape. As an *amplitude* envelope it means a note
+whose length the keyboard does not control, so slot 0 does not offer the mode
+rather than offering it and behaving oddly.
+
+`envelopeSupportsBreakpointMode(slot)` is the rule, and it is enforced in the
+**processor**, not the editor, so no path reaches it: not the UI, not a preset,
+not restored session state. Two places apply it:
+
+- `setEnvelopeMode` refuses the request. That is the UI's door.
+- `setShapedEnvelope` corrects the shape. That is the one that matters, because
+  **state restore does not go through `setEnvelopeMode`** — it builds a shape,
+  sets the mode on it and stores it, walking straight past a check placed only
+  at the door.
+
+A shape arriving as a Breakpoint envelope is **reduced**, not just relabelled: a
+six-point drawing wearing an ADSR label is worse than what it came from, because
+`isAdsrSkeleton` is then false, the parameters stop being applied to it, and the
+four knobs no longer reach it — the stale-knob defect the mode work removed.
+Only that case, though. A shape already calling itself an ADSR is stored exactly
+as given, however many points it has, so the restriction cannot quietly rewrite
+an envelope that was never in Breakpoint mode.
+
+On the card, `setAdsrOnly(true)` hides the TYPE selector and gives the four knobs
+the whole row. It is asked for in code by whoever owns the card rather than read
+from UIConfig, for the same reason the knob row is: it changes what the bottom
+row contains, and a card whose layout depends on a file that may not have loaded
+yet lays itself out differently depending on timing.
+
+**What this cost in tests.** Thirteen call sites drove breakpoint behaviour
+through slot 0; that behaviour lives on the mod envelopes now and they moved to
+slot 1. Two tests lost their premise rather than their slot: a five-point AMP
+shape is no longer a reachable state, so `Envelope_ShapeSurvivesTheStateRoundTrip`
+moved to ENV 1, and the note-on onset guard was re-aimed. That one is worth
+recording — its whole point was a shape and the parameters disagreeing about
+*timing*, which on an ADSR-only card can no longer happen, because the
+parameters own the times. What AMP's shape still owns alone is its curves, so
+the guard now asks the long attack through the parameters and checks the note-on
+does not straighten a drawn bend.
+
 ## Mode State Isolation
 
 **ADSR and Breakpoint are two independent envelope representations sharing one

@@ -277,6 +277,19 @@ public:
     // currentModEnvelopeSettings answers a different question - what the voice
     // should run - and substitutes a neutral contour while bypassed, which is
     // right for the DSP and wrong for anything drawing the user's envelope.
+    // AMP ENV is an ADSR and nothing else.
+    //
+    // A breakpoint envelope is a one-shot: it plays its trajectory and the
+    // voice retires at the end, whatever the key is doing. That is a modulation
+    // shape. As an AMPLITUDE envelope it means a note whose length the keyboard
+    // does not control, which is not what the amp stage of a synth is for - so
+    // slot 0 does not offer the mode rather than offering it and behaving
+    // oddly.
+    //
+    // Enforced in the processor, not in the editor, so no path reaches it: not
+    // the UI, not a preset, not restored session state.
+    static constexpr bool envelopeSupportsBreakpointMode(int slot) { return slot != 0; }
+
     EnvelopeSettings envelopeParameterSettings(int envIndex) const;
 
     // A parameter by its ID, for the UI. The lookup the MIDI and macro systems

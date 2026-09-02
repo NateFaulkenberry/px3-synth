@@ -443,8 +443,22 @@ EnvelopeComponent::~EnvelopeComponent()
     }
 }
 
+void EnvelopeComponent::setAdsrOnly(bool shouldBeAdsrOnly)
+{
+    if (adsrOnly == shouldBeAdsrOnly) { return; }
+
+    adsrOnly = shouldBeAdsrOnly;
+
+    if (adsrOnly) { setEnvelopeMode(px3::BreakpointEnvelope::Mode::adsr); }
+
+    resized();
+    repaint();
+}
+
 void EnvelopeComponent::setEnvelopeMode(px3::BreakpointEnvelope::Mode mode)
 {
+    if (adsrOnly) { mode = px3::BreakpointEnvelope::Mode::adsr; }
+
     envelopeMode = mode;
     modeBox.setSelectedId(mode == px3::BreakpointEnvelope::Mode::breakpoint ? 2 : 1,
                           juce::dontSendNotification);
@@ -456,7 +470,10 @@ void EnvelopeComponent::layoutModeSelector()
     // Along the bottom row, beside the knobs in ADSR mode and alone in
     // Breakpoint mode - where the knobs would otherwise be. Sized from the same
     // cardInner row the knobs use, so there is no new geometry to keep in step.
-    if (! adsrKnobsWanted())
+    // No selector on an ADSR-only card: there is nothing to choose between, and
+    // a disabled dropdown offering a mode the card cannot enter is worse than
+    // no dropdown.
+    if (! adsrKnobsWanted() || adsrOnly)
     {
         modeBox.setVisible(false);
         modeLabel.setVisible(false);
@@ -632,14 +649,20 @@ void EnvelopeComponent::layoutAdsrKnobs()
     // the knobs' share of the row, which is why they are capped smaller than a
     // row of four otherwise allows.
     auto content = inner.rowContent(row);
-    const auto selectorWidth = uiConfig != nullptr
-                                 ? uiConfig->getInt("envelope.modeSelector.width", 104)
-                                 : 104;
-    const auto selectorGap = uiConfig != nullptr
-                               ? uiConfig->getInt("envelope.modeSelector.gapAfter", 16)
-                               : 16;
-    content.removeFromLeft(juce::jmin(selectorWidth, content.getWidth()));
-    content.removeFromLeft(juce::jmin(selectorGap, content.getWidth()));
+
+    // An ADSR-only card has no selector to leave room for, so the four knobs
+    // take the whole row.
+    if (! adsrOnly)
+    {
+        const auto selectorWidth = uiConfig != nullptr
+                                     ? uiConfig->getInt("envelope.modeSelector.width", 104)
+                                     : 104;
+        const auto selectorGap = uiConfig != nullptr
+                                   ? uiConfig->getInt("envelope.modeSelector.gapAfter", 16)
+                                   : 16;
+        content.removeFromLeft(juce::jmin(selectorWidth, content.getWidth()));
+        content.removeFromLeft(juce::jmin(selectorGap, content.getWidth()));
+    }
     const auto cellHeight = static_cast<float>(juce::jmax(1, content.getHeight()));
     const auto cellWidth = static_cast<float>(juce::jmax(1, content.getWidth() / 4));
 
