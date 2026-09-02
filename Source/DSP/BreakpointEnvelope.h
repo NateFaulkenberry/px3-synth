@@ -83,7 +83,10 @@ public:
     // that is the mode it takes. Existing presets keep the behaviour they have.
     static Mode impliedModeFor(const BreakpointEnvelope& envelope) noexcept
     {
-        return envelope.isAdsrSkeleton() ? Mode::adsr : Mode::breakpoint;
+        // Geometry, not semantics: this runs on state that has no mode yet, so
+        // the mode-gated query would answer from the default and always say
+        // ADSR.
+        return envelope.hasAdsrSkeletonShape() ? Mode::adsr : Mode::breakpoint;
     }
 
     // Reduce an arbitrary shape to four points, keeping what four points can
@@ -93,12 +96,28 @@ public:
 
     bool isPlainAdsr() const;
 
+    // The SHAPE of an ADSR skeleton, said as geometry and nothing else.
+    //
+    // This is deliberately not the same question as "is this an ADSR", and the
+    // only caller entitled to it is impliedModeFor, which has to guess a mode
+    // for state saved before modes existed. Everywhere else, asking geometry a
+    // question about meaning is the bug this separation removes: four points
+    // with the sustain at index 2 is exactly what seeding a Breakpoint envelope
+    // from an ADSR produces, and exactly what deleting points lands back on.
+    bool hasAdsrSkeletonShape() const noexcept
+    { return pointCount == 4 && sustainPoint == 2; }
+
     // The four-point skeleton, curves and all. isPlainAdsr is this AND every
     // segment straight: a bent skeleton is still four points describing an
     // ATTACK, a DECAY, a SUSTAIN and a RELEASE, which is what the knobs under
     // the graph need in order to keep working once a segment has been bent.
+    //
+    // Mode-gated, because every caller is asking whether ADSR SEMANTICS apply -
+    // whether to write the four parameters, whether to rebuild the shape from
+    // them, whether the voice can skip being given the drawing. In Breakpoint
+    // mode the answer is no at any point count.
     bool isAdsrSkeleton() const noexcept
-    { return pointCount == 4 && sustainPoint == 2; }
+    { return mode == Mode::adsr && hasAdsrSkeletonShape(); }
 
     // This shape with the four times and the level taken from `settings` and
     // its own CURVES kept. Turning a knob has to move the graph without

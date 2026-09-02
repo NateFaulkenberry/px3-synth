@@ -672,9 +672,19 @@ void testBreakpointEnvelope()
         check("Envelope_TheEndCannotBeRemoved",
               ! envelope.removePoint(envelope.getPointCount() - 1),
               "the final point is where the release lands");
-        check("Envelope_TheSustainPointCannotBeRemoved",
-              ! envelope.removePoint(envelope.getSustainPoint()),
-              "removing the point the envelope holds at would leave nowhere to hold");
+        // The sustain index is ADSR bookkeeping. In Breakpoint mode the
+        // envelope holds nowhere, so that point is an ordinary one and
+        // protecting it was an ADSR constraint applied to a mode that has no
+        // sustain.
+        {
+            const auto sustain = envelope.getSustainPoint();
+            const auto removable = sustain > 0 && sustain < envelope.getPointCount() - 1;
+            check("Envelope_TheSustainPointIsOrdinaryInBreakpointMode",
+                  removable && envelope.canRemovePoint(sustain),
+                  removable ? "the point at the sustain index can be removed like any other"
+                            : "the sustain index landed on a structural point, so this says "
+                              "nothing");
+        }
 
         const auto before = envelope.getPointCount();
         check("Envelope_AnOrdinaryPointCanBeRemoved",
@@ -1095,6 +1105,402 @@ void testBreakpointEnvelope()
         check("EnvBp_TheRestOfTheGraphIsUnchangedBetweenModes",
               std::abs(adsr.second - bp.second) < 1.0e-4f,
               "outside the region both modes read " + fmt(adsr.second, 4));
+    }
+
+    // ---- mode is the authority, not the point count -------------------------
+    //
+    // A breakpoint envelope with four points is EXACTLY what seeding from an
+    // ADSR produces, and it is what deleting points lands back on. If anything
+    // reads "four points, sustain at index 2" as "this is an ADSR", the mode
+    // stops meaning anything at precisely the shapes users arrive at.
+    {
+        auto seeded = px3::BreakpointEnvelope::fromAdsr([]
+        {
+            EnvelopeSettings s;
+            s.attackSeconds = 0.10f;
+            s.decaySeconds = 0.20f;
+            s.sustainLevel = 0.5f;
+            s.releaseSeconds = 0.30f;
+            return s;
+        }());
+        seeded.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+
+        check("EnvIso_AFourPointBreakpointIsNotAnAdsrSkeleton",
+              ! seeded.isAdsrSkeleton(),
+              seeded.isAdsrSkeleton()
+                  ? "a 4-point Breakpoint envelope reports itself as an ADSR skeleton"
+                  : "it does not claim to be an ADSR skeleton");
+
+        check("EnvIso_AStraightBreakpointIsNotAPlainAdsr",
+              ! seeded.isPlainAdsr(),
+              seeded.isPlainAdsr()
+                  ? "a straight 4-point Breakpoint envelope reports itself as a plain ADSR, so "
+                    "the voice is never given the shape at all"
+                  : "it does not claim to be a plain ADSR");
+
+        // Deleting down to two points. A breakpoint envelope needs a start and
+        // an end and nothing else; the sustain index is ADSR bookkeeping and
+        // must not protect a point here.
+        auto shrinking = seeded;
+        auto removals = 0;
+        for (int guard = 0; guard < 8 && shrinking.getPointCount() > 2; ++guard)
+        {
+            auto removedAny = false;
+            for (int i = shrinking.getPointCount() - 2; i >= 1; --i)
+            {
+                if (shrinking.removePoint(i)) { removedAny = true; ++removals; break; }
+            }
+            if (! removedAny) { break; }
+        }
+
+        check("EnvIso_BreakpointPointsDeleteDownToTwo",
+              shrinking.getPointCount() == 2,
+              "after " + juce::String(removals) + " removals it has "
+                  + juce::String(shrinking.getPointCount()) + " points");
+
+        check("EnvIso_ATwoPointEnvelopeIsStillBreakpoint",
+              shrinking.isBreakpointMode() && ! shrinking.isAdsrSkeleton(),
+              shrinking.isBreakpointMode() ? "still in Breakpoint mode"
+                                           : "it left Breakpoint mode on the way down");
+    }
+
+    // ---- the editor/parameter loop is broken in Breakpoint mode -------------
+    //
+    // The reported symptom. Dragging a point wrote the four ADSR parameters,
+    // and the next refresh rebuilt the shape from them - so a Breakpoint
+    // envelope that happened to have four points behaved as a partly working
+    // ADSR editor. Both halves are tested through the real components, because
+    // the loop only exists once they are wired to each other.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        setParam(processor, "ampAttack", 0.100f);
+        setParam(processor, "ampDecay", 0.200f);
+        setParam(processor, "ampSustain", 0.50f);
+        setParam(processor, "ampRelease", 0.300f);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        if (editor != nullptr)
+        {
+            editor->setSize(1400, 900);
+
+            std::vector<EnvelopeComponent*> cards;
+            std::function<void(juce::Component&)> walk = [&](juce::Component& parent)
+            {
+                for (auto* child : parent.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* env = dynamic_cast<EnvelopeComponent*>(child)) { cards.push_back(env); }
+                    walk(*child);
+                }
+            };
+            walk(*editor);
+
+            // By its owner, not by walk order: the first EnvelopeComponent the
+            // walk reaches is ENV 1, so cards.front() edits the wrong slot and
+            // every assertion about slot 0 then passes without touching it.
+            EnvelopeComponent* amp = nullptr;
+            std::function<void(juce::Component&)> findAmp = [&](juce::Component& parent)
+            {
+                for (auto* child : parent.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    if (auto* owner = dynamic_cast<AmpEnvelopeComponent*>(child))
+                    {
+                        if (amp == nullptr) { amp = owner->debugGraph(); }
+                    }
+                    findAmp(*child);
+                }
+            };
+            findAmp(*editor);
+            if (amp != nullptr && amp->onEnvelopeEdited != nullptr)
+            {
+                processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+
+                // Four points, the shape seeding produces - the exact geometry
+                // that used to read as an ADSR - dragged somewhere an ADSR
+                // cannot describe.
+                const auto seeded = processor.getShapedEnvelope(0);
+                check("EnvIso_SeedingUsesTheAdsrTheUserCanSee",
+                      std::abs(seeded.getPoint(1).timeSeconds - 0.100) < 1.0e-4
+                          && std::abs(seeded.getPoint(2).value - 0.50) < 1.0e-4,
+                      "the seed reads a " + fmt(seeded.getPoint(1).timeSeconds, 3)
+                          + " s attack to a sustain of " + fmt(seeded.getPoint(2).value, 2)
+                          + ", against the parameters' 0.100 / 0.50");
+
+                // Dragged inside the shape's own span, so nothing is clamped by
+                // its neighbours - the point is what the edit DOES downstream.
+                auto drawn = seeded;
+                drawn.setPoint(1, 0.040, 0.62);
+                drawn.setPoint(2, 0.220, 0.90);
+                amp->onEnvelopeEdited(drawn);
+
+                const auto after = processor.currentAmpEnvelopeSettings();
+                check("EnvIso_DraggingInBreakpointModeDoesNotWriteTheAdsrParameters",
+                      std::abs(after.attackSeconds - 0.100f) < 1.0e-4f
+                          && std::abs(after.decaySeconds - 0.200f) < 1.0e-4f
+                          && std::abs(after.sustainLevel - 0.50f) < 1.0e-4f
+                          && std::abs(after.releaseSeconds - 0.300f) < 1.0e-4f,
+                      "after a 4-point Breakpoint drag the parameters read A "
+                          + fmt(after.attackSeconds, 3) + " D " + fmt(after.decaySeconds, 3)
+                          + " S " + fmt(after.sustainLevel, 2) + " R "
+                          + fmt(after.releaseSeconds, 3));
+
+                // And the refresh must not rebuild the drawing from them.
+                for (auto* child : editor->getChildren())
+                {
+                    if (auto* ampCard = dynamic_cast<AmpEnvelopeComponent*>(child))
+                    {
+                        ampCard->refreshFromParameters();
+                    }
+                }
+                std::function<void(juce::Component&)> refreshAll = [&](juce::Component& parent)
+                {
+                    for (auto* child : parent.getChildren())
+                    {
+                        if (child == nullptr) { continue; }
+                        if (auto* ampCard = dynamic_cast<AmpEnvelopeComponent*>(child))
+                        {
+                            ampCard->refreshFromParameters();
+                        }
+                        refreshAll(*child);
+                    }
+                };
+                refreshAll(*editor);
+
+                // What the GRAPH was handed, not what the processor stored. A
+                // refresh writes the component, so reading the processor here
+                // measured a value the refresh never touches - it passed with
+                // the rebuild fully in place.
+                const auto kept = amp->debugEditor().getEnvelope();
+                check("EnvIso_ARefreshDoesNotRebuildABreakpointShapeFromTheAdsr",
+                      kept.isBreakpointMode()
+                          && std::abs(kept.getPoint(1).timeSeconds - 0.040) < 1.0e-6
+                          && std::abs(kept.getPoint(1).value - 0.62) < 1.0e-6
+                          && std::abs(kept.getPoint(2).value - 0.90) < 1.0e-6,
+                      "the drawing still reads P1 (" + fmt(kept.getPoint(1).timeSeconds, 2) + ", "
+                          + fmt(kept.getPoint(1).value, 2) + ") P2 ("
+                          + fmt(kept.getPoint(2).timeSeconds, 2) + ", "
+                          + fmt(kept.getPoint(2).value, 2) + ")");
+            }
+
+            // Every card, not only AMP ENV: they are one component, so the rule
+            // has to hold on all four or the abstraction is not the boundary.
+            auto cardsHolding = 0;
+            for (std::size_t i = 0; i < cards.size(); ++i)
+            {
+                const auto slot = static_cast<int>(i);
+                processor.setEnvelopeMode(slot, px3::BreakpointEnvelope::Mode::breakpoint);
+                auto shape = processor.getShapedEnvelope(slot);
+                if (! shape.isAdsrSkeleton() && shape.isBreakpointMode()) { ++cardsHolding; }
+            }
+            check("EnvIso_NoCardReadsAFourPointDrawingAsAnAdsr",
+                  ! cards.empty() && cardsHolding == static_cast<int>(cards.size()),
+                  juce::String(cardsHolding) + " of " + juce::String(static_cast<int>(cards.size()))
+                      + " cards keep Breakpoint semantics at four points");
+        }
+    }
+
+    // ---- a two-point breakpoint envelope is a first-class envelope ----------
+    //
+    // P0 ---------------- P1. The brief's critical case: two points must not
+    // read as "not enough points to be an envelope" and quietly recover ADSR
+    // behaviour anywhere along the chain.
+    {
+        constexpr double kRate = 1000.0;
+
+        auto ramp = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+        ramp.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+        {
+            px3::BreakpointEnvelope::Point points[2] = {
+                { 0.00, 0.0, 0.0 },
+                { 0.50, 0.0, 0.0 }
+            };
+            ramp.setPoints(points, 2, 1);
+            ramp.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+        }
+
+        check("EnvIso_TwoPointsSurviveBeingSet",
+              ramp.getPointCount() == 2 && ramp.isBreakpointMode(),
+              juce::String(ramp.getPointCount()) + " points, mode "
+                  + (ramp.isBreakpointMode() ? "Breakpoint" : "ADSR"));
+
+        // It plays, on one clock, and it ends. Flat, because BOTH of its points
+        // are the anchored ends - an envelope begins and ends at rest, so two
+        // points is the count at which a shape has no room to say anything.
+        // That is a Breakpoint rule about anchoring, not ADSR meaning returning:
+        // the tests above show it is still a Breakpoint envelope throughout.
+        AmpEnvelope amp;
+        amp.prepare(kRate);
+        amp.setEnvelope(ramp);
+        amp.noteOn();
+
+        auto peak = 0.0f;
+        for (int i = 0; i <= static_cast<int>(0.60 * kRate); ++i)
+        {
+            peak = juce::jmax(peak, std::abs(amp.getNextSample()));
+        }
+
+        check("EnvIso_ATwoPointEnvelopeIsFlatBecauseBothEndsAreAnchored",
+              peak < 1.0e-4f,
+              "it peaks at " + fmt(peak, 5) + ", both of its points being the anchored ends");
+
+        check("EnvIso_ATwoPointEnvelopeFinishesRatherThanHolding",
+              ! amp.isActive(),
+              amp.isActive() ? "it is still sounding past its last point, so something is holding"
+                             : "it ended at its last point, key still down");
+
+        // Three points is the smallest envelope that can carry a shape, and it
+        // must play exactly what it draws - no hold, no ADSR stage anywhere.
+        auto three = ramp;
+        {
+            px3::BreakpointEnvelope::Point points[3] = {
+                { 0.00, 0.0, 0.0 },
+                { 0.25, 1.0, 0.0 },
+                { 0.50, 0.0, 0.0 }
+            };
+            three.setPoints(points, 3, 1);
+            three.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+        }
+
+        AmpEnvelope shaped;
+        shaped.prepare(kRate);
+        shaped.setEnvelope(three);
+        shaped.noteOn();
+        std::vector<float> trace;
+        for (int i = 0; i <= static_cast<int>(0.60 * kRate); ++i) { trace.push_back(shaped.getNextSample()); }
+        const auto at = [&trace](double seconds)
+        { return trace[static_cast<std::size_t>(std::lround(seconds * kRate))]; };
+
+        check("EnvIso_AThreePointEnvelopePlaysExactlyItsShape",
+              at(0.00) < 0.05f && at(0.125) > 0.4f && at(0.125) < 0.6f && at(0.24) > 0.9f
+                  && at(0.49) < 0.1f,
+              "it reads " + fmt(at(0.00), 3) + " at the start, " + fmt(at(0.125), 3)
+                  + " mid-rise, " + fmt(at(0.24), 3) + " at the peak and " + fmt(at(0.49), 3)
+                  + " at the end");
+
+        // The curve is editable, and the DSP follows it.
+        auto bent = three;
+        bent.setCurve(0, 0.8);
+        AmpEnvelope curved;
+        curved.prepare(kRate);
+        curved.setEnvelope(bent);
+        curved.noteOn();
+        float halfway = 0.0f;
+        for (int i = 0; i <= static_cast<int>(0.125 * kRate); ++i) { halfway = curved.getNextSample(); }
+
+        check("EnvIso_TheSegmentCurveOfAThreePointEnvelopeIsHonoured",
+              halfway > at(0.125) + 0.05f,
+              "bent, the midpoint reads " + fmt(halfway, 3) + " against the straight "
+                  + fmt(at(0.125), 3));
+
+        // The fill follows elapsed time across the single segment.
+        {
+            BreakpointEnvelopeEditor graph;
+            graph.setSize(400, 200);
+            graph.setEnvelope(ramp);
+
+            EnvelopePosition position;
+            position.active = true;
+            position.inRelease = false;
+            position.heldSeconds = 0.35;
+            graph.setProgress(position);
+
+            check("EnvIso_TheFillOfATwoPointEnvelopeIsTimeDriven",
+                  std::abs(graph.progressDisplayTime() - 0.35) < 1.0e-6,
+                  "the fill reads " + fmt(graph.progressDisplayTime(), 3)
+                      + " s at 0.35 s elapsed");
+        }
+    }
+
+    // ---- two points survive persistence and a round trip through ADSR -------
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+
+        setParam(processor, "ampAttack", 0.150f);
+        setParam(processor, "ampSustain", 0.45f);
+
+        processor.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+        {
+            auto two = processor.getShapedEnvelope(0);
+            while (two.getPointCount() > 2)
+            {
+                auto removed = false;
+                for (int i = two.getPointCount() - 2; i >= 1 && ! removed; --i)
+                {
+                    removed = two.removePoint(i);
+                }
+                if (! removed) { break; }
+            }
+            two.setPoint(1, 0.42, 0.0);
+            two.setCurve(0, -0.35);
+            processor.setShapedEnvelope(0, two);
+        }
+
+        const auto beforeSave = processor.getShapedEnvelope(0);
+        check("EnvIso_DeletingDownToTwoInTheProcessorWorks",
+              beforeSave.getPointCount() == 2 && beforeSave.isBreakpointMode(),
+              juce::String(beforeSave.getPointCount()) + " points in Breakpoint mode");
+
+        juce::MemoryBlock saved;
+        processor.getStateInformation(saved);
+
+        PX3SynthAudioProcessor reloaded;
+        reloaded.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        reloaded.prepareToPlay(kSampleRate, kBlockSize);
+        reloaded.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+
+        const auto back = reloaded.getShapedEnvelope(0);
+        check("EnvIso_ATwoPointEnvelopeSurvivesASession",
+              back.getPointCount() == 2 && back.isBreakpointMode()
+                  && std::abs(back.getPoint(1).timeSeconds - 0.42) < 1.0e-9
+                  && std::abs(back.getPoint(0).curveToNext + 0.35) < 1.0e-9,
+              "it reloads as " + juce::String(back.getPointCount()) + " points ending at "
+                  + fmt(back.getPoint(1).timeSeconds, 2) + " s bending "
+                  + fmt(static_cast<float>(back.getPoint(0).curveToNext), 2));
+
+        // Out to ADSR and back: the two points must still be two points, and
+        // the ADSR must be the stored one rather than anything derived from a
+        // single ramp.
+        reloaded.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
+        const auto adsrSettings = reloaded.currentAmpEnvelopeSettings();
+        check("EnvIso_LeavingATwoPointDrawingRestoresTheStoredAdsr",
+              std::abs(adsrSettings.attackSeconds - 0.150f) < 1.0e-4f
+                  && std::abs(adsrSettings.sustainLevel - 0.45f) < 1.0e-4f
+                  && reloaded.currentAmpEnvelope().getPointCount() == 4,
+              "ADSR reads A " + fmt(adsrSettings.attackSeconds, 3) + " S "
+                  + fmt(adsrSettings.sustainLevel, 2) + " over "
+                  + juce::String(reloaded.currentAmpEnvelope().getPointCount()) + " points");
+
+        reloaded.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+        const auto twoAgain = reloaded.getShapedEnvelope(0);
+        check("EnvIso_ReturningToBreakpointGivesBackTheTwoPoints",
+              twoAgain.getPointCount() == 2
+                  && std::abs(twoAgain.getPoint(1).timeSeconds - 0.42) < 1.0e-9,
+              "it comes back as " + juce::String(twoAgain.getPointCount()) + " points");
+
+        // And a save made while ADSR is live still carries the two-point
+        // drawing behind it.
+        reloaded.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::adsr);
+        juce::MemoryBlock savedInAdsr;
+        reloaded.getStateInformation(savedInAdsr);
+
+        PX3SynthAudioProcessor third;
+        third.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        third.prepareToPlay(kSampleRate, kBlockSize);
+        third.setStateInformation(savedInAdsr.getData(), static_cast<int>(savedInAdsr.getSize()));
+        third.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+
+        const auto retained = third.getShapedEnvelope(0);
+        check("EnvIso_ATwoPointDrawingSurvivesASaveMadeInAdsrMode",
+              retained.getPointCount() == 2
+                  && std::abs(retained.getPoint(1).timeSeconds - 0.42) < 1.0e-9,
+              "after saving in ADSR mode and reloading, switching back gives "
+                  + juce::String(retained.getPointCount()) + " points");
     }
 
     // ---- ENV 1-3 travel the same trajectory ---------------------------------
@@ -19050,19 +19456,21 @@ void testEnvelopeModes()
               std::abs(envelope.getPoint(1).value - 0.42) < 1.0e-6,
               "point 1 reads " + fmt(envelope.getPoint(1).value, 3));
 
-        // The structural points still hold: an envelope starts and ends at
-        // silence, and the point it holds at cannot be removed.
+        // Two structural points, for Breakpoint reasons: a function of time
+        // needs a start and an end, and an envelope begins and ends at rest.
+        // The sustain index is NOT one of them - that would be an ADSR
+        // constraint borrowed by a mode that never holds.
         juce::StringArray protectedPoints;
         if (envelope.canRemovePoint(0)) { protectedPoints.add("the first"); }
         if (envelope.canRemovePoint(envelope.getPointCount() - 1)) { protectedPoints.add("the last"); }
-        if (envelope.canRemovePoint(envelope.getSustainPoint())) { protectedPoints.add("the sustain"); }
 
-        check("EnvMode_BreakpointStillProtectsTheStructuralPoints",
+        check("EnvMode_BreakpointProtectsOnlyItsOwnStructuralPoints",
               protectedPoints.isEmpty()
                   && envelope.getPoint(0).value <= 1.0e-9
-                  && envelope.getPoint(envelope.getPointCount() - 1).value <= 1.0e-9,
+                  && envelope.getPoint(envelope.getPointCount() - 1).value <= 1.0e-9
+                  && envelope.canRemovePoint(envelope.getSustainPoint()),
               protectedPoints.isEmpty()
-                  ? "the first, last and sustain points are all protected"
+                  ? "the first and last points are protected and the sustain index is not"
                   : "these could be removed: " + protectedPoints.joinIntoString(", "));
     }
 

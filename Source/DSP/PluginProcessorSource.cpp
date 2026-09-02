@@ -183,7 +183,14 @@ void PX3SynthAudioProcessor::setEnvelopeMode(int slot, px3::BreakpointEnvelope::
         // other mode.
         if (! breakpointInitialised[index])
         {
-            breakpointShapes[index] = active;
+            // From the ADSR the user can SEE, which means the parameters
+            // applied. In ADSR mode the stored shape carries only the curves -
+            // the four values live in the parameters - so seeding from it raw
+            // handed the editor a default-timed skeleton and threw away the
+            // envelope the user had set up.
+            breakpointShapes[index]
+                = active.withAdsrApplied(slot == 0 ? currentAmpEnvelopeSettings()
+                                                   : envelopeParameterSettings(slot - 1));
             breakpointInitialised[index] = true;
         }
 

@@ -144,7 +144,11 @@ BreakpointEnvelope BreakpointEnvelope::reducedToAdsr() const
 
 bool BreakpointEnvelope::isPlainAdsr() const
 {
-    if (pointCount != 4 || sustainPoint != 2)
+    // Semantic, so mode-gated. This gates whether the voice is given the shape
+    // at all: a straight four-point BREAKPOINT envelope answering "yes" here
+    // was never handed to the DSP, and played as an ADSR holding at its
+    // sustain point.
+    if (mode != Mode::adsr || ! hasAdsrSkeletonShape())
     {
         return false;
     }
@@ -359,11 +363,12 @@ bool BreakpointEnvelope::canRemovePoint(int index) const
     {
         return false;   // so is the end
     }
-    if (pointCount <= kMinPoints + 1)
-    {
-        return false;
-    }
-    return index != sustainPoint;   // and so is the point the envelope holds at
+
+    // Two, because a function of time needs a start and an end. Not because an
+    // ADSR editor needs four: the sustain index is bookkeeping in this mode and
+    // must not protect a point, and the floor must not be borrowed from a model
+    // this envelope is not in.
+    return pointCount > kMinPoints;
 }
 
 bool BreakpointEnvelope::removePoint(int index)

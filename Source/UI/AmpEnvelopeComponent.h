@@ -24,6 +24,7 @@ public:
 
     // What the user is actually looking at, for the UI tests.
     const EnvelopeComponent* debugGraph() const { return envelopeGraph.get(); }
+    EnvelopeComponent* debugGraph() { return envelopeGraph.get(); }
 
     void setKnobLookAndFeel(juce::LookAndFeel* lookAndFeel)
     {

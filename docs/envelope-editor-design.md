@@ -349,9 +349,31 @@ production caller is already behind `isAdsrSkeleton()`.
 ### Minimum points is a Breakpoint rule
 
 Two, because a function of time needs a start and an end. Not because an ADSR
-editor needs four. The first and last points stay anchored at silence in both
-modes — an envelope begins and ends at rest — but that is a Breakpoint rule
-stated for Breakpoint reasons, not an ADSR remnant.
+editor needs four. Deleting reaches two, and two is a valid Breakpoint envelope
+in every sense the mode rule cares about: it stays in Breakpoint mode, plays on
+the one-shot clock, fills by elapsed time, and persists exactly.
+
+It is however **flat**, and that is worth stating plainly rather than leaving to
+be discovered. The first and last points are anchored at silence in both modes —
+an envelope begins and ends at rest, or a note clicks on and never reaches
+silence — so at two points *both* points are the anchored ends and there is
+nothing left to shape. **Three** is the smallest count that can carry a shape.
+
+This is an anchoring rule, not ADSR meaning returning at a low count: a
+two-point envelope is still a Breakpoint envelope throughout, and the tests
+show it. If the anchoring should be relaxed — a modulation envelope that ends
+at a non-zero level is musically reasonable in a way an amplitude one is not —
+that is a separate decision about anchoring, and it would want to distinguish
+AMP ENV from ENV 1-3 rather than change what a mode means.
+
+### Seeding reads the parameters, not the stored shape
+
+In ADSR mode the four values live in the **parameters** and the stored shape
+carries only the curves. Seeding Breakpoint from the raw stored shape therefore
+handed the editor a default-timed skeleton and discarded the envelope the user
+had set up. The seed applies the parameters first, so it starts from the ADSR
+the user can see — which is what "initialise from the current ADSR shape" has to
+mean in an architecture where the shape is not where those numbers live.
 
 ### Mode switching
 
