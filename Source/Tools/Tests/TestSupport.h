@@ -82,6 +82,11 @@
 #include "../DSP/VoiceFilter.h"
 #include "../UI/OscillatorComponent.h"
 #include "../UI/FxPanel.h"
+#include "../UI/OscPanel.h"
+#include "../UI/AmpPanel.h"
+#include "../UI/FltPanel.h"
+#include "../UI/MixPanel.h"
+#include "../UI/SettingsPanel.h"
 #include "../UI/FxSignalFlow.h"
 #include "../UI/UIConfigManager.h"
 #include "../UI/BusEqGraph.h"
@@ -1521,5 +1526,6 @@ void testBusInserts();
 void testFilters();
 void testOscillatorModeRichness();
 void testAnalogEngine();
+void testEditorLayout();
 
 } // namespace px3tests

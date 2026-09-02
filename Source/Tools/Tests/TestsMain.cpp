@@ -2638,6 +2638,7 @@ int main(int argc, char* argv[])
     if (wants("oscrichness")) testOscillatorModeRichness();
     if (wants("analog")) testAnalogEngine();
     if (wants("editor")) testEditorLifecycle();
+    if (wants("editorlayout")) testEditorLayout();
     if (wants("integration")) testIntegration();
 
     std::printf("\n------------------------------------------------------------\n");
