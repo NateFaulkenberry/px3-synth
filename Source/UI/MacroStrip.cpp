@@ -95,6 +95,9 @@ void MacroStrip::resized()
     const auto captionHeight = uiConfig != nullptr
                                  ? uiConfig->getInt("macro.strip.captionHeight", 14)
                                  : 14;
+    const auto knobScale = uiConfig != nullptr
+                             ? uiConfig->getFloat("macro.strip.knobScale", 0.9f)
+                             : 0.9f;
     // Each cell's edges come from the strip's own height rather than from a
     // rounded-down cell height taken N times: integer division leaves up to
     // N-1 pixels, and removeFromTop pools all of them at the bottom, so the
@@ -118,8 +121,16 @@ void MacroStrip::resized()
         // every cell's slack above the knob, so the whole column sat low in the
         // strip: 53 px of air over the first macro against 10 under the last.
         const auto captionCellHeight = juce::jmin(captionHeight, cell.getHeight());
-        const auto side = juce::jmax(0, juce::jmin(cell.getWidth(),
-                                                   cell.getHeight() - captionCellHeight));
+
+        // Scaled down from what the cell allows, rather than by narrowing the
+        // strip: the strip's width is a layout budget every panel is placed
+        // against, so taking the knob off it would move every panel. This
+        // leaves the strip, the padding and the caption exactly where they are
+        // and only shrinks the disc, with the extra room going evenly around it
+        // because the pair is centred in its cell.
+        const auto fit = juce::jmax(0, juce::jmin(cell.getWidth(),
+                                                  cell.getHeight() - captionCellHeight));
+        const auto side = juce::jmax(0, juce::roundToInt(static_cast<float>(fit) * knobScale));
         const auto groupTop = cell.getY() + (cell.getHeight() - (side + captionCellHeight)) / 2;
 
         entry.knob.setBounds(cell.getCentreX() - side / 2, groupTop, side, side);

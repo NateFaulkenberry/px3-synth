@@ -20555,6 +20555,75 @@ void testMacroSystem()
                                   && ! knob.getBounds().isEmpty();
                 }
 
+                // The knob is scaled down from the width its cell allows.
+                // Measured against the CAPTION, which spans that full width, so
+                // this is a relationship between two laid-out things rather
+                // than a second copy of the layout's own arithmetic.
+                {
+                    auto configuredScale = 0.9f;
+                    {
+                        const auto configFile = juce::File::getCurrentWorkingDirectory()
+                                                    .getChildFile("Source/UI/UIConfig.json");
+                        juce::String configError;
+                        if (configFile.existsAsFile())
+                        {
+                            if (auto config = UIConfig::fromJsonText(configFile.loadFileAsString(),
+                                                                     configError))
+                            {
+                                configuredScale = config->getFloat("macro.strip.knobScale", 0.9f);
+                            }
+                        }
+                    }
+
+                    auto worstError = 0.0f;
+                    for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+                    {
+                        const auto captionWidth = static_cast<float>(
+                            strip->debugCaption(macro).getWidth());
+                        const auto knobSide = static_cast<float>(strip->knob(macro).getWidth());
+                        if (captionWidth <= 0.0f) { continue; }
+                        worstError = juce::jmax(worstError,
+                                                std::abs(knobSide / captionWidth - configuredScale));
+                    }
+
+                    check("MacroUi_TheKnobsAreScaledDownWithinTheirCells",
+                          worstError < 0.03f,
+                          "every knob is " + fmt(configuredScale, 2)
+                              + " of the width its cell allows, to within "
+                              + fmt(worstError, 3));
+
+                    // And the KEY is what does it. The check above passes just
+                    // as well against a hard-coded constant that happens to
+                    // match the shipped value - verified: mutating the config
+                    // read away did not fail it - so this drives a distinctive
+                    // scale through the config and watches the knob follow.
+                    {
+                        juce::String configError;
+                        strip->setUIConfig(UIConfig::fromJsonText(
+                            R"({"macro":{"strip":{"knobScale":0.5}}})", configError));
+
+                        const auto halfKnob = static_cast<float>(strip->knob(0).getWidth());
+                        const auto halfCaption = static_cast<float>(
+                            strip->debugCaption(0).getWidth());
+
+                        const auto configFile = juce::File::getCurrentWorkingDirectory()
+                                                    .getChildFile("Source/UI/UIConfig.json");
+                        if (configFile.existsAsFile())
+                        {
+                            juce::String restoreError;
+                            strip->setUIConfig(UIConfig::fromJsonText(
+                                configFile.loadFileAsString(), restoreError));
+                        }
+
+                        check("MacroUi_TheKnobScaleKeyIsActuallyRead",
+                              halfCaption > 0.0f
+                                  && std::abs(halfKnob / halfCaption - 0.5f) < 0.03f,
+                              "a configured scale of 0.50 gives a knob "
+                                  + fmt(halfCaption > 0.0f ? halfKnob / halfCaption : 0.0f, 3)
+                                  + " of its cell's width");
+                    }
+                }
+
                 // Evenly distributed down the strip: equal centre-to-centre
                 // spacing, and the same margin above the first as below the
                 // last. Integer division used to pool its remainder at the

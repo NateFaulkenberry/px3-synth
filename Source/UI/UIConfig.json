@@ -2704,7 +2704,8 @@
     "strip": {
       "padX": 4,
       "padY": 10,
-      "captionHeight": 14
+      "captionHeight": 14,
+      "knobScale": 0.9
     },
     "colors": {
       "accent": "#22D6C8",

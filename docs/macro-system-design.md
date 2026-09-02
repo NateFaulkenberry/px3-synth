@@ -168,6 +168,11 @@ being coloured text on the knob. A knob is busy and mostly dark, with a ring
 and a pointer moving over it; a light chip reads as a tag stuck on top, which
 is what it is.
 
+The knob is `macro.strip.knobScale` (0.9) of the width its cell allows, rather
+than filling it. Shrinking the disc this way leaves the strip's width alone,
+which matters because that width is a layout budget every panel is placed
+against: taking it off the strip instead would move all six panels.
+
 The strip is 70 px wide including padding, holding five knobs stacked
 vertically with an `M1`..`M5` caption under each. The knob takes the width the
 padding leaves and the caption sits directly beneath it, touching — centring
