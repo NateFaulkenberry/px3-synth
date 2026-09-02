@@ -82,6 +82,8 @@ juce_add_binary_data(PX3Assets
 set(PX3_SHARED_SOURCES
         Source/UI/PerformanceControls.cpp
         Source/UI/MacroStrip.cpp
+        Source/UI/KnobOverlays.cpp
+        Source/UI/MacroKnobLook.cpp
         Source/UI/PianoKeyboard.cpp
         Source/UI/OscPanel.cpp
         Source/UI/ModPanel.cpp

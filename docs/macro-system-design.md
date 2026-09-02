@@ -138,6 +138,30 @@ indicator read as a modulated knob. Amber is MIDI. Teal was unused — the
 palette runs blue (OSC), red (FILTER), green (AMP), purple (LFO/ENV), amber
 (MIDI).
 
+## The macro knobs' own look
+
+Every other knob in this synth is dark on a dark panel. The macros are a
+performance layer that sits outside the panels and stays put while they change,
+so `MacroKnobLookAndFeel` draws them as a pale hardware knob instead: a light
+bezel carrying a ring of value dots, a raised off-white cap with a domed
+highlight, a thin accent arc, and a tick cut into the cap near its edge. They
+read as a different KIND of control before anything is read.
+
+The indicators are NOT duplicated into it. The MIDI and macro overlays — the
+dashed amber ring, the CC label, the assign-mode ring, the `M1+` chip — moved
+out of the main knob look into `drawKnobOverlays`, which both looks call. Two
+copies of that drawing is exactly how the pale knob and the dark one would
+quietly stop agreeing about what "mapped to CC 21" looks like.
+
+One thing does differ, and it has to: the CC label's bright amber is legible on
+a dark knob and nearly invisible on a white one, so `drawKnobOverlays` takes a
+`paleSubstrate` flag and uses a darker amber. Nothing else needs it — the macro
+chip already carries its own light plate, and the two rings sit outside the knob
+against the strip.
+
+The value arc is drawn AFTER the cap, in the gap between it and the dots. Drawn
+before, the cap covered its inner half and left a hairline.
+
 The label inside a destination knob sits on a translucent pale plate with dark
 text (`macro.colors.labelBackground`, `macro.colors.labelText`) rather than
 being coloured text on the knob. A knob is busy and mostly dark, with a ring

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../DSP/FxChain.h"
+#include "MacroKnobLook.h"
 #include "FxCardComponent.h"
 
 #include <JuceHeader.h>
@@ -86,6 +87,10 @@ private:
                               float rotaryEndAngle,
                               juce::Slider& slider) override;
     };
+
+    // The macro knobs are drawn by their own look, so they read as a different
+    // kind of control from every knob inside the panels.
+    px3::ui::MacroKnobLookAndFeel macroKnobLookAndFeel;
 
     // The shared chip rendering, under the name the editor already uses.
     using KnobLabel = px3::ui::ChipLabel;
@@ -248,6 +253,10 @@ public:
     // The shared rotary look-and-feel, so a test can render one knob through
     // the same code every knob in the synth is drawn by.
     juce::LookAndFeel* debugKnobLookAndFeel() { return &knobLookAndFeel; }
+
+    // The macro knobs' own look, so a test can render one through exactly what
+    // draws them on screen.
+    juce::LookAndFeel* debugMacroKnobLookAndFeel() { return &macroKnobLookAndFeel; }
 
     // The same call JUCE's dispatch makes when a listener sees a click on a
     // knob. Constructing the event here is the one step the test cannot get

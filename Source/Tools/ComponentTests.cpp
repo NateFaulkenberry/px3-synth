@@ -20287,6 +20287,131 @@ void testMacroSystem()
             editor->setSize(1400, 900);
             auto* strip = editor->debugMacroStrip();
 
+            // The macro knobs are drawn by a look of their own, and it is the
+            // pale one. Rendered from the knobs the strip actually shows, not
+            // through a look-and-feel handed in here: handing one in tests that
+            // the pale look IS pale, which it is either way, and says nothing
+            // about whether the strip uses it.
+            if (strip != nullptr)
+            {
+                const auto meanBrightness = [](juce::Component& knob)
+                {
+                    const auto image = knob.createComponentSnapshot(knob.getLocalBounds());
+                    const auto w = image.getWidth();
+                    const auto h = image.getHeight();
+                    if (w < 8 || h < 8) { return 0.0; }
+
+                    auto total = 0.0;
+                    auto counted = 0;
+                    for (int py = h / 4; py < h - h / 4; ++py)
+                    {
+                        for (int px = w / 4; px < w - w / 4; ++px)
+                        {
+                            total += image.getPixelAt(px, py).getBrightness();
+                            ++counted;
+                        }
+                    }
+                    return counted > 0 ? total / counted : 0.0;
+                };
+
+                juce::Slider* panelKnob = nullptr;
+                std::function<void(juce::Component&)> findPanelKnob = [&](juce::Component& parent)
+                {
+                    for (auto* child : parent.getChildren())
+                    {
+                        if (child == nullptr || panelKnob != nullptr) { continue; }
+                        if (auto* candidate = dynamic_cast<juce::Slider*>(child))
+                        {
+                            const auto id = px3::ui::parameterIdOf(*candidate);
+                            auto isMacroKnob = id.isEmpty();
+                            for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+                            {
+                                isMacroKnob = isMacroKnob
+                                              || id == PX3SynthAudioProcessor::macroParameterId(macro);
+                            }
+                            if (! isMacroKnob
+                                && candidate->getWidth() > 20 && candidate->getHeight() > 20
+                                && candidate->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag)
+                            {
+                                panelKnob = candidate;
+                                return;
+                            }
+                        }
+                        findPanelKnob(*child);
+                    }
+                };
+                findPanelKnob(*editor);
+
+                const auto macroBrightness = meanBrightness(strip->knob(0));
+                const auto panelBrightness = panelKnob != nullptr ? meanBrightness(*panelKnob) : 1.0;
+
+                check("MacroUi_TheMacroKnobsUseTheirOwnPaleLook",
+                      panelKnob != nullptr && macroBrightness > panelBrightness + 0.2,
+                      "the strip's knob renders at brightness " + fmt(macroBrightness, 3)
+                          + " against a panel knob's " + fmt(panelBrightness, 3));
+
+                // And it keeps every indicator the shared look draws: a macro
+                // knob mapped to a CC still says so.
+                const auto amberPixels = [&](bool mapped, juce::LookAndFeel* laf)
+                {
+                    juce::Slider probe;
+                    probe.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+                    probe.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+                    probe.setLookAndFeel(laf);
+                    // Larger than the strip draws them: "CC21" is a handful of
+                    // pixels at 64 px, and a handful is too thin a margin.
+                    probe.setSize(140, 140);
+                    probe.setRange(0.0, 1.0);
+                    probe.setValue(0.5, juce::dontSendNotification);
+                    if (mapped) { probe.getProperties().set(px3::knob_properties::midiCc, 21); }
+                    const auto image = probe.createComponentSnapshot(probe.getLocalBounds());
+                    probe.setLookAndFeel(nullptr);
+
+                    auto amber = 0;
+                    auto darkest = 1.0f;
+                    for (int py = 0; py < 140; ++py)
+                    {
+                        for (int px = 0; px < 140; ++px)
+                        {
+                            // Amber of any lightness: warm, meaning red well
+                            // clear of blue. Pinning one RGB triple would miss
+                            // the darker amber a pale knob has to use.
+                            const auto c = image.getPixelAt(px, py);
+                            if (c.getRed() > c.getBlue() + 55
+                                && c.getGreen() > c.getBlue() + 20
+                                && c.getGreen() < c.getRed())
+                            {
+                                ++amber;
+                                darkest = juce::jmin(darkest, c.getBrightness());
+                            }
+                        }
+                    }
+                    return std::pair<int, float> { amber, darkest };
+                };
+
+                const auto withCc = amberPixels(true, editor->debugMacroKnobLookAndFeel());
+                const auto withoutCc = amberPixels(false, editor->debugMacroKnobLookAndFeel());
+
+                check("MacroUi_AMappedMacroKnobStillShowsItsCcLabel",
+                      withCc.first > 40 && withoutCc.first == 0,
+                      juce::String(withCc.first) + " amber pixels with CC 21 against "
+                          + juce::String(withoutCc.first) + " without");
+
+                // And dark enough to read on a white cap. Counting pixels cannot
+                // tell the two ambers apart: the bright one a dark knob uses
+                // answers the same warm test.
+                //
+                // The measure is the label's DARKEST pixel, because on a pale
+                // knob bright amber cannot produce one - everything it blends
+                // with is bright - while the darker amber's own core is dark by
+                // construction. The check above, that the label is there at
+                // all, is what stops this passing on an unrendered label.
+                check("MacroUi_TheCcLabelIsDarkEnoughForAPaleKnob",
+                      withCc.first > 40 && withCc.second < 0.70f,
+                      "the darkest pixel of the label reads " + fmt(withCc.second, 3)
+                          + " brightness on the pale knob");
+            }
+
             check("MacroUi_TheStripExists",
                   strip != nullptr,
                   strip != nullptr ? "the editor owns a macro strip" : "no macro strip");
