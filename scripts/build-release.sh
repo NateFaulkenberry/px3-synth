@@ -745,6 +745,46 @@ fi
 rm -f "${ZIP_PATH}"
 rm -f "${PKG_PATH}"
 
+
+# pkgbuild makes every bundle in a payload RELOCATABLE by default, and that is
+# wrong for all three of our components.
+#
+# A relocatable component is not installed where the payload says. The Installer
+# asks LaunchServices whether a bundle with the same identifier already exists
+# anywhere on the system and, if one does, installs the update OVER THAT COPY
+# instead. On a developer machine the build tree is full of such copies, so the
+# standalone was being written into build/PX3Synth_artefacts/... rather than
+# /Applications - and because those copies live under ~/Documents, the Installer
+# asked for access to the Documents folder to get at them. One default, both
+# symptoms, and neither depends on where the .pkg is launched from.
+#
+# Audio plug-ins have exactly one correct location each and an application
+# belongs in /Applications, so nothing here should ever be relocated.
+write_non_relocatable_component_plist() {
+  local root="$1"
+  local out="$2"
+
+  pkgbuild --analyze --root "${root}" "${out}" >/dev/null
+
+  local count
+  count="$(/usr/libexec/PlistBuddy -c "Print" "${out}" 2>/dev/null | grep -c "RootRelativeBundlePath" || true)"
+
+  local i=0
+  while [[ ${i} -lt ${count} ]]; do
+    # Set, or add if pkgbuild did not emit the key for this entry.
+    /usr/libexec/PlistBuddy -c "Set :${i}:BundleIsRelocatable false" "${out}" 2>/dev/null \
+      || /usr/libexec/PlistBuddy -c "Add :${i}:BundleIsRelocatable bool false" "${out}" >/dev/null 2>&1 \
+      || true
+    i=$((i + 1))
+  done
+
+  # Verified rather than assumed: a silent PlistBuddy failure here would put the
+  # relocation behaviour straight back without changing anything visible.
+  if /usr/libexec/PlistBuddy -c "Print" "${out}" 2>/dev/null | grep -q "BundleIsRelocatable = true"; then
+    die "Component plist still marks a bundle relocatable: ${out}"
+  fi
+}
+
 # Every component package carries the same preinstall guard, so a running host
 # stops the install even if the Installer's JavaScript check did not run.
 PKG_SHARED_SCRIPTS_DIR="${PKG_WORK_DIR}/component-scripts"
@@ -755,8 +795,18 @@ write_host_preinstall "${PKG_SHARED_SCRIPTS_DIR}/preinstall"
 # pkgbuild creates individual component packages.
 # Each component package contains one plugin format and encodes the target
 # install location for that format.
+PKG_COMPONENT_PLIST_DIR="${PKG_WORK_DIR}/component-plists"
+mkdir -p "${PKG_COMPONENT_PLIST_DIR}"
+
+write_non_relocatable_component_plist "${PKG_ROOT_AU}" "${PKG_COMPONENT_PLIST_DIR}/au.plist"
+write_non_relocatable_component_plist "${PKG_ROOT_VST3}" "${PKG_COMPONENT_PLIST_DIR}/vst3.plist"
+
+# --install-location is stated rather than left to the default so the resulting
+# PackageInfo says where the payload goes instead of implying it.
 pkgbuild \
   --root "${PKG_ROOT_AU}" \
+  --component-plist "${PKG_COMPONENT_PLIST_DIR}/au.plist" \
+  --install-location / \
   --scripts "${PKG_SHARED_SCRIPTS_DIR}" \
   --identifier "${AU_PACKAGE_ID}" \
   --version "${PROJECT_VERSION}" \
@@ -764,14 +814,20 @@ pkgbuild \
 
 pkgbuild \
   --root "${PKG_ROOT_VST3}" \
+  --component-plist "${PKG_COMPONENT_PLIST_DIR}/vst3.plist" \
+  --install-location / \
   --scripts "${PKG_SHARED_SCRIPTS_DIR}" \
   --identifier "${VST3_PACKAGE_ID}" \
   --version "${PROJECT_VERSION}" \
   "${VST3_COMPONENT_PKG}"
 
 if [[ -n "${APP_BUNDLE}" ]]; then
+  write_non_relocatable_component_plist "${PKG_ROOT_APP}" "${PKG_COMPONENT_PLIST_DIR}/app.plist"
+
   pkgbuild \
     --root "${PKG_ROOT_APP}" \
+    --component-plist "${PKG_COMPONENT_PLIST_DIR}/app.plist" \
+    --install-location / \
     --scripts "${PKG_SHARED_SCRIPTS_DIR}" \
     --identifier "${APP_PACKAGE_ID}" \
     --version "${PROJECT_VERSION}" \
@@ -912,6 +968,32 @@ grep -F "$(basename "${AU_COMPONENT_PKG}")" "${PKG_EXPANDED_DIR}/Distribution" >
 
 grep -F "$(basename "${VST3_COMPONENT_PKG}")" "${PKG_EXPANDED_DIR}/Distribution" >/dev/null 2>&1 \
   || die "Final installer does not reference VST3 component package"
+
+# No component may be relocatable.
+#
+# A relocatable bundle is installed wherever an existing copy of the same
+# identifier happens to be, not where the payload says - so this is the
+# difference between the app landing in /Applications and landing in whatever
+# build tree the machine last saw. It is verified rather than trusted, because
+# the failure is silent: the package builds, installs, reports success, and puts
+# the files somewhere else.
+for component_pkg in "${AU_COMPONENT_PKG}" "${VST3_COMPONENT_PKG}" \
+                     $([[ -n "${APP_BUNDLE}" ]] && echo "${APP_COMPONENT_PKG}"); do
+  relocate_check_dir="${PKG_WORK_DIR}/relocate-check/$(basename "${component_pkg}" .pkg)"
+  rm -rf "${relocate_check_dir}"
+  mkdir -p "$(dirname "${relocate_check_dir}")"
+  pkgutil --expand "${component_pkg}" "${relocate_check_dir}" >/dev/null 2>&1 \
+    || die "Could not expand component package for verification: ${component_pkg}"
+
+  # pkgbuild writes "<relocate/>" when nothing may be relocated and
+  # "<relocate>...</relocate>" listing each bundle when something may. The
+  # open tag is therefore the whole test - and it is the test rather than a
+  # multi-line search because the first version of this guard searched across
+  # lines, matched nothing, and passed on a package that WAS relocatable.
+  if grep -q "<relocate>" "${relocate_check_dir}/PackageInfo"; then
+    die "Component package is relocatable and would install over an existing copy: ${component_pkg}"
+  fi
+done
 
 # The point of the format selection is that the user gets a choice, so verify
 # the choices actually reached the Distribution rather than trusting the XML

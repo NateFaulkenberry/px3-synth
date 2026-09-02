@@ -168,6 +168,29 @@ filled in. The category comes from the library itself rather than a list written
 in the panel, and a dump no longer inherits whatever preset happened to be
 loaded.
 
+## Installer
+
+**The standalone app now installs to /Applications**, and the installer no
+longer asks for access to your Documents folder. These were one bug, not two.
+
+`pkgbuild` marks every bundle in a payload **relocatable** by default. A
+relocatable component is not installed where the payload says: the Installer
+asks LaunchServices whether a bundle with the same identifier already exists
+anywhere on the system and, if one does, installs over that copy instead. On a
+machine with a build tree, those copies are in the build tree - so the app was
+written into `build/PX3Synth_artefacts/...` rather than `/Applications`, and
+because that tree lives under `~/Documents`, the Installer asked for Documents
+access to reach it.
+
+Neither symptom depended on where the `.pkg` was launched from, which is why
+moving it to the Desktop changed nothing.
+
+All three components are built non-relocatable now, with `--install-location /`
+stated rather than implied, and the release script fails the build if any
+component package comes out relocatable again - the failure is otherwise
+silent, since the package builds, installs, reports success and puts the files
+somewhere else.
+
 ## Documentation
 
 `docs/USER_MANUAL.md` gains a SETTINGS chapter and moves the envelope TYPE
