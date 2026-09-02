@@ -816,7 +816,14 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                 // also has five points holding at index 3, and is indis-
                 // tinguishable from a legacy hold by inspection. Migrating by
                 // shape would silently delete their breakpoint.
-                const auto restored = version < 3 ? px3::withoutHoldStage(envelope) : envelope;
+                auto restored = version < 3 ? px3::withoutHoldStage(envelope) : envelope;
+
+                // Same guarantee as entering the mode: a breakpoint envelope
+                // reaching the editor with only its two anchored ends has
+                // nothing to drag. Saved state can carry one - the model can
+                // represent two points even though editing no longer reaches
+                // that state - so it is put right on the way in.
+                restored.ensureBreakpointHasAMovablePoint();
                 setShapedEnvelope(index, restored);
 
                 // Whichever mode is NOT active still needs its state, or

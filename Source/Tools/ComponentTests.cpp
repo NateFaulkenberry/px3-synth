@@ -1153,12 +1153,20 @@ void testBreakpointEnvelope()
             if (! removedAny) { break; }
         }
 
-        check("EnvIso_BreakpointPointsDeleteDownToTwo",
-              shrinking.getPointCount() == 2,
+        check("EnvIso_BreakpointPointsDeleteDownToThree",
+              shrinking.getPointCount() == 3,
               "after " + juce::String(removals) + " removals it has "
                   + juce::String(shrinking.getPointCount()) + " points");
 
-        check("EnvIso_ATwoPointEnvelopeIsStillBreakpoint",
+        // And the last one stays. At two, both points are the anchored ends and
+        // there is nothing left to drag, so the third is what keeps the mode
+        // usable rather than a point like any other.
+        check("EnvIso_TheLastMovablePointCannotBeRemoved",
+              shrinking.getPointCount() == 3 && ! shrinking.canRemovePoint(1),
+              "with 3 points the middle one reports "
+                  + juce::String(shrinking.canRemovePoint(1) ? "removable" : "not removable"));
+
+        check("EnvIso_AShrunkEnvelopeIsStillBreakpoint",
               shrinking.isBreakpointMode() && ! shrinking.isAdsrSkeleton(),
               shrinking.isBreakpointMode() ? "still in Breakpoint mode"
                                            : "it left Breakpoint mode on the way down");
@@ -1606,6 +1614,144 @@ void testBreakpointEnvelope()
         }
     }
 
+    // ---- state carrying only two points is put right on the way in ----------
+    //
+    // Editing cannot reach two points any more, so the repair in the restore
+    // path has no test unless one is written deliberately: this builds the
+    // two-point state directly and loads it. Without that, the repair is code
+    // nothing exercises, which is the same as code that does not work.
+    {
+        PX3SynthAudioProcessor saver;
+        saver.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        saver.prepareToPlay(kSampleRate, kBlockSize);
+        saver.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
+
+        {
+            // setPoints is the model's structural floor, which is still two -
+            // that is what makes such a state representable and therefore
+            // loadable.
+            auto bare = saver.getShapedEnvelope(0);
+            px3::BreakpointEnvelope::Point points[2] = {
+                { 0.00, 0.0, 0.0 },
+                { 0.80, 0.0, 0.0 }
+            };
+            bare.setPoints(points, 2, 0);
+            bare.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+            saver.setShapedEnvelope(0, bare);
+
+            check("EnvFloor_TheModelStillRepresentsTwoPoints",
+                  saver.getShapedEnvelope(0).getPointCount() == 2,
+                  "the stored shape holds "
+                      + juce::String(saver.getShapedEnvelope(0).getPointCount()) + " points");
+        }
+
+        juce::MemoryBlock saved;
+        saver.getStateInformation(saved);
+
+        PX3SynthAudioProcessor loader;
+        loader.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        loader.prepareToPlay(kSampleRate, kBlockSize);
+        loader.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+
+        const auto loaded = loader.getShapedEnvelope(0);
+        const auto midpointOnTheLine
+            = loaded.getPointCount() == 3
+              && std::abs(loaded.getPoint(1).timeSeconds - 0.40) < 1.0e-9
+              && std::abs(loaded.getPoint(1).value) < 1.0e-9;
+
+        check("EnvFloor_LoadingTwoPointsGivesBackAMovableMiddle",
+              loaded.isBreakpointMode() && midpointOnTheLine,
+              "a two-point state loads as " + juce::String(loaded.getPointCount())
+                  + " points with the middle at " + fmt(loaded.getPoint(1).timeSeconds, 2)
+                  + " s, value " + fmt(loaded.getPoint(1).value, 2));
+
+        // And it lands ON the line, so nothing about the sound changed.
+        check("EnvFloor_TheRepairDoesNotChangeTheSound",
+              loaded.getTotalSeconds() > 0.79 && loaded.getTotalSeconds() < 0.81,
+              "the envelope still runs " + fmt(loaded.getTotalSeconds(), 2) + " s");
+    }
+
+    // ---- what the smallest envelope does to the DSP -------------------------
+    //
+    // The three-point floor lets the user leave the middle point ON the line,
+    // which is a flat, silent envelope. It also lets them collapse the whole
+    // thing in time. Both are reachable, so both are measured rather than
+    // assumed harmless.
+    {
+        constexpr double kRate = 48000.0;
+
+        const auto build = [](double t1, double v1, double t2)
+        {
+            auto env = px3::BreakpointEnvelope::fromAdsr(EnvelopeSettings {});
+            px3::BreakpointEnvelope::Point points[3] = {
+                { 0.00, 0.0, 0.0 },
+                { t1, v1, 0.0 },
+                { t2, 0.0, 0.0 }
+            };
+            env.setPoints(points, 3, 1);
+            env.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+            return env;
+        };
+
+        const auto play = [](const px3::BreakpointEnvelope& shape, double seconds)
+        {
+            AmpEnvelope amp;
+            amp.prepare(kRate);
+            amp.setEnvelope(shape);
+            amp.noteOn();
+
+            struct { float peak, worstStep; bool finite, stillActive; } out { 0.0f, 0.0f, true, true };
+            // From silence, INCLUDING the first sample. Skipping i == 0 skips
+            // exactly the sample a note-on click lives on - the envelope starts
+            // from silence, so the step into the first sample is a real step
+            // and the most important one to measure.
+            auto previous = 0.0f;
+            const auto samples = static_cast<int>(seconds * kRate);
+            for (int i = 0; i < samples; ++i)
+            {
+                const auto value = amp.getNextSample();
+                out.finite = out.finite && std::isfinite(value);
+                out.peak = juce::jmax(out.peak, std::abs(value));
+                out.worstStep = juce::jmax(out.worstStep, std::abs(value - previous));
+                previous = value;
+            }
+            out.stillActive = amp.isActive();
+            return out;
+        };
+
+        // 1. The middle point left on the line: a flat, silent envelope.
+        const auto flat = play(build(0.25, 0.0, 0.50), 0.60);
+        check("EnvFloor_AFlatEnvelopeIsSilentAndRetires",
+              flat.finite && flat.peak < 1.0e-6f && ! flat.stillActive,
+              "it peaks at " + fmt(flat.peak, 6) + " and the voice "
+                  + (flat.stillActive ? "is still running" : "retired"));
+
+        // 2. Collapsed in time: every point at zero, so the envelope has no
+        //    duration at all. Reachable by dragging the end point to the left
+        //    edge, and reachable before this change too.
+        const auto collapsed = play(build(0.0, 0.9, 0.0), 0.10);
+        check("EnvFloor_AZeroLengthEnvelopeIsSilentNotADiscontinuity",
+              collapsed.finite && collapsed.peak < 1.0e-4f && ! collapsed.stillActive,
+              "it peaks at " + fmt(collapsed.peak, 6) + " with a worst step of "
+                  + fmt(collapsed.worstStep, 6) + "; the voice "
+                  + (collapsed.stillActive ? "is still running" : "retired"));
+
+        // 3. A zero-length FIRST segment - an instant jump to full at note-on,
+        //    which is the sharpest thing the shape can ask for. The envelope's
+        //    own smoothing is what has to keep that from being a click.
+        //
+        //    The bound is a rate: 0.05 per sample at 48 kHz is 20 samples to
+        //    cross the whole range, or 0.4 ms. Anything at or under that is a
+        //    fast attack; a genuine step would be ~1.0 in one sample. Measured
+        //    at 0.025, which is the smoother's own limit - about 0.8 ms - and
+        //    is the same limit every envelope in the synth is held to.
+        const auto instant = play(build(0.0, 1.0, 0.50), 0.60);
+        check("EnvFloor_AnInstantAttackIsSmoothedNotStepped",
+              instant.finite && instant.peak > 0.5f && instant.worstStep < 0.05f,
+              "it reaches " + fmt(instant.peak, 3) + " with a worst per-sample step of "
+                  + fmt(instant.worstStep, 5) + ", against 1.0 for a true step");
+    }
+
     // ---- two points survive persistence and a round trip through ADSR -------
     {
         PX3SynthAudioProcessor processor;
@@ -1627,14 +1773,17 @@ void testBreakpointEnvelope()
                 }
                 if (! removed) { break; }
             }
-            two.setPoint(1, 0.42, 0.0);
+            // The LAST point, which is the end of the envelope. Index 1 is the
+            // movable middle now that the smallest breakpoint envelope is
+            // three points.
+            two.setPoint(two.getPointCount() - 1, 0.42, 0.0);
             two.setCurve(0, -0.35);
             processor.setShapedEnvelope(0, two);
         }
 
         const auto beforeSave = processor.getShapedEnvelope(0);
-        check("EnvIso_DeletingDownToTwoInTheProcessorWorks",
-              beforeSave.getPointCount() == 2 && beforeSave.isBreakpointMode(),
+        check("EnvIso_DeletingDownToThreeInTheProcessorWorks",
+              beforeSave.getPointCount() == 3 && beforeSave.isBreakpointMode(),
               juce::String(beforeSave.getPointCount()) + " points in Breakpoint mode");
 
         juce::MemoryBlock saved;
@@ -1646,12 +1795,13 @@ void testBreakpointEnvelope()
         reloaded.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
 
         const auto back = reloaded.getShapedEnvelope(0);
-        check("EnvIso_ATwoPointEnvelopeSurvivesASession",
-              back.getPointCount() == 2 && back.isBreakpointMode()
-                  && std::abs(back.getPoint(1).timeSeconds - 0.42) < 1.0e-9
+        const auto backLast = back.getPoint(back.getPointCount() - 1);
+        check("EnvIso_TheSmallestEnvelopeSurvivesASession",
+              back.getPointCount() == 3 && back.isBreakpointMode()
+                  && std::abs(backLast.timeSeconds - 0.42) < 1.0e-9
                   && std::abs(back.getPoint(0).curveToNext + 0.35) < 1.0e-9,
               "it reloads as " + juce::String(back.getPointCount()) + " points ending at "
-                  + fmt(back.getPoint(1).timeSeconds, 2) + " s bending "
+                  + fmt(backLast.timeSeconds, 2) + " s bending "
                   + fmt(static_cast<float>(back.getPoint(0).curveToNext), 2));
 
         // Out to ADSR and back: the two points must still be two points, and
@@ -1668,11 +1818,12 @@ void testBreakpointEnvelope()
                   + juce::String(reloaded.currentAmpEnvelope().getPointCount()) + " points");
 
         reloaded.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
-        const auto twoAgain = reloaded.getShapedEnvelope(0);
-        check("EnvIso_ReturningToBreakpointGivesBackTheTwoPoints",
-              twoAgain.getPointCount() == 2
-                  && std::abs(twoAgain.getPoint(1).timeSeconds - 0.42) < 1.0e-9,
-              "it comes back as " + juce::String(twoAgain.getPointCount()) + " points");
+        const auto smallAgain = reloaded.getShapedEnvelope(0);
+        check("EnvIso_ReturningToBreakpointGivesBackTheSameSmallEnvelope",
+              smallAgain.getPointCount() == 3
+                  && std::abs(smallAgain.getPoint(smallAgain.getPointCount() - 1).timeSeconds - 0.42)
+                         < 1.0e-9,
+              "it comes back as " + juce::String(smallAgain.getPointCount()) + " points");
 
         // And a save made while ADSR is live still carries the two-point
         // drawing behind it.
@@ -1687,9 +1838,10 @@ void testBreakpointEnvelope()
         third.setEnvelopeMode(0, px3::BreakpointEnvelope::Mode::breakpoint);
 
         const auto retained = third.getShapedEnvelope(0);
-        check("EnvIso_ATwoPointDrawingSurvivesASaveMadeInAdsrMode",
-              retained.getPointCount() == 2
-                  && std::abs(retained.getPoint(1).timeSeconds - 0.42) < 1.0e-9,
+        check("EnvIso_TheSmallestDrawingSurvivesASaveMadeInAdsrMode",
+              retained.getPointCount() == 3
+                  && std::abs(retained.getPoint(retained.getPointCount() - 1).timeSeconds - 0.42)
+                         < 1.0e-9,
               "after saving in ADSR mode and reloading, switching back gives "
                   + juce::String(retained.getPointCount()) + " points");
     }

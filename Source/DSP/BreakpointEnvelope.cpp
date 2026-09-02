@@ -66,6 +66,26 @@ BreakpointEnvelope BreakpointEnvelope::fromAdsr(const EnvelopeSettings& settings
     return envelope;
 }
 
+void BreakpointEnvelope::ensureBreakpointHasAMovablePoint()
+{
+    if (mode != Mode::breakpoint || pointCount != kMinPoints)
+    {
+        return;
+    }
+
+    const auto& first = points[0];
+    const auto& last = points[static_cast<std::size_t>(pointCount - 1)];
+
+    // On the line, so nothing about the sound changes: the same time midpoint
+    // and the value the line already has there. With both ends anchored at
+    // silence that value is zero, and a segment spanning zero is zero whatever
+    // its curve - so this is exact, not approximate.
+    const auto midTime = (first.timeSeconds + last.timeSeconds) * 0.5;
+    const auto midValue = (first.value + last.value) * 0.5;
+
+    addPoint(midTime, midValue);
+}
+
 BreakpointEnvelope BreakpointEnvelope::withAdsrApplied(const EnvelopeSettings& settings) const
 {
     if (! isAdsrSkeleton())
@@ -364,11 +384,12 @@ bool BreakpointEnvelope::canRemovePoint(int index) const
         return false;   // so is the end
     }
 
-    // Two, because a function of time needs a start and an end. Not because an
-    // ADSR editor needs four: the sustain index is bookkeeping in this mode and
-    // must not protect a point, and the floor must not be borrowed from a model
-    // this envelope is not in.
-    return pointCount > kMinPoints;
+    // Three, for a Breakpoint reason: the first and last points are anchored at
+    // silence, so at two there is nothing left to drag and nothing the shape can
+    // say. The third point is what makes the mode usable, so it does not go
+    // either. The sustain index is bookkeeping here and protects nothing - that
+    // would be an ADSR constraint borrowed by a mode that never holds.
+    return pointCount > kMinBreakpointPoints;
 }
 
 bool BreakpointEnvelope::removePoint(int index)

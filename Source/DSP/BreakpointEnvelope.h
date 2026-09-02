@@ -25,7 +25,16 @@ public:
     // Sixteen is well past what an envelope stays legible at, and small enough
     // that a snapshot is a cheap copy rather than an allocation.
     static constexpr int kMaxPoints = 16;
+    // The structural floor: a function of time needs a start and an end. State
+    // saved with exactly two points still loads.
     static constexpr int kMinPoints = 2;
+
+    // The EDITING floor in Breakpoint mode. Two points are both anchored at
+    // silence, so an envelope with only those two has nothing the user can
+    // move and nothing it can say. Three is the smallest that carries a shape,
+    // and the third is why the mode is usable at all - so it is not removable
+    // either.
+    static constexpr int kMinBreakpointPoints = 3;
 
     // How far the curve amount bends a segment. exp(-3) to exp(3) is a range of
     // 20:1 either way, which reaches a convincing exponential without ever
@@ -123,6 +132,12 @@ public:
     // its own CURVES kept. Turning a knob has to move the graph without
     // straightening what the user drew. Returns the shape untouched if it is
     // no longer a skeleton, because then there is no ADSR to apply.
+    // If this is a Breakpoint envelope down to its two anchored ends, put a
+    // point back in the middle of the line so there is something to drag. The
+    // new point sits ON the line - same time midpoint, same interpolated value -
+    // so the shape and everything the DSP does with it are unchanged.
+    void ensureBreakpointHasAMovablePoint();
+
     BreakpointEnvelope withAdsrApplied(const EnvelopeSettings& settings) const;
 
     int getPointCount() const noexcept { return pointCount; }

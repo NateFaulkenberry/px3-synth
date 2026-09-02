@@ -348,23 +348,43 @@ production caller is already behind `isAdsrSkeleton()`.
 
 ### Minimum points is a Breakpoint rule
 
-Two, because a function of time needs a start and an end. Not because an ADSR
-editor needs four. Deleting reaches two, and two is a valid Breakpoint envelope
-in every sense the mode rule cares about: it stays in Breakpoint mode, plays on
-the one-shot clock, fills by elapsed time, and persists exactly.
+**Three**, for a Breakpoint reason. The first and last points are anchored at
+silence — an envelope begins and ends at rest, or a note clicks on and never
+reaches silence — so at *two* points both points are the anchored ends: there is
+nothing to drag and nothing the shape can say. The third point is what makes the
+mode usable, so it is not removable either. The floor is not borrowed from ADSR,
+and the sustain index protects nothing here.
 
-It is however **flat**, and that is worth stating plainly rather than leaving to
-be discovered. The first and last points are anchored at silence in both modes —
-an envelope begins and ends at rest, or a note clicks on and never reaches
-silence — so at two points *both* points are the anchored ends and there is
-nothing left to shape. **Three** is the smallest count that can carry a shape.
+The model's structural floor stays **two**, so such a state is still
+representable and still loads. `ensureBreakpointHasAMovablePoint()` repairs it —
+on entering Breakpoint mode and on restoring state — by putting a point back at
+the midpoint of the line, at the value the line already has there. With both
+ends at silence that value is zero, and a segment spanning zero is zero whatever
+its curve, so the repair is **exact**: the shape and everything the DSP does
+with it are unchanged.
 
-This is an anchoring rule, not ADSR meaning returning at a low count: a
-two-point envelope is still a Breakpoint envelope throughout, and the tests
-show it. If the anchoring should be relaxed — a modulation envelope that ends
-at a non-zero level is musically reasonable in a way an amplitude one is not —
-that is a separate decision about anchoring, and it would want to distinguish
-AMP ENV from ENV 1-3 rather than change what a mode means.
+#### What that lets the user build, and what the DSP does with it
+
+The middle point can be left on the line, which is a flat, silent envelope; and
+the whole envelope can be collapsed in time. Both are reachable, so both are
+measured rather than assumed harmless:
+
+| Shape | Measured |
+|---|---|
+| Middle point on the line (flat) | Peaks at 0.000000, voice retires at the end. Silence, not an artifact. |
+| Every point at t = 0 (no duration) | Peaks at 0.000000, worst per-sample step 0.000000, voice retires. A note that never sounds. |
+| Zero-length first segment (instant attack) | Reaches 0.990 with a worst per-sample step of **0.025** against 1.0 for a true step — the output smoother's own limit, about 0.8 ms, and the same limit every envelope in the synth is held to. |
+
+So none of it clicks and none of it is a special case in the DSP: a flat
+envelope is silence, and an instant jump is rate-limited by the smoothing that
+was already there. **A zero-duration envelope is a silent note**, which is a
+usability trap rather than a defect — and it predates this rule, since the end
+point could always be dragged to the left edge. Nothing here introduces it.
+
+The step measurement includes the **first** sample, compared against silence.
+Skipping it — the obvious way to write that loop — skips exactly the sample a
+note-on click lives on, and a version of this test that did so passed happily
+with the smoothing removed entirely.
 
 ### Seeding reads the parameters, not the stored shape
 

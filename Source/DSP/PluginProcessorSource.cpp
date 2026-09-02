@@ -198,6 +198,11 @@ void PX3SynthAudioProcessor::setEnvelopeMode(int slot, px3::BreakpointEnvelope::
         adsrShapes[index] = active;
         active = breakpointShapes[index];
         active.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+
+        // Never hand the editor a shape with nothing in it to drag. Only two
+        // points means both are the anchored ends; this puts one back on the
+        // line between them, which changes nothing about the sound.
+        active.ensureBreakpointHasAMovablePoint();
         return;
     }
 
