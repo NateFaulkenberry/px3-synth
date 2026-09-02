@@ -15,6 +15,7 @@
 #include "BinaryData.h"
 #include "PX3Version.h"
 #include "UIConfig.h"
+#include "EditorSections.h"
 
 #include <algorithm>
 #include <cmath>
@@ -26,6 +27,8 @@
 #include <mach/mach.h>
 #endif
 
+using namespace px3::ui;
+
 namespace
 {
 const std::array<juce::Colour, 4> kGroupAccents {
@@ -35,21 +38,6 @@ const std::array<juce::Colour, 4> kGroupAccents {
     juce::Colour::fromRGB(186, 112, 255)   // LFO: purple
 };
 
-constexpr int kFxSectionDrive = 0;
-constexpr int kFxSectionDelay = 1;
-constexpr int kFxSectionReverb = 2;
-constexpr int kFxSectionMood = 3;
-
-constexpr int kSectionOsc = 0;
-constexpr int kSectionMod = 1;
-constexpr int kSectionAmp = 2;
-constexpr int kSectionFilter = 3;
-constexpr int kSectionFx = 4;
-constexpr int kSectionMix = 5;
-// A view like the six panels, but reached from its own button rather than the
-// section row - and laid out full width, because the macro strip is a
-// performance surface and SETTINGS has nothing to assign to a macro.
-constexpr int kSectionSettings = 6;
 static_assert(kSectionSettings == PX3SynthAudioProcessor::kTopMenuViewCount - 1,
               "The processor's view count and the editor's section indices must agree.");
 static_assert(kSectionSettings == TopMenuBar::kSettingsSection,
