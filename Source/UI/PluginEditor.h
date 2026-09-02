@@ -153,6 +153,10 @@ private:
         {
             owner.handleParameterKnobClick(event);
         }
+        void mouseDoubleClick(const juce::MouseEvent& event) override
+        {
+            owner.handleParameterKnobDoubleClick(event);
+        }
         PX3SynthAudioProcessorEditor& owner;
     };
     MidiSelectListener midiSelectListener { *this };
@@ -196,6 +200,11 @@ private:
     std::vector<juce::Component::SafePointer<juce::Slider>> midiKnobs;
 
     void handleParameterKnobClick(const juce::MouseEvent& event);
+    void handleParameterKnobDoubleClick(const juce::MouseEvent& event);
+    // Arms the macro this parameter ID belongs to, if it belongs to one.
+    // Shared by the Cmd-click and double-click gestures so the two cannot
+    // drift apart.
+    bool tryEnterMacroAssignModeFor(const juce::String& parameterId);
 
 public:
     // For the tests: what Select Mode currently holds, and the pass that
@@ -224,6 +233,7 @@ public:
     juce::Slider* debugKnobAt(juce::Point<int> positionInEditor) const
     { return findParameterKnobAt(positionInEditor); }
     void debugEnterMacroAssignMode(int macroIndex) { enterMacroAssignMode(macroIndex); }
+    void debugExitMacroAssignMode() { exitMacroAssignMode(); }
     void debugMacroAssignClickOn(juce::Component& target)
     {
         handleMacroAssignClick(
@@ -251,6 +261,16 @@ public:
             juce::Desktop::getInstance().getMainMouseSource(), at, mods,
             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &slider, &slider,
             juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 1, false));
+    }
+
+    // The same call JUCE's dispatch makes when a listener sees a double-click.
+    void debugSimulateKnobDoubleClick(juce::Slider& slider)
+    {
+        const auto at = slider.getLocalBounds().getCentre().toFloat();
+        handleParameterKnobDoubleClick(juce::MouseEvent(
+            juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys(),
+            1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &slider, &slider,
+            juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 2, false));
     }
 
 private:

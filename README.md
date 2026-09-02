@@ -450,7 +450,8 @@ Each Macro can move any number of parameters anywhere in the synth at once.
 
 ### Assigning
 
-1. **Cmd-click a Macro knob.** It and its label light teal, and the keyboard says
+1. **Cmd-click a Macro knob**, or double-click it. It and its label light teal,
+   and the keyboard says
    *"Click knobs to assign them to MACRO 1"*.
 2. **Click any knob** to assign it. Click it again to remove it. The knob does
    not move while you are assigning — the click assigns, it does not drag.

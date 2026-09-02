@@ -20553,6 +20553,52 @@ void testMacroSystem()
                     expectedEntered.add(juce::String(macro));
                 }
 
+                // Double-click does what Cmd-click does, on every macro, and
+                // does nothing at all on a knob that is not a macro.
+                {
+                    juce::StringArray doubleClicked;
+                    juce::StringArray expectedDoubleClicked;
+                    for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+                    {
+                        editor->debugExitMacroAssignMode();
+                        editor->debugSimulateKnobDoubleClick(strip->knob(macro));
+                        doubleClicked.add(juce::String(editor->debugAssigningMacro()));
+                        expectedDoubleClicked.add(juce::String(macro));
+                    }
+
+                    check("MacroUi_DoubleClickArmsTheMacroLikeCmdClick",
+                          doubleClicked == expectedDoubleClicked,
+                          "double-clicking each macro knob arms "
+                              + doubleClicked.joinIntoString(", "));
+
+                    editor->debugExitMacroAssignMode();
+                    juce::Slider* ordinary = nullptr;
+                    for (auto* knob : knobs)
+                    {
+                        const auto id = px3::ui::parameterIdOf(*knob);
+                        auto isMacro = false;
+                        for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+                        {
+                            isMacro = isMacro || id == PX3SynthAudioProcessor::macroParameterId(macro);
+                        }
+                        if (! isMacro && ordinary == nullptr) { ordinary = knob; }
+                    }
+
+                    if (ordinary != nullptr)
+                    {
+                        editor->debugSimulateKnobDoubleClick(*ordinary);
+                    }
+
+                    check("MacroUi_DoubleClickingAnOrdinaryKnobArmsNothing",
+                          ordinary != nullptr && editor->debugAssigningMacro() < 0,
+                          ordinary == nullptr
+                              ? "no non-macro knob found to try"
+                              : "double-clicking " + px3::ui::parameterIdOf(*ordinary)
+                                    + " leaves the assigning macro at "
+                                    + juce::String(editor->debugAssigningMacro()));
+                    editor->debugExitMacroAssignMode();
+                }
+
                 check("MacroUi_EachMacroEntersItsOwnAssignmentMode",
                       entered == expectedEntered,
                       "entering each macro's mode reports " + entered.joinIntoString(", "));

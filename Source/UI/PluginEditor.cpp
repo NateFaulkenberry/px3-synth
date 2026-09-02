@@ -4623,14 +4623,7 @@ void PX3SynthAudioProcessorEditor::handleParameterKnobClick(const juce::MouseEve
     // other, and only on a macro knob so Cmd is free everywhere else.
     if (event.mods.isCommandDown())
     {
-        for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
-        {
-            if (parameterId == PX3SynthAudioProcessor::macroParameterId(macro))
-            {
-                enterMacroAssignMode(macro);
-                return;
-            }
-        }
+        tryEnterMacroAssignModeFor(parameterId);
         return;
     }
 
@@ -4818,6 +4811,39 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
 //==============================================================================
 // Macro assignment. See docs/macro-system-design.md.
 //==============================================================================
+
+bool PX3SynthAudioProcessorEditor::tryEnterMacroAssignModeFor(const juce::String& parameterId)
+{
+    for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+    {
+        if (parameterId == PX3SynthAudioProcessor::macroParameterId(macro))
+        {
+            enterMacroAssignMode(macro);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// Double-clicking a macro knob does what Cmd-clicking it does. Cmd is the
+// documented gesture and stays so; this is the one that gets found without
+// reading anything, and it costs nothing because macro knobs deliberately
+// carry no double-click-to-default value for it to fight with.
+//
+// Only reached when NOT already assigning: the overlay covers every knob once
+// a macro is armed, so exiting the mode by clicking the same knob still goes
+// through the overlay, unchanged.
+void PX3SynthAudioProcessorEditor::handleParameterKnobDoubleClick(const juce::MouseEvent& event)
+{
+    auto* slider = dynamic_cast<juce::Slider*>(event.eventComponent);
+    if (slider == nullptr) { return; }
+
+    const auto parameterId = px3::ui::parameterIdOf(*slider);
+    if (parameterId.isEmpty()) { return; }
+
+    tryEnterMacroAssignModeFor(parameterId);
+}
 
 void PX3SynthAudioProcessorEditor::enterMacroAssignMode(int macroIndex)
 {

@@ -740,7 +740,8 @@ the patch has two distinct characters with everything in between.
 
 ## Assigning parameters
 
-1. **Command-click a Macro knob.** It and its label light teal, and the keyboard
+1. **Command-click a Macro knob** — or **double-click** it, which does the same
+   thing. It and its label light teal, and the keyboard
    shows *"Click knobs to assign them to MACRO 1"*.
 2. **Click any knob** to assign it. Click it again to remove it.
 3. **Switch panels and keep going.** Assignment stays active, so one Macro can

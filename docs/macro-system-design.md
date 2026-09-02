@@ -101,6 +101,10 @@ editor, positioned OUTSIDE the panel rectangle. There is one instance, so
 "shared across panels" is not something the code has to arrange.
 
 **14. Cmd-click.** Unused in this UI. Shift is MIDI Learn; Cmd is Macro assign.
+**Double-click a Macro knob does the same thing.** Cmd is the documented
+gesture; double-click is the one that gets found without reading anything, and
+it is free because Macro knobs carry no double-click-to-default value for it to
+fight with. Both go through one helper so they cannot drift apart.
 
 **15/16. Visuals.** See below.
 
@@ -192,9 +196,9 @@ Macro), by parameter ID.
 
 ```
         NORMAL
-          │  Cmd-click a Macro knob
+          │  Cmd-click (or double-click) a Macro knob
           ▼
-   ASSIGNING(macro N) ──── Cmd-click a different Macro ──► ASSIGNING(that one)
+   ASSIGNING(macro N) ─── Cmd-click a different Macro ───► ASSIGNING(that one)
           │   │
           │   └─ click any eligible knob ──► toggle its assignment, stay in mode
           │
@@ -304,7 +308,8 @@ the route table is fixed-size and never allocates after construction.
 ## Testing strategy
 
 Four logical Macros with stable IDs; the strip present and within its width
-budget on all six panels; Cmd-click entering assign mode for each Macro;
+budget on all six panels; Cmd-click and double-click each entering assign mode
+for each Macro, and double-click arming nothing on an ordinary knob;
 eligible knobs highlighting distinctly from MIDI; click toggling assignment;
 cross-panel assignment in one Macro; the Macro moving its destinations and the
 DSP; unassigned parameters unaffected; two Macros on one parameter summing;
