@@ -17,6 +17,7 @@
 #include "../DSP/PluginProcessorInternals.h"
 #include "../DSP/AmpEnvelope.h"
 #include "../UI/Card.h"
+#include "../UI/MacroLook.h"
 #include "../UI/CardInner.h"
 #include "../DSP/Doom.h"
 #include "../DSP/FxChain.h"
@@ -20501,6 +20502,72 @@ void testMacroSystem()
                       panelKnob != nullptr && macroBrightness > panelBrightness + 0.2,
                       "the strip's knob renders at brightness " + fmt(macroBrightness, 3)
                           + " against a panel knob's " + fmt(panelBrightness, 3));
+
+                // The tick in the cap: its own dark colour, and one the config
+                // actually sets.
+                {
+                    juce::String configError;
+                    const auto fromJson = [&](const char* json)
+                    {
+                        const auto config = UIConfig::fromJsonText(json, configError);
+                        return px3::ui::macroPointerColour(config.get());
+                    };
+
+                    const auto configured = fromJson(R"({"macro":{"colors":{"pointer":"#FF0000"}}})");
+
+                    auto shipped = juce::Colours::transparentBlack;
+                    {
+                        const auto configFile = juce::File::getCurrentWorkingDirectory()
+                                                    .getChildFile("Source/UI/UIConfig.json");
+                        if (configFile.existsAsFile())
+                        {
+                            const auto config = UIConfig::fromJsonText(
+                                configFile.loadFileAsString(), configError);
+                            shipped = px3::ui::macroPointerColour(config.get());
+                        }
+                    }
+
+                    check("MacroUi_ThePointerColourComesFromConfig",
+                          configured == juce::Colour::fromRGB(255, 0, 0)
+                              && shipped == juce::Colour::fromRGB(51, 51, 51),
+                          "a configured pointer reads " + configured.toDisplayString(false)
+                              + " and the shipped one " + shipped.toDisplayString(false));
+
+                    // And the tick is DRAWN in it. Checking the helper alone
+                    // would pass with the look-and-feel ignoring the value.
+                    auto* look = editor->debugMacroKnobLookAndFeel();
+                    const auto restore = look->pointerColour;
+                    look->pointerColour = juce::Colour::fromRGB(255, 0, 255);
+
+                    juce::Slider probe;
+                    probe.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+                    probe.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+                    probe.setLookAndFeel(look);
+                    probe.setSize(140, 140);
+                    probe.setRange(0.0, 1.0);
+                    probe.setValue(0.5, juce::dontSendNotification);
+                    const auto image = probe.createComponentSnapshot(probe.getLocalBounds());
+                    probe.setLookAndFeel(nullptr);
+                    look->pointerColour = restore;
+
+                    auto magenta = 0;
+                    for (int py = 0; py < 140; ++py)
+                    {
+                        for (int px = 0; px < 140; ++px)
+                        {
+                            const auto c = image.getPixelAt(px, py);
+                            if (c.getRed() > 150 && c.getBlue() > 150 && c.getGreen() < 110)
+                            {
+                                ++magenta;
+                            }
+                        }
+                    }
+
+                    check("MacroUi_TheTickIsDrawnInThePointerColour",
+                          magenta > 8,
+                          juce::String(magenta)
+                              + " pixels of the tick take a pointer colour set on the look");
+                }
 
                 // The dots: recessed and grey when empty, lit through as the
                 // knob turns, and DOTTED rather than an arc.

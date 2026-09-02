@@ -2710,7 +2710,9 @@
     "colors": {
       "accent": "#22D6C8",
       "labelBackground": "#E2F9F6DB",
-      "labelText": "#0C2E2B"
+      "labelText": "#0C2E2B",
+      "pointer": "#333333",
+      "pointerDisabled": "#96969A"
     }
   },
   "envelope": {

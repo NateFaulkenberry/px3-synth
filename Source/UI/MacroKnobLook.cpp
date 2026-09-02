@@ -151,7 +151,7 @@ void MacroKnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
                                  tickTo.translated(0.0f, 1.0f)),
                juce::jmax(1.8f, radius * 0.075f));
 
-    g.setColour(enabled ? accent.darker(0.15f) : juce::Colour::fromRGB(150, 150, 154));
+    g.setColour(enabled ? pointerColour : pointerDisabledColour);
     g.drawLine(juce::Line<float>(tickFrom, tickTo), juce::jmax(1.6f, radius * 0.065f));
 
     // ---- everything every other knob shows ----------------------------------

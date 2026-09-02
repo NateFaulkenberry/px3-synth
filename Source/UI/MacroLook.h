@@ -43,4 +43,25 @@ inline juce::Colour macroLabelTextColour(const UIConfig* config)
     return config != nullptr ? config->getColour("macro.colors.labelText", fallback) : fallback;
 }
 
+// The pointer cut into the macro knob's cap.
+//
+// Dark rather than accent-coloured: the cap is off-white, so a teal tick on it
+// competes with the lit holes around the bezel, which are what actually read
+// the value. The tick says WHERE the knob is pointing; the holes say how far it
+// has come.
+inline juce::Colour macroPointerColour(const UIConfig* config)
+{
+    const auto fallback = juce::Colour::fromRGB(51, 51, 51);
+    return config != nullptr ? config->getColour("macro.colors.pointer", fallback) : fallback;
+}
+
+// The same tick when the knob is disabled.
+inline juce::Colour macroPointerDisabledColour(const UIConfig* config)
+{
+    const auto fallback = juce::Colour::fromRGB(150, 150, 154);
+    return config != nullptr
+             ? config->getColour("macro.colors.pointerDisabled", fallback)
+             : fallback;
+}
+
 } // namespace px3::ui

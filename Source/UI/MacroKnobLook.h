@@ -26,6 +26,11 @@ public:
     // look-and-feel is shared by many knobs and has no config prefix of its own.
     KnobOverlayColours overlayColours;
 
+    // The tick cut into the cap. Its own colour rather than the accent's,
+    // because the cap is pale and the lit holes are already saying the value.
+    juce::Colour pointerColour { juce::Colour::fromRGB(51, 51, 51) };
+    juce::Colour pointerDisabledColour { juce::Colour::fromRGB(150, 150, 154) };
+
     void drawRotarySlider(juce::Graphics& g,
                           int x,
                           int y,

@@ -2155,6 +2155,9 @@ void PX3SynthAudioProcessorEditor::resized()
     macroKnobLookAndFeel.overlayColours = { knobLookAndFeel.macroAccent,
                                             knobLookAndFeel.macroLabelBackground,
                                             knobLookAndFeel.macroLabelText };
+    macroKnobLookAndFeel.pointerColour = px3::ui::macroPointerColour(uiConfig.get());
+    macroKnobLookAndFeel.pointerDisabledColour
+        = px3::ui::macroPointerDisabledColour(uiConfig.get());
 
     macroStripArea = panelViewportArea.removeFromLeft(
         MacroStrip::preferredWidth(uiConfig.get()));

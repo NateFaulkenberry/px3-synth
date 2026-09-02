@@ -256,7 +256,7 @@ public:
 
     // The macro knobs' own look, so a test can render one through exactly what
     // draws them on screen.
-    juce::LookAndFeel* debugMacroKnobLookAndFeel() { return &macroKnobLookAndFeel; }
+    px3::ui::MacroKnobLookAndFeel* debugMacroKnobLookAndFeel() { return &macroKnobLookAndFeel; }
 
     // The same call JUCE's dispatch makes when a listener sees a click on a
     // knob. Constructing the event here is the one step the test cannot get
