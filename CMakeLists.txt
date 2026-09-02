@@ -85,6 +85,8 @@ set(PX3_SHARED_SOURCES
         Source/UI/PluginEditorLook.cpp
         Source/UI/PluginEditorFxCards.cpp
         Source/UI/PluginEditorMidiMacros.cpp
+        Source/UI/PluginEditorPresets.cpp
+        Source/UI/PluginEditorRefresh.cpp
         Source/UI/MacroStrip.cpp
         Source/UI/SettingsPanel.cpp
         Source/UI/KnobOverlays.cpp
