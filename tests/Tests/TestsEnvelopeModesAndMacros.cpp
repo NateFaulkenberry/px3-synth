@@ -2099,17 +2099,18 @@ void testMacroSystem()
         juce::StringArray ids;
         for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
         {
-            const auto id = destinations[macro]->getParameterID();
+            const auto id = destinations[static_cast<std::size_t>(macro)]->getParameterID();
             ids.add(id);
 
             // Start each base low, so there is room above it to measure into.
-            destinations[macro]->setValueNotifyingHost(0.1f);
+            destinations[static_cast<std::size_t>(macro)]->setValueNotifyingHost(0.1f);
             processor.toggleMacroDestination(macro, id);
         }
 
         const auto effective = [&](int index)
         {
-            return processor.getModulatedNormalisedValue(*destinations[index]);
+            return processor.getModulatedNormalisedValue(
+                *destinations[static_cast<std::size_t>(index)]);
         };
 
         // Each destination belongs to exactly one macro.
@@ -2255,8 +2256,9 @@ void testMacroSystem()
 
                 for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
                 {
-                    targets[macro]->setValueNotifyingHost(0.1f);
-                    knobProcessor.toggleMacroDestination(macro, targets[macro]->getParameterID());
+                    targets[static_cast<std::size_t>(macro)]->setValueNotifyingHost(0.1f);
+                    knobProcessor.toggleMacroDestination(
+                        macro, targets[static_cast<std::size_t>(macro)]->getParameterID());
                 }
 
                 juce::StringArray knobFaults;
@@ -2321,7 +2323,8 @@ void testMacroSystem()
 
             for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
             {
-                saver.toggleMacroDestination(macro, targets[macro]->getParameterID());
+                saver.toggleMacroDestination(
+                    macro, targets[static_cast<std::size_t>(macro)]->getParameterID());
                 saver.getMacroParam(macro).setValueNotifyingHost(0.2f * static_cast<float>(macro + 1));
             }
 
@@ -2336,7 +2339,7 @@ void testMacroSystem()
             auto correct = true;
             for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
             {
-                const auto id = targets[macro]->getParameterID();
+                const auto id = targets[static_cast<std::size_t>(macro)]->getParameterID();
                 const auto mask = loader.getMacroMaskForParameter(id);
                 const auto value = loader.getMacroParam(macro).get();
 

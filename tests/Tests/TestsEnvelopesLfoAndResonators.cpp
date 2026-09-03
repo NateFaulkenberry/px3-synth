@@ -680,7 +680,9 @@ void testLfo()
             mean /= static_cast<double>(windows.size());
             double variance = 0.0;
             for (const auto v : windows) variance += (v - mean) * (v - mean);
-            return mean > 1.0e-9 ? std::sqrt(variance / windows.size()) / mean : 0.0;
+            return mean > 1.0e-9
+                       ? std::sqrt(variance / static_cast<double>(windows.size())) / mean
+                       : 0.0;
         };
 
         // Compared against an LFO-off control rather than an absolute floor. A

@@ -1304,7 +1304,8 @@ void testEditorLifecycle()
                 {
                     for (int x = 0; x < 100; ++x)
                     {
-                        const auto p = juce::Point<float>(x + 0.5f, y + 0.5f);
+                        const auto p = juce::Point<float>(static_cast<float>(x) + 0.5f,
+                                                         static_cast<float>(y) + 0.5f);
                         if (square.contains(p)) ++squareHits;
                         if (rounded.contains(p)) ++roundedHits;
                     }

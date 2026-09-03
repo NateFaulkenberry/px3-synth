@@ -62,9 +62,25 @@ main (green, PX3_VERSION already 0.7.1)
 ### What the macOS job actually asserts
 
 - Every product builds in the shipping configuration (`Release`, arm64).
-- **No warnings from PX3's own sources.** JUCE's vendored code is filtered out;
-  everything else fails the build. The project is warning-clean today, so any
-  line is new.
+- **No warnings from PX3's own sources.** JUCE's vendored code is filtered out
+  by path; everything else fails the build. The project is warning-clean today,
+  so any line is new.
+
+  The report separates two kinds, because they look alike and are not:
+
+  - **source warnings** carry a `file:line:col:` prefix and mean what they say.
+  - **command-line warnings** carry no prefix. They are clang complaining about
+    the *flags*, not the code — almost always a `-Wno-…` suppression that this
+    compiler is too old to recognise. `CMakeLists.txt` probes every suppression
+    with `check_cxx_compiler_flag` and drops the ones the compiler does not
+    know, so these should not occur; if one does, the probe was bypassed.
+
+  A warning that appears only in CI is nearly always a compiler-version
+  difference — the runner's Xcode clang is older than a current local one. The
+  job logs `clang --version` immediately before configuring for exactly this
+  reason. If the runner's compiler turns out to be noisier than yours on the
+  same code, the choice is to fix the warnings or to pin the runner's Xcode;
+  do not widen the filter, which would hide real ones.
 - `PX3Tests` — 1342 assertions.
 - `PX3Diag regress` — 29 audio-artifact cases.
 - `PX3Diag rtsafety` — 0 allocations per audio block.

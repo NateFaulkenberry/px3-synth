@@ -113,6 +113,13 @@ jobs:
           restore-keys: |
             ccache-${{ runner.os }}-
 
+      - name: Record toolchain
+        run: |
+          # A warning that appears only in CI is nearly always a compiler
+          # difference, so the version belongs in the log next to it.
+          clang --version | head -2
+          cmake --version | head -1
+
       - name: Configure
         run: |
           cmake -S . -B build ${{ env.PX3_CMAKE_ARGS }} \
@@ -130,13 +137,34 @@ jobs:
 
       - name: Warnings from our own sources fail the build
         run: |
-          # JUCE's vendored third-party code is not ours to fix and is filtered.
-          # Everything else is: the project builds warning-clean today, so any
-          # line here is new.
-          if grep -E "warning:" build.log | grep -vE "_deps/juce-src|JuceLibraryCode" > our-warnings.log; then
-            echo "::error::new warnings in PX3 sources:"; cat our-warnings.log; exit 1
+          # JUCE's vendored third-party code is not ours to fix and is filtered
+          # by path. Everything else is ours: the project builds warning-clean,
+          # so any line here is new.
+          grep -E "warning:" build.log | grep -vE "_deps/juce-src|JuceLibraryCode" > our-warnings.log || true
+
+          if [ ! -s our-warnings.log ]; then
+            echo "no warnings from PX3 sources"; exit 0
           fi
-          echo "no warnings from PX3 sources"
+
+          # Split the report by kind, because the two have completely different
+          # causes and the first is easy to mistake for the second.
+          #
+          # A driver warning has no file:line prefix - it is clang complaining
+          # about the command line rather than about code. The usual cause is a
+          # -Wno- flag this compiler is too old to know, which is a portability
+          # problem in the warning policy, not a defect in any source file.
+          grep -vE "^[^ ]+:[0-9]+:[0-9]+:" our-warnings.log > driver-warnings.log || true
+          grep -E  "^[^ ]+:[0-9]+:[0-9]+:" our-warnings.log > source-warnings.log || true
+
+          if [ -s driver-warnings.log ]; then
+            echo "::error::command-line warnings ($(wc -l < driver-warnings.log | tr -d ' ')). These are compiler-version problems, not code problems - a suppression in PX3_WARNING_OPTIONS that this clang does not recognise. CMakeLists.txt probes each one with check_cxx_compiler_flag; a flag reaching the command line unrecognised means the probe was bypassed."
+            sort -u driver-warnings.log
+          fi
+          if [ -s source-warnings.log ]; then
+            echo "::error::warnings in PX3 sources ($(wc -l < source-warnings.log | tr -d ' ')):"
+            cat source-warnings.log
+          fi
+          exit 1
 
       # ---- the existing test estate, each with a real exit code -------------
       - name: Component tests
@@ -202,6 +230,8 @@ jobs:
             rtsafety-report.txt
             smoke-report.txt
             our-warnings.log
+            driver-warnings.log
+            source-warnings.log
           retention-days: 14
           if-no-files-found: warn
 
