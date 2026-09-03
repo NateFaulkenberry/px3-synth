@@ -41,37 +41,50 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-PRODUCT_NAME="$(grep -E '^[[:space:]]*PRODUCT_NAME[[:space:]]+"' "${CMAKE_FILE}" | head -n1 | sed -E 's/^[[:space:]]*PRODUCT_NAME[[:space:]]+"([^"]+)".*/\1/' || true)"
-[[ -n "${PRODUCT_NAME}" ]] || PRODUCT_NAME="PX3 Synth"
+# EVERY product, not the first one.
+#
+# This took `head -n1` of the PRODUCT_NAME lines, which was right when there was
+# one product and quietly wrong from the moment there were eight: a developer
+# cleaning their machine kept seven effects installed and a host that still
+# listed them. The names and ids are read as pairs from the same
+# px3_add_product table the build reads, so a product added there is cleaned up
+# here without editing this script.
+PRODUCT_NAMES=()
+PRODUCT_IDS=()
+while IFS=$'\t' read -r name id; do
+  [[ -n "${name}" ]] || continue
+  PRODUCT_NAMES+=("${name}")
+  PRODUCT_IDS+=("${id}")
+done < <(awk '
+  /^px3_add_product\(/ { name = ""; id = ""; next }
+  /^[[:space:]]*PRODUCT_NAME[[:space:]]+"/ {
+    if (match($0, /"[^"]*"/)) { name = substr($0, RSTART + 1, RLENGTH - 2) }
+    next
+  }
+  /^[[:space:]]*BUNDLE_ID[[:space:]]+"/ {
+    if (match($0, /"[^"]*"/)) { id = substr($0, RSTART + 1, RLENGTH - 2) }
+    next
+  }
+  /\)[[:space:]]*$/ { if (name != "") { print name "\t" id }; name = ""; id = "" }
+' "${CMAKE_FILE}")
 
-BUNDLE_ID="$(grep -E '^[[:space:]]*BUNDLE_ID[[:space:]]+"' "${CMAKE_FILE}" | head -n1 | sed -E 's/^[[:space:]]*BUNDLE_ID[[:space:]]+"([^"]+)".*/\1/' || true)"
-[[ -n "${BUNDLE_ID}" ]] || BUNDLE_ID="com.px3.px3synth"
+if [[ ${#PRODUCT_NAMES[@]} -eq 0 ]]; then
+  PRODUCT_NAMES=("PX3 Synth")
+  PRODUCT_IDS=("com.px3.px3synth")
+fi
 
-AU_NAME="${PRODUCT_NAME}.component"
-VST3_NAME="${PRODUCT_NAME}.vst3"
-
-AU_PATH="${HOME}/Library/Audio/Plug-Ins/Components/${AU_NAME}"
-VST3_PATH="${HOME}/Library/Audio/Plug-Ins/VST3/${VST3_NAME}"
-SYSTEM_AU_PATH="/Library/Audio/Plug-Ins/Components/${AU_NAME}"
-SYSTEM_VST3_PATH="/Library/Audio/Plug-Ins/VST3/${VST3_NAME}"
+echo "Removing ${#PRODUCT_NAMES[@]} product(s): ${PRODUCT_NAMES[*]}"
+echo ""
 
 removed_any=false
 permission_blocked=false
 matches_found=false
 
+# The shared paths only. Everything keyed by a product's name or bundle id is
+# built inside the per-product loop, where those two are actually in scope -
+# under `set -u` a ${BUNDLE_ID} up here is now an abort, not an empty string.
 USER_APP_SUPPORT_PATH="${HOME}/Library/Application Support/P(X3)"
 SYSTEM_APP_SUPPORT_PATH="/Library/Application Support/P(X3)"
-
-USER_PREFS_PLIST="${HOME}/Library/Preferences/${BUNDLE_ID}.plist"
-SYSTEM_PREFS_PLIST="/Library/Preferences/${BUNDLE_ID}.plist"
-
-USER_CACHE_PATH="${HOME}/Library/Caches/${BUNDLE_ID}"
-SYSTEM_CACHE_PATH="/Library/Caches/${BUNDLE_ID}"
-
-USER_SAVED_STATE_PATH="${HOME}/Library/Saved Application State/${BUNDLE_ID}.savedState"
-
-USER_LOG_PATH_1="${HOME}/Library/Logs/${PRODUCT_NAME}"
-USER_LOG_PATH_2="${HOME}/Library/Logs/${BUNDLE_ID}"
 
 USER_AU_CACHE_DIR="${HOME}/Library/Caches/AudioUnitCache"
 SYSTEM_AU_CACHE_DIR="/Library/Caches/AudioUnitCache"
@@ -129,27 +142,42 @@ remove_glob_if_present() {
   fi
 }
 
-remove_path_if_present "${AU_PATH}" "User AU"
-remove_path_if_present "${VST3_PATH}" "User VST3"
-remove_path_if_present "${SYSTEM_AU_PATH}" "System AU"
-remove_path_if_present "${SYSTEM_VST3_PATH}" "System VST3"
+for i in "${!PRODUCT_NAMES[@]}"; do
+  PRODUCT_NAME="${PRODUCT_NAMES[$i]}"
+  BUNDLE_ID="${PRODUCT_IDS[$i]}"
 
+  echo "--- ${PRODUCT_NAME}"
+
+  remove_path_if_present "${HOME}/Library/Audio/Plug-Ins/Components/${PRODUCT_NAME}.component" "User AU"
+  remove_path_if_present "${HOME}/Library/Audio/Plug-Ins/VST3/${PRODUCT_NAME}.vst3" "User VST3"
+  remove_path_if_present "/Library/Audio/Plug-Ins/Components/${PRODUCT_NAME}.component" "System AU"
+  remove_path_if_present "/Library/Audio/Plug-Ins/VST3/${PRODUCT_NAME}.vst3" "System VST3"
+  remove_path_if_present "/Applications/${PRODUCT_NAME}.app" "Standalone App"
+
+  remove_path_if_present "${HOME}/Library/Logs/${PRODUCT_NAME}" "User Log Folder"
+  remove_glob_if_present "${HOME}/Library/Logs/DiagnosticReports/${PRODUCT_NAME}-*.ips" "User Crash Report"
+  remove_glob_if_present "/Library/Logs/DiagnosticReports/${PRODUCT_NAME}-*.ips" "System Crash Report"
+
+  # A product with no BUNDLE_ID in the table has no id-keyed paths to remove,
+  # and guessing one would risk deleting something belonging to another product.
+  if [[ -n "${BUNDLE_ID}" ]]; then
+    remove_path_if_present "${HOME}/Library/Preferences/${BUNDLE_ID}.plist" "User Preferences"
+    remove_path_if_present "/Library/Preferences/${BUNDLE_ID}.plist" "System Preferences"
+    remove_path_if_present "${HOME}/Library/Caches/${BUNDLE_ID}" "User Cache"
+    remove_path_if_present "/Library/Caches/${BUNDLE_ID}" "System Cache"
+    remove_path_if_present "${HOME}/Library/Saved Application State/${BUNDLE_ID}.savedState" "User Saved State"
+    remove_path_if_present "${HOME}/Library/Logs/${BUNDLE_ID}" "User Log Folder"
+  fi
+
+  echo ""
+done
+
+# Shared across every product, so it is removed once rather than per product.
+# This is a developer-machine reset: unlike the shipped uninstaller it takes the
+# preset library without asking, which is the point of it.
+remove_path_if_present "${HOME}/Library/P(X3)" "User Preset Library and Settings"
 remove_path_if_present "${USER_APP_SUPPORT_PATH}" "User App Support"
 remove_path_if_present "${SYSTEM_APP_SUPPORT_PATH}" "System App Support"
-
-remove_path_if_present "${USER_PREFS_PLIST}" "User Preferences"
-remove_path_if_present "${SYSTEM_PREFS_PLIST}" "System Preferences"
-
-remove_path_if_present "${USER_CACHE_PATH}" "User Cache"
-remove_path_if_present "${SYSTEM_CACHE_PATH}" "System Cache"
-
-remove_path_if_present "${USER_SAVED_STATE_PATH}" "User Saved State"
-
-remove_path_if_present "${USER_LOG_PATH_1}" "User Log Folder"
-remove_path_if_present "${USER_LOG_PATH_2}" "User Log Folder"
-
-remove_glob_if_present "${HOME}/Library/Logs/DiagnosticReports/${PRODUCT_NAME}-*.ips" "User Crash Report"
-remove_glob_if_present "/Library/Logs/DiagnosticReports/${PRODUCT_NAME}-*.ips" "System Crash Report"
 
 remove_glob_if_present "${HOME}/Library/Audio/Presets/PX3/*" "User Audio Preset"
 remove_glob_if_present "/Library/Audio/Presets/PX3/*" "System Audio Preset"

@@ -11,7 +11,7 @@ the brief requires. Nothing in this document is built yet; the open questions in
 ### A.1 There is no wavetable oscillator
 
 `px3::OscillatorMode::wavetable` (index 8) is a placeholder. The whole of it,
-in `Source/DSP/OscillatorUnit.cpp`:
+in `products/PX3Synth/DSP/OscillatorUnit.cpp`:
 
 ```cpp
 case px3::OscillatorMode::wavetable:
@@ -51,7 +51,7 @@ behaviour worth being compatible with. It is replaced outright.
 
 | Concern | Location |
 |---|---|
-| Oscillator DSP | `Source/DSP/OscillatorUnit.{h,cpp}`, 20 modes in `OscillatorMode.h` |
+| Oscillator DSP | `products/PX3Synth/DSP/OscillatorUnit.{h,cpp}`, 20 modes in `OscillatorMode.h` |
 | Per-voice instances | `SynthVoice::oscillatorUnits[3]` — no global oscillator state |
 | Mode selection | `osc{1,2,3}Mode` choice parameter → `OscillatorSettings::modeIndex` |
 | Oscillator state | `OscillatorSettings { modeIndex, macroA/B/C, vowelIndex, harmonics[8] }` |

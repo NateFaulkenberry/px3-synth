@@ -1,12 +1,24 @@
-# P(X3) Synth
+# P(X3)
 
-P(X3) is a polyphonic JUCE synthesizer with a multi-mode source engine, a channel-style mixer, and eight reorderable FX (VIBE, CHORUS, DOOM, LUCY, Delay, Mood, Reverb, SPREAD). This README is a full operating guide for new users and a function-level map for developers.
+P(X3) is eight macOS plug-ins built from one codebase.
 
-Current version: v0.1.0
+**PX3 Synth** is a polyphonic JUCE synthesizer with a multi-mode source engine,
+a channel-style mixer, and eight reorderable FX (VIBE, CHORUS, DOOM, LUCY,
+Delay, Mood, Reverb, SPREAD).
+
+**Seven of those effects also ship on their own** — PX3 Delay, Mood, Chorus,
+Spread, Reverb, Doom and Lucy — as AU and VST3. They are not ports: each drives
+the same shared DSP object the Synth drives, through the same interface. See
+[docs/ECOSYSTEM_ARCHITECTURE.md](docs/ECOSYSTEM_ARCHITECTURE.md).
+
+This README is a full operating guide for new users and a function-level map for
+developers.
+
+Current version: v0.7.0
 
 For dedicated build/install/release workflow documentation, see `docs/BUILDING.md`.
 For preset system format and storage details, see `docs/PRESETS.md`.
-The shipped factory presets are defined in `Source/Preset/FactoryPresets.cpp`.
+The shipped factory presets are defined in `products/PX3Synth/Preset/FactoryPresets.cpp`.
 For developer architecture, maintenance map, and release workflow, see `DEVELOPMENT.md`.
 
 ## Start Here
@@ -53,6 +65,11 @@ design walkthroughs, troubleshooting and a glossary.
 - FX return controls: level, pan, mute, solo.
 - Clickable 88-key keyboard (A0-C8) with medium click velocity.
 - Performance strip (pitch bend and mod wheel).
+- Separate Dry and FX outputs, offered to the host as two stereo pairs.
+- In-plugin update checking, with the installer downloaded and verified while
+  your DAW stays open.
+- **Seven standalone effect plug-ins** — PX3 Delay, Mood, Chorus, Spread,
+  Reverb, Doom and Lucy — AU and VST3, selectable in the installer.
 
 ## Requirements
 
@@ -103,8 +120,13 @@ Trigger Logic Pro relaunch helper after cleanup:
 
 Notes:
 
-- The uninstall script targets both user and system plugin folders/cache paths.
-- System-wide removals may require `sudo`.
+- It removes **every** product in the `px3_add_product` table — the Synth and
+  all seven effects — reading that table rather than carrying its own list.
+- It targets both user and system plugin folders and cache paths. System-wide
+  removals may require `sudo`.
+- This is a **developer-machine reset**: unlike the shipped uninstaller it takes
+  the whole `~/Library/P(X3)/` preset library without asking. Use the shipped
+  `PX3 Uninstaller.app` if you want to be asked.
 
 ## Building a Release Installer
 
@@ -119,19 +141,28 @@ installer and an uninstaller.
 
 ### Installer
 
-The installer presents an **Installation Type** step where you choose which
-formats to install. All three are selected by default and each can be
-deselected:
+The installer presents an **Installation Type** step offering the Synth's three
+formats and then the seven effects under a heading of their own. Everything is
+selected by default; you opt *out* of what you do not want.
 
-| Format | Destination |
+| Component | Destination |
 | --- | --- |
 | Audio Unit (AU) | `/Library/Audio/Plug-Ins/Components/` |
 | VST3 | `/Library/Audio/Plug-Ins/VST3/` |
 | Standalone application | `/Applications/` |
+| PX3 Delay, Mood, Chorus, Spread, Reverb, Doom, Lucy | both plug-in folders above |
+
+One component package per **effect** rather than per format — that is the choice
+a user actually makes — so each carries that effect's AU and VST3 together.
+`build-release.sh` reads the product list from `CMakeLists.txt`, so a new
+product is packaged without editing the installer, and the finished package is
+expanded and checked to confirm each effect's package is both present and
+referenced by the Distribution. `productbuild` silently drops a package nothing
+selects, which is how the branding resources were lost once before.
 
 Example output artifact:
 
-- `dist/PX3-v0.2.1.pkg`
+- `dist/PX3-v<version>.pkg`
 
 ### Uninstaller
 
@@ -189,7 +220,7 @@ For a developer-machine uninstall that does not involve a package, use
 
 ### App icon
 
-The application and plug-in icon is generated from `Source/Assets/px3.gif`. The
+The application and plug-in icon is generated from `products/PX3Synth/Assets/px3.gif`. The
 wordmark is rotated 45 degrees onto the diagonal so it fills the square without
 being cropped, and the rest of the tile uses the logo's own background colour.
 See `docs/BUILDING.md` to regenerate it.
@@ -240,8 +271,8 @@ sits waiting is still caught.
 ### Installer branding
 
 Both packages show the P(X3) logo in the bottom-left corner of the Installer
-window. The image is taken from `Source/Assets/px3-installer.png` if present,
-otherwise generated at build time from `Source/Assets/px3.gif` (converted to PNG
+window. The image is taken from `products/PX3Synth/Assets/px3-installer.png` if present,
+otherwise generated at build time from `products/PX3Synth/Assets/px3.gif` (converted to PNG
 and scaled, since the Installer renders a still image). If neither exists the
 packages simply build without a background.
 
@@ -346,7 +377,7 @@ Runtime UI styling and layout are loaded from `UIConfig.json`.
 
 Source of truth in the repo:
 
-- `Source/UI/UIConfig.json`
+- `shared/UI/Style/UIConfig.json`
 
 Hot reload behavior:
 
@@ -364,8 +395,8 @@ Path resolution order:
 
 - Debug builds (`JUCE_DEBUG` or `PX3_DEBUG_PANEL`):
   - `PX3_UI_CONFIG_PATH` (if set and file exists)
-  - `./Source/UI/UIConfig.json` from current working directory
-  - upward probe for `Source/UI/UIConfig.json`, then `UIConfig.json`
+  - `./shared/UI/Style/UIConfig.json` from current working directory
+  - upward probe for `shared/UI/Style/UIConfig.json`, then `UIConfig.json`
   - bundle fallback: `Contents/UIConfig.json`, then `Contents/Resources/UIConfig.json`
 - Non-debug builds:
   - bundle only: `Contents/UIConfig.json`, then `Contents/Resources/UIConfig.json`
@@ -373,7 +404,7 @@ Path resolution order:
 
 Production packaging:
 
-- CMake copies `Source/UI/UIConfig.json` into `Contents/Resources/UIConfig.json` for Standalone, AU, and VST3 bundles.
+- CMake copies `shared/UI/Style/UIConfig.json` into `Contents/Resources/UIConfig.json` for Standalone, AU, and VST3 bundles.
 - `scripts/build-release.sh` fails fast if AU/VST3 bundles or component pkg payloads are missing `Contents/Resources/UIConfig.json`.
 
 ## Developer Preset Dumping
@@ -443,7 +474,7 @@ Bus architecture notes:
 - The fader range extends above unity by the same 4 dB, so a channel can still be
   pushed back to its full pre-trim level.
 - The trim value and the fader's maximum come from one shared constant in
-  `Source/DSP/PluginProcessorInternals.h`, so the source side and the fader range
+  `products/PX3Synth/DSP/PluginProcessorInternals.h`, so the source side and the fader range
   cannot drift apart.
 
 ## Mixer Solo Rules
@@ -1229,23 +1260,23 @@ This section describes the major internal functions and what each one controls.
 `PX3SynthAudioProcessor` remains the single central orchestrator class, but its
 implementation is split across multiple files by responsibility:
 
-- `Source/DSP/PluginProcessor.h`
+- `products/PX3Synth/DSP/PluginProcessor.h`
   - Single authoritative class declaration for `PX3SynthAudioProcessor`.
-- `Source/DSP/PluginProcessor.cpp`
+- `products/PX3Synth/DSP/PluginProcessor.cpp`
   - Core processor orchestration: constructor/destructor, plugin identity,
     JUCE lifecycle entry points, and `processBlock`.
-- `Source/DSP/PluginProcessorParameters.cpp`
+- `products/PX3Synth/DSP/PluginProcessorParameters.cpp`
   - Parameter getters, LFO destination assignment, modulation application
     helper, and FX order API (`get/setFxProcessingOrder`).
-- `Source/DSP/PluginProcessorMidi.cpp`
+- `products/PX3Synth/DSP/PluginProcessorMidi.cpp`
   - MIDI + virtual keyboard handling, note activity tracking, pitch/mod wheel
     state bridges.
-- `Source/DSP/PluginProcessorEffects.cpp`
+- `products/PX3Synth/DSP/PluginProcessorEffects.cpp`
   - Delay/granular/reverb DSP helper implementations and reverb engine setup.
-- `Source/DSP/PluginProcessorState.cpp`
+- `products/PX3Synth/DSP/PluginProcessorState.cpp`
   - State serialization/restoration (`getStateInformation`,
     `setStateInformation`, ValueTree create/apply).
-- `Source/DSP/PluginProcessorDebug.cpp`
+- `products/PX3Synth/DSP/PluginProcessorDebug.cpp`
   - Debug event logging, debug state inspection, and round-trip/restore
     diagnostics used by the debug console.
 
@@ -1295,29 +1326,29 @@ Each FX block is its own component class with the same four-call interface -
 `prepare`, `reset`, `updateForBlock`, `processSampleFrame` - so the processor does
 not need to know anything about their internals:
 
-- `Source/DSP/Vibe.*` and `Source/DSP/VibeEngine.*`
+- `shared/DSP/Vibe/Vibe.*` and `shared/DSP/Vibe/VibeEngine.*`
   - Vibe's shared per-block state. The per-sample application lives inside
     `SynthVoice`, because Vibe is a per-voice stage rather than a bus effect.
-- `Source/DSP/Delay.*`
+- `shared/DSP/Delay/Delay.*`
   - `processDelayAlgorithmSample` switches between the seven algorithms;
     `processIsaacGranularSample` / `spawnIsaacGrain` handle the granular grain
     lifecycle.
-- `Source/DSP/Reverb.*`
+- `shared/DSP/Reverb/Reverb.*`
   - `processFdn8` is the shared feedback delay network behind ROOM, HALL and
     CLOUD; the Dattorro plate is separate.
-- `Source/DSP/Mood.*`
-- `Source/DSP/Doom.*`, `Source/DSP/DoomTypes.h`
-- `Source/DSP/Lucy.*`, `Source/DSP/LucyTypes.h`
-- `Source/DSP/Chorus.*`, `Source/DSP/ChorusTypes.h`
-- `Source/DSP/StereoSpread.*`, `Source/DSP/StereoSpreadTypes.h`
-- `Source/DSP/StftEngine.*` (shared spectral analysis/synthesis)
-- `Source/DSP/FxChain.h` (stage ids, chain order, default order)
+- `shared/DSP/Mood/Mood.*`
+- `shared/DSP/Doom/Doom.*`, `shared/DSP/Doom/DoomTypes.h`
+- `shared/DSP/Lucy/Lucy.*`, `shared/DSP/Lucy/LucyTypes.h`
+- `shared/DSP/Chorus/Chorus.*`, `shared/DSP/Chorus/ChorusTypes.h`
+- `shared/DSP/StereoSpread/StereoSpread.*`, `shared/DSP/StereoSpread/StereoSpreadTypes.h`
+- `shared/DSP/Core/StftEngine.*` (shared spectral analysis/synthesis)
+- `products/PX3Synth/DSP/FxChain.h` (stage ids, chain order, default order)
   - `processInternalStep` runs the clock-divided engine; the loop and wet modes
     are `renderLoop*` and `renderWet*`.
 - `getFxProcessingOrder` / `setFxProcessingOrder`
   - Sanitized user order storage and retrieval.
 
-`Source/DSP/PluginProcessorEffects.cpp` is now an empty placeholder - the effect
+`products/PX3Synth/DSP/PluginProcessorEffects.cpp` is now an empty placeholder - the effect
 implementations were extracted into the component classes above.
 
 ### Editor/UI Wiring

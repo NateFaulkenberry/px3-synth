@@ -222,7 +222,7 @@ Then compare profiles at the same material before touching any constant.
 Not implemented, deliberately. The intended shape:
 
 ```
-Source/UI/AnalogEngineConfig.json
+shared/DSP/Analog/AnalogEngineConfig.json
     │   one block per profile, one key per constant
     ▼
 AnalogEngine::setTuningValue on load and on hot-reload

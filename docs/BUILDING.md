@@ -10,7 +10,22 @@ Project version source of truth:
 
 ## Development Build
 
-From repository root:
+The full build compiles **eight products**. Working on one should not, so build
+one:
+
+```bash
+scripts/build-product.sh --list          what there is to build
+scripts/build-product.sh lucy --vst3     the quickest loop
+scripts/build-product.sh synth --run     build, then launch the standalone
+```
+
+Each product gets its own build directory, so switching between one product and
+the full build reconfigures neither. Without `--no-install` a successful build
+lands in `~/Library/Audio/Plug-Ins` and the host sees it on its next scan. The
+script reads the product list from `CMakeLists.txt`, so a product added with
+`px3_add_product` is buildable by it immediately.
+
+For everything at once, from the repository root:
 
 ```bash
 cmake -B build -G Ninja
@@ -104,7 +119,7 @@ as valid bash.
 
 ## App Icon
 
-The icon is generated from `Source/Assets/px3.gif` by `scripts/make-app-icon.mjs`
+The icon is generated from `products/PX3Synth/Assets/px3.gif` by `scripts/make-app-icon.mjs`
 and committed, so an ordinary build needs neither node nor sharp. CMake passes it
 to JUCE as `ICON_BIG` when it exists, which puts it in the standalone app and
 both plug-in bundles.
@@ -261,13 +276,13 @@ build/asan/PX3Tests_artefacts/RelWithDebInfo/PX3Tests
 
 ## UIConfig JSON During Development
 
-UI styling/layout is driven by `Source/UI/UIConfig.json`.
+UI styling/layout is driven by `shared/UI/Style/UIConfig.json`.
 
 In debug-enabled runtime (`JUCE_DEBUG` or `PX3_DEBUG_PANEL`):
 
 - The editor hot-reloads when the file modification time changes.
 - You can override config location with `PX3_UI_CONFIG_PATH=/absolute/path/to/UIConfig.json`.
-- Default debug behavior prefers source-tree `Source/UI/UIConfig.json` when available.
+- Default debug behavior prefers source-tree `shared/UI/Style/UIConfig.json` when available.
 
 In non-debug runtime:
 
@@ -394,4 +409,6 @@ git push origin v0.1.0
 - Build and install are separate operations.
 - Notarization and stapling are not performed by this script.
 - Internal audio routing is explicitly staged as source stems -> DRY -> FX -> MASTER.
-- FX chain modules are VIBE, Delay, Reverb, and Mood (user-reorderable).
+- FX chain modules are VIBE, CHORUS, DOOM, LUCY, Delay, Mood, Reverb and
+  SPREAD (user-reorderable). Seven of the eight also ship as plug-ins of their
+  own — see `docs/ECOSYSTEM_ARCHITECTURE.md`.

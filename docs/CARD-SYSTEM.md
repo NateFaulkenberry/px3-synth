@@ -95,8 +95,8 @@ ownership mistake that left stale FX outlines behind when panels were swapped.
 
 | | |
 | --- | --- |
-| `Source/UI/Card.h` / `Card.cpp` | The model, parsing, geometry resolution, rendering |
-| `Source/UI/CardInner.h` / `CardInner.cpp` | The layout *inside* a card — rows, flex, control placement |
+| `shared/UI/Components/Card.h` / `Card.cpp` | The model, parsing, geometry resolution, rendering |
+| `shared/UI/Components/CardInner.h` / `CardInner.cpp` | The layout *inside* a card — rows, flex, control placement |
 | `UIConfig.json` → `panels`, `cards` | Style and layout only. No UI text. |
 | Component code | Its own semantic content — the title string, its controls |
 
@@ -126,7 +126,7 @@ change to any property takes effect on the next reload.
 
 Automated tests prove each property changes the resolved style; they cannot
 prove it looks right. With the standalone running and a debug build, edit
-`Source/UI/UIConfig.json` and confirm each of these visibly changes:
+`shared/UI/Style/UIConfig.json` and confirm each of these visibly changes:
 
 **Sub Osc** (`cards.subOsc`)
 
@@ -207,8 +207,8 @@ particular no longer tracks section geometry for drawing at all, which is why
 drag-and-drop reordering needs no bookkeeping: a card follows its own
 component's bounds.
 
-`Source/UI/ComponentCardDrawing.*` was the previous card primitive and has been
-removed — nothing referenced it once the last component migrated.
+`Source/UI/ComponentCardDrawing.*` (in the pre-restructure tree) was the
+previous card primitive and has been removed — nothing referenced it once the last component migrated.
 
 ## UIConfig.json contains no UI text
 

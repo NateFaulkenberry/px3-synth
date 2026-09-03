@@ -9,7 +9,7 @@ Written before implementation, as the brief requires.
 
 | Concern | Where |
 |---|---|
-| Settings | `EnvelopeSettings { attackSeconds, decaySeconds, sustainLevel, releaseSeconds }` — `Source/DSP/EnvelopeTypes.h`, 11 lines |
+| Settings | `EnvelopeSettings { attackSeconds, decaySeconds, sustainLevel, releaseSeconds }` — `products/PX3Synth/DSP/EnvelopeTypes.h`, 11 lines |
 | Generic ENV 1/2/3 | `EnvelopeGenerator` — a `juce::ADSR` plus a linear output smoother |
 | AMP ENV | `AmpEnvelope` — a `juce::ADSR`, a **one-pole** output smoother, an exponential release reshaping, and `getReleaseProgress()` |
 | Settings flow | `currentAmpEnvelopeSettings()` / `currentModEnvelopeSettings(i)` → `voice->setAmpEnvelopeSettings(...)` once per block |

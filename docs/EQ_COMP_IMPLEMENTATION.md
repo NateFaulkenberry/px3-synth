@@ -25,12 +25,12 @@ nothing about which bus it is on.
 Files added:
 
 ```
-Source/DSP/BusInsertTypes.h      settings structs shared by both processors
-Source/DSP/ParametricEQ.{h,cpp}
-Source/DSP/FetCompressor.{h,cpp}
-Source/DSP/BusInsertChain.h      the pair, per bus
-Source/UI/BusInsertOverlay.{h,cpp}   both sheets
-Source/UI/ModalBackdrop.{h,cpp}      the shared sheet backdrop
+shared/DSP/Core/BusInsertTypes.h      settings structs shared by both processors
+products/PX3Synth/DSP/ParametricEQ.{h,cpp}
+shared/DSP/Core/FetCompressor.{h,cpp}
+shared/DSP/Core/BusInsertChain.h      the pair, per bus
+products/PX3Synth/UI/BusInsertOverlay.{h,cpp}   both sheets
+shared/UI/Components/ModalBackdrop.{h,cpp}      the shared sheet backdrop
 ```
 
 ---
@@ -67,7 +67,7 @@ both intended:
 - the inserts see wet only, never the dry signal that was sent in;
 - riding the return blend does not change how hard the compressor works.
 
-`Source/DSP/PluginProcessor.cpp` — search for `busInserts[0].processSample` and
+`products/PX3Synth/DSP/PluginProcessor.cpp` — search for `busInserts[0].processSample` and
 `busInserts[1].processSample`.
 
 ---
@@ -357,7 +357,7 @@ retargeted with `setBus`, which rebuilds its attachments. Opening from the FX
 strip and opening from the dry strip use the same component.
 
 They share the preset browser's **backdrop, scrim and click-outside-to-close**,
-extracted into `Source/UI/ModalBackdrop.{h,cpp}`, and they wear the plugin's
+extracted into `shared/UI/Components/ModalBackdrop.{h,cpp}`, and they wear the plugin's
 **card frame** — border, a padding gap over a translucent background — taken
 straight from the Card system, with the mixer palette. Where a card puts a
 two-part gloss, a sheet puts a single solid panel: the *inner overlay*, which is
@@ -367,7 +367,7 @@ what the controls sit on. It is declared per sheet at
 Each sheet takes its accent from the mixer strip that opened it, so a DRY sheet
 and the DRY strip are visibly the same channel.
 
-**The EQ graph** (`Source/UI/BusEqGraph.{h,cpp}`) is the primary control, not a
+**The EQ graph** (`products/PX3Synth/UI/BusEqGraph.{h,cpp}`) is the primary control, not a
 picture of one. It follows the ADSR graph's interaction model — pick the nearest
 handle, wrap the edit in a host gesture, double-click to restore the parameter's
 own default — with one addition: a band has three values and a pointer has two,

@@ -1299,10 +1299,19 @@ if [[ "${BUILD_UNINSTALLER}" == true ]]; then
   fi
 
   # Verify it actually carries what it needs, rather than trusting osacompile.
-  for required in px3-uninstall.sh detect-au-hosts.sh au-hosts.tsv; do
+  #
+  # px3-list-products.sh belongs on this list as much as the removal script
+  # does: without the scanner the uninstaller finds nothing, tells the user
+  # there is no PX3 on the machine, and exits having done nothing wrong as far
+  # as it can tell. A total failure that reports success is the one this check
+  # exists for.
+  for required in px3-uninstall.sh px3-list-products.sh px3-products.tsv \
+                  detect-au-hosts.sh au-hosts.tsv; do
     [[ -e "${UNINSTALLER_RES}/${required}" ]] \
       || die "Uninstaller application is missing ${required}"
   done
+  [[ -s "${UNINSTALLER_RES}/px3-products.tsv" ]] \
+    || die "Uninstaller carries an empty product manifest"
   [[ -x "${UNINSTALLER_APP_PATH}/Contents/MacOS/applet" ]] \
     || die "Uninstaller application has no executable"
 
@@ -1324,7 +1333,9 @@ if [[ "${BUILD_UNINSTALLER}" == true ]]; then
       die "Uninstaller Info.plist still sets CFBundleIconName, which overrides CFBundleIconFile"
     fi
   fi
-  sh -n "${UNINSTALLER_RES}/px3-uninstall.sh" || die "Bundled removal script is not valid sh"
+  for script in px3-uninstall.sh px3-list-products.sh; do
+    sh -n "${UNINSTALLER_RES}/${script}" || die "Bundled ${script} is not valid sh"
+  done
 
   cp -R "${UNINSTALLER_APP_PATH}" "${DIST_DIR}/"
   echo "  Uninstaller:   ${UNINSTALLER_APP_PATH} (${UNINSTALLER_SIGN_STATE})"

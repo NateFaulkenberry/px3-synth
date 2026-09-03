@@ -42,7 +42,7 @@ Gain structure rule:
   inside the mixer faders. A fader at unity is unity, and the strip shows the
   channel's real gain.
 - `kSourceHeadroomDb`, `sourceHeadroomGain()` and `channelFaderMaxGain()` in
-  `Source/DSP/PluginProcessorInternals.h` are the single source of truth. The
+  `products/PX3Synth/DSP/PluginProcessorInternals.h` are the single source of truth. The
   source-side trim and the fader's maximum are derived from the same constant so
   they cannot disagree.
 - Defaults must never be re-applied over restored state. The trim is a parameter
@@ -51,37 +51,80 @@ Gain structure rule:
 
 ## Source Layout
 
-Main code lives in Source/
+The tree is **shared infrastructure plus products**. Anything more than one
+product can use lives in `shared/`; anything only PX3 Synth has lives in
+`products/PX3Synth/`. `docs/ECOSYSTEM_ARCHITECTURE.md` is the full account —
+this is the map.
 
-- `Source/DSP/`: processor lifecycle, parameter definitions, voice/sound DSP (`PluginProcessor.*`, `SynthVoice.*`, `SynthSound.*`)
-  - FX components, each a self-contained class with the same
-    `prepare` / `reset` / `updateForBlock` / `processSampleFrame` interface:
-    `Vibe.*` + `VibeEngine.*`, `Delay.*`, `Reverb.*`, `Mood.*`,
-    `Doom.*`, `Lucy.*`, `Chorus.*`, `StereoSpread.*`
-  - Each FX also has a plain-struct settings header (`DoomTypes.h`,
-    `LucyTypes.h`, `ChorusTypes.h`, `StereoSpreadTypes.h`) holding one block's
-    worth of controls, built by a `current<Name>Settings()` method in
-    `PluginProcessorSource.cpp` that routes every continuous control through
-    `applyModulationToNormalizedValue` - which is what makes it a modulation
-    destination, with no per-effect modulation plumbing
-  - `FxChain.h`: the chain's shape in one place - stage ids, `FxOrder`, and the
-    default order. Stage ids are permanent; `MODULE_ORDER` stores them by name
-    and the FX panel addresses its cards by id, so append, never renumber
-  - `StftEngine.*`: shared short-time Fourier analysis/synthesis with
-    overlap-add, used by DOOM's SOUP and by LUCY
+```
+shared/       DSP, UI components and infrastructure, used by 2+ products
+products/     one directory per product; PX3Synth plus seven effects
+tools/        developer executables (see Testing And Measurement below)
+tests/        PX3Tests, one module per area
+updater/      the helper the standalone carries
+```
+
+### `shared/`
+
+- `shared/DSP/<Effect>/`: one directory per effect, each a self-contained class
+  with the same `prepare` / `reset` / `updateForBlock` / `processSampleFrame`
+  interface: `Vibe/` (`Vibe.*` + `VibeEngine.*`), `Delay/`, `Reverb/`, `Mood/`,
+  `Doom/`, `Lucy/`, `Chorus/`, `StereoSpread/`.
+
+  **That directory boundary is why each of these could become a product.** The
+  Synth and the standalone effect drive the same object through the same
+  contract — nothing is copied.
+
+  Each also has a plain-struct settings header (`DoomTypes.h`, `LucyTypes.h`,
+  `ChorusTypes.h`, `StereoSpreadTypes.h`) holding one block's worth of
+  controls. The Synth builds those through `applyModulationToNormalizedValue`,
+  which is what makes every continuous control a modulation destination with no
+  per-effect plumbing; a standalone effect has no modulation matrix and reads
+  its parameters directly. That is the *only* difference between the two
+  consumers.
+- `shared/DSP/Core/`: pieces with no effect of their own — `StftEngine.*`
+  (short-time Fourier analysis/synthesis with overlap-add, used by DOOM's SOUP
+  and by LUCY), `BusInsertTypes.h`, `BusInsertChain.h`, `FetCompressor.*`,
+  `SmoothedGain.h`, `OutputCeiling.h`
+- `shared/DSP/Analog/`: `AnalogEngine.*` — read
+  `docs/ANALOG_ENGINE_ARCHITECTURE.md` first
+- `shared/UI/Components/`: the shared widgets — `Card.*`, `CardInner.*`,
+  `ModalBackdrop.*`, the PX3 knob
+- `shared/UI/Style/UIConfig.json`: external, hot-reloadable styling and layout
+- `shared/Infrastructure/Fx/`: the two halves every effect product is built
+  from — `FxPluginProcessor` (buses, prepare, the block loop, host tempo,
+  parameter state) and `FxCardEditor` (the card, its style, the attachments)
+- `shared/Infrastructure/Update/`: product registry, provider interface,
+  `UpdateService`, `SemanticVersion`
+
+### `products/PX3Synth/`
+
+- `DSP/`: processor lifecycle, parameter definitions, voice/sound DSP
+  (`PluginProcessor.*` split by responsibility, `SynthVoice.*`, `SynthSound.*`)
   - Voice-level building blocks: `OscillatorUnit.*`, `SubOscillator.*`,
     `VoiceFilter.*`, `AmpEnvelope.*`, `EnvelopeGenerator.*`, `LfoGenerator.*`
-  - Shared internals: `PluginProcessorInternals.h` (gain-structure constants,
-    choice lists), `SmoothedGain.h`, `OutputCeiling.h`
-- `Source/Tools/`: developer executables (see Testing And Measurement below)
-- `Source/UI/`: editor surface + UI components (`PluginEditor.*`, `PerformanceControls.*`, `PianoKeyboard.*`)
-- `Source/Preset/`: preset read/write/import/export and metadata (`PresetManager.*`)
-- `Source/Core/`: shared lightweight data/types (`PX3Version.h`)
+  - `FxChain.h`: the chain's shape in one place — stage ids, `FxOrder`, and the
+    default order. Stage ids are permanent; `MODULE_ORDER` stores them by name
+    and the FX panel addresses its cards by id, so append, never renumber
+  - `PluginProcessorInternals.h`: gain-structure constants and choice lists
+  - `ParametricEQ.*`, and the bus-insert UI's other half
+- `UI/`: editor surface and the Synth's own components (`PluginEditor.*`,
+  `PerformanceControls.*`, `PianoKeyboard.*`, `SettingsPanel.*`)
+- `Preset/`: preset read/write/import/export and metadata (`PresetManager.*`)
+- `Assets/`: the icon and wordmark sources
+
+### The seven effect products
+
+`products/PX3Delay`, `PX3Mood`, `PX3Chorus`, `PX3Spread`, `PX3Reverb`,
+`PX3Doom`, `PX3Lucy` — five files each (`PluginProcessor.*`,
+`PluginEditor.*`, `PluginEntry.cpp`), because everything else is the two shared
+halves above. PX3 Chorus's editor is 35 lines. Build one with
+`scripts/build-product.sh chorus --vst3`.
 
 ## Where Do I Look?
 
 Want to change oscillator synthesis behavior?
-- `Source/DSP/SynthVoice.cpp`
+- `products/PX3Synth/DSP/SynthVoice.cpp`
 
 Developer note: oscillator/sub pitch controls
 
@@ -94,18 +137,18 @@ Developer note: oscillator/sub pitch controls
 - Range/default: continuous `-12.0 .. +12.0` semitones, default `0.0`.
 - Display format: signed semitone string (example: `+4.62 st`).
 - DSP mapping:
-   - Oscillators: applied in `Source/DSP/SynthVoice.cpp` as part of semitone offset before ratio conversion.
-   - Sub oscillator: applied in `Source/DSP/SubOscillator.cpp` and summed with sub octave offset.
+   - Oscillators: applied in `products/PX3Synth/DSP/SynthVoice.cpp` as part of semitone offset before ratio conversion.
+   - Sub oscillator: applied in `products/PX3Synth/DSP/SubOscillator.cpp` and summed with sub octave offset.
    - Frequency ratio relationship is `pow(2.0, semitones / 12.0)`.
 - Modulation:
-   - Pitch parameters are modulation destinations through the existing assignment system in `Source/DSP/PluginProcessorParameters.cpp` (`buildLfoAssignableTargets`).
+   - Pitch parameters are modulation destinations through the existing assignment system in `products/PX3Synth/DSP/PluginProcessorParameters.cpp` (`buildLfoAssignableTargets`).
    - LFO/Envelope modulation is transient DSP-effective value math and does not overwrite base parameter values.
 - State/preset persistence:
    - Included automatically through parameter tree serialization.
-   - Additional explicit sub-osc subtree persistence/backfill is handled in `Source/DSP/PluginProcessorState.cpp`.
+   - Additional explicit sub-osc subtree persistence/backfill is handled in `products/PX3Synth/DSP/PluginProcessorState.cpp`.
 
 Want to change the factory presets?
-- The library is `Source/Preset/FactoryPresets.cpp` - one entry per preset, with
+- The library is `products/PX3Synth/Preset/FactoryPresets.cpp` - one entry per preset, with
   named enums for every choice index. That is the only file a sound designer
   needs to touch.
 - Values are written in each parameter's OWN units: seconds, hertz, semitones,
@@ -122,7 +165,7 @@ Want to change the factory presets?
   effect is showcased somewhere, and that the library is not a volume ride.
 
 Want to change AnalogEngine?
-- `Source/DSP/AnalogEngine.*`. Read `docs/ANALOG_ENGINE_ARCHITECTURE.md` first -
+- `shared/DSP/Analog/AnalogEngine.*`. Read `docs/ANALOG_ENGINE_ARCHITECTURE.md` first -
   the stage ordering is not stylistic, and three separate bugs came from getting
   it wrong.
 - The premise: the channel runs a forward transfer, the buses run its exact
@@ -141,17 +184,17 @@ Want to change AnalogEngine?
   `docs/ANALOG_ENGINE_TUNING.md`.
 
 Want to change an FX algorithm?
-- VIBE: `Source/DSP/VibeEngine.cpp` for the shared per-block state,
-  `Source/DSP/SynthVoice.cpp` (`applyVibeSourceStage`) for the per-sample stage.
+- VIBE: `shared/DSP/Vibe/VibeEngine.cpp` for the shared per-block state,
+  `products/PX3Synth/DSP/SynthVoice.cpp` (`applyVibeSourceStage`) for the per-sample stage.
   Vibe is a per-voice effect, not a bus effect - it runs per source before the
   four sources are summed.
-- DELAY: `Source/DSP/Delay.cpp`
-- REVERB: `Source/DSP/Reverb.cpp`
-- MOOD: `Source/DSP/Mood.cpp`
-- DOOM: `Source/DSP/Doom.cpp` - design notes in `docs/DOOM_DSP_DESIGN.md`
-- LUCY: `Source/DSP/Lucy.cpp` - design notes in `docs/LUCY_DSP_DESIGN.md`
-- CHORUS: `Source/DSP/Chorus.cpp` - design notes in `docs/CHORUS_DSP_DESIGN.md`
-- SPREAD: `Source/DSP/StereoSpread.cpp` - design notes in
+- DELAY: `shared/DSP/Delay/Delay.cpp`
+- REVERB: `shared/DSP/Reverb/Reverb.cpp`
+- MOOD: `shared/DSP/Mood/Mood.cpp`
+- DOOM: `shared/DSP/Doom/Doom.cpp` - design notes in `docs/DOOM_DSP_DESIGN.md`
+- LUCY: `shared/DSP/Lucy/Lucy.cpp` - design notes in `docs/LUCY_DSP_DESIGN.md`
+- CHORUS: `shared/DSP/Chorus/Chorus.cpp` - design notes in `docs/CHORUS_DSP_DESIGN.md`
+- SPREAD: `shared/DSP/StereoSpread/StereoSpread.cpp` - design notes in
   `docs/STEREO_SPREAD_DSP_DESIGN.md`
 
 Each of those four has a design document recording what the source hardware
@@ -161,9 +204,9 @@ look arbitrary are the point (RELAY's parallel taps rather than feedback,
 CHORUS's anti-phase pair, LUCY's masking model, SPREAD's allpass network).
 
 Want to add a new FX?
-1. `Source/DSP/FxChain.h`: append a stage id and a module id string, bump
+1. `products/PX3Synth/DSP/FxChain.h`: append a stage id and a module id string, bump
    `kFxStageCount`, and place it in `kDefaultFxOrder`.
-2. `Source/DSP/PluginProcessorInternals.h`: append the matching entry to
+2. `products/PX3Synth/DSP/PluginProcessorInternals.h`: append the matching entry to
    `kFxModuleIds`, in the same order.
 3. Write the engine with the shared `prepare` / `reset` / `updateForBlock` /
    `processSampleFrame` interface, plus a settings struct.
@@ -194,48 +237,48 @@ Why every FX has an idle early-out:
   transition calls it from the audio thread.
 
 Want to change internal bus routing stages?
-- `Source/DSP/PluginProcessor.cpp` (`prepareToPlay`, `processBlock`)
+- `products/PX3Synth/DSP/PluginProcessor.cpp` (`prepareToPlay`, `processBlock`)
 
 Want to change mixer channel layout and control arrangement?
-- `Source/UI/MixerChannelComponent.cpp`
-- `Source/UI/MixPanel.cpp`
+- `products/PX3Synth/UI/MixerChannelComponent.cpp`
+- `products/PX3Synth/UI/MixPanel.cpp`
 
 Want to change mixer control paint/style behavior?
-- `Source/UI/MixerControls.cpp`
-- `Source/UI/UIConfig.json` (`mix.fader`, `mix.mute`, `mix.solo`, `mix.meter`)
+- `products/PX3Synth/UI/MixerControls.cpp`
+- `shared/UI/Style/UIConfig.json` (`mix.fader`, `mix.mute`, `mix.solo`, `mix.meter`)
 
 Current mixer layout note:
-- Strip-internal geometry is defined in `Source/UI/MixerChannelComponent.cpp`.
+- Strip-internal geometry is defined in `products/PX3Synth/UI/MixerChannelComponent.cpp`.
 - `mix.channel` in UIConfig currently controls spacing and text sizing, not full strip geometry.
 
 Want to change envelope/filter defaults/ranges?
-- parameter definitions in `Source/DSP/PluginProcessor.cpp`
-- envelope/filter usage in `Source/DSP/SynthVoice.cpp`
+- parameter definitions in `products/PX3Synth/DSP/PluginProcessor.cpp`
+- envelope/filter usage in `products/PX3Synth/DSP/SynthVoice.cpp`
 
 Want to change LFO behavior?
-- `currentLfoSignalForBlock()` in `Source/DSP/PluginProcessor.cpp`
-- `applyModulationToNormalizedValue()` in `Source/DSP/PluginProcessorParameters.cpp`
+- `currentLfoSignalForBlock()` in `products/PX3Synth/DSP/PluginProcessor.cpp`
+- `applyModulationToNormalizedValue()` in `products/PX3Synth/DSP/PluginProcessorParameters.cpp`
 
 Want to change ADSR graph UI?
-- `EnvelopeGraphComponent` in `Source/UI/PluginEditor.cpp`
+- `EnvelopeGraphComponent` in `products/PX3Synth/UI/PluginEditor.cpp`
 
 Want to change module ordering behavior?
 - The order is edited in ONE place: the signal-flow strip,
-  `Source/UI/FxSignalFlow.cpp`. The FX cards are editors, not ordering controls.
+  `shared/UI/Fx/FxSignalFlow.cpp`. The FX cards are editors, not ordering controls.
 - The strip reports; it does not apply. `FxPanel::onChainOrderChanged` ->
   `PX3SynthAudioProcessorEditor::applyFxChainOrder` -> the processor, which then
   hands the order back through `FxPanel::setChainOrder`. One authority, no UI
   copy that can drift.
-- Ordering and grid arithmetic: `Source/UI/FxChainLayout.cpp`, shared by the
+- Ordering and grid arithmetic: `shared/UI/Fx/FxChainLayout.cpp`, shared by the
   strip and the grid so there is one implementation and it can be tested without
   a window.
-- Canonical storage, packing and sanitising: `Source/DSP/PluginProcessor.cpp`
+- Canonical storage, packing and sanitising: `products/PX3Synth/DSP/PluginProcessor.cpp`
   and `PluginProcessorInternals.h` (`packFxOrder`, `unpackFxOrder`,
   `sanitizeFxOrder`).
-- Serialisation: `MODULE_ORDER` in `Source/DSP/PluginProcessorState.cpp`.
+- Serialisation: `MODULE_ORDER` in `products/PX3Synth/DSP/PluginProcessorState.cpp`.
 
 Want to change an FX card's controls or styling?
-- `Source/UI/FxCardComponent.*` is the shared card. It OWNS its controls and is
+- `shared/UI/Fx/FxCardComponent.*` is the shared card. It OWNS its controls and is
   asked for them by id; the editor attaches parameters to what it gets back.
   Layout is declared as rows, so a different control set is a different
   declaration rather than a different `resized()`.
@@ -244,29 +287,29 @@ Want to change an FX card's controls or styling?
   typo fails at startup rather than shipping as a knob that does nothing.
 
 Want to tune FX send/return gain behavior?
-- parameter definitions + registration in `Source/DSP/PluginProcessor.cpp`
-- accessors in `Source/DSP/PluginProcessorParameters.cpp`
-- mix math in `Source/DSP/PluginProcessor.cpp`
+- parameter definitions + registration in `products/PX3Synth/DSP/PluginProcessor.cpp`
+- accessors in `products/PX3Synth/DSP/PluginProcessorParameters.cpp`
+- mix math in `products/PX3Synth/DSP/PluginProcessor.cpp`
 
 Want to tune solo/mute routing policy?
-- routing policy helpers in `Source/DSP/PluginProcessorParameters.cpp`:
+- routing policy helpers in `products/PX3Synth/DSP/PluginProcessorParameters.cpp`:
    - `sourceDryAudible`
    - `sourceSendAudible`
    - `fxReturnAudible`
 
 Want to change preset/state serialization?
-- processor state tree in `Source/DSP/PluginProcessor.cpp`
-- preset file format in `Source/Preset/PresetManager.cpp`
+- processor state tree in `products/PX3Synth/DSP/PluginProcessor.cpp`
+- preset file format in `products/PX3Synth/Preset/PresetManager.cpp`
 - format details in `docs/PRESETS.md`
 
 Want to change debug console behavior?
-- setup/layout/actions in `Source/UI/PluginEditorDebug.cpp`
-- debug event/state helpers in `Source/DSP/PluginProcessorDebug.cpp`
+- setup/layout/actions in `products/PX3Synth/UI/PluginEditorDebug.cpp`
+- debug event/state helpers in `products/PX3Synth/DSP/PluginProcessorDebug.cpp`
 
 Want to change bus RMS debug taps?
-- bus meter writes in `Source/DSP/PluginProcessor.cpp`
-- debug getters in `Source/DSP/PluginProcessorDebug.cpp`
-- debug readout text in `Source/UI/PluginEditorDebug.cpp`
+- bus meter writes in `products/PX3Synth/DSP/PluginProcessor.cpp`
+- debug getters in `products/PX3Synth/DSP/PluginProcessorDebug.cpp`
+- debug readout text in `products/PX3Synth/UI/PluginEditorDebug.cpp`
 
 Want to change plugin version?
 - edit `PX3_VERSION` in `CMakeLists.txt`
@@ -299,7 +342,8 @@ Debug performance HUD metric semantics:
 ## Testing And Measurement
 
 Four developer executables are built alongside the plugin. All are console apps
-under `Source/Tools/` and are configured by CMake automatically.
+under `tools/` (with the test suite in `tests/Tests/`) and are configured by
+CMake automatically.
 
 | Target | What it is for |
 | --- | --- |
@@ -430,15 +474,15 @@ Several "bugs" turned out to be faults in the instrument:
 
 Primary files:
 
-- `Source/UI/UIConfig.json`
-- `Source/UI/UIConfig.h`
-- `Source/UI/UIConfig.cpp`
-- `Source/UI/UIConfigManager.h`
-- `Source/UI/UIConfigManager.cpp`
+- `shared/UI/Style/UIConfig.json`
+- `shared/UI/Style/UIConfig.h`
+- `shared/UI/Style/UIConfig.cpp`
+- `shared/UI/Style/UIConfigManager.h`
+- `shared/UI/Style/UIConfigManager.cpp`
 
 Editor integration points:
 
-- `resolveUiConfigFile()` in `Source/UI/PluginEditor.cpp` decides active config path.
+- `resolveUiConfigFile()` in `products/PX3Synth/UI/PluginEditor.cpp` decides active config path.
 - `loadUiConfig(false)` runs in `timerCallback()` (30 Hz) and calls `reloadIfChanged()`.
 - `loadUiConfig(true)` is used on initial load and path switches.
 

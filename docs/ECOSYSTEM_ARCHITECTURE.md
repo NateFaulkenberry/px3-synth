@@ -394,6 +394,10 @@ Three rules do the load-bearing work:
    removes the directory entire, and the confirmation dialog says so in those
    words.
 
+`scripts/uninstall-local.sh` is the developer-machine equivalent and reads the
+same table, so it too removes every product rather than the first one. It is a
+reset, not the shipped uninstaller: it takes the preset library without asking.
+
 `PX3_SCAN_ROOT` prefixes every system path so the whole thing can be tested
 against a fixture tree. Anything that reaches outside that tree — `pkgutil
 --forget`, restarting the component registrar — is gated on the run being a live
