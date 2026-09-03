@@ -181,6 +181,14 @@ set(PX3_DELAY_SOURCES
         products/PX3Delay/PluginEditor.cpp
 )
 
+set(PX3_MOOD_SOURCES
+        shared/Infrastructure/Fx/FxPluginProcessor.cpp
+        products/PX3Mood/PluginProcessor.cpp
+        products/PX3Mood/PluginEditor.cpp
+)
+
+set(PX3_MOOD_PLUGIN_SOURCES ${PX3_MOOD_SOURCES} products/PX3Mood/PluginEntry.cpp)
+
 set(PX3_DELAY_PLUGIN_SOURCES ${PX3_DELAY_SOURCES} products/PX3Delay/PluginEntry.cpp)
 
 set(PX3_ALL_SOURCES ${PX3_SHARED_SOURCES} ${PX3_SYNTH_SOURCES})
@@ -211,6 +219,7 @@ set(PX3_INCLUDE_DIRS
         products/PX3Synth/UI
         products/PX3Synth/Preset
         products/PX3Delay
+        products/PX3Mood
         shared/Infrastructure/Fx
 )
 
@@ -235,6 +244,14 @@ px3_add_product(
     PLUGIN_CODE  DlP1
     FORMATS      AU VST3
     SOURCES      ${PX3_DELAY_PLUGIN_SOURCES})
+
+px3_add_product(
+    TARGET       PX3Mood
+    PRODUCT_NAME "PX3 Mood"
+    BUNDLE_ID    "com.px3.mood"
+    PLUGIN_CODE  MdP1
+    FORMATS      AU VST3
+    SOURCES      ${PX3_MOOD_PLUGIN_SOURCES})
 
 juce_add_binary_data(PX3Assets
     SOURCES
@@ -353,7 +370,11 @@ if (PX3_BUILD_DIAGNOSTIC)
     # One module per area rather than one 32,000-line translation unit. They
     # share tests/Tests/TestSupport.h for the counters and fixtures.
     file(GLOB PX3_TEST_SOURCES CONFIGURE_DEPENDS tests/Tests/*.cpp)
-    target_sources(PX3Tests PRIVATE ${PX3_ALL_SOURCES} ${PX3_DELAY_SOURCES} ${PX3_TEST_SOURCES})
+    target_sources(PX3Tests PRIVATE ${PX3_ALL_SOURCES}
+        shared/Infrastructure/Fx/FxPluginProcessor.cpp
+        products/PX3Delay/PluginProcessor.cpp products/PX3Delay/PluginEditor.cpp
+        products/PX3Mood/PluginProcessor.cpp products/PX3Mood/PluginEditor.cpp
+        ${PX3_TEST_SOURCES})
     target_include_directories(PX3Tests PRIVATE ${PX3_INCLUDE_DIRS})
     target_compile_definitions(PX3Tests
         PRIVATE

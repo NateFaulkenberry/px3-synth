@@ -1,6 +1,7 @@
 #include "TestSupport.h"
 
 #include "../../products/PX3Delay/PluginProcessor.h"
+#include "../../products/PX3Mood/PluginProcessor.h"
 
 // testFxProducts
 //
@@ -232,6 +233,101 @@ void testFxProducts()
               survived,
               survived ? juce::String("finite at 44.1/48/96 kHz across 32, 256 and 1024 samples")
                        : juce::String("NON-FINITE OUTPUT"));
+    }
+
+    // ========================================================================
+    // PX3 Mood
+    // ========================================================================
+    {
+        PX3MoodAudioProcessor mood;
+        prepared(mood);
+
+        check("FxProduct_MoodIsAStereoAudioEffect",
+              ! mood.acceptsMidi() && mood.getName() == "PX3 Mood"
+                  && mood.getTotalNumInputChannels() == 2
+                  && mood.getTotalNumOutputChannels() == 2,
+              mood.getName() + ": " + juce::String(mood.getTotalNumInputChannels()) + " in, "
+                  + juce::String(mood.getTotalNumOutputChannels()) + " out");
+    }
+
+    {
+        PX3MoodAudioProcessor mood;
+        prepared(mood);
+        mood.enabled().setValueNotifyingHost(1.0f);
+        mood.mix().setValueNotifyingHost(1.0f);
+
+        juce::AudioBuffer<float> buffer(2, kBlock);
+        juce::MidiBuffer midi;
+        fillImpulse(buffer);
+        juce::AudioBuffer<float> input(2, kBlock);
+        input.makeCopyOf(buffer);
+
+        mood.processBlock(buffer, midi);
+
+        auto changed = false, finite = true;
+        for (int c = 0; c < 2; ++c)
+        {
+            for (int i = 0; i < kBlock; ++i)
+            {
+                const auto out = buffer.getSample(c, i);
+                if (! std::isfinite(out)) { finite = false; }
+                if (std::abs(out - input.getSample(c, i)) > 1.0e-6f) { changed = true; }
+            }
+        }
+
+        check("FxProduct_MoodProcessesAudio",
+              changed && finite,
+              changed ? juce::String("the block was processed and stayed finite")
+                      : juce::String("OUTPUT MATCHED INPUT"));
+    }
+
+    {
+        // Routing is a three-way choice the DSP reads as 0..1. The Synth
+        // converts it as index/2; getting that wrong here would put PARALLEL
+        // somewhere the Synth never puts it, and the effect would differ
+        // between the two products for no visible reason.
+        PX3MoodAudioProcessor mood;
+        prepared(mood);
+
+        juce::StringArray seen;
+        auto correct = true;
+        for (int index = 0; index < 3; ++index)
+        {
+            mood.routing().setValueNotifyingHost(mood.routing().convertTo0to1((float) index));
+            const auto routing = mood.debugSettingsForBlock().routing;
+            const auto expected = static_cast<float>(index) / 2.0f;
+            if (std::abs(routing - expected) > 1.0e-4f) { correct = false; }
+            seen.add(juce::String(index) + " -> " + fmt(routing, 2));
+        }
+
+        check("FxProduct_MoodRoutingMapsTheWayTheSynthMapsIt",
+              correct, seen.joinIntoString(", "));
+    }
+
+    {
+        PX3MoodAudioProcessor source;
+        prepared(source);
+        source.mix().setValueNotifyingHost(0.77f);
+        source.feedback().setValueNotifyingHost(0.42f);
+        source.wetMode().setValueNotifyingHost(source.wetMode().convertTo0to1(2.0f));
+        source.freeze().setValueNotifyingHost(1.0f);
+
+        juce::MemoryBlock state;
+        source.getStateInformation(state);
+
+        PX3MoodAudioProcessor reopened;
+        prepared(reopened);
+        reopened.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        check("FxProduct_MoodStateSurvivesASaveAndReload",
+              std::abs(reopened.mix().get() - 0.77f) < 1.0e-3f
+                  && std::abs(reopened.feedback().get() - 0.42f) < 1.0e-3f
+                  && reopened.wetMode().getIndex() == 2
+                  && reopened.freeze().get(),
+              "mix " + fmt(reopened.mix().get(), 3) + ", feedback "
+                  + fmt(reopened.feedback().get(), 3) + ", wet mode "
+                  + juce::String(reopened.wetMode().getIndex())
+                  + ", freeze " + (reopened.freeze().get() ? "on" : "off"));
     }
 }
 
