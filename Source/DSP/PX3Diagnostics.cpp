@@ -46,6 +46,7 @@ void analyseBlock(const float* postPoly, const float* master, int numSamples)
 
         {
             const auto x = current[stageMaster];
+
             const auto secondDifference = std::abs(x - 2.0f * s.transientPrev1 + s.transientPrev2);
             // Only score where there is actually signal, so the numerical noise
             // floor after a tail ends cannot register as a click.
@@ -66,6 +67,16 @@ void analyseBlock(const float* postPoly, const float* master, int numSamples)
                 // First 3 ms after a key release.
                 if (s.samplesSinceNoteOff < 144)
                 {
+                    if (ratio > s.maxNoteOffTransientRatio)
+                    {
+                        s.noteOffWorstAbsSecondDiff = secondDifference;
+                        s.noteOffWorstRunningMean = s.transientRunningMean;
+                        s.noteOffWorstLevel = std::abs(x);
+                        s.noteOffWorstSample = s.globalSampleBase + n;
+                        s.noteOffWorstAtLifecycle = lifecycleHere;
+                        s.noteOffWorstSamplesSinceLifecycle = s.samplesSinceLifecycle;
+                        s.noteOffWorstSamplesSinceNoteOff = s.samplesSinceNoteOff;
+                    }
                     s.maxNoteOffTransientRatio = std::max(s.maxNoteOffTransientRatio, ratio);
                     if (ratio > 8.0f)
                     {

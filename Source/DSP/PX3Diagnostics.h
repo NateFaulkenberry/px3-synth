@@ -175,6 +175,16 @@ struct State
     int samplesSinceNoteOff { 1 << 30 };
     float maxNoteOffTransientRatio { 0.0f };
     int noteOffTransientEvents { 0 };
+    // What the worst note-off ratio was actually made of. A ratio on its own
+    // cannot tell a real discontinuity from a small one measured against a
+    // small baseline, and those need opposite fixes.
+    float noteOffWorstAbsSecondDiff { 0.0f };
+    float noteOffWorstRunningMean { 0.0f };
+    float noteOffWorstLevel { 0.0f };
+    int noteOffWorstSample { -1 };
+    bool noteOffWorstAtLifecycle { false };
+    int noteOffWorstSamplesSinceLifecycle { -1 };
+    int noteOffWorstSamplesSinceNoteOff { -1 };
     float maxNoteOffSlopeDrop { 0.0f };
 
     // Mixer control smoothness. These are the gains the mixer multiplies the
@@ -267,6 +277,13 @@ struct State
         samplesSinceNoteOff = 1 << 30;
         maxNoteOffTransientRatio = 0.0f;
         noteOffTransientEvents = 0;
+        noteOffWorstAbsSecondDiff = 0.0f;
+        noteOffWorstRunningMean = 0.0f;
+        noteOffWorstLevel = 0.0f;
+        noteOffWorstSample = -1;
+        noteOffWorstAtLifecycle = false;
+        noteOffWorstSamplesSinceLifecycle = -1;
+        noteOffWorstSamplesSinceNoteOff = -1;
         maxNoteOffSlopeDrop = 0.0f;
         for (int i = 0; i < 8; ++i) { prevMixerDryGain[i] = 0.0f; prevMixerSendGain[i] = 0.0f; }
         hasPrevMixerGain = false;

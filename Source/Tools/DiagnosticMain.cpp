@@ -1565,6 +1565,20 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
     else if (!noteOffClean) verdict = "FAIL(note-off-click)";
     else if (!mixerSmooth) verdict = "FAIL(mixer-zipper)";
 
+    if (std::getenv("PX3_NOTEOFF_DETAIL") != nullptr && patch.gateNoteOffTransient)
+    {
+        std::printf("      [note-off] ratio %.2f = |d2| %.3e / mean %.3e   at level %.3e (%.1f dBFS), sample %d\n",
+                    static_cast<double>(diag.maxNoteOffTransientRatio),
+                    static_cast<double>(diag.noteOffWorstAbsSecondDiff),
+                    static_cast<double>(diag.noteOffWorstRunningMean),
+                    static_cast<double>(diag.noteOffWorstLevel),
+                    20.0 * std::log10(std::max(1.0e-12, (double) diag.noteOffWorstLevel)),
+                    diag.noteOffWorstSample);
+        std::printf("      [note-off] %d samples since the last voice START, %d since the note-off mark\n",
+                    diag.noteOffWorstSamplesSinceLifecycle, diag.noteOffWorstSamplesSinceNoteOff);
+
+    }
+
     std::printf("  %-38s %8.4f %8d %9.6f %9.6f %7.1f %9.5f %7.1f %9.6f  %s\n",
                 name,
                 static_cast<double>(diag.peak[px3::diag::stageMaster]),
@@ -1775,10 +1789,25 @@ int runRegressionSuite(bool legacyPruning)
     }
     {
         auto p = base;
+        // Sustain exactly zero: the voice is SILENT by the time the key is
+        // released, so there is no note-off transient to measure and the gate
+        // below scores nothing. Kept for the other metrics - kill level, gain
+        // curvature, mixer steps - which it does exercise.
         p.attack = 0.005f; p.decay = 0.1f; p.sustain = 0.0f; p.release = 0.5f;
         p.pattern = Pattern::isolatedNotes; p.oscillatorMode = 0;
         p.gateNoteOffTransient = true;
         check("N sine key-release, sustain=0", p);
+    }
+    {
+        // The case the one above was meant to be. A sustain low enough to be
+        // the awkward end of the range but not so low there is nothing left to
+        // measure: at 0.02 the release starts from about -34 dBFS, which the
+        // metric can still see.
+        auto p = base;
+        p.attack = 0.005f; p.decay = 0.1f; p.sustain = 0.02f; p.release = 0.5f;
+        p.pattern = Pattern::isolatedNotes; p.oscillatorMode = 0;
+        p.gateNoteOffTransient = true;
+        check("N sine key-release, sustain=0.02", p);
     }
 
     {

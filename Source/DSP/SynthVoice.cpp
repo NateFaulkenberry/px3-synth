@@ -258,6 +258,21 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
             diag.oscillatorResets += kOscillatorSourceCount;
         }
         diagMarkStart = true;
+
+        // A note-off marked for the PREVIOUS note but never consumed does not
+        // belong to this one. The mark is deferred - stopNote does not know the
+        // sample index within the block, so it is placed at the next render -
+        // and a voice that is already silent when the key is released may be
+        // retired without rendering again. The flag then survived into whatever
+        // note next reused this voice, and the note-off metric scored that
+        // note's ATTACK as a release transient: measured at 8.7 against a
+        // threshold of 6, with the stale mark landing one sample after the new
+        // note's own start mark.
+        //
+        // Dropping it loses nothing. A voice with no audio left has no note-off
+        // transient to measure.
+        diagMarkNoteOff = false;
+
         diagHasPrevEnv = false;
         diagHasPrevVoiceGain = false;
         diagVoiceGainHistory = 0;

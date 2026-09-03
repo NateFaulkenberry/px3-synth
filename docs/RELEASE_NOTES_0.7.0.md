@@ -115,6 +115,26 @@ In progress.
   this synth: PX3 Synth is the first product registered, and GitHub is one
   provider behind an abstraction that can be replaced without touching the UI
   or the installation path.
+- **The last failing `PX3Diag regress` case was a stale diagnostic mark, not a
+  click.** `N sine key-release, sustain=0` had failed at a note-off transient
+  ratio of 8.7 against a threshold of 6.0 since before 0.5.0.
+
+  The note-off mark is deferred — `stopNote` does not know the sample index
+  within the block, so it is placed at the voice's next render. A voice that is
+  already silent when the key is released is retired without rendering again,
+  so the flag survived into whatever note next reused that voice, and the
+  metric scored that note's *attack* as a release transient. Measured: the
+  stale mark landed one sample after the new note's own start mark, while every
+  passing case had its note-off 5,000–9,700 samples clear of any onset.
+
+  `startNote` clears it now. The suite reports **0 failures**, and every passing
+  case's ratio is unchanged — the fix removed a bogus measurement rather than
+  moving a threshold.
+
+  One consequence worth stating: with sustain at exactly zero the voice is
+  silent at note-off, so that case cannot detect a note-off click at all. A
+  `sustain=0.02` case was added to cover what it was meant to — a release
+  starting from about −34 dBFS, which scores 5.5 and passes.
 
 ## Measured
 
@@ -163,10 +183,8 @@ including blocks carrying MIDI, which is where the new audio-thread work sits.
 - **A zero-duration ADSR is still reachable** by setting all four times to zero.
   Unlike the Breakpoint case this is not a trap — an ADSR holds at its sustain
   rather than retiring — so no floor was added.
-- **One `PX3Diag regress` case still fails**, `N sine key-release, sustain=0`,
-  at a note-off transient ratio around 7-8 against a threshold of 6.0. It
-  predates this work — the identical failing set was measured at `699aa8c` — and
-  the threshold has not been moved to hide it.
+- ~~One `PX3Diag regress` case still fails.~~ **Fixed** — see below. The suite
+  now reports 0 failures.
 - **The debug panel's preset dump cannot be fully tested**: the file chooser is a
   modal async dialog nothing headless can drive. The mapping from fields to
   metadata is tested; the chooser itself is not.
