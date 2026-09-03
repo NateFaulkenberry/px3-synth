@@ -56,7 +56,13 @@ void panToGainsStatic(float pan, float& leftGain, float& rightGain)
 }
 
 PX3SynthAudioProcessor::PX3SynthAudioProcessor()
-    : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true))
+    : AudioProcessor(BusesProperties()
+                         .withOutput("Output", juce::AudioChannelSet::stereo(), true)
+                         // The FX bus, as a second stereo pair the host can turn
+                         // on. NOT enabled by default: a plain instance has to
+                         // stay a stereo instrument, or every existing project
+                         // acquires two channels it never asked for.
+                         .withOutput("FX", juce::AudioChannelSet::stereo(), false))
 {
     const auto instanceNumber = kInstanceCounter.fetch_add(1u, std::memory_order_relaxed) + 1u;
     kActiveInstanceCount.fetch_add(1, std::memory_order_relaxed);
@@ -1275,8 +1281,29 @@ void PX3SynthAudioProcessor::releaseResources()
 
 bool PX3SynthAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
-    return layouts.getMainOutputChannelSet() == juce::AudioChannelSet::mono()
-           || layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
+    const auto main = layouts.getMainOutputChannelSet();
+
+    if (main != juce::AudioChannelSet::mono() && main != juce::AudioChannelSet::stereo())
+    {
+        return false;
+    }
+
+    // The second bus is either off, or a stereo pair alongside a stereo main.
+    // Refusing it beside a mono main keeps the multi-output contract one thing
+    // - two stereo pairs - rather than something whose meaning depends on what
+    // the first bus happens to be.
+    if (layouts.outputBuses.size() > 1)
+    {
+        const auto aux = layouts.outputBuses[1];
+        if (aux != juce::AudioChannelSet::disabled()
+            && ! (aux == juce::AudioChannelSet::stereo()
+                  && main == juce::AudioChannelSet::stereo()))
+        {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 void PX3SynthAudioProcessor::advanceLfosForBlock(int numSamples)
@@ -1407,7 +1434,21 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     }
     const auto ticksPerSecond = juce::Time::getHighResolutionTicksPerSecond();
     const auto blockSamples = buffer.getNumSamples();
-    const auto outputChannels = buffer.getNumChannels();
+
+    // The main bus decides how wide the synth renders. Taken from the whole
+    // buffer this would read 4 the moment the FX bus is enabled, and every
+    // "is this stereo" test downstream would be answering a different
+    // question.
+    auto mainOutput = getBusBuffer(buffer, false, 0);
+    const auto outputChannels = mainOutput.getNumChannels();
+
+    // The second stereo pair, when the host has asked for it. An empty buffer
+    // when it has not, which is what makes the multi-output path cost nothing
+    // in a plain stereo instance.
+    const auto fxBusEnabled = getBusCount(false) > 1 && getBus(false, 1) != nullptr
+                              && getBus(false, 1)->isEnabled();
+    auto fxOutput = fxBusEnabled ? getBusBuffer(buffer, false, 1)
+                                 : juce::AudioBuffer<float>();
 
     for (int channel = getTotalNumInputChannels(); channel < getTotalNumOutputChannels(); ++channel)
     {
@@ -2495,9 +2536,46 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     reverb.applyPostBlockCompensation(masterBusBuffer);
 
-    for (int channel = 0; channel < outputChannels; ++channel)
+    // WHAT LEAVES THE PLUGIN.
+    //
+    // One stereo pair: the master mix, exactly as before.
+    //
+    // Two: the mixer's own buses, dry on 1/2 and FX on 3/4, so the host can
+    // treat them as stems. They carry the fixed output boost, which is a
+    // level, but not the analog master stage or the output ceiling - those act
+    // on the SUM and are not divisible between two stems. Summing 1/2 and 3/4
+    // in the host is therefore close to the stereo output but not identical
+    // to it, which is what taking stems from before a master chain means.
+    //
+    // Nothing is processed twice for this: both buffers already exist, and
+    // this is the same copy the single-output path always did.
+    if (fxBusEnabled)
     {
-        buffer.copyFrom(channel, 0, masterBusBuffer, channel, 0, blockSamples);
+        for (int channel = 0; channel < outputChannels; ++channel)
+        {
+            mainOutput.copyFrom(channel, 0, dryBusBuffer.getReadPointer(channel),
+                                blockSamples, outputBoostGain);
+        }
+
+        for (int channel = 0; channel < fxOutput.getNumChannels(); ++channel)
+        {
+            if (channel < fxBusBuffer.getNumChannels())
+            {
+                fxOutput.copyFrom(channel, 0, fxBusBuffer.getReadPointer(channel),
+                                  blockSamples, outputBoostGain);
+            }
+            else
+            {
+                fxOutput.clear(channel, 0, blockSamples);
+            }
+        }
+    }
+    else
+    {
+        for (int channel = 0; channel < outputChannels; ++channel)
+        {
+            mainOutput.copyFrom(channel, 0, masterBusBuffer, channel, 0, blockSamples);
+        }
     }
 
 #if PX3_DIAGNOSTICS

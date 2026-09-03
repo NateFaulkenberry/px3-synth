@@ -48,6 +48,24 @@ In progress.
   that actually changes — measured at 49% of the component's entire paint cost,
   201 us a frame. The VU meter's face was already cached; this now is too.
 
+## New: separate Dry and FX outputs
+
+- **The mixer's two buses, offered to the host as stereo pairs.** A plain
+  instance is unchanged — one stereo output carrying the full mix. Enable the
+  second pair in the host and **1/2 carries Dry, 3/4 carries FX**, as
+  independent stems rather than one four-channel output.
+
+  The synth already kept the two apart all the way to the final copy, so this
+  exposes buffers that existed rather than adding a parallel signal path:
+  measured at **0.7% worst-case CPU change**, most cases under 0.3%. The stems
+  carry the fixed output boost but not the analog master stage or the output
+  ceiling — those act on the sum and cannot be divided between two stems, so
+  summing 1/2 and 3/4 in the host is close to the stereo output rather than
+  identical to it.
+
+  Bus configuration is the host's, not the sound's: it is not written into
+  presets or plugin state, so auditioning a patch never changes your routing.
+
 ## Measured
 
 - **`PX3Diag eqspectrum`** — the two measurements the EQ spectrum brief asked

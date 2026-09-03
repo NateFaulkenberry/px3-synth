@@ -2634,6 +2634,7 @@ int main(int argc, char* argv[])
     if (wants("envmode")) testEnvelopeModes();
     if (wants("vumeter")) testVuBallistics();
     if (wants("businserts")) testBusInserts();
+    if (wants("multiout")) testMultiOutput();
     if (wants("filters")) testFilters();
     if (wants("oscrichness")) testOscillatorModeRichness();
     if (wants("analog")) testAnalogEngine();

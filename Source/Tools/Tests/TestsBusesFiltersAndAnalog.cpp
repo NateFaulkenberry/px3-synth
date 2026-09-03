@@ -4018,4 +4018,317 @@ void testAnalogEngine()
     }
 }
 
+// testMultiOutput
+//
+// The dry and FX buses, offered to the host as two stereo pairs.
+//
+// The synth already kept them apart all the way to the last copy - dry, FX and
+// master are three buffers, summed only at the write-out - so this exposes what
+// exists rather than splitting anything. That is the whole reason the change is
+// small, and it is worth checking rather than assuming.
+void testMultiOutput()
+{
+    suite("MULTI-OUTPUT");
+
+    constexpr double kRate = 48000.0;
+    constexpr int kBlock = 256;
+
+    // A processor with both stereo pairs enabled, or nullptr if the layout was
+    // refused - which is itself a result worth reporting rather than crashing on.
+    const auto enableFxBus = [](PX3SynthAudioProcessor& processor)
+    {
+        juce::AudioProcessor::BusesLayout layout;
+        layout.outputBuses.add(juce::AudioChannelSet::stereo());
+        layout.outputBuses.add(juce::AudioChannelSet::stereo());
+        return processor.setBusesLayout(layout);
+    };
+
+    const auto renderNote = [](PX3SynthAudioProcessor& processor,
+                               juce::AudioBuffer<float>& buffer,
+                               int blocks)
+    {
+        juce::MidiBuffer noteOn;
+        noteOn.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+        buffer.clear();
+        processor.processBlock(buffer, noteOn);
+
+        for (int i = 1; i < blocks; ++i)
+        {
+            juce::MidiBuffer empty;
+            processor.processBlock(buffer, empty);
+        }
+    };
+
+    const auto rms = [](const juce::AudioBuffer<float>& buffer, int channel)
+    {
+        return channel < buffer.getNumChannels()
+                   ? buffer.getRMSLevel(channel, 0, buffer.getNumSamples())
+                   : 0.0f;
+    };
+
+    // ---- a plain instance is a stereo instrument ---------------------------
+    //
+    // The first requirement, and the one a second output bus most easily
+    // breaks: declaring the bus must not turn every existing project's synth
+    // into a four-channel one.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kRate, kBlock);
+        processor.prepareToPlay(kRate, kBlock);
+
+        const auto* fxBus = processor.getBus(false, 1);
+
+        check("MultiOut_APlainInstanceIsStillStereo",
+              processor.getTotalNumOutputChannels() == 2
+                  && fxBus != nullptr && ! fxBus->isEnabled(),
+              juce::String(processor.getTotalNumOutputChannels())
+                  + " output channels by default, and the FX bus is "
+                  + (fxBus == nullptr ? "absent"
+                                      : (fxBus->isEnabled() ? "ENABLED" : "present but off")));
+    }
+
+    // ---- the host can turn the second pair on ------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        const auto accepted = enableFxBus(processor);
+        processor.prepareToPlay(kRate, kBlock);
+
+        check("MultiOut_TheHostCanEnableASecondStereoPair",
+              accepted && processor.getTotalNumOutputChannels() == 4
+                  && processor.getBus(false, 1) != nullptr
+                  && processor.getBus(false, 1)->isEnabled(),
+              accepted ? juce::String(processor.getTotalNumOutputChannels())
+                             + " channels with the FX bus on"
+                       : juce::String("the layout was refused"));
+    }
+
+    // ---- layouts we do not support are refused -----------------------------
+    //
+    // A host that asks for something the contract does not cover has to be
+    // told no, rather than handed a buffer whose meaning is undefined.
+    {
+        PX3SynthAudioProcessor processor;
+
+        juce::AudioProcessor::BusesLayout monoPlusAux;
+        monoPlusAux.outputBuses.add(juce::AudioChannelSet::mono());
+        monoPlusAux.outputBuses.add(juce::AudioChannelSet::stereo());
+
+        juce::AudioProcessor::BusesLayout quadAux;
+        quadAux.outputBuses.add(juce::AudioChannelSet::stereo());
+        quadAux.outputBuses.add(juce::AudioChannelSet::quadraphonic());
+
+        const auto refusedMono = ! processor.checkBusesLayoutSupported(monoPlusAux);
+        const auto refusedQuad = ! processor.checkBusesLayoutSupported(quadAux);
+
+        check("MultiOut_UnsupportedLayoutsAreRefused",
+              refusedMono && refusedQuad,
+              juce::String("mono main + stereo FX ")
+                  + (refusedMono ? "refused" : "ACCEPTED")
+                  + ", stereo main + quad FX "
+                  + (refusedQuad ? "refused" : "ACCEPTED"));
+    }
+
+    // ---- dry on 1/2, FX on 3/4 ---------------------------------------------
+    //
+    // With every send closed the FX bus has nothing in it, so the pair that
+    // carries it has to be silent while the pair that carries dry is not. That
+    // is both "the buses reach the right outputs" and "FX is not a second copy
+    // of dry", which is the failure the brief calls out by name.
+    {
+        PX3SynthAudioProcessor processor;
+        const auto accepted = enableFxBus(processor);
+        processor.prepareToPlay(kRate, kBlock);
+
+        for (int source = 0; source < 4; ++source)
+        {
+            processor.getMixerSendParam(source).setValueNotifyingHost(0.0f);
+        }
+
+        // The FX path genuinely disabled, which is what the brief's isolation
+        // test asks for: sends closed AND every effect off AND the analog
+        // console off. Each of those puts something into the FX bus on its own
+        // - the console a noise floor, an effect its own idle output - and
+        // none of it is dry leaking across, but all of it has to go before
+        // "silent" is a fair thing to assert.
+        //
+        // The first version of this test closed the sends only and read the
+        // remainder as a routing fault. It was the console, at -53 dBFS.
+        processor.getAnalogEnabledParam().setValueNotifyingHost(0.0f);
+        processor.getVibeEnabledParam().setValueNotifyingHost(0.0f);
+        processor.getDelayEnabledParam().setValueNotifyingHost(0.0f);
+        processor.getReverbEnabledParam().setValueNotifyingHost(0.0f);
+        processor.getMoodEnabledParam().setValueNotifyingHost(0.0f);
+        processor.getDoomEnabledParam().setValueNotifyingHost(0.0f);
+        processor.getLucyEnabledParam().setValueNotifyingHost(0.0f);
+        processor.getChorusEnabledParam().setValueNotifyingHost(0.0f);
+        processor.getSpreadEnabledParam().setValueNotifyingHost(0.0f);
+
+        juce::AudioBuffer<float> buffer(4, kBlock);
+        renderNote(processor, buffer, 8);
+
+        const auto dryRms = juce::jmax(rms(buffer, 0), rms(buffer, 1));
+        const auto fxRms = juce::jmax(rms(buffer, 2), rms(buffer, 3));
+
+        check("MultiOut_WithNoSendTheDryPairSoundsAndTheFxPairIsSilent",
+              accepted && dryRms > 1.0e-4f && fxRms < 1.0e-6f,
+              "1/2 at rms " + fmt(dryRms, 6) + ", 3/4 at rms " + fmt(fxRms, 6));
+    }
+
+    // ---- with the console running, the FX pair still holds no dry ----------
+    //
+    // The console is on by default and its noise reaches the FX bus, so
+    // "silent" is not the available test in the shipping configuration. What
+    // is available, and is the thing that actually matters, is that the FX
+    // pair is far below the dry pair and does not follow it.
+    {
+        PX3SynthAudioProcessor processor;
+        enableFxBus(processor);
+        processor.prepareToPlay(kRate, kBlock);
+
+        for (int source = 0; source < 4; ++source)
+        {
+            processor.getMixerSendParam(source).setValueNotifyingHost(0.0f);
+        }
+
+        juce::AudioBuffer<float> buffer(4, kBlock);
+        renderNote(processor, buffer, 8);
+
+        const auto dryRms = juce::jmax(rms(buffer, 0), rms(buffer, 1));
+        const auto fxRms = juce::jmax(rms(buffer, 2), rms(buffer, 3));
+        const auto downDb = juce::Decibels::gainToDecibels(fxRms / juce::jmax(1.0e-9f, dryRms));
+
+        check("MultiOut_TheFxPairCarriesNoDryEvenWithTheConsoleRunning",
+              dryRms > 1.0e-4f && downDb < -30.0f,
+              "3/4 sits " + fmt(downDb, 1) + " dB below 1/2 with every send closed");
+    }
+
+    // ---- and the FX pair carries the FX ------------------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        const auto accepted = enableFxBus(processor);
+        processor.prepareToPlay(kRate, kBlock);
+
+        for (int source = 0; source < 4; ++source)
+        {
+            processor.getMixerSendParam(source).setValueNotifyingHost(1.0f);
+        }
+        processor.getReverbEnabledParam().setValueNotifyingHost(1.0f);
+        processor.getFxReturnGainParam().setValueNotifyingHost(1.0f);
+
+        juce::AudioBuffer<float> buffer(4, kBlock);
+        renderNote(processor, buffer, 12);
+
+        const auto dryRms = juce::jmax(rms(buffer, 0), rms(buffer, 1));
+        const auto fxRms = juce::jmax(rms(buffer, 2), rms(buffer, 3));
+
+        check("MultiOut_WithTheSendOpenTheFxPairCarriesTheFx",
+              accepted && fxRms > 1.0e-4f,
+              "3/4 at rms " + fmt(fxRms, 6) + " with the send open (1/2 at "
+                  + fmt(dryRms, 6) + ")");
+    }
+
+    // ---- the two pairs are not the same signal -----------------------------
+    //
+    // Both being loud is not enough: a bug that wrote the master mix to both
+    // pairs would pass every check above. This compares them sample by sample.
+    {
+        PX3SynthAudioProcessor processor;
+        enableFxBus(processor);
+        processor.prepareToPlay(kRate, kBlock);
+
+        for (int source = 0; source < 4; ++source)
+        {
+            processor.getMixerSendParam(source).setValueNotifyingHost(0.5f);
+        }
+        processor.getReverbEnabledParam().setValueNotifyingHost(1.0f);
+
+        juce::AudioBuffer<float> buffer(4, kBlock);
+        renderNote(processor, buffer, 12);
+
+        auto identical = true;
+        auto largestDifference = 0.0f;
+        for (int i = 0; i < kBlock; ++i)
+        {
+            const auto d = std::abs(buffer.getSample(0, i) - buffer.getSample(2, i));
+            largestDifference = juce::jmax(largestDifference, d);
+            if (d > 1.0e-7f) { identical = false; }
+        }
+
+        check("MultiOut_TheTwoPairsAreDifferentSignals",
+              ! identical && largestDifference > 1.0e-4f,
+              "largest sample difference between 1/2 and 3/4 is "
+                  + fmt(largestDifference, 6));
+    }
+
+    // ---- switching configurations ------------------------------------------
+    //
+    // Stereo, multi-output, stereo again on one processor, rendering at each
+    // step. What this is really checking is that nothing reads a channel that
+    // is no longer there and nothing is left holding stale audio.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.prepareToPlay(kRate, kBlock);
+
+        juce::AudioBuffer<float> stereoBuffer(2, kBlock);
+        renderNote(processor, stereoBuffer, 4);
+        const auto firstStereo = juce::jmax(rms(stereoBuffer, 0), rms(stereoBuffer, 1));
+
+        const auto toMulti = enableFxBus(processor);
+        processor.prepareToPlay(kRate, kBlock);
+        juce::AudioBuffer<float> multiBuffer(4, kBlock);
+        renderNote(processor, multiBuffer, 4);
+        const auto multi = juce::jmax(rms(multiBuffer, 0), rms(multiBuffer, 1));
+
+        juce::AudioProcessor::BusesLayout backToStereo;
+        backToStereo.outputBuses.add(juce::AudioChannelSet::stereo());
+        backToStereo.outputBuses.add(juce::AudioChannelSet::disabled());
+        const auto toStereo = processor.setBusesLayout(backToStereo);
+        processor.prepareToPlay(kRate, kBlock);
+        juce::AudioBuffer<float> againBuffer(2, kBlock);
+        renderNote(processor, againBuffer, 4);
+        const auto secondStereo = juce::jmax(rms(againBuffer, 0), rms(againBuffer, 1));
+
+        auto finite = true;
+        for (auto* b : { &stereoBuffer, &multiBuffer, &againBuffer })
+        {
+            for (int c = 0; c < b->getNumChannels(); ++c)
+            {
+                for (int i = 0; i < b->getNumSamples(); ++i)
+                {
+                    if (! std::isfinite(b->getSample(c, i))) { finite = false; }
+                }
+            }
+        }
+
+        check("MultiOut_SwitchingBetweenConfigurationsStaysValid",
+              toMulti && toStereo && finite
+                  && firstStereo > 1.0e-4f && multi > 1.0e-4f && secondStereo > 1.0e-4f
+                  && processor.getTotalNumOutputChannels() == 2,
+              "stereo " + fmt(firstStereo, 5) + " -> multi " + fmt(multi, 5)
+                  + " -> stereo " + fmt(secondStereo, 5) + ", all finite, back to "
+                  + juce::String(processor.getTotalNumOutputChannels()) + " channels");
+    }
+
+    // ---- host routing is not a preset ---------------------------------------
+    //
+    // Bus configuration belongs to the host, not to the sound. A preset that
+    // carried it would change a user's routing when they auditioned a patch.
+    {
+        PX3SynthAudioProcessor multi;
+        enableFxBus(multi);
+        multi.prepareToPlay(kRate, kBlock);
+
+        juce::MemoryBlock state;
+        multi.getStateInformation(state);
+
+        PX3SynthAudioProcessor plain;
+        plain.prepareToPlay(kRate, kBlock);
+        plain.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        check("MultiOut_TheBusConfigurationIsNotCarriedInPresetState",
+              plain.getTotalNumOutputChannels() == 2,
+              "state saved from a multi-output instance left a stereo instance with "
+                  + juce::String(plain.getTotalNumOutputChannels()) + " channels");
+    }
+}
 } // namespace px3tests

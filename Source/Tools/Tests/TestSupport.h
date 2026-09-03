@@ -1523,6 +1523,7 @@ void testFactoryPresets();
 void testEditorLifecycle();
 void testVuBallistics();
 void testBusInserts();
+void testMultiOutput();
 void testFilters();
 void testOscillatorModeRichness();
 void testAnalogEngine();
