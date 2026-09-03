@@ -446,6 +446,11 @@ void PX3SynthAudioProcessorEditor::layoutMacroDepthPanel()
     if (available.isEmpty()) { available = getLocalBounds().reduced(20); }
 
     macroDepthPanel->setBounds(macroDepthPanel->preferredBoundsWithin(available, anchor));
+
+    // The pointer aims at the knob in the PANEL's coordinates, which is why it
+    // is set after the bounds: the panel may have been pushed up or down to fit
+    // on screen, and the arrow has to follow it rather than the other way round.
+    macroDepthPanel->setPointerTargetY(anchor.getY() - macroDepthPanel->getY());
 }
 
 bool PX3SynthAudioProcessorEditor::isAssignableTargetAt(juce::Point<int> positionInEditor) const

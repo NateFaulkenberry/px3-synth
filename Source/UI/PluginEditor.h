@@ -375,6 +375,14 @@ public:
     }
 
     bool debugPressKey(const juce::KeyPress& key) { return keyPressed(key); }
+    void debugClickEditorAtWithModifiers(juce::Point<int> position, juce::ModifierKeys mods)
+    {
+        const auto at = position.toFloat();
+        mouseDown(juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(),
+                                   at, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                   this, this, juce::Time::getCurrentTime(), at,
+                                   juce::Time::getCurrentTime(), 1, false));
+    }
     void debugClickEditorAt(juce::Point<int> position)
     {
         const auto at = position.toFloat();

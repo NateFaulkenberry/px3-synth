@@ -2726,19 +2726,34 @@
     "layout": {
       "padding": 10,
       "cornerRadius": 8,
+      "borderThickness": 1,
       "headerHeight": 26,
+      "headerFontSize": 13,
       "footerHeight": 30,
       "rowHeight": 30,
+      "rowFontSize": 12,
+      "valueFontSize": 11,
       "columnWidth": 260,
       "nameWidth": 96,
       "valueWidth": 46,
-      "preferredRowsPerColumn": 8
+      "preferredRowsPerColumn": 8,
+      "sliderTrackThickness": 3,
+      "sliderThumbRadius": 5,
+      "pointerWidth": 9,
+      "pointerHeight": 16
     },
     "colors": {
       "background": "#111317FC",
+      "border": "#5ADCC88C",
+      "header": "#ECF0F8",
       "rowLabel": "#E0E2E8",
       "rowValue": "#C6CAD4",
-      "sliderTrack": "#FFFFFF26"
+      "emptyNotice": "#A8AEBA",
+      "sliderTrack": "#FFFFFF26",
+      "sliderFill": "#5ADCC8",
+      "sliderThumb": "#DCFAF4",
+      "closeButton": "#343840EB",
+      "closeButtonText": "#E8ECF2"
     }
   }
 }

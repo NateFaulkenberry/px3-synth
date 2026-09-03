@@ -268,6 +268,28 @@ void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
     // rather than passed through to whatever sits underneath.
     if (depthPanelMacroIndex() >= 0)
     {
+        // A command-click on ANOTHER macro knob switches straight to it. The
+        // scrim is what routed this click here, so without this the click is
+        // spent closing the panel and the user has to click the second knob
+        // again - which is a dismissal getting in the way of the gesture it
+        // was meant to protect.
+        if (event.mods.isCommandDown())
+        {
+            if (auto* slider = findParameterKnobAt(point))
+            {
+                const auto parameterId = px3::ui::parameterIdOf(*slider);
+
+                for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+                {
+                    if (parameterId == PX3SynthAudioProcessor::macroParameterId(macro))
+                    {
+                        if (macro != depthPanelMacroIndex()) { openMacroDepthPanel(macro); }
+                        return;
+                    }
+                }
+            }
+        }
+
         closeMacroDepthPanel();
         return;
     }

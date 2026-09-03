@@ -3388,11 +3388,117 @@ void testMacroSystem()
                     firstSlider = panel->debugDepthSliderFor(cutoffId);
                     const auto tallRow = firstSlider != nullptr ? firstSlider->getHeight() : 0;
 
+                    // And a colour key, since the panel now takes its whole
+                    // appearance from config rather than just its geometry.
+                    // After opening, for the same reason as above: opening
+                    // hands the panel the editor's config.
+                    editor->debugOpenMacroDepthPanel(0);
+                    panel->setUIConfig(UIConfig::fromJsonText(
+                        R"({"macroDepth":{"colors":{"background":"#FF00FF"}}})", configError));
+
+                    juce::Image shot(juce::Image::ARGB, panel->getWidth(), panel->getHeight(), true);
+                    { juce::Graphics g(shot); panel->paintEntireComponent(g, false); }
+                    // Somewhere in the middle of the panel body, clear of the
+                    // pointer strip and the header.
+                    const auto probe = shot.getPixelAt(panel->getWidth() / 2,
+                                                       panel->getHeight() / 2);
+                    const auto tookTheColour = probe.getRed() > 200 && probe.getBlue() > 200
+                                            && probe.getGreen() < 60;
+
+                    check("MacroDepthUi_TheColourKeysAreActuallyRead",
+                          tookTheColour,
+                          "the panel body painted #" + probe.toDisplayString(false)
+                              + " for a background key of #FF00FF");
+
                     check("MacroDepthUi_TheLayoutKeysAreActuallyRead",
                           defaultRow > 0 && tallRow > defaultRow + 10,
                           "a row is " + juce::String(defaultRow)
                               + " px at the shipped rowHeight and " + juce::String(tallRow)
                               + " px at 60");
+                }
+
+                // ---- an empty macro's message has room to be read ------------
+                //
+                // With nothing assigned there are no rows to size the panel
+                // from, and it came out one row tall - too small for the only
+                // sentence it had to show, which was then cut off.
+                {
+                    processor.clearMacroDestinations(3);
+                    editor->debugOpenMacroDepthPanel(3);
+
+                    const auto bounds = panel->getLocalBounds();
+                    const auto closeInside =
+                        bounds.contains(panel->debugCloseButton().getBounds());
+                    // Three lines of the notice, plus the header and footer.
+                    const auto tallEnough = panel->getHeight() >= 26 + 30 + 20 + 60;
+
+                    check("MacroDepthUi_AnEmptyMacrosMessageHasRoomToBeRead",
+                          panel->debugRowCount() == 0 && tallEnough && closeInside
+                              && panel->debugEmptyNotice().isNotEmpty(),
+                          "the empty panel is " + juce::String(panel->getWidth()) + "x"
+                              + juce::String(panel->getHeight()) + ", close button "
+                              + (closeInside ? "inside" : "OUTSIDE") + " it");
+                }
+
+                // ---- the pointer aims at the knob it belongs to ---------------
+                {
+                    juce::StringArray aims;
+                    auto allAimed = true;
+
+                    for (const auto macro : { 0, 2, 4 })
+                    {
+                        editor->debugOpenMacroDepthPanel(macro);
+
+                        const auto& knob = strip->knob(macro);
+                        const auto knobCentre = editor->getLocalPoint(
+                            &knob, knob.getLocalBounds().getCentre());
+                        // The pointer is stored in the PANEL's coordinates.
+                        const auto pointerInEditor = panel->getY() + panel->debugPointerTargetY();
+
+                        if (std::abs(pointerInEditor - knobCentre.getY()) > 1) { allAimed = false; }
+                        aims.add("M" + juce::String(macro + 1) + ": knob y "
+                                 + juce::String(knobCentre.getY()) + ", pointer y "
+                                 + juce::String(pointerInEditor));
+                    }
+
+                    check("MacroDepthUi_ThePointerAimsAtTheKnobThePanelBelongsTo",
+                          allAimed, aims.joinIntoString("; "));
+                }
+
+                // ---- the sliders are not stock JUCE controls -----------------
+                {
+                    processor.clearMacroDestinations(0);
+                    processor.toggleMacroDestination(0, cutoffId);
+                    editor->debugOpenMacroDepthPanel(0);
+
+                    auto* look = panel->debugSliderLookAndFeel(cutoffId);
+                    const auto isOurs =
+                        dynamic_cast<px3::ui::MacroDepthSliderLook*>(look) != nullptr;
+
+                    check("MacroDepthUi_TheDepthSliderUsesTheSynthsOwnLook",
+                          isOurs,
+                          isOurs ? juce::String("MacroDepthSliderLook, not the default")
+                                 : juce::String("STOCK look-and-feel"));
+                }
+
+                // ---- cmd-click moves straight to another macro ----------------
+                //
+                // The scrim is what routes a click here while the panel is
+                // open, so without this the click is spent dismissing and the
+                // user has to click the second knob twice.
+                {
+                    editor->debugOpenMacroDepthPanel(0);
+                    const auto& target = strip->knob(2);
+                    editor->debugClickEditorAtWithModifiers(
+                        editor->getLocalPoint(&target, target.getLocalBounds().getCentre()),
+                        juce::ModifierKeys(juce::ModifierKeys::commandModifier));
+
+                    check("MacroDepthUi_CommandClickSwitchesStraightToAnotherMacro",
+                          editor->debugDepthPanelMacro() == 2 && panel->getMacro() == 2
+                              && panel->isVisible(),
+                          "the panel moved to macro "
+                              + juce::String(editor->debugDepthPanelMacro())
+                              + " on one command-click, without a dismissal in between");
                 }
 
                 editor->debugCloseMacroDepthPanel();

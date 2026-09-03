@@ -51,6 +51,42 @@ juce::String depthText(float depth)
 }
 } // namespace
 
+void MacroDepthSliderLook::drawLinearSlider(juce::Graphics& g, int x, int y, int width, int height,
+                                            float sliderPos, float, float,
+                                            juce::Slider::SliderStyle, juce::Slider& slider)
+{
+    const auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat();
+    const auto centreY = bounds.getCentreY();
+    const auto radius = trackThickness * 0.5f;
+
+    // The track, full width, flat.
+    g.setColour(track);
+    g.fillRoundedRectangle(bounds.getX(), centreY - radius, bounds.getWidth(),
+                           trackThickness, radius);
+
+    // The filled portion, from the CENTRE outwards, because the range is
+    // bipolar and zero is the middle rather than the left end.
+    const auto zeroPos = static_cast<float>(
+        slider.getPositionOfValue(juce::jlimit(slider.getMinimum(), slider.getMaximum(), 0.0)));
+    const auto from = juce::jmin(zeroPos, sliderPos);
+    const auto to = juce::jmax(zeroPos, sliderPos);
+
+    if (to - from > 0.5f)
+    {
+        g.setColour(fill);
+        g.fillRoundedRectangle(from, centreY - radius, to - from, trackThickness, radius);
+    }
+
+    g.setColour(thumb);
+    g.fillEllipse(sliderPos - thumbRadius, centreY - thumbRadius,
+                  thumbRadius * 2.0f, thumbRadius * 2.0f);
+}
+
+MacroDepthPanel::~MacroDepthPanel()
+{
+    for (auto& row : rows) { row->depth.setLookAndFeel(nullptr); }
+}
+
 MacroDepthPanel::MacroDepthPanel(PX3SynthAudioProcessor& processorIn)
     : processor(processorIn)
 {
@@ -60,10 +96,7 @@ MacroDepthPanel::MacroDepthPanel(PX3SynthAudioProcessor& processorIn)
     header.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     addAndMakeVisible(header);
 
-    emptyNotice.setJustificationType(juce::Justification::centred);
-    emptyNotice.setText("Nothing assigned yet. Double-click the macro knob to assign parameters.",
-                        juce::dontSendNotification);
-    addChildComponent(emptyNotice);
+    emptyNotice = "Nothing assigned yet.\nDouble-click the macro knob to assign parameters to it.";
 
     closeButton.onClick = [this]
     {
@@ -79,8 +112,65 @@ MacroDepthPanel::MacroDepthPanel(PX3SynthAudioProcessor& processorIn)
 void MacroDepthPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+    applyStyleFromConfig();
     resized();
     repaint();
+}
+
+void MacroDepthPanel::setPointerTargetY(int yInPanelCoordinates)
+{
+    if (pointerTargetY == yInPanelCoordinates) { return; }
+
+    pointerTargetY = yInPanelCoordinates;
+    repaint();
+}
+
+int MacroDepthPanel::pointerWidth() const
+{
+    return juce::jmax(0, intFrom(uiConfig.get(), "macroDepth.layout.pointerWidth", 9));
+}
+
+void MacroDepthPanel::applyStyleFromConfig()
+{
+    // Every colour and size the panel draws with, in one place, so a change in
+    // UIConfig.json reaches the whole panel rather than half of it.
+    sliderLook.track = colourFrom(uiConfig.get(), "macroDepth.colors.sliderTrack",
+                                  juce::Colour::fromRGBA(255, 255, 255, 38));
+    sliderLook.fill = colourFrom(uiConfig.get(), "macroDepth.colors.sliderFill", accent);
+    sliderLook.thumb = colourFrom(uiConfig.get(), "macroDepth.colors.sliderThumb",
+                                  accent.brighter(0.45f));
+    sliderLook.trackThickness = static_cast<float>(
+        intFrom(uiConfig.get(), "macroDepth.layout.sliderTrackThickness", 3));
+    sliderLook.thumbRadius = static_cast<float>(
+        intFrom(uiConfig.get(), "macroDepth.layout.sliderThumbRadius", 5));
+
+    header.setFont(juce::FontOptions(static_cast<float>(
+        intFrom(uiConfig.get(), "macroDepth.layout.headerFontSize", 13)), juce::Font::bold));
+    header.setColour(juce::Label::textColourId,
+                     colourFrom(uiConfig.get(), "macroDepth.colors.header",
+                                juce::Colour::fromRGB(236, 240, 248)));
+
+    closeButton.setColour(juce::TextButton::buttonColourId,
+                          colourFrom(uiConfig.get(), "macroDepth.colors.closeButton",
+                                     juce::Colour::fromRGBA(52, 56, 64, 235)));
+    closeButton.setColour(juce::TextButton::textColourOffId,
+                          colourFrom(uiConfig.get(), "macroDepth.colors.closeButtonText",
+                                     juce::Colour::fromRGB(232, 236, 242)));
+
+    for (auto& row : rows)
+    {
+        row->name.setFont(juce::FontOptions(static_cast<float>(
+            intFrom(uiConfig.get(), "macroDepth.layout.rowFontSize", 12))));
+        row->name.setColour(juce::Label::textColourId,
+                            colourFrom(uiConfig.get(), "macroDepth.colors.rowLabel",
+                                       juce::Colour::fromRGB(224, 226, 232)));
+        row->value.setFont(juce::FontOptions(static_cast<float>(
+            intFrom(uiConfig.get(), "macroDepth.layout.valueFontSize", 11))));
+        row->value.setColour(juce::Label::textColourId,
+                             colourFrom(uiConfig.get(), "macroDepth.colors.rowValue",
+                                        juce::Colour::fromRGB(198, 202, 212)));
+        row->depth.setLookAndFeel(&sliderLook);
+    }
 }
 
 void MacroDepthPanel::setAccentColour(juce::Colour colour)
@@ -150,12 +240,14 @@ void MacroDepthPanel::refreshFromProcessor()
     // Rebuilt rather than diffed. The list is at most a few dozen rows and is
     // rebuilt only on an assignment change, so the simplest thing that cannot
     // leave a row pointing at a route that no longer exists is the right one.
+    // Detach the look before the rows go: a Component holding a pointer to a
+    // LookAndFeel it outlives is the classic way to crash on teardown.
+    for (auto& row : rows) { row->depth.setLookAndFeel(nullptr); }
     rows.clear();
     rowHost.removeAllChildren();
 
     if (! juce::isPositiveAndBelow(macroIndex, PX3SynthAudioProcessor::kMacroCount))
     {
-        emptyNotice.setVisible(false);
         resized();
         return;
     }
@@ -186,11 +278,7 @@ void MacroDepthPanel::refreshFromProcessor()
             writeDepth(*raw);
             refreshValueLabel(*raw);
         };
-        row->depth.setColour(juce::Slider::trackColourId, accent.withAlpha(0.85f));
-        row->depth.setColour(juce::Slider::backgroundColourId,
-                             colourFrom(uiConfig.get(), "macroDepth.colors.sliderTrack",
-                                        juce::Colour::fromRGBA(255, 255, 255, 38)));
-        row->depth.setColour(juce::Slider::thumbColourId, accent.brighter(0.25f));
+        row->depth.setLookAndFeel(&sliderLook);
         rowHost.addAndMakeVisible(row->depth);
 
         row->value.setJustificationType(juce::Justification::centredRight);
@@ -205,7 +293,7 @@ void MacroDepthPanel::refreshFromProcessor()
         rows.push_back(std::move(row));
     }
 
-    emptyNotice.setVisible(rows.empty());
+    applyStyleFromConfig();
     resized();
     repaint();
 }
@@ -248,7 +336,7 @@ int MacroDepthPanel::columnsForRows(int rowCount, int width, int height) const
     if (rowCount <= 0) { return 1; }
 
     const auto padding = intFrom(uiConfig.get(), "macroDepth.layout.padding", 10);
-    const auto usableWidth = juce::jmax(columnWidth(), width - padding * 2);
+    const auto usableWidth = juce::jmax(columnWidth(), width - padding * 2 - pointerWidth());
 
     // Two limits on how long a column gets. The hard one is the height it has
     // to fit in; the soft one is how long a list stays scannable, because a
@@ -304,6 +392,21 @@ juce::Rectangle<int> MacroDepthPanel::preferredBoundsWithin(juce::Rectangle<int>
     const auto headerH = intFrom(uiConfig.get(), "macroDepth.layout.headerHeight", 26);
     const auto footerH = intFrom(uiConfig.get(), "macroDepth.layout.footerHeight", 30);
 
+    // With nothing assigned there are no rows to size from, and the panel used
+    // to come out one row tall - too small for the sentence it then had to
+    // draw, which was cut off exactly when it was all the panel had to say.
+    if (rows.empty())
+    {
+        const auto width = juce::jmin(available.getWidth(),
+                                      columnWidth() + padding * 2 + pointerWidth());
+        const auto height = juce::jmin(available.getHeight(),
+                                       headerH + footerH + padding * 2
+                                           + rowHeight() * 3);
+
+        return juce::Rectangle<int>(available.getX(), anchor.getY() - height / 2, width, height)
+            .constrainedWithin(available);
+    }
+
     const auto rowCount = juce::jmax(1, static_cast<int>(rows.size()));
     const auto maxRowArea = juce::jmax(rowHeight(),
                                        available.getHeight() - headerH - footerH - padding * 2);
@@ -315,7 +418,8 @@ juce::Rectangle<int> MacroDepthPanel::preferredBoundsWithin(juce::Rectangle<int>
     const auto perColumn = juce::jmax(1, (rowCount + columns - 1) / columns);
     const auto rowsPerColumn = juce::jmin(perColumn, juce::jmax(1, maxRowArea / rowHeight()));
 
-    auto width = juce::jmin(available.getWidth(), columns * columnWidth() + padding * 2);
+    auto width = juce::jmin(available.getWidth(),
+                            columns * columnWidth() + padding * 2 + pointerWidth());
     auto height = juce::jmin(available.getHeight(),
                              rowsPerColumn * rowHeight() + headerH + footerH + padding * 2);
 
@@ -335,6 +439,7 @@ void MacroDepthPanel::resized()
     const auto footerH = intFrom(uiConfig.get(), "macroDepth.layout.footerHeight", 30);
 
     auto area = getLocalBounds().reduced(padding);
+    area.removeFromLeft(pointerWidth());   // the arrow's strip, not content
     header.setBounds(area.removeFromTop(headerH));
 
     auto footer = area.removeFromBottom(footerH);
@@ -342,7 +447,6 @@ void MacroDepthPanel::resized()
                                 .withSizeKeepingCentre(juce::jmin(90, footer.getWidth()), 24));
 
     viewport.setBounds(area);
-    emptyNotice.setBounds(area);
 
     layoutRows();
 }
@@ -403,10 +507,71 @@ void MacroDepthPanel::paint(juce::Graphics& g)
                            juce::Colour::fromRGBA(17, 19, 23, 252)));
     g.fillRoundedRectangle(area, radius);
 
-    // The accent border is what says which macro this belongs to without
-    // reading the header - the strip tints the same colour.
-    g.setColour(accent.withAlpha(0.55f));
-    g.drawRoundedRectangle(area.reduced(0.5f), radius, 1.2f);
+    g.setColour(colourFrom(uiConfig.get(), "macroDepth.colors.border", accent.withAlpha(0.55f)));
+    g.drawRoundedRectangle(area.reduced(0.5f), radius,
+                           static_cast<float>(intFrom(uiConfig.get(),
+                                                      "macroDepth.layout.borderThickness", 1)));
+
+    // ---- the pointer -------------------------------------------------------
+    //
+    // A triangle on the left edge, aimed at the macro knob this panel belongs
+    // to. The header names the macro; this says which knob without reading.
+    // It slides up and down the edge so it keeps pointing at the knob however
+    // the panel had to be placed to fit on screen.
+    if (pointerWidth() > 0 && pointerTargetY >= 0)
+    {
+        const auto half = static_cast<float>(
+            intFrom(uiConfig.get(), "macroDepth.layout.pointerHeight", 16)) * 0.5f;
+        // Kept clear of the rounded corners, so it never reads as a dent in
+        // the frame rather than as an arrow.
+        const auto centreY = juce::jlimit(radius + half + 2.0f,
+                                          area.getHeight() - radius - half - 2.0f,
+                                          static_cast<float>(pointerTargetY));
+
+        juce::Path arrow;
+        arrow.startNewSubPath(area.getX(), centreY);
+        arrow.lineTo(area.getX() + static_cast<float>(pointerWidth()), centreY - half);
+        arrow.lineTo(area.getX() + static_cast<float>(pointerWidth()), centreY + half);
+        arrow.closeSubPath();
+
+        g.setColour(colourFrom(uiConfig.get(), "macroDepth.colors.background",
+                               juce::Colour::fromRGBA(17, 19, 23, 252)));
+        g.fillPath(arrow);
+
+        // Only the two leading edges are stroked. Stroking the third would
+        // draw a line across the mouth of the arrow, where the panel is.
+        juce::Path edges;
+        edges.startNewSubPath(area.getX() + static_cast<float>(pointerWidth()), centreY - half);
+        edges.lineTo(area.getX(), centreY);
+        edges.lineTo(area.getX() + static_cast<float>(pointerWidth()), centreY + half);
+
+        g.setColour(colourFrom(uiConfig.get(), "macroDepth.colors.border", accent.withAlpha(0.55f)));
+        g.strokePath(edges, juce::PathStrokeType(static_cast<float>(
+            intFrom(uiConfig.get(), "macroDepth.layout.borderThickness", 1))));
+    }
+
+    // ---- nothing assigned --------------------------------------------------
+    //
+    // Drawn rather than put in a Label, because a Label does not wrap and this
+    // sentence is longer than a narrow panel is wide - it was being cut off
+    // exactly when it was the only thing the panel had to say.
+    if (rows.empty() && emptyNotice.isNotEmpty())
+    {
+        const auto padding = intFrom(uiConfig.get(), "macroDepth.layout.padding", 10);
+        const auto headerH = intFrom(uiConfig.get(), "macroDepth.layout.headerHeight", 26);
+        const auto footerH = intFrom(uiConfig.get(), "macroDepth.layout.footerHeight", 30);
+
+        auto textArea = getLocalBounds().reduced(padding);
+        textArea.removeFromLeft(pointerWidth());
+        textArea.removeFromTop(headerH);
+        textArea.removeFromBottom(footerH);
+
+        g.setColour(colourFrom(uiConfig.get(), "macroDepth.colors.emptyNotice",
+                               juce::Colour::fromRGB(168, 174, 186)));
+        g.setFont(juce::FontOptions(static_cast<float>(
+            intFrom(uiConfig.get(), "macroDepth.layout.rowFontSize", 12))));
+        g.drawFittedText(emptyNotice, textArea, juce::Justification::centred, 3);
+    }
 }
 
 } // namespace px3::ui

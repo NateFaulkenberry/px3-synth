@@ -27,10 +27,35 @@ namespace px3::ui
 // The layout answers that by filling columns before it scrolls: the plugin has
 // horizontal space, and a single tall column that scrolls at four assignments
 // wastes it.
+// How a depth row's slider is drawn.
+//
+// Its own look rather than JUCE's default, for the same reason every other
+// control in this synth has one: a stock LinearHorizontal reads as a dialog
+// widget dropped into an instrument. A flat track, a filled portion from the
+// centre, and a round cap - all of it from UIConfig under "macroDepth.colors".
+//
+// Filled from the CENTRE, not from the left, because depth is bipolar: a route
+// at -60% and one at +60% should look like mirror images rather than like one
+// being nearly empty and the other nearly full.
+class MacroDepthSliderLook final : public juce::LookAndFeel_V4
+{
+public:
+    void drawLinearSlider(juce::Graphics& g, int x, int y, int width, int height,
+                          float sliderPos, float minSliderPos, float maxSliderPos,
+                          juce::Slider::SliderStyle style, juce::Slider& slider) override;
+
+    juce::Colour track { juce::Colour::fromRGBA(255, 255, 255, 38) };
+    juce::Colour fill { juce::Colour::fromRGB(90, 220, 200) };
+    juce::Colour thumb { juce::Colour::fromRGB(220, 250, 244) };
+    float trackThickness { 3.0f };
+    float thumbRadius { 5.0f };
+};
+
 class MacroDepthPanel final : public juce::Component
 {
 public:
     explicit MacroDepthPanel(PX3SynthAudioProcessor& processorIn);
+    ~MacroDepthPanel() override;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -57,6 +82,10 @@ public:
     // transient state - so it asks.
     std::function<void()> onCloseRequested;
 
+    // Where the macro knob is, in this panel's own coordinates, so the pointer
+    // on the left edge aims at it. Set by the editor when the panel is placed.
+    void setPointerTargetY(int yInPanelCoordinates);
+
     //---- for the tests ----------------------------------------------------
     juce::String debugHeaderText() const { return header.getText(); }
     int debugRowCount() const { return static_cast<int>(rows.size()); }
@@ -66,6 +95,13 @@ public:
     juce::Slider* debugDepthSliderFor(const juce::String& parameterId);
     juce::Label* debugValueLabelFor(const juce::String& parameterId);
     juce::TextButton& debugCloseButton() { return closeButton; }
+    int debugPointerTargetY() const { return pointerTargetY; }
+    juce::String debugEmptyNotice() const { return emptyNotice; }
+    juce::LookAndFeel* debugSliderLookAndFeel(const juce::String& parameterId)
+    {
+        auto* slider = debugDepthSliderFor(parameterId);
+        return slider != nullptr ? &slider->getLookAndFeel() : nullptr;
+    }
 
 private:
     // One route: the parameter it drives, and the control for its depth.
@@ -78,6 +114,8 @@ private:
     };
 
     int rowHeight() const;
+    int pointerWidth() const;
+    void applyStyleFromConfig();
     int columnWidth() const;
     int rowAreaHeight() const;
     int columnsForRows(int rowCount, int width, int height) const;
@@ -88,10 +126,14 @@ private:
     PX3SynthAudioProcessor& processor;
     std::shared_ptr<const UIConfig> uiConfig;
     juce::Colour accent { juce::Colour::fromRGB(90, 220, 200) };
+    MacroDepthSliderLook sliderLook;
+    int pointerTargetY { -1 };
     int macroIndex { -1 };
 
     juce::Label header;
-    juce::Label emptyNotice;
+    // Painted rather than a Label: a Label does not wrap, and this sentence is
+    // longer than a narrow panel is wide.
+    juce::String emptyNotice;
     juce::TextButton closeButton { "Close" };
 
     // The rows live inside a viewport so that a macro with more destinations
