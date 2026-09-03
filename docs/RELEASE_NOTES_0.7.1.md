@@ -1,4 +1,4 @@
-# PX3 v0.7.0
+# PX3 v0.7.1
 
 In progress.
 
@@ -8,6 +8,9 @@ copies of them, and the tree, the build, the installer and the uninstaller all
 read one product table so that adding the ninth is a single declaration. On the
 synth itself: separate Dry and FX outputs, per-route Macro depth, in-plugin
 update checking, and MIDI CC that reaches the DSP in the block it arrives in.
+Behind all of it, the project now has continuous integration and a release
+pipeline, so a version is still something a person decides on and no longer
+something a person has to build.
 
 ---
 
@@ -150,7 +153,7 @@ update checking, and MIDI CC that reaches the DSP in the block it arrives in.
   thread crosses is `processFxBlock`, called **once per block** — the
   per-sample loop stays in the product where `processSampleFrame` inlines. What
   is left of a card-shaped product is the rows it declares: PX3 Chorus's editor
-  is 35 lines.
+  is 37 lines.
 
   Effects ship as AU and VST3 only. An effect has no reason to have a
   standalone application, and `hasStandalone` in the product registry says so
@@ -201,6 +204,57 @@ update checking, and MIDI CC that reaches the DSP in the block it arrives in.
   candidate — five per product, forty full package enumerations to remove
   eight — which is slow enough to look like a hang.
 
+## New: continuous integration and a release pipeline
+
+- **Every push and pull request is now built and tested by GitHub Actions**,
+  and a published GitHub Release is built from its own tag and has the
+  artifacts attached to it. Neither workflow ever creates a release: deciding
+  that a version should exist stays a deliberate act, and the release notes are
+  written by hand — this one included.
+
+  CI runs static checks on Linux in about thirty seconds (every shell script
+  parsed, shellcheck, the release version helper exercised, the product
+  manifest generated), then the real work on `macos-14`. `macos-13` would be
+  wrong: it is x86_64, and PX3 is Apple Silicon only. That job builds all eight
+  products in the shipping configuration, fails on any warning from PX3's own
+  sources, and runs the whole existing estate — `PX3Tests`, `PX3Diag regress`,
+  `PX3Diag rtsafety`, `PX3SmokeTest` — before checking that all 17 plug-in
+  bundles carry an arm64 executable. A bundle skeleton with no binary in it is
+  a failure mode this project has actually hit.
+
+- **The release build verifies the version rather than injecting it.** That
+  direction is the whole point. `PX3_VERSION` is a plain `set()`, not a cache
+  entry, so **`-DPX3_VERSION=` is silently ignored** — confirmed in an isolated
+  project, where `-DPX3_VERSION=9.9.9` still yielded the value written in the
+  file. A pipeline that injected the tag's version would ship binaries reporting
+  the old one inside files named after the new one, and nothing anywhere would
+  say so.
+
+  So `CMakeLists.txt` stays the single source of truth and the release stops in
+  about twenty seconds if the tag disagrees with it. A tag is also split, because
+  CMake's SemVer regex rejects prerelease suffixes: `v0.7.1-beta.1` builds as
+  `0.7.1` and is named `0.7.1-beta.1`. The tag's suffix is cross-checked against
+  GitHub's prerelease checkbox, so a beta published as a stable release is
+  caught before any asset exists.
+
+- **The release pipeline can be rehearsed without releasing anything.** A
+  `workflow_dispatch` mode builds any ref, packages it, and hands back workflow
+  artifacts while touching no release — so the whole chain can be proven before
+  a real version depends on it, with no throwaway tag to clean up afterwards
+  and no chance of a fake version reaching the release list or the updater.
+
+- **Signing is wired but not yet enabled.** `build-release.sh` already supported
+  it, so CI passes credentials through rather than reimplementing anything. With
+  no secrets configured a release builds **unsigned and says so** — in a
+  warning, in the job summary, and on the release run's summary. Nothing
+  pretends otherwise. `docs/CI_CD.md` lists the secrets required to turn it on.
+
+- Windows is scaffolded and skipped. There is no Windows support to build:
+  every product declares AU, the build scripts pin `CMAKE_OSX_ARCHITECTURES`,
+  packaging is `pkgbuild` plus an AppleScript uninstaller, and the updater
+  installs a `.pkg`. The job exists so that enabling it later is configuration
+  plus a real port, rather than writing CI from scratch.
+
 ## Fixed: the build's own tooling
 
 - **The warning policy reached one target in nine.** It was a loop over four
@@ -222,6 +276,33 @@ update checking, and MIDI CC that reaches the DSP in the block it arrives in.
   passed just as well if a hold stage existed and were broken. The absence of a
   hold stage is now asserted against the type, which fails the moment
   `EnvelopeSettings` grows one.
+
+- **The warning policy was not portable, and had been checked wrong.** Two of
+  its suppressions — `-Wno-nontrivial-memcall` and
+  `-Wno-unnecessary-virtual-specifier` — postdate the clang that ships with the
+  CI runner's Xcode. An unknown `-Wno-…` is not ignored: clang answers with
+  `-Wunknown-warning-option` **once per translation unit**, and that warning
+  carries no file path, so it survives any filter written in terms of paths and
+  reads exactly like a warning in our own code. A policy meant to keep the
+  build quiet became the thing making the noise. Each suppression is now probed
+  with `check_cxx_compiler_flag` and added only where the compiler knows it,
+  which costs nothing: a compiler that has never heard of
+  `-Wnontrivial-memcall` will not emit it either.
+
+  And the claim that this project built warning-clean was **wrong when it was
+  made.** It had been checked with an incremental build against an
+  already-built tree, so nothing recompiled and nothing warned. A genuine build
+  from scratch had **23 warnings** — 16 in tests, 4 in tools, 3 in products —
+  which CI, having no stale tree to hide behind, found on its first run.
+
+  All 23 are fixed, each site read rather than blind-cast. One was not a style
+  nit: `noteOffWorstSample` was an `int` assigned `globalSampleBase + n`, where
+  `globalSampleBase` is a running `long long` sample counter — so it truncated
+  after about 12 hours of continuous rendering at 48 kHz. The sibling field
+  recording the same quantity, `worstTransientSample`, was already `long long`.
+  Widened to match. Casting would have silenced the warning and kept the
+  truncation. The rest are explicit casts at narrowing conversions that were
+  already happening implicitly.
 
 - **`build-product.sh` with no format built nothing loadable.** `juce_add_plugin`
   makes the bare target the shared-code static library, so it compiled every
@@ -298,20 +379,50 @@ depend on a product.** Nothing enforces that at compile time, because a
 `#include` reaching the wrong way still builds; the test is what makes it a
 rule rather than an intention.
 
+The release pipeline is tested by the parts of it that can be tested without a
+release. `scripts/ci/release-version.sh` is exercised against matching,
+mismatched and malformed tags on every CI run, because it is the one piece of
+release logic that decides whether binaries and filenames agree. Four bugs in
+the workflows were found by running them rather than reading them — among them
+an empty-array expansion that aborts under `set -u` in the bash 3.2 macOS
+runners use, which would have broken the *unsigned* path, the first release
+anyone runs.
+
 **1342 component tests pass, 0 fail.** `PX3Diag regress` reports 0 failures and
 `PX3Diag rtsafety` 0 allocations per block, including blocks carrying MIDI,
 which is where the new audio-thread work sits. The factory-default smoke test
-is audible at every sample rate and block size it tries. The full build compiles
-with no warnings from our own sources — which is the point of the policy fix
-above, and now something a regression would be visible against rather than lost
-in ~180 lines of third-party noise.
+is audible at every sample rate and block size it tries.
+
+**All measured against a build from scratch**, which is the correction this
+release had to make: the equivalent claim earlier in the cycle came from an
+incremental build over an already-compiled tree, where nothing recompiles and
+so nothing warns. A clean 1,489-target build now reports no warnings from PX3's
+own sources — worth something only because the number was verified the way CI
+verifies it.
 
 ---
 
 ## Known limitations
 
 - **Apple Silicon only.** arm64; no Intel or universal build.
-- **No CI.** Everything is measured on one machine.
+- **Releases are not signed yet.** The pipeline supports it and the build always
+  did; the credentials are not configured. Until they are, an artifact installs
+  on the machine that built it and Gatekeeper refuses it everywhere else, so a
+  release built today is not one to hand to anyone. The workflow says so rather
+  than implying otherwise. `docs/CI_CD.md` lists what turning it on needs.
+- **Benchmarks run in CI but do not gate it.** `PX3MemBench` can only fail
+  against a saved baseline and none is committed, and a shared runner's CPU
+  numbers are not comparable with a developer's Mac — a failure there would
+  mean "the runner was busy", not "the synth got slower". The numbers are
+  published on every `main` build; committing a baseline measured *on a runner*
+  is what would make gating possible.
+- **CI validates the plug-in bundles, not the plug-ins.** It checks that every
+  bundle carries an arm64 executable, which catches the skeleton-with-no-binary
+  failure. It does not run `auval`, which needs the component installed in a
+  system folder and drives macOS's own registrar — on an ephemeral runner that
+  validates a copy no user will ever have. There is no `pluginval` here yet;
+  adding one is the obvious next step and is not a CI change alone.
+- **Windows remains unsupported.** See above: the job is scaffolded and skipped.
 - **MIDI CC is block-accurate, not sample-accurate.** `processBlock` samples
   its parameters once, before rendering, so one block is the floor. True
   sample accuracy would mean splitting the render at CC timestamps — a rewrite
