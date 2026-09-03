@@ -1286,6 +1286,42 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getMacroParam(int macroIndex)
     return *macroParams[static_cast<std::size_t>(juce::jlimit(0, kMacroCount - 1, macroIndex))];
 }
 
+bool PX3SynthAudioProcessor::setMacroDestinationDepth(int macroIndex,
+                                                      const juce::String& parameterId,
+                                                      float depth)
+{
+    if (! juce::isPositiveAndBelow(macroIndex, kMacroCount)) { return false; }
+
+    auto& list = macroDestinations[static_cast<std::size_t>(macroIndex)];
+    const auto entry = std::find_if(list.begin(), list.end(),
+                                    [&parameterId](const MacroDestination& destination)
+                                    { return destination.parameterId == parameterId; });
+
+    if (entry == list.end()) { return false; }
+
+    entry->depth = juce::jlimit(-1.0f, 1.0f, depth);
+
+    // The audio thread reads the resolved table, not this list, so the edit is
+    // not audible until the table is rebuilt. Rebuilding here rather than
+    // leaving it to the caller is what stops a depth that shows on screen and
+    // is not in the sound.
+    rebuildMacroRoutes();
+    return true;
+}
+
+float PX3SynthAudioProcessor::getMacroDestinationDepth(int macroIndex,
+                                                       const juce::String& parameterId) const
+{
+    if (! juce::isPositiveAndBelow(macroIndex, kMacroCount)) { return 0.0f; }
+
+    const auto& list = macroDestinations[static_cast<std::size_t>(macroIndex)];
+    const auto entry = std::find_if(list.begin(), list.end(),
+                                    [&parameterId](const MacroDestination& destination)
+                                    { return destination.parameterId == parameterId; });
+
+    return entry != list.end() ? entry->depth : 0.0f;
+}
+
 bool PX3SynthAudioProcessor::isMacroDestination(int macroIndex,
                                                 const juce::String& parameterId) const
 {
@@ -1326,10 +1362,10 @@ bool PX3SynthAudioProcessor::toggleMacroDestination(int macroIndex,
     }
     else
     {
-        // Full depth, positive. There is no depth editor in this version; the
-        // field exists so that adding one later changes the UI and not the
-        // stored format.
-        list.push_back({ parameterId, 1.0f });
+        // Full depth, positive, which is what a macro did before there was a
+        // depth editor. New assignments therefore sound exactly as they always
+        // did, and only a deliberate edit changes that.
+        list.push_back({ parameterId, kMacroDepthDefault });
         assigned = true;
     }
 

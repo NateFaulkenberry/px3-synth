@@ -231,6 +231,21 @@ public:
     std::vector<MacroDestination> getMacroDestinations(int macroIndex) const;
     void clearMacroDestinations(int macroIndex);
 
+    // How much of the macro's travel this ONE route delivers. A route is
+    // addressed by the pair, not by either half: the same parameter driven by
+    // two macros has two depths, and one macro's several destinations each
+    // have their own. Returns false if there is no such route.
+    //
+    // Range is -1..+1. Negative inverts, which the accumulator has always
+    // supported - it picks the headroom on the side the depth points at - and
+    // which the panel exposes as a signed percentage.
+    bool setMacroDestinationDepth(int macroIndex, const juce::String& parameterId, float depth);
+    // The depth of one route, or 0 if it does not exist. Callers that need to
+    // tell "no route" from "a route at zero" should ask isMacroDestination.
+    float getMacroDestinationDepth(int macroIndex, const juce::String& parameterId) const;
+
+    static constexpr float kMacroDepthDefault = 1.0f;
+
     // Which macros drive this parameter, as a bitmask of (1 << macroIndex).
     // Cheap enough for the editor to ask once per knob per refresh.
     int getMacroMaskForParameter(const juce::String& parameterId) const;

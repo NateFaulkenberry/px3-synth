@@ -2748,6 +2748,290 @@ void testMacroSystem()
                   + ", B's at " + fmt(b.getMacroParam(0).get(), 2) + " driving "
                   + juce::String(static_cast<int>(b.getMacroDestinations(0).size())));
     }
+
+    // ========================================================================
+    // Per-route depth
+    // ========================================================================
+    //
+    // A depth belongs to a macro-and-parameter PAIR, not to either half. The
+    // routing is many-to-many - one macro drives several parameters, one
+    // parameter is driven by several macros - so a depth stored on the macro
+    // or on the parameter would be shared by routes that have nothing to do
+    // with each other.
+    //
+    // The field, the serialised property and the accumulator's use of it all
+    // predate the editor for it. That makes the interesting question not "does
+    // the model hold a number" but "does the SOUND follow it", which is what
+    // the DSP tests below are for.
+
+    const auto preparedForDepth = [](PX3SynthAudioProcessor& processor)
+    {
+        processor.setPlayConfigDetails(0, 2, 48000.0, 256);
+        processor.prepareToPlay(48000.0, 256);
+    };
+
+    // ---- a new assignment is full depth, as it always was -------------------
+    {
+        PX3SynthAudioProcessor processor;
+        preparedForDepth(processor);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        const auto cutoffId = cutoff.getParameterID();
+        processor.toggleMacroDestination(0, cutoffId);
+
+        check("MacroDepth_ANewAssignmentIsFullDepth",
+              std::abs(processor.getMacroDestinationDepth(0, cutoffId) - 1.0f) < 1.0e-6f,
+              "a freshly assigned route reads "
+                  + fmt(processor.getMacroDestinationDepth(0, cutoffId), 3)
+                  + ", so a patch made before the depth editor existed sounds the same");
+    }
+
+    // ---- one macro's routes hold separate depths ----------------------------
+    {
+        PX3SynthAudioProcessor processor;
+        preparedForDepth(processor);
+
+        const auto cutoffId = processor.getFilterCutoffParam(0).getParameterID();
+        const auto resonanceId = processor.getFilterResonanceParam(0).getParameterID();
+
+        processor.toggleMacroDestination(0, cutoffId);
+        processor.toggleMacroDestination(0, resonanceId);
+        processor.setMacroDestinationDepth(0, cutoffId, 0.75f);
+        processor.setMacroDestinationDepth(0, resonanceId, 0.30f);
+
+        check("MacroDepth_EachRouteFromOneMacroHasItsOwn",
+              std::abs(processor.getMacroDestinationDepth(0, cutoffId) - 0.75f) < 1.0e-6f
+                  && std::abs(processor.getMacroDestinationDepth(0, resonanceId) - 0.30f) < 1.0e-6f,
+              "macro 1 drives cutoff at "
+                  + fmt(processor.getMacroDestinationDepth(0, cutoffId), 2) + " and resonance at "
+                  + fmt(processor.getMacroDestinationDepth(0, resonanceId), 2));
+    }
+
+    // ---- and two macros on ONE parameter do not share one ------------------
+    {
+        PX3SynthAudioProcessor processor;
+        preparedForDepth(processor);
+
+        const auto cutoffId = processor.getFilterCutoffParam(0).getParameterID();
+        processor.toggleMacroDestination(0, cutoffId);
+        processor.toggleMacroDestination(1, cutoffId);
+
+        processor.setMacroDestinationDepth(0, cutoffId, 0.75f);
+        processor.setMacroDestinationDepth(1, cutoffId, 0.40f);
+
+        // Moving one must leave the other exactly where it was.
+        processor.setMacroDestinationDepth(0, cutoffId, 0.10f);
+
+        check("MacroDepth_TwoMacrosOnOneParameterKeepTheirOwn",
+              std::abs(processor.getMacroDestinationDepth(0, cutoffId) - 0.10f) < 1.0e-6f
+                  && std::abs(processor.getMacroDestinationDepth(1, cutoffId) - 0.40f) < 1.0e-6f,
+              "after moving macro 1's route to "
+                  + fmt(processor.getMacroDestinationDepth(0, cutoffId), 2)
+                  + ", macro 2's route to the same parameter is still "
+                  + fmt(processor.getMacroDestinationDepth(1, cutoffId), 2));
+    }
+
+    // ---- the DSP scales its contribution by the route's depth ---------------
+    //
+    // The accumulator has read this field since macros existed, but nothing
+    // could ever set it to anything but 1, so "the DSP honours depth" was
+    // untested by construction. It is measured here through the same accessor
+    // the knob's modulation ring reads.
+    //
+    // The arithmetic is exact rather than approximate: a positive depth gets
+    // the whole of the room above the base, so at base b, signal s and depth d
+    // the effective value is b + d*(1-b)*s. Half the depth is therefore half
+    // the distance travelled, and that is checked as a number rather than as
+    // "it moved less".
+    {
+        PX3SynthAudioProcessor processor;
+        preparedForDepth(processor);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        const auto cutoffId = cutoff.getParameterID();
+        auto& parameter = static_cast<juce::RangedAudioParameter&>(cutoff);
+
+        parameter.setValueNotifyingHost(0.20f);
+        processor.toggleMacroDestination(0, cutoffId);
+        processor.getMacroParam(0).setValueNotifyingHost(1.0f);
+
+        const auto base = parameter.getValue();
+
+        processor.setMacroDestinationDepth(0, cutoffId, 1.0f);
+        const auto atFull = processor.getModulatedNormalisedValue(cutoff);
+
+        processor.setMacroDestinationDepth(0, cutoffId, 0.5f);
+        const auto atHalf = processor.getModulatedNormalisedValue(cutoff);
+
+        processor.setMacroDestinationDepth(0, cutoffId, 0.0f);
+        const auto atZero = processor.getModulatedNormalisedValue(cutoff);
+
+        const auto fullTravel = atFull - base;
+        const auto halfTravel = atHalf - base;
+
+        check("MacroDepth_TheDspScalesItsContributionByTheRouteDepth",
+              fullTravel > 0.5f
+                  && std::abs(halfTravel - fullTravel * 0.5f) < 1.0e-4f
+                  && std::abs(atZero - base) < 1.0e-6f,
+              "from base " + fmt(base, 3) + ": full depth travels " + fmt(fullTravel, 4)
+                  + ", half depth " + fmt(halfTravel, 4) + " (half of full is "
+                  + fmt(fullTravel * 0.5f, 4) + "), zero depth " + fmt(atZero - base, 6));
+    }
+
+    // ---- several routes from one macro, each scaled its own way -------------
+    //
+    // The case the brief describes: one macro moving three parameters by
+    // different amounts. A single global depth applied to every destination
+    // would pass every test above and fail this one.
+    {
+        PX3SynthAudioProcessor processor;
+        preparedForDepth(processor);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        auto& resonance = processor.getFilterResonanceParam(0);
+        auto& reverbMix = processor.getReverbAmountParam();
+
+        struct Route { juce::RangedAudioParameter& parameter; float depth; float travel; };
+        std::array<Route, 3> routes { { { cutoff, 1.00f, 0.0f },
+                                        { resonance, 0.25f, 0.0f },
+                                        { reverbMix, 0.10f, 0.0f } } };
+
+        for (auto& route : routes)
+        {
+            route.parameter.setValueNotifyingHost(0.0f);
+            processor.toggleMacroDestination(0, route.parameter.getParameterID());
+            processor.setMacroDestinationDepth(0, route.parameter.getParameterID(), route.depth);
+        }
+        processor.getMacroParam(0).setValueNotifyingHost(1.0f);
+
+        juce::StringArray detail;
+        auto allCorrect = true;
+        for (auto& route : routes)
+        {
+            const auto base = route.parameter.getValue();
+            route.travel = processor.getModulatedNormalisedValue(route.parameter) - base;
+            // base 0, positive depth: travel is exactly depth * (1 - 0) * 1.
+            if (std::abs(route.travel - route.depth) > 1.0e-4f) { allCorrect = false; }
+            detail.add(route.parameter.getParameterID() + " depth " + fmt(route.depth, 2)
+                       + " -> travel " + fmt(route.travel, 4));
+        }
+
+        check("MacroDepth_OneMacroMovesEachDestinationByItsOwnDepth",
+              allCorrect,
+              detail.joinIntoString(", "));
+    }
+
+    // ---- a negative depth inverts rather than doing nothing -----------------
+    {
+        PX3SynthAudioProcessor processor;
+        preparedForDepth(processor);
+
+        auto& cutoff = processor.getFilterCutoffParam(0);
+        auto& parameter = static_cast<juce::RangedAudioParameter&>(cutoff);
+        parameter.setValueNotifyingHost(0.60f);
+
+        processor.toggleMacroDestination(0, cutoff.getParameterID());
+        processor.getMacroParam(0).setValueNotifyingHost(1.0f);
+        processor.setMacroDestinationDepth(0, cutoff.getParameterID(), -0.5f);
+
+        const auto base = parameter.getValue();
+        const auto effective = processor.getModulatedNormalisedValue(cutoff);
+
+        // Negative depth takes the room BELOW the base: base - 0.5 * base.
+        check("MacroDepth_ANegativeDepthInverts",
+              effective < base && std::abs(effective - (base - 0.5f * base)) < 1.0e-4f,
+              "from base " + fmt(base, 3) + " a depth of -0.50 reached " + fmt(effective, 4)
+                  + ", expected " + fmt(base - 0.5f * base, 4));
+    }
+
+    // ---- depths survive a save and a reload ---------------------------------
+    {
+        PX3SynthAudioProcessor source;
+        preparedForDepth(source);
+
+        const auto cutoffId = source.getFilterCutoffParam(0).getParameterID();
+        const auto resonanceId = source.getFilterResonanceParam(0).getParameterID();
+
+        source.toggleMacroDestination(0, cutoffId);
+        source.toggleMacroDestination(0, resonanceId);
+        source.toggleMacroDestination(1, cutoffId);
+        source.setMacroDestinationDepth(0, cutoffId, 0.75f);
+        source.setMacroDestinationDepth(0, resonanceId, 0.30f);
+        source.setMacroDestinationDepth(1, cutoffId, -0.40f);
+
+        juce::MemoryBlock state;
+        source.getStateInformation(state);
+
+        PX3SynthAudioProcessor reopened;
+        preparedForDepth(reopened);
+        reopened.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        check("MacroDepth_SurvivesASaveAndReload",
+              std::abs(reopened.getMacroDestinationDepth(0, cutoffId) - 0.75f) < 1.0e-4f
+                  && std::abs(reopened.getMacroDestinationDepth(0, resonanceId) - 0.30f) < 1.0e-4f
+                  && std::abs(reopened.getMacroDestinationDepth(1, cutoffId) + 0.40f) < 1.0e-4f,
+              "reloaded macro 1 -> cutoff "
+                  + fmt(reopened.getMacroDestinationDepth(0, cutoffId), 3) + ", macro 1 -> resonance "
+                  + fmt(reopened.getMacroDestinationDepth(0, resonanceId), 3) + ", macro 2 -> cutoff "
+                  + fmt(reopened.getMacroDestinationDepth(1, cutoffId), 3));
+    }
+
+    // ---- a state written before depths were editable loads at full ----------
+    //
+    // Every macro route in an existing preset was written at 1.0, so this is
+    // really asking whether a route with NO depth property still arrives at
+    // full - which is what a state from an older build would look like if the
+    // property had not been written at all.
+    {
+        PX3SynthAudioProcessor source;
+        preparedForDepth(source);
+        const auto cutoffId = source.getFilterCutoffParam(0).getParameterID();
+        source.toggleMacroDestination(0, cutoffId);
+
+        juce::MemoryBlock block;
+        source.getStateInformation(block);
+
+        // State travels as XML inside JUCE's binary wrapper, so the property is
+        // removed from the XML rather than from a ValueTree read of the bytes.
+        auto stripped = 0;
+        std::unique_ptr<juce::XmlElement> xml(
+            juce::AudioProcessor::getXmlFromBinary(block.getData(),
+                                                   static_cast<int>(block.getSize())));
+
+        if (xml != nullptr)
+        {
+            if (auto* routes = xml->getChildByName(px3::processor_internal::kMacroRoutesId.toString()))
+            {
+                for (auto* node : routes->getChildIterator())
+                {
+                    for (auto* dest : node->getChildIterator())
+                    {
+                        const auto attribute
+                            = px3::processor_internal::kMacroDestDepthId.toString();
+                        if (dest->hasAttribute(attribute))
+                        {
+                            dest->removeAttribute(attribute);
+                            ++stripped;
+                        }
+                    }
+                }
+            }
+        }
+
+        juce::MemoryBlock stripped_block;
+        if (xml != nullptr) { juce::AudioProcessor::copyXmlToBinary(*xml, stripped_block); }
+
+        PX3SynthAudioProcessor reopened;
+        preparedForDepth(reopened);
+        reopened.setStateInformation(stripped_block.getData(),
+                                     static_cast<int>(stripped_block.getSize()));
+
+        check("MacroDepth_ARouteWithNoStoredDepthLoadsAtFull",
+              stripped == 1 && reopened.isMacroDestination(0, cutoffId)
+                  && std::abs(reopened.getMacroDestinationDepth(0, cutoffId) - 1.0f) < 1.0e-6f,
+              juce::String(stripped) + " depth property removed; the route reloaded at "
+                  + fmt(reopened.getMacroDestinationDepth(0, cutoffId), 3));
+    }
 }
 
 // MIDI parameter mapping. See docs/midi-mapping-design.md.
