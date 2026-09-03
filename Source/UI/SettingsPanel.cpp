@@ -2,6 +2,7 @@
 
 #include "../DSP/AnalogEngine.h"
 #include "UIConfig.h"
+#include "../Core/PX3Version.h"
 
 namespace
 {
@@ -84,6 +85,37 @@ SettingsPanel::SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour p
            "Console color applied to the whole output",
            analogProfileBox);
 
+    // ---- updates -----------------------------------------------------------
+    //
+    // Its own block rather than a settings row: a row is a caption and one
+    // control, and this is a heading, a version, a status, release notes, a
+    // progress bar and a button whose meaning changes with the state.
+    px3::update::installDefaultConfiguration();
+
+    updatesHeading.setText("UPDATES", juce::dontSendNotification);
+    updatesHeading.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(updatesHeading);
+
+    // The version comes from the build, never from a string kept here. One
+    // source of truth, shared with the comparison, the installer and the logs.
+    versionLabel.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(versionLabel);
+
+    updateStatus.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(updateStatus);
+
+    releaseNotes.setJustificationType(juce::Justification::topLeft);
+    addChildComponent(releaseNotes);
+
+    downloadBar.setPercentageDisplay(true);
+    addChildComponent(downloadBar);
+
+    updateButton.onClick = [this] { onUpdateButtonClicked(); };
+    addAndMakeVisible(updateButton);
+
+    px3::update::UpdateService::getInstance().addChangeListener(this);
+    refreshUpdateSection();
+
     closeButton.setButtonText("CLOSE");
     closeButton.onClick = [this]
     {
@@ -98,10 +130,22 @@ SettingsPanel::SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour p
 SettingsPanel::~SettingsPanel()
 {
     px3::GlobalSettings::getInstance().removeChangeListener(this);
+    // The service outlives every editor, so a listener left registered here is
+    // a call into freed memory the next time an update check finishes.
+    px3::update::UpdateService::getInstance().removeChangeListener(this);
 }
 
-void SettingsPanel::changeListenerCallback(juce::ChangeBroadcaster*)
+void SettingsPanel::changeListenerCallback(juce::ChangeBroadcaster* source)
 {
+    // Two broadcasters reach this now: the global animation preference, and
+    // the update service. They are told apart rather than both triggering a
+    // full refresh, because the update section repaints and re-lays out.
+    if (source == &px3::update::UpdateService::getInstance())
+    {
+        refreshUpdateSection();
+        return;
+    }
+
     refreshFromParameters();
 }
 
@@ -160,6 +204,148 @@ void SettingsPanel::refreshFromParameters()
 
     const auto profile = processor.getAnalogProfileParam().getIndex();
     analogProfileBox.setSelectedId(profile + 1, juce::dontSendNotification);
+}
+
+void SettingsPanel::refreshUpdateSection()
+{
+    using namespace px3::update;
+
+    auto& service = UpdateService::getInstance();
+    const auto state = service.getState();
+    const auto product = service.getProduct();
+    const auto release = service.getAvailableRelease();
+
+    versionLabel.setText(
+        (product.displayName.isNotEmpty() ? product.displayName : juce::String("PX3 Synth"))
+            + "    Version " + px3::version::string(),
+        juce::dontSendNotification);
+
+    // One switch over the service's state, so this section cannot show
+    // something the service is not doing. The button's meaning changes with
+    // the state rather than there being four buttons that are mostly hidden.
+    switch (state)
+    {
+        case UpdateState::checking:
+            updateStatus.setText("Checking for updates...", juce::dontSendNotification);
+            updateButton.setButtonText("Check for Updates");
+            updateButton.setEnabled(false);
+            break;
+
+        case UpdateState::upToDate:
+            updateStatus.setText("You're up to date", juce::dontSendNotification);
+            updateButton.setButtonText("Check for Updates");
+            updateButton.setEnabled(true);
+            break;
+
+        case UpdateState::updateAvailable:
+            updateStatus.setText("PX3 Synth " + release.version.toString() + " is available",
+                                 juce::dontSendNotification);
+            updateButton.setButtonText("Prepare Update");
+            updateButton.setEnabled(true);
+            break;
+
+        case UpdateState::downloading:
+            updateStatus.setText("Downloading PX3 Synth " + release.version.toString(),
+                                 juce::dontSendNotification);
+            updateButton.setButtonText("Cancel");
+            updateButton.setEnabled(true);
+            break;
+
+        case UpdateState::verifying:
+            updateStatus.setText("Verifying download...", juce::dontSendNotification);
+            updateButton.setButtonText("Cancel");
+            updateButton.setEnabled(true);
+            break;
+
+        case UpdateState::readyToInstall:
+            // The whole point of preparing: the user is told to carry on
+            // working, not to close their DAW and go looking for an installer.
+            updateStatus.setText("PX3 Synth " + release.version.toString()
+                                     + " is ready. Quit your DAW when you're finished and "
+                                       "PX3 will finish the update.",
+                                 juce::dontSendNotification);
+            updateButton.setButtonText("Install Now");
+            updateButton.setEnabled(true);
+            break;
+
+        case UpdateState::installing:
+            updateStatus.setText("Installing...", juce::dontSendNotification);
+            updateButton.setEnabled(false);
+            break;
+
+        case UpdateState::updated:
+            updateStatus.setText("Updated. Restart your host to load the new version.",
+                                 juce::dontSendNotification);
+            updateButton.setButtonText("Check for Updates");
+            updateButton.setEnabled(true);
+            break;
+
+        case UpdateState::failed:
+            // The sentence the service wrote for a person. The HTTP status and
+            // the file path are in the log, which is where they are useful and
+            // where they cannot alarm somebody who wanted a new version.
+            updateStatus.setText(service.getErrorMessage(), juce::dontSendNotification);
+            updateButton.setButtonText("Try Again");
+            updateButton.setEnabled(true);
+            break;
+
+        case UpdateState::notConfigured:
+            updateStatus.setText("Updates are not available in this build.",
+                                 juce::dontSendNotification);
+            updateButton.setButtonText("Check for Updates");
+            updateButton.setEnabled(false);
+            break;
+
+        case UpdateState::idle:
+        default:
+            updateStatus.setText({}, juce::dontSendNotification);
+            updateButton.setButtonText("Check for Updates");
+            updateButton.setEnabled(true);
+            break;
+    }
+
+    const auto showNotes = state == UpdateState::updateAvailable
+                        && release.releaseNotes.isNotEmpty();
+    releaseNotes.setText(showNotes ? release.releaseNotes.substring(0, 400) : juce::String(),
+                         juce::dontSendNotification);
+    releaseNotes.setVisible(showNotes);
+
+    const auto downloading = state == UpdateState::downloading;
+    downloadProgress = downloading ? static_cast<double>(service.getProgress()) : 0.0;
+    downloadBar.setVisible(downloading);
+
+    resized();
+    repaint();
+}
+
+void SettingsPanel::onUpdateButtonClicked()
+{
+    using namespace px3::update;
+
+    auto& service = UpdateService::getInstance();
+
+    switch (service.getState())
+    {
+        case UpdateState::updateAvailable:
+            service.prepareUpdate();
+            break;
+
+        case UpdateState::downloading:
+        case UpdateState::verifying:
+            service.cancel();
+            break;
+
+        case UpdateState::readyToInstall:
+            // Hands the staged installer to the helper application, which is
+            // what waits for the host to quit. Nothing destructive happens in
+            // this process - it is a plugin inside somebody's DAW.
+            service.launchInstaller();
+            break;
+
+        default:
+            service.checkForUpdates(true);
+            break;
+    }
 }
 
 void SettingsPanel::paint(juce::Graphics& g)
@@ -254,5 +440,39 @@ void SettingsPanel::resized()
 
         layoutRow(*row, area.removeFromTop(juce::jmin(rowHeight, area.getHeight())));
         area.removeFromTop(rowGap);
+    }
+
+    // ---- the updates block --------------------------------------------------
+    //
+    // Under the settings rows, in what is left. Laid out top-down and each
+    // piece taking only what it needs, so a state that has no release notes or
+    // no progress bar simply leaves that space to whatever is below it.
+    if (area.getHeight() > 0)
+    {
+        const auto lineHeight = intFrom(uiConfig.get(), "settings.layout.updateLineHeight", 20);
+        const auto headingHeight = intFrom(uiConfig.get(), "settings.layout.updateHeadingHeight", 22);
+        const auto buttonWidth = intFrom(uiConfig.get(), "settings.layout.updateButtonWidth", 150);
+        const auto buttonHeight = intFrom(uiConfig.get(), "settings.layout.updateButtonHeight", 26);
+
+        area.removeFromTop(rowGap);
+        updatesHeading.setBounds(area.removeFromTop(juce::jmin(headingHeight, area.getHeight())));
+        versionLabel.setBounds(area.removeFromTop(juce::jmin(lineHeight, area.getHeight())));
+        updateStatus.setBounds(area.removeFromTop(juce::jmin(lineHeight, area.getHeight())));
+
+        if (releaseNotes.isVisible())
+        {
+            releaseNotes.setBounds(area.removeFromTop(juce::jmin(lineHeight * 3, area.getHeight())));
+        }
+
+        if (downloadBar.isVisible())
+        {
+            area.removeFromTop(4);
+            downloadBar.setBounds(area.removeFromTop(juce::jmin(14, area.getHeight()))
+                                      .removeFromLeft(juce::jmin(320, area.getWidth())));
+        }
+
+        area.removeFromTop(8);
+        updateButton.setBounds(area.removeFromTop(juce::jmin(buttonHeight, area.getHeight()))
+                                   .removeFromLeft(juce::jmin(buttonWidth, area.getWidth())));
     }
 }

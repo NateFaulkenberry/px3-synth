@@ -655,6 +655,29 @@ if [[ -n "${APP_BUNDLE}" ]]; then
   echo "  APP:  ${APP_BUNDLE}"
 fi
 
+# The update helper goes INSIDE the standalone, before anything is signed.
+#
+# Nested here rather than shipped as its own top-level application for two
+# reasons: it is signed and notarised as part of the bundle it lives in, so it
+# inherits the trust chain rather than being a loose executable the plug-in
+# has to vouch for; and there is nothing for a user to find, launch or keep up
+# to date. The plug-in copies it OUT to Application Support before running it,
+# because the installer it is about to run replaces this bundle.
+if [[ -n "${APP_BUNDLE}" ]]; then
+  UPDATER_BINARY="$(find "${BUILD_DIR}" -path "*PX3Updater_artefacts*" -name "PX3 Updater" -type f 2>/dev/null | head -n1 || true)"
+  if [[ -z "${UPDATER_BINARY}" ]]; then
+    UPDATER_BINARY="$(find "${BUILD_DIR}" -path "*PX3Updater_artefacts*" -name "PX3Updater" -type f 2>/dev/null | head -n1 || true)"
+  fi
+
+  [[ -n "${UPDATER_BINARY}" ]] \
+    || die "The PX3 Updater helper was not built. It ships inside the standalone."
+
+  cp "${UPDATER_BINARY}" "${APP_BUNDLE}/Contents/MacOS/PX3 Updater" \
+    || die "Could not place the updater helper inside the standalone"
+  chmod +x "${APP_BUNDLE}/Contents/MacOS/PX3 Updater"
+  echo "  Updater helper placed inside the standalone"
+fi
+
 echo "[5/8] Validating bundles and architecture"
 verify_bundle "${AU_BUNDLE}" "AU"
 verify_bundle "${VST3_BUNDLE}" "VST3"
@@ -1132,6 +1155,11 @@ if [[ "${BUILD_UNINSTALLER}" == true ]]; then
   done
   [[ -x "${UNINSTALLER_APP_PATH}/Contents/MacOS/applet" ]] \
     || die "Uninstaller application has no executable"
+
+  if [[ -n "${APP_BUNDLE}" ]]; then
+    [[ -x "${APP_BUNDLE}/Contents/MacOS/PX3 Updater" ]] \
+      || die "The standalone does not carry an executable updater helper"
+  fi
 
   # The icon, checked rather than assumed. The copy on its own was silently
   # ineffective for as long as this script has had one, and nothing about the

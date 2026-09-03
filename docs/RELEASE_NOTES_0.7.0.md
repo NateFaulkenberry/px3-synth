@@ -66,6 +66,56 @@ In progress.
   Bus configuration is the host's, not the sound's: it is not written into
   presets or plugin state, so auditioning a patch never changes your routing.
 
+## New: Macro depth
+
+- **Every Macro → parameter assignment has its own depth.** Cmd-click (Ctrl on
+  Windows) a Macro knob to open a panel listing everything it drives, each with
+  its own slider and a signed percentage. Depth is per *route*: the same
+  parameter driven by two Macros has two depths, and one Macro's several
+  destinations each have their own.
+
+  New assignments are full depth, so existing patches sound exactly as they did.
+  The stored preset format already carried a per-destination depth — this
+  exposes it rather than changing the format.
+
+- **Assignment mode is easier to leave.** Double-click still arms it. It now
+  finishes on the Macro knob, on a click on background, or on **Enter** — all
+  three through one commit path, so they cannot mean three different things.
+  The keyboard notice names the Macro and says how to finish.
+
+## New: separate Dry and FX outputs
+
+- **The mixer's two buses, offered to the host as stereo pairs.** A plain
+  instance is unchanged — one stereo output carrying the full mix. Enable the
+  second pair in the host and **1/2 carries Dry, 3/4 carries FX**, as
+  independent stems rather than one four-channel output.
+
+  The synth already kept the two apart to the final copy, so this exposes
+  buffers that existed rather than adding a parallel path: **0.7% worst-case
+  CPU change**, most cases under 0.3%. The stems carry the fixed output boost
+  but not the analog master stage or the output ceiling — those act on the sum
+  and cannot be divided between two stems.
+
+  Bus configuration is the host's, not the sound's: it is never written into
+  presets or plugin state.
+
+## New: update checking
+
+- **SETTINGS now has an Updates section.** It shows the installed version — read
+  from the build, not a string kept in the UI — and checks the project's GitHub
+  Releases for a newer one.
+
+  **Prepare Update** downloads and verifies the signed installer while your DAW
+  stays open. Nothing is installed from inside the plugin: a helper shipped
+  inside the standalone waits for the host to quit and then runs the same
+  notarised `.pkg` you would have run by hand, and checks the version actually
+  changed. You never have to close your DAW and go looking for an installer.
+
+  Built around a product registry and a provider interface rather than around
+  this synth: PX3 Synth is the first product registered, and GitHub is one
+  provider behind an abstraction that can be replaced without touching the UI
+  or the installation path.
+
 ## Measured
 
 - **`PX3Diag eqspectrum`** — the two measurements the EQ spectrum brief asked

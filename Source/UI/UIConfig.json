@@ -2699,7 +2699,11 @@
   "settings": {
     "layout": {
       "closeWidth": 120,
-      "closeHeight": 28
+      "closeHeight": 28,
+      "updateLineHeight": 20,
+      "updateHeadingHeight": 22,
+      "updateButtonWidth": 150,
+      "updateButtonHeight": 26
     },
     "colors": {
       "closeButton": "#343840EB",

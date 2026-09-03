@@ -170,6 +170,11 @@ set(PX3_SHARED_SOURCES
         Source/DSP/VoiceFilter.cpp
         Source/DSP/SynthVoice.cpp
         Source/DSP/PX3Diagnostics.cpp
+        Source/Update/SemanticVersion.cpp
+        Source/Update/UpdateModel.cpp
+        Source/Update/GitHubReleaseProvider.cpp
+        Source/Update/ProductRegistry.cpp
+        Source/Update/UpdateService.cpp
         Source/Preset/PresetManager.cpp
         Source/Preset/FactoryPresets.cpp
 )
@@ -180,6 +185,7 @@ set(PX3_INCLUDE_DIRS
         Source/DSP
         Source/Preset
         Source/Core
+        Source/Update
 )
 
 target_sources(PX3Synth PRIVATE ${PX3_SHARED_SOURCES})
@@ -198,6 +204,7 @@ target_link_libraries(PX3Synth
         PX3Assets
         juce::juce_audio_utils
         juce::juce_dsp
+        juce::juce_cryptography
         juce::juce_opengl
     PUBLIC
         juce::juce_recommended_config_flags
@@ -254,6 +261,7 @@ if (PX3_BUILD_DIAGNOSTIC)
             PX3Assets
             juce::juce_audio_utils
             juce::juce_dsp
+        juce::juce_cryptography
             juce::juce_opengl
         PUBLIC
             juce::juce_recommended_config_flags
@@ -277,9 +285,32 @@ if (PX3_BUILD_DIAGNOSTIC)
             JucePlugin_Name="PX3 Synth"
     )
     target_link_libraries(PX3SmokeTest
-        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_opengl
+        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography juce::juce_opengl
         PUBLIC juce::juce_recommended_config_flags)
 endif()
+
+# The update helper. A real signed application, shipped beside the standalone
+# by the same installer, so it inherits the same Developer ID and notarisation
+# rather than being something the plugin downloads at runtime.
+juce_add_console_app(PX3Updater PRODUCT_NAME "PX3 Updater")
+juce_generate_juce_header(PX3Updater)
+target_sources(PX3Updater PRIVATE
+        Source/Updater/UpdaterMain.cpp
+        Source/Update/SemanticVersion.cpp
+        Source/Update/UpdateModel.cpp
+        Source/Update/GitHubReleaseProvider.cpp
+        Source/Update/ProductRegistry.cpp
+        Source/Update/UpdateService.cpp)
+target_include_directories(PX3Updater PRIVATE ${PX3_INCLUDE_DIRS})
+target_compile_definitions(PX3Updater
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_STANDALONE_APPLICATION=1
+        JucePlugin_Name="PX3 Synth")
+target_link_libraries(PX3Updater
+    PRIVATE juce::juce_gui_basics juce::juce_cryptography
+    PUBLIC juce::juce_recommended_config_flags)
 
 # Component regression / correctness tests, built in the SHIPPING configuration
 # so they exercise the code the plugin actually runs.
@@ -305,7 +336,7 @@ if (PX3_BUILD_DIAGNOSTIC)
             JucePlugin_Name="PX3 Synth"
     )
     target_link_libraries(PX3Tests
-        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_opengl
+        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography juce::juce_opengl
         PUBLIC juce::juce_recommended_config_flags)
 endif()
 
@@ -328,7 +359,7 @@ if (PX3_BUILD_DIAGNOSTIC)
             JucePlugin_Name="PX3 Synth"
     )
     target_link_libraries(PX3MemBench
-        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_opengl
+        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography juce::juce_opengl
         PUBLIC juce::juce_recommended_config_flags)
 endif()
 
@@ -350,7 +381,7 @@ if (PX3_BUILD_DIAGNOSTIC)
             JucePlugin_Name="PX3 Synth"
     )
     target_link_libraries(PX3Bench
-        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_opengl
+        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography juce::juce_opengl
         PUBLIC juce::juce_recommended_config_flags)
 endif()
 

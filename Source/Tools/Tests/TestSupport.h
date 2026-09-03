@@ -1524,6 +1524,7 @@ void testEditorLifecycle();
 void testVuBallistics();
 void testBusInserts();
 void testMultiOutput();
+void testUpdater();
 void testFilters();
 void testOscillatorModeRichness();
 void testAnalogEngine();

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../Core/GlobalSettings.h"
+#include "../Update/UpdateService.h"
 #include "PluginProcessor.h"
 
 class UIConfig;
@@ -43,6 +44,12 @@ public:
     juce::ToggleButton& debugAnimationsToggle() { return animationsToggle; }
     juce::ComboBox& debugAnalogProfileBox() { return analogProfileBox; }
     juce::TextButton& debugCloseButton() { return closeButton; }
+    juce::TextButton& debugUpdateButton() { return updateButton; }
+    juce::Label& debugUpdateStatus() { return updateStatus; }
+    juce::Label& debugVersionLabel() { return versionLabel; }
+    juce::String debugUpdateButtonText() const { return updateButton.getButtonText(); }
+    bool debugUpdateButtonEnabled() const { return updateButton.isEnabled(); }
+    void debugRefreshUpdateSection() { refreshUpdateSection(); }
 
 private:
     struct Row
@@ -59,6 +66,13 @@ private:
     // when the page was drawn.
     void changeListenerCallback(juce::ChangeBroadcaster* source) override;
 
+    // The Updates section reads its whole appearance from the service's state
+    // rather than keeping any of its own: one enum in, a label, a button and a
+    // progress bar out. There is nothing here that can disagree with what the
+    // service is actually doing.
+    void refreshUpdateSection();
+    void onUpdateButtonClicked();
+
     PX3SynthAudioProcessor& processor;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
@@ -67,6 +81,13 @@ private:
     std::vector<std::unique_ptr<Row>> rows;
 
     juce::ToggleButton animationsToggle;
+    juce::Label updatesHeading;
+    juce::Label versionLabel;
+    juce::Label updateStatus;
+    juce::Label releaseNotes;
+    juce::TextButton updateButton { "Check for Updates" };
+    double downloadProgress { 0.0 };
+    juce::ProgressBar downloadBar { downloadProgress };
     juce::ComboBox analogProfileBox;
     juce::TextButton closeButton { "CLOSE" };
 

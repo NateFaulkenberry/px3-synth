@@ -1,0 +1,508 @@
+#include "TestSupport.h"
+
+#include "SemanticVersion.h"
+#include "UpdateModel.h"
+#include "GitHubReleaseProvider.h"
+#include "MockUpdateProvider.h"
+#include "ProductRegistry.h"
+#include "UpdateService.h"
+
+// testUpdater
+//
+// The update system, exercised without a network and without GitHub.
+//
+// Every test here uses either canned JSON or the mock provider. A suite that
+// needed a live API would fail on a train, would fail when a release is
+// published, and would be testing GitHub rather than this code.
+
+namespace px3tests
+{
+
+void testUpdater()
+{
+    suite("UPDATER");
+
+    using namespace px3::update;
+
+    // ========================================================================
+    // Version comparison
+    // ========================================================================
+    //
+    // The reason this type exists at all: as text, "1.10.0" sorts below
+    // "1.9.0". An updater that compares strings stops offering updates at the
+    // tenth minor release and nobody notices for months.
+    {
+        const auto a = SemanticVersion::parse("1.9.0");
+        const auto b = SemanticVersion::parse("1.10.0");
+
+        check("Update_TenSortsAboveNineRatherThanBelowIt",
+              a.isValid && b.isValid && a < b && b > a && ! (a == b),
+              "1.9.0 < 1.10.0 is " + juce::String(a < b ? "true" : "FALSE")
+                  + ", which as strings would be "
+                  + juce::String(juce::String("1.9.0") < juce::String("1.10.0") ? "true" : "false"));
+    }
+
+    {
+        juce::StringArray notes;
+        auto allCorrect = true;
+
+        const auto expect = [&](const juce::String& text, bool shouldBeValid,
+                                const juce::String& expected)
+        {
+            const auto parsed = SemanticVersion::parse(text);
+            const auto ok = parsed.isValid == shouldBeValid
+                         && (! shouldBeValid || parsed.toString() == expected);
+            if (! ok) { allCorrect = false; }
+            notes.add("'" + text + "' -> "
+                      + (parsed.isValid ? parsed.toString() : juce::String("invalid")));
+        };
+
+        expect("1.6.0", true, "1.6.0");
+        expect("v1.6.0", true, "1.6.0");
+        expect("1.6.0-beta.1", true, "1.6.0-beta.1");
+        expect("1.6.0+build7", true, "1.6.0");
+        expect("1.6", false, {});
+        expect("1.6.0.1", false, {});
+        expect("1.x.0", false, {});
+        expect("", false, {});
+        expect("banana", false, {});
+
+        check("Update_MalformedVersionsAreRejectedRatherThanGuessedAt",
+              allCorrect,
+              notes.joinIntoString(", "));
+    }
+
+    {
+        // A pre-release sorts below the release it leads to, so a beta cannot
+        // be mistaken for the finished version of the same number.
+        const auto beta = SemanticVersion::parse("1.6.0-beta.1");
+        const auto release = SemanticVersion::parse("1.6.0");
+        const auto older = SemanticVersion::parse("1.5.9");
+
+        check("Update_APreReleaseSortsBelowItsRelease",
+              beta < release && older < beta && beta.isPreRelease() && ! release.isPreRelease(),
+              "1.5.9 < 1.6.0-beta.1 < 1.6.0");
+    }
+
+    // ========================================================================
+    // The GitHub provider, on canned responses
+    // ========================================================================
+
+    const auto releaseJson = [](const juce::String& tag,
+                                const juce::String& assets,
+                                const juce::String& body = "")
+    {
+        return "{\"tag_name\":\"" + tag + "\",\"published_at\":\"2026-09-02T15:41:14Z\","
+               "\"body\":\"" + body + "\",\"assets\":[" + assets + "]}";
+    };
+
+    const auto asset = [](const juce::String& name)
+    {
+        return "{\"name\":\"" + name + "\",\"browser_download_url\":"
+               "\"https://example.invalid/" + name + "\"}";
+    };
+
+    {
+        // The filename the release script actually produces today, which names
+        // neither platform nor architecture.
+        const auto reply = GitHubReleaseProvider::parseLatestRelease(
+            releaseJson("v0.8.0", asset("P(X3)-v0.8.0.pkg")),
+            "px3-synth", "macOS", "arm64");
+
+        check("Update_TheProviderReadsTheInstallerTheBuildActuallyProduces",
+              reply.result.ok() && reply.release.isValid()
+                  && reply.release.version.toString() == "0.8.0"
+                  && reply.release.installerFilename == "P(X3)-v0.8.0.pkg",
+              reply.result.ok() ? "found " + reply.release.installerFilename + " for "
+                                      + reply.release.version.toString()
+                                : "failed: " + reply.result.technicalDetail);
+    }
+
+    {
+        // And a future name that does state them, alongside one for another
+        // platform that must not be chosen.
+        const auto reply = GitHubReleaseProvider::parseLatestRelease(
+            releaseJson("v1.6.0",
+                        asset("PX3-Synth-1.6.0-windows-x86_64.pkg") + ","
+                            + asset("PX3-Synth-1.6.0-macOS-arm64.pkg")),
+            "px3-synth", "macOS", "arm64");
+
+        check("Update_TheProviderPrefersTheAssetForThisPlatform",
+              reply.result.ok()
+                  && reply.release.installerFilename == "PX3-Synth-1.6.0-macOS-arm64.pkg",
+              reply.result.ok() ? "chose " + reply.release.installerFilename
+                                : "failed: " + reply.result.technicalDetail);
+    }
+
+    {
+        const auto noPkg = GitHubReleaseProvider::parseLatestRelease(
+            releaseJson("v1.6.0", asset("PX3-Synth-1.6.0-macOS-arm64.zip")),
+            "px3-synth", "macOS", "arm64");
+
+        const auto badTag = GitHubReleaseProvider::parseLatestRelease(
+            releaseJson("nightly", asset("P(X3)-v1.pkg")), "px3-synth", "macOS", "arm64");
+
+        const auto notJson = GitHubReleaseProvider::parseLatestRelease(
+            "<html>rate limited</html>", "px3-synth", "macOS", "arm64");
+
+        check("Update_TheProviderRefusesReleasesItCannotUse",
+              noPkg.result.error == UpdateError::noMatchingInstaller
+                  && badTag.result.error == UpdateError::malformedResponse
+                  && notJson.result.error == UpdateError::malformedResponse,
+              "no .pkg -> " + describe(noPkg.result.error)
+                  + "; unparseable tag -> " + describe(badTag.result.error)
+                  + "; not JSON -> " + describe(notJson.result.error));
+    }
+
+    {
+        const auto withHash = GitHubReleaseProvider::parseLatestRelease(
+            releaseJson("v1.6.0", asset("P(X3)-v1.6.0.pkg"),
+                        "Fixes things.\\nSHA-256: "
+                        "abc123def4567890abc123def4567890abc123def4567890abc123def4567890"),
+            "px3-synth", "macOS", "arm64");
+
+        const auto without = GitHubReleaseProvider::parseLatestRelease(
+            releaseJson("v1.6.0", asset("P(X3)-v1.6.0.pkg"), "Fixes things."),
+            "px3-synth", "macOS", "arm64");
+
+        check("Update_AChecksumIsReadFromTheNotesWhenOneIsPublished",
+              withHash.release.sha256.length() == 64 && without.release.sha256.isEmpty(),
+              "with a SHA-256 line: " + juce::String(withHash.release.sha256.length())
+                  + " hex digits; without: "
+                  + juce::String(without.release.sha256.isEmpty() ? "empty" : "SOMETHING"));
+    }
+
+    // ========================================================================
+    // The registry
+    // ========================================================================
+    {
+        auto& registry = ProductRegistry::getInstance();
+        registry.clear();
+
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.7.0"); } });
+
+        const auto synthOnly = registry.productIds().size();
+
+        registry.registerProduct({ "px3-mood", "PX3 Mood", [] { return juce::String("1.2.0"); } });
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.8.0"); } });
+
+        const auto info = registry.lookup("px3-synth");
+
+        check("Update_TheRegistryTakesMoreThanOneProductAndDoesNotDuplicate",
+              synthOnly == 1 && registry.productIds().size() == 2
+                  && registry.isRegistered("px3-mood")
+                  && info.installedVersion.toString() == "0.8.0",
+              juce::String(static_cast<int>(registry.productIds().size()))
+                  + " products registered; re-registering px3-synth replaced it, now at "
+                  + info.installedVersion.toString());
+    }
+
+    // ========================================================================
+    // The service
+    // ========================================================================
+
+    // A service wired to a mock, with its staging inside a temporary folder so
+    // a test never writes into the user's Application Support.
+    struct Fixture
+    {
+        juce::File directory { juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                   .getChildFile("px3-update-test-"
+                                                 + juce::String(juce::Random::getSystemRandom()
+                                                                    .nextInt(1000000))) };
+        UpdateService service;
+        MockUpdateProvider* mock { nullptr };
+
+        Fixture()
+        {
+            directory.createDirectory();
+            auto owned = std::make_unique<MockUpdateProvider>();
+            mock = owned.get();
+            service.setProvider(std::move(owned));
+            service.setStagingDirectoryForTesting(directory);
+            service.setSynchronousForTesting(true);
+            service.setProductId("px3-synth");
+        }
+
+        ~Fixture() { directory.deleteRecursively(); }
+
+        void offer(const juce::String& version, const juce::String& sha = {})
+        {
+            UpdateRelease release;
+            release.productId = "px3-synth";
+            release.version = SemanticVersion::parse(version);
+            release.downloadUrl = juce::URL("https://example.invalid/installer.pkg");
+            release.installerFilename = "P(X3)-v" + version + ".pkg";
+            release.platform = "macOS";
+            release.architecture = "arm64";
+            release.sha256 = sha;
+            mock->nextRelease = release;
+        }
+    };
+
+    {
+        auto& registry = ProductRegistry::getInstance();
+        registry.clear();
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.7.0"); } });
+
+        Fixture newer;
+        newer.offer("0.8.0");
+        newer.service.checkForUpdates(true);
+        const auto sawUpdate = newer.service.getState();
+
+        Fixture same;
+        same.offer("0.7.0");
+        same.service.checkForUpdates(true);
+        const auto sawSame = same.service.getState();
+
+        Fixture older;
+        older.offer("0.6.0");
+        older.service.checkForUpdates(true);
+        const auto sawOlder = older.service.getState();
+
+        check("Update_OnlyANewerReleaseCountsAsAnUpdate",
+              sawUpdate == UpdateState::updateAvailable
+                  && sawSame == UpdateState::upToDate
+                  && sawOlder == UpdateState::upToDate,
+              "0.8.0 -> " + describe(sawUpdate) + "; 0.7.0 -> " + describe(sawSame)
+                  + "; 0.6.0 -> " + describe(sawOlder));
+    }
+
+    {
+        // A development build ahead of the last release must not be offered a
+        // downgrade, and a stable user must not be offered a pre-release.
+        auto& registry = ProductRegistry::getInstance();
+        registry.clear();
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.7.0"); } });
+
+        Fixture beta;
+        beta.offer("0.8.0-beta.1");
+        beta.service.checkForUpdates(true);
+        const auto offeredBeta = beta.service.getState();
+
+        registry.clear();
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.9.0"); } });
+        Fixture ahead;
+        ahead.offer("0.8.0");
+        ahead.service.checkForUpdates(true);
+        const auto offeredDowngrade = ahead.service.getState();
+
+        check("Update_NeitherAPreReleaseNorADowngradeIsOffered",
+              offeredBeta == UpdateState::upToDate && offeredDowngrade == UpdateState::upToDate,
+              "a stable install offered 0.8.0-beta.1 -> " + describe(offeredBeta)
+                  + "; a 0.9.0 build offered 0.8.0 -> " + describe(offeredDowngrade));
+    }
+
+    {
+        auto& registry = ProductRegistry::getInstance();
+        registry.clear();
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.7.0"); } });
+
+        Fixture f;
+        f.mock->nextResult = UpdateResult::failure(UpdateError::noNetwork, "offline");
+        f.service.checkForUpdates(true);
+
+        check("Update_BeingOfflineIsAnUnderstandableFailureRatherThanASilentOne",
+              f.service.getState() == UpdateState::failed
+                  && f.service.getError() == UpdateError::noNetwork
+                  && f.service.getErrorMessage().contains("internet connection")
+                  && ! f.service.getErrorMessage().contains("offline"),
+              "the user is told: '" + f.service.getErrorMessage()
+                  + "' while the log keeps the detail");
+    }
+
+    {
+        // Repeated checks are throttled, so opening and closing an editor does
+        // not mean a request every time. A forced check still goes through.
+        auto& registry = ProductRegistry::getInstance();
+        registry.clear();
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.7.0"); } });
+
+        Fixture f;
+        f.offer("0.8.0");
+        f.service.checkForUpdates(true);
+        f.service.checkForUpdates(false);
+        f.service.checkForUpdates(false);
+        const auto afterThrottled = f.mock->lookupCount;
+        f.service.checkForUpdates(true);
+
+        check("Update_RepeatedChecksAreThrottledButAForcedOneIsNot",
+              afterThrottled == 1 && f.mock->lookupCount == 2,
+              juce::String(afterThrottled) + " lookup after three checks, "
+                  + juce::String(f.mock->lookupCount) + " after forcing one");
+    }
+
+    // ---- download, verify, stage -------------------------------------------
+    {
+        auto& registry = ProductRegistry::getInstance();
+        registry.clear();
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.7.0"); } });
+
+        const juce::String payload = "not really an installer, but a known one";
+        const auto expected = juce::SHA256(payload.toRawUTF8(),
+                                           static_cast<std::size_t>(payload.getNumBytesAsUTF8()))
+                                  .toHexString().toLowerCase();
+
+        Fixture good;
+        good.offer("0.8.0", expected);
+        good.service.setDownloaderForTesting(
+            [payload](const juce::URL&, const juce::File& destination,
+                      std::function<void(float)> onProgress)
+            {
+                destination.replaceWithText(payload);
+                if (onProgress != nullptr) { onProgress(1.0f); }
+                return true;
+            });
+        good.service.checkForUpdates(true);
+        good.service.prepareUpdate();
+
+        const auto staged = good.service.stagedInstaller();
+
+        check("Update_AVerifiedDownloadIsStagedAndReadyToInstall",
+              good.service.getState() == UpdateState::readyToInstall
+                  && staged.existsAsFile()
+                  && staged.getFileName() == "P(X3)-v0.8.0.pkg"
+                  && good.service.hasStagedUpdate(),
+              describe(good.service.getState()) + ", staged as "
+                  + (staged.existsAsFile() ? staged.getFileName() : juce::String("nothing")));
+    }
+
+    {
+        auto& registry = ProductRegistry::getInstance();
+        registry.clear();
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.7.0"); } });
+
+        Fixture bad;
+        bad.offer("0.8.0",
+                  "0000000000000000000000000000000000000000000000000000000000000000");
+        bad.service.setDownloaderForTesting(
+            [](const juce::URL&, const juce::File& destination, std::function<void(float)>)
+            {
+                destination.replaceWithText("tampered");
+                return true;
+            });
+        bad.service.checkForUpdates(true);
+        bad.service.prepareUpdate();
+
+        // The point is not only that it failed but that nothing usable is left
+        // behind: a file that failed its checksum must not be sitting where a
+        // later run could take it for a valid installer.
+        const auto leftovers = bad.directory.findChildFiles(juce::File::findFiles, false, "*.pkg*");
+
+        check("Update_AFailedChecksumIsRefusedAndTheFileDiscarded",
+              bad.service.getState() == UpdateState::failed
+                  && bad.service.getError() == UpdateError::checksumMismatch
+                  && leftovers.isEmpty()
+                  && bad.service.stagedInstaller() == juce::File(),
+              describe(bad.service.getError()) + "; "
+                  + juce::String(leftovers.size()) + " installer files left in staging");
+    }
+
+    {
+        auto& registry = ProductRegistry::getInstance();
+        registry.clear();
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.7.0"); } });
+
+        Fixture interrupted;
+        interrupted.offer("0.8.0");
+        interrupted.service.setDownloaderForTesting(
+            [](const juce::URL&, const juce::File& destination, std::function<void(float)>)
+            {
+                destination.replaceWithText("half a fi");
+                return false;   // the stream ended early
+            });
+        interrupted.service.checkForUpdates(true);
+        interrupted.service.prepareUpdate();
+
+        const auto partials = interrupted.directory.findChildFiles(juce::File::findFiles,
+                                                                   false, "*.partial");
+
+        check("Update_AnInterruptedDownloadLeavesNothingBehindToMistake",
+              interrupted.service.getState() == UpdateState::failed
+                  && interrupted.service.getError() == UpdateError::downloadFailed
+                  && partials.isEmpty()
+                  && interrupted.service.stagedInstaller() == juce::File(),
+              describe(interrupted.service.getError()) + "; "
+                  + juce::String(partials.size()) + " partial files left");
+    }
+
+    {
+        // Cancelling clears what was staged rather than leaving it to be
+        // picked up later.
+        auto& registry = ProductRegistry::getInstance();
+        registry.clear();
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.7.0"); } });
+
+        Fixture f;
+        f.offer("0.8.0");
+        f.service.setDownloaderForTesting(
+            [](const juce::URL&, const juce::File& destination, std::function<void(float)>)
+            {
+                destination.replaceWithText("installer");
+                return true;
+            });
+        f.service.checkForUpdates(true);
+        f.service.prepareUpdate();
+        const auto before = f.service.hasStagedUpdate();
+        f.service.cancel();
+
+        check("Update_CancellingClearsTheStagedUpdate",
+              before && ! f.service.hasStagedUpdate()
+                  && f.service.getState() == UpdateState::idle,
+              juce::String(before ? "staged" : "NOT STAGED") + " then cancelled to "
+                  + describe(f.service.getState()));
+    }
+
+    {
+        // With no provider at all the UI must say so rather than look broken.
+        UpdateService bare;
+        bare.setProductId("px3-synth");
+        bare.setProvider(nullptr);
+        bare.checkForUpdates(true);
+
+        check("Update_WithNoProviderTheServiceSaysSoRatherThanFailing",
+              bare.getState() == UpdateState::notConfigured,
+              describe(bare.getState()));
+    }
+
+    // ---- the handoff to the helper -----------------------------------------
+    //
+    // The plugin never installs anything itself: it runs inside somebody's
+    // DAW holding the bundle the installer would replace. What it does is hand
+    // a staged, verified installer to a separate process. With nothing staged
+    // there is nothing to hand over, and saying so is better than launching a
+    // helper that would find no work.
+    {
+        auto& registry = ProductRegistry::getInstance();
+        registry.clear();
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.7.0"); } });
+
+        Fixture nothing;
+        nothing.offer("0.8.0");
+        nothing.service.checkForUpdates(true);
+        const auto launched = nothing.service.launchInstaller();
+
+        check("Update_TheHandoffRefusesWhenNothingIsStaged",
+              ! launched && nothing.service.getState() == UpdateState::failed,
+              juce::String(launched ? "LAUNCHED" : "refused") + " with nothing staged: "
+                  + nothing.service.getErrorMessage());
+    }
+
+    {
+        // Where the helper is expected to live. Reported rather than asserted
+        // present: a development tree has no /Applications install, and a test
+        // that demanded one would fail on every machine but a user's.
+        const auto helper = UpdateService::updaterApplication();
+
+        check("Update_TheHelperIsLookedForInsideTheInstalledStandalone",
+              true,
+              helper == juce::File()
+                  ? juce::String("not present in this tree, which is expected before an install")
+                  : "found at " + helper.getFullPathName());
+    }
+
+    // Leave the registry as the running application expects it.
+    ProductRegistry::getInstance().clear();
+    installDefaultConfiguration();
+}
+
+} // namespace px3tests

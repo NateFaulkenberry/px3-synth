@@ -2635,6 +2635,7 @@ int main(int argc, char* argv[])
     if (wants("vumeter")) testVuBallistics();
     if (wants("businserts")) testBusInserts();
     if (wants("multiout")) testMultiOutput();
+    if (wants("updater")) testUpdater();
     if (wants("filters")) testFilters();
     if (wants("oscrichness")) testOscillatorModeRichness();
     if (wants("analog")) testAnalogEngine();
