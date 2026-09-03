@@ -15,6 +15,7 @@
 // EditorOrder_* in TestsEditorLayout.cpp is what stops a future reshuffle.
 
 #include "PluginEditor.h"
+#include "../Update/UpdateService.h"
 #include "EditorSections.h"
 #include "MacroLook.h"
 #include "ParameterKnob.h"
@@ -1318,6 +1319,24 @@ void PX3SynthAudioProcessorEditor::finishConstruction()
     };
 
     setWantsKeyboardFocus(true);
+
+    // ---- updates -----------------------------------------------------------
+    //
+    // The gear glows when there is something to see, and a line under the bar
+    // says so once. Both are views of UpdateService; the editor keeps no copy
+    // of whether an update exists.
+    px3::update::installDefaultConfiguration();
+    px3::update::UpdateService::getInstance().addChangeListener(&updateStateListener);
+
+    updateNotice.setJustificationType(juce::Justification::centredLeft);
+    updateNotice.setInterceptsMouseClicks(false, false);
+    addChildComponent(updateNotice);
+
+    // A check when a window opens. Throttled by the service, so opening and
+    // closing an editor repeatedly is still one request every ten minutes -
+    // and asynchronous, so nothing here waits for a network.
+    px3::update::UpdateService::getInstance().checkForUpdates();
+    refreshUpdateAffordances();
 
     startTimerHz(30);
 }

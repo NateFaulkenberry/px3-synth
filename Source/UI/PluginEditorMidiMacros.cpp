@@ -11,6 +11,8 @@
 
 #include "PluginEditor.h"
 #include "MacroLook.h"
+#include "EditorSections.h"
+#include "../Update/UpdateService.h"
 #include "ParameterKnob.h"
 #include "KnobOverlays.h"
 #include "Card.h"
@@ -23,6 +25,8 @@
 //==============================================================================
 // MIDI mapping Select Mode. See docs/midi-mapping-design.md.
 //==============================================================================
+
+using namespace px3::ui;
 
 void PX3SynthAudioProcessorEditor::handleParameterKnobClick(const juce::MouseEvent& event)
 {
@@ -319,6 +323,54 @@ void PX3SynthAudioProcessorEditor::enterMacroAssignMode(int macroIndex)
     }
 
     refreshMidiMappingUI();
+}
+
+void PX3SynthAudioProcessorEditor::refreshUpdateAffordances()
+{
+    using namespace px3::update;
+
+    const auto& service = UpdateService::getInstance();
+    const auto waiting = service.getState() == UpdateState::updateAvailable;
+
+    // The gear glows while an update is unseen. Opening SETTINGS is what counts
+    // as seeing it, so the glow stops there rather than on any click.
+    const auto seen = selectedTopMenuSection == kSectionSettings;
+
+    if (topMenuBar != nullptr)
+    {
+        topMenuBar->setUpdateAvailable(waiting && ! seen);
+    }
+
+    if (seen) { dismissUpdateNotice(); }
+
+    // The line under the bar, once per window. It says what the glow cannot -
+    // which product, and that there IS a new version - and then gets out of
+    // the way on its own.
+    if (waiting && ! seen && ! updateNoticeShown)
+    {
+        const auto release = service.getAvailableRelease();
+        const auto product = service.getProduct();
+        const auto name = product.displayName.isNotEmpty() ? product.displayName
+                                                           : juce::String("PX3 Synth");
+
+        updateNotice.setText("A new version of " + name + " is available!"
+                                 + (release.isPreRelease ? "  (pre-release)" : juce::String()),
+                             juce::dontSendNotification);
+        updateNotice.setVisible(true);
+        updateNotice.toFront(false);
+        // 20 seconds at the editor's 30 Hz tick.
+        updateNoticeFramesLeft = 30 * 20;
+        updateNoticeShown = true;
+        resized();
+    }
+}
+
+void PX3SynthAudioProcessorEditor::dismissUpdateNotice()
+{
+    if (updateNoticeFramesLeft < 0 && ! updateNotice.isVisible()) { return; }
+
+    updateNoticeFramesLeft = -1;
+    updateNotice.setVisible(false);
 }
 
 void PX3SynthAudioProcessorEditor::finishMacroAssignEditing()

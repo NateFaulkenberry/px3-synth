@@ -34,6 +34,15 @@ public:
     // behind for no benefit.
     void setAnimationsEnabled(bool shouldBeEnabled);
 
+    // The pre-release update channel.
+    //
+    // Off by default. A plug-in has no command line, so this is persisted
+    // globally rather than being a launch flag: the standalone's --debug true
+    // sets it, and every instance in every host then sees it. That is also
+    // what makes it possible to turn OFF again from one place.
+    bool isPreReleaseChannelEnabled() const noexcept;
+    void setPreReleaseChannelEnabled(bool shouldBeEnabled);
+
     // Where the preference is kept: beside the preset library and the wavetable
     // library, under the same P(X3) folder those already use.
     static juce::File settingsFile();
@@ -54,6 +63,7 @@ private:
     static juce::File& testFileOverride();
 
     std::atomic<bool> animationsEnabled { true };
+    std::atomic<bool> preReleaseChannel { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GlobalSettings)
 };

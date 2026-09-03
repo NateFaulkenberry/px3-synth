@@ -1,5 +1,9 @@
 #include "TopMenuBar.h"
 
+#include "../Core/GlobalSettings.h"
+
+#include <cmath>
+
 #include "CardInner.h"
 
 #include "UIConfig.h"
@@ -126,6 +130,61 @@ juce::Path TopMenuTabButton::gearIcon()
     return gear;
 }
 
+void TopMenuBar::setUpdateAvailable(bool isAvailable)
+{
+    if (updateAvailable == isAvailable) { return; }
+
+    updateAvailable = isAvailable;
+    settingsButton.setAttention(isAvailable);
+
+    if (! isAvailable)
+    {
+        stopTimer();
+        pulsePhase = 0.0f;
+        return;
+    }
+
+    // With animations off the glow is steady rather than absent. Turning
+    // animations off is a statement about movement, not about wanting to miss
+    // things - the keyboard's key highlight makes the same distinction.
+    if (! px3::GlobalSettings::getInstance().areAnimationsEnabled())
+    {
+        settingsButton.setAttentionPhase(0.65f);
+        return;
+    }
+
+    startTimerHz(30);
+}
+
+void TopMenuBar::timerCallback()
+{
+    // A slow breath rather than a blink: about one cycle every two seconds,
+    // which reads as "look here" without competing with the meters.
+    pulsePhase += 1.0f / 60.0f;
+    if (pulsePhase > 1.0f) { pulsePhase -= 1.0f; }
+
+    const auto eased = 0.5f - 0.5f * std::cos(pulsePhase * juce::MathConstants<float>::twoPi);
+    settingsButton.setAttentionPhase(eased);
+}
+
+void TopMenuTabButton::setAttention(bool shouldWantAttention)
+{
+    if (attention == shouldWantAttention) { return; }
+
+    attention = shouldWantAttention;
+    if (! attention) { attentionPhase = 0.0f; }
+    repaint();
+}
+
+void TopMenuTabButton::setAttentionPhase(float phase01)
+{
+    const auto next = juce::jlimit(0.0f, 1.0f, phase01);
+    if (! attention || juce::approximatelyEqual(attentionPhase, next)) { return; }
+
+    attentionPhase = next;
+    repaint();
+}
+
 void TopMenuTabButton::paintButton(juce::Graphics& g,
                                    bool shouldDrawButtonAsHighlighted,
                                    bool shouldDrawButtonAsDown)
@@ -165,6 +224,25 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
             const auto alpha = strength * (1.0f - t) * (1.0f - t) / static_cast<float>(steps) * 3.0f;
 
             g.setColour(style.hoverGlow.withAlpha(juce::jlimit(0.0f, 1.0f, alpha)));
+            g.drawRect(area.reduced(static_cast<float>(i)), 1.0f);
+        }
+    }
+
+    // The attention glow, over the face and under everything that carries
+    // state. Same inset-glow construction as hover, so it belongs to the tab
+    // rather than being a badge stuck on it - and it stacks with hover instead
+    // of replacing it, because a tab can be both.
+    if (attention)
+    {
+        const auto strength = 0.30f + 0.45f * attentionPhase;
+        const auto steps = juce::jlimit(1, 48, juce::roundToInt(juce::jmax(1.0f, style.hoverGlowSize)));
+
+        for (int i = 0; i < steps; ++i)
+        {
+            const auto t = static_cast<float>(i) / static_cast<float>(steps);
+            const auto alpha = strength * (1.0f - t) * (1.0f - t) / static_cast<float>(steps) * 3.0f;
+
+            g.setColour(attentionColour.withAlpha(juce::jlimit(0.0f, 1.0f, alpha)));
             g.drawRect(area.reduced(static_cast<float>(i)), 1.0f);
         }
     }

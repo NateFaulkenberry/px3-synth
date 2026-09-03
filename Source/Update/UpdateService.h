@@ -37,6 +37,12 @@ public:
 
     // Which product this service is following. One for now.
     void setProductId(juce::String productId);
+
+    // The pre-release channel, applied to whatever provider is installed.
+    // Kept here rather than only on the provider so the state is one thing:
+    // the UI asks the service, not a downcast to a GitHub type.
+    void setPreReleaseChannelEnabled(bool shouldBeEnabled);
+    bool isPreReleaseChannelEnabled() const { return preReleaseChannel; }
     juce::String getProductId() const { return productId; }
 
     //---- state ------------------------------------------------------------
@@ -128,6 +134,7 @@ private:
     Downloader downloadFile;
     juce::File stagingOverride;
     bool synchronous { false };
+    bool preReleaseChannel { false };
     std::atomic<bool> busy { false };
     std::unique_ptr<juce::Thread> worker;
 

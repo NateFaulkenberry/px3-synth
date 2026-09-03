@@ -1,6 +1,7 @@
 #include "MacroLook.h"
 #include "ParameterKnob.h"
 #include "PluginEditor.h"
+#include "../Update/UpdateService.h"
 #include "KnobOverlays.h"
 #include "../DSP/WavetableLibrary.h"
 #include "../DSP/WavetableImporter.h"
@@ -185,6 +186,9 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
     // setting - which is exactly the case closing one window and toggling from
     // another produces.
     px3::GlobalSettings::getInstance().removeChangeListener(&animationPreferenceListener);
+
+    // The update service outlives every editor too.
+    px3::update::UpdateService::getInstance().removeChangeListener(&updateStateListener);
 
     // Before anything else: the processor outlives us and would otherwise call
     // into a destroyed editor on the next CC. Select Mode is UI state, so it
@@ -568,6 +572,10 @@ void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex
     {
         audioProcessor.setTopMenuViewIndex(clamped, true);
     }
+
+    // Opening SETTINGS is what counts as having seen an update, so the gear
+    // stops glowing there rather than on any click anywhere.
+    refreshUpdateAffordances();
 }
 
 void PX3SynthAudioProcessorEditor::refreshTopMenuSelectionFromProcessor()

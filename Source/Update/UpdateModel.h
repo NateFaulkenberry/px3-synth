@@ -42,12 +42,22 @@ struct UpdateRelease
     // The release script publishes a zip holding the .pkg and the uninstaller,
     // so the staging step has to open it before there is anything to run.
     bool installerIsArchive { false };
+    // Marked as a pre-release, by GitHub's flag or by the tag's own suffix.
+    // Only ever offered on the pre-release channel, and labelled as one
+    // wherever it is shown.
+    bool isPreRelease { false };
 
     bool isValid() const
     {
         return productId.isNotEmpty() && version.isValid
                && downloadUrl.isWellFormed() && installerFilename.isNotEmpty();
     }
+
+    // Two independent signals say "pre-release": the source's own flag, and a
+    // suffix on the version. Either is enough, and both are checked here so no
+    // caller has to remember to check the other - narrowing this to the flag
+    // alone let a 0.8.0-beta.1 through to a stable install, which a test caught.
+    bool looksLikePreRelease() const { return isPreRelease || version.isPreRelease(); }
 };
 
 // Where the update flow has got to. One enum rather than a set of booleans,

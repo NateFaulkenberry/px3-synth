@@ -227,6 +227,15 @@ void PX3SynthAudioProcessorEditor::resized()
         macroAssignOverlay->setBounds(macroStripArea.getUnion(panelViewportArea));
     }
 
+    // Under the top bar, tucked to the right so it sits below the gear it is
+    // about rather than over the preset name.
+    if (updateNotice.isVisible() && topMenuBar != nullptr)
+    {
+        const auto bar = topMenuBar->getBounds();
+        const auto width = juce::jmin(340, bar.getWidth());
+        updateNotice.setBounds(bar.getRight() - width, bar.getBottom() + 2, width, 18);
+    }
+
     if (macroDepthPanel != nullptr && macroDepthPanel->isVisible())
     {
         macroDepthScrim.setBounds(getLocalBounds());

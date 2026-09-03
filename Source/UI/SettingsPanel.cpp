@@ -217,7 +217,9 @@ void SettingsPanel::refreshUpdateSection()
 
     versionLabel.setText(
         (product.displayName.isNotEmpty() ? product.displayName : juce::String("PX3 Synth"))
-            + "    Version " + px3::version::string(),
+            + "    Version " + px3::version::string()
+            + (service.isPreReleaseChannelEnabled() ? "    (pre-release channel)"
+                                                    : juce::String()),
         juce::dontSendNotification);
 
     // One switch over the service's state, so this section cannot show
@@ -238,9 +240,16 @@ void SettingsPanel::refreshUpdateSection()
             break;
 
         case UpdateState::updateAvailable:
-            updateStatus.setText("PX3 Synth " + release.version.toString() + " is available",
+            // A pre-release is labelled wherever it appears. Somebody on the
+            // debug channel has opted into unfinished builds, and must never
+            // have to work out which kind they are being offered.
+            updateStatus.setText("PX3 Synth " + release.version.toString()
+                                     + (release.looksLikePreRelease()
+                                            ? "  -  PRE-RELEASE  -  is available"
+                                            : " is available"),
                                  juce::dontSendNotification);
-            updateButton.setButtonText("Prepare Update");
+            updateButton.setButtonText(release.looksLikePreRelease() ? "Prepare Pre-Release"
+                                                                     : "Prepare Update");
             updateButton.setEnabled(true);
             break;
 

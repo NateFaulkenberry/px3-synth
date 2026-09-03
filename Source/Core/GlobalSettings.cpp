@@ -6,6 +6,7 @@ namespace
 {
 const juce::Identifier kSettingsRootId("PX3Settings");
 const juce::Identifier kAnimationsEnabledId("animationsEnabled");
+const juce::Identifier kPreReleaseChannelId("preReleaseChannel");
 } // namespace
 
 GlobalSettings& GlobalSettings::getInstance()
@@ -47,6 +48,7 @@ void GlobalSettings::debugReloadFromDisk()
     // What happens at the start of a new plugin session, without needing a new
     // process: the value comes back from the file rather than from memory.
     animationsEnabled.store(true, std::memory_order_relaxed);
+    preReleaseChannel.store(false, std::memory_order_relaxed);
     load();
     sendSynchronousChangeMessage();
 }
@@ -71,6 +73,22 @@ void GlobalSettings::setAnimationsEnabled(bool shouldBeEnabled)
     sendSynchronousChangeMessage();
 }
 
+bool GlobalSettings::isPreReleaseChannelEnabled() const noexcept
+{
+    return preReleaseChannel.load(std::memory_order_relaxed);
+}
+
+void GlobalSettings::setPreReleaseChannelEnabled(bool shouldBeEnabled)
+{
+    if (preReleaseChannel.exchange(shouldBeEnabled, std::memory_order_relaxed) == shouldBeEnabled)
+    {
+        return;
+    }
+
+    save();
+    sendSynchronousChangeMessage();
+}
+
 void GlobalSettings::load()
 {
     const auto file = settingsFile();
@@ -79,10 +97,22 @@ void GlobalSettings::load()
     if (auto xml = juce::XmlDocument::parse(file))
     {
         const auto tree = juce::ValueTree::fromXml(*xml);
-        if (tree.hasType(kSettingsRootId) && tree.hasProperty(kAnimationsEnabledId))
+        if (tree.hasType(kSettingsRootId))
         {
-            animationsEnabled.store(static_cast<bool>(tree.getProperty(kAnimationsEnabledId)),
-                                    std::memory_order_relaxed);
+            if (tree.hasProperty(kAnimationsEnabledId))
+            {
+                animationsEnabled.store(static_cast<bool>(tree.getProperty(kAnimationsEnabledId)),
+                                        std::memory_order_relaxed);
+            }
+
+            // Absent in a file written before this existed, which means off -
+            // the default, and the right answer for anyone who never asked for
+            // pre-releases.
+            if (tree.hasProperty(kPreReleaseChannelId))
+            {
+                preReleaseChannel.store(static_cast<bool>(tree.getProperty(kPreReleaseChannelId)),
+                                        std::memory_order_relaxed);
+            }
         }
     }
 }
@@ -91,6 +121,7 @@ void GlobalSettings::save() const
 {
     juce::ValueTree tree(kSettingsRootId);
     tree.setProperty(kAnimationsEnabledId, areAnimationsEnabled(), nullptr);
+    tree.setProperty(kPreReleaseChannelId, isPreReleaseChannelEnabled(), nullptr);
 
     const auto file = settingsFile();
     file.getParentDirectory().createDirectory();

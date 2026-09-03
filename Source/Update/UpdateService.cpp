@@ -2,6 +2,7 @@
 
 #include "../Core/PX3Version.h"
 #include "GitHubReleaseProvider.h"
+#include "../Core/GlobalSettings.h"
 
 #include <mutex>
 
@@ -100,6 +101,25 @@ void UpdateService::setProductId(juce::String newProductId)
     productId = std::move(newProductId);
 }
 
+void UpdateService::setPreReleaseChannelEnabled(bool shouldBeEnabled)
+{
+    if (preReleaseChannel == shouldBeEnabled) { return; }
+
+    preReleaseChannel = shouldBeEnabled;
+
+    if (auto* gitHub = dynamic_cast<GitHubReleaseProvider*>(provider.get()))
+    {
+        gitHub->setIncludePreReleases(shouldBeEnabled);
+    }
+
+    // What "up to date" means has changed, so anything already decided is
+    // stale. Re-checking is the caller's business, but the throttle must not
+    // stop them: a channel switch is exactly when a fresh answer is wanted.
+    lastCheck = juce::Time();
+    available = {};
+    setState(UpdateState::idle);
+}
+
 ProductInfo UpdateService::getProduct() const
 {
     return ProductRegistry::getInstance().lookup(productId);
@@ -123,15 +143,19 @@ void UpdateService::setState(UpdateState newState, UpdateError newError, const j
     }
 
     // Listeners are UI. Broadcasting from whichever thread got here would put
-    // a repaint on it, so this always arrives on the message thread.
+    // a repaint on it, so this always arrives on the message thread - and once
+    // there it is SYNCHRONOUS, for the same reason GlobalSettings is: the gear
+    // should light up when the check finishes, not on the next turn of the
+    // message loop. The asynchronous form also never arrives at all in a test,
+    // which has no loop to deliver it.
     if (juce::MessageManager::getInstanceWithoutCreating() != nullptr
         && ! juce::MessageManager::getInstance()->isThisTheMessageThread())
     {
-        juce::MessageManager::callAsync([this] { sendChangeMessage(); });
+        juce::MessageManager::callAsync([this] { sendSynchronousChangeMessage(); });
     }
     else
     {
-        sendChangeMessage();
+        sendSynchronousChangeMessage();
     }
 }
 
@@ -195,10 +219,15 @@ void UpdateService::onLookupComplete(UpdateProvider::LookupResult reply)
         return;
     }
 
-    // A pre-release is never offered to somebody running a release. Without
-    // this an updater offers 1.7.0-beta1 to everyone the moment it is tagged,
-    // and there is no way back down.
-    if (reply.release.version.isPreRelease() && ! product.installedVersion.isPreRelease())
+    // A pre-release is never offered to somebody running a release, unless
+    // they have asked for that channel. Without this an updater offers
+    // 1.7.0-beta1 to everyone the moment it is tagged, and there is no way
+    // back down.
+    //
+    // On the channel, a pre-release is an ordinary update - found, downloaded
+    // and installed the same way - and is labelled as one wherever it appears.
+    if (! preReleaseChannel
+        && reply.release.looksLikePreRelease() && ! product.installedVersion.isPreRelease())
     {
         setState(UpdateState::upToDate);
         return;
@@ -587,6 +616,42 @@ void installDefaultConfiguration()
         service.setProductId(ProductRegistry::kSynthProductId);
         service.setProvider(std::make_unique<GitHubReleaseProvider>("NateFaulkenberry",
                                                                     "px3-synth"));
+
+        // --debug true, from the standalone's command line. A plug-in has no
+        // command line, so the flag is recorded in the global preference and
+        // every instance in every host then sees it - which is also what makes
+        // it possible to turn off again from one place.
+        if (auto* app = juce::JUCEApplicationBase::getInstance())
+        {
+            const auto arguments = app->getCommandLineParameterArray();
+
+            for (int i = 0; i < arguments.size(); ++i)
+            {
+                if (! arguments[i].startsWithIgnoreCase("--debug")) { continue; }
+
+                // "--debug true", "--debug=false", or a bare "--debug".
+                auto value = arguments[i].fromFirstOccurrenceOf("=", false, false).trim();
+                if (value.isEmpty() && i + 1 < arguments.size()
+                    && ! arguments[i + 1].startsWith("-"))
+                {
+                    value = arguments[i + 1].trim();
+                }
+
+                const auto on = value.isEmpty()
+                             || value.equalsIgnoreCase("true")
+                             || value == "1"
+                             || value.equalsIgnoreCase("yes");
+
+                GlobalSettings::getInstance().setPreReleaseChannelEnabled(on);
+                juce::Logger::writeToLog(juce::String("PX3 update: pre-release channel ")
+                                         + (on ? "ENABLED" : "disabled")
+                                         + " by --debug");
+                break;
+            }
+        }
+
+        service.setPreReleaseChannelEnabled(
+            GlobalSettings::getInstance().isPreReleaseChannelEnabled());
     });
 }
 

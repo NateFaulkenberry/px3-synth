@@ -35,6 +35,18 @@ public:
 
     juce::URL latestReleaseUrl() const;
 
+    // The pre-release channel.
+    //
+    // Off, this asks GitHub for its own "latest", which EXCLUDES anything
+    // flagged as a pre-release or a draft - the ordinary case, and the one a
+    // user should be on.
+    //
+    // On, it asks for the release LIST and picks the newest by version,
+    // pre-releases included. That is the only way to reach them: /releases/latest
+    // will never return one however it is queried.
+    void setIncludePreReleases(bool shouldInclude) { includePreReleases = shouldInclude; }
+    bool includesPreReleases() const { return includePreReleases; }
+
     // Turn one GitHub release document into our own representation.
     //
     // ASSET MATCHING. The installer is the .pkg the release script already
@@ -49,10 +61,19 @@ public:
     // the field empty, and the installer's own Developer ID signature and
     // notarisation are then what authenticate it. See UpdateService for what
     // that means for what gets executed.
+    // Accepts either shape: the object /releases/latest returns, or the array
+    // /releases returns. One function, so the transport hands it whatever body
+    // it got without having to know which endpoint produced it.
     static LookupResult parseLatestRelease(const juce::String& jsonText,
                                            const juce::String& productId,
                                            const juce::String& platform,
                                            const juce::String& architecture);
+
+    // One release document.
+    static LookupResult parseRelease(const juce::var& releaseDocument,
+                                     const juce::String& productId,
+                                     const juce::String& platform,
+                                     const juce::String& architecture);
 
     // The transport, so a test can answer without a network. Returns the body,
     // and sets the result on failure.
@@ -69,6 +90,7 @@ private:
     juce::String owner, repo;
     Fetcher transport;
     bool synchronous { false };
+    bool includePreReleases { false };
     std::unique_ptr<LookupJob> job;
     std::shared_ptr<std::atomic<bool>> cancelled { std::make_shared<std::atomic<bool>>(false) };
 };

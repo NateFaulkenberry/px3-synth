@@ -556,6 +556,180 @@ void testUpdater()
                   : "found at " + helper.getFullPathName());
     }
 
+    // ========================================================================
+    // The pre-release channel
+    // ========================================================================
+    {
+        auto& registry = ProductRegistry::getInstance();
+        registry.clear();
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.7.0"); } });
+
+        // A release marked pre-release by GitHub's flag, with a plain tag -
+        // which is exactly how this repository publishes them.
+        const auto flaggedOnly = GitHubReleaseProvider::parseLatestRelease(
+            "{\"tag_name\":\"v0.8.0\",\"prerelease\":true,\"draft\":false,\"body\":\"\","
+            "\"published_at\":\"2026-09-03T00:00:00Z\",\"assets\":["
+                + asset("P.X3.-v0.8.0-macOS-arm64-Installer.zip") + "]}",
+            "px3-synth", "macOS", "arm64");
+
+        check("Update_GitHubsFlagAloneMarksAPreRelease",
+              flaggedOnly.release.isPreRelease && flaggedOnly.release.looksLikePreRelease()
+                  && ! flaggedOnly.release.version.isPreRelease(),
+              "tag v0.8.0 carries no suffix, but the flag marks it as a pre-release");
+
+        Fixture off;
+        off.offer("0.8.0");
+        off.mock->nextRelease.isPreRelease = true;
+        off.service.checkForUpdates(true);
+        const auto whenOff = off.service.getState();
+
+        Fixture on;
+        on.service.setPreReleaseChannelEnabled(true);
+        on.offer("0.8.0");
+        on.mock->nextRelease.isPreRelease = true;
+        on.service.checkForUpdates(true);
+        const auto whenOn = on.service.getState();
+
+        check("Update_APreReleaseIsOfferedOnlyOnTheDebugChannel",
+              whenOff == UpdateState::upToDate && whenOn == UpdateState::updateAvailable
+                  && on.service.getAvailableRelease().looksLikePreRelease(),
+              "channel off -> " + describe(whenOff) + "; channel on -> " + describe(whenOn));
+    }
+
+    {
+        // Switching channel invalidates what was decided under the old one.
+        // Without this the throttle would hold the previous answer and the
+        // switch would appear to do nothing until ten minutes had passed.
+        auto& registry = ProductRegistry::getInstance();
+        registry.clear();
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.7.0"); } });
+
+        Fixture f;
+        f.offer("0.8.0");
+        f.mock->nextRelease.isPreRelease = true;
+        f.service.checkForUpdates(true);
+        const auto before = f.service.getState();
+
+        f.service.setPreReleaseChannelEnabled(true);
+        const auto afterSwitch = f.service.getState();
+        f.service.checkForUpdates(false);        // NOT forced
+        const auto afterRecheck = f.service.getState();
+
+        check("Update_SwitchingChannelClearsTheThrottleAndTheOldAnswer",
+              before == UpdateState::upToDate
+                  && afterSwitch == UpdateState::idle
+                  && afterRecheck == UpdateState::updateAvailable,
+              describe(before) + " -> switch -> " + describe(afterSwitch)
+                  + " -> unforced recheck -> " + describe(afterRecheck));
+    }
+
+    {
+        // The endpoint has to change with the channel: /releases/latest cannot
+        // return a pre-release however it is queried.
+        GitHubReleaseProvider provider("owner", "repo");
+        // WITH the query string: toString(false) drops it, which made the
+        // first version of this test compare two strings that both ended
+        // "/releases" and looked wrong when they were right.
+        const auto release = provider.latestReleaseUrl().toString(true);
+        provider.setIncludePreReleases(true);
+        const auto pre = provider.latestReleaseUrl().toString(true);
+
+        check("Update_ThePreReleaseChannelAsksADifferentEndpoint",
+              release.endsWith("/releases/latest") && pre.contains("/releases?per_page")
+                  && ! pre.contains("latest"),
+              "release channel -> " + release.fromLastOccurrenceOf("/repo", false, false)
+                  + "; pre-release channel -> " + pre.fromLastOccurrenceOf("/repo", false, false));
+    }
+
+    // ========================================================================
+    // What the editor shows when an update is waiting
+    // ========================================================================
+    {
+        auto& registry = ProductRegistry::getInstance();
+        registry.clear();
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.7.0"); } });
+
+        // The shared service, because that is what the editor listens to.
+        //
+        // installDefaultConfiguration() FIRST, to consume its call_once here
+        // rather than inside the editor's constructor - where it would replace
+        // the mock below with the real GitHub provider and quietly turn this
+        // into a live network test.
+        installDefaultConfiguration();
+
+        auto& service = UpdateService::getInstance();
+        auto owned = std::make_unique<MockUpdateProvider>();
+        auto* mock = owned.get();
+        service.setProvider(std::move(owned));
+        service.setProductId("px3-synth");
+        service.setSynchronousForTesting(true);
+        service.resetForTesting();
+
+        UpdateRelease release;
+        release.productId = "px3-synth";
+        release.version = SemanticVersion::parse("0.9.0");
+        release.downloadUrl = juce::URL("https://example.invalid/i.pkg");
+        release.installerFilename = "P(X3)-v0.9.0.pkg";
+        mock->nextRelease = release;
+
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, 48000.0, 256);
+        processor.prepareToPlay(48000.0, 256);
+
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+
+        if (editor != nullptr)
+        {
+            editor->setSize(1280, 800);
+            service.checkForUpdates(true);          // the editor's listener reacts
+
+            auto* bar = editor->debugTopMenuBar();
+            const auto glowing = bar != nullptr && bar->isUpdateAvailable();
+            const auto noticeShown = editor->debugUpdateNoticeVisible();
+            const auto noticeText = editor->debugUpdateNoticeText();
+
+            check("UpdateUi_TheGearGlowsAndTheNoticeAppearsWhenAnUpdateIsFound",
+                  glowing && noticeShown
+                      && noticeText.contains("new version")
+                      && noticeText.contains("PX3 Synth"),
+                  juce::String(glowing ? "gear glowing" : "GEAR NOT GLOWING")
+                      + "; notice " + (noticeShown ? "'" + noticeText + "'"
+                                                   : juce::String("NOT SHOWN")));
+
+            // Twenty seconds at the editor's 30 Hz tick, and not a frame before.
+            for (int i = 0; i < 30 * 20 - 1; ++i) { editor->debugTimerTick(); }
+            const auto stillThere = editor->debugUpdateNoticeVisible();
+            editor->debugTimerTick();
+            const auto goneNow = ! editor->debugUpdateNoticeVisible();
+
+            check("UpdateUi_TheNoticeShowsItselfOutAfterTwentySeconds",
+                  stillThere && goneNow,
+                  juce::String("still up at 19.97 s: ") + (stillThere ? "yes" : "NO")
+                      + "; gone at 20 s: " + (goneNow ? "yes" : "NO"));
+
+            // The gear keeps glowing after the notice goes - the notice is a
+            // one-off, the glow is the standing signal.
+            check("UpdateUi_TheGearKeepsGlowingAfterTheNoticeHasGone",
+                  bar != nullptr && bar->isUpdateAvailable(),
+                  bar != nullptr && bar->isUpdateAvailable()
+                      ? juce::String("still glowing, which is the point of it")
+                      : juce::String("STOPPED GLOWING"));
+
+            // Opening SETTINGS is what counts as having seen it.
+            editor->debugSelectSection(6);
+            const auto afterOpening = bar != nullptr && bar->isUpdateAvailable();
+
+            check("UpdateUi_OpeningSettingsStopsTheGlow",
+                  ! afterOpening && ! editor->debugUpdateNoticeVisible(),
+                  afterOpening ? juce::String("STILL GLOWING after opening SETTINGS")
+                               : juce::String("glow and notice both cleared"));
+        }
+
+        service.resetForTesting();
+        service.setProvider(nullptr);
+    }
+
     // Leave the registry as the running application expects it.
     ProductRegistry::getInstance().clear();
     installDefaultConfiguration();

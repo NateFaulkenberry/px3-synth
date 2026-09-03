@@ -296,6 +296,7 @@ juce_add_console_app(PX3Updater PRODUCT_NAME "PX3 Updater")
 juce_generate_juce_header(PX3Updater)
 target_sources(PX3Updater PRIVATE
         Source/Updater/UpdaterMain.cpp
+        Source/Core/GlobalSettings.cpp
         Source/Update/SemanticVersion.cpp
         Source/Update/UpdateModel.cpp
         Source/Update/GitHubReleaseProvider.cpp

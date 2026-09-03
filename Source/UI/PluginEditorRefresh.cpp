@@ -18,6 +18,7 @@
 // have split importWavetableFile from the menu it rebuilds.
 
 #include "PluginEditor.h"
+#include "../Update/UpdateService.h"
 #include "EditorSections.h"
 #include "ParameterKnob.h"
 #include "KnobOverlays.h"
@@ -558,6 +559,13 @@ void PX3SynthAudioProcessorEditor::refreshOscillatorEngagedState()
 
 void PX3SynthAudioProcessorEditor::timerCallback()
 {
+    // The update notice shows itself out. Counted in frames on the tick that
+    // is already running rather than on a timer of its own.
+    if (updateNoticeFramesLeft > 0)
+    {
+        if (--updateNoticeFramesLeft == 0) { dismissUpdateNotice(); }
+    }
+
     loadUiConfig(false);
     refreshWavetableDisplays();
     refreshModulationRings();

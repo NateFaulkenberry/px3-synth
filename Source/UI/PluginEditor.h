@@ -257,6 +257,9 @@ public:
 
     // For the tests: the macro strip and the assignment state.
     MacroStrip* debugMacroStrip() const { return macroStrip.get(); }
+    bool debugUpdateNoticeVisible() const { return updateNotice.isVisible(); }
+    juce::String debugUpdateNoticeText() const { return updateNotice.getText(); }
+    void debugTimerTick() { timerCallback(); }
     void debugCloseMacroDepthPanel() { closeMacroDepthPanel(); }
     void debugOpenMacroDepthPanel(int macroIndex) { openMacroDepthPanel(macroIndex); }
 
@@ -467,6 +470,21 @@ private:
     // call site for the flag, so the three of them cannot drift apart.
     void applyAnimationPreference();
 
+    //---- update notice ----------------------------------------------------
+    //
+    // The gear glows while an update is waiting to be seen, and a line under
+    // it says so once, on the first frame after one is found. Both are views
+    // of UpdateService's state; neither keeps a copy of it.
+    void refreshUpdateAffordances();
+    void dismissUpdateNotice();
+
+    juce::Label updateNotice;
+    // Counts down the notice's own life. -1 when it is not showing.
+    int updateNoticeFramesLeft { -1 };
+    // So the notice appears once per window rather than every time a check
+    // happens to land on the same answer.
+    bool updateNoticeShown { false };
+
     // Told when the global animation preference moves, rather than asking every
     // tick. One notification per change beats thirty polls a second finding
     // nothing has happened.
@@ -482,6 +500,20 @@ private:
     };
 
     AnimationPreferenceListener animationPreferenceListener { *this };
+
+    // The update service publishes its state the same way. One listener rather
+    // than polling: the gear lights up when a check finishes, whenever that is.
+    struct UpdateStateListener final : public juce::ChangeListener
+    {
+        explicit UpdateStateListener(PX3SynthAudioProcessorEditor& ownerIn) : owner(ownerIn) {}
+        void changeListenerCallback(juce::ChangeBroadcaster*) override
+        {
+            owner.refreshUpdateAffordances();
+        }
+        PX3SynthAudioProcessorEditor& owner;
+    };
+
+    UpdateStateListener updateStateListener { *this };
     void refreshTopMenuSelectionFromProcessor();
     void updatePresetDirtyState();
     juce::String computeCurrentStateHash() const;

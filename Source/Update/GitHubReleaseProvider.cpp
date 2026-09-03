@@ -172,6 +172,16 @@ GitHubReleaseProvider::~GitHubReleaseProvider()
 
 juce::URL GitHubReleaseProvider::latestReleaseUrl() const
 {
+    // The pre-release channel has to ask a different question. /releases/latest
+    // will never return a pre-release however it is queried, so reaching one
+    // means asking for the list and deciding here which is newest - which this
+    // code can do properly, having a real version comparison.
+    if (includePreReleases)
+    {
+        return juce::URL("https://api.github.com/repos/" + owner + "/" + repo
+                         + "/releases?per_page=30");
+    }
+
     // GitHub's own "latest", which is what a release is expected to be
     // published as. Note that this endpoint excludes anything flagged as a
     // PRE-RELEASE or a draft: a repository whose releases are all flagged that
@@ -234,12 +244,53 @@ GitHubReleaseProvider::parseLatestRelease(const juce::String& jsonText,
         return out;
     }
 
+    // An array is the list endpoint's answer; an object is /releases/latest's.
+    // Both are accepted so the transport does not have to know which it asked.
+    if (auto* releases = document.getArray())
+    {
+        LookupResult best;
+        auto sawAnything = false;
+
+        for (const auto& entry : *releases)
+        {
+            if (! entry.isObject()) { continue; }
+
+            // A draft is not published, whatever channel the user is on.
+            if (static_cast<bool>(entry.getProperty("draft", false))) { continue; }
+
+            const auto candidate = parseRelease(entry, productId, platform, architecture);
+            if (! candidate.result.ok() || ! candidate.release.isValid()) { continue; }
+
+            // Newest by VERSION, not by the order the list arrives in - GitHub
+            // sorts by creation date, which is not the same thing once a patch
+            // to an older line is published after a newer one.
+            if (! sawAnything || candidate.release.version > best.release.version)
+            {
+                best = candidate;
+                sawAnything = true;
+            }
+        }
+
+        return best;   // an invalid release if nothing usable was found
+    }
+
     if (! document.isObject())
     {
         out.result = UpdateResult::failure(UpdateError::malformedResponse,
-                                           "response was not a JSON object");
+                                           "response was neither an object nor an array");
         return out;
     }
+
+    return parseRelease(document, productId, platform, architecture);
+}
+
+UpdateProvider::LookupResult
+GitHubReleaseProvider::parseRelease(const juce::var& document,
+                                    const juce::String& productId,
+                                    const juce::String& platform,
+                                    const juce::String& architecture)
+{
+    LookupResult out;
 
     const auto tag = document.getProperty("tag_name", juce::var()).toString();
     const auto version = SemanticVersion::parse(tag);
@@ -324,6 +375,11 @@ GitHubReleaseProvider::parseLatestRelease(const juce::String& jsonText,
     out.release.downloadUrl = juce::URL(chosenUrl);
     out.release.installerFilename = chosenName;
     out.release.installerIsArchive = chosenIsArchive;
+    // Either signal makes it a pre-release: GitHub's flag, or a suffix on the
+    // tag. The flag is how a person marks one on the web; the suffix is how a
+    // version says so itself. A release with either is labelled as one.
+    out.release.isPreRelease = static_cast<bool>(document.getProperty("prerelease", false))
+                            || version.isPreRelease();
     out.release.platform = platform;
     out.release.architecture = architecture;
     out.release.sha256 = findSha256(notes);

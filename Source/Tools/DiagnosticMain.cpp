@@ -4591,6 +4591,16 @@ int main(int argc, char* argv[])
         std::printf("  provider:          %s\n",
                     provider != nullptr ? provider->name().toRawUTF8() : "none");
 
+        // PX3_PRERELEASE=1 is the same switch --debug true sets, without
+        // writing it into the user's global preference.
+        if (std::getenv("PX3_PRERELEASE") != nullptr)
+        {
+            service.setPreReleaseChannelEnabled(true);
+        }
+
+        std::printf("  channel:           %s\n",
+                    service.isPreReleaseChannelEnabled() ? "pre-release (debug)" : "release");
+
         if (auto* gitHub = dynamic_cast<px3::update::GitHubReleaseProvider*>(provider))
         {
             std::printf("  endpoint:          %s\n",
@@ -4611,8 +4621,9 @@ int main(int argc, char* argv[])
         const auto release = service.getAvailableRelease();
         if (release.isValid())
         {
-            std::printf("  found:  %s  (%s)\n",
+            std::printf("  found:  %s%s  (%s)\n",
                         release.version.toString().toRawUTF8(),
+                        release.isPreRelease ? "  [PRE-RELEASE]" : "",
                         release.installerFilename.toRawUTF8());
         }
         else
