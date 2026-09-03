@@ -1210,8 +1210,12 @@ if [[ "${BUILD_UNINSTALLER}" == true ]]; then
 
   UNINSTALLER_SCRIPT="${REPO_ROOT}/scripts/installer/uninstaller.applescript"
   UNINSTALLER_REMOVAL="${REPO_ROOT}/scripts/installer/px3-uninstall.sh"
+  UNINSTALLER_LISTER="${REPO_ROOT}/scripts/installer/px3-list-products.sh"
+  UNINSTALLER_MANIFEST_GEN="${REPO_ROOT}/scripts/installer/generate-product-manifest.sh"
   [[ -f "${UNINSTALLER_SCRIPT}" ]] || die "Missing uninstaller script: ${UNINSTALLER_SCRIPT}"
   [[ -f "${UNINSTALLER_REMOVAL}" ]] || die "Missing removal script: ${UNINSTALLER_REMOVAL}"
+  [[ -f "${UNINSTALLER_LISTER}" ]] || die "Missing product scanner: ${UNINSTALLER_LISTER}"
+  [[ -f "${UNINSTALLER_MANIFEST_GEN}" ]] || die "Missing manifest generator: ${UNINSTALLER_MANIFEST_GEN}"
 
   rm -rf "${UNINSTALLER_APP_PATH}"
   osacompile -o "${UNINSTALLER_APP_PATH}" "${UNINSTALLER_SCRIPT}" \
@@ -1220,8 +1224,21 @@ if [[ "${BUILD_UNINSTALLER}" == true ]]; then
   UNINSTALLER_RES="${UNINSTALLER_APP_PATH}/Contents/Resources"
   mkdir -p "${UNINSTALLER_RES}"
   cp "${UNINSTALLER_REMOVAL}" "${UNINSTALLER_RES}/px3-uninstall.sh"
+  cp "${UNINSTALLER_LISTER}" "${UNINSTALLER_RES}/px3-list-products.sh"
   install_host_detection "${UNINSTALLER_RES}"
-  chmod +x "${UNINSTALLER_RES}/px3-uninstall.sh" "${UNINSTALLER_RES}/detect-au-hosts.sh"
+
+  # The product table, from the same CMakeLists block the build itself reads.
+  # The uninstaller uses it for names, bundle ids and formats - but it does NOT
+  # depend on it to decide what to offer: anything found on disk that this
+  # manifest does not list is still listed and still removable, which is what
+  # lets a uninstaller shipped today remove a product released after it.
+  sh "${UNINSTALLER_MANIFEST_GEN}" "${CMAKE_FILE}" "${UNINSTALLER_RES}/px3-products.tsv" \
+    || die "could not generate the product manifest"
+  echo "  Product manifest: $(wc -l < "${UNINSTALLER_RES}/px3-products.tsv" | tr -d ' ') products"
+
+  chmod +x "${UNINSTALLER_RES}/px3-uninstall.sh" \
+           "${UNINSTALLER_RES}/px3-list-products.sh" \
+           "${UNINSTALLER_RES}/detect-au-hosts.sh"
 
   # Identity, so the removal script matches what this build actually installed.
   {

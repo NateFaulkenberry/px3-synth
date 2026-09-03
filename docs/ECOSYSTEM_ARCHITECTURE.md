@@ -285,17 +285,31 @@ good answer that something stays Synth-only.
 
 The full build compiles eight products. Working on one should not.
 
+**The product name comes first**, then the options.
+
 ```
-scripts/build-product.sh --list            what there is to build
-scripts/build-product.sh lucy --vst3       the quickest loop
-scripts/build-product.sh delay             AU and VST3
-scripts/build-product.sh synth --run       build, then launch the standalone
-scripts/build-product.sh doom --no-install leave installed plug-ins alone
+scripts/build-product.sh --list                what there is to build
+scripts/build-product.sh lucy --vst3           the quickest loop
+scripts/build-product.sh delay                 AU and VST3
+scripts/build-product.sh synth                 AU, VST3 and Standalone
+scripts/build-product.sh synth --run           build, then launch the standalone
+scripts/build-product.sh synth --debug --run   with the in-plugin debug panel
+scripts/build-product.sh synth --config Debug  unoptimised, for a debugger
+scripts/build-product.sh doom --no-install     leave installed plug-ins alone
 ```
+
+`--debug` means the same thing here as in `build-release.sh`: the in-plugin
+debug panel (`PX3_DEBUG_PANEL=ON`). An unoptimised build to step through in a
+debugger is `--config Debug`, which is a separate axis - the two combine.
 
 Each product gets its own build directory, so switching between one product and
 the full build does not reconfigure either. Without `--no-install` a successful
 build lands in `~/Library/Audio/Plug-Ins` and the host sees it on its next scan.
+
+Asking for no format builds `${TARGET}_All`, not the bare target: JUCE makes the
+bare target the shared-code static library, so building it compiles every source,
+links the `.a`, and produces no loadable plug-in - and for the Synth, a bundle
+skeleton with no executable in it.
 
 The script reads the product list from `CMakeLists.txt`, so a product added with
 `px3_add_product` is buildable by it immediately.
@@ -342,6 +356,50 @@ The build then **expands the finished product** and checks that each effect's
 package is both present and referenced by the Distribution — `productbuild`
 silently drops a package nothing selects, which is how the branding resources
 were lost once before.
+
+### Uninstaller
+
+The uninstaller is an AppleScript **application**, not a `.pkg`. The macOS
+Installer always presents install-style UI — a Destination Select pane, an
+Installation Type pane and an "Install" button — and none of it can be
+relabelled from a Distribution file, so an uninstaller delivered that way reads
+as an installer whatever the panes say.
+
+It is product-scoped, and it discovers what to offer at run time:
+
+| File | Role |
+| --- | --- |
+| `px3-list-products.sh` | Scans disk for installed PX3 products |
+| `generate-product-manifest.sh` | Writes `px3-products.tsv` from the `px3_add_product` table |
+| `px3-uninstall.sh` | Removes exactly the products it is given |
+
+The scanner reports the **union** of the manifest and what is on disk. A product
+this uninstaller has never heard of — one released after it shipped — is still
+listed, marked `unknown`, and still removable. That is what allows one
+uninstaller to serve the ecosystem across versions instead of one per release.
+
+Three rules do the load-bearing work:
+
+1. **No "everything" default.** `px3-uninstall.sh` removes only what
+   `PX3_PRODUCTS` names, and exits 2 having removed nothing if that is empty.
+   Every path it deletes is built from a variable, and the failure mode of an
+   uninstaller whose selection came out empty is that it removes everything.
+2. **Shared data is only touched when nothing is left.** Presets, imported
+   wavetables and settings live in one `~/Library/P(X3)/` directory shared by
+   every product, so removing PX3 Mood must not take the Synth's preset library
+   with it.
+3. **Keeping presets is the default.** `PX3_KEEP_PRESETS=1` keeps what the user
+   made — their own presets and any wavetables they imported — and removes what a
+   reinstall puts back: factory presets, settings, staged updates. Unticking it
+   removes the directory entire, and the confirmation dialog says so in those
+   words.
+
+`PX3_SCAN_ROOT` prefixes every system path so the whole thing can be tested
+against a fixture tree. Anything that reaches outside that tree — `pkgutil
+--forget`, restarting the component registrar — is gated on the run being a live
+one, or a test would forget the receipts for the copy actually installed on the
+developer's machine. `tests/Tests/TestsUninstaller.cpp` runs the real scripts
+against that fixture rather than grepping them for `rm -rf`.
 
 ---
 

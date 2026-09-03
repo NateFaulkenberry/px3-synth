@@ -2457,21 +2457,27 @@ int main(int argc, char* argv[])
             setParam(processor, "vibeAmount", 1.0f);
             const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
             std::printf("  vibe noise floor with all sources off: rms %.8f\n", c.rms());
+        }
 
         // Which measures actually rise monotonically with the amount control?
-        std::printf("\n  %-8s %10s %10s %10s %10s\n", "amount", "rms", "peak", "crest", "dc");
-        for (const auto amount : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
+        //
+        // Its own block. This survey shares nothing with the noise-floor
+        // measurement above and was sitting inside that block by accident,
+        // which is what made its processor and capture shadow the ones there.
         {
-            PX3SynthAudioProcessor processor;
-            makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 0);
-            setParam(processor, "vibeEnabled", 1.0f);
-            setParam(processor, "vibeAmount", amount);
-            const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
-            const auto r = c.rmsOver(20000, 94000);
-            std::printf("  %-8.2f %10.6f %10.6f %10.4f %+10.6f\n",
-                        amount, r, c.peak(), c.peak() / juce::jmax(1.0e-9, r), c.dcOffset());
-        }
+            std::printf("\n  %-8s %10s %10s %10s %10s\n", "amount", "rms", "peak", "crest", "dc");
+            for (const auto amount : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
+            {
+                PX3SynthAudioProcessor processor;
+                makePlainPatch(processor);
+                setChoice(processor, "osc1Mode", 0);
+                setParam(processor, "vibeEnabled", 1.0f);
+                setParam(processor, "vibeAmount", amount);
+                const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
+                const auto r = c.rmsOver(20000, 94000);
+                std::printf("  %-8.2f %10.6f %10.6f %10.4f %+10.6f\n",
+                            amount, r, c.peak(), c.peak() / juce::jmax(1.0e-9, r), c.dcOffset());
+            }
         }
 
         // 4. Block-size dependence. The character must not change with the
@@ -2638,6 +2644,7 @@ int main(int argc, char* argv[])
     if (wants("updater")) testUpdater();
     if (wants("ecosystem")) testEcosystem();
     if (wants("fxproducts")) testFxProducts();
+    if (wants("uninstaller")) testUninstaller();
     if (wants("filters")) testFilters();
     if (wants("oscrichness")) testOscillatorModeRichness();
     if (wants("analog")) testAnalogEngine();

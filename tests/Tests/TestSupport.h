@@ -1214,7 +1214,6 @@ inline ReverbMetrics measureReverb(const ReverbSettings& settings, int totalSamp
     }
 
     ReverbMetrics m;
-    const auto ir_span_limit = static_cast<double>(totalSamples) - static_cast<double>(kSampleRate) * 0.15;
     for (const auto v : left) { if (! std::isfinite(v)) m.finite = false; m.peak = juce::jmax(m.peak, std::abs(static_cast<double>(v))); }
     for (const auto v : right) { if (! std::isfinite(v)) m.finite = false; m.peak = juce::jmax(m.peak, std::abs(static_cast<double>(v))); }
 
@@ -1544,6 +1543,7 @@ void testMultiOutput();
 void testUpdater();
 void testEcosystem();
 void testFxProducts();
+void testUninstaller();
 void testFilters();
 void testOscillatorModeRichness();
 void testAnalogEngine();

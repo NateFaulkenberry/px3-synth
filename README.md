@@ -146,22 +146,37 @@ Distribution file, so an uninstaller shipped as a package reads as an installer
 whatever the panes say. Owning the app means owning every word the user sees,
 and it gets the system's own authorisation prompt instead of an installer's.
 
-It is also not versioned — it removes whatever P(X3) is present regardless of
-which release installed it.
+It is also not versioned. It scans the machine for what is actually installed
+rather than working from a list baked in when it was built, so it removes
+products released after it shipped and installs left over from releases before
+it. A product it has not heard of is listed all the same.
 
-Running it completely removes P(X3) **for every user account on the machine**:
+It asks two questions, then acts on the answers:
+
+1. **Which products.** Everything found is ticked to begin with; untick what
+   should stay. Removing PX3 Mood leaves PX3 Synth working.
+2. **What happens to the presets.** *Keep My Presets* — the default — keeps
+   your own saved presets and any wavetables you imported, and removes what a
+   reinstall puts back: factory presets, settings and staged updates. *Remove
+   Everything* deletes the shared `~/Library/P(X3)/` directory entire, and the
+   confirmation says so in those words. Either way the shared directory is only
+   touched once no PX3 product is left installed.
+
+For each selected product, **across every user account on the machine**:
 
 - AU and VST3 plug-ins, from both system and per-user plug-in folders
-- The standalone application
-- **All presets — factory and user — plus favourites and settings**, at
-  `~/Library/Application Support/P(X3)/`
+- The standalone application, for products that have one
 - Preferences, caches, logs and crash reports
-- Audio Unit caches, so P(X3) disappears from host plug-in lists rather than
-  lingering as a broken entry
 - Installer receipts, so a later install is not skipped as already-present
 
-The installer UI warns explicitly that saved user presets are deleted and cannot
-be recovered. A log of everything removed is written to `/tmp/px3-uninstall.log`.
+Audio Unit caches are cleared at the end, so removed plug-ins disappear from
+host plug-in lists rather than lingering as broken entries. A log of everything
+removed is written to `/tmp/px3-uninstall.log`.
+
+The removal is shell (`scripts/installer/px3-uninstall.sh`) and is tested by
+being run against a fixture tree standing in for a real machine — see
+`tests/Tests/TestsUninstaller.cpp` and section 7 of
+[docs/ECOSYSTEM_ARCHITECTURE.md](docs/ECOSYSTEM_ARCHITECTURE.md).
 
 To skip building it:
 

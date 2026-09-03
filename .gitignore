@@ -16,3 +16,4 @@ notes.txt
 
 # Memory benchmark results
 .benchmarks/
+scripts/installer/px3-products.tsv
