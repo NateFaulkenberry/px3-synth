@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 # Single source of truth for plugin/project SemVer.
-set(PX3_VERSION "0.7.0")
+set(PX3_VERSION "0.7.1")
 
 if (NOT PX3_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
     message(FATAL_ERROR "PX3_VERSION must use SemVer MAJOR.MINOR.PATCH (example: 0.1.0).")
@@ -283,6 +283,7 @@ set(PX3_INCLUDE_DIRS
 # ~22 warnings about third-party code on every clean build. A policy that has
 # to be edited when a product is added is a policy that gets forgotten.
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # The warnings we want everywhere. Old enough to be universal.
     set(PX3_WARNING_OPTIONS
         -Wall
         -Wextra
@@ -290,13 +291,40 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         -Wshadow
         -Wconversion
         -Wsign-conversion
-        # Third-party, in JUCE's vendored harfbuzz: it memcpys its own
-        # non-trivially-copyable types by design. Not ours to fix.
-        -Wno-nontrivial-memcall
-        -Wno-switch-enum
-        -Wno-unused-but-set-variable
-        -Wno-unnecessary-virtual-specifier
     )
+
+    # The suppressions, each added only if THIS compiler knows it.
+    #
+    # Passing an unknown -Wno-... is not silently ignored: clang answers with
+    # -Wunknown-warning-option, once per translation unit, and that warning
+    # carries no file path - so it survives any filter written in terms of
+    # paths and looks exactly like a warning in our own code. Two of these
+    # flags postdate the clang that ships with the CI runner's Xcode, which is
+    # how a policy meant to keep the build quiet became the thing making noise.
+    #
+    # A suppression is only needed where the warning it suppresses exists, so
+    # dropping the unknown ones costs nothing: a compiler that has never heard
+    # of -Wnontrivial-memcall will not emit it either.
+    #
+    # check_cxx_compiler_flag is reliable for the -Wno- form here because CMake
+    # adds -Werror=unknown-warning-option for Clang, turning the probe into a
+    # hard error rather than the warning clang would otherwise defer.
+    include(CheckCXXCompilerFlag)
+    foreach(px3Suppression
+            # Third-party, in JUCE's vendored harfbuzz: it memcpys its own
+            # non-trivially-copyable types by design. Not ours to fix.
+            -Wno-nontrivial-memcall
+            -Wno-switch-enum
+            -Wno-unused-but-set-variable
+            -Wno-unnecessary-virtual-specifier)
+        string(MAKE_C_IDENTIFIER "PX3_HAS${px3Suppression}" px3FlagVar)
+        check_cxx_compiler_flag("${px3Suppression}" ${px3FlagVar})
+        if (${px3FlagVar})
+            list(APPEND PX3_WARNING_OPTIONS "${px3Suppression}")
+        else()
+            message(STATUS "PX3: compiler does not support ${px3Suppression}; skipping it")
+        endif()
+    endforeach()
 endif()
 
 # PX3 Synth, the first product. Declared exactly the way any other product is,

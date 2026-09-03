@@ -357,7 +357,10 @@ int main(int argc, char* argv[])
             std::vector<float> row(128, 0.0f);
             for (std::size_t i = 0; i < row.size(); ++i)
             {
-                row[i] = std::sin(juce::MathConstants<float>::twoPi * (f + 1) * i / row.size());
+                row[i] = std::sin(juce::MathConstants<float>::twoPi
+                                  * static_cast<float>(f + 1)
+                                  * static_cast<float>(i)
+                                  / static_cast<float>(row.size()));
             }
             display.frames.push_back(std::move(row));
         }
@@ -405,7 +408,7 @@ int main(int argc, char* argv[])
         // process down rather than merely fail to draw.
         for (int i = 0; i < 20; ++i)
         {
-            host->renderer.setPosition(i / 20.0f);
+            host->renderer.setPosition(static_cast<float>(i) / 20.0f);
             juce::MessageManager::getInstance()->runDispatchLoopUntil(16);
         }
         std::printf("  survived 20 more frames with the scan moving\n");

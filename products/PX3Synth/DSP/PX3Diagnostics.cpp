@@ -116,7 +116,8 @@ void analyseBlock(const float* postPoly, const float* master, int numSamples)
 
             for (int stage = 0; stage < stageCount; ++stage)
             {
-                const auto delta = std::abs(current[stage] - s.prevSample[stage]);
+                const auto delta = std::abs(current[static_cast<std::size_t>(stage)]
+                                             - s.prevSample[static_cast<std::size_t>(stage)]);
                 event.delta[static_cast<std::size_t>(stage)] = delta;
                 s.maxDelta[static_cast<std::size_t>(stage)] =
                     std::max(s.maxDelta[static_cast<std::size_t>(stage)], delta);

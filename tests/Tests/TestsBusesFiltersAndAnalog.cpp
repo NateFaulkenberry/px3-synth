@@ -2280,7 +2280,8 @@ void testBusInserts()
                 // meter's own mode buttons and the header's ON and CLOSE, all
                 // of which correctly do NOT move with this offset - so the
                 // filter has to be the mix column, not the right-hand half.
-                const auto columnStart = static_cast<int>(compOverlay->getWidth() * 0.78f);
+                const auto columnStart =
+                    static_cast<int>(static_cast<float>(compOverlay->getWidth()) * 0.78f);
                 for (auto* ch : compOverlay->getChildren())
                 {
                     if (ch != nullptr && ch->getX() > columnStart

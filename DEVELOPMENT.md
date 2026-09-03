@@ -49,6 +49,18 @@ Gain structure rule:
   default, so a preset or DAW session that saved a different fader value gets that
   value back untouched.
 
+## CI/CD
+
+Every push and PR is built and tested by GitHub Actions; releases are built from
+their tag and attached to the GitHub Release you create by hand. The full
+account - what runs where, how versions and tags relate, which secrets signing
+needs, and how to rehearse a release without publishing one - is in
+[docs/CI_CD.md](docs/CI_CD.md).
+
+One rule worth knowing before you tag: **bump `PX3_VERSION` in `CMakeLists.txt`
+on `main` before creating a release.** The release build verifies the tag agrees
+with it and stops if it does not.
+
 ## Source Layout
 
 The tree is **shared infrastructure plus products**. Anything more than one

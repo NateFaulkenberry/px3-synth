@@ -470,7 +470,8 @@ void testDelay()
 
             double energy = 0.0;
             for (const auto v : left) energy += static_cast<double>(v) * v;
-            const auto rms = std::sqrt(energy / std::max<std::size_t>(1, left.size()));
+            const auto rms = std::sqrt(
+                energy / static_cast<double>(std::max<std::size_t>(1, left.size())));
 
             constexpr int window = 64;
             auto worst = 0.0;

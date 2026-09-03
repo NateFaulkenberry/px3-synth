@@ -20,6 +20,7 @@ For dedicated build/install/release workflow documentation, see `docs/BUILDING.m
 For preset system format and storage details, see `docs/PRESETS.md`.
 The shipped factory presets are defined in `products/PX3Synth/Preset/FactoryPresets.cpp`.
 For developer architecture, maintenance map, and release workflow, see `DEVELOPMENT.md`.
+For CI, releases and signing, see [docs/CI_CD.md](docs/CI_CD.md).
 
 ## Start Here
 

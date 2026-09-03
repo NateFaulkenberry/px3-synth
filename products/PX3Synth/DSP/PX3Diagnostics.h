@@ -181,7 +181,12 @@ struct State
     float noteOffWorstAbsSecondDiff { 0.0f };
     float noteOffWorstRunningMean { 0.0f };
     float noteOffWorstLevel { 0.0f };
-    int noteOffWorstSample { -1 };
+    // long long, like worstTransientSample below: both are assigned the same
+    // expression, s.globalSampleBase + n, and globalSampleBase is a running
+    // sample counter. As an int this truncated after about 12 hours of
+    // continuous rendering at 48 kHz - rare, but silent, and the sibling field
+    // recording the same quantity was already wide enough.
+    long long noteOffWorstSample { -1 };
     bool noteOffWorstAtLifecycle { false };
     int noteOffWorstSamplesSinceLifecycle { -1 };
     int noteOffWorstSamplesSinceNoteOff { -1 };

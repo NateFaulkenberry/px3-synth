@@ -1571,7 +1571,7 @@ bool runRegressionCase(const char* name, const PatchOptions& patch, bool legacyP
 
     if (std::getenv("PX3_NOTEOFF_DETAIL") != nullptr && patch.gateNoteOffTransient)
     {
-        std::printf("      [note-off] ratio %.2f = |d2| %.3e / mean %.3e   at level %.3e (%.1f dBFS), sample %d\n",
+        std::printf("      [note-off] ratio %.2f = |d2| %.3e / mean %.3e   at level %.3e (%.1f dBFS), sample %lld\n",
                     static_cast<double>(diag.maxNoteOffTransientRatio),
                     static_cast<double>(diag.noteOffWorstAbsSecondDiff),
                     static_cast<double>(diag.noteOffWorstRunningMean),
@@ -2655,7 +2655,8 @@ int main(int argc, char* argv[])
         auto row = [](const char* label, std::size_t bytes, int count)
         {
             const auto total = bytes * (std::size_t) count;
-            std::printf("  %-34s %10zu B  x%4d = %10.2f KB\n", label, bytes, count, total / 1024.0);
+            std::printf("  %-34s %10zu B  x%4d = %10.2f KB\n", label, bytes, count,
+                        static_cast<double>(total) / 1024.0);
             return total;
         };
 
@@ -2681,12 +2682,12 @@ int main(int argc, char* argv[])
             const auto samples = (std::size_t) std::ceil(rate / OscillatorUnit::kKarplusLowestFrequencyHz) + 4;
             const auto bytes = samples * sizeof(float);
             std::printf("    %7.0f Hz : %6zu samples = %8.2f KB each  x%4d = %7.2f MB total\n",
-                        rate, samples, bytes / 1024.0, 3 * kVoices,
-                        bytes * 3.0 * kVoices / (1024.0 * 1024.0));
+                        rate, samples, static_cast<double>(bytes) / 1024.0, 3 * kVoices,
+                        static_cast<double>(bytes) * 3.0 * kVoices / (1024.0 * 1024.0));
         }
         {
             const auto samples = (std::size_t) std::ceil(48000.0 / OscillatorUnit::kKarplusLowestFrequencyHz) + 4;
-            const auto heap = samples * sizeof(float) * 3.0 * kVoices;
+            const auto heap = static_cast<double>(samples * sizeof(float)) * 3.0 * kVoices;
             std::printf("\n  voice pool at 48 kHz: %.2f MB structs + %.2f MB heap = %.2f MB\n\n",
                         voice * (double) kVoices / (1024.0 * 1024.0),
                         heap / (1024.0 * 1024.0),
