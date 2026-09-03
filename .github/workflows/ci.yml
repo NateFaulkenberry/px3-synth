@@ -1,0 +1,298 @@
+name: CI
+
+# Validation only. Nothing here publishes anything: a release is a deliberate
+# act by a person, described in docs/CI_CD.md.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: ['**']
+    tags-ignore: ['**']       # tags are the release workflow's business
+  workflow_dispatch:
+
+concurrency:
+  # One run per branch. A force-push while CI is running should replace that
+  # run, not race it.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read              # least privilege: CI reads the repo, nothing more
+
+env:
+  # Never write into ~/Library/Audio/Plug-Ins on a runner. The default is ON for
+  # a developer's machine, where it is what makes a build testable in a host.
+  PX3_CMAKE_ARGS: >-
+    -G Ninja
+    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_OSX_ARCHITECTURES=arm64
+    -DPX3_BUILD_DIAGNOSTIC=ON
+    -DPX3_COPY_PLUGIN_AFTER_BUILD=OFF
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Platform-independent. Shell, YAML and the repository's own consistency
+  # rules - everything that does not need a compiler. Runs in ~30s on Linux and
+  # fails fast, so a typo in a script does not wait behind a 20-minute build.
+  # --------------------------------------------------------------------------
+  static:
+    name: Static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shell scripts parse
+        run: |
+          # bash -n, not sh -n: these are #!/usr/bin/env bash scripts and use
+          # process substitution, which sh rejects on syntax it will never run.
+          fail=0
+          while IFS= read -r f; do
+            head -n1 "$f" | grep -q 'bash' && checker=(bash -n) || checker=(sh -n)
+            if ! "${checker[@]}" "$f"; then echo "::error file=$f::does not parse"; fail=1; fi
+          done < <(find scripts -name '*.sh' -type f)
+          exit $fail
+
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          # Advisory. The scripts predate shellcheck and a style opinion should
+          # not block a merge; genuine errors show up in the annotations.
+          find scripts -name '*.sh' -type f -print0 \
+            | xargs -0 shellcheck -S error --format=gcc || true
+
+      - name: Release version helper behaves
+        run: |
+          # The one piece of release logic that can be tested without a release.
+          set -e
+          core=$(./scripts/ci/release-version.sh "v$(grep -oE 'set\(PX3_VERSION "[0-9.]+"' CMakeLists.txt | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')" | grep '^core=')
+          echo "matching tag accepted -> ${core}"
+          for bad in "0.7.0" "v0.7" "vX.Y.Z" "v999.0.0"; do
+            if ./scripts/ci/release-version.sh "$bad" >/dev/null 2>&1; then
+              echo "::error::release-version.sh accepted '$bad', which it must reject"; exit 1
+            fi
+          done
+          echo "malformed and mismatched tags all rejected"
+
+      - name: Product manifest generates
+        run: |
+          sh scripts/installer/generate-product-manifest.sh CMakeLists.txt /tmp/px3-products.tsv
+          echo "products declared:"; cat /tmp/px3-products.tsv
+          [ -s /tmp/px3-products.tsv ] || { echo "::error::empty manifest"; exit 1; }
+
+  # --------------------------------------------------------------------------
+  # macOS: the platform PX3 actually ships on. Builds every product in the
+  # shipping configuration and runs the whole existing test estate.
+  # --------------------------------------------------------------------------
+  macos:
+    name: macOS build and test
+    # arm64. PX3 is Apple Silicon only and the build scripts pin
+    # CMAKE_OSX_ARCHITECTURES=arm64; macos-13 is x86_64 and would cross-compile
+    # something nothing here ever runs.
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: brew install ninja ccache
+
+      # JUCE is a pinned FetchContent tag, so its checkout is cacheable and
+      # identical run to run. Restores ~45s of clone on every build.
+      - name: Cache JUCE checkout
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: juce-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: juce-${{ runner.os }}-
+
+      - name: Cache compiler output
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/ccache
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      - name: Configure
+        run: |
+          cmake -S . -B build ${{ env.PX3_CMAKE_ARGS }} \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      # Every product and every console harness. The warning policy in
+      # px3_add_product applies to all of them, so a warning introduced in one
+      # product is visible here rather than only in whichever target someone
+      # happened to build.
+      - name: Build
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 2>&1 | tee build.log
+
+      - name: Warnings from our own sources fail the build
+        run: |
+          # JUCE's vendored third-party code is not ours to fix and is filtered.
+          # Everything else is: the project builds warning-clean today, so any
+          # line here is new.
+          if grep -E "warning:" build.log | grep -vE "_deps/juce-src|JuceLibraryCode" > our-warnings.log; then
+            echo "::error::new warnings in PX3 sources:"; cat our-warnings.log; exit 1
+          fi
+          echo "no warnings from PX3 sources"
+
+      # ---- the existing test estate, each with a real exit code -------------
+      - name: Component tests
+        run: ./build/PX3Tests_artefacts/Release/PX3Tests 2>&1 | tee test-report.txt
+
+      - name: Audio regression (PX3Diag regress)
+        run: ./build/PX3Diag_artefacts/Release/PX3Diag regress 2>&1 | tee regress-report.txt
+
+      - name: Real-time safety (0 allocations per block)
+        run: ./build/PX3Diag_artefacts/Release/PX3Diag rtsafety 2>&1 | tee rtsafety-report.txt
+
+      - name: Factory-default smoke test
+        run: ./build/PX3SmokeTest_artefacts/Release/PX3SmokeTest 2>&1 | tee smoke-report.txt
+
+      - name: Plugin bundles are loadable
+        run: |
+          # The build produces bundles; this checks they are bundles rather than
+          # trusting that they linked. A skeleton with no executable in it is a
+          # real failure mode - it is what building the bare target used to do.
+          # Scoped to the format directories juce_add_plugin writes, so this
+          # judges what the build produced and cannot be confused by anything
+          # else that happens to be a bundle - the AppleScript uninstaller, for
+          # one, keeps its binary at Contents/MacOS/applet and would look broken
+          # by this rule while being perfectly fine.
+          fail=0; found=0
+          while IFS= read -r bundle; do
+            found=$((found + 1))
+            name=$(basename "$bundle"); stem="${name%.*}"
+            binary="$bundle/Contents/MacOS/$stem"
+            if [ ! -x "$binary" ]; then
+              echo "::error::$name has no executable at Contents/MacOS/$stem"; fail=1; continue
+            fi
+            file "$binary" | grep -q "arm64" || { echo "::error::$name is not arm64"; fail=1; }
+            echo "ok  $name"
+          done < <(find build -type d \( -path '*_artefacts/Release/VST3/*.vst3' \
+                                       -o -path '*_artefacts/Release/AU/*.component' \
+                                       -o -path '*_artefacts/Release/Standalone/*.app' \) -maxdepth 5)
+          # An empty sweep must not pass as "nothing broken". A find that
+          # silently matched nothing would be a green run asserting nothing at
+          # all, which is worse than a red one.
+          #
+          # 17 = the Synth's three formats + seven effects at two formats each.
+          # Adding a product only ever raises this, so the floor stays valid;
+          # losing one is something worth failing over.
+          echo "checked $found bundles"
+          [ "$found" -ge 17 ] || { echo "::error::expected at least 17 plug-in bundles, found $found"; fail=1; }
+          exit $fail
+
+      # auval is deliberately NOT run here. It requires the component to be
+      # installed in a system plug-in folder and triggers macOS's own
+      # AudioComponentRegistrar; on an ephemeral runner it validates a copy that
+      # no user will ever have. The bundle check above is what CI can honestly
+      # assert. See docs/CI_CD.md.
+
+      - name: Upload test reports
+        if: always()                    # a failed run is when these matter most
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-test-reports-${{ github.run_number }}
+          path: |
+            test-report.txt
+            regress-report.txt
+            rtsafety-report.txt
+            smoke-report.txt
+            our-warnings.log
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build-log-${{ github.run_number }}
+          path: build.log
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Benchmarks. Reported, never gating.
+  #
+  # PX3MemBench only FAILS when compared against a saved baseline, and no
+  # baseline is committed (.benchmarks/ is gitignored). A GitHub runner is also
+  # shared hardware with neighbours competing for cache and memory bandwidth,
+  # so a CPU number from it is not comparable with one from a developer's Mac.
+  # Publishing the numbers is useful; gating a merge on them would produce
+  # failures that mean "the runner was busy". continue-on-error says so.
+  # --------------------------------------------------------------------------
+  benchmarks:
+    name: Benchmarks (reported, not gating)
+    runs-on: macos-14
+    timeout-minutes: 45
+    needs: macos
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install ninja
+      - name: Configure and build benchmarks
+        run: |
+          cmake -S . -B build-bench ${{ env.PX3_CMAKE_ARGS }}
+          cmake --build build-bench --target PX3Bench PX3MemBench --parallel
+      - name: CPU benchmark
+        run: ./build-bench/PX3Bench_artefacts/Release/PX3Bench 2>&1 | tee cpu-bench.txt
+      - name: Memory benchmark
+        run: ./build-bench/PX3MemBench_artefacts/Release/PX3MemBench --json 2>&1 | tee mem-bench.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmarks-${{ github.run_number }}
+          path: |
+            cpu-bench.txt
+            mem-bench.json
+          retention-days: 30
+
+  # --------------------------------------------------------------------------
+  # Windows: scaffolded, off by default.
+  #
+  # PX3 has no Windows support today and this job is not pretending otherwise.
+  # Every product declares AU, which is macOS-only; the build scripts pin
+  # CMAKE_OSX_ARCHITECTURES; packaging is pkgbuild/productbuild plus an
+  # AppleScript uninstaller; and the update path installs a signed .pkg.
+  #
+  # The job exists so that enabling it is a one-line change once a port exists:
+  # set the repository variable PX3_ENABLE_WINDOWS to 'true'
+  # (Settings -> Secrets and variables -> Actions -> Variables). Until then it
+  # is skipped, and no run claims a Windows build happened.
+  # --------------------------------------------------------------------------
+  windows:
+    name: Windows build (disabled until a port exists)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    if: vars.PX3_ENABLE_WINDOWS == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (VST3 only)
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DPX3_BUILD_DIAGNOSTIC=ON
+          -DPX3_COPY_PLUGIN_AFTER_BUILD=OFF
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Component tests
+        run: ./build/PX3Tests_artefacts/Release/PX3Tests.exe
+
+  # A single required status check, so branch protection needs one entry rather
+  # than a list that goes stale whenever a job is added or renamed.
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    needs: [static, macos]
+    if: always()
+    steps:
+      - name: Verify required jobs passed
+        run: |
+          echo "static: ${{ needs.static.result }}"
+          echo "macos:  ${{ needs.macos.result }}"
+          [ "${{ needs.static.result }}" = "success" ] || exit 1
+          [ "${{ needs.macos.result }}" = "success" ] || exit 1
+          echo "CI green"

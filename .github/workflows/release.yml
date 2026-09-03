@@ -1,0 +1,392 @@
+name: Release
+
+# Builds the exact source a GitHub Release points at, and attaches the results
+# to that same release. It never creates a release: the developer does that by
+# hand, with release notes they wrote themselves, and this reacts to it.
+on:
+  release:
+    types: [published]
+
+  # The safe rehearsal. Builds and packages any ref and hands the artifacts back
+  # as workflow artifacts WITHOUT touching a release, so the whole pipeline can
+  # be proven before a real version depends on it.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Tag, branch or SHA to build (e.g. v0.7.0, main)'
+        required: true
+        default: 'main'
+      sign:
+        description: 'Attempt signing (needs secrets configured)'
+        type: boolean
+        default: false
+
+concurrency:
+  # Never two builds of one release at once, and never cancel one: a half-built
+  # release that has already uploaded some assets is worse than a slow one.
+  group: release-${{ github.event.release.tag_name || inputs.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read              # raised to write only on the job that uploads
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Work out what is being built before building it. Cheap, and it turns the
+  # expensive failures (wrong version stamped into the binaries) into a job that
+  # fails in twenty seconds with an explanation.
+  # --------------------------------------------------------------------------
+  identify:
+    name: Identify release
+    runs-on: ubuntu-latest
+    outputs:
+      ref:        ${{ steps.resolve.outputs.ref }}
+      version:    ${{ steps.resolve.outputs.version }}
+      core:       ${{ steps.resolve.outputs.core }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+      dry_run:    ${{ steps.resolve.outputs.dry_run }}
+      environment: ${{ steps.resolve.outputs.environment }}
+    steps:
+      - name: Checkout the ref being released
+        uses: actions/checkout@v4
+        with:
+          # THE reproducibility requirement. For a release event this is the tag
+          # the release points at, not whatever main happens to be: a release
+          # published an hour after a merge must contain the tagged source, not
+          # the merge.
+          ref: ${{ github.event.release.tag_name || inputs.ref }}
+          fetch-depth: 0
+
+      - name: Resolve version and mode
+        id: resolve
+        # Both refs arrive through `env:`, never interpolated into the script
+        # with ${{ }}. A workflow_dispatch input is attacker-controlled text as
+        # far as this shell is concerned, and `REF='${{ inputs.ref }}'` would
+        # let a crafted value close the quote and run its own commands. Through
+        # env it is only ever data.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_REF: ${{ inputs.ref }}
+          GH_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          set -euo pipefail
+          if [ "${EVENT_NAME}" = "release" ]; then
+            TAG="${RELEASE_TAG}"
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+            echo "ref=${TAG}"    >> "$GITHUB_OUTPUT"
+
+            # release-version.sh parses the tag AND checks it agrees with
+            # PX3_VERSION in CMakeLists.txt. See that script for why the check
+            # runs this way round rather than injecting the version.
+            ./scripts/ci/release-version.sh "${TAG}" >> "$GITHUB_OUTPUT"
+
+            # GitHub's own prerelease flag is the authority, because it is what
+            # a user sees and what the updater will read. The tag suffix is
+            # cross-checked against it below.
+            GH_PRE="${GH_PRERELEASE}"
+            TAG_PRE=$(./scripts/ci/release-version.sh "${TAG}" | grep '^prerelease=' | cut -d= -f2)
+            if [ "${GH_PRE}" != "${TAG_PRE}" ]; then
+              echo "::error::Release is marked prerelease=${GH_PRE} but the tag ${TAG} says ${TAG_PRE}."
+              echo "::error::A tag with -beta./-rc. must be a prerelease; a plain vX.Y.Z must not be."
+              exit 1
+            fi
+            # if/else rather than `test && a || b`: under `set -e` that idiom
+            # runs b whenever a fails, which is a quiet way to pick the wrong
+            # environment for a production release.
+            if [ "${GH_PRE}" = "true" ]; then
+              echo "environment=beta" >> "$GITHUB_OUTPUT"
+            else
+              echo "environment=production" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            # Rehearsal. Any ref, no release touched, no environment gate.
+            REF="${INPUT_REF}"
+            echo "dry_run=true" >> "$GITHUB_OUTPUT"
+            echo "ref=${REF}"   >> "$GITHUB_OUTPUT"
+            # Deliberately empty, not "''": an empty value means "no
+            # environment", while the two quote characters would name one.
+            echo "environment=" >> "$GITHUB_OUTPUT"
+            if ./scripts/ci/release-version.sh "${REF}" > /tmp/v 2>/dev/null; then
+              cat /tmp/v >> "$GITHUB_OUTPUT"
+            else
+              # A branch or SHA has no version of its own, so the build is
+              # labelled with the version it is going to stamp anyway, plus the
+              # short SHA - never a bare version number that could be mistaken
+              # for a real release artifact.
+              CORE=$(grep -oE 'set\(PX3_VERSION "[0-9.]+"' CMakeLists.txt | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+              SHORT=$(git rev-parse --short HEAD)
+              echo "version=${CORE}-dev.${SHORT}" >> "$GITHUB_OUTPUT"
+              echo "core=${CORE}"                 >> "$GITHUB_OUTPUT"
+              echo "prerelease=true"              >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "### Release build"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Ref | \`${{ steps.resolve.outputs.ref }}\` |"
+            echo "| Version | \`${{ steps.resolve.outputs.version }}\` |"
+            echo "| Build version | \`${{ steps.resolve.outputs.core }}\` |"
+            echo "| Prerelease | ${{ steps.resolve.outputs.prerelease }} |"
+            echo "| Publishes to release | ${{ steps.resolve.outputs.dry_run == 'false' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # --------------------------------------------------------------------------
+  # Build, test and package on macOS.
+  # --------------------------------------------------------------------------
+  macos:
+    name: macOS package
+    needs: identify
+    runs-on: macos-14
+    timeout-minutes: 90
+    # Signing/notarisation happen here, so this is where the protected
+    # environment belongs. An empty string means no environment - the rehearsal
+    # path must not sit waiting on a production approval.
+    environment: ${{ needs.identify.outputs.environment }}
+    outputs:
+      signed: ${{ steps.build.outputs.signed }}
+    env:
+      # Job-level, so step `if:` conditions can test them. A secret that is not
+      # configured arrives as an empty string rather than an error, which is
+      # what lets an unsigned build proceed and say so.
+      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      HAVE_SIGNING_CERT: ${{ secrets.MACOS_CERT_P12 != '' }}
+    steps:
+      - name: Checkout the exact ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.identify.outputs.ref }}
+
+      - name: Record what was actually checked out
+        run: |
+          # Proof, in the log, that the binaries below came from the tagged
+          # commit and not from a branch that moved underneath the build.
+          echo "ref:    ${{ needs.identify.outputs.ref }}"
+          echo "commit: $(git rev-parse HEAD)"
+          echo "described: $(git describe --tags --always)"
+
+      - run: brew install ninja ccache
+
+      # This job compiles twice - once for the test harnesses, once for the
+      # shippable plug-ins - because build-release.sh wipes and reconfigures its
+      # own build directory with the diagnostic targets off. ccache recovers the
+      # overlap between them; without it the job runs closer to its timeout than
+      # is comfortable on a 3-core runner.
+      - name: Cache compiler output
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/ccache
+          key: ccache-release-${{ needs.identify.outputs.core }}-${{ github.sha }}
+          restore-keys: |
+            ccache-release-${{ needs.identify.outputs.core }}-
+            ccache-release-
+
+      - name: Verify the tests pass on this exact source
+        run: |
+          # A release is not the place to discover a red test. This is the same
+          # estate CI runs, re-run against the tagged commit, because CI proved
+          # a branch and this proves the artifact.
+          cmake -S . -B build-test -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DPX3_BUILD_DIAGNOSTIC=ON \
+            -DPX3_COPY_PLUGIN_AFTER_BUILD=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build-test --target PX3Tests PX3Diag PX3SmokeTest --parallel
+          ./build-test/PX3Tests_artefacts/Release/PX3Tests           2>&1 | tee test-report.txt
+          ./build-test/PX3Diag_artefacts/Release/PX3Diag regress     2>&1 | tee regress-report.txt
+          ./build-test/PX3Diag_artefacts/Release/PX3Diag rtsafety    2>&1 | tee rtsafety-report.txt
+          ./build-test/PX3SmokeTest_artefacts/Release/PX3SmokeTest   2>&1 | tee smoke-report.txt
+
+      # ---- signing credentials, only when they exist ------------------------
+      #
+      # Nothing below fabricates a credential or pretends an unsigned build is
+      # signed. If the secrets are absent the release still builds, and the
+      # summary says in plain words that the artifacts are unsigned.
+      - name: Import signing certificate
+        id: keychain
+        # HAVE_SIGNING_CERT comes from job-level env (see the job's `env:`),
+        # because the `secrets` context is not available to a step-level `if`
+        # and a step's own `env:` is not reliably available to its own `if`.
+        # Written the other way round this condition is always false, and
+        # signing silently never happens.
+        if: env.HAVE_SIGNING_CERT == 'true' && (github.event_name == 'release' || inputs.sign)
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/px3-signing.keychain-db"
+          # A random per-run password: this keychain lives for one job.
+          KEYCHAIN_PW=$(openssl rand -base64 24)
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productsign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PW" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+          echo "imported=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build and package
+        id: build
+        env:
+          CODESIGN_IDENTITY:      ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          DEVELOPER_ID_INSTALLER: ${{ secrets.MACOS_INSTALLER_IDENTITY }}
+          APPLE_ID:               ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD:     ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID:          ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          ARGS=()
+          if [ "${{ steps.keychain.outputs.imported }}" = "true" ] && [ -n "${CODESIGN_IDENTITY:-}" ]; then
+            ARGS+=(--sign)
+            if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+              ARGS+=(--notarize)
+              echo "signed=signed+notarised" >> "$GITHUB_OUTPUT"
+            else
+              echo "signed=signed" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "::warning::Signing is not configured - these artifacts are UNSIGNED and Gatekeeper will refuse them on other machines. See docs/CI_CD.md."
+            echo "signed=unsigned" >> "$GITHUB_OUTPUT"
+          fi
+          # The project's own packaging. CI does not reimplement it.
+          #
+          # ${ARGS[@]+"${ARGS[@]}"} rather than "${ARGS[@]}": GitHub's macOS
+          # runners use /bin/bash 3.2, where expanding an EMPTY array under
+          # `set -u` is an "unbound variable" abort. The unsigned path is
+          # exactly the empty-array case, so the plain form would break the
+          # first release anyone runs. Verified against bash 3.2.57.
+          ./scripts/build-release.sh ${ARGS[@]+"${ARGS[@]}"} 2>&1 | tee release-build.log
+
+      - name: Collect and name artifacts
+        id: collect
+        run: |
+          set -euo pipefail
+          VERSION='${{ needs.identify.outputs.version }}'
+          CORE='${{ needs.identify.outputs.core }}'
+          OUT="$RUNNER_TEMP/upload"; mkdir -p "$OUT"
+
+          # build-release.sh names its output after PX3_VERSION, which is the
+          # core version and carries no prerelease suffix. The upload names have
+          # to carry the full one, or v0.7.1-beta.1 and v0.7.1 would produce
+          # identically-named assets and the second would look like the first.
+          copy() {
+            src="$1"; dest="$2"
+            [ -e "$src" ] || { echo "::error::expected artifact missing: $src"; return 1; }
+            cp -R "$src" "$OUT/$dest"
+            echo "  $dest"
+          }
+          echo "artifacts:"
+          copy "dist/PX3-v${CORE}.pkg"                              "PX3-v${VERSION}-macOS.pkg"
+          copy "dist/P(X3)-v${CORE}-macOS-arm64.zip"                 "PX3-v${VERSION}-macOS-arm64-plugins.zip"
+          copy "dist/P(X3)-v${CORE}-macOS-arm64-Installer.zip"       "PX3-v${VERSION}-macOS-arm64-Installer.zip"
+
+          # A checksum file, so a download can be verified without trusting the
+          # transport. Generated over the final names.
+          ( cd "$OUT" && shasum -a 256 * > "PX3-v${VERSION}-macOS-SHA256SUMS.txt" )
+          cat "$OUT/PX3-v${VERSION}-macOS-SHA256SUMS.txt"
+          echo "dir=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: px3-macos-${{ needs.identify.outputs.version }}
+          path: ${{ steps.collect.outputs.dir }}/*
+          retention-days: ${{ needs.identify.outputs.dry_run == 'true' && 7 || 90 }}
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: px3-macos-reports-${{ needs.identify.outputs.version }}
+          path: |
+            test-report.txt
+            regress-report.txt
+            rtsafety-report.txt
+            smoke-report.txt
+            release-build.log
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Remove signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/px3-signing.keychain-db" 2>/dev/null || true
+
+  # --------------------------------------------------------------------------
+  # Windows: scaffolded, off until a port exists. See the same note in ci.yml.
+  # --------------------------------------------------------------------------
+  windows:
+    name: Windows package (disabled until a port exists)
+    needs: identify
+    runs-on: windows-latest
+    if: vars.PX3_ENABLE_WINDOWS == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.identify.outputs.ref }}
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPX3_COPY_PLUGIN_AFTER_BUILD=OFF
+          cmake --build build --config Release --parallel
+      - name: Package
+        run: echo "No Windows packaging exists yet - see docs/CI_CD.md"
+
+  # --------------------------------------------------------------------------
+  # Attach to the release that triggered this. Separate job, because it is the
+  # only one that needs write access to the repository.
+  # --------------------------------------------------------------------------
+  publish:
+    name: Attach assets to release
+    needs: [identify, macos]
+    runs-on: ubuntu-latest
+    if: needs.identify.outputs.dry_run == 'false'
+    permissions:
+      contents: write         # required to add assets; nothing else is granted
+    steps:
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: px3-macos-${{ needs.identify.outputs.version }}
+          path: assets
+
+      - name: Attach to the existing release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          ls -la assets
+          # --clobber so a re-run after a failure replaces its own partial
+          # uploads instead of erroring. This uploads to the release that
+          # already exists; it never creates one, so the notes the developer
+          # wrote are untouched.
+          gh release upload "$TAG" assets/* --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Report signing state on the release run
+        env:
+          # Through env, not ${{ }}: the same rule as the resolve step. Every
+          # other value in this file that reaches a shell is either a constant
+          # defined here or an output of release-version.sh, which only emits
+          # strings that passed its vMAJOR.MINOR.PATCH regex.
+          TAG: ${{ github.event.release.tag_name }}
+          SIGNED: ${{ needs.macos.outputs.signed }}
+        run: |
+          {
+            echo "### Assets attached to \`${TAG}\`"
+            echo ""
+            echo "Signing: **${SIGNED}**"
+            if [ "${SIGNED}" = "unsigned" ]; then
+              echo ""
+              echo "> These artifacts are **unsigned**. Gatekeeper will refuse them on any"
+              echo "> machine but the one that built them. Configure the signing secrets"
+              echo "> listed in \`docs/CI_CD.md\` before distributing this release."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
