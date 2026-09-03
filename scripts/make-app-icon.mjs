@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 //
-// Generates the P(X3) application icon from Source/Assets/px3.gif.
+// Generates the P(X3) application icon from products/PX3Synth/Assets/px3.gif.
 //
 // The logo is a 564x187 wordmark - roughly 3:1 - which wastes most of a square
 // canvas if it is placed horizontally. Rotating it 45 degrees lays it along the
@@ -69,8 +69,8 @@ function loadSharp() {
 }
 
 const sharp = loadSharp();
-const SOURCE = path.resolve(argValue('--source', path.join(repoRoot, 'Source/Assets/px3.gif')));
-const OUT_DIR = path.resolve(argValue('--out-dir', path.join(repoRoot, 'Source/Assets')));
+const SOURCE = path.resolve(argValue('--source', path.join(repoRoot, 'products/PX3Synth/Assets/px3.gif')));
+const OUT_DIR = path.resolve(argValue('--out-dir', path.join(repoRoot, 'products/PX3Synth/Assets')));
 const ANGLE = Number(argValue('--angle', '-45'));
 const CANVAS = 1024;
 

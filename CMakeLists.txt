@@ -45,6 +45,8 @@ FetchContent_MakeAvailable(juce)
 # and committed, so an ordinary build does not need node or sharp. Passed to
 # JUCE only when it is actually present, so a fresh checkout without it still
 # configures.
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/PX3Product.cmake)
+
 set(PX3_ICON_FILE "${CMAKE_SOURCE_DIR}/products/PX3Synth/Assets/px3-icon.png" CACHE FILEPATH
     "PNG used as the application/plugin icon")
 set(PX3_ICON_ARGS "")
@@ -55,33 +57,57 @@ else()
     message(STATUS "PX3 app icon: none (run scripts/make-app-icon.mjs to generate one)")
 endif()
 
-juce_add_plugin(PX3Synth
-    ${PX3_ICON_ARGS}
-    COMPANY_NAME "PX3"
-    BUNDLE_ID "com.px3.px3synth"
-    IS_SYNTH TRUE
-    NEEDS_MIDI_INPUT TRUE
-    NEEDS_MIDI_OUTPUT FALSE
-    IS_MIDI_EFFECT FALSE
-    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-    COPY_PLUGIN_AFTER_BUILD ${PX3_COPY_PLUGIN_AFTER_BUILD}
-    PLUGIN_MANUFACTURER_CODE SyPr
-    PLUGIN_CODE SyP1
-    FORMATS AU VST3 Standalone
-    PRODUCT_NAME "PX3 Synth"
-)
-
-juce_generate_juce_header(PX3Synth)
-
-juce_add_binary_data(PX3Assets
-    SOURCES
-        products/PX3Synth/Assets/ppp.png
-        products/PX3Synth/Assets/px3.gif
-)
-
+# Code every PX3 product can use. Compiled INTO each product rather than
+# linked as a static library, deliberately: JuceHeader.h is generated per
+# target and carries that target's JucePlugin_* identity, so one library built
+# against one product's header would bake that product's identity into every
+# other. Splitting the list is what gives the boundary; a shared library would
+# give a wrong one.
 set(PX3_SHARED_SOURCES
-        products/PX3Synth/UI/PerformanceControls.cpp
         shared/Infrastructure/Settings/GlobalSettings.cpp
+        shared/UI/Components/PianoKeyboard.cpp
+        shared/UI/Components/ModalBackdrop.cpp
+    shared/UI/Components/RoundedRect.cpp
+        shared/UI/Components/VuMeterComponent.cpp
+    shared/UI/Style/FetPanelStyle.cpp
+        shared/UI/Fx/DelayComponent.cpp
+        shared/UI/Components/Card.cpp
+        shared/DSP/Filter/CombResonator.cpp
+        shared/DSP/Analog/AnalogEngine.cpp
+        shared/DSP/Doom/Doom.cpp
+        shared/DSP/Lucy/Lucy.cpp
+        shared/DSP/Chorus/Chorus.cpp
+        shared/DSP/Core/FetCompressor.cpp
+        shared/DSP/StereoSpread/StereoSpread.cpp
+        shared/UI/Fx/FxSignalFlow.cpp
+        shared/UI/Fx/FxChainLayout.cpp
+        shared/UI/Components/BypassButton.cpp
+        shared/UI/Components/ToggleChipButton.cpp
+        shared/UI/Components/CardInner.cpp
+        shared/UI/Fx/FxCardComponent.cpp
+        shared/UI/Fx/MoodComponent.cpp
+        shared/UI/Fx/FilterComponent.cpp
+        shared/UI/Fx/ReverbComponent.cpp
+        shared/UI/Style/UIConfig.cpp
+        shared/UI/Style/UIConfigManager.cpp
+        shared/UI/Fx/VibeComponent.cpp
+        shared/DSP/Delay/Delay.cpp
+        shared/DSP/Mood/Mood.cpp
+        shared/DSP/Reverb/Reverb.cpp
+        shared/DSP/Vibe/Vibe.cpp
+        shared/DSP/Vibe/VibeEngine.cpp
+        shared/DSP/Filter/VoiceFilter.cpp
+        shared/Infrastructure/Update/SemanticVersion.cpp
+        shared/Infrastructure/Update/UpdateModel.cpp
+        shared/Infrastructure/Update/GitHubReleaseProvider.cpp
+        shared/Infrastructure/Update/ProductRegistry.cpp
+        shared/Infrastructure/Update/UpdateService.cpp
+)
+
+# PX3 Synth's own code. Nothing here is reusable by another product, and
+# nothing above it is specific to this one.
+set(PX3_SYNTH_SOURCES
+        products/PX3Synth/UI/PerformanceControls.cpp
         products/PX3Synth/UI/PluginEditorLook.cpp
         products/PX3Synth/UI/PluginEditorFxCards.cpp
         products/PX3Synth/UI/PluginEditorMidiMacros.cpp
@@ -95,7 +121,6 @@ set(PX3_SHARED_SOURCES
         products/PX3Synth/UI/SettingsPanel.cpp
         products/PX3Synth/UI/KnobOverlays.cpp
         products/PX3Synth/UI/MacroKnobLook.cpp
-        shared/UI/Components/PianoKeyboard.cpp
         products/PX3Synth/UI/OscPanel.cpp
         products/PX3Synth/UI/ModPanel.cpp
         products/PX3Synth/UI/AmpEnvelopeComponent.cpp
@@ -103,55 +128,26 @@ set(PX3_SHARED_SOURCES
         products/PX3Synth/UI/FltPanel.cpp
         products/PX3Synth/UI/FxPanel.cpp
         products/PX3Synth/UI/MixPanel.cpp
-        shared/UI/Components/ModalBackdrop.cpp
-    shared/UI/Components/RoundedRect.cpp
-        shared/UI/Components/VuMeterComponent.cpp
     products/PX3Synth/UI/BusInsertOverlay.cpp
     products/PX3Synth/UI/BusEqGraph.cpp
-    shared/UI/Style/FetPanelStyle.cpp
     products/PX3Synth/UI/MixerControls.cpp
         products/PX3Synth/UI/MixerChannelComponent.cpp
         products/PX3Synth/UI/TopMenuBar.cpp
-        shared/UI/Fx/DelayComponent.cpp
-        shared/UI/Components/Card.cpp
-        shared/DSP/Filter/CombResonator.cpp
         products/PX3Synth/DSP/StftEngine.cpp
-        shared/DSP/Analog/AnalogEngine.cpp
-        shared/DSP/Doom/Doom.cpp
-        shared/DSP/Lucy/Lucy.cpp
-        shared/DSP/Chorus/Chorus.cpp
         products/PX3Synth/DSP/ParametricEQ.cpp
-        shared/DSP/Core/FetCompressor.cpp
-        shared/DSP/StereoSpread/StereoSpread.cpp
-        shared/UI/Fx/FxSignalFlow.cpp
-        shared/UI/Fx/FxChainLayout.cpp
-        shared/UI/Components/BypassButton.cpp
-        shared/UI/Components/ToggleChipButton.cpp
-        shared/UI/Components/CardInner.cpp
-        shared/UI/Fx/FxCardComponent.cpp
-        shared/UI/Fx/MoodComponent.cpp
         products/PX3Synth/UI/EnvelopeComponent.cpp
-        shared/UI/Fx/FilterComponent.cpp
         products/PX3Synth/UI/LfoComponent.cpp
-        shared/UI/Fx/ReverbComponent.cpp
-        shared/UI/Style/UIConfig.cpp
         products/PX3Synth/UI/BreakpointEnvelopeEditor.cpp
         products/PX3Synth/UI/Wavetable3DRenderer.cpp
         products/PX3Synth/UI/WavetableGraph.cpp
-        shared/UI/Style/UIConfigManager.cpp
         products/PX3Synth/UI/SubOscComponent.cpp
-        shared/UI/Fx/VibeComponent.cpp
         products/PX3Synth/UI/OscillatorComponent.cpp
         products/PX3Synth/UI/PluginEditor.cpp
         products/PX3Synth/UI/PluginEditorDebug.cpp
         products/PX3Synth/DSP/AmpEnvelope.cpp
         products/PX3Synth/DSP/EnvelopeGenerator.cpp
-        shared/DSP/Delay/Delay.cpp
-        shared/DSP/Mood/Mood.cpp
         products/PX3Synth/DSP/LfoGenerator.cpp
-        shared/DSP/Reverb/Reverb.cpp
         products/PX3Synth/DSP/SubOscillator.cpp
-        shared/DSP/Vibe/Vibe.cpp
         products/PX3Synth/DSP/PluginProcessor.cpp
         products/PX3Synth/DSP/PluginProcessorParameters.cpp
         products/PX3Synth/DSP/PluginProcessorMidi.cpp
@@ -160,24 +156,21 @@ set(PX3_SHARED_SOURCES
         products/PX3Synth/DSP/PluginProcessorEffects.cpp
         products/PX3Synth/DSP/PluginProcessorState.cpp
         products/PX3Synth/DSP/SynthSound.cpp
-        shared/DSP/Vibe/VibeEngine.cpp
         products/PX3Synth/DSP/BreakpointEnvelope.cpp
         products/PX3Synth/DSP/OscillatorUnit.cpp
         products/PX3Synth/DSP/Wavetable.cpp
         products/PX3Synth/DSP/WavetableFactory.cpp
         products/PX3Synth/DSP/WavetableImporter.cpp
         products/PX3Synth/DSP/WavetableLibrary.cpp
-        shared/DSP/Filter/VoiceFilter.cpp
         products/PX3Synth/DSP/SynthVoice.cpp
         products/PX3Synth/DSP/PX3Diagnostics.cpp
-        shared/Infrastructure/Update/SemanticVersion.cpp
-        shared/Infrastructure/Update/UpdateModel.cpp
-        shared/Infrastructure/Update/GitHubReleaseProvider.cpp
-        shared/Infrastructure/Update/ProductRegistry.cpp
-        shared/Infrastructure/Update/UpdateService.cpp
         products/PX3Synth/Preset/PresetManager.cpp
         products/PX3Synth/Preset/FactoryPresets.cpp
 )
+
+# Everything the Synth target compiles. Named so the tools and test targets,
+# which build the Synth in full, can ask for it by one name.
+set(PX3_ALL_SOURCES ${PX3_SHARED_SOURCES} ${PX3_SYNTH_SOURCES})
 
 set(PX3_INCLUDE_DIRS
         shared
@@ -206,28 +199,26 @@ set(PX3_INCLUDE_DIRS
         products/PX3Synth/Preset
 )
 
-target_sources(PX3Synth PRIVATE ${PX3_SHARED_SOURCES})
+# PX3 Synth, the first product. Declared exactly the way any other product is,
+# so "how do I add PX3 Mood" has the same answer as "how was the Synth added".
+#
+# Its bundle id and plug-in code are grandfathered rather than following the
+# newer convention: they are what is already installed on people's machines.
+px3_add_product(
+    TARGET       PX3Synth
+    PRODUCT_NAME "PX3 Synth"
+    BUNDLE_ID    "com.px3.px3synth"
+    PLUGIN_CODE  SyP1
+    IS_SYNTH     TRUE
+    FORMATS      AU VST3 Standalone
+    SOURCES      ${PX3_SYNTH_SOURCES})
 
-target_include_directories(PX3Synth PRIVATE ${PX3_INCLUDE_DIRS})
-
-target_compile_definitions(PX3Synth
-    PRIVATE
-        JUCE_WEB_BROWSER=0
-        JUCE_USE_CURL=0
-    PX3_DEBUG_PANEL=$<IF:$<BOOL:${PX3_DEBUG_PANEL}>,1,0>
+juce_add_binary_data(PX3Assets
+    SOURCES
+        products/PX3Synth/Assets/ppp.png
+        products/PX3Synth/Assets/px3.gif
 )
 
-target_link_libraries(PX3Synth
-    PRIVATE
-        PX3Assets
-        juce::juce_audio_utils
-        juce::juce_dsp
-        juce::juce_cryptography
-        juce::juce_opengl
-    PUBLIC
-        juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
-)
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(PX3_WARNING_OPTIONS
@@ -261,7 +252,7 @@ if (PX3_BUILD_DIAGNOSTIC)
     juce_add_console_app(PX3Diag PRODUCT_NAME "PX3Diag")
     juce_generate_juce_header(PX3Diag)
 
-    target_sources(PX3Diag PRIVATE ${PX3_SHARED_SOURCES} tools/DiagnosticMain.cpp)
+    target_sources(PX3Diag PRIVATE ${PX3_ALL_SOURCES} tools/DiagnosticMain.cpp)
     target_include_directories(PX3Diag PRIVATE ${PX3_INCLUDE_DIRS})
 
     target_compile_definitions(PX3Diag
@@ -291,7 +282,7 @@ endif()
 if (PX3_BUILD_DIAGNOSTIC)
     juce_add_console_app(PX3SmokeTest PRODUCT_NAME "PX3SmokeTest")
     juce_generate_juce_header(PX3SmokeTest)
-    target_sources(PX3SmokeTest PRIVATE ${PX3_SHARED_SOURCES} tools/AudioSmokeTest.cpp)
+    target_sources(PX3SmokeTest PRIVATE ${PX3_ALL_SOURCES} tools/AudioSmokeTest.cpp)
     target_include_directories(PX3SmokeTest PRIVATE ${PX3_INCLUDE_DIRS})
     target_compile_definitions(PX3SmokeTest
         PRIVATE
@@ -339,7 +330,7 @@ if (PX3_BUILD_DIAGNOSTIC)
     # One module per area rather than one 32,000-line translation unit. They
     # share tests/Tests/TestSupport.h for the counters and fixtures.
     file(GLOB PX3_TEST_SOURCES CONFIGURE_DEPENDS tests/Tests/*.cpp)
-    target_sources(PX3Tests PRIVATE ${PX3_SHARED_SOURCES} ${PX3_TEST_SOURCES})
+    target_sources(PX3Tests PRIVATE ${PX3_ALL_SOURCES} ${PX3_TEST_SOURCES})
     target_include_directories(PX3Tests PRIVATE ${PX3_INCLUDE_DIRS})
     target_compile_definitions(PX3Tests
         PRIVATE
@@ -366,7 +357,7 @@ endif()
 if (PX3_BUILD_DIAGNOSTIC)
     juce_add_console_app(PX3MemBench PRODUCT_NAME "PX3MemBench")
     juce_generate_juce_header(PX3MemBench)
-    target_sources(PX3MemBench PRIVATE ${PX3_SHARED_SOURCES} tools/MemoryBenchmark.cpp)
+    target_sources(PX3MemBench PRIVATE ${PX3_ALL_SOURCES} tools/MemoryBenchmark.cpp)
     target_include_directories(PX3MemBench PRIVATE ${PX3_INCLUDE_DIRS})
     target_compile_definitions(PX3MemBench
         PRIVATE
@@ -388,7 +379,7 @@ endif()
 if (PX3_BUILD_DIAGNOSTIC)
     juce_add_console_app(PX3Bench PRODUCT_NAME "PX3Bench")
     juce_generate_juce_header(PX3Bench)
-    target_sources(PX3Bench PRIVATE ${PX3_SHARED_SOURCES} tools/CpuBenchmark.cpp)
+    target_sources(PX3Bench PRIVATE ${PX3_ALL_SOURCES} tools/CpuBenchmark.cpp)
     target_include_directories(PX3Bench PRIVATE ${PX3_INCLUDE_DIRS})
     target_compile_definitions(PX3Bench
         PRIVATE

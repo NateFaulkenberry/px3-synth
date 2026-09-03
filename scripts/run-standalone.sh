@@ -130,10 +130,10 @@ fi
 # that fired when only UIConfig.json had changed - which needs no relink at all -
 # and a warning that cries wolf is one nobody reads.
 #
-# 1. The binary, versus the code compiled into it. Source/Tools is excluded:
+# 1. The binary, versus the code compiled into it. tools is excluded:
 #    those build the console harnesses, not the plug-in.
 NEWEST_CODE=$(find "${REPO_ROOT}/Source" -type f \( -name '*.cpp' -o -name '*.h' \) \
-              -not -path "*/Source/Tools/*" -exec stat -f %m {} + 2>/dev/null | sort -rn | head -1)
+              -not -path "*/tools/*" -exec stat -f %m {} + 2>/dev/null | sort -rn | head -1)
 if [[ -n "${NEWEST_CODE}" && "${NEWEST_CODE}" -gt "${NEWEST_TIME}" ]]; then
   echo "WARNING: the app is older than the code - you are about to run a stale build."
   echo "         app:  $(date -r "${NEWEST_TIME}" '+%H:%M:%S')  ${APP_PATH#${REPO_ROOT}/}"
@@ -150,20 +150,20 @@ if [[ -n "${OWNER}" && "${OWNER}" != "$(id -un)" ]]; then
   echo "           sudo rm -rf \"${APP_PATH}\""
 fi
 
-# Live reload of Source/UI/UIConfig.json only happens in a debug-enabled build;
+# Live reload of shared/UI/Style/UIConfig.json only happens in a debug-enabled build;
 # other builds read the copy inside the app bundle.
 CACHED_DEBUG=$(grep -E '^PX3_DEBUG_PANEL:BOOL=' "${REPO_ROOT}/build/CMakeCache.txt" 2>/dev/null | cut -d= -f2 || echo "")
 if [[ "${CACHED_DEBUG}" == "ON" ]]; then
-  echo "Live UIConfig reload is ON - the app reads Source/UI/UIConfig.json directly."
+  echo "Live UIConfig reload is ON - the app reads shared/UI/Style/UIConfig.json directly."
 else
-  echo "NOTE: PX3_DEBUG_PANEL is ${CACHED_DEBUG:-unset}, so edits to Source/UI/UIConfig.json"
+  echo "NOTE: PX3_DEBUG_PANEL is ${CACHED_DEBUG:-unset}, so edits to shared/UI/Style/UIConfig.json"
   echo "      will NOT be picked up - the app reads the copy bundled inside it."
   echo "      For live UIConfig reload: ./scripts/run-standalone.sh --debug true"
 
   # Only meaningful in this branch: a debug build never reads the bundled copy.
   BUNDLED_CONFIG="${APP_PATH}/Contents/Resources/UIConfig.json"
   if [[ -f "${BUNDLED_CONFIG}" ]]; then
-    SOURCE_CONFIG_TIME=$(stat -f %m "${REPO_ROOT}/Source/UI/UIConfig.json" 2>/dev/null || echo 0)
+    SOURCE_CONFIG_TIME=$(stat -f %m "${REPO_ROOT}/shared/UI/Style/UIConfig.json" 2>/dev/null || echo 0)
     BUNDLED_CONFIG_TIME=$(stat -f %m "${BUNDLED_CONFIG}" 2>/dev/null || echo 0)
     if [[ "${SOURCE_CONFIG_TIME}" -gt "${BUNDLED_CONFIG_TIME}" ]]; then
       echo "      The bundled copy is also out of date - rebuild to refresh it."

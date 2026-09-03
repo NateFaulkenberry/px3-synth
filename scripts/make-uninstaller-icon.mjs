@@ -36,8 +36,8 @@ const argValue = (name, fallback) => {
 };
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-const SOURCE = path.resolve(argValue('--source', path.join(repoRoot, 'Source/Assets/px3-icon.png')));
-const OUT_DIR = path.resolve(argValue('--out-dir', path.join(repoRoot, 'Source/Assets')));
+const SOURCE = path.resolve(argValue('--source', path.join(repoRoot, 'products/PX3Synth/Assets/px3-icon.png')));
+const OUT_DIR = path.resolve(argValue('--out-dir', path.join(repoRoot, 'products/PX3Synth/Assets')));
 
 const SIZE = 1024;
 

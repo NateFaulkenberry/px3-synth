@@ -149,4 +149,13 @@ private:
 // somewhere else later is this function, not a search through the codebase.
 void installDefaultConfiguration();
 
+// Just the product registrations, without the provider or the command line.
+//
+// Separate from the above because that one is call_once - it must not repeat
+// its side effects - while this is idempotent and safe to call whenever the
+// registry needs putting back, which anything that clears the registry has to
+// do. A registration that exists only inside a call_once is a registration
+// that cannot be restored.
+void registerDefaultProducts();
+
 } // namespace px3::update

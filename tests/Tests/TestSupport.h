@@ -1542,6 +1542,7 @@ void testVuBallistics();
 void testBusInserts();
 void testMultiOutput();
 void testUpdater();
+void testEcosystem();
 void testFilters();
 void testOscillatorModeRichness();
 void testAnalogEngine();

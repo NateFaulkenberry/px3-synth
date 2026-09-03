@@ -602,15 +602,25 @@ void UpdateService::resetForTesting()
     busy.store(false);
 }
 
+void registerDefaultProducts()
+{
+    ProductRegistry::Registration synth;
+    synth.productId = ProductRegistry::kSynthProductId;
+    synth.displayName = "PX3 Synth";
+    synth.versionProvider = [] { return px3::version::string(); };
+    // Grandfathered: this is what is installed on people's machines.
+    synth.bundleId = "com.px3.px3synth";
+    synth.hasStandalone = true;
+    synth.installerComponentId = "px3.synth";
+    ProductRegistry::getInstance().registerProduct(synth);
+}
+
 void installDefaultConfiguration()
 {
     static std::once_flag once;
     std::call_once(once, []
     {
-        ProductRegistry::getInstance().registerProduct(
-            { ProductRegistry::kSynthProductId,
-              "PX3 Synth",
-              [] { return px3::version::string(); } });
+        registerDefaultProducts();
 
         auto& service = UpdateService::getInstance();
         service.setProductId(ProductRegistry::kSynthProductId);

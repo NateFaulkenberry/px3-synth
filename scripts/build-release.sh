@@ -321,9 +321,9 @@ PREEOF
 #
 # An author-supplied PNG wins over the GIF: the GIF is opaque, and a PNG with an
 # alpha channel sits better against the Installer's light pane. Drop one at
-# Source/Assets/px3-installer.png and it will be used as-is.
-BRANDING_PNG_SOURCE="${REPO_ROOT}/Source/Assets/px3-installer.png"
-BRANDING_GIF_SOURCE="${REPO_ROOT}/Source/Assets/px3.gif"
+# products/PX3Synth/Assets/px3-installer.png and it will be used as-is.
+BRANDING_PNG_SOURCE="${REPO_ROOT}/products/PX3Synth/Assets/px3-installer.png"
+BRANDING_GIF_SOURCE="${REPO_ROOT}/products/PX3Synth/Assets/px3.gif"
 BRANDING_WIDTH_PX=180
 
 prepare_installer_branding() {
@@ -567,8 +567,8 @@ fi
 
 # The icon is committed, so this only refreshes it when the tooling is present.
 # A release must not fail because node or sharp is missing on the build machine.
-ICON_SOURCE="${REPO_ROOT}/Source/Assets/px3.gif"
-ICON_OUTPUT="${REPO_ROOT}/Source/Assets/px3-icon.png"
+ICON_SOURCE="${REPO_ROOT}/products/PX3Synth/Assets/px3.gif"
+ICON_OUTPUT="${REPO_ROOT}/products/PX3Synth/Assets/px3-icon.png"
 if [[ -f "${REPO_ROOT}/scripts/make-app-icon.mjs" && -f "${ICON_SOURCE}" ]] && command -v node >/dev/null 2>&1; then
   if node "${REPO_ROOT}/scripts/make-app-icon.mjs" >/dev/null 2>&1; then
     echo "  App icon regenerated from $(basename "${ICON_SOURCE}")"
@@ -588,7 +588,7 @@ fi
 #
 # Committed like the app icon, and skipped the same way when the tooling is
 # absent: a release must not fail because node or sharp is missing.
-UNINSTALL_ICON_OUTPUT="${REPO_ROOT}/Source/Assets/px3-uninstall.icns"
+UNINSTALL_ICON_OUTPUT="${REPO_ROOT}/shared/Assets/px3-uninstall.icns"
 if [[ -f "${REPO_ROOT}/scripts/make-uninstaller-icon.mjs" && -f "${ICON_OUTPUT}" ]] \
    && command -v node >/dev/null 2>&1; then
   if node "${REPO_ROOT}/scripts/make-uninstaller-icon.mjs" >/dev/null 2>&1; then
@@ -1123,10 +1123,10 @@ if [[ "${BUILD_UNINSTALLER}" == true ]]; then
   # catalog is enough on its own; both go, because the catalog is 380 KB of the
   # wrong icon whichever way the lookup falls.
   UNINSTALLER_ICON_SOURCE=""
-  if [[ -f "${REPO_ROOT}/Source/Assets/px3-uninstall.icns" ]]; then
-    UNINSTALLER_ICON_SOURCE="${REPO_ROOT}/Source/Assets/px3-uninstall.icns"
-  elif [[ -f "${REPO_ROOT}/Source/Assets/px3.icns" ]]; then
-    UNINSTALLER_ICON_SOURCE="${REPO_ROOT}/Source/Assets/px3.icns"
+  if [[ -f "${REPO_ROOT}/shared/Assets/px3-uninstall.icns" ]]; then
+    UNINSTALLER_ICON_SOURCE="${REPO_ROOT}/shared/Assets/px3-uninstall.icns"
+  elif [[ -f "${REPO_ROOT}/products/PX3Synth/Assets/px3.icns" ]]; then
+    UNINSTALLER_ICON_SOURCE="${REPO_ROOT}/products/PX3Synth/Assets/px3.icns"
   fi
 
   if [[ -n "${UNINSTALLER_ICON_SOURCE}" ]]; then

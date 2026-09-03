@@ -730,9 +730,13 @@ void testUpdater()
         service.setProvider(nullptr);
     }
 
-    // Leave the registry as the running application expects it.
+    // Leave the registry as the running application expects it - with the
+    // FULL registration, not the cut-down ones these tests use.
+    // installDefaultConfiguration() cannot do it: it is call_once and has
+    // already run, so it would put nothing back and the next suite would find
+    // a product with no bundle id.
     ProductRegistry::getInstance().clear();
-    installDefaultConfiguration();
+    registerDefaultProducts();
 }
 
 } // namespace px3tests

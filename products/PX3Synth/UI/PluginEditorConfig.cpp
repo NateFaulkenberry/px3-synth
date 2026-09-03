@@ -38,7 +38,7 @@ juce::File PX3SynthAudioProcessorEditor::resolveUiConfigFile() const
         }
     }
 
-    const auto cwdCandidate = juce::File::getCurrentWorkingDirectory().getChildFile("Source/UI/UIConfig.json");
+    const auto cwdCandidate = juce::File::getCurrentWorkingDirectory().getChildFile("shared/UI/Style/UIConfig.json");
     if (cwdCandidate.existsAsFile())
     {
         return cwdCandidate;
@@ -48,7 +48,7 @@ juce::File PX3SynthAudioProcessorEditor::resolveUiConfigFile() const
     auto probe = executableDir;
     for (int i = 0; i < 10; ++i)
     {
-        const auto sourceCandidate = probe.getChildFile("Source/UI/UIConfig.json");
+        const auto sourceCandidate = probe.getChildFile("shared/UI/Style/UIConfig.json");
         if (sourceCandidate.existsAsFile())
         {
             return sourceCandidate;

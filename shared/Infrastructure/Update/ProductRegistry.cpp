@@ -75,6 +75,18 @@ ProductInfo ProductRegistry::lookup(const juce::String& productId) const
     return {};
 }
 
+ProductRegistry::Registration ProductRegistry::definition(const juce::String& productId) const
+{
+    const juce::ScopedLock guard(lock);
+
+    for (const auto& entry : registrations)
+    {
+        if (entry.productId == productId) { return entry; }
+    }
+
+    return {};
+}
+
 std::vector<ProductInfo> ProductRegistry::installedProducts() const
 {
     std::vector<ProductInfo> products;
