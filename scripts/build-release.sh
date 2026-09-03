@@ -1086,10 +1086,32 @@ if [[ "${BUILD_UNINSTALLER}" == true ]]; then
   # app's if that has not been generated. This used to be conditional on the
   # installer's branding image being present, which is unrelated: with no
   # branding configured the uninstaller simply had no icon at all.
+  #
+  # Copying applet.icns is NOT sufficient, which is why the uninstaller shipped
+  # with the stock AppleScript scroll however carefully its icon was generated.
+  # osacompile also writes Contents/Resources/Assets.car - a compiled catalog
+  # holding the stock applet artwork - and sets CFBundleIconName in the plist.
+  # macOS resolves CFBundleIconName through the catalog, and that WINS over
+  # CFBundleIconFile, so applet.icns was being written and then ignored.
+  #
+  # Measured, rather than reasoned about: with our icon in applet.icns,
+  # NSWorkspace returned an icon containing zero red pixels, and our icon is
+  # the app's with a red X through it. Removing either the plist key or the
+  # catalog is enough on its own; both go, because the catalog is 380 KB of the
+  # wrong icon whichever way the lookup falls.
+  UNINSTALLER_ICON_SOURCE=""
   if [[ -f "${REPO_ROOT}/Source/Assets/px3-uninstall.icns" ]]; then
-    cp "${REPO_ROOT}/Source/Assets/px3-uninstall.icns" "${UNINSTALLER_RES}/applet.icns"
+    UNINSTALLER_ICON_SOURCE="${REPO_ROOT}/Source/Assets/px3-uninstall.icns"
   elif [[ -f "${REPO_ROOT}/Source/Assets/px3.icns" ]]; then
-    cp "${REPO_ROOT}/Source/Assets/px3.icns" "${UNINSTALLER_RES}/applet.icns"
+    UNINSTALLER_ICON_SOURCE="${REPO_ROOT}/Source/Assets/px3.icns"
+  fi
+
+  if [[ -n "${UNINSTALLER_ICON_SOURCE}" ]]; then
+    cp "${UNINSTALLER_ICON_SOURCE}" "${UNINSTALLER_RES}/applet.icns"
+    rm -f "${UNINSTALLER_RES}/Assets.car"
+    /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "${UNINSTALLER_PLIST}" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile applet" "${UNINSTALLER_PLIST}" 2>/dev/null \
+      || /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string applet" "${UNINSTALLER_PLIST}" 2>/dev/null || true
   fi
 
   UNINSTALLER_SIGN_STATE="unsigned"
@@ -1110,6 +1132,20 @@ if [[ "${BUILD_UNINSTALLER}" == true ]]; then
   done
   [[ -x "${UNINSTALLER_APP_PATH}/Contents/MacOS/applet" ]] \
     || die "Uninstaller application has no executable"
+
+  # The icon, checked rather than assumed. The copy on its own was silently
+  # ineffective for as long as this script has had one, and nothing about the
+  # build said so - the file was there, it was simply never read.
+  if [[ -n "${UNINSTALLER_ICON_SOURCE}" ]]; then
+    cmp -s "${UNINSTALLER_ICON_SOURCE}" "${UNINSTALLER_RES}/applet.icns" \
+      || die "Uninstaller icon did not reach the bundle"
+    if [[ -e "${UNINSTALLER_RES}/Assets.car" ]]; then
+      die "Uninstaller still carries osacompile's Assets.car, which overrides its icon"
+    fi
+    if /usr/libexec/PlistBuddy -c "Print :CFBundleIconName" "${UNINSTALLER_PLIST}" >/dev/null 2>&1; then
+      die "Uninstaller Info.plist still sets CFBundleIconName, which overrides CFBundleIconFile"
+    fi
+  fi
   sh -n "${UNINSTALLER_RES}/px3-uninstall.sh" || die "Bundled removal script is not valid sh"
 
   cp -R "${UNINSTALLER_APP_PATH}" "${DIST_DIR}/"
