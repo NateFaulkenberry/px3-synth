@@ -247,7 +247,9 @@ void UpdateService::writeStagedMetadata(const UpdateRelease& release,
     auto* object = new juce::DynamicObject();
     object->setProperty("productId", release.productId);
     object->setProperty("version", release.version.toString());
-    object->setProperty("installer", installer.getFileName());
+    // Relative to the staging directory, because an installer lifted out of an
+    // archive sits in a subfolder rather than beside the metadata.
+    object->setProperty("installer", installer.getRelativePathFrom(stagingRoot()));
     object->setProperty("sha256", release.sha256);
     object->setProperty("stagedAt", juce::Time::getCurrentTime().toISO8601(true));
 
@@ -270,10 +272,10 @@ juce::File UpdateService::stagedInstaller() const
     const auto metadata = readStagedMetadata();
     if (! metadata.isObject()) { return {}; }
 
-    const auto name = metadata.getProperty("installer", juce::var()).toString();
-    if (name.isEmpty()) { return {}; }
+    const auto relative = metadata.getProperty("installer", juce::var()).toString();
+    if (relative.isEmpty()) { return {}; }
 
-    const auto file = stagingRoot().getChildFile(name);
+    const auto file = stagingRoot().getChildFile(relative);
     return file.existsAsFile() ? file : juce::File();
 }
 
@@ -389,7 +391,72 @@ void UpdateService::runPreparation()
         return;
     }
 
-    writeStagedMetadata(available, target);
+    // WHAT GETS STAGED IS ALWAYS A .pkg.
+    //
+    // The release script publishes a distribution archive - a zip holding the
+    // .pkg and the uninstaller - rather than a bare package, so for that shape
+    // the package has to be lifted out before there is anything to run. Only
+    // the .pkg entry is extracted: the uninstaller beside it is not ours to
+    // install, and a zip round-trip would not preserve its signature anyway.
+    //
+    // Extracting one entry copies its bytes exactly, so the package's own
+    // Developer ID signature survives - which matters, because that signature
+    // is what the helper checks before running it.
+    auto installer = target;
+
+    if (available.installerIsArchive)
+    {
+        juce::ZipFile archive(target);
+        auto packageIndex = -1;
+
+        for (int i = 0; i < archive.getNumEntries(); ++i)
+        {
+            const auto* entry = archive.getEntry(i);
+            if (entry != nullptr && entry->filename.endsWithIgnoreCase(".pkg"))
+            {
+                packageIndex = i;
+                break;
+            }
+        }
+
+        if (packageIndex < 0)
+        {
+            target.deleteFile();
+            setState(UpdateState::failed, UpdateError::noMatchingInstaller,
+                     available.installerFilename + " contains no .pkg");
+            return;
+        }
+
+        const auto extractedInto = directory.getChildFile("extracted");
+        extractedInto.deleteRecursively();
+        extractedInto.createDirectory();
+
+        const auto extracted = archive.uncompressEntry(packageIndex, extractedInto);
+        if (! extracted.wasOk())
+        {
+            extractedInto.deleteRecursively();
+            target.deleteFile();
+            setState(UpdateState::failed, UpdateError::stagingFailed,
+                     "could not extract the installer: " + extracted.getErrorMessage());
+            return;
+        }
+
+        installer = extractedInto.getChildFile(archive.getEntry(packageIndex)->filename);
+
+        if (! installer.existsAsFile())
+        {
+            extractedInto.deleteRecursively();
+            target.deleteFile();
+            setState(UpdateState::failed, UpdateError::stagingFailed,
+                     "the extracted installer was not where the archive said");
+            return;
+        }
+
+        // The archive has served its purpose and is 30 MB.
+        target.deleteFile();
+    }
+
+    writeStagedMetadata(available, installer);
     progress.store(1.0f);
     setState(UpdateState::readyToInstall);
 }
@@ -405,6 +472,7 @@ void UpdateService::cancel()
     {
         file.deleteFile();
     }
+    directory.getChildFile("extracted").deleteRecursively();
 
     progress.store(0.0f);
     busy.store(false);

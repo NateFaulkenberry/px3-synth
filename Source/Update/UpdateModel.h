@@ -38,6 +38,10 @@ struct UpdateRelease
     juce::String architecture;     // "arm64"
     juce::String sha256;           // empty when the source published none
     juce::Time releaseDate;
+    // True when the asset is the installer ARCHIVE rather than a bare .pkg.
+    // The release script publishes a zip holding the .pkg and the uninstaller,
+    // so the staging step has to open it before there is anything to run.
+    bool installerIsArchive { false };
 
     bool isValid() const
     {

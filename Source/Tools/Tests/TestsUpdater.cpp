@@ -188,6 +188,29 @@ void testUpdater()
                   : "reported as: " + describe(nothingPublished.result.error));
     }
 
+    {
+        // The OTHER zip each release carries is the plug-in folder for a manual
+        // copy. Running it is meaningless, so only "-Installer.zip" counts.
+        const auto onlyPluginZip = GitHubReleaseProvider::parseLatestRelease(
+            releaseJson("v0.6.0", asset("P.X3.-v0.6.0-macOS-arm64.zip")),
+            "px3-synth", "macOS", "arm64");
+
+        // And a bare .pkg is preferred over the archive when both are offered,
+        // because it is one fewer step.
+        const auto both = GitHubReleaseProvider::parseLatestRelease(
+            releaseJson("v0.6.0",
+                        asset("P.X3.-v0.6.0-macOS-arm64-Installer.zip") + ","
+                            + asset("PX3-v0.6.0.pkg")),
+            "px3-synth", "macOS", "arm64");
+
+        check("Update_OnlyTheInstallerArchiveCountsAndABarePackageIsPreferred",
+              onlyPluginZip.result.error == UpdateError::noMatchingInstaller
+                  && both.release.installerFilename == "PX3-v0.6.0.pkg"
+                  && ! both.release.installerIsArchive,
+              "the plug-in zip alone -> " + describe(onlyPluginZip.result.error)
+                  + "; with both offered, chose " + both.release.installerFilename);
+    }
+
     // ========================================================================
     // The registry
     // ========================================================================

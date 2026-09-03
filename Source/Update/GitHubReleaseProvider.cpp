@@ -172,6 +172,13 @@ GitHubReleaseProvider::~GitHubReleaseProvider()
 
 juce::URL GitHubReleaseProvider::latestReleaseUrl() const
 {
+    // GitHub's own "latest", which is what a release is expected to be
+    // published as. Note that this endpoint excludes anything flagged as a
+    // PRE-RELEASE or a draft: a repository whose releases are all flagged that
+    // way answers 404 here and reads as having published nothing. That is
+    // handled below as "no release" rather than as an outage, but it is worth
+    // knowing as the reason an updater can go quiet against a repository that
+    // visibly has releases.
     return juce::URL("https://api.github.com/repos/" + owner + "/" + repo + "/releases/latest");
 }
 
@@ -220,7 +227,14 @@ GitHubReleaseProvider::parseLatestRelease(const juce::String& jsonText,
     }
 
     juce::var document;
-    if (juce::JSON::parse(jsonText, document).failed() || ! document.isObject())
+    if (juce::JSON::parse(jsonText, document).failed())
+    {
+        out.result = UpdateResult::failure(UpdateError::malformedResponse,
+                                           "response was not JSON");
+        return out;
+    }
+
+    if (! document.isObject())
     {
         out.result = UpdateResult::failure(UpdateError::malformedResponse,
                                            "response was not a JSON object");
@@ -248,7 +262,18 @@ GitHubReleaseProvider::parseLatestRelease(const juce::String& jsonText,
         return out;
     }
 
+    // WHAT COUNTS AS AN INSTALLER.
+    //
+    // Two shapes, because the build has produced both. Early releases attached
+    // a bare .pkg; every release since attaches the distribution archive - a
+    // zip holding the .pkg and the uninstaller - and nothing else. Matching
+    // only .pkg meant a release with seven published versions reported "no
+    // installer for your system".
+    //
+    // A bare .pkg is preferred where one exists, because it is one fewer step;
+    // otherwise the archive, which the staging step opens.
     juce::String chosenName, chosenUrl;
+    auto chosenIsArchive = false;
     auto chosenNamesOurBuild = false;
 
     for (const auto& entry : *assets)
@@ -258,18 +283,29 @@ GitHubReleaseProvider::parseLatestRelease(const juce::String& jsonText,
         const auto assetName = entry.getProperty("name", juce::var()).toString();
         const auto assetUrl = entry.getProperty("browser_download_url", juce::var()).toString();
 
-        if (! assetName.endsWithIgnoreCase(".pkg") || assetUrl.isEmpty()) { continue; }
+        if (assetUrl.isEmpty()) { continue; }
         if (namesForeignBuild(assetName, platform, architecture)) { continue; }
+
+        const auto isPkg = assetName.endsWithIgnoreCase(".pkg");
+        // "-Installer.zip" specifically. The other zip each release carries is
+        // the plug-in folder for a manual copy, which is not something to run.
+        const auto isArchive = assetName.endsWithIgnoreCase("-installer.zip");
+
+        if (! isPkg && ! isArchive) { continue; }
 
         const auto lower = assetName.toLowerCase();
         const auto namesOurs = lower.contains(platform.toLowerCase())
                             || lower.contains(architecture.toLowerCase());
 
-        // Prefer an asset that says it is ours over one that says nothing.
-        if (chosenName.isEmpty() || (namesOurs && ! chosenNamesOurBuild))
+        const auto better = chosenName.isEmpty()
+                         || (isPkg && chosenIsArchive)
+                         || (isPkg == ! chosenIsArchive && namesOurs && ! chosenNamesOurBuild);
+
+        if (better)
         {
             chosenName = assetName;
             chosenUrl = assetUrl;
+            chosenIsArchive = isArchive;
             chosenNamesOurBuild = namesOurs;
         }
     }
@@ -277,7 +313,7 @@ GitHubReleaseProvider::parseLatestRelease(const juce::String& jsonText,
     if (chosenName.isEmpty())
     {
         out.result = UpdateResult::failure(UpdateError::noMatchingInstaller,
-                                           "release " + tag + " has no .pkg for "
+                                           "release " + tag + " has no installer for "
                                                + platform + "/" + architecture);
         return out;
     }
@@ -287,6 +323,7 @@ GitHubReleaseProvider::parseLatestRelease(const juce::String& jsonText,
     out.release.releaseNotes = notes;
     out.release.downloadUrl = juce::URL(chosenUrl);
     out.release.installerFilename = chosenName;
+    out.release.installerIsArchive = chosenIsArchive;
     out.release.platform = platform;
     out.release.architecture = architecture;
     out.release.sha256 = findSha256(notes);

@@ -20,6 +20,7 @@
 #include "PX3Diagnostics.h"
 #include "BusEqGraph.h"
 #include "UpdateService.h"
+#include "ProductRegistry.h"
 #include "GitHubReleaseProvider.h"
 #include "PX3Version.h"
 
@@ -4569,6 +4570,19 @@ int main(int argc, char* argv[])
         px3::update::installDefaultConfiguration();
 
         auto& service = px3::update::UpdateService::getInstance();
+
+        // PX3_PRETEND_VERSION makes this build look older than it is, so the
+        // whole path - find, download, verify, unpack, stage - can be run
+        // against a real published release without waiting for a newer one.
+        if (const auto* pretend = std::getenv("PX3_PRETEND_VERSION"))
+        {
+            const juce::String pretendVersion { pretend };
+            px3::update::ProductRegistry::getInstance().registerProduct(
+                { px3::update::ProductRegistry::kSynthProductId, "PX3 Synth",
+                  [pretendVersion] { return pretendVersion; } });
+            std::printf("  PRETENDING to be version %s\n", pretend);
+        }
+
         auto* provider = service.getProvider();
 
         std::printf("\n");
@@ -4604,6 +4618,32 @@ int main(int argc, char* argv[])
         else
         {
             std::printf("  found:  no release\n");
+        }
+
+        // PX3_DO_PREPARE downloads and stages it for real. Off by default: a
+        // diagnostic should not pull 30 MB unless it was asked to.
+        if (std::getenv("PX3_DO_PREPARE") != nullptr
+            && service.getState() == px3::update::UpdateState::updateAvailable)
+        {
+            std::printf("\n  preparing (download, verify, unpack, stage)...\n");
+            service.setSynchronousForTesting(true);
+            service.prepareUpdate();
+
+            std::printf("  state:  %s\n", px3::update::describe(service.getState()).toRawUTF8());
+            if (service.getError() != px3::update::UpdateError::none)
+            {
+                std::printf("  shown:  %s\n", service.getErrorMessage().toRawUTF8());
+            }
+
+            const auto staged = service.stagedInstaller();
+            std::printf("  staged: %s\n",
+                        staged == juce::File() ? "nothing"
+                                               : staged.getFullPathName().toRawUTF8());
+            if (staged != juce::File())
+            {
+                std::printf("  size:   %.1f MB\n",
+                            static_cast<double>(staged.getSize()) / 1048576.0);
+            }
         }
 
         std::printf("\n");
