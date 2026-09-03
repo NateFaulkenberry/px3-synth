@@ -137,6 +137,22 @@ GitHubReleaseProvider::GitHubReleaseProvider(juce::String repositoryOwner, juce:
             return {};
         }
 
+        // 404 from /releases/latest is not a failure. It is what GitHub
+        // answers for a repository that has published nothing yet - a normal
+        // state for a product before its first release, and for one whose
+        // releases are all still drafts.
+        //
+        // Reporting it as an outage was wrong twice over: it told the user the
+        // update service was down when it was answering correctly, and it hid
+        // the actual situation, which is that there is nothing to update to.
+        // An empty body is how that reaches the parser below.
+        if (status == 404)
+        {
+            return {};
+        }
+
+        // 403 and 429 are how GitHub rate-limits an unauthenticated caller.
+        // Genuinely "try again later", and the one case the phrase fits.
         if (status >= 400)
         {
             result = UpdateResult::failure(UpdateError::providerUnavailable,
@@ -194,6 +210,14 @@ GitHubReleaseProvider::parseLatestRelease(const juce::String& jsonText,
                                           const juce::String& architecture)
 {
     LookupResult out;
+
+    // Nothing published. Not an error, and not a malformed response: an
+    // invalid release with an ok() result is how "there is no release" is
+    // spelled, and the service turns that into "you're up to date".
+    if (jsonText.trim().isEmpty())
+    {
+        return out;
+    }
 
     juce::var document;
     if (juce::JSON::parse(jsonText, document).failed() || ! document.isObject())

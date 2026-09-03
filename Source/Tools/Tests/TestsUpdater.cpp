@@ -172,6 +172,22 @@ void testUpdater()
                   + juce::String(without.release.sha256.isEmpty() ? "empty" : "SOMETHING"));
     }
 
+    {
+        // A repository that has published nothing answers 404, which the
+        // transport turns into an empty body. That is "no release", not an
+        // outage - the first thing this reported in real use was "the update
+        // service is unavailable" against a repository that was answering
+        // perfectly well and simply had no releases yet.
+        const auto nothingPublished = GitHubReleaseProvider::parseLatestRelease(
+            "", "px3-synth", "macOS", "arm64");
+
+        check("Update_ARepositoryWithNoReleasesIsNotAnOutage",
+              nothingPublished.result.ok() && ! nothingPublished.release.isValid(),
+              nothingPublished.result.ok()
+                  ? juce::String("reported as no release rather than a failure")
+                  : "reported as: " + describe(nothingPublished.result.error));
+    }
+
     // ========================================================================
     // The registry
     // ========================================================================
@@ -290,6 +306,23 @@ void testUpdater()
               offeredBeta == UpdateState::upToDate && offeredDowngrade == UpdateState::upToDate,
               "a stable install offered 0.8.0-beta.1 -> " + describe(offeredBeta)
                   + "; a 0.9.0 build offered 0.8.0 -> " + describe(offeredDowngrade));
+    }
+
+    {
+        // The whole path, for a product whose repository has no releases: the
+        // provider says ok-but-nothing, and the user is told they are up to
+        // date rather than shown an error.
+        auto& registry = ProductRegistry::getInstance();
+        registry.clear();
+        registry.registerProduct({ "px3-synth", "PX3 Synth", [] { return juce::String("0.7.0"); } });
+
+        Fixture none;
+        none.mock->nextRelease = {};        // valid lookup, no release in it
+        none.service.checkForUpdates(true);
+
+        check("Update_NoReleasesPublishedReadsAsUpToDateNotAsAnError",
+              none.service.getState() == UpdateState::upToDate,
+              describe(none.service.getState()) + " when the source has published nothing");
     }
 
     {

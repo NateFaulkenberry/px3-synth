@@ -19,6 +19,9 @@
 #include "AmpEnvelope.h"
 #include "PX3Diagnostics.h"
 #include "BusEqGraph.h"
+#include "UpdateService.h"
+#include "GitHubReleaseProvider.h"
+#include "PX3Version.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -4554,9 +4557,61 @@ int main(int argc, char* argv[])
 
         return 0;
     }
+    else if (arg == "updatecheck")
+    {
+        // A REAL update check against the configured source, printed as the
+        // provider and the service actually saw it.
+        //
+        // Exists because "Check for Updates says X" is not something the unit
+        // tests can answer: they run against mocks and canned JSON, on purpose.
+        // This is the one place the live endpoint is contacted, and it is
+        // opt-in.
+        px3::update::installDefaultConfiguration();
+
+        auto& service = px3::update::UpdateService::getInstance();
+        auto* provider = service.getProvider();
+
+        std::printf("\n");
+        std::printf("UPDATE CHECK - live, against the configured source\n");
+        std::printf("  installed version: %s\n", px3::version::string().toRawUTF8());
+        std::printf("  provider:          %s\n",
+                    provider != nullptr ? provider->name().toRawUTF8() : "none");
+
+        if (auto* gitHub = dynamic_cast<px3::update::GitHubReleaseProvider*>(provider))
+        {
+            std::printf("  endpoint:          %s\n",
+                        gitHub->latestReleaseUrl().toString(false).toRawUTF8());
+            gitHub->setSynchronousForTesting(true);   // no message loop here
+        }
+
+        service.checkForUpdates(true);
+
+        std::printf("\n");
+        std::printf("  state:  %s\n", px3::update::describe(service.getState()).toRawUTF8());
+
+        if (service.getError() != px3::update::UpdateError::none)
+        {
+            std::printf("  shown:  %s\n", service.getErrorMessage().toRawUTF8());
+        }
+
+        const auto release = service.getAvailableRelease();
+        if (release.isValid())
+        {
+            std::printf("  found:  %s  (%s)\n",
+                        release.version.toString().toRawUTF8(),
+                        release.installerFilename.toRawUTF8());
+        }
+        else
+        {
+            std::printf("  found:  no release\n");
+        }
+
+        std::printf("\n");
+        return 0;
+    }
     else
     {
-        std::printf("usage: PX3Diag [primary|reintroduce|pruning|tail|release|regress|regress-legacy|eqspectrum] [dry] [wavDir]\n");
+        std::printf("usage: PX3Diag [primary|reintroduce|pruning|tail|release|regress|regress-legacy|eqspectrum|updatecheck] [dry] [wavDir]\n");
         return 1;
     }
 
