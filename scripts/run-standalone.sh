@@ -130,10 +130,21 @@ fi
 # that fired when only UIConfig.json had changed - which needs no relink at all -
 # and a warning that cries wolf is one nobody reads.
 #
-# 1. The binary, versus the code compiled into it. tools is excluded:
-#    those build the console harnesses, not the plug-in.
-NEWEST_CODE=$(find "${REPO_ROOT}/Source" -type f \( -name '*.cpp' -o -name '*.h' \) \
-              -not -path "*/tools/*" -exec stat -f %m {} + 2>/dev/null | sort -rn | head -1)
+# 1. The binary, versus the code compiled into it. The Synth standalone is built
+#    from products/PX3Synth and shared; tools/ builds the console harnesses, not
+#    the plug-in, and the other products cannot change this binary.
+#
+#    This globbed Source/ until the ecosystem migration moved the tree, and then
+#    matched nothing - so find failed into 2>/dev/null, NEWEST_CODE came back
+#    empty, and the check quietly passed on every stale build it existed to
+#    catch.
+NEWEST_CODE=$(find "${REPO_ROOT}/products/PX3Synth" "${REPO_ROOT}/shared" -type f \
+              \( -name '*.cpp' -o -name '*.h' \) \
+              -exec stat -f %m {} + 2>/dev/null | sort -rn | head -1)
+if [[ -z "${NEWEST_CODE}" ]]; then
+  echo "WARNING: found no source files to compare the build against - the"
+  echo "         staleness check below is not running. Has the tree moved?"
+fi
 if [[ -n "${NEWEST_CODE}" && "${NEWEST_CODE}" -gt "${NEWEST_TIME}" ]]; then
   echo "WARNING: the app is older than the code - you are about to run a stale build."
   echo "         app:  $(date -r "${NEWEST_TIME}" '+%H:%M:%S')  ${APP_PATH#${REPO_ROOT}/}"

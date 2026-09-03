@@ -2610,13 +2610,13 @@ void testMacroSystem()
             presetFile.deleteFile();
 
             PresetManager manager(saver);
-            juce::String error;
+            juce::String saveError;
             PresetManager::PresetMetadata metadata;
             metadata.name = "Macros";
             metadata.category = "Test";
             metadata.author = "component tests";
             const auto wrote = manager.dumpCurrentStateToPresetFile(presetFile, metadata, true,
-                                                                    true, error, nullptr);
+                                                                    true, saveError, nullptr);
 
             PX3SynthAudioProcessor loader;
             prepared(loader);
@@ -2641,7 +2641,7 @@ void testMacroSystem()
             check("Macro_EveryMacroSurvivesAPresetFile",
                   allCorrect,
                   read ? "after a preset file round trip: " + report.joinIntoString(", ")
-                       : "the preset did not round-trip: " + error + loadError);
+                       : "the preset did not round-trip: " + saveError + loadError);
 
             presetFile.deleteFile();
         }

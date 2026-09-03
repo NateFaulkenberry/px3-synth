@@ -2265,7 +2265,7 @@ void testBusInserts()
         // rectangle, so a horizontal offset has to shift every one of them by
         // the same amount - four separate offsets kept equal by hand is how
         // they end up drifting apart.
-        if (auto* comp = dynamic_cast<px3::ui::BusCompOverlay*>(sheet); comp != nullptr)
+        if (auto* compOverlay = dynamic_cast<px3::ui::BusCompOverlay*>(sheet); compOverlay != nullptr)
         {
             juce::String cfgError;
 
@@ -2273,15 +2273,15 @@ void testBusInserts()
             {
                 const auto text = juce::String(R"({ "busInserts": { "comp": { "mixOffsetX": )")
                                   + juce::String(offsetX) + R"( } } })";
-                comp->setUIConfig(UIConfig::fromJsonText(text, cfgError));
+                compOverlay->setUIConfig(UIConfig::fromJsonText(text, cfgError));
 
                 std::vector<juce::Rectangle<int>> pieces;
                 // The rightmost column only. "Right of centre" also caught the
                 // meter's own mode buttons and the header's ON and CLOSE, all
                 // of which correctly do NOT move with this offset - so the
                 // filter has to be the mix column, not the right-hand half.
-                const auto columnStart = static_cast<int>(comp->getWidth() * 0.78f);
-                for (auto* ch : comp->getChildren())
+                const auto columnStart = static_cast<int>(compOverlay->getWidth() * 0.78f);
+                for (auto* ch : compOverlay->getChildren())
                 {
                     if (ch != nullptr && ch->getX() > columnStart
                         && ch->getWidth() < 100 && ch->getY() > 80)
@@ -2314,7 +2314,7 @@ void testBusInserts()
                             + " controls all shifted by exactly -10 px, none vertically"
                       : "per-control dx: " + detail);
 
-            comp->setUIConfig(nullptr);
+            compOverlay->setUIConfig(nullptr);
         }
 
         // The needle has to be able to animate. This is a coarse guard, not a

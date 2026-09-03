@@ -134,7 +134,9 @@ int runInstaller(const juce::File& installer)
     }
 
     process.waitForProcessToFinish(-1);
-    return process.getExitCode();
+    // getExitCode returns uint32; a process exit status is a byte, so the
+    // narrowing is safe - it is made explicit rather than implicit.
+    return static_cast<int>(process.getExitCode());
 }
 } // namespace
 

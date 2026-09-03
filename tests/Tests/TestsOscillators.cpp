@@ -189,7 +189,7 @@ void testWavetable()
             // has to be paid for in level length. One table is shared by every
             // voice and every oscillator, so this is a global cost, not a
             // per-voice one.
-            const auto mb = table->getSizeInBytes() / 1048576.0;
+            const auto mb = static_cast<double>(table->getSizeInBytes()) / 1048576.0;
             check("Wavetable_PyramidFitsItsMemoryBudget", mb < 2.5,
                   fmt(mb, 3) + " MB for " + juce::String(table->getFrameCount())
                       + " frames across " + juce::String(table->getLevelCount()) + " levels");
@@ -254,7 +254,7 @@ void testWavetable()
                     const auto d = static_cast<double>(v[i]) - v[i - 1];
                     slope += d * d;
                 }
-                return std::sqrt(slope / v.size());
+                return std::sqrt(slope / static_cast<double>(v.size()));
             };
 
             const auto ends = brightnessOf(last) / juce::jmax(1.0e-9, brightnessOf(first));
@@ -281,7 +281,7 @@ void testWavetable()
                     const auto d = static_cast<double>(tone[k]) - tone[k - 1];
                     energy += d * d;
                 }
-                const auto brightness = std::sqrt(energy / tone.size());
+                const auto brightness = std::sqrt(energy / static_cast<double>(tone.size()));
                 if (i > 0)
                 {
                     const auto step = std::abs(brightness - previous);
@@ -781,7 +781,7 @@ void testWavetable()
         std::vector<float> cycle(2048, 0.0f);
         for (std::size_t i = 0; i < cycle.size(); ++i)
         {
-            cycle[i] = static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * i / cycle.size()));
+            cycle[i] = static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * static_cast<double>(i) / static_cast<double>(cycle.size())));
         }
 
         const auto imported = px3::WavetableImporter::fromAudio(
@@ -811,8 +811,8 @@ void testWavetable()
         std::vector<float> sweep(static_cast<std::size_t>(kSampleRate * 2.0), 0.0f);
         for (std::size_t i = 0; i < sweep.size(); ++i)
         {
-            const auto t = static_cast<double>(i) / sweep.size();
-            const auto phase = juce::MathConstants<double>::twoPi * i * hz / kSampleRate;
+            const auto t = static_cast<double>(i) / static_cast<double>(sweep.size());
+            const auto phase = juce::MathConstants<double>::twoPi * static_cast<double>(i) * hz / kSampleRate;
             // Harmonics arrive as the sound develops.
             double v = std::sin(phase);
             for (int h = 2; h <= 12; ++h)
@@ -945,8 +945,8 @@ void testWavetable()
         for (int f = 0; f < 8; ++f)
         {
             px3::FrameSpectrum frame;
-            frame.amplitude = { 0.0f, 1.0f, 0.5f / (f + 1), 0.25f };
-            frame.phase = { 0.0f, 0.3f * f, -0.2f, 0.1f };
+            frame.amplitude = { 0.0f, 1.0f, 0.5f / static_cast<float>(f + 1), 0.25f };
+            frame.phase = { 0.0f, 0.3f * static_cast<float>(f), -0.2f, 0.1f };
             frames.push_back(std::move(frame));
         }
 
@@ -1875,7 +1875,7 @@ void testWavetable()
                         auto view = renderer.getCamera();
                         view.azimuth = Wavetable3DRenderer::kMinAzimuth
                                        + (Wavetable3DRenderer::kMaxAzimuth
-                                          - Wavetable3DRenderer::kMinAzimuth) * a / 6.0f;
+                                          - Wavetable3DRenderer::kMinAzimuth) * static_cast<float>(a) / 6.0f;
                         view.elevation = elevation;
                         view.distance = renderer.distanceToFit(view, aspect, 0.06f);
 
@@ -2118,7 +2118,7 @@ void testWavetable()
             std::vector<float> row(64, 0.0f);
             for (std::size_t i = 0; i < row.size(); ++i)
             {
-                row[i] = std::sin(juce::MathConstants<float>::twoPi * (f + 1) * i / row.size());
+                row[i] = std::sin(juce::MathConstants<float>::twoPi * static_cast<float>(f + 1) * static_cast<float>(i) / static_cast<float>(row.size()));
             }
             display.frames.push_back(std::move(row));
         }
@@ -2134,30 +2134,30 @@ void testWavetable()
             host.prepareToPlay(kSampleRate, kBlockSize);
             host.loadFactoryWavetable(0, 0);
 
-            Wavetable3DRenderer renderer;
-            renderer.setSize(290, 149);
-            renderer.setDisplay(host.getWavetableDisplay(0, 48, 128));
-            renderer.buildGeometryForTesting();
+            Wavetable3DRenderer envRenderer;
+            envRenderer.setSize(290, 149);
+            envRenderer.setDisplay(host.getWavetableDisplay(0, 48, 128));
+            envRenderer.buildGeometryForTesting();
 
-            const auto floorWithEnvironment = renderer.getFloorInfo();
-            const auto framedWithEnvironment = renderer.getCamera();
-            const auto onByDefault = renderer.isEnvironmentEnabled();
+            const auto floorWithEnvironment = envRenderer.getFloorInfo();
+            const auto framedWithEnvironment = envRenderer.getCamera();
+            const auto onByDefault = envRenderer.isEnvironmentEnabled();
 
-            renderer.setEnvironmentEnabled(false);
-            renderer.buildGeometryForTesting();
-            const auto floorWithout = renderer.getFloorInfo();
+            envRenderer.setEnvironmentEnabled(false);
+            envRenderer.buildGeometryForTesting();
+            const auto floorWithout = envRenderer.getFloorInfo();
 
             check("Wavetable3D_TheEnvironmentIsShadingRatherThanGeometry",
                   onByDefault
-                      && ! renderer.isEnvironmentEnabled()
+                      && ! envRenderer.isEnvironmentEnabled()
                       && floorWithout.edgeCount == floorWithEnvironment.edgeCount
                       && std::abs(floorWithout.topY - floorWithEnvironment.topY) < 1.0e-6f
-                      && std::abs(renderer.getCamera().distance
+                      && std::abs(envRenderer.getCamera().distance
                                   - framedWithEnvironment.distance) < 1.0e-6f,
                   juce::String(onByDefault ? "on by default, " : "OFF by default, ")
                       + "and switching it off left the floor at "
                       + juce::String(floorWithout.edgeCount) + " edges and the camera at "
-                      + fmt(renderer.getCamera().distance, 2));
+                      + fmt(envRenderer.getCamera().distance, 2));
         }
 
         check("Wavetable3D_AcceptsDataWithoutAContext", true,

@@ -273,6 +273,32 @@ set(PX3_INCLUDE_DIRS
         shared/Infrastructure/Fx
 )
 
+# The warning policy, defined before any product so px3_add_product can apply
+# it to every one of them.
+#
+# It used to be a foreach over four hand-written target names, below the product
+# declarations. Seven products and the update helper were added above it and
+# none of them inherited it - so -Wno-nontrivial-memcall reached 1 of the 9
+# targets that compile JUCE's bundled harfbuzz, and the other 8 each emitted
+# ~22 warnings about third-party code on every clean build. A policy that has
+# to be edited when a product is added is a policy that gets forgotten.
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(PX3_WARNING_OPTIONS
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wshadow
+        -Wconversion
+        -Wsign-conversion
+        # Third-party, in JUCE's vendored harfbuzz: it memcpys its own
+        # non-trivially-copyable types by design. Not ours to fix.
+        -Wno-nontrivial-memcall
+        -Wno-switch-enum
+        -Wno-unused-but-set-variable
+        -Wno-unnecessary-virtual-specifier
+    )
+endif()
+
 # PX3 Synth, the first product. Declared exactly the way any other product is,
 # so "how do I add PX3 Mood" has the same answer as "how was the Synth added".
 #
@@ -349,32 +375,6 @@ juce_add_binary_data(PX3Assets
         products/PX3Synth/Assets/px3.gif
 )
 
-
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set(PX3_WARNING_OPTIONS
-        -Wall
-        -Wextra
-        -Wpedantic
-        -Wshadow
-        -Wconversion
-        -Wsign-conversion
-        -Wno-nontrivial-memcall
-        -Wno-switch-enum
-        -Wno-unused-but-set-variable
-        -Wno-unnecessary-virtual-specifier
-    )
-
-    # Apply warning policy to the shared target and JUCE-generated format targets.
-    foreach(px3Target IN ITEMS
-            PX3Synth
-            PX3Synth_Standalone
-            PX3Synth_AU
-            PX3Synth_VST3)
-        if (TARGET ${px3Target})
-            target_compile_options(${px3Target} PRIVATE ${PX3_WARNING_OPTIONS})
-        endif()
-    endforeach()
-endif()
 
 # Offline signal-path isolation harness. Renders the real processor headlessly
 # and reports per-stage sample-delta discontinuities. Temporary diagnostic tool.
@@ -534,6 +534,22 @@ if (PX3_BUILD_DIAGNOSTIC)
         PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography juce::juce_opengl
         PUBLIC juce::juce_recommended_config_flags)
 endif()
+
+# The console targets, which compile JUCE the same way the products do and so
+# emit the same third-party warnings without the same suppressions. The products
+# get this inside px3_add_product; these are not built by that function, so they
+# are listed. Conditional targets are guarded rather than assumed.
+foreach(px3ConsoleTarget IN ITEMS
+        PX3Updater
+        PX3Diag
+        PX3SmokeTest
+        PX3Tests
+        PX3MemBench
+        PX3Bench)
+    if (TARGET ${px3ConsoleTarget} AND PX3_WARNING_OPTIONS)
+        target_compile_options(${px3ConsoleTarget} PRIVATE ${PX3_WARNING_OPTIONS})
+    endif()
+endforeach()
 
 # Ship external UI config alongside built bundles for runtime hot-reloadable styling.
 set(PX3_UI_CONFIG_FILE "${CMAKE_SOURCE_DIR}/shared/UI/Style/UIConfig.json")

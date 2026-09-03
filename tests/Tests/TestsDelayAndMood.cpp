@@ -423,8 +423,6 @@ void testDelay()
         // 128-sample blocks, which is why several earlier passes over this same
         // delay found nothing - the artifact needs a big enough block that the
         // whole slew lands inside one of them.
-        static const char* names[] = { "Granular", "Tape", "AnalogBBD", "PingPong",
-                                       "Stereo", "Modulated", "Diffusion" };
         juce::StringArray clicking;
         juce::String detail;
 

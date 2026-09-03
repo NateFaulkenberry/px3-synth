@@ -69,6 +69,19 @@ function(px3_add_product)
             JUCE_USE_CURL=0
             PX3_DEBUG_PANEL=$<IF:$<BOOL:${PX3_DEBUG_PANEL}>,1,0>)
 
+    # The warning policy applies to the product and to each format target JUCE
+    # generated for it. Doing this here rather than in a list of target names
+    # means a product added tomorrow cannot silently opt out of it.
+    if (PX3_WARNING_OPTIONS)
+        target_compile_options(${PX3P_TARGET} PRIVATE ${PX3_WARNING_OPTIONS})
+        foreach(px3Format IN LISTS PX3P_FORMATS)
+            if (TARGET ${PX3P_TARGET}_${px3Format})
+                target_compile_options(${PX3P_TARGET}_${px3Format}
+                                       PRIVATE ${PX3_WARNING_OPTIONS})
+            endif()
+        endforeach()
+    endif()
+
     target_link_libraries(${PX3P_TARGET}
         PRIVATE
             PX3Assets

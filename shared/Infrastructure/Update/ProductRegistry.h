@@ -35,7 +35,7 @@ public:
         // com.px3.px3synth: it is what is already installed on people's
         // machines, and changing it would orphan every existing install. New
         // products follow com.px3.<product>.
-        juce::String bundleId;
+        juce::String bundleId {};
 
         // Which plug-in formats this product ships. An effect has no reason to
         // have a standalone application, and the default says so.
@@ -46,7 +46,7 @@ public:
         // The identity the installer uses for this product's component, so the
         // component list can be derived from the registry rather than kept as
         // a second hardcoded list beside it.
-        juce::String installerComponentId;
+        juce::String installerComponentId {};
     };
 
     // The registry every part of this build shares. A singleton for the same

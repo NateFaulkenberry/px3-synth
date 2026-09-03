@@ -1721,7 +1721,6 @@ void testBreakpointEnvelope()
                           + fmt(after.releaseSeconds, 3));
 
                 // And the refresh must not rebuild the drawing from them.
-                for (auto* child : editor->getChildren())
                 modPanel->refreshFromParameters();
 
                 // What the GRAPH was handed, not what the processor stored. A
@@ -1829,7 +1828,6 @@ void testBreakpointEnvelope()
                 // Sweep the band just outside the child editor, where the
                 // parent still gets the click.
                 const auto ed = card->debugEditorBounds().toFloat();
-                auto moved = 0;
                 for (auto dy : { -4.0f, -2.0f, 2.0f, 4.0f, 6.0f, 8.0f })
                 {
                     for (auto fx : { 0.15f, 0.35f, 0.55f, 0.75f, 0.95f })
@@ -3687,7 +3685,7 @@ void testBreakpointEnvelope()
     {
         constexpr double kSlowRate = 1000.0;
 
-        const auto settingsFor = [](float attack, float hold, float decay,
+        const auto settingsFor = [](float attack, float decay,
                                     float sustain, float release)
         {
             EnvelopeSettings settings;
@@ -3738,7 +3736,7 @@ void testBreakpointEnvelope()
 
         // ---- AMP ENV: A -> D -> S -> R, no hold ----
         {
-            const auto settings = settingsFor(0.100f, 0.0f, 0.100f, 0.5f, 0.100f);
+            const auto settings = settingsFor(0.100f, 0.100f, 0.5f, 0.100f);
             const auto trace = runAmp(settings, 600, 300);
 
             check("AmpEnvDsp_RisesToFullOverTheAttack",
@@ -3779,25 +3777,32 @@ void testBreakpointEnvelope()
                   "the attack only rises and the decay only falls");
         }
 
-        // ---- AMP ENV has no hold: setting one changes nothing ----
+        // ---- AMP ENV has no hold stage ----
+        //
+        // This used to render with a "hold" of 0 ms and of 200 ms and compare
+        // the two traces. But the settingsFor helper took a hold argument and
+        // never applied it - EnvelopeSettings has no such field - so both
+        // renders came from identical settings and the comparison was of a
+        // trace with itself. It would have passed exactly as well if a hold
+        // stage existed and worked.
+        //
+        // The absence of a hold is a property of the type, so it is checked
+        // against the type: this fails the moment EnvelopeSettings grows a
+        // hold field, which is when the four stages this suite covers stop
+        // being the whole envelope.
         {
-            const auto without = runAmp(settingsFor(0.100f, 0.0f, 0.100f, 0.5f, 0.100f), 400, 200);
-            const auto with = runAmp(settingsFor(0.100f, 0.200f, 0.100f, 0.5f, 0.100f), 400, 200);
-
-            auto identical = with.size() == without.size();
-            auto worst = 0.0f;
-            for (std::size_t i = 0; identical && i < with.size(); ++i)
+            constexpr auto exposesHold = [](auto probe)
             {
-                worst = juce::jmax(worst, std::abs(with[i] - without[i]));
-            }
-            check("AmpEnvDsp_IgnoresHoldEntirely", identical && worst < 1.0e-6f,
-                  "a 200 ms hold changes the amp envelope by " + fmt(worst, 6)
-                      + " - it has no hold stage to change");
+                return requires { probe.holdSeconds; };
+            };
+            check("AmpEnvDsp_HasNoHoldStage", ! exposesHold(EnvelopeSettings {}),
+                  "EnvelopeSettings exposes a hold field, so the amp envelope "
+                  "has a stage this suite does not cover");
         }
 
         // ---- ENV 1-3: the same four stages ----
         {
-            const auto settings = settingsFor(0.100f, 0.0f, 0.100f, 0.25f, 0.100f);
+            const auto settings = settingsFor(0.100f, 0.100f, 0.25f, 0.100f);
             const auto trace = runMod(settings, 600, 300);
 
             check("ModEnvDsp_RisesToFullOverTheAttack",
@@ -3820,8 +3825,8 @@ void testBreakpointEnvelope()
 
         // ---- sustain is a LEVEL ----
         {
-            const auto quiet = runMod(settingsFor(0.100f, 0.0f, 0.100f, 0.25f, 0.100f), 600, 100);
-            const auto loud = runMod(settingsFor(0.100f, 0.0f, 0.100f, 0.75f, 0.100f), 600, 100);
+            const auto quiet = runMod(settingsFor(0.100f, 0.100f, 0.25f, 0.100f), 600, 100);
+            const auto loud = runMod(settingsFor(0.100f, 0.100f, 0.75f, 0.100f), 600, 100);
 
             check("ModEnvDsp_SustainChangesLevelNotDuration",
                   std::abs(at(quiet, 500) - 0.25f) < 0.02f
@@ -3833,7 +3838,7 @@ void testBreakpointEnvelope()
 
         // ---- release starts from WHEREVER the envelope is ----
         {
-            const auto settings = settingsFor(0.200f, 0.200f, 0.200f, 0.30f, 0.200f);
+            const auto settings = settingsFor(0.200f, 0.200f, 0.30f, 0.200f);
 
             struct Moment { const char* stage; int atSample; };
             const Moment moments[] = {
@@ -3886,7 +3891,7 @@ void testBreakpointEnvelope()
             // smoother's ramp is a duration, so at 1000 Hz it is a handful of
             // samples and judging it there measures the rig rather than the
             // envelope. Stage TIMING is what 1000 Hz is for.
-            const auto settings = settingsFor(0.050f, 0.0f, 0.050f, 0.6f, 0.100f);
+            const auto settings = settingsFor(0.050f, 0.050f, 0.6f, 0.100f);
 
             AmpEnvelope envelope;
             envelope.prepare(kSampleRate);
@@ -3930,12 +3935,12 @@ void testBreakpointEnvelope()
             std::array<EnvelopeGenerator, 3> mods;
 
             amp.prepare(kSlowRate);
-            amp.setSettings(settingsFor(0.100f, 0.0f, 0.050f, 0.9f, 0.050f));
+            amp.setSettings(settingsFor(0.100f, 0.050f, 0.9f, 0.050f));
             for (int i = 0; i < 3; ++i)
             {
                 mods[static_cast<std::size_t>(i)].prepare(kSlowRate);
                 mods[static_cast<std::size_t>(i)].setSettings(
-                    settingsFor(0.100f + 0.200f * static_cast<float>(i + 1), 0.0f,
+                    settingsFor(0.100f + 0.200f * static_cast<float>(i + 1),
                                 0.050f, 0.9f, 0.050f));
             }
 
@@ -3959,7 +3964,7 @@ void testBreakpointEnvelope()
             {
                 EnvelopeGenerator envelope;
                 envelope.prepare(kSlowRate);
-                envelope.setSettings(settingsFor(attack, 0.0f, 0.050f, 0.9f, 0.050f));
+                envelope.setSettings(settingsFor(attack, 0.050f, 0.9f, 0.050f));
                 envelope.noteOn();
                 for (int i = 0; i < 300; ++i)
                 {

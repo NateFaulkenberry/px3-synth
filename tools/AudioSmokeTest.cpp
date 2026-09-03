@@ -12,9 +12,6 @@
 
 namespace
 {
-constexpr double kSampleRate = 48000.0;
-constexpr int kBlockSize = 512;
-
 struct SmokeResult
 {
     double peak { 0.0 };
