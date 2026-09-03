@@ -106,12 +106,28 @@ plist_read() {
   /usr/libexec/PlistBuddy -c "Print :${key}" "$plist" 2>/dev/null || true
 }
 
-find_bundle() {
-  local ext="$1"
+# The bundle a PARTICULAR product built.
+#
+# This used to take the first bundle of that extension anywhere under the build
+# directory. With one product that was unambiguous; with eight it silently
+# picked whichever sorted first - PX3 Chorus - and would have packaged it as
+# the Synth. Searching within the product's own artefacts directory is the
+# whole fix, and it is why every caller now names its product.
+find_product_bundle() {
+  local target="$1"
+  local ext="$2"
+  local artefacts="${BUILD_DIR}/${target}_artefacts"
   local found
-  found="$(find "${BUILD_DIR}" -type d -name "*.${ext}" | sort | head -n1 || true)"
+
+  [[ -d "${artefacts}" ]] || return 1
+  found="$(find "${artefacts}" -type d -name "*.${ext}" | sort | head -n1 || true)"
   [[ -n "$found" ]] || return 1
   printf '%s' "$found"
+}
+
+# The Synth's, by name, for the callers that mean the Synth.
+find_bundle() {
+  find_product_bundle "PX3Synth" "$1"
 }
 
 pkg_payload_has() {
@@ -857,6 +873,90 @@ if [[ -n "${APP_BUNDLE}" ]]; then
     "${APP_COMPONENT_PKG}"
 fi
 
+# ---- the effect products ------------------------------------------------
+#
+# One component package per effect, each holding that effect's AU and VST3.
+# Per PRODUCT rather than per format, because that is the choice the user
+# actually makes: "I want PX3 Doom" rather than "I want the AU half of it".
+#
+# The product list comes from CMakeLists - the same place scripts/build-product.sh
+# reads it - so an effect added with px3_add_product is packaged without anyone
+# remembering to add it here. The Synth is skipped: it has its own three
+# choices above and is not optional.
+FX_CHOICE_OUTLINE=""
+FX_CHOICE_DEFS=""
+FX_PKG_REFS=""
+FX_COMPONENT_PKGS=()
+FX_INSTALLED_NAMES=()
+
+while IFS= read -r fx_target; do
+  [[ "${fx_target}" == "PX3Synth" ]] && continue
+
+  fx_au="$(find_product_bundle "${fx_target}" component || true)"
+  fx_vst3="$(find_product_bundle "${fx_target}" vst3 || true)"
+
+  # A product declared but not built is skipped rather than fatal: a partial
+  # build should still produce an installer for what it did build.
+  if [[ -z "${fx_au}" && -z "${fx_vst3}" ]]; then
+    echo "  ${fx_target}: not built, skipping"
+    continue
+  fi
+
+  fx_display="$(basename "${fx_vst3:-${fx_au}}")"
+  fx_display="${fx_display%.*}"
+  fx_id="$(echo "${fx_target#PX3}" | tr '[:upper:]' '[:lower:]')"
+  fx_root="${PKG_WORK_DIR}/root-fx-${fx_id}"
+  fx_pkg="${PKG_COMPONENTS_DIR}/PX3-${fx_target#PX3}-v${PROJECT_VERSION}.pkg"
+  fx_package_id="${PACKAGE_ID_BASE}.${fx_id}"
+
+  mkdir -p "${fx_root}/${AU_INSTALL_DIR}" "${fx_root}/${VST3_INSTALL_DIR}"
+  [[ -n "${fx_au}" ]] && cp -R "${fx_au}" "${fx_root}/${AU_INSTALL_DIR}/"
+  [[ -n "${fx_vst3}" ]] && cp -R "${fx_vst3}" "${fx_root}/${VST3_INSTALL_DIR}/"
+
+  if [[ "${SIGN_MODE}" == true && -n "${SIGN_IDENTITY}" ]]; then
+    [[ -n "${fx_au}" ]] && sign_and_verify "${fx_root}/${AU_INSTALL_DIR}/$(basename "${fx_au}")" "${fx_display} AU"
+    [[ -n "${fx_vst3}" ]] && sign_and_verify "${fx_root}/${VST3_INSTALL_DIR}/$(basename "${fx_vst3}")" "${fx_display} VST3"
+  fi
+
+  write_non_relocatable_component_plist "${fx_root}" "${PKG_COMPONENT_PLIST_DIR}/${fx_id}.plist"
+
+  pkgbuild \
+    --root "${fx_root}" \
+    --component-plist "${PKG_COMPONENT_PLIST_DIR}/${fx_id}.plist" \
+    --install-location / \
+    --scripts "${PKG_SHARED_SCRIPTS_DIR}" \
+    --identifier "${fx_package_id}" \
+    --version "${PROJECT_VERSION}" \
+    "${fx_pkg}" >/dev/null
+
+  FX_COMPONENT_PKGS+=("${fx_pkg}")
+  FX_INSTALLED_NAMES+=("${fx_display}")
+
+  # start_selected="true": every effect is on by default and the user opts OUT
+  # of the ones they do not want, rather than opting in to each.
+  FX_CHOICE_OUTLINE="${FX_CHOICE_OUTLINE}
+        <line choice=\"px3.fx.${fx_id}\"/>"
+  FX_CHOICE_DEFS="${FX_CHOICE_DEFS}
+  <choice id=\"px3.fx.${fx_id}\" title=\"${fx_display}\" description=\"Installs ${fx_display} as an Audio Unit and a VST3, alongside PX3 Synth.\" start_selected=\"true\">
+    <pkg-ref id=\"${fx_package_id}\"/>
+  </choice>"
+  FX_PKG_REFS="${FX_PKG_REFS}
+  <pkg-ref id=\"${fx_package_id}\" version=\"${PROJECT_VERSION}\">#$(basename "${fx_pkg}")</pkg-ref>"
+
+  echo "  ${fx_display}: packaged"
+done < <(grep -oE '^[[:space:]]*TARGET[[:space:]]+PX3[A-Za-z]+' "${REPO_ROOT}/CMakeLists.txt" | awk '{print $2}')
+
+# The effects sit under a heading of their own, so the pane reads as "the Synth,
+# plus these" rather than as ten equal things to choose between.
+FX_GROUP_OUTLINE=""
+FX_GROUP_DEF=""
+if [[ -n "${FX_CHOICE_OUTLINE}" ]]; then
+  FX_GROUP_OUTLINE="    <line choice=\"px3.fx\">${FX_CHOICE_OUTLINE}
+    </line>"
+  FX_GROUP_DEF="  <choice id=\"px3.fx\" title=\"Additional PX3 Effects\" description=\"PX3 effect plug-ins, each also available inside PX3 Synth. All are selected; deselect any you do not want.\" start_selected=\"true\"/>
+${FX_CHOICE_DEFS}"
+fi
+
 # Build an explicit product distribution so Installer UI labels always use
 # branded names instead of tool defaults that can inherit target names.
 #
@@ -926,6 +1026,7 @@ ${INSTALLER_HOST_CHECK_XML}
     <line choice="px3.au"/>
     <line choice="px3.vst3"/>
 ${APP_CHOICE_OUTLINE}
+${FX_GROUP_OUTLINE}
   </choices-outline>
 
   <choice id="px3.au" title="Audio Unit (AU)" description="For Logic Pro, GarageBand, MainStage and other AU hosts. Installs to /Library/Audio/Plug-Ins/Components." start_selected="true">
@@ -937,8 +1038,10 @@ ${APP_CHOICE_OUTLINE}
   </choice>
 
 ${APP_CHOICE_DEF}
+${FX_GROUP_DEF}
 
   <pkg-ref id="${AU_PACKAGE_ID}" version="${PROJECT_VERSION}">#$(basename "${AU_COMPONENT_PKG}")</pkg-ref>
+${FX_PKG_REFS}
   <pkg-ref id="${VST3_PACKAGE_ID}" version="${PROJECT_VERSION}">#$(basename "${VST3_COMPONENT_PKG}")</pkg-ref>
 ${APP_PKG_REF}
 </installer-gui-script>
@@ -957,6 +1060,36 @@ fi
 PRODUCTBUILD_ARGS+=("${PKG_PATH}")
 
 productbuild "${PRODUCTBUILD_ARGS[@]}"
+
+# What the installer actually contains, checked rather than assumed. An effect
+# that was packaged but never referenced by the Distribution is silently
+# dropped by productbuild - the same class of fault as the branding resources,
+# and invisible until somebody installs and finds their effects missing.
+#
+# Checked by EXPANDING the product, not with pkgutil --payload-files: on a
+# distribution archive that reports only the first component package's payload,
+# so it said the effects were missing from an installer that contained all
+# seven of them.
+if [[ ${#FX_COMPONENT_PKGS[@]} -gt 0 ]]; then
+  PKG_VERIFY_DIR="${PKG_WORK_DIR}/verify-product"
+  rm -rf "${PKG_VERIFY_DIR}"
+  pkgutil --expand "${PKG_PATH}" "${PKG_VERIFY_DIR}" \
+    || die "Could not expand the installer to verify its contents"
+
+  for fx_pkg_path in "${FX_COMPONENT_PKGS[@]}"; do
+    fx_pkg_name="$(basename "${fx_pkg_path}")"
+    [[ -e "${PKG_VERIFY_DIR}/${fx_pkg_name}" ]] \
+      || die "${fx_pkg_name} was built but productbuild left it out of the installer"
+    grep -q "${fx_pkg_name}" "${PKG_VERIFY_DIR}/Distribution" \
+      || die "${fx_pkg_name} is in the installer but nothing in the Distribution selects it"
+  done
+
+  rm -rf "${PKG_VERIFY_DIR}"
+fi
+if [[ ${#FX_INSTALLED_NAMES[@]} -gt 0 ]]; then
+  echo "  Installer carries ${#FX_INSTALLED_NAMES[@]} effect products, all selected by default"
+fi
+
 sign_product_if_requested "${PKG_PATH}"
 
 # Checked here rather than discovered at Apple. Notarisation of an unsigned
