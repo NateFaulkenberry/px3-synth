@@ -43,6 +43,20 @@ In progress.
   Measured rather than assumed: before the fix the shipped uninstaller's icon
   matched the stock one to four decimal places. The build now removes both the
   key and the catalog, and refuses to finish if either comes back.
+- **The EQ analyser's grid is drawn once instead of sixty times a second.** It
+  was redrawing its gridlines, labels and zero line every frame behind a trace
+  that actually changes — measured at 49% of the component's entire paint cost,
+  201 us a frame. The VU meter's face was already cached; this now is too.
+
+## Measured
+
+- **`PX3Diag eqspectrum`** — the two measurements the EQ spectrum brief asked
+  for and never got. FFT size against CPU, window length and resolution
+  (1024–16384, at 48 and 96 kHz), and the component's paint cost. It settles
+  one open question: CPU is not the constraint at any FFT size — the largest
+  costs half a percent of a frame — so the case for making the size
+  configurable is about window length alone. See `docs/EQ_SPECTRUM_VISUALIZER.md`
+  section 7.
 
 ---
 

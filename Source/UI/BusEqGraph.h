@@ -41,6 +41,7 @@ public:
     void setEditable(bool shouldBeEditable);
 
     void paint(juce::Graphics& g) override;
+    void resized() override;
     void mouseMove(const juce::MouseEvent& event) override;
     void mouseExit(const juce::MouseEvent& event) override;
     void mouseDown(const juce::MouseEvent& event) override;
@@ -52,6 +53,13 @@ public:
     // The plot box, inside the axis labels. Public so the overlay can align
     // the band columns underneath it.
     juce::Rectangle<float> plotBounds() const;
+
+    // Throws the cached grid away, so the next paint draws it again. Only the
+    // measurement needs this - it is how PX3Diag eqspectrum prices a frame that
+    // has to redraw the grid against one that does not.
+    void debugInvalidateGridCache() { gridCache = {}; }
+    bool debugGridCacheIsValid() const { return gridCache.isValid(); }
+    int debugGridCacheWidth() const { return gridCache.getWidth(); }
 
     static constexpr float kMinHz = 20.0f;
     static constexpr float kMaxHz = 20000.0f;
@@ -92,6 +100,9 @@ private:
     bool bandHasGain(int band) const;
 
     void paintGrid(juce::Graphics& g, juce::Rectangle<float> plot) const;
+    // Draws paintGrid once into gridCache, at the scale of the context it
+    // will be drawn back into.
+    void rebuildGridCache(float scale);
     void paintSpectrum(juce::Graphics& g, juce::Rectangle<float> plot) const;
     void paintCurve(juce::Graphics& g, juce::Rectangle<float> plot) const;
     void paintHandles(juce::Graphics& g) const;
@@ -108,6 +119,13 @@ private:
     // Starts false: the EQ defaults to bypassed, and a graph that begins
     // editable would accept a drag before the first poll ran.
     bool editable { false };
+
+    // The gridlines, their labels and the zero line, drawn once. None of it
+    // changes between frames - only on a resize or a config reload - and the
+    // trace in front of it is repainted 60 times a second. The VU meter's face
+    // is cached for the same reason.
+    juce::Image gridCache;
+    float gridCacheScale { 0.0f };
 
     juce::dsp::FFT fft { kFftOrder };
     std::vector<float> fftScratch;

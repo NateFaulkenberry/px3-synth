@@ -1908,6 +1908,108 @@ void testBusInserts()
               graph != nullptr ? "graph is " + graph->getBounds().toString()
                                : juce::String("no BusEqGraph found in the editor"));
 
+        // ---- the cached grid draws what the uncached one drew ----------------
+        //
+        // The gridlines, their labels and the zero line are drawn once into an
+        // image now rather than every frame. That is only worth doing if the
+        // picture is the same, and the ways it could stop being the same - a
+        // cache built at the wrong scale, or drawn at the wrong offset - do not
+        // fail, they just move the ruling away from the frequencies it names.
+        //
+        // So this checks where the gridlines actually LAND in the rendered
+        // pixels, at the x the graph's own log mapping puts them.
+        if (graph != nullptr && graph->getWidth() > 100)
+        {
+            const auto renderDigest = [&](px3::ui::BusEqGraph& g)
+            {
+                juce::Image shot(juce::Image::ARGB, g.getWidth(), g.getHeight(), true);
+                {
+                    juce::Graphics gr(shot);
+                    g.paintEntireComponent(gr, false);
+                }
+                std::uint64_t hash = 1469598103934665603ull;
+                for (int y = 0; y < shot.getHeight(); ++y)
+                {
+                    for (int x = 0; x < shot.getWidth(); ++x)
+                    {
+                        hash = (hash ^ shot.getPixelAt(x, y).getARGB()) * 1099511628211ull;
+                    }
+                }
+                return juce::String::toHexString(static_cast<juce::int64>(hash));
+            };
+
+            const auto before = renderDigest(*graph);
+            graph->debugInvalidateGridCache();
+            const auto after = renderDigest(*graph);
+
+            // Where the labelled decades should be, by the graph's own mapping.
+            const auto plot = graph->plotBounds();
+            const auto xFor = [&](float hz)
+            {
+                const auto pos = std::log(hz / px3::ui::BusEqGraph::kMinHz)
+                               / std::log(px3::ui::BusEqGraph::kMaxHz / px3::ui::BusEqGraph::kMinHz);
+                return juce::roundToInt(plot.getX() + pos * plot.getWidth());
+            };
+
+            juce::Image shot(juce::Image::ARGB, graph->getWidth(), graph->getHeight(), true);
+            {
+                juce::Graphics gr(shot);
+                graph->paintEntireComponent(gr, false);
+            }
+
+            // A column's mean alpha down the middle of the plot, away from the
+            // curve's own line and the handles.
+            const auto columnInk = [&](int x)
+            {
+                const auto y0 = juce::roundToInt(plot.getY() + plot.getHeight() * 0.12f);
+                const auto y1 = juce::roundToInt(plot.getY() + plot.getHeight() * 0.30f);
+                auto total = 0.0;
+                auto n = 0;
+                for (int y = y0; y < y1; ++y)
+                {
+                    if (! shot.getBounds().contains(x, y)) { continue; }
+                    total += shot.getPixelAt(x, y).getFloatAlpha();
+                    ++n;
+                }
+                return n > 0 ? total / n : 0.0;
+            };
+
+            auto linesFound = 0;
+            juce::StringArray detail;
+            for (const auto hz : { 100.0f, 1000.0f, 10000.0f })
+            {
+                const auto x = xFor(hz);
+                const auto onLine = columnInk(x);
+                // A column a few pixels off the ruling, which has no gridline.
+                const auto offLine = juce::jmax(columnInk(x + 5), columnInk(x - 5));
+                if (onLine > offLine * 1.5 && onLine > 0.02) { ++linesFound; }
+                detail.add(juce::String(juce::roundToInt(hz)) + "Hz x=" + juce::String(x)
+                           + " ink " + fmt(static_cast<float>(onLine), 3)
+                           + " vs " + fmt(static_cast<float>(offLine), 3));
+            }
+
+            // And the cache matches the context it is drawn into. Built at the
+            // DISPLAY's scale instead, a 2x cache blitted into this 1x render
+            // is resampled - measured moving the axis labels by up to 71/255
+            // per channel, which is the whole picture changing to save work.
+            const auto cacheMatchesContext =
+                graph->debugGridCacheIsValid()
+                && graph->debugGridCacheWidth() == graph->getWidth();
+
+            check("BusEqGraph_TheCachedGridIsBuiltAtTheScaleItIsDrawnAt",
+                  cacheMatchesContext,
+                  "cache is " + juce::String(graph->debugGridCacheWidth())
+                      + " px wide for a " + juce::String(graph->getWidth())
+                      + " px component in a 1x context");
+
+            check("BusEqGraph_TheCachedGridDrawsWhereTheRulingSaysItShould",
+                  linesFound == 3 && before == after && graph->debugGridCacheIsValid(),
+                  juce::String(linesFound) + " of 3 gridlines found at their own x: "
+                      + detail.joinIntoString("; ")
+                      + (before == after ? "; stable across a rebuild"
+                                         : "; CHANGED across a rebuild"));
+        }
+
         // A mouse event the component will accept. Built by hand because the
         // test has no message loop to generate one.
         auto eventAt = [&](juce::Point<float> position, int clicks)

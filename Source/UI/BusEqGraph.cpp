@@ -88,6 +88,8 @@ void BusEqGraph::setBus(int bus)
 void BusEqGraph::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+    // The grid's colours come from the config, so the cache is stale now.
+    gridCache = {};
     repaint();
 }
 
@@ -522,11 +524,63 @@ void BusEqGraph::paintReadout(juce::Graphics& g, int band) const
     g.drawText(text, bubble, juce::Justification::centred);
 }
 
+void BusEqGraph::resized()
+{
+    // Every position in the grid comes from the bounds, so the cache is stale.
+    // Thrown away rather than rebuilt here: the rebuild needs the scale of the
+    // context it will be drawn into, which only paint() knows.
+    gridCache = {};
+}
+
+void BusEqGraph::rebuildGridCache(float scale)
+{
+    const auto bounds = getLocalBounds();
+    if (bounds.isEmpty())
+    {
+        gridCache = {};
+        return;
+    }
+
+    // At the scale of the DESTINATION context, not the display's. The two are
+    // the same in a plugin window, but not when the component is rendered into
+    // an image - and a cache built at 2x and drawn into a 1x context is
+    // resampled, which was measured moving the axis labels by up to 71/255 per
+    // channel. Matching the context makes the blit 1:1 and the pixels identical
+    // to drawing the grid straight in.
+    gridCacheScale = scale;
+    gridCache = juce::Image(juce::Image::ARGB,
+                            juce::roundToInt(static_cast<float>(bounds.getWidth()) * scale),
+                            juce::roundToInt(static_cast<float>(bounds.getHeight()) * scale),
+                            true);
+
+    juce::Graphics g(gridCache);
+    g.addTransform(juce::AffineTransform::scale(scale));
+    paintGrid(g, plotBounds());
+}
+
 void BusEqGraph::paint(juce::Graphics& g)
 {
     const auto plot = plotBounds();
 
-    paintGrid(g, plot);
+    // Built here rather than in resized(), because only a real context knows
+    // the scale it wants the cache at.
+    const auto scale = juce::jlimit(1.0f, 4.0f,
+                                    g.getInternalContext().getPhysicalPixelScaleFactor());
+    if (! gridCache.isValid()
+        || gridCache.getWidth() != juce::roundToInt(static_cast<float>(getWidth()) * scale)
+        || ! juce::approximatelyEqual(gridCacheScale, scale))
+    {
+        rebuildGridCache(scale);
+    }
+
+    if (gridCache.isValid())
+    {
+        g.drawImage(gridCache, getLocalBounds().toFloat());
+    }
+    else
+    {
+        paintGrid(g, plot);
+    }
     paintSpectrum(g, plot);
     paintCurve(g, plot);
     paintHandles(g);

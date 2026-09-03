@@ -18,6 +18,7 @@
 #include "EnvelopeGenerator.h"
 #include "AmpEnvelope.h"
 #include "PX3Diagnostics.h"
+#include "BusEqGraph.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -4379,9 +4380,154 @@ int main(int argc, char* argv[])
         runRegressionSuite(false);
         return 0;
     }
+    else if (arg == "eqspectrum")
+    {
+        // The two measurements the EQ spectrum brief asked for and never got:
+        // what an FFT size costs and what it resolves, and what a frame of this
+        // component costs to paint.
+        //
+        // Neither had a number attached before, so "4096" and "one FFT per
+        // repaint" were choices nobody could argue with either way.
+        std::printf("\n");
+        std::printf("EQ SPECTRUM ANALYSER - cost and resolution\n");
+        std::printf("  see docs/EQ_SPECTRUM_VISUALIZER.md sections 4 and 6\n\n");
+
+        // ---- what an FFT size buys and what it costs ------------------------
+        //
+        // Resolution is measured the way the analyser actually resamples: for
+        // each of the 1024 display points on the log axis, how many FFT bins
+        // fall under it. Points covering fewer than two bins cannot be read
+        // straight off the transform - the resampler interpolates between
+        // neighbours there, which is what stopped the low end reading as a
+        // staircase. Fewer such points means more of the curve is measurement
+        // rather than inference.
+        constexpr int kDisplayBins = 1024;
+        constexpr float kMinHz = 20.0f;
+        constexpr float kMaxHz = 20000.0f;
+
+        const auto interpolatedPoints = [](int fftSize, double sampleRate, float& firstResolvedHz)
+        {
+            const auto binsPerHz = static_cast<double>(fftSize) / sampleRate;
+            const auto step = std::pow(kMaxHz / kMinHz, 1.0f / static_cast<float>(kDisplayBins - 1));
+            auto count = 0;
+            firstResolvedHz = 0.0f;
+
+            for (int i = 0; i < kDisplayBins; ++i)
+            {
+                const auto position = static_cast<float>(i) / static_cast<float>(kDisplayBins - 1);
+                const auto hz = kMinHz * std::pow(kMaxHz / kMinHz, position);
+                const auto firstBin = static_cast<int>(std::floor(hz / step * binsPerHz));
+                const auto lastBin = static_cast<int>(std::ceil(hz * step * binsPerHz));
+
+                if (lastBin - firstBin < 2) { ++count; }
+                else if (firstResolvedHz <= 0.0f) { firstResolvedHz = hz; }
+            }
+            return count;
+        };
+
+        for (const auto sampleRate : { 48000.0, 96000.0 })
+        {
+            std::printf("  at %.0f kHz, one FFT per 60 Hz frame (16.67 ms budget)\n",
+                        sampleRate / 1000.0);
+            std::printf("    %-7s %9s %10s %9s %11s %14s\n",
+                        "size", "window", "per FFT", "of frame", "interpolated", "resolved above");
+
+            for (int order = 10; order <= 14; ++order)
+            {
+                const auto size = 1 << order;
+                juce::dsp::FFT fft(order);
+                std::vector<float> scratch(static_cast<std::size_t>(size) * 2, 0.0f);
+
+                // Real material rather than zeros: an all-zero transform can be
+                // optimised in ways a signal cannot.
+                juce::Random rng(1234);
+                for (int i = 0; i < size; ++i)
+                {
+                    scratch[static_cast<std::size_t>(i)] = rng.nextFloat() * 2.0f - 1.0f;
+                }
+
+                // Warm the caches, then time enough transforms that the clock's
+                // own resolution does not dominate.
+                for (int i = 0; i < 8; ++i) { fft.performFrequencyOnlyForwardTransform(scratch.data()); }
+
+                constexpr int kRuns = 200;
+                const auto start = juce::Time::getHighResolutionTicks();
+                for (int i = 0; i < kRuns; ++i)
+                {
+                    fft.performFrequencyOnlyForwardTransform(scratch.data());
+                }
+                const auto seconds = juce::Time::highResolutionTicksToSeconds(
+                    juce::Time::getHighResolutionTicks() - start) / kRuns;
+
+                float resolvedHz = 0.0f;
+                const auto interpolated = interpolatedPoints(size, sampleRate, resolvedHz);
+                const auto windowMs = 1000.0 * size / sampleRate;
+
+                std::printf("    %-7d %7.1f ms %8.1f us %7.2f%% %8d/1024 %11.0f Hz\n",
+                            size, windowMs, seconds * 1.0e6, seconds / 0.016667 * 100.0,
+                            interpolated, resolvedHz);
+            }
+            std::printf("\n");
+        }
+
+        // ---- what a frame of the component costs ----------------------------
+        //
+        // Painted into an image, which is what the component does anyway - the
+        // window's context is the same kind of thing. The grid is cached now,
+        // so the comparison is a frame that reuses the cache against one that
+        // has to build it, which is what every frame used to do.
+        {
+            PX3SynthAudioProcessor processor;
+            processor.setPlayConfigDetails(0, 2, 48000.0, 256);
+            processor.prepareToPlay(48000.0, 256);
+
+            px3::ui::BusEqGraph graph(processor);
+            graph.setBus(0);
+            graph.setSize(868, 210);   // the size it has in the insert sheet
+
+            juce::Image canvas(juce::Image::ARGB, graph.getWidth(), graph.getHeight(), true);
+
+            const auto timePaints = [&](int runs, bool invalidateEachFrame)
+            {
+                // One paint outside the timing, so the first frame's cache
+                // build is not counted as part of a warm run.
+                {
+                    juce::Graphics g(canvas);
+                    graph.paintEntireComponent(g, false);
+                }
+
+                const auto start = juce::Time::getHighResolutionTicks();
+                for (int i = 0; i < runs; ++i)
+                {
+                    if (invalidateEachFrame) { graph.debugInvalidateGridCache(); }
+                    juce::Graphics g(canvas);
+                    graph.paintEntireComponent(g, false);
+                }
+                return juce::Time::highResolutionTicksToSeconds(
+                           juce::Time::getHighResolutionTicks() - start) / runs;
+            };
+
+            constexpr int kFrames = 120;
+            const auto cached = timePaints(kFrames, false);
+            const auto uncached = timePaints(kFrames, true);
+
+            std::printf("  paint cost at 868x210, %d frames each\n", kFrames);
+            std::printf("    grid cached (shipping)   %8.1f us  %6.2f%% of a 60 Hz frame\n",
+                        cached * 1.0e6, cached / 0.016667 * 100.0);
+            std::printf("    grid redrawn every frame %8.1f us  %6.2f%% of a 60 Hz frame\n",
+                        uncached * 1.0e6, uncached / 0.016667 * 100.0);
+            std::printf("    saved by the cache       %8.1f us  %6.2f%% of a 60 Hz frame  (%.1fx)\n",
+                        (uncached - cached) * 1.0e6,
+                        (uncached - cached) / 0.016667 * 100.0,
+                        cached > 0.0 ? uncached / cached : 0.0);
+            std::printf("\n");
+        }
+
+        return 0;
+    }
     else
     {
-        std::printf("usage: PX3Diag [primary|reintroduce|pruning|tail|release|regress|regress-legacy] [dry] [wavDir]\n");
+        std::printf("usage: PX3Diag [primary|reintroduce|pruning|tail|release|regress|regress-legacy|eqspectrum] [dry] [wavDir]\n");
         return 1;
     }
 
