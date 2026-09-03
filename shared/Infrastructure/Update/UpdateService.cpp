@@ -4,6 +4,7 @@
 #include "GitHubReleaseProvider.h"
 #include "GlobalSettings.h"
 
+#include <array>
 #include <mutex>
 
 #include <unistd.h>
@@ -613,6 +614,47 @@ void registerDefaultProducts()
     synth.hasStandalone = true;
     synth.installerComponentId = "px3.synth";
     ProductRegistry::getInstance().registerProduct(synth);
+
+    // The effect products. Each one drives the same shared DSP the Synth does
+    // and ships as AU and VST3 only - an effect has no reason to have a
+    // standalone application, and hasStandalone says so rather than a comment
+    // somewhere saying so.
+    //
+    // Vibe is deliberately ABSENT. It has no audio interface at all: it hands
+    // each voice a set of per-voice offsets applied at six points inside the
+    // voice, so there is no signal for an insert to process. See the
+    // feasibility assessment in docs/ECOSYSTEM_ARCHITECTURE.md.
+    struct EffectProduct
+    {
+        const char* productId;
+        const char* displayName;
+        const char* bundleId;
+        const char* installerComponentId;
+    };
+
+    static constexpr std::array<EffectProduct, 7> effects { {
+        { "px3-delay",  "PX3 Delay",  "com.px3.delay",  "px3.delay"  },
+        { "px3-mood",   "PX3 Mood",   "com.px3.mood",   "px3.mood"   },
+        { "px3-chorus", "PX3 Chorus", "com.px3.chorus", "px3.chorus" },
+        { "px3-spread", "PX3 Spread", "com.px3.spread", "px3.spread" },
+        { "px3-reverb", "PX3 Reverb", "com.px3.reverb", "px3.reverb" },
+        { "px3-doom",   "PX3 Doom",   "com.px3.doom",   "px3.doom"   },
+        { "px3-lucy",   "PX3 Lucy",   "com.px3.lucy",   "px3.lucy"   },
+    } };
+
+    for (const auto& effect : effects)
+    {
+        ProductRegistry::Registration product;
+        product.productId = effect.productId;
+        product.displayName = effect.displayName;
+        // One version across the ecosystem: they ship together, from one
+        // PX3_VERSION, so a second source of truth would only ever disagree.
+        product.versionProvider = [] { return px3::version::string(); };
+        product.bundleId = effect.bundleId;
+        product.hasStandalone = false;
+        product.installerComponentId = effect.installerComponentId;
+        ProductRegistry::getInstance().registerProduct(product);
+    }
 }
 
 void installDefaultConfiguration()

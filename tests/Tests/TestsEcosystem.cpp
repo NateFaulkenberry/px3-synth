@@ -213,6 +213,70 @@ void testEcosystem()
                   + synth.installerComponentId
                   + ", standalone " + (synth.hasStandalone ? "yes" : "no"));
     }
+
+    // ---- every product the build declares is in the registry ----------------
+    //
+    // The registry is what the updater and the installer read. A product that
+    // builds but is not registered ships and is then invisible to both - it
+    // gets no updates and no installer component, and nothing says so.
+    // Checked against the BUILD rather than a second list, so the two cannot
+    // drift.
+    {
+        const auto cmake = root.getChildFile("CMakeLists.txt").loadFileAsString();
+        auto& registry = px3::update::ProductRegistry::getInstance();
+
+        juce::StringArray declared, unregistered;
+        auto search = cmake;
+
+        while (search.contains("BUNDLE_ID"))
+        {
+            search = search.fromFirstOccurrenceOf("BUNDLE_ID", false, false);
+            const auto bundleId = search.fromFirstOccurrenceOf("\"", false, false)
+                                        .upToFirstOccurrenceOf("\"", false, false).trim();
+            if (bundleId.isEmpty()) { continue; }
+
+            declared.add(bundleId);
+
+            auto found = false;
+            for (const auto& id : registry.productIds())
+            {
+                if (registry.definition(id).bundleId == bundleId) { found = true; break; }
+            }
+            if (! found) { unregistered.add(bundleId); }
+        }
+
+        check("Ecosystem_EveryProductTheBuildDeclaresIsRegistered",
+              declared.size() >= 8 && unregistered.isEmpty(),
+              juce::String(declared.size()) + " products in the build, "
+                  + juce::String(static_cast<int>(registry.productIds().size()))
+                  + " registered"
+                  + (unregistered.isEmpty() ? "" : "; NOT REGISTERED: "
+                                                       + unregistered.joinIntoString(", ")));
+    }
+
+    // ---- and the effects say they have no standalone ------------------------
+    {
+        auto& registry = px3::update::ProductRegistry::getInstance();
+
+        juce::StringArray wrong;
+        for (const auto& id : registry.productIds())
+        {
+            const auto product = registry.definition(id);
+            const auto shouldHaveStandalone = (id == "px3-synth");
+            if (product.hasStandalone != shouldHaveStandalone) { wrong.add(id); }
+        }
+
+        // Vibe is not a product: it has no audio interface to wrap. Its
+        // absence here is the assessment's conclusion, in code.
+        const auto vibeAbsent = ! registry.isRegistered("px3-vibe");
+
+        check("Ecosystem_OnlyTheSynthHasAStandaloneAndVibeIsNotAProduct",
+              wrong.isEmpty() && vibeAbsent,
+              juce::String(static_cast<int>(registry.productIds().size()))
+                  + " products; only the Synth has a standalone application"
+                  + (vibeAbsent ? "; Vibe correctly absent" : "; VIBE REGISTERED")
+                  + (wrong.isEmpty() ? "" : "; wrong: " + wrong.joinIntoString(", ")));
+    }
 }
 
 } // namespace px3tests
