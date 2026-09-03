@@ -113,6 +113,61 @@ void testEcosystem()
                   + px3::version::string());
     }
 
+    // ---- no two products may claim the same plug-in code -------------------
+    //
+    // A four-character code is how a DAW tells one plug-in from another. Two
+    // products sharing one is how a host loads the wrong plug-in, and it is
+    // invisible until it happens on somebody else's machine - so it is checked
+    // here rather than left to whoever adds the next product to remember.
+    {
+        const auto cmake = root.getChildFile("CMakeLists.txt").loadFileAsString();
+
+        juce::StringArray codes;
+        juce::StringArray duplicates;
+        auto search = cmake;
+
+        while (search.contains("PLUGIN_CODE"))
+        {
+            search = search.fromFirstOccurrenceOf("PLUGIN_CODE", false, false);
+            const auto code = search.trimStart().upToFirstOccurrenceOf("\n", false, false).trim();
+            if (code.isEmpty()) { continue; }
+
+            if (codes.contains(code)) { duplicates.addIfNotAlreadyThere(code); }
+            codes.add(code);
+        }
+
+        check("Ecosystem_NoTwoProductsShareAPluginCode",
+              codes.size() >= 2 && duplicates.isEmpty(),
+              juce::String(codes.size()) + " plug-in codes declared ("
+                  + codes.joinIntoString(", ") + ")"
+                  + (duplicates.isEmpty() ? "" : "; DUPLICATED: " + duplicates.joinIntoString(", ")));
+    }
+
+    // ---- and no two share a bundle identifier -------------------------------
+    {
+        const auto cmake = root.getChildFile("CMakeLists.txt").loadFileAsString();
+
+        juce::StringArray ids;
+        juce::StringArray duplicates;
+        auto search = cmake;
+
+        while (search.contains("BUNDLE_ID"))
+        {
+            search = search.fromFirstOccurrenceOf("BUNDLE_ID", false, false);
+            const auto id = search.fromFirstOccurrenceOf("\"", false, false)
+                                  .upToFirstOccurrenceOf("\"", false, false).trim();
+            if (id.isEmpty()) { continue; }
+
+            if (ids.contains(id)) { duplicates.addIfNotAlreadyThere(id); }
+            ids.add(id);
+        }
+
+        check("Ecosystem_NoTwoProductsShareABundleIdentifier",
+              ids.size() >= 2 && duplicates.isEmpty(),
+              ids.joinIntoString(", ")
+                  + (duplicates.isEmpty() ? "" : "; DUPLICATED: " + duplicates.joinIntoString(", ")));
+    }
+
     // ---- the product registry carries a product's whole identity ------------
     {
         px3::update::installDefaultConfiguration();

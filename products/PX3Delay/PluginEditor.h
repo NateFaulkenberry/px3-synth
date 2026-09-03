@@ -5,6 +5,7 @@
 #include "PluginProcessor.h"
 #include "DelayComponent.h"
 #include "UIConfig.h"
+#include "KnobLookAndFeel.h"
 
 #include <memory>
 #include <vector>
@@ -52,6 +53,9 @@ private:
     juce::Label timeLabel;
     juce::Slider feedbackKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
     juce::Label feedbackLabel;
+
+    // The ecosystem's knob, not JUCE's default rotary.
+    px3::ui::KnobLookAndFeel knobLook;
 
     DelayComponent panel;
 

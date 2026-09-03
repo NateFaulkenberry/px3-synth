@@ -34,6 +34,11 @@ PX3DelayAudioProcessorEditor::PX3DelayAudioProcessorEditor(PX3DelayAudioProcesso
     attach(processor.debugAlgorithmParam(), algorithmBox);
     attach(processor.debugEnabledParam(), enabledButton);
 
+    for (auto* knob : { &amountKnob, &timeKnob, &feedbackKnob })
+    {
+        knob->setLookAndFeel(&knobLook);
+    }
+
     addAndMakeVisible(panel);
 
     // Follows the enable switch and the algorithm, the same way the Synth's
@@ -58,6 +63,12 @@ PX3DelayAudioProcessorEditor::~PX3DelayAudioProcessorEditor()
     sliderAttachments.clear();
     boxAttachments.clear();
     buttonAttachments.clear();
+
+    // And the look before it goes, for the same reason.
+    for (auto* knob : { &amountKnob, &timeKnob, &feedbackKnob })
+    {
+        knob->setLookAndFeel(nullptr);
+    }
 }
 
 void PX3DelayAudioProcessorEditor::attach(juce::RangedAudioParameter& parameter, juce::Slider& slider)

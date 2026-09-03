@@ -89,6 +89,9 @@ set(PX3_SHARED_SOURCES
         shared/UI/Fx/FilterComponent.cpp
         shared/UI/Fx/ReverbComponent.cpp
         shared/UI/Style/UIConfig.cpp
+        shared/UI/Style/KnobLookAndFeel.cpp
+        shared/UI/Style/KnobOverlays.cpp
+        shared/UI/Style/MacroKnobLook.cpp
         shared/UI/Style/UIConfigManager.cpp
         shared/UI/Fx/VibeComponent.cpp
         shared/DSP/Delay/Delay.cpp
@@ -108,7 +111,7 @@ set(PX3_SHARED_SOURCES
 # nothing above it is specific to this one.
 set(PX3_SYNTH_SOURCES
         products/PX3Synth/UI/PerformanceControls.cpp
-        products/PX3Synth/UI/PluginEditorLook.cpp
+        products/PX3Synth/UI/PluginEditorPaint.cpp
         products/PX3Synth/UI/PluginEditorFxCards.cpp
         products/PX3Synth/UI/PluginEditorMidiMacros.cpp
         products/PX3Synth/UI/PluginEditorPresets.cpp
@@ -119,8 +122,6 @@ set(PX3_SYNTH_SOURCES
         products/PX3Synth/UI/MacroStrip.cpp
         products/PX3Synth/UI/MacroDepthPanel.cpp
         products/PX3Synth/UI/SettingsPanel.cpp
-        products/PX3Synth/UI/KnobOverlays.cpp
-        products/PX3Synth/UI/MacroKnobLook.cpp
         products/PX3Synth/UI/OscPanel.cpp
         products/PX3Synth/UI/ModPanel.cpp
         products/PX3Synth/UI/AmpEnvelopeComponent.cpp

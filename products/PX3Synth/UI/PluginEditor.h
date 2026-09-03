@@ -18,6 +18,7 @@
 #include "PerformanceControls.h"
 #include "MacroStrip.h"
 #include "MacroDepthPanel.h"
+#include "KnobLookAndFeel.h"
 #include "ParameterKnob.h"
 #include "PianoKeyboard.h"
 #include "PresetManager.h"
@@ -70,27 +71,9 @@ public:
     void mouseUp(const juce::MouseEvent& event) override;
 
 private:
-    class KnobLookAndFeel final : public juce::LookAndFeel_V4
-    {
-    public:
-        // The macro colours, handed in from UIConfig by the editor. The
-        // look-and-feel does not read config itself - it is shared by every
-        // knob and has no prefix of its own - so the editor resolves them once
-        // and sets them here.
-        juce::Colour macroAccent { juce::Colour::fromRGB(34, 214, 200) };
-        juce::Colour macroLabelBackground { juce::Colour::fromRGBA(226, 249, 246, 219) };
-        juce::Colour macroLabelText { juce::Colour::fromRGB(12, 46, 43) };
-
-        void drawRotarySlider(juce::Graphics& g,
-                              int x,
-                              int y,
-                              int width,
-                              int height,
-                              float sliderPos,
-                              float rotaryStartAngle,
-                              float rotaryEndAngle,
-                              juce::Slider& slider) override;
-    };
+    // The shared knob, under the name this editor has always used - so every
+    // reference below is unchanged and the drawing is the ecosystem's.
+    using KnobLookAndFeel = px3::ui::KnobLookAndFeel;
 
     // The macro knobs are drawn by their own look, so they read as a different
     // kind of control from every knob inside the panels.

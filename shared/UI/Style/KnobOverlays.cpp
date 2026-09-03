@@ -1,6 +1,5 @@
 #include "KnobOverlays.h"
 
-#include "PluginProcessor.h"
 
 namespace px3::ui
 {
@@ -68,7 +67,10 @@ void drawKnobOverlays(juce::Graphics& g,
         // compact form §21 asks for once more than one will not fit.
         auto first = -1;
         auto count = 0;
-        for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+        // Every bit the mask can carry, rather than a particular product's
+        // macro count. The mask IS the list; iterating it needs no knowledge
+        // of who built it, and that was this file's only tie to the Synth.
+        for (int macro = 0; macro < static_cast<int>(sizeof(macroMask) * 8); ++macro)
         {
             if ((macroMask & (1 << macro)) == 0) { continue; }
             if (first < 0) { first = macro; }
