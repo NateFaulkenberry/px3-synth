@@ -74,6 +74,7 @@ set(PX3_SHARED_SOURCES
         shared/UI/Components/Card.cpp
         shared/DSP/Filter/CombResonator.cpp
         shared/DSP/Analog/AnalogEngine.cpp
+        shared/DSP/Core/StftEngine.cpp
         shared/DSP/Doom/Doom.cpp
         shared/DSP/Lucy/Lucy.cpp
         shared/DSP/Chorus/Chorus.cpp
@@ -134,7 +135,6 @@ set(PX3_SYNTH_SOURCES
     products/PX3Synth/UI/MixerControls.cpp
         products/PX3Synth/UI/MixerChannelComponent.cpp
         products/PX3Synth/UI/TopMenuBar.cpp
-        products/PX3Synth/DSP/StftEngine.cpp
         products/PX3Synth/DSP/ParametricEQ.cpp
         products/PX3Synth/UI/EnvelopeComponent.cpp
         products/PX3Synth/UI/LfoComponent.cpp
@@ -180,6 +180,33 @@ set(PX3_DELAY_SOURCES
         products/PX3Delay/PluginProcessor.cpp
         products/PX3Delay/PluginEditor.cpp
 )
+
+set(PX3_LUCY_SOURCES
+        shared/Infrastructure/Fx/FxPluginProcessor.cpp
+        shared/Infrastructure/Fx/FxCardEditor.cpp
+        products/PX3Lucy/PluginProcessor.cpp
+        products/PX3Lucy/PluginEditor.cpp
+)
+
+set(PX3_LUCY_PLUGIN_SOURCES ${PX3_LUCY_SOURCES} products/PX3Lucy/PluginEntry.cpp)
+
+set(PX3_DOOM_SOURCES
+        shared/Infrastructure/Fx/FxPluginProcessor.cpp
+        shared/Infrastructure/Fx/FxCardEditor.cpp
+        products/PX3Doom/PluginProcessor.cpp
+        products/PX3Doom/PluginEditor.cpp
+)
+
+set(PX3_DOOM_PLUGIN_SOURCES ${PX3_DOOM_SOURCES} products/PX3Doom/PluginEntry.cpp)
+
+set(PX3_REVERB_SOURCES
+        shared/Infrastructure/Fx/FxPluginProcessor.cpp
+        shared/Infrastructure/Fx/FxCardEditor.cpp
+        products/PX3Reverb/PluginProcessor.cpp
+        products/PX3Reverb/PluginEditor.cpp
+)
+
+set(PX3_REVERB_PLUGIN_SOURCES ${PX3_REVERB_SOURCES} products/PX3Reverb/PluginEntry.cpp)
 
 set(PX3_SPREAD_SOURCES
         shared/Infrastructure/Fx/FxPluginProcessor.cpp
@@ -240,6 +267,9 @@ set(PX3_INCLUDE_DIRS
         products/PX3Mood
         products/PX3Chorus
         products/PX3Spread
+        products/PX3Reverb
+        products/PX3Doom
+        products/PX3Lucy
         shared/Infrastructure/Fx
 )
 
@@ -288,6 +318,30 @@ px3_add_product(
     PLUGIN_CODE  SpP1
     FORMATS      AU VST3
     SOURCES      ${PX3_SPREAD_PLUGIN_SOURCES})
+
+px3_add_product(
+    TARGET       PX3Reverb
+    PRODUCT_NAME "PX3 Reverb"
+    BUNDLE_ID    "com.px3.reverb"
+    PLUGIN_CODE  RvP1
+    FORMATS      AU VST3
+    SOURCES      ${PX3_REVERB_PLUGIN_SOURCES})
+
+px3_add_product(
+    TARGET       PX3Doom
+    PRODUCT_NAME "PX3 Doom"
+    BUNDLE_ID    "com.px3.doom"
+    PLUGIN_CODE  DmP1
+    FORMATS      AU VST3
+    SOURCES      ${PX3_DOOM_PLUGIN_SOURCES})
+
+px3_add_product(
+    TARGET       PX3Lucy
+    PRODUCT_NAME "PX3 Lucy"
+    BUNDLE_ID    "com.px3.lucy"
+    PLUGIN_CODE  LcP1
+    FORMATS      AU VST3
+    SOURCES      ${PX3_LUCY_PLUGIN_SOURCES})
 
 juce_add_binary_data(PX3Assets
     SOURCES
@@ -413,6 +467,9 @@ if (PX3_BUILD_DIAGNOSTIC)
         shared/Infrastructure/Fx/FxCardEditor.cpp
         products/PX3Chorus/PluginProcessor.cpp products/PX3Chorus/PluginEditor.cpp
         products/PX3Spread/PluginProcessor.cpp products/PX3Spread/PluginEditor.cpp
+        products/PX3Reverb/PluginProcessor.cpp products/PX3Reverb/PluginEditor.cpp
+        products/PX3Doom/PluginProcessor.cpp products/PX3Doom/PluginEditor.cpp
+        products/PX3Lucy/PluginProcessor.cpp products/PX3Lucy/PluginEditor.cpp
         ${PX3_TEST_SOURCES})
     target_include_directories(PX3Tests PRIVATE ${PX3_INCLUDE_DIRS})
     target_compile_definitions(PX3Tests

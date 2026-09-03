@@ -113,6 +113,36 @@ void testEcosystem()
                   + px3::version::string());
     }
 
+    // ---- a shared header's implementation must be shared too ---------------
+    //
+    // StftEngine.h moved to shared while StftEngine.cpp stayed in the product
+    // tree. The Synth kept building - it compiles both - and nothing showed
+    // until the SECOND product needed it and failed to link. A split like that
+    // is invisible from either side on its own.
+    {
+        juce::StringArray split;
+
+        for (const auto& header : sources)
+        {
+            if (! header.hasFileExtension("h")) { continue; }
+            if (header.withFileExtension("cpp").existsAsFile()) { continue; }
+
+            const auto stray = root.getChildFile("products")
+                                   .findChildFiles(juce::File::findFiles, true,
+                                                   header.getFileNameWithoutExtension() + ".cpp");
+            if (! stray.isEmpty())
+            {
+                split.add(header.getFileName() + " (implementation in "
+                          + stray[0].getParentDirectory().getFileName() + ")");
+            }
+        }
+
+        check("Ecosystem_ASharedHeadersImplementationIsSharedToo",
+              split.isEmpty(),
+              split.isEmpty() ? juce::String("no shared header has its implementation in a product")
+                              : "split across the boundary: " + split.joinIntoString(", "));
+    }
+
     // ---- no two products may claim the same plug-in code -------------------
     //
     // A four-character code is how a DAW tells one plug-in from another. Two

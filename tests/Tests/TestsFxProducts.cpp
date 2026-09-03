@@ -4,6 +4,9 @@
 #include "../../products/PX3Mood/PluginProcessor.h"
 #include "../../products/PX3Chorus/PluginProcessor.h"
 #include "../../products/PX3Spread/PluginProcessor.h"
+#include "../../products/PX3Reverb/PluginProcessor.h"
+#include "../../products/PX3Doom/PluginProcessor.h"
+#include "../../products/PX3Lucy/PluginProcessor.h"
 
 // testFxProducts
 //
@@ -486,6 +489,184 @@ void testFxProducts()
                   && reopened.mode().getIndex() == 2,
               "width " + fmt(reopened.width().get(), 3) + ", mode "
                   + juce::String(reopened.mode().getIndex()));
+    }
+
+    // ========================================================================
+    // The remaining products, on the checks that apply to all of them
+    // ========================================================================
+    //
+    // Not the effects - one implementation, already covered by the Synth's
+    // suite, and proving it twice would prove nothing. These are the wrapper:
+    // it is an audio effect, it passes audio through the shared DSP, it stays
+    // finite, and its state survives a round trip.
+    {
+        const auto exercise = [&](juce::AudioProcessor& fx,
+                                  const juce::String& expectedName)
+        {
+            prepared(fx);
+
+            juce::AudioBuffer<float> buffer(2, kBlock);
+            juce::MidiBuffer midi;
+
+            auto finite = true;
+            for (int block = 0; block < 8; ++block)
+            {
+                for (int c = 0; c < 2; ++c)
+                {
+                    for (int i = 0; i < kBlock; ++i)
+                    {
+                        const auto phase = static_cast<float>(block * kBlock + i) * 0.04f;
+                        buffer.setSample(c, i, std::sin(phase) * 0.6f);
+                    }
+                }
+                fx.processBlock(buffer, midi);
+
+                for (int c = 0; c < 2; ++c)
+                {
+                    for (int i = 0; i < kBlock; ++i)
+                    {
+                        if (! std::isfinite(buffer.getSample(c, i))) { finite = false; }
+                    }
+                }
+            }
+
+            const auto correct = finite
+                              && fx.getName() == expectedName
+                              && ! fx.acceptsMidi()
+                              && fx.getTotalNumInputChannels() == 2
+                              && fx.getTotalNumOutputChannels() == 2;
+
+            check(("FxProduct_" + expectedName.replace("PX3 ", "") + "IsAWorkingStereoEffect").toRawUTF8(),
+                  correct,
+                  fx.getName() + ": stereo in and out, midi "
+                      + (fx.acceptsMidi() ? "YES" : "no") + ", output "
+                      + (finite ? "finite over 8 blocks" : "NON-FINITE"));
+        };
+
+        PX3ReverbAudioProcessor reverb;  exercise(reverb, "PX3 Reverb");
+        PX3DoomAudioProcessor doom;      exercise(doom, "PX3 Doom");
+        PX3LucyAudioProcessor lucy;      exercise(lucy, "PX3 Lucy");
+    }
+
+    {
+        // The parameter ranges that are NOT 0..1. Three products got this
+        // wrong in draft, so each one that differs is checked rather than
+        // trusted: Doom's EQ is a tilt, Lucy's weighting is a tilt, and Lucy's
+        // gain is in decibels. Declaring any of them 0..1 would silently
+        // reinterpret every value a user had stored.
+        PX3DoomAudioProcessor doom;
+        PX3LucyAudioProcessor lucy;
+
+        const auto& doomEq = doom.eq().getNormalisableRange();
+        const auto& weighting = lucy.weighting().getNormalisableRange();
+        const auto& gain = lucy.gain().getNormalisableRange();
+
+        check("FxProduct_TheParametersThatAreNotUnitRangesKeptTheirRanges",
+              std::abs(doomEq.start + 1.0f) < 1.0e-6f && std::abs(doomEq.end - 1.0f) < 1.0e-6f
+                  && std::abs(weighting.start + 1.0f) < 1.0e-6f
+                  && std::abs(gain.start + 36.0f) < 1.0e-4f
+                  && std::abs(gain.end - 36.0f) < 1.0e-4f,
+              "Doom EQ " + fmt(doomEq.start, 1) + ".." + fmt(doomEq.end, 1)
+                  + ", Lucy weighting " + fmt(weighting.start, 1) + ".." + fmt(weighting.end, 1)
+                  + ", Lucy gain " + fmt(gain.start, 1) + ".." + fmt(gain.end, 1) + " dB");
+    }
+
+    {
+        // State, for the two with the most of it.
+        PX3DoomAudioProcessor source;
+        prepared(source);
+        source.mix().setValueNotifyingHost(0.66f);
+        source.glue().setValueNotifyingHost(0.31f);
+        source.wetMode().setValueNotifyingHost(source.wetMode().convertTo0to1(2.0f));
+        source.freeze().setValueNotifyingHost(1.0f);
+
+        juce::MemoryBlock state;
+        source.getStateInformation(state);
+
+        PX3DoomAudioProcessor reopened;
+        prepared(reopened);
+        reopened.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        check("FxProduct_DoomStateSurvivesASaveAndReload",
+              std::abs(reopened.mix().get() - 0.66f) < 1.0e-3f
+                  && std::abs(reopened.glue().get() - 0.31f) < 1.0e-3f
+                  && reopened.wetMode().getIndex() == 2 && reopened.freeze().get(),
+              "mix " + fmt(reopened.mix().get(), 3) + ", glue " + fmt(reopened.glue().get(), 3)
+                  + ", wet mode " + juce::String(reopened.wetMode().getIndex())
+                  + ", freeze " + (reopened.freeze().get() ? "on" : "off"));
+    }
+
+    {
+        PX3LucyAudioProcessor source;
+        prepared(source);
+        source.loss().setValueNotifyingHost(0.9f);
+        // Through the whole -36..+36 dB range, which a 0..1 copy would mangle.
+        source.gain().setValueNotifyingHost(source.gain().convertTo0to1(-12.0f));
+        source.mode().setValueNotifyingHost(source.mode().convertTo0to1(1.0f));
+
+        juce::MemoryBlock state;
+        source.getStateInformation(state);
+
+        PX3LucyAudioProcessor reopened;
+        prepared(reopened);
+        reopened.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        check("FxProduct_LucyStateSurvivesASaveAndReloadIncludingItsDecibelGain",
+              std::abs(reopened.loss().get() - 0.9f) < 1.0e-3f
+                  && std::abs(reopened.gain().get() + 12.0f) < 0.1f
+                  && reopened.mode().getIndex() == 1,
+              "loss " + fmt(reopened.loss().get(), 3) + ", gain "
+                  + fmt(reopened.gain().get(), 2) + " dB, mode "
+                  + juce::String(reopened.mode().getIndex()));
+    }
+
+    {
+        // Every product must survive the rates and block sizes a host uses.
+        auto survived = true;
+        juce::StringArray notes;
+
+        const auto sweep = [&](juce::AudioProcessor& fx, const char* name)
+        {
+            for (const auto rate : { 44100.0, 96000.0 })
+            {
+                for (const auto block : { 32, 1024 })
+                {
+                    fx.setPlayConfigDetails(2, 2, rate, block);
+                    fx.prepareToPlay(rate, block);
+
+                    juce::AudioBuffer<float> buffer(2, block);
+                    juce::MidiBuffer midi;
+                    buffer.clear();
+                    for (int i = 0; i < juce::jmin(16, block); ++i) { buffer.setSample(0, i, 0.5f); }
+                    fx.processBlock(buffer, midi);
+
+                    for (int c = 0; c < 2; ++c)
+                    {
+                        for (int i = 0; i < block; ++i)
+                        {
+                            if (! std::isfinite(buffer.getSample(c, i)))
+                            {
+                                survived = false;
+                                notes.addIfNotAlreadyThere(name);
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        PX3DelayAudioProcessor delay;   sweep(delay, "Delay");
+        PX3MoodAudioProcessor mood;     sweep(mood, "Mood");
+        PX3ChorusAudioProcessor chorus; sweep(chorus, "Chorus");
+        PX3SpreadAudioProcessor spread; sweep(spread, "Spread");
+        PX3ReverbAudioProcessor reverb; sweep(reverb, "Reverb");
+        PX3DoomAudioProcessor doom;     sweep(doom, "Doom");
+        PX3LucyAudioProcessor lucy;     sweep(lucy, "Lucy");
+
+        check("FxProduct_EveryProductSurvivesTheRatesAndBlockSizesAHostUses",
+              survived,
+              survived ? juce::String("all seven finite at 44.1 and 96 kHz, 32 and 1024 samples")
+                       : "NON-FINITE: " + notes.joinIntoString(", "));
     }
 }
 
