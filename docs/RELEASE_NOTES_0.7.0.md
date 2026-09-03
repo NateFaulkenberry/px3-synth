@@ -35,6 +35,15 @@ In progress.
   and an LFO, envelope or Macro still sums on top of whatever the controller
   last asked for.
 
+- **The uninstaller now shows its own icon.** It was being generated — the
+  app's icon with a red X struck through it — and copied into the bundle, and
+  then ignored. `osacompile` also writes an `Assets.car` holding the stock
+  AppleScript scroll and sets `CFBundleIconName`, which macOS resolves through
+  that catalog in preference to the `applet.icns` the build had just written.
+  Measured rather than assumed: before the fix the shipped uninstaller's icon
+  matched the stock one to four decimal places. The build now removes both the
+  key and the catalog, and refuses to finish if either comes back.
+
 ---
 
 ## Testing
