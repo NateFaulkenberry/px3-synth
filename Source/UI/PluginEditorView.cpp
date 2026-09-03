@@ -225,6 +225,12 @@ void PX3SynthAudioProcessorEditor::resized()
         // that reaches across the synth. It also swallowed the keyboard, so
         // they could not hear what they were building either.
         macroAssignOverlay->setBounds(macroStripArea.getUnion(panelViewportArea));
+    }
+
+    if (macroDepthPanel != nullptr && macroDepthPanel->isVisible())
+    {
+        macroDepthScrim.setBounds(getLocalBounds());
+        layoutMacroDepthPanel();
         macroAssignOverlay->toFront(false);
     }
     // panels.osc: a declared height wins over the editor's allocation, and

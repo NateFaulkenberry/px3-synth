@@ -10,6 +10,7 @@
 // docs/macro-system-design.md.
 
 #include "PluginEditor.h"
+#include "MacroLook.h"
 #include "ParameterKnob.h"
 #include "KnobOverlays.h"
 #include "Card.h"
@@ -31,12 +32,23 @@ void PX3SynthAudioProcessorEditor::handleParameterKnobClick(const juce::MouseEve
     const auto parameterId = px3::ui::parameterIdOf(*slider);
     if (parameterId.isEmpty()) { return; }
 
-    // Cmd on a MACRO knob starts assigning to it. Checked before Shift so the
-    // two modifiers stay separate gestures rather than one shadowing the
-    // other, and only on a macro knob so Cmd is free everywhere else.
+    // Cmd on a MACRO knob opens its depth panel. isCommandDown is already the
+    // platform's own command key - Cmd on macOS, Ctrl on Windows and Linux -
+    // so this is one gesture rather than a hardcoded Mac one.
+    //
+    // Assignment mode is NOT this gesture any more; it is the double click,
+    // which is unchanged. Checked before Shift so the two modifiers stay
+    // separate gestures, and only on a macro knob so Cmd is free elsewhere.
     if (event.mods.isCommandDown())
     {
-        tryEnterMacroAssignModeFor(parameterId);
+        for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+        {
+            if (parameterId == PX3SynthAudioProcessor::macroParameterId(macro))
+            {
+                openMacroDepthPanel(macro);
+                return;
+            }
+        }
         return;
     }
 
@@ -62,7 +74,7 @@ void PX3SynthAudioProcessorEditor::handleParameterKnobClick(const juce::MouseEve
         midiSelection.add(parameterId);
     }
 
-    exitMacroAssignMode();
+    finishMacroAssignEditing();
     audioProcessor.setMidiLearnTargets(midiSelection);
     refreshMidiMappingUI();
 }
@@ -78,11 +90,25 @@ void PX3SynthAudioProcessorEditor::endMidiSelectMode()
 
 bool PX3SynthAudioProcessorEditor::keyPressed(const juce::KeyPress& key)
 {
-    if (key == juce::KeyPress::escapeKey && assigningMacro >= 0)
+    // The brief asks for Return and keypad Enter separately. JUCE does not
+    // expose them separately - it has returnKey and no keypad equivalent, and
+    // the platform layers fold the keypad key into it - so one test covers
+    // both rather than one covering half.
+    const auto isEnter = key == juce::KeyPress::returnKey;
+
+    if (assigningMacroIndex() >= 0 && (key == juce::KeyPress::escapeKey || isEnter))
     {
         // Assignments already clicked stay: each one committed as it was made,
-        // so there is no pending set to roll back.
-        exitMacroAssignMode();
+        // so there is no pending set to roll back and Escape and Enter agree.
+        // The event is consumed either way, so Enter cannot also reach a
+        // button that happens to hold focus behind the overlay.
+        finishMacroAssignEditing();
+        return true;
+    }
+
+    if (depthPanelMacroIndex() >= 0 && (key == juce::KeyPress::escapeKey || isEnter))
+    {
+        closeMacroDepthPanel();
         return true;
     }
 
@@ -148,7 +174,7 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
         auto macroMask = audioProcessor.getMacroMaskForParameter(parameterId);
         auto assignable = false;
 
-        if (assigningMacro >= 0)
+        if (assigningMacroIndex() >= 0)
         {
             auto isMacroKnob = false;
             for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
@@ -204,12 +230,22 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
         }
     }
 
+    // The depth panel is a view of the routing, so it follows it: an
+    // assignment made or removed while it is open, or a preset load that
+    // replaces the whole list, arrives here like everything else.
+    if (macroDepthPanel != nullptr && depthPanelMacroIndex() >= 0)
+    {
+        macroDepthPanel->refreshFromProcessor();
+        layoutMacroDepthPanel();
+    }
+
     // One notice, decided in one place. Setting it in enterMacroAssignMode and
     // then calling this was two owners for one string, and this one won.
-    if (assigningMacro >= 0)
+    if (assigningMacroIndex() >= 0)
     {
-        pianoKeyboard.setNotice("Click knobs to assign them to "
-                                + PX3SynthAudioProcessor::macroDisplayName(assigningMacro));
+        pianoKeyboard.setNotice("Click on knobs to assign them to "
+                                + PX3SynthAudioProcessor::macroDisplayName(assigningMacroIndex())
+                                + ". Hit Enter to confirm.");
     }
     else if (isMidiSelectModeActive())
     {
@@ -267,7 +303,12 @@ void PX3SynthAudioProcessorEditor::enterMacroAssignMode(int macroIndex)
     // assign parameters the user has stopped thinking about.
     endMidiSelectMode();
 
-    assigningMacro = macroIndex;
+    // The two macro states are alternatives. Opening one closes the other, so
+    // there is never a depth panel for one macro over an assignment session
+    // for another.
+    closeMacroDepthPanel();
+
+    macroUi = { MacroUiMode::assigning, macroIndex };
 
     if (macroStrip != nullptr) { macroStrip->setAssigningMacro(macroIndex); }
     if (macroAssignOverlay != nullptr)
@@ -280,16 +321,87 @@ void PX3SynthAudioProcessorEditor::enterMacroAssignMode(int macroIndex)
     refreshMidiMappingUI();
 }
 
-void PX3SynthAudioProcessorEditor::exitMacroAssignMode()
+void PX3SynthAudioProcessorEditor::finishMacroAssignEditing()
 {
-    if (assigningMacro < 0) { return; }
+    if (assigningMacroIndex() < 0) { return; }
 
-    assigningMacro = -1;
+    // "Commit" is an assertion here rather than a flush. Each assignment is
+    // written to the processor at the moment it is clicked, so there is no
+    // pending set that could be lost - which is exactly why the macro knob,
+    // a background click and Enter can all end the session identically. If a
+    // staged edit is ever introduced, this is the one place that has to learn
+    // to flush it.
+    macroUi = {};
 
     if (macroStrip != nullptr) { macroStrip->setAssigningMacro(-1); }
     if (macroAssignOverlay != nullptr) { macroAssignOverlay->setVisible(false); }
 
     refreshMidiMappingUI();
+}
+
+void PX3SynthAudioProcessorEditor::openMacroDepthPanel(int macroIndex)
+{
+    if (! juce::isPositiveAndBelow(macroIndex, PX3SynthAudioProcessor::kMacroCount)) { return; }
+    if (macroDepthPanel == nullptr) { return; }
+
+    // Assigning and editing depths are alternatives, and entering either ends
+    // the other - through the one commit path, so a session finished this way
+    // is finished the same as one ended with Enter.
+    finishMacroAssignEditing();
+    endMidiSelectMode();
+
+    macroUi = { MacroUiMode::depth, macroIndex };
+
+    macroDepthPanel->setUIConfig(uiConfig);
+    macroDepthPanel->setAccentColour(px3::ui::macroAccentColour(uiConfig.get()));
+    macroDepthPanel->setMacro(macroIndex);
+    layoutMacroDepthPanel();
+
+    // The scrim goes on first so the panel sits above it, and it is what turns
+    // a click anywhere else into a dismissal WITHOUT that click also reaching
+    // the control underneath.
+    macroDepthScrim.setBounds(getLocalBounds());
+    macroDepthScrim.setVisible(true);
+    macroDepthScrim.toFront(false);
+    macroDepthPanel->setVisible(true);
+    macroDepthPanel->toFront(true);
+}
+
+void PX3SynthAudioProcessorEditor::closeMacroDepthPanel()
+{
+    if (depthPanelMacroIndex() < 0) { return; }
+
+    macroUi = {};
+
+    if (macroDepthPanel != nullptr) { macroDepthPanel->setVisible(false); }
+    macroDepthScrim.setVisible(false);
+}
+
+void PX3SynthAudioProcessorEditor::layoutMacroDepthPanel()
+{
+    if (macroDepthPanel == nullptr || macroStrip == nullptr) { return; }
+
+    const auto macro = depthPanelMacroIndex();
+    if (macro < 0) { return; }
+
+    // Beside the knob it belongs to, in the space the panels occupy. The
+    // anchor is the knob's own centre, so the panel opens next to what was
+    // clicked rather than in a fixed corner.
+    const auto& knob = macroStrip->knob(macro);
+    const auto anchor = getLocalPoint(&knob, knob.getLocalBounds().getCentre());
+
+    auto available = panelViewportArea;
+    if (available.isEmpty()) { available = getLocalBounds().reduced(20); }
+
+    macroDepthPanel->setBounds(macroDepthPanel->preferredBoundsWithin(available, anchor));
+}
+
+bool PX3SynthAudioProcessorEditor::isAssignableTargetAt(juce::Point<int> positionInEditor) const
+{
+    // A knob carrying a parameter ID is something the user meant to operate.
+    // Everything else under the overlay - card faces, panel backgrounds, the
+    // gaps between things - is chrome, and clicking it ends the session.
+    return findParameterKnobAt(positionInEditor) != nullptr;
 }
 
 juce::Slider* PX3SynthAudioProcessorEditor::findParameterKnobAt(juce::Point<int> positionInEditor) const
@@ -323,7 +435,8 @@ juce::Slider* PX3SynthAudioProcessorEditor::findParameterKnobAt(juce::Point<int>
 
 void PX3SynthAudioProcessorEditor::handleMacroAssignClick(juce::Point<int> positionInEditor)
 {
-    if (! juce::isPositiveAndBelow(assigningMacro, PX3SynthAudioProcessor::kMacroCount))
+    const auto assigning = assigningMacroIndex();
+    if (! juce::isPositiveAndBelow(assigning, PX3SynthAudioProcessor::kMacroCount))
     {
         return;
     }
@@ -331,7 +444,15 @@ void PX3SynthAudioProcessorEditor::handleMacroAssignClick(juce::Point<int> posit
     auto* slider = findParameterKnobAt(positionInEditor);
     if (slider == nullptr)
     {
-        return;   // empty space: stay in the mode rather than losing it to a stray click
+        // Background rather than a control: the session is over. This used to
+        // hold the mode open, which meant the only ways out were the macro
+        // knob and Escape - and nothing on screen said so.
+        //
+        // It is deliberately narrow: only a click that hits NO assignable knob
+        // ends the session, so clicking parameter after parameter keeps
+        // assigning, which is the whole point of the mode.
+        finishMacroAssignEditing();
+        return;
     }
 
     const auto parameterId = px3::ui::parameterIdOf(*slider);
@@ -343,12 +464,12 @@ void PX3SynthAudioProcessorEditor::handleMacroAssignClick(juce::Point<int> posit
     {
         if (parameterId == PX3SynthAudioProcessor::macroParameterId(macro))
         {
-            if (macro == assigningMacro) { exitMacroAssignMode(); }
+            if (macro == assigning) { finishMacroAssignEditing(); }
             else                         { enterMacroAssignMode(macro); }
             return;
         }
     }
 
-    audioProcessor.toggleMacroDestination(assigningMacro, parameterId);
+    audioProcessor.toggleMacroDestination(assigning, parameterId);
     refreshMidiMappingUI();
 }

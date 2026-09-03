@@ -257,6 +257,17 @@ void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 {
     const auto point = event.getEventRelativeTo(this).getPosition();
 
+    // The depth panel is checked first because its scrim is the thing that
+    // routed this click here. A click inside the panel never arrives - the
+    // panel is above the scrim and handles its own - so anything reaching
+    // this point is outside it, and the click is spent on the dismissal
+    // rather than passed through to whatever sits underneath.
+    if (depthPanelMacroIndex() >= 0)
+    {
+        closeMacroDepthPanel();
+        return;
+    }
+
     if (busInsertVisible)
     {
         auto* sheet = activeBusInsertSheet();

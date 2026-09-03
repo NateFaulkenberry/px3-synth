@@ -2717,5 +2717,24 @@
       "labelHeight": 11,
       "readoutHeight": 11
     }
+  },
+  "macroDepth": {
+    "layout": {
+      "padding": 10,
+      "cornerRadius": 8,
+      "headerHeight": 26,
+      "footerHeight": 30,
+      "rowHeight": 30,
+      "columnWidth": 260,
+      "nameWidth": 96,
+      "valueWidth": 46,
+      "preferredRowsPerColumn": 8
+    },
+    "colors": {
+      "background": "#111317FC",
+      "rowLabel": "#E0E2E8",
+      "rowValue": "#C6CAD4",
+      "sliderTrack": "#FFFFFF26"
+    }
   }
 }

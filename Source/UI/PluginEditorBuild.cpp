@@ -860,6 +860,14 @@ void PX3SynthAudioProcessorEditor::buildPanels()
     macroAssignOverlay = std::make_unique<MacroAssignOverlay>(*this);
     addChildComponent(*macroAssignOverlay);
 
+    // The depth panel and the scrim that dismisses it. Both start hidden; the
+    // scrim is added first so the panel is above it whichever order they are
+    // brought to front in.
+    addChildComponent(macroDepthScrim);
+    macroDepthPanel = std::make_unique<px3::ui::MacroDepthPanel>(audioProcessor);
+    macroDepthPanel->onCloseRequested = [this] { closeMacroDepthPanel(); };
+    addChildComponent(*macroDepthPanel);
+
     ampPanel = std::make_unique<AmpPanel>(audioProcessor, kGroupAccents[2]);
     ampPanel->setKnobLookAndFeel(&knobLookAndFeel);
     fltPanel = std::make_unique<FltPanel>(std::array<juce::ToggleButton*, kFilterInstanceCount> { { &filter1EnabledButton, &filter2EnabledButton } },

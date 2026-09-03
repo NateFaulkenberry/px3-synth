@@ -3032,6 +3032,380 @@ void testMacroSystem()
               juce::String(stripped) + " depth property removed; the route reloaded at "
                   + fmt(reopened.getMacroDestinationDepth(0, cutoffId), 3));
     }
+
+    // ========================================================================
+    // The two macro gestures, and the one way out of assignment mode
+    // ========================================================================
+    //
+    // Double-click arms assignment, as it always did. Cmd-click - the
+    // platform's own command key, Ctrl on Windows - now opens the depth panel
+    // instead of arming assignment, which is the one behaviour change to an
+    // existing gesture.
+    //
+    // Worth recording why none of this was caught by the suite before: the
+    // click helper only accepted a Shift flag, so the Cmd gesture could not be
+    // expressed in a test and never was. Repointing it broke nothing because
+    // nothing was looking.
+    {
+        PX3SynthAudioProcessor processor;
+        preparedForDepth(processor);
+
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+
+        if (editor != nullptr)
+        {
+            editor->setSize(1280, 800);
+            auto* strip = editor->debugMacroStrip();
+            auto* panel = editor->debugMacroDepthPanel();
+
+            if (strip != nullptr && panel != nullptr)
+            {
+                const auto cutoffId = processor.getFilterCutoffParam(0).getParameterID();
+                const auto resonanceId = processor.getFilterResonanceParam(0).getParameterID();
+
+                // ---- the gestures are separate ------------------------------
+                editor->debugFinishMacroAssignEditing();
+                editor->debugSimulateKnobDoubleClick(strip->knob(2));
+                const auto armedByDoubleClick = editor->debugAssigningMacro();
+                const auto panelAfterDoubleClick = editor->debugDepthPanelMacro();
+
+                editor->debugFinishMacroAssignEditing();
+                editor->debugSimulateKnobCommandClick(strip->knob(1));
+                const auto armedByCommandClick = editor->debugAssigningMacro();
+                const auto panelAfterCommandClick = editor->debugDepthPanelMacro();
+
+                check("MacroUx_DoubleClickArmsAssignmentAndCommandClickDoesNot",
+                      armedByDoubleClick == 2 && panelAfterDoubleClick < 0
+                          && armedByCommandClick < 0 && panelAfterCommandClick == 1,
+                      "double click armed macro " + juce::String(armedByDoubleClick)
+                          + " (panel " + juce::String(panelAfterDoubleClick)
+                          + "); command click armed " + juce::String(armedByCommandClick)
+                          + " and opened the panel on macro " + juce::String(panelAfterCommandClick));
+
+                // ---- the panel is the one that was clicked ------------------
+                check("MacroDepthUi_ThePanelNamesTheMacroItBelongsTo",
+                      panel->getMacro() == 1
+                          && panel->debugHeaderText()
+                                 == PX3SynthAudioProcessor::macroDisplayName(1).toUpperCase(),
+                      "the panel for macro index 1 is headed '" + panel->debugHeaderText() + "'");
+
+                editor->debugCloseMacroDepthPanel();
+
+                // ---- assigning many knobs stays in the mode ------------------
+                //
+                // On the FILTER panel, because the assignment click is a hit
+                // test against what is on screen: a knob belonging to a panel
+                // that is not showing is not under the pointer, and the click
+                // is background - which is correct, and which the first
+                // version of this test tripped over.
+                editor->debugSelectSection(3);
+                editor->resized();
+                editor->debugSimulateKnobDoubleClick(strip->knob(0));
+                auto* cutoffKnob = editor->debugFindKnobForParameter(cutoffId);
+                auto* resonanceKnob = editor->debugFindKnobForParameter(resonanceId);
+
+                auto stillArmed = true;
+                if (cutoffKnob != nullptr && resonanceKnob != nullptr)
+                {
+                    editor->debugMacroAssignClickAt(
+                        editor->getLocalPoint(cutoffKnob, cutoffKnob->getLocalBounds().getCentre()));
+                    stillArmed = stillArmed && editor->debugAssigningMacro() == 0;
+                    editor->debugMacroAssignClickAt(
+                        editor->getLocalPoint(resonanceKnob, resonanceKnob->getLocalBounds().getCentre()));
+                    stillArmed = stillArmed && editor->debugAssigningMacro() == 0;
+                }
+
+                check("MacroUx_AssigningSeveralKnobsStaysInTheMode",
+                      stillArmed && processor.isMacroDestination(0, cutoffId)
+                          && processor.isMacroDestination(0, resonanceId),
+                      juce::String(static_cast<int>(processor.getMacroDestinations(0).size()))
+                          + " assigned, still armed on macro "
+                          + juce::String(editor->debugAssigningMacro()));
+
+                // ---- the notice names the macro and says how to finish -------
+                const auto notice = editor->debugKeyboardNotice();
+                check("MacroUx_TheNoticeNamesTheMacroAndSaysHowToFinish",
+                      notice.contains(PX3SynthAudioProcessor::macroDisplayName(0))
+                          && notice.containsIgnoreCase("Enter"),
+                      "the keyboard reads '" + notice + "'");
+
+                // ---- three ways out, one resulting state ---------------------
+                //
+                // The point is not that each works but that they AGREE: the
+                // brief asks for one commit path, and three exits that leave
+                // three different states is exactly what that forbids.
+                const auto stateAfterExit = [&](int which)
+                {
+                    editor->debugFinishMacroAssignEditing();
+                    processor.clearMacroDestinations(0);
+                    editor->debugSimulateKnobDoubleClick(strip->knob(0));
+                    if (cutoffKnob != nullptr)
+                    {
+                        editor->debugMacroAssignClickAt(
+                            editor->getLocalPoint(cutoffKnob,
+                                                  cutoffKnob->getLocalBounds().getCentre()));
+                    }
+
+                    switch (which)
+                    {
+                        case 0:   // the macro knob again
+                            editor->debugMacroAssignClickAt(
+                                editor->getLocalPoint(&strip->knob(0),
+                                                      strip->knob(0).getLocalBounds().getCentre()));
+                            break;
+                        case 1:   // background
+                            editor->debugMacroAssignClickAt({ 2, 2 });
+                            break;
+                        default:  // Enter
+                            editor->debugPressKey(juce::KeyPress(juce::KeyPress::returnKey));
+                            break;
+                    }
+
+                    return juce::String(editor->debugAssigningMacro()) + "/"
+                         + juce::String(static_cast<int>(processor.getMacroDestinations(0).size()))
+                         + "/" + juce::String(processor.isMacroDestination(0, cutoffId) ? 1 : 0);
+                };
+
+                const auto viaKnob = stateAfterExit(0);
+                const auto viaBackground = stateAfterExit(1);
+                const auto viaEnter = stateAfterExit(2);
+
+                check("MacroUx_TheThreeExitsAllCommitAndLeaveTheSameState",
+                      viaKnob == "-1/1/1" && viaBackground == viaKnob && viaEnter == viaKnob,
+                      "armed/assignments/cutoff-assigned after each exit - macro knob "
+                          + viaKnob + ", background " + viaBackground + ", Enter " + viaEnter);
+
+                // ---- Enter is consumed rather than leaking ------------------
+                editor->debugFinishMacroAssignEditing();
+                const auto consumedWhileIdle
+                    = editor->debugPressKey(juce::KeyPress(juce::KeyPress::returnKey));
+                editor->debugSimulateKnobDoubleClick(strip->knob(0));
+                const auto consumedWhileArmed
+                    = editor->debugPressKey(juce::KeyPress(juce::KeyPress::returnKey));
+
+                // ================================================================
+                // The depth panel
+                // ================================================================
+
+                editor->debugFinishMacroAssignEditing();
+                processor.clearMacroDestinations(0);
+                processor.clearMacroDestinations(1);
+
+                // Every parameter knob in the editor, so the panel can be given
+                // a realistic number of rows without a hardcoded list.
+                juce::StringArray assignable;
+                {
+                    std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+                    {
+                        for (auto* child : c.getChildren())
+                        {
+                            if (child == nullptr) { continue; }
+                            if (auto* knob = dynamic_cast<juce::Slider*>(child))
+                            {
+                                const auto id = px3::ui::parameterIdOf(*knob);
+                                if (id.isNotEmpty() && ! id.startsWith("macro"))
+                                {
+                                    assignable.addIfNotAlreadyThere(id);
+                                }
+                            }
+                            walk(*child);
+                        }
+                    };
+                    walk(*editor);
+                }
+
+                // ---- the panel lists exactly what the macro drives -----------
+                processor.toggleMacroDestination(0, cutoffId);
+                processor.toggleMacroDestination(0, resonanceId);
+                editor->debugOpenMacroDepthPanel(0);
+
+                const auto listed = panel->debugRowParameterIds();
+                check("MacroDepthUi_ItListsEveryAssignmentAndNothingElse",
+                      panel->debugRowCount() == 2 && listed.contains(cutoffId)
+                          && listed.contains(resonanceId),
+                      juce::String(panel->debugRowCount()) + " rows: "
+                          + listed.joinIntoString(", "));
+
+                // ---- a row's slider edits that route and no other ------------
+                //
+                // The routing is many-to-many, so "the slider changed a depth"
+                // is not enough: it has to change THIS route's depth and leave
+                // the macro's other destination alone.
+                if (auto* cutoffSlider = panel->debugDepthSliderFor(cutoffId))
+                {
+                    cutoffSlider->setValue(0.4, juce::sendNotificationSync);
+                }
+
+                check("MacroDepthUi_ASliderEditsItsOwnRouteAndNoOther",
+                      std::abs(processor.getMacroDestinationDepth(0, cutoffId) - 0.4f) < 1.0e-3f
+                          && std::abs(processor.getMacroDestinationDepth(0, resonanceId) - 1.0f) < 1.0e-3f,
+                      "cutoff is now " + fmt(processor.getMacroDestinationDepth(0, cutoffId), 3)
+                          + " and resonance, untouched, is still "
+                          + fmt(processor.getMacroDestinationDepth(0, resonanceId), 3));
+
+                // ---- and the readout follows it ------------------------------
+                auto* cutoffValue = panel->debugValueLabelFor(cutoffId);
+                check("MacroDepthUi_TheReadoutFollowsTheSlider",
+                      cutoffValue != nullptr && cutoffValue->getText().contains("40"),
+                      cutoffValue != nullptr ? "the row reads '" + cutoffValue->getText() + "'"
+                                             : juce::String("no readout for that row"));
+
+                // ---- one parameter, two macros, two depths -------------------
+                processor.toggleMacroDestination(1, cutoffId);
+                editor->debugOpenMacroDepthPanel(1);
+                if (auto* slider = panel->debugDepthSliderFor(cutoffId))
+                {
+                    slider->setValue(0.9, juce::sendNotificationSync);
+                }
+
+                check("MacroDepthUi_TheSameParameterInTwoMacrosEditsIndependently",
+                      std::abs(processor.getMacroDestinationDepth(1, cutoffId) - 0.9f) < 1.0e-3f
+                          && std::abs(processor.getMacroDestinationDepth(0, cutoffId) - 0.4f) < 1.0e-3f,
+                      "macro 2 -> cutoff is " + fmt(processor.getMacroDestinationDepth(1, cutoffId), 2)
+                          + " while macro 1 -> cutoff stayed at "
+                          + fmt(processor.getMacroDestinationDepth(0, cutoffId), 2));
+
+                // ---- switching macros shows the other macro's routes ---------
+                editor->debugOpenMacroDepthPanel(0);
+                const auto backOnMacroOne = panel->debugRowCount();
+                editor->debugOpenMacroDepthPanel(1);
+                const auto onMacroTwo = panel->debugRowCount();
+
+                check("MacroDepthUi_SwitchingMacrosShowsThatMacrosRoutes",
+                      backOnMacroOne == 2 && onMacroTwo == 1 && panel->getMacro() == 1,
+                      "macro 1 shows " + juce::String(backOnMacroOne) + " rows, macro 2 shows "
+                          + juce::String(onMacroTwo));
+
+                // ---- the close button closes it -----------------------------
+                // onClick directly: triggerClick posts an async message that
+                // never arrives without a message loop.
+                panel->debugCloseButton().onClick();
+                check("MacroDepthUi_TheCloseButtonClosesIt",
+                      editor->debugDepthPanelMacro() < 0 && ! panel->isVisible(),
+                      "after the close button the panel state is "
+                          + juce::String(editor->debugDepthPanelMacro()));
+
+                // ---- a click outside closes it, and is spent doing so --------
+                //
+                // The click that dismisses must not also reach the control it
+                // landed on. Measured on a real knob's value rather than
+                // asserted from the scrim's existence.
+                editor->debugOpenMacroDepthPanel(0);
+                auto* underneath = editor->debugFindKnobForParameter(cutoffId);
+                const auto valueBefore = underneath != nullptr ? underneath->getValue() : 0.0;
+                if (underneath != nullptr)
+                {
+                    editor->debugClickEditorAt(
+                        editor->getLocalPoint(underneath, underneath->getLocalBounds().getCentre()));
+                }
+                const auto valueAfter = underneath != nullptr ? underneath->getValue() : 0.0;
+
+                check("MacroDepthUi_AnOutsideClickClosesItWithoutOperatingWhatIsUnder",
+                      editor->debugDepthPanelMacro() < 0
+                          && underneath != nullptr
+                          && std::abs(valueAfter - valueBefore) < 1.0e-9,
+                      "panel closed, and the knob under the click stayed at "
+                          + fmt(static_cast<float>(valueAfter), 4));
+
+                // ---- entering assignment mode closes the panel ---------------
+                editor->debugOpenMacroDepthPanel(2);
+                editor->debugSimulateKnobDoubleClick(strip->knob(4));
+
+                check("MacroDepthUi_ArmingAssignmentClosesThePanel",
+                      editor->debugDepthPanelMacro() < 0 && editor->debugAssigningMacro() == 4,
+                      "panel " + juce::String(editor->debugDepthPanelMacro())
+                          + ", assigning " + juce::String(editor->debugAssigningMacro())
+                          + " - the two states are alternatives, never both");
+
+                // ---- and the reverse ----------------------------------------
+                editor->debugSimulateKnobCommandClick(strip->knob(3));
+                check("MacroDepthUi_OpeningThePanelLeavesAssignmentMode",
+                      editor->debugAssigningMacro() < 0 && editor->debugDepthPanelMacro() == 3,
+                      "assigning " + juce::String(editor->debugAssigningMacro())
+                          + ", panel on macro " + juce::String(editor->debugDepthPanelMacro()));
+
+                // ---- many assignments use columns before scrolling -----------
+                //
+                // The failure the brief names is a panel that works at three
+                // rows and becomes a narrow scroller at fifteen. Columns first
+                // is the rule, and this is what holds it.
+                editor->debugCloseMacroDepthPanel();
+                processor.clearMacroDestinations(0);
+                const auto many = juce::jmin(14, assignable.size());
+                for (int i = 0; i < many; ++i)
+                {
+                    processor.toggleMacroDestination(0, assignable[i]);
+                }
+                editor->debugOpenMacroDepthPanel(0);
+
+                check("MacroDepthUi_ManyAssignmentsFillColumnsBeforeScrolling",
+                      panel->debugRowCount() == many && many >= 10
+                          && panel->debugColumnCount() > 1 && ! panel->debugIsScrolling()
+                          && panel->getWidth() > panel->getHeight(),
+                      juce::String(panel->debugRowCount()) + " rows laid out in "
+                          + juce::String(panel->debugColumnCount()) + " columns, "
+                          + (panel->debugIsScrolling() ? "SCROLLING" : "no scrolling needed"));
+
+                // ---- and one assignment does not look broken ----------------
+                processor.clearMacroDestinations(0);
+                processor.toggleMacroDestination(0, cutoffId);
+                editor->debugOpenMacroDepthPanel(0);
+                const auto oneRowColumns = panel->debugColumnCount();
+                const auto oneRowFits = panel->debugRowCount() == 1 && ! panel->debugIsScrolling();
+
+                processor.clearMacroDestinations(0);
+                editor->debugOpenMacroDepthPanel(0);
+                const auto emptyRows = panel->debugRowCount();
+
+                check("MacroDepthUi_ItScalesDownToOneAssignmentAndToNone",
+                      oneRowFits && oneRowColumns == 1 && emptyRows == 0,
+                      "one assignment is " + juce::String(oneRowColumns)
+                          + " column with no scrolling; an empty macro shows "
+                          + juce::String(emptyRows) + " rows");
+
+                // ---- the panel's config keys are read, not decoration --------
+                //
+                // Every key in UIConfig.json has to correspond to real
+                // behaviour. A layout key is the one that can be proved: set
+                // it to something different and the geometry has to follow, or
+                // the key is a fallback nobody reads.
+                {
+                    processor.clearMacroDestinations(0);
+                    processor.toggleMacroDestination(0, cutoffId);
+                    processor.toggleMacroDestination(0, resonanceId);
+                    editor->debugOpenMacroDepthPanel(0);
+
+                    auto* firstSlider = panel->debugDepthSliderFor(cutoffId);
+                    const auto defaultRow = firstSlider != nullptr ? firstSlider->getHeight() : 0;
+
+                    // After opening, not before: opening hands the panel the
+                    // editor's config, which would replace this one.
+                    juce::String configError;
+                    panel->setUIConfig(UIConfig::fromJsonText(
+                        R"({"macroDepth":{"layout":{"rowHeight":60}}})", configError));
+
+                    firstSlider = panel->debugDepthSliderFor(cutoffId);
+                    const auto tallRow = firstSlider != nullptr ? firstSlider->getHeight() : 0;
+
+                    check("MacroDepthUi_TheLayoutKeysAreActuallyRead",
+                          defaultRow > 0 && tallRow > defaultRow + 10,
+                          "a row is " + juce::String(defaultRow)
+                              + " px at the shipped rowHeight and " + juce::String(tallRow)
+                              + " px at 60");
+                }
+
+                editor->debugCloseMacroDepthPanel();
+
+                check("MacroUx_EnterIsConsumedOnlyWhileAssigning",
+                      consumedWhileArmed && ! consumedWhileIdle,
+                      juce::String("while assigning the editor ")
+                          + (consumedWhileArmed ? "consumed" : "PASSED ON")
+                          + " Enter; while idle it "
+                          + (consumedWhileIdle ? "CONSUMED" : "passed it on"));
+            }
+        }
+    }
 }
 
 // MIDI parameter mapping. See docs/midi-mapping-design.md.

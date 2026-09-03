@@ -17,6 +17,8 @@
 
 #include "PerformanceControls.h"
 #include "MacroStrip.h"
+#include "MacroDepthPanel.h"
+#include "ParameterKnob.h"
 #include "PianoKeyboard.h"
 #include "PresetManager.h"
 #include "PluginProcessor.h"
@@ -125,10 +127,10 @@ private:
     // panel does not intercept clicks on its own background, so its title-bar
     // drag and its click-outside-to-close both arrive as editor events. With
     // the scrim in the way those clicks would otherwise stop here.
-    class PresetModalScrim final : public juce::Component
+    class ModalDismissScrim final : public juce::Component
     {
     public:
-        explicit PresetModalScrim(juce::Component& ownerIn) : owner(ownerIn) {}
+        explicit ModalDismissScrim(juce::Component& ownerIn) : owner(ownerIn) {}
 
         void mouseDown(const juce::MouseEvent& e) override { forward(e, &juce::Component::mouseDown); }
         void mouseDrag(const juce::MouseEvent& e) override { forward(e, &juce::Component::mouseDrag); }
@@ -195,11 +197,41 @@ private:
 
     std::unique_ptr<MacroStrip> macroStrip;
     std::unique_ptr<MacroAssignOverlay> macroAssignOverlay;
+    std::unique_ptr<px3::ui::MacroDepthPanel> macroDepthPanel;
+    ModalDismissScrim macroDepthScrim { *this };
     juce::Rectangle<int> macroStripArea;
-    int assigningMacro { -1 };
+
+    // The macro interactions are ONE state, not several flags.
+    //
+    // Assigning and editing depths are alternatives: entering either leaves
+    // the other. Held as two booleans and two indices they would also spell
+    // out combinations that mean nothing - assigning macro 1 while the depth
+    // panel shows macro 2 - which every call site would then have to avoid by
+    // hand. A state that cannot represent those is less to get wrong.
+    enum class MacroUiMode { normal, assigning, depth };
+    struct MacroUiState
+    {
+        MacroUiMode mode { MacroUiMode::normal };
+        int macro { -1 };
+    };
+    MacroUiState macroUi;
+
+    int assigningMacroIndex() const noexcept
+    { return macroUi.mode == MacroUiMode::assigning ? macroUi.macro : -1; }
+    int depthPanelMacroIndex() const noexcept
+    { return macroUi.mode == MacroUiMode::depth ? macroUi.macro : -1; }
 
     void enterMacroAssignMode(int macroIndex);
-    void exitMacroAssignMode();
+    // THE way out of assignment mode. The macro knob, a background click and
+    // Enter all call this one function, so the three cannot come to mean three
+    // slightly different things.
+    void finishMacroAssignEditing();
+    void openMacroDepthPanel(int macroIndex);
+    void closeMacroDepthPanel();
+    // True if the click landed on something the user meant to operate rather
+    // than on chrome. Used to decide whether a click finishes assignment mode.
+    bool isAssignableTargetAt(juce::Point<int> positionInEditor) const;
+    void layoutMacroDepthPanel();
     void handleMacroAssignClick(juce::Point<int> positionInEditor);
     juce::Slider* findParameterKnobAt(juce::Point<int> positionInEditor) const;
 
@@ -225,7 +257,34 @@ public:
 
     // For the tests: the macro strip and the assignment state.
     MacroStrip* debugMacroStrip() const { return macroStrip.get(); }
-    int debugAssigningMacro() const { return assigningMacro; }
+    void debugCloseMacroDepthPanel() { closeMacroDepthPanel(); }
+    void debugOpenMacroDepthPanel(int macroIndex) { openMacroDepthPanel(macroIndex); }
+
+    // The knob carrying a parameter ID, found by walking the editor - the same
+    // way MIDI mapping finds them, so a knob this cannot find is a knob those
+    // gestures cannot reach either.
+    juce::Slider* debugFindKnobForParameter(const juce::String& parameterId)
+    {
+        juce::Slider* found = nullptr;
+        std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+        {
+            for (auto* child : c.getChildren())
+            {
+                if (child == nullptr || found != nullptr) { continue; }
+                if (auto* slider = dynamic_cast<juce::Slider*>(child))
+                {
+                    if (px3::ui::parameterIdOf(*slider) == parameterId) { found = slider; return; }
+                }
+                walk(*child);
+            }
+        };
+        walk(*this);
+        return found;
+    }
+    int debugAssigningMacro() const { return assigningMacroIndex(); }
+    int debugDepthPanelMacro() const { return depthPanelMacroIndex(); }
+    px3::ui::MacroDepthPanel* debugMacroDepthPanel() { return macroDepthPanel.get(); }
+    void debugFinishMacroAssignEditing() { finishMacroAssignEditing(); }
     juce::Rectangle<int> debugMacroStripArea() const { return macroStripArea; }
     juce::Rectangle<int> debugMacroOverlayBounds() const
     { return macroAssignOverlay != nullptr ? macroAssignOverlay->getBounds() : juce::Rectangle<int>(); }
@@ -240,7 +299,7 @@ public:
     juce::Slider* debugKnobAt(juce::Point<int> positionInEditor) const
     { return findParameterKnobAt(positionInEditor); }
     void debugEnterMacroAssignMode(int macroIndex) { enterMacroAssignMode(macroIndex); }
-    void debugExitMacroAssignMode() { exitMacroAssignMode(); }
+    void debugExitMacroAssignMode() { finishMacroAssignEditing(); }
     void debugMacroAssignClickOn(juce::Component& target)
     {
         handleMacroAssignClick(
@@ -287,16 +346,41 @@ public:
     // The same call JUCE's dispatch makes when a listener sees a click on a
     // knob. Constructing the event here is the one step the test cannot get
     // JUCE to do for it.
-    void debugSimulateKnobClick(juce::Slider& slider, bool shiftDown)
+    void debugSimulateKnobClick(juce::Slider& slider, juce::ModifierKeys mods)
     {
         const auto at = slider.getLocalBounds().getCentre().toFloat();
-        const auto mods = shiftDown ? juce::ModifierKeys(juce::ModifierKeys::shiftModifier)
-                                    : juce::ModifierKeys();
         handleParameterKnobClick(juce::MouseEvent(
             juce::Desktop::getInstance().getMainMouseSource(), at, mods,
             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &slider, &slider,
             juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 1, false));
     }
+
+    // Shift is the common case and reads better at the call site. Kept as an
+    // overload rather than the only form, because the modifier that opens the
+    // depth panel could not be expressed before and so was never tested.
+    void debugSimulateKnobClick(juce::Slider& slider, bool shiftDown)
+    {
+        debugSimulateKnobClick(slider, shiftDown
+                                           ? juce::ModifierKeys(juce::ModifierKeys::shiftModifier)
+                                           : juce::ModifierKeys());
+    }
+
+    // The command key, whichever key that is on this platform.
+    void debugSimulateKnobCommandClick(juce::Slider& slider)
+    {
+        debugSimulateKnobClick(slider, juce::ModifierKeys(juce::ModifierKeys::commandModifier));
+    }
+
+    bool debugPressKey(const juce::KeyPress& key) { return keyPressed(key); }
+    void debugClickEditorAt(juce::Point<int> position)
+    {
+        const auto at = position.toFloat();
+        mouseDown(juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(),
+                                   at, juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                   this, this, juce::Time::getCurrentTime(), at,
+                                   juce::Time::getCurrentTime(), 1, false));
+    }
+    void debugMacroAssignClickAt(juce::Point<int> position) { handleMacroAssignClick(position); }
 
     // The same call JUCE's dispatch makes when a listener sees a double-click.
     void debugSimulateKnobDoubleClick(juce::Slider& slider)
@@ -876,7 +960,7 @@ private:
 
     SparkOverlay sparkOverlay { pianoKeyboard, performanceControls };
 
-    PresetModalScrim presetBrowserScrim { *this };
+    ModalDismissScrim presetBrowserScrim { *this };
     std::unique_ptr<px3::ui::BusEqOverlay> busEqOverlay;
     std::unique_ptr<px3::ui::BusCompOverlay> busCompOverlay;
     px3::ui::ModalScrim busInsertScrim { *this };
