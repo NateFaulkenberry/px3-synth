@@ -173,16 +173,41 @@ Gatekeeper everywhere else. Do not distribute them.
 
 | Secret | What it is | How to get it |
 |---|---|---|
-| `MACOS_CERT_P12` | Developer ID Application + Installer certs, base64 | `base64 -i certs.p12 \| pbcopy` |
-| `MACOS_CERT_PASSWORD` | password for that `.p12` | set when exporting from Keychain Access |
+| `MACOS_APPLICATION_P12` | Developer ID **Application** cert + key, base64 | `base64 -i application.p12 \| pbcopy` |
+| `MACOS_APPLICATION_P12_PASSWORD` | password for that `.p12` | set when exporting from Keychain Access |
+| `MACOS_INSTALLER_P12` | Developer ID **Installer** cert + key, base64 | `base64 -i installer.p12 \| pbcopy` |
+| `MACOS_INSTALLER_P12_PASSWORD` | password for that `.p12` | set when exporting from Keychain Access |
 | `MACOS_CODESIGN_IDENTITY` | e.g. `Developer ID Application: Name (TEAMID)` | `security find-identity -v -p codesigning` |
 | `MACOS_INSTALLER_IDENTITY` | e.g. `Developer ID Installer: Name (TEAMID)` | `security find-identity -v` |
 | `APPLE_ID` | Apple ID for notarisation | your developer account email |
 | `APPLE_APP_PASSWORD` | app-specific password | appleid.apple.com → Sign-In and Security |
 | `APPLE_TEAM_ID` | 10-character team id | developer.apple.com → Membership |
 
-Export both certificates into **one** `.p12` so a single import covers signing
-the bundles and signing the installer.
+**Two P12 files, each exactly as Keychain Access exported it.** Do not combine
+them into one.
+
+Combining previously seemed reasonable — one import instead of two — but a
+bundle rebuilt with OpenSSL is read back happily by `openssl pkcs12 -info` and
+rejected by macOS with:
+
+```text
+SecKeychainItemImport: MAC verification failed during PKCS12 import
+```
+
+The cause is not the combining. It is that **OpenSSL 3 writes a PKCS#12 that
+macOS will not read**: it defaults to a SHA-256 MAC with AES-256-CBC, while
+Security.framework expects the SHA-1 MAC that Keychain Access produces.
+Measured on the two files side by side — `MAC: sha256, Iteration 2048` from
+OpenSSL's default against `MAC: sha1, Iteration 2048` from a legacy export;
+only the second imports.
+
+So the rule is: **export each certificate from Keychain Access and upload it
+untouched.** Right-click the certificate (with its private key beneath it) →
+Export → `.p12`. If you ever must go through OpenSSL, it needs
+`-legacy -macalg sha1` to produce something macOS accepts.
+
+The identity secrets carry **names, not keys** — the private keys live inside
+the P12 files and nowhere else.
 
 Once configured, verify locally first — the credentials fail faster there:
 
@@ -242,8 +267,12 @@ being required without anybody noticing.
   has no secrets at all; signing lives only in `release.yml`.
 - The signing keychain is created per-run with a random password, and deleted in
   an `always()` step.
-- Nothing echoes a secret. `HAVE_SIGNING_CERT` carries only whether a secret is
-  set, never its value.
+- Nothing echoes a secret. `HAVE_SIGNING_CERT` carries only whether the two P12
+  secrets are set, never their values. The decoded `.p12` files are removed by
+  an `EXIT` trap, so a failed import does not leave key material in
+  `RUNNER_TEMP` for the rest of the job.
+- The identity check prints certificate common names and SHA-1 hashes, which is
+  what `security find-identity` emits. No key material, and no passwords.
 - JUCE is pinned to a tag, and all actions are pinned to major versions.
 
 ---
@@ -315,7 +344,22 @@ the run; `our-warnings.log` in the test-reports artifact lists exactly the lines
 so a failure is diagnosable without rebuilding locally.
 
 **Assets are unsigned.** Expected until the secrets above are configured. The run
-summary says so explicitly.
+summary says so explicitly. Signing needs **both** P12 secrets: with only one,
+the bundles would sign and `productsign` would fail at the very end of a
+40-minute job, so the workflow treats one-of-two as unsigned from the start.
+
+**"MAC verification failed during PKCS12 import".** The `.p12` was written by
+OpenSSL 3, whose default SHA-256 MAC macOS cannot read. Re-export it from
+Keychain Access, or pass `-legacy -macalg sha1`. See *Secrets to configure*.
+
+**"identity is in the keychain but is not valid for signing".** The certificate
+and its key imported, but the chain does not validate. Usually an expired
+certificate, or the Apple *Developer ID Certification Authority* intermediate
+not being reachable — a `.p12` exported without the issuing chain can do this on
+a bare runner even though the same file works on your Mac, where the
+intermediate is already installed. Re-export including the chain, or add a step
+that installs the intermediate before signing. The error prints the exact reason
+`security` gave, so it is worth reading before guessing.
 
 ### Retrying or rolling back a release
 
