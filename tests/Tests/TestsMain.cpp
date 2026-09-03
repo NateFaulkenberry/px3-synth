@@ -2637,6 +2637,7 @@ int main(int argc, char* argv[])
     if (wants("multiout")) testMultiOutput();
     if (wants("updater")) testUpdater();
     if (wants("ecosystem")) testEcosystem();
+    if (wants("fxproducts")) testFxProducts();
     if (wants("filters")) testFilters();
     if (wants("oscrichness")) testOscillatorModeRichness();
     if (wants("analog")) testAnalogEngine();

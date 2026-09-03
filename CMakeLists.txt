@@ -170,6 +170,18 @@ set(PX3_SYNTH_SOURCES
 
 # Everything the Synth target compiles. Named so the tools and test targets,
 # which build the Synth in full, can ask for it by one name.
+# PX3 Delay. The same Delay the Synth runs, with a host adapter instead of the
+# Synth's mixer - see docs/ECOSYSTEM_ARCHITECTURE.md.
+# Everything but the entry point, so the test binary can compile the product
+# alongside the Synth without two definitions of createPluginFilter.
+set(PX3_DELAY_SOURCES
+        shared/Infrastructure/Fx/FxPluginProcessor.cpp
+        products/PX3Delay/PluginProcessor.cpp
+        products/PX3Delay/PluginEditor.cpp
+)
+
+set(PX3_DELAY_PLUGIN_SOURCES ${PX3_DELAY_SOURCES} products/PX3Delay/PluginEntry.cpp)
+
 set(PX3_ALL_SOURCES ${PX3_SHARED_SOURCES} ${PX3_SYNTH_SOURCES})
 
 set(PX3_INCLUDE_DIRS
@@ -197,6 +209,8 @@ set(PX3_INCLUDE_DIRS
         products/PX3Synth/DSP
         products/PX3Synth/UI
         products/PX3Synth/Preset
+        products/PX3Delay
+        shared/Infrastructure/Fx
 )
 
 # PX3 Synth, the first product. Declared exactly the way any other product is,
@@ -212,6 +226,14 @@ px3_add_product(
     IS_SYNTH     TRUE
     FORMATS      AU VST3 Standalone
     SOURCES      ${PX3_SYNTH_SOURCES})
+
+px3_add_product(
+    TARGET       PX3Delay
+    PRODUCT_NAME "PX3 Delay"
+    BUNDLE_ID    "com.px3.delay"
+    PLUGIN_CODE  DlP1
+    FORMATS      AU VST3
+    SOURCES      ${PX3_DELAY_PLUGIN_SOURCES})
 
 juce_add_binary_data(PX3Assets
     SOURCES
@@ -330,7 +352,7 @@ if (PX3_BUILD_DIAGNOSTIC)
     # One module per area rather than one 32,000-line translation unit. They
     # share tests/Tests/TestSupport.h for the counters and fixtures.
     file(GLOB PX3_TEST_SOURCES CONFIGURE_DEPENDS tests/Tests/*.cpp)
-    target_sources(PX3Tests PRIVATE ${PX3_ALL_SOURCES} ${PX3_TEST_SOURCES})
+    target_sources(PX3Tests PRIVATE ${PX3_ALL_SOURCES} ${PX3_DELAY_SOURCES} ${PX3_TEST_SOURCES})
     target_include_directories(PX3Tests PRIVATE ${PX3_INCLUDE_DIRS})
     target_compile_definitions(PX3Tests
         PRIVATE

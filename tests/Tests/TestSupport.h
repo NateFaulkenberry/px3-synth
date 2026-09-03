@@ -1543,6 +1543,7 @@ void testBusInserts();
 void testMultiOutput();
 void testUpdater();
 void testEcosystem();
+void testFxProducts();
 void testFilters();
 void testOscillatorModeRichness();
 void testAnalogEngine();

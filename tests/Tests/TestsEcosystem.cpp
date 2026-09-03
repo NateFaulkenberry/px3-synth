@@ -45,7 +45,12 @@ void testEcosystem()
 
             // Either spelling of the same mistake: a path into products/, or
             // an include of a header that only a product defines.
-            if (text.contains("products/") || text.contains("PluginProcessor.h"))
+            //
+            // Matched WITH the quotes. Without them "PluginProcessor.h" is a
+            // substring of "FxPluginProcessor.h", and the shared FX scaffold
+            // was reported as reaching into a product when it does no such
+            // thing - a false positive from a rule that is meant to be exact.
+            if (text.contains("products/") || text.contains("\"PluginProcessor.h\""))
             {
                 offenders.add(file.getRelativePathFrom(root));
             }

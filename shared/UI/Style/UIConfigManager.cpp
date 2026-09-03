@@ -1,5 +1,33 @@
 #include "UIConfigManager.h"
 
+juce::File UIConfigManager::findShippingConfigFile()
+{
+    const auto executableDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+                                   .getParentDirectory();
+
+    // Installed: inside the bundle that is running.
+    for (auto probe = executableDir; probe.exists(); probe = probe.getParentDirectory())
+    {
+        const auto inBundle = probe.getChildFile("Resources/UIConfig.json");
+        if (inBundle.existsAsFile()) { return inBundle; }
+        if (probe.getParentDirectory() == probe) { break; }
+    }
+
+    // A development build, run from the repository.
+    const auto fromCwd = juce::File::getCurrentWorkingDirectory()
+                             .getChildFile("shared/UI/Style/UIConfig.json");
+    if (fromCwd.existsAsFile()) { return fromCwd; }
+
+    for (auto probe = executableDir; probe.exists(); probe = probe.getParentDirectory())
+    {
+        const auto inTree = probe.getChildFile("shared/UI/Style/UIConfig.json");
+        if (inTree.existsAsFile()) { return inTree; }
+        if (probe.getParentDirectory() == probe) { break; }
+    }
+
+    return {};
+}
+
 UIConfigManager::UIConfigManager() = default;
 
 void UIConfigManager::setConfigFile(const juce::File& file)
