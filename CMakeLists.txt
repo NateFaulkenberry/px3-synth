@@ -181,6 +181,24 @@ set(PX3_DELAY_SOURCES
         products/PX3Delay/PluginEditor.cpp
 )
 
+set(PX3_SPREAD_SOURCES
+        shared/Infrastructure/Fx/FxPluginProcessor.cpp
+        shared/Infrastructure/Fx/FxCardEditor.cpp
+        products/PX3Spread/PluginProcessor.cpp
+        products/PX3Spread/PluginEditor.cpp
+)
+
+set(PX3_SPREAD_PLUGIN_SOURCES ${PX3_SPREAD_SOURCES} products/PX3Spread/PluginEntry.cpp)
+
+set(PX3_CHORUS_SOURCES
+        shared/Infrastructure/Fx/FxPluginProcessor.cpp
+        shared/Infrastructure/Fx/FxCardEditor.cpp
+        products/PX3Chorus/PluginProcessor.cpp
+        products/PX3Chorus/PluginEditor.cpp
+)
+
+set(PX3_CHORUS_PLUGIN_SOURCES ${PX3_CHORUS_SOURCES} products/PX3Chorus/PluginEntry.cpp)
+
 set(PX3_MOOD_SOURCES
         shared/Infrastructure/Fx/FxPluginProcessor.cpp
         products/PX3Mood/PluginProcessor.cpp
@@ -220,6 +238,8 @@ set(PX3_INCLUDE_DIRS
         products/PX3Synth/Preset
         products/PX3Delay
         products/PX3Mood
+        products/PX3Chorus
+        products/PX3Spread
         shared/Infrastructure/Fx
 )
 
@@ -252,6 +272,22 @@ px3_add_product(
     PLUGIN_CODE  MdP1
     FORMATS      AU VST3
     SOURCES      ${PX3_MOOD_PLUGIN_SOURCES})
+
+px3_add_product(
+    TARGET       PX3Chorus
+    PRODUCT_NAME "PX3 Chorus"
+    BUNDLE_ID    "com.px3.chorus"
+    PLUGIN_CODE  ChP1
+    FORMATS      AU VST3
+    SOURCES      ${PX3_CHORUS_PLUGIN_SOURCES})
+
+px3_add_product(
+    TARGET       PX3Spread
+    PRODUCT_NAME "PX3 Spread"
+    BUNDLE_ID    "com.px3.spread"
+    PLUGIN_CODE  SpP1
+    FORMATS      AU VST3
+    SOURCES      ${PX3_SPREAD_PLUGIN_SOURCES})
 
 juce_add_binary_data(PX3Assets
     SOURCES
@@ -374,6 +410,9 @@ if (PX3_BUILD_DIAGNOSTIC)
         shared/Infrastructure/Fx/FxPluginProcessor.cpp
         products/PX3Delay/PluginProcessor.cpp products/PX3Delay/PluginEditor.cpp
         products/PX3Mood/PluginProcessor.cpp products/PX3Mood/PluginEditor.cpp
+        shared/Infrastructure/Fx/FxCardEditor.cpp
+        products/PX3Chorus/PluginProcessor.cpp products/PX3Chorus/PluginEditor.cpp
+        products/PX3Spread/PluginProcessor.cpp products/PX3Spread/PluginEditor.cpp
         ${PX3_TEST_SOURCES})
     target_include_directories(PX3Tests PRIVATE ${PX3_INCLUDE_DIRS})
     target_compile_definitions(PX3Tests

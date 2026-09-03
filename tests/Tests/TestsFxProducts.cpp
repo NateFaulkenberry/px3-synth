@@ -2,6 +2,8 @@
 
 #include "../../products/PX3Delay/PluginProcessor.h"
 #include "../../products/PX3Mood/PluginProcessor.h"
+#include "../../products/PX3Chorus/PluginProcessor.h"
+#include "../../products/PX3Spread/PluginProcessor.h"
 
 // testFxProducts
 //
@@ -328,6 +330,162 @@ void testFxProducts()
                   + fmt(reopened.feedback().get(), 3) + ", wet mode "
                   + juce::String(reopened.wetMode().getIndex())
                   + ", freeze " + (reopened.freeze().get() ? "on" : "off"));
+    }
+
+    // ========================================================================
+    // PX3 Chorus
+    // ========================================================================
+    {
+        PX3ChorusAudioProcessor chorus;
+        prepared(chorus);
+        chorus.enabled().setValueNotifyingHost(1.0f);
+
+        // Fed continuously rather than judged on the first block: the wet path
+        // is a modulated delay, so on block one the line is still empty and the
+        // output is legitimately the input. Looking there said "OUTPUT MATCHED
+        // INPUT" about a chorus that works.
+        juce::AudioBuffer<float> buffer(2, kBlock);
+        juce::AudioBuffer<float> input(2, kBlock);
+        juce::MidiBuffer midi;
+
+        auto changed = false, finite = true;
+        for (int block = 0; block < 12; ++block)
+        {
+            for (int c = 0; c < 2; ++c)
+            {
+                for (int i = 0; i < kBlock; ++i)
+                {
+                    const auto phase = static_cast<float>(block * kBlock + i) * 0.04f;
+                    buffer.setSample(c, i, std::sin(phase) * 0.6f);
+                }
+            }
+            input.makeCopyOf(buffer);
+
+            chorus.processBlock(buffer, midi);
+
+            for (int c = 0; c < 2; ++c)
+            {
+                for (int i = 0; i < kBlock; ++i)
+                {
+                    const auto out = buffer.getSample(c, i);
+                    if (! std::isfinite(out)) { finite = false; }
+                    if (std::abs(out - input.getSample(c, i)) > 1.0e-4f) { changed = true; }
+                }
+            }
+        }
+
+        check("FxProduct_ChorusProcessesAudio",
+              changed && finite && chorus.getName() == "PX3 Chorus",
+              changed ? juce::String("processed and finite") : juce::String("OUTPUT MATCHED INPUT"));
+    }
+
+    {
+        // Tone is BIPOLAR in the Synth: -1 warm, +1 clear. Declaring it 0..1
+        // here would move its centre and silently reinterpret every stored
+        // value, so the range is checked rather than assumed.
+        PX3ChorusAudioProcessor chorus;
+        const auto& range = chorus.tone().getNormalisableRange();
+
+        check("FxProduct_ChorusToneStaysBipolarLikeTheSynths",
+              std::abs(range.start + 1.0f) < 1.0e-6f && std::abs(range.end - 1.0f) < 1.0e-6f
+                  && std::abs(chorus.tone().get()) < 1.0e-6f,
+              "tone ranges " + fmt(range.start, 1) + " to " + fmt(range.end, 1)
+                  + ", centred at " + fmt(chorus.tone().get(), 2));
+    }
+
+    // ========================================================================
+    // PX3 Spread
+    // ========================================================================
+    //
+    // A widener is where a wrapper mistake is least visible: swap the channels
+    // and it still "works", lose the side signal and it just sounds narrow.
+    // These check the routing and the phase rather than only that audio came
+    // out the other end.
+    {
+        PX3SpreadAudioProcessor spreadFx;
+        prepared(spreadFx);
+        spreadFx.enabled().setValueNotifyingHost(1.0f);
+        spreadFx.amount().setValueNotifyingHost(1.0f);
+        spreadFx.width().setValueNotifyingHost(1.0f);
+
+        // Hard-panned left: whatever the widener does, the left channel must
+        // stay the loud one. If the wrapper swapped the channels this is the
+        // only test that would notice.
+        juce::AudioBuffer<float> buffer(2, kBlock);
+        buffer.clear();
+        for (int i = 0; i < kBlock; ++i)
+        {
+            buffer.setSample(0, i, std::sin(static_cast<float>(i) * 0.05f) * 0.8f);
+        }
+
+        juce::MidiBuffer midi;
+        spreadFx.processBlock(buffer, midi);
+
+        const auto leftRms = buffer.getRMSLevel(0, 0, kBlock);
+        const auto rightRms = buffer.getRMSLevel(1, 0, kBlock);
+
+        check("FxProduct_SpreadKeepsAHardLeftSignalOnTheLeft",
+              leftRms > rightRms && leftRms > 1.0e-3f,
+              "left rms " + fmt(leftRms, 4) + " against right " + fmt(rightRms, 4));
+    }
+
+    {
+        // MONO SAFE, at full width, must not destroy the sum. A widener that
+        // inverts one side sounds enormous and disappears the moment anything
+        // downstream folds to mono - the classic failure, and invisible until
+        // somebody plays it on a phone.
+        PX3SpreadAudioProcessor spreadFx;
+        prepared(spreadFx);
+        spreadFx.enabled().setValueNotifyingHost(1.0f);
+        spreadFx.amount().setValueNotifyingHost(1.0f);
+        spreadFx.width().setValueNotifyingHost(1.0f);
+        spreadFx.mode().setValueNotifyingHost(spreadFx.mode().convertTo0to1(3.0f));  // MONO SAFE
+
+        juce::AudioBuffer<float> buffer(2, kBlock);
+        buffer.clear();
+        for (int i = 0; i < kBlock; ++i)
+        {
+            const auto v = std::sin(static_cast<float>(i) * 0.05f) * 0.6f;
+            buffer.setSample(0, i, v);
+            buffer.setSample(1, i, v);
+        }
+
+        juce::MidiBuffer midi;
+        for (int b = 0; b < 8; ++b) { spreadFx.processBlock(buffer, midi); }
+
+        // The mono sum, which is what a phone speaker hears.
+        auto sumEnergy = 0.0;
+        for (int i = 0; i < kBlock; ++i)
+        {
+            const auto mono = 0.5f * (buffer.getSample(0, i) + buffer.getSample(1, i));
+            sumEnergy += static_cast<double>(mono) * mono;
+        }
+        const auto monoRms = std::sqrt(sumEnergy / kBlock);
+
+        check("FxProduct_SpreadMonoSafeSurvivesAFoldToMono",
+              monoRms > 1.0e-3f,
+              "the mono sum after MONO SAFE at full width is rms " + fmt((float) monoRms, 5)
+                  + " - a widener that inverted a side would collapse here");
+    }
+
+    {
+        PX3SpreadAudioProcessor source;
+        prepared(source);
+        source.width().setValueNotifyingHost(0.9f);
+        source.mode().setValueNotifyingHost(source.mode().convertTo0to1(2.0f));
+
+        juce::MemoryBlock state;
+        source.getStateInformation(state);
+
+        PX3SpreadAudioProcessor reopened;
+        prepared(reopened);
+        reopened.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+        check("FxProduct_SpreadStateSurvivesASaveAndReload",
+              std::abs(reopened.width().get() - 0.9f) < 1.0e-3f
+                  && reopened.mode().getIndex() == 2,
+              "width " + fmt(reopened.width().get(), 3) + ", mode "
+                  + juce::String(reopened.mode().getIndex()));
     }
 }
 
