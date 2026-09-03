@@ -119,6 +119,97 @@ installer's filenames - reads it from there. Nothing keeps a second copy.
 
 ---
 
+## 5a. The products
+
+| Product | Bundle | Code | Formats |
+|---|---|---|---|
+| PX3 Synth | `com.px3.px3synth` | `SyP1` | AU · VST3 · Standalone |
+| PX3 Delay | `com.px3.delay` | `DlP1` | AU · VST3 |
+| PX3 Mood | `com.px3.mood` | `MdP1` | AU · VST3 |
+| PX3 Chorus | `com.px3.chorus` | `ChP1` | AU · VST3 |
+| PX3 Spread | `com.px3.spread` | `SpP1` | AU · VST3 |
+| PX3 Reverb | `com.px3.reverb` | `RvP1` | AU · VST3 |
+| PX3 Doom | `com.px3.doom` | `DmP1` | AU · VST3 |
+| PX3 Lucy | `com.px3.lucy` | `LcP1` | AU · VST3 |
+
+Effects ship as AU and VST3 only. An effect has no reason to have a standalone
+application, and `hasStandalone` in the registry says so rather than a comment.
+
+**One implementation, several consumers.** Each effect product drives the same
+`shared/DSP/...` object the Synth drives, through the same
+`prepare` / `updateForBlock` / `processSampleFrame` contract. Nothing is
+copied or reimplemented. The Synth's version and the standalone differ in
+exactly one way, and it is worth knowing which:
+
+> The Synth builds its settings through the **modulation accumulator**, so an
+> LFO, envelope or macro can move a parameter. A standalone has no modulation
+> matrix, so it reads its parameters directly.
+
+That is the line between *the FX parameter* and *the Synth's modulation
+destination*, and it is the only difference between the two consumers.
+
+### The two shared halves of a product
+
+`shared/Infrastructure/Fx/FxPluginProcessor` — buses, prepare, the block loop,
+host tempo, parameter state. The only virtual the audio thread crosses is
+`processFxBlock`, called **once per block**; the per-sample loop lives in the
+product where `processSampleFrame` inlines.
+
+`shared/Infrastructure/Fx/FxCardEditor` — the card, its UIConfig style, the PX3
+knob, the attachments. A card-shaped product's editor is then just the rows it
+declares and the parameters it attaches. PX3 Chorus's is 35 lines.
+
+### Parameter ranges are the trap
+
+Every effect has at least one parameter that is **not** a 0..1 range, sitting
+among neighbours that are:
+
+| | |
+|---|---|
+| Mood `routing` | a 3-way choice the DSP reads as 0..1, mapped `index / 2` |
+| Chorus `tone`, Spread `tone`, Doom `eq` | bipolar tilts, −1..+1 |
+| Lucy `gain` | **decibels**, −36..+36 |
+
+Declaring any of them 0..1 moves its centre and silently reinterprets every
+value a user has stored. Read each parameter from the Synth's own declaration,
+and pin it with a test on the **range**, not the default.
+
+---
+
+## 5b. Vibe: why it is not a product
+
+Vibe is in `shared/DSP/Vibe`, and it is **not** a standalone effect. This was
+assessed rather than assumed, and the evidence is one line:
+
+**Vibe has no audio interface at all.** No `processSampleFrame`, no
+`processBlock`, no `processSample` — where every other effect has one. It has
+no input and no output.
+
+What it does is hand each *voice* a `VibeVoiceVariation`:
+
+```cpp
+struct VibeVoiceVariation {
+    float pitchCents, cutoffOffset, resonanceOffset,
+          gainOffset, asymmetryBias, saturationBias;
+};
+```
+
+which the voice applies at **six separate points inside itself** — oscillator
+pitch, filter cutoff and resonance, waveform shaping, and voice gain.
+
+An insert sees a summed stereo mix: no voices to detune, no per-voice filters
+to offset, no oscillators to bias. A "standalone Vibe" would necessarily be a
+*different effect that sounds vaguely similar*, so it does not exist. Its
+absence from the registry is asserted by a test, not left to be true by
+accident.
+
+**The general rule this illustrates:** ask what an effect needs. One that reads
+only its input buffer is a candidate. One that reaches into per-voice state,
+the modulation matrix, or the Synth's internal signal path is not a
+conventional insert, and forcing it into one changes what it does.
+
+---
+
 ## 6. Adding a product: PX3 Mood, concretely
 
 1. **Sources.** `products/PX3Mood/` with a `PluginProcessor` and `PluginEditor`
@@ -144,7 +235,9 @@ installer's filenames - reads it from there. Nothing keeps a second copy.
 
 4. **Include path**: add `products/PX3Mood` to `PX3_INCLUDE_DIRS`.
 
-5. **Register it** so the updater and installer can see it:
+5. **Register it** in `registerDefaultProducts()` so the updater and the
+   installer can see it. A product that builds but is not registered ships
+   invisible to both, and a test checks the registry against the build:
    ```cpp
    ProductRegistry::Registration mood;
    mood.productId = "px3-mood";
@@ -160,6 +253,24 @@ installer's filenames - reads it from there. Nothing keeps a second copy.
 
 Nothing in that list touches PX3 Synth.
 
+For a card-shaped effect the editor is shorter still — derive from
+`px3::fx::FxCardEditor`, declare the rows, attach the parameters:
+
+```cpp
+PX3MoodEditor::PX3MoodEditor(PX3MoodProcessor& p)
+    : px3::fx::FxCardEditor(p, "mood", "MOOD")
+{
+    rows().addKnobRow({ { "mix", "MIX", "Dry against wet" }, ... });
+    attachKnob("mix", p.mix());
+    attachBypass(p.enabled());
+    finishSetup(720, 320);
+}
+```
+
+Then check the parameter ranges against the Synth's own declarations — see
+§5a, where five of seven effects had one that is not a unit range — and run
+`scripts/build-product.sh mood --vst3` to try it.
+
 ### Is an effect worth extracting?
 
 Ask what it needs. An effect that reads only its input buffer is a candidate.
@@ -167,6 +278,27 @@ One that reaches into per-voice state, the modulation matrix or the Synth's
 internal signal path is not a conventional insert, and forcing it into one
 would change what it does. Assess before extracting, and it is a perfectly
 good answer that something stays Synth-only.
+
+---
+
+## 6a. Building one product, for development
+
+The full build compiles eight products. Working on one should not.
+
+```
+scripts/build-product.sh --list            what there is to build
+scripts/build-product.sh lucy --vst3       the quickest loop
+scripts/build-product.sh delay             AU and VST3
+scripts/build-product.sh synth --run       build, then launch the standalone
+scripts/build-product.sh doom --no-install leave installed plug-ins alone
+```
+
+Each product gets its own build directory, so switching between one product and
+the full build does not reconfigure either. Without `--no-install` a successful
+build lands in `~/Library/Audio/Plug-Ins` and the host sees it on its next scan.
+
+The script reads the product list from `CMakeLists.txt`, so a product added with
+`px3_add_product` is buildable by it immediately.
 
 ---
 
@@ -184,6 +316,32 @@ them with `productbuild`. Products install to the locations hosts expect:
 No product depends on another product's install location. The only deliberately
 shared installed component is the update helper, which ships inside the
 standalone.
+
+### Component selection
+
+The Installation Type pane offers the Synth's three formats, then the effects
+under a heading of their own:
+
+```
+[x] Audio Unit (AU)            [x] Additional PX3 Effects
+[x] VST3                         [x] PX3 Delay  [x] PX3 Spread  [x] PX3 Doom
+[x] Standalone Application       [x] PX3 Mood   [x] PX3 Reverb  [x] PX3 Lucy
+                                 [x] PX3 Chorus
+```
+
+One component package per **effect**, not per format — that is the choice a user
+makes — so each carries that effect's AU and VST3 together. Every effect is
+`start_selected="true"`: the user opts *out* of what they do not want.
+
+`build-release.sh` reads the product list from `CMakeLists.txt`, so a new
+product is packaged without editing the installer. A product declared but not
+built is skipped rather than fatal, so a partial build still produces an
+installer for what it did build.
+
+The build then **expands the finished product** and checks that each effect's
+package is both present and referenced by the Distribution — `productbuild`
+silently drops a package nothing selects, which is how the branding resources
+were lost once before.
 
 ---
 
