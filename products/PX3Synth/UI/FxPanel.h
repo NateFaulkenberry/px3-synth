@@ -11,7 +11,6 @@
 
 #include "DelayComponent.h"
 #include "MoodComponent.h"
-#include "ReverbComponent.h"
 #include "UIConfig.h"
 #include "VibeComponent.h"
 
@@ -62,11 +61,6 @@ public:
             juce::Label& moodWetModeLabel,
             juce::ComboBox& moodLoopModeBox,
             juce::Label& moodLoopModeLabel,
-            juce::ToggleButton& reverbBypass,
-            juce::Slider& reverbKnob,
-            juce::Label& reverbLabel,
-            juce::ComboBox& reverbTypeBox,
-            juce::Label& reverbTypeLabel,
             juce::Colour panelAccent);
 
     void paint(juce::Graphics& g) override;
@@ -110,7 +104,6 @@ private:
     std::unique_ptr<VibeComponent> vibeUiComponent;
     std::unique_ptr<DelayComponent> delayPanelComponent;
     std::unique_ptr<MoodComponent> moodComponent;
-    std::unique_ptr<ReverbComponent> reverbComponent;
 
     juce::Colour accent;
 

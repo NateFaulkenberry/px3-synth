@@ -295,7 +295,6 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
         uiConfig->applyComboStyle(comboStyle, moodRoutingBox);
         uiConfig->applyComboStyle(comboStyle, moodWetModeBox);
         uiConfig->applyComboStyle(comboStyle, moodLoopModeBox);
-        uiConfig->applyComboStyle(comboStyle, reverbTypeBox);
     }
 
     resized();

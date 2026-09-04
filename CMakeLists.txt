@@ -88,7 +88,6 @@ set(PX3_SHARED_SOURCES
         shared/UI/Fx/FxCardComponent.cpp
         shared/UI/Fx/MoodComponent.cpp
         shared/UI/Fx/FilterComponent.cpp
-        shared/UI/Fx/ReverbComponent.cpp
         shared/UI/Style/UIConfig.cpp
         shared/UI/Style/KnobLookAndFeel.cpp
         shared/UI/Style/KnobOverlays.cpp

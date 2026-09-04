@@ -1854,6 +1854,20 @@
       }
     },
     "reverb": {
+      "controls": {
+        "knobSize": 54,
+        "featureKnobSize": 77,
+        "choiceWidth": 76,
+        "choiceMaxColumns": 3,
+        "choiceHeight": 22,
+        "labelHeight": 12,
+        "readoutHeight": 15,
+        "labelFontSize": 10.5,
+        "boxBackground": "#232323D2",
+        "boxText": "#E8E8E8",
+        "boxOutline": "#FFFFFF69",
+        "labelColour": "#E8E8E8"
+      },
       "border": {
         "color": "#CC5AB5",
         "opacity": 0.59

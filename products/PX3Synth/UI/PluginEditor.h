@@ -462,6 +462,7 @@ private:
     // declares, and hands it to the panel. One per new-generation FX.
     void buildDoomCard();
     void buildLucyCard();
+    void buildReverbCard();
     void buildChorusCard();
     void buildStereoSpreadCard();
     void refreshLfoAssignmentUI();
@@ -890,6 +891,7 @@ private:
     // refresh passes can reach their controls.
     px3::ui::FxCardComponent* doomCard { nullptr };
     px3::ui::FxCardComponent* lucyCard { nullptr };
+    px3::ui::FxCardComponent* reverbCard { nullptr };
     px3::ui::FxCardComponent* chorusCard { nullptr };
     px3::ui::FxCardComponent* spreadCard { nullptr };
     std::unique_ptr<MixPanel> mixPanel;
@@ -912,10 +914,6 @@ private:
     KnobLabel delayFeedbackLabel;
     juce::ComboBox granularSyncBox;
     KnobLabel granularSyncLabel;
-    juce::Slider reverbKnob;
-    KnobLabel reverbLabel;
-    juce::ComboBox reverbTypeBox;
-    KnobLabel reverbTypeLabel;
     px3::ui::BypassButton moodBypassButton;
     px3::ui::ToggleChipButton moodFreezeButton;
     juce::Slider moodMixKnob;
@@ -944,7 +942,6 @@ private:
     KnobLabel moodLoopModeLabel;
     px3::ui::BypassButton robBypassButton;
     px3::ui::BypassButton delayBypassButton;
-    px3::ui::BypassButton reverbBypassButton;
 
     PresetManager presetManager;
     std::vector<PresetManager::PresetRecord> presetFiltered;

@@ -46,11 +46,6 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
                  juce::Label& moodWetModeLabel,
                  juce::ComboBox& moodLoopModeBox,
                  juce::Label& moodLoopModeLabel,
-                 juce::ToggleButton& reverbBypass,
-                 juce::Slider& reverbKnob,
-                 juce::Label& reverbLabel,
-                 juce::ComboBox& reverbTypeBox,
-                 juce::Label& reverbTypeLabel,
                  juce::Colour panelAccent)
     : accent(panelAccent)
 {
@@ -123,19 +118,6 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
                                                     moodLoopModeBox,
                                                     moodLoopModeLabel,
                                                     juce::Colour::fromRGB(202, 150, 98));
-    reverbComponent = std::make_unique<ReverbComponent>(reverbBypass,
-                                                        reverbKnob,
-                                                        reverbLabel,
-                                                        reverbTypeBox,
-                                                        reverbTypeLabel,
-                                                        juce::Colour::fromRGB(128, 208, 255));
-
-    // The cards belong to the scrolling content, not to the panel: the strip
-    // above them must stay put while the grid scrolls.
-    gridContent.addAndMakeVisible(*vibeUiComponent);
-    gridContent.addAndMakeVisible(*delayPanelComponent);
-    gridContent.addAndMakeVisible(*moodComponent);
-    gridContent.addAndMakeVisible(*reverbComponent);
 
     refreshSignalFlowNodes();
 }
@@ -279,7 +261,6 @@ juce::Component* FxPanel::componentForSection(int sectionId) const
     {
         case px3::fxStageVibe:   return vibeUiComponent.get();
         case px3::fxStageDelay:  return delayPanelComponent.get();
-        case px3::fxStageReverb: return reverbComponent.get();
         case px3::fxStageMood:   return moodComponent.get();
         default: break;
     }
@@ -363,10 +344,6 @@ void FxPanel::setActive(bool vibeEnabled,
         moodComponent->setActive(moodEnabled);
     }
 
-    if (reverbComponent != nullptr)
-    {
-        reverbComponent->setActive(reverbEnabled);
-    }
 
     setSectionActive(0, vibeEnabled);
     setSectionActive(1, delayEnabled);
@@ -395,10 +372,6 @@ void FxPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     if (moodComponent != nullptr)
     {
         moodComponent->setUIConfig(uiConfig);
-    }
-    if (reverbComponent != nullptr)
-    {
-        reverbComponent->setUIConfig(uiConfig);
     }
 
     // The strip's node colours are READ from the config, in sectionAccent, at

@@ -490,6 +490,19 @@ public:
     juce::AudioParameterFloat& getReverbAmountParam() const;
     juce::AudioParameterBool& getReverbEnabledParam() const;
     juce::AudioParameterChoice& getReverbAlgorithmParam() const;
+    // The nine that had no UI. They were registered, automatable and persisted
+    // from the start - only unreachable, because nothing in the editor asked
+    // for them. The Reverb card shows them now, the same nine the standalone
+    // has always shown.
+    juce::AudioParameterFloat& getReverbSizeParam() const;
+    juce::AudioParameterFloat& getReverbDecayParam() const;
+    juce::AudioParameterFloat& getReverbDampingParam() const;
+    juce::AudioParameterFloat& getReverbPreDelayParam() const;
+    juce::AudioParameterFloat& getReverbModDepthParam() const;
+    juce::AudioParameterFloat& getReverbModRateParam() const;
+    juce::AudioParameterFloat& getReverbWidthParam() const;
+    juce::AudioParameterFloat& getReverbCloudFeedbackParam() const;
+    juce::AudioParameterFloat& getReverbCloudDiffusionParam() const;
     juce::AudioParameterBool& getMoodEnabledParam() const;
     juce::AudioParameterBool& getMoodFreezeParam() const;
     juce::AudioParameterFloat& getMoodMixParam() const;

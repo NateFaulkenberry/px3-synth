@@ -253,7 +253,6 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
     moodFeedbackKnob.setLookAndFeel(nullptr);
     moodSpreadKnob.setLookAndFeel(nullptr);
     moodDegradeKnob.setLookAndFeel(nullptr);
-    reverbKnob.setLookAndFeel(nullptr);
 }
 
 

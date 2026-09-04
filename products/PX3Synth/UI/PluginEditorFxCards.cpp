@@ -53,7 +53,6 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
     robBypassButton.setToggleState(vibeEnabled, juce::dontSendNotification);
     delayBypassButton.setToggleState(delayEnabled, juce::dontSendNotification);
     moodBypassButton.setToggleState(moodEnabled, juce::dontSendNotification);
-    reverbBypassButton.setToggleState(reverbEnabled, juce::dontSendNotification);
 
     if (fxPanel != nullptr)
     {
@@ -323,6 +322,63 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
 
     lucyCard = card.get();
     fxPanel->addCard(px3::fxStageLucy, std::move(card));
+}
+
+void PX3SynthAudioProcessorEditor::buildReverbCard()
+{
+    // The same card the standalone PX3 Reverb is, row for row.
+    //
+    // Reverb used to be a compact face here - a mode and an amount - while nine
+    // registered, automatable parameters had no control anywhere in the Synth.
+    // They were reachable only by automation, which is a strange place for a
+    // reverb's decay to live. Built as a card, the two products are one UI.
+    auto card = std::make_unique<px3::ui::FxCardComponent>("reverb", "REVERB");
+
+    card->addChoiceRow({ { "algorithm", "MODE", "Room, plate, hall or cloud",
+                           audioProcessor.getReverbAlgorithmParam().choices } });
+
+    card->addKnobRow({ { "size", "SIZE", "Room size" },
+                       { "decay", "DECAY", "How long the tail lasts" },
+                       { "damping", "DAMPING", "How fast the top of the tail is lost" },
+                       { "preDelay", "PRE", "Gap before the tail begins" } });
+
+    card->addKnobRow({ { "modDepth", "MOD DEPTH", "Movement in the tail" },
+                       { "modRate", "MOD RATE", "How fast that movement is" },
+                       { "width", "WIDTH", "Stereo spread of the tail" },
+                       { "cloudFeedback", "CLOUD FB", "Cloud regeneration" },
+                       { "cloudDiffusion", "CLOUD DIFF", "Cloud smearing" } });
+
+    card->addFeatureKnobRow({ "amount", "AMOUNT", "Dry against wet" });
+
+    struct KnobAttachment { const char* id; juce::AudioParameterFloat* parameter; };
+    const std::array<KnobAttachment, 10> knobAttachments { {
+        { "amount", &audioProcessor.getReverbAmountParam() },
+        { "size", &audioProcessor.getReverbSizeParam() },
+        { "decay", &audioProcessor.getReverbDecayParam() },
+        { "damping", &audioProcessor.getReverbDampingParam() },
+        { "preDelay", &audioProcessor.getReverbPreDelayParam() },
+        { "modDepth", &audioProcessor.getReverbModDepthParam() },
+        { "modRate", &audioProcessor.getReverbModRateParam() },
+        { "width", &audioProcessor.getReverbWidthParam() },
+        { "cloudFeedback", &audioProcessor.getReverbCloudFeedbackParam() },
+        { "cloudDiffusion", &audioProcessor.getReverbCloudDiffusionParam() },
+    } };
+
+    for (const auto& attachment : knobAttachments)
+    {
+        auto* slider = card->knob(attachment.id);
+        jassert(slider != nullptr);
+        const auto& range = attachment.parameter->getNormalisableRange();
+        slider->setRange(range.start, range.end);
+        slider->setLookAndFeel(&knobLookAndFeel);
+        attachSlider(*attachment.parameter, *slider);
+    }
+
+    attachComboBox(audioProcessor.getReverbAlgorithmParam(), *card->choice("algorithm"));
+    attachButton(audioProcessor.getReverbEnabledParam(), card->bypassButton());
+
+    reverbCard = card.get();
+    fxPanel->addCard(px3::fxStageReverb, std::move(card));
 }
 
 void PX3SynthAudioProcessorEditor::buildChorusCard()

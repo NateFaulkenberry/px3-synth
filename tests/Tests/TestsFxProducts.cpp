@@ -677,6 +677,102 @@ void testFxProducts()
                        : "NON-FINITE: " + notes.joinIntoString(", "));
     }
 
+    // ---- the reverb's nine survive a save and reload -----------------------
+    //
+    // They were registered from the start and had no UI, so nothing had ever
+    // moved them and then asked for them back. Now that the card exposes them,
+    // a value set in a session has to still be there when it reopens.
+    //
+    // Both products, because they persist by different routes: the Synth writes
+    // a ValueTree keyed by parameter ID, the effect uses the base class. Either
+    // could drop a parameter without the other noticing.
+    {
+        const std::array<const char*, 9> ids { {
+            "reverbSize", "reverbDecay", "reverbDamping", "reverbPreDelay",
+            "reverbModDepth", "reverbModRate", "reverbWidth",
+            "reverbCloudFeedback", "reverbCloudDiffusion" } };
+
+        const auto setAll = [&](juce::AudioProcessor& processor, float value)
+        {
+            int moved = 0;
+            for (auto* parameter : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                {
+                    for (const auto* id : ids)
+                    {
+                        if (ranged->getParameterID() == id)
+                        {
+                            ranged->setValueNotifyingHost(value);
+                            ++moved;
+                        }
+                    }
+                }
+            }
+            return moved;
+        };
+
+        const auto readAll = [&](juce::AudioProcessor& processor)
+        {
+            std::vector<std::pair<juce::String, float>> values;
+            for (auto* parameter : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                {
+                    for (const auto* id : ids)
+                    {
+                        if (ranged->getParameterID() == id)
+                        {
+                            values.emplace_back(ranged->getParameterID(), ranged->getValue());
+                        }
+                    }
+                }
+            }
+            return values;
+        };
+
+        juce::StringArray lost;
+
+        const auto roundTrip = [&](const juce::String& name, auto& source, auto& target)
+        {
+            const auto moved = setAll(source, 0.77f);
+            if (moved != static_cast<int>(ids.size()))
+            {
+                lost.add(name + " has only " + juce::String(moved) + " of "
+                         + juce::String(static_cast<int>(ids.size())) + " parameters");
+                return;
+            }
+
+            juce::MemoryBlock state;
+            source.getStateInformation(state);
+            target.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+            for (const auto& [id, value] : readAll(target))
+            {
+                if (std::abs(value - 0.77f) > 0.01f)
+                {
+                    lost.add(name + "." + id + " reloaded as " + juce::String(value, 3));
+                }
+            }
+        };
+
+        {
+            PX3SynthAudioProcessor a, b;
+            roundTrip("Synth", a, b);
+        }
+        {
+            PX3ReverbAudioProcessor a, b;
+            roundTrip("Reverb", a, b);
+        }
+
+        check("FxProducts_TheReverbsNineParametersSurviveASaveAndReload",
+              lost.isEmpty(),
+              lost.isEmpty()
+                  ? "all nine reload at the value they were saved at, in both the "
+                    "Synth and the standalone"
+                  : lost.joinIntoString(", "));
+    }
+
     // ---- bypass actually bypasses -----------------------------------------
     //
     // Inside the Synth a disabled stage is skipped by the chain, so the card's
@@ -978,6 +1074,10 @@ void testFxProducts()
             compare("Chorus", px3::fxStageChorus, chorus);
             PX3SpreadAudioProcessor spread;
             compare("Spread", px3::fxStageStereoSpread, spread);
+            // Reverb joined the cards when the Synth stopped showing it as a
+            // mode and an amount over nine parameters with no control at all.
+            PX3ReverbAudioProcessor reverb;
+            compare("Reverb", px3::fxStageReverb, reverb);
 
             // A missing config would make every card fall back to the same
             // defaults and the comparison would pass by having nothing to
@@ -1133,7 +1233,7 @@ void testFxProducts()
             check("FxProducts_AStandaloneCardMatchesTheSynthsCardExactly",
                   differing.isEmpty(),
                   differing.isEmpty()
-                      ? "Doom, Lucy, Chorus and Spread lay out and colour identically "
+                      ? "Doom, Lucy, Chorus, Spread and Reverb lay out and colour identically "
                         "in both, at the same size"
                       : "differ: " + differing.joinIntoString(", ") + ". "
                             + firstDifference.joinIntoString("  /  "));
