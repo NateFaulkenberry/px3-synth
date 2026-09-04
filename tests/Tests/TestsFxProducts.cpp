@@ -1000,6 +1000,12 @@ void testFxProducts()
             //
             // Compared by walking the children, because these are not cards and
             // have no layout signature of their own.
+            // Position AND content.
+            //
+            // Bounds alone passed a window with every label blank and every
+            // dropdown empty: the controls were all in the right places and
+            // none of them said anything. What a control CONTAINS is as much
+            // part of "renders the same" as where it sits.
             const auto childBounds = [](juce::Component& component)
             {
                 juce::StringArray lines;
@@ -1007,8 +1013,29 @@ void testFxProducts()
                 {
                     if (child == nullptr) { continue; }
                     const auto b = child->getBounds();
-                    lines.add(juce::String(b.getX()) + "," + juce::String(b.getY()) + ","
-                              + juce::String(b.getWidth()) + "," + juce::String(b.getHeight()));
+                    juce::String line = juce::String(b.getX()) + "," + juce::String(b.getY()) + ","
+                                      + juce::String(b.getWidth()) + "," + juce::String(b.getHeight());
+
+                    if (auto* label = dynamic_cast<juce::Label*>(child))
+                    {
+                        line += " text=\"" + label->getText() + "\"";
+                    }
+                    else if (auto* box = dynamic_cast<juce::ComboBox*>(child))
+                    {
+                        juce::StringArray items;
+                        for (int i = 0; i < box->getNumItems(); ++i) { items.add(box->getItemText(i)); }
+                        line += " items=[" + items.joinIntoString("/") + "]";
+                    }
+                    else if (auto* button = dynamic_cast<juce::Button*>(child))
+                    {
+                        // The class too: a stock ToggleButton draws a system
+                        // checkbox where the Synth draws a chip, and the two
+                        // occupy the same rectangle.
+                        line += juce::String(" button=") + typeid(*button).name()
+                              + " text=\"" + button->getButtonText() + "\"";
+                    }
+
+                    lines.add(line);
                 }
                 lines.sort(false);
                 return lines.joinIntoString(" | ");

@@ -30,16 +30,60 @@ PX3DelayAudioProcessorEditor::PX3DelayAudioProcessorEditor(PX3DelayAudioProcesso
         }
     }
 
+    // Names on the knobs, options in the boxes. DelayComponent places these
+    // and draws the card around them; it does not fill them in, so handed
+    // empty ones it lays out unlabelled knobs and blank dropdowns.
+    const auto label = [](juce::Label& l, const juce::String& text)
+    {
+        l.setText(text, juce::dontSendNotification);
+        l.setJustificationType(juce::Justification::centred);
+        l.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+        l.setFont(juce::FontOptions(11.5f));
+        l.setTooltip(text);
+    };
+
+    label(amountLabel, "AMOUNT");
+    label(timeLabel, "TIME");
+    label(feedbackLabel, "FEEDBACK");
+    label(algorithmLabel, "TYPE");
+    label(syncLabel, "SYNC");
+    label(modeLabel, "MODE");
+
+    // ComboBoxParameterAttachment selects an item; it does not create them.
+    const auto fillBox = [](juce::ComboBox& box, juce::AudioParameterChoice& parameter)
+    {
+        for (int i = 0; i < parameter.choices.size(); ++i)
+        {
+            box.addItem(parameter.choices[i], i + 1);
+        }
+        box.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
+        box.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
+        box.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
+    };
+
+    fillBox(algorithmBox, processor.debugAlgorithmParam());
+    fillBox(syncBox, processor.debugSyncDivisionParam());
+    fillBox(modeBox, processor.debugGranularModeParam());
+
     attach(processor.debugAmountParam(), amountKnob);
     attach(processor.debugTimeParam(), timeKnob);
     attach(processor.debugFeedbackParam(), feedbackKnob);
     attach(processor.debugAlgorithmParam(), algorithmBox);
+    attach(processor.debugSyncDivisionParam(), syncBox);
+    attach(processor.debugGranularModeParam(), modeBox);
     attach(processor.debugEnabledParam(), enabledButton);
 
     for (auto* knob : { &amountKnob, &timeKnob, &feedbackKnob })
     {
+        knob->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        knob->setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
         knob->setLookAndFeel(&knobLook);
     }
+
+    // Tinted and named like the Synth's, so the glyph lights in this
+    // effect's colour and its hover text says what it powers.
+    enabledButton.setAccentColour(kDelayAccent);
+    enabledButton.setSectionName("Delay");
 
     addAndMakeVisible(panel);
 

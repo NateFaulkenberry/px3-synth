@@ -35,6 +35,11 @@ public:
     juce::AudioParameterFloat& debugFeedbackParam() { return *feedbackParam; }
     juce::AudioParameterBool& debugEnabledParam() { return *enabledParam; }
     juce::AudioParameterChoice& debugAlgorithmParam() { return *algorithmParam; }
+    // The granular pair. The panel has always had boxes for these - the Synth
+    // fills them - but nothing here could reach them, so the standalone drew
+    // two empty dropdowns.
+    juce::AudioParameterChoice& debugGranularModeParam() { return *granularModeParam; }
+    juce::AudioParameterChoice& debugSyncDivisionParam() { return *syncDivisionParam; }
     DelaySettings debugSettingsForBlock() const { return settingsForBlock(); }
 
 protected:

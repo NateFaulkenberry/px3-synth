@@ -5,6 +5,7 @@
 #include "PluginProcessor.h"
 #include "DelayComponent.h"
 #include "UIConfig.h"
+#include "BypassButton.h"
 #include "KnobLookAndFeel.h"
 
 #include <memory>
@@ -40,7 +41,10 @@ private:
     PX3DelayAudioProcessor& processor;
     std::shared_ptr<const UIConfig> uiConfig;
 
-    juce::ToggleButton enabledButton;
+    // The Synth's power glyph, not a stock ToggleButton. The shared panel takes
+    // a ToggleButton& and draws whatever it is handed, so a plain one renders
+    // as a system checkbox in the corner of a card.
+    px3::ui::BypassButton enabledButton;
     juce::Slider amountKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
     juce::Label amountLabel;
     juce::ComboBox algorithmBox;
