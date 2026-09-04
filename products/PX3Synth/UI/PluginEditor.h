@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FxChain.h"
+#include "SpeechBubbleLabel.h"
 #include "MacroKnobLook.h"
 #include "FxCardComponent.h"
 
@@ -469,7 +470,7 @@ private:
     void refreshUpdateAffordances();
     void dismissUpdateNotice();
 
-    juce::Label updateNotice;
+    SpeechBubbleLabel updateNotice;
     // Counts down the notice's own life. -1 when it is not showing.
     int updateNoticeFramesLeft { -1 };
     // So the notice appears once per window rather than every time a check

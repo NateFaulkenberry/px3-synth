@@ -526,6 +526,59 @@ void testEditorLayout()
                   + " and " + juce::String(processor.getMidiLearnTargets().size())
                   + " learn targets");
     }
+    // ---- the update notice is one closed bubble, arrow included ------------
+    //
+    // The point of building the pointer into the path rather than drawing a
+    // triangle on top is that fill and outline stay continuous. That is easy to
+    // regress and impossible to see in a headless test by looking at pixels, so
+    // the geometry is checked instead: one subpath, closed, tall enough to
+    // include the arrow, and the arrow sitting where the config says.
+    {
+        SpeechBubbleLabel::Style style;
+        style.cornerRadius = 6.0f;
+        style.borderWidth = 1.0f;
+        style.arrowWidth = 14.0f;
+        style.arrowHeight = 8.0f;
+        style.arrowInsetFromRight = 18.0f;
+
+        const juce::Rectangle<float> bounds(0.0f, 0.0f, 340.0f, 30.0f);
+        const auto path = SpeechBubbleLabel::buildBubblePath(bounds, style);
+
+        int subPaths = 0;
+        for (juce::Path::Iterator it(path); it.next();)
+        {
+            if (it.elementType == juce::Path::Iterator::startNewSubPath) { ++subPaths; }
+        }
+
+        const auto box = path.getBounds();
+
+        // The tip reaches the top of the component; the body starts below it.
+        const auto reachesTop = box.getY() <= style.borderWidth;
+        const auto spansHeight = box.getHeight() >= bounds.getHeight() - style.borderWidth * 2.0f - 0.5f;
+
+        // The arrow is on the RIGHT half, which is what "aligned from top right"
+        // has to mean for a 340-wide bubble with an 18px inset.
+        const auto tipX = bounds.getRight() - style.arrowInsetFromRight - style.arrowWidth * 0.5f;
+        const auto arrowIsRight = tipX > bounds.getCentreX();
+
+        check("UpdateNotice_TheBubbleAndItsArrowAreOneClosedShape",
+              subPaths == 1 && reachesTop && spansHeight && arrowIsRight,
+              "subpaths=" + juce::String(subPaths)
+                  + " bounds=" + juce::String(box.getWidth(), 1) + "x" + juce::String(box.getHeight(), 1)
+                  + " tipX=" + juce::String(tipX, 1));
+    }
+
+    // A zero-height arrow must degrade to a plain rounded rectangle rather than
+    // drawing a degenerate spike, because that is what setting arrowHeight to 0
+    // in UIConfig is asking for.
+    {
+        SpeechBubbleLabel::Style style;
+        style.arrowHeight = 0.0f;
+        const auto path = SpeechBubbleLabel::buildBubblePath({ 0.0f, 0.0f, 200.0f, 24.0f }, style);
+        check("UpdateNotice_ZeroArrowHeightIsJustARoundedRectangle",
+              ! path.isEmpty() && path.getBounds().getHeight() <= 24.0f,
+              "height " + juce::String(path.getBounds().getHeight(), 1));
+    }
 }
 
 } // namespace px3tests

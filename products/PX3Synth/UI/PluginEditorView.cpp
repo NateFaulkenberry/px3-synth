@@ -228,12 +228,58 @@ void PX3SynthAudioProcessorEditor::resized()
     }
 
     // Under the top bar, tucked to the right so it sits below the gear it is
-    // about rather than over the preset name.
+    // about rather than over the preset name - and now pointing at it, since
+    // the notice is a speech bubble whose arrow comes off the top right.
+    //
+    // Everything here is a UIConfig knob. The height has to include the arrow:
+    // the bubble draws its body below the pointer, so a component sized only
+    // for the text would have the arrow eat the first few pixels of it.
     if (updateNotice.isVisible() && topMenuBar != nullptr)
     {
+        SpeechBubbleLabel::Style style;
+        if (uiConfig != nullptr)
+        {
+            style.background = uiConfig->getColour("updateNotice.colors.background",
+                                                   juce::Colours::black.withAlpha(0.80f));
+            style.border     = uiConfig->getColour("updateNotice.colors.border",
+                                                   juce::Colours::white.withAlpha(0.35f));
+            style.text       = uiConfig->getColour("updateNotice.colors.text", juce::Colours::white);
+
+            style.cornerRadius = uiConfig->getFloat("updateNotice.layout.cornerRadius", 6.0f);
+            style.borderWidth  = uiConfig->getFloat("updateNotice.layout.borderWidth", 1.0f);
+
+            style.arrowWidth          = uiConfig->getFloat("updateNotice.layout.arrowWidth", 14.0f);
+            style.arrowHeight         = uiConfig->getFloat("updateNotice.layout.arrowHeight", 8.0f);
+            style.arrowInsetFromRight = uiConfig->getFloat("updateNotice.layout.arrowInsetFromRight", 18.0f);
+
+            style.paddingX = uiConfig->getFloat("updateNotice.layout.paddingX", 10.0f);
+            style.paddingY = uiConfig->getFloat("updateNotice.layout.paddingY", 4.0f);
+            style.fontSize = uiConfig->getFloat("updateNotice.layout.fontSize", 12.0f);
+        }
+        updateNotice.setStyle(style);
+
         const auto bar = topMenuBar->getBounds();
-        const auto width = juce::jmin(340, bar.getWidth());
-        updateNotice.setBounds(bar.getRight() - width, bar.getBottom() + 2, width, 18);
+        const auto width = uiConfig != nullptr
+                               ? uiConfig->getInt("updateNotice.layout.width", 340)
+                               : 340;
+        const auto textHeight = uiConfig != nullptr
+                                    ? uiConfig->getInt("updateNotice.layout.textHeight", 18)
+                                    : 18;
+        const auto offsetX = uiConfig != nullptr
+                                 ? uiConfig->getInt("updateNotice.layout.offsetX", 0)
+                                 : 0;
+        const auto offsetY = uiConfig != nullptr
+                                 ? uiConfig->getInt("updateNotice.layout.offsetY", 2)
+                                 : 2;
+
+        const auto clamped = juce::jmin(width, juce::jmax(1, bar.getWidth()));
+        const auto height = textHeight + static_cast<int>(std::ceil(style.arrowHeight))
+                            + static_cast<int>(std::ceil(style.paddingY * 2.0f));
+
+        updateNotice.setBounds(bar.getRight() - clamped + offsetX,
+                               bar.getBottom() + offsetY,
+                               clamped,
+                               height);
     }
 
     if (macroDepthPanel != nullptr && macroDepthPanel->isVisible())

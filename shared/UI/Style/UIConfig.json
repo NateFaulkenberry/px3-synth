@@ -2755,5 +2755,26 @@
       "closeButton": "#343840EB",
       "closeButtonText": "#E8ECF2"
     }
+  },
+  "updateNotice": {
+    "colors": {
+      "background": "#CC000000",
+      "border": "#59FFFFFF",
+      "text": "#FFFFFFFF"
+    },
+    "layout": {
+      "offsetX": 0,
+      "offsetY": 2,
+      "width": 340,
+      "textHeight": 18,
+      "cornerRadius": 6,
+      "borderWidth": 1,
+      "arrowWidth": 14,
+      "arrowHeight": 8,
+      "arrowInsetFromRight": 18,
+      "paddingX": 10,
+      "paddingY": 4,
+      "fontSize": 12
+    }
   }
 }
