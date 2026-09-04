@@ -663,27 +663,38 @@ echo "[3/8] Building Release"
 
 # Job count.
 #
-# With Ninja the default is already safe: ninja self-limits to cores+2 and
-# ignores a bare `--parallel`. This override exists for the case where a machine
-# needs less than that - a small runner, or a build sharing a box with something
-# else - and is read here rather than left to the environment because an
-# explicit --parallel on the command line overrides CMAKE_BUILD_PARALLEL_LEVEL.
+# Ninja's default is cores+2, NOT cores - measured, by counting concurrently
+# running jobs rather than by reading the manual. On a developer's machine that
+# is the right answer and this script leaves it alone. On a 3-core CI runner it
+# is five concurrent clang processes against 7 GB, which is a margin rather than
+# a limit, so CI passes a number.
 #
-# It is what stood between this script and
+# The conversion below is the whole mechanism, and it is not decoration:
+# CMAKE_BUILD_PARALLEL_LEVEL is IGNORED whenever --parallel appears on the
+# command line, which it always does here. Measured on a real CMake+Ninja
+# project, peak concurrent jobs:
 #
-#   clang: error: unable to execute command: posix_spawn failed:
-#          Resource temporarily unavailable
+#   --parallel 2                          ->  2
+#   --parallel        (bare)              ->  cores + 2
+#   CMAKE_BUILD_PARALLEL_LEVEL=2 + bare   ->  cores + 2   (variable ignored)
+#   NINJAFLAGS=-j2               + bare   ->  cores + 2   (no such variable)
 #
-# back when the generator was Makefiles and `--parallel` meant `make -j` with no
-# limit. The generator change removed that failure at its source; this stayed
-# because a lever costs nothing.
+# So exporting the variable and hoping is not a fix. Reading it here and passing
+# it as an argument is.
 BUILD_PARALLEL_ARGS=(--parallel)
 if [[ -n "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ]]; then
   BUILD_PARALLEL_ARGS=(--parallel "${CMAKE_BUILD_PARALLEL_LEVEL}")
+fi
+
+echo "  Generator:     $(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' "${CACHE_FILE}")"
+echo "  CPUs:          $(sysctl -n hw.ncpu 2>/dev/null || echo '?')"
+if [[ -n "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ]]; then
   echo "  Parallel jobs: ${CMAKE_BUILD_PARALLEL_LEVEL} (CMAKE_BUILD_PARALLEL_LEVEL)"
 else
-  echo "  Parallel jobs: unbounded (generator default)"
+  echo "  Parallel jobs: ninja default (cores+2)"
 fi
+echo "  Build command: cmake --build <dir> --config Release ${BUILD_PARALLEL_ARGS[*]}"
+
 cmake --build "${BUILD_DIR}" --config Release "${BUILD_PARALLEL_ARGS[@]}"
 
 echo "[4/8] Locating plugins"

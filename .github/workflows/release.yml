@@ -30,6 +30,15 @@ concurrency:
 permissions:
   contents: read              # raised to write only on the job that uploads
 
+env:
+  # Compiler jobs on a runner - the same knob as ci.yml, and the same reasoning
+  # in full there. One per core: explicit and visible in the log, while keeping
+  # the speed that moving to Ninja bought. Both builds in this job are held to
+  # it, and both are passed the number as an argument, because an explicit
+  # --parallel beats CMAKE_BUILD_PARALLEL_LEVEL and exporting alone does
+  # nothing.
+  PX3_BUILD_JOBS: 3
+
 jobs:
   # --------------------------------------------------------------------------
   # Work out what is being built before building it. Cheap, and it turns the
@@ -222,7 +231,15 @@ jobs:
             -DPX3_COPY_PLUGIN_AFTER_BUILD=OFF \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-          cmake --build build-test --target PX3Tests PX3Diag PX3SmokeTest --parallel
+          echo "=== BUILD ENVIRONMENT ==="
+          echo "generator     : $(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' build-test/CMakeCache.txt)"
+          echo "PX3_BUILD_JOBS: ${PX3_BUILD_JOBS:-unset}"
+          echo "CMAKE_BUILD_PARALLEL_LEVEL: ${CMAKE_BUILD_PARALLEL_LEVEL:-unset}"
+          echo "CPUs          : $(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo '?')"
+          echo "memory (GB)   : $(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))"
+          echo "ninja         : $(ninja --version 2>/dev/null || echo 'n/a')"
+          echo "========================="
+          cmake --build build-test --target PX3Tests PX3Diag PX3SmokeTest --parallel "${PX3_BUILD_JOBS}"
           ./build-test/PX3Tests_artefacts/Release/PX3Tests           2>&1 | tee test-report.txt
           ./build-test/PX3Diag_artefacts/Release/PX3Diag regress     2>&1 | tee regress-report.txt
           ./build-test/PX3Diag_artefacts/Release/PX3Diag rtsafety    2>&1 | tee rtsafety-report.txt
@@ -342,15 +359,12 @@ jobs:
       - name: Build and package
         id: build
         env:
-          # No CMAKE_BUILD_PARALLEL_LEVEL here on purpose.
-          #
-          # This step used to cap itself at 2 because build-release.sh took
-          # CMake's default generator - Unix Makefiles on macOS - where
-          # `--parallel` with no number means `make -j` with NO LIMIT, which
-          # exhausted the runner's process table. The script now asks for Ninja,
-          # which self-limits to cores+2, so the cap is treating a cause that no
-          # longer exists and would only cost build time. The script still reads
-          # the variable if a future runner needs it.
+          # build-release.sh reads this and turns it into an explicit
+          # `--parallel N`, which is the only form Ninja honours - exporting the
+          # variable alone would be ignored, because the script's own
+          # `--parallel` on the command line would win. The conversion is the
+          # point, not the export.
+          CMAKE_BUILD_PARALLEL_LEVEL: ${{ env.PX3_BUILD_JOBS }}
           CODESIGN_IDENTITY:      ${{ secrets.MACOS_CODESIGN_IDENTITY }}
           DEVELOPER_ID_INSTALLER: ${{ secrets.MACOS_INSTALLER_IDENTITY }}
           APPLE_ID:               ${{ secrets.APPLE_ID }}
@@ -449,7 +463,7 @@ jobs:
       - name: Build
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPX3_COPY_PLUGIN_AFTER_BUILD=OFF
-          cmake --build build --config Release --parallel
+          cmake --build build --config Release --parallel "${PX3_BUILD_JOBS}"
       - name: Package
         run: echo "No Windows packaging exists yet - see docs/CI_CD.md"
 

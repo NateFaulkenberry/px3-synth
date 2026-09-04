@@ -20,6 +20,39 @@ permissions:
   contents: read              # least privilege: CI reads the repo, nothing more
 
 env:
+  # Compiler jobs on a runner. THE knob - every build step below passes this to
+  # --parallel explicitly, and nothing relies on a default.
+  #
+  # Three, which is one per core on a macos-14 runner. Chosen against measured
+  # numbers rather than a guess:
+  #
+  #   Makefiles, bare `make -j`  unbounded  ->  posix_spawn: Resource
+  #                                             temporarily unavailable
+  #   Ninja, default (cores+2 = 5)          ->  full 8-product build + the whole
+  #                                             test estate in 9m56s, green
+  #
+  # So the failure was the Makefiles generator, not parallelism as such, and
+  # ninja's default already works here. The limit is explicit anyway: it is
+  # visible in the log, it is one number in one place, and it keeps a margin on
+  # a 7 GB runner where JUCE's larger translation units peak near a gigabyte
+  # each. Two would have been safer still and roughly twice as slow.
+  #
+  # Passed as an ARGUMENT, never exported and hoped for. Measured on a real
+  # CMake+Ninja project by counting concurrently running jobs:
+  #
+  #   --parallel 3                          ->  3
+  #   --parallel        (bare)              ->  cores + 2
+  #   CMAKE_BUILD_PARALLEL_LEVEL=3 + bare   ->  cores + 2   (env is IGNORED)
+  #   NINJAFLAGS=-j3               + bare   ->  cores + 2   (no such variable)
+  #
+  # Lines three and four are the trap: an explicit --parallel on the command
+  # line beats the environment, so setting only the variable looks like a fix
+  # and does nothing.
+  #
+  # Set here and NOT in the scripts, so a developer's build keeps ninja's
+  # default and stays fast.
+  PX3_BUILD_JOBS: 3
+
   # Never write into ~/Library/Audio/Plug-Ins on a runner. The default is ON for
   # a developer's machine, where it is what makes a build testable in a host.
   PX3_CMAKE_ARGS: >-
@@ -133,7 +166,15 @@ jobs:
       - name: Build
         run: |
           set -o pipefail
-          cmake --build build --parallel 2>&1 | tee build.log
+          echo "=== BUILD ENVIRONMENT ==="
+          echo "generator     : $(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' build/CMakeCache.txt)"
+          echo "PX3_BUILD_JOBS: ${PX3_BUILD_JOBS:-unset}"
+          echo "CMAKE_BUILD_PARALLEL_LEVEL: ${CMAKE_BUILD_PARALLEL_LEVEL:-unset}"
+          echo "CPUs          : $(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo '?')"
+          echo "memory (GB)   : $(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))"
+          echo "ninja         : $(ninja --version 2>/dev/null || echo 'n/a')"
+          echo "========================="
+          cmake --build build --parallel "${PX3_BUILD_JOBS}" 2>&1 | tee build.log
 
       - name: Warnings from our own sources fail the build
         run: |
@@ -266,7 +307,7 @@ jobs:
       - name: Configure and build benchmarks
         run: |
           cmake -S . -B build-bench ${{ env.PX3_CMAKE_ARGS }}
-          cmake --build build-bench --target PX3Bench PX3MemBench --parallel
+          cmake --build build-bench --target PX3Bench PX3MemBench --parallel "${PX3_BUILD_JOBS}"
       - name: CPU benchmark
         run: ./build-bench/PX3Bench_artefacts/Release/PX3Bench 2>&1 | tee cpu-bench.txt
       - name: Memory benchmark
@@ -307,7 +348,7 @@ jobs:
           -DPX3_BUILD_DIAGNOSTIC=ON
           -DPX3_COPY_PLUGIN_AFTER_BUILD=OFF
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config Release --parallel "${PX3_BUILD_JOBS}"
       - name: Component tests
         run: ./build/PX3Tests_artefacts/Release/PX3Tests.exe
 
