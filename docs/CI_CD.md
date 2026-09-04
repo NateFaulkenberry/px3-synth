@@ -281,6 +281,12 @@ being required without anybody noticing.
 
 The workflow runs nothing you cannot run yourself:
 
+Every build uses **Ninja**, deliberately: CI, the benchmarks, the diagnostic
+harnesses and `build-release.sh` alike. Shipping binaries produced by a
+generator nothing else exercises is a gap nobody would choose on purpose, and
+Ninja's self-limiting job count is what keeps a small runner from exhausting its
+process table.
+
 ```bash
 # what the macOS job does
 cmake -S . -B build -G Ninja \
@@ -344,17 +350,18 @@ the run; `our-warnings.log` in the test-reports artifact lists exactly the lines
 so a failure is diagnosable without rebuilding locally.
 
 **`posix_spawn failed: Resource temporarily unavailable` during compilation.**
-The build ran with unbounded parallelism. `scripts/build-release.sh` passes no
-`-G`, so CMake picks Unix Makefiles on macOS, and `--parallel` with no number
+Fixed at its source, but worth knowing about. `build-release.sh` used to pass no
+`-G`, so CMake picked Unix Makefiles on macOS, where `--parallel` with no number
 hands make a bare `-j` — which to GNU make means *no limit*, not *one job per
-core*. Across eight products that is hundreds of concurrent clang processes,
-and a 3-core runner runs out of them.
+core*. Across eight products that is hundreds of concurrent clang processes, and
+a 3-core runner runs out of them.
 
-The release workflow sets `CMAKE_BUILD_PARALLEL_LEVEL: 2` on its build step, and
-the script passes that through as an explicit `-j2`. Note that the environment
-variable alone is **not** enough: an explicit `--parallel` on the command line
-overrides it, which is why the script reads the variable rather than relying on
-CMake to. Ninja builds were never affected — ninja self-limits to cores+2.
+Every build in this project now asks for **Ninja**, which ignores a bare
+`--parallel` and self-limits to cores+2. If this ever recurs, set
+`CMAKE_BUILD_PARALLEL_LEVEL` on the build step; the scripts read it and pass it
+as an explicit `-j`. The environment variable alone is not enough on its own —
+an explicit `--parallel` on the command line overrides it, which is why the
+scripts read the variable rather than leaving it to CMake.
 
 **Assets are unsigned.** Expected until the secrets above are configured. The run
 summary says so explicitly. Signing needs **both** P12 secrets: with only one,

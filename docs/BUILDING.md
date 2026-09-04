@@ -8,6 +8,23 @@ Project version source of truth:
 
 - `PX3_VERSION` in `CMakeLists.txt` (SemVer: `MAJOR.MINOR.PATCH`).
 
+## Prerequisites
+
+- Xcode command line tools
+- CMake 3.22+
+- **Ninja** — `brew install ninja`
+
+Every build here uses Ninja: the build scripts pass `-G Ninja` explicitly rather
+than letting CMake choose, so that what a release ships is built the same way
+everything that tested it was built. It also matters for a reason that is easy
+to miss — with Makefiles, `cmake --build --parallel` with no job count becomes a
+bare `make -j`, which means *unlimited* parallelism and can exhaust a small
+machine's process table. Ninja self-limits to cores+2.
+
+A build directory remembers its generator and CMake will not change it in place.
+`build-product.sh` notices a directory configured with something else and
+re-makes it; elsewhere, delete the directory and configure again.
+
 ## Development Build
 
 The full build compiles **eight products**. Working on one should not, so build

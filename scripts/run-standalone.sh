@@ -98,7 +98,11 @@ if [[ -n "${BLOCKED}" ]]; then
 fi
 
 if [[ -n "${DEBUG_FLAG}" ]]; then
-  cmake -S "${REPO_ROOT}" -B "${REPO_ROOT}/build" -DPX3_DEBUG_PANEL="${DEBUG_FLAG}"
+  # -G Ninja for the same reason every other script here asks for it: without
+  # it CMake picks Unix Makefiles on macOS, and this script's own help text two
+  # dozen lines below tells you to configure with Ninja. Two generators over one
+  # build directory is how you get a reconfigure you did not ask for.
+  cmake -S "${REPO_ROOT}" -B "${REPO_ROOT}/build" -G Ninja -DPX3_DEBUG_PANEL="${DEBUG_FLAG}"
 fi
 
 if [[ "${FORCE_BUILD}" == "true" ]]; then

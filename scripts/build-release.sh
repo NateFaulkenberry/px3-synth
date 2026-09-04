@@ -557,6 +557,7 @@ echo
 
 echo "[1/8] Checking environment"
 require_cmd cmake
+require_cmd ninja
 require_cmd xcodebuild
 require_cmd file
 require_cmd lipo
@@ -622,7 +623,19 @@ echo "[2/8] Configuring CMake"
 rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
 
-cmake -S "${REPO_ROOT}" -B "${BUILD_DIR}" \
+# -G Ninja, explicitly, because the alternative is whatever CMake picks by
+# default - Unix Makefiles on macOS - and that made the release the one build in
+# this project produced by a generator nothing else exercises. CI, the
+# benchmarks, the diagnostic harnesses and BUILDING.md all use Ninja; shipping
+# binaries from a different build system than the one every test ran under is a
+# gap nobody would choose on purpose.
+#
+# It also fixes the parallelism at its root. `--parallel` with no number hands
+# make a bare `-j`, which means NO LIMIT and exhausted a 3-core runner's process
+# table; ninja ignores the flag and self-limits to cores+2. The
+# CMAKE_BUILD_PARALLEL_LEVEL override below stays as a lever, but the default is
+# now safe rather than unbounded.
+cmake -S "${REPO_ROOT}" -B "${BUILD_DIR}" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_OSX_ARCHITECTURES=arm64 \
   -DPX3_COPY_PLUGIN_AFTER_BUILD=OFF \
@@ -648,25 +661,22 @@ fi
 
 echo "[3/8] Building Release"
 
-# Job count, and why this is not simply `--parallel`.
+# Job count.
 #
-# This script does not pass -G, so CMake picks its default generator, which on
-# macOS is Unix Makefiles. `cmake --build --parallel` with no number then hands
-# make a bare `-j`, and a bare `-j` to GNU make means NO LIMIT: it starts a job
-# for every target that is ready, which across eight products is hundreds of
-# clang processes at once. On a developer machine that merely thrashes; on a
-# 3-core GitHub runner it exhausts the process table and the compiler dies with
+# With Ninja the default is already safe: ninja self-limits to cores+2 and
+# ignores a bare `--parallel`. This override exists for the case where a machine
+# needs less than that - a small runner, or a build sharing a box with something
+# else - and is read here rather than left to the environment because an
+# explicit --parallel on the command line overrides CMAKE_BUILD_PARALLEL_LEVEL.
+#
+# It is what stood between this script and
 #
 #   clang: error: unable to execute command: posix_spawn failed:
 #          Resource temporarily unavailable
 #
-# Ninja does not have this problem - it self-limits to cores+2 - which is why
-# every other build in this project was unaffected.
-#
-# CMAKE_BUILD_PARALLEL_LEVEL cannot fix it from the environment, because an
-# explicit --parallel on the command line overrides that variable. So the value
-# is read here and passed as a number. Unset, the behaviour is exactly what it
-# has always been locally.
+# back when the generator was Makefiles and `--parallel` meant `make -j` with no
+# limit. The generator change removed that failure at its source; this stayed
+# because a lever costs nothing.
 BUILD_PARALLEL_ARGS=(--parallel)
 if [[ -n "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ]]; then
   BUILD_PARALLEL_ARGS=(--parallel "${CMAKE_BUILD_PARALLEL_LEVEL}")

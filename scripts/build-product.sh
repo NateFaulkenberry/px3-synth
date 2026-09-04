@@ -96,7 +96,26 @@ done
 BUILD_DIR="build/product-$(echo "${TARGET}" | tr '[:upper:]' '[:lower:]')"
 
 echo "==> ${TARGET}  (${BUILD_TYPE}, debug panel=${DEBUG_PANEL}, install=${INSTALL})"
-cmake -S . -B "${BUILD_DIR}" \
+
+# Ninja, like everything else in this project - CI, the benchmarks, the
+# diagnostic harnesses and BUILDING.md. Without -G, CMake picked Unix Makefiles
+# on macOS, so a developer's per-product build used a generator nothing else
+# did, and `--parallel` below became a bare `make -j`, which means no limit at
+# all rather than one job per core.
+#
+# CMake refuses to change generator inside an existing build directory, so a
+# tree configured before this change has to be re-made rather than reconfigured.
+# Detected and handled here: the alternative is a confusing hard error on
+# everyone's first build after pulling.
+if [[ -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
+  EXISTING_GENERATOR="$(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' "${BUILD_DIR}/CMakeCache.txt" | head -n1)"
+  if [[ -n "${EXISTING_GENERATOR}" && "${EXISTING_GENERATOR}" != "Ninja" ]]; then
+    echo "    build directory was configured with ${EXISTING_GENERATOR}; reconfiguring with Ninja"
+    rm -rf "${BUILD_DIR}"
+  fi
+fi
+
+cmake -S . -B "${BUILD_DIR}" -G Ninja \
       -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
       -DPX3_DEBUG_PANEL="${DEBUG_PANEL}" \
       -DPX3_COPY_PLUGIN_AFTER_BUILD="${INSTALL}" \
@@ -113,12 +132,25 @@ if [[ ${#FORMATS[@]} -eq 0 ]]; then
   # the pipe on its first match, cmake dies of SIGPIPE, and the pipeline
   # reports failure precisely when the target WAS found.
   AVAILABLE="$(cmake --build "${BUILD_DIR}" --target help 2>/dev/null || true)"
-  if grep -qx "\.\.\. ${TARGET}_All" <<< "${AVAILABLE}"; then
+
+  # The two generators list targets differently, and this used to assume one:
+  #
+  #   Makefiles   ... PX3Chorus_All
+  #   Ninja       PX3Chorus_All: phony
+  #
+  # Matching only the first shape meant that under Ninja nothing matched, the
+  # per-format loop found nothing either, and the script died claiming the
+  # product declares no buildable format. Normalised to bare names so it reads
+  # either - including an old Makefiles tree, which keeps this honest if the
+  # reconfigure above is ever removed.
+  TARGET_NAMES="$(sed -E 's/^\.\.\. //; s/:.*$//' <<< "${AVAILABLE}")"
+
+  if grep -qx "${TARGET}_All" <<< "${TARGET_NAMES}"; then
     FORMATS=("${TARGET}_All")
   else
     # A single-format product has no _All target; ask for the format directly.
     for f in VST3 AU Standalone; do
-      if grep -qx "\.\.\. ${TARGET}_${f}" <<< "${AVAILABLE}"; then
+      if grep -qx "${TARGET}_${f}" <<< "${TARGET_NAMES}"; then
         FORMATS+=("${TARGET}_${f}")
       fi
     done
