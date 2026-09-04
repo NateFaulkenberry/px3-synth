@@ -50,9 +50,21 @@ protected:
     void attachBypass(juce::AudioParameterBool& parameter);
 
     // Called once the product has declared and attached everything.
+    //
+    // The no-argument form sizes the window to ONE CELL of the Synth's FX grid,
+    // so a standalone effect opens at the shape it has inside the Synth rather
+    // than stretched into a landscape window. Both read the same UIConfig keys
+    // the grid does. The explicit form remains for a product that genuinely
+    // wants its own size.
+    void finishSetup();
     void finishSetup(int width, int height);
 
 private:
+    // The ground visible around the card, on every side. Named because both
+    // resized() and the window size derived from a grid cell have to agree
+    // about it.
+    static constexpr int kCardMargin = 10;
+
     px3::ui::FxCardComponent card;
     px3::ui::KnobLookAndFeel knobLook;
     std::shared_ptr<const UIConfig> uiConfig;

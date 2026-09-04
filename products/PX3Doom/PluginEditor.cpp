@@ -66,5 +66,5 @@ PX3DoomAudioProcessorEditor::PX3DoomAudioProcessorEditor(PX3DoomAudioProcessor& 
 
     attachBypass(processorIn.enabled());
 
-    finishSetup(900, 420);
+    finishSetup();
 }

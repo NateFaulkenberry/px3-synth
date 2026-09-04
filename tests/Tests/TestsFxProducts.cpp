@@ -7,6 +7,7 @@
 #include "../../products/PX3Reverb/PluginProcessor.h"
 #include "../../products/PX3Doom/PluginProcessor.h"
 #include "../../products/PX3Lucy/PluginProcessor.h"
+#include "../../shared/Infrastructure/Fx/FxCardEditor.h"
 
 // testFxProducts
 //
@@ -667,6 +668,198 @@ void testFxProducts()
               survived,
               survived ? juce::String("all seven finite at 44.1 and 96 kHz, 32 and 1024 samples")
                        : "NON-FINITE: " + notes.joinIntoString(", "));
+    }
+
+    // ---- bypass actually bypasses -----------------------------------------
+    //
+    // Inside the Synth a disabled stage is skipped by the chain, so the card's
+    // switch works whether or not the effect implements bypass itself. Standing
+    // alone there is no chain: FxPluginProcessor::processBlock calls
+    // processFxBlock every block, and the switch only does anything if the
+    // effect honours the flag it was handed.
+    //
+    // Measured rather than reasoned about: some effects ramp their wet mix to
+    // zero, which is a bypass, and others do not.
+    {
+        // A signal with content at several frequencies, so an effect that only
+        // alters part of the spectrum still shows up as a difference.
+        const auto makeInput = [](juce::AudioBuffer<float>& buffer)
+        {
+            for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+            {
+                auto* data = buffer.getWritePointer(channel);
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                {
+                    const auto t = static_cast<float>(i) / static_cast<float>(kRate);
+                    data[i] = 0.30f * std::sin(juce::MathConstants<float>::twoPi * 220.0f * t)
+                            + 0.20f * std::sin(juce::MathConstants<float>::twoPi * 1500.0f * t)
+                            + (channel == 1 ? 0.10f : 0.0f);
+                }
+            }
+        };
+
+        // Runs long enough for any ramp to settle, then compares the LAST block
+        // against the dry signal. Comparing the first block would fail an
+        // effect that bypasses correctly but fades into it.
+        const auto worstDifferenceFromDry = [&](auto& processor,
+                                                juce::AudioParameterBool& enabled,
+                                                bool enabledState)
+        {
+            processor.setPlayConfigDetails(2, 2, kRate, kBlock);
+            processor.prepareToPlay(kRate, kBlock);
+            enabled.setValueNotifyingHost(enabledState ? 1.0f : 0.0f);
+
+            juce::AudioBuffer<float> buffer(2, kBlock);
+            juce::AudioBuffer<float> dry(2, kBlock);
+            juce::MidiBuffer midi;
+
+            auto worst = 0.0f;
+            for (int block = 0; block < 40; ++block)
+            {
+                makeInput(buffer);
+                dry.makeCopyOf(buffer);
+                processor.processBlock(buffer, midi);
+
+                if (block < 32) { continue; }   // let any fade finish
+
+                for (int channel = 0; channel < 2; ++channel)
+                {
+                    const auto* out = buffer.getReadPointer(channel);
+                    const auto* in = dry.getReadPointer(channel);
+                    for (int i = 0; i < kBlock; ++i)
+                    {
+                        worst = juce::jmax(worst, std::abs(out[i] - in[i]));
+                    }
+                }
+            }
+            return worst;
+        };
+
+        juce::StringArray leaking;
+        juce::StringArray inaudible;
+        juce::StringArray measured;
+
+        // Both directions, because only one of them is a claim about bypass.
+        //
+        // "Bypassed output equals the input" passes on its own for an effect
+        // that does nothing at all - a default amount of zero, a stage that was
+        // never prepared - and would report every product healthy while proving
+        // none of them were. The enabled measurement is the control: an effect
+        // has to CHANGE the signal before its bypass leaving the signal alone
+        // means anything.
+        const auto record = [&](const juce::String& name, float wet, float dry)
+        {
+            measured.add(name + " on " + juce::String(wet, 4)
+                         + " / off " + juce::String(dry, 4));
+
+            if (wet <= 0.001f) { inaudible.add(name); }
+            if (dry > 0.001f) { leaking.add(name + " (" + juce::String(dry, 4) + ")"); }
+        };
+
+        // Turning the effect UP before measuring it.
+        //
+        // Doom and Lucy ship fully dry - doomMix and lucyGlobal both default to
+        // zero - which is a deliberate default and not a fault, but it means
+        // measuring them at defaults compares silence with silence. Anything
+        // named here is set before the comparison so the control is a real one.
+        const auto turnUp = [](juce::AudioProcessor& processor,
+                               const juce::String& parameterId, float value)
+        {
+            for (auto* parameter : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                {
+                    if (ranged->getParameterID() == parameterId)
+                    {
+                        ranged->setValueNotifyingHost(value);
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+
+        const auto measure = [&](const juce::String& name, auto& processor,
+                                 juce::AudioParameterBool& enabled,
+                                 const juce::String& wetParameterId = {})
+        {
+            const auto apply = [&]
+            {
+                if (wetParameterId.isNotEmpty()) { turnUp(processor, wetParameterId, 1.0f); }
+            };
+
+            apply();
+            const auto wet = worstDifferenceFromDry(processor, enabled, true);
+            apply();   // prepareToPlay does not reset parameters, but say so anyway
+            const auto dry = worstDifferenceFromDry(processor, enabled, false);
+            record(name, wet, dry);
+        };
+
+        { PX3DelayAudioProcessor p;  measure("Delay",  p, p.debugEnabledParam()); }
+        { PX3MoodAudioProcessor p;   measure("Mood",   p, p.enabled()); }
+        { PX3ChorusAudioProcessor p; measure("Chorus", p, p.enabled()); }
+        { PX3SpreadAudioProcessor p; measure("Spread", p, p.enabled()); }
+        { PX3ReverbAudioProcessor p; measure("Reverb", p, p.enabled()); }
+        { PX3DoomAudioProcessor p;   measure("Doom",   p, p.enabled(), "doomMix"); }
+        { PX3LucyAudioProcessor p;   measure("Lucy",   p, p.enabled(), "lucyGlobal"); }
+
+        // And the card's own switch has to reach that parameter. The audio path
+        // above is only half the control: a button that changes nothing looks
+        // exactly like an effect that ignores its flag.
+        {
+            juce::StringArray broken;
+            juce::StringArray states;
+
+            const auto switchReachesTheParameter = [&](const juce::String& name,
+                                                       auto& processor,
+                                                       juce::AudioParameterBool& enabled,
+                                                       juce::AudioProcessorEditor* editorIn)
+            {
+                std::unique_ptr<juce::AudioProcessorEditor> editor(editorIn);
+                auto* card = dynamic_cast<px3::fx::FxCardEditor*>(editor.get());
+                if (card == nullptr) { states.add(name + " (no card editor)"); return; }
+
+                auto& button = card->debugCard().bypassButton();
+                const auto before = enabled.get();
+
+                button.setToggleState(! before, juce::sendNotificationSync);
+                const auto after = enabled.get();
+
+                states.add(name + " " + (before ? "on" : "off") + "->" + (after ? "on" : "off"));
+                if (after == before) { broken.add(name); }
+            };
+
+            PX3ChorusAudioProcessor chorus;
+            switchReachesTheParameter("Chorus", chorus, chorus.enabled(), chorus.createEditor());
+            PX3SpreadAudioProcessor spread;
+            switchReachesTheParameter("Spread", spread, spread.enabled(), spread.createEditor());
+            PX3ReverbAudioProcessor reverb;
+            switchReachesTheParameter("Reverb", reverb, reverb.enabled(), reverb.createEditor());
+            PX3DoomAudioProcessor doom;
+            switchReachesTheParameter("Doom", doom, doom.enabled(), doom.createEditor());
+            PX3LucyAudioProcessor lucy;
+            switchReachesTheParameter("Lucy", lucy, lucy.enabled(), lucy.createEditor());
+
+            check("FxProducts_TheCardsBypassSwitchDrivesTheParameter",
+                  broken.isEmpty(),
+                  broken.isEmpty() ? "every switch moved its parameter: " + states.joinIntoString(", ")
+                                   : "these switches changed nothing: " + broken.joinIntoString(", "));
+        }
+
+        check("FxProducts_AnEnabledEffectActuallyChangesTheSignal",
+              inaudible.isEmpty(),
+              inaudible.isEmpty()
+                  ? "every effect alters its input at default settings: "
+                        + measured.joinIntoString(", ")
+                  : "these do nothing even when enabled, so their bypass proves "
+                    "nothing: " + inaudible.joinIntoString(", "));
+
+        check("FxProducts_BypassPassesTheSignalThroughUnchanged",
+              leaking.isEmpty(),
+              leaking.isEmpty()
+                  ? "every effect returns its input when bypassed"
+                  : "still altering the signal while bypassed: "
+                        + leaking.joinIntoString(", "));
     }
 }
 

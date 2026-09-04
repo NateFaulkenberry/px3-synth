@@ -32,5 +32,5 @@ PX3SpreadAudioProcessorEditor::PX3SpreadAudioProcessorEditor(PX3SpreadAudioProce
     attachChoice("mode", processorIn.mode());
     attachBypass(processorIn.enabled());
 
-    finishSetup(720, 320);
+    finishSetup();
 }

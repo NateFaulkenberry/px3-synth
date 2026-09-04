@@ -79,6 +79,25 @@ void FxCardEditor::attachBypass(juce::AudioParameterBool& parameter)
         std::make_unique<juce::ButtonParameterAttachment>(parameter, card.bypassButton(), nullptr));
 }
 
+void FxCardEditor::finishSetup()
+{
+    // One cell of the Synth's FX grid, plus the margin resized() leaves around
+    // the card. The height is fx.grid.rowHeight - literally the key the grid
+    // lays its rows out on - so the two cannot drift. The width is its own key
+    // because the grid's is not a fixed number: in the Synth a cell is whatever
+    // the panel's width divides into fx.grid.columns, and 318 is what that
+    // comes to at the size the editor opens. It sits beside columns, gap and
+    // rowHeight because it is the same geometry, read the same way.
+    const auto width = uiConfig != nullptr
+                           ? uiConfig->getInt("fx.grid.standaloneWidth", 318)
+                           : 318;
+    const auto height = uiConfig != nullptr
+                            ? uiConfig->getInt("fx.grid.rowHeight", 500)
+                            : 500;
+
+    setSize(width + kCardMargin * 2, height + kCardMargin * 2);
+}
+
 void FxCardEditor::finishSetup(int width, int height)
 {
     setSize(width, height);
@@ -93,7 +112,7 @@ void FxCardEditor::paint(juce::Graphics& g)
 
 void FxCardEditor::resized()
 {
-    card.setBounds(getLocalBounds().reduced(10));
+    card.setBounds(getLocalBounds().reduced(kCardMargin));
 }
 
 } // namespace px3::fx

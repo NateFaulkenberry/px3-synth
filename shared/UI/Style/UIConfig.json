@@ -355,6 +355,7 @@
     },
     "grid": {
       "columns": 4,
+      "standaloneWidth": 318,
       "gap": 8,
       "rowHeight": 500
     }

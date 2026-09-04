@@ -82,6 +82,31 @@ function(px3_add_product)
         endforeach()
     endif()
 
+    # UIConfig.json, inside every bundle this product builds.
+    #
+    # A card-shaped effect styles itself from this file, and FxCardEditor finds
+    # it by walking up from the running executable to a Resources folder. The
+    # Synth's bundles were given a copy and the effects were not, so an
+    # installed effect found nothing and fell back to code defaults - it looked
+    # right in a development tree only because the search also probes the
+    # repository, which is not there on a user's machine.
+    #
+    # Done here rather than in a list beside the Synth's, so a product added to
+    # the table is styled without anyone remembering to add it twice.
+    if (EXISTS "${CMAKE_SOURCE_DIR}/shared/UI/Style/UIConfig.json")
+        foreach(px3Format IN LISTS PX3P_FORMATS)
+            if (TARGET ${PX3P_TARGET}_${px3Format})
+                add_custom_command(TARGET ${PX3P_TARGET}_${px3Format} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E make_directory
+                        "$<TARGET_FILE_DIR:${PX3P_TARGET}_${px3Format}>/../Resources"
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${CMAKE_SOURCE_DIR}/shared/UI/Style/UIConfig.json"
+                        "$<TARGET_FILE_DIR:${PX3P_TARGET}_${px3Format}>/../Resources/UIConfig.json"
+                    VERBATIM)
+            endif()
+        endforeach()
+    endif()
+
     target_link_libraries(${PX3P_TARGET}
         PRIVATE
             PX3Assets

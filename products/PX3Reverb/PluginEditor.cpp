@@ -37,5 +37,5 @@ PX3ReverbAudioProcessorEditor::PX3ReverbAudioProcessorEditor(PX3ReverbAudioProce
     attachChoice("algorithm", processorIn.algorithm());
     attachBypass(processorIn.enabled());
 
-    finishSetup(720, 320);
+    finishSetup();
 }
