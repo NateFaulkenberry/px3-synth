@@ -442,6 +442,69 @@ void FxCardComponent::layoutKnobRow(int rowIndex, const Row& row, bool feature)
     }
 }
 
+juce::String FxCardComponent::debugLayoutSignature() const
+{
+    const auto rect = [](const juce::Component* component)
+    {
+        if (component == nullptr) { return juce::String("absent"); }
+        const auto b = component->getBounds();
+        return juce::String(b.getX()) + "," + juce::String(b.getY()) + ","
+             + juce::String(b.getWidth()) + "," + juce::String(b.getHeight());
+    };
+
+    const auto kindName = [](RowKind kind)
+    {
+        switch (kind)
+        {
+            case RowKind::toggles:     return "toggles";
+            case RowKind::choices:     return "choices";
+            case RowKind::knobs:       return "knobs";
+            case RowKind::featureKnob: return "feature";
+        }
+        return "?";
+    };
+
+    juce::StringArray lines;
+
+    // The palette as well as the geometry. A card that is laid out identically
+    // and painted in the wrong colours is still not the same card, and that is
+    // exactly what a standalone effect looked like when it could not find the
+    // config these come from.
+    const auto& cardStyle = card.style();
+    lines.add("accent " + accent.toDisplayString(true));
+    lines.add("border " + cardStyle.border.colour.toDisplayString(true));
+    lines.add("background " + cardStyle.background.colour.toDisplayString(true));
+    lines.add("title " + cardStyle.title.colour.toDisplayString(true));
+
+    lines.add("bypass " + rect(&bypass));
+
+    for (std::size_t r = 0; r < rows.size(); ++r)
+    {
+        const auto& row = rows[r];
+        juce::String line = "row" + juce::String(static_cast<int>(r)) + " " + kindName(row.kind);
+
+        for (const auto& id : row.ids)
+        {
+            // Looked up by id rather than by walking the entry vectors, so the
+            // signature follows the row's declared ORDER - which is the thing
+            // being compared - instead of the order things happened to be
+            // constructed in.
+            const juce::Component* control = knob(id);
+            const juce::Component* label = knobLabel(id);
+
+            if (control == nullptr) { control = choice(id); }
+            if (control == nullptr) { control = toggle(id); }
+
+            line += " | " + id + " " + rect(control);
+            if (label != nullptr) { line += " label " + rect(label); }
+        }
+
+        lines.add(line);
+    }
+
+    return lines.joinIntoString("\n");
+}
+
 void FxCardComponent::resized()
 {
     card.setStyleKey(styleKey);

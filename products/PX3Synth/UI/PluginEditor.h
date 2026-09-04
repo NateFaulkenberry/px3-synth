@@ -366,6 +366,12 @@ public:
 
     TopMenuBar* debugTopMenuBar() { return topMenuBar.get(); }
     SettingsPanel* debugSettingsPanel() { return settingsPanel.get(); }
+    // The FX page, so a test can reach the cards the Synth builds and compare
+    // them against the ones the standalone effects build.
+    FxPanel* debugFxPanel() { return fxPanel.get(); }
+    // The editor loads its config on a timer tick, so a test that reads styling
+    // straight after construction sees code defaults unless it asks for it.
+    void debugLoadUiConfig() { loadUiConfig(true); }
     juce::Rectangle<int> debugPanelViewportArea() const { return panelViewportArea; }
     int debugSelectedSection() const { return selectedTopMenuSection; }
 

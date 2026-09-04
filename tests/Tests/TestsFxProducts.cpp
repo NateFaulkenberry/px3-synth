@@ -8,6 +8,11 @@
 #include "../../products/PX3Doom/PluginProcessor.h"
 #include "../../products/PX3Lucy/PluginProcessor.h"
 #include "../../shared/Infrastructure/Fx/FxCardEditor.h"
+#include "../../shared/UI/Style/UIConfigManager.h"
+#include "../../products/PX3Synth/UI/PluginEditor.h"
+#include "../../products/PX3Synth/UI/FxPanel.h"
+#include "../../products/PX3Synth/UI/EditorSections.h"
+#include "../../products/PX3Synth/DSP/FxChain.h"
 
 // testFxProducts
 //
@@ -860,6 +865,136 @@ void testFxProducts()
                   ? "every effect returns its input when bypassed"
                   : "still altering the signal while bypassed: "
                         + leaking.joinIntoString(", "));
+    }
+    // ---- a standalone card is the Synth's card ------------------------------
+    //
+    // The claim FxCardEditor's own comment makes: "a standalone effect looks
+    // like its card inside the Synth because it is that card". Nothing checked
+    // it, and it was false for a while - the effects shipped without the
+    // UIConfig.json their styling comes from, so an installed one fell back to
+    // code defaults while the Synth's copy did not.
+    //
+    // Compared as a layout signature rather than as two snapshots, because a
+    // pixel difference says only that they differ. This names the control that
+    // moved and the colour that changed.
+    //
+    // Only these four: Delay, Reverb and Mood are not card-shaped inside the
+    // Synth at all - they have components of their own - so there is no card
+    // to compare them against.
+    {
+        PX3SynthAudioProcessor synth;
+        synth.setPlayConfigDetails(0, 2, kRate, kBlock);
+        synth.prepareToPlay(kRate, kBlock);
+
+        std::unique_ptr<juce::AudioProcessorEditor> synthBase(synth.createEditor());
+        auto* synthEditor = dynamic_cast<PX3SynthAudioProcessorEditor*>(synthBase.get());
+
+        if (synthEditor != nullptr)
+        {
+            synthEditor->setSize(1400, 900);
+            synthEditor->debugSelectSection(px3::ui::kSectionFx);
+            // The Synth loads its config on a timer tick. Without this the
+            // comparison reads the Synth's cards before they have been styled
+            // and reports the STANDALONE as the odd one out, which is exactly
+            // backwards.
+            synthEditor->debugLoadUiConfig();
+
+            auto* panel = synthEditor->debugFxPanel();
+
+            // The size both are measured at. Any size would do so long as it is
+            // the same one; a grid cell is the size they actually meet at.
+            const juce::Rectangle<int> cell { 0, 0, 318, 500 };
+
+            // ONE config, given to both.
+            //
+            // The two sides find their config by different routes - the Synth's
+            // resolver gates a source-tree probe behind a build flag, the
+            // standalone's walks up from the executable - and that difference
+            // is not what is being tested here. Handing both the same file
+            // compares what they BUILD from it, which is the claim. Whether
+            // each can find it when installed is a separate question, and the
+            // answer to it is that the effects now ship a copy inside their
+            // own bundles.
+            const auto configFile = UIConfigManager::findShippingConfigFile();
+            juce::String configError;
+            std::shared_ptr<const UIConfig> sharedConfig;
+            if (configFile.existsAsFile())
+            {
+                sharedConfig = UIConfig::fromJsonText(configFile.loadFileAsString(), configError);
+            }
+
+            const auto signatureOf = [&cell, &sharedConfig](px3::ui::FxCardComponent& card)
+            {
+                if (sharedConfig != nullptr) { card.setUIConfig(sharedConfig); }
+                card.setBounds(cell);
+                card.resized();
+                return card.debugLayoutSignature();
+            };
+
+            juce::StringArray differing;
+            juce::StringArray firstDifference;
+
+            const auto compare = [&](const juce::String& name, int stage,
+                                     juce::AudioProcessor& processor)
+            {
+                auto* synthCard = panel != nullptr ? panel->cardForSection(stage) : nullptr;
+                if (synthCard == nullptr) { differing.add(name + " (no card in the Synth)"); return; }
+
+                std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+                auto* cardEditor = dynamic_cast<px3::fx::FxCardEditor*>(editor.get());
+                if (cardEditor == nullptr) { differing.add(name + " (not a card editor)"); return; }
+
+                const auto expected = signatureOf(*synthCard);
+                const auto actual = signatureOf(cardEditor->debugCard());
+
+                if (expected == actual) { return; }
+
+                differing.add(name);
+
+                // The first line that differs, so a failure reads as one fact
+                // rather than as two screens of coordinates.
+                juce::StringArray a, b;
+                a.addLines(expected);
+                b.addLines(actual);
+                for (int i = 0; i < juce::jmax(a.size(), b.size()); ++i)
+                {
+                    const auto left = i < a.size() ? a[i] : juce::String("(missing)");
+                    const auto right = i < b.size() ? b[i] : juce::String("(missing)");
+                    if (left != right)
+                    {
+                        firstDifference.add(name + ": synth [" + left + "] standalone [" + right + "]");
+                        break;
+                    }
+                }
+            };
+
+            PX3DoomAudioProcessor doom;
+            compare("Doom", px3::fxStageDoom, doom);
+            PX3LucyAudioProcessor lucy;
+            compare("Lucy", px3::fxStageLucy, lucy);
+            PX3ChorusAudioProcessor chorus;
+            compare("Chorus", px3::fxStageChorus, chorus);
+            PX3SpreadAudioProcessor spread;
+            compare("Spread", px3::fxStageStereoSpread, spread);
+
+            // A missing config would make every card fall back to the same
+            // defaults and the comparison would pass by having nothing to
+            // compare. Said out loud rather than passing quietly.
+            check("FxProducts_TheComparisonHasARealConfigToWorkFrom",
+                  sharedConfig != nullptr,
+                  sharedConfig != nullptr
+                      ? "styling both cards from " + configFile.getFileName()
+                      : "no UIConfig.json found - the comparison below would "
+                        "compare two sets of code defaults: " + configError);
+
+            check("FxProducts_AStandaloneCardMatchesTheSynthsCardExactly",
+                  differing.isEmpty(),
+                  differing.isEmpty()
+                      ? "Doom, Lucy, Chorus and Spread lay out and colour identically "
+                        "in both, at the same size"
+                      : "differ: " + differing.joinIntoString(", ") + ". "
+                            + firstDifference.joinIntoString("  /  "));
+        }
     }
 }
 

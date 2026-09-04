@@ -10,14 +10,16 @@ PX3DoomAudioProcessorEditor::PX3DoomAudioProcessorEditor(PX3DoomAudioProcessor& 
         { "wetActive", "WET ON", "WET OFF", "Engage the wet channel" },
         { "freeze", "FROZEN", "FREEZE", "Freeze the wet channel and repeat it" },
         { "loopHalf", "HALF", "FULL", "Halve the micro-loop length" },
-        { "clockSmooth", "SMOOTH", "STEPPED", "Bypass the harmonised clock quantiser" } });
+        { "clockSmooth", "SMOOTH", "STEPPED", "Bypass the harmonised clock quantiser" },
+        // A toggle, not a dropdown - the Synth draws this two-value choice as a
+        // chip, and this card is meant to be that card. Same wording too.
+        { "crossSource", "CROSS: CHAN", "CROSS: INPUT",
+          "Modulate from your playing, or let each channel modulate the other" } });
 
     rows().addChoiceRow({
         { "loopMode", "LOOP", "Micro-looper mode", processorIn.loopMode().choices },
         { "routing", "ROUTE", "What the wet channel processes", processorIn.routing().choices },
-        { "wetMode", "WET", "Wet channel mode", processorIn.wetMode().choices },
-        { "crossSource", "CROSS SRC", "What drives the interference",
-          processorIn.crossSource().choices } });
+        { "wetMode", "WET", "Wet channel mode", processorIn.wetMode().choices } });
 
     rows().addKnobRow({
         { "clock", "CLOCK", "Engine sample rate: loop length, pitch and wet time at once" },
@@ -56,8 +58,9 @@ PX3DoomAudioProcessorEditor::PX3DoomAudioProcessorEditor(PX3DoomAudioProcessor& 
     attachChoice("loopMode", processorIn.loopMode());
     attachChoice("routing", processorIn.routing());
     attachChoice("wetMode", processorIn.wetMode());
-    attachChoice("crossSource", processorIn.crossSource());
 
+
+    attachToggle("crossSource", processorIn.crossSource());
     attachToggle("loopActive", processorIn.loopActive());
     attachToggle("wetActive", processorIn.wetActive());
     attachToggle("freeze", processorIn.freeze());

@@ -46,6 +46,12 @@ protected:
     void attachKnob(const juce::String& id, juce::AudioParameterFloat& parameter);
     void attachChoice(const juce::String& id, juce::AudioParameterChoice& parameter);
     void attachToggle(const juce::String& id, juce::AudioParameterBool& parameter);
+    // A two-value CHOICE shown as a toggle, which is what the Synth does for
+    // Doom's cross source: the parameter has two named options and the card
+    // says which one is selected rather than offering a dropdown of two.
+    // ButtonParameterAttachment takes any RangedAudioParameter and maps 0 and 1
+    // to off and on, so no parameter changes type to be drawn this way.
+    void attachToggle(const juce::String& id, juce::RangedAudioParameter& parameter);
     // The card's own bypass switch, which every FX card has.
     void attachBypass(juce::AudioParameterBool& parameter);
 

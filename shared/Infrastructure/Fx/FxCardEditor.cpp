@@ -73,6 +73,16 @@ void FxCardEditor::attachToggle(const juce::String& id, juce::AudioParameterBool
     else { jassertfalse; }
 }
 
+void FxCardEditor::attachToggle(const juce::String& id, juce::RangedAudioParameter& parameter)
+{
+    if (auto* button = card.toggle(id))
+    {
+        buttonAttachments.push_back(
+            std::make_unique<juce::ButtonParameterAttachment>(parameter, *button, nullptr));
+    }
+    else { jassertfalse; }
+}
+
 void FxCardEditor::attachBypass(juce::AudioParameterBool& parameter)
 {
     buttonAttachments.push_back(
