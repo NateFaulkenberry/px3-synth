@@ -18,6 +18,7 @@
 
 #include <JuceHeader.h>
 
+#include "InstallerVerification.h"
 #include "UpdateService.h"
 
 #include <csignal>
@@ -101,8 +102,17 @@ bool installerIsAcceptable(const juce::File& installer)
     // The signature is the real authenticator. A checksum says the bytes
     // arrived intact; this says who made them, and it is the same guarantee
     // the user gets double-clicking the installer themselves.
+    // Arguments as a StringArray, NOT as one command string.
+    //
+    // ChildProcess does not run a shell, so the quotes that looked like they
+    // were protecting a path with spaces and parentheses in it were passed
+    // through to pkgutil as literal characters. It answered "Package does not
+    // exist: \"/Users/...\"", which of course does not contain the certificate
+    // name, so every genuinely signed installer was refused as unsigned - and
+    // pkgutil exits 0 for a missing file, so nothing else caught it either.
     juce::ChildProcess check;
-    if (! check.start("/usr/sbin/pkgutil --check-signature \"" + installer.getFullPathName() + "\""))
+
+    if (! check.start(px3::update::signatureCheckCommand(installer)))
     {
         log("refused: could not run pkgutil to check the signature");
         return false;
@@ -111,9 +121,16 @@ bool installerIsAcceptable(const juce::File& installer)
     const auto output = check.readAllProcessOutput();
     check.waitForProcessToFinish(30000);
 
-    if (! output.contains("Developer ID Installer:"))
+    if (! px3::update::signatureOutputNamesADeveloperID(output))
     {
-        log("refused: " + installer.getFileName() + " is not signed by a Developer ID");
+        // What pkgutil actually said, not just what we concluded from it. The
+        // old message asserted a cause it had not established: it read "is not
+        // signed by a Developer ID" while the real answer was that pkgutil had
+        // never been given a path it could open. A refusal that reports only
+        // its verdict cannot be debugged from a log.
+        log("refused: " + installer.getFileName()
+                + " did not verify as Developer ID signed. pkgutil said: "
+                + output.trim().upToFirstOccurrenceOf("\n", false, false));
         return false;
     }
 
