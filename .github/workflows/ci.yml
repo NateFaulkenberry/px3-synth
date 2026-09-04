@@ -23,10 +23,18 @@ env:
   # Compiler jobs on a runner. THE knob - every build step below passes this to
   # --parallel explicitly, and nothing relies on a default.
   #
-  # Two. Below the macos-14 runner's three cores, deliberately, after a signed
-  # release stalled on a run that had built fine unsigned - leaving the job
-  # count as the one variable worth removing from the question. Chosen against
-  # measured numbers rather than a guess:
+  # Three. Back to it, after two failed at exactly the thing lowering it was
+  # meant to prevent - which is the only direct comparison this project has:
+  #
+  #   3 jobs   macOS package succeeded in 28m17s, signed
+  #   2 jobs   runner lost communication with the server and died at 60m02s
+  #
+  # Fewer jobs made the build slower, not safer. The successful run did both
+  # its builds inside 28 minutes; the failed one spent 13m38s on the tests and
+  # was still packaging 46 minutes later when the runner went. Whatever kills
+  # it correlates with how long the job runs, not how hard it pushes.
+  #
+  # Chosen against measured numbers rather than a guess:
   #
   #   Makefiles, bare `make -j`  unbounded  ->  posix_spawn: Resource
   #                                             temporarily unavailable
@@ -53,7 +61,7 @@ env:
   #
   # Set here and NOT in the scripts, so a developer's build keeps ninja's
   # default and stays fast.
-  PX3_BUILD_JOBS: 2
+  PX3_BUILD_JOBS: 3
 
   # Never write into ~/Library/Audio/Plug-Ins on a runner. The default is ON for
   # a developer's machine, where it is what makes a build testable in a host.
