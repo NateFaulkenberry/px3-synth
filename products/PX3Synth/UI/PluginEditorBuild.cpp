@@ -856,6 +856,15 @@ void PX3SynthAudioProcessorEditor::buildPanels()
     configureWavetableControls();
 
     macroStrip = std::make_unique<MacroStrip>(audioProcessor, &macroKnobLookAndFeel);
+
+    // The depth button under each knob is a toggle: it opens that macro's
+    // panel, and closes it if it is the one already open. Same button,
+    // both directions, so the way out is where the way in was.
+    macroStrip->onDepthToggled = [this](int macro)
+    {
+        if (depthPanelMacroIndex() == macro) { closeMacroDepthPanel(); }
+        else                                 { openMacroDepthPanel(macro); }
+    };
     addAndMakeVisible(*macroStrip);
 
     macroAssignOverlay = std::make_unique<MacroAssignOverlay>(*this);

@@ -1220,11 +1220,13 @@ void testMacroSystem()
                     const auto dark = strip->createComponentSnapshot(strip->getLocalBounds());
 
                     const auto caption = strip->debugCaption(1).getBounds();
-                    const auto clearOfTheKnob = strip->knob(1).getBounds().getBottom() + 6;
+                    // Above the knob now, so the band clear of its ring is the
+                    // one ENDING a few pixels short of the knob's top edge.
+                    const auto clearOfTheKnob = strip->knob(1).getBounds().getY() - 6;
 
                     auto changed = 0;
-                    for (int y = juce::jmax(caption.getY(), clearOfTheKnob);
-                         y < caption.getBottom(); ++y)
+                    for (int y = caption.getY();
+                         y < juce::jmin(caption.getBottom(), clearOfTheKnob); ++y)
                     {
                         for (int x = caption.getX(); x < caption.getRight(); ++x)
                         {
@@ -1235,7 +1237,7 @@ void testMacroSystem()
                     check("MacroUi_TheAssignmentHighlightCoversTheCaptionToo",
                           changed > 20,
                           juce::String(changed)
-                              + " pixels change well below the knob, behind the caption, "
+                              + " pixels change well above the knob, behind the caption, "
                               + "when its macro is armed");
                 }
 
@@ -1255,24 +1257,47 @@ void testMacroSystem()
                       tipsCorrect,
                       "hovering reads " + tips.joinIntoString(", "));
 
-                // The caption sits directly under its knob, with nothing
-                // between them - they are one control, not two things.
+                // The caption sits directly ABOVE its knob, with nothing between
+                // them - they are one control, not two things. It moved there
+                // when the depth button arrived below the knob: under the knob
+                // the caption sat between the two and read as the button's
+                // label rather than the macro's name.
                 juce::StringArray gaps;
                 for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
                 {
-                    const auto knobBottom = strip->knob(macro).getBounds().getBottom();
-                    const auto captionTop = strip->debugCaption(macro).getBounds().getY();
-                    if (captionTop - knobBottom != 0)
+                    const auto captionBottom = strip->debugCaption(macro).getBounds().getBottom();
+                    const auto knobTop = strip->knob(macro).getBounds().getY();
+                    if (knobTop - captionBottom != 0)
                     {
                         gaps.add("M" + juce::String(macro + 1) + " leaves "
-                                 + juce::String(captionTop - knobBottom) + " px");
+                                 + juce::String(knobTop - captionBottom) + " px");
                     }
                 }
 
-                check("MacroUi_TheCaptionSitsOnItsKnob",
+                check("MacroUi_TheCaptionSitsAboveItsKnob",
                       gaps.isEmpty(),
-                      gaps.isEmpty() ? "every caption starts where its knob ends"
+                      gaps.isEmpty() ? "every knob starts where its caption ends"
                                      : gaps.joinIntoString(", "));
+
+                // And the depth button sits below the knob, clear of it, so it
+                // reads as an action rather than as part of the disc.
+                juce::StringArray buttonGaps;
+                for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
+                {
+                    const auto knobBottom = strip->knob(macro).getBounds().getBottom();
+                    const auto buttonTop = strip->debugDepthButton(macro).getBounds().getY();
+                    const auto gap = buttonTop - knobBottom;
+                    if (gap < 3 || gap > 10)
+                    {
+                        buttonGaps.add("M" + juce::String(macro + 1) + " leaves "
+                                       + juce::String(gap) + " px");
+                    }
+                }
+
+                check("MacroUi_TheDepthButtonSitsBelowItsKnobWithAGap",
+                      buttonGaps.isEmpty(),
+                      buttonGaps.isEmpty() ? "every depth button clears its knob"
+                                           : buttonGaps.joinIntoString(", "));
 
                 // It sits to the LEFT of the rectangle every panel is laid out
                 // in, which is what puts it on all six without any panel
@@ -1377,8 +1402,12 @@ void testMacroSystem()
                     std::vector<juce::Rectangle<int>> groups;
                     for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
                     {
+                        // The button counts: it is part of the group that gets
+                        // centred in each cell, and measuring without it reads
+                        // its height as slack at the bottom of the strip.
                         groups.push_back(strip->knob(macro).getBounds()
-                                             .getUnion(strip->debugCaption(macro).getBounds()));
+                                             .getUnion(strip->debugCaption(macro).getBounds())
+                                             .getUnion(strip->debugDepthButton(macro).getBounds()));
                     }
 
                     auto worstSpacingSkew = 0;
@@ -3074,15 +3103,23 @@ void testMacroSystem()
                 const auto armedByCommandClick = editor->debugAssigningMacro();
                 const auto panelAfterCommandClick = editor->debugDepthPanelMacro();
 
-                check("MacroUx_DoubleClickArmsAssignmentAndCommandClickDoesNot",
+                // Cmd-click arms assignment, which is what it did before the
+                // depth panel borrowed the gesture. Depth has its own button
+                // under every knob now, so the modifier went back to the thing
+                // with no other affordance on the knob itself. Double click
+                // still arms too - it always did, and nothing displaced it.
+                check("MacroUx_BothDoubleClickAndCommandClickArmAssignment",
                       armedByDoubleClick == 2 && panelAfterDoubleClick < 0
-                          && armedByCommandClick < 0 && panelAfterCommandClick == 1,
+                          && armedByCommandClick == 1 && panelAfterCommandClick < 0,
                       "double click armed macro " + juce::String(armedByDoubleClick)
                           + " (panel " + juce::String(panelAfterDoubleClick)
                           + "); command click armed " + juce::String(armedByCommandClick)
-                          + " and opened the panel on macro " + juce::String(panelAfterCommandClick));
+                          + " (panel " + juce::String(panelAfterCommandClick) + ")");
 
-                // ---- the panel is the one that was clicked ------------------
+                // ---- the panel is the one whose button was pressed ----------
+                editor->debugFinishMacroAssignEditing();
+                strip->debugDepthButton(1).onClick();
+
                 check("MacroDepthUi_ThePanelNamesTheMacroItBelongsTo",
                       panel->getMacro() == 1
                           && panel->debugHeaderText()
@@ -3318,7 +3355,7 @@ void testMacroSystem()
                           + " - the two states are alternatives, never both");
 
                 // ---- and the reverse ----------------------------------------
-                editor->debugSimulateKnobCommandClick(strip->knob(3));
+                strip->debugDepthButton(3).onClick();
                 check("MacroDepthUi_OpeningThePanelLeavesAssignmentMode",
                       editor->debugAssigningMacro() < 0 && editor->debugDepthPanelMacro() == 3,
                       "assigning " + juce::String(editor->debugAssigningMacro())
@@ -3480,24 +3517,37 @@ void testMacroSystem()
                                  : juce::String("STOCK look-and-feel"));
                 }
 
-                // ---- cmd-click moves straight to another macro ----------------
+                // ---- the depth button moves straight to another macro ---------
                 //
-                // The scrim is what routes a click here while the panel is
-                // open, so without this the click is spent dismissing and the
-                // user has to click the second knob twice.
+                // The scrim routes every click outside the panel to the editor,
+                // so a depth button never receives its own while a panel is
+                // open. Without the editor's hit test the click is spent
+                // dismissing, and moving from one macro's depths to another's
+                // takes two clicks - the first of which looks like it did
+                // nothing. Cmd-click used to carry this; it means "assign" now.
                 {
                     editor->debugOpenMacroDepthPanel(0);
-                    const auto& target = strip->knob(2);
-                    editor->debugClickEditorAtWithModifiers(
-                        editor->getLocalPoint(&target, target.getLocalBounds().getCentre()),
-                        juce::ModifierKeys(juce::ModifierKeys::commandModifier));
+                    const auto& target = strip->debugDepthButton(2);
+                    editor->debugClickEditorAt(
+                        editor->getLocalPoint(&target, target.getLocalBounds().getCentre()));
 
-                    check("MacroDepthUi_CommandClickSwitchesStraightToAnotherMacro",
+                    check("MacroDepthUi_TheDepthButtonSwitchesStraightToAnotherMacro",
                           editor->debugDepthPanelMacro() == 2 && panel->getMacro() == 2
                               && panel->isVisible(),
                           "the panel moved to macro "
                               + juce::String(editor->debugDepthPanelMacro())
-                              + " on one command-click, without a dismissal in between");
+                              + " on one click, without a dismissal in between");
+
+                    // And its own button closes it, so the way out is where the
+                    // way in was.
+                    const auto& same = strip->debugDepthButton(2);
+                    editor->debugClickEditorAt(
+                        editor->getLocalPoint(&same, same.getLocalBounds().getCentre()));
+
+                    check("MacroDepthUi_TheDepthButtonClosesThePanelItOpened",
+                          editor->debugDepthPanelMacro() < 0 && ! panel->isVisible(),
+                          "after pressing the same button the panel is "
+                              + juce::String(editor->debugDepthPanelMacro()));
                 }
 
                 editor->debugCloseMacroDepthPanel();

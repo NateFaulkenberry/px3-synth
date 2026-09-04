@@ -268,28 +268,33 @@ void PX3SynthAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
     // rather than passed through to whatever sits underneath.
     if (depthPanelMacroIndex() >= 0)
     {
-        // A command-click on ANOTHER macro knob switches straight to it. The
-        // scrim is what routed this click here, so without this the click is
-        // spent closing the panel and the user has to click the second knob
-        // again - which is a dismissal getting in the way of the gesture it
-        // was meant to protect.
-        if (event.mods.isCommandDown())
+        // A click on a macro's DEPTH button reaches it here or not at all: the
+        // scrim is above the strip and routed this click, so the button never
+        // sees its own. Without this the click is spent on the dismissal and
+        // moving from one macro's depths to another's takes two clicks, the
+        // first of which looks like it did nothing.
+        //
+        // This is the same toggle the button has when no panel is open - its
+        // own macro closes, another macro switches - so the control behaves
+        // one way whatever is on screen.
+        if (macroStrip != nullptr && macroStrip->isVisible())
         {
-            if (auto* slider = findParameterKnobAt(point))
-            {
-                const auto parameterId = px3::ui::parameterIdOf(*slider);
+            const auto inStrip = macroStrip->getLocalPoint(this, point);
+            const auto macro = macroStrip->depthButtonAt(inStrip);
 
-                for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
-                {
-                    if (parameterId == PX3SynthAudioProcessor::macroParameterId(macro))
-                    {
-                        if (macro != depthPanelMacroIndex()) { openMacroDepthPanel(macro); }
-                        return;
-                    }
-                }
+            if (macro >= 0)
+            {
+                if (macro == depthPanelMacroIndex()) { closeMacroDepthPanel(); }
+                else                                 { openMacroDepthPanel(macro); }
+                return;
             }
         }
 
+        // Cmd-click is not a special case here any more. It means "assign this
+        // macro" everywhere now, and entering assignment closes the panel on
+        // its own, so falling through to the dismissal below and letting the
+        // knob's own handler arm it would be two answers to one click. The
+        // dismissal wins, and the gesture is available again immediately.
         closeMacroDepthPanel();
         return;
     }

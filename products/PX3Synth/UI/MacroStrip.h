@@ -4,8 +4,10 @@
 
 #include "ChipLabel.h"
 #include "ParameterKnob.h"
+#include "ToggleChipButton.h"
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -39,9 +41,23 @@ public:
     void setAssigningMacro(int macroIndex);
     int getAssigningMacro() const noexcept { return assigningMacro; }
 
-    // For the layout tests: the caption under a knob.
+    // Opening and closing a macro's depth panel. The strip does not know what
+    // a depth panel is - the editor owns that - so it asks, and is told back
+    // which macro's panel is open so the buttons can show it.
+    std::function<void(int)> onDepthToggled;
+    void setDepthPanelMacro(int macroIndex);
+
+    // Which macro's depth button is under a point in this strip's coordinates,
+    // or -1. The editor needs this because while a depth panel is open its
+    // scrim swallows every click outside the panel, so the buttons cannot
+    // receive their own - see the hit test in the editor's mouseDown.
+    int depthButtonAt(juce::Point<int> pointInStrip) const;
+
+    // For the layout tests: the caption ABOVE a knob, and the button below it.
     juce::Label& debugCaption(int macroIndex)
     { return entries[static_cast<std::size_t>(juce::jlimit(0, kCount - 1, macroIndex))].caption; }
+    juce::Button& debugDepthButton(int macroIndex)
+    { return entries[static_cast<std::size_t>(juce::jlimit(0, kCount - 1, macroIndex))].depth; }
 
     juce::Slider& knob(int macroIndex);
     const juce::Slider& knob(int macroIndex) const;
@@ -56,12 +72,14 @@ private:
     {
         juce::Slider knob;
         px3::ui::ChipLabel caption;
+        px3::ui::ToggleChipButton depth;
     };
     std::array<Entry, kCount> entries;
     std::vector<std::unique_ptr<juce::SliderParameterAttachment>> attachments;
 
     std::shared_ptr<const UIConfig> uiConfig;
     int assigningMacro { -1 };
+    int depthPanelMacro { -1 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MacroStrip)
 };
