@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 # Single source of truth for plugin/project SemVer.
-set(PX3_VERSION "0.7.3")
+set(PX3_VERSION "0.7.4")
 
 if (NOT PX3_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
     message(FATAL_ERROR "PX3_VERSION must use SemVer MAJOR.MINOR.PATCH (example: 0.1.0).")
