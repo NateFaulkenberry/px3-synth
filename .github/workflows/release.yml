@@ -41,26 +41,12 @@ env:
 
   # Notarisation, as a switch.
   #
-  # DIAGNOSTIC: currently "false". Three releases in a row died with "the
-  # hosted runner lost communication with the server", always inside Build and
-  # package, which bundles build + sign + notarise into one step and so hides
-  # which of the three is at fault. Logs never survive a dead runner, so the
-  # only way to see inside is to remove a phase and re-run.
-  #
-  # Step 9 takes ~17 minutes in the one run that ever succeeded and ~45 in
-  # every failure. Notarisation is the only part of it that waits on a service
-  # outside the runner - `xcrun notarytool submit --wait` blocks on Apple - and
-  # the successful run was at 00:40 UTC against failures at 03:43, 04:45 and
-  # 05:44, which is the sort of difference an external queue produces.
-  #
-  # If step 9 finishes near 17 minutes with this off, notarisation is the hang.
-  # If it still dies near 45, notarisation is cleared and the fault is in the
-  # build or the signing.
-  #
-  # SET THIS BACK TO "true" once that question is answered: artifacts built
-  # with it off are signed but NOT notarised, and Gatekeeper refuses those on
-  # any machine but the one that built them.
-  PX3_NOTARIZE: "false"
+  # Back ON. It was switched off for one run to find out whether
+  # `xcrun notarytool submit --wait` was what stalled the job, and that run
+  # died in exactly the same way with notarisation disabled - so notarisation
+  # is cleared, and leaving it off would only mean shipping artifacts
+  # Gatekeeper refuses.
+  PX3_NOTARIZE: "true"
 
 jobs:
   # --------------------------------------------------------------------------
