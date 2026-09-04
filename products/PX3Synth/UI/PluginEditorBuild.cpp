@@ -1196,7 +1196,9 @@ void PX3SynthAudioProcessorEditor::buildPresetBar()
     presetListBox.setColour(juce::ListBox::backgroundColourId, juce::Colour::fromRGBA(20, 20, 20, 200));
 
     presetBrowserLoadButton.setButtonText("LOAD");
-    presetBrowserCloseButton.setButtonText("CLOSE");
+    // CANCEL rather than CLOSE: it sits beside LOAD, and the pair reads as the
+    // choice actually being made - take this preset, or take none.
+    presetBrowserCloseButton.setButtonText("CANCEL");
     setupPresetButton(presetBrowserLoadButton);
     setupPresetButton(presetBrowserCloseButton);
 
@@ -1223,12 +1225,7 @@ void PX3SynthAudioProcessorEditor::buildPresetBar()
     presetBrowserPanel.addAndMakeVisible(presetBrowserCloseGlyph);
     presetBrowserLoadButton.onClick = [this]()
     {
-        const auto row = presetListBox.getSelectedRow();
-        if (row >= 0 && row < static_cast<int>(presetFiltered.size()))
-        {
-            applyPresetRecord(presetFiltered[static_cast<std::size_t>(row)]);
-            closePresetBrowser();
-        }
+        loadPresetRow(presetListBox.getSelectedRow());
     };
 
 }

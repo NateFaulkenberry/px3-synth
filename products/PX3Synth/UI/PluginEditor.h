@@ -526,6 +526,7 @@ private:
     void refreshTopMenuSelectionFromProcessor();
     void updatePresetDirtyState();
     juce::String computeCurrentStateHash() const;
+    void loadPresetRow(int row);
     int getNumRows() override;
     void paintListBoxItem(int rowNumber,
                           juce::Graphics& g,
@@ -533,6 +534,9 @@ private:
                           int height,
                           bool rowIsSelected) override;
     void selectedRowsChanged(int lastRowSelected) override;
+    // Double-clicking a row loads it. Selecting a preset and then reaching for
+    // LOAD is the long way round the gesture every list has.
+    void listBoxItemDoubleClicked(int row, const juce::MouseEvent& event) override;
     void timerCallback() override;
     juce::File resolveUiConfigFile() const;
     void loadUiConfig(bool forceReload);
