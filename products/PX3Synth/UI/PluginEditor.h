@@ -573,6 +573,7 @@ private:
     void refreshDebugParameterInspector();
     void refreshDebugParameterControls();
     void refreshDebugEventLog();
+    void refreshDebugUpdateStatus();
     void refreshDebugLfoState();
     void refreshDebugEnvelopeState();
     void refreshDebugPerformanceOverlay();
@@ -1050,6 +1051,7 @@ private:
     juce::Label debugParameterLabel;
     juce::Label debugBackendControlLabel;
     juce::Label debugEventLogLabel;
+    juce::Label debugUpdateLabel;
     juce::Label debugSnapshotLabel;
     juce::Label debugLfoLabel;
     juce::Label debugLfoAssignLabel;
@@ -1064,6 +1066,7 @@ private:
     juce::TextEditor debugSerializedText;
     juce::TextEditor debugParameterInspectorText;
     juce::TextEditor debugEventLogText;
+    juce::TextEditor debugUpdateText;
     juce::TextEditor debugSnapshotText;
     juce::TextEditor debugLfoText;
     juce::TextEditor debugEnvelopeText;

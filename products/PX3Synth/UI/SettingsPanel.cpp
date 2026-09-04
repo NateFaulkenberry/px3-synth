@@ -142,6 +142,7 @@ void SettingsPanel::changeListenerCallback(juce::ChangeBroadcaster* source)
     // full refresh, because the update section repaints and re-lays out.
     if (source == &px3::update::UpdateService::getInstance())
     {
+        logUpdateStateIfChanged();
         refreshUpdateSection();
         return;
     }
@@ -327,6 +328,43 @@ void SettingsPanel::refreshUpdateSection()
     repaint();
 }
 
+void SettingsPanel::logUpdateEvent(const juce::String& event, const juce::String& details)
+{
+    processor.debugLogEvent("UPDATE", event, details);
+}
+
+void SettingsPanel::logUpdateStateIfChanged()
+{
+    using namespace px3::update;
+
+    auto& service = UpdateService::getInstance();
+    const auto stateIndex = static_cast<int>(service.getState());
+
+    if (stateIndex != lastLoggedUpdateState)
+    {
+        const auto error = service.getErrorMessage();
+        logUpdateEvent("STATE",
+                       "state=" + describe(service.getState())
+                           + (error.isNotEmpty() ? " error=" + error : juce::String())
+                           + " staged=" + (service.hasStagedUpdate() ? "yes" : "no"));
+        lastLoggedUpdateState = stateIndex;
+        lastLoggedProgressPercent = -1;
+        return;
+    }
+
+    // Progress, in ten-percent steps. The service broadcasts far more often
+    // than that, and a log that scrolls itself is a log nobody reads.
+    if (service.getState() == UpdateState::downloading)
+    {
+        const auto percent = static_cast<int>(service.getProgress() * 100.0f) / 10 * 10;
+        if (percent != lastLoggedProgressPercent)
+        {
+            logUpdateEvent("PROGRESS", "percent=" + juce::String(percent));
+            lastLoggedProgressPercent = percent;
+        }
+    }
+}
+
 void SettingsPanel::onUpdateButtonClicked()
 {
     using namespace px3::update;
@@ -336,22 +374,55 @@ void SettingsPanel::onUpdateButtonClicked()
     switch (service.getState())
     {
         case UpdateState::updateAvailable:
+        {
+            // What was on offer at the moment the button was pressed. When a
+            // download fails, the useful question is which asset it was given -
+            // the url and the checksum decide whether the failure was the
+            // network, the wrong file, or a release published without a sum.
+            const auto release = service.getAvailableRelease();
+            logUpdateEvent("CLICK_PREPARE",
+                           "version=" + release.version.toString()
+                               + " file=" + release.installerFilename
+                               + " archive=" + (release.installerIsArchive ? "yes" : "no")
+                               + " prerelease=" + (release.isPreRelease ? "yes" : "no")
+                               + " sha256=" + (release.sha256.isNotEmpty() ? release.sha256.substring(0, 12) + "..."
+                                                                           : "(none published)")
+                               + " url=" + release.downloadUrl.toString(false));
             service.prepareUpdate();
             break;
+        }
 
         case UpdateState::downloading:
         case UpdateState::verifying:
+            logUpdateEvent("CLICK_CANCEL", "state=" + describe(service.getState()));
             service.cancel();
             break;
 
         case UpdateState::readyToInstall:
+        {
             // Hands the staged installer to the helper application, which is
             // what waits for the host to quit. Nothing destructive happens in
             // this process - it is a plugin inside somebody's DAW.
-            service.launchInstaller();
+            //
+            // Logged in detail because this is the step that has to survive the
+            // host quitting: once the DAW goes, so does any chance of seeing
+            // what happened. The file, its size and whether the helper was
+            // found are the three things worth knowing afterwards.
+            const auto installer = service.stagedInstaller();
+            logUpdateEvent("CLICK_INSTALL",
+                           "installer=" + installer.getFullPathName()
+                               + " exists=" + (installer.existsAsFile() ? "yes" : "no")
+                               + " bytes=" + juce::String(installer.existsAsFile() ? installer.getSize() : 0));
+
+            const auto launched = service.launchInstaller();
+            logUpdateEvent(launched ? "INSTALL_LAUNCHED" : "INSTALL_LAUNCH_FAILED",
+                           launched ? "the helper was started; it waits for this host to quit"
+                                    : "error=" + service.getErrorMessage());
             break;
+        }
 
         default:
+            logUpdateEvent("CLICK_CHECK", "state=" + describe(service.getState()));
             service.checkForUpdates(true);
             break;
     }

@@ -2,6 +2,7 @@
 #include "PluginProcessorInternals.h"
 
 #include "PX3Version.h"
+#include "UpdateService.h"
 
 #include <algorithm>
 #include <functional>
@@ -125,6 +126,7 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     setupLabel(debugPresetToolsLabel, "E. PRESET / STATE TOOLS");
     setupLabel(debugSnapshotLabel, "J. STATE TESTING");
     setupLabel(debugEventLogLabel, "K. EVENT LOG");
+    setupLabel(debugUpdateLabel, "L. UPDATE");
 
     setupEditor(debugInstanceText);
     setupEditor(debugModuleOrderText);
@@ -134,6 +136,7 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     setupEditor(debugSerializedText);
     setupEditor(debugParameterInspectorText);
     setupEditor(debugEventLogText);
+    setupEditor(debugUpdateText);
     setupEditor(debugSnapshotText);
     setupEditor(debugLfoText);
     setupEditor(debugEnvelopeText);
@@ -288,11 +291,13 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     addToSections(debugDumpPresetCategoryLabel);
     addToSections(debugSnapshotLabel);
     addToSections(debugEventLogLabel);
+    addToSections(debugUpdateLabel);
     addToSections(debugInstanceText);
     addToSections(debugModuleOrderText);
     addToSections(debugValueTreeText);
     addToSections(debugParameterInspectorText);
     addToSections(debugEventLogText);
+    addToSections(debugUpdateText);
     addToSections(debugSnapshotText);
     addToSections(debugLfoText);
     addToSections(debugEnvelopeText);
@@ -1027,6 +1032,8 @@ void PX3SynthAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& 
 
     sectionRight(debugParameterLabel, debugParameterInspectorText, 120);
     sectionRight(debugSnapshotLabel, debugSnapshotText, 80);
+    // Before the event log, which claims whatever height is left.
+    sectionRight(debugUpdateLabel, debugUpdateText, 150);
     sectionRight(debugEventLogLabel, debugEventLogText, juce::jmax(120, right.getHeight() - 24));
 
     auto content = debugParamViewport.getLocalBounds().reduced(4);
@@ -1075,6 +1082,7 @@ void PX3SynthAudioProcessorEditor::refreshDebugPanel(bool includeHeavySections)
     refreshDebugLfoState();
     refreshDebugEnvelopeState();
     refreshDebugEventLog();
+    refreshDebugUpdateStatus();
     debugInstanceText.setText(buildInstanceInfoText(), juce::dontSendNotification);
 }
 
@@ -1250,6 +1258,52 @@ void PX3SynthAudioProcessorEditor::refreshDebugEventLog()
     setDebugTextStable(debugEventLogText,
                        audioProcessor.debugGetEventLogText(),
                        true);
+}
+
+void PX3SynthAudioProcessorEditor::refreshDebugUpdateStatus()
+{
+    using namespace px3::update;
+
+    auto& service = UpdateService::getInstance();
+    const auto state = service.getState();
+    const auto release = service.getAvailableRelease();
+    const auto installer = service.stagedInstaller();
+
+    juce::StringArray lines;
+    lines.add("state:      " + describe(state));
+
+    const auto error = service.getErrorMessage();
+    lines.add("error:      " + (error.isNotEmpty() ? error : juce::String("(none)")));
+
+    lines.add("installed:  " + px3::version::string());
+    lines.add("offered:    " + (release.version.toString().isNotEmpty()
+                                    ? release.version.toString()
+                                          + (release.isPreRelease ? " (pre-release)" : juce::String())
+                                    : juce::String("(nothing)")));
+
+    if (state == UpdateState::downloading)
+    {
+        lines.add("progress:   " + juce::String(static_cast<int>(service.getProgress() * 100.0f)) + "%");
+    }
+
+    // The staged installer, spelled out. When Install does nothing, the first
+    // question is whether the file the helper is being handed is actually
+    // there, and this answers it without a trip to the Finder.
+    lines.add("staged:     " + juce::String(service.hasStagedUpdate() ? "yes" : "no"));
+    lines.add("installer:  " + (installer != juce::File() ? installer.getFullPathName()
+                                                          : juce::String("(none)")));
+    lines.add("  exists:   " + juce::String(installer.existsAsFile() ? "yes" : "no")
+              + (installer.existsAsFile()
+                     ? "  (" + juce::File::descriptionOfSizeInBytes(installer.getSize()) + ")"
+                     : juce::String()));
+    lines.add("staging:    " + UpdateService::stagingDirectory().getFullPathName());
+
+    const auto history = audioProcessor.debugGetEventLogTextForSource("UPDATE");
+    lines.add({});
+    lines.add(history.isNotEmpty() ? history
+                                   : "(no update activity yet - use Check / Prepare / Install in SETTINGS)");
+
+    setDebugTextStable(debugUpdateText, lines.joinIntoString("\n"), true);
 }
 
 void PX3SynthAudioProcessorEditor::refreshDebugLfoState()

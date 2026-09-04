@@ -73,6 +73,15 @@ private:
     void refreshUpdateSection();
     void onUpdateButtonClicked();
 
+    // Writes the update story into the debug console's event log.
+    //
+    // It lives here rather than in UpdateService because shared code must not
+    // depend on a product, and the log belongs to the Synth's processor. This
+    // panel is already the service's listener, so every transition passes
+    // through it anyway.
+    void logUpdateEvent(const juce::String& event, const juce::String& details = {});
+    void logUpdateStateIfChanged();
+
     PX3SynthAudioProcessor& processor;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
@@ -96,6 +105,13 @@ private:
     // it, refreshing writes the value straight back and a preset load fights
     // whatever the user last touched.
     bool updatingFromProcessor { false };
+
+    // Only transitions are logged, not every broadcast: the service also
+    // broadcasts on download progress, which would otherwise bury the state
+    // changes under hundreds of identical lines. Progress is logged in coarse
+    // steps for the same reason.
+    int lastLoggedUpdateState { -1 };
+    int lastLoggedProgressPercent { -1 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SettingsPanel)
 };
