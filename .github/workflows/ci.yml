@@ -23,8 +23,9 @@ env:
   # Compiler jobs on a runner. THE knob - every build step below passes this to
   # --parallel explicitly, and nothing relies on a default.
   #
-  # Three, which is one per core on a macos-14 runner. Chosen against measured
-  # numbers rather than a guess:
+  # Four, one above the macos-14 runner's three cores - deliberately a shade of
+  # oversubscription, so a job blocked on I/O does not idle a core. Chosen
+  # against measured numbers rather than a guess:
   #
   #   Makefiles, bare `make -j`  unbounded  ->  posix_spawn: Resource
   #                                             temporarily unavailable
@@ -35,7 +36,18 @@ env:
   # ninja's default already works here. The limit is explicit anyway: it is
   # visible in the log, it is one number in one place, and it keeps a margin on
   # a 7 GB runner where JUCE's larger translation units peak near a gigabyte
-  # each. Two would have been safer still and roughly twice as slow.
+  # each - four of them is about 4 GB, which fits.
+  #
+  # Per-job times so far, all with ccache restoring across runs, so these
+  # compare configurations only loosely:
+  #
+  #   macOS build+test, ninja default (5)   596s
+  #   macOS build+test, 3                   445s
+  #   release macOS package, 3             1697s
+  #
+  # The middle line is not evidence that fewer jobs are faster: that run
+  # restored the previous run's ccache. Judge a change to this number against a
+  # run whose cache state matches, or not at all.
   #
   # Passed as an ARGUMENT, never exported and hoped for. Measured on a real
   # CMake+Ninja project by counting concurrently running jobs:
@@ -51,7 +63,7 @@ env:
   #
   # Set here and NOT in the scripts, so a developer's build keeps ninja's
   # default and stays fast.
-  PX3_BUILD_JOBS: 3
+  PX3_BUILD_JOBS: 4
 
   # Never write into ~/Library/Audio/Plug-Ins on a runner. The default is ON for
   # a developer's machine, where it is what makes a build testable in a host.
