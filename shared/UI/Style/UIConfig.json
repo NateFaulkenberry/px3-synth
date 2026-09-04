@@ -2758,9 +2758,11 @@
   },
   "updateNotice": {
     "colors": {
-      "background": "#CC000000",
-      "border": "#59FFFFFF",
-      "text": "#FFFFFFFF"
+      "background": "#000000",
+      "backgroundOpacity": 0.3,
+      "border": "#FFFFFF",
+      "borderOpacity": 0.35,
+      "text": "#FFFFFF"
     },
     "layout": {
       "offsetX": 0,

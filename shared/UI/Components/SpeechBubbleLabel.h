@@ -24,9 +24,20 @@ public:
 
     struct Style
     {
-        juce::Colour background { juce::Colours::black.withAlpha(0.80f) };
-        juce::Colour border     { juce::Colours::white.withAlpha(0.35f) };
+        juce::Colour background { juce::Colours::black };
+        juce::Colour border     { juce::Colours::white };
         juce::Colour text       { juce::Colours::white };
+
+        // Translucency as its own property rather than alpha buried in the hex,
+        // matching how every other configurable fill here is described. The two
+        // are separate because a speech bubble wants them separate: a dark body
+        // you can read text against, with an outline that sits back further
+        // than the body does. Multiplied into the colour, so a colour that
+        // carries its own alpha still works and these scale it.
+        // Defaulted to the look these replaced, so a bubble built without config
+        // is translucent exactly as before rather than a solid black slab.
+        float backgroundOpacity { 0.80f };
+        float borderOpacity     { 0.35f };
 
         float cornerRadius { 6.0f };
         float borderWidth  { 1.0f };
@@ -122,12 +133,14 @@ public:
     {
         const auto path = buildBubblePath(getLocalBounds().toFloat(), style);
 
-        g.setColour(style.background);
+        g.setColour(style.background.withMultipliedAlpha(
+            juce::jlimit(0.0f, 1.0f, style.backgroundOpacity)));
         g.fillPath(path);
 
         if (style.borderWidth > 0.0f)
         {
-            g.setColour(style.border);
+            g.setColour(style.border.withMultipliedAlpha(
+                juce::jlimit(0.0f, 1.0f, style.borderOpacity)));
             g.strokePath(path, juce::PathStrokeType(style.borderWidth));
         }
 

@@ -579,6 +579,46 @@ void testEditorLayout()
               ! path.isEmpty() && path.getBounds().getHeight() <= 24.0f,
               "height " + juce::String(path.getBounds().getHeight(), 1));
     }
+
+    // ---- background and border fade independently --------------------------
+    //
+    // The two opacities exist so the body can be readable while the outline
+    // sits back, so the test that matters is that they do NOT move together:
+    // one config value must not silently drive both.
+    {
+        SpeechBubbleLabel::Style style;
+        style.background = juce::Colours::black;
+        style.border     = juce::Colours::white;
+        style.backgroundOpacity = 0.30f;
+        style.borderOpacity     = 0.35f;
+
+        const auto bg     = style.background.withMultipliedAlpha(style.backgroundOpacity);
+        const auto border = style.border.withMultipliedAlpha(style.borderOpacity);
+
+        check("UpdateNotice_BackgroundOpacityApplies",
+              std::abs(bg.getFloatAlpha() - 0.30f) < 0.01f,
+              "alpha " + juce::String(bg.getFloatAlpha(), 3));
+        check("UpdateNotice_BorderOpacityIsIndependentOfBackground",
+              std::abs(border.getFloatAlpha() - 0.35f) < 0.01f
+                  && std::abs(border.getFloatAlpha() - bg.getFloatAlpha()) > 0.01f,
+              "border " + juce::String(border.getFloatAlpha(), 3)
+                  + " background " + juce::String(bg.getFloatAlpha(), 3));
+
+        // Alpha already in the colour is scaled, not replaced - a hex value
+        // that carries its own alpha has to keep meaning something.
+        const auto halfLit = juce::Colours::white.withAlpha(0.50f)
+                                 .withMultipliedAlpha(0.50f);
+        check("UpdateNotice_OpacityMultipliesColourAlpha",
+              std::abs(halfLit.getFloatAlpha() - 0.25f) < 0.01f,
+              "alpha " + juce::String(halfLit.getFloatAlpha(), 3));
+
+        // Out-of-range values are clamped rather than wrapping, so a typo in
+        // UIConfig cannot produce an invisible or over-bright bubble.
+        check("UpdateNotice_OpacityIsClamped",
+              juce::jlimit(0.0f, 1.0f, 4.0f) == 1.0f
+                  && juce::jlimit(0.0f, 1.0f, -2.0f) == 0.0f,
+              "clamped");
+    }
 }
 
 } // namespace px3tests

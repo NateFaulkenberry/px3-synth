@@ -239,11 +239,18 @@ void PX3SynthAudioProcessorEditor::resized()
         SpeechBubbleLabel::Style style;
         if (uiConfig != nullptr)
         {
+            // Opaque fallbacks: translucency is the opacity keys' job now, and a
+            // colour carrying its own alpha would be multiplied by them twice.
             style.background = uiConfig->getColour("updateNotice.colors.background",
-                                                   juce::Colours::black.withAlpha(0.80f));
+                                                   juce::Colours::black);
             style.border     = uiConfig->getColour("updateNotice.colors.border",
-                                                   juce::Colours::white.withAlpha(0.35f));
+                                                   juce::Colours::white);
             style.text       = uiConfig->getColour("updateNotice.colors.text", juce::Colours::white);
+
+            style.backgroundOpacity = uiConfig->getFloat("updateNotice.colors.backgroundOpacity",
+                                                         style.backgroundOpacity);
+            style.borderOpacity     = uiConfig->getFloat("updateNotice.colors.borderOpacity",
+                                                         style.borderOpacity);
 
             style.cornerRadius = uiConfig->getFloat("updateNotice.layout.cornerRadius", 6.0f);
             style.borderWidth  = uiConfig->getFloat("updateNotice.layout.borderWidth", 1.0f);
