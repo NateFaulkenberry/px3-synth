@@ -647,7 +647,34 @@ else
 fi
 
 echo "[3/8] Building Release"
-cmake --build "${BUILD_DIR}" --config Release --parallel
+
+# Job count, and why this is not simply `--parallel`.
+#
+# This script does not pass -G, so CMake picks its default generator, which on
+# macOS is Unix Makefiles. `cmake --build --parallel` with no number then hands
+# make a bare `-j`, and a bare `-j` to GNU make means NO LIMIT: it starts a job
+# for every target that is ready, which across eight products is hundreds of
+# clang processes at once. On a developer machine that merely thrashes; on a
+# 3-core GitHub runner it exhausts the process table and the compiler dies with
+#
+#   clang: error: unable to execute command: posix_spawn failed:
+#          Resource temporarily unavailable
+#
+# Ninja does not have this problem - it self-limits to cores+2 - which is why
+# every other build in this project was unaffected.
+#
+# CMAKE_BUILD_PARALLEL_LEVEL cannot fix it from the environment, because an
+# explicit --parallel on the command line overrides that variable. So the value
+# is read here and passed as a number. Unset, the behaviour is exactly what it
+# has always been locally.
+BUILD_PARALLEL_ARGS=(--parallel)
+if [[ -n "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ]]; then
+  BUILD_PARALLEL_ARGS=(--parallel "${CMAKE_BUILD_PARALLEL_LEVEL}")
+  echo "  Parallel jobs: ${CMAKE_BUILD_PARALLEL_LEVEL} (CMAKE_BUILD_PARALLEL_LEVEL)"
+else
+  echo "  Parallel jobs: unbounded (generator default)"
+fi
+cmake --build "${BUILD_DIR}" --config Release "${BUILD_PARALLEL_ARGS[@]}"
 
 echo "[4/8] Locating plugins"
 AU_BUNDLE="$(find_bundle component || true)"

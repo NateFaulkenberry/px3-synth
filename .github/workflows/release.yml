@@ -48,7 +48,7 @@ jobs:
       environment: ${{ steps.resolve.outputs.environment }}
     steps:
       - name: Checkout the ref being released
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # THE reproducibility requirement. For a release event this is the tag
           # the release points at, not whatever main happens to be: a release
@@ -175,7 +175,7 @@ jobs:
             && secrets.MACOS_INSTALLER_P12 != '' }}
     steps:
       - name: Checkout the exact ref
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.identify.outputs.ref }}
 
@@ -195,7 +195,7 @@ jobs:
       # overlap between them; without it the job runs closer to its timeout than
       # is comfortable on a 3-core runner.
       - name: Cache compiler output
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/Library/Caches/ccache
           key: ccache-release-${{ needs.identify.outputs.core }}-${{ github.sha }}
@@ -335,6 +335,21 @@ jobs:
       - name: Build and package
         id: build
         env:
+          # Two compiler jobs, and only for this step.
+          #
+          # build-release.sh takes CMake's default generator, which on macOS is
+          # Unix Makefiles, and `--parallel` with no number hands make a bare
+          # `-j` - meaning NO LIMIT. Across eight products that is hundreds of
+          # concurrent clang processes, and a 3-core runner answers with
+          # "posix_spawn failed: Resource temporarily unavailable".
+          #
+          # Scoped to this step rather than the job because the test build above
+          # uses Ninja, which self-limits to cores+2 and was never the problem.
+          # Capping that one too would only make a 90-minute timeout likelier.
+          #
+          # Set here rather than inside the script, so a developer's local
+          # release build keeps the parallelism it has always had.
+          CMAKE_BUILD_PARALLEL_LEVEL: 2
           CODESIGN_IDENTITY:      ${{ secrets.MACOS_CODESIGN_IDENTITY }}
           DEVELOPER_ID_INSTALLER: ${{ secrets.MACOS_INSTALLER_IDENTITY }}
           APPLE_ID:               ${{ secrets.APPLE_ID }}
@@ -394,7 +409,7 @@ jobs:
           echo "dir=$OUT" >> "$GITHUB_OUTPUT"
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: px3-macos-${{ needs.identify.outputs.version }}
           path: ${{ steps.collect.outputs.dir }}/*
@@ -402,7 +417,7 @@ jobs:
 
       - name: Upload test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: px3-macos-reports-${{ needs.identify.outputs.version }}
           path: |
@@ -427,7 +442,7 @@ jobs:
     runs-on: windows-latest
     if: vars.PX3_ENABLE_WINDOWS == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.identify.outputs.ref }}
       - name: Build
@@ -450,7 +465,7 @@ jobs:
       contents: write         # required to add assets; nothing else is granted
     steps:
       - name: Download built artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: px3-macos-${{ needs.identify.outputs.version }}
           path: assets

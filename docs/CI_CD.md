@@ -343,6 +343,19 @@ the run; `our-warnings.log` in the test-reports artifact lists exactly the lines
 `regress-report.txt`, `rtsafety-report.txt` and `smoke-report.txt` for 14 days,
 so a failure is diagnosable without rebuilding locally.
 
+**`posix_spawn failed: Resource temporarily unavailable` during compilation.**
+The build ran with unbounded parallelism. `scripts/build-release.sh` passes no
+`-G`, so CMake picks Unix Makefiles on macOS, and `--parallel` with no number
+hands make a bare `-j` — which to GNU make means *no limit*, not *one job per
+core*. Across eight products that is hundreds of concurrent clang processes,
+and a 3-core runner runs out of them.
+
+The release workflow sets `CMAKE_BUILD_PARALLEL_LEVEL: 2` on its build step, and
+the script passes that through as an explicit `-j2`. Note that the environment
+variable alone is **not** enough: an explicit `--parallel` on the command line
+overrides it, which is why the script reads the variable rather than relying on
+CMake to. Ninja builds were never affected — ninja self-limits to cores+2.
+
 **Assets are unsigned.** Expected until the secrets above are configured. The run
 summary says so explicitly. Signing needs **both** P12 secrets: with only one,
 the bundles would sign and `productsign` would fail at the very end of a

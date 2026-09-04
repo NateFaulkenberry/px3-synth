@@ -39,7 +39,7 @@ jobs:
     name: Static checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Shell scripts parse
         run: |
@@ -91,7 +91,7 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install build tools
         run: brew install ninja ccache
@@ -99,14 +99,14 @@ jobs:
       # JUCE is a pinned FetchContent tag, so its checkout is cacheable and
       # identical run to run. Restores ~45s of clone on every build.
       - name: Cache JUCE checkout
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: build/_deps
           key: juce-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
           restore-keys: juce-${{ runner.os }}-
 
       - name: Cache compiler output
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/Library/Caches/ccache
           key: ccache-${{ runner.os }}-${{ github.sha }}
@@ -221,7 +221,7 @@ jobs:
 
       - name: Upload test reports
         if: always()                    # a failed run is when these matter most
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: macos-test-reports-${{ github.run_number }}
           path: |
@@ -237,7 +237,7 @@ jobs:
 
       - name: Upload build log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: macos-build-log-${{ github.run_number }}
           path: build.log
@@ -261,7 +261,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: brew install ninja
       - name: Configure and build benchmarks
         run: |
@@ -271,7 +271,7 @@ jobs:
         run: ./build-bench/PX3Bench_artefacts/Release/PX3Bench 2>&1 | tee cpu-bench.txt
       - name: Memory benchmark
         run: ./build-bench/PX3MemBench_artefacts/Release/PX3MemBench --json 2>&1 | tee mem-bench.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: benchmarks-${{ github.run_number }}
@@ -299,7 +299,7 @@ jobs:
     timeout-minutes: 60
     if: vars.PX3_ENABLE_WINDOWS == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configure (VST3 only)
         run: >
           cmake -S . -B build
