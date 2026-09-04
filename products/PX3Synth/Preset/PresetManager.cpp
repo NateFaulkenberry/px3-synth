@@ -693,6 +693,20 @@ const PresetManager::PresetRecord* PresetManager::findByFile(const juce::File& f
 
 juce::File PresetManager::getRootDir() const
 {
+    // PX3_PRESET_ROOT redirects the whole preset tree, so a test can index,
+    // save and delete real preset files without touching the presets a person
+    // has actually made. The uninstaller's scripts take PX3_SCAN_ROOT for the
+    // same reason and in the same shape.
+    //
+    // Opt-in and empty in every normal run: nothing sets it but a test, and an
+    // unset variable takes the branch below. It is read each time rather than
+    // cached so a test can point successive managers at different directories.
+    const auto override_ = juce::SystemStats::getEnvironmentVariable("PX3_PRESET_ROOT", {});
+    if (override_.isNotEmpty())
+    {
+        return juce::File(override_);
+    }
+
     return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("P(X3)");
 }
 

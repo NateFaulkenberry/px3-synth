@@ -568,6 +568,169 @@ void testPresets()
         presetFile.deleteFile();
         tempDirectory.deleteRecursively();
     }
+
+    // ---- the preset browser ------------------------------------------------
+    //
+    // Driven the way a person drives it: open the window, look at the rows,
+    // pick one, and use a gesture. There was no harness for any of this, which
+    // is why loading a preset by double-clicking it shipped untested.
+    //
+    // PX3_PRESET_ROOT points the whole preset tree at a temp directory, so
+    // these index, load and delete real preset files without going anywhere
+    // near the presets somebody has actually made.
+    {
+        const auto browserRoot = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                     .getChildFile("px3-browser-" + juce::Uuid().toString());
+        browserRoot.createDirectory();
+
+        const auto previousRoot =
+            juce::SystemStats::getEnvironmentVariable("PX3_PRESET_ROOT", {});
+        ::setenv("PX3_PRESET_ROOT", browserRoot.getFullPathName().toRawUTF8(), 1);
+
+        {
+            PX3SynthAudioProcessor processor;
+            processor.setPlayConfigDetails(0, 2, 48000.0, 256);
+            processor.prepareToPlay(48000.0, 256);
+
+            // Two presets that differ in one obvious parameter, so "the right
+            // one loaded" is a value rather than a name.
+            PresetManager manager(processor);
+            juce::String setupError;
+            manager.initialise(setupError);
+
+            auto& cutoff = processor.getFilterCutoffParam(0);
+
+            // getValue() is AudioProcessorParameter's private override; the
+            // public way to the same 0-1 number is through the range.
+            const auto norm = [&cutoff]
+            { return cutoff.getNormalisableRange().convertTo0to1(cutoff.get()); };
+            const auto writePreset = [&](const juce::String& name, float normalised)
+            {
+                cutoff.setValueNotifyingHost(normalised);
+                PresetManager::PresetMetadata meta;
+                meta.name = name;
+                meta.category = "Test";
+                meta.author = "harness";
+                juce::String error;
+                const auto file = manager.getUserPresetRootDir()
+                                      .getChildFile(name + ".px3preset");
+                manager.dumpCurrentStateToPresetFile(file, meta, true, false, error, nullptr);
+                return file;
+            };
+
+            writePreset("BrowserDark", 0.10f);
+            writePreset("BrowserBright", 0.90f);
+
+            std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+
+            if (auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get()))
+            {
+                editor->setSize(1280, 800);
+                editor->debugOpenPresetBrowser();
+                editor->debugRebuildPresetList();
+
+                const auto names = editor->debugPresetRowNames();
+
+                check("PresetBrowser_TheWindowOpensShowingTheSavedPresets",
+                      editor->debugPresetBrowserVisible()
+                          && names.contains("BrowserDark")
+                          && names.contains("BrowserBright"),
+                      "showing " + juce::String(editor->debugPresetRowCount())
+                          + " rows: " + names.joinIntoString(", "));
+
+                const auto rowOf = [&](const juce::String& name)
+                { return editor->debugPresetRowNames().indexOf(name); };
+
+                // ---- a double click loads that row and closes the window ----
+                cutoff.setValueNotifyingHost(0.5f);
+                const auto brightRow = rowOf("BrowserBright");
+
+                if (brightRow >= 0)
+                {
+                    editor->debugDoubleClickPresetRow(brightRow);
+
+                    check("PresetBrowser_DoubleClickingARowLoadsIt",
+                          std::abs(norm() - 0.90f) < 0.01f,
+                          "cutoff reads " + juce::String(norm(), 3)
+                              + " after double-clicking BrowserBright");
+
+                    check("PresetBrowser_LoadingClosesTheWindow",
+                          ! editor->debugPresetBrowserVisible(),
+                          "the browser is "
+                              + juce::String(editor->debugPresetBrowserVisible() ? "still open"
+                                                                                 : "closed"));
+                }
+
+                // ---- the LOAD button does the same thing --------------------
+                editor->debugOpenPresetBrowser();
+                editor->debugRebuildPresetList();
+                cutoff.setValueNotifyingHost(0.5f);
+                const auto darkRow = rowOf("BrowserDark");
+
+                if (darkRow >= 0)
+                {
+                    editor->debugPresetListBox().selectRow(darkRow);
+                    editor->debugPresetLoadButton().onClick();
+
+                    check("PresetBrowser_TheLoadButtonLoadsTheSelectedRow",
+                          std::abs(norm() - 0.10f) < 0.01f
+                              && ! editor->debugPresetBrowserVisible(),
+                          "cutoff reads " + juce::String(norm(), 3)
+                              + " and the browser is "
+                              + (editor->debugPresetBrowserVisible() ? "open" : "closed"));
+                }
+
+                // ---- Cancel changes nothing ---------------------------------
+                editor->debugOpenPresetBrowser();
+                editor->debugRebuildPresetList();
+                cutoff.setValueNotifyingHost(0.42f);
+                editor->debugPresetListBox().selectRow(rowOf("BrowserBright"));
+                editor->debugPresetCancelButton().onClick();
+
+                check("PresetBrowser_CancelClosesWithoutLoading",
+                      ! editor->debugPresetBrowserVisible()
+                          && std::abs(norm() - 0.42f) < 0.01f,
+                      "cutoff still reads " + juce::String(norm(), 3)
+                          + " and the browser is "
+                          + (editor->debugPresetBrowserVisible() ? "OPEN" : "closed"));
+
+                check("PresetBrowser_TheSecondButtonSaysCancel",
+                      editor->debugPresetCancelButton().getButtonText() == "CANCEL",
+                      "it reads '" + editor->debugPresetCancelButton().getButtonText() + "'");
+
+                // ---- a row that is not there is not loaded ------------------
+                //
+                // Both gestures share one loadPresetRow, and this is the guard
+                // that stops an empty list or a stale index indexing past the
+                // end. Asked for directly because no click can produce it.
+                editor->debugOpenPresetBrowser();
+                editor->debugRebuildPresetList();
+                cutoff.setValueNotifyingHost(0.33f);
+                editor->debugDoubleClickPresetRow(9999);
+                editor->debugDoubleClickPresetRow(-1);
+
+                check("PresetBrowser_AnOutOfRangeRowLoadsNothing",
+                      std::abs(norm() - 0.33f) < 0.01f
+                          && editor->debugPresetBrowserVisible(),
+                      "cutoff still reads " + juce::String(norm(), 3)
+                          + " and the browser stayed "
+                          + (editor->debugPresetBrowserVisible() ? "open" : "CLOSED"));
+
+                editor->debugClosePresetBrowser();
+            }
+        }
+
+        if (previousRoot.isNotEmpty())
+        {
+            ::setenv("PX3_PRESET_ROOT", previousRoot.toRawUTF8(), 1);
+        }
+        else
+        {
+            ::unsetenv("PX3_PRESET_ROOT");
+        }
+
+        browserRoot.deleteRecursively();
+    }
 }
 //==============================================================================
 // PHASE 18 / 19 / 20 / 21 - LIFECYCLE, POLYPHONY, EDGE CASES, ARTIFACTS
