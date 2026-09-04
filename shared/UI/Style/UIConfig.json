@@ -1375,6 +1375,10 @@
       }
     },
     "doom": {
+      "artwork": {
+        "image": "Doom-artwork.png",
+        "opacity": 0.35
+      },
       "border": {
         "color": "#CC5A5A",
         "opacity": 0.74
