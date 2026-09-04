@@ -59,6 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       ref:        ${{ steps.resolve.outputs.ref }}
+      sha:        ${{ steps.resolve.outputs.sha }}
       version:    ${{ steps.resolve.outputs.version }}
       core:       ${{ steps.resolve.outputs.core }}
       prerelease: ${{ steps.resolve.outputs.prerelease }}
@@ -75,6 +76,22 @@ jobs:
           ref: ${{ github.event.release.tag_name || inputs.ref }}
           fetch-depth: 0
 
+      - name: Resolve the ref to a commit
+        id: sha
+        run: |
+          set -euo pipefail
+          # The tag NAME is not a safe thing to hand to a second checkout.
+          # A release tag that has been deleted and recreated can resolve to a
+          # stale commit on the runner, and it did: a release whose tag, target
+          # and headSha all pointed at the newest commit was built from an
+          # ancestor several hours old, reintroducing a build script that had
+          # long since been fixed. Every symptom followed from that.
+          #
+          # A commit id cannot go stale. This job has already checked out the
+          # ref, so resolve it here and let everything downstream use the SHA.
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "resolved $(git describe --tags --always) -> $(git rev-parse HEAD)"
+
       - name: Resolve version and mode
         id: resolve
         # Both refs arrive through `env:`, never interpolated into the script
@@ -84,11 +101,13 @@ jobs:
         # env it is only ever data.
         env:
           EVENT_NAME: ${{ github.event_name }}
+          RESOLVED_SHA: ${{ steps.sha.outputs.sha }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           INPUT_REF: ${{ inputs.ref }}
           GH_PRERELEASE: ${{ github.event.release.prerelease }}
         run: |
           set -euo pipefail
+          echo "sha=${RESOLVED_SHA}" >> "$GITHUB_OUTPUT"
           if [ "${EVENT_NAME}" = "release" ]; then
             TAG="${RELEASE_TAG}"
             echo "dry_run=false" >> "$GITHUB_OUTPUT"
@@ -198,7 +217,8 @@ jobs:
       - name: Checkout the exact ref
         uses: actions/checkout@v5
         with:
-          ref: ${{ needs.identify.outputs.ref }}
+          # The SHA, not the tag name - see 'Resolve the ref to a commit'.
+          ref: ${{ needs.identify.outputs.sha }}
 
       - name: Record what was actually checked out
         run: |
@@ -556,7 +576,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.identify.outputs.ref }}
+          # The SHA, not the tag name - see 'Resolve the ref to a commit'.
+          ref: ${{ needs.identify.outputs.sha }}
       - name: Build
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPX3_COPY_PLUGIN_AFTER_BUILD=OFF
