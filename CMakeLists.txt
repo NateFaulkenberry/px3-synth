@@ -633,6 +633,15 @@ foreach(px3BundleTarget IN ITEMS PX3Synth_Standalone PX3Synth_AU PX3Synth_VST3)
             # it, and a .DS_Store inside a signed bundle is nobody's
             # idea of a resource. CONFIGURE_DEPENDS on the glob means a
             # new PNG still needs no edit here.
+            # The directory FIRST.
+            # 
+            # copy_if_different treats its last argument as a file when
+            # that path does not exist, so copying one PNG into a missing
+            # Artwork folder wrote a file called Artwork with the PNG's
+            # bytes in it. copy_directory used to create the folder; this
+            # does not, and nothing said so.
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:${px3BundleTarget}>/../Resources/Artwork"
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${PX3_ARTWORK_FILES}
                 "$<TARGET_FILE_DIR:${px3BundleTarget}>/../Resources/Artwork"
