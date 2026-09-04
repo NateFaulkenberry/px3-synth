@@ -755,6 +755,78 @@ void testUpdater()
 
         second.reset();
 
+        // The debug console's preview toggle. It exists to style the notice and
+        // the glow, which means it has to work with no update in sight and has
+        // to hold - the two things a real announcement does not do.
+        // Provider removed as well as state cleared, so "no update available"
+        // is true of the whole service rather than just its current answer.
+        service.resetForTesting();
+        service.setProvider(nullptr);
+
+        std::unique_ptr<juce::AudioProcessorEditor> styling(processor.createEditor());
+
+        if (auto* preview = dynamic_cast<PX3SynthAudioProcessorEditor*>(styling.get()))
+        {
+            preview->setSize(1280, 800);
+            auto* bar = preview->debugTopMenuBar();
+
+            const auto quietBefore = bar != nullptr && ! bar->isUpdateAvailable()
+                                         && ! preview->debugUpdateNoticeVisible();
+
+            preview->debugSetUpdatePreview(true);
+
+            check("UpdateUi_ThePreviewShowsTheNoticeWithNoUpdateAvailable",
+                  quietBefore && bar != nullptr && bar->isUpdateAvailable()
+                      && preview->debugUpdateNoticeVisible(),
+                  juce::String(quietBefore ? "quiet first" : "NOT QUIET FIRST")
+                      + "; then " + (bar != nullptr && bar->isUpdateAvailable()
+                                         ? "glowing" : "NOT GLOWING")
+                      + " and notice "
+                      + (preview->debugUpdateNoticeVisible() ? "shown" : "NOT SHOWN"));
+
+            // Well past the twenty seconds that would have retired a real one.
+            for (int i = 0; i < 30 * 30; ++i) { preview->debugTimerTick(); }
+
+            check("UpdateUi_ThePreviewDoesNotTimeOut",
+                  preview->debugUpdateNoticeVisible()
+                      && bar != nullptr && bar->isUpdateAvailable(),
+                  preview->debugUpdateNoticeVisible()
+                      ? juce::String("still up at 30 s, which is the point of it")
+                      : juce::String("TIMED OUT - unusable for styling"));
+
+            // Opening SETTINGS is how a real announcement ends, and it must not
+            // end this one: the debug console is reached through that panel.
+            preview->debugSelectSection(6);
+
+            check("UpdateUi_ThePreviewSurvivesOpeningSettings",
+                  preview->debugUpdateNoticeVisible(),
+                  preview->debugUpdateNoticeVisible()
+                      ? juce::String("still up with SETTINGS open")
+                      : juce::String("CLEARED by opening SETTINGS"));
+
+            preview->debugSetUpdatePreview(false);
+
+            check("UpdateUi_ThePreviewTogglesBackOff",
+                  ! preview->debugUpdateNoticeVisible()
+                      && bar != nullptr && ! bar->isUpdateAvailable(),
+                  ! preview->debugUpdateNoticeVisible()
+                      ? juce::String("notice and glow both cleared")
+                      : juce::String("STILL SHOWING after switching off"));
+
+            // And on again, because a toggle that only works once is a button.
+            preview->debugSetUpdatePreview(true);
+
+            check("UpdateUi_ThePreviewCanBeTurnedOnAgain",
+                  preview->debugUpdateNoticeVisible(),
+                  preview->debugUpdateNoticeVisible()
+                      ? juce::String("came back")
+                      : juce::String("DID NOT COME BACK - latched off"));
+
+            preview->debugSetUpdatePreview(false);
+        }
+
+        styling.reset();
+
         service.resetForTesting();
         service.setProvider(nullptr);
     }

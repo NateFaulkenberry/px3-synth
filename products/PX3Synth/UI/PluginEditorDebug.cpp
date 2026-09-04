@@ -139,6 +139,7 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     setupEditor(debugParameterInspectorText);
     setupEditor(debugEventLogText);
     setupEditor(debugUpdateText);
+    setupButton(debugUpdatePreviewButton, "SHOW UPDATE NOTICE");
     setupEditor(debugSnapshotText);
     setupEditor(debugLfoText);
     setupEditor(debugEnvelopeText);
@@ -300,6 +301,7 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     addToSections(debugParameterInspectorText);
     addToSections(debugEventLogText);
     addToSections(debugUpdateText);
+    addToSections(debugUpdatePreviewButton);
     addToSections(debugSnapshotText);
     addToSections(debugLfoText);
     addToSections(debugEnvelopeText);
@@ -386,6 +388,17 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     debugInvalidOrderButton.onClick = [this]()
     {
         debugApplyModuleOrder({ { kFxSectionDelay, kFxSectionDelay, kFxSectionMood, kFxSectionReverb } }, "DEBUG_INVALID_ORDER_TEST");
+    };
+
+    // Fakes an update being available so the notice and the gear's glow can be
+    // styled without waiting for a real release - or publishing one.
+    debugUpdatePreviewButton.onClick = [this]()
+    {
+        const auto turningOn = ! updatePreviewForced;
+        setUpdatePreview(turningOn);
+        debugUpdatePreviewButton.setButtonText(turningOn ? "HIDE UPDATE NOTICE"
+                                                         : "SHOW UPDATE NOTICE");
+        refreshDebugUpdateStatus();
     };
 
     debugRandomizeParamsButton.onClick = [this]() { debugRandomizeParameters(); };
@@ -1045,7 +1058,9 @@ void PX3SynthAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& 
     sectionRight(debugParameterLabel, debugParameterInspectorText, 120);
     sectionRight(debugSnapshotLabel, debugSnapshotText, 80);
     // Before the event log, which claims whatever height is left.
-    sectionRight(debugUpdateLabel, debugUpdateText, 150);
+    sectionRight(debugUpdateLabel, debugUpdateText, 150 - 24 - 4);
+    debugUpdatePreviewButton.setBounds(right.removeFromTop(24));
+    right.removeFromTop(4);
     sectionRight(debugEventLogLabel, debugEventLogText, juce::jmax(120, right.getHeight() - 24));
 
     auto content = debugParamViewport.getLocalBounds().reduced(4);
@@ -1282,6 +1297,13 @@ void PX3SynthAudioProcessorEditor::refreshDebugUpdateStatus()
     const auto installer = service.stagedInstaller();
 
     juce::StringArray lines;
+    // Said first and only when it is on, so nobody reads the glow below as a
+    // real update when it is the preview holding it there.
+    if (updatePreviewForced)
+    {
+        lines.add("PREVIEW:    forced on - notice and glow are faked, and held");
+    }
+
     lines.add("state:      " + describe(state));
 
     const auto error = service.getErrorMessage();

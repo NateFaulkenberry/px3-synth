@@ -330,11 +330,16 @@ void PX3SynthAudioProcessorEditor::refreshUpdateAffordances()
     using namespace px3::update;
 
     const auto& service = UpdateService::getInstance();
-    const auto waiting = service.getState() == UpdateState::updateAvailable;
+    const auto waiting = service.getState() == UpdateState::updateAvailable
+                             || updatePreviewForced;
 
     // The gear glows while an update is unseen. Opening SETTINGS is what counts
     // as seeing it, so the glow stops there rather than on any click.
-    const auto seen = selectedTopMenuSection == kSectionSettings;
+    //
+    // The preview ignores that, because the debug console is reached through
+    // the same panel: with it honoured, turning the preview on would show the
+    // notice for exactly as long as it took to notice it was gone.
+    const auto seen = ! updatePreviewForced && selectedTopMenuSection == kSectionSettings;
 
     if (topMenuBar != nullptr)
     {
@@ -358,8 +363,9 @@ void PX3SynthAudioProcessorEditor::refreshUpdateAffordances()
                              juce::dontSendNotification);
         updateNotice.setVisible(true);
         updateNotice.toFront(false);
-        // 20 seconds at the editor's 30 Hz tick.
-        updateNoticeFramesLeft = 30 * 20;
+        // 20 seconds at the editor's 30 Hz tick. The preview holds instead:
+        // a notice that vanishes mid-adjustment is no use for styling one.
+        updateNoticeFramesLeft = updatePreviewForced ? -1 : 30 * 20;
         updateNoticeShown = true;
         resized();
     }
@@ -383,6 +389,27 @@ void PX3SynthAudioProcessorEditor::dismissUpdateNotice()
 
     updateNoticeFramesLeft = -1;
     updateNotice.setVisible(false);
+}
+
+void PX3SynthAudioProcessorEditor::setUpdatePreview(bool shouldPreview)
+{
+    updatePreviewForced = shouldPreview;
+
+    if (shouldPreview)
+    {
+        // Both of these are per-window latches that a real announcement sets on
+        // its way out. Clearing them is what lets the toggle be a toggle rather
+        // than a one-shot that works until the first time it is switched off.
+        updateNoticeShown = false;
+        updateAnnouncementFinished = false;
+    }
+    else
+    {
+        dismissUpdateNotice();
+    }
+
+    refreshUpdateAffordances();
+    resized();
 }
 
 void PX3SynthAudioProcessorEditor::finishMacroAssignEditing()

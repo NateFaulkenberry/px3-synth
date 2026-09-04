@@ -281,6 +281,7 @@ public:
     // Switch panel the way the top menu does, so a test exercises the real
     // path rather than poking the index.
     void debugSelectSection(int sectionIndex) { applyTopMenuSectionSelection(sectionIndex, false); }
+    void debugSetUpdatePreview(bool shouldPreview) { setUpdatePreview(shouldPreview); }
     // What a click at this point would land on - the same hit test the overlay
     // uses, so a test can pick knobs that are actually reachable right now.
     juce::Slider* debugKnobAt(juce::Point<int> positionInEditor) const
@@ -481,6 +482,12 @@ private:
     // too. Per window, like the notice - a newly opened editor announces the
     // update again, and SETTINGS still shows it after both have gone quiet.
     bool updateAnnouncementFinished { false };
+    // Debug console only: pretends an update is waiting so the notice and the
+    // glow can be looked at without one. Held rather than fired once, because
+    // the point is to style them - so while it is on the notice does not count
+    // down and opening SETTINGS does not put it away.
+    bool updatePreviewForced { false };
+    void setUpdatePreview(bool shouldPreview);
 
     // Told when the global animation preference moves, rather than asking every
     // tick. One notification per change beats thirty polls a second finding
@@ -1050,6 +1057,7 @@ private:
     juce::TextButton debugRandomizeParamsButton;
     juce::TextButton debugResetParamsButton;
     juce::TextButton debugWriteTestValuesButton;
+    juce::TextButton debugUpdatePreviewButton;
     juce::Label debugInstanceLabel;
     juce::Label debugModuleOrderLabel;
     juce::Label debugValueTreeLabel;
