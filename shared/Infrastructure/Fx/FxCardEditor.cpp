@@ -104,6 +104,20 @@ void FxCardEditor::attachBypass(juce::AudioParameterBool& parameter)
 
 void FxCardEditor::finishSetup()
 {
+    // Apply the config AGAIN, now that the product has declared its rows.
+    //
+    // The constructor applies it too, but a product declares its controls in
+    // its own constructor body - which runs after this base class's - so at
+    // that point the card has no knobs, boxes or toggles to style, and every
+    // per-control key silently did nothing. Chip colours, caption colours,
+    // fonts, dropdown colours: all of them read from UIConfig and none of them
+    // reaching a control. The card itself looked right because its border,
+    // background and artwork are read while painting rather than applied here.
+    //
+    // finishSetup is where this belongs because it is the one call every
+    // product makes last, after everything exists.
+    if (uiConfig != nullptr) { card.setUIConfig(uiConfig); }
+
     const auto window = standaloneFxWindowSize(uiConfig.get());
     setSize(window.getWidth(), window.getHeight());
 }

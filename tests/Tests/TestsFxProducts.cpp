@@ -10,6 +10,7 @@
 #include "../../shared/Infrastructure/Fx/FxCardEditor.h"
 #include "../../shared/UI/Style/UIConfigManager.h"
 #include "../../shared/UI/Style/KnobLookAndFeel.h"
+#include "../../shared/UI/Components/ChipLabel.h"
 #include "../../products/PX3Delay/PluginEditor.h"
 #include "../../products/PX3Mood/PluginEditor.h"
 #include "../../products/PX3Synth/UI/PluginEditor.h"
@@ -676,6 +677,53 @@ void testFxProducts()
               survived,
               survived ? juce::String("all seven finite at 44.1 and 96 kHz, 32 and 1024 samples")
                        : "NON-FINITE: " + notes.joinIntoString(", "));
+    }
+
+    // ---- a standalone styles its own controls ------------------------------
+    //
+    // Without help. The comparison further down hands both cards the same
+    // config on purpose, which is what let this hide: FxCardEditor applied the
+    // config in its constructor, and a product declares its rows in its own
+    // constructor body, which runs afterwards - so every per-control key was
+    // read and applied to a card that had no controls yet. Chip colours,
+    // caption colours, fonts and dropdown colours all silently did nothing,
+    // while the card's border and artwork looked right because those are read
+    // while painting.
+    {
+        juce::StringArray unstyled;
+
+        const auto checkStyled = [&](const juce::String& name,
+                                     juce::AudioProcessor& processor,
+                                     const juce::String& knobId,
+                                     juce::Colour expectedChipBackground)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+            auto* cardEditor = dynamic_cast<px3::fx::FxCardEditor*>(editor.get());
+            if (cardEditor == nullptr) { unstyled.add(name + " (no card editor)"); return; }
+
+            auto* label = dynamic_cast<px3::ui::ChipLabel*>(cardEditor->debugCard().knobLabel(knobId));
+            if (label == nullptr) { unstyled.add(name + " (no caption for " + knobId + ")"); return; }
+
+            const auto actual = label->getChipStyle().background;
+            if (actual != expectedChipBackground)
+            {
+                unstyled.add(name + " caption background is " + actual.toDisplayString(true)
+                             + ", config says " + expectedChipBackground.toDisplayString(true));
+            }
+        };
+
+        // Both cards that carry a scheme, by the colour their config names.
+        PX3DoomAudioProcessor doomStyled;
+        checkStyled("Doom", doomStyled, "clock", juce::Colour::fromString("FFC4433F"));
+        PX3LucyAudioProcessor lucyStyled;
+        checkStyled("Lucy", lucyStyled, "loss", juce::Colour::fromString("FF3FA9B8"));
+
+        check("FxProducts_AStandaloneStylesItsOwnControlsFromConfig",
+              unstyled.isEmpty(),
+              unstyled.isEmpty()
+                  ? "a standalone card reads its own per-control styling, with nothing "
+                    "applied for it"
+                  : unstyled.joinIntoString("; "));
     }
 
     // ---- the reverb's nine survive a save and reload -----------------------

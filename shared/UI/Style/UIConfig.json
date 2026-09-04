@@ -1377,7 +1377,7 @@
     "doom": {
       "artwork": {
         "image": "Doom-artwork.png",
-        "opacity": 0.35
+        "opacity": 0.7
       },
       "border": {
         "color": "#CC5A5A",
@@ -1401,10 +1401,10 @@
         "color": "#F7D0D0"
       },
       "controls": {
-        "toggleOnColor": "#C4433F",
-        "toggleOffColor": "#3A2422",
+        "toggleOnColor": "#6C2523",
+        "toggleOffColor": "#C4433F",
         "toggleOnTextColor": "#FFF0EE",
-        "toggleOffTextColor": "#C9A9A5",
+        "toggleOffTextColor": "#FFF0EE",
         "labelBackground": "#C4433F",
         "labelBackgroundOpacity": 0.2,
         "labelOutline": "#E8A9A5",
@@ -1522,10 +1522,10 @@
         "color": "#D0F1F7"
       },
       "controls": {
-        "toggleOnColor": "#3FA9B8",
-        "toggleOffColor": "#1E3238",
+        "toggleOnColor": "#235D65",
+        "toggleOffColor": "#3FA9B8",
         "toggleOnTextColor": "#EAFBFF",
-        "toggleOffTextColor": "#9FC4CC",
+        "toggleOffTextColor": "#EAFBFF",
         "labelBackground": "#3FA9B8",
         "labelBackgroundOpacity": 0.2,
         "labelOutline": "#9FD8E2",
