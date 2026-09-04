@@ -2726,7 +2726,7 @@
     "layout": {
       "padding": 10,
       "cornerRadius": 8,
-      "borderThickness": 1,
+      "borderWidth": 1,
       "headerHeight": 26,
       "headerFontSize": 13,
       "footerHeight": 30,
@@ -2739,12 +2739,14 @@
       "preferredRowsPerColumn": 8,
       "sliderTrackThickness": 3,
       "sliderThumbRadius": 5,
-      "pointerWidth": 9,
-      "pointerHeight": 16
+      "arrowWidth": 9,
+      "arrowHeight": 16
     },
     "colors": {
-      "background": "#111317FC",
-      "border": "#5ADCC88C",
+      "background": "#111317",
+      "backgroundOpacity": 0.99,
+      "border": "#5ADCC8",
+      "borderOpacity": 0.55,
       "header": "#ECF0F8",
       "rowLabel": "#E0E2E8",
       "rowValue": "#C6CAD4",
@@ -2759,7 +2761,7 @@
   "updateNotice": {
     "colors": {
       "background": "#000000",
-      "backgroundOpacity": 0.3,
+      "backgroundOpacity": 0.6,
       "border": "#FFFFFF",
       "borderOpacity": 0.35,
       "text": "#FFFFFF"

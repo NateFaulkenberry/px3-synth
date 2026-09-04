@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "PluginProcessor.h"
+#include "SpeechBubbleLabel.h"
 
 class UIConfig;
 
@@ -115,6 +116,10 @@ private:
 
     int rowHeight() const;
     int pointerWidth() const;
+    // The bubble this panel is drawn as - the update notice's shape, turned to
+    // point left at the macro knob. Built per paint from UIConfig, so styling
+    // it is a config edit rather than a rebuild.
+    SpeechBubble::Style bubbleStyle() const;
     void applyStyleFromConfig();
     int columnWidth() const;
     int rowAreaHeight() const;

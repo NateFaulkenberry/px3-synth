@@ -619,6 +619,92 @@ void testEditorLayout()
                   && juce::jlimit(0.0f, 1.0f, -2.0f) == 0.0f,
               "clamped");
     }
+
+    // ---- the same bubble, pointing left ------------------------------------
+    //
+    // The macro depth panel shares this shape with the update notice. It has to
+    // be one closed path there too: the drawing it replaced filled a rectangle
+    // and a triangle separately and could only hide the seam by leaving one of
+    // the triangle's edges unstroked.
+    {
+        using px3::ui::SpeechBubble;
+
+        SpeechBubble::Style style;
+        style.arrowEdge = SpeechBubble::ArrowEdge::left;
+        style.arrowWidth = 9.0f;      // reach, leftwards
+        style.arrowHeight = 16.0f;    // span, vertical
+        style.cornerRadius = 8.0f;
+        style.arrowCentreFromTop = 60.0f;
+
+        const juce::Rectangle<float> bounds { 0.0f, 0.0f, 260.0f, 200.0f };
+        const auto path = SpeechBubble::buildPath(bounds, style);
+
+        int subpaths = 0;
+        for (juce::Path::Iterator it(path); it.next();)
+        {
+            if (it.elementType == juce::Path::Iterator::startNewSubPath) { ++subpaths; }
+        }
+
+        check("MacroDepthBubble_IsOneClosedShapeWithItsArrow",
+              subpaths == 1 && ! path.isEmpty(),
+              "subpaths=" + juce::String(subpaths));
+
+        // The tip reaches the left edge; the body starts arrowWidth in.
+        check("MacroDepthBubble_TheArrowReachesTheLeftEdge",
+              path.getBounds().getX() < 1.0f
+                  && path.getBounds().getWidth() > 250.0f,
+              "x " + juce::String(path.getBounds().getX(), 1)
+                  + " w " + juce::String(path.getBounds().getWidth(), 1));
+
+        // The arrow tracks the knob: moving the target moves the tip, which is
+        // the whole reason this edge takes an absolute Y rather than an inset.
+        auto lowStyle = style;
+        lowStyle.arrowCentreFromTop = 150.0f;
+        const auto lowPath = SpeechBubble::buildPath(bounds, lowStyle);
+
+        const auto tipYFor = [](const juce::Path& p)
+        {
+            float best = 0.0f;
+            float bestX = 1.0e9f;
+            for (juce::Path::Iterator it(p); it.next();)
+            {
+                if (it.elementType == juce::Path::Iterator::lineTo && it.x1 < bestX)
+                {
+                    bestX = it.x1;
+                    best = it.y1;
+                }
+            }
+            return best;
+        };
+
+        const auto highTip = tipYFor(path);
+        const auto lowTip = tipYFor(lowPath);
+
+        check("MacroDepthBubble_TheArrowFollowsTheKnob",
+              lowTip > highTip + 50.0f,
+              "tip " + juce::String(highTip, 1) + " -> " + juce::String(lowTip, 1));
+
+        // Clamped clear of the corner arcs. An arrow aimed above the panel must
+        // not walk into the top-left radius and cross the outline over itself.
+        auto aboveStyle = style;
+        aboveStyle.arrowCentreFromTop = -0.0f;   // still >= 0, so still an arrow
+        const auto abovePath = SpeechBubble::buildPath(bounds, aboveStyle);
+        const auto clampedTip = tipYFor(abovePath);
+
+        check("MacroDepthBubble_TheArrowStaysClearOfTheCorner",
+              clampedTip >= style.cornerRadius,
+              "tip y " + juce::String(clampedTip, 1)
+                  + " with radius " + juce::String(style.cornerRadius, 1));
+
+        // No target yet means no arrow, rather than one aimed at the corner.
+        auto unplaced = style;
+        unplaced.arrowCentreFromTop = -1.0f;
+        const auto unplacedPath = SpeechBubble::buildPath(bounds, unplaced);
+
+        check("MacroDepthBubble_WithNoTargetItDrawsPlain",
+              unplacedPath.getBounds().getX() > 5.0f,
+              "left edge at " + juce::String(unplacedPath.getBounds().getX(), 1));
+    }
 }
 
 } // namespace px3tests
