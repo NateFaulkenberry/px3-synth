@@ -1237,6 +1237,10 @@
       }
     },
     "vibe": {
+        "artwork": {
+          "image": "Vibe-artwork.png",
+          "opacity": 0.7
+        },
       "border": {
         "color": "#CCA25A",
         "opacity": 0.71
