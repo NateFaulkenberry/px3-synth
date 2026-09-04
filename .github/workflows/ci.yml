@@ -23,8 +23,10 @@ env:
   # Compiler jobs on a runner. THE knob - every build step below passes this to
   # --parallel explicitly, and nothing relies on a default.
   #
-  # Three, which is one per core on a macos-14 runner. Chosen against measured
-  # numbers rather than a guess:
+  # Two. Below the macos-14 runner's three cores, deliberately, after a signed
+  # release stalled on a run that had built fine unsigned - leaving the job
+  # count as the one variable worth removing from the question. Chosen against
+  # measured numbers rather than a guess:
   #
   #   Makefiles, bare `make -j`  unbounded  ->  posix_spawn: Resource
   #                                             temporarily unavailable
@@ -51,7 +53,7 @@ env:
   #
   # Set here and NOT in the scripts, so a developer's build keeps ninja's
   # default and stays fast.
-  PX3_BUILD_JOBS: 3
+  PX3_BUILD_JOBS: 2
 
   # Never write into ~/Library/Audio/Plug-Ins on a runner. The default is ON for
   # a developer's machine, where it is what makes a build testable in a host.

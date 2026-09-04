@@ -37,7 +37,7 @@ env:
   # it, and both are passed the number as an argument, because an explicit
   # --parallel beats CMAKE_BUILD_PARALLEL_LEVEL and exporting alone does
   # nothing.
-  PX3_BUILD_JOBS: 3
+  PX3_BUILD_JOBS: 2
 
 jobs:
   # --------------------------------------------------------------------------

@@ -1,7 +1,5 @@
 # PX3 v0.7.1
 
-In progress.
-
 The release that turns one plug-in into eight. Seven of the synth's effects now
 install as plug-ins of their own, driving the same DSP objects rather than
 copies of them, and the tree, the build, the installer and the uninstaller all
