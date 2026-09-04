@@ -475,6 +475,11 @@ juce::String FxCardComponent::debugLayoutSignature() const
     lines.add("border " + cardStyle.border.colour.toDisplayString(true));
     lines.add("background " + cardStyle.background.colour.toDisplayString(true));
     lines.add("title " + cardStyle.title.colour.toDisplayString(true));
+    // Artwork counts as palette: a card carrying a picture in one product and
+    // not the other is not the same card, however well its knobs line up.
+    lines.add("artwork " + (cardStyle.artwork.image.isNotEmpty() ? cardStyle.artwork.image
+                                                                 : juce::String("none"))
+              + " @" + juce::String(cardStyle.artwork.opacity, 3));
 
     lines.add("bypass " + rect(&bypass));
 

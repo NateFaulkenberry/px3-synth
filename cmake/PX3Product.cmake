@@ -102,6 +102,13 @@ function(px3_add_product)
                     COMMAND ${CMAKE_COMMAND} -E copy_if_different
                         "${CMAKE_SOURCE_DIR}/shared/UI/Style/UIConfig.json"
                         "$<TARGET_FILE_DIR:${PX3P_TARGET}_${px3Format}>/../Resources/UIConfig.json"
+                    # Artwork travels with the config, for the same reason: a
+                    # card names a picture and has to find it wherever it runs.
+                    # copy_directory rather than a file list, so adding a PNG to
+                    # shared/UI/Artwork ships it without touching this.
+                    COMMAND ${CMAKE_COMMAND} -E copy_directory
+                        "${CMAKE_SOURCE_DIR}/shared/UI/Artwork"
+                        "$<TARGET_FILE_DIR:${PX3P_TARGET}_${px3Format}>/../Resources/Artwork"
                     VERBATIM)
             endif()
         endforeach()

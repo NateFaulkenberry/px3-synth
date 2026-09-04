@@ -355,12 +355,12 @@ void PX3SynthAudioProcessorEditor::buildReverbCard()
     // the width it is drawn, clipping the outer captions off both edges. Split
     // by what the controls do - the tail's movement, then the cloud algorithm's
     // own pair - rather than at whatever number happens to fit.
-    card->addKnobRow({ { "modDepth", "MOD DEPTH", "Movement in the tail" },
-                       { "modRate", "MOD RATE", "How fast that movement is" },
+    card->addKnobRow({ { "modDepth", "DEPTH", "Movement in the tail" },
+                       { "modRate", "RATE", "How fast that movement is" },
                        { "width", "WIDTH", "Stereo spread of the tail" } });
 
-    card->addKnobRow({ { "cloudFeedback", "CLOUD FB", "Cloud regeneration" },
-                       { "cloudDiffusion", "CLOUD DIFF", "Cloud smearing" } });
+    card->addKnobRow({ { "cloudFeedback", "REGEN", "Cloud regeneration" },
+                       { "cloudDiffusion", "SMEAR", "Cloud smearing" } });
 
     card->addFeatureKnobRow({ "amount", "AMOUNT", "Dry against wet" });
 
@@ -391,13 +391,6 @@ void PX3SynthAudioProcessorEditor::buildReverbCard()
     attachComboBox(audioProcessor.getReverbAlgorithmParam(), *card->choice("algorithm"));
     attachButton(audioProcessor.getReverbEnabledParam(), card->bypassButton());
 
-    // The rainbow ring every FX amount knob wears. The old reverb knob had it
-    // and it went out with that knob; without it this one knob is the only
-    // amount in the panel drawn as an ordinary control.
-    if (auto* knob = card->knob("amount"))
-    {
-        knob->getProperties().set("psychedelicFx", true);
-    }
 
     reverbCard = card.get();
     fxPanel->addCard(px3::fxStageReverb, std::move(card));

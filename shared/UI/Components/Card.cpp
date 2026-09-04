@@ -1,5 +1,7 @@
 #include "Card.h"
 
+#include "UIConfigManager.h"
+
 #include "UIConfig.h"
 
 #include <cmath>
@@ -227,6 +229,10 @@ CardStyle CardStyle::fromConfig(const UIConfig* config,
 
     style.background = reader.fill("background", fallback.background);
 
+    style.artwork.image = reader.text("artwork.image", fallback.artwork.image);
+    style.artwork.opacity = juce::jlimit(0.0f, 1.0f,
+                                         reader.number("artwork.opacity", fallback.artwork.opacity));
+
     style.gloss.margin = juce::jmax(0.0f, reader.number("gloss.margin", fallback.gloss.margin));
     style.gloss.split = juce::jlimit(0.0f, 1.0f, reader.number("gloss.split", fallback.gloss.split));
     style.gloss.topRadius = Dimension::parse(reader.raw("gloss.topRadius"), fallback.gloss.topRadius);
@@ -294,6 +300,10 @@ CardStyle CardStyle::disabledVariant() const
     result.border.opacity *= dim;
     result.background.colour = grey(result.background.colour);
     result.background.opacity *= dim;
+    // Artwork dims with everything else. A bypassed card that keeps a full
+    // colour picture behind grey controls does not read as bypassed.
+    result.artwork.opacity *= dim;
+
     result.gloss.topFill.colour = grey(result.gloss.topFill.colour);
     result.gloss.topFill.opacity *= dim;
     result.gloss.bottomFill.colour = grey(result.gloss.bottomFill.colour);
@@ -451,6 +461,45 @@ void drawCard(juce::Graphics& g,
     {
         g.setColour(style.background.effective());
         g.fillRoundedRectangle(cardBounds, radius);
+    }
+
+    // 1b. Artwork, over the background and UNDER the gloss, so the two gloss
+    //     fills tint it the way they tint the background rather than covering
+    //     it. Clipped to the card's rounded rectangle so it cannot square off
+    //     the corners the border is about to draw.
+    if (style.artwork.image.isNotEmpty() && style.artwork.opacity > 0.0f)
+    {
+        // ImageCache, not a load per paint: this runs on every repaint of every
+        // card, and decoding a PNG there would be a frame's work for a picture
+        // that never changes.
+        const auto file = UIConfigManager::findArtworkFile(style.artwork.image);
+        const auto image = file.existsAsFile() ? juce::ImageCache::getFromFile(file) : juce::Image();
+
+        if (image.isValid())
+        {
+            juce::Graphics::ScopedSaveState clip(g);
+
+            juce::Path shape;
+            shape.addRoundedRectangle(cardBounds, radius);
+            g.reduceClipRegion(shape);
+
+            // COVER, not fit: scaled by whichever axis needs more so the card is
+            // filled, with the overflow cropped by the clip above. Letterboxing
+            // instead would show the background through two bands and make the
+            // artwork look like it had failed to load.
+            const auto scale = juce::jmax(cardBounds.getWidth() / static_cast<float>(image.getWidth()),
+                                          cardBounds.getHeight() / static_cast<float>(image.getHeight()));
+            const auto drawnWidth = static_cast<float>(image.getWidth()) * scale;
+            const auto drawnHeight = static_cast<float>(image.getHeight()) * scale;
+
+            g.setOpacity(style.artwork.opacity);
+            g.drawImage(image,
+                        cardBounds.getCentreX() - drawnWidth * 0.5f,
+                        cardBounds.getCentreY() - drawnHeight * 0.5f,
+                        drawnWidth, drawnHeight,
+                        0, 0, image.getWidth(), image.getHeight());
+            g.setOpacity(1.0f);
+        }
     }
 
     // 2. Gloss, inset by its own margin so a gap shows between it and the

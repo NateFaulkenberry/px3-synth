@@ -77,6 +77,17 @@ struct BorderStyle
     float radius { 8.0f };
 };
 
+// A picture layered into the card, under the gloss.
+//
+// Scaled to COVER the card - filled, not letterboxed - and clipped to the
+// card's rounded rectangle, so artwork drawn at any aspect ratio reaches every
+// corner and none of it escapes the card's shape.
+struct ArtworkStyle
+{
+    juce::String image;
+    float opacity { 1.0f };
+};
+
 // Two fills inset from the card by their own margin, which is what produces the
 // visible gap between the border and the gloss.
 struct GlossStyle
@@ -135,6 +146,10 @@ struct CardStyle
 
     BorderStyle border;
     Fill background { juce::Colours::black, 0.10f };
+    // Artwork drawn between the background and the gloss, so the two gloss
+    // fills tint it rather than being hidden by it. Named by file; the file is
+    // found in the shared Artwork directory at draw time.
+    ArtworkStyle artwork;
     GlossStyle gloss;
     TitleStyle title;
     DisabledStyle disabled;

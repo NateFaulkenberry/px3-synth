@@ -18,12 +18,12 @@ PX3ReverbAudioProcessorEditor::PX3ReverbAudioProcessorEditor(PX3ReverbAudioProce
 
     // Three rows rather than one of five: five cells overran the inner card at
     // the width it is drawn, clipping the outer captions off both edges.
-    rows().addKnobRow({ { "modDepth", "MOD DEPTH", "Movement in the tail" },
-                        { "modRate", "MOD RATE", "How fast that movement is" },
+    rows().addKnobRow({ { "modDepth", "DEPTH", "Movement in the tail" },
+                        { "modRate", "RATE", "How fast that movement is" },
                         { "width", "WIDTH", "Stereo spread of the tail" } });
 
-    rows().addKnobRow({ { "cloudFeedback", "CLOUD FB", "Cloud regeneration" },
-                        { "cloudDiffusion", "CLOUD DIFF", "Cloud smearing" } });
+    rows().addKnobRow({ { "cloudFeedback", "REGEN", "Cloud regeneration" },
+                        { "cloudDiffusion", "SMEAR", "Cloud smearing" } });
 
     rows().addFeatureKnobRow({ "amount", "AMOUNT", "Dry against wet" });
 
@@ -39,12 +39,6 @@ PX3ReverbAudioProcessorEditor::PX3ReverbAudioProcessorEditor(PX3ReverbAudioProce
     attachKnob("cloudDiffusion", processorIn.cloudDiffusion());
     attachChoice("algorithm", processorIn.algorithm());
     attachBypass(processorIn.enabled());
-
-    // The rainbow ring the Synth gives this card's feature knob.
-    if (auto* feature = rows().knob("amount"))
-    {
-        feature->getProperties().set("psychedelicFx", true);
-    }
 
     finishSetup();
 }

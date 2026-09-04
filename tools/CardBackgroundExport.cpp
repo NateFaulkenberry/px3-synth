@@ -24,6 +24,14 @@
 #include "UIConfigManager.h"
 #include "Card.h"
 
+#include "../products/PX3Reverb/PluginProcessor.h"
+#include "../products/PX3Doom/PluginProcessor.h"
+#include "../products/PX3Lucy/PluginProcessor.h"
+#include "../products/PX3Chorus/PluginProcessor.h"
+#include "../products/PX3Spread/PluginProcessor.h"
+#include "../products/PX3Delay/PluginProcessor.h"
+#include "../products/PX3Mood/PluginProcessor.h"
+
 namespace
 {
 // The size a card is drawn at: one cell of the Synth's FX grid, which is also
@@ -131,14 +139,47 @@ juce::String describe(const juce::File& file)
 }
 } // namespace
 
+// The card WITH its controls, for checking a layout by looking at it.
+//
+// Separate from the background export and off by default: the backgrounds are
+// the deliverable, and a render with knobs on it is a working tool for the
+// person changing where those knobs go.
+bool writePreview(juce::AudioProcessorEditor& editor, const juce::File& destination)
+{
+    const auto bounds = editor.getLocalBounds();
+    if (bounds.isEmpty()) { return false; }
+
+    juce::Image image(juce::Image::ARGB, bounds.getWidth() * kScale, bounds.getHeight() * kScale, true);
+
+    {
+        juce::Graphics g(image);
+        g.addTransform(juce::AffineTransform::scale(static_cast<float>(kScale)));
+        // Everything this time: the controls are the point.
+        editor.paintEntireComponent(g, true);
+    }
+
+    destination.deleteFile();
+    std::unique_ptr<juce::FileOutputStream> stream(destination.createOutputStream());
+    if (stream == nullptr) { return false; }
+
+    juce::PNGImageFormat png;
+    return png.writeImageToStream(image, *stream);
+}
+
 int main(int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
 
-    const juce::File output = argc > 1
-                                  ? juce::File::getCurrentWorkingDirectory().getChildFile(argv[1])
-                                  : juce::File::getCurrentWorkingDirectory()
-                                        .getChildFile("card-backgrounds");
+    // The first argument that is not a flag is the output directory. Taking
+    // argv[1] blindly wrote the renders into a folder called "--preview".
+    juce::String outputName = "card-backgrounds";
+    for (int i = 1; i < argc; ++i)
+    {
+        const juce::String argument(argv[i]);
+        if (! argument.startsWith("--")) { outputName = argument; break; }
+    }
+
+    const auto output = juce::File::getCurrentWorkingDirectory().getChildFile(outputName);
     output.createDirectory();
 
     juce::String error;
@@ -217,6 +258,36 @@ int main(int argc, char* argv[])
         const auto file = output.getChildFile("PX3-Mood-background.png");
         if (writePng(mood, "mood", file, config)) { std::cout << "  PX3-Mood  " << describe(file) << std::endl; }
         else                      { std::cout << "  PX3-Mood  FAILED" << std::endl; ++failures; }
+    }
+
+    // --preview also renders each standalone effect complete, so a layout
+    // change can be looked at rather than inferred from coordinates.
+    auto wantsPreview = false;
+    for (int i = 1; i < argc; ++i)
+    {
+        if (juce::String(argv[i]) == "--preview") { wantsPreview = true; }
+    }
+
+    if (wantsPreview)
+    {
+        const auto preview = [&](const juce::String& name, juce::AudioProcessor& processor)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+            if (editor == nullptr) { return; }
+
+            const auto file = output.getChildFile(name + "-preview.png");
+            std::cout << "  " << name << " preview  "
+                      << (writePreview(*editor, file) ? describe(file) : juce::String("FAILED"))
+                      << std::endl;
+        };
+
+        PX3ReverbAudioProcessor reverb;   preview("PX3-Reverb", reverb);
+        PX3DoomAudioProcessor doom;       preview("PX3-Doom", doom);
+        PX3LucyAudioProcessor lucy;       preview("PX3-Lucy", lucy);
+        PX3ChorusAudioProcessor chorus;   preview("PX3-Chorus", chorus);
+        PX3SpreadAudioProcessor spread;   preview("PX3-Spread", spread);
+        PX3DelayAudioProcessor delayFx;   preview("PX3-Delay", delayFx);
+        PX3MoodAudioProcessor moodFx;     preview("PX3-Mood", moodFx);
     }
 
     std::cout << (failures == 0 ? "all backgrounds written" : "some backgrounds failed") << std::endl;

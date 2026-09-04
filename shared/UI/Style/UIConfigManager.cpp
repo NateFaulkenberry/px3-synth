@@ -1,5 +1,37 @@
 #include "UIConfigManager.h"
 
+juce::File UIConfigManager::findArtworkFile(const juce::String& fileName)
+{
+    if (fileName.isEmpty()) { return {}; }
+
+    const auto executableDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+                                   .getParentDirectory();
+
+    // Installed: inside the bundle that is running. The same walk the config
+    // uses, for the same reason - a plug-in's own binary is what dladdr
+    // reports, so this climbs its bundle rather than the host's.
+    for (auto probe = executableDir; probe.exists(); probe = probe.getParentDirectory())
+    {
+        const auto inBundle = probe.getChildFile("Resources/Artwork").getChildFile(fileName);
+        if (inBundle.existsAsFile()) { return inBundle; }
+        if (probe.getParentDirectory() == probe) { break; }
+    }
+
+    // A development build, run from the repository.
+    const auto fromCwd = juce::File::getCurrentWorkingDirectory()
+                             .getChildFile("shared/UI/Artwork").getChildFile(fileName);
+    if (fromCwd.existsAsFile()) { return fromCwd; }
+
+    for (auto probe = executableDir; probe.exists(); probe = probe.getParentDirectory())
+    {
+        const auto inTree = probe.getChildFile("shared/UI/Artwork").getChildFile(fileName);
+        if (inTree.existsAsFile()) { return inTree; }
+        if (probe.getParentDirectory() == probe) { break; }
+    }
+
+    return {};
+}
+
 juce::File UIConfigManager::findShippingConfigFile()
 {
     const auto executableDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)

@@ -462,7 +462,17 @@ endif()
 if (PX3_BUILD_DIAGNOSTIC)
     juce_add_console_app(PX3CardBackgrounds PRODUCT_NAME "PX3CardBackgrounds")
     juce_generate_juce_header(PX3CardBackgrounds)
-    target_sources(PX3CardBackgrounds PRIVATE ${PX3_ALL_SOURCES} tools/CardBackgroundExport.cpp)
+    target_sources(PX3CardBackgrounds PRIVATE ${PX3_ALL_SOURCES}
+        shared/Infrastructure/Fx/FxPluginProcessor.cpp
+        shared/Infrastructure/Fx/FxCardEditor.cpp
+        products/PX3Reverb/PluginProcessor.cpp products/PX3Reverb/PluginEditor.cpp
+        products/PX3Doom/PluginProcessor.cpp products/PX3Doom/PluginEditor.cpp
+        products/PX3Lucy/PluginProcessor.cpp products/PX3Lucy/PluginEditor.cpp
+        products/PX3Chorus/PluginProcessor.cpp products/PX3Chorus/PluginEditor.cpp
+        products/PX3Spread/PluginProcessor.cpp products/PX3Spread/PluginEditor.cpp
+        products/PX3Delay/PluginProcessor.cpp products/PX3Delay/PluginEditor.cpp
+        products/PX3Mood/PluginProcessor.cpp products/PX3Mood/PluginEditor.cpp
+        tools/CardBackgroundExport.cpp)
     target_include_directories(PX3CardBackgrounds PRIVATE ${PX3_INCLUDE_DIRS})
     target_compile_definitions(PX3CardBackgrounds
         PRIVATE
@@ -610,6 +620,11 @@ foreach(px3BundleTarget IN ITEMS PX3Synth_Standalone PX3Synth_AU PX3Synth_VST3)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${PX3_UI_CONFIG_FILE}"
                 "$<TARGET_FILE_DIR:${px3BundleTarget}>/../Resources/UIConfig.json"
+            # And the artwork a card can layer into its background, so the
+            # Synth finds the same pictures the effects do.
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_SOURCE_DIR}/shared/UI/Artwork"
+                "$<TARGET_FILE_DIR:${px3BundleTarget}>/../Resources/Artwork"
             VERBATIM
         )
     endif()

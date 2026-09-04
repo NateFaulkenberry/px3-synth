@@ -1482,6 +1482,10 @@
       }
     },
     "lucy": {
+      "artwork": {
+        "image": "Lucy-artwork.png",
+        "opacity": 0.35
+      },
       "border": {
         "color": "#5AB9CC",
         "opacity": 0.74
@@ -1925,12 +1929,11 @@
               "size": "auto"
             }
           },
-          "row1": {
-            "height": "60%"
-          },
-          "row2": {
-            "height": "40%"
-          }
+          "row1": { "height": "11%" },
+          "row2": { "height": "19%" },
+          "row3": { "height": "19%" },
+          "row4": { "height": "19%" },
+          "row5": { "height": "32%" }
         }
       }
     },

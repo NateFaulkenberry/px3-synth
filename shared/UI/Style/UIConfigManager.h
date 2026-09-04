@@ -29,6 +29,17 @@ public:
     // a product that cannot find its style should look plain, not crash.
     static juce::File findShippingConfigFile();
 
+    // Artwork a card layers into its background, by file name.
+    //
+    // Found the same way the config is - inside the running bundle first, then
+    // the repository - because it ships the same way: one directory copied into
+    // every product, so the Synth and a standalone effect draw the same file
+    // rather than each carrying a copy.
+    //
+    // Returns a file that does not exist when the name is unknown; a card with
+    // no artwork is a card, not an error.
+    static juce::File findArtworkFile(const juce::String& fileName);
+
     void setConfigFile(const juce::File& file);
     const juce::File& getConfigFile() const;
 
