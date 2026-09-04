@@ -69,11 +69,20 @@ jobs:
       - name: Checkout the ref being released
         uses: actions/checkout@v5
         with:
-          # THE reproducibility requirement. For a release event this is the tag
-          # the release points at, not whatever main happens to be: a release
-          # published an hour after a merge must contain the tagged source, not
-          # the merge.
-          ref: ${{ github.event.release.tag_name || inputs.ref }}
+          # THE reproducibility requirement, and it must be a COMMIT ID.
+          #
+          # Passing the tag name here silently built the wrong source. With the
+          # server reporting the tag at 01faed5 and `git ls-remote` agreeing,
+          # actions/checkout given `v0.7.1` fetched 7b701d3 - a commit hours
+          # older, from before the build script was fixed. A tag that has been
+          # deleted and recreated does not resolve reliably on the runner, and
+          # nothing about the failure said so: the job simply built old code.
+          #
+          # github.sha is the commit the event fired for and is correct, so a
+          # release checks out that. A dispatch has no event sha to speak of and
+          # takes its ref input, which is a branch or tag the caller just typed
+          # and has not been churned.
+          ref: ${{ github.event_name == 'release' && github.sha || inputs.ref }}
           fetch-depth: 0
 
       - name: Resolve the ref to a commit
