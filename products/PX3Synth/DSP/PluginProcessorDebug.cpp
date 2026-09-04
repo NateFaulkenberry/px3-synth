@@ -167,6 +167,22 @@ juce::String PX3SynthAudioProcessor::debugGetEventLogText() const
     return debugEventLogLines.joinIntoString("\n");
 }
 
+juce::String PX3SynthAudioProcessor::debugGetEventLogTextForSource(const juce::String& source) const
+{
+    // Matches the "SOURCE=<name> " that debugLogEvent writes, with the trailing
+    // space included so SOURCE=UPDATE does not also pick up a SOURCE=UPDATER
+    // that someone adds later.
+    const auto needle = "SOURCE=" + source + " ";
+
+    const std::scoped_lock<std::mutex> lock(debugStateMutex);
+    juce::StringArray matched;
+    for (const auto& line : debugEventLogLines)
+    {
+        if (line.contains(needle)) { matched.add(line); }
+    }
+    return matched.joinIntoString("\n");
+}
+
 int PX3SynthAudioProcessor::debugGetLastSerializedStateSize() const
 {
     const std::scoped_lock<std::mutex> lock(debugStateMutex);

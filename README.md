@@ -146,12 +146,19 @@ The installer presents an **Installation Type** step offering the Synth's three
 formats and then the seven effects under a heading of their own. Everything is
 selected by default; you opt *out* of what you do not want.
 
-| Component | Destination |
-| --- | --- |
-| Audio Unit (AU) | `/Library/Audio/Plug-Ins/Components/` |
-| VST3 | `/Library/Audio/Plug-Ins/VST3/` |
-| Standalone application | `/Applications/` |
-| PX3 Delay, Mood, Chorus, Spread, Reverb, Doom, Lucy | both plug-in folders above |
+| Component | Destination | |
+| --- | --- | --- |
+| Audio Unit (AU) | `/Library/Audio/Plug-Ins/Components/` | optional |
+| VST3 | `/Library/Audio/Plug-Ins/VST3/` | optional |
+| Standalone application | `/Applications/` | **required** |
+| PX3 Delay, Mood, Chorus, Spread, Reverb, Doom, Lucy | both plug-in folders above | optional |
+
+The standalone is listed but its checkbox is ticked and disabled, because the
+updater helper lives inside `PX3 Synth.app`. A plug-in stages an installer and
+hands it to that helper, which is what waits for the host to quit — so without
+the standalone, **Prepare Update succeeds and Install cannot work**. It is shown
+rather than installed silently so that what lands on the machine is still
+visible.
 
 One component package per **effect** rather than per format — that is the choice
 a user actually makes — so each carries that effect's AU and VST3 together.

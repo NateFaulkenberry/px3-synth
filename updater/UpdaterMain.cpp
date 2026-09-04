@@ -20,6 +20,7 @@
 
 #include "UpdateService.h"
 
+#include <csignal>
 #include <unistd.h>
 
 namespace
@@ -142,6 +143,17 @@ int runInstaller(const juce::File& installer)
 
 int main(int argc, char* argv[])
 {
+    // Never die because nobody is reading stdout.
+    //
+    // This process is started by a plug-in that exits seconds later, and if its
+    // output happens to be a pipe, the first write after the parent goes takes
+    // SIGPIPE and kills it silently - mid-update, with no log written. The
+    // launcher now hands over /dev/null, so this is belt and braces, but the
+    // failure it prevents is invisible and cost a release to find: a helper
+    // whose whole job is to outlive its parent should not be killable by its
+    // parent's file descriptors.
+    ::signal(SIGPIPE, SIG_IGN);
+
     juce::ScopedJuceInitialiser_GUI juceInit;
 
     juce::StringArray arguments;

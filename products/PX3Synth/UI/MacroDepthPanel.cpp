@@ -19,6 +19,11 @@ int intFrom(const UIConfig* config, const juce::String& key, int fallback)
     return config != nullptr ? config->getInt(key, fallback) : fallback;
 }
 
+float floatFrom(const UIConfig* config, const juce::String& key, float fallback)
+{
+    return config != nullptr ? config->getFloat(key, fallback) : fallback;
+}
+
 // The name a musician knows a parameter by. The routing stores IDs, which are
 // serialisation keys and read like filenames; the panel is the one place that
 // has to turn one back into a name, so it asks the parameter itself rather
@@ -98,11 +103,13 @@ MacroDepthPanel::MacroDepthPanel(PX3SynthAudioProcessor& processorIn)
 
     emptyNotice = "Nothing assigned yet.\nDouble-click the macro knob to assign parameters to it.";
 
-    closeButton.onClick = [this]
+    // The panel does not know what closing means - the editor owns the
+    // transient state - so it asks.
+    closeGlyph.onClick = [this]
     {
         if (onCloseRequested != nullptr) { onCloseRequested(); }
     };
-    addAndMakeVisible(closeButton);
+    addAndMakeVisible(closeGlyph);
 
     viewport.setViewedComponent(&rowHost, false);
     viewport.setScrollBarsShown(true, false);
@@ -127,7 +134,11 @@ void MacroDepthPanel::setPointerTargetY(int yInPanelCoordinates)
 
 int MacroDepthPanel::pointerWidth() const
 {
-    return juce::jmax(0, intFrom(uiConfig.get(), "macroDepth.layout.pointerWidth", 9));
+    // pointerWidth is the name this key had before the panel shared the update
+    // notice's bubble. Read as a fallback so a UIConfig customised against the
+    // old name still positions the panel's contents correctly.
+    const auto legacy = intFrom(uiConfig.get(), "macroDepth.layout.pointerWidth", 9);
+    return juce::jmax(0, intFrom(uiConfig.get(), "macroDepth.layout.arrowWidth", legacy));
 }
 
 void MacroDepthPanel::applyStyleFromConfig()
@@ -150,12 +161,11 @@ void MacroDepthPanel::applyStyleFromConfig()
                      colourFrom(uiConfig.get(), "macroDepth.colors.header",
                                 juce::Colour::fromRGB(236, 240, 248)));
 
-    closeButton.setColour(juce::TextButton::buttonColourId,
-                          colourFrom(uiConfig.get(), "macroDepth.colors.closeButton",
-                                     juce::Colour::fromRGBA(52, 56, 64, 235)));
-    closeButton.setColour(juce::TextButton::textColourOffId,
-                          colourFrom(uiConfig.get(), "macroDepth.colors.closeButtonText",
-                                     juce::Colour::fromRGB(232, 236, 242)));
+    SheetCloseButton::Style glyphStyle;
+    // Small enough to sit in the header row without crowding the macro's name.
+    glyphStyle.size = 18;
+    SheetCloseButton::readStyleFrom(uiConfig.get(), "macroDepth.closeButton", glyphStyle);
+    closeGlyph.applyStyle(glyphStyle);
 
     for (auto& row : rows)
     {
@@ -440,11 +450,17 @@ void MacroDepthPanel::resized()
 
     auto area = getLocalBounds().reduced(padding);
     area.removeFromLeft(pointerWidth());   // the arrow's strip, not content
-    header.setBounds(area.removeFromTop(headerH));
+    const auto headerArea = area.removeFromTop(headerH);
+    header.setBounds(headerArea);
 
-    auto footer = area.removeFromBottom(footerH);
-    closeButton.setBounds(footer.removeFromRight(juce::jmin(90, footer.getWidth()))
-                                .withSizeKeepingCentre(juce::jmin(90, footer.getWidth()), 24));
+    // Over the header's top-right corner rather than beside it, so the header
+    // keeps its full width and the glyph does not move when headerHeight does.
+    closeGlyph.setBounds(closeGlyph.boundsWithin(headerArea));
+
+    // footerHeight is a bottom margin now rather than a row: the close control
+    // moved to the corner, so nothing lives down there. Kept as a key so the
+    // gap under the last row stays adjustable, and shipped at 0.
+    area.removeFromBottom(footerH);
 
     viewport.setBounds(area);
 
@@ -495,60 +511,51 @@ void MacroDepthPanel::layoutRows()
     }
 }
 
-void MacroDepthPanel::paint(juce::Graphics& g)
+SpeechBubble::Style MacroDepthPanel::bubbleStyle() const
 {
-    const auto area = getLocalBounds().toFloat();
-    const auto radius = static_cast<float>(intFrom(uiConfig.get(), "macroDepth.layout.cornerRadius", 8));
+    // The same bubble the update notice uses, pointing left instead of down.
+    // Sharing the shape was the point of the refactor: this panel used to fill
+    // a rounded rectangle, fill a triangle beside it, and then stroke only two
+    // of that triangle's three edges - because stroking the third drew a line
+    // across the arrow's mouth, where the panel is. One closed path needs none
+    // of that, and the fills cannot disagree at the join.
+    SpeechBubble::Style style;
+    style.arrowEdge = SpeechBubble::ArrowEdge::left;
+
+    const auto* config = uiConfig.get();
+
+    style.background = colourFrom(config, "macroDepth.colors.background",
+                                  juce::Colour::fromRGB(17, 19, 23));
+    style.border = colourFrom(config, "macroDepth.colors.border", accent);
 
     // Nearly opaque. A popover carrying eight rows of small type sits over
     // whatever panel is behind it, and the translucency the other panels use
     // costs more in legibility here than it returns in depth.
-    g.setColour(colourFrom(uiConfig.get(), "macroDepth.colors.background",
-                           juce::Colour::fromRGBA(17, 19, 23, 252)));
-    g.fillRoundedRectangle(area, radius);
+    style.backgroundOpacity = floatFrom(config, "macroDepth.colors.backgroundOpacity", 0.99f);
+    style.borderOpacity     = floatFrom(config, "macroDepth.colors.borderOpacity", 0.55f);
 
-    g.setColour(colourFrom(uiConfig.get(), "macroDepth.colors.border", accent.withAlpha(0.55f)));
-    g.drawRoundedRectangle(area.reduced(0.5f), radius,
-                           static_cast<float>(intFrom(uiConfig.get(),
-                                                      "macroDepth.layout.borderThickness", 1)));
+    style.cornerRadius = floatFrom(config, "macroDepth.layout.cornerRadius", 8.0f);
+    // borderThickness is what this key was called before the panel shared the
+    // notice's bubble; read second so an older UIConfig still styles the frame.
+    style.borderWidth = floatFrom(config, "macroDepth.layout.borderWidth",
+                                  floatFrom(config, "macroDepth.layout.borderThickness", 1.0f));
 
-    // ---- the pointer -------------------------------------------------------
-    //
-    // A triangle on the left edge, aimed at the macro knob this panel belongs
-    // to. The header names the macro; this says which knob without reading.
-    // It slides up and down the edge so it keeps pointing at the knob however
-    // the panel had to be placed to fit on screen.
-    if (pointerWidth() > 0 && pointerTargetY >= 0)
-    {
-        const auto half = static_cast<float>(
-            intFrom(uiConfig.get(), "macroDepth.layout.pointerHeight", 16)) * 0.5f;
-        // Kept clear of the rounded corners, so it never reads as a dent in
-        // the frame rather than as an arrow.
-        const auto centreY = juce::jlimit(radius + half + 2.0f,
-                                          area.getHeight() - radius - half - 2.0f,
-                                          static_cast<float>(pointerTargetY));
+    // Horizontal reach and vertical span, the same two numbers the notice uses.
+    style.arrowWidth  = static_cast<float>(pointerWidth());
+    style.arrowHeight = floatFrom(config, "macroDepth.layout.arrowHeight",
+                                  floatFrom(config, "macroDepth.layout.pointerHeight", 16.0f));
 
-        juce::Path arrow;
-        arrow.startNewSubPath(area.getX(), centreY);
-        arrow.lineTo(area.getX() + static_cast<float>(pointerWidth()), centreY - half);
-        arrow.lineTo(area.getX() + static_cast<float>(pointerWidth()), centreY + half);
-        arrow.closeSubPath();
+    // Where the macro knob is. Negative until the editor has placed the panel,
+    // and the bubble draws plain rather than aiming at nothing.
+    style.arrowCentreFromTop = pointerTargetY >= 0 ? static_cast<float>(pointerTargetY)
+                                                   : -1.0f;
+    return style;
+}
 
-        g.setColour(colourFrom(uiConfig.get(), "macroDepth.colors.background",
-                               juce::Colour::fromRGBA(17, 19, 23, 252)));
-        g.fillPath(arrow);
-
-        // Only the two leading edges are stroked. Stroking the third would
-        // draw a line across the mouth of the arrow, where the panel is.
-        juce::Path edges;
-        edges.startNewSubPath(area.getX() + static_cast<float>(pointerWidth()), centreY - half);
-        edges.lineTo(area.getX(), centreY);
-        edges.lineTo(area.getX() + static_cast<float>(pointerWidth()), centreY + half);
-
-        g.setColour(colourFrom(uiConfig.get(), "macroDepth.colors.border", accent.withAlpha(0.55f)));
-        g.strokePath(edges, juce::PathStrokeType(static_cast<float>(
-            intFrom(uiConfig.get(), "macroDepth.layout.borderThickness", 1))));
-    }
+void MacroDepthPanel::paint(juce::Graphics& g)
+{
+    // One path: background, border and the pointer that aims at the macro knob.
+    SpeechBubble::paintBackground(g, getLocalBounds().toFloat(), bubbleStyle());
 
     // ---- nothing assigned --------------------------------------------------
     //

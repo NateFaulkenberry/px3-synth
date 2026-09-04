@@ -330,15 +330,20 @@ void PX3SynthAudioProcessorEditor::refreshUpdateAffordances()
     using namespace px3::update;
 
     const auto& service = UpdateService::getInstance();
-    const auto waiting = service.getState() == UpdateState::updateAvailable;
+    const auto waiting = service.getState() == UpdateState::updateAvailable
+                             || updatePreviewForced;
 
     // The gear glows while an update is unseen. Opening SETTINGS is what counts
     // as seeing it, so the glow stops there rather than on any click.
-    const auto seen = selectedTopMenuSection == kSectionSettings;
+    //
+    // The preview ignores that, because the debug console is reached through
+    // the same panel: with it honoured, turning the preview on would show the
+    // notice for exactly as long as it took to notice it was gone.
+    const auto seen = ! updatePreviewForced && selectedTopMenuSection == kSectionSettings;
 
     if (topMenuBar != nullptr)
     {
-        topMenuBar->setUpdateAvailable(waiting && ! seen);
+        topMenuBar->setUpdateAvailable(waiting && ! seen && ! updateAnnouncementFinished);
     }
 
     if (seen) { dismissUpdateNotice(); }
@@ -346,7 +351,7 @@ void PX3SynthAudioProcessorEditor::refreshUpdateAffordances()
     // The line under the bar, once per window. It says what the glow cannot -
     // which product, and that there IS a new version - and then gets out of
     // the way on its own.
-    if (waiting && ! seen && ! updateNoticeShown)
+    if (waiting && ! seen && ! updateNoticeShown && ! updateAnnouncementFinished)
     {
         const auto release = service.getAvailableRelease();
         const auto product = service.getProduct();
@@ -358,8 +363,9 @@ void PX3SynthAudioProcessorEditor::refreshUpdateAffordances()
                              juce::dontSendNotification);
         updateNotice.setVisible(true);
         updateNotice.toFront(false);
-        // 20 seconds at the editor's 30 Hz tick.
-        updateNoticeFramesLeft = 30 * 20;
+        // 20 seconds at the editor's 30 Hz tick. The preview holds instead:
+        // a notice that vanishes mid-adjustment is no use for styling one.
+        updateNoticeFramesLeft = updatePreviewForced ? -1 : 30 * 20;
         updateNoticeShown = true;
         resized();
     }
@@ -367,10 +373,43 @@ void PX3SynthAudioProcessorEditor::refreshUpdateAffordances()
 
 void PX3SynthAudioProcessorEditor::dismissUpdateNotice()
 {
+    // The glow goes with the notice. It is set before the early return because
+    // the flag is about the announcement being over, not about the label being
+    // on screen - a dismiss that finds the notice already gone still has to
+    // settle the gear.
+    const auto wasAnnouncing = ! updateAnnouncementFinished;
+    updateAnnouncementFinished = true;
+
+    // Turned off here rather than by leaving it to the next refresh: the
+    // timeout path runs from the frame tick, which does not call
+    // refreshUpdateAffordances, so nothing else would put the gear out.
+    if (wasAnnouncing && topMenuBar != nullptr) { topMenuBar->setUpdateAvailable(false); }
+
     if (updateNoticeFramesLeft < 0 && ! updateNotice.isVisible()) { return; }
 
     updateNoticeFramesLeft = -1;
     updateNotice.setVisible(false);
+}
+
+void PX3SynthAudioProcessorEditor::setUpdatePreview(bool shouldPreview)
+{
+    updatePreviewForced = shouldPreview;
+
+    if (shouldPreview)
+    {
+        // Both of these are per-window latches that a real announcement sets on
+        // its way out. Clearing them is what lets the toggle be a toggle rather
+        // than a one-shot that works until the first time it is switched off.
+        updateNoticeShown = false;
+        updateAnnouncementFinished = false;
+    }
+    else
+    {
+        dismissUpdateNotice();
+    }
+
+    refreshUpdateAffordances();
+    resized();
 }
 
 void PX3SynthAudioProcessorEditor::finishMacroAssignEditing()

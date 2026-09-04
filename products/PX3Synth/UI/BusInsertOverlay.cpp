@@ -58,48 +58,6 @@ void configureRotary(juce::Slider& slider, juce::LookAndFeel* lookAndFeel)
 } // namespace
 
 //==============================================================================
-SheetCloseButton::SheetCloseButton()
-    : juce::Button("CLOSE")
-{
-    setMouseCursor(juce::MouseCursor::PointingHandCursor);
-    setTooltip("Close");
-}
-
-void SheetCloseButton::applyStyle(const Style& styleIn)
-{
-    style = styleIn;
-    repaint();
-}
-
-void SheetCloseButton::paintButton(juce::Graphics& g,
-                                   bool shouldDrawButtonAsHighlighted,
-                                   bool shouldDrawButtonAsDown)
-{
-    const auto bounds = getLocalBounds().toFloat();
-    const auto side = juce::jmin(bounds.getWidth(), bounds.getHeight());
-    if (side <= 0.0f)
-    {
-        return;
-    }
-
-    const auto box = juce::Rectangle<float>(side, side).withCentre(bounds.getCentre());
-    const auto tint = shouldDrawButtonAsHighlighted ? style.hover : style.glyph;
-
-    g.setColour(style.seat.withMultipliedAlpha(shouldDrawButtonAsDown ? 1.2f : 1.0f));
-    g.fillEllipse(box);
-
-    g.setColour((shouldDrawButtonAsHighlighted ? style.hover : style.ring)
-                    .withMultipliedAlpha(isEnabled() ? 1.0f : 0.4f));
-    g.drawEllipse(box.reduced(style.ringWidth * 0.5f), style.ringWidth);
-
-    // The X, inset from the ring so the two never touch.
-    const auto inset = juce::jlimit(0.1f, 0.45f, style.glyphInset) * side;
-    const auto glyph = box.reduced(inset);
-    g.setColour(tint.withMultipliedAlpha(isEnabled() ? 1.0f : 0.4f));
-    g.drawLine(glyph.getX(), glyph.getY(), glyph.getRight(), glyph.getBottom(), style.glyphWidth);
-    g.drawLine(glyph.getRight(), glyph.getY(), glyph.getX(), glyph.getBottom(), style.glyphWidth);
-}
-
 //==============================================================================
 BusInsertOverlay::BusInsertOverlay(PX3SynthAudioProcessor& processorIn)
     : processor(processorIn)
@@ -195,37 +153,9 @@ void BusInsertOverlay::refreshHeaderButtonStyles()
     SheetCloseButton::Style closeStyle;
     if (uiConfig != nullptr)
     {
-        const auto apply = [&](const juce::String& base)
-        {
-            const auto number = [&](const char* key, auto& field)
-            {
-                if (const auto value = uiConfig->getValue(base + key); ! value.isVoid())
-                {
-                    field = static_cast<std::remove_reference_t<decltype(field)>>(static_cast<double>(value));
-                }
-            };
-            const auto colour = [&](const char* key, juce::Colour& field)
-            {
-                if (const auto value = uiConfig->getValue(base + key); ! value.isVoid())
-                {
-                    field = uiConfig->getColour(base + key, field);
-                }
-            };
-
-            number(".size", closeStyle.size);
-            number(".offsetX", closeStyle.offsetX);
-            number(".offsetY", closeStyle.offsetY);
-            number(".ringWidth", closeStyle.ringWidth);
-            number(".glyphWidth", closeStyle.glyphWidth);
-            number(".glyphInset", closeStyle.glyphInset);
-            colour(".seatColor", closeStyle.seat);
-            colour(".ringColor", closeStyle.ring);
-            colour(".glyphColor", closeStyle.glyph);
-            colour(".hoverColor", closeStyle.hover);
-        };
-
-        apply("busInserts.closeButton");
-        apply("busInserts." + sheet + ".closeButton");
+        SheetCloseButton::readStyleFrom(uiConfig.get(), "busInserts.closeButton", closeStyle);
+        SheetCloseButton::readStyleFrom(uiConfig.get(), "busInserts." + sheet + ".closeButton",
+                                        closeStyle);
     }
 
     closeButton.applyStyle(closeStyle);

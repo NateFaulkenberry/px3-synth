@@ -1,6 +1,8 @@
 #pragma once
 
 #include "FxChain.h"
+#include "SheetCloseButton.h"
+#include "SpeechBubbleLabel.h"
 #include "MacroKnobLook.h"
 #include "FxCardComponent.h"
 
@@ -241,6 +243,7 @@ public:
     // For the tests: the macro strip and the assignment state.
     MacroStrip* debugMacroStrip() const { return macroStrip.get(); }
     bool debugUpdateNoticeVisible() const { return updateNotice.isVisible(); }
+    px3::ui::SheetCloseButton& debugUpdateNoticeClose() { return updateNoticeCloseButton; }
     juce::String debugUpdateNoticeText() const { return updateNotice.getText(); }
     void debugTimerTick() { timerCallback(); }
     void debugCloseMacroDepthPanel() { closeMacroDepthPanel(); }
@@ -280,6 +283,7 @@ public:
     // Switch panel the way the top menu does, so a test exercises the real
     // path rather than poking the index.
     void debugSelectSection(int sectionIndex) { applyTopMenuSectionSelection(sectionIndex, false); }
+    void debugSetUpdatePreview(bool shouldPreview) { setUpdatePreview(shouldPreview); }
     // What a click at this point would land on - the same hit test the overlay
     // uses, so a test can pick knobs that are actually reachable right now.
     juce::Slider* debugKnobAt(juce::Point<int> positionInEditor) const
@@ -469,12 +473,26 @@ private:
     void refreshUpdateAffordances();
     void dismissUpdateNotice();
 
-    juce::Label updateNotice;
+    SpeechBubbleLabel updateNotice;
+    // A child of the notice, so it hides and moves with it rather than needing
+    // its own visibility rules. Tiny - it has a line of text to fit beside.
+    px3::ui::SheetCloseButton updateNoticeCloseButton;
     // Counts down the notice's own life. -1 when it is not showing.
     int updateNoticeFramesLeft { -1 };
     // So the notice appears once per window rather than every time a check
     // happens to land on the same answer.
     bool updateNoticeShown { false };
+    // The glow and the notice announce the same thing, so they stop together:
+    // once the notice has had its say, the gear stops asking for attention
+    // too. Per window, like the notice - a newly opened editor announces the
+    // update again, and SETTINGS still shows it after both have gone quiet.
+    bool updateAnnouncementFinished { false };
+    // Debug console only: pretends an update is waiting so the notice and the
+    // glow can be looked at without one. Held rather than fired once, because
+    // the point is to style them - so while it is on the notice does not count
+    // down and opening SETTINGS does not put it away.
+    bool updatePreviewForced { false };
+    void setUpdatePreview(bool shouldPreview);
 
     // Told when the global animation preference moves, rather than asking every
     // tick. One notification per change beats thirty polls a second finding
@@ -573,6 +591,7 @@ private:
     void refreshDebugParameterInspector();
     void refreshDebugParameterControls();
     void refreshDebugEventLog();
+    void refreshDebugUpdateStatus();
     void refreshDebugLfoState();
     void refreshDebugEnvelopeState();
     void refreshDebugPerformanceOverlay();
@@ -902,6 +921,9 @@ private:
     juce::ListBox presetListBox;
     juce::TextButton presetBrowserLoadButton;
     juce::TextButton presetBrowserCloseButton;
+    // The circular X in the panel's top-right corner, the same glyph the
+    // settings page, the macro depth panel and the sheets close with.
+    px3::ui::SheetCloseButton presetBrowserCloseGlyph;
     juce::Label presetBrowserDetails;
     // Draws BOTH the keyboard's sparks and the wheels' sparkles, above both
     // components. They overlap each other, so z-order alone can never let both
@@ -1043,6 +1065,7 @@ private:
     juce::TextButton debugRandomizeParamsButton;
     juce::TextButton debugResetParamsButton;
     juce::TextButton debugWriteTestValuesButton;
+    juce::TextButton debugUpdatePreviewButton;
     juce::Label debugInstanceLabel;
     juce::Label debugModuleOrderLabel;
     juce::Label debugValueTreeLabel;
@@ -1050,6 +1073,7 @@ private:
     juce::Label debugParameterLabel;
     juce::Label debugBackendControlLabel;
     juce::Label debugEventLogLabel;
+    juce::Label debugUpdateLabel;
     juce::Label debugSnapshotLabel;
     juce::Label debugLfoLabel;
     juce::Label debugLfoAssignLabel;
@@ -1064,6 +1088,7 @@ private:
     juce::TextEditor debugSerializedText;
     juce::TextEditor debugParameterInspectorText;
     juce::TextEditor debugEventLogText;
+    juce::TextEditor debugUpdateText;
     juce::TextEditor debugSnapshotText;
     juce::TextEditor debugLfoText;
     juce::TextEditor debugEnvelopeText;

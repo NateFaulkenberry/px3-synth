@@ -336,6 +336,7 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
         favorite,
         import,
         exportPreset,
+        settings,
         debug,
         // Never dispatched: the item carrying it is disabled, so it is a label
         // in the menu rather than a command.
@@ -353,6 +354,11 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
     menu.addSeparator();
     menu.addItem(MenuItemId::import, "Import");
     menu.addItem(MenuItemId::exportPreset, "Export", hasCurrentPreset);
+
+    // Its own section rather than another line under Export: the items above
+    // are all about the preset in front of you, and this one is not.
+    menu.addSeparator();
+    menu.addItem(MenuItemId::settings, "Settings");
 #if PX3_DEBUG_PANEL
     menu.addSeparator();
     menu.addItem(MenuItemId::debug, "Debug");
@@ -425,6 +431,12 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
                                    exportCurrentPreset();
                                    break;
 #if PX3_DEBUG_PANEL
+                               case MenuItemId::settings:
+                                   // The same toggle the gear uses, so opening
+                                   // SETTINGS from here closes it from here too
+                                   // and returns to whatever you were on.
+                                   toggleSettingsView();
+                                   break;
                                case MenuItemId::debug:
                                    toggleDebugWindow();
                                    break;

@@ -6,6 +6,8 @@
 #include <vector>
 
 #include "PluginProcessor.h"
+#include "SheetCloseButton.h"
+#include "SpeechBubbleLabel.h"
 
 class UIConfig;
 
@@ -94,7 +96,9 @@ public:
     juce::StringArray debugRowParameterIds() const;
     juce::Slider* debugDepthSliderFor(const juce::String& parameterId);
     juce::Label* debugValueLabelFor(const juce::String& parameterId);
-    juce::TextButton& debugCloseButton() { return closeButton; }
+    // The panel's only close control since the footer button went.
+    SheetCloseButton& debugCloseButton() { return closeGlyph; }
+    SheetCloseButton& debugCloseGlyph() { return closeGlyph; }
     int debugPointerTargetY() const { return pointerTargetY; }
     juce::String debugEmptyNotice() const { return emptyNotice; }
     juce::LookAndFeel* debugSliderLookAndFeel(const juce::String& parameterId)
@@ -115,6 +119,10 @@ private:
 
     int rowHeight() const;
     int pointerWidth() const;
+    // The bubble this panel is drawn as - the update notice's shape, turned to
+    // point left at the macro knob. Built per paint from UIConfig, so styling
+    // it is a config edit rather than a rebuild.
+    SpeechBubble::Style bubbleStyle() const;
     void applyStyleFromConfig();
     int columnWidth() const;
     int rowAreaHeight() const;
@@ -134,7 +142,9 @@ private:
     // Painted rather than a Label: a Label does not wrap, and this sentence is
     // longer than a narrow panel is wide.
     juce::String emptyNotice;
-    juce::TextButton closeButton { "Close" };
+    // The circular X in the top-right corner, the same glyph the bus-insert
+    // sheets close with. Styled from macroDepth.closeButton.
+    SheetCloseButton closeGlyph;
 
     // The rows live inside a viewport so that a macro with more destinations
     // than the panel can show scrolls rather than overflowing. With few enough

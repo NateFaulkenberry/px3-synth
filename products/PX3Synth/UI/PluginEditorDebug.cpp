@@ -2,6 +2,7 @@
 #include "PluginProcessorInternals.h"
 
 #include "PX3Version.h"
+#include "UpdateService.h"
 
 #include <algorithm>
 #include <functional>
@@ -124,7 +125,10 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     setupLabel(debugEnvelopeLabel, "H. AMP ENVELOPE DEBUG");
     setupLabel(debugPresetToolsLabel, "E. PRESET / STATE TOOLS");
     setupLabel(debugSnapshotLabel, "J. STATE TESTING");
-    setupLabel(debugEventLogLabel, "K. EVENT LOG");
+    // Lettered by where they render, not the order they are created: the
+    // update section sits above the event log in the right-hand column.
+    setupLabel(debugUpdateLabel, "K. UPDATE");
+    setupLabel(debugEventLogLabel, "L. EVENT LOG");
 
     setupEditor(debugInstanceText);
     setupEditor(debugModuleOrderText);
@@ -134,6 +138,8 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     setupEditor(debugSerializedText);
     setupEditor(debugParameterInspectorText);
     setupEditor(debugEventLogText);
+    setupEditor(debugUpdateText);
+    setupButton(debugUpdatePreviewButton, "SHOW UPDATE NOTICE");
     setupEditor(debugSnapshotText);
     setupEditor(debugLfoText);
     setupEditor(debugEnvelopeText);
@@ -288,11 +294,14 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     addToSections(debugDumpPresetCategoryLabel);
     addToSections(debugSnapshotLabel);
     addToSections(debugEventLogLabel);
+    addToSections(debugUpdateLabel);
     addToSections(debugInstanceText);
     addToSections(debugModuleOrderText);
     addToSections(debugValueTreeText);
     addToSections(debugParameterInspectorText);
     addToSections(debugEventLogText);
+    addToSections(debugUpdateText);
+    addToSections(debugUpdatePreviewButton);
     addToSections(debugSnapshotText);
     addToSections(debugLfoText);
     addToSections(debugEnvelopeText);
@@ -379,6 +388,17 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     debugInvalidOrderButton.onClick = [this]()
     {
         debugApplyModuleOrder({ { kFxSectionDelay, kFxSectionDelay, kFxSectionMood, kFxSectionReverb } }, "DEBUG_INVALID_ORDER_TEST");
+    };
+
+    // Fakes an update being available so the notice and the gear's glow can be
+    // styled without waiting for a real release - or publishing one.
+    debugUpdatePreviewButton.onClick = [this]()
+    {
+        const auto turningOn = ! updatePreviewForced;
+        setUpdatePreview(turningOn);
+        debugUpdatePreviewButton.setButtonText(turningOn ? "HIDE UPDATE NOTICE"
+                                                         : "SHOW UPDATE NOTICE");
+        refreshDebugUpdateStatus();
     };
 
     debugRandomizeParamsButton.onClick = [this]() { debugRandomizeParameters(); };
@@ -928,8 +948,18 @@ void PX3SynthAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& 
         return total;
     };
 
+    // These two lists are the heights of the sections each column lays out, and
+    // they decide how tall the scrollable content is. They are a sum, so the
+    // order does not matter - but a section added below without a matching
+    // entry here lands outside the content and is simply never drawn, with no
+    // error and nothing missing on screen to point at. That is exactly what
+    // happened when the update section was added: it existed, it was laid out,
+    // and the viewport had no room to show it.
     const auto leftNaturalHeight = stack({ 78, 120, 80, 160 });
-    const auto rightNaturalHeight = stack({ 24 + gap + 24, 120, 196, 66 + gap + 24, 180, 80, 120 });
+    const auto rightNaturalHeight = stack({ 24 + gap + 24, 120, 196, 66 + gap + 24,
+                                            180, 80,
+                                            150,   // K. UPDATE
+                                            120 });
 
     const auto viewportWidth = juce::jmax(0, debugSectionsViewport.getMaximumVisibleWidth());
     const auto contentHeight = juce::jmax(debugSectionsViewport.getMaximumVisibleHeight(),
@@ -1027,6 +1057,10 @@ void PX3SynthAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& 
 
     sectionRight(debugParameterLabel, debugParameterInspectorText, 120);
     sectionRight(debugSnapshotLabel, debugSnapshotText, 80);
+    // Before the event log, which claims whatever height is left.
+    sectionRight(debugUpdateLabel, debugUpdateText, 150 - 24 - 4);
+    debugUpdatePreviewButton.setBounds(right.removeFromTop(24));
+    right.removeFromTop(4);
     sectionRight(debugEventLogLabel, debugEventLogText, juce::jmax(120, right.getHeight() - 24));
 
     auto content = debugParamViewport.getLocalBounds().reduced(4);
@@ -1075,6 +1109,7 @@ void PX3SynthAudioProcessorEditor::refreshDebugPanel(bool includeHeavySections)
     refreshDebugLfoState();
     refreshDebugEnvelopeState();
     refreshDebugEventLog();
+    refreshDebugUpdateStatus();
     debugInstanceText.setText(buildInstanceInfoText(), juce::dontSendNotification);
 }
 
@@ -1250,6 +1285,59 @@ void PX3SynthAudioProcessorEditor::refreshDebugEventLog()
     setDebugTextStable(debugEventLogText,
                        audioProcessor.debugGetEventLogText(),
                        true);
+}
+
+void PX3SynthAudioProcessorEditor::refreshDebugUpdateStatus()
+{
+    using namespace px3::update;
+
+    auto& service = UpdateService::getInstance();
+    const auto state = service.getState();
+    const auto release = service.getAvailableRelease();
+    const auto installer = service.stagedInstaller();
+
+    juce::StringArray lines;
+    // Said first and only when it is on, so nobody reads the glow below as a
+    // real update when it is the preview holding it there.
+    if (updatePreviewForced)
+    {
+        lines.add("PREVIEW:    forced on - notice and glow are faked, and held");
+    }
+
+    lines.add("state:      " + describe(state));
+
+    const auto error = service.getErrorMessage();
+    lines.add("error:      " + (error.isNotEmpty() ? error : juce::String("(none)")));
+
+    lines.add("installed:  " + px3::version::string());
+    lines.add("offered:    " + (release.version.toString().isNotEmpty()
+                                    ? release.version.toString()
+                                          + (release.isPreRelease ? " (pre-release)" : juce::String())
+                                    : juce::String("(nothing)")));
+
+    if (state == UpdateState::downloading)
+    {
+        lines.add("progress:   " + juce::String(static_cast<int>(service.getProgress() * 100.0f)) + "%");
+    }
+
+    // The staged installer, spelled out. When Install does nothing, the first
+    // question is whether the file the helper is being handed is actually
+    // there, and this answers it without a trip to the Finder.
+    lines.add("staged:     " + juce::String(service.hasStagedUpdate() ? "yes" : "no"));
+    lines.add("installer:  " + (installer != juce::File() ? installer.getFullPathName()
+                                                          : juce::String("(none)")));
+    lines.add("  exists:   " + juce::String(installer.existsAsFile() ? "yes" : "no")
+              + (installer.existsAsFile()
+                     ? "  (" + juce::File::descriptionOfSizeInBytes(installer.getSize()) + ")"
+                     : juce::String()));
+    lines.add("staging:    " + UpdateService::stagingDirectory().getFullPathName());
+
+    const auto history = audioProcessor.debugGetEventLogTextForSource("UPDATE");
+    lines.add({});
+    lines.add(history.isNotEmpty() ? history
+                                   : "(no update activity yet - use Check / Prepare / Install in SETTINGS)");
+
+    setDebugTextStable(debugUpdateText, lines.joinIntoString("\n"), true);
 }
 
 void PX3SynthAudioProcessorEditor::refreshDebugLfoState()

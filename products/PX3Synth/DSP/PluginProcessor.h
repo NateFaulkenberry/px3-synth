@@ -631,6 +631,10 @@ public:
                        const juce::String& details = {});
     void debugClearEventLog();
     juce::String debugGetEventLogText() const;
+    // The same log, narrowed to one SOURCE. The debug console's update section
+    // wants the update story on its own, without reading past everything else
+    // the plugin logged while it was downloading.
+    juce::String debugGetEventLogTextForSource(const juce::String& source) const;
     int debugGetLastSerializedStateSize() const;
     juce::String debugGetLastSerializedStateXml() const;
     juce::MemoryBlock debugGetLastSerializedStateCopy() const;

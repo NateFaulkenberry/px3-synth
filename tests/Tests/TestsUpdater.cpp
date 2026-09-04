@@ -708,22 +708,193 @@ void testUpdater()
                   juce::String("still up at 19.97 s: ") + (stillThere ? "yes" : "NO")
                       + "; gone at 20 s: " + (goneNow ? "yes" : "NO"));
 
-            // The gear keeps glowing after the notice goes - the notice is a
-            // one-off, the glow is the standing signal.
-            check("UpdateUi_TheGearKeepsGlowingAfterTheNoticeHasGone",
-                  bar != nullptr && bar->isUpdateAvailable(),
-                  bar != nullptr && bar->isUpdateAvailable()
-                      ? juce::String("still glowing, which is the point of it")
-                      : juce::String("STOPPED GLOWING"));
+            // The glow goes when the notice does. The two announce the same
+            // thing, so leaving the gear pulsing after the notice has shown
+            // itself out just makes it the permanent state of the window.
+            // SETTINGS still reports the update after both have gone quiet, and
+            // a newly opened editor announces it again.
+            check("UpdateUi_TheGlowStopsWithTheNotice",
+                  bar != nullptr && ! bar->isUpdateAvailable(),
+                  bar != nullptr && ! bar->isUpdateAvailable()
+                      ? juce::String("glow cleared with the notice")
+                      : juce::String("STILL GLOWING after the notice went"));
+        }
 
-            // Opening SETTINGS is what counts as having seen it.
-            editor->debugSelectSection(6);
+        // Opening SETTINGS is the other way the announcement ends, and it needs
+        // its own editor: on the one above the timeout has already cleared the
+        // glow, so asserting there would pass no matter what SETTINGS did.
+        base.reset();
+
+        std::unique_ptr<juce::AudioProcessorEditor> second(processor.createEditor());
+
+        if (auto* fresh = dynamic_cast<PX3SynthAudioProcessorEditor*>(second.get()))
+        {
+            fresh->setSize(1280, 800);
+            service.checkForUpdates(true);
+
+            auto* bar = fresh->debugTopMenuBar();
+
+            check("UpdateUi_ANewWindowAnnouncesTheUpdateAgain",
+                  bar != nullptr && bar->isUpdateAvailable()
+                      && fresh->debugUpdateNoticeVisible(),
+                  juce::String(bar != nullptr && bar->isUpdateAvailable()
+                                   ? "glowing" : "NOT GLOWING")
+                      + "; notice "
+                      + (fresh->debugUpdateNoticeVisible() ? "shown" : "NOT SHOWN"));
+
+            // Opening SETTINGS is what counts as having seen it - before any
+            // timeout, so this measures SETTINGS and nothing else.
+            fresh->debugSelectSection(6);
             const auto afterOpening = bar != nullptr && bar->isUpdateAvailable();
 
             check("UpdateUi_OpeningSettingsStopsTheGlow",
-                  ! afterOpening && ! editor->debugUpdateNoticeVisible(),
+                  ! afterOpening && ! fresh->debugUpdateNoticeVisible(),
                   afterOpening ? juce::String("STILL GLOWING after opening SETTINGS")
                                : juce::String("glow and notice both cleared"));
+        }
+
+        second.reset();
+
+        // The debug console's preview toggle. It exists to style the notice and
+        // the glow, which means it has to work with no update in sight and has
+        // to hold - the two things a real announcement does not do.
+        // Provider removed as well as state cleared, so "no update available"
+        // is true of the whole service rather than just its current answer.
+        service.resetForTesting();
+        service.setProvider(nullptr);
+
+        std::unique_ptr<juce::AudioProcessorEditor> styling(processor.createEditor());
+
+        if (auto* preview = dynamic_cast<PX3SynthAudioProcessorEditor*>(styling.get()))
+        {
+            preview->setSize(1280, 800);
+            auto* bar = preview->debugTopMenuBar();
+
+            const auto quietBefore = bar != nullptr && ! bar->isUpdateAvailable()
+                                         && ! preview->debugUpdateNoticeVisible();
+
+            preview->debugSetUpdatePreview(true);
+
+            check("UpdateUi_ThePreviewShowsTheNoticeWithNoUpdateAvailable",
+                  quietBefore && bar != nullptr && bar->isUpdateAvailable()
+                      && preview->debugUpdateNoticeVisible(),
+                  juce::String(quietBefore ? "quiet first" : "NOT QUIET FIRST")
+                      + "; then " + (bar != nullptr && bar->isUpdateAvailable()
+                                         ? "glowing" : "NOT GLOWING")
+                      + " and notice "
+                      + (preview->debugUpdateNoticeVisible() ? "shown" : "NOT SHOWN"));
+
+            // Well past the twenty seconds that would have retired a real one.
+            for (int i = 0; i < 30 * 30; ++i) { preview->debugTimerTick(); }
+
+            check("UpdateUi_ThePreviewDoesNotTimeOut",
+                  preview->debugUpdateNoticeVisible()
+                      && bar != nullptr && bar->isUpdateAvailable(),
+                  preview->debugUpdateNoticeVisible()
+                      ? juce::String("still up at 30 s, which is the point of it")
+                      : juce::String("TIMED OUT - unusable for styling"));
+
+            // Opening SETTINGS is how a real announcement ends, and it must not
+            // end this one: the debug console is reached through that panel.
+            preview->debugSelectSection(6);
+
+            check("UpdateUi_ThePreviewSurvivesOpeningSettings",
+                  preview->debugUpdateNoticeVisible(),
+                  preview->debugUpdateNoticeVisible()
+                      ? juce::String("still up with SETTINGS open")
+                      : juce::String("CLEARED by opening SETTINGS"));
+
+            preview->debugSetUpdatePreview(false);
+
+            check("UpdateUi_ThePreviewTogglesBackOff",
+                  ! preview->debugUpdateNoticeVisible()
+                      && bar != nullptr && ! bar->isUpdateAvailable(),
+                  ! preview->debugUpdateNoticeVisible()
+                      ? juce::String("notice and glow both cleared")
+                      : juce::String("STILL SHOWING after switching off"));
+
+            // And on again, because a toggle that only works once is a button.
+            preview->debugSetUpdatePreview(true);
+
+            check("UpdateUi_ThePreviewCanBeTurnedOnAgain",
+                  preview->debugUpdateNoticeVisible(),
+                  preview->debugUpdateNoticeVisible()
+                      ? juce::String("came back")
+                      : juce::String("DID NOT COME BACK - latched off"));
+
+            // The close glyph ends the announcement the way the timeout does -
+            // notice away and gear settled - because the point of closing it is
+            // to stop being told.
+            preview->debugSetUpdatePreview(true);
+            preview->debugUpdateNoticeClose().onClick();
+
+            check("UpdateUi_ClosingTheNoticeAlsoStopsTheGlow",
+                  ! preview->debugUpdateNoticeVisible()
+                      && bar != nullptr && ! bar->isUpdateAvailable(),
+                  juce::String(preview->debugUpdateNoticeVisible()
+                                   ? "NOTICE STILL UP" : "notice gone")
+                      + "; gear "
+                      + (bar != nullptr && bar->isUpdateAvailable()
+                             ? "STILL GLOWING" : "settled"));
+
+            preview->debugSetUpdatePreview(false);
+        }
+
+        styling.reset();
+
+        // ---- the update flow is one button ---------------------------------
+        //
+        // Install Update downloads, stages and hands off without asking again.
+        // The second button used to sit between the two halves of a job the
+        // user had already asked for.
+        {
+            service.resetForTesting();
+
+            auto owned2 = std::make_unique<MockUpdateProvider>();
+            auto* mock2 = owned2.get();
+            service.setProvider(std::move(owned2));
+            service.setProductId("px3-synth");
+            service.setSynchronousForTesting(true);
+
+            UpdateRelease flow;
+            flow.productId = "px3-synth";
+            flow.version = SemanticVersion::parse("0.9.0");
+            flow.downloadUrl = juce::URL("https://example.invalid/i.pkg");
+            flow.installerFilename = "P(X3)-v0.9.0.pkg";
+            flow.releaseNotes = juce::String::repeatedString("Long release notes. ", 120);
+            mock2->nextRelease = flow;
+
+            std::unique_ptr<juce::AudioProcessorEditor> flowEditor(processor.createEditor());
+
+            if (auto* ed = dynamic_cast<PX3SynthAudioProcessorEditor*>(flowEditor.get()))
+            {
+                ed->setSize(1400, 900);
+                ed->debugSelectSection(6);
+                service.checkForUpdates(true);
+
+                if (auto* panel = ed->debugSettingsPanel())
+                {
+                    panel->debugRefreshUpdateSection();
+
+                    check("UpdateFlow_TheOnlyButtonOfferedIsInstallUpdate",
+                          panel->debugUpdateButtonText() == "Install Update",
+                          "button reads '" + panel->debugUpdateButtonText() + "'");
+
+                    // The whole point: the notes are not cut to 400 characters
+                    // any more, because the box they sit in scrolls.
+                    const auto notesShown = panel->debugReleaseNotes().getText();
+                    check("UpdateFlow_TheReleaseNotesAreNotTruncated",
+                          notesShown.length() == flow.releaseNotes.length()
+                              && notesShown.length() > 400,
+                          "showing " + juce::String(notesShown.length())
+                              + " of " + juce::String(flow.releaseNotes.length())
+                              + " characters");
+                }
+            }
+
+            flowEditor.reset();
+            service.resetForTesting();
+            service.setProvider(nullptr);
         }
 
         service.resetForTesting();

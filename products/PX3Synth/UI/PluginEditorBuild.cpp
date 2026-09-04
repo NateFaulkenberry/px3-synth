@@ -1208,6 +1208,10 @@ void PX3SynthAudioProcessorEditor::buildPresetBar()
     presetCategoryBox.onChange = [this]() { rebuildPresetFilteredList(); };
     presetSearchEditor.onTextChange = [this]() { rebuildPresetFilteredList(); };
     presetBrowserCloseButton.onClick = [this]() { closePresetBrowser(); };
+
+    // Same action, in the corner where every other panel now keeps it.
+    presetBrowserCloseGlyph.onClick = [this]() { closePresetBrowser(); };
+    presetBrowserPanel.addAndMakeVisible(presetBrowserCloseGlyph);
     presetBrowserLoadButton.onClick = [this]()
     {
         const auto row = presetListBox.getSelectedRow();
@@ -1329,8 +1333,21 @@ void PX3SynthAudioProcessorEditor::finishConstruction()
     px3::update::UpdateService::getInstance().addChangeListener(&updateStateListener);
 
     updateNotice.setJustificationType(juce::Justification::centredLeft);
-    updateNotice.setInterceptsMouseClicks(false, false);
+    // The notice EATS clicks rather than passing them through.
+    //
+    // It hangs over the header, so anything it covers is a real control - and a
+    // click aimed at the notice that lands on an oscillator's bypass instead is
+    // a change to the patch nobody asked for. Blocking is the safe way round: a
+    // click on a notice should do nothing, not something invisible.
+    //
+    // Both arguments true, so its children - the close glyph - still get theirs.
+    updateNotice.setInterceptsMouseClicks(true, true);
     addChildComponent(updateNotice);
+
+    // Dismissing by hand ends the announcement exactly as the timeout does,
+    // glow included - the point of closing it is to stop being told.
+    updateNoticeCloseButton.onClick = [this]() { dismissUpdateNotice(); };
+    updateNotice.addAndMakeVisible(updateNoticeCloseButton);
 
     // A check when a window opens. Throttled by the service, so opening and
     // closing an editor repeatedly is still one request every ten minutes -
