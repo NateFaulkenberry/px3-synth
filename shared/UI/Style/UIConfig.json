@@ -2767,9 +2767,9 @@
       "text": "#FFFFFF"
     },
     "layout": {
-      "offsetX": 0,
-      "offsetY": 2,
-      "width": 340,
+      "offsetX": -6,
+      "offsetY": 6,
+      "width": 250,
       "textHeight": 18,
       "cornerRadius": 6,
       "borderWidth": 1,
