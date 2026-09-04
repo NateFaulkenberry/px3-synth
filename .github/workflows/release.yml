@@ -447,13 +447,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Exported here, in the shell, rather than declared in this step's
-          # `env:` as ${{ env.PX3_BUILD_JOBS }}. A ${{ }} reference to the env
-          # context from inside an env block is one indirection too many for
-          # something this load-bearing: if it ever resolves empty,
-          # build-release.sh sees no job count, and an empty value used to mean
-          # "unbounded". PX3_BUILD_JOBS is a workflow-level env var, so it is a
-          # real variable in this shell and can be checked before use.
+          # Exported here in the shell, rather than declared in this step's
+          # own env: block as an expression referring to the env context. That
+          # indirection is one too many for something this load-bearing - if it
+          # ever resolved empty, build-release.sh would see no job count, and an
+          # empty value used to mean "unbounded". PX3_BUILD_JOBS is a
+          # workflow-level env var, so it is a real variable in this shell and
+          # can be checked before use.
+          #
+          # NOTE: do not write GitHub expression syntax in these comments.
+          # Actions scans the whole run block for expressions and does not care
+          # that a line begins with #, so an empty pair of expression braces
+          # here is a workflow-level parse error. That is not hypothetical: it
+          # disabled this entire workflow, and because a workflow that will not
+          # parse cannot be triggered, published releases silently started no
+          # run at all.
           : "${PX3_BUILD_JOBS:?PX3_BUILD_JOBS is not set - refusing to build with an unknown job count}"
           export CMAKE_BUILD_PARALLEL_LEVEL="${PX3_BUILD_JOBS}"
           echo "CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL}"
