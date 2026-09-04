@@ -3,6 +3,7 @@
 #include "SemanticVersion.h"
 #include "UpdateModel.h"
 #include "GitHubReleaseProvider.h"
+#include "InstallerVerification.h"
 #include "MockUpdateProvider.h"
 #include "ProductRegistry.h"
 #include "UpdateService.h"
@@ -895,6 +896,54 @@ void testUpdater()
             flowEditor.reset();
             service.resetForTesting();
             service.setProvider(nullptr);
+        }
+
+        // ---- the installer signature check ---------------------------------
+        //
+        // This check refused every correctly signed release of v0.7.2. The
+        // command was built as one string with quotes around the path; nothing
+        // runs a shell, so pkgutil was asked about a file whose name began with
+        // a quote character, answered "Package does not exist", and the caller
+        // read the missing certificate name as proof the package was unsigned.
+        {
+            // A path with the two things that provoked it: a space and the
+            // parentheses in the real staging directory, ~/Library/P(X3)/.
+            const juce::File awkward { "/Users/someone/Library/P(X3)/Updates/PX3 Synth-v1.2.3.pkg" };
+            const auto command = signatureCheckCommand(awkward);
+
+            check("UpdaterSignature_ThePathIsOneUnquotedArgument",
+                  command.size() == 3
+                      && command[2] == awkward.getFullPathName()
+                      && ! command[2].containsChar('"'),
+                  juce::String(command.size()) + " args, path arg = " + command[2]);
+
+            // pkgutil's real answer for a signed package.
+            const juce::String signed_ =
+                "Package \"PX3-v0.7.2-macOS.pkg\":\n"
+                "   Status: signed by a developer certificate issued by Apple for distribution\n"
+                "   Notarization: trusted by the Apple notary service\n"
+                "   Certificate Chain:\n"
+                "    1. Developer ID Installer: SOMEONE (ABCDE12345)\n";
+
+            // And its answer when it cannot open the file - which it reports
+            // with status 0, so only the certificate match distinguishes them.
+            const juce::String missing =
+                "Package does not exist: \"/Users/someone/Library/P(X3)/Updates/PX3.pkg\"\n";
+
+            const juce::String unsigned_ =
+                "Package \"PX3.pkg\":\n   Status: no signature\n";
+
+            check("UpdaterSignature_ASignedPackageIsAccepted",
+                  signatureOutputNamesADeveloperID(signed_),
+                  "the certificate line is recognised");
+
+            check("UpdaterSignature_AMissingFileIsNotMistakenForSigned",
+                  ! signatureOutputNamesADeveloperID(missing),
+                  "pkgutil's 'does not exist' does not name a certificate");
+
+            check("UpdaterSignature_AnUnsignedPackageIsRefused",
+                  ! signatureOutputNamesADeveloperID(unsigned_),
+                  "no certificate, no install");
         }
 
         service.resetForTesting();
