@@ -81,7 +81,7 @@ main (green, PX3_VERSION already 0.7.1)
   reason. If the runner's compiler turns out to be noisier than yours on the
   same code, the choice is to fix the warnings or to pin the runner's Xcode;
   do not widen the filter, which would hide real ones.
-- `PX3Tests` — 1342 assertions.
+- `PX3Tests` — 1366 assertions.
 - `PX3Diag regress` — 29 audio-artifact cases.
 - `PX3Diag rtsafety` — 0 allocations per audio block.
 - `PX3SmokeTest` — factory defaults are audible at every rate and block size.
@@ -90,12 +90,30 @@ main (green, PX3_VERSION already 0.7.1)
 
 ### What CI deliberately does not do
 
-**`auval`.** It requires the component installed in a system plug-in folder and
-drives macOS's own `AudioComponentRegistrar`. On an ephemeral runner it would
-validate a copy no user will ever have, while taking minutes. The bundle check
-is what CI can honestly assert; `auval` belongs on a real machine before a
-release. There is no `pluginval` in this project today — adding it would be a
-reasonable future step and is not a CI change alone.
+**`auval` — in CI. The release workflow now runs it.**
+
+The objection was that an ephemeral runner would validate a copy no user will
+ever have, while taking minutes. Both halves hold for CI, where the build is
+thrown away, and neither holds for a release, where the component `auval` loads
+is the exact binary being signed, packaged and published. That is the only copy
+a user will ever have.
+
+The cost turned out not to be minutes either: about a second per plug-in,
+measured, so under ten seconds for all eight.
+
+So CI still asserts only the bundle check, and the release job installs each
+built component, drives `AudioComponentRegistrar`, and validates it before any
+asset is collected. It gates: a plug-in that fails to load or render stops the
+release rather than reaching a user.
+
+This closed a real gap. Until it existed, nothing in the release ever executed
+the binaries it published — every check was about the container: bundle layout,
+architecture, signature. It also became necessary rather than merely nice once
+the packaged build started using the compiler cache, since it is what turns a
+bad cache entry from something shipped into something caught.
+
+There is no `pluginval` in this project today — adding it would be a reasonable
+future step and is not a CI change alone.
 
 **Gating on benchmarks.** `PX3MemBench` only fails when compared against a saved
 baseline, and no baseline is committed (`.benchmarks/` is gitignored). A GitHub
@@ -312,6 +330,34 @@ bash -n scripts/*.sh scripts/installer/*.sh
 A clean configure takes ~50 s (JUCE fetch included) and a clean build ~6.5 min
 on a 10-core Mac; expect roughly 20–25 min on a 3-core GitHub runner, less once
 ccache warms.
+
+### The compiler cache in a release
+
+Both builds in the release job use ccache now — the test build always did, the
+packaged build was added after measuring where a release actually goes: 18m41s
+of a 32-minute job was the packaged compile. Notarisation, the usual suspect,
+was 74 seconds across three submissions.
+
+Caching a build whose output is signed and shipped is a decision, not a
+convenience, so it carries three conditions:
+
+- **`CCACHE_COMPILERCHECK=content`** — hash the compiler binary itself rather
+  than its mtime. The default, mtime, is the one way a content-addressed cache
+  can miss a toolchain change.
+- **No `sloppiness`, anywhere.** Those settings buy hit rate with correctness,
+  which is the wrong trade for a shipped artifact.
+- **`auval` gates the result.** The shipped plug-ins are loaded and rendered
+  before any asset is collected, so a bad cache entry fails the release instead
+  of reaching a user.
+
+`CCACHE_MAXSIZE` is capped at 2G, because `actions/cache` pays for every byte
+twice and an unbounded cache can cost more in transfer than the compiles it
+skips. The stats printed after the build are the only way eviction thrashing
+would be visible; if they show it, raise the cap.
+
+If a cache is ever suspected, the `workflow_dispatch` **`no_cache`** input
+builds cold. It exists so that diagnosis is a dispatch rather than a YAML edit
+made under pressure.
 
 ---
 
