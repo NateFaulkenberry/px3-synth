@@ -1065,20 +1065,36 @@ select or deselect any of:
 
   - Audio Unit (AU)   -> /Library/Audio/Plug-Ins/Components
   - VST3              -> /Library/Audio/Plug-Ins/VST3
-  - Standalone app    -> /Applications
+  - Standalone app    -> /Applications  (always installed)
 
-All formats are selected by default. Presets are created automatically the
-first time you run P(X3).
+Everything is selected by default. The standalone application cannot be
+deselected: it carries the helper that installs updates for the plug-ins, so
+without it the plug-ins can download an update but not install one.
+
+Presets are created automatically the first time you run P(X3).
 EOF
 
 # The standalone choice and its package reference only exist when the
 # standalone target was actually built.
+#
+# SHOWN, TICKED, AND NOT UNTICKABLE.
+#
+# start_enabled="false" is what makes a choice required: the row is still
+# listed, with its checkbox on and greyed, so the user can see what they are
+# getting rather than having it installed invisibly.
+#
+# It is required because the updater helper lives INSIDE PX3 Synth.app. The
+# plug-in stages an installer and then hands it to that helper, which is what
+# waits for the host to quit - so without the standalone there is nothing to
+# hand it to, and Prepare Update succeeds while Install silently cannot work.
+# Making it optional made a feature depend on a checkbox nothing connected it
+# to.
 APP_CHOICE_OUTLINE=""
 APP_CHOICE_DEF=""
 APP_PKG_REF=""
 if [[ -n "${APP_BUNDLE}" ]]; then
   APP_CHOICE_OUTLINE='      <line choice="px3.standalone"/>'
-  APP_CHOICE_DEF="  <choice id=\"px3.standalone\" title=\"Standalone Application\" description=\"The P(X3) standalone app, installed to /Applications. Use this to play P(X3) without a DAW.\" start_selected=\"true\">
+  APP_CHOICE_DEF="  <choice id=\"px3.standalone\" title=\"Standalone Application (required)\" description=\"The P(X3) standalone app, installed to /Applications. Use it to play P(X3) without a DAW. It also carries the updater helper that installs updates for the plug-ins, so it is always installed.\" start_selected=\"true\" start_enabled=\"false\">
     <pkg-ref id=\"${APP_PACKAGE_ID}\"/>
   </choice>"
   APP_PKG_REF="  <pkg-ref id=\"${APP_PACKAGE_ID}\" version=\"${PROJECT_VERSION}\">#$(basename "${APP_COMPONENT_PKG}")</pkg-ref>"

@@ -337,15 +337,27 @@ The Installation Type pane offers the Synth's three formats, then the effects
 under a heading of their own:
 
 ```
-[x] Audio Unit (AU)            [x] Additional PX3 Effects
-[x] VST3                         [x] PX3 Delay  [x] PX3 Spread  [x] PX3 Doom
-[x] Standalone Application       [x] PX3 Mood   [x] PX3 Reverb  [x] PX3 Lucy
-                                 [x] PX3 Chorus
+[x] Audio Unit (AU)                        [x] Additional PX3 Effects
+[x] VST3                                     [x] PX3 Delay  [x] PX3 Spread  [x] PX3 Doom
+[X] Standalone Application (required)        [x] PX3 Mood   [x] PX3 Reverb  [x] PX3 Lucy
+     ^ ticked and greyed                     [x] PX3 Chorus
 ```
 
 One component package per **effect**, not per format — that is the choice a user
 makes — so each carries that effect's AU and VST3 together. Every effect is
 `start_selected="true"`: the user opts *out* of what they do not want.
+
+**The standalone is the exception: `start_selected="true" start_enabled="false"`,
+which shows the row with its checkbox on and greyed.** The updater helper lives
+inside `PX3 Synth.app`, and a plug-in updates itself by staging an installer and
+handing it to that helper — which is what waits for the host to quit. Without the
+standalone there is nothing to hand it to, so Prepare Update succeeds and Install
+cannot work.
+
+It is shown rather than installed silently for the same reason the effects are
+listed: what lands on the machine should be visible, even when there is no choice
+about it. The title says "(required)" so the greyed checkbox reads as deliberate
+rather than broken.
 
 `build-release.sh` reads the product list from `CMakeLists.txt`, so a new
 product is packaged without editing the installer. A product declared but not
