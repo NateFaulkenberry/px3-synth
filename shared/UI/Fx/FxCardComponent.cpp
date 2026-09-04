@@ -242,6 +242,22 @@ void FxCardComponent::setUIConfig(std::shared_ptr<const UIConfig> config)
                                                      juce::Colour::fromRGB(232, 232, 232));
         const auto labelFont = uiConfig->getFloat("cards." + styleKey + ".controls.labelFontSize", 11.5f);
 
+        // The caption chips. Background and outline are separate colours with
+        // separate opacities, so a card can carry its own scheme rather than
+        // every caption in the plugin being the same translucent white.
+        px3::ui::ChipLabel::Style chipStyle;
+        const auto chipKey = "cards." + styleKey + ".controls.";
+        chipStyle.background = uiConfig->getColour(chipKey + "labelBackground", chipStyle.background);
+        chipStyle.backgroundOpacity = uiConfig->getFloat(chipKey + "labelBackgroundOpacity",
+                                                         chipStyle.backgroundOpacity);
+        chipStyle.outline = uiConfig->getColour(chipKey + "labelOutline", chipStyle.outline);
+        chipStyle.outlineOpacity = uiConfig->getFloat(chipKey + "labelOutlineOpacity",
+                                                      chipStyle.outlineOpacity);
+        chipStyle.outlineWidth = uiConfig->getFloat(chipKey + "labelOutlineWidth",
+                                                    chipStyle.outlineWidth);
+        chipStyle.cornerRadius = uiConfig->getFloat(chipKey + "labelCornerRadius",
+                                                    chipStyle.cornerRadius);
+
         for (auto& entry : choices)
         {
             entry.box->setColour(juce::ComboBox::backgroundColourId, boxBackground);
@@ -249,19 +265,36 @@ void FxCardComponent::setUIConfig(std::shared_ptr<const UIConfig> config)
             entry.box->setColour(juce::ComboBox::outlineColourId, boxOutline);
             entry.label->setColour(juce::Label::textColourId, labelColour);
             entry.label->setFont(juce::FontOptions(labelFont));
+            entry.label->setChipStyle(chipStyle);
         }
         for (auto& entry : knobs)
         {
             entry.label->setColour(juce::Label::textColourId, labelColour);
             entry.label->setFont(juce::FontOptions(labelFont));
+            entry.label->setChipStyle(chipStyle);
         }
 
-        const auto toggleFont = uiConfig->getFloat("cards." + styleKey + ".controls.toggleFontSize", 11.5f);
-        const auto toggleOffTint = uiConfig->getFloat("cards." + styleKey + ".controls.toggleOffTint", 0.0f);
+        const auto toggleFont = uiConfig->getFloat(chipKey + "toggleFontSize", 11.5f);
+        const auto toggleOffTint = uiConfig->getFloat(chipKey + "toggleOffTint", 0.0f);
+
+        // Absent means "keep the shade derived from the card's accent", which is
+        // why these are read as optionals rather than as colours with defaults:
+        // a default would replace the derivation for every card to serve the one
+        // that wanted a scheme.
+        const auto optionalColour = [this](const juce::String& key) -> std::optional<juce::Colour>
+        {
+            if (uiConfig->getValue(key).isVoid()) { return std::nullopt; }
+            return uiConfig->getColour(key, juce::Colours::white);
+        };
+
         for (auto& entry : toggles)
         {
             entry.button->setFontSize(toggleFont);
             entry.button->setOffTint(toggleOffTint);
+            entry.button->setStateColours(optionalColour(chipKey + "toggleOnColor"),
+                                          optionalColour(chipKey + "toggleOffColor"));
+            entry.button->setTextColours(optionalColour(chipKey + "toggleOnTextColor"),
+                                         optionalColour(chipKey + "toggleOffTextColor"));
         }
     }
 

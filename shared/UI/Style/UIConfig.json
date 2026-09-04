@@ -1397,6 +1397,16 @@
         "color": "#F7D0D0"
       },
       "controls": {
+        "toggleOnColor": "#C4433F",
+        "toggleOffColor": "#3A2422",
+        "toggleOnTextColor": "#FFF0EE",
+        "toggleOffTextColor": "#C9A9A5",
+        "labelBackground": "#C4433F",
+        "labelBackgroundOpacity": 0.2,
+        "labelOutline": "#E8A9A5",
+        "labelOutlineOpacity": 0.45,
+        "labelOutlineWidth": 1,
+        "labelCornerRadius": 7,
         "knobSize": 54,
         "featureKnobSize": 77,
         "choiceWidth": 76,
@@ -1412,7 +1422,7 @@
         "boxBackground": "#232323D2",
         "boxText": "#E8E8E8",
         "boxOutline": "#FFFFFF69",
-        "labelColour": "#E8E8E8"
+        "labelColour": "#F2DCD9"
       },
       "cardInner": {
         "margin": 0,
@@ -1484,7 +1494,7 @@
     "lucy": {
       "artwork": {
         "image": "Lucy-artwork.png",
-        "opacity": 0.5
+        "opacity": 0.8
       },
       "border": {
         "color": "#5AB9CC",
@@ -1508,6 +1518,16 @@
         "color": "#D0F1F7"
       },
       "controls": {
+        "toggleOnColor": "#3FA9B8",
+        "toggleOffColor": "#1E3238",
+        "toggleOnTextColor": "#EAFBFF",
+        "toggleOffTextColor": "#9FC4CC",
+        "labelBackground": "#3FA9B8",
+        "labelBackgroundOpacity": 0.2,
+        "labelOutline": "#9FD8E2",
+        "labelOutlineOpacity": 0.45,
+        "labelOutlineWidth": 1,
+        "labelCornerRadius": 7,
         "knobSize": 54,
         "featureKnobSize": 77,
         "choiceWidth": 72,
@@ -1523,7 +1543,7 @@
         "boxBackground": "#232323D2",
         "boxText": "#E8E8E8",
         "boxOutline": "#FFFFFF69",
-        "labelColour": "#E8E8E8"
+        "labelColour": "#DCF2F7"
       },
       "cardInner": {
         "margin": 0,

@@ -34,6 +34,22 @@ void ToggleChipButton::setStateLabels(juce::String onText, juce::String offText)
     repaint();
 }
 
+void ToggleChipButton::setStateColours(std::optional<juce::Colour> on,
+                                      std::optional<juce::Colour> off)
+{
+    onColour = on;
+    offColour = off;
+    repaint();
+}
+
+void ToggleChipButton::setTextColours(std::optional<juce::Colour> on,
+                                      std::optional<juce::Colour> off)
+{
+    onTextColour = on;
+    offTextColour = off;
+    repaint();
+}
+
 void ToggleChipButton::paintButton(juce::Graphics& g,
                                    bool shouldDrawButtonAsHighlighted,
                                    bool shouldDrawButtonAsDown)
@@ -75,12 +91,24 @@ void ToggleChipButton::paintButton(juce::Graphics& g,
                            .withBrightness(lit.getBrightness() * 0.50f)
                            .withAlpha(enabled ? 0.95f : 0.45f);
 
-    const auto fill = on ? onFill : offFill;
+    // A configured colour wins over the derived one, and keeps the pressed and
+    // disabled treatments so a styled chip still behaves like a button.
+    const auto configured = on ? onColour : offColour;
+    auto fill = on ? onFill : offFill;
+
+    if (configured.has_value())
+    {
+        fill = configured->withMultipliedAlpha(enabled ? 1.0f : 0.45f);
+        if (shouldDrawButtonAsDown) { fill = fill.brighter(0.10f); }
+        if (! enabled) { fill = fill.withSaturation(0.0f); }
+    }
 
     g.setColour(shouldDrawButtonAsHighlighted ? fill.brighter(0.18f) : fill);
     g.fillRoundedRectangle(area, kCornerRadius);
 
-    const auto textColour = juce::Colour::fromRGB(232, 232, 232).withAlpha(enabled ? 1.0f : 0.6f);
+    const auto configuredText = on ? onTextColour : offTextColour;
+    const auto textColour = configuredText.value_or(juce::Colour::fromRGB(232, 232, 232))
+                                .withAlpha(enabled ? 1.0f : 0.6f);
 
     g.setColour(textColour);
     g.setFont(juce::FontOptions(fontSize));
