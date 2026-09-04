@@ -143,6 +143,15 @@ void UpdateService::setState(UpdateState newState, UpdateError newError, const j
         juce::Logger::writeToLog("PX3 update: " + describe(newState));
     }
 
+    // And to the diagnostic sink, WITH the detail. This is the line that used
+    // to be lost: getErrorMessage() gives the enum's generic description, so
+    // "expected <sha>, got <sha>" reached juce::Logger and nowhere a user could
+    // see it.
+    diagnose("STATE",
+             "state=" + describe(newState)
+                 + (newError != UpdateError::none ? " error=" + describe(newError) : juce::String())
+                 + (detail.isNotEmpty() ? " detail=" + detail : juce::String()));
+
     // Listeners are UI. Broadcasting from whichever thread got here would put
     // a repaint on it, so this always arrives on the message thread - and once
     // there it is SYNCHRONOUS, for the same reason GlobalSettings is: the gear
@@ -380,6 +389,12 @@ void UpdateService::runPreparation()
     const auto target = directory.getChildFile(available.installerFilename);
     const auto partial = directory.getChildFile(available.installerFilename + ".partial");
 
+    diagnose("PREPARE_BEGIN",
+             "staging=" + directory.getFullPathName()
+                 + " asset=" + available.installerFilename
+                 + " archive=" + (available.installerIsArchive ? "yes" : "no")
+                 + " url=" + available.downloadUrl.toString(false));
+
     progress.store(0.0f);
     setState(UpdateState::downloading);
 
@@ -397,11 +412,17 @@ void UpdateService::runPreparation()
         return;
     }
 
+    diagnose("DOWNLOADED",
+             "bytes=" + juce::String(partial.getSize()) + " file=" + partial.getFullPathName());
+
     setState(UpdateState::verifying);
 
     if (available.sha256.isNotEmpty())
     {
         const auto actual = sha256Of(partial);
+        diagnose("CHECKSUM",
+                 juce::String(actual == available.sha256 ? "match" : "MISMATCH")
+                     + " expected=" + available.sha256 + " actual=" + actual);
         if (actual != available.sha256)
         {
             // Quarantined by deletion. A file that failed its checksum must
@@ -411,6 +432,13 @@ void UpdateService::runPreparation()
                      "expected " + available.sha256 + ", got " + actual);
             return;
         }
+    }
+
+    else
+    {
+        // Worth saying out loud: an unverified download is not a defect here,
+        // but it does mean a corrupt file would reach the installer.
+        diagnose("CHECKSUM", "skipped - the release published no sha256");
     }
 
     target.deleteFile();
@@ -482,9 +510,22 @@ void UpdateService::runPreparation()
             return;
         }
 
+        diagnose("EXTRACTED",
+                 "entry=" + archive.getEntry(packageIndex)->filename
+                     + " to=" + installer.getFullPathName()
+                     + " bytes=" + juce::String(installer.getSize()));
+
         // The archive has served its purpose and is 30 MB.
         target.deleteFile();
     }
+
+    // The last thing worth knowing before the state says readyToInstall: what
+    // the helper will actually be handed. If Install then does nothing, this
+    // line and the one the button logs should name the same file.
+    diagnose("STAGED",
+             "installer=" + installer.getFullPathName()
+                 + " exists=" + (installer.existsAsFile() ? "yes" : "no")
+                 + " bytes=" + juce::String(installer.existsAsFile() ? installer.getSize() : 0));
 
     writeStagedMetadata(available, installer);
     progress.store(1.0f);
@@ -537,6 +578,12 @@ bool UpdateService::launchInstaller()
     }
 
     const auto shipped = updaterApplication();
+    diagnose("HELPER_LOOKUP",
+             shipped != juce::File()
+                 ? "found=" + shipped.getFullPathName()
+                       + " exists=" + (shipped.existsAsFile() ? "yes" : "no")
+                 : "NOT FOUND - the helper ships inside PX3 Synth.app, so this is "
+                   "expected when running a plug-in whose standalone is not installed");
     if (shipped == juce::File())
     {
         setState(UpdateState::failed, UpdateError::installerLaunchFailed,
@@ -565,6 +612,10 @@ bool UpdateService::launchInstaller()
     }
 
     runner.setExecutePermission(true);
+    diagnose("HELPER_STAGED",
+             "copy=" + runner.getFullPathName()
+                 + " exists=" + (runner.existsAsFile() ? "yes" : "no")
+                 + " bytes=" + juce::String(runner.existsAsFile() ? runner.getSize() : 0));
 
     // The handoff: which file to install, and which process to wait for.
     // Arguments rather than a socket - this is a one-shot request, and the
@@ -576,8 +627,23 @@ bool UpdateService::launchInstaller()
     command.add("--wait-for-pid");
     command.add(juce::String(static_cast<int>(getpid())));
 
+    diagnose("HANDOFF", command.joinIntoString(" "));
+
+    // NO STREAM FLAGS - the child's stdout and stderr go to /dev/null.
+    //
+    // This is what stopped the update from ever installing. With the default
+    // flags JUCE dup2s the child's stdout and stderr onto a pipe, and
+    // `launcher` is a local: the moment this function returns, the read end
+    // closes. The helper's first write then hits a pipe with no reader, takes
+    // SIGPIPE and dies - before it has logged a single line, which is exactly
+    // what the empty updater.log showed. Run from a terminal the same binary
+    // works perfectly, because stdout is a terminal and nothing closes.
+    //
+    // Passing 0 makes JUCE open /dev/null for both instead, so the helper
+    // outlives this process however long it has to wait. It logs to a file in
+    // the staging directory; nothing here was ever going to read its output.
     juce::ChildProcess launcher;
-    if (! launcher.start(command))
+    if (! launcher.start(command, 0))
     {
         setState(UpdateState::failed, UpdateError::installerLaunchFailed,
                  "could not start " + runner.getFullPathName());
@@ -587,6 +653,14 @@ bool UpdateService::launchInstaller()
     juce::Logger::writeToLog("PX3 update: handed " + installer.getFileName()
                              + " to the updater, waiting on pid "
                              + juce::String(static_cast<int>(getpid())));
+    // The helper is running and this process is about to be told to quit. Any
+    // failure after this point happens somewhere nothing here can observe, so
+    // this is the last line the console will ever show for an install.
+    diagnose("HANDOFF_OK",
+             "the helper is running and waiting for pid "
+                 + juce::String(static_cast<int>(getpid()))
+                 + " to exit; anything after this happens outside the plug-in");
+
     setState(UpdateState::installing);
     return true;
 }

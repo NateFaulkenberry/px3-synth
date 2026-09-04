@@ -114,6 +114,20 @@ SettingsPanel::SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour p
     addAndMakeVisible(updateButton);
 
     px3::update::UpdateService::getInstance().addChangeListener(this);
+
+    // Forward the service's running commentary into the debug console. It is
+    // installed here rather than owned by the service because shared code must
+    // not depend on a product; the service just calls whatever it is given.
+    //
+    // The sink is called from whichever thread the preparation runs on, and
+    // debugLogEvent takes the processor's lock, so this is safe from either.
+    // It captures the processor, not this panel: the panel can be closed
+    // mid-download and the log should carry on.
+    px3::update::UpdateService::getInstance().setDiagnosticSink(
+        [&processorRef = processor](const juce::String& event, const juce::String& details)
+        {
+            processorRef.debugLogEvent("UPDATE", event, details);
+        });
     refreshUpdateSection();
 
     closeButton.setButtonText("CLOSE");
@@ -133,6 +147,9 @@ SettingsPanel::~SettingsPanel()
     // The service outlives every editor, so a listener left registered here is
     // a call into freed memory the next time an update check finishes.
     px3::update::UpdateService::getInstance().removeChangeListener(this);
+    // The sink captures the processor, which outlives this panel, so it would
+    // stay valid - but a closed SETTINGS page should stop writing to the log.
+    px3::update::UpdateService::getInstance().setDiagnosticSink({});
 }
 
 void SettingsPanel::changeListenerCallback(juce::ChangeBroadcaster* source)

@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 
 #include "ProductRegistry.h"
@@ -99,6 +100,23 @@ public:
     // network and the failure paths - which are most of it - can be reached.
     using Downloader = std::function<bool(const juce::URL&, const juce::File&,
                                           std::function<void(float)>)>;
+    // An optional sink for the running commentary: every state change with the
+    // technical detail attached, and the steps inside preparation that have no
+    // state of their own.
+    //
+    // A callback rather than a direct call into the plugin, because this is
+    // shared code and shared code must not depend on a product - TestsEcosystem
+    // enforces that. The Synth installs one that forwards into its debug
+    // console; anything else can ignore it and the service behaves as before.
+    //
+    // It exists because the useful half of a failure was being thrown away:
+    // setState composes text like "expected <sha>, got <sha>", writes it to
+    // juce::Logger, and getErrorMessage() then returns only the enum's generic
+    // description. The specific reason never reached the UI.
+    using DiagnosticSink = std::function<void(const juce::String& event,
+                                              const juce::String& details)>;
+    void setDiagnosticSink(DiagnosticSink sink) { diagnostics = std::move(sink); }
+
     void setDownloaderForTesting(Downloader downloader) { downloadFile = std::move(downloader); }
     void setStagingDirectoryForTesting(juce::File directory) { stagingOverride = std::move(directory); }
     void setSynchronousForTesting(bool shouldBeSynchronous) { synchronous = shouldBeSynchronous; }
@@ -133,6 +151,13 @@ private:
 
     Downloader downloadFile;
     juce::File stagingOverride;
+    DiagnosticSink diagnostics;
+    // Never called with the service's lock held, and safe to be unset.
+    void diagnose(const juce::String& event, const juce::String& details = {}) const
+    {
+        if (diagnostics) { diagnostics(event, details); }
+    }
+
     bool synchronous { false };
     bool preReleaseChannel { false };
     std::atomic<bool> busy { false };

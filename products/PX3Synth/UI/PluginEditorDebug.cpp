@@ -125,8 +125,10 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     setupLabel(debugEnvelopeLabel, "H. AMP ENVELOPE DEBUG");
     setupLabel(debugPresetToolsLabel, "E. PRESET / STATE TOOLS");
     setupLabel(debugSnapshotLabel, "J. STATE TESTING");
-    setupLabel(debugEventLogLabel, "K. EVENT LOG");
-    setupLabel(debugUpdateLabel, "L. UPDATE");
+    // Lettered by where they render, not the order they are created: the
+    // update section sits above the event log in the right-hand column.
+    setupLabel(debugUpdateLabel, "K. UPDATE");
+    setupLabel(debugEventLogLabel, "L. EVENT LOG");
 
     setupEditor(debugInstanceText);
     setupEditor(debugModuleOrderText);
@@ -933,8 +935,18 @@ void PX3SynthAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& 
         return total;
     };
 
+    // These two lists are the heights of the sections each column lays out, and
+    // they decide how tall the scrollable content is. They are a sum, so the
+    // order does not matter - but a section added below without a matching
+    // entry here lands outside the content and is simply never drawn, with no
+    // error and nothing missing on screen to point at. That is exactly what
+    // happened when the update section was added: it existed, it was laid out,
+    // and the viewport had no room to show it.
     const auto leftNaturalHeight = stack({ 78, 120, 80, 160 });
-    const auto rightNaturalHeight = stack({ 24 + gap + 24, 120, 196, 66 + gap + 24, 180, 80, 120 });
+    const auto rightNaturalHeight = stack({ 24 + gap + 24, 120, 196, 66 + gap + 24,
+                                            180, 80,
+                                            150,   // K. UPDATE
+                                            120 });
 
     const auto viewportWidth = juce::jmax(0, debugSectionsViewport.getMaximumVisibleWidth());
     const auto contentHeight = juce::jmax(debugSectionsViewport.getMaximumVisibleHeight(),
