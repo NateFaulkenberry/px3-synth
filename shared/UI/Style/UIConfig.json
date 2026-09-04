@@ -1304,6 +1304,10 @@
       }
     },
     "delay": {
+      "artwork": {
+        "image": "Delay-artwork.png",
+        "opacity": 0.8
+      },
       "border": {
         "color": "#5A7CCC",
         "opacity": 0.71

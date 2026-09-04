@@ -20,6 +20,7 @@
 #include "FxCardComponent.h"
 #include "DelayComponent.h"
 #include "MoodComponent.h"
+#include "VibeComponent.h"
 #include "UIConfig.h"
 #include "UIConfigManager.h"
 #include "Card.h"
@@ -234,6 +235,29 @@ int main(int argc, char* argv[])
         const auto file = output.getChildFile("PX3-Delay-background.png");
         if (writePng(delay, "delay", file, config)) { std::cout << "  PX3-Delay  " << describe(file) << std::endl; }
         else                       { std::cout << "  PX3-Delay  FAILED" << std::endl; ++failures; }
+    }
+
+    // Vibe. It has no standalone product - it exists only as a stage in the
+    // Synth's FX page - but its card is drawn by a component of its own like
+    // Delay's and Mood's, so its background exports the same way. A reference
+    // image is wanted for the card, not for a product.
+    {
+        juce::ToggleButton bypass;
+        juce::Slider amount;
+        juce::Label amountLabel;
+        juce::ComboBox type;
+        juce::Label typeLabel;
+
+        VibeComponent vibe(bypass, amount, amountLabel, type, typeLabel,
+                           juce::Colour::fromRGB(255, 198, 110));
+        vibe.setUIConfig(config);
+
+        const auto file = output.getChildFile("PX3-Vibe-background.png");
+        if (writePng(vibe, "vibe", file, config))
+        {
+            std::cout << "  PX3-Vibe  " << describe(file) << std::endl;
+        }
+        else { std::cout << "  PX3-Vibe  FAILED" << std::endl; ++failures; }
     }
 
     {
