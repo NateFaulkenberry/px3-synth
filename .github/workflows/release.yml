@@ -191,9 +191,16 @@ jobs:
 
       # This job compiles twice - once for the test harnesses, once for the
       # shippable plug-ins - because build-release.sh wipes and reconfigures its
-      # own build directory with the diagnostic targets off. ccache recovers the
-      # overlap between them; without it the job runs closer to its timeout than
-      # is comfortable on a 3-core runner.
+      # own build directory with the diagnostic targets off. The two builds are
+      # sequential steps, never concurrent.
+      #
+      # This cache serves the TEST build only. build-release.sh sets no compiler
+      # launcher, so ccache does not touch the packaged build at all - an
+      # earlier comment here claimed otherwise and was wrong. Enabling it there
+      # would mean exporting CMAKE_C_COMPILER_LAUNCHER/CMAKE_CXX_COMPILER_LAUNCHER
+      # to the build step (CMake does read those from the environment), which is
+      # worth doing but is a change to how release binaries are produced, so it
+      # is not being folded into a resource fix.
       - name: Cache compiler output
         uses: actions/cache@v5
         with:
