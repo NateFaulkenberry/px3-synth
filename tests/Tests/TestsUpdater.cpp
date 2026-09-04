@@ -708,23 +708,52 @@ void testUpdater()
                   juce::String("still up at 19.97 s: ") + (stillThere ? "yes" : "NO")
                       + "; gone at 20 s: " + (goneNow ? "yes" : "NO"));
 
-            // The gear keeps glowing after the notice goes - the notice is a
-            // one-off, the glow is the standing signal.
-            check("UpdateUi_TheGearKeepsGlowingAfterTheNoticeHasGone",
-                  bar != nullptr && bar->isUpdateAvailable(),
-                  bar != nullptr && bar->isUpdateAvailable()
-                      ? juce::String("still glowing, which is the point of it")
-                      : juce::String("STOPPED GLOWING"));
+            // The glow goes when the notice does. The two announce the same
+            // thing, so leaving the gear pulsing after the notice has shown
+            // itself out just makes it the permanent state of the window.
+            // SETTINGS still reports the update after both have gone quiet, and
+            // a newly opened editor announces it again.
+            check("UpdateUi_TheGlowStopsWithTheNotice",
+                  bar != nullptr && ! bar->isUpdateAvailable(),
+                  bar != nullptr && ! bar->isUpdateAvailable()
+                      ? juce::String("glow cleared with the notice")
+                      : juce::String("STILL GLOWING after the notice went"));
+        }
 
-            // Opening SETTINGS is what counts as having seen it.
-            editor->debugSelectSection(6);
+        // Opening SETTINGS is the other way the announcement ends, and it needs
+        // its own editor: on the one above the timeout has already cleared the
+        // glow, so asserting there would pass no matter what SETTINGS did.
+        base.reset();
+
+        std::unique_ptr<juce::AudioProcessorEditor> second(processor.createEditor());
+
+        if (auto* fresh = dynamic_cast<PX3SynthAudioProcessorEditor*>(second.get()))
+        {
+            fresh->setSize(1280, 800);
+            service.checkForUpdates(true);
+
+            auto* bar = fresh->debugTopMenuBar();
+
+            check("UpdateUi_ANewWindowAnnouncesTheUpdateAgain",
+                  bar != nullptr && bar->isUpdateAvailable()
+                      && fresh->debugUpdateNoticeVisible(),
+                  juce::String(bar != nullptr && bar->isUpdateAvailable()
+                                   ? "glowing" : "NOT GLOWING")
+                      + "; notice "
+                      + (fresh->debugUpdateNoticeVisible() ? "shown" : "NOT SHOWN"));
+
+            // Opening SETTINGS is what counts as having seen it - before any
+            // timeout, so this measures SETTINGS and nothing else.
+            fresh->debugSelectSection(6);
             const auto afterOpening = bar != nullptr && bar->isUpdateAvailable();
 
             check("UpdateUi_OpeningSettingsStopsTheGlow",
-                  ! afterOpening && ! editor->debugUpdateNoticeVisible(),
+                  ! afterOpening && ! fresh->debugUpdateNoticeVisible(),
                   afterOpening ? juce::String("STILL GLOWING after opening SETTINGS")
                                : juce::String("glow and notice both cleared"));
         }
+
+        second.reset();
 
         service.resetForTesting();
         service.setProvider(nullptr);

@@ -338,7 +338,7 @@ void PX3SynthAudioProcessorEditor::refreshUpdateAffordances()
 
     if (topMenuBar != nullptr)
     {
-        topMenuBar->setUpdateAvailable(waiting && ! seen);
+        topMenuBar->setUpdateAvailable(waiting && ! seen && ! updateAnnouncementFinished);
     }
 
     if (seen) { dismissUpdateNotice(); }
@@ -346,7 +346,7 @@ void PX3SynthAudioProcessorEditor::refreshUpdateAffordances()
     // The line under the bar, once per window. It says what the glow cannot -
     // which product, and that there IS a new version - and then gets out of
     // the way on its own.
-    if (waiting && ! seen && ! updateNoticeShown)
+    if (waiting && ! seen && ! updateNoticeShown && ! updateAnnouncementFinished)
     {
         const auto release = service.getAvailableRelease();
         const auto product = service.getProduct();
@@ -367,6 +367,18 @@ void PX3SynthAudioProcessorEditor::refreshUpdateAffordances()
 
 void PX3SynthAudioProcessorEditor::dismissUpdateNotice()
 {
+    // The glow goes with the notice. It is set before the early return because
+    // the flag is about the announcement being over, not about the label being
+    // on screen - a dismiss that finds the notice already gone still has to
+    // settle the gear.
+    const auto wasAnnouncing = ! updateAnnouncementFinished;
+    updateAnnouncementFinished = true;
+
+    // Turned off here rather than by leaving it to the next refresh: the
+    // timeout path runs from the frame tick, which does not call
+    // refreshUpdateAffordances, so nothing else would put the gear out.
+    if (wasAnnouncing && topMenuBar != nullptr) { topMenuBar->setUpdateAvailable(false); }
+
     if (updateNoticeFramesLeft < 0 && ! updateNotice.isVisible()) { return; }
 
     updateNoticeFramesLeft = -1;

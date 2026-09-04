@@ -476,6 +476,11 @@ private:
     // So the notice appears once per window rather than every time a check
     // happens to land on the same answer.
     bool updateNoticeShown { false };
+    // The glow and the notice announce the same thing, so they stop together:
+    // once the notice has had its say, the gear stops asking for attention
+    // too. Per window, like the notice - a newly opened editor announces the
+    // update again, and SETTINGS still shows it after both have gone quiet.
+    bool updateAnnouncementFinished { false };
 
     // Told when the global animation preference moves, rather than asking every
     // tick. One notification per change beats thirty polls a second finding
