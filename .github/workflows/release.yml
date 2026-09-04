@@ -179,9 +179,12 @@ jobs:
       # Installer cert signs the .pkg. With only one, build-release.sh would
       # sign what it could and productsign would fail at the very end of a
       # 40-minute job. Better to know at the start that this is an unsigned run.
-      HAVE_SIGNING_CERT: >-
-        ${{ secrets.MACOS_APPLICATION_P12 != ''
-            && secrets.MACOS_INSTALLER_P12 != '' }}
+      # One line, deliberately. Written as a folded `>-` block across two lines
+      # the continuation is MORE indented, which YAML treats as a
+      # more-indented line and preserves the newline rather than folding it -
+      # leaving a literal \n inside the ${{ }} and an expression Actions cannot
+      # evaluate. Long, but correct.
+      HAVE_SIGNING_CERT: ${{ secrets.MACOS_APPLICATION_P12 != '' && secrets.MACOS_INSTALLER_P12 != '' }}
     steps:
       - name: Checkout the exact ref
         uses: actions/checkout@v5
