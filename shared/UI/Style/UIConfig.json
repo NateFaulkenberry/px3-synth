@@ -1484,7 +1484,7 @@
     "lucy": {
       "artwork": {
         "image": "Lucy-artwork.png",
-        "opacity": 0.35
+        "opacity": 0.5
       },
       "border": {
         "color": "#5AB9CC",

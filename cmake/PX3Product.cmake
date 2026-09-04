@@ -94,20 +94,37 @@ function(px3_add_product)
     # Done here rather than in a list beside the Synth's, so a product added to
     # the table is styled without anyone remembering to add it twice.
     if (EXISTS "${CMAKE_SOURCE_DIR}/shared/UI/Style/UIConfig.json")
+        # What the copy below depends on.
+        #
+        # A POST_BUILD command runs when the TARGET is built, and editing a PNG
+        # or the config does not make a target out of date - so the link step is
+        # skipped, the copy never fires, and the bundle keeps the file it was
+        # built with. Replacing artwork appeared to do nothing for exactly this
+        # reason. LINK_DEPENDS makes these files inputs to the link, so touching
+        # one relinks and the copy runs.
+        file(GLOB PX3_ARTWORK_FILES CONFIGURE_DEPENDS
+             "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/*.png"
+             "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/*.jpg")
+
         foreach(px3Format IN LISTS PX3P_FORMATS)
             if (TARGET ${PX3P_TARGET}_${px3Format})
-                add_custom_command(TARGET ${PX3P_TARGET}_${px3Format} POST_BUILD
+                set_property(TARGET ${PX3P_TARGET}_${px3Format} APPEND PROPERTY
+                    LINK_DEPENDS
+                        "${CMAKE_SOURCE_DIR}/shared/UI/Style/UIConfig.json"
+                        ${PX3_ARTWORK_FILES})
+                add_custom_command(TARGET ${PX3P_TARGET}_${px3Format} PRE_LINK
                     COMMAND ${CMAKE_COMMAND} -E make_directory
                         "$<TARGET_FILE_DIR:${PX3P_TARGET}_${px3Format}>/../Resources"
                     COMMAND ${CMAKE_COMMAND} -E copy_if_different
                         "${CMAKE_SOURCE_DIR}/shared/UI/Style/UIConfig.json"
                         "$<TARGET_FILE_DIR:${PX3P_TARGET}_${px3Format}>/../Resources/UIConfig.json"
-                    # Artwork travels with the config, for the same reason: a
-                    # card names a picture and has to find it wherever it runs.
-                    # copy_directory rather than a file list, so adding a PNG to
-                    # shared/UI/Artwork ships it without touching this.
-                    COMMAND ${CMAKE_COMMAND} -E copy_directory
-                        "${CMAKE_SOURCE_DIR}/shared/UI/Artwork"
+                    # The image files, named rather than the whole directory: a
+                    # directory copy also ships whatever Finder leaves lying in
+                    # it, and a .DS_Store inside a signed bundle is nobody's
+                    # idea of a resource. CONFIGURE_DEPENDS on the glob means a
+                    # new PNG still needs no edit here.
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${PX3_ARTWORK_FILES}
                         "$<TARGET_FILE_DIR:${PX3P_TARGET}_${px3Format}>/../Resources/Artwork"
                     VERBATIM)
             endif()

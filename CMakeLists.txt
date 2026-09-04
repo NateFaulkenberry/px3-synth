@@ -613,17 +613,28 @@ endforeach()
 
 # Ship external UI config alongside built bundles for runtime hot-reloadable styling.
 set(PX3_UI_CONFIG_FILE "${CMAKE_SOURCE_DIR}/shared/UI/Style/UIConfig.json")
+# The same dependency the products declare: a POST_BUILD copy runs only when the
+# target is built, so without this an edited config or a replaced PNG stays out
+# of the bundle until something else forces a relink.
+file(GLOB PX3_ARTWORK_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/*.png"
+             "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/*.jpg")
+
 foreach(px3BundleTarget IN ITEMS PX3Synth_Standalone PX3Synth_AU PX3Synth_VST3)
     if (TARGET ${px3BundleTarget})
-        add_custom_command(TARGET ${px3BundleTarget} POST_BUILD
+        set_property(TARGET ${px3BundleTarget} APPEND PROPERTY
+            LINK_DEPENDS "${PX3_UI_CONFIG_FILE}" ${PX3_ARTWORK_FILES})
+        add_custom_command(TARGET ${px3BundleTarget} PRE_LINK
             COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${px3BundleTarget}>/../Resources"
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${PX3_UI_CONFIG_FILE}"
                 "$<TARGET_FILE_DIR:${px3BundleTarget}>/../Resources/UIConfig.json"
-            # And the artwork a card can layer into its background, so the
-            # Synth finds the same pictures the effects do.
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_SOURCE_DIR}/shared/UI/Artwork"
+            # The image files, named rather than the whole directory: a
+            # directory copy also ships whatever Finder leaves lying in
+            # it, and a .DS_Store inside a signed bundle is nobody's
+            # idea of a resource. CONFIGURE_DEPENDS on the glob means a
+            # new PNG still needs no edit here.
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${PX3_ARTWORK_FILES}
                 "$<TARGET_FILE_DIR:${px3BundleTarget}>/../Resources/Artwork"
             VERBATIM
         )

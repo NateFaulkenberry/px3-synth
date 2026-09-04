@@ -469,11 +469,31 @@ void drawCard(juce::Graphics& g,
     //     the corners the border is about to draw.
     if (style.artwork.image.isNotEmpty() && style.artwork.opacity > 0.0f)
     {
-        // ImageCache, not a load per paint: this runs on every repaint of every
-        // card, and decoding a PNG there would be a frame's work for a picture
-        // that never changes.
+        // Cached, but keyed on the file's CONTENT IDENTITY rather than its path.
+        //
+        // ImageCache::getFromFile hashes the path alone, so a PNG replaced on
+        // disk is never noticed: the old picture is served for as long as the
+        // process lives, which for a plug-in means until the host unloads it.
+        // Replacing artwork and seeing no change is the whole point of having
+        // it in a directory, so the modification time and size go into the key
+        // and a changed file misses the cache exactly once.
         const auto file = UIConfigManager::findArtworkFile(style.artwork.image);
-        const auto image = file.existsAsFile() ? juce::ImageCache::getFromFile(file) : juce::Image();
+        juce::Image image;
+
+        if (file.existsAsFile())
+        {
+            const auto key = file.getFullPathName().hashCode64()
+                           ^ (file.getLastModificationTime().toMilliseconds() * 31)
+                           ^ (file.getSize() * 131);
+
+            image = juce::ImageCache::getFromHashCode(key);
+
+            if (image.isNull())
+            {
+                image = juce::ImageFileFormat::loadFrom(file);
+                if (image.isValid()) { juce::ImageCache::addImageToCache(image, key); }
+            }
+        }
 
         if (image.isValid())
         {
