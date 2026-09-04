@@ -39,6 +39,29 @@ env:
   # nothing.
   PX3_BUILD_JOBS: 3
 
+  # Notarisation, as a switch.
+  #
+  # DIAGNOSTIC: currently "false". Three releases in a row died with "the
+  # hosted runner lost communication with the server", always inside Build and
+  # package, which bundles build + sign + notarise into one step and so hides
+  # which of the three is at fault. Logs never survive a dead runner, so the
+  # only way to see inside is to remove a phase and re-run.
+  #
+  # Step 9 takes ~17 minutes in the one run that ever succeeded and ~45 in
+  # every failure. Notarisation is the only part of it that waits on a service
+  # outside the runner - `xcrun notarytool submit --wait` blocks on Apple - and
+  # the successful run was at 00:40 UTC against failures at 03:43, 04:45 and
+  # 05:44, which is the sort of difference an external queue produces.
+  #
+  # If step 9 finishes near 17 minutes with this off, notarisation is the hang.
+  # If it still dies near 45, notarisation is cleared and the fault is in the
+  # build or the signing.
+  #
+  # SET THIS BACK TO "true" once that question is answered: artifacts built
+  # with it off are signed but NOT notarised, and Gatekeeper refuses those on
+  # any machine but the one that built them.
+  PX3_NOTARIZE: "false"
+
 jobs:
   # --------------------------------------------------------------------------
   # Work out what is being built before building it. Cheap, and it turns the
@@ -394,7 +417,10 @@ jobs:
           ARGS=()
           if [ "${{ steps.keychain.outputs.imported }}" = "true" ] && [ -n "${CODESIGN_IDENTITY:-}" ]; then
             ARGS+=(--sign)
-            if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+            if [ "${PX3_NOTARIZE}" != "true" ]; then
+              echo "::warning::Notarisation is switched OFF (PX3_NOTARIZE=${PX3_NOTARIZE}). These artifacts are signed but NOT notarised - Gatekeeper will refuse them on other machines. This is a diagnostic setting; see release.yml."
+              echo "signed=signed, notarisation skipped" >> "$GITHUB_OUTPUT"
+            elif [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
               ARGS+=(--notarize)
               echo "signed=signed+notarised" >> "$GITHUB_OUTPUT"
             else
