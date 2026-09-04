@@ -543,6 +543,45 @@ jobs:
           copy "dist/P(X3)-v${CORE}-macOS-arm64.zip"                 "PX3-v${VERSION}-macOS-arm64-plugins.zip"
           copy "dist/P(X3)-v${CORE}-macOS-arm64-Installer.zip"       "PX3-v${VERSION}-macOS-arm64-Installer.zip"
 
+          # The uninstaller on its own.
+          #
+          # It already ships inside the installer zip, which is the copy most
+          # people get. This one is for the person who installed months ago,
+          # threw that zip away and now wants the plugins gone: without it the
+          # only way to get an uninstaller is to download a full release.
+          #
+          # ditto rather than zip, because this is an .app: ditto preserves the
+          # bundle's symlinks, extended attributes and code signature, and a
+          # plain `zip` produces something Gatekeeper rejects on the far side.
+          # --keepParent so it unpacks as the .app rather than spilling
+          # Contents/ into the download folder.
+          UNINSTALLER="dist/PX3 Uninstaller.app"
+          UNINSTALLER_ZIP="PX3-Uninstaller-v${VERSION}-macOS.zip"
+          if [ -d "$UNINSTALLER" ]; then
+            ditto -c -k --keepParent "$UNINSTALLER" "$OUT/$UNINSTALLER_ZIP"
+            echo "  $UNINSTALLER_ZIP"
+
+            # Unpacked to check it survived the trip, the way the installer zip
+            # is: an archive of an app bundle that does not restore to a working
+            # app is a failure nobody sees until they need it most.
+            VERIFY="$RUNNER_TEMP/uninstaller-verify"; rm -rf "$VERIFY"; mkdir -p "$VERIFY"
+            ditto -x -k "$OUT/$UNINSTALLER_ZIP" "$VERIFY"
+            # applet, not "PX3 Uninstaller": this is an AppleScript application,
+            # and osacompile always names the binary applet whatever the bundle
+            # is called. build-release.sh checks the same path for the same
+            # reason.
+            [ -x "$VERIFY/PX3 Uninstaller.app/Contents/MacOS/applet" ] \
+              || { echo "::error::uninstaller zip did not restore a runnable app"; exit 1; }
+            # The scripts it carries are the part that actually removes anything,
+            # and they are what an archive is most likely to mangle.
+            [ -s "$VERIFY/PX3 Uninstaller.app/Contents/Resources/px3-products.tsv" ] \
+              || { echo "::error::uninstaller zip lost its product manifest"; exit 1; }
+            echo "  uninstaller zip verified by unpacking"
+          else
+            echo "::error::expected artifact missing: $UNINSTALLER"
+            exit 1
+          fi
+
           # A checksum file, so a download can be verified without trusting the
           # transport. Generated over the final names.
           ( cd "$OUT" && shasum -a 256 * > "PX3-v${VERSION}-macOS-SHA256SUMS.txt" )

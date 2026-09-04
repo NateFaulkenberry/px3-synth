@@ -1208,6 +1208,10 @@ void PX3SynthAudioProcessorEditor::buildPresetBar()
     presetCategoryBox.onChange = [this]() { rebuildPresetFilteredList(); };
     presetSearchEditor.onTextChange = [this]() { rebuildPresetFilteredList(); };
     presetBrowserCloseButton.onClick = [this]() { closePresetBrowser(); };
+
+    // Same action, in the corner where every other panel now keeps it.
+    presetBrowserCloseGlyph.onClick = [this]() { closePresetBrowser(); };
+    presetBrowserPanel.addAndMakeVisible(presetBrowserCloseGlyph);
     presetBrowserLoadButton.onClick = [this]()
     {
         const auto row = presetListBox.getSelectedRow();
@@ -1329,12 +1333,15 @@ void PX3SynthAudioProcessorEditor::finishConstruction()
     px3::update::UpdateService::getInstance().addChangeListener(&updateStateListener);
 
     updateNotice.setJustificationType(juce::Justification::centredLeft);
-    // The notice itself stays click-through - it sits over the header and must
-    // not swallow clicks meant for what is under it - but its CHILDREN do get
-    // them, which is what makes the close glyph clickable. The second argument
-    // was false, and with a child to serve that would have made the button
-    // decorative.
-    updateNotice.setInterceptsMouseClicks(false, true);
+    // The notice EATS clicks rather than passing them through.
+    //
+    // It hangs over the header, so anything it covers is a real control - and a
+    // click aimed at the notice that lands on an oscillator's bypass instead is
+    // a change to the patch nobody asked for. Blocking is the safe way round: a
+    // click on a notice should do nothing, not something invisible.
+    //
+    // Both arguments true, so its children - the close glyph - still get theirs.
+    updateNotice.setInterceptsMouseClicks(true, true);
     addChildComponent(updateNotice);
 
     // Dismissing by hand ends the announcement exactly as the timeout does,

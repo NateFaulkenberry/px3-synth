@@ -921,6 +921,9 @@ private:
     juce::ListBox presetListBox;
     juce::TextButton presetBrowserLoadButton;
     juce::TextButton presetBrowserCloseButton;
+    // The circular X in the panel's top-right corner, the same glyph the
+    // settings page, the macro depth panel and the sheets close with.
+    px3::ui::SheetCloseButton presetBrowserCloseGlyph;
     juce::Label presetBrowserDetails;
     // Draws BOTH the keyboard's sparks and the wheels' sparkles, above both
     // components. They overlap each other, so z-order alone can never let both

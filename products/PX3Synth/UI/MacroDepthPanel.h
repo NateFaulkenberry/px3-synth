@@ -96,7 +96,8 @@ public:
     juce::StringArray debugRowParameterIds() const;
     juce::Slider* debugDepthSliderFor(const juce::String& parameterId);
     juce::Label* debugValueLabelFor(const juce::String& parameterId);
-    juce::TextButton& debugCloseButton() { return closeButton; }
+    // The panel's only close control since the footer button went.
+    SheetCloseButton& debugCloseButton() { return closeGlyph; }
     SheetCloseButton& debugCloseGlyph() { return closeGlyph; }
     int debugPointerTargetY() const { return pointerTargetY; }
     juce::String debugEmptyNotice() const { return emptyNotice; }
@@ -141,7 +142,6 @@ private:
     // Painted rather than a Label: a Label does not wrap, and this sentence is
     // longer than a narrow panel is wide.
     juce::String emptyNotice;
-    juce::TextButton closeButton { "Close" };
     // The circular X in the top-right corner, the same glyph the bus-insert
     // sheets close with. Styled from macroDepth.closeButton.
     SheetCloseButton closeGlyph;

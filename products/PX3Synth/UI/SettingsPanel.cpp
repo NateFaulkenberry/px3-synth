@@ -104,8 +104,9 @@ SettingsPanel::SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour p
     updateStatus.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(updateStatus);
 
-    releaseNotes.setJustificationType(juce::Justification::topLeft);
-    addChildComponent(releaseNotes);
+    releaseNotesView.setViewedComponent(&releaseNotes, false);
+    releaseNotesView.setScrollBarsShown(true, false);
+    addChildComponent(releaseNotesView);
 
     downloadBar.setPercentageDisplay(true);
     addChildComponent(downloadBar);
@@ -130,7 +131,6 @@ SettingsPanel::SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour p
         });
     refreshUpdateSection();
 
-    closeButton.setButtonText("CLOSE");
     closeButton.onClick = [this]
     {
         if (onCloseRequested != nullptr) { onCloseRequested(); }
@@ -160,6 +160,7 @@ void SettingsPanel::changeListenerCallback(juce::ChangeBroadcaster* source)
     if (source == &px3::update::UpdateService::getInstance())
     {
         logUpdateStateIfChanged();
+        handOffToInstallerWhenStaged();
         refreshUpdateSection();
         return;
     }
@@ -195,12 +196,10 @@ void SettingsPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
             intFrom(uiConfig.get(), "settings.layout.helpFontSize", 11))));
     }
 
-    closeButton.setColour(juce::TextButton::buttonColourId,
-                          colourFrom(uiConfig.get(), "settings.colors.closeButton",
-                                     juce::Colour::fromRGBA(52, 56, 64, 235)));
-    closeButton.setColour(juce::TextButton::textColourOffId,
-                          colourFrom(uiConfig.get(), "settings.colors.closeButtonText",
-                                     juce::Colour::fromRGB(232, 236, 242)));
+    px3::ui::SheetCloseButton::Style closeStyle;
+    closeStyle.size = 22;
+    px3::ui::SheetCloseButton::readStyleFrom(uiConfig.get(), "settings.closeButton", closeStyle);
+    closeButton.applyStyle(closeStyle);
 
     animationsToggle.setColour(juce::ToggleButton::tickColourId, accent);
     animationsToggle.setColour(juce::ToggleButton::tickDisabledColourId,
@@ -249,12 +248,14 @@ void SettingsPanel::refreshUpdateSection()
             updateStatus.setText("Checking for updates...", juce::dontSendNotification);
             updateButton.setButtonText("Check for Updates");
             updateButton.setEnabled(false);
+            updateButton.setVisible(true);
             break;
 
         case UpdateState::upToDate:
             updateStatus.setText("You're up to date", juce::dontSendNotification);
             updateButton.setButtonText("Check for Updates");
             updateButton.setEnabled(true);
+            updateButton.setVisible(true);
             break;
 
         case UpdateState::updateAvailable:
@@ -266,9 +267,10 @@ void SettingsPanel::refreshUpdateSection()
                                             ? "  -  PRE-RELEASE  -  is available"
                                             : " is available"),
                                  juce::dontSendNotification);
-            updateButton.setButtonText(release.looksLikePreRelease() ? "Prepare Pre-Release"
-                                                                     : "Prepare Update");
+            updateButton.setButtonText(release.looksLikePreRelease() ? "Install Pre-Release"
+                                                                     : "Install Update");
             updateButton.setEnabled(true);
+            updateButton.setVisible(true);
             break;
 
         case UpdateState::downloading:
@@ -276,28 +278,34 @@ void SettingsPanel::refreshUpdateSection()
                                  juce::dontSendNotification);
             updateButton.setButtonText("Cancel");
             updateButton.setEnabled(true);
+            updateButton.setVisible(true);
             break;
 
         case UpdateState::verifying:
             updateStatus.setText("Verifying download...", juce::dontSendNotification);
             updateButton.setButtonText("Cancel");
             updateButton.setEnabled(true);
+            updateButton.setVisible(true);
             break;
 
         case UpdateState::readyToInstall:
-            // The whole point of preparing: the user is told to carry on
-            // working, not to close their DAW and go looking for an installer.
-            updateStatus.setText("PX3 Synth " + release.version.toString()
-                                     + " is ready. Quit your DAW when you're finished and "
-                                       "PX3 will finish the update.",
-                                 juce::dontSendNotification);
-            updateButton.setButtonText("Install Now");
-            updateButton.setEnabled(true);
+            // Passed through rather than rested on. The handoff to the helper
+            // happens as soon as this state is reached, so what the user sees
+            // is one button that finishes the job rather than a second one
+            // asking them to confirm what they already asked for.
+            updateStatus.setText("Preparing to install...", juce::dontSendNotification);
+            updateButton.setEnabled(false);
+            updateButton.setVisible(true);
             break;
 
         case UpdateState::installing:
-            updateStatus.setText("Installing...", juce::dontSendNotification);
-            updateButton.setEnabled(false);
+            // The helper has it and is waiting for the host to quit. Nothing
+            // left to press, so the button goes: a disabled one here would just
+            // be asking to be clicked.
+            updateStatus.setText("Installation ready. Please save your changes and close "
+                                 "your DAW to complete the installation.",
+                                 juce::dontSendNotification);
+            updateButton.setVisible(false);
             break;
 
         case UpdateState::updated:
@@ -305,6 +313,7 @@ void SettingsPanel::refreshUpdateSection()
                                  juce::dontSendNotification);
             updateButton.setButtonText("Check for Updates");
             updateButton.setEnabled(true);
+            updateButton.setVisible(true);
             break;
 
         case UpdateState::failed:
@@ -314,6 +323,7 @@ void SettingsPanel::refreshUpdateSection()
             updateStatus.setText(service.getErrorMessage(), juce::dontSendNotification);
             updateButton.setButtonText("Try Again");
             updateButton.setEnabled(true);
+            updateButton.setVisible(true);
             break;
 
         case UpdateState::notConfigured:
@@ -321,6 +331,7 @@ void SettingsPanel::refreshUpdateSection()
                                  juce::dontSendNotification);
             updateButton.setButtonText("Check for Updates");
             updateButton.setEnabled(false);
+            updateButton.setVisible(true);
             break;
 
         case UpdateState::idle:
@@ -328,18 +339,29 @@ void SettingsPanel::refreshUpdateSection()
             updateStatus.setText({}, juce::dontSendNotification);
             updateButton.setButtonText("Check for Updates");
             updateButton.setEnabled(true);
+            updateButton.setVisible(true);
             break;
     }
 
     const auto showNotes = state == UpdateState::updateAvailable
                         && release.releaseNotes.isNotEmpty();
-    releaseNotes.setText(showNotes ? release.releaseNotes.substring(0, 400) : juce::String(),
-                         juce::dontSendNotification);
-    releaseNotes.setVisible(showNotes);
+    // No longer truncated. The 400-character cut existed because the notes had
+    // three fixed lines to live in and anything past that was invisible; now
+    // that the box scrolls, cutting them off would just hide the end.
+    releaseNotes.setContent(showNotes ? release.releaseNotes : juce::String(),
+                            colourFrom(uiConfig.get(), "settings.colors.releaseNotes",
+                                       colourFrom(uiConfig.get(), "settings.colors.help",
+                                                  juce::Colour::fromRGB(150, 156, 166))),
+                            static_cast<float>(intFrom(uiConfig.get(),
+                                                       "settings.layout.releaseNotesFontSize", 11)));
+    releaseNotesView.setVisible(showNotes);
 
-    const auto downloading = state == UpdateState::downloading;
-    downloadProgress = downloading ? static_cast<double>(service.getProgress()) : 0.0;
-    downloadBar.setVisible(downloading);
+    // Shown for verifying as well as downloading. They are one wait as far as
+    // the user is concerned, and a bar that vanishes between them reads as the
+    // download having finished when the work has not.
+    const auto working = state == UpdateState::downloading || state == UpdateState::verifying;
+    downloadProgress = working ? static_cast<double>(service.getProgress()) : 0.0;
+    downloadBar.setVisible(working);
 
     resized();
     repaint();
@@ -382,6 +404,33 @@ void SettingsPanel::logUpdateStateIfChanged()
     }
 }
 
+void SettingsPanel::handOffToInstallerWhenStaged()
+{
+    using namespace px3::update;
+
+    auto& service = UpdateService::getInstance();
+
+    // One button now finishes the job, so reaching readyToInstall is not a
+    // place the user has to be asked anything: they already said install. The
+    // second click was only ever confirming what the first one requested.
+    if (service.getState() != UpdateState::readyToInstall) { return; }
+
+    // No latch needed, and none wanted. launchInstaller leaves the state at
+    // installing on success and failed on error, so the state this is guarded
+    // on cannot still be true afterwards - which is what stops a second helper
+    // being started behind the first.
+    const auto installer = service.stagedInstaller();
+    logUpdateEvent("AUTO_INSTALL",
+                   "installer=" + installer.getFullPathName()
+                       + " exists=" + (installer.existsAsFile() ? "yes" : "no")
+                       + " bytes=" + juce::String(installer.existsAsFile() ? installer.getSize() : 0));
+
+    const auto launched = service.launchInstaller();
+    logUpdateEvent(launched ? "INSTALL_LAUNCHED" : "INSTALL_LAUNCH_FAILED",
+                   launched ? "the helper was started; it waits for this host to quit"
+                            : "error=" + service.getErrorMessage());
+}
+
 void SettingsPanel::onUpdateButtonClicked()
 {
     using namespace px3::update;
@@ -397,7 +446,7 @@ void SettingsPanel::onUpdateButtonClicked()
             // the url and the checksum decide whether the failure was the
             // network, the wrong file, or a release published without a sum.
             const auto release = service.getAvailableRelease();
-            logUpdateEvent("CLICK_PREPARE",
+            logUpdateEvent("CLICK_INSTALL_UPDATE",
                            "version=" + release.version.toString()
                                + " file=" + release.installerFilename
                                + " archive=" + (release.installerIsArchive ? "yes" : "no")
@@ -413,6 +462,24 @@ void SettingsPanel::onUpdateButtonClicked()
         case UpdateState::verifying:
             logUpdateEvent("CLICK_CANCEL", "state=" + describe(service.getState()));
             service.cancel();
+            break;
+
+        case UpdateState::failed:
+            // Try Again retries the install rather than starting over with a
+            // check. The failure was in downloading or staging a release the
+            // service still has, and prepareUpdate accepts being called from
+            // failed for exactly this. Only a failure with nothing to retry
+            // falls back to looking again.
+            if (service.getAvailableRelease().isValid())
+            {
+                logUpdateEvent("CLICK_RETRY", "error=" + service.getErrorMessage());
+                service.prepareUpdate();
+            }
+            else
+            {
+                logUpdateEvent("CLICK_CHECK", "state=failed, nothing staged to retry");
+                service.checkForUpdates(true);
+            }
             break;
 
         case UpdateState::readyToInstall:
@@ -518,18 +585,15 @@ void SettingsPanel::resized()
     const auto titleHeight = intFrom(uiConfig.get(), "settings.layout.titleHeight", 24);
 
     auto area = getLocalBounds().reduced(padX, padY);
-    title.setBounds(area.removeFromTop(titleHeight));
-    area.removeFromTop(rowGap);
+    const auto titleArea = area.removeFromTop(titleHeight);
+    title.setBounds(titleArea);
 
-    // Along the bottom, before the rows are laid out into what is left, so it
-    // stays put however many settings there are.
-    {
-        const auto closeWidth = intFrom(uiConfig.get(), "settings.layout.closeWidth", 120);
-        const auto closeHeight = intFrom(uiConfig.get(), "settings.layout.closeHeight", 28);
-        auto closeRow = area.removeFromBottom(juce::jmin(closeHeight, area.getHeight()));
-        closeButton.setBounds(closeRow.removeFromLeft(juce::jmin(closeWidth, closeRow.getWidth())));
-        area.removeFromBottom(rowGap);
-    }
+    // Over the title's top-right corner. It used to sit along the bottom, which
+    // put it below whatever the panel had to say and cost a row of height that
+    // the release notes now use.
+    closeButton.setBounds(closeButton.boundsWithin(titleArea));
+
+    area.removeFromTop(rowGap);
 
     for (auto& row : rows)
     {
@@ -551,14 +615,35 @@ void SettingsPanel::resized()
         const auto buttonWidth = intFrom(uiConfig.get(), "settings.layout.updateButtonWidth", 150);
         const auto buttonHeight = intFrom(uiConfig.get(), "settings.layout.updateButtonHeight", 26);
 
+        // What must still fit under the notes: the progress bar when it is up,
+        // the gap, and the button. Worked out before the notes claim their
+        // height so a long set of them cannot squeeze the button off the panel.
+        const auto reservedBelowNotes = (downloadBar.isVisible() ? 4 + 14 : 0)
+                                            + 8 + buttonHeight;
+
         area.removeFromTop(rowGap);
         updatesHeading.setBounds(area.removeFromTop(juce::jmin(headingHeight, area.getHeight())));
         versionLabel.setBounds(area.removeFromTop(juce::jmin(lineHeight, area.getHeight())));
         updateStatus.setBounds(area.removeFromTop(juce::jmin(lineHeight, area.getHeight())));
 
-        if (releaseNotes.isVisible())
+        if (releaseNotesView.isVisible())
         {
-            releaseNotes.setBounds(area.removeFromTop(juce::jmin(lineHeight * 3, area.getHeight())));
+            // Taller than the three lines it used to get, and it scrolls, so
+            // the height is how much is read at once rather than how much
+            // exists. Kept to what is actually left so the button below it
+            // cannot be pushed off the panel by a long set of notes.
+            const auto notesHeight = intFrom(uiConfig.get(),
+                                             "settings.layout.releaseNotesHeight",
+                                             lineHeight * 8);
+            releaseNotesView.setBounds(area.removeFromTop(
+                juce::jmin(notesHeight, juce::jmax(0, area.getHeight() - reservedBelowNotes))));
+
+            // The text is laid out to the viewport's width less the scrollbar,
+            // then given its natural height. Taller than the viewport means it
+            // scrolls; shorter means the bar never appears.
+            const auto textWidth = juce::jmax(0, releaseNotesView.getWidth()
+                                                     - releaseNotesView.getScrollBarThickness());
+            releaseNotes.setSize(textWidth, releaseNotes.heightForWidth(textWidth));
         }
 
         if (downloadBar.isVisible())

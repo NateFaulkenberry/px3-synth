@@ -2697,17 +2697,25 @@
     }
   },
   "settings": {
+    "closeButton": {
+      "size": 22,
+      "offsetX": 0,
+      "offsetY": 0,
+      "ringWidth": 1.6,
+      "glyphWidth": 2.0,
+      "glyphInset": 0.32,
+      "seatColor": "#0C0E14BE",
+      "ringColor": "#EDF1F796",
+      "glyphColor": "#EDF1F7",
+      "hoverColor": "#B9BFC8"
+    },
     "layout": {
-      "closeWidth": 120,
-      "closeHeight": 28,
       "updateLineHeight": 20,
+      "releaseNotesHeight": 160,
+      "releaseNotesFontSize": 11,
       "updateHeadingHeight": 22,
       "updateButtonWidth": 150,
       "updateButtonHeight": 26
-    },
-    "colors": {
-      "closeButton": "#343840EB",
-      "closeButtonText": "#E8ECF2"
     }
   },
   "envelope": {
@@ -2741,7 +2749,7 @@
       "borderWidth": 1,
       "headerHeight": 26,
       "headerFontSize": 13,
-      "footerHeight": 30,
+      "footerHeight": 0,
       "rowHeight": 30,
       "rowFontSize": 12,
       "valueFontSize": 11,
@@ -2765,16 +2773,14 @@
       "emptyNotice": "#A8AEBA",
       "sliderTrack": "#FFFFFF26",
       "sliderFill": "#5ADCC8",
-      "sliderThumb": "#DCFAF4",
-      "closeButton": "#343840EB",
-      "closeButtonText": "#E8ECF2"
+      "sliderThumb": "#DCFAF4"
     }
   },
   "updateNotice": {
     "closeButton": {
       "size": 14,
-      "offsetX": -5,
-      "offsetY": 3,
+      "offsetX": -6,
+      "offsetY": 6,
       "ringWidth": 1.2,
       "glyphWidth": 1.4,
       "glyphInset": 0.3,
@@ -2785,7 +2791,7 @@
     },
     "colors": {
       "background": "#000000",
-      "backgroundOpacity": 0.6,
+      "backgroundOpacity": 0.8,
       "border": "#FFFFFF",
       "borderOpacity": 0.35,
       "text": "#FFFFFF"
@@ -2793,7 +2799,7 @@
     "layout": {
       "offsetX": -6,
       "offsetY": 6,
-      "width": 250,
+      "width": 234,
       "textHeight": 18,
       "cornerRadius": 6,
       "borderWidth": 1,

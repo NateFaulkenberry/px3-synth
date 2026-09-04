@@ -2,6 +2,9 @@
 
 #include <JuceHeader.h>
 
+#include "ScrollingTextView.h"
+#include "SheetCloseButton.h"
+
 #include <memory>
 #include <vector>
 
@@ -43,9 +46,10 @@ public:
     // For the tests: the two controls, by the setting they carry.
     juce::ToggleButton& debugAnimationsToggle() { return animationsToggle; }
     juce::ComboBox& debugAnalogProfileBox() { return analogProfileBox; }
-    juce::TextButton& debugCloseButton() { return closeButton; }
+    px3::ui::SheetCloseButton& debugCloseButton() { return closeButton; }
     juce::TextButton& debugUpdateButton() { return updateButton; }
     juce::Label& debugUpdateStatus() { return updateStatus; }
+    px3::ui::ScrollingTextView& debugReleaseNotes() { return releaseNotes; }
     juce::Label& debugVersionLabel() { return versionLabel; }
     juce::String debugUpdateButtonText() const { return updateButton.getButtonText(); }
     bool debugUpdateButtonEnabled() const { return updateButton.isEnabled(); }
@@ -72,6 +76,9 @@ private:
     // service is actually doing.
     void refreshUpdateSection();
     void onUpdateButtonClicked();
+    // Hands a staged update to the helper as soon as it is staged, so the flow
+    // is one button rather than two.
+    void handOffToInstallerWhenStaged();
 
     // Writes the update story into the debug console's event log.
     //
@@ -93,12 +100,19 @@ private:
     juce::Label updatesHeading;
     juce::Label versionLabel;
     juce::Label updateStatus;
-    juce::Label releaseNotes;
+    // Release notes are as long as whoever wrote them, so they wrap and scroll.
+    // A read-only TextEditor did this too and cost ~8 ms of every editor
+    // repaint - measured against this panel's own perf test - which is why the
+    // text is a layout in a viewport instead.
+    juce::Viewport releaseNotesView;
+    px3::ui::ScrollingTextView releaseNotes;
     juce::TextButton updateButton { "Check for Updates" };
     double downloadProgress { 0.0 };
     juce::ProgressBar downloadBar { downloadProgress };
     juce::ComboBox analogProfileBox;
-    juce::TextButton closeButton { "CLOSE" };
+    // The circular X in the top-right corner, the same glyph the bus-insert
+    // sheets, the macro depth panel and the update notice close with.
+    px3::ui::SheetCloseButton closeButton;
 
     // Set while a refresh is writing the controls, so the change callbacks can
     // tell a user's edit from the panel catching up with the processor. Without

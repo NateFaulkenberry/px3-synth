@@ -842,6 +842,61 @@ void testUpdater()
 
         styling.reset();
 
+        // ---- the update flow is one button ---------------------------------
+        //
+        // Install Update downloads, stages and hands off without asking again.
+        // The second button used to sit between the two halves of a job the
+        // user had already asked for.
+        {
+            service.resetForTesting();
+
+            auto owned2 = std::make_unique<MockUpdateProvider>();
+            auto* mock2 = owned2.get();
+            service.setProvider(std::move(owned2));
+            service.setProductId("px3-synth");
+            service.setSynchronousForTesting(true);
+
+            UpdateRelease flow;
+            flow.productId = "px3-synth";
+            flow.version = SemanticVersion::parse("0.9.0");
+            flow.downloadUrl = juce::URL("https://example.invalid/i.pkg");
+            flow.installerFilename = "P(X3)-v0.9.0.pkg";
+            flow.releaseNotes = juce::String::repeatedString("Long release notes. ", 120);
+            mock2->nextRelease = flow;
+
+            std::unique_ptr<juce::AudioProcessorEditor> flowEditor(processor.createEditor());
+
+            if (auto* ed = dynamic_cast<PX3SynthAudioProcessorEditor*>(flowEditor.get()))
+            {
+                ed->setSize(1400, 900);
+                ed->debugSelectSection(6);
+                service.checkForUpdates(true);
+
+                if (auto* panel = ed->debugSettingsPanel())
+                {
+                    panel->debugRefreshUpdateSection();
+
+                    check("UpdateFlow_TheOnlyButtonOfferedIsInstallUpdate",
+                          panel->debugUpdateButtonText() == "Install Update",
+                          "button reads '" + panel->debugUpdateButtonText() + "'");
+
+                    // The whole point: the notes are not cut to 400 characters
+                    // any more, because the box they sit in scrolls.
+                    const auto notesShown = panel->debugReleaseNotes().getText();
+                    check("UpdateFlow_TheReleaseNotesAreNotTruncated",
+                          notesShown.length() == flow.releaseNotes.length()
+                              && notesShown.length() > 400,
+                          "showing " + juce::String(notesShown.length())
+                              + " of " + juce::String(flow.releaseNotes.length())
+                              + " characters");
+                }
+            }
+
+            flowEditor.reset();
+            service.resetForTesting();
+            service.setProvider(nullptr);
+        }
+
         service.resetForTesting();
         service.setProvider(nullptr);
     }

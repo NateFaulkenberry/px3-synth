@@ -370,7 +370,18 @@ void PX3SynthAudioProcessorEditor::resized()
     presetBrowserPanel.setBounds(browserX, browserY, browserWidth, browserHeight);
 
     auto browserArea = presetBrowserPanel.getLocalBounds().reduced(10);
-    presetBrowserTitle.setBounds(browserArea.removeFromTop(24));
+    const auto presetTitleArea = browserArea.removeFromTop(24);
+    presetBrowserTitle.setBounds(presetTitleArea);
+
+    {
+        px3::ui::SheetCloseButton::Style closeStyle;
+        closeStyle.size = 20;
+        px3::ui::SheetCloseButton::readStyleFrom(uiConfig.get(), "presetBrowser.closeButton",
+                                                 closeStyle);
+        presetBrowserCloseGlyph.applyStyle(closeStyle);
+        presetBrowserCloseGlyph.setBounds(
+            presetBrowserCloseGlyph.boundsWithin(presetTitleArea));
+    }
     browserArea.removeFromTop(6);
 
     auto filterRow = browserArea.removeFromTop(26);

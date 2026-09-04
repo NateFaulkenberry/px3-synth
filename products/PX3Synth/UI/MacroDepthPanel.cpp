@@ -103,14 +103,8 @@ MacroDepthPanel::MacroDepthPanel(PX3SynthAudioProcessor& processorIn)
 
     emptyNotice = "Nothing assigned yet.\nDouble-click the macro knob to assign parameters to it.";
 
-    closeButton.onClick = [this]
-    {
-        if (onCloseRequested != nullptr) { onCloseRequested(); }
-    };
-    addAndMakeVisible(closeButton);
-
-    // Same action as the footer button: the panel does not know what closing
-    // means - the editor owns the transient state - so both ask it.
+    // The panel does not know what closing means - the editor owns the
+    // transient state - so it asks.
     closeGlyph.onClick = [this]
     {
         if (onCloseRequested != nullptr) { onCloseRequested(); }
@@ -167,18 +161,11 @@ void MacroDepthPanel::applyStyleFromConfig()
                      colourFrom(uiConfig.get(), "macroDepth.colors.header",
                                 juce::Colour::fromRGB(236, 240, 248)));
 
-    closeButton.setColour(juce::TextButton::buttonColourId,
-                          colourFrom(uiConfig.get(), "macroDepth.colors.closeButton",
-                                     juce::Colour::fromRGBA(52, 56, 64, 235)));
     SheetCloseButton::Style glyphStyle;
     // Small enough to sit in the header row without crowding the macro's name.
     glyphStyle.size = 18;
     SheetCloseButton::readStyleFrom(uiConfig.get(), "macroDepth.closeButton", glyphStyle);
     closeGlyph.applyStyle(glyphStyle);
-
-    closeButton.setColour(juce::TextButton::textColourOffId,
-                          colourFrom(uiConfig.get(), "macroDepth.colors.closeButtonText",
-                                     juce::Colour::fromRGB(232, 236, 242)));
 
     for (auto& row : rows)
     {
@@ -470,9 +457,10 @@ void MacroDepthPanel::resized()
     // keeps its full width and the glyph does not move when headerHeight does.
     closeGlyph.setBounds(closeGlyph.boundsWithin(headerArea));
 
-    auto footer = area.removeFromBottom(footerH);
-    closeButton.setBounds(footer.removeFromRight(juce::jmin(90, footer.getWidth()))
-                                .withSizeKeepingCentre(juce::jmin(90, footer.getWidth()), 24));
+    // footerHeight is a bottom margin now rather than a row: the close control
+    // moved to the corner, so nothing lives down there. Kept as a key so the
+    // gap under the last row stays adjustable, and shipped at 0.
+    area.removeFromBottom(footerH);
 
     viewport.setBounds(area);
 

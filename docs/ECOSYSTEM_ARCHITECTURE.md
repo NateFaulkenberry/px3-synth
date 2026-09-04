@@ -351,8 +351,8 @@ makes — so each carries that effect's AU and VST3 together. Every effect is
 which shows the row with its checkbox on and greyed.** The updater helper lives
 inside `PX3 Synth.app`, and a plug-in updates itself by staging an installer and
 handing it to that helper — which is what waits for the host to quit. Without the
-standalone there is nothing to hand it to, so Prepare Update succeeds and Install
-cannot work.
+standalone there is nothing to hand it to: the download and staging succeed and
+the handoff then fails.
 
 It is shown rather than installed silently for the same reason the effects are
 listed: what lands on the machine should be visible, even when there is no choice
