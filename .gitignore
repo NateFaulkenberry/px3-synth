@@ -17,3 +17,6 @@ notes.txt
 # Memory benchmark results
 .benchmarks/
 scripts/installer/px3-products.tsv
+
+# card backgrounds (rendered for illustration purposes)
+card-backgrounds
