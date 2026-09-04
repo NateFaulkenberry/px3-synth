@@ -1377,7 +1377,7 @@
     "doom": {
       "artwork": {
         "image": "Doom-artwork.png",
-        "opacity": 0.7
+        "opacity": 0.8
       },
       "border": {
         "color": "#CC5A5A",
@@ -1526,8 +1526,8 @@
         "toggleOffColor": "#3FA9B8",
         "toggleOnTextColor": "#EAFBFF",
         "toggleOffTextColor": "#EAFBFF",
-        "labelBackground": "#3FA9B8",
-        "labelBackgroundOpacity": 0.2,
+        "labelBackground": "#1E5A63",
+        "labelBackgroundOpacity": 0.85,
         "labelOutline": "#9FD8E2",
         "labelOutlineOpacity": 0.45,
         "labelOutlineWidth": 1,

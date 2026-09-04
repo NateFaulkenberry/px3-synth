@@ -692,11 +692,36 @@ void testFxProducts()
     {
         juce::StringArray unstyled;
 
-        const auto checkStyled = [&](const juce::String& name,
-                                     juce::AudioProcessor& processor,
-                                     const juce::String& knobId,
-                                     juce::Colour expectedChipBackground)
+        // The expected colour is READ FROM THE CONFIG, not written here.
+        //
+        // Spelling it out meant this failed the first time the scheme was
+        // retuned, which is a test asserting a design decision rather than the
+        // behaviour it was written for: that a standalone card applies whatever
+        // its config says. The colour is the design's to change.
+        const auto configFileForStyle = UIConfigManager::findShippingConfigFile();
+        std::shared_ptr<const UIConfig> styleConfig;
+        if (configFileForStyle.existsAsFile())
         {
+            juce::String styleError;
+            styleConfig = UIConfig::fromJsonText(configFileForStyle.loadFileAsString(), styleError);
+        }
+
+        const auto checkStyled = [&](const juce::String& name,
+                                     const juce::String& styleKey,
+                                     juce::AudioProcessor& processor,
+                                     const juce::String& knobId)
+        {
+            if (styleConfig == nullptr) { unstyled.add("no config to compare against"); return; }
+
+            const auto key = "cards." + styleKey + ".controls.labelBackground";
+            if (styleConfig->getValue(key).isVoid())
+            {
+                unstyled.add(name + " declares no " + key + " to check");
+                return;
+            }
+
+            const auto expected = styleConfig->getColour(key, juce::Colours::white);
+
             std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
             auto* cardEditor = dynamic_cast<px3::fx::FxCardEditor*>(editor.get());
             if (cardEditor == nullptr) { unstyled.add(name + " (no card editor)"); return; }
@@ -705,18 +730,17 @@ void testFxProducts()
             if (label == nullptr) { unstyled.add(name + " (no caption for " + knobId + ")"); return; }
 
             const auto actual = label->getChipStyle().background;
-            if (actual != expectedChipBackground)
+            if (actual != expected)
             {
                 unstyled.add(name + " caption background is " + actual.toDisplayString(true)
-                             + ", config says " + expectedChipBackground.toDisplayString(true));
+                             + ", config says " + expected.toDisplayString(true));
             }
         };
 
-        // Both cards that carry a scheme, by the colour their config names.
         PX3DoomAudioProcessor doomStyled;
-        checkStyled("Doom", doomStyled, "clock", juce::Colour::fromString("FFC4433F"));
+        checkStyled("Doom", "doom", doomStyled, "clock");
         PX3LucyAudioProcessor lucyStyled;
-        checkStyled("Lucy", lucyStyled, "loss", juce::Colour::fromString("FF3FA9B8"));
+        checkStyled("Lucy", "lucy", lucyStyled, "loss");
 
         check("FxProducts_AStandaloneStylesItsOwnControlsFromConfig",
               unstyled.isEmpty(),
