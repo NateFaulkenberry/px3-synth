@@ -241,6 +241,13 @@ jobs:
           echo "CPUs          : $(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo '?')"
           echo "memory (GB)   : $(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))"
           echo "ninja         : $(ninja --version 2>/dev/null || echo 'n/a')"
+          # posix_spawn fails when a limit is hit, so record the limits. At two
+          # compile jobs the compiler cannot plausibly exhaust these, and if it
+          # reports failure anyway the pressure is coming from somewhere else -
+          # which is the thing worth knowing.
+          echo "max procs     : $(ulimit -u 2>/dev/null || echo '?')"
+          echo "max files     : $(ulimit -n 2>/dev/null || echo '?')"
+          echo "procs now     : $(ps -Ao pid= 2>/dev/null | wc -l | tr -d ' ')"
           echo "========================="
           cmake --build build-test --target PX3Tests PX3Diag PX3SmokeTest --parallel "${PX3_BUILD_JOBS}"
           ./build-test/PX3Tests_artefacts/Release/PX3Tests           2>&1 | tee test-report.txt
@@ -406,6 +413,24 @@ jobs:
             echo "::warning::Signing is not configured - these artifacts are UNSIGNED and Gatekeeper will refuse them on other machines. See docs/CI_CD.md."
             echo "signed=unsigned" >> "$GITHUB_OUTPUT"
           fi
+          # A hang in this step has now cost two releases and left nothing to
+          # read, because the interesting state is whatever is running when the
+          # output stops. Sample it: every 30s, the process count and any
+          # codesign/security processes, which is the pair that tells a stuck
+          # keychain apart from genuine resource pressure.
+          (
+            while true; do
+              printf '[watch %s] procs=%s codesign=%s security=%s\n' \
+                "$(date -u +%H:%M:%S)" \
+                "$(ps -Ao pid= | wc -l | tr -d ' ')" \
+                "$(pgrep -x codesign | wc -l | tr -d ' ')" \
+                "$(pgrep -x security | wc -l | tr -d ' ')"
+              sleep 30
+            done
+          ) &
+          WATCHER=$!
+          trap 'kill "$WATCHER" 2>/dev/null || true' EXIT
+
           # The project's own packaging. CI does not reimplement it.
           #
           # ${ARGS[@]+"${ARGS[@]}"} rather than "${ARGS[@]}": GitHub's macOS
