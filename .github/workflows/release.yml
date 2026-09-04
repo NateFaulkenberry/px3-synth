@@ -283,6 +283,58 @@ jobs:
       # Nothing below fabricates a credential or pretends an unsigned build is
       # signed. If the secrets are absent the release still builds, and the
       # summary says in plain words that the artifacts are unsigned.
+      # Evidence that survives the runner dying.
+      #
+      # Four failed releases have produced no readable log between them. A
+      # runner that loses communication never uploads its logs, so `gh run view
+      # --log` returns "log not found" for the job and the run archive contains
+      # only the jobs that ran on healthy machines. Retention is not the issue -
+      # the bytes were never sent.
+      #
+      # An ARTIFACT is different: it uploads when its step runs, not when the
+      # job ends. So the facts get written down here, early, while the machine
+      # is still healthy, and remain readable afterwards no matter what happens
+      # in Build and package.
+      #
+      # The generator is the question this is chasing. Ninja prints "[142/1489]"
+      # and Unix Makefiles prints "[ 72%]", and a percentage was seen in a
+      # failing run - which should be impossible now, since both configures pass
+      # -G Ninja and build-release.sh calls require_cmd ninja. Either that
+      # observation came from an older run, or -G Ninja is not taking effect and
+      # the build is running under Makefiles with an unbounded `make -j`, which
+      # is exactly what starves a runner. This settles it without needing anyone
+      # to catch it live in a browser.
+      - name: Record build environment as an artifact
+        run: |
+          set -uo pipefail
+          {
+            echo "commit          : $(git rev-parse HEAD)"
+            echo "generator(test) : $(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' build-test/CMakeCache.txt 2>/dev/null || echo '?')"
+            echo "ninja           : $(command -v ninja || echo MISSING) $(ninja --version 2>/dev/null || true)"
+            echo "cmake           : $(cmake --version 2>/dev/null | head -1)"
+            echo "PX3_BUILD_JOBS  : ${PX3_BUILD_JOBS:-unset}"
+            echo "PX3_NOTARIZE    : ${PX3_NOTARIZE:-unset}"
+            echo "CPUs            : $(sysctl -n hw.ncpu 2>/dev/null || echo '?')"
+            echo "memory GB       : $(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))"
+            echo "max procs       : $(ulimit -u 2>/dev/null || echo '?')"
+            echo "max files       : $(ulimit -n 2>/dev/null || echo '?')"
+            echo "disk free       : $(df -h / | tail -1)"
+            echo "--- what -G Ninja actually produces, proven not assumed ---"
+            rm -rf /tmp/px3-gencheck
+            cmake -S . -B /tmp/px3-gencheck -G Ninja -DCMAKE_BUILD_TYPE=Release \
+                  -DPX3_COPY_PLUGIN_AFTER_BUILD=OFF > /tmp/px3-gen.txt 2>&1
+            echo "configure exit  : $?"
+            echo "generator(fresh): $(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' /tmp/px3-gencheck/CMakeCache.txt 2>/dev/null || echo 'NO CACHE')"
+            tail -5 /tmp/px3-gen.txt
+          } | tee build-environment.txt
+
+      - name: Upload build environment
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-environment-${{ needs.identify.outputs.version }}
+          path: build-environment.txt
+          retention-days: 14
+
       - name: Import signing certificates
         id: keychain
         # HAVE_SIGNING_CERT comes from job-level env (see the job's `env:`),
