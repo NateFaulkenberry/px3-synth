@@ -455,6 +455,29 @@ if (PX3_BUILD_DIAGNOSTIC)
         PUBLIC juce::juce_recommended_config_flags)
 endif()
 
+# Card backgrounds as PNGs, for designing artwork that layers into them.
+#
+# Diagnostic-only: it is a design aid, not something a release needs, and it
+# links the whole UI to render one component.
+if (PX3_BUILD_DIAGNOSTIC)
+    juce_add_console_app(PX3CardBackgrounds PRODUCT_NAME "PX3CardBackgrounds")
+    juce_generate_juce_header(PX3CardBackgrounds)
+    target_sources(PX3CardBackgrounds PRIVATE ${PX3_ALL_SOURCES} tools/CardBackgroundExport.cpp)
+    target_include_directories(PX3CardBackgrounds PRIVATE ${PX3_INCLUDE_DIRS})
+    target_compile_definitions(PX3CardBackgrounds
+        PRIVATE
+            JUCE_WEB_BROWSER=0
+            JUCE_USE_CURL=0
+            JUCE_STANDALONE_APPLICATION=1
+            PX3_DEBUG_PANEL=0
+            PX3_DIAGNOSTICS=0
+            JucePlugin_Name="PX3 Synth"
+    )
+    target_link_libraries(PX3CardBackgrounds
+        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography juce::juce_opengl
+        PUBLIC juce::juce_recommended_config_flags)
+endif()
+
 # The update helper. A real signed application, shipped beside the standalone
 # by the same installer, so it inherits the same Developer ID and notarisation
 # rather than being something the plugin downloads at runtime.

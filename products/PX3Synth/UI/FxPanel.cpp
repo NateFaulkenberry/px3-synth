@@ -119,6 +119,14 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
                                                     moodLoopModeLabel,
                                                     juce::Colour::fromRGB(202, 150, 98));
 
+    // Into the grid, or they are built and never seen. Reverb used to be added
+    // here beside them and now adds itself as a card, and removing its line
+    // took these three with it: the deletion ran from Reverb's construction to
+    // its addAndMakeVisible, and the other three sat in between.
+    gridContent.addAndMakeVisible(*vibeUiComponent);
+    gridContent.addAndMakeVisible(*delayPanelComponent);
+    gridContent.addAndMakeVisible(*moodComponent);
+
     refreshSignalFlowNodes();
 }
 

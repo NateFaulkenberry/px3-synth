@@ -68,5 +68,11 @@ PX3LucyAudioProcessorEditor::PX3LucyAudioProcessorEditor(PX3LucyAudioProcessor& 
 
     attachBypass(processorIn.enabled());
 
+    // The rainbow ring the Synth gives this card's feature knob.
+    if (auto* feature = rows().knob("global"))
+    {
+        feature->getProperties().set("psychedelicFx", true);
+    }
+
     finishSetup();
 }

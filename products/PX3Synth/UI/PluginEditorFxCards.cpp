@@ -74,6 +74,15 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
         lucyCard->setActive(lucyEnabled);
     }
 
+    // Reverb greys out with the rest. It was left out when it became a card,
+    // so bypassing it dimmed the signal-flow node and left the card lit.
+    const auto reverbEnabled2 = audioProcessor.getReverbEnabledParam().get();
+    if (reverbCard != nullptr)
+    {
+        reverbCard->bypassButton().setToggleState(reverbEnabled2, juce::dontSendNotification);
+        reverbCard->setActive(reverbEnabled2);
+    }
+
     const auto chorusEnabled = audioProcessor.getChorusEnabledParam().get();
     if (chorusCard != nullptr)
     {
@@ -342,10 +351,15 @@ void PX3SynthAudioProcessorEditor::buildReverbCard()
                        { "damping", "DAMPING", "How fast the top of the tail is lost" },
                        { "preDelay", "PRE", "Gap before the tail begins" } });
 
+    // Three rows rather than one of five. Five cells overran the inner card at
+    // the width it is drawn, clipping the outer captions off both edges. Split
+    // by what the controls do - the tail's movement, then the cloud algorithm's
+    // own pair - rather than at whatever number happens to fit.
     card->addKnobRow({ { "modDepth", "MOD DEPTH", "Movement in the tail" },
                        { "modRate", "MOD RATE", "How fast that movement is" },
-                       { "width", "WIDTH", "Stereo spread of the tail" },
-                       { "cloudFeedback", "CLOUD FB", "Cloud regeneration" },
+                       { "width", "WIDTH", "Stereo spread of the tail" } });
+
+    card->addKnobRow({ { "cloudFeedback", "CLOUD FB", "Cloud regeneration" },
                        { "cloudDiffusion", "CLOUD DIFF", "Cloud smearing" } });
 
     card->addFeatureKnobRow({ "amount", "AMOUNT", "Dry against wet" });
@@ -376,6 +390,14 @@ void PX3SynthAudioProcessorEditor::buildReverbCard()
 
     attachComboBox(audioProcessor.getReverbAlgorithmParam(), *card->choice("algorithm"));
     attachButton(audioProcessor.getReverbEnabledParam(), card->bypassButton());
+
+    // The rainbow ring every FX amount knob wears. The old reverb knob had it
+    // and it went out with that knob; without it this one knob is the only
+    // amount in the panel drawn as an ordinary control.
+    if (auto* knob = card->knob("amount"))
+    {
+        knob->getProperties().set("psychedelicFx", true);
+    }
 
     reverbCard = card.get();
     fxPanel->addCard(px3::fxStageReverb, std::move(card));

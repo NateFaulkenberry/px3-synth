@@ -33,5 +33,11 @@ PX3ChorusAudioProcessorEditor::PX3ChorusAudioProcessorEditor(PX3ChorusAudioProce
     attachChoice("mode", processorIn.mode());
     attachBypass(processorIn.enabled());
 
+    // The rainbow ring the Synth gives this card's feature knob.
+    if (auto* feature = rows().knob("amount"))
+    {
+        feature->getProperties().set("psychedelicFx", true);
+    }
+
     finishSetup();
 }

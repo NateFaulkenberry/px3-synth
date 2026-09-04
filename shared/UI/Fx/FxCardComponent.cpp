@@ -496,6 +496,31 @@ juce::String FxCardComponent::debugLayoutSignature() const
             if (control == nullptr) { control = toggle(id); }
 
             line += " | " + id + " " + rect(control);
+
+            // The knob properties that CHANGE HOW IT DRAWS. The rainbow ring an
+            // FX amount knob wears is a property, not a colour or a position,
+            // so a knob missing it sits in exactly the right place in exactly
+            // the right palette and draws as a different control.
+            //
+            // Named individually rather than dumped wholesale: the Synth also
+            // hangs px3ParamId and psychedelicBypassGray on its knobs for MIDI
+            // mapping and modulation, which a standalone effect has no use for
+            // and should not be required to carry to count as the same card.
+            if (const auto* slider = dynamic_cast<const juce::Slider*>(control))
+            {
+                const auto& properties = slider->getProperties();
+                juce::StringArray drawing;
+                for (const auto* name : { "psychedelicFx", "psychedelicInverted" })
+                {
+                    if (properties.contains(name))
+                    {
+                        drawing.add(juce::String(name) + "="
+                                    + properties[name].toString());
+                    }
+                }
+                if (! drawing.isEmpty()) { line += " draws[" + drawing.joinIntoString(",") + "]"; }
+            }
+
             if (label != nullptr) { line += " label " + rect(label); }
         }
 

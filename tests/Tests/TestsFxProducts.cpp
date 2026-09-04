@@ -9,6 +9,7 @@
 #include "../../products/PX3Lucy/PluginProcessor.h"
 #include "../../shared/Infrastructure/Fx/FxCardEditor.h"
 #include "../../shared/UI/Style/UIConfigManager.h"
+#include "../../shared/UI/Style/KnobLookAndFeel.h"
 #include "../../products/PX3Delay/PluginEditor.h"
 #include "../../products/PX3Mood/PluginEditor.h"
 #include "../../products/PX3Synth/UI/PluginEditor.h"
@@ -1195,6 +1196,72 @@ void testFxProducts()
             if (auto* m = dynamic_cast<PX3MoodAudioProcessorEditor*>(moodEditor.get()))
             {
                 comparePanel("Mood", px3::fxStageMood, &m->debugPanel());
+            }
+
+            // ---- every stage is actually in the grid -----------------------
+            //
+            // Built and never added is a silent failure: componentForSection
+            // answers, the signal-flow strip lists the stage, and the card is
+            // simply not on screen. Removing Reverb's addAndMakeVisible took
+            // Vibe, Delay and Mood's with it and the whole suite stayed green.
+            {
+                juce::StringArray missing;
+                const std::array<std::pair<const char*, int>, 8> stages { {
+                    { "Vibe", px3::fxStageVibe }, { "Delay", px3::fxStageDelay },
+                    { "Reverb", px3::fxStageReverb }, { "Mood", px3::fxStageMood },
+                    { "Doom", px3::fxStageDoom }, { "Lucy", px3::fxStageLucy },
+                    { "Chorus", px3::fxStageChorus }, { "Spread", px3::fxStageStereoSpread } } };
+
+                for (const auto& [name, stage] : stages)
+                {
+                    auto* component = panel != nullptr ? panel->debugComponentForSection(stage) : nullptr;
+                    if (component == nullptr) { missing.add(juce::String(name) + " (no component)"); }
+                    else if (component->getParentComponent() == nullptr)
+                    {
+                        missing.add(juce::String(name) + " (built, never added)");
+                    }
+                    else if (! component->isVisible())
+                    {
+                        missing.add(juce::String(name) + " (added, not visible)");
+                    }
+                }
+
+                check("FxPanel_EveryStageIsOnScreen",
+                      missing.isEmpty(),
+                      missing.isEmpty() ? "all eight stages are in the grid and visible"
+                                        : "missing from the FX panel: " + missing.joinIntoString(", "));
+            }
+
+            // ---- every knob on a card wears the PX3 look --------------------
+            //
+            // A knob with no look-and-feel draws as a stock JUCE rotary, which
+            // is a different control in the same place.
+            {
+                juce::StringArray unstyled;
+
+                const auto checkLooks = [&](const juce::String& name, int stage)
+                {
+                    auto* c = panel != nullptr ? panel->cardForSection(stage) : nullptr;
+                    if (c == nullptr) { return; }
+
+                    for (auto* knob : c->allKnobs())
+                    {
+                        if (knob == nullptr) { continue; }
+                        if (dynamic_cast<px3::ui::KnobLookAndFeel*>(&knob->getLookAndFeel()) == nullptr)
+                        {
+                            unstyled.add(name + " knob at " + knob->getBounds().toString());
+                        }
+                    }
+                };
+
+                checkLooks("Reverb", px3::fxStageReverb);
+                checkLooks("Doom", px3::fxStageDoom);
+                checkLooks("Chorus", px3::fxStageChorus);
+
+                check("FxCards_EveryKnobUsesThePx3Look",
+                      unstyled.isEmpty(),
+                      unstyled.isEmpty() ? "every knob on every card carries the PX3 look"
+                                         : "stock JUCE rotaries: " + unstyled.joinIntoString(", "));
             }
 
             check("FxProducts_TheNonCardEffectsLayOutLikeTheSynthsPanels",
