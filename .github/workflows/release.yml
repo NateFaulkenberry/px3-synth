@@ -32,12 +32,25 @@ permissions:
 
 env:
   # Compiler jobs on a runner - the same knob as ci.yml, and the same reasoning
-  # in full there. One per core: explicit and visible in the log, while keeping
-  # the speed that moving to Ninja bought. Both builds in this job are held to
-  # it, and both are passed the number as an argument, because an explicit
-  # --parallel beats CMAKE_BUILD_PARALLEL_LEVEL and exporting alone does
-  # nothing.
-  PX3_BUILD_JOBS: 3
+  # in full there. Cores plus two, which is what Ninja picks for itself given a
+  # bare --parallel, and what ci.yml measured a full 8-product build and the
+  # whole test estate green in 9m56s on. macos-14 reports 3 CPUs, so this is 5.
+  #
+  # It keeps a margin on a 7 GB runner where JUCE's larger translation units
+  # peak near a gigabyte each - the reason this sat at one-per-core until now,
+  # and the reason it is not going higher.
+  #
+  # Still an explicit number rather than a bare --parallel: it has to be
+  # visible in the log to be argued about, and an empty value here once meant
+  # "unbounded" and took a release down. Both builds in this job are held to
+  # it and both are passed it as an argument, because an explicit --parallel
+  # beats CMAKE_BUILD_PARALLEL_LEVEL and exporting alone does nothing.
+  #
+  # Expect little from it. With 3 cores the compile was already saturated; the
+  # 19 minutes in Build and package goes on compiling the shippable plug-ins
+  # with no compiler cache, which is a change to how release binaries are
+  # produced and deliberately not folded in here.
+  PX3_BUILD_JOBS: 5
 
   # Notarisation, as a switch.
   #

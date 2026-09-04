@@ -61,7 +61,13 @@ env:
   #
   # Set here and NOT in the scripts, so a developer's build keeps ninja's
   # default and stays fast.
-  PX3_BUILD_JOBS: 3
+  #
+  # Now AT ninja's default rather than under it. The table above measured
+  # cores+2 green at 9m56s, so the one-per-core margin was being kept against
+  # a failure that turned out to be the Makefiles generator rather than the
+  # job count. The 7 GB ceiling is still why it does not go higher: five jobs
+  # against translation units peaking near a gigabyte is the margin itself.
+  PX3_BUILD_JOBS: 5
 
   # Never write into ~/Library/Audio/Plug-Ins on a runner. The default is ON for
   # a developer's machine, where it is what makes a build testable in a host.
