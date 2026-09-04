@@ -276,7 +276,13 @@ jobs:
           # A random per-run password: this keychain lives for one job.
           KEYCHAIN_PW=$(openssl rand -base64 24)
           security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
-          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          # No auto-lock. `-lut 3600` locks the keychain after an hour idle and on
+          # sleep; the keychain sits untouched from import until codesign wants
+          # it, and a locked keychain does not fail a signing call - it blocks
+          # waiting for an unlock nobody can type. This keychain exists for one
+          # job and is deleted in an always() step, so a lock timeout buys
+          # nothing and can only hang the build.
+          security set-keychain-settings "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
 
           # Each certificate is imported from the file Apple issued, untouched,
@@ -297,9 +303,21 @@ jobs:
 
           # One partition-list call after both imports: it applies to every key
           # in the keychain, so running it per import would only repeat work.
-          # Without it the first codesign invocation blocks on a UI prompt that
-          # nothing on a runner can answer.
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PW" "$KEYCHAIN" >/dev/null
+          #
+          # `codesign:` belongs in this list and was missing. Without it,
+          # codesign is not authorised to use the key without asking, and on a
+          # headless runner "asking" means blocking forever on a dialog no one
+          # can answer. It does not fail - it hangs, which is why a signed build
+          # stalled where an unsigned one had succeeded.
+          #
+          # This bites during the BUILD, not at the signing step: JUCE signs
+          # each VST3 as a build action ("Replacing invalid signature with
+          # ad-hoc signature"), so the first codesign call happens while
+          # cmake --build is still running, long before this script reaches its
+          # own signing phase.
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PW" "$KEYCHAIN" >/dev/null
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
           echo "imported=true" >> "$GITHUB_OUTPUT"
 
