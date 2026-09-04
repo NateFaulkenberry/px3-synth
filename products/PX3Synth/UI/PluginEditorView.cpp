@@ -287,6 +287,20 @@ void PX3SynthAudioProcessorEditor::resized()
                                bar.getBottom() + offsetY,
                                clamped,
                                height);
+
+        // The close glyph, against the top-right of the notice's BODY - below
+        // the arrow, which occupies the strip above it. Small by default so it
+        // fits the line of text rather than setting the notice's height.
+        px3::ui::SheetCloseButton::Style closeStyle;
+        closeStyle.size = juce::jmax(8, textHeight - 4);
+        closeStyle.offsetX = -static_cast<int>(std::ceil(style.paddingX * 0.5f));
+        px3::ui::SheetCloseButton::readStyleFrom(uiConfig.get(), "updateNotice.closeButton",
+                                                 closeStyle);
+        updateNoticeCloseButton.applyStyle(closeStyle);
+
+        auto body = updateNotice.getLocalBounds()
+                        .withTrimmedTop(static_cast<int>(std::ceil(style.arrowHeight)));
+        updateNoticeCloseButton.setBounds(updateNoticeCloseButton.boundsWithin(body));
     }
 
     if (macroDepthPanel != nullptr && macroDepthPanel->isVisible())

@@ -109,6 +109,14 @@ MacroDepthPanel::MacroDepthPanel(PX3SynthAudioProcessor& processorIn)
     };
     addAndMakeVisible(closeButton);
 
+    // Same action as the footer button: the panel does not know what closing
+    // means - the editor owns the transient state - so both ask it.
+    closeGlyph.onClick = [this]
+    {
+        if (onCloseRequested != nullptr) { onCloseRequested(); }
+    };
+    addAndMakeVisible(closeGlyph);
+
     viewport.setViewedComponent(&rowHost, false);
     viewport.setScrollBarsShown(true, false);
     addAndMakeVisible(viewport);
@@ -162,6 +170,12 @@ void MacroDepthPanel::applyStyleFromConfig()
     closeButton.setColour(juce::TextButton::buttonColourId,
                           colourFrom(uiConfig.get(), "macroDepth.colors.closeButton",
                                      juce::Colour::fromRGBA(52, 56, 64, 235)));
+    SheetCloseButton::Style glyphStyle;
+    // Small enough to sit in the header row without crowding the macro's name.
+    glyphStyle.size = 18;
+    SheetCloseButton::readStyleFrom(uiConfig.get(), "macroDepth.closeButton", glyphStyle);
+    closeGlyph.applyStyle(glyphStyle);
+
     closeButton.setColour(juce::TextButton::textColourOffId,
                           colourFrom(uiConfig.get(), "macroDepth.colors.closeButtonText",
                                      juce::Colour::fromRGB(232, 236, 242)));
@@ -449,7 +463,12 @@ void MacroDepthPanel::resized()
 
     auto area = getLocalBounds().reduced(padding);
     area.removeFromLeft(pointerWidth());   // the arrow's strip, not content
-    header.setBounds(area.removeFromTop(headerH));
+    const auto headerArea = area.removeFromTop(headerH);
+    header.setBounds(headerArea);
+
+    // Over the header's top-right corner rather than beside it, so the header
+    // keeps its full width and the glyph does not move when headerHeight does.
+    closeGlyph.setBounds(closeGlyph.boundsWithin(headerArea));
 
     auto footer = area.removeFromBottom(footerH);
     closeButton.setBounds(footer.removeFromRight(juce::jmin(90, footer.getWidth()))

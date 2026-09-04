@@ -1329,8 +1329,18 @@ void PX3SynthAudioProcessorEditor::finishConstruction()
     px3::update::UpdateService::getInstance().addChangeListener(&updateStateListener);
 
     updateNotice.setJustificationType(juce::Justification::centredLeft);
-    updateNotice.setInterceptsMouseClicks(false, false);
+    // The notice itself stays click-through - it sits over the header and must
+    // not swallow clicks meant for what is under it - but its CHILDREN do get
+    // them, which is what makes the close glyph clickable. The second argument
+    // was false, and with a child to serve that would have made the button
+    // decorative.
+    updateNotice.setInterceptsMouseClicks(false, true);
     addChildComponent(updateNotice);
+
+    // Dismissing by hand ends the announcement exactly as the timeout does,
+    // glow included - the point of closing it is to stop being told.
+    updateNoticeCloseButton.onClick = [this]() { dismissUpdateNotice(); };
+    updateNotice.addAndMakeVisible(updateNoticeCloseButton);
 
     // A check when a window opens. Throttled by the service, so opening and
     // closing an editor repeatedly is still one request every ten minutes -

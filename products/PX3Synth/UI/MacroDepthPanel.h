@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "PluginProcessor.h"
+#include "SheetCloseButton.h"
 #include "SpeechBubbleLabel.h"
 
 class UIConfig;
@@ -96,6 +97,7 @@ public:
     juce::Slider* debugDepthSliderFor(const juce::String& parameterId);
     juce::Label* debugValueLabelFor(const juce::String& parameterId);
     juce::TextButton& debugCloseButton() { return closeButton; }
+    SheetCloseButton& debugCloseGlyph() { return closeGlyph; }
     int debugPointerTargetY() const { return pointerTargetY; }
     juce::String debugEmptyNotice() const { return emptyNotice; }
     juce::LookAndFeel* debugSliderLookAndFeel(const juce::String& parameterId)
@@ -140,6 +142,9 @@ private:
     // longer than a narrow panel is wide.
     juce::String emptyNotice;
     juce::TextButton closeButton { "Close" };
+    // The circular X in the top-right corner, the same glyph the bus-insert
+    // sheets close with. Styled from macroDepth.closeButton.
+    SheetCloseButton closeGlyph;
 
     // The rows live inside a viewport so that a macro with more destinations
     // than the panel can show scrolls rather than overflowing. With few enough

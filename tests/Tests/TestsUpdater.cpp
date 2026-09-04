@@ -822,6 +822,21 @@ void testUpdater()
                       ? juce::String("came back")
                       : juce::String("DID NOT COME BACK - latched off"));
 
+            // The close glyph ends the announcement the way the timeout does -
+            // notice away and gear settled - because the point of closing it is
+            // to stop being told.
+            preview->debugSetUpdatePreview(true);
+            preview->debugUpdateNoticeClose().onClick();
+
+            check("UpdateUi_ClosingTheNoticeAlsoStopsTheGlow",
+                  ! preview->debugUpdateNoticeVisible()
+                      && bar != nullptr && ! bar->isUpdateAvailable(),
+                  juce::String(preview->debugUpdateNoticeVisible()
+                                   ? "NOTICE STILL UP" : "notice gone")
+                      + "; gear "
+                      + (bar != nullptr && bar->isUpdateAvailable()
+                             ? "STILL GLOWING" : "settled"));
+
             preview->debugSetUpdatePreview(false);
         }
 

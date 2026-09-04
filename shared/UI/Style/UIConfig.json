@@ -2723,6 +2723,18 @@
     }
   },
   "macroDepth": {
+    "closeButton": {
+      "size": 18,
+      "offsetX": -2,
+      "offsetY": 4,
+      "ringWidth": 1.6,
+      "glyphWidth": 1.8,
+      "glyphInset": 0.32,
+      "seatColor": "#0C0E14BE",
+      "ringColor": "#EDF1F796",
+      "glyphColor": "#EDF1F7",
+      "hoverColor": "#B9BFC8"
+    },
     "layout": {
       "padding": 10,
       "cornerRadius": 8,
@@ -2759,6 +2771,18 @@
     }
   },
   "updateNotice": {
+    "closeButton": {
+      "size": 14,
+      "offsetX": -5,
+      "offsetY": 3,
+      "ringWidth": 1.2,
+      "glyphWidth": 1.4,
+      "glyphInset": 0.3,
+      "seatColor": "#0C0E14BE",
+      "ringColor": "#EDF1F796",
+      "glyphColor": "#EDF1F7",
+      "hoverColor": "#B9BFC8"
+    },
     "colors": {
       "background": "#000000",
       "backgroundOpacity": 0.6,

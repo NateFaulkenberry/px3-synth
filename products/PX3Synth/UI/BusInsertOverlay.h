@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "SheetCloseButton.h"
+
 #include "BusInsertTypes.h"
 #include "BusEqGraph.h"
 #include "FetPanelStyle.h"
@@ -19,41 +21,6 @@ class UIConfig;
 
 namespace px3::ui
 {
-
-// The sheets' close control: an X in a ring, built as a Path for the same
-// reasons the power symbol is - two primitives cost less than parsing artwork,
-// stay crisp at any size, and can be tinted per sheet without a second asset.
-//
-// It deliberately mirrors BypassButton's seat and ring so the two read as
-// members of one family: the power button turns a section on, this one shuts a
-// sheet, and nothing else on the panel is a circular glyph.
-class SheetCloseButton final : public juce::Button
-{
-public:
-    struct Style
-    {
-        int size { 24 };
-        int offsetX { 0 };
-        int offsetY { 0 };
-        float ringWidth { 1.6f };
-        float glyphWidth { 2.0f };
-        float glyphInset { 0.32f };   // fraction of the button, per side
-        juce::Colour seat { juce::Colour::fromRGBA(12, 14, 20, 190) };
-        juce::Colour ring { juce::Colour::fromRGBA(237, 241, 247, 150) };
-        juce::Colour glyph { juce::Colour::fromRGB(237, 241, 247) };
-        juce::Colour hover { juce::Colour::fromRGB(185, 191, 200) };
-    };
-
-    SheetCloseButton();
-
-    void applyStyle(const Style& styleIn);
-    const Style& getStyle() const noexcept { return style; }
-
-private:
-    void paintButton(juce::Graphics& g, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override;
-
-    Style style;
-};
 
 // The two bus-insert sheets: a four band parametric EQ and a FET compressor.
 //

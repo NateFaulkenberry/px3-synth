@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FxChain.h"
+#include "SheetCloseButton.h"
 #include "SpeechBubbleLabel.h"
 #include "MacroKnobLook.h"
 #include "FxCardComponent.h"
@@ -242,6 +243,7 @@ public:
     // For the tests: the macro strip and the assignment state.
     MacroStrip* debugMacroStrip() const { return macroStrip.get(); }
     bool debugUpdateNoticeVisible() const { return updateNotice.isVisible(); }
+    px3::ui::SheetCloseButton& debugUpdateNoticeClose() { return updateNoticeCloseButton; }
     juce::String debugUpdateNoticeText() const { return updateNotice.getText(); }
     void debugTimerTick() { timerCallback(); }
     void debugCloseMacroDepthPanel() { closeMacroDepthPanel(); }
@@ -472,6 +474,9 @@ private:
     void dismissUpdateNotice();
 
     SpeechBubbleLabel updateNotice;
+    // A child of the notice, so it hides and moves with it rather than needing
+    // its own visibility rules. Tiny - it has a line of text to fit beside.
+    px3::ui::SheetCloseButton updateNoticeCloseButton;
     // Counts down the notice's own life. -1 when it is not showing.
     int updateNoticeFramesLeft { -1 };
     // So the notice appears once per window rather than every time a check
