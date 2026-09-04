@@ -9,6 +9,8 @@
 #include "../../products/PX3Lucy/PluginProcessor.h"
 #include "../../shared/Infrastructure/Fx/FxCardEditor.h"
 #include "../../shared/UI/Style/UIConfigManager.h"
+#include "../../products/PX3Delay/PluginEditor.h"
+#include "../../products/PX3Mood/PluginEditor.h"
 #include "../../products/PX3Synth/UI/PluginEditor.h"
 #include "../../products/PX3Synth/UI/FxPanel.h"
 #include "../../products/PX3Synth/UI/EditorSections.h"
@@ -986,6 +988,120 @@ void testFxProducts()
                       ? "styling both cards from " + configFile.getFileName()
                       : "no UIConfig.json found - the comparison below would "
                         "compare two sets of code defaults: " + configError);
+
+            // ---- and the two that are not cards ------------------------
+            //
+            // Delay and Mood hand their controls to the SAME shared component
+            // the Synth's FX page uses, so parity there is a question of the
+            // size it is given rather than of what it builds. The Synth puts
+            // every stage in one grid - the bespoke components beside the cards
+            // - so they all have the same shape there, and these windows should
+            // open at it.
+            //
+            // Compared by walking the children, because these are not cards and
+            // have no layout signature of their own.
+            const auto childBounds = [](juce::Component& component)
+            {
+                juce::StringArray lines;
+                for (auto* child : component.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    const auto b = child->getBounds();
+                    lines.add(juce::String(b.getX()) + "," + juce::String(b.getY()) + ","
+                              + juce::String(b.getWidth()) + "," + juce::String(b.getHeight()));
+                }
+                lines.sort(false);
+                return lines.joinIntoString(" | ");
+            };
+
+            juce::StringArray panelDiffs;
+
+            // Typed on the standalone's panel, so the Synth's component is
+            // required to be the SAME CLASS - which is the claim being made -
+            // and so both can be handed the same config. They must be: these
+            // components size themselves from it, and comparing one that has it
+            // against one that does not produced a page of differences that
+            // said nothing about either.
+            const auto comparePanel = [&](const juce::String& name, int stage,
+                                          auto* standalonePanel)
+            {
+                using PanelType = std::remove_pointer_t<decltype(standalonePanel)>;
+
+                auto* synthPanel = panel != nullptr
+                                       ? dynamic_cast<PanelType*>(panel->debugComponentForSection(stage))
+                                       : nullptr;
+                if (synthPanel == nullptr || standalonePanel == nullptr)
+                {
+                    panelDiffs.add(name + " (the Synth does not show this as the same component)");
+                    return;
+                }
+
+                if (sharedConfig != nullptr)
+                {
+                    synthPanel->setUIConfig(sharedConfig);
+                    standalonePanel->setUIConfig(sharedConfig);
+                }
+
+                synthPanel->setBounds(cell);
+                synthPanel->resized();
+                standalonePanel->setBounds(cell);
+                standalonePanel->resized();
+
+                const auto expected = childBounds(*synthPanel);
+                const auto actual = childBounds(*standalonePanel);
+
+                if (expected != actual)
+                {
+                    panelDiffs.add(name + ": synth [" + expected + "] standalone [" + actual + "]");
+                }
+            };
+
+            PX3DelayAudioProcessor delayProcessor;
+            std::unique_ptr<juce::AudioProcessorEditor> delayEditor(delayProcessor.createEditor());
+            if (auto* d = dynamic_cast<PX3DelayAudioProcessorEditor*>(delayEditor.get()))
+            {
+                comparePanel("Delay", px3::fxStageDelay, &d->debugPanel());
+            }
+
+            PX3MoodAudioProcessor moodProcessor;
+            std::unique_ptr<juce::AudioProcessorEditor> moodEditor(moodProcessor.createEditor());
+            if (auto* m = dynamic_cast<PX3MoodAudioProcessorEditor*>(moodEditor.get()))
+            {
+                comparePanel("Mood", px3::fxStageMood, &m->debugPanel());
+            }
+
+            check("FxProducts_TheNonCardEffectsLayOutLikeTheSynthsPanels",
+                  panelDiffs.isEmpty(),
+                  panelDiffs.isEmpty()
+                      ? "Delay and Mood place their controls identically to the "
+                        "Synth's panels at the same size"
+                      : panelDiffs.joinIntoString("  /  "));
+
+            // ---- every standalone opens at one grid cell -------------------
+            juce::StringArray sizes;
+            juce::StringArray wrongSize;
+            const auto want = px3::fx::standaloneFxWindowSize(sharedConfig.get());
+
+            const auto checkSize = [&](const juce::String& name, juce::AudioProcessorEditor* editor)
+            {
+                if (editor == nullptr) { return; }
+                const auto got = editor->getLocalBounds();
+                sizes.add(name + " " + juce::String(got.getWidth()) + "x"
+                          + juce::String(got.getHeight()));
+                if (got.getWidth() != want.getWidth() || got.getHeight() != want.getHeight())
+                {
+                    wrongSize.add(name);
+                }
+            };
+
+            checkSize("Delay", delayEditor.get());
+            checkSize("Mood", moodEditor.get());
+
+            check("FxProducts_EveryStandaloneOpensAtOneGridCell",
+                  wrongSize.isEmpty(),
+                  juce::String("wanted ") + juce::String(want.getWidth()) + "x"
+                      + juce::String(want.getHeight()) + "; got " + sizes.joinIntoString(", ")
+                      + (wrongSize.isEmpty() ? "" : "  WRONG: " + wrongSize.joinIntoString(", ")));
 
             check("FxProducts_AStandaloneCardMatchesTheSynthsCardExactly",
                   differing.isEmpty(),

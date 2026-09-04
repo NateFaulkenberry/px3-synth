@@ -1,5 +1,7 @@
 #include "PluginEditor.h"
 
+#include "FxCardEditor.h"
+
 #include "UIConfigManager.h"
 
 namespace
@@ -53,7 +55,11 @@ PX3DelayAudioProcessorEditor::PX3DelayAudioProcessorEditor(PX3DelayAudioProcesso
     algorithmBox.onChange = refresh;
     refresh();
 
-    setSize(560, 300);
+    // The same window every other effect opens at: one cell of the Synth's FX
+    // grid. This panel is not a card, but the Synth lays it out in that grid
+    // beside the ones that are, so it has the same shape there.
+    const auto window = px3::fx::standaloneFxWindowSize(uiConfig.get());
+    setSize(window.getWidth(), window.getHeight());
 }
 
 PX3DelayAudioProcessorEditor::~PX3DelayAudioProcessorEditor()
@@ -96,5 +102,5 @@ void PX3DelayAudioProcessorEditor::paint(juce::Graphics& g)
 
 void PX3DelayAudioProcessorEditor::resized()
 {
-    panel.setBounds(getLocalBounds().reduced(10));
+    panel.setBounds(getLocalBounds().reduced(px3::fx::kFxWindowMargin));
 }

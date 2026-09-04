@@ -81,6 +81,10 @@ public:
     // into the scrolling grid and places them by chain order like the rest.
     void addCard(int sectionId, std::unique_ptr<px3::ui::FxCardComponent> card);
     px3::ui::FxCardComponent* cardForSection(int sectionId) const;
+    // The component a stage shows, card or not, so a test can hold the Synth's
+    // Delay and Mood panels against the standalone products' copies.
+    juce::Component* debugComponentForSection(int sectionId) const
+    { return componentForSection(sectionId); }
     void setSectionActive(int sectionId, bool active);
 
     // Raised when the user drags the strip into a new order. The panel does not

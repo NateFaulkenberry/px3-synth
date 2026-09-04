@@ -1,5 +1,7 @@
 #include "PluginEditor.h"
 
+#include "FxCardEditor.h"
+
 #include "UIConfigManager.h"
 
 namespace
@@ -62,7 +64,11 @@ PX3MoodAudioProcessorEditor::PX3MoodAudioProcessorEditor(PX3MoodAudioProcessor& 
     enabledButton.onStateChange = [this] { panel.setActive(processor.enabled().get()); };
     panel.setActive(processor.enabled().get());
 
-    setSize(720, 340);
+    // The same window every other effect opens at: one cell of the Synth's FX
+    // grid. This panel is not a card, but the Synth lays it out in that grid
+    // beside the ones that are, so it has the same shape there.
+    const auto window = px3::fx::standaloneFxWindowSize(uiConfig.get());
+    setSize(window.getWidth(), window.getHeight());
 }
 
 PX3MoodAudioProcessorEditor::~PX3MoodAudioProcessorEditor()
@@ -86,5 +92,5 @@ void PX3MoodAudioProcessorEditor::paint(juce::Graphics& g)
 
 void PX3MoodAudioProcessorEditor::resized()
 {
-    panel.setBounds(getLocalBounds().reduced(10));
+    panel.setBounds(getLocalBounds().reduced(px3::fx::kFxWindowMargin));
 }
