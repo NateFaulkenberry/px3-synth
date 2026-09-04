@@ -453,12 +453,6 @@ jobs:
       - name: Build and package
         id: build
         env:
-          # build-release.sh reads this and turns it into an explicit
-          # `--parallel N`, which is the only form Ninja honours - exporting the
-          # variable alone would be ignored, because the script's own
-          # `--parallel` on the command line would win. The conversion is the
-          # point, not the export.
-          CMAKE_BUILD_PARALLEL_LEVEL: ${{ env.PX3_BUILD_JOBS }}
           CODESIGN_IDENTITY:      ${{ secrets.MACOS_CODESIGN_IDENTITY }}
           DEVELOPER_ID_INSTALLER: ${{ secrets.MACOS_INSTALLER_IDENTITY }}
           APPLE_ID:               ${{ secrets.APPLE_ID }}
@@ -466,6 +460,18 @@ jobs:
           APPLE_TEAM_ID:          ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
+
+          # Exported here, in the shell, rather than declared in this step's
+          # `env:` as ${{ env.PX3_BUILD_JOBS }}. A ${{ }} reference to the env
+          # context from inside an env block is one indirection too many for
+          # something this load-bearing: if it ever resolves empty,
+          # build-release.sh sees no job count, and an empty value used to mean
+          # "unbounded". PX3_BUILD_JOBS is a workflow-level env var, so it is a
+          # real variable in this shell and can be checked before use.
+          : "${PX3_BUILD_JOBS:?PX3_BUILD_JOBS is not set - refusing to build with an unknown job count}"
+          export CMAKE_BUILD_PARALLEL_LEVEL="${PX3_BUILD_JOBS}"
+          echo "CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL}"
+
           ARGS=()
           if [ "${{ steps.keychain.outputs.imported }}" = "true" ] && [ -n "${CODESIGN_IDENTITY:-}" ]; then
             ARGS+=(--sign)

@@ -681,10 +681,34 @@ echo "[3/8] Building Release"
 #
 # So exporting the variable and hoping is not a fix. Reading it here and passing
 # it as an argument is.
-BUILD_PARALLEL_ARGS=(--parallel)
-if [[ -n "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ]]; then
-  BUILD_PARALLEL_ARGS=(--parallel "${CMAKE_BUILD_PARALLEL_LEVEL}")
+# ALWAYS a number. Never a bare --parallel.
+#
+# A bare `--parallel` is only safe if the generator happens to be Ninja, which
+# self-limits. Under Unix Makefiles it becomes `make -j` with NO LIMIT - one job
+# per ready target, which across eight products is every product compiling at
+# once and a runner that dies with
+#
+#   clang: error: unable to execute command: posix_spawn failed:
+#          Resource temporarily unavailable
+#
+# That is exactly what four failed releases looked like, with all eight
+# CMakeFiles/PX3*.dir targets building simultaneously under make[2]. The old
+# code here defaulted to the bare form and only added a number when
+# CMAKE_BUILD_PARALLEL_LEVEL was set - so an empty or unset variable, for any
+# reason at all, silently selected "unbounded". A default that dangerous should
+# not depend on an environment variable arriving intact.
+#
+# So the fallback is the machine's own core count, and the variable only
+# overrides it.
+BUILD_JOBS="${CMAKE_BUILD_PARALLEL_LEVEL:-}"
+if [[ -z "${BUILD_JOBS}" ]]; then
+  BUILD_JOBS="$(sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
+  echo "  CMAKE_BUILD_PARALLEL_LEVEL is unset; defaulting to ${BUILD_JOBS} (core count)"
 fi
+case "${BUILD_JOBS}" in
+  ''|*[!0-9]*) die "CMAKE_BUILD_PARALLEL_LEVEL must be a positive integer, got '${BUILD_JOBS}'" ;;
+esac
+BUILD_PARALLEL_ARGS=(--parallel "${BUILD_JOBS}")
 
 echo "  Generator:     $(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' "${CACHE_FILE}")"
 echo "  CPUs:          $(sysctl -n hw.ncpu 2>/dev/null || echo '?')"
