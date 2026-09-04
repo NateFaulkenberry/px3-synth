@@ -245,18 +245,8 @@ void FxCardComponent::setUIConfig(std::shared_ptr<const UIConfig> config)
         // The caption chips. Background and outline are separate colours with
         // separate opacities, so a card can carry its own scheme rather than
         // every caption in the plugin being the same translucent white.
-        px3::ui::ChipLabel::Style chipStyle;
         const auto chipKey = "cards." + styleKey + ".controls.";
-        chipStyle.background = uiConfig->getColour(chipKey + "labelBackground", chipStyle.background);
-        chipStyle.backgroundOpacity = uiConfig->getFloat(chipKey + "labelBackgroundOpacity",
-                                                         chipStyle.backgroundOpacity);
-        chipStyle.outline = uiConfig->getColour(chipKey + "labelOutline", chipStyle.outline);
-        chipStyle.outlineOpacity = uiConfig->getFloat(chipKey + "labelOutlineOpacity",
-                                                      chipStyle.outlineOpacity);
-        chipStyle.outlineWidth = uiConfig->getFloat(chipKey + "labelOutlineWidth",
-                                                    chipStyle.outlineWidth);
-        chipStyle.cornerRadius = uiConfig->getFloat(chipKey + "labelCornerRadius",
-                                                    chipStyle.cornerRadius);
+        const auto chipStyle = px3::ui::ChipLabel::styleFromConfig(uiConfig.get(), styleKey);
 
         for (auto& entry : choices)
         {

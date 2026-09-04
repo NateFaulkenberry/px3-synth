@@ -6,6 +6,7 @@
 #include "DelayComponent.h"
 #include "UIConfig.h"
 #include "BypassButton.h"
+#include "ChipLabel.h"
 #include "KnobLookAndFeel.h"
 
 #include <memory>
@@ -46,17 +47,19 @@ private:
     // as a system checkbox in the corner of a card.
     px3::ui::BypassButton enabledButton;
     juce::Slider amountKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
-    juce::Label amountLabel;
+    // ChipLabel, as the Synth uses: a plain juce::Label is bare text with
+    // no chip behind it, which over artwork barely reads at all.
+    px3::ui::ChipLabel amountLabel;
     juce::ComboBox algorithmBox;
-    juce::Label algorithmLabel;
+    px3::ui::ChipLabel algorithmLabel;
     juce::ComboBox syncBox;
-    juce::Label syncLabel;
+    px3::ui::ChipLabel syncLabel;
     juce::ComboBox modeBox;
-    juce::Label modeLabel;
+    px3::ui::ChipLabel modeLabel;
     juce::Slider timeKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
-    juce::Label timeLabel;
+    px3::ui::ChipLabel timeLabel;
     juce::Slider feedbackKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
-    juce::Label feedbackLabel;
+    px3::ui::ChipLabel feedbackLabel;
 
     // The ecosystem's knob, not JUCE's default rotary.
     px3::ui::KnobLookAndFeel knobLook;

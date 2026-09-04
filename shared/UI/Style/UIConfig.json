@@ -1304,6 +1304,13 @@
       }
     },
     "delay": {
+        "controls": {
+          "labelBackground": "#16304F",
+          "labelBackgroundOpacity": 0.85,
+          "labelOutline": "#7FB4E0",
+          "labelOutlineOpacity": 0.45,
+          "labelColour": "#DCEAF7"
+        },
       "artwork": {
         "image": "Delay-artwork.png",
         "opacity": 0.8

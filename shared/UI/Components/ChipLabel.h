@@ -2,6 +2,10 @@
 
 #include <JuceHeader.h>
 
+#include "UIConfig.h"
+
+#include <initializer_list>
+
 namespace px3::ui
 {
 
@@ -84,6 +88,55 @@ public:
     // Enough for the longest caption in the plugin - AUTO GAIN, which needs
     // about 0.78 of its natural width - with room to spare.
     static constexpr float kMinimumTextScale = 0.7f;
+
+    // The chip style a card declares, read from cards.<styleKey>.controls.
+    //
+    // Shared because the cards are built two ways: FxCardComponent owns its
+    // captions, while Delay, Mood and Vibe are handed theirs by whoever owns
+    // them. Both need the same keys to mean the same thing, and a second copy
+    // of these lookups is how that stops being true.
+    static Style styleFromConfig(const UIConfig* config, const juce::String& styleKey)
+    {
+        Style style;
+        if (config == nullptr) { return style; }
+
+        const auto key = "cards." + styleKey + ".controls.";
+        style.background = config->getColour(key + "labelBackground", style.background);
+        style.backgroundOpacity = config->getFloat(key + "labelBackgroundOpacity",
+                                                   style.backgroundOpacity);
+        style.outline = config->getColour(key + "labelOutline", style.outline);
+        style.outlineOpacity = config->getFloat(key + "labelOutlineOpacity", style.outlineOpacity);
+        style.outlineWidth = config->getFloat(key + "labelOutlineWidth", style.outlineWidth);
+        style.cornerRadius = config->getFloat(key + "labelCornerRadius", style.cornerRadius);
+        return style;
+    }
+
+    // Applies that style, and the text colour and font beside it, to captions a
+    // component was handed rather than owns.
+    //
+    // Takes juce::Label because that is what those components hold; a caption
+    // that is not a chip keeps its colour and font and simply has no chip to
+    // style, which is what a plain Label should do rather than an error.
+    static void applyFromConfig(const UIConfig* config,
+                                const juce::String& styleKey,
+                                std::initializer_list<juce::Label*> labels)
+    {
+        if (config == nullptr) { return; }
+
+        const auto key = "cards." + styleKey + ".controls.";
+        const auto chip = styleFromConfig(config, styleKey);
+        const auto colour = config->getColour(key + "labelColour",
+                                              juce::Colour::fromRGB(232, 232, 232));
+        const auto font = config->getFloat(key + "labelFontSize", 11.5f);
+
+        for (auto* label : labels)
+        {
+            if (label == nullptr) { continue; }
+            label->setColour(juce::Label::textColourId, colour);
+            label->setFont(juce::FontOptions(font));
+            if (auto* asChip = dynamic_cast<ChipLabel*>(label)) { asChip->setChipStyle(chip); }
+        }
+    }
 
 private:
     Style style;

@@ -4,6 +4,7 @@
 
 #include "PluginProcessor.h"
 #include "MoodComponent.h"
+#include "ChipLabel.h"
 #include "ToggleChipButton.h"
 #include "BypassButton.h"
 #include "KnobLookAndFeel.h"
@@ -47,9 +48,12 @@ private:
     juce::Slider feedbackKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
     juce::Slider spreadKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
     juce::Slider degradeKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
-    juce::Label mixLabel, clockLabel, wetTimeLabel, wetModifyLabel, loopLengthLabel,
-                loopModifyLabel, feedbackLabel, spreadLabel, degradeLabel,
-                routingLabel, wetModeLabel, loopModeLabel;
+    // ChipLabel, the same type the Synth passes this component: a plain
+    // juce::Label draws bare text with no chip behind it, which over artwork is
+    // not a caption so much as a rumour of one.
+    px3::ui::ChipLabel mixLabel, clockLabel, wetTimeLabel, wetModifyLabel, loopLengthLabel,
+                       loopModifyLabel, feedbackLabel, spreadLabel, degradeLabel,
+                       routingLabel, wetModeLabel, loopModeLabel;
     juce::ComboBox routingBox, wetModeBox, loopModeBox;
 
     MoodComponent panel;

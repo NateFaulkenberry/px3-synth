@@ -1,4 +1,5 @@
 #include "MoodComponent.h"
+#include "ChipLabel.h"
 
 #include "BypassButton.h"
 #include "ToggleChipButton.h"
@@ -158,6 +159,14 @@ void MoodComponent::setActive(bool enabled)
 void MoodComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+
+    // The captions this component was handed. It does not own them, but it
+    // is the only place that knows which style key they belong to - so the
+    // card's chip colours reach them here or not at all.
+    px3::ui::ChipLabel::applyFromConfig(uiConfig.get(), "mood",
+                                        { &mixLabel, &clockLabel, &wetTimeLabel, &wetModifyLabel, &loopLengthLabel,
+                                       &loopModifyLabel, &feedbackLabel, &spreadLabel,
+                                       &degradeLabel, &routingLabel, &wetModeLabel, &loopModeLabel });
     // cardInner parses its rows in resized(), so a live reload has to redo
     // the layout as well as the paint.
     resized();

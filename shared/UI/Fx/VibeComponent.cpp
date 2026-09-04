@@ -1,4 +1,5 @@
 #include "VibeComponent.h"
+#include "ChipLabel.h"
 
 #include "BypassButton.h"
 #include "CardInner.h"
@@ -49,6 +50,12 @@ void VibeComponent::setActive(bool enabled)
 void VibeComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+
+    // The captions this component was handed. It does not own them, but it
+    // is the only place that knows which style key they belong to - so the
+    // card's chip colours reach them here or not at all.
+    px3::ui::ChipLabel::applyFromConfig(uiConfig.get(), "vibe",
+                                        { &amountLabel, &typeLabel });
     // cardInner parses its rows in resized(), so a live reload has to redo
     // the layout as well as the paint.
     resized();
