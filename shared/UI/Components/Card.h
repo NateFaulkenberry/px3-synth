@@ -86,6 +86,13 @@ struct ArtworkStyle
 {
     juce::String image;
     float opacity { 1.0f };
+
+    // How the picture is treated when the card is bypassed. Multipliers rather
+    // than a flag, so artwork greys by exactly the same numbers every other
+    // layer does - cards.<key>.disabled.saturation and .darken - instead of
+    // having a second opinion about what bypassed looks like.
+    float saturation { 1.0f };
+    float brightness { 1.0f };
 };
 
 // Two fills inset from the card by their own margin, which is what produces the

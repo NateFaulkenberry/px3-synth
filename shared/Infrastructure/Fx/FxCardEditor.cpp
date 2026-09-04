@@ -87,6 +87,19 @@ void FxCardEditor::attachBypass(juce::AudioParameterBool& parameter)
 {
     buttonAttachments.push_back(
         std::make_unique<juce::ButtonParameterAttachment>(parameter, card.bypassButton(), nullptr));
+
+    // And grey the card while it is bypassed.
+    //
+    // The attachment above only moves the switch. Inside the Synth the panel
+    // calls setActive on every card from refreshFxBypassUI, and standing alone
+    // there is no panel to do it - so a bypassed effect kept its full colour
+    // and its lit controls, and looked exactly like an effect that was running.
+    card.bypassButton().onStateChange = [this]
+    {
+        card.setActive(card.bypassButton().getToggleState());
+    };
+
+    card.setActive(parameter.get());
 }
 
 void FxCardEditor::finishSetup()

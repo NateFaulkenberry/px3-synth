@@ -679,9 +679,6 @@ void PX3SynthAudioProcessorEditor::buildEffectControls()
     granularModeLabel.setFont(juce::FontOptions(11.5f));
     enableLabelHoverOverlay(granularModeLabel, "Granular Mode");
 
-    auto& reverbAlgoParam = audioProcessor.getReverbAlgorithmParam();
-    const auto reverbChoiceCount = reverbAlgoParam.choices.size();
-    
     auto& moodRoutingParam = audioProcessor.getMoodRoutingParam();
     for (int i = 0; i < moodRoutingParam.choices.size(); ++i)
     {

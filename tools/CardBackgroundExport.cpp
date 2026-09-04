@@ -281,6 +281,29 @@ int main(int argc, char* argv[])
                       << std::endl;
         };
 
+        // Bypassed as well as active, so "does artwork grey out" is a thing
+        // that can be looked at rather than reasoned about.
+        {
+            PX3LucyAudioProcessor bypassed;
+            for (auto* parameter : bypassed.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                {
+                    if (ranged->getParameterID() == "lucyEnabled") { ranged->setValueNotifyingHost(0.0f); }
+                    if (ranged->getParameterID() == "lucyGlobal")  { ranged->setValueNotifyingHost(1.0f); }
+                }
+            }
+
+            std::unique_ptr<juce::AudioProcessorEditor> editor(bypassed.createEditor());
+            if (editor != nullptr)
+            {
+                const auto file = output.getChildFile("PX3-Lucy-bypassed.png");
+                std::cout << "  PX3-Lucy bypassed  "
+                          << (writePreview(*editor, file) ? describe(file) : juce::String("FAILED"))
+                          << std::endl;
+            }
+        }
+
         PX3ReverbAudioProcessor reverb;   preview("PX3-Reverb", reverb);
         PX3DoomAudioProcessor doom;       preview("PX3-Doom", doom);
         PX3LucyAudioProcessor lucy;       preview("PX3-Lucy", lucy);

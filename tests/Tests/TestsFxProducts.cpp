@@ -915,7 +915,6 @@ void testFxProducts()
             juce::StringArray states;
 
             const auto switchReachesTheParameter = [&](const juce::String& name,
-                                                       auto& processor,
                                                        juce::AudioParameterBool& enabled,
                                                        juce::AudioProcessorEditor* editorIn)
             {
@@ -934,15 +933,15 @@ void testFxProducts()
             };
 
             PX3ChorusAudioProcessor chorus;
-            switchReachesTheParameter("Chorus", chorus, chorus.enabled(), chorus.createEditor());
+            switchReachesTheParameter("Chorus", chorus.enabled(), chorus.createEditor());
             PX3SpreadAudioProcessor spread;
-            switchReachesTheParameter("Spread", spread, spread.enabled(), spread.createEditor());
+            switchReachesTheParameter("Spread", spread.enabled(), spread.createEditor());
             PX3ReverbAudioProcessor reverb;
-            switchReachesTheParameter("Reverb", reverb, reverb.enabled(), reverb.createEditor());
+            switchReachesTheParameter("Reverb", reverb.enabled(), reverb.createEditor());
             PX3DoomAudioProcessor doom;
-            switchReachesTheParameter("Doom", doom, doom.enabled(), doom.createEditor());
+            switchReachesTheParameter("Doom", doom.enabled(), doom.createEditor());
             PX3LucyAudioProcessor lucy;
-            switchReachesTheParameter("Lucy", lucy, lucy.enabled(), lucy.createEditor());
+            switchReachesTheParameter("Lucy", lucy.enabled(), lucy.createEditor());
 
             check("FxProducts_TheCardsBypassSwitchDrivesTheParameter",
                   broken.isEmpty(),

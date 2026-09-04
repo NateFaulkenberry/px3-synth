@@ -280,6 +280,55 @@ juce::Rectangle<float> CardStyle::resolveBounds(juce::Rectangle<float> slot,
                .withCentre(marginBox.getCentre());
 }
 
+namespace
+{
+// Desaturate and darken a picture in place, by the same numbers the card's
+// colour layers use.
+//
+// A luminance blend on the raw bytes rather than per-pixel juce::Colour work:
+// this runs over every pixel of a full-size image, and going through Colour's
+// HSV conversion for each one turns a cache miss into a visible stall.
+//
+// The image is premultiplied, and scaling all three channels by the same factor
+// leaves it premultiplied - which is why the blend is done on the stored values
+// directly and alpha is not touched.
+void applyTint(juce::Image& image, float saturation, float brightness)
+{
+    const auto sat = juce::jlimit(0.0f, 1.0f, saturation);
+    const auto bri = juce::jlimit(0.0f, 1.0f, brightness);
+
+    juce::Image::BitmapData data(image, juce::Image::BitmapData::readWrite);
+
+    for (int y = 0; y < data.height; ++y)
+    {
+        auto* line = data.getLinePointer(y);
+
+        for (int x = 0; x < data.width; ++x)
+        {
+            auto* pixel = line + x * data.pixelStride;
+
+            // BGRA in memory on the formats JUCE decodes PNGs into; read by
+            // offset rather than by name so the maths is the same either way.
+            const auto b = static_cast<float>(pixel[0]);
+            const auto g = static_cast<float>(pixel[1]);
+            const auto r = static_cast<float>(pixel[2]);
+
+            const auto luma = 0.299f * r + 0.587f * g + 0.114f * b;
+
+            const auto mix = [sat, bri, luma](float channel)
+            {
+                const auto blended = luma + (channel - luma) * sat;
+                return static_cast<juce::uint8>(juce::jlimit(0.0f, 255.0f, blended * bri));
+            };
+
+            pixel[0] = mix(b);
+            pixel[1] = mix(g);
+            pixel[2] = mix(r);
+        }
+    }
+}
+} // namespace
+
 CardStyle CardStyle::disabledVariant() const
 {
     CardStyle result = *this;
@@ -300,9 +349,13 @@ CardStyle CardStyle::disabledVariant() const
     result.border.opacity *= dim;
     result.background.colour = grey(result.background.colour);
     result.background.opacity *= dim;
-    // Artwork dims with everything else. A bypassed card that keeps a full
-    // colour picture behind grey controls does not read as bypassed.
+    // Artwork greys with everything else. A bypassed card that keeps a full
+    // colour picture behind grey controls does not read as bypassed - and on a
+    // card whose whole face is a photograph, the picture is what the eye reads
+    // first, so dimming it alone was not enough.
     result.artwork.opacity *= dim;
+    result.artwork.saturation = saturation;
+    result.artwork.brightness = 1.0f - darken;
 
     result.gloss.topFill.colour = grey(result.gloss.topFill.colour);
     result.gloss.topFill.opacity *= dim;
@@ -482,15 +535,31 @@ void drawCard(juce::Graphics& g,
 
         if (file.existsAsFile())
         {
+            // The grey version is a different picture as far as the cache is
+            // concerned, so both live in it and neither is recomputed per
+            // frame - which matters, because desaturating two million pixels
+            // is not something to do while painting.
+            const auto tint = juce::roundToInt(juce::jlimit(0.0f, 1.0f, style.artwork.saturation) * 1000.0f)
+                            + juce::roundToInt(juce::jlimit(0.0f, 1.0f, style.artwork.brightness) * 1000.0f) * 1009;
+
             const auto key = file.getFullPathName().hashCode64()
                            ^ (file.getLastModificationTime().toMilliseconds() * 31)
-                           ^ (file.getSize() * 131);
+                           ^ (file.getSize() * 131)
+                           ^ (static_cast<juce::int64>(tint) * 1000003);
 
             image = juce::ImageCache::getFromHashCode(key);
 
             if (image.isNull())
             {
                 image = juce::ImageFileFormat::loadFrom(file);
+
+                if (image.isValid()
+                        && (style.artwork.saturation < 0.999f || style.artwork.brightness < 0.999f))
+                {
+                    image = image.createCopy();
+                    applyTint(image, style.artwork.saturation, style.artwork.brightness);
+                }
+
                 if (image.isValid()) { juce::ImageCache::addImageToCache(image, key); }
             }
         }
@@ -503,21 +572,19 @@ void drawCard(juce::Graphics& g,
             shape.addRoundedRectangle(cardBounds, radius);
             g.reduceClipRegion(shape);
 
-            // COVER, not fit: scaled by whichever axis needs more so the card is
-            // filled, with the overflow cropped by the clip above. Letterboxing
-            // instead would show the background through two bands and make the
-            // artwork look like it had failed to load.
-            const auto scale = juce::jmax(cardBounds.getWidth() / static_cast<float>(image.getWidth()),
-                                          cardBounds.getHeight() / static_cast<float>(image.getHeight()));
-            const auto drawnWidth = static_cast<float>(image.getWidth()) * scale;
-            const auto drawnHeight = static_cast<float>(image.getHeight()) * scale;
-
+            // COVER, not fit: fillDestination scales by whichever axis needs
+            // more and crops the rest, which the clip above contains.
+            // Letterboxing instead would show the background through two bands
+            // and make the artwork look like it had failed to load.
+            //
+            // The rectangle overload rather than the nine-argument one: that
+            // takes ints for the destination, so every float here was converted
+            // implicitly - four warnings, and a policy that fails the build on
+            // them.
             g.setOpacity(style.artwork.opacity);
-            g.drawImage(image,
-                        cardBounds.getCentreX() - drawnWidth * 0.5f,
-                        cardBounds.getCentreY() - drawnHeight * 0.5f,
-                        drawnWidth, drawnHeight,
-                        0, 0, image.getWidth(), image.getHeight());
+            g.drawImage(image, cardBounds,
+                        juce::RectanglePlacement::centred
+                            | juce::RectanglePlacement::fillDestination);
             g.setOpacity(1.0f);
         }
     }
