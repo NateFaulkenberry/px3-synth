@@ -20,6 +20,10 @@ on:
         description: 'Attempt signing (needs secrets configured)'
         type: boolean
         default: false
+      no_cache:
+        description: 'Build cold - ignore the compiler cache entirely'
+        type: boolean
+        default: false
 
 concurrency:
   # Never two builds of one release at once, and never cancel one: a half-built
@@ -51,6 +55,20 @@ env:
   # with no compiler cache, which is a change to how release binaries are
   # produced and deliberately not folded in here.
   PX3_BUILD_JOBS: 5
+
+  # Compiler cache, as a switch, so a suspected bad cache is one dispatch away
+  # from a cold build instead of a YAML edit under pressure. Written as a
+  # comparison rather than a bare input so it is always the literal true or
+  # false - a release event carries no inputs, and an empty value here would
+  # be read by the shell as 'not true' only by luck.
+  PX3_NO_CACHE: ${{ inputs.no_cache == true }}
+
+  # A ceiling on the cache, because this job now fills it from two builds and
+  # actions/cache pays for every byte twice - once restoring, once saving. An
+  # unbounded cache can cost more in transfer than the compiles it skips. If
+  # the stats printed after the build show heavy eviction, raise this; that
+  # printout is the only way the thrashing would ever be visible.
+  CCACHE_MAXSIZE: 2G
 
   # Notarisation, as a switch.
   #
@@ -257,13 +275,25 @@ jobs:
       # own build directory with the diagnostic targets off. The two builds are
       # sequential steps, never concurrent.
       #
-      # This cache serves the TEST build only. build-release.sh sets no compiler
-      # launcher, so ccache does not touch the packaged build at all - an
-      # earlier comment here claimed otherwise and was wrong. Enabling it there
-      # would mean exporting CMAKE_C_COMPILER_LAUNCHER/CMAKE_CXX_COMPILER_LAUNCHER
-      # to the build step (CMake does read those from the environment), which is
-      # worth doing but is a change to how release binaries are produced, so it
-      # is not being folded into a resource fix.
+      # This cache now serves BOTH builds. build-release.sh sets no compiler
+      # launcher of its own, so the packaged build gets one from the environment
+      # - CMake reads CMAKE_C_COMPILER_LAUNCHER and CMAKE_CXX_COMPILER_LAUNCHER
+      # from there - and that step was 18m41s of the job's 32, near enough all
+      # of it compilation. Notarisation, the other suspect, was 74 seconds.
+      #
+      # The two builds do not share entries even though they share this cache:
+      # they compile the same sources under different flags, and the flags are
+      # part of the hash.
+      #
+      # Caching a build whose output gets signed and shipped is a real decision,
+      # so it is made with two conditions attached. CCACHE_COMPILERCHECK=content
+      # hashes the compiler binary itself rather than its mtime, which is the
+      # one default that can miss a toolchain change. No sloppiness options are
+      # set anywhere - those are the settings that trade correctness for hits.
+      # And the shipped plug-ins are now loaded and validated by auval below,
+      # which is what turns a bad object from something shipped into something
+      # caught. That check is worth having with or without this cache: before
+      # it, nothing in the release ever executed the binaries it published.
       - name: Cache compiler output
         uses: actions/cache@v5
         with:
@@ -508,6 +538,26 @@ jobs:
           export CMAKE_BUILD_PARALLEL_LEVEL="${PX3_BUILD_JOBS}"
           echo "CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL}"
 
+          # The compiler cache, handed to build-release.sh through the
+          # environment because the script sets no launcher of its own and
+          # should not have to know about CI.
+          #
+          # compilercheck=content, not the default mtime: a runner image that
+          # swapped clang for a same-size, same-timestamp build is the one way
+          # a content-addressed cache can go wrong, and hashing the binary
+          # closes it. Nothing sets sloppiness, here or anywhere - those are the
+          # options that buy hit rate with correctness.
+          if [ "${PX3_NO_CACHE}" = "true" ]; then
+            echo "compiler cache: DISABLED for this run"
+            export CCACHE_DISABLE=1
+          else
+            export CMAKE_C_COMPILER_LAUNCHER=ccache
+            export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+            export CCACHE_COMPILERCHECK=content
+            echo "compiler cache: on (compilercheck=content, no sloppiness)"
+            ccache --zero-stats >/dev/null 2>&1 || true
+          fi
+
           ARGS=()
           if [ "${{ steps.keychain.outputs.imported }}" = "true" ] && [ -n "${CODESIGN_IDENTITY:-}" ]; then
             ARGS+=(--sign)
@@ -532,6 +582,112 @@ jobs:
           # exactly the empty-array case, so the plain form would break the
           # first release anyone runs. Verified against bash 3.2.57.
           ./scripts/build-release.sh ${ARGS[@]+"${ARGS[@]}"} 2>&1 | tee release-build.log
+
+          # What the cache actually did. A hit rate near zero on a rebuild of
+          # the same version means the key is wrong, and that is invisible
+          # unless it is printed.
+          if [ "${PX3_NO_CACHE}" != "true" ]; then
+            echo "=== compiler cache, this build ==="
+            ccache --show-stats 2>/dev/null || ccache -s 2>/dev/null || true
+          fi
+
+      - name: Load and validate every built Audio Unit
+        run: |
+          set -uo pipefail
+
+          # Run the binaries this release is about to publish.
+          #
+          # Until now nothing did. The job built the plug-ins, checked their
+          # bundle layout, architecture and signature, and shipped them without
+          # ever loading one. Every check was about the container.
+          #
+          # auval is the cheap way to fix that: it is on every Mac, it
+          # instantiates the component, and it renders audio through it. A
+          # plug-in that crashes on load, or that was miscompiled by a bad
+          # cache entry, fails here instead of on someone's machine.
+          #
+          # Identifiers come from each bundle's own Info.plist rather than a
+          # list kept here, so a ninth product is validated by existing.
+          COMPONENTS=$(find build/release dist -name "*.component" -type d 2>/dev/null \
+                         | awk '!seen[substr($0, match($0, /[^\/]+\.component$/))]++')
+
+          if [ -z "${COMPONENTS}" ]; then
+            echo "::error::no Audio Units were built - nothing to validate"
+            exit 1
+          fi
+
+          DEST="${HOME}/Library/Audio/Plug-Ins/Components"
+          mkdir -p "${DEST}"
+
+          FAILED=""
+          COUNT=0
+
+          while IFS= read -r comp; do
+            [ -n "${comp}" ] || continue
+            name=$(basename "${comp}")
+            plist="${comp}/Contents/Info.plist"
+
+            type=$(/usr/libexec/PlistBuddy -c "Print :AudioComponents:0:type" "${plist}" 2>/dev/null || true)
+            subtype=$(/usr/libexec/PlistBuddy -c "Print :AudioComponents:0:subtype" "${plist}" 2>/dev/null || true)
+            manu=$(/usr/libexec/PlistBuddy -c "Print :AudioComponents:0:manufacturer" "${plist}" 2>/dev/null || true)
+
+            if [ -z "${type}" ] || [ -z "${subtype}" ] || [ -z "${manu}" ]; then
+              echo "::error::${name} has no readable AudioComponents entry"
+              FAILED="${FAILED} ${name}"
+              continue
+            fi
+
+            rm -rf "${DEST}/${name}"
+            cp -R "${comp}" "${DEST}/${name}"
+            COUNT=$((COUNT + 1))
+            echo "installed ${name} (${type} ${subtype} ${manu})"
+          done <<< "${COMPONENTS}"
+
+          # The registry caches what it has seen; a fresh runner has not seen
+          # these, and it will not look again on its own.
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          sleep 2
+
+          while IFS= read -r comp; do
+            [ -n "${comp}" ] || continue
+            name=$(basename "${comp}")
+            plist="${comp}/Contents/Info.plist"
+            type=$(/usr/libexec/PlistBuddy -c "Print :AudioComponents:0:type" "${plist}" 2>/dev/null || true)
+            subtype=$(/usr/libexec/PlistBuddy -c "Print :AudioComponents:0:subtype" "${plist}" 2>/dev/null || true)
+            manu=$(/usr/libexec/PlistBuddy -c "Print :AudioComponents:0:manufacturer" "${plist}" 2>/dev/null || true)
+            [ -n "${type}" ] && [ -n "${subtype}" ] && [ -n "${manu}" ] || continue
+
+            echo "=============================================================="
+            echo "auval -v ${type} ${subtype} ${manu}   (${name})"
+
+            # Status captured from auval itself, not from a pipeline. Piping it
+            # into tee and tail would make the `if` test tail's status, which
+            # succeeds whatever auval decided - a check that reads like one and
+            # is not.
+            status=0
+            auval -v "${type}" "${subtype}" "${manu}" > "auval-${subtype}.log" 2>&1 || status=$?
+            tail -20 "auval-${subtype}.log" || true
+
+            # Both conditions, because they fail differently: a crash in the
+            # plug-in shows up as a non-zero status, while a validation that
+            # ran and rejected the AU is reported in the text.
+            if [ "${status}" -ne 0 ] \
+                 || ! grep -q "AU VALIDATION SUCCEEDED" "auval-${subtype}.log"; then
+              echo "::error::${name}: auval FAILED (exit ${status})"
+              FAILED="${FAILED} ${name}"
+            else
+              echo "  ${name}: PASSED"
+            fi
+          done <<< "${COMPONENTS}"
+
+          echo "=============================================================="
+          echo "validated ${COUNT} Audio Unit(s)"
+
+          if [ -n "${FAILED}" ]; then
+            echo "::error::these Audio Units did not validate:${FAILED}"
+            exit 1
+          fi
+          echo "every built Audio Unit loaded and rendered"
 
       - name: Collect and name artifacts
         id: collect
@@ -619,6 +775,7 @@ jobs:
             rtsafety-report.txt
             smoke-report.txt
             release-build.log
+            auval-*.log
           retention-days: 30
           if-no-files-found: warn
 
