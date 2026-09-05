@@ -1547,6 +1547,105 @@ void testEffectIndependence()
         check("FxPath_ReverbTailOutlivesTheNote", capture.rmsOver(30000, 60000) > 1.0e-5,
               "rms well after note-off " + fmt(capture.rmsOver(30000, 60000), 7));
     }
+
+    // EVERY STAGE OF THE CHAIN HAS TO REACH THE OUTPUT.
+    //
+    // The eight stages are dispatched from one switch in processBlock, the FX
+    // panel addresses them by the same ids, and nothing else asserts that a
+    // given stage is still wired to audio. A stage dropped from that switch, or
+    // an amount parameter that stopped being read, would leave the whole suite
+    // green: the per-effect tests all drive their DSP classes directly, and the
+    // routing tests above only ever use the reverb.
+    //
+    // So: for each stage, render the same patch twice - once with only that
+    // stage engaged, once with the whole chain off - and require the two to
+    // differ. The measure is the RMS of the difference against the RMS of the
+    // dry render, which is a proportion rather than a level and so does not
+    // move when gain structure is retuned.
+    {
+        struct Stage
+        {
+            const char* name;
+            std::vector<std::pair<const char*, float>> settings;
+        };
+
+        // Each stage's own mix or amount control, at a setting well clear of
+        // transparent. VIBE is the odd one: it runs in the voice stage rather
+        // than on the bus, so it is audible with the sends down - it is checked
+        // here anyway because it is stage 0 of the same chain order.
+        const std::vector<Stage> stages {
+            { "Vibe",         { { "vibeEnabled", 1.0f }, { "vibeAmount", 1.0f } } },
+            { "Delay",        { { "delayEnabled", 1.0f }, { "delayAmount", 1.0f },
+                                { "delayTime", 0.35f }, { "delayFeedback", 0.40f } } },
+            { "Reverb",       { { "reverbEnabled", 1.0f }, { "reverbAmount", 1.0f },
+                                { "reverbSize", 0.8f }, { "reverbDecay", 0.8f } } },
+            { "Mood",         { { "moodEnabled", 1.0f }, { "moodMix", 1.0f } } },
+            { "Doom",         { { "doomEnabled", 1.0f }, { "doomMix", 1.0f } } },
+            { "Lucy",         { { "lucyEnabled", 1.0f }, { "lucyGlobal", 1.0f } } },
+            { "Chorus",       { { "chorusEnabled", 1.0f }, { "chorusAmount", 1.0f },
+                                { "chorusMix", 1.0f } } },
+            { "StereoSpread", { { "spreadEnabled", 1.0f }, { "spreadAmount", 1.0f },
+                                { "spreadWidth", 1.0f }, { "spreadMix", 1.0f } } }
+        };
+
+        // makePlainPatch silences VIBE, DELAY, REVERB and MOOD but leaves the
+        // four newer stages enabled, so the baseline turns all eight off by
+        // hand. Their amounts default to zero, so this is belt and braces - but
+        // a future default change must not quietly poison the comparison.
+        auto renderStage = [&stages](int engaged) -> Capture
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "osc1Mode", 1);
+            setParam(processor, "ampSustain", 1.0f);
+
+            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+                setParam(processor, juce::String("mix.") + id + ".fxSend", 1.0f);
+            setParam(processor, "fxSendGain", 1.0f);
+            setParam(processor, "fxReturnGain", 1.0f);
+
+            for (const auto* id : { "vibeEnabled", "delayEnabled", "reverbEnabled",
+                                    "moodEnabled", "doomEnabled", "lucyEnabled",
+                                    "chorusEnabled", "spreadEnabled" })
+                setParam(processor, id, 0.0f);
+
+            if (engaged >= 0)
+            {
+                for (const auto& [id, value] : stages[static_cast<std::size_t>(engaged)].settings)
+                    setParam(processor, id, value);
+            }
+
+            return render(processor, 96000, { { 2000, true, 45, 0.9f } });
+        };
+
+        const auto dry = renderStage(-1);
+        const auto dryRms = dry.rms();
+
+        for (std::size_t i = 0; i < stages.size(); ++i)
+        {
+            const auto wet = renderStage(static_cast<int>(i));
+
+            const auto count = juce::jmin(dry.left.size(), wet.left.size());
+            double sum = 0.0;
+            for (std::size_t n = 0; n < count; ++n)
+            {
+                const auto dl = static_cast<double>(wet.left[n] - dry.left[n]);
+                const auto dr = static_cast<double>(wet.right[n] - dry.right[n]);
+                sum += dl * dl + dr * dr;
+            }
+            const auto difference = count > 0 ? std::sqrt(sum / static_cast<double>(count * 2)) : 0.0;
+            const auto proportion = dryRms > 1.0e-9 ? difference / dryRms : 0.0;
+
+            // 1% of the dry level. Every stage measured far above this - the
+            // quietest was well into double figures of a percent - so the bar
+            // is set to catch a stage that does nothing at all, not to pin how
+            // strong any one effect is.
+            const auto name = juce::String("FxBus_") + stages[i].name + "IsAudibleInTheChain";
+            check(name.toRawUTF8(),
+                  proportion > 0.01,
+                  juce::String("difference against dry ") + fmt(proportion * 100.0, 2) + "%");
+        }
+    }
 }
 
 } // namespace px3tests
