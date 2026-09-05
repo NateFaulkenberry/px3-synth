@@ -1,4 +1,6 @@
 #include "MoodComponent.h"
+
+#include <algorithm>
 #include "ChipLabel.h"
 
 #include "BypassButton.h"
@@ -283,14 +285,32 @@ void MoodComponent::resized()
     // channels' mode-dependent macros, the looper's pair then the wet
     // channel's, in the same left-to-right order as the mode dropdowns above
     // them. Row 4 is everything that belongs to the machine as a whole.
+    // maxCellWidth CAPS the cell; it does not set it. The width actually used
+    // is whatever divides the row evenly between however many knobs are in it,
+    // which is the fix for the thing that kept going wrong here: a hardcoded
+    // pixel width is either too small (knobs smaller than they need to be) or
+    // one pixel too large, at which point the row WRAPS and the cell height
+    // halves - so a row that overflows renders SMALLER knobs than one that
+    // fits. Dividing the row up cannot overflow, and uses all of it.
     const auto layoutKnobRow = [this](int rowIndex,
-                                      float cellWidth,
+                                      float maxCellWidth,
                                       const std::vector<std::pair<juce::Slider*, juce::Label*>>& knobs)
     {
         auto flex = inner.rowFlex(rowIndex);
         const auto gap = inner.rowGap(rowIndex);
         const auto row = inner.rowContent(rowIndex);
         const auto rowWidth = static_cast<float>(juce::jmax(1, row.getWidth()));
+
+        const auto count = static_cast<float>(std::max<std::size_t>(1u, knobs.size()));
+        const auto perCellGap = gap.left + gap.right;
+        // A couple of pixels held back. Dividing the row EXACTLY leaves the
+        // running total equal to the row width, and both the wrap calculation
+        // and FlexBox itself compare with a strict greater-than - so rounding
+        // in the last cell is enough to tip a row that fits into one that
+        // wraps, which is how WET MOD and DEGRADE kept ending up alone.
+        constexpr auto kSlack = 3.0f;
+        const auto available = juce::jmax(1.0f, rowWidth - count * perCellGap - kSlack);
+        const auto cellWidth = juce::jmin(maxCellWidth, available / count);
 
         const std::vector<float> widths(knobs.size(), cellWidth);
         const auto gapWidth = gap.left + gap.right;
@@ -316,7 +336,7 @@ void MoodComponent::resized()
     };
 
     // The two channels' macros, looper first, matching the dropdowns above.
-    layoutKnobRow(2, 66.0f, { { &loopLengthKnob, &loopLengthLabel },
+    layoutKnobRow(2, 96.0f, { { &loopLengthKnob, &loopLengthLabel },
                               { &loopModifyKnob, &loopModifyLabel },
                               { &wetTimeKnob, &wetTimeLabel },
                               { &wetModifyKnob, &wetModifyLabel } });
@@ -324,7 +344,7 @@ void MoodComponent::resized()
     // The machine as a whole. FEEDBACK is here rather than with either channel
     // because it recycles BOTH of them into the history, and DEGRADE because
     // it is a PX3 extension rather than one of the pedal's controls.
-    layoutKnobRow(3, 66.0f, { { &clockKnob, &clockLabel },
+    layoutKnobRow(3, 96.0f, { { &clockKnob, &clockLabel },
                               { &spreadKnob, &spreadLabel },
                               { &feedbackKnob, &feedbackLabel },
                               { &degradeKnob, &degradeLabel } });

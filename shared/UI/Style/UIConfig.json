@@ -1971,8 +1971,8 @@
             "justifyContent": "center"
           }
         },
-        "paddingLeft": 6,
-        "paddingRight": 6
+        "paddingLeft": 4,
+        "paddingRight": 4
       }
     },
     "reverb": {
