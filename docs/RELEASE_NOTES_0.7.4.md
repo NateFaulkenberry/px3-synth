@@ -117,7 +117,6 @@ A few items remain unchanged from previous releases:
 
 * A second updater helper can still be launched across separate sessions in a specific staged-update scenario.
 * The Synth's artwork assets are relatively large, contributing to the overall application size.
-* The preset browser still displays its **CANCEL** button alongside the corner close icon.
 * **Windows standalone packaging is not yet available.**
 
 ---
