@@ -65,6 +65,21 @@ struct SpeechBubble
         float arrowInsetFromRight { 18.0f };
         float arrowCentreFromTop  { -1.0f };
 
+        // A shadow cast by the bubble, from the bubble's own path - arrow
+        // included - so it is the shape's shadow rather than a soft rectangle
+        // behind it. Off by default at opacity zero, so a bubble that says
+        // nothing about a shadow draws exactly as it did.
+        //
+        // The shadow falls OUTSIDE the path, and a component's paint is
+        // clipped to its own bounds, so an owner has to reserve room for it:
+        // see shadowMargin, and MacroDepthPanel, which grows its preferred
+        // bounds by that much and insets the bubble inside them.
+        juce::Colour shadowColour { juce::Colours::black };
+        float shadowOpacity { 0.0f };
+        float shadowRadius  { 0.0f };
+        float shadowOffsetX { 0.0f };
+        float shadowOffsetY { 0.0f };
+
         // Text inset, for the bubbles that hold text themselves.
         float paddingX { 10.0f };
         float paddingY { 4.0f };
@@ -191,13 +206,35 @@ struct SpeechBubble
         return path;
     }
 
-    // Fill then stroke, on the one path.
+    // How much room outside the bubble its shadow needs, so an owner can size
+    // itself to fit one. Zero when there is no shadow, which keeps a bubble
+    // that does not want one exactly the size it was.
+    static float shadowMargin(const Style& style)
+    {
+        if (style.shadowOpacity <= 0.0f || style.shadowRadius < 0.5f) { return 0.0f; }
+        return style.shadowRadius
+             + juce::jmax(std::abs(style.shadowOffsetX), std::abs(style.shadowOffsetY));
+    }
+
+    // Shadow, then fill, then stroke, on the one path.
     static void paintBackground(juce::Graphics& g, juce::Rectangle<float> bounds,
                                 const Style& style)
     {
         const auto path = buildPath(bounds, style);
 
         if (path.isEmpty()) { return; }
+
+        // DropShadow takes an integer radius and refuses anything below one, so
+        // a configured radius that rounds to zero is no shadow rather than a
+        // hard black copy of the bubble offset by a few pixels.
+        if (style.shadowOpacity > 0.0f && style.shadowRadius >= 0.5f)
+        {
+            const juce::DropShadow shadow(
+                style.shadowColour.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.shadowOpacity)),
+                juce::roundToInt(style.shadowRadius),
+                { juce::roundToInt(style.shadowOffsetX), juce::roundToInt(style.shadowOffsetY) });
+            shadow.drawForPath(g, path);
+        }
 
         g.setColour(style.background.withMultipliedAlpha(
             juce::jlimit(0.0f, 1.0f, style.backgroundOpacity)));

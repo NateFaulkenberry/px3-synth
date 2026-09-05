@@ -90,6 +90,11 @@ public:
 
     //---- for the tests ----------------------------------------------------
     juce::String debugHeaderText() const { return header.getText(); }
+
+    // The bubble inside the component, and the room its shadow gets outside.
+    juce::Rectangle<int> debugBubbleArea() const { return bubbleArea(); }
+    int debugShadowMargin() const { return shadowMargin(); }
+    juce::Rectangle<int> debugHeaderBounds() const { return header.getBounds(); }
     int debugRowCount() const { return static_cast<int>(rows.size()); }
     int debugColumnCount() const { return columnsForRows(static_cast<int>(rows.size()), getWidth(), rowAreaHeight()); }
     bool debugIsScrolling() const;
@@ -123,6 +128,11 @@ private:
     // point left at the macro knob. Built per paint from UIConfig, so styling
     // it is a config edit rather than a rebuild.
     SpeechBubble::Style bubbleStyle() const;
+
+    // The bubble sits inset inside the component, leaving the shadow room to
+    // fall - a component's paint is clipped to its own bounds.
+    int shadowMargin() const;
+    juce::Rectangle<int> bubbleArea() const;
     void applyStyleFromConfig();
     int columnWidth() const;
     int rowAreaHeight() const;

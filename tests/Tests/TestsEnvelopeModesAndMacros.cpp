@@ -3126,6 +3126,36 @@ void testMacroSystem()
                                  == PX3SynthAudioProcessor::macroDisplayName(1).toUpperCase(),
                       "the panel for macro index 1 is headed '" + panel->debugHeaderText() + "'");
 
+                // ---- the panel reserves room for its shadow -----------------
+                //
+                // A component's paint is clipped to its own bounds, so a
+                // shadow drawn from the bubble's path would be invisible if
+                // the bubble filled the component. The bubble is inset by the
+                // shadow's margin and the panel asks for a correspondingly
+                // bigger box, so the readable area is the size it always was.
+                //
+                // The header is checked as well as the geometry: insetting the
+                // bubble without moving the contents in with it would draw the
+                // frame around a header that had stayed put.
+                {
+                    const auto margin = panel->debugShadowMargin();
+                    const auto outer = panel->getLocalBounds();
+                    const auto bubble = panel->debugBubbleArea();
+                    const auto headerBox = panel->debugHeaderBounds();
+
+                    const auto insetOnEverySide =
+                        bubble.getX() - outer.getX() == margin
+                        && bubble.getY() - outer.getY() == margin
+                        && outer.getRight() - bubble.getRight() == margin
+                        && outer.getBottom() - bubble.getBottom() == margin;
+
+                    check("MacroDepthUi_TheBubbleLeavesItsShadowRoomToFall",
+                          margin > 0 && insetOnEverySide && bubble.contains(headerBox),
+                          "margin " + juce::String(margin) + ", component "
+                              + outer.toString() + ", bubble " + bubble.toString()
+                              + ", header " + headerBox.toString());
+                }
+
                 editor->debugCloseMacroDepthPanel();
 
                 // ---- assigning many knobs stays in the mode ------------------
