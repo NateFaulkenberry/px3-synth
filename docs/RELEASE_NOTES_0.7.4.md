@@ -83,14 +83,6 @@ Standalone effects no longer carry artwork and resources belonging to other effe
 
 This dramatically reduces bundle sizes — from roughly **432 MB total to about 186 MB** across the standalone products.
 
-### Audio processing reliability
-
-Additional safeguards now verify that every FX stage is actually connected to the audio chain. This helps prevent an effect from appearing correctly in the interface while silently doing nothing to the audio.
-
-### Control reliability
-
-All FX controls are now verified to be properly connected to their underlying parameters, preventing a knob from appearing and responding visually without actually changing the effect.
-
 ---
 
 ## 🧪 Quality & Reliability
