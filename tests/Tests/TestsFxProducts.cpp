@@ -1021,6 +1021,75 @@ void testFxProducts()
                                    : "these switches changed nothing: " + broken.joinIntoString(", "));
         }
 
+        // EVERY KNOB ON A CARD DRIVES A PARAMETER.
+        //
+        // The cards attach their controls by id, one attach call per control,
+        // and a knob whose call is missing or misspelt still lays out, still
+        // draws, still turns - and does nothing. Nothing else catches that:
+        // the parity test compares geometry and palette, which an unattached
+        // knob matches perfectly, and the DSP tests drive the parameters
+        // directly and never touch a control.
+        {
+            juce::StringArray inert;
+            juce::StringArray counted;
+
+            const auto everyKnobMovesSomething = [&](const juce::String& name,
+                                                     juce::AudioProcessor& processor,
+                                                     juce::AudioProcessorEditor* editorIn)
+            {
+                std::unique_ptr<juce::AudioProcessorEditor> editor(editorIn);
+                auto* cardEditor = dynamic_cast<px3::fx::FxCardEditor*>(editor.get());
+                if (cardEditor == nullptr) { counted.add(name + " (no card editor)"); return; }
+
+                const auto& parameters = processor.getParameters();
+                const auto snapshot = [&]
+                {
+                    std::vector<float> values;
+                    for (auto* parameter : parameters) { values.push_back(parameter->getValue()); }
+                    return values;
+                };
+
+                const auto knobs = cardEditor->debugCard().allKnobs();
+                int moved = 0;
+                for (auto* knob : knobs)
+                {
+                    const auto before = snapshot();
+
+                    // Somewhere else in the range, whichever end is further,
+                    // so a knob already sitting at a limit is still moved.
+                    const auto position = knob->getValue();
+                    const auto low = knob->getMinimum();
+                    const auto high = knob->getMaximum();
+                    const auto target = (position - low) > (high - position) ? low : high;
+                    knob->setValue(target, juce::sendNotificationSync);
+
+                    const auto after = snapshot();
+                    if (after != before) { ++moved; }
+                    else { inert.add(name + " " + knob->getName()); }
+
+                    knob->setValue(position, juce::sendNotificationSync);
+                }
+
+                counted.add(name + " " + juce::String(moved) + "/" + juce::String((int) knobs.size()));
+            };
+
+            PX3ChorusAudioProcessor chorusKnobs;
+            everyKnobMovesSomething("Chorus", chorusKnobs, chorusKnobs.createEditor());
+            PX3SpreadAudioProcessor spreadKnobs;
+            everyKnobMovesSomething("Spread", spreadKnobs, spreadKnobs.createEditor());
+            PX3ReverbAudioProcessor reverbKnobs;
+            everyKnobMovesSomething("Reverb", reverbKnobs, reverbKnobs.createEditor());
+            PX3DoomAudioProcessor doomKnobs;
+            everyKnobMovesSomething("Doom", doomKnobs, doomKnobs.createEditor());
+            PX3LucyAudioProcessor lucyKnobs;
+            everyKnobMovesSomething("Lucy", lucyKnobs, lucyKnobs.createEditor());
+
+            check("FxProducts_EveryKnobOnACardIsAttachedToAParameter",
+                  inert.isEmpty(),
+                  inert.isEmpty() ? "every knob moved a parameter: " + counted.joinIntoString(", ")
+                                  : "these knobs are attached to nothing: " + inert.joinIntoString(", "));
+        }
+
         // A BYPASSED CARD GREYS OUT COMPLETELY.
         //
         // The card already dimmed its artwork and desaturated its knobs on
@@ -1396,6 +1465,66 @@ void testFxProducts()
                       unstyled.isEmpty(),
                       unstyled.isEmpty() ? "every knob on every card carries the PX3 look"
                                          : "stock JUCE rotaries: " + unstyled.joinIntoString(", "));
+            }
+
+            // ---- and every knob on a card drives a parameter ---------------
+            //
+            // The Synth attaches its card controls by id, one call per
+            // control, in buildReverbCard and its siblings. A knob whose call
+            // is missing or misspelt still lays out, still draws, still turns -
+            // and does nothing. Neither the look test above nor the standalone
+            // parity comparison catches it: an unattached knob has the right
+            // look in the right place.
+            {
+                juce::StringArray inert;
+                juce::StringArray counted;
+
+                const auto& parameters = synth.getParameters();
+                const auto snapshot = [&]
+                {
+                    std::vector<float> values;
+                    for (auto* parameter : parameters) { values.push_back(parameter->getValue()); }
+                    return values;
+                };
+
+                const auto checkAttachments = [&](const juce::String& name, int stage)
+                {
+                    auto* c = panel != nullptr ? panel->cardForSection(stage) : nullptr;
+                    if (c == nullptr) { counted.add(name + " (no card)"); return; }
+
+                    int moved = 0;
+                    const auto knobs = c->allKnobs();
+                    for (auto* knob : knobs)
+                    {
+                        if (knob == nullptr) { continue; }
+                        const auto before = snapshot();
+
+                        // Whichever end of the range is further away, so a knob
+                        // already sitting at a limit still moves.
+                        const auto position = knob->getValue();
+                        const auto low = knob->getMinimum();
+                        const auto high = knob->getMaximum();
+                        const auto target = (position - low) > (high - position) ? low : high;
+                        knob->setValue(target, juce::sendNotificationSync);
+
+                        if (snapshot() != before) { ++moved; }
+                        else { inert.add(name + " knob at " + knob->getBounds().toString()); }
+
+                        knob->setValue(position, juce::sendNotificationSync);
+                    }
+                    counted.add(name + " " + juce::String(moved) + "/" + juce::String((int) knobs.size()));
+                };
+
+                checkAttachments("Reverb", px3::fxStageReverb);
+                checkAttachments("Doom", px3::fxStageDoom);
+                checkAttachments("Lucy", px3::fxStageLucy);
+                checkAttachments("Chorus", px3::fxStageChorus);
+                checkAttachments("Spread", px3::fxStageStereoSpread);
+
+                check("FxCards_EveryKnobOnTheSynthsCardsIsAttached",
+                      inert.isEmpty(),
+                      inert.isEmpty() ? "every knob moved a parameter: " + counted.joinIntoString(", ")
+                                      : "these knobs are attached to nothing: " + inert.joinIntoString(", "));
             }
 
             check("FxProducts_TheNonCardEffectsLayOutLikeTheSynthsPanels",
