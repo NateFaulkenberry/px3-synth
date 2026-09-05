@@ -212,13 +212,6 @@ void PX3SynthAudioProcessorEditor::buildDoomCard()
 
     attachButton(audioProcessor.getDoomEnabledParam(), card->bypassButton());
 
-    // The macro knob wears the rainbow ring, the same as VIBE's amount.
-    if (auto* knob = card->knob("mix"))
-    {
-        knob->getProperties().set("psychedelicFx", true);
-        knob->getProperties().set("psychedelicInverted", true);
-    }
-
     doomCard = card.get();
     fxPanel->addCard(px3::fxStageDoom, std::move(card));
 }
@@ -322,12 +315,6 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
     }
 
     attachButton(audioProcessor.getLucyEnabledParam(), card->bypassButton());
-
-    // The macro knob wears the rainbow ring, the same as VIBE's amount.
-    if (auto* knob = card->knob("global"))
-    {
-        knob->getProperties().set("psychedelicFx", true);
-    }
 
     lucyCard = card.get();
     fxPanel->addCard(px3::fxStageLucy, std::move(card));
@@ -443,12 +430,6 @@ void PX3SynthAudioProcessorEditor::buildChorusCard()
     attachComboBox(audioProcessor.getChorusModeParam(), *card->choice("mode"));
     attachButton(audioProcessor.getChorusEnabledParam(), card->bypassButton());
 
-    // The macro knob wears the rainbow ring, the same as VIBE's amount.
-    if (auto* knob = card->knob("amount"))
-    {
-        knob->getProperties().set("psychedelicFx", true);
-    }
-
     chorusCard = card.get();
     fxPanel->addCard(px3::fxStageChorus, std::move(card));
 }
@@ -499,12 +480,6 @@ void PX3SynthAudioProcessorEditor::buildStereoSpreadCard()
 
     attachComboBox(audioProcessor.getSpreadModeParam(), *card->choice("mode"));
     attachButton(audioProcessor.getSpreadEnabledParam(), card->bypassButton());
-
-    // The macro knob wears the rainbow ring, the same as VIBE's amount.
-    if (auto* knob = card->knob("amount"))
-    {
-        knob->getProperties().set("psychedelicFx", true);
-    }
 
     spreadCard = card.get();
     fxPanel->addCard(px3::fxStageStereoSpread, std::move(card));

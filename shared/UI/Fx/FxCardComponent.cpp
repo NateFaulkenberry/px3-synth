@@ -211,10 +211,15 @@ void FxCardComponent::setActive(bool enabled)
         // The same grey-out every other bypassed card uses, so a disabled DOOM
         // knob looks like a disabled Mood knob.
         entry.knob->getProperties().set("psychedelicBypassGray", ! enabled);
+        // The caption greys out with the knob it names. Without this a
+        // bypassed card dimmed its artwork and desaturated its knobs while its
+        // captions kept the card's full colour scheme.
+        if (entry.label != nullptr) { entry.label->setGreyedOut(! enabled); }
     }
     for (auto& entry : choices)
     {
         entry.box->setEnabled(enabled);
+        if (entry.label != nullptr) { entry.label->setGreyedOut(! enabled); }
     }
     for (auto& entry : toggles)
     {
@@ -508,20 +513,20 @@ juce::String FxCardComponent::debugLayoutSignature() const
 
             line += " | " + id + " " + rect(control);
 
-            // The knob properties that CHANGE HOW IT DRAWS. The rainbow ring an
-            // FX amount knob wears is a property, not a colour or a position,
-            // so a knob missing it sits in exactly the right place in exactly
-            // the right palette and draws as a different control.
+            // The knob properties that CHANGE HOW IT DRAWS. Bypass greyscale
+            // is a property, not a colour or a position, so a knob missing it
+            // sits in exactly the right place in exactly the right palette and
+            // still draws as a different control.
             //
             // Named individually rather than dumped wholesale: the Synth also
-            // hangs px3ParamId and psychedelicBypassGray on its knobs for MIDI
-            // mapping and modulation, which a standalone effect has no use for
-            // and should not be required to carry to count as the same card.
+            // hangs px3ParamId on its knobs for MIDI mapping and modulation,
+            // which a standalone effect has no use for and should not be
+            // required to carry to count as the same card.
             if (const auto* slider = dynamic_cast<const juce::Slider*>(control))
             {
                 const auto& properties = slider->getProperties();
                 juce::StringArray drawing;
-                for (const auto* name : { "psychedelicFx", "psychedelicInverted" })
+                for (const auto* name : { "psychedelicBypassGray" })
                 {
                     if (properties.contains(name))
                     {

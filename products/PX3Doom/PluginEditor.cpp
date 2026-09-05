@@ -69,12 +69,5 @@ PX3DoomAudioProcessorEditor::PX3DoomAudioProcessorEditor(PX3DoomAudioProcessor& 
 
     attachBypass(processorIn.enabled());
 
-    // The rainbow ring the Synth gives this card's feature knob.
-    if (auto* feature = rows().knob("mix"))
-    {
-        feature->getProperties().set("psychedelicFx", true);
-        feature->getProperties().set("psychedelicInverted", true);
-    }
-
     finishSetup();
 }

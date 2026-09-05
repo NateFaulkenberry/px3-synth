@@ -549,9 +549,6 @@ void PX3SynthAudioProcessorEditor::buildEffectControls()
     delayFeedbackLabel.setTooltip("FEEDBACK");
     delayFeedbackKnob.setTooltip("FEEDBACK");
 
-    vibeAmountKnob.getProperties().set("psychedelicFx", true);
-    isaacTextureKnob.getProperties().set("psychedelicFx", true);
-
     auto& vibeTypeParam = audioProcessor.getVibeTypeParam();
     for (int i = 0; i < vibeTypeParam.choices.size(); ++i)
     {
