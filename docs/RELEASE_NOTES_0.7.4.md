@@ -115,7 +115,6 @@ These checks are designed to catch the kinds of regressions that can otherwise l
 
 A few items remain unchanged from previous releases:
 
-* The complete update-install process has not yet been tested end-to-end with a DAW restart.
 * A second updater helper can still be launched across separate sessions in a specific staged-update scenario.
 * The Synth's artwork assets are relatively large, contributing to the overall application size.
 * The preset browser still displays its **CANCEL** button alongside the corner close icon.
