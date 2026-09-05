@@ -10,6 +10,54 @@ namespace px3::ui
 {
 namespace
 {
+
+// Named in config rather than numbered, because "contain" says what it does
+// and "1" does not. An unrecognised name keeps the fallback rather than
+// silently picking one, so a typo shows up as "my change did nothing" rather
+// than as artwork mysteriously cropped.
+ArtworkFit parseArtworkFit(const juce::String& name, ArtworkFit fallback)
+{
+    const auto text = name.trim().toLowerCase();
+    if (text == "cover") { return ArtworkFit::cover; }
+    if (text == "contain" || text == "fit") { return ArtworkFit::contain; }
+    if (text == "stretch") { return ArtworkFit::stretch; }
+    return fallback;
+}
+
+ArtworkAlign parseArtworkAlign(const juce::String& name, ArtworkAlign fallback)
+{
+    const auto text = name.trim().toLowerCase().removeCharacters(" -_");
+    if (text == "centre" || text == "center") { return ArtworkAlign::centre; }
+    if (text == "topleft") { return ArtworkAlign::topLeft; }
+    if (text == "topright") { return ArtworkAlign::topRight; }
+    if (text == "bottomleft") { return ArtworkAlign::bottomLeft; }
+    if (text == "bottomright") { return ArtworkAlign::bottomRight; }
+    if (text == "top") { return ArtworkAlign::top; }
+    if (text == "bottom") { return ArtworkAlign::bottom; }
+    if (text == "left") { return ArtworkAlign::left; }
+    if (text == "right") { return ArtworkAlign::right; }
+    return fallback;
+}
+
+// The x and y halves of JUCE's placement flags. Split into two so an alignment
+// names one of each rather than nine separate constants.
+int alignmentFlags(ArtworkAlign align)
+{
+    switch (align)
+    {
+        case ArtworkAlign::topLeft:     return juce::RectanglePlacement::xLeft  | juce::RectanglePlacement::yTop;
+        case ArtworkAlign::topRight:    return juce::RectanglePlacement::xRight | juce::RectanglePlacement::yTop;
+        case ArtworkAlign::bottomLeft:  return juce::RectanglePlacement::xLeft  | juce::RectanglePlacement::yBottom;
+        case ArtworkAlign::bottomRight: return juce::RectanglePlacement::xRight | juce::RectanglePlacement::yBottom;
+        case ArtworkAlign::top:         return juce::RectanglePlacement::xMid   | juce::RectanglePlacement::yTop;
+        case ArtworkAlign::bottom:      return juce::RectanglePlacement::xMid   | juce::RectanglePlacement::yBottom;
+        case ArtworkAlign::left:        return juce::RectanglePlacement::xLeft  | juce::RectanglePlacement::yMid;
+        case ArtworkAlign::right:       return juce::RectanglePlacement::xRight | juce::RectanglePlacement::yMid;
+        case ArtworkAlign::centre:
+        default:                        return juce::RectanglePlacement::centred;
+    }
+}
+
 // Reads a property from the defaults object, then lets the per-card object
 // override it. Every getter below follows this shape, so a card's JSON only has
 // to declare what differs.
@@ -232,6 +280,14 @@ CardStyle CardStyle::fromConfig(const UIConfig* config,
     style.artwork.image = reader.text("artwork.image", fallback.artwork.image);
     style.artwork.opacity = juce::jlimit(0.0f, 1.0f,
                                          reader.number("artwork.opacity", fallback.artwork.opacity));
+    style.artwork.fit = parseArtworkFit(reader.text("artwork.fit", {}), fallback.artwork.fit);
+    style.artwork.align = parseArtworkAlign(reader.text("artwork.align", {}), fallback.artwork.align);
+
+    style.shadow.colour = reader.colour("shadow.color", fallback.shadow.colour);
+    style.shadow.opacity = juce::jlimit(0.0f, 1.0f, reader.number("shadow.opacity", fallback.shadow.opacity));
+    style.shadow.radius = juce::jmax(0.0f, reader.number("shadow.radius", fallback.shadow.radius));
+    style.shadow.offsetX = reader.number("shadow.offsetX", fallback.shadow.offsetX);
+    style.shadow.offsetY = reader.number("shadow.offsetY", fallback.shadow.offsetY);
 
     style.gloss.margin = juce::jmax(0.0f, reader.number("gloss.margin", fallback.gloss.margin));
     style.gloss.split = juce::jlimit(0.0f, 1.0f, reader.number("gloss.split", fallback.gloss.split));
@@ -509,6 +565,23 @@ void drawCard(juce::Graphics& g,
 
     const auto radius = style.border.radius;
 
+    // 0. Shadow, behind the card entirely.
+    //
+    // DropShadow takes an integer radius and refuses anything below one, so a
+    // configured radius that rounds to zero is treated as no shadow rather
+    // than as a hard black copy of the card offset by a few pixels.
+    if (style.shadow.opacity > 0.0f && style.shadow.radius >= 0.5f)
+    {
+        juce::Path shape;
+        shape.addRoundedRectangle(cardBounds, radius);
+
+        const juce::DropShadow shadow(style.shadow.colour.withMultipliedAlpha(style.shadow.opacity),
+                                      juce::roundToInt(style.shadow.radius),
+                                      { juce::roundToInt(style.shadow.offsetX),
+                                        juce::roundToInt(style.shadow.offsetY) });
+        shadow.drawForPath(g, shape);
+    }
+
     // 1. Background, behind everything.
     if (style.background.opacity > 0.0f)
     {
@@ -572,19 +645,31 @@ void drawCard(juce::Graphics& g,
             shape.addRoundedRectangle(cardBounds, radius);
             g.reduceClipRegion(shape);
 
-            // COVER, not fit: fillDestination scales by whichever axis needs
-            // more and crops the rest, which the clip above contains.
-            // Letterboxing instead would show the background through two bands
-            // and make the artwork look like it had failed to load.
-            //
             // The rectangle overload rather than the nine-argument one: that
             // takes ints for the destination, so every float here was converted
             // implicitly - four warnings, and a policy that fails the build on
             // them.
+            //
+            // The alignment flags on their own are JUCE's "contain": they
+            // scale by whichever axis needs LESS, so the whole picture is
+            // inside the card and the background shows through wherever the
+            // aspect ratios differ. Adding fillDestination flips it to scaling
+            // by whichever axis needs more, cropping the rest - which the clip
+            // above contains. stretchToFit scales the two axes independently,
+            // filling the card with the whole picture at the cost of distorting
+            // it, and leaves the alignment with nothing to decide.
+            auto flags = alignmentFlags(style.artwork.align);
+            if (style.artwork.fit == ArtworkFit::cover)
+            {
+                flags |= juce::RectanglePlacement::fillDestination;
+            }
+            else if (style.artwork.fit == ArtworkFit::stretch)
+            {
+                flags |= juce::RectanglePlacement::stretchToFit;
+            }
+
             g.setOpacity(style.artwork.opacity);
-            g.drawImage(image, cardBounds,
-                        juce::RectanglePlacement::centred
-                            | juce::RectanglePlacement::fillDestination);
+            g.drawImage(image, cardBounds, juce::RectanglePlacement(flags));
             g.setOpacity(1.0f);
         }
     }

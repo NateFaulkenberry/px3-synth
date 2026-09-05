@@ -490,7 +490,9 @@ juce::String FxCardComponent::debugLayoutSignature() const
     // not the other is not the same card, however well its knobs line up.
     lines.add("artwork " + (cardStyle.artwork.image.isNotEmpty() ? cardStyle.artwork.image
                                                                  : juce::String("none"))
-              + " @" + juce::String(cardStyle.artwork.opacity, 3));
+              + " @" + juce::String(cardStyle.artwork.opacity, 3)
+              + " " + describeArtworkFit(cardStyle.artwork.fit)
+              + "/" + describeArtworkAlign(cardStyle.artwork.align));
 
     lines.add("bypass " + rect(&bypass));
 

@@ -77,15 +77,55 @@ struct BorderStyle
     float radius { 8.0f };
 };
 
+// How the picture is sized into the card.
+//
+// cover fills the card and crops whatever does not fit, which is what artwork
+// drawn to the card's own proportions wants. contain fits the WHOLE picture
+// inside instead, letterboxed, for artwork whose composition matters more than
+// filling every corner - a drawing with its subject near an edge loses that
+// edge under cover. stretch fills without cropping by distorting, which is
+// almost never what you want but is the only way to have both.
+enum class ArtworkFit
+{
+    cover,
+    contain,
+    stretch
+};
+
+// Where the picture sits when it does not fill the card exactly.
+//
+// Only meaningful for cover and contain: cover decides which edges get cropped
+// away, contain decides which side the letterbox bands fall on. stretch fills
+// the card exactly, so nothing is left over to align.
+enum class ArtworkAlign
+{
+    centre,
+    topLeft,
+    topRight,
+    bottomLeft,
+    bottomRight,
+    top,
+    bottom,
+    left,
+    right
+};
+
 // A picture layered into the card, under the gloss.
 //
-// Scaled to COVER the card - filled, not letterboxed - and clipped to the
-// card's rounded rectangle, so artwork drawn at any aspect ratio reaches every
-// corner and none of it escapes the card's shape.
+// Clipped to the card's rounded rectangle whichever fit is chosen, so none of
+// it escapes the card's shape.
 struct ArtworkStyle
 {
     juce::String image;
     float opacity { 1.0f };
+
+    // Defaulted to cover because that is how every card was drawn before this
+    // was an option, so a card that does not name a fit is unchanged.
+    ArtworkFit fit { ArtworkFit::cover };
+
+    // Centred by default, which is how the artwork was placed before this was
+    // an option.
+    ArtworkAlign align { ArtworkAlign::centre };
 
     // How the picture is treated when the card is bypassed. Multipliers rather
     // than a flag, so artwork greys by exactly the same numbers every other
@@ -94,6 +134,57 @@ struct ArtworkStyle
     float saturation { 1.0f };
     float brightness { 1.0f };
 };
+
+// A shadow cast by the card onto whatever is behind it.
+//
+// Drawn before the background, from the card's own rounded rectangle, so it
+// follows the corner radius rather than being a soft rectangle behind a
+// rounded card.
+//
+// Off by default - radius zero - so a card that says nothing about a shadow is
+// drawn exactly as it was. The shadow spills OUTSIDE the card, so a card packed
+// tight against its neighbours has nowhere to put one; radius and offset want
+// to stay inside the gap the grid already leaves.
+struct ShadowStyle
+{
+    juce::Colour colour { juce::Colours::black };
+    float opacity { 0.0f };
+    float radius { 0.0f };
+    float offsetX { 0.0f };
+    float offsetY { 0.0f };
+};
+
+// Names for the two artwork enums, for the card's debug layout signature -
+// which is what the standalone-versus-Synth parity test compares, so a card
+// whose artwork is fitted differently in the two has to show up as a
+// difference rather than as an identical line.
+inline const char* describeArtworkFit(ArtworkFit fit)
+{
+    switch (fit)
+    {
+        case ArtworkFit::contain: return "contain";
+        case ArtworkFit::stretch: return "stretch";
+        case ArtworkFit::cover:
+        default:                  return "cover";
+    }
+}
+
+inline const char* describeArtworkAlign(ArtworkAlign align)
+{
+    switch (align)
+    {
+        case ArtworkAlign::topLeft:     return "topLeft";
+        case ArtworkAlign::topRight:    return "topRight";
+        case ArtworkAlign::bottomLeft:  return "bottomLeft";
+        case ArtworkAlign::bottomRight: return "bottomRight";
+        case ArtworkAlign::top:         return "top";
+        case ArtworkAlign::bottom:      return "bottom";
+        case ArtworkAlign::left:        return "left";
+        case ArtworkAlign::right:       return "right";
+        case ArtworkAlign::centre:
+        default:                        return "centre";
+    }
+}
 
 // Two fills inset from the card by their own margin, which is what produces the
 // visible gap between the border and the gloss.
@@ -157,6 +248,10 @@ struct CardStyle
     // fills tint it rather than being hidden by it. Named by file; the file is
     // found in the shared Artwork directory at draw time.
     ArtworkStyle artwork;
+
+    // Behind the background rather than part of it, so it is cast onto the
+    // panel the card sits on.
+    ShadowStyle shadow;
     GlossStyle gloss;
     TitleStyle title;
     DisabledStyle disabled;

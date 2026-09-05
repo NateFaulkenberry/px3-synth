@@ -706,6 +706,56 @@ void testFxProducts()
             styleConfig = UIConfig::fromJsonText(configFileForStyle.loadFileAsString(), styleError);
         }
 
+        // THE ARTWORK FIT AND ALIGNMENT REACH THE CARD.
+        //
+        // Both are named in config as words - "stretch", "topLeft" - and both
+        // parsers fall back silently on a name they do not know, which is the
+        // right behaviour at runtime and invisible in a screenshot: a card
+        // whose fit is misspelt draws cover-centred, exactly as it did before
+        // anyone set a fit, and nothing says why.
+        //
+        // Compares what the card RESOLVED against what the config SAYS, so it
+        // pins the wiring rather than the design: retuning any card's fit is
+        // one edit to the JSON and this still passes.
+        {
+            juce::StringArray wrong;
+            juce::StringArray resolved;
+
+            for (const auto* styleKey : { "vibe", "delay", "reverb", "mood",
+                                          "doom", "lucy", "chorus", "stereoSpread" })
+            {
+                if (styleConfig == nullptr) { break; }
+
+                const juce::String base = juce::String("cards.") + styleKey;
+                const auto declaredFit = styleConfig->getString(base + ".artwork.fit", "cover");
+                const auto declaredAlign = styleConfig->getString(base + ".artwork.align", "centre");
+
+                const auto style = px3::ui::CardStyle::fromConfig(styleConfig.get(),
+                                                                  "cards.defaults",
+                                                                  base);
+                const juce::String actualFit = px3::ui::describeArtworkFit(style.artwork.fit);
+                const juce::String actualAlign = px3::ui::describeArtworkAlign(style.artwork.align);
+
+                resolved.add(juce::String(styleKey) + " " + actualFit + "/" + actualAlign);
+
+                if (! actualFit.equalsIgnoreCase(declaredFit))
+                {
+                    wrong.add(juce::String(styleKey) + " fit: config says '" + declaredFit
+                              + "', card resolved '" + actualFit + "'");
+                }
+                if (! actualAlign.equalsIgnoreCase(declaredAlign))
+                {
+                    wrong.add(juce::String(styleKey) + " align: config says '" + declaredAlign
+                              + "', card resolved '" + actualAlign + "'");
+                }
+            }
+
+            check("FxCards_ArtworkFitAndAlignmentComeFromConfig",
+                  wrong.isEmpty(),
+                  wrong.isEmpty() ? "every card resolved what it declares: " + resolved.joinIntoString(", ")
+                                  : wrong.joinIntoString("; "));
+        }
+
         const auto checkStyled = [&](const juce::String& name,
                                      const juce::String& styleKey,
                                      juce::AudioProcessor& processor,

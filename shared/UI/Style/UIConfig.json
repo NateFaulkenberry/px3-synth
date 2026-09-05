@@ -894,6 +894,13 @@
       "height": "auto",
       "margin": 6,
       "padding": 10,
+      "shadow": {
+        "color": "#000000",
+        "opacity": 0.45,
+        "radius": 11,
+        "offsetX": 0,
+        "offsetY": 3
+      },
       "border": {
         "enabled": true,
         "width": 1.2,
@@ -1246,7 +1253,9 @@
         },
         "artwork": {
           "image": "Vibe-artwork.png",
-          "opacity": 0.7
+          "opacity": 0.7,
+          "fit": "stretch",
+          "align": "topLeft"
         },
       "border": {
         "color": "#CCA25A",
@@ -1324,7 +1333,9 @@
         },
       "artwork": {
         "image": "Delay-artwork.png",
-        "opacity": 0.8
+        "opacity": 0.8,
+        "fit": "stretch",
+          "align": "topLeft"
       },
       "border": {
         "color": "#5A7CCC",
@@ -1399,7 +1410,9 @@
     "doom": {
       "artwork": {
         "image": "Doom-artwork.png",
-        "opacity": 0.8
+        "opacity": 0.8,
+        "fit": "stretch",
+          "align": "topLeft"
       },
       "border": {
         "color": "#CC5A5A",
@@ -1520,7 +1533,9 @@
     "lucy": {
       "artwork": {
         "image": "Lucy-artwork.png",
-        "opacity": 0.7
+        "opacity": 0.7,
+        "fit": "stretch",
+          "align": "topLeft"
       },
       "border": {
         "color": "#5AB9CC",
@@ -1640,7 +1655,9 @@
     "chorus": {
       "artwork": {
         "image": "Chorus-artwork.png",
-        "opacity": 0.7
+        "opacity": 0.7,
+        "fit": "stretch",
+          "align": "topLeft"
       },
       "border": {
         "color": "#845ACC",
@@ -1743,7 +1760,9 @@
     "stereoSpread": {
         "artwork": {
           "image": "Spread-artwork.png",
-          "opacity": 0.7
+          "opacity": 0.7,
+          "fit": "stretch",
+          "align": "topLeft"
         },
       "border": {
         "color": "#5ACC89",
@@ -1857,7 +1876,9 @@
         },
         "artwork": {
           "image": "Mood-artwork.png",
-          "opacity": 0.7
+          "opacity": 0.7,
+          "fit": "stretch",
+          "align": "topLeft"
         },
       "border": {
         "color": "#97CC5A",
@@ -1939,7 +1960,9 @@
     "reverb": {
         "artwork": {
           "image": "Reverb-artwork.png",
-          "opacity": 0.7
+          "opacity": 0.7,
+          "fit": "stretch",
+          "align": "topLeft"
         },
       "controls": {
           "labelBackground": "#3D1B36",
