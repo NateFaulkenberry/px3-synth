@@ -1146,6 +1146,8 @@ looper and a suite of real-time spatial effects that can process the input, the
 loop, or both. It is inspired by the MOOD pedal by Chase Bliss Audio - behaviour
 only, no code; see `THIRD_PARTY_NOTICES.md`.
 
+DSP design notes and an architecture evaluation: `docs/MOOD_DSP_DESIGN.md`.
+
 Shared controls (UI labels in brackets where they differ):
 
 - MIX: balance between input and Mood.
