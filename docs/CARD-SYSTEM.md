@@ -36,7 +36,17 @@ style or geometry to differ.
       "bottomFill": { "color": "#000000", "opacity": 0.06 }
     },
     "title": { "fontSize": 11, "color": "#DCE8FC", "align": "center", "y": 0, "height": 14 },
+    "shadow": { "color": "#000000", "opacity": 0.45, "radius": 11, "offsetX": 0, "offsetY": 3 },
     "disabled": { "saturation": 0, "dim": 0.75 }   // how a bypassed card looks
+  },
+
+  "lucy": {                           // an FX card, which may also carry artwork
+    "artwork": {
+      "image":   "Lucy-artwork.png",  // found in shared/UI/Artwork
+      "opacity": 0.7,
+      "fit":     "stretch",           // cover | contain | stretch
+      "align":   "topLeft"            // centre | topLeft | top | right | ...
+    }
   },
 
   "subOsc": { "width": 300 },         // instances declare only what differs
@@ -47,7 +57,7 @@ style or geometry to differ.
 }
 ```
 
-28 properties. That is the whole styling model.
+37 properties. That is the whole styling model.
 
 ## Semantics worth being precise about
 
@@ -85,6 +95,37 @@ point. Bypass is runtime state, so it is applied to the parsed style via
 `CardStyle::disabledVariant()` rather than being a second style block that could
 drift out of sync with the active one. The variant is returned rather than drawn
 so the transform is unit-testable.
+
+**Artwork sits between the background and the gloss.** `artwork.image` names a
+file in `shared/UI/Artwork`, copied into every product's `Contents/Resources` at
+build time and found at runtime by `UIConfigManager::findArtworkFile`. It is
+always clipped to the card's rounded rectangle, so none of it escapes the card's
+shape whichever fit is chosen:
+
+| `fit` | |
+| --- | --- |
+| `cover` | Scales by whichever axis needs *more* and crops the rest. The default. |
+| `contain` | Scales by whichever axis needs *less*. The whole picture is inside the card, letterboxed. |
+| `stretch` | Scales the two axes independently. Fills the card with the whole picture, distorted. |
+
+`align` decides which edges `cover` crops away and which side `contain`'s bands
+fall on; `stretch` fills the card exactly and leaves it nothing to decide. Both
+parse by name and keep their fallback on a name they do not recognise, so a
+typo draws the default rather than failing — which is why
+`FxCards_ArtworkFitAndAlignmentComeFromConfig` compares what each card resolved
+against what its config says.
+
+Artwork greys with everything else on bypass, through the same
+`disabled.saturation` and `disabled.dim` numbers, rather than having a second
+opinion about what bypassed looks like.
+
+**A card's shadow is cast, not drawn on.** `shadow` is rendered from the card's
+own rounded rectangle *before* the background, so it follows the corner radius
+instead of being a soft rectangle behind a rounded card. It is off by default at
+`radius: 0`, and it spills *outside* the card — radius and offset want to stay
+inside the gap the grid already leaves. Note that the ground behind a card is
+near-black, so a black shadow has little room to work in; a shadow that needs to
+read strongly is a sign the panel behind it should be lighter.
 
 **Cards own their titles.** The title is drawn by the card, not by the parent
 panel. `OscPanel` used to paint titles into its children's bounds, which meant a

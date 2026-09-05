@@ -15,6 +15,7 @@ shared/                      code any PX3 product may use
     Components/              Card ChipLabel BypassButton PianoKeyboard
                              VuMeter RoundedRect ModalBackdrop ...
     Style/                   UIConfig, UIConfigManager, UIConfig.json
+    Artwork/                 card background art, copied into every bundle
     Fx/                      the FX editors, which are already product-neutral
   Infrastructure/
     Update/                  provider, registry, service, semantic version
