@@ -605,13 +605,37 @@ for shine. HALL and CLOUD for scale and atmosphere.
 
 **What it is:** An always-listening looper paired with spatial effects.
 
+MOOD has two channels — a micro-looper and a wet channel — and each has a MODE
+selector with a LENGTH/TIME and a MODIFY knob beside it. **Those four knobs mean
+different things depending on the mode you have chosen.** That is the whole
+control scheme, not an inconsistency: MODIFY is a sensitivity in ENV, a playback
+speed in TAPE, and a threshold in MASK.
+
 | Control | Function |
 | --- | --- |
-| **MIX** | Balance between the input and Mood |
-| **ROUTING** | What the wet channel is fed: the input, the loop, or both |
-| **FEEDBACK** | How much is recycled back into the loop |
-| **CLOCK** | Mood's own sample rate |
+| **MIX** | Balance between the input and MOOD |
+| **CLOCK** | MOOD's own sample rate |
 | **SPREAD** | How much stereo treatment is applied |
+| **ROUTING** | What the wet channel is fed: the input, the loop, or both |
+| **FEEDBACK** | How much of both channels is recycled back into the loop |
+| **FREEZE** | Stops the looper recording, so what is captured stays |
+| **DEGRADE** | Bit and rate reduction with a noise floor. A PX3 addition, not a pedal control |
+
+**LOOP MODE**, and what LENGTH and MODIFY do in each:
+
+| Mode | LENGTH | MODIFY |
+| --- | --- | --- |
+| **ENV** | How much is captured when the detector fires | Sensitivity — turn it up and quieter playing triggers it |
+| **TAPE** | Loop length, 0.05 to 2.2 s | Playback speed, from eight musical rates: ±¼×, ±½×, ±1×, ±2×, ±4× |
+| **STRETCH** | Grain size — long carries phrases, short blurs into texture | Direction and stretch. Noon is frozen; either side walks the playhead |
+
+**WET MODE**, and what TIME and MODIFY do in each:
+
+| Mode | TIME | MODIFY |
+| --- | --- | --- |
+| **REVERB** | Decay length | Diffusion, or how smeared the tail is |
+| **DELAY** | Delay time, 0.03 to 1.6 s | Feedback. The very top is unity — repeats pile up rather than fading |
+| **SLIP** | Window length | Playback speed in semitones, an octave either way through neutral |
 
 **CLOCK** is worth understanding: lowering it lengthens the loop, drops its pitch,
 slows the wet channel and narrows the band — all at once, because they are the
@@ -620,10 +644,52 @@ same thing.
 **Use it for:** Capturing a phrase and letting it decay underneath what you play
 next. High FEEDBACK piles material up the way a looper does.
 
+**DEGRADE and CLOCK are separate on purpose.** CLOCK transposes; DEGRADE only
+roughens. Turning DEGRADE up will never change the pitch of your loop.
+
 ## DOOM — the other ambient engine
 
 A separate engine from Mood. One half is a micro-looper that records *while
 bypassed*, so switching it on captures what you already played.
+
+### Six knobs, twelve functions
+
+DOOM and LUCY both follow pedals where each knob has a **second function
+printed underneath it**. Their cards do the same: six large knobs, each with a
+dimmed caption below the bold one, and a **MAIN / ALT** chip in the top row that
+switches which of the pair the knobs are driving.
+
+Three things are worth knowing about it:
+
+- **ALT is not a parameter.** It is a property of the panel, not of the sound.
+  It is not saved in presets and does not appear in your DAW's automation list,
+  so switching it can never change what you hear.
+- **Both functions are always live.** Each half of a pair is a real parameter
+  with its own automation lane. Automating an alternate works whether or not the
+  panel happens to be showing it.
+- **A preset always stores both.** Nothing depends on which way the chip was
+  left.
+
+Knobs with a single caption — SPREAD on both cards, OVERDUB on DOOM — have no
+alternate.
+
+### DOOM's pairs
+
+| Primary | Alternate |
+| --- | --- |
+| **TIME** — wet channel time | **CROSS** — how much the two channels interfere |
+| **MODIFY** *(wet)* — wet character | **EQ** — global tilt: left removes highs, right removes lows |
+| **LENGTH** — micro-looper length or pace | **FADE** — how much of the loop survives each lap while overdubbing |
+| **MODIFY** *(loop)* — loop character | **BLEND** — clean loop blended past the wet channel |
+| **CLOCK** — the engine's sample rate | **GLUE** — saturation, then destruction |
+| **MIX** — how much DOOM you hear | **BALANCE** — micro-looper against wet channel |
+
+**CLOCK** is the important one: it is the engine's rate, so it sets the loop's
+length *and* its pitch *and* the wet channel's time, all from one control. Its
+eleven steps are harmonised ratios, so each lands on a musical interval; the
+**SMOOTH** chip sweeps continuously instead.
+
+As with MOOD, LENGTH, MODIFY and TIME mean different things in different modes.
 
 | Mode | What it does |
 | --- | --- |
@@ -640,14 +706,32 @@ across time.
 **What it is:** Not a bitcrusher. LUCY models what a low-bitrate encoder throws
 away.
 
+LUCY's card works like DOOM's: six knobs, each with a second function under it,
+and a **MAIN / ALT** chip to switch between them.
+
+| Primary | Alternate |
+| --- | --- |
+| **FILTER** — band width; fully down is no filtering at all | **GATE** — the gate's threshold |
+| **VERB** — reverb amount | **DECAY** — its size and length |
+| **FREQ** — filter centre frequency | **THRESHOLD** — the *limiter's* threshold |
+| **SPEED** — how fast loss, packets and freeze evolve | **AUTO GAIN** — level compensation for the loss modes |
+| **LOSS** — how degraded, and how much of the spectrum it reaches | **LOSS GAIN** — wet level, ±36 dB |
+| **GLOBAL** — how strongly the whole effect is expressed | **FREEZER** — live against frozen |
+
+The switches beside them:
+
 | Control | Function |
 | --- | --- |
-| **LOSS** | How hard it degrades, and which frequencies it reaches |
-| **MODE** | STANDARD keeps the coded signal; INVERSE plays what STANDARD discarded |
-| **JITTER** | An unstable clock, in phase and timing |
-| **PACKETS** | A bad connection — losses cluster the way they really do |
-| **FREEZE** | A spectral freeze, solid or slushy |
-| **SPEED** | How fast the loss, packets and freeze evolve |
+| **MODE** | STANDARD keeps the coded signal; INVERSE plays what STANDARD discarded; JITTER adds an unstable clock |
+| **PACKETS** | CLEAN, LOSS or REPEAT — a bad connection, where losses cluster the way they really do |
+| **FREEZE** | OFF, SOLID or SLUSHY. Slushy keeps drifting toward what you play |
+| **SLOPE** | The filter's steepness: 6, 24 or 96 dB |
+| **WEIGHT** | DARK, NEUTRAL or BRIGHT — which end of the spectrum survives |
+
+**GLOBAL is not a wet/dry.** It scales how strongly the character you have
+dialled in is expressed — the coder's depth and reach, the packet rate, the
+filter, the freeze. Turn it up and the same setting gets *more* of itself,
+rather than more of a fixed wet signal being faded in.
 
 **Sound:** STANDARD is darker and full of chiming artefacts. INVERSE is brighter,
 thinner and feathery — it is playing the difference.

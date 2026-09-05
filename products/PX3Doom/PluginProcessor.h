@@ -2,6 +2,7 @@
 
 #include "FxPluginProcessor.h"
 #include "Doom.h"
+#include "DoomControlModel.h"
 #include "DoomTypes.h"
 
 // PX3 Doom. The same shared/DSP/Doom the Synth runs - the two-channel
@@ -41,14 +42,14 @@ public:
     juce::AudioParameterChoice& loopMode() { return *loopModeParam; }
     juce::AudioParameterChoice& wetMode() { return *wetModeParam; }
     juce::AudioParameterChoice& crossSource() { return *crossSourceParam; }
-    DoomSettings debugSettingsForBlock() const { return settingsForBlock(); }
+    px3::DoomUserParameters debugUserParameters() const { return userParametersForBlock(); }
 
 protected:
     void prepareFx(double sampleRate, int maximumExpectedSamplesPerBlock) override;
     void processFxBlock(juce::AudioBuffer<float>& buffer) override;
 
 private:
-    DoomSettings settingsForBlock() const;
+    px3::DoomUserParameters userParametersForBlock() const;
 
     px3::Doom doom;
 

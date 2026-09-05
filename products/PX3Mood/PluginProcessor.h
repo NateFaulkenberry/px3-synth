@@ -2,6 +2,7 @@
 
 #include "FxPluginProcessor.h"
 #include "Mood.h"
+#include "MoodControlModel.h"
 #include "MoodTypes.h"
 
 // PX3 Mood.
@@ -36,14 +37,14 @@ public:
     juce::AudioParameterChoice& routing() { return *routingParam; }
     juce::AudioParameterChoice& wetMode() { return *wetModeParam; }
     juce::AudioParameterChoice& loopMode() { return *loopModeParam; }
-    MoodSettings debugSettingsForBlock() const { return settingsForBlock(); }
+    px3::MoodUserParameters debugUserParameters() const { return userParametersForBlock(); }
 
 protected:
     void prepareFx(double sampleRate, int maximumExpectedSamplesPerBlock) override;
     void processFxBlock(juce::AudioBuffer<float>& buffer) override;
 
 private:
-    MoodSettings settingsForBlock() const;
+    px3::MoodUserParameters userParametersForBlock() const;
 
     Mood mood;
 

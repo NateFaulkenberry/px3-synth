@@ -13,6 +13,8 @@
 #include "ParameterKnob.h"
 #include "KnobOverlays.h"
 #include "Card.h"
+#include "DoomCardLayout.h"
+#include "LucyCardLayout.h"
 #include "UIConfig.h"
 #include "PluginProcessorInternals.h"
 
@@ -110,62 +112,30 @@ void PX3SynthAudioProcessorEditor::buildDoomCard()
 {
     auto card = std::make_unique<px3::ui::FxCardComponent>("doom", "DOOM");
 
-    // Two channels, so two rows of state before the knobs: which channel is
-    // running, and the three global switches.
-    // Every state toggle in one block, three across, then the three mode
-    // selectors. The three-across limit is toggleMaxColumns in UIConfig, so the
-    // chips keep their proportions as the card resizes.
-    card->addToggleRow({ { "loopActive", "LOOPER", "LISTEN", "Play the captured micro-loop, or keep listening" },
-                         { "wetActive", "WET ON", "WET OFF", "Engage the wet channel" },
-                         { "freeze", "FROZEN", "FREEZE", "Freeze the wet channel and repeat it" },
-                         { "loopHalf", "HALF", "FULL", "Halve the micro-loop length" },
-                         { "clockSmooth", "SMOOTH", "STEPPED",
-                           "Sweep the clock continuously instead of in harmonised steps" },
-                         { "crossSource", "CROSS: CHAN", "CROSS: INPUT",
-                           "Modulate from your playing, or let each channel modulate the other" } });
+    // ONE declaration, shared with the standalone. See DoomCardLayout.h.
+    px3::ui::doomLayout::declareRows(*card,
+                                     audioProcessor.getDoomWetModeParam().choices,
+                                     audioProcessor.getDoomLoopModeParam().choices,
+                                     audioProcessor.getDoomRoutingParam().choices);
 
-    card->addChoiceRow({ { "loopMode", "LOOP", "Micro-looper mode",
-                           audioProcessor.getDoomLoopModeParam().choices },
-                         { "routing", "ROUTE", "What the wet channel processes",
-                           audioProcessor.getDoomRoutingParam().choices },
-                         { "wetMode", "WET", "Wet channel mode",
-                           audioProcessor.getDoomWetModeParam().choices } });
-
-    card->addKnobRow({ { "clock", "CLOCK", "Engine sample rate: loop length, pitch and wet time at once" },
-                       { "loopLength", "LENGTH", "Micro-looper length (mode dependent)" },
-                       { "loopModify", "MODIFY", "Micro-looper character (mode dependent)" },
-                       { "wetTime", "TIME", "Wet channel time (mode dependent)" },
-                       { "wetModify", "SHAPE", "Wet channel character (mode dependent)" },
-                       { "balance", "BALANCE", "Micro-looper against wet channel" } });
-
-    card->addKnobRow({ { "cross", "CROSS", "Signal-dependent interference in pitch and loudness" },
-                       { "glue", "GLUE", "End of chain saturator, then destroyer" },
-                       { "eq", "EQ", "Tilt: left removes highs, right removes lows" },
-                       { "overdub", "OVERDUB", "Record onto the micro-loop" },
-                       { "fade", "FADE", "How much of the loop survives each lap while overdubbing" },
-                       { "blend", "BLEND", "Clean micro-loop blended past the wet channel" },
-                       { "spread", "SPREAD", "Stereo processing depth" } });
-
-    card->addFeatureKnobRow({ "mix", "MIX", "Dry against DOOM" });
-
-    // Attaching by id rather than by reference: the card owns the controls, and
-    // a typo here is a null dereference at startup rather than a control that
-    // silently does nothing.
     struct KnobAttachment { const char* id; juce::AudioParameterFloat* parameter; };
     const std::array<KnobAttachment, 14> knobAttachments { {
-        { "mix", &audioProcessor.getDoomMixParam() },
-        { "clock", &audioProcessor.getDoomClockParam() },
-        { "loopLength", &audioProcessor.getDoomLoopLengthParam() },
-        { "loopModify", &audioProcessor.getDoomLoopModifyParam() },
-        { "overdub", &audioProcessor.getDoomOverdubParam() },
-        { "fade", &audioProcessor.getDoomFadeParam() },
+        // the six primaries
         { "wetTime", &audioProcessor.getDoomWetTimeParam() },
         { "wetModify", &audioProcessor.getDoomWetModifyParam() },
+        { "loopLength", &audioProcessor.getDoomLoopLengthParam() },
+        { "loopModify", &audioProcessor.getDoomLoopModifyParam() },
+        { "clock", &audioProcessor.getDoomClockParam() },
+        { "mix", &audioProcessor.getDoomMixParam() },
+        // their alternates
         { "cross", &audioProcessor.getDoomCrossParam() },
-        { "glue", &audioProcessor.getDoomGlueParam() },
         { "eq", &audioProcessor.getDoomEqParam() },
-        { "balance", &audioProcessor.getDoomBalanceParam() },
+        { "fade", &audioProcessor.getDoomFadeParam() },
         { "blend", &audioProcessor.getDoomBlendParam() },
+        { "glue", &audioProcessor.getDoomGlueParam() },
+        { "balance", &audioProcessor.getDoomBalanceParam() },
+        // and the two that are not on the pedal's face
+        { "overdub", &audioProcessor.getDoomOverdubParam() },
         { "spread", &audioProcessor.getDoomSpreadParam() },
     } };
 
@@ -181,8 +151,8 @@ void PX3SynthAudioProcessorEditor::buildDoomCard()
 
     struct ChoiceAttachment { const char* id; juce::RangedAudioParameter* parameter; };
     const std::array<ChoiceAttachment, 3> choiceAttachments { {
-        { "loopMode", &audioProcessor.getDoomLoopModeParam() },
         { "wetMode", &audioProcessor.getDoomWetModeParam() },
+        { "loopMode", &audioProcessor.getDoomLoopModeParam() },
         { "routing", &audioProcessor.getDoomRoutingParam() },
     } };
 
@@ -212,6 +182,11 @@ void PX3SynthAudioProcessorEditor::buildDoomCard()
 
     attachButton(audioProcessor.getDoomEnabledParam(), card->bypassButton());
 
+    // ALT is deliberately NOT a parameter: it selects which function the six
+    // paired knobs display, which is a property of this panel rather than of
+    // the sound.
+    px3::ui::doomLayout::wireAltSwitch(*card);
+
     doomCard = card.get();
     fxPanel->addCard(px3::fxStageDoom, std::move(card));
 }
@@ -220,56 +195,32 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
 {
     auto card = std::make_unique<px3::ui::FxCardComponent>("lucy", "LUCY");
 
-    card->addToggleRow({ { "freeze", "FROZEN", "FREEZE", "Freeze the spectrum" },
-                         { "freezeSlushy", "SLUSHY", "SOLID",
-                           "Let the freeze keep updating from what you play" },
-                         { "gate", "GATE ON", "GATE OFF", "Silence anything below the cutoff" },
-                         { "verbPost", "V-POST", "V-PRE",
-                           "Reverb after the chain, or in front of it feeding the loss" },
-                         { "filterInvert", "REJECT", "PASS",
-                           "Keep the band, or keep everything but the band" },
-                         { "slow", "SLOW ON", "SLOW OFF",
-                           "Bigger, darker, slower, and with more latency" } });
-
-    card->addChoiceRow({ { "mode", "MODE", "Loss mode",
-                           audioProcessor.getLucyModeParam().choices },
-                         { "slope", "SLOPE", "Filter slope",
-                           audioProcessor.getLucySlopeParam().choices },
-                         { "packets", "PACKETS", "Packet corruption mode",
-                           audioProcessor.getLucyPacketsParam().choices } });
-
-    card->addKnobRow({ { "loss", "LOSS", "Depth of the loss and packet effects, and which frequencies they reach" },
-                       { "speed", "SPEED", "How fast the loss, packets and freeze update" },
-                       { "filter", "FILTER", "Filter width; fully down is no filtering" },
-                       { "filterFreq", "FREQ", "Filter centre frequency" },
-                       { "verb", "VERB", "Reverb mix" },
-                       { "verbDecay", "DECAY", "Reverb size and length" } });
-
-    card->addKnobRow({ { "freezer", "FREEZER", "Live against frozen" },
-                       { "gateCutoff", "CUTOFF", "Gate threshold" },
-                       { "threshold", "LIMIT", "Limiter threshold; lower means more limiting" },
-                       { "autoGain", "AUTO GAIN", "Gain compensation for the loss modes" },
-                       { "weighting", "WEIGHT", "Dark, psychoacoustic, or bright frequency weighting" },
-                       { "gain", "GAIN", "Wet gain, plus or minus 36 dB" },
-                       { "spread", "SPREAD", "Packet alternation and reverb width" } });
-
-    card->addFeatureKnobRow({ "global", "GLOBAL", "Overall amount of processing" });
+    // ONE declaration, shared with the standalone. See LucyCardLayout.h.
+    px3::ui::lucyLayout::declareRows(*card,
+                                     audioProcessor.getLucyModeParam().choices,
+                                     audioProcessor.getLucySlopeParam().choices,
+                                     audioProcessor.getLucyPacketsParam().choices,
+                                     audioProcessor.getLucyWeightingParam().choices,
+                                     audioProcessor.getLucyFreezeParam().choices);
 
     struct KnobAttachment { const char* id; juce::AudioParameterFloat* parameter; };
-    const std::array<KnobAttachment, 14> knobAttachments { {
-        { "global", &audioProcessor.getLucyGlobalParam() },
-        { "loss", &audioProcessor.getLucyLossParam() },
-        { "speed", &audioProcessor.getLucySpeedParam() },
+    const std::array<KnobAttachment, 13> knobAttachments { {
+        // the six primaries
         { "filter", &audioProcessor.getLucyFilterParam() },
-        { "filterFreq", &audioProcessor.getLucyFilterFreqParam() },
         { "verb", &audioProcessor.getLucyVerbParam() },
-        { "verbDecay", &audioProcessor.getLucyVerbDecayParam() },
-        { "freezer", &audioProcessor.getLucyFreezerParam() },
-        { "gateCutoff", &audioProcessor.getLucyGateCutoffParam() },
-        { "threshold", &audioProcessor.getLucyThresholdParam() },
+        { "freq", &audioProcessor.getLucyFilterFreqParam() },
+        { "speed", &audioProcessor.getLucySpeedParam() },
+        { "loss", &audioProcessor.getLucyLossParam() },
+        { "global", &audioProcessor.getLucyGlobalParam() },
+        // their alternates, attached exactly the same way: each is a real
+        // parameter with its own automation lane, and which one the panel is
+        // showing has no bearing on it
+        { "gate", &audioProcessor.getLucyGateThresholdParam() },
+        { "decay", &audioProcessor.getLucyVerbDecayParam() },
+        { "limiterThreshold", &audioProcessor.getLucyLimiterThresholdParam() },
         { "autoGain", &audioProcessor.getLucyAutoGainParam() },
-        { "weighting", &audioProcessor.getLucyWeightingParam() },
-        { "gain", &audioProcessor.getLucyGainParam() },
+        { "lossGain", &audioProcessor.getLucyLossGainParam() },
+        { "freezer", &audioProcessor.getLucyFreezerParam() },
         { "spread", &audioProcessor.getLucySpreadParam() },
     } };
 
@@ -284,10 +235,12 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
     }
 
     struct ChoiceAttachment { const char* id; juce::RangedAudioParameter* parameter; };
-    const std::array<ChoiceAttachment, 3> choiceAttachments { {
+    const std::array<ChoiceAttachment, 5> choiceAttachments { {
         { "mode", &audioProcessor.getLucyModeParam() },
         { "packets", &audioProcessor.getLucyPacketsParam() },
+        { "freeze", &audioProcessor.getLucyFreezeParam() },
         { "slope", &audioProcessor.getLucySlopeParam() },
+        { "weighting", &audioProcessor.getLucyWeightingParam() },
     } };
 
     for (const auto& attachment : choiceAttachments)
@@ -298,10 +251,8 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
     }
 
     struct ToggleAttachment { const char* id; juce::RangedAudioParameter* parameter; };
-    const std::array<ToggleAttachment, 6> toggleAttachments { {
-        { "freeze", &audioProcessor.getLucyFreezeParam() },
-        { "freezeSlushy", &audioProcessor.getLucyFreezeSlushyParam() },
-        { "gate", &audioProcessor.getLucyGateParam() },
+    const std::array<ToggleAttachment, 4> toggleAttachments { {
+        { "gateOn", &audioProcessor.getLucyGateParam() },
         { "verbPost", &audioProcessor.getLucyVerbPostParam() },
         { "filterInvert", &audioProcessor.getLucyFilterInvertParam() },
         { "slow", &audioProcessor.getLucySlowParam() },
@@ -315,6 +266,11 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
     }
 
     attachButton(audioProcessor.getLucyEnabledParam(), card->bypassButton());
+
+    // ALT is deliberately NOT a parameter: it selects which function the six
+    // paired knobs display, which is a property of this panel rather than of
+    // the sound.
+    px3::ui::lucyLayout::wireAltSwitch(*card);
 
     lucyCard = card.get();
     fxPanel->addCard(px3::fxStageLucy, std::move(card));

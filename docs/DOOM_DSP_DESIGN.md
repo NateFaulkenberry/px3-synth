@@ -141,7 +141,82 @@ These are **inferences**, flagged as such, not documented facts.
 
 ---
 
-## 3. Architecture
+## 3. The control model
+
+Between the knobs and the engine there is one translation layer:
+`shared/DSP/Doom/DoomControlModel.{h,cpp}`.
+
+```
+    USER CONTROLS          DoomUserParameters      six knobs, two functions each
+          │
+          ▼
+    deriveDoomParameters()                         one function
+          │
+          ▼
+    DSP PARAMETERS         DoomDerivedParameters   a delay in seconds, a tap
+          │                                        count, a harmony index
+          ▼
+    THE ENGINE             px3::Doom
+```
+
+**The four macros mean different things in different modes**, and that is the
+whole control scheme rather than an inconsistency. TIME is a decay in SOUP, a
+delay in RELAY and a lag in FLIP; LOOP MODIFY is a fill sensitivity in BURST, a
+station scan in RADIO and a threshold in MASK. Each of those is a named mapping
+function, so the engine is handed a quantity rather than a knob position:
+
+| control | mode | derives |
+|---|---|---|
+| TIME | SOUP | `mapWetTimeToSoupT60` — squared, 0.25…14 s |
+| TIME | RELAY | `mapWetTimeToRelayDelay` — squared, 0.03…0.9 s |
+| TIME | FLIP | `mapWetTimeToFlipLag` |
+| WET MODIFY | RELAY | `mapWetModifyToRelayTaps` — a **count**, 1…8, plus infinite at the top |
+| WET MODIFY | FLIP | `mapWetModifyToFlipHarmony` — an index into a widening table |
+| LENGTH | BURST | `mapLengthToBurstStep` — **inverted**: more LENGTH is a faster sequence and so a shorter step |
+| LOOP MODIFY | BURST | `mapLoopModifyToBurstSensitivity` |
+| LOOP MODIFY | RADIO | `mapLoopModifyToStation` — a **scan**, returning two stations and a blend |
+| LOOP MODIFY | MASK | `mapLoopModifyToMaskThreshold` — reaches a true zero, which is the untouched loop |
+| CLOCK | — | `mapClockToRatio` — the harmonised table, or SMOOTH's continuous sweep over the same span |
+
+The curves themselves are unchanged: this was a relocation, not a retune. The
+per-sample stages still map their own smoothed knob through the same functions,
+so automating a macro glides rather than stepping at block boundaries; the
+block-rate `DoomDerivedParameters` is the same model seen once a block, and is
+what the control-model tests assert against.
+
+### Six controls, twelve functions
+
+The panel pairs each primary with its alternate, as the pedal prints them. Both
+are real parameters, attached and automatable whichever the ALT switch is
+showing:
+
+| primary | alternate | the question each answers |
+|---|---|---|
+| TIME | CROSS | how long does the wet thing go / how much do the channels interfere |
+| WET MODIFY | EQ | what kind of wet thing is it / where does the whole thing sit tonally |
+| LENGTH | FADE | how does the loop behave / how quickly does it evolve |
+| LOOP MODIFY | BLEND | how does the loop transform / how much clean loop remains |
+| CLOCK | GLUE | how fast and degraded is the machine / how much do I warm or destroy it |
+| MIX | BALANCE | how much DOOM do I hear / which channel dominates |
+
+**RAMP is deliberately absent.** The pedal uses MIX as a ramp-speed control
+when its ramping infrastructure is engaged. A plug-in host already provides
+automation and this project already has a modulation matrix, so a second
+internal ramp framework would be a worse version of something the user already
+has. It is host-provided by design, not an omission.
+
+**ALT is not a parameter.** It selects which function the six paired knobs
+display, which is a property of the panel rather than of the sound.
+
+### Ownership
+
+Each control owns one thing, and `DoomControl_EachControlOwnsOneThing` pins it:
+GLUE never moves the clock, CLOCK never moves GLUE or MIX, MIX and BALANCE are
+orthogonal, and the two MODIFYs never reach into each other's channel.
+
+---
+
+## 4. Architecture
 
 ```
                         INPUT (host rate, stereo)
@@ -194,9 +269,9 @@ These are **inferences**, flagged as such, not documented facts.
 
 ---
 
-## 4. Subsystem designs
+## 5. Subsystem designs
 
-### 4.1 CLOCK — musical sample-rate stepping
+### 5.1 CLOCK — musical sample-rate stepping
 
 **BAD MOOD exhibits** a single sample-rate control that changes loop length,
 loop pitch, wet time and wet quality together, in harmonised steps.
@@ -225,7 +300,7 @@ sound *digital* rather than merely dull, so it is tamed, not removed.
 Signal Processing** / **Spectral Audio Signal Processing** (CCRMA),
 <https://ccrma.stanford.edu/~jos/>.
 
-### 4.2 MICRO-LOOPER — always listening
+### 5.2 MICRO-LOOPER — always listening
 
 **BAD MOOD exhibits** a looper that records continuously while bypassed, so
 engaging it captures audio that has *already happened*.
@@ -301,7 +376,7 @@ ring modulation → reversal → pitch displacement → resonant excitation
 MODIFY at zero yields the untouched loop, as documented. The crossfade is
 smoothed so the mask "turns on and off" musically rather than switching.
 
-### 4.3 WET CHANNEL
+### 5.3 WET CHANNEL
 
 #### SOUP — spectral resynthesis reverb
 
@@ -400,7 +475,7 @@ of the CPU.
 <https://documentation.dspconcepts.com/awe-designer/8.D.2.6/granular-synthesis-module>,
 and Smith, *Spectral Audio Signal Processing* on time-scale modification.
 
-### 4.4 CROSS — signal-dependent interference
+### 5.4 CROSS — signal-dependent interference
 
 **BAD MOOD exhibits** modulation that "dynamically interferes with both pitch
 and loudness", sourced either from the input or from the opposite channel.
@@ -441,7 +516,7 @@ when each channel modulates the other.
 practice; slew limiting as the difference between "organic" and "jumpy" is the
 same rule this codebase already applies to user-facing gains.
 
-### 4.5 GLUE — end-of-chain saturator/destroyer
+### 5.5 GLUE — end-of-chain saturator/destroyer
 
 **BAD MOOD exhibits** a global end-of-chain effect spanning "warm up and gel"
 through "completely thrash everything".
@@ -465,7 +540,7 @@ DC-blocked after folding because asymmetric shaping generates DC by definition.
 generation — standard nonlinear-processing literature; the project's existing
 `Vibe` saturation stage.
 
-### 4.6 EQ, BALANCE, BLEND, FADE, SPREAD
+### 5.6 EQ, BALANCE, BLEND, FADE, SPREAD
 
 - **EQ** — a **tilt filter**: a matched low-shelf/high-shelf pair moving in
   opposition around a 700 Hz pivot. Documented as two-way with no effect at
@@ -482,7 +557,7 @@ generation — standard nonlinear-processing literature; the project's existing
 
 ---
 
-## 5. Intentional approximations
+## 6. Intentional approximations
 
 1. DOOM has no footswitches, so the looper's state (recording / playing /
    overdubbing) is a parameter rather than a gesture, and FREEZE is a toggle.
@@ -499,7 +574,13 @@ generation — standard nonlinear-processing literature; the project's existing
 
 ---
 
-## 6. Parameters
+## 7. Parameters
+
+The identifiers below are implementation names and are unchanged by the control
+refresh - what changed is that the engine no longer reads them directly, and
+that the panel groups them into six pairs. Modes and routing became typed
+enums rather than bare ints, which is a C++ change and not a state change:
+saved sessions and factory presets load exactly as they did.
 
 | Parameter | Range | Default | Purpose |
 |---|---|---|---|
@@ -510,15 +591,15 @@ generation — standard nonlinear-processing literature; the project's existing
 | `doomRouting` | INPUT / INPUT+LOOP / LOOP | INPUT | what the wet channel processes |
 | `doomLoopActive` | bool | false | playing (true) vs always-listening (false) |
 | `doomLoopMode` | BURST / RADIO / MASK | RADIO | micro-looper mode |
-| `doomLoopLength` | 0…1 | 0.45 | mode-dependent (see §4.2) |
-| `doomLoopModify` | 0…1 | 0.50 | mode-dependent (see §4.2) |
+| `doomLoopLength` | 0…1 | 0.45 | mode-dependent (see §5.2) |
+| `doomLoopModify` | 0…1 | 0.50 | mode-dependent (see §5.2) |
 | `doomLoopHalf` | bool | false | halve the loop length |
 | `doomOverdub` | 0…1 | 0.0 | overdub amount into the loop |
 | `doomFade` | 0…1 | 1.0 | loop retention per lap while overdubbing |
 | `doomWetActive` | bool | true | wet channel on |
 | `doomWetMode` | SOUP / RELAY / FLIP | SOUP | wet channel mode |
-| `doomWetTime` | 0…1 | 0.45 | mode-dependent (see §4.3) |
-| `doomWetModify` | 0…1 | 0.40 | mode-dependent (see §4.3) |
+| `doomWetTime` | 0…1 | 0.45 | mode-dependent (see §5.3) |
+| `doomWetModify` | 0…1 | 0.40 | mode-dependent (see §5.3) |
 | `doomFreeze` | bool | false | freeze the wet channel |
 | `doomCross` | 0…1 | 0.0 | cross-modulation intensity (off by default, as documented) |
 | `doomCrossSource` | INPUT / CHANNEL | INPUT | cross modulation source |
@@ -530,7 +611,7 @@ generation — standard nonlinear-processing literature; the project's existing
 
 ---
 
-## 7. CPU
+## 8. CPU
 
 - The engine runs at the **internal** rate, so every subsystem gets cheaper as
   CLOCK falls. Worst case is CLOCK at maximum.
@@ -543,7 +624,7 @@ generation — standard nonlinear-processing literature; the project's existing
 - Grain counts are fixed maxima (`kMaxGrains`), not dynamic.
 - Only the active wet mode and the active loop mode run per sample.
 
-## 8. Testing strategy
+## 9. Testing strategy
 
 A dedicated `doom` suite covering: construction and defaults; preparation at
 44.1/48/88.2/96 kHz and several block sizes; silence, impulse and sine

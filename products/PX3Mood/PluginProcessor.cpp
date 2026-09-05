@@ -31,9 +31,9 @@ void PX3MoodAudioProcessor::prepareFx(double sampleRate, int)
     mood.prepare(sampleRate);
 }
 
-MoodSettings PX3MoodAudioProcessor::settingsForBlock() const
+px3::MoodUserParameters PX3MoodAudioProcessor::userParametersForBlock() const
 {
-    MoodSettings settings;
+    px3::MoodUserParameters settings;
     settings.enabled = enabledParam->get();
     settings.freeze = freezeParam->get();
     settings.mix = mixParam->get();
@@ -46,20 +46,17 @@ MoodSettings PX3MoodAudioProcessor::settingsForBlock() const
     settings.spread = spreadParam->get();
     settings.degrade = degradeParam->get();
 
-    // Routing is a THREE-WAY CHOICE the DSP reads as 0..1. The conversion is
-    // the Synth's, copied exactly: index / 2, so the three positions land on
-    // 0, 0.5 and 1 rather than anywhere else.
-    settings.routing = juce::jlimit(0.0f, 1.0f,
-                                    static_cast<float>(routingParam->getIndex()) / 2.0f);
-    settings.wetModeIndex = wetModeParam->getIndex();
-    settings.loopModeIndex = loopModeParam->getIndex();
-    settings.bpm = hostBpm();
+    // A three-way choice reaching the engine as a choice. The index/2 dance
+    // this replaces is gone from both products at once.
+    settings.routing = static_cast<px3::MoodRouting>(routingParam->getIndex());
+    settings.wetMode = static_cast<px3::MoodWetMode>(wetModeParam->getIndex());
+    settings.loopMode = static_cast<px3::MoodLoopMode>(loopModeParam->getIndex());
     return settings;
 }
 
 void PX3MoodAudioProcessor::processFxBlock(juce::AudioBuffer<float>& buffer)
 {
-    mood.updateForBlock(settingsForBlock());
+    mood.updateForBlock(userParametersForBlock());
 
     const auto numSamples = buffer.getNumSamples();
     const auto stereo = buffer.getNumChannels() > 1;

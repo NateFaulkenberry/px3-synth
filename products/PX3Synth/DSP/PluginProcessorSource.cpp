@@ -455,9 +455,9 @@ ReverbSettings PX3SynthAudioProcessor::currentReverbSettings() const
     return settings;
 }
 
-MoodSettings PX3SynthAudioProcessor::currentMoodSettings() const
+px3::MoodUserParameters PX3SynthAudioProcessor::currentMoodUserParameters() const
 {
-    MoodSettings settings;
+    px3::MoodUserParameters settings;
     settings.enabled = moodEnabledParam != nullptr && moodEnabledParam->get();
     settings.freeze = moodFreezeParam != nullptr && moodFreezeParam->get();
 
@@ -480,16 +480,19 @@ MoodSettings PX3SynthAudioProcessor::currentMoodSettings() const
     settings.degrade = moodDegradeParam->convertFrom0to1(applyModulationToNormalizedValue(moodDegradeParam,
                                                                                            static_cast<juce::RangedAudioParameter*>(moodDegradeParam)->getValue()));
 
-    settings.routing = moodRoutingParam != nullptr
-                           ? juce::jlimit(0.0f, 1.0f, static_cast<float>(moodRoutingParam->getIndex()) / 2.0f)
-                           : 0.0f;
-    settings.wetModeIndex = moodWetModeParam != nullptr ? moodWetModeParam->getIndex() : 0;
-    settings.loopModeIndex = moodLoopModeParam != nullptr ? moodLoopModeParam->getIndex() : 0;
-    settings.bpm = currentBpm;
+    // A choice reaching the engine as a choice. It used to be divided by two
+    // and recovered downstream by comparing against 0.33 and 0.66, which is how
+    // two of the three settings once ended up wired to each other's labels.
+    settings.routing = static_cast<px3::MoodRouting>(
+        moodRoutingParam != nullptr ? moodRoutingParam->getIndex() : 0);
+    settings.wetMode = static_cast<px3::MoodWetMode>(
+        moodWetModeParam != nullptr ? moodWetModeParam->getIndex() : 0);
+    settings.loopMode = static_cast<px3::MoodLoopMode>(
+        moodLoopModeParam != nullptr ? moodLoopModeParam->getIndex() : 0);
     return settings;
 }
 
-DoomSettings PX3SynthAudioProcessor::currentDoomSettings() const
+px3::DoomUserParameters PX3SynthAudioProcessor::currentDoomUserParameters() const
 {
     // Every continuous control goes through applyModulationToNormalizedValue,
     // which is what makes it a modulation destination - there is no DOOM-side
@@ -501,7 +504,7 @@ DoomSettings PX3SynthAudioProcessor::currentDoomSettings() const
                                              static_cast<juce::RangedAudioParameter*>(param)->getValue()));
     };
 
-    DoomSettings settings;
+    px3::DoomUserParameters settings;
     settings.enabled = doomEnabledParam != nullptr && doomEnabledParam->get();
     settings.freeze = doomFreezeParam != nullptr && doomFreezeParam->get();
     settings.loopActive = doomLoopActiveParam != nullptr && doomLoopActiveParam->get();
@@ -524,15 +527,19 @@ DoomSettings PX3SynthAudioProcessor::currentDoomSettings() const
     settings.blend = modulated(doomBlendParam);
     settings.spread = modulated(doomSpreadParam);
 
-    settings.routingIndex = doomRoutingParam != nullptr ? doomRoutingParam->getIndex() : 0;
-    settings.loopModeIndex = doomLoopModeParam != nullptr ? doomLoopModeParam->getIndex() : 1;
-    settings.wetModeIndex = doomWetModeParam != nullptr ? doomWetModeParam->getIndex() : 0;
-    settings.crossSourceIndex = doomCrossSourceParam != nullptr ? doomCrossSourceParam->getIndex() : 0;
+    settings.routing = static_cast<px3::DoomRouting>(
+        doomRoutingParam != nullptr ? doomRoutingParam->getIndex() : 0);
+    settings.loopMode = static_cast<px3::DoomLoopMode>(
+        doomLoopModeParam != nullptr ? doomLoopModeParam->getIndex() : 1);
+    settings.wetMode = static_cast<px3::DoomWetMode>(
+        doomWetModeParam != nullptr ? doomWetModeParam->getIndex() : 0);
+    settings.crossSource = static_cast<px3::DoomCrossSource>(
+        doomCrossSourceParam != nullptr ? doomCrossSourceParam->getIndex() : 0);
 
     return settings;
 }
 
-LucySettings PX3SynthAudioProcessor::currentLucySettings() const
+px3::LucyUserParameters PX3SynthAudioProcessor::currentLucyUserParameters() const
 {
     auto modulated = [this](juce::AudioParameterFloat* param)
     {
@@ -541,35 +548,39 @@ LucySettings PX3SynthAudioProcessor::currentLucySettings() const
                                              static_cast<juce::RangedAudioParameter*>(param)->getValue()));
     };
 
-    LucySettings settings;
-    settings.enabled = lucyEnabledParam != nullptr && lucyEnabledParam->get();
-    settings.filterInvert = lucyFilterInvertParam != nullptr && lucyFilterInvertParam->get();
-    settings.verbPost = lucyVerbPostParam != nullptr && lucyVerbPostParam->get();
-    settings.freeze = lucyFreezeParam != nullptr && lucyFreezeParam->get();
-    settings.freezeSlushy = lucyFreezeSlushyParam != nullptr && lucyFreezeSlushyParam->get();
-    settings.gate = lucyGateParam != nullptr && lucyGateParam->get();
-    settings.slow = lucySlowParam != nullptr && lucySlowParam->get();
+    px3::LucyUserParameters user;
+    user.enabled = lucyEnabledParam != nullptr && lucyEnabledParam->get();
+    user.filterInvert = lucyFilterInvertParam != nullptr && lucyFilterInvertParam->get();
+    user.verbPost = lucyVerbPostParam != nullptr && lucyVerbPostParam->get();
+    user.gate = lucyGateParam != nullptr && lucyGateParam->get();
+    user.slow = lucySlowParam != nullptr && lucySlowParam->get();
 
-    settings.global = modulated(lucyGlobalParam);
-    settings.loss = modulated(lucyLossParam);
-    settings.speed = modulated(lucySpeedParam);
-    settings.filterWidth = modulated(lucyFilterParam);
-    settings.filterFreq = modulated(lucyFilterFreqParam);
-    settings.verb = modulated(lucyVerbParam);
-    settings.verbDecay = modulated(lucyVerbDecayParam);
-    settings.freezer = modulated(lucyFreezerParam);
-    settings.gateCutoff = modulated(lucyGateCutoffParam);
-    settings.threshold = modulated(lucyThresholdParam);
-    settings.autoGain = modulated(lucyAutoGainParam);
-    settings.weighting = modulated(lucyWeightingParam);
-    settings.gainDb = modulated(lucyGainParam);
-    settings.spread = modulated(lucySpreadParam);
+    // The six primary knobs.
+    user.global = modulated(lucyGlobalParam);
+    user.loss = modulated(lucyLossParam);
+    user.speed = modulated(lucySpeedParam);
+    user.filter = modulated(lucyFilterParam);
+    user.filterFreq = modulated(lucyFilterFreqParam);
+    user.verb = modulated(lucyVerbParam);
 
-    settings.modeIndex = lucyModeParam != nullptr ? lucyModeParam->getIndex() : 0;
-    settings.packetIndex = lucyPacketsParam != nullptr ? lucyPacketsParam->getIndex() : 0;
-    settings.slopeIndex = lucySlopeParam != nullptr ? lucySlopeParam->getIndex() : 1;
+    // Their alternate functions. Every one is a real parameter with its own
+    // modulation and automation; "alternate" is where it lives on the panel.
+    user.gateThreshold = modulated(lucyGateThresholdParam);
+    user.freezer = modulated(lucyFreezerParam);
+    user.verbDecay = modulated(lucyVerbDecayParam);
+    user.limiterThreshold = modulated(lucyLimiterThresholdParam);
+    user.autoGain = modulated(lucyAutoGainParam);
+    user.lossGainDb = modulated(lucyLossGainParam);
 
-    return settings;
+    user.spread = modulated(lucySpreadParam);
+
+    user.mode = static_cast<px3::LucyLossMode>(lucyModeParam != nullptr ? lucyModeParam->getIndex() : 0);
+    user.packets = static_cast<px3::LucyPacketMode>(lucyPacketsParam != nullptr ? lucyPacketsParam->getIndex() : 0);
+    user.slope = static_cast<px3::LucyFilterSlope>(lucySlopeParam != nullptr ? lucySlopeParam->getIndex() : 1);
+    user.weighting = static_cast<px3::LucyWeighting>(lucyWeightingParam != nullptr ? lucyWeightingParam->getIndex() : 1);
+    user.freeze = static_cast<px3::LucyFreezeMode>(lucyFreezeParam != nullptr ? lucyFreezeParam->getIndex() : 0);
+
+    return user;
 }
 
 ChorusSettings PX3SynthAudioProcessor::currentChorusSettings() const

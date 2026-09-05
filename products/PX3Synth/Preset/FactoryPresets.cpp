@@ -28,6 +28,10 @@ enum DoomRouting  { inputOnly = 0, inputPlusLoop, loopOnly };
 enum LucyMode    { standard = 0, inverse, jitter };
 enum LucyPackets { cleanPackets = 0, packetLoss, packetRepeat };
 enum LucySlope   { slope6 = 0, slope24, slope96 };
+// Both were something else before the control refresh: WEIGHTING was a bipolar
+// float and FREEZE was a pair of booleans. See docs/LUCY_DSP_DESIGN.md.
+enum LucyWeighting { weightDark = 0, weightNeutral, weightBright };
+enum LucyFreeze    { freezeOff = 0, freezeSolid, freezeSlushy };
 
 enum SubOctave   { oct0 = 0, octMinus1, octMinus2 };
 enum SubWave     { subSine = 0, subSquare };
@@ -74,8 +78,8 @@ std::vector<FactoryPreset> factoryPresets()
         { "filter1Enabled", 1 }, { "filter1Type", lp24 }, { "filter1Cutoff", 900.0f }, { "filter1Resonance", 0.60f },
         { "ampAttack", 0.002f }, { "ampDecay", 0.26f }, { "ampSustain", 0.55f }, { "ampRelease", 0.14f },
         { "lucyGlobal", 0.26f }, { "lucyMode", standard }, { "lucyLoss", 0.44f }, { "lucySpeed", 0.62f },
-        { "lucyFilter", 0.22f }, { "lucyFilterFreq", 0.62f }, { "lucySlope", slope24 },
-        { "lucyWeighting", -0.35f }, { "lucyGain", 3.0f },
+        { "lucyFilter", 0.22f }, { "lucyFreq", 0.62f }, { "lucySlope", slope24 },
+        { "lucyWeighting", weightDark }, { "lucyLossGain", 3.0f },
         { "vibeAmount", 0.22f }, { "vibeType", loFi },
         { "masterGain", 0.60f } } },
 
@@ -158,9 +162,9 @@ std::vector<FactoryPreset> factoryPresets()
         { "filter1Enabled", 1 }, { "filter1Type", lp24 }, { "filter1Cutoff", 9000.0f }, { "filter1Resonance", 0.45f },
         { "ampAttack", 0.006f }, { "ampDecay", 0.50f }, { "ampSustain", 0.60f }, { "ampRelease", 0.55f },
         { "lucyGlobal", 0.42f }, { "lucyMode", inverse }, { "lucyLoss", 0.62f }, { "lucySpeed", 0.44f },
-        { "lucyFilter", 0.34f }, { "lucyFilterFreq", 0.72f }, { "lucySlope", slope24 },
-        { "lucyVerb", 0.30f }, { "lucyVerbDecay", 0.50f }, { "lucyWeighting", 0.40f },
-        { "lucyThreshold", 0.70f }, { "lucyGain", 6.0f },
+        { "lucyFilter", 0.34f }, { "lucyFreq", 0.72f }, { "lucySlope", slope24 },
+        { "lucyVerb", 0.30f }, { "lucyDecay", 0.50f }, { "lucyWeighting", weightBright },
+        { "lucyLimiterThreshold", 0.70f }, { "lucyLossGain", 6.0f },
         { "spreadAmount", 0.35f }, { "spreadMode", classic },
         { "masterGain", 0.56f } } },
 
@@ -207,10 +211,10 @@ std::vector<FactoryPreset> factoryPresets()
         { "filter2Enabled", 0 },
         { "filter1Enabled", 1 }, { "filter1Type", lp24 }, { "filter1Cutoff", 5200.0f }, { "filter1Resonance", 0.38f },
         { "ampAttack", 0.35f }, { "ampDecay", 0.90f }, { "ampSustain", 0.88f }, { "ampRelease", 1.60f },
-        { "lucyGlobal", 0.62f }, { "lucyFreeze", 1 }, { "lucyFreezeSlushy", 1 }, { "lucyFreezer", 0.72f },
+        { "lucyGlobal", 0.62f }, { "lucyFreeze", freezeSlushy }, { "lucyFreezer", 0.72f },
         { "lucySpeed", 0.30f }, { "lucyLoss", 0.40f }, { "lucyMode", standard },
-        { "lucyVerb", 0.55f }, { "lucyVerbDecay", 0.72f }, { "lucyThreshold", 0.72f },
-        { "lucySpread", 0.75f }, { "lucyGain", 4.0f },
+        { "lucyVerb", 0.55f }, { "lucyDecay", 0.72f }, { "lucyLimiterThreshold", 0.72f },
+        { "lucySpread", 0.75f }, { "lucyLossGain", 4.0f },
         { "reverbAmount", 0.30f }, { "reverbAlgorithm", cloud }, { "reverbDecay", 0.60f },
         { "masterGain", 0.54f } } },
 
@@ -277,7 +281,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "ampAttack", 0.001f }, { "ampDecay", 0.20f }, { "ampSustain", 0.08f }, { "ampRelease", 0.22f },
         { "lucyGlobal", 0.50f }, { "lucyPackets", packetRepeat }, { "lucyMode", standard },
         { "lucyLoss", 0.58f }, { "lucySpeed", 0.68f }, { "lucySpread", 0.85f },
-        { "lucyFilter", 0.26f }, { "lucyFilterFreq", 0.66f }, { "lucyThreshold", 0.68f }, { "lucyGain", 9.0f },
+        { "lucyFilter", 0.26f }, { "lucyFreq", 0.66f }, { "lucyLimiterThreshold", 0.68f }, { "lucyLossGain", 9.0f },
         { "delayAmount", 0.26f }, { "delayAlgorithm", stereoDelay }, { "delayTime", 0.22f }, { "delayFeedback", 0.30f },
         { "reverbAmount", 0.24f }, { "reverbAlgorithm", room },
         { "masterGain", 0.95f } } },
@@ -311,10 +315,10 @@ std::vector<FactoryPreset> factoryPresets()
         { "ampAttack", 0.02f }, { "ampDecay", 0.40f }, { "ampSustain", 0.80f }, { "ampRelease", 0.40f },
         { "lucyGlobal", 0.78f }, { "lucyMode", jitter }, { "lucyPackets", packetLoss },
         { "lucyLoss", 0.72f }, { "lucySpeed", 0.42f },
-        { "lucyGate", 1 }, { "lucyGateCutoff", 0.30f },
-        { "lucyFilter", 0.40f }, { "lucyFilterFreq", 0.55f }, { "lucySlope", slope96 },
-        { "lucyVerb", 0.38f }, { "lucyVerbDecay", 0.55f }, { "lucySpread", 0.90f },
-        { "lucyThreshold", 0.62f }, { "lucyGain", 11.0f },
+        { "lucyGate", 1 }, { "lucyGateThreshold", 0.30f },
+        { "lucyFilter", 0.40f }, { "lucyFreq", 0.55f }, { "lucySlope", slope96 },
+        { "lucyVerb", 0.38f }, { "lucyDecay", 0.55f }, { "lucySpread", 0.90f },
+        { "lucyLimiterThreshold", 0.62f }, { "lucyLossGain", 11.0f },
         { "masterGain", 0.95f } } },
 
     { "Splinter Choir", "EXPERIMENTAL", "P(X3)",
