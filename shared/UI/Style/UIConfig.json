@@ -1929,7 +1929,7 @@
             "padding": 0,
             "display": "flex",
             "direction": "row",
-            "wrap": "nowrap",
+            "wrap": "wrap",
             "justifyContent": "center",
             "alignItems": "center",
             "alignContent": "center",
@@ -1945,31 +1945,33 @@
             }
           },
           "row1": {
-            "height": 32,
+            "height": 30,
             "gap": 0,
-            "justifyContent": "flex-start"
+            "justifyContent": "center"
           },
           "row2": {
-            "height": 66,
+            "height": 82,
             "gap": 8,
             "paddingTop": 4
           },
           "row3": {
-            "height": "30%",
-            "gap": 6,
+            "height": "26%",
+            "gap": 3,
             "justifyContent": "center"
           },
           "row4": {
             "height": "26%",
-            "gap": 6,
+            "gap": 3,
             "justifyContent": "center"
           },
           "row5": {
-            "height": "26%",
-            "gap": 8,
+            "height": "30%",
+            "gap": 6,
             "justifyContent": "center"
           }
-        }
+        },
+        "paddingLeft": 12,
+        "paddingRight": 12
       }
     },
     "reverb": {
