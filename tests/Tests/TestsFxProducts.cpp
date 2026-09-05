@@ -1021,6 +1021,69 @@ void testFxProducts()
                                    : "these switches changed nothing: " + broken.joinIntoString(", "));
         }
 
+        // A BYPASSED CARD GREYS OUT COMPLETELY.
+        //
+        // The card already dimmed its artwork and desaturated its knobs on
+        // bypass, but its captions kept the card's colour scheme - so a
+        // switched-off card still had a row of coloured chips on it. Every
+        // caption has to follow the knob it names.
+        {
+            juce::StringArray coloured;
+            juce::StringArray counted;
+
+            const auto captionsFollowTheBypass = [&](const juce::String& name,
+                                                     juce::AudioProcessorEditor* editorIn)
+            {
+                std::unique_ptr<juce::AudioProcessorEditor> editor(editorIn);
+                auto* cardEditor = dynamic_cast<px3::fx::FxCardEditor*>(editor.get());
+                if (cardEditor == nullptr) { counted.add(name + " (no card editor)"); return; }
+
+                auto& card = cardEditor->debugCard();
+                const auto labels = card.allKnobLabels();
+                if (labels.empty()) { coloured.add(name + " (no captions at all)"); return; }
+
+                card.setActive(false);
+                int grey = 0;
+                for (auto* label : labels)
+                {
+                    if (auto* chip = dynamic_cast<px3::ui::ChipLabel*>(label))
+                    {
+                        if (chip->isGreyedOut()) { ++grey; }
+                    }
+                }
+
+                counted.add(name + " " + juce::String(grey) + "/" + juce::String((int) labels.size()));
+                if (grey != (int) labels.size()) { coloured.add(name); }
+
+                // And back again: bypass is a toggle, not a one-way trip.
+                card.setActive(true);
+                for (auto* label : labels)
+                {
+                    if (auto* chip = dynamic_cast<px3::ui::ChipLabel*>(label))
+                    {
+                        if (chip->isGreyedOut()) { coloured.add(name + " (stayed grey)"); break; }
+                    }
+                }
+            };
+
+            PX3ChorusAudioProcessor chorus;
+            captionsFollowTheBypass("Chorus", chorus.createEditor());
+            PX3SpreadAudioProcessor spread;
+            captionsFollowTheBypass("Spread", spread.createEditor());
+            PX3ReverbAudioProcessor reverb;
+            captionsFollowTheBypass("Reverb", reverb.createEditor());
+            PX3DoomAudioProcessor doom;
+            captionsFollowTheBypass("Doom", doom.createEditor());
+            PX3LucyAudioProcessor lucy;
+            captionsFollowTheBypass("Lucy", lucy.createEditor());
+
+            check("FxProducts_ABypassedCardGreysItsCaptionsToo",
+                  coloured.isEmpty(),
+                  coloured.isEmpty()
+                      ? "captions greyed and restored: " + counted.joinIntoString(", ")
+                      : "captions did not follow the bypass: " + coloured.joinIntoString(", "));
+        }
+
         check("FxProducts_AnEnabledEffectActuallyChangesTheSignal",
               inaudible.isEmpty(),
               inaudible.isEmpty()

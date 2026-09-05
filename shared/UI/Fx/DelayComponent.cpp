@@ -80,6 +80,9 @@ void DelayComponent::setActive(bool enabled, bool granularModeSelectable)
     amountKnob.getProperties().set("psychedelicBypassGray", !isActive);
     timeKnob.getProperties().set("psychedelicBypassGray", !isActive);
     feedbackKnob.getProperties().set("psychedelicBypassGray", !isActive);
+    px3::ui::ChipLabel::setGreyedOut(!isActive,
+                                     { &amountLabel, &algorithmLabel, &syncLabel,
+                                       &modeLabel, &timeLabel, &feedbackLabel });
 
     repaint();
 }

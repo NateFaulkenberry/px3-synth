@@ -47,6 +47,23 @@ public:
 
     const Style& getChipStyle() const noexcept { return style; }
 
+    // Greys the chip out when its card is bypassed, matching the knobs beside
+    // it. A bypassed card already dims its artwork and desaturates its knobs;
+    // without this the captions kept their full colour scheme and were the one
+    // thing on a switched-off card still shouting.
+    //
+    // A repaint rather than a colour edit: the style is what the card's config
+    // says the chip IS, and rewriting it on bypass would mean restoring it on
+    // un-bypass and losing anything applied in between.
+    void setGreyedOut(bool shouldBeGrey)
+    {
+        if (greyedOut == shouldBeGrey) { return; }
+        greyedOut = shouldBeGrey;
+        repaint();
+    }
+
+    bool isGreyedOut() const noexcept { return greyedOut; }
+
     void paint(juce::Graphics& g) override
     {
         if (getText().isEmpty())
@@ -58,16 +75,16 @@ public:
         const auto horizontalPadding = compactLabel ? 4.0f : 8.0f;
         auto area = getLocalBounds().toFloat().reduced(2.0f, 1.0f);
 
-        g.setColour(style.background.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.backgroundOpacity)));
+        g.setColour(shade(style.background.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.backgroundOpacity))));
         g.fillRoundedRectangle(area, style.cornerRadius);
 
         if (style.outlineWidth > 0.0f)
         {
-            g.setColour(style.outline.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.outlineOpacity)));
+            g.setColour(shade(style.outline.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.outlineOpacity))));
             g.drawRoundedRectangle(area, style.cornerRadius, style.outlineWidth);
         }
 
-        g.setColour(findColour(juce::Label::textColourId));
+        g.setColour(shade(findColour(juce::Label::textColourId)));
         g.setFont(getFont());
         // Fitted, not ellipsised. drawText's last argument is
         // useEllipsesIfTooBig, and a caption that does not quite fit its chip
@@ -138,8 +155,29 @@ public:
         }
     }
 
+    // Greys out captions a component was handed rather than owns. A caption
+    // that is not a chip is left alone, the same as applyFromConfig does.
+    static void setGreyedOut(bool shouldBeGrey, std::initializer_list<juce::Label*> labels)
+    {
+        for (auto* label : labels)
+        {
+            if (auto* asChip = dynamic_cast<ChipLabel*>(label)) { asChip->setGreyedOut(shouldBeGrey); }
+        }
+    }
+
 private:
+    // Perceived brightness, not the average of the channels, and the same
+    // measure the knob's bypass greyscale uses - so a grey caption and a grey
+    // knob beside it are the same grey rather than two different ones.
+    juce::Colour shade(juce::Colour colour) const
+    {
+        if (! greyedOut) { return colour; }
+        const auto value = juce::jlimit(0.0f, 1.0f, colour.getPerceivedBrightness());
+        return juce::Colour::fromFloatRGBA(value, value, value, colour.getFloatAlpha());
+    }
+
     Style style;
+    bool greyedOut { false };
 };
 
 } // namespace px3::ui

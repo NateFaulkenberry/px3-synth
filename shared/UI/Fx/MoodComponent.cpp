@@ -152,6 +152,11 @@ void MoodComponent::setActive(bool enabled)
     feedbackKnob.getProperties().set("psychedelicBypassGray", !enabled);
     spreadKnob.getProperties().set("psychedelicBypassGray", !enabled);
     degradeKnob.getProperties().set("psychedelicBypassGray", !enabled);
+    px3::ui::ChipLabel::setGreyedOut(!enabled,
+                                     { &mixLabel, &clockLabel, &wetTimeLabel, &wetModifyLabel,
+                                       &loopLengthLabel, &loopModifyLabel, &feedbackLabel,
+                                       &spreadLabel, &degradeLabel, &routingLabel,
+                                       &wetModeLabel, &loopModeLabel });
 
     repaint();
 }

@@ -44,6 +44,7 @@ void VibeComponent::setActive(bool enabled)
     typeBox.setEnabled(isActive);
     typeLabel.setEnabled(isActive);
     amountKnob.getProperties().set("psychedelicBypassGray", !isActive);
+    px3::ui::ChipLabel::setGreyedOut(!isActive, { &amountLabel, &typeLabel });
     repaint();
 }
 
