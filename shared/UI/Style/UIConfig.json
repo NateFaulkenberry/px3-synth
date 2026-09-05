@@ -1741,6 +1741,10 @@
       }
     },
     "stereoSpread": {
+        "artwork": {
+          "image": "Spread-artwork.png",
+          "opacity": 0.7
+        },
       "border": {
         "color": "#5ACC89",
         "opacity": 0.74
@@ -1763,6 +1767,11 @@
         "color": "#D0F7E0"
       },
       "controls": {
+          "labelBackground": "#1B3D29",
+          "labelBackgroundOpacity": 0.85,
+          "labelOutline": "#9DEDBE",
+          "labelOutlineOpacity": 0.45,
+          "labelColour": "#D0F7E0",
         "knobSize": 56,
         "featureKnobSize": 88,
         "choiceWidth": 110,
