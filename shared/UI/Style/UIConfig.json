@@ -1237,6 +1237,13 @@
       }
     },
     "vibe": {
+        "controls": {
+          "labelBackground": "#392D19",
+          "labelBackgroundOpacity": 0.85,
+          "labelOutline": "#EDD09D",
+          "labelOutlineOpacity": 0.45,
+          "labelColour": "#F7E9D0"
+        },
         "artwork": {
           "image": "Vibe-artwork.png",
           "opacity": 0.7
@@ -1309,11 +1316,11 @@
     },
     "delay": {
         "controls": {
-          "labelBackground": "#16304F",
+          "labelBackground": "#1F2A45",
           "labelBackgroundOpacity": 0.85,
-          "labelOutline": "#7FB4E0",
+          "labelOutline": "#9DB5ED",
           "labelOutlineOpacity": 0.45,
-          "labelColour": "#DCEAF7"
+          "labelColour": "#D0DCF7"
         },
       "artwork": {
         "image": "Delay-artwork.png",
@@ -1420,9 +1427,9 @@
         "toggleOffColor": "#C4433F",
         "toggleOnTextColor": "#FFF0EE",
         "toggleOffTextColor": "#FFF0EE",
-        "labelBackground": "#C4433F",
-        "labelBackgroundOpacity": 0.2,
-        "labelOutline": "#E8A9A5",
+        "labelBackground": "#3D1B1B",
+        "labelBackgroundOpacity": 0.85,
+        "labelOutline": "#ED9D9D",
         "labelOutlineOpacity": 0.45,
         "labelOutlineWidth": 1,
         "labelCornerRadius": 7,
@@ -1441,7 +1448,7 @@
         "boxBackground": "#232323D2",
         "boxText": "#E8E8E8",
         "boxOutline": "#FFFFFF69",
-        "labelColour": "#F2DCD9"
+        "labelColour": "#F7D0D0"
       },
       "cardInner": {
         "margin": 0,
@@ -1657,6 +1664,11 @@
         "color": "#DED0F7"
       },
       "controls": {
+          "labelBackground": "#281B3D",
+          "labelBackgroundOpacity": 0.85,
+          "labelOutline": "#BA9DED",
+          "labelOutlineOpacity": 0.45,
+          "labelColour": "#DED0F7",
         "knobSize": 56,
         "featureKnobSize": 88,
         "choiceWidth": 110,
@@ -1669,7 +1681,7 @@
         "boxBackground": "#232323D2",
         "boxText": "#E8E8E8",
         "boxOutline": "#FFFFFF69",
-        "labelColour": "#E8E8E8"
+        "labelColour": "#DED0F7"
       },
       "cardInner": {
         "margin": 0,
@@ -1901,7 +1913,16 @@
       }
     },
     "reverb": {
+        "artwork": {
+          "image": "Reverb-artwork.png",
+          "opacity": 0.7
+        },
       "controls": {
+          "labelBackground": "#3D1B36",
+          "labelBackgroundOpacity": 0.85,
+          "labelOutline": "#ED9DDD",
+          "labelOutlineOpacity": 0.45,
+          "labelColour": "#F7D0EF",
         "knobSize": 54,
         "featureKnobSize": 77,
         "choiceWidth": 76,
