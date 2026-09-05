@@ -426,18 +426,24 @@ void FxCardComponent::layoutToggleRow(int rowIndex, const Row& row)
 
     const std::vector<float> widths(row.ids.size(), cellWidth);
 
-    // The cell is the CHIP's height, not the row divided by however many lines
-    // this is guessed to need.
+    // The cell wants to be the CHIP's height, so the lines pack at their own
+    // size rather than being spread apart by a row that happens to be tall.
     //
-    // Dividing the row was wrong in both directions. The guess disagreed with
-    // where the row actually wraps - seven chips at three columns wrap to
-    // three lines and the count came out two - so each cell was half the row
-    // rather than a third, and the lines sat 34px apart in a 66px row with the
-    // third pushed out of it. And because a chip is capped at toggleHeight
-    // regardless, a taller row never made one bigger: it only ever added space
-    // between lines. Sizing the cell to the chip makes the lines pack at their
-    // own height, so a row holds exactly as many as it has room for.
-    const auto cellHeight = static_cast<float>(controlHeight);
+    // But it is CLAMPED to the row's share, and that clamp is the important
+    // half. Dividing the row by the line count - which is what this used to do
+    // outright - has one virtue: the lines always fit, because the spacing
+    // shrinks to make them. Sizing purely to the chip threw that away, and a
+    // card narrow enough to wrap seven chips onto four lines then overflowed
+    // the row and drew them over the card's title.
+    //
+    // So: the chip's height when there is room for it, the row's share when
+    // there is not. Squeezed lines are a worse look than spread ones; lines on
+    // top of the title are not a look at all.
+    const auto gapWidth = gap.left + gap.right;
+    const auto lines = wrappedLineCount(widths, gapWidth, rowWidth);
+    const auto share = static_cast<float>(content.getHeight()) / static_cast<float>(juce::jmax(1, lines))
+                       - (gap.top + gap.bottom);
+    const auto cellHeight = juce::jmax(1.0f, juce::jmin(static_cast<float>(controlHeight), share));
 
     for (const auto width : widths)
     {

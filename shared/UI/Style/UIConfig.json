@@ -1503,7 +1503,7 @@
             }
           },
           "row1": {
-            "height": 60,
+            "height": 86,
             "gap": 1,
             "justifyContent": "space-evenly",
             "alignContent": "flex-end"
@@ -1514,17 +1514,17 @@
             "paddingTop": 14
           },
           "row3": {
-            "height": "23%",
+            "height": "21%",
             "gap": 5,
             "justifyContent": "space-between"
           },
           "row4": {
-            "height": "23%",
+            "height": "21%",
             "gap": 5,
             "justifyContent": "space-between"
           },
           "row5": {
-            "height": "23%",
+            "height": "21%",
             "gap": 5
           },
           "row6": {
