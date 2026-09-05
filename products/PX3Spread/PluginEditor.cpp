@@ -1,7 +1,12 @@
 #include "PluginEditor.h"
 
 PX3SpreadAudioProcessorEditor::PX3SpreadAudioProcessorEditor(PX3SpreadAudioProcessor& processorIn)
-    : px3::fx::FxCardEditor(processorIn, "spread", "SPREAD")
+    // "stereoSpread", not "spread": the style key indexes cards.<key> in
+    // UIConfig.json, and the Synth's card is built with stereoSpread. Spelled
+    // the short way this found nothing and fell back to code defaults, which is
+    // why the standalone was the one effect with a pale border instead of its
+    // own green.
+    : px3::fx::FxCardEditor(processorIn, "stereoSpread", "SPREAD")
 {
     // The same rows, in the same order, as buildStereoSpreadCard in the Synth.
     rows().addChoiceRow({ { "mode", "MODE", "Widening strategy", processorIn.mode().choices } });
@@ -32,5 +37,5 @@ PX3SpreadAudioProcessorEditor::PX3SpreadAudioProcessorEditor(PX3SpreadAudioProce
     attachChoice("mode", processorIn.mode());
     attachBypass(processorIn.enabled());
 
-    finishSetup(720, 320);
+    finishSetup();
 }

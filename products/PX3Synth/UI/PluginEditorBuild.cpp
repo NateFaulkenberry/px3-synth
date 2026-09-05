@@ -525,7 +525,6 @@ void PX3SynthAudioProcessorEditor::buildSelectors()
     configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "AMOUNT", audioProcessor.getDelayAmountParam());
     configureEffectKnob(delayTimeKnob, delayTimeLabel, "TIME", audioProcessor.getDelayTimeParam());
     configureEffectKnob(delayFeedbackKnob, delayFeedbackLabel, "FEEDBACK", audioProcessor.getDelayFeedbackParam());
-    configureEffectKnob(reverbKnob, reverbLabel, "AMOUNT", audioProcessor.getReverbAmountParam());
     configureEffectKnob(moodMixKnob, moodMixLabel, "MIX", audioProcessor.getMoodMixParam());
     configureEffectKnob(moodClockKnob, moodClockLabel, "CLOCK", audioProcessor.getMoodClockParam());
     configureEffectKnob(moodWetTimeKnob, moodWetTimeLabel, "WET TIME", audioProcessor.getMoodWetTimeParam());
@@ -549,10 +548,6 @@ void PX3SynthAudioProcessorEditor::buildEffectControls()
     delayFeedbackLabel.getProperties().set("compactLabel", true);
     delayFeedbackLabel.setTooltip("FEEDBACK");
     delayFeedbackKnob.setTooltip("FEEDBACK");
-
-    vibeAmountKnob.getProperties().set("psychedelicFx", true);
-    isaacTextureKnob.getProperties().set("psychedelicFx", true);
-    reverbKnob.getProperties().set("psychedelicFx", true);
 
     auto& vibeTypeParam = audioProcessor.getVibeTypeParam();
     for (int i = 0; i < vibeTypeParam.choices.size(); ++i)
@@ -681,22 +676,6 @@ void PX3SynthAudioProcessorEditor::buildEffectControls()
     granularModeLabel.setFont(juce::FontOptions(11.5f));
     enableLabelHoverOverlay(granularModeLabel, "Granular Mode");
 
-    auto& reverbAlgoParam = audioProcessor.getReverbAlgorithmParam();
-    const auto reverbChoiceCount = reverbAlgoParam.choices.size();
-    for (int i = 0; i < reverbChoiceCount; ++i)
-    {
-        reverbTypeBox.addItem(reverbAlgoParam.choices[i], i + 1);
-    }
-    reverbTypeBox.setSelectedItemIndex(reverbAlgoParam.getIndex(), juce::dontSendNotification);
-    reverbTypeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
-    reverbTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    reverbTypeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
-    reverbTypeLabel.setText("TYPE", juce::dontSendNotification);
-    reverbTypeLabel.setJustificationType(juce::Justification::centred);
-    reverbTypeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    reverbTypeLabel.setFont(juce::FontOptions(11.5f));
-    enableLabelHoverOverlay(reverbTypeLabel, "Algorithm");
-
     auto& moodRoutingParam = audioProcessor.getMoodRoutingParam();
     for (int i = 0; i < moodRoutingParam.choices.size(); ++i)
     {
@@ -767,7 +746,6 @@ void PX3SynthAudioProcessorEditor::buildEffectControls()
     namePower(robBypassButton, "Vibe");
     namePower(delayBypassButton, "Delay");
     namePower(moodBypassButton, "Mood");
-    namePower(reverbBypassButton, "Reverb");
 
 }
 
@@ -856,6 +834,15 @@ void PX3SynthAudioProcessorEditor::buildPanels()
     configureWavetableControls();
 
     macroStrip = std::make_unique<MacroStrip>(audioProcessor, &macroKnobLookAndFeel);
+
+    // The depth button under each knob is a toggle: it opens that macro's
+    // panel, and closes it if it is the one already open. Same button,
+    // both directions, so the way out is where the way in was.
+    macroStrip->onDepthToggled = [this](int macro)
+    {
+        if (depthPanelMacroIndex() == macro) { closeMacroDepthPanel(); }
+        else                                 { openMacroDepthPanel(macro); }
+    };
     addAndMakeVisible(*macroStrip);
 
     macroAssignOverlay = std::make_unique<MacroAssignOverlay>(*this);
@@ -943,11 +930,6 @@ void PX3SynthAudioProcessorEditor::buildPanels()
                                         moodWetModeLabel,
                                         moodLoopModeBox,
                                         moodLoopModeLabel,
-                                        reverbBypassButton,
-                                        reverbKnob,
-                                        reverbLabel,
-                                        reverbTypeBox,
-                                        reverbTypeLabel,
                                         juce::Colour::fromRGB(120, 186, 255));
     mixPanel = std::make_unique<MixPanel>(audioProcessor,
                                           &knobLookAndFeel,
@@ -993,6 +975,7 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
 
     buildDoomCard();
     buildLucyCard();
+    buildReverbCard();
     buildChorusCard();
     buildStereoSpreadCard();
 
@@ -1023,7 +1006,6 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
     attachSlider(audioProcessor.getMoodFeedbackParam(), moodFeedbackKnob);
     attachSlider(audioProcessor.getMoodSpreadParam(), moodSpreadKnob);
     attachSlider(audioProcessor.getMoodDegradeParam(), moodDegradeKnob);
-    attachSlider(audioProcessor.getReverbAmountParam(), reverbKnob);
     attachComboBox(audioProcessor.getFilterTypeParam(0), filterTypeBox);
     attachComboBox(audioProcessor.getFilterTypeParam(1), filter2TypeBox);
     attachComboBox(audioProcessor.getOscillatorModeParam(0), osc1ModeBox);
@@ -1041,14 +1023,12 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
     attachComboBox(audioProcessor.getMoodRoutingParam(), moodRoutingBox);
     attachComboBox(audioProcessor.getMoodWetModeParam(), moodWetModeBox);
     attachComboBox(audioProcessor.getMoodLoopModeParam(), moodLoopModeBox);
-    attachComboBox(audioProcessor.getReverbAlgorithmParam(), reverbTypeBox);
     attachComboBox(audioProcessor.getVibeTypeParam(), vibeTypeBox);
 
     attachButton(audioProcessor.getVibeEnabledParam(), robBypassButton);
     attachButton(audioProcessor.getDelayEnabledParam(), delayBypassButton);
     attachButton(audioProcessor.getMoodEnabledParam(), moodBypassButton);
     attachButton(audioProcessor.getMoodFreezeParam(), moodFreezeButton);
-    attachButton(audioProcessor.getReverbEnabledParam(), reverbBypassButton);
     attachButton(audioProcessor.getFilterEnabledParam(0), filter1EnabledButton);
     attachButton(audioProcessor.getFilterEnabledParam(1), filter2EnabledButton);
     attachButton(audioProcessor.getOscillatorEnabledParam(0), osc1EnabledButton);
@@ -1187,7 +1167,9 @@ void PX3SynthAudioProcessorEditor::buildPresetBar()
     presetListBox.setColour(juce::ListBox::backgroundColourId, juce::Colour::fromRGBA(20, 20, 20, 200));
 
     presetBrowserLoadButton.setButtonText("LOAD");
-    presetBrowserCloseButton.setButtonText("CLOSE");
+    // CANCEL rather than CLOSE: it sits beside LOAD, and the pair reads as the
+    // choice actually being made - take this preset, or take none.
+    presetBrowserCloseButton.setButtonText("CANCEL");
     setupPresetButton(presetBrowserLoadButton);
     setupPresetButton(presetBrowserCloseButton);
 
@@ -1214,12 +1196,7 @@ void PX3SynthAudioProcessorEditor::buildPresetBar()
     presetBrowserPanel.addAndMakeVisible(presetBrowserCloseGlyph);
     presetBrowserLoadButton.onClick = [this]()
     {
-        const auto row = presetListBox.getSelectedRow();
-        if (row >= 0 && row < static_cast<int>(presetFiltered.size()))
-        {
-            applyPresetRecord(presetFiltered[static_cast<std::size_t>(row)]);
-            closePresetBrowser();
-        }
+        loadPresetRow(presetListBox.getSelectedRow());
     };
 
 }

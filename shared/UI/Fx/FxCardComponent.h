@@ -87,6 +87,16 @@ public:
     void paint(juce::Graphics& g) override;
     void mouseUp(const juce::MouseEvent& event) override;
 
+    // Everything this card lays out, as text: the rows in order, and each
+    // control's id and bounds within the card.
+    //
+    // It exists so a standalone effect can be compared against the same card
+    // inside the Synth and the difference NAMED. Two snapshots would say only
+    // that they differ; this says which control moved and by how much, which
+    // is the difference between a test that catches a regression and one that
+    // only reports it.
+    juce::String debugLayoutSignature() const;
+
 private:
     enum class RowKind { toggles, choices, knobs, featureKnob };
 

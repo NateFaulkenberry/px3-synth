@@ -81,7 +81,7 @@ main (green, PX3_VERSION already 0.7.1)
   reason. If the runner's compiler turns out to be noisier than yours on the
   same code, the choice is to fix the warnings or to pin the runner's Xcode;
   do not widen the filter, which would hide real ones.
-- `PX3Tests` — 1366 assertions.
+- `PX3Tests` — 1399 assertions.
 - `PX3Diag regress` — 29 audio-artifact cases.
 - `PX3Diag rtsafety` — 0 allocations per audio block.
 - `PX3SmokeTest` — factory defaults are audible at every rate and block size.

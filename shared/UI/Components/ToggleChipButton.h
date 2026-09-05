@@ -2,6 +2,11 @@
 
 #include <JuceHeader.h>
 
+#include "UIConfig.h"
+
+#include <initializer_list>
+#include <optional>
+
 namespace px3::ui
 {
 
@@ -34,6 +39,28 @@ public:
     // than leaving the fill colour to carry that alone.
     void setStateLabels(juce::String onText, juce::String offText);
 
+    // Explicit colours, for a card that wants a scheme of its own rather than
+    // the shades derived from its accent.
+    //
+    // Each is optional and unset by default, so a chip nobody has styled is
+    // drawn exactly as before - the derivation below is good enough for most
+    // cards, and replacing it wholesale for all of them to serve one would be
+    // the wrong trade.
+    void setStateColours(std::optional<juce::Colour> on,
+                         std::optional<juce::Colour> off);
+    void setTextColours(std::optional<juce::Colour> on,
+                        std::optional<juce::Colour> off);
+
+    // Everything a card declares for its chips, applied to buttons a component
+    // was handed rather than owns.
+    //
+    // Shared for the same reason ChipLabel's is: the cards are built two ways,
+    // and Mood's freeze switch would otherwise be the one chip in the plugin
+    // that its card's colours could not reach.
+    static void applyFromConfig(const UIConfig* config,
+                                const juce::String& styleKey,
+                                std::initializer_list<juce::Button*> buttons);
+
 private:
     void paintButton(juce::Graphics& g,
                      bool shouldDrawButtonAsHighlighted,
@@ -46,6 +73,10 @@ private:
     float offTint { 0.0f };
     juce::String onLabel;
     juce::String offLabel;
+    std::optional<juce::Colour> onColour;
+    std::optional<juce::Colour> offColour;
+    std::optional<juce::Colour> onTextColour;
+    std::optional<juce::Colour> offTextColour;
 };
 
 } // namespace px3::ui

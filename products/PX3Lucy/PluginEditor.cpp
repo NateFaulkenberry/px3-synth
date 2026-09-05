@@ -68,5 +68,5 @@ PX3LucyAudioProcessorEditor::PX3LucyAudioProcessorEditor(PX3LucyAudioProcessor& 
 
     attachBypass(processorIn.enabled());
 
-    finishSetup(900, 420);
+    finishSetup();
 }

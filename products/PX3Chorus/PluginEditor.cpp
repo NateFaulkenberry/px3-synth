@@ -33,5 +33,5 @@ PX3ChorusAudioProcessorEditor::PX3ChorusAudioProcessorEditor(PX3ChorusAudioProce
     attachChoice("mode", processorIn.mode());
     attachBypass(processorIn.enabled());
 
-    finishSetup(720, 320);
+    finishSetup();
 }

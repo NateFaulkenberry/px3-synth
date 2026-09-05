@@ -33,6 +33,22 @@ MacroStrip::MacroStrip(PX3SynthAudioProcessor& processorIn, juce::LookAndFeel* k
         entry.knob.setTooltip(fullName);
         addAndMakeVisible(entry.caption);
 
+        // The depth button, under the knob. The same chip the FX cards use, so
+        // a control that opens a panel looks like one wherever it appears.
+        entry.depth.setButtonText("Depth");
+        entry.depth.setStateLabels("Depth", "Depth");
+        entry.depth.setFontSize(10.0f);
+        entry.depth.setTooltip("Show how much of " + fullName + " each destination receives");
+        // Clicking is a request, not the answer: the editor decides whether the
+        // panel opens, and says so through setDepthPanelMacro. Toggling the
+        // chip here would let the button disagree with what is on screen.
+        entry.depth.setClickingTogglesState(false);
+        entry.depth.onClick = [this, macro]
+        {
+            if (onDepthToggled) { onDepthToggled(macro); }
+        };
+        addAndMakeVisible(entry.depth);
+
         // Bound like any other parameter knob, which is what makes the macros
         // MIDI-mappable through the existing system with no new code.
         px3::ui::attachParameterKnob(processor.getMacroParam(macro), entry.knob, attachments);
@@ -55,8 +71,46 @@ int MacroStrip::preferredWidth(const UIConfig* config)
 void MacroStrip::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+
+    // The depth chips take the macro accent, the same colour the assignment
+    // highlight uses, so a lit button belongs to the strip rather than looking
+    // borrowed from an FX card.
+    const auto accent = px3::ui::macroAccentColour(uiConfig.get());
+    for (auto& entry : entries) { entry.depth.setAccentColour(accent); }
+
     resized();
     repaint();
+}
+
+int MacroStrip::depthButtonAt(juce::Point<int> pointInStrip) const
+{
+    for (int macro = 0; macro < kCount; ++macro)
+    {
+        const auto& entry = entries[static_cast<std::size_t>(macro)];
+        if (entry.depth.isVisible() && entry.depth.getBounds().contains(pointInStrip))
+        {
+            return macro;
+        }
+    }
+
+    return -1;
+}
+
+void MacroStrip::setDepthPanelMacro(int macroIndex)
+{
+    if (depthPanelMacro == macroIndex) { return; }
+
+    depthPanelMacro = macroIndex;
+
+    // Set from the editor's state rather than from the click, so the chip lit
+    // is always the panel actually open - including when the panel is closed by
+    // something else entirely, like clicking the scrim or starting an
+    // assignment.
+    for (int macro = 0; macro < kCount; ++macro)
+    {
+        entries[static_cast<std::size_t>(macro)].depth
+            .setToggleState(macro == macroIndex, juce::dontSendNotification);
+    }
 }
 
 void MacroStrip::setAssigningMacro(int macroIndex)
@@ -115,12 +169,29 @@ void MacroStrip::resized()
                                          area.getWidth(), cellBottom - cellTop);
         auto& entry = entries[static_cast<std::size_t>(macro)];
 
-        // The knob sits directly ON its caption - no gap - because they are one
-        // control, and whatever the cell has spare goes ABOVE and BELOW that
-        // pair rather than between them. Bottom-aligning the pair instead left
-        // every cell's slack above the knob, so the whole column sat low in the
-        // strip: 53 px of air over the first macro against 10 under the last.
+        // Caption, then knob, then the depth button: name it, show it, then
+        // offer what it opens. The caption moved ABOVE the knob so the three
+        // read top to bottom in that order - under the knob it sat between the
+        // knob and the button and read as the button's label.
+        //
+        // The three are one control with no gaps between them, and whatever the
+        // cell has spare goes above and below the group rather than inside it.
+        // Bottom-aligning instead left every cell's slack above the knob, so
+        // the whole column sat low in the strip: 53 px of air over the first
+        // macro against 10 under the last.
         const auto captionCellHeight = juce::jmin(captionHeight, cell.getHeight());
+        const auto depthHeight = juce::jlimit(
+            0,
+            juce::jmax(0, cell.getHeight() - captionCellHeight),
+            uiConfig != nullptr ? uiConfig->getInt("macro.strip.depthButtonHeight", 16) : 16);
+
+        // A gap between the knob and its button, and only there. The caption
+        // stays hard against the knob because the two are one control - a name
+        // and the thing it names - while the button is a separate action and
+        // reads as one once it is not touching the disc.
+        const auto depthGap = uiConfig != nullptr
+                                  ? uiConfig->getInt("macro.strip.depthButtonGap", 5)
+                                  : 5;
 
         // Scaled down from what the cell allows, rather than by narrowing the
         // strip: the strip's width is a layout budget every panel is placed
@@ -129,13 +200,25 @@ void MacroStrip::resized()
         // and only shrinks the disc, with the extra room going evenly around it
         // because the pair is centred in its cell.
         const auto fit = juce::jmax(0, juce::jmin(cell.getWidth(),
-                                                  cell.getHeight() - captionCellHeight));
+                                                  cell.getHeight() - captionCellHeight
+                                                      - depthHeight - depthGap));
         const auto side = juce::jmax(0, juce::roundToInt(static_cast<float>(fit) * knobScale));
-        const auto groupTop = cell.getY() + (cell.getHeight() - (side + captionCellHeight)) / 2;
+        const auto groupHeight = captionCellHeight + side + depthGap + depthHeight;
+        const auto groupTop = cell.getY() + (cell.getHeight() - groupHeight) / 2;
 
-        entry.knob.setBounds(cell.getCentreX() - side / 2, groupTop, side, side);
-        entry.caption.setBounds(cell.getX(), groupTop + side,
-                                cell.getWidth(), captionCellHeight);
+        entry.caption.setBounds(cell.getX(), groupTop, cell.getWidth(), captionCellHeight);
+        entry.knob.setBounds(cell.getCentreX() - side / 2, groupTop + captionCellHeight,
+                             side, side);
+
+        // Narrower than the cell, so the chip reads as a button under the knob
+        // rather than as a bar across the strip. Padding from config for the
+        // same reason everything else here is.
+        const auto depthPadX = uiConfig != nullptr
+                                   ? uiConfig->getInt("macro.strip.depthButtonPadX", 6)
+                                   : 6;
+        entry.depth.setBounds(cell.reduced(depthPadX, 0)
+                                  .withY(groupTop + captionCellHeight + side + depthGap)
+                                  .withHeight(depthHeight));
     }
 }
 

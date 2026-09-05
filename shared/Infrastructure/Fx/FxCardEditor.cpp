@@ -73,10 +73,53 @@ void FxCardEditor::attachToggle(const juce::String& id, juce::AudioParameterBool
     else { jassertfalse; }
 }
 
+void FxCardEditor::attachToggle(const juce::String& id, juce::RangedAudioParameter& parameter)
+{
+    if (auto* button = card.toggle(id))
+    {
+        buttonAttachments.push_back(
+            std::make_unique<juce::ButtonParameterAttachment>(parameter, *button, nullptr));
+    }
+    else { jassertfalse; }
+}
+
 void FxCardEditor::attachBypass(juce::AudioParameterBool& parameter)
 {
     buttonAttachments.push_back(
         std::make_unique<juce::ButtonParameterAttachment>(parameter, card.bypassButton(), nullptr));
+
+    // And grey the card while it is bypassed.
+    //
+    // The attachment above only moves the switch. Inside the Synth the panel
+    // calls setActive on every card from refreshFxBypassUI, and standing alone
+    // there is no panel to do it - so a bypassed effect kept its full colour
+    // and its lit controls, and looked exactly like an effect that was running.
+    card.bypassButton().onStateChange = [this]
+    {
+        card.setActive(card.bypassButton().getToggleState());
+    };
+
+    card.setActive(parameter.get());
+}
+
+void FxCardEditor::finishSetup()
+{
+    // Apply the config AGAIN, now that the product has declared its rows.
+    //
+    // The constructor applies it too, but a product declares its controls in
+    // its own constructor body - which runs after this base class's - so at
+    // that point the card has no knobs, boxes or toggles to style, and every
+    // per-control key silently did nothing. Chip colours, caption colours,
+    // fonts, dropdown colours: all of them read from UIConfig and none of them
+    // reaching a control. The card itself looked right because its border,
+    // background and artwork are read while painting rather than applied here.
+    //
+    // finishSetup is where this belongs because it is the one call every
+    // product makes last, after everything exists.
+    if (uiConfig != nullptr) { card.setUIConfig(uiConfig); }
+
+    const auto window = standaloneFxWindowSize(uiConfig.get());
+    setSize(window.getWidth(), window.getHeight());
 }
 
 void FxCardEditor::finishSetup(int width, int height)
@@ -93,7 +136,7 @@ void FxCardEditor::paint(juce::Graphics& g)
 
 void FxCardEditor::resized()
 {
-    card.setBounds(getLocalBounds().reduced(10));
+    card.setBounds(getLocalBounds().reduced(kFxWindowMargin));
 }
 
 } // namespace px3::fx

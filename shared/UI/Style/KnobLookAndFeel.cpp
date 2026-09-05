@@ -46,14 +46,9 @@ void KnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
                             ? slider.findColour(juce::Slider::rotarySliderFillColourId)
                             : juce::Colour::fromRGB(234, 166, 76);
 
-    const auto psychedelicEnabled = static_cast<bool>(slider.getProperties().getWithDefault("psychedelicFx", false));
     const auto psychedelicGrayscale = static_cast<bool>(slider.getProperties().getWithDefault("psychedelicBypassGray", false));
-    // DOOM's ring runs the complementary half of the wheel at a lower value, so
-    // it reads as the same effect inverted rather than as a different one.
-    const auto psychedelicInverted = static_cast<bool>(slider.getProperties().getWithDefault("psychedelicInverted", false));
     const auto knobBypassed = static_cast<bool>(slider.getProperties().getWithDefault("knobBypassed", false));
     const auto renderGrayscale = psychedelicGrayscale || knobBypassed;
-    const auto psychedelicAmount = juce::jlimit(0.0f, 1.0f, sliderPos);
     const auto accentGrayValue = juce::jlimit(0.0f, 1.0f, accent.getPerceivedBrightness());
     const auto accentForHighlight = renderGrayscale
                                         ? juce::Colour::fromFloatRGBA(accentGrayValue, accentGrayValue, accentGrayValue, 1.0f)
@@ -120,56 +115,6 @@ void KnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
 
     g.setColour(juce::Colour::fromRGB(14, 14, 14));
     g.drawEllipse(bounds.expanded(0.6f), 0.9f);
-
-    if (psychedelicEnabled && psychedelicAmount > 0.001f)
-    {
-        const auto t = static_cast<float>(juce::Time::getMillisecondCounterHiRes() * 0.0012);
-        const auto glow = std::pow(psychedelicAmount, 0.8f);
-        const auto borderRadius = radius + 1.8f;
-
-        // Compact 3px rainbow border with a faint outer glow that brightens as the knob increases.
-        for (int seg = 0; seg < 24; ++seg)
-        {
-            const auto segNorm = static_cast<float>(seg) / 24.0f;
-            auto hue = std::fmod(segNorm + t * 0.12f, 1.0f);
-            if (psychedelicInverted)
-            {
-                hue = std::fmod(hue + 0.5f, 1.0f);
-            }
-            const auto ringValue = psychedelicInverted ? 0.62f : 1.0f;
-            const auto grayValue = juce::jmap(segNorm, 0.62f, 0.94f);
-            const auto start = segNorm * juce::MathConstants<float>::twoPi;
-            const auto span = juce::MathConstants<float>::twoPi / 24.0f * 0.88f;
-
-            juce::Path arc;
-            arc.addCentredArc(center.x,
-                              center.y,
-                              borderRadius,
-                              borderRadius,
-                              0.0f,
-                              start,
-                              start + span,
-                              true);
-
-            const auto glowAlpha = juce::jlimit(0.0f, 0.65f, 0.06f + glow * 0.34f);
-            g.setColour(renderGrayscale
-                            ? juce::Colour::fromFloatRGBA(grayValue, grayValue, grayValue, glowAlpha)
-                            : juce::Colour::fromHSV(hue, 0.90f, ringValue, glowAlpha));
-            g.strokePath(arc,
-                         juce::PathStrokeType(5.4f,
-                                              juce::PathStrokeType::curved,
-                                              juce::PathStrokeType::rounded));
-
-            const auto borderAlpha = juce::jlimit(0.0f, 0.95f, 0.25f + glow * 0.62f);
-            g.setColour(renderGrayscale
-                            ? juce::Colour::fromFloatRGBA(grayValue, grayValue, grayValue, borderAlpha)
-                            : juce::Colour::fromHSV(hue, 0.98f, ringValue, borderAlpha));
-            g.strokePath(arc,
-                         juce::PathStrokeType(3.0f,
-                                              juce::PathStrokeType::curved,
-                                              juce::PathStrokeType::rounded));
-        }
-    }
 
     if (isMixerPanKnob)
     {

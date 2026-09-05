@@ -53,7 +53,6 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
     robBypassButton.setToggleState(vibeEnabled, juce::dontSendNotification);
     delayBypassButton.setToggleState(delayEnabled, juce::dontSendNotification);
     moodBypassButton.setToggleState(moodEnabled, juce::dontSendNotification);
-    reverbBypassButton.setToggleState(reverbEnabled, juce::dontSendNotification);
 
     if (fxPanel != nullptr)
     {
@@ -73,6 +72,15 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
     {
         lucyCard->bypassButton().setToggleState(lucyEnabled, juce::dontSendNotification);
         lucyCard->setActive(lucyEnabled);
+    }
+
+    // Reverb greys out with the rest. It was left out when it became a card,
+    // so bypassing it dimmed the signal-flow node and left the card lit.
+    const auto reverbEnabled2 = audioProcessor.getReverbEnabledParam().get();
+    if (reverbCard != nullptr)
+    {
+        reverbCard->bypassButton().setToggleState(reverbEnabled2, juce::dontSendNotification);
+        reverbCard->setActive(reverbEnabled2);
     }
 
     const auto chorusEnabled = audioProcessor.getChorusEnabledParam().get();
@@ -204,13 +212,6 @@ void PX3SynthAudioProcessorEditor::buildDoomCard()
 
     attachButton(audioProcessor.getDoomEnabledParam(), card->bypassButton());
 
-    // The macro knob wears the rainbow ring, the same as VIBE's amount.
-    if (auto* knob = card->knob("mix"))
-    {
-        knob->getProperties().set("psychedelicFx", true);
-        knob->getProperties().set("psychedelicInverted", true);
-    }
-
     doomCard = card.get();
     fxPanel->addCard(px3::fxStageDoom, std::move(card));
 }
@@ -315,14 +316,71 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
 
     attachButton(audioProcessor.getLucyEnabledParam(), card->bypassButton());
 
-    // The macro knob wears the rainbow ring, the same as VIBE's amount.
-    if (auto* knob = card->knob("global"))
-    {
-        knob->getProperties().set("psychedelicFx", true);
-    }
-
     lucyCard = card.get();
     fxPanel->addCard(px3::fxStageLucy, std::move(card));
+}
+
+void PX3SynthAudioProcessorEditor::buildReverbCard()
+{
+    // The same card the standalone PX3 Reverb is, row for row.
+    //
+    // Reverb used to be a compact face here - a mode and an amount - while nine
+    // registered, automatable parameters had no control anywhere in the Synth.
+    // They were reachable only by automation, which is a strange place for a
+    // reverb's decay to live. Built as a card, the two products are one UI.
+    auto card = std::make_unique<px3::ui::FxCardComponent>("reverb", "REVERB");
+
+    card->addChoiceRow({ { "algorithm", "MODE", "Room, plate, hall or cloud",
+                           audioProcessor.getReverbAlgorithmParam().choices } });
+
+    card->addKnobRow({ { "size", "SIZE", "Room size" },
+                       { "decay", "DECAY", "How long the tail lasts" },
+                       { "damping", "DAMPING", "How fast the top of the tail is lost" },
+                       { "preDelay", "PRE", "Gap before the tail begins" } });
+
+    // Three rows rather than one of five. Five cells overran the inner card at
+    // the width it is drawn, clipping the outer captions off both edges. Split
+    // by what the controls do - the tail's movement, then the cloud algorithm's
+    // own pair - rather than at whatever number happens to fit.
+    card->addKnobRow({ { "modDepth", "DEPTH", "Movement in the tail" },
+                       { "modRate", "RATE", "How fast that movement is" },
+                       { "width", "WIDTH", "Stereo spread of the tail" } });
+
+    card->addKnobRow({ { "cloudFeedback", "REGEN", "Cloud regeneration" },
+                       { "cloudDiffusion", "SMEAR", "Cloud smearing" } });
+
+    card->addFeatureKnobRow({ "amount", "AMOUNT", "Dry against wet" });
+
+    struct KnobAttachment { const char* id; juce::AudioParameterFloat* parameter; };
+    const std::array<KnobAttachment, 10> knobAttachments { {
+        { "amount", &audioProcessor.getReverbAmountParam() },
+        { "size", &audioProcessor.getReverbSizeParam() },
+        { "decay", &audioProcessor.getReverbDecayParam() },
+        { "damping", &audioProcessor.getReverbDampingParam() },
+        { "preDelay", &audioProcessor.getReverbPreDelayParam() },
+        { "modDepth", &audioProcessor.getReverbModDepthParam() },
+        { "modRate", &audioProcessor.getReverbModRateParam() },
+        { "width", &audioProcessor.getReverbWidthParam() },
+        { "cloudFeedback", &audioProcessor.getReverbCloudFeedbackParam() },
+        { "cloudDiffusion", &audioProcessor.getReverbCloudDiffusionParam() },
+    } };
+
+    for (const auto& attachment : knobAttachments)
+    {
+        auto* slider = card->knob(attachment.id);
+        jassert(slider != nullptr);
+        const auto& range = attachment.parameter->getNormalisableRange();
+        slider->setRange(range.start, range.end);
+        slider->setLookAndFeel(&knobLookAndFeel);
+        attachSlider(*attachment.parameter, *slider);
+    }
+
+    attachComboBox(audioProcessor.getReverbAlgorithmParam(), *card->choice("algorithm"));
+    attachButton(audioProcessor.getReverbEnabledParam(), card->bypassButton());
+
+
+    reverbCard = card.get();
+    fxPanel->addCard(px3::fxStageReverb, std::move(card));
 }
 
 void PX3SynthAudioProcessorEditor::buildChorusCard()
@@ -371,12 +429,6 @@ void PX3SynthAudioProcessorEditor::buildChorusCard()
 
     attachComboBox(audioProcessor.getChorusModeParam(), *card->choice("mode"));
     attachButton(audioProcessor.getChorusEnabledParam(), card->bypassButton());
-
-    // The macro knob wears the rainbow ring, the same as VIBE's amount.
-    if (auto* knob = card->knob("amount"))
-    {
-        knob->getProperties().set("psychedelicFx", true);
-    }
 
     chorusCard = card.get();
     fxPanel->addCard(px3::fxStageChorus, std::move(card));
@@ -428,12 +480,6 @@ void PX3SynthAudioProcessorEditor::buildStereoSpreadCard()
 
     attachComboBox(audioProcessor.getSpreadModeParam(), *card->choice("mode"));
     attachButton(audioProcessor.getSpreadEnabledParam(), card->bypassButton());
-
-    // The macro knob wears the rainbow ring, the same as VIBE's amount.
-    if (auto* knob = card->knob("amount"))
-    {
-        knob->getProperties().set("psychedelicFx", true);
-    }
 
     spreadCard = card.get();
     fxPanel->addCard(px3::fxStageStereoSpread, std::move(card));

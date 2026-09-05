@@ -36,20 +36,22 @@ void PX3SynthAudioProcessorEditor::handleParameterKnobClick(const juce::MouseEve
     const auto parameterId = px3::ui::parameterIdOf(*slider);
     if (parameterId.isEmpty()) { return; }
 
-    // Cmd on a MACRO knob opens its depth panel. isCommandDown is already the
-    // platform's own command key - Cmd on macOS, Ctrl on Windows and Linux -
-    // so this is one gesture rather than a hardcoded Mac one.
+    // Cmd on a MACRO knob starts assigning that macro - what it always did,
+    // before the depth panel borrowed the gesture. Depth has its own button
+    // under each knob now, so the modifier goes back to the thing that has no
+    // other affordance on the knob itself.
     //
-    // Assignment mode is NOT this gesture any more; it is the double click,
-    // which is unchanged. Checked before Shift so the two modifiers stay
-    // separate gestures, and only on a macro knob so Cmd is free elsewhere.
+    // isCommandDown is already the platform's own command key - Cmd on macOS,
+    // Ctrl elsewhere - so this is one gesture rather than a hardcoded Mac one.
+    // Checked before Shift so the two modifiers stay separate, and only on a
+    // macro knob so Cmd is free everywhere else.
     if (event.mods.isCommandDown())
     {
         for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
         {
             if (parameterId == PX3SynthAudioProcessor::macroParameterId(macro))
             {
-                openMacroDepthPanel(macro);
+                enterMacroAssignMode(macro);
                 return;
             }
         }
@@ -456,6 +458,8 @@ void PX3SynthAudioProcessorEditor::openMacroDepthPanel(int macroIndex)
     macroDepthScrim.toFront(false);
     macroDepthPanel->setVisible(true);
     macroDepthPanel->toFront(true);
+
+    if (macroStrip != nullptr) { macroStrip->setDepthPanelMacro(macroIndex); }
 }
 
 void PX3SynthAudioProcessorEditor::closeMacroDepthPanel()
@@ -466,6 +470,11 @@ void PX3SynthAudioProcessorEditor::closeMacroDepthPanel()
 
     if (macroDepthPanel != nullptr) { macroDepthPanel->setVisible(false); }
     macroDepthScrim.setVisible(false);
+
+    // Every close comes through here - the chip, the panel's own X, the scrim,
+    // and entering assignment mode - so this is the one place the strip has to
+    // be told, and the button cannot be left lit over a panel that has gone.
+    if (macroStrip != nullptr) { macroStrip->setDepthPanelMacro(-1); }
 }
 
 void PX3SynthAudioProcessorEditor::layoutMacroDepthPanel()

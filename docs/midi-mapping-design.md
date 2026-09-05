@@ -30,7 +30,7 @@ places: `PluginEditor`, `MixPanel`, `ModPanel`, `BusInsertOverlay`,
 no common knob subclass — every knob is a plain `juce::Slider`.
 
 **Per-slider metadata already travels in `Component::getProperties()`.** The
-rotary look-and-feel reads `modulatedPos`, `knobBypassed`, `psychedelicFx`,
+rotary look-and-feel reads `modulatedPos`, `knobBypassed`,
 `psychedelicBypassGray` and `isMixerPanKnob` from there and draws accordingly.
 This is the existing mechanism for "this knob has an extra thing to say", and
 it is what the MIDI label extends.

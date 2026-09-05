@@ -475,6 +475,17 @@ void PX3SynthAudioProcessorEditor::updatePresetDirtyState()
     }
 }
 
+// Loading a row, whichever gesture asked for it. The LOAD button and a double
+// click are two ways of saying the same thing, and a second copy of the bounds
+// check is how they drift apart.
+void PX3SynthAudioProcessorEditor::loadPresetRow(int row)
+{
+    if (row < 0 || row >= static_cast<int>(presetFiltered.size())) { return; }
+
+    applyPresetRecord(presetFiltered[static_cast<std::size_t>(row)]);
+    closePresetBrowser();
+}
+
 int PX3SynthAudioProcessorEditor::getNumRows()
 {
     return static_cast<int>(presetFiltered.size());
@@ -507,6 +518,11 @@ void PX3SynthAudioProcessorEditor::paintListBoxItem(int rowNumber,
                height,
                juce::Justification::centredLeft,
                true);
+}
+
+void PX3SynthAudioProcessorEditor::listBoxItemDoubleClicked(int row, const juce::MouseEvent&)
+{
+    loadPresetRow(row);
 }
 
 void PX3SynthAudioProcessorEditor::selectedRowsChanged(int lastRowSelected)

@@ -18,14 +18,23 @@
 #       PLUGIN_CODE   MdP1          # unique per product, four characters
 #       FORMATS       AU VST3       # Standalone only where a product wants one
 #       IS_SYNTH      FALSE
+#       ARTWORK       Mood-artwork.png
 #       SOURCES       ${PX3_MOOD_SOURCES})
+#
+# ARTWORK names the card backgrounds this product actually draws, copied into
+# its bundle from shared/UI/Artwork. It is per-product because every bundle used
+# to carry all of them: PX3 Mood shipped Doom's and Lucy's artwork, 27 MB of
+# images to draw one of them, in every bundle of every format. Omit it and the
+# product gets the whole directory, which is what the Synth wants - it draws all
+# eight cards - and what a product that has not been thought about gets, since
+# too much artwork is a size problem and too little is a blank card.
 #
 # PLUGIN_CODE must be unique across the ecosystem: two products sharing one is
 # how a DAW ends up loading the wrong plug-in.
 function(px3_add_product)
     set(options "")
     set(oneValue TARGET PRODUCT_NAME BUNDLE_ID PLUGIN_CODE IS_SYNTH NEEDS_MIDI_INPUT)
-    set(multiValue FORMATS SOURCES)
+    set(multiValue FORMATS SOURCES ARTWORK)
     cmake_parse_arguments(PX3P "${options}" "${oneValue}" "${multiValue}" ${ARGN})
 
     if (NOT PX3P_TARGET OR NOT PX3P_PRODUCT_NAME OR NOT PX3P_BUNDLE_ID OR NOT PX3P_PLUGIN_CODE)
@@ -78,6 +87,78 @@ function(px3_add_product)
             if (TARGET ${PX3P_TARGET}_${px3Format})
                 target_compile_options(${PX3P_TARGET}_${px3Format}
                                        PRIVATE ${PX3_WARNING_OPTIONS})
+            endif()
+        endforeach()
+    endif()
+
+    # UIConfig.json, inside every bundle this product builds.
+    #
+    # A card-shaped effect styles itself from this file, and FxCardEditor finds
+    # it by walking up from the running executable to a Resources folder. The
+    # Synth's bundles were given a copy and the effects were not, so an
+    # installed effect found nothing and fell back to code defaults - it looked
+    # right in a development tree only because the search also probes the
+    # repository, which is not there on a user's machine.
+    #
+    # Done here rather than in a list beside the Synth's, so a product added to
+    # the table is styled without anyone remembering to add it twice.
+    if (EXISTS "${CMAKE_SOURCE_DIR}/shared/UI/Style/UIConfig.json")
+        # What the copy below depends on.
+        #
+        # A POST_BUILD command runs when the TARGET is built, and editing a PNG
+        # or the config does not make a target out of date - so the link step is
+        # skipped, the copy never fires, and the bundle keeps the file it was
+        # built with. Replacing artwork appeared to do nothing for exactly this
+        # reason. LINK_DEPENDS makes these files inputs to the link, so touching
+        # one relinks and the copy runs.
+        # Only what this product draws. Without ARTWORK it gets everything,
+        # because a missing background is a worse failure than a large bundle.
+        if (PX3P_ARTWORK)
+            set(PX3_ARTWORK_FILES "")
+            foreach(px3Art IN LISTS PX3P_ARTWORK)
+                set(px3ArtPath "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/${px3Art}")
+                if (NOT EXISTS "${px3ArtPath}")
+                    message(FATAL_ERROR
+                        "${PX3P_TARGET} asks for artwork '${px3Art}', which is not in shared/UI/Artwork")
+                endif()
+                list(APPEND PX3_ARTWORK_FILES "${px3ArtPath}")
+            endforeach()
+        else()
+            file(GLOB PX3_ARTWORK_FILES CONFIGURE_DEPENDS
+                 "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/*.png"
+                 "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/*.jpg")
+        endif()
+
+        foreach(px3Format IN LISTS PX3P_FORMATS)
+            if (TARGET ${PX3P_TARGET}_${px3Format})
+                set_property(TARGET ${PX3P_TARGET}_${px3Format} APPEND PROPERTY
+                    LINK_DEPENDS
+                        "${CMAKE_SOURCE_DIR}/shared/UI/Style/UIConfig.json"
+                        ${PX3_ARTWORK_FILES})
+                add_custom_command(TARGET ${PX3P_TARGET}_${px3Format} PRE_LINK
+                    COMMAND ${CMAKE_COMMAND} -E make_directory
+                        "$<TARGET_FILE_DIR:${PX3P_TARGET}_${px3Format}>/../Resources"
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${CMAKE_SOURCE_DIR}/shared/UI/Style/UIConfig.json"
+                        "$<TARGET_FILE_DIR:${PX3P_TARGET}_${px3Format}>/../Resources/UIConfig.json"
+                    # The image files, named rather than the whole directory: a
+                    # directory copy also ships whatever Finder leaves lying in
+                    # it, and a .DS_Store inside a signed bundle is nobody's
+                    # idea of a resource. CONFIGURE_DEPENDS on the glob means a
+                    # new PNG still needs no edit here.
+                    # The directory FIRST.
+                    # 
+                    # copy_if_different treats its last argument as a file when
+                    # that path does not exist, so copying one PNG into a missing
+                    # Artwork folder wrote a file called Artwork with the PNG's
+                    # bytes in it. copy_directory used to create the folder; this
+                    # does not, and nothing said so.
+                    COMMAND ${CMAKE_COMMAND} -E make_directory
+                        "$<TARGET_FILE_DIR:${PX3P_TARGET}_${px3Format}>/../Resources/Artwork"
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${PX3_ARTWORK_FILES}
+                        "$<TARGET_FILE_DIR:${PX3P_TARGET}_${px3Format}>/../Resources/Artwork"
+                    VERBATIM)
             endif()
         endforeach()
     endif()

@@ -16,11 +16,14 @@ PX3ReverbAudioProcessorEditor::PX3ReverbAudioProcessorEditor(PX3ReverbAudioProce
                         { "damping", "DAMPING", "How fast the top of the tail is lost" },
                         { "preDelay", "PRE", "Gap before the tail begins" } });
 
-    rows().addKnobRow({ { "modDepth", "MOD DEPTH", "Movement in the tail" },
-                        { "modRate", "MOD RATE", "How fast that movement is" },
-                        { "width", "WIDTH", "Stereo spread of the tail" },
-                        { "cloudFeedback", "CLOUD FB", "Cloud regeneration" },
-                        { "cloudDiffusion", "CLOUD DIFF", "Cloud smearing" } });
+    // Three rows rather than one of five: five cells overran the inner card at
+    // the width it is drawn, clipping the outer captions off both edges.
+    rows().addKnobRow({ { "modDepth", "DEPTH", "Movement in the tail" },
+                        { "modRate", "RATE", "How fast that movement is" },
+                        { "width", "WIDTH", "Stereo spread of the tail" } });
+
+    rows().addKnobRow({ { "cloudFeedback", "REGEN", "Cloud regeneration" },
+                        { "cloudDiffusion", "SMEAR", "Cloud smearing" } });
 
     rows().addFeatureKnobRow({ "amount", "AMOUNT", "Dry against wet" });
 
@@ -37,5 +40,5 @@ PX3ReverbAudioProcessorEditor::PX3ReverbAudioProcessorEditor(PX3ReverbAudioProce
     attachChoice("algorithm", processorIn.algorithm());
     attachBypass(processorIn.enabled());
 
-    finishSetup(720, 320);
+    finishSetup();
 }

@@ -1,4 +1,5 @@
 #include "DelayComponent.h"
+#include "ChipLabel.h"
 
 #include "BypassButton.h"
 #include "CardInner.h"
@@ -79,6 +80,9 @@ void DelayComponent::setActive(bool enabled, bool granularModeSelectable)
     amountKnob.getProperties().set("psychedelicBypassGray", !isActive);
     timeKnob.getProperties().set("psychedelicBypassGray", !isActive);
     feedbackKnob.getProperties().set("psychedelicBypassGray", !isActive);
+    px3::ui::ChipLabel::setGreyedOut(!isActive,
+                                     { &amountLabel, &algorithmLabel, &syncLabel,
+                                       &modeLabel, &timeLabel, &feedbackLabel });
 
     repaint();
 }
@@ -86,6 +90,12 @@ void DelayComponent::setActive(bool enabled, bool granularModeSelectable)
 void DelayComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
+
+    // The captions this component was handed. It does not own them, but it
+    // is the only place that knows which style key they belong to - so the
+    // card's chip colours reach them here or not at all.
+    px3::ui::ChipLabel::applyFromConfig(uiConfig.get(), "delay",
+                                        { &amountLabel, &algorithmLabel, &syncLabel, &modeLabel, &timeLabel, &feedbackLabel });
     // cardInner parses its rows in resized(), so a live reload has to redo
     // the layout as well as the paint.
     resized();

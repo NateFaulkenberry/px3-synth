@@ -211,10 +211,15 @@ void FxCardComponent::setActive(bool enabled)
         // The same grey-out every other bypassed card uses, so a disabled DOOM
         // knob looks like a disabled Mood knob.
         entry.knob->getProperties().set("psychedelicBypassGray", ! enabled);
+        // The caption greys out with the knob it names. Without this a
+        // bypassed card dimmed its artwork and desaturated its knobs while its
+        // captions kept the card's full colour scheme.
+        if (entry.label != nullptr) { entry.label->setGreyedOut(! enabled); }
     }
     for (auto& entry : choices)
     {
         entry.box->setEnabled(enabled);
+        if (entry.label != nullptr) { entry.label->setGreyedOut(! enabled); }
     }
     for (auto& entry : toggles)
     {
@@ -242,6 +247,12 @@ void FxCardComponent::setUIConfig(std::shared_ptr<const UIConfig> config)
                                                      juce::Colour::fromRGB(232, 232, 232));
         const auto labelFont = uiConfig->getFloat("cards." + styleKey + ".controls.labelFontSize", 11.5f);
 
+        // The caption chips. Background and outline are separate colours with
+        // separate opacities, so a card can carry its own scheme rather than
+        // every caption in the plugin being the same translucent white.
+        const auto chipKey = "cards." + styleKey + ".controls.";
+        const auto chipStyle = px3::ui::ChipLabel::styleFromConfig(uiConfig.get(), styleKey);
+
         for (auto& entry : choices)
         {
             entry.box->setColour(juce::ComboBox::backgroundColourId, boxBackground);
@@ -249,19 +260,19 @@ void FxCardComponent::setUIConfig(std::shared_ptr<const UIConfig> config)
             entry.box->setColour(juce::ComboBox::outlineColourId, boxOutline);
             entry.label->setColour(juce::Label::textColourId, labelColour);
             entry.label->setFont(juce::FontOptions(labelFont));
+            entry.label->setChipStyle(chipStyle);
         }
         for (auto& entry : knobs)
         {
             entry.label->setColour(juce::Label::textColourId, labelColour);
             entry.label->setFont(juce::FontOptions(labelFont));
+            entry.label->setChipStyle(chipStyle);
         }
 
-        const auto toggleFont = uiConfig->getFloat("cards." + styleKey + ".controls.toggleFontSize", 11.5f);
-        const auto toggleOffTint = uiConfig->getFloat("cards." + styleKey + ".controls.toggleOffTint", 0.0f);
         for (auto& entry : toggles)
         {
-            entry.button->setFontSize(toggleFont);
-            entry.button->setOffTint(toggleOffTint);
+            px3::ui::ToggleChipButton::applyFromConfig(uiConfig.get(), styleKey,
+                                                       { entry.button.get() });
         }
     }
 
@@ -440,6 +451,101 @@ void FxCardComponent::layoutKnobRow(int rowIndex, const Row& row, bool feature)
                                 ControlShape::square, 0, readoutHeight, static_cast<int>(cellWidth) },
                               inner.rowControl(rowIndex));
     }
+}
+
+juce::String FxCardComponent::debugLayoutSignature() const
+{
+    const auto rect = [](const juce::Component* component)
+    {
+        if (component == nullptr) { return juce::String("absent"); }
+        const auto b = component->getBounds();
+        return juce::String(b.getX()) + "," + juce::String(b.getY()) + ","
+             + juce::String(b.getWidth()) + "," + juce::String(b.getHeight());
+    };
+
+    const auto kindName = [](RowKind kind)
+    {
+        switch (kind)
+        {
+            case RowKind::toggles:     return "toggles";
+            case RowKind::choices:     return "choices";
+            case RowKind::knobs:       return "knobs";
+            case RowKind::featureKnob: return "feature";
+        }
+        return "?";
+    };
+
+    juce::StringArray lines;
+
+    // The palette as well as the geometry. A card that is laid out identically
+    // and painted in the wrong colours is still not the same card, and that is
+    // exactly what a standalone effect looked like when it could not find the
+    // config these come from.
+    const auto& cardStyle = card.style();
+    lines.add("accent " + accent.toDisplayString(true));
+    lines.add("border " + cardStyle.border.colour.toDisplayString(true));
+    lines.add("background " + cardStyle.background.colour.toDisplayString(true));
+    lines.add("title " + cardStyle.title.colour.toDisplayString(true));
+    // Artwork counts as palette: a card carrying a picture in one product and
+    // not the other is not the same card, however well its knobs line up.
+    lines.add("artwork " + (cardStyle.artwork.image.isNotEmpty() ? cardStyle.artwork.image
+                                                                 : juce::String("none"))
+              + " @" + juce::String(cardStyle.artwork.opacity, 3)
+              + " " + describeArtworkFit(cardStyle.artwork.fit)
+              + "/" + describeArtworkAlign(cardStyle.artwork.align));
+
+    lines.add("bypass " + rect(&bypass));
+
+    for (std::size_t r = 0; r < rows.size(); ++r)
+    {
+        const auto& row = rows[r];
+        juce::String line = "row" + juce::String(static_cast<int>(r)) + " " + kindName(row.kind);
+
+        for (const auto& id : row.ids)
+        {
+            // Looked up by id rather than by walking the entry vectors, so the
+            // signature follows the row's declared ORDER - which is the thing
+            // being compared - instead of the order things happened to be
+            // constructed in.
+            const juce::Component* control = knob(id);
+            const juce::Component* label = knobLabel(id);
+
+            if (control == nullptr) { control = choice(id); }
+            if (control == nullptr) { control = toggle(id); }
+
+            line += " | " + id + " " + rect(control);
+
+            // The knob properties that CHANGE HOW IT DRAWS. Bypass greyscale
+            // is a property, not a colour or a position, so a knob missing it
+            // sits in exactly the right place in exactly the right palette and
+            // still draws as a different control.
+            //
+            // Named individually rather than dumped wholesale: the Synth also
+            // hangs px3ParamId on its knobs for MIDI mapping and modulation,
+            // which a standalone effect has no use for and should not be
+            // required to carry to count as the same card.
+            if (const auto* slider = dynamic_cast<const juce::Slider*>(control))
+            {
+                const auto& properties = slider->getProperties();
+                juce::StringArray drawing;
+                for (const auto* name : { "psychedelicBypassGray" })
+                {
+                    if (properties.contains(name))
+                    {
+                        drawing.add(juce::String(name) + "="
+                                    + properties[name].toString());
+                    }
+                }
+                if (! drawing.isEmpty()) { line += " draws[" + drawing.joinIntoString(",") + "]"; }
+            }
+
+            if (label != nullptr) { line += " label " + rect(label); }
+        }
+
+        lines.add(line);
+    }
+
+    return lines.joinIntoString("\n");
 }
 
 void FxCardComponent::resized()

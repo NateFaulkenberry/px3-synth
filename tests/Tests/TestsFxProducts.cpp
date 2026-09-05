@@ -7,6 +7,16 @@
 #include "../../products/PX3Reverb/PluginProcessor.h"
 #include "../../products/PX3Doom/PluginProcessor.h"
 #include "../../products/PX3Lucy/PluginProcessor.h"
+#include "../../shared/Infrastructure/Fx/FxCardEditor.h"
+#include "../../shared/UI/Style/UIConfigManager.h"
+#include "../../shared/UI/Style/KnobLookAndFeel.h"
+#include "../../shared/UI/Components/ChipLabel.h"
+#include "../../products/PX3Delay/PluginEditor.h"
+#include "../../products/PX3Mood/PluginEditor.h"
+#include "../../products/PX3Synth/UI/PluginEditor.h"
+#include "../../products/PX3Synth/UI/FxPanel.h"
+#include "../../products/PX3Synth/UI/EditorSections.h"
+#include "../../products/PX3Synth/DSP/FxChain.h"
 
 // testFxProducts
 //
@@ -667,6 +677,947 @@ void testFxProducts()
               survived,
               survived ? juce::String("all seven finite at 44.1 and 96 kHz, 32 and 1024 samples")
                        : "NON-FINITE: " + notes.joinIntoString(", "));
+    }
+
+    // ---- a standalone styles its own controls ------------------------------
+    //
+    // Without help. The comparison further down hands both cards the same
+    // config on purpose, which is what let this hide: FxCardEditor applied the
+    // config in its constructor, and a product declares its rows in its own
+    // constructor body, which runs afterwards - so every per-control key was
+    // read and applied to a card that had no controls yet. Chip colours,
+    // caption colours, fonts and dropdown colours all silently did nothing,
+    // while the card's border and artwork looked right because those are read
+    // while painting.
+    {
+        juce::StringArray unstyled;
+
+        // The expected colour is READ FROM THE CONFIG, not written here.
+        //
+        // Spelling it out meant this failed the first time the scheme was
+        // retuned, which is a test asserting a design decision rather than the
+        // behaviour it was written for: that a standalone card applies whatever
+        // its config says. The colour is the design's to change.
+        const auto configFileForStyle = UIConfigManager::findShippingConfigFile();
+        std::shared_ptr<const UIConfig> styleConfig;
+        if (configFileForStyle.existsAsFile())
+        {
+            juce::String styleError;
+            styleConfig = UIConfig::fromJsonText(configFileForStyle.loadFileAsString(), styleError);
+        }
+
+        // THE ARTWORK FIT AND ALIGNMENT REACH THE CARD.
+        //
+        // Both are named in config as words - "stretch", "topLeft" - and both
+        // parsers fall back silently on a name they do not know, which is the
+        // right behaviour at runtime and invisible in a screenshot: a card
+        // whose fit is misspelt draws cover-centred, exactly as it did before
+        // anyone set a fit, and nothing says why.
+        //
+        // Compares what the card RESOLVED against what the config SAYS, so it
+        // pins the wiring rather than the design: retuning any card's fit is
+        // one edit to the JSON and this still passes.
+        {
+            juce::StringArray wrong;
+            juce::StringArray resolved;
+
+            for (const auto* styleKey : { "vibe", "delay", "reverb", "mood",
+                                          "doom", "lucy", "chorus", "stereoSpread" })
+            {
+                if (styleConfig == nullptr) { break; }
+
+                const juce::String base = juce::String("cards.") + styleKey;
+                const auto declaredFit = styleConfig->getString(base + ".artwork.fit", "cover");
+                const auto declaredAlign = styleConfig->getString(base + ".artwork.align", "centre");
+
+                const auto style = px3::ui::CardStyle::fromConfig(styleConfig.get(),
+                                                                  "cards.defaults",
+                                                                  base);
+                const juce::String actualFit = px3::ui::describeArtworkFit(style.artwork.fit);
+                const juce::String actualAlign = px3::ui::describeArtworkAlign(style.artwork.align);
+
+                resolved.add(juce::String(styleKey) + " " + actualFit + "/" + actualAlign);
+
+                if (! actualFit.equalsIgnoreCase(declaredFit))
+                {
+                    wrong.add(juce::String(styleKey) + " fit: config says '" + declaredFit
+                              + "', card resolved '" + actualFit + "'");
+                }
+                if (! actualAlign.equalsIgnoreCase(declaredAlign))
+                {
+                    wrong.add(juce::String(styleKey) + " align: config says '" + declaredAlign
+                              + "', card resolved '" + actualAlign + "'");
+                }
+            }
+
+            check("FxCards_ArtworkFitAndAlignmentComeFromConfig",
+                  wrong.isEmpty(),
+                  wrong.isEmpty() ? "every card resolved what it declares: " + resolved.joinIntoString(", ")
+                                  : wrong.joinIntoString("; "));
+        }
+
+        const auto checkStyled = [&](const juce::String& name,
+                                     const juce::String& styleKey,
+                                     juce::AudioProcessor& processor,
+                                     const juce::String& knobId)
+        {
+            if (styleConfig == nullptr) { unstyled.add("no config to compare against"); return; }
+
+            const auto key = "cards." + styleKey + ".controls.labelBackground";
+            if (styleConfig->getValue(key).isVoid())
+            {
+                unstyled.add(name + " declares no " + key + " to check");
+                return;
+            }
+
+            const auto expected = styleConfig->getColour(key, juce::Colours::white);
+
+            std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+            auto* cardEditor = dynamic_cast<px3::fx::FxCardEditor*>(editor.get());
+            if (cardEditor == nullptr) { unstyled.add(name + " (no card editor)"); return; }
+
+            auto* label = dynamic_cast<px3::ui::ChipLabel*>(cardEditor->debugCard().knobLabel(knobId));
+            if (label == nullptr) { unstyled.add(name + " (no caption for " + knobId + ")"); return; }
+
+            const auto actual = label->getChipStyle().background;
+            if (actual != expected)
+            {
+                unstyled.add(name + " caption background is " + actual.toDisplayString(true)
+                             + ", config says " + expected.toDisplayString(true));
+            }
+        };
+
+        PX3DoomAudioProcessor doomStyled;
+        checkStyled("Doom", "doom", doomStyled, "clock");
+        PX3LucyAudioProcessor lucyStyled;
+        checkStyled("Lucy", "lucy", lucyStyled, "loss");
+
+        check("FxProducts_AStandaloneStylesItsOwnControlsFromConfig",
+              unstyled.isEmpty(),
+              unstyled.isEmpty()
+                  ? "a standalone card reads its own per-control styling, with nothing "
+                    "applied for it"
+                  : unstyled.joinIntoString("; "));
+    }
+
+    // ---- the reverb's nine survive a save and reload -----------------------
+    //
+    // They were registered from the start and had no UI, so nothing had ever
+    // moved them and then asked for them back. Now that the card exposes them,
+    // a value set in a session has to still be there when it reopens.
+    //
+    // Both products, because they persist by different routes: the Synth writes
+    // a ValueTree keyed by parameter ID, the effect uses the base class. Either
+    // could drop a parameter without the other noticing.
+    {
+        const std::array<const char*, 9> ids { {
+            "reverbSize", "reverbDecay", "reverbDamping", "reverbPreDelay",
+            "reverbModDepth", "reverbModRate", "reverbWidth",
+            "reverbCloudFeedback", "reverbCloudDiffusion" } };
+
+        const auto setAll = [&](juce::AudioProcessor& processor, float value)
+        {
+            int moved = 0;
+            for (auto* parameter : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                {
+                    for (const auto* id : ids)
+                    {
+                        if (ranged->getParameterID() == id)
+                        {
+                            ranged->setValueNotifyingHost(value);
+                            ++moved;
+                        }
+                    }
+                }
+            }
+            return moved;
+        };
+
+        const auto readAll = [&](juce::AudioProcessor& processor)
+        {
+            std::vector<std::pair<juce::String, float>> values;
+            for (auto* parameter : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                {
+                    for (const auto* id : ids)
+                    {
+                        if (ranged->getParameterID() == id)
+                        {
+                            values.emplace_back(ranged->getParameterID(), ranged->getValue());
+                        }
+                    }
+                }
+            }
+            return values;
+        };
+
+        juce::StringArray lost;
+
+        const auto roundTrip = [&](const juce::String& name, auto& source, auto& target)
+        {
+            const auto moved = setAll(source, 0.77f);
+            if (moved != static_cast<int>(ids.size()))
+            {
+                lost.add(name + " has only " + juce::String(moved) + " of "
+                         + juce::String(static_cast<int>(ids.size())) + " parameters");
+                return;
+            }
+
+            juce::MemoryBlock state;
+            source.getStateInformation(state);
+            target.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+            for (const auto& [id, value] : readAll(target))
+            {
+                if (std::abs(value - 0.77f) > 0.01f)
+                {
+                    lost.add(name + "." + id + " reloaded as " + juce::String(value, 3));
+                }
+            }
+        };
+
+        {
+            PX3SynthAudioProcessor a, b;
+            roundTrip("Synth", a, b);
+        }
+        {
+            PX3ReverbAudioProcessor a, b;
+            roundTrip("Reverb", a, b);
+        }
+
+        check("FxProducts_TheReverbsNineParametersSurviveASaveAndReload",
+              lost.isEmpty(),
+              lost.isEmpty()
+                  ? "all nine reload at the value they were saved at, in both the "
+                    "Synth and the standalone"
+                  : lost.joinIntoString(", "));
+    }
+
+    // ---- bypass actually bypasses -----------------------------------------
+    //
+    // Inside the Synth a disabled stage is skipped by the chain, so the card's
+    // switch works whether or not the effect implements bypass itself. Standing
+    // alone there is no chain: FxPluginProcessor::processBlock calls
+    // processFxBlock every block, and the switch only does anything if the
+    // effect honours the flag it was handed.
+    //
+    // Measured rather than reasoned about: some effects ramp their wet mix to
+    // zero, which is a bypass, and others do not.
+    {
+        // A signal with content at several frequencies, so an effect that only
+        // alters part of the spectrum still shows up as a difference.
+        const auto makeInput = [](juce::AudioBuffer<float>& buffer)
+        {
+            for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+            {
+                auto* data = buffer.getWritePointer(channel);
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                {
+                    const auto t = static_cast<float>(i) / static_cast<float>(kRate);
+                    data[i] = 0.30f * std::sin(juce::MathConstants<float>::twoPi * 220.0f * t)
+                            + 0.20f * std::sin(juce::MathConstants<float>::twoPi * 1500.0f * t)
+                            + (channel == 1 ? 0.10f : 0.0f);
+                }
+            }
+        };
+
+        // Runs long enough for any ramp to settle, then compares the LAST block
+        // against the dry signal. Comparing the first block would fail an
+        // effect that bypasses correctly but fades into it.
+        const auto worstDifferenceFromDry = [&](auto& processor,
+                                                juce::AudioParameterBool& enabled,
+                                                bool enabledState)
+        {
+            processor.setPlayConfigDetails(2, 2, kRate, kBlock);
+            processor.prepareToPlay(kRate, kBlock);
+            enabled.setValueNotifyingHost(enabledState ? 1.0f : 0.0f);
+
+            juce::AudioBuffer<float> buffer(2, kBlock);
+            juce::AudioBuffer<float> dry(2, kBlock);
+            juce::MidiBuffer midi;
+
+            auto worst = 0.0f;
+            for (int block = 0; block < 40; ++block)
+            {
+                makeInput(buffer);
+                dry.makeCopyOf(buffer);
+                processor.processBlock(buffer, midi);
+
+                if (block < 32) { continue; }   // let any fade finish
+
+                for (int channel = 0; channel < 2; ++channel)
+                {
+                    const auto* out = buffer.getReadPointer(channel);
+                    const auto* in = dry.getReadPointer(channel);
+                    for (int i = 0; i < kBlock; ++i)
+                    {
+                        worst = juce::jmax(worst, std::abs(out[i] - in[i]));
+                    }
+                }
+            }
+            return worst;
+        };
+
+        juce::StringArray leaking;
+        juce::StringArray inaudible;
+        juce::StringArray measured;
+
+        // Both directions, because only one of them is a claim about bypass.
+        //
+        // "Bypassed output equals the input" passes on its own for an effect
+        // that does nothing at all - a default amount of zero, a stage that was
+        // never prepared - and would report every product healthy while proving
+        // none of them were. The enabled measurement is the control: an effect
+        // has to CHANGE the signal before its bypass leaving the signal alone
+        // means anything.
+        const auto record = [&](const juce::String& name, float wet, float dry)
+        {
+            measured.add(name + " on " + juce::String(wet, 4)
+                         + " / off " + juce::String(dry, 4));
+
+            if (wet <= 0.001f) { inaudible.add(name); }
+            if (dry > 0.001f) { leaking.add(name + " (" + juce::String(dry, 4) + ")"); }
+        };
+
+        // Turning the effect UP before measuring it.
+        //
+        // Doom and Lucy ship fully dry - doomMix and lucyGlobal both default to
+        // zero - which is a deliberate default and not a fault, but it means
+        // measuring them at defaults compares silence with silence. Anything
+        // named here is set before the comparison so the control is a real one.
+        const auto turnUp = [](juce::AudioProcessor& processor,
+                               const juce::String& parameterId, float value)
+        {
+            for (auto* parameter : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                {
+                    if (ranged->getParameterID() == parameterId)
+                    {
+                        ranged->setValueNotifyingHost(value);
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+
+        const auto measure = [&](const juce::String& name, auto& processor,
+                                 juce::AudioParameterBool& enabled,
+                                 const juce::String& wetParameterId = {})
+        {
+            const auto apply = [&]
+            {
+                if (wetParameterId.isNotEmpty()) { turnUp(processor, wetParameterId, 1.0f); }
+            };
+
+            apply();
+            const auto wet = worstDifferenceFromDry(processor, enabled, true);
+            apply();   // prepareToPlay does not reset parameters, but say so anyway
+            const auto dry = worstDifferenceFromDry(processor, enabled, false);
+            record(name, wet, dry);
+        };
+
+        { PX3DelayAudioProcessor p;  measure("Delay",  p, p.debugEnabledParam()); }
+        { PX3MoodAudioProcessor p;   measure("Mood",   p, p.enabled()); }
+        { PX3ChorusAudioProcessor p; measure("Chorus", p, p.enabled()); }
+        { PX3SpreadAudioProcessor p; measure("Spread", p, p.enabled()); }
+        { PX3ReverbAudioProcessor p; measure("Reverb", p, p.enabled()); }
+        { PX3DoomAudioProcessor p;   measure("Doom",   p, p.enabled(), "doomMix"); }
+        { PX3LucyAudioProcessor p;   measure("Lucy",   p, p.enabled(), "lucyGlobal"); }
+
+        // And the card's own switch has to reach that parameter. The audio path
+        // above is only half the control: a button that changes nothing looks
+        // exactly like an effect that ignores its flag.
+        {
+            juce::StringArray broken;
+            juce::StringArray states;
+
+            const auto switchReachesTheParameter = [&](const juce::String& name,
+                                                       juce::AudioParameterBool& enabled,
+                                                       juce::AudioProcessorEditor* editorIn)
+            {
+                std::unique_ptr<juce::AudioProcessorEditor> editor(editorIn);
+                auto* card = dynamic_cast<px3::fx::FxCardEditor*>(editor.get());
+                if (card == nullptr) { states.add(name + " (no card editor)"); return; }
+
+                auto& button = card->debugCard().bypassButton();
+                const auto before = enabled.get();
+
+                button.setToggleState(! before, juce::sendNotificationSync);
+                const auto after = enabled.get();
+
+                states.add(name + " " + (before ? "on" : "off") + "->" + (after ? "on" : "off"));
+                if (after == before) { broken.add(name); }
+            };
+
+            PX3ChorusAudioProcessor chorus;
+            switchReachesTheParameter("Chorus", chorus.enabled(), chorus.createEditor());
+            PX3SpreadAudioProcessor spread;
+            switchReachesTheParameter("Spread", spread.enabled(), spread.createEditor());
+            PX3ReverbAudioProcessor reverb;
+            switchReachesTheParameter("Reverb", reverb.enabled(), reverb.createEditor());
+            PX3DoomAudioProcessor doom;
+            switchReachesTheParameter("Doom", doom.enabled(), doom.createEditor());
+            PX3LucyAudioProcessor lucy;
+            switchReachesTheParameter("Lucy", lucy.enabled(), lucy.createEditor());
+
+            check("FxProducts_TheCardsBypassSwitchDrivesTheParameter",
+                  broken.isEmpty(),
+                  broken.isEmpty() ? "every switch moved its parameter: " + states.joinIntoString(", ")
+                                   : "these switches changed nothing: " + broken.joinIntoString(", "));
+        }
+
+        // EVERY KNOB ON A CARD DRIVES A PARAMETER.
+        //
+        // The cards attach their controls by id, one attach call per control,
+        // and a knob whose call is missing or misspelt still lays out, still
+        // draws, still turns - and does nothing. Nothing else catches that:
+        // the parity test compares geometry and palette, which an unattached
+        // knob matches perfectly, and the DSP tests drive the parameters
+        // directly and never touch a control.
+        {
+            juce::StringArray inert;
+            juce::StringArray counted;
+
+            const auto everyKnobMovesSomething = [&](const juce::String& name,
+                                                     juce::AudioProcessor& processor,
+                                                     juce::AudioProcessorEditor* editorIn)
+            {
+                std::unique_ptr<juce::AudioProcessorEditor> editor(editorIn);
+                auto* cardEditor = dynamic_cast<px3::fx::FxCardEditor*>(editor.get());
+                if (cardEditor == nullptr) { counted.add(name + " (no card editor)"); return; }
+
+                const auto& parameters = processor.getParameters();
+                const auto snapshot = [&]
+                {
+                    std::vector<float> values;
+                    for (auto* parameter : parameters) { values.push_back(parameter->getValue()); }
+                    return values;
+                };
+
+                const auto knobs = cardEditor->debugCard().allKnobs();
+                int moved = 0;
+                for (auto* knob : knobs)
+                {
+                    const auto before = snapshot();
+
+                    // Somewhere else in the range, whichever end is further,
+                    // so a knob already sitting at a limit is still moved.
+                    const auto position = knob->getValue();
+                    const auto low = knob->getMinimum();
+                    const auto high = knob->getMaximum();
+                    const auto target = (position - low) > (high - position) ? low : high;
+                    knob->setValue(target, juce::sendNotificationSync);
+
+                    const auto after = snapshot();
+                    if (after != before) { ++moved; }
+                    else { inert.add(name + " " + knob->getName()); }
+
+                    knob->setValue(position, juce::sendNotificationSync);
+                }
+
+                counted.add(name + " " + juce::String(moved) + "/" + juce::String((int) knobs.size()));
+            };
+
+            PX3ChorusAudioProcessor chorusKnobs;
+            everyKnobMovesSomething("Chorus", chorusKnobs, chorusKnobs.createEditor());
+            PX3SpreadAudioProcessor spreadKnobs;
+            everyKnobMovesSomething("Spread", spreadKnobs, spreadKnobs.createEditor());
+            PX3ReverbAudioProcessor reverbKnobs;
+            everyKnobMovesSomething("Reverb", reverbKnobs, reverbKnobs.createEditor());
+            PX3DoomAudioProcessor doomKnobs;
+            everyKnobMovesSomething("Doom", doomKnobs, doomKnobs.createEditor());
+            PX3LucyAudioProcessor lucyKnobs;
+            everyKnobMovesSomething("Lucy", lucyKnobs, lucyKnobs.createEditor());
+
+            check("FxProducts_EveryKnobOnACardIsAttachedToAParameter",
+                  inert.isEmpty(),
+                  inert.isEmpty() ? "every knob moved a parameter: " + counted.joinIntoString(", ")
+                                  : "these knobs are attached to nothing: " + inert.joinIntoString(", "));
+        }
+
+        // A BYPASSED CARD GREYS OUT COMPLETELY.
+        //
+        // The card already dimmed its artwork and desaturated its knobs on
+        // bypass, but its captions kept the card's colour scheme - so a
+        // switched-off card still had a row of coloured chips on it. Every
+        // caption has to follow the knob it names.
+        {
+            juce::StringArray coloured;
+            juce::StringArray counted;
+
+            const auto captionsFollowTheBypass = [&](const juce::String& name,
+                                                     juce::AudioProcessorEditor* editorIn)
+            {
+                std::unique_ptr<juce::AudioProcessorEditor> editor(editorIn);
+                auto* cardEditor = dynamic_cast<px3::fx::FxCardEditor*>(editor.get());
+                if (cardEditor == nullptr) { counted.add(name + " (no card editor)"); return; }
+
+                auto& card = cardEditor->debugCard();
+                const auto labels = card.allKnobLabels();
+                if (labels.empty()) { coloured.add(name + " (no captions at all)"); return; }
+
+                card.setActive(false);
+                int grey = 0;
+                for (auto* label : labels)
+                {
+                    if (auto* chip = dynamic_cast<px3::ui::ChipLabel*>(label))
+                    {
+                        if (chip->isGreyedOut()) { ++grey; }
+                    }
+                }
+
+                counted.add(name + " " + juce::String(grey) + "/" + juce::String((int) labels.size()));
+                if (grey != (int) labels.size()) { coloured.add(name); }
+
+                // And back again: bypass is a toggle, not a one-way trip.
+                card.setActive(true);
+                for (auto* label : labels)
+                {
+                    if (auto* chip = dynamic_cast<px3::ui::ChipLabel*>(label))
+                    {
+                        if (chip->isGreyedOut()) { coloured.add(name + " (stayed grey)"); break; }
+                    }
+                }
+            };
+
+            PX3ChorusAudioProcessor chorus;
+            captionsFollowTheBypass("Chorus", chorus.createEditor());
+            PX3SpreadAudioProcessor spread;
+            captionsFollowTheBypass("Spread", spread.createEditor());
+            PX3ReverbAudioProcessor reverb;
+            captionsFollowTheBypass("Reverb", reverb.createEditor());
+            PX3DoomAudioProcessor doom;
+            captionsFollowTheBypass("Doom", doom.createEditor());
+            PX3LucyAudioProcessor lucy;
+            captionsFollowTheBypass("Lucy", lucy.createEditor());
+
+            check("FxProducts_ABypassedCardGreysItsCaptionsToo",
+                  coloured.isEmpty(),
+                  coloured.isEmpty()
+                      ? "captions greyed and restored: " + counted.joinIntoString(", ")
+                      : "captions did not follow the bypass: " + coloured.joinIntoString(", "));
+        }
+
+        check("FxProducts_AnEnabledEffectActuallyChangesTheSignal",
+              inaudible.isEmpty(),
+              inaudible.isEmpty()
+                  ? "every effect alters its input at default settings: "
+                        + measured.joinIntoString(", ")
+                  : "these do nothing even when enabled, so their bypass proves "
+                    "nothing: " + inaudible.joinIntoString(", "));
+
+        check("FxProducts_BypassPassesTheSignalThroughUnchanged",
+              leaking.isEmpty(),
+              leaking.isEmpty()
+                  ? "every effect returns its input when bypassed"
+                  : "still altering the signal while bypassed: "
+                        + leaking.joinIntoString(", "));
+    }
+    // ---- a standalone card is the Synth's card ------------------------------
+    //
+    // The claim FxCardEditor's own comment makes: "a standalone effect looks
+    // like its card inside the Synth because it is that card". Nothing checked
+    // it, and it was false for a while - the effects shipped without the
+    // UIConfig.json their styling comes from, so an installed one fell back to
+    // code defaults while the Synth's copy did not.
+    //
+    // Compared as a layout signature rather than as two snapshots, because a
+    // pixel difference says only that they differ. This names the control that
+    // moved and the colour that changed.
+    //
+    // Only these four: Delay, Reverb and Mood are not card-shaped inside the
+    // Synth at all - they have components of their own - so there is no card
+    // to compare them against.
+    {
+        PX3SynthAudioProcessor synth;
+        synth.setPlayConfigDetails(0, 2, kRate, kBlock);
+        synth.prepareToPlay(kRate, kBlock);
+
+        std::unique_ptr<juce::AudioProcessorEditor> synthBase(synth.createEditor());
+        auto* synthEditor = dynamic_cast<PX3SynthAudioProcessorEditor*>(synthBase.get());
+
+        if (synthEditor != nullptr)
+        {
+            synthEditor->setSize(1400, 900);
+            synthEditor->debugSelectSection(px3::ui::kSectionFx);
+            // The Synth loads its config on a timer tick. Without this the
+            // comparison reads the Synth's cards before they have been styled
+            // and reports the STANDALONE as the odd one out, which is exactly
+            // backwards.
+            synthEditor->debugLoadUiConfig();
+
+            auto* panel = synthEditor->debugFxPanel();
+
+            // The size both are measured at. Any size would do so long as it is
+            // the same one; a grid cell is the size they actually meet at.
+            const juce::Rectangle<int> cell { 0, 0, 318, 500 };
+
+            // ONE config, given to both.
+            //
+            // The two sides find their config by different routes - the Synth's
+            // resolver gates a source-tree probe behind a build flag, the
+            // standalone's walks up from the executable - and that difference
+            // is not what is being tested here. Handing both the same file
+            // compares what they BUILD from it, which is the claim. Whether
+            // each can find it when installed is a separate question, and the
+            // answer to it is that the effects now ship a copy inside their
+            // own bundles.
+            const auto configFile = UIConfigManager::findShippingConfigFile();
+            juce::String configError;
+            std::shared_ptr<const UIConfig> sharedConfig;
+            if (configFile.existsAsFile())
+            {
+                sharedConfig = UIConfig::fromJsonText(configFile.loadFileAsString(), configError);
+            }
+
+            const auto signatureOf = [&cell, &sharedConfig](px3::ui::FxCardComponent& card)
+            {
+                if (sharedConfig != nullptr) { card.setUIConfig(sharedConfig); }
+                card.setBounds(cell);
+                card.resized();
+                return card.debugLayoutSignature();
+            };
+
+            juce::StringArray differing;
+            juce::StringArray firstDifference;
+
+            const auto compare = [&](const juce::String& name, int stage,
+                                     juce::AudioProcessor& processor)
+            {
+                auto* synthCard = panel != nullptr ? panel->cardForSection(stage) : nullptr;
+                if (synthCard == nullptr) { differing.add(name + " (no card in the Synth)"); return; }
+
+                std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+                auto* cardEditor = dynamic_cast<px3::fx::FxCardEditor*>(editor.get());
+                if (cardEditor == nullptr) { differing.add(name + " (not a card editor)"); return; }
+
+                const auto expected = signatureOf(*synthCard);
+                const auto actual = signatureOf(cardEditor->debugCard());
+
+                if (expected == actual) { return; }
+
+                differing.add(name);
+
+                // The first line that differs, so a failure reads as one fact
+                // rather than as two screens of coordinates.
+                juce::StringArray a, b;
+                a.addLines(expected);
+                b.addLines(actual);
+                for (int i = 0; i < juce::jmax(a.size(), b.size()); ++i)
+                {
+                    const auto left = i < a.size() ? a[i] : juce::String("(missing)");
+                    const auto right = i < b.size() ? b[i] : juce::String("(missing)");
+                    if (left != right)
+                    {
+                        firstDifference.add(name + ": synth [" + left + "] standalone [" + right + "]");
+                        break;
+                    }
+                }
+            };
+
+            PX3DoomAudioProcessor doom;
+            compare("Doom", px3::fxStageDoom, doom);
+            PX3LucyAudioProcessor lucy;
+            compare("Lucy", px3::fxStageLucy, lucy);
+            PX3ChorusAudioProcessor chorus;
+            compare("Chorus", px3::fxStageChorus, chorus);
+            PX3SpreadAudioProcessor spread;
+            compare("Spread", px3::fxStageStereoSpread, spread);
+            // Reverb joined the cards when the Synth stopped showing it as a
+            // mode and an amount over nine parameters with no control at all.
+            PX3ReverbAudioProcessor reverb;
+            compare("Reverb", px3::fxStageReverb, reverb);
+
+            // A missing config would make every card fall back to the same
+            // defaults and the comparison would pass by having nothing to
+            // compare. Said out loud rather than passing quietly.
+            check("FxProducts_TheComparisonHasARealConfigToWorkFrom",
+                  sharedConfig != nullptr,
+                  sharedConfig != nullptr
+                      ? "styling both cards from " + configFile.getFileName()
+                      : "no UIConfig.json found - the comparison below would "
+                        "compare two sets of code defaults: " + configError);
+
+            // ---- and the two that are not cards ------------------------
+            //
+            // Delay and Mood hand their controls to the SAME shared component
+            // the Synth's FX page uses, so parity there is a question of the
+            // size it is given rather than of what it builds. The Synth puts
+            // every stage in one grid - the bespoke components beside the cards
+            // - so they all have the same shape there, and these windows should
+            // open at it.
+            //
+            // Compared by walking the children, because these are not cards and
+            // have no layout signature of their own.
+            // Position AND content.
+            //
+            // Bounds alone passed a window with every label blank and every
+            // dropdown empty: the controls were all in the right places and
+            // none of them said anything. What a control CONTAINS is as much
+            // part of "renders the same" as where it sits.
+            const auto childBounds = [](juce::Component& component)
+            {
+                juce::StringArray lines;
+                for (auto* child : component.getChildren())
+                {
+                    if (child == nullptr) { continue; }
+                    const auto b = child->getBounds();
+                    juce::String line = juce::String(b.getX()) + "," + juce::String(b.getY()) + ","
+                                      + juce::String(b.getWidth()) + "," + juce::String(b.getHeight());
+
+                    if (auto* label = dynamic_cast<juce::Label*>(child))
+                    {
+                        line += " text=\"" + label->getText() + "\"";
+                    }
+                    else if (auto* box = dynamic_cast<juce::ComboBox*>(child))
+                    {
+                        juce::StringArray items;
+                        for (int i = 0; i < box->getNumItems(); ++i) { items.add(box->getItemText(i)); }
+                        line += " items=[" + items.joinIntoString("/") + "]";
+                    }
+                    else if (auto* button = dynamic_cast<juce::Button*>(child))
+                    {
+                        // The class too: a stock ToggleButton draws a system
+                        // checkbox where the Synth draws a chip, and the two
+                        // occupy the same rectangle.
+                        line += juce::String(" button=") + typeid(*button).name()
+                              + " text=\"" + button->getButtonText() + "\"";
+                    }
+
+                    lines.add(line);
+                }
+                lines.sort(false);
+                return lines.joinIntoString(" | ");
+            };
+
+            juce::StringArray panelDiffs;
+
+            // Typed on the standalone's panel, so the Synth's component is
+            // required to be the SAME CLASS - which is the claim being made -
+            // and so both can be handed the same config. They must be: these
+            // components size themselves from it, and comparing one that has it
+            // against one that does not produced a page of differences that
+            // said nothing about either.
+            const auto comparePanel = [&](const juce::String& name, int stage,
+                                          auto* standalonePanel)
+            {
+                using PanelType = std::remove_pointer_t<decltype(standalonePanel)>;
+
+                auto* synthPanel = panel != nullptr
+                                       ? dynamic_cast<PanelType*>(panel->debugComponentForSection(stage))
+                                       : nullptr;
+                if (synthPanel == nullptr || standalonePanel == nullptr)
+                {
+                    panelDiffs.add(name + " (the Synth does not show this as the same component)");
+                    return;
+                }
+
+                if (sharedConfig != nullptr)
+                {
+                    synthPanel->setUIConfig(sharedConfig);
+                    standalonePanel->setUIConfig(sharedConfig);
+                }
+
+                synthPanel->setBounds(cell);
+                synthPanel->resized();
+                standalonePanel->setBounds(cell);
+                standalonePanel->resized();
+
+                const auto expected = childBounds(*synthPanel);
+                const auto actual = childBounds(*standalonePanel);
+
+                if (expected != actual)
+                {
+                    panelDiffs.add(name + ": synth [" + expected + "] standalone [" + actual + "]");
+                }
+            };
+
+            PX3DelayAudioProcessor delayProcessor;
+            std::unique_ptr<juce::AudioProcessorEditor> delayEditor(delayProcessor.createEditor());
+            if (auto* d = dynamic_cast<PX3DelayAudioProcessorEditor*>(delayEditor.get()))
+            {
+                comparePanel("Delay", px3::fxStageDelay, &d->debugPanel());
+            }
+
+            PX3MoodAudioProcessor moodProcessor;
+            std::unique_ptr<juce::AudioProcessorEditor> moodEditor(moodProcessor.createEditor());
+            if (auto* m = dynamic_cast<PX3MoodAudioProcessorEditor*>(moodEditor.get()))
+            {
+                comparePanel("Mood", px3::fxStageMood, &m->debugPanel());
+            }
+
+            // ---- every stage is actually in the grid -----------------------
+            //
+            // Built and never added is a silent failure: componentForSection
+            // answers, the signal-flow strip lists the stage, and the card is
+            // simply not on screen. Removing Reverb's addAndMakeVisible took
+            // Vibe, Delay and Mood's with it and the whole suite stayed green.
+            {
+                juce::StringArray missing;
+                const std::array<std::pair<const char*, int>, 8> stages { {
+                    { "Vibe", px3::fxStageVibe }, { "Delay", px3::fxStageDelay },
+                    { "Reverb", px3::fxStageReverb }, { "Mood", px3::fxStageMood },
+                    { "Doom", px3::fxStageDoom }, { "Lucy", px3::fxStageLucy },
+                    { "Chorus", px3::fxStageChorus }, { "Spread", px3::fxStageStereoSpread } } };
+
+                for (const auto& [name, stage] : stages)
+                {
+                    auto* component = panel != nullptr ? panel->debugComponentForSection(stage) : nullptr;
+                    if (component == nullptr) { missing.add(juce::String(name) + " (no component)"); }
+                    else if (component->getParentComponent() == nullptr)
+                    {
+                        missing.add(juce::String(name) + " (built, never added)");
+                    }
+                    else if (! component->isVisible())
+                    {
+                        missing.add(juce::String(name) + " (added, not visible)");
+                    }
+                }
+
+                check("FxPanel_EveryStageIsOnScreen",
+                      missing.isEmpty(),
+                      missing.isEmpty() ? "all eight stages are in the grid and visible"
+                                        : "missing from the FX panel: " + missing.joinIntoString(", "));
+            }
+
+            // ---- every knob on a card wears the PX3 look --------------------
+            //
+            // A knob with no look-and-feel draws as a stock JUCE rotary, which
+            // is a different control in the same place.
+            {
+                juce::StringArray unstyled;
+
+                const auto checkLooks = [&](const juce::String& name, int stage)
+                {
+                    auto* c = panel != nullptr ? panel->cardForSection(stage) : nullptr;
+                    if (c == nullptr) { return; }
+
+                    for (auto* knob : c->allKnobs())
+                    {
+                        if (knob == nullptr) { continue; }
+                        if (dynamic_cast<px3::ui::KnobLookAndFeel*>(&knob->getLookAndFeel()) == nullptr)
+                        {
+                            unstyled.add(name + " knob at " + knob->getBounds().toString());
+                        }
+                    }
+                };
+
+                checkLooks("Reverb", px3::fxStageReverb);
+                checkLooks("Doom", px3::fxStageDoom);
+                checkLooks("Chorus", px3::fxStageChorus);
+
+                check("FxCards_EveryKnobUsesThePx3Look",
+                      unstyled.isEmpty(),
+                      unstyled.isEmpty() ? "every knob on every card carries the PX3 look"
+                                         : "stock JUCE rotaries: " + unstyled.joinIntoString(", "));
+            }
+
+            // ---- and every knob on a card drives a parameter ---------------
+            //
+            // The Synth attaches its card controls by id, one call per
+            // control, in buildReverbCard and its siblings. A knob whose call
+            // is missing or misspelt still lays out, still draws, still turns -
+            // and does nothing. Neither the look test above nor the standalone
+            // parity comparison catches it: an unattached knob has the right
+            // look in the right place.
+            {
+                juce::StringArray inert;
+                juce::StringArray counted;
+
+                const auto& parameters = synth.getParameters();
+                const auto snapshot = [&]
+                {
+                    std::vector<float> values;
+                    for (auto* parameter : parameters) { values.push_back(parameter->getValue()); }
+                    return values;
+                };
+
+                const auto checkAttachments = [&](const juce::String& name, int stage)
+                {
+                    auto* c = panel != nullptr ? panel->cardForSection(stage) : nullptr;
+                    if (c == nullptr) { counted.add(name + " (no card)"); return; }
+
+                    int moved = 0;
+                    const auto knobs = c->allKnobs();
+                    for (auto* knob : knobs)
+                    {
+                        if (knob == nullptr) { continue; }
+                        const auto before = snapshot();
+
+                        // Whichever end of the range is further away, so a knob
+                        // already sitting at a limit still moves.
+                        const auto position = knob->getValue();
+                        const auto low = knob->getMinimum();
+                        const auto high = knob->getMaximum();
+                        const auto target = (position - low) > (high - position) ? low : high;
+                        knob->setValue(target, juce::sendNotificationSync);
+
+                        if (snapshot() != before) { ++moved; }
+                        else { inert.add(name + " knob at " + knob->getBounds().toString()); }
+
+                        knob->setValue(position, juce::sendNotificationSync);
+                    }
+                    counted.add(name + " " + juce::String(moved) + "/" + juce::String((int) knobs.size()));
+                };
+
+                checkAttachments("Reverb", px3::fxStageReverb);
+                checkAttachments("Doom", px3::fxStageDoom);
+                checkAttachments("Lucy", px3::fxStageLucy);
+                checkAttachments("Chorus", px3::fxStageChorus);
+                checkAttachments("Spread", px3::fxStageStereoSpread);
+
+                check("FxCards_EveryKnobOnTheSynthsCardsIsAttached",
+                      inert.isEmpty(),
+                      inert.isEmpty() ? "every knob moved a parameter: " + counted.joinIntoString(", ")
+                                      : "these knobs are attached to nothing: " + inert.joinIntoString(", "));
+            }
+
+            check("FxProducts_TheNonCardEffectsLayOutLikeTheSynthsPanels",
+                  panelDiffs.isEmpty(),
+                  panelDiffs.isEmpty()
+                      ? "Delay and Mood place their controls identically to the "
+                        "Synth's panels at the same size"
+                      : panelDiffs.joinIntoString("  /  "));
+
+            // ---- every standalone opens at one grid cell -------------------
+            juce::StringArray sizes;
+            juce::StringArray wrongSize;
+            const auto want = px3::fx::standaloneFxWindowSize(sharedConfig.get());
+
+            const auto checkSize = [&](const juce::String& name, juce::AudioProcessorEditor* editor)
+            {
+                if (editor == nullptr) { return; }
+                const auto got = editor->getLocalBounds();
+                sizes.add(name + " " + juce::String(got.getWidth()) + "x"
+                          + juce::String(got.getHeight()));
+                if (got.getWidth() != want.getWidth() || got.getHeight() != want.getHeight())
+                {
+                    wrongSize.add(name);
+                }
+            };
+
+            checkSize("Delay", delayEditor.get());
+            checkSize("Mood", moodEditor.get());
+
+            check("FxProducts_EveryStandaloneOpensAtOneGridCell",
+                  wrongSize.isEmpty(),
+                  juce::String("wanted ") + juce::String(want.getWidth()) + "x"
+                      + juce::String(want.getHeight()) + "; got " + sizes.joinIntoString(", ")
+                      + (wrongSize.isEmpty() ? "" : "  WRONG: " + wrongSize.joinIntoString(", ")));
+
+            check("FxProducts_AStandaloneCardMatchesTheSynthsCardExactly",
+                  differing.isEmpty(),
+                  differing.isEmpty()
+                      ? "Doom, Lucy, Chorus, Spread and Reverb lay out and colour identically "
+                        "in both, at the same size"
+                      : "differ: " + differing.joinIntoString(", ") + ". "
+                            + firstDifference.joinIntoString("  /  "));
+        }
     }
 }
 

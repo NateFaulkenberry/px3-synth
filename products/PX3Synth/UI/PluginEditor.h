@@ -320,6 +320,42 @@ public:
     juce::TextEditor& debugPresetAuthorField() { return debugDumpPresetAuthorEditor; }
     juce::ComboBox& debugPresetCategoryField() { return debugDumpPresetCategoryBox; }
     juce::TextButton& debugPresetDumpButton() { return debugDumpPresetButton; }
+
+    //---- the preset browser, for the tests --------------------------------
+    //
+    // Enough of it to drive the window as a person does: open it, see what it
+    // is showing, pick a row, and use either button. The list's own model is
+    // the editor, so a test reaching listBoxItemDoubleClicked goes through the
+    // same call JUCE makes rather than a stand-in for it.
+    void debugOpenPresetBrowser() { openPresetBrowser(); }
+    void debugClosePresetBrowser() { closePresetBrowser(); }
+    bool debugPresetBrowserVisible() const { return presetBrowserVisible; }
+    juce::ListBox& debugPresetListBox() { return presetListBox; }
+    juce::TextButton& debugPresetLoadButton() { return presetBrowserLoadButton; }
+    juce::TextButton& debugPresetCancelButton() { return presetBrowserCloseButton; }
+    juce::TextEditor& debugPresetSearchField() { return presetSearchEditor; }
+    juce::ComboBox& debugPresetScopeBox() { return presetScopeBox; }
+    juce::ComboBox& debugPresetCategoryBox() { return presetCategoryBox; }
+    int debugPresetRowCount() { return getNumRows(); }
+    juce::StringArray debugPresetRowNames() const
+    {
+        juce::StringArray names;
+        for (const auto& record : presetFiltered) { names.add(record.metadata.name); }
+        return names;
+    }
+    void debugRebuildPresetList() { rebuildPresetFilteredList(); }
+    // The double click JUCE would deliver, through the model's own entry point.
+    void debugDoubleClickPresetRow(int row)
+    {
+        const juce::Point<float> at {};
+        listBoxItemDoubleClicked(row,
+                                 juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(),
+                                                  at, juce::ModifierKeys(),
+                                                  1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                                  &presetListBox, &presetListBox,
+                                                  juce::Time::getCurrentTime(), at,
+                                                  juce::Time::getCurrentTime(), 2, false));
+    }
     PresetManager::PresetMetadata debugPresetDumpMetadata() const { return debugDumpPresetMetadata(); }
 
     // The two components that are TOLD whether to animate, so a test can check
@@ -330,6 +366,12 @@ public:
 
     TopMenuBar* debugTopMenuBar() { return topMenuBar.get(); }
     SettingsPanel* debugSettingsPanel() { return settingsPanel.get(); }
+    // The FX page, so a test can reach the cards the Synth builds and compare
+    // them against the ones the standalone effects build.
+    FxPanel* debugFxPanel() { return fxPanel.get(); }
+    // The editor loads its config on a timer tick, so a test that reads styling
+    // straight after construction sees code defaults unless it asks for it.
+    void debugLoadUiConfig() { loadUiConfig(true); }
     juce::Rectangle<int> debugPanelViewportArea() const { return panelViewportArea; }
     int debugSelectedSection() const { return selectedTopMenuSection; }
 
@@ -420,6 +462,7 @@ private:
     // declares, and hands it to the panel. One per new-generation FX.
     void buildDoomCard();
     void buildLucyCard();
+    void buildReverbCard();
     void buildChorusCard();
     void buildStereoSpreadCard();
     void refreshLfoAssignmentUI();
@@ -526,6 +569,7 @@ private:
     void refreshTopMenuSelectionFromProcessor();
     void updatePresetDirtyState();
     juce::String computeCurrentStateHash() const;
+    void loadPresetRow(int row);
     int getNumRows() override;
     void paintListBoxItem(int rowNumber,
                           juce::Graphics& g,
@@ -533,6 +577,9 @@ private:
                           int height,
                           bool rowIsSelected) override;
     void selectedRowsChanged(int lastRowSelected) override;
+    // Double-clicking a row loads it. Selecting a preset and then reaching for
+    // LOAD is the long way round the gesture every list has.
+    void listBoxItemDoubleClicked(int row, const juce::MouseEvent& event) override;
     void timerCallback() override;
     juce::File resolveUiConfigFile() const;
     void loadUiConfig(bool forceReload);
@@ -844,6 +891,7 @@ private:
     // refresh passes can reach their controls.
     px3::ui::FxCardComponent* doomCard { nullptr };
     px3::ui::FxCardComponent* lucyCard { nullptr };
+    px3::ui::FxCardComponent* reverbCard { nullptr };
     px3::ui::FxCardComponent* chorusCard { nullptr };
     px3::ui::FxCardComponent* spreadCard { nullptr };
     std::unique_ptr<MixPanel> mixPanel;
@@ -866,10 +914,6 @@ private:
     KnobLabel delayFeedbackLabel;
     juce::ComboBox granularSyncBox;
     KnobLabel granularSyncLabel;
-    juce::Slider reverbKnob;
-    KnobLabel reverbLabel;
-    juce::ComboBox reverbTypeBox;
-    KnobLabel reverbTypeLabel;
     px3::ui::BypassButton moodBypassButton;
     px3::ui::ToggleChipButton moodFreezeButton;
     juce::Slider moodMixKnob;
@@ -898,7 +942,6 @@ private:
     KnobLabel moodLoopModeLabel;
     px3::ui::BypassButton robBypassButton;
     px3::ui::BypassButton delayBypassButton;
-    px3::ui::BypassButton reverbBypassButton;
 
     PresetManager presetManager;
     std::vector<PresetManager::PresetRecord> presetFiltered;

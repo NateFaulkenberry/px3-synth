@@ -12,6 +12,31 @@
 namespace px3::fx
 {
 
+// The window a standalone effect opens at: one cell of the Synth's FX grid,
+// plus the ground left around it.
+//
+// Every stage in the Synth's FX page gets a cell of the same size - cards and
+// the bespoke components alike, since FxPanel lays them all out in one grid -
+// so this is the shape an effect has in the Synth whatever it is built from.
+// That is why it lives here rather than inside FxCardEditor: Delay and Mood
+// are not cards and still open at the same size.
+//
+// Height is fx.grid.rowHeight, the key the Synth's grid actually lays rows out
+// on, so the two cannot drift. Width has a key of its own because the grid's is
+// not a fixed number - in the Synth a cell is whatever the panel's width
+// divides into fx.grid.columns, and 318 is what that comes to at the size the
+// editor opens.
+inline constexpr int kFxWindowMargin = 10;
+
+inline juce::Rectangle<int> standaloneFxWindowSize(const UIConfig* config)
+{
+    const auto width = config != nullptr ? config->getInt("fx.grid.standaloneWidth", 318) : 318;
+    const auto height = config != nullptr ? config->getInt("fx.grid.rowHeight", 500) : 500;
+
+    return { width + kFxWindowMargin * 2, height + kFxWindowMargin * 2 };
+}
+
+
 // A standalone effect's window, when the effect is drawn as a card.
 //
 // The card, its style, the PX3 knob and the parameter attachments - the parts
@@ -46,10 +71,23 @@ protected:
     void attachKnob(const juce::String& id, juce::AudioParameterFloat& parameter);
     void attachChoice(const juce::String& id, juce::AudioParameterChoice& parameter);
     void attachToggle(const juce::String& id, juce::AudioParameterBool& parameter);
+    // A two-value CHOICE shown as a toggle, which is what the Synth does for
+    // Doom's cross source: the parameter has two named options and the card
+    // says which one is selected rather than offering a dropdown of two.
+    // ButtonParameterAttachment takes any RangedAudioParameter and maps 0 and 1
+    // to off and on, so no parameter changes type to be drawn this way.
+    void attachToggle(const juce::String& id, juce::RangedAudioParameter& parameter);
     // The card's own bypass switch, which every FX card has.
     void attachBypass(juce::AudioParameterBool& parameter);
 
     // Called once the product has declared and attached everything.
+    //
+    // The no-argument form sizes the window to ONE CELL of the Synth's FX grid,
+    // so a standalone effect opens at the shape it has inside the Synth rather
+    // than stretched into a landscape window. Both read the same UIConfig keys
+    // the grid does. The explicit form remains for a product that genuinely
+    // wants its own size.
+    void finishSetup();
     void finishSetup(int width, int height);
 
 private:

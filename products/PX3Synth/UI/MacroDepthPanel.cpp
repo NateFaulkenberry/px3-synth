@@ -402,18 +402,28 @@ juce::Rectangle<int> MacroDepthPanel::preferredBoundsWithin(juce::Rectangle<int>
     const auto headerH = intFrom(uiConfig.get(), "macroDepth.layout.headerHeight", 26);
     const auto footerH = intFrom(uiConfig.get(), "macroDepth.layout.footerHeight", 30);
 
+    // Every size below describes the BUBBLE. The component is that plus the
+    // margin its shadow needs, on all four sides, so growing or removing the
+    // shadow never changes how much panel there is to read.
+    const auto margin = shadowMargin();
+    const auto grow = [margin](juce::Rectangle<int> box)
+    {
+        return box.expanded(margin);
+    };
+
     // With nothing assigned there are no rows to size from, and the panel used
     // to come out one row tall - too small for the sentence it then had to
     // draw, which was cut off exactly when it was all the panel had to say.
     if (rows.empty())
     {
-        const auto width = juce::jmin(available.getWidth(),
+        const auto width = juce::jmin(available.getWidth() - margin * 2,
                                       columnWidth() + padding * 2 + pointerWidth());
-        const auto height = juce::jmin(available.getHeight(),
+        const auto height = juce::jmin(available.getHeight() - margin * 2,
                                        headerH + footerH + padding * 2
                                            + rowHeight() * 3);
 
-        return juce::Rectangle<int>(available.getX(), anchor.getY() - height / 2, width, height)
+        return grow(juce::Rectangle<int>(available.getX(), anchor.getY() - height / 2,
+                                         width, height))
             .constrainedWithin(available);
     }
 
@@ -428,17 +438,17 @@ juce::Rectangle<int> MacroDepthPanel::preferredBoundsWithin(juce::Rectangle<int>
     const auto perColumn = juce::jmax(1, (rowCount + columns - 1) / columns);
     const auto rowsPerColumn = juce::jmin(perColumn, juce::jmax(1, maxRowArea / rowHeight()));
 
-    auto width = juce::jmin(available.getWidth(),
+    auto width = juce::jmin(available.getWidth() - margin * 2,
                             columns * columnWidth() + padding * 2 + pointerWidth());
-    auto height = juce::jmin(available.getHeight(),
+    auto height = juce::jmin(available.getHeight() - margin * 2,
                              rowsPerColumn * rowHeight() + headerH + footerH + padding * 2);
 
     // Beside the knob, vertically centred on it, then pushed back inside the
     // space it has to live in - so a macro at the bottom of the strip does not
     // open a panel that hangs off the window.
-    auto bounds = juce::Rectangle<int>(available.getX(),
-                                       anchor.getY() - height / 2,
-                                       width, height);
+    auto bounds = grow(juce::Rectangle<int>(available.getX(),
+                                           anchor.getY() - height / 2,
+                                           width, height));
     return bounds.constrainedWithin(available);
 }
 
@@ -448,7 +458,7 @@ void MacroDepthPanel::resized()
     const auto headerH = intFrom(uiConfig.get(), "macroDepth.layout.headerHeight", 26);
     const auto footerH = intFrom(uiConfig.get(), "macroDepth.layout.footerHeight", 30);
 
-    auto area = getLocalBounds().reduced(padding);
+    auto area = bubbleArea().reduced(padding);
     area.removeFromLeft(pointerWidth());   // the arrow's strip, not content
     const auto headerArea = area.removeFromTop(headerH);
     header.setBounds(headerArea);
@@ -545,17 +555,55 @@ SpeechBubble::Style MacroDepthPanel::bubbleStyle() const
     style.arrowHeight = floatFrom(config, "macroDepth.layout.arrowHeight",
                                   floatFrom(config, "macroDepth.layout.pointerHeight", 16.0f));
 
-    // Where the macro knob is. Negative until the editor has placed the panel,
-    // and the bubble draws plain rather than aiming at nothing.
-    style.arrowCentreFromTop = pointerTargetY >= 0 ? static_cast<float>(pointerTargetY)
-                                                   : -1.0f;
+    // The same shadow the cards cast, defaulted to the numbers in
+    // cards.defaults.shadow rather than read from there: this is a popover
+    // rather than a card, and tying the two together would mean retuning the
+    // cards silently retunes this.
+    style.shadowColour  = colourFrom(config, "macroDepth.shadow.color", juce::Colours::black);
+    style.shadowOpacity = floatFrom(config, "macroDepth.shadow.opacity", 0.45f);
+    style.shadowRadius  = floatFrom(config, "macroDepth.shadow.radius", 11.0f);
+    style.shadowOffsetX = floatFrom(config, "macroDepth.shadow.offsetX", 0.0f);
+    style.shadowOffsetY = floatFrom(config, "macroDepth.shadow.offsetY", 3.0f);
+
+    // Where the macro knob is, measured from the top of the BUBBLE rather than
+    // of the component - the two differ by the margin the shadow needs.
+    // Negative until the editor has placed the panel, and the bubble draws
+    // plain rather than aiming at nothing.
+    style.arrowCentreFromTop = pointerTargetY >= 0
+                                   ? static_cast<float>(pointerTargetY - shadowMargin())
+                                   : -1.0f;
     return style;
+}
+
+// The room the shadow needs outside the bubble. The component's paint is
+// clipped to its own bounds, so the bubble is drawn inset by this much and the
+// panel asks for a correspondingly bigger box.
+//
+// Read from a style with the arrow suppressed, because shadowMargin only looks
+// at the shadow numbers and building the full style here would recurse.
+int MacroDepthPanel::shadowMargin() const
+{
+    const auto* config = uiConfig.get();
+    SpeechBubble::Style probe;
+    probe.shadowOpacity = floatFrom(config, "macroDepth.shadow.opacity", 0.45f);
+    probe.shadowRadius  = floatFrom(config, "macroDepth.shadow.radius", 11.0f);
+    probe.shadowOffsetX = floatFrom(config, "macroDepth.shadow.offsetX", 0.0f);
+    probe.shadowOffsetY = floatFrom(config, "macroDepth.shadow.offsetY", 3.0f);
+    return juce::roundToInt(SpeechBubble::shadowMargin(probe));
+}
+
+// The bubble itself, inset inside the component so the shadow has somewhere to
+// fall. Everything the panel draws or lays out is measured from here, not from
+// getLocalBounds().
+juce::Rectangle<int> MacroDepthPanel::bubbleArea() const
+{
+    return getLocalBounds().reduced(shadowMargin());
 }
 
 void MacroDepthPanel::paint(juce::Graphics& g)
 {
     // One path: background, border and the pointer that aims at the macro knob.
-    SpeechBubble::paintBackground(g, getLocalBounds().toFloat(), bubbleStyle());
+    SpeechBubble::paintBackground(g, bubbleArea().toFloat(), bubbleStyle());
 
     // ---- nothing assigned --------------------------------------------------
     //
@@ -568,7 +616,7 @@ void MacroDepthPanel::paint(juce::Graphics& g)
         const auto headerH = intFrom(uiConfig.get(), "macroDepth.layout.headerHeight", 26);
         const auto footerH = intFrom(uiConfig.get(), "macroDepth.layout.footerHeight", 30);
 
-        auto textArea = getLocalBounds().reduced(padding);
+        auto textArea = bubbleArea().reduced(padding);
         textArea.removeFromLeft(pointerWidth());
         textArea.removeFromTop(headerH);
         textArea.removeFromBottom(footerH);

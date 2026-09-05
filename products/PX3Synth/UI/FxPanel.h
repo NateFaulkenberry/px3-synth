@@ -11,7 +11,6 @@
 
 #include "DelayComponent.h"
 #include "MoodComponent.h"
-#include "ReverbComponent.h"
 #include "UIConfig.h"
 #include "VibeComponent.h"
 
@@ -62,11 +61,6 @@ public:
             juce::Label& moodWetModeLabel,
             juce::ComboBox& moodLoopModeBox,
             juce::Label& moodLoopModeLabel,
-            juce::ToggleButton& reverbBypass,
-            juce::Slider& reverbKnob,
-            juce::Label& reverbLabel,
-            juce::ComboBox& reverbTypeBox,
-            juce::Label& reverbTypeLabel,
             juce::Colour panelAccent);
 
     void paint(juce::Graphics& g) override;
@@ -81,6 +75,10 @@ public:
     // into the scrolling grid and places them by chain order like the rest.
     void addCard(int sectionId, std::unique_ptr<px3::ui::FxCardComponent> card);
     px3::ui::FxCardComponent* cardForSection(int sectionId) const;
+    // The component a stage shows, card or not, so a test can hold the Synth's
+    // Delay and Mood panels against the standalone products' copies.
+    juce::Component* debugComponentForSection(int sectionId) const
+    { return componentForSection(sectionId); }
     void setSectionActive(int sectionId, bool active);
 
     // Raised when the user drags the strip into a new order. The panel does not
@@ -106,7 +104,6 @@ private:
     std::unique_ptr<VibeComponent> vibeUiComponent;
     std::unique_ptr<DelayComponent> delayPanelComponent;
     std::unique_ptr<MoodComponent> moodComponent;
-    std::unique_ptr<ReverbComponent> reverbComponent;
 
     juce::Colour accent;
 

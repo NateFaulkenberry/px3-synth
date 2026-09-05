@@ -1,5 +1,7 @@
 #include "Card.h"
 
+#include "UIConfigManager.h"
+
 #include "UIConfig.h"
 
 #include <cmath>
@@ -8,6 +10,54 @@ namespace px3::ui
 {
 namespace
 {
+
+// Named in config rather than numbered, because "contain" says what it does
+// and "1" does not. An unrecognised name keeps the fallback rather than
+// silently picking one, so a typo shows up as "my change did nothing" rather
+// than as artwork mysteriously cropped.
+ArtworkFit parseArtworkFit(const juce::String& name, ArtworkFit fallback)
+{
+    const auto text = name.trim().toLowerCase();
+    if (text == "cover") { return ArtworkFit::cover; }
+    if (text == "contain" || text == "fit") { return ArtworkFit::contain; }
+    if (text == "stretch") { return ArtworkFit::stretch; }
+    return fallback;
+}
+
+ArtworkAlign parseArtworkAlign(const juce::String& name, ArtworkAlign fallback)
+{
+    const auto text = name.trim().toLowerCase().removeCharacters(" -_");
+    if (text == "centre" || text == "center") { return ArtworkAlign::centre; }
+    if (text == "topleft") { return ArtworkAlign::topLeft; }
+    if (text == "topright") { return ArtworkAlign::topRight; }
+    if (text == "bottomleft") { return ArtworkAlign::bottomLeft; }
+    if (text == "bottomright") { return ArtworkAlign::bottomRight; }
+    if (text == "top") { return ArtworkAlign::top; }
+    if (text == "bottom") { return ArtworkAlign::bottom; }
+    if (text == "left") { return ArtworkAlign::left; }
+    if (text == "right") { return ArtworkAlign::right; }
+    return fallback;
+}
+
+// The x and y halves of JUCE's placement flags. Split into two so an alignment
+// names one of each rather than nine separate constants.
+int alignmentFlags(ArtworkAlign align)
+{
+    switch (align)
+    {
+        case ArtworkAlign::topLeft:     return juce::RectanglePlacement::xLeft  | juce::RectanglePlacement::yTop;
+        case ArtworkAlign::topRight:    return juce::RectanglePlacement::xRight | juce::RectanglePlacement::yTop;
+        case ArtworkAlign::bottomLeft:  return juce::RectanglePlacement::xLeft  | juce::RectanglePlacement::yBottom;
+        case ArtworkAlign::bottomRight: return juce::RectanglePlacement::xRight | juce::RectanglePlacement::yBottom;
+        case ArtworkAlign::top:         return juce::RectanglePlacement::xMid   | juce::RectanglePlacement::yTop;
+        case ArtworkAlign::bottom:      return juce::RectanglePlacement::xMid   | juce::RectanglePlacement::yBottom;
+        case ArtworkAlign::left:        return juce::RectanglePlacement::xLeft  | juce::RectanglePlacement::yMid;
+        case ArtworkAlign::right:       return juce::RectanglePlacement::xRight | juce::RectanglePlacement::yMid;
+        case ArtworkAlign::centre:
+        default:                        return juce::RectanglePlacement::centred;
+    }
+}
+
 // Reads a property from the defaults object, then lets the per-card object
 // override it. Every getter below follows this shape, so a card's JSON only has
 // to declare what differs.
@@ -227,6 +277,18 @@ CardStyle CardStyle::fromConfig(const UIConfig* config,
 
     style.background = reader.fill("background", fallback.background);
 
+    style.artwork.image = reader.text("artwork.image", fallback.artwork.image);
+    style.artwork.opacity = juce::jlimit(0.0f, 1.0f,
+                                         reader.number("artwork.opacity", fallback.artwork.opacity));
+    style.artwork.fit = parseArtworkFit(reader.text("artwork.fit", {}), fallback.artwork.fit);
+    style.artwork.align = parseArtworkAlign(reader.text("artwork.align", {}), fallback.artwork.align);
+
+    style.shadow.colour = reader.colour("shadow.color", fallback.shadow.colour);
+    style.shadow.opacity = juce::jlimit(0.0f, 1.0f, reader.number("shadow.opacity", fallback.shadow.opacity));
+    style.shadow.radius = juce::jmax(0.0f, reader.number("shadow.radius", fallback.shadow.radius));
+    style.shadow.offsetX = reader.number("shadow.offsetX", fallback.shadow.offsetX);
+    style.shadow.offsetY = reader.number("shadow.offsetY", fallback.shadow.offsetY);
+
     style.gloss.margin = juce::jmax(0.0f, reader.number("gloss.margin", fallback.gloss.margin));
     style.gloss.split = juce::jlimit(0.0f, 1.0f, reader.number("gloss.split", fallback.gloss.split));
     style.gloss.topRadius = Dimension::parse(reader.raw("gloss.topRadius"), fallback.gloss.topRadius);
@@ -274,6 +336,55 @@ juce::Rectangle<float> CardStyle::resolveBounds(juce::Rectangle<float> slot,
                .withCentre(marginBox.getCentre());
 }
 
+namespace
+{
+// Desaturate and darken a picture in place, by the same numbers the card's
+// colour layers use.
+//
+// A luminance blend on the raw bytes rather than per-pixel juce::Colour work:
+// this runs over every pixel of a full-size image, and going through Colour's
+// HSV conversion for each one turns a cache miss into a visible stall.
+//
+// The image is premultiplied, and scaling all three channels by the same factor
+// leaves it premultiplied - which is why the blend is done on the stored values
+// directly and alpha is not touched.
+void applyTint(juce::Image& image, float saturation, float brightness)
+{
+    const auto sat = juce::jlimit(0.0f, 1.0f, saturation);
+    const auto bri = juce::jlimit(0.0f, 1.0f, brightness);
+
+    juce::Image::BitmapData data(image, juce::Image::BitmapData::readWrite);
+
+    for (int y = 0; y < data.height; ++y)
+    {
+        auto* line = data.getLinePointer(y);
+
+        for (int x = 0; x < data.width; ++x)
+        {
+            auto* pixel = line + x * data.pixelStride;
+
+            // BGRA in memory on the formats JUCE decodes PNGs into; read by
+            // offset rather than by name so the maths is the same either way.
+            const auto b = static_cast<float>(pixel[0]);
+            const auto g = static_cast<float>(pixel[1]);
+            const auto r = static_cast<float>(pixel[2]);
+
+            const auto luma = 0.299f * r + 0.587f * g + 0.114f * b;
+
+            const auto mix = [sat, bri, luma](float channel)
+            {
+                const auto blended = luma + (channel - luma) * sat;
+                return static_cast<juce::uint8>(juce::jlimit(0.0f, 255.0f, blended * bri));
+            };
+
+            pixel[0] = mix(b);
+            pixel[1] = mix(g);
+            pixel[2] = mix(r);
+        }
+    }
+}
+} // namespace
+
 CardStyle CardStyle::disabledVariant() const
 {
     CardStyle result = *this;
@@ -294,6 +405,14 @@ CardStyle CardStyle::disabledVariant() const
     result.border.opacity *= dim;
     result.background.colour = grey(result.background.colour);
     result.background.opacity *= dim;
+    // Artwork greys with everything else. A bypassed card that keeps a full
+    // colour picture behind grey controls does not read as bypassed - and on a
+    // card whose whole face is a photograph, the picture is what the eye reads
+    // first, so dimming it alone was not enough.
+    result.artwork.opacity *= dim;
+    result.artwork.saturation = saturation;
+    result.artwork.brightness = 1.0f - darken;
+
     result.gloss.topFill.colour = grey(result.gloss.topFill.colour);
     result.gloss.topFill.opacity *= dim;
     result.gloss.bottomFill.colour = grey(result.gloss.bottomFill.colour);
@@ -446,11 +565,113 @@ void drawCard(juce::Graphics& g,
 
     const auto radius = style.border.radius;
 
+    // 0. Shadow, behind the card entirely.
+    //
+    // DropShadow takes an integer radius and refuses anything below one, so a
+    // configured radius that rounds to zero is treated as no shadow rather
+    // than as a hard black copy of the card offset by a few pixels.
+    if (style.shadow.opacity > 0.0f && style.shadow.radius >= 0.5f)
+    {
+        juce::Path shape;
+        shape.addRoundedRectangle(cardBounds, radius);
+
+        const juce::DropShadow shadow(style.shadow.colour.withMultipliedAlpha(style.shadow.opacity),
+                                      juce::roundToInt(style.shadow.radius),
+                                      { juce::roundToInt(style.shadow.offsetX),
+                                        juce::roundToInt(style.shadow.offsetY) });
+        shadow.drawForPath(g, shape);
+    }
+
     // 1. Background, behind everything.
     if (style.background.opacity > 0.0f)
     {
         g.setColour(style.background.effective());
         g.fillRoundedRectangle(cardBounds, radius);
+    }
+
+    // 1b. Artwork, over the background and UNDER the gloss, so the two gloss
+    //     fills tint it the way they tint the background rather than covering
+    //     it. Clipped to the card's rounded rectangle so it cannot square off
+    //     the corners the border is about to draw.
+    if (style.artwork.image.isNotEmpty() && style.artwork.opacity > 0.0f)
+    {
+        // Cached, but keyed on the file's CONTENT IDENTITY rather than its path.
+        //
+        // ImageCache::getFromFile hashes the path alone, so a PNG replaced on
+        // disk is never noticed: the old picture is served for as long as the
+        // process lives, which for a plug-in means until the host unloads it.
+        // Replacing artwork and seeing no change is the whole point of having
+        // it in a directory, so the modification time and size go into the key
+        // and a changed file misses the cache exactly once.
+        const auto file = UIConfigManager::findArtworkFile(style.artwork.image);
+        juce::Image image;
+
+        if (file.existsAsFile())
+        {
+            // The grey version is a different picture as far as the cache is
+            // concerned, so both live in it and neither is recomputed per
+            // frame - which matters, because desaturating two million pixels
+            // is not something to do while painting.
+            const auto tint = juce::roundToInt(juce::jlimit(0.0f, 1.0f, style.artwork.saturation) * 1000.0f)
+                            + juce::roundToInt(juce::jlimit(0.0f, 1.0f, style.artwork.brightness) * 1000.0f) * 1009;
+
+            const auto key = file.getFullPathName().hashCode64()
+                           ^ (file.getLastModificationTime().toMilliseconds() * 31)
+                           ^ (file.getSize() * 131)
+                           ^ (static_cast<juce::int64>(tint) * 1000003);
+
+            image = juce::ImageCache::getFromHashCode(key);
+
+            if (image.isNull())
+            {
+                image = juce::ImageFileFormat::loadFrom(file);
+
+                if (image.isValid()
+                        && (style.artwork.saturation < 0.999f || style.artwork.brightness < 0.999f))
+                {
+                    image = image.createCopy();
+                    applyTint(image, style.artwork.saturation, style.artwork.brightness);
+                }
+
+                if (image.isValid()) { juce::ImageCache::addImageToCache(image, key); }
+            }
+        }
+
+        if (image.isValid())
+        {
+            juce::Graphics::ScopedSaveState clip(g);
+
+            juce::Path shape;
+            shape.addRoundedRectangle(cardBounds, radius);
+            g.reduceClipRegion(shape);
+
+            // The rectangle overload rather than the nine-argument one: that
+            // takes ints for the destination, so every float here was converted
+            // implicitly - four warnings, and a policy that fails the build on
+            // them.
+            //
+            // The alignment flags on their own are JUCE's "contain": they
+            // scale by whichever axis needs LESS, so the whole picture is
+            // inside the card and the background shows through wherever the
+            // aspect ratios differ. Adding fillDestination flips it to scaling
+            // by whichever axis needs more, cropping the rest - which the clip
+            // above contains. stretchToFit scales the two axes independently,
+            // filling the card with the whole picture at the cost of distorting
+            // it, and leaves the alignment with nothing to decide.
+            auto flags = alignmentFlags(style.artwork.align);
+            if (style.artwork.fit == ArtworkFit::cover)
+            {
+                flags |= juce::RectanglePlacement::fillDestination;
+            }
+            else if (style.artwork.fit == ArtworkFit::stretch)
+            {
+                flags |= juce::RectanglePlacement::stretchToFit;
+            }
+
+            g.setOpacity(style.artwork.opacity);
+            g.drawImage(image, cardBounds, juce::RectanglePlacement(flags));
+            g.setOpacity(1.0f);
+        }
     }
 
     // 2. Gloss, inset by its own margin so a gap shows between it and the

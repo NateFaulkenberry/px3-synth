@@ -376,6 +376,15 @@ juce::AudioParameterBool& PX3SynthAudioProcessor::getFxReturnMuteParam() const {
 juce::AudioParameterBool& PX3SynthAudioProcessor::getFxReturnSoloParam() const { return *fxReturnSoloParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getFxReturnPanParam() const { return *fxReturnPanParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getReverbAmountParam() const { return *reverbAmountParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getReverbSizeParam() const { return *reverbSizeParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getReverbDecayParam() const { return *reverbDecayParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getReverbDampingParam() const { return *reverbDampingParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getReverbPreDelayParam() const { return *reverbPreDelayParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getReverbModDepthParam() const { return *reverbModDepthParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getReverbModRateParam() const { return *reverbModRateParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getReverbWidthParam() const { return *reverbWidthParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getReverbCloudFeedbackParam() const { return *reverbCloudFeedbackParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getReverbCloudDiffusionParam() const { return *reverbCloudDiffusionParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getReverbEnabledParam() const { return *reverbEnabledParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getReverbAlgorithmParam() const { return *reverbAlgorithmParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getMoodEnabledParam() const { return *moodEnabledParam; }
