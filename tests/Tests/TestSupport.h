@@ -1409,7 +1409,7 @@ enum class Source { silence, impulse, sine, burst, noise };
 
 // Runs DOOM for `seconds` and returns the wet path. Deterministic: the engine's
 // stochastic parts run off a seeded generator.
-inline Result runDoom(const DoomSettings& settings,
+inline Result runDoom(const px3::DoomUserParameters& settings,
                Source source,
                double seconds,
                double sampleRate = kSampleRate,
@@ -1499,9 +1499,9 @@ inline Result runDoom(const DoomSettings& settings,
     return result;
 }
 
-inline DoomSettings audible()
+inline px3::DoomUserParameters audible()
 {
-    DoomSettings s;
+    px3::DoomUserParameters s;
     s.enabled = true;
     s.mix = 1.0f;
     return s;

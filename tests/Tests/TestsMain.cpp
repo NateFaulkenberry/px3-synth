@@ -121,10 +121,10 @@ void scanDoomLucyArtifacts()
 
         for (int wet = 0; wet < 3; ++wet)
         {
-            DoomSettings s;
+            px3::DoomUserParameters s;
             s.enabled = true;
             s.mix = 1.0f;
-            s.wetModeIndex = wet;
+            s.wetMode = static_cast<px3::DoomWetMode>(wet);
             s.wetTime = 0.5f;
             s.wetModify = 0.5f;
             s.balance = 1.0f;
@@ -150,12 +150,12 @@ void scanDoomLucyArtifacts()
         {
             for (const auto modify : { 0.0f, 0.5f, 1.0f })
             {
-                DoomSettings s;
+                px3::DoomUserParameters s;
                 s.enabled = true;
                 s.mix = 1.0f;
                 s.loopActive = true;
                 s.wetActive = false;
-                s.loopModeIndex = loop;
+                s.loopMode = static_cast<px3::DoomLoopMode>(loop);
                 s.loopModify = modify;
                 s.loopLength = 0.5f;
                 s.balance = 0.0f;
@@ -193,7 +193,7 @@ void scanDoomLucyArtifacts()
 
         for (const auto clock : { 0.0f, 0.3f, 0.6f, 1.0f })
         {
-            DoomSettings s;
+            px3::DoomUserParameters s;
             s.enabled = true;
             s.mix = 1.0f;
             s.clock = clock;
@@ -2002,8 +2002,8 @@ int main(int argc, char* argv[])
             MoodSettings s;
             s.enabled = true;
             s.mix = 1.0f;
-            s.loopModeIndex = loopMode;
-            s.wetModeIndex = wetMode;
+            s.loopModeIndex = (loopMode);
+            s.wetModeIndex = (wetMode);
             s.routing = routing;
             s.clock = 1.0f;          // full rate: any stepping here is not the clock
             s.degrade = 0.0f;        // and not the lo-fi control either
@@ -2095,8 +2095,8 @@ int main(int argc, char* argv[])
                 {
                     MoodSettings s;
                     s.mix = 1.0f;
-                    s.loopModeIndex = loopMode;
-                    s.wetModeIndex = wetMode;
+                    s.loopModeIndex = (loopMode);
+                    s.wetModeIndex = (wetMode);
                     s.spread = spread;
                     s.routing = 1.0f;      // input + micro-looper
                     s.feedback = 0.4f;
@@ -2119,7 +2119,7 @@ int main(int argc, char* argv[])
             {
                 MoodSettings s;
                 s.mix = 1.0f;
-                s.loopModeIndex = loopMode;
+                s.loopModeIndex = (loopMode);
                 s.wetModeIndex = 0;
                 s.spread = spread;
                 s.routing = 0.5f;
@@ -2146,7 +2146,7 @@ int main(int argc, char* argv[])
                 MoodSettings ms;
                 ms.enabled = true;
                 ms.mix = 1.0f;
-                ms.loopModeIndex = loopMode;
+                ms.loopModeIndex = (loopMode);
                 ms.loopModify = loopMode == 1 ? 0.70f : 0.75f;   // unity-ish playback speed
                 ms.loopLength = 0.5f;
                 ms.wetModeIndex = 1;
@@ -2198,7 +2198,7 @@ int main(int argc, char* argv[])
             {
                 MoodSettings s;
                 s.mix = 1.0f;
-                s.wetModeIndex = wetMode;
+                s.wetModeIndex = (wetMode);
                 s.degrade = degrade;
                 s.routing = 0.0f;
                 std::printf("  %.6f", measureMood(s).rms);

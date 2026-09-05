@@ -17,13 +17,264 @@ void testDoom()
 
     using namespace doomtest;
 
+    // ========================================================================
+    // THE CONTROL MODEL
+    //
+    // DOOM's four macros mean different things in different modes, and the
+    // curves that make that true used to be inline in six render functions.
+    // They are named functions now, tested here without an engine: a mapping
+    // regression is caught in milliseconds and named, rather than downstream
+    // as "RELAY sounds wrong".
+    // ========================================================================
+    {
+        using namespace px3::doom_control;
+
+        // ---- CLOCK: the harmonised steps are the point ---------------------
+        {
+            const auto steps = clockStepCount();
+            juce::StringArray ratios;
+            auto ascending = true;
+            auto previous = 0.0f;
+            for (int i = 0; i < steps; ++i)
+            {
+                const auto t = static_cast<float>(i) / static_cast<float>(steps - 1);
+                const auto ratio = mapClockToRatio(t, false);
+                ratios.add(fmt(ratio, 4));
+                if (ratio <= previous) { ascending = false; }
+                previous = ratio;
+            }
+
+            // Eleven simple ratios, rising to unity. Landing ON one of these
+            // is what makes CLOCK a musical control rather than a sample-rate
+            // slider, so the table itself is pinned.
+            check("DoomControl_TheClockStepsAreTheHarmonisedRatios",
+                  steps == 11 && ascending
+                      && std::abs(mapClockToRatio(0.0f, false) - 1.0f / 16.0f) < 1.0e-6f
+                      && std::abs(mapClockToRatio(1.0f, false) - 1.0f) < 1.0e-6f,
+                  juce::String(steps) + " steps: " + ratios.joinIntoString(", "));
+
+            // Stepped is the default; SMOOTH substitutes a continuous sweep
+            // over the same span, and its ends have to agree or switching
+            // between them at either extreme would jump.
+            auto smoothRises = true;
+            auto last = 0.0f;
+            for (int i = 0; i <= 50; ++i)
+            {
+                const auto ratio = mapClockToRatio(static_cast<float>(i) / 50.0f, true);
+                if (ratio <= last) { smoothRises = false; }
+                last = ratio;
+            }
+
+            check("DoomControl_SmoothSweepsTheSameSpanAsTheSteps",
+                  smoothRises
+                      && std::abs(mapClockToRatio(0.0f, true) - mapClockToRatio(0.0f, false)) < 1.0e-6f
+                      && std::abs(mapClockToRatio(1.0f, true) - mapClockToRatio(1.0f, false)) < 1.0e-6f,
+                  "smooth ends " + fmt(mapClockToRatio(0.0f, true), 4) + ".."
+                      + fmt(mapClockToRatio(1.0f, true), 4));
+        }
+
+        // ---- the four macros mean different things per mode ----------------
+        {
+            // RELAY's MODIFY is a COUNT, not a continuum: eight countable
+            // positions and one more that never stops. A knob that produced
+            // 3.7 repeats would have no musical meaning.
+            juce::StringArray counts;
+            std::array<int, 9> seen {};
+            for (int i = 0; i <= 8; ++i)
+            {
+                const auto taps = mapWetModifyToRelayTaps(static_cast<float>(i) / 8.0f, 8);
+                seen[static_cast<std::size_t>(i)] = taps;
+                counts.add(juce::String(taps));
+            }
+
+            check("DoomControl_RelayModifyCountsRepeats",
+                  seen.front() == 1 && seen.back() == 8
+                      && mapWetModifyToRelayInfinite(1.0f)
+                      && ! mapWetModifyToRelayInfinite(0.9f),
+                  "taps across the knob: " + counts.joinIntoString(", ")
+                      + "; infinite only at the top");
+
+            // TIME is squared in both modes that use it as a time, so the
+            // short settings people actually reach for are not crammed into
+            // the first few degrees of travel.
+            const auto soupQuarter = mapWetTimeToSoupT60(0.25f);
+            const auto soupHalf = mapWetTimeToSoupT60(0.5f);
+            const auto soupFull = mapWetTimeToSoupT60(1.0f);
+            const auto relayHalf = mapWetTimeToRelayDelay(0.5f);
+            const auto relayFull = mapWetTimeToRelayDelay(1.0f);
+
+            check("DoomControl_TimeIsSquaredSoTheShortSettingsAreReachable",
+                  soupQuarter < soupHalf && soupHalf < soupFull
+                      && soupHalf < soupFull * 0.35f
+                      && relayHalf < relayFull * 0.35f,
+                  "soup T60 " + fmt(soupQuarter, 2) + " / " + fmt(soupHalf, 2)
+                      + " / " + fmt(soupFull, 2) + " s; relay "
+                      + fmt(relayHalf, 3) + " / " + fmt(relayFull, 3) + " s");
+
+            // RADIO's MODIFY is a scan, so it has to return a PAIR of stations
+            // and a blend - at a centre one station is alone, between two both
+            // are audible. Five buttons could not do that.
+            int lower = 0, upper = 0;
+            float blend = 0.0f;
+            mapLoopModifyToStation(0.0f, 5, lower, upper, blend);
+            const auto atFirst = lower == 0 && blend < 1.0e-6f;
+            mapLoopModifyToStation(0.5f, 5, lower, upper, blend);
+            const auto atMiddle = lower == 2 && upper == 3 && blend < 1.0e-6f;
+            mapLoopModifyToStation(0.375f, 5, lower, upper, blend);
+            const auto between = lower == 1 && upper == 2 && blend > 0.4f && blend < 0.6f;
+            mapLoopModifyToStation(1.0f, 5, lower, upper, blend);
+            const auto atLast = lower == 4 && upper == 4;
+
+            check("DoomControl_RadioModifyScansRatherThanSelects",
+                  atFirst && atMiddle && between && atLast,
+                  "the scan reaches every station and blends between them");
+
+            // BURST's LENGTH is INVERTED: more LENGTH is a faster sequence and
+            // so a shorter step. Getting this backwards would be silent in a
+            // build and obvious only by ear.
+            check("DoomControl_BurstLengthSetsThePaceNotTheStepSize",
+                  mapLengthToBurstStep(1.0f) < mapLengthToBurstStep(0.0f),
+                  "step at length 0 is " + fmt(mapLengthToBurstStep(0.0f), 3)
+                      + " s, at length 1 is " + fmt(mapLengthToBurstStep(1.0f), 3) + " s");
+
+            // MASK fully down must reach a TRUE zero: the engine tests for
+            // <= 0.001 to give the untouched loop, which is the documented
+            // "good listen" position.
+            check("DoomControl_MaskThresholdReachesZeroForTheUntouchedLoop",
+                  mapLoopModifyToMaskThreshold(0.0f) <= 0.0f
+                      && mapLoopModifyToMaskThreshold(1.0f) >= 1.0f,
+                  "threshold spans a true 0 to 1");
+        }
+
+        // ---- macro invariants ---------------------------------------------
+        //
+        // The six primaries and their alternates each own one thing. This is
+        // the property that decays first, because every cross-reach looks
+        // locally reasonable.
+        {
+            juce::StringArray tangled;
+
+            const auto derive = [](const px3::DoomUserParameters& u)
+            {
+                return px3::deriveDoomParameters(u, 8, 8, 5);
+            };
+
+            px3::DoomUserParameters base;
+            base.clock = 0.6f; base.wetTime = 0.5f; base.wetModify = 0.5f;
+            base.loopLength = 0.5f; base.loopModify = 0.5f; base.mix = 0.5f;
+            const auto baseline = derive(base);
+
+            // GLUE shares a knob position with CLOCK and must not touch it.
+            auto glued = base; glued.glue = 0.9f;
+            const auto withGlue = derive(glued);
+            if (! juce::approximatelyEqual(withGlue.clockRatio, baseline.clockRatio))
+            {
+                tangled.add("GLUE moved the clock");
+            }
+
+            // CLOCK is the engine's rate and reaches everything measured in
+            // engine samples - but it is not a level and not a character.
+            auto slowed = base; slowed.clock = 0.0f;
+            const auto slow = derive(slowed);
+            if (slow.clockRatio >= baseline.clockRatio) { tangled.add("CLOCK did not change the rate"); }
+            if (! juce::approximatelyEqual(slow.glueDrive, baseline.glueDrive)
+                    || ! juce::approximatelyEqual(slow.mix, baseline.mix))
+            {
+                tangled.add("CLOCK changed GLUE or MIX");
+            }
+
+            // MIX and BALANCE share a knob position and are orthogonal: one is
+            // how much DOOM you hear, the other which channel dominates.
+            auto mixed = base; mixed.mix = 0.9f;
+            auto balanced = base; balanced.balance = 0.9f;
+            if (! juce::approximatelyEqual(derive(mixed).channelBalance, baseline.channelBalance))
+            {
+                tangled.add("MIX moved BALANCE");
+            }
+            if (! juce::approximatelyEqual(derive(balanced).mix, baseline.mix))
+            {
+                tangled.add("BALANCE moved MIX");
+            }
+
+            // The two MODIFYs are different controls on different channels.
+            auto wetTurned = base; wetTurned.wetModify = 0.9f;
+            const auto wet = derive(wetTurned);
+            if (wet.maskThreshold != baseline.maskThreshold
+                    || wet.radioLowerStation != baseline.radioLowerStation)
+            {
+                tangled.add("wet MODIFY reached the looper");
+            }
+
+            auto loopTurned = base; loopTurned.loopModify = 0.9f;
+            const auto loop = derive(loopTurned);
+            if (loop.relayTaps != baseline.relayTaps
+                    || loop.flipHarmonyIndex != baseline.flipHarmonyIndex)
+            {
+                tangled.add("loop MODIFY reached the wet channel");
+            }
+
+            // And TIME is the wet channel's, LENGTH the looper's.
+            auto timed = base; timed.wetTime = 0.9f;
+            if (! juce::approximatelyEqual(derive(timed).burstStepSeconds, baseline.burstStepSeconds))
+            {
+                tangled.add("TIME changed the loop's pace");
+            }
+            auto lengthened = base; lengthened.loopLength = 0.9f;
+            if (! juce::approximatelyEqual(derive(lengthened).soupT60Seconds, baseline.soupT60Seconds))
+            {
+                tangled.add("LENGTH changed the wet decay");
+            }
+
+            check("DoomControl_EachControlOwnsOneThing",
+                  tangled.isEmpty(),
+                  tangled.isEmpty() ? "CLOCK/GLUE, MIX/BALANCE and the two MODIFYs stay independent"
+                                    : tangled.joinIntoString("; "));
+        }
+
+        // ---- nothing derives an invalid value ------------------------------
+        {
+            juce::StringArray bad;
+            for (const auto clock : { 0.0f, 0.3f, 0.7f, 1.0f })
+            {
+                for (const auto a : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
+                {
+                    for (const auto smooth : { false, true })
+                    {
+                        px3::DoomUserParameters u;
+                        u.clock = clock; u.clockSmooth = smooth;
+                        u.wetTime = a; u.wetModify = a; u.loopLength = a; u.loopModify = a;
+                        const auto d = px3::deriveDoomParameters(u, 8, 8, 5);
+
+                        const std::array<float, 7> values { {
+                            d.clockRatio, d.burstStepSeconds, d.soupT60Seconds,
+                            d.relayDelaySeconds, d.radioStationBlend,
+                            d.maskThreshold, d.flipLagSeconds } };
+                        for (const auto v : values)
+                        {
+                            if (! std::isfinite(v) || v < 0.0f) { bad.add("non-finite"); break; }
+                        }
+                        if (d.clockRatio <= 0.0f || d.clockRatio > 1.0f) { bad.add("clock out of range"); }
+                        if (d.relayTaps < 1 || d.relayTaps > 8) { bad.add("tap count out of range"); }
+                        if (d.flipHarmonyIndex < 0 || d.flipHarmonyIndex > 7) { bad.add("harmony out of range"); }
+                        if (d.radioLowerStation < 0 || d.radioUpperStation > 4) { bad.add("station out of range"); }
+                    }
+                }
+            }
+
+            check("DoomControl_EveryCombinationDerivesValidParameters",
+                  bad.isEmpty(),
+                  bad.isEmpty() ? "40 CLOCK x macro x SMOOTH combinations all valid"
+                                : bad.joinIntoString(", "));
+        }
+    }
+
     // ---- construction and defaults -----------------------------------------
     {
-        const DoomSettings defaults;
+        const px3::DoomUserParameters defaults;
         check("Doom_DefaultsAreValid",
               defaults.enabled
                   && juce::approximatelyEqual(defaults.clock, 1.0f)
-                  && defaults.loopModeIndex == 1 && defaults.wetModeIndex == 0
+                  && defaults.loopMode == px3::DoomLoopMode::radio && defaults.wetMode == px3::DoomWetMode::soup
                   && juce::approximatelyEqual(defaults.cross, 0.0f)
                   && ! defaults.loopActive && defaults.wetActive,
               "cross off by default, looper listening, wet channel on");
@@ -177,7 +428,7 @@ void testDoom()
         // Engage, then feed SILENCE. Anything that comes out came from history.
         auto playing = listening;
         playing.loopActive = true;
-        playing.loopModeIndex = 2;      // MASK with threshold 0 = the pure loop
+        playing.loopMode = px3::DoomLoopMode::mask;      // MASK with threshold 0 = the pure loop
         playing.loopModify = 0.0f;
         playing.balance = 0.0f;         // looper only
         doom.updateForBlock(playing);
@@ -209,7 +460,7 @@ void testDoom()
             auto s = audible();
             s.loopActive = true;
             s.wetActive = false;
-            s.loopModeIndex = mode;
+            s.loopMode = static_cast<px3::DoomLoopMode>(mode);
             s.balance = 0.0f;
             const auto out = runDoom(s, Source::burst, 2.5, kSampleRate, 220.0f, 12345u, 1.5);
             const auto ok = out.finite() && out.peak() < 4.0f && out.tailRms() > 1.0e-5;
@@ -226,7 +477,7 @@ void testDoom()
             auto s = audible();
             s.loopActive = true;
             s.wetActive = false;
-            s.loopModeIndex = 1;     // RADIO
+            s.loopMode = px3::DoomLoopMode::radio;     // RADIO
             s.loopModify = static_cast<float>(station) / 4.0f;   // parked on a centre
             s.balance = 0.0f;
             const auto out = runDoom(s, Source::burst, 2.5, kSampleRate, 220.0f, 12345u, 1.5);
@@ -241,7 +492,7 @@ void testDoom()
         auto onStation = audible();
         onStation.loopActive = true;
         onStation.wetActive = false;
-        onStation.loopModeIndex = 1;
+        onStation.loopMode = px3::DoomLoopMode::radio;
         onStation.loopModify = 0.25f;    // exactly on station 2 of 5
         onStation.balance = 0.0f;
         onStation.loopLength = 0.5f;
@@ -281,7 +532,7 @@ void testDoom()
         auto pure = audible();
         pure.loopActive = true;
         pure.wetActive = false;
-        pure.loopModeIndex = 2;
+        pure.loopMode = px3::DoomLoopMode::mask;
         pure.loopModify = 0.0f;
         pure.balance = 0.0f;
 
@@ -313,7 +564,7 @@ void testDoom()
         auto normal = audible();
         normal.loopActive = true;
         normal.wetActive = false;
-        normal.loopModeIndex = 1;
+        normal.loopMode = px3::DoomLoopMode::radio;
         normal.loopModify = 0.0f;     // TAPE
         normal.loopLength = 0.5f;     // TAPE: rate = 0 at 0.5, so this is a stop
         normal.balance = 0.0f;
@@ -358,7 +609,7 @@ void testDoom()
         auto noOverdub = audible();
         noOverdub.loopActive = true;
         noOverdub.wetActive = false;
-        noOverdub.loopModeIndex = 2;
+        noOverdub.loopMode = px3::DoomLoopMode::mask;
         noOverdub.loopModify = 0.0f;
         noOverdub.balance = 0.0f;
 
@@ -433,7 +684,7 @@ void testDoom()
             auto s = audible();
             s.loopActive = true;
             s.wetActive = false;
-            s.loopModeIndex = loopMode;
+            s.loopMode = static_cast<px3::DoomLoopMode>(loopMode);
             s.loopModify = modify;
             s.loopLength = 0.5f;
             s.balance = 0.0f;
@@ -470,7 +721,7 @@ void testDoom()
         for (int mode = 0; mode < 3; ++mode)
         {
             auto s = audible();
-            s.wetModeIndex = mode;
+            s.wetMode = static_cast<px3::DoomWetMode>(mode);
             s.wetTime = 0.5f;
             s.wetModify = 0.5f;
             s.balance = 1.0f;    // wet channel only
@@ -487,7 +738,7 @@ void testDoom()
         // behind after the input stops. This is the one measurement that says
         // the magnitude accumulator is actually decaying rather than gating.
         auto shortDecay = audible();
-        shortDecay.wetModeIndex = 0;
+        shortDecay.wetMode = px3::DoomWetMode::soup;
         shortDecay.wetTime = 0.15f;
         shortDecay.balance = 1.0f;
 
@@ -532,7 +783,7 @@ void testDoom()
         // level of the last repeat against the first - a feedback delay would
         // show a geometric decay here.
         auto s = audible();
-        s.wetModeIndex = 1;
+        s.wetMode = px3::DoomWetMode::relay;
         s.wetTime = 0.35f;
         s.wetModify = 0.75f;    // several repeats
         s.balance = 1.0f;
@@ -622,7 +873,7 @@ void testDoom()
         for (const auto modify : { 0.0f, 0.3f, 0.6f, 1.0f })
         {
             auto s = audible();
-            s.wetModeIndex = 2;
+            s.wetMode = px3::DoomWetMode::flip;
             s.wetTime = 0.2f;
             s.wetModify = modify;
             s.balance = 1.0f;
@@ -647,7 +898,7 @@ void testDoom()
             doom.setSeed(4242u);
 
             auto s = audible();
-            s.wetModeIndex = mode;
+            s.wetMode = static_cast<px3::DoomWetMode>(mode);
             s.wetTime = 0.5f;
             s.balance = 1.0f;
             doom.updateForBlock(s);
@@ -717,7 +968,7 @@ void testDoom()
         // the one that could become an algebraic loop.
         auto channelSource = audible();
         channelSource.cross = 1.0f;
-        channelSource.crossSourceIndex = 1;
+        channelSource.crossSource = px3::DoomCrossSource::channel;
         channelSource.loopActive = true;
         channelSource.wetTime = 0.7f;
         const auto crossed = runDoom(channelSource, Source::burst, 4.0);
@@ -818,7 +1069,7 @@ void testDoom()
         // Spread has to widen the image rather than just being carried around.
         auto narrow = audible();
         narrow.loopActive = true;
-        narrow.loopModeIndex = 1;
+        narrow.loopMode = px3::DoomLoopMode::radio;
         narrow.spread = 0.0f;
         narrow.balance = 0.0f;
         auto wide = narrow;
@@ -844,7 +1095,7 @@ void testDoom()
             auto s = audible();
             s.loopActive = true;
             s.wetActive = true;
-            s.routingIndex = routing;
+            s.routing = static_cast<px3::DoomRouting>(routing);
             s.wetTime = 0.5f;
             const auto out = runDoom(s, Source::burst, 2.5, kSampleRate, 220.0f, 12345u, 1.5);
             allFine = allFine && out.finite() && out.peak() < 4.0f;
@@ -861,19 +1112,19 @@ void testDoom()
 
     // ---- hostile combinations ---------------------------------------------
     {
-        struct Hostile { const char* name; DoomSettings settings; };
+        struct Hostile { const char* name; px3::DoomUserParameters settings; };
 
         auto everything = audible();
         everything.loopActive = true;
         everything.wetActive = true;
-        everything.loopModeIndex = 0;
-        everything.wetModeIndex = 1;
+        everything.loopMode = px3::DoomLoopMode::burst;
+        everything.wetMode = px3::DoomWetMode::relay;
         everything.wetTime = 1.0f;
         everything.wetModify = 1.0f;
         everything.loopLength = 1.0f;
         everything.loopModify = 1.0f;
         everything.cross = 1.0f;
-        everything.crossSourceIndex = 1;
+        everything.crossSource = px3::DoomCrossSource::channel;
         everything.glue = 1.0f;
         everything.overdub = 1.0f;
         everything.fade = 1.0f;
@@ -882,11 +1133,11 @@ void testDoom()
         everything.freeze = true;
 
         auto soupExtreme = everything;
-        soupExtreme.wetModeIndex = 0;
+        soupExtreme.wetMode = px3::DoomWetMode::soup;
         soupExtreme.clock = 1.0f;
 
         auto flipExtreme = everything;
-        flipExtreme.wetModeIndex = 2;
+        flipExtreme.wetMode = px3::DoomWetMode::flip;
         flipExtreme.clock = 0.5f;
 
         auto noFade = everything;
@@ -921,18 +1172,18 @@ void testDoom()
     {
         // Every continuous control swept min to max while audio runs. What this
         // is looking for is a discontinuity the signal itself cannot explain.
-        struct Sweep { const char* name; float DoomSettings::* member; };
+        struct Sweep { const char* name; float px3::DoomUserParameters::* member; };
         const std::array<Sweep, 10> sweeps { {
-            { "clock", &DoomSettings::clock },
-            { "mix", &DoomSettings::mix },
-            { "loopLength", &DoomSettings::loopLength },
-            { "loopModify", &DoomSettings::loopModify },
-            { "wetTime", &DoomSettings::wetTime },
-            { "wetModify", &DoomSettings::wetModify },
-            { "cross", &DoomSettings::cross },
-            { "glue", &DoomSettings::glue },
-            { "balance", &DoomSettings::balance },
-            { "spread", &DoomSettings::spread },
+            { "clock", &px3::DoomUserParameters::clock },
+            { "mix", &px3::DoomUserParameters::mix },
+            { "loopLength", &px3::DoomUserParameters::loopLength },
+            { "loopModify", &px3::DoomUserParameters::loopModify },
+            { "wetTime", &px3::DoomUserParameters::wetTime },
+            { "wetModify", &px3::DoomUserParameters::wetModify },
+            { "cross", &px3::DoomUserParameters::cross },
+            { "glue", &px3::DoomUserParameters::glue },
+            { "balance", &px3::DoomUserParameters::balance },
+            { "spread", &px3::DoomUserParameters::spread },
         } };
 
         juce::String detail;
@@ -999,7 +1250,7 @@ void testDoom()
     {
         auto s = audible();
         s.loopActive = true;
-        s.loopModeIndex = 0;      // BURST, whose fills are stochastic
+        s.loopMode = px3::DoomLoopMode::burst;      // BURST, whose fills are stochastic
         s.loopModify = 1.0f;      // maximum sensitivity, so fills fire often
 
         const auto a = runDoom(s, Source::burst, 2.0, kSampleRate, 220.0f, 555u, 1.5);

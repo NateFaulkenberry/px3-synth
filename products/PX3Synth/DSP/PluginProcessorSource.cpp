@@ -489,7 +489,7 @@ MoodSettings PX3SynthAudioProcessor::currentMoodSettings() const
     return settings;
 }
 
-DoomSettings PX3SynthAudioProcessor::currentDoomSettings() const
+px3::DoomUserParameters PX3SynthAudioProcessor::currentDoomUserParameters() const
 {
     // Every continuous control goes through applyModulationToNormalizedValue,
     // which is what makes it a modulation destination - there is no DOOM-side
@@ -501,7 +501,7 @@ DoomSettings PX3SynthAudioProcessor::currentDoomSettings() const
                                              static_cast<juce::RangedAudioParameter*>(param)->getValue()));
     };
 
-    DoomSettings settings;
+    px3::DoomUserParameters settings;
     settings.enabled = doomEnabledParam != nullptr && doomEnabledParam->get();
     settings.freeze = doomFreezeParam != nullptr && doomFreezeParam->get();
     settings.loopActive = doomLoopActiveParam != nullptr && doomLoopActiveParam->get();
@@ -524,10 +524,14 @@ DoomSettings PX3SynthAudioProcessor::currentDoomSettings() const
     settings.blend = modulated(doomBlendParam);
     settings.spread = modulated(doomSpreadParam);
 
-    settings.routingIndex = doomRoutingParam != nullptr ? doomRoutingParam->getIndex() : 0;
-    settings.loopModeIndex = doomLoopModeParam != nullptr ? doomLoopModeParam->getIndex() : 1;
-    settings.wetModeIndex = doomWetModeParam != nullptr ? doomWetModeParam->getIndex() : 0;
-    settings.crossSourceIndex = doomCrossSourceParam != nullptr ? doomCrossSourceParam->getIndex() : 0;
+    settings.routing = static_cast<px3::DoomRouting>(
+        doomRoutingParam != nullptr ? doomRoutingParam->getIndex() : 0);
+    settings.loopMode = static_cast<px3::DoomLoopMode>(
+        doomLoopModeParam != nullptr ? doomLoopModeParam->getIndex() : 1);
+    settings.wetMode = static_cast<px3::DoomWetMode>(
+        doomWetModeParam != nullptr ? doomWetModeParam->getIndex() : 0);
+    settings.crossSource = static_cast<px3::DoomCrossSource>(
+        doomCrossSourceParam != nullptr ? doomCrossSourceParam->getIndex() : 0);
 
     return settings;
 }

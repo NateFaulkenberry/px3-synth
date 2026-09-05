@@ -7,6 +7,7 @@
 #include "LfoGenerator.h"
 #include "FxChain.h"
 #include "Doom.h"
+#include "DoomControlModel.h"
 #include "AnalogEngine.h"
 #include "BusInsertChain.h"
 #include "Chorus.h"
@@ -782,7 +783,7 @@ private:
     DelaySettings currentDelaySettings() const;
     ReverbSettings currentReverbSettings() const;
     MoodSettings currentMoodSettings() const;
-    DoomSettings currentDoomSettings() const;
+    px3::DoomUserParameters currentDoomUserParameters() const;
     px3::LucyUserParameters currentLucyUserParameters() const;
     ChorusSettings currentChorusSettings() const;
     StereoSpreadSettings currentStereoSpreadSettings() const;

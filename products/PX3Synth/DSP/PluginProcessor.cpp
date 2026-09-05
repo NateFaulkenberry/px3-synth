@@ -2077,7 +2077,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     delayComponent.updateForBlock(currentDelaySettings());
     moodComponent.updateForBlock(currentMoodSettings());
-    doomComponent.updateForBlock(currentDoomSettings());
+    doomComponent.updateForBlock(currentDoomUserParameters());
     lucyComponent.updateForBlock(currentLucyUserParameters());
     chorusComponent.updateForBlock(currentChorusSettings());
     stereoSpreadComponent.updateForBlock(currentStereoSpreadSettings());

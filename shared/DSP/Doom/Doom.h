@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DoomControlModel.h"
 #include "DoomTypes.h"
 #include "StftEngine.h"
 
@@ -26,7 +27,9 @@ class Doom
 public:
     void prepare(double sampleRate);
     void reset();
-    void updateForBlock(const DoomSettings& settings);
+    // The user's controls go in; deriveDoomParameters turns the four macros
+    // into whichever DSP quantity the current mode needs.
+    void updateForBlock(const DoomUserParameters& settings);
     void processSampleFrame(float inL, float inR, float& outL, float& outR);
 
     // Tests drive the stochastic parts (Burst's fills, Radio's static, Mask's
@@ -108,7 +111,8 @@ private:
 
     Frame processInternalStep(float inL, float inR);
 
-    DoomSettings settings;
+    DoomUserParameters settings;
+    DoomDerivedParameters derived;
     double hostSampleRate { 44100.0 };
     double internalRate { 44100.0 };
 

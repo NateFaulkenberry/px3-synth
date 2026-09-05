@@ -76,6 +76,7 @@ set(PX3_SHARED_SOURCES
         shared/DSP/Analog/AnalogEngine.cpp
         shared/DSP/Core/StftEngine.cpp
         shared/DSP/Doom/Doom.cpp
+        shared/DSP/Doom/DoomControlModel.cpp
         shared/DSP/Lucy/Lucy.cpp
         shared/DSP/Lucy/LucyControlModel.cpp
         shared/DSP/Chorus/Chorus.cpp
