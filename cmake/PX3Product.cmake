@@ -18,14 +18,23 @@
 #       PLUGIN_CODE   MdP1          # unique per product, four characters
 #       FORMATS       AU VST3       # Standalone only where a product wants one
 #       IS_SYNTH      FALSE
+#       ARTWORK       Mood-artwork.png
 #       SOURCES       ${PX3_MOOD_SOURCES})
+#
+# ARTWORK names the card backgrounds this product actually draws, copied into
+# its bundle from shared/UI/Artwork. It is per-product because every bundle used
+# to carry all of them: PX3 Mood shipped Doom's and Lucy's artwork, 27 MB of
+# images to draw one of them, in every bundle of every format. Omit it and the
+# product gets the whole directory, which is what the Synth wants - it draws all
+# eight cards - and what a product that has not been thought about gets, since
+# too much artwork is a size problem and too little is a blank card.
 #
 # PLUGIN_CODE must be unique across the ecosystem: two products sharing one is
 # how a DAW ends up loading the wrong plug-in.
 function(px3_add_product)
     set(options "")
     set(oneValue TARGET PRODUCT_NAME BUNDLE_ID PLUGIN_CODE IS_SYNTH NEEDS_MIDI_INPUT)
-    set(multiValue FORMATS SOURCES)
+    set(multiValue FORMATS SOURCES ARTWORK)
     cmake_parse_arguments(PX3P "${options}" "${oneValue}" "${multiValue}" ${ARGN})
 
     if (NOT PX3P_TARGET OR NOT PX3P_PRODUCT_NAME OR NOT PX3P_BUNDLE_ID OR NOT PX3P_PLUGIN_CODE)
@@ -102,9 +111,23 @@ function(px3_add_product)
         # built with. Replacing artwork appeared to do nothing for exactly this
         # reason. LINK_DEPENDS makes these files inputs to the link, so touching
         # one relinks and the copy runs.
-        file(GLOB PX3_ARTWORK_FILES CONFIGURE_DEPENDS
-             "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/*.png"
-             "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/*.jpg")
+        # Only what this product draws. Without ARTWORK it gets everything,
+        # because a missing background is a worse failure than a large bundle.
+        if (PX3P_ARTWORK)
+            set(PX3_ARTWORK_FILES "")
+            foreach(px3Art IN LISTS PX3P_ARTWORK)
+                set(px3ArtPath "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/${px3Art}")
+                if (NOT EXISTS "${px3ArtPath}")
+                    message(FATAL_ERROR
+                        "${PX3P_TARGET} asks for artwork '${px3Art}', which is not in shared/UI/Artwork")
+                endif()
+                list(APPEND PX3_ARTWORK_FILES "${px3ArtPath}")
+            endforeach()
+        else()
+            file(GLOB PX3_ARTWORK_FILES CONFIGURE_DEPENDS
+                 "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/*.png"
+                 "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/*.jpg")
+        endif()
 
         foreach(px3Format IN LISTS PX3P_FORMATS)
             if (TARGET ${PX3P_TARGET}_${px3Format})

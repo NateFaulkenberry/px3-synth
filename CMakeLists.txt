@@ -346,6 +346,7 @@ px3_add_product(
     BUNDLE_ID    "com.px3.delay"
     PLUGIN_CODE  DlP1
     FORMATS      AU VST3
+    ARTWORK      Delay-artwork.png
     SOURCES      ${PX3_DELAY_PLUGIN_SOURCES})
 
 px3_add_product(
@@ -354,6 +355,7 @@ px3_add_product(
     BUNDLE_ID    "com.px3.mood"
     PLUGIN_CODE  MdP1
     FORMATS      AU VST3
+    ARTWORK      Mood-artwork.png
     SOURCES      ${PX3_MOOD_PLUGIN_SOURCES})
 
 px3_add_product(
@@ -362,6 +364,7 @@ px3_add_product(
     BUNDLE_ID    "com.px3.chorus"
     PLUGIN_CODE  ChP1
     FORMATS      AU VST3
+    ARTWORK      Chorus-artwork.png
     SOURCES      ${PX3_CHORUS_PLUGIN_SOURCES})
 
 px3_add_product(
@@ -370,6 +373,7 @@ px3_add_product(
     BUNDLE_ID    "com.px3.spread"
     PLUGIN_CODE  SpP1
     FORMATS      AU VST3
+    ARTWORK      Spread-artwork.png
     SOURCES      ${PX3_SPREAD_PLUGIN_SOURCES})
 
 px3_add_product(
@@ -378,6 +382,7 @@ px3_add_product(
     BUNDLE_ID    "com.px3.reverb"
     PLUGIN_CODE  RvP1
     FORMATS      AU VST3
+    ARTWORK      Reverb-artwork.png
     SOURCES      ${PX3_REVERB_PLUGIN_SOURCES})
 
 px3_add_product(
@@ -386,6 +391,7 @@ px3_add_product(
     BUNDLE_ID    "com.px3.doom"
     PLUGIN_CODE  DmP1
     FORMATS      AU VST3
+    ARTWORK      Doom-artwork.png
     SOURCES      ${PX3_DOOM_PLUGIN_SOURCES})
 
 px3_add_product(
@@ -394,6 +400,7 @@ px3_add_product(
     BUNDLE_ID    "com.px3.lucy"
     PLUGIN_CODE  LcP1
     FORMATS      AU VST3
+    ARTWORK      Lucy-artwork.png
     SOURCES      ${PX3_LUCY_PLUGIN_SOURCES})
 
 juce_add_binary_data(PX3Assets
