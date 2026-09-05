@@ -165,7 +165,89 @@ Flagged as inference, not documented fact.
 
 ---
 
-## 3. Architecture
+## 3. The control model
+
+Between the knobs and the engine there is one translation layer:
+`shared/DSP/Lucy/LucyControlModel.{h,cpp}`.
+
+```
+    USER CONTROLS            LucyUserParameters      what a person turns
+          │
+          ▼
+    deriveLucyParameters()                           one function, once a block
+          │
+          ▼
+    DSP PARAMETERS           LucyDerivedParameters   coverage, step sizes,
+          │                                          frame counts
+          ▼
+    THE ENGINE               px3::Lucy
+```
+
+**No stage of the engine reads a knob.** `applyLoss` asks for a masking depth,
+not for LOSS; `applyPackets` asks for a probability, not for LOSS and SPEED. The
+transfer curves used to live inline in those four functions, which meant the
+answer to "what does LOSS at 0.4 actually do" was spread across four stages of
+DSP and could not be tested without running audio. They are named functions now
+— `mapLossToCoverage`, `mapLossToQuantisation`, `mapSpeedToDecisionFrames`,
+`applyGlobalIntensity` — and the control-model tests call them directly.
+
+### The three macros
+
+**GLOBAL** is an *intensity* macro, not a wet/dry. It scales the coder's depth
+and coverage, the packet probability, the filter's amount and the freeze blend —
+each through its own exponent, so the stages arrive in a deliberate order:
+
+| exponent | arrives | which |
+|---|---|---|
+| 0.7 | early | FILTER — it shapes where artifacts live rather than making them |
+| 1.0 | proportional | loss depth, coverage, quantisation, freeze, verb |
+| 1.6 | late | PACKETS — a dropout at a quarter intensity is not "subtle" |
+
+A crossfade survives in the bottom **8%** of GLOBAL's travel and nowhere else,
+so the effect reaches genuinely clean at zero and the idle path (which skips two
+FFTs per hop) has a continuous way in and out. Above that region the dry term is
+gone. This is a discontinuity guard, not the mechanism: a crossfade cannot keep
+the character recognisable as intensity rises, because it only ever changes how
+much of a *fixed* wet signal you hear.
+
+**LOSS** drives five derived values through five separately-tuned curves. Using
+one curve for all five is what made the bottom half of the knob do nothing and
+the top tenth do everything:
+
+| derived | curve | why |
+|---|---|---|
+| coverage | `0.05 + 0.95·loss^1.15` | early LOSS works a narrow strip, widening to the whole spectrum |
+| masking depth | `0.02 + 1.75·loss^1.6` | obvious digital-compression character by half travel |
+| discard ratio | `0.35 + 0.65·loss^0.8` | at the bottom only clearly-inaudible bins go, so LOSS thins before it gouges |
+| quantisation | `0.05 + 2.40·loss^2.0` | the harshest artifact, deliberately late |
+| packet probability | `0.50·loss^2.4` | later still; a knob that stutters at a quarter turn has no usable bottom half |
+
+**SPEED** is one temporal control. Nothing else in the engine picks its own rate:
+the coding decision interval, the packet state interval, the slushy-freeze drift
+and JITTER's two rates all derive from it. All four are **geometric**, because
+each is a rate — a linear map from a knob to a frame count spends most of its
+travel in a range that sounds the same. Decision hold runs 16 frames down to 1,
+with the middle of the knob at 4 rather than the 8 a linear map gives.
+
+SLOW is orthogonal and multiplies with it: doubling the transform halves the
+frame rate, so SLOW + low SPEED is substantially slower than either alone.
+
+### Ownership
+
+Each control owns one thing, and the tests in §8 pin the separation:
+
+| control | owns |
+|---|---|
+| GLOBAL | how strongly the whole effect is expressed |
+| LOSS | degradation depth and spectral coverage |
+| SPEED | temporal evolution, for every stage |
+| FILTER / FREQ / SLOPE | where the artifacts live |
+| VERB / DECAY | the reverb |
+| LOSS GAIN | wet level, and nothing else |
+
+---
+
+## 4. Architecture
 
 Following the documented signal flow.
 
@@ -218,9 +300,9 @@ Following the documented signal flow.
 
 ---
 
-## 4. Subsystem designs
+## 5. Subsystem designs
 
-### 4.1 Spectral engine
+### 5.1 Spectral engine
 
 `StftEngine` (shared with DOOM's SOUP). Hann analysis **and** synthesis, hop =
 size/4, so the Hann-squared product sums to a constant at 75% overlap and
@@ -247,7 +329,7 @@ phase carried through. Spectral processing that rewrites phase carelessly turns
 chords into mush; the modes that *do* touch phase (JITTER, FREEZE, PACKET
 REPEAT) do so deliberately and are the only ones that should smear.
 
-### 4.2 LOSS — a masking coder, not a bitcrusher
+### 5.2 LOSS — a masking coder, not a bitcrusher
 
 Per frame, per bin:
 
@@ -294,7 +376,7 @@ Both, because "phase **and** timing" is two things.
 ratio, smoothed across frames. Documented as existing precisely because the Loss
 modes work by manipulating the spectrum.
 
-### 4.3 SPEED — one decision rate
+### 5.3 SPEED — one decision rate
 
 The engine holds its decisions for `N` frames, where `N` falls as SPEED rises.
 Held decisions are the masking pattern, the packet state and the freeze target.
@@ -307,7 +389,7 @@ Held decisions are the masking pattern, the packet state and the freeze target.
 
 One mechanism, three documented consequences, from one control.
 
-### 4.4 PACKETS — Gilbert-Elliott bursts
+### 5.4 PACKETS — Gilbert-Elliott bursts
 
 Packet loss on a real link is **bursty**: losses cluster. The standard model for
 this is the **Gilbert-Elliott** two-state Markov chain — a GOOD state and a BAD
@@ -334,7 +416,7 @@ the two channels related rather than independent.
 *Reference:* Gilbert–Elliott burst-error channel model; packet-loss concealment
 by frame repetition, standard in speech and audio codecs.
 
-### 4.5 FREEZE — spectral, not a looper
+### 5.5 FREEZE — spectral, not a looper
 
 Magnitudes are latched per bin; phase advances by the bin's expected per-hop
 increment with a small bounded random component, so a frozen chord sustains
@@ -350,7 +432,7 @@ without becoming a static metallic tone.
 This is a spectral freeze, not "record 100 ms and loop it": the frozen sound has
 no period, no loop point, and can be filtered and re-degraded as a spectrum.
 
-### 4.6 FILTER
+### 5.6 FILTER
 
 A band-pass whose **width** is the primary control, matching the documentation:
 at minimum there is no filtering at all, and turning it up narrows the band
@@ -365,7 +447,7 @@ to give the band-reject.
 It sits **after** the spectral engine, per the documented signal flow: its job is
 to "shape and emphasize the artifacts", which means it must act on the artifacts.
 
-### 4.7 VERB — pre by default
+### 5.7 VERB — pre by default
 
 A 4-line **feedback delay network** with a Hadamard mixing matrix, modulated
 delay lengths and one-pole damping in the loop. Its "as digital as could be"
@@ -379,14 +461,14 @@ tail as well as the input — which is what "exciting and enhancing their effect
 means, and it is the routing that makes the degradation cohesive rather than
 decorative. **POST** puts it after, for a tail that trails out regardless.
 
-### 4.8 GATE
+### 5.8 GATE
 
 Envelope follower, **hysteresis** (the open threshold sits above the close
 threshold, so a signal hovering at the cutoff does not chatter), and separate
 attack/release. Low cutoff sputters, medium fails momentarily, high passes
 blips — the three documented behaviours fall out of one threshold.
 
-### 4.9 LIMITER
+### 5.9 LIMITER
 
 A lookahead peak limiter: a short delay so the gain reduction is in place before
 the peak arrives, with attack/release smoothing. Necessary here rather than
@@ -396,7 +478,7 @@ produce peaks the input never had. Lowering the threshold increases limiting and
 
 ---
 
-## 5. Intentional approximations / adaptations
+## 6. Intentional approximations / adaptations
 
 1. Footswitch gestures become parameters: freeze state, gate on/off.
 2. Presets, MIDI, ramping and CV are the host's job; the synth has them already.
@@ -408,36 +490,57 @@ produce peaks the input never had. Lowering the threshold increases limiting and
 
 ---
 
-## 6. Parameters
+## 7. Parameters
+
+Six primary knobs, each carrying a second function, as the pedal prints them.
+The panel's **ALT** switch selects which of a pair is displayed; both are real
+parameters, attached and automatable whichever way it is set.
+
+| primary | alternate |
+|---|---|
+| FILTER | GATE |
+| GLOBAL | FREEZER |
+| VERB | DECAY |
+| FREQ | THRESHOLD |
+| SPEED | AUTO GAIN |
+| LOSS | LOSS GAIN |
 
 | Parameter | Range | Default | Purpose |
 |---|---|---|---|
 | `lucyEnabled` | bool | true | bypass |
-| `lucyGlobal` | 0…1 | **0.0** | macro intensity, in place of a mix. Zero by default so adding LUCY changes no existing patch |
-| `lucyLoss` | 0…1 | 0.55 | depth of Loss and Packets, and which frequencies are affected |
-| `lucySpeed` | 0…1 | 0.5 | decision rate for Loss, Packets and Freeze |
-| `lucyMode` | STANDARD / INVERSE / JITTER | STANDARD | Loss mode |
-| `lucyPackets` | CLEAN / LOSS / REPEAT | CLEAN | Packet mode |
-| `lucyFilter` | 0…1 | 0.0 | filter width; zero is no filtering |
-| `lucyFilterFreq` | 0…1 | 0.5 | filter centre |
-| `lucySlope` | 6 / 24 / 96 dB | 24 dB | filter slope |
+| `lucyGlobal` | 0…1 | **0.0** | macro intensity, *not* a mix. Zero by default so adding LUCY changes no existing patch |
+| `lucyLoss` | 0…1 | 0.55 | degradation depth **and** which frequencies it reaches |
+| `lucySpeed` | 0…1 | 0.5 | the one decision rate: Loss, Packets, Freeze, Jitter |
+| `lucyFilter` | 0…1 | **0.0** | filter width; zero is genuinely no filtering |
+| `lucyFreq` | 0…1 | 0.5 | filter centre |
+| `lucyVerb` | 0…1 | 0.0 | reverb amount |
+| `lucyGateThreshold` | 0…1 | 0.25 | *alt of FILTER* — gate threshold |
+| `lucyFreezer` | 0…1 | 1.0 | *alt of GLOBAL* — live ↔ frozen balance |
+| `lucyDecay` | 0…1 | 0.45 | *alt of VERB* — reverb size / length |
+| `lucyLimiterThreshold` | 0…1 | 0.8 | *alt of FREQ* — **limiter** threshold; lower means more limiting. Named in full because the coder has a masking threshold of its own, which is derived and never a parameter |
+| `lucyAutoGain` | 0…1 | 0.75 | *alt of SPEED* — gain compensation for the Loss modes |
+| `lucyLossGain` | −36…+36 dB | 0 dB | *alt of LOSS* — wet gain, and nothing else |
+| `lucyMode` | STANDARD / INVERSE / JITTER | STANDARD | type of degradation |
+| `lucyPackets` | CLEAN / LOSS / REPEAT | CLEAN | connection-style dropouts |
+| `lucySlope` | 6 / 24 / 96 dB | 24 dB | filter slope. The section count behind it is internal |
+| `lucyWeighting` | DARK / NEUTRAL / BRIGHT | NEUTRAL | which end of the spectrum the coder protects |
+| `lucyFreeze` | OFF / SOLID / SLUSHY | OFF | one control, not two booleans — the pair could express "slushy while not frozen", which meant nothing |
 | `lucyFilterInvert` | bool | false | band-pass ↔ band-reject |
-| `lucyVerb` | 0…1 | 0.0 | reverb mix |
-| `lucyVerbDecay` | 0…1 | 0.45 | reverb size / length |
-| `lucyVerbPost` | bool | false | reverb after the chain instead of before |
-| `lucyFreeze` | bool | false | freeze on |
-| `lucyFreezeSlushy` | bool | false | slushy rather than solid |
-| `lucyFreezer` | 0…1 | 1.0 | live ↔ frozen balance |
+| `lucyVerbPost` | bool | false | reverb after the chain instead of feeding it |
 | `lucyGate` | bool | false | gate on |
-| `lucyGateCutoff` | 0…1 | 0.25 | gate threshold |
-| `lucyThreshold` | 0…1 | 0.8 | limiter threshold; lower means more limiting |
-| `lucyAutoGain` | 0…1 | 0.75 | gain compensation for the Loss modes |
-| `lucyWeighting` | −1…+1 | 0.0 | DARK ← neutral psychoacoustic → BRIGHT |
-| `lucyGain` | −36…+36 dB | 0 dB | wet gain |
-| `lucySpread` | 0…1 | 0.5 | stereo: packet alternation and reverb width |
 | `lucySlow` | bool | false | bigger, darker, slower, more latency |
+| `lucySpread` | 0…1 | 0.5 | stereo: packet alternation and reverb width |
 
-## 7. CPU
+**ALT is deliberately not a parameter.** It selects which function the six
+paired knobs display, which is a property of the panel rather than of the sound.
+
+There are **no backwards-compatibility shims**. `lucyFilterFreq`,
+`lucyGateCutoff`, `lucyThreshold`, `lucyGain` and `lucyFreezeSlushy` are gone
+rather than aliased, and `lucyWeighting` changed from a bipolar float to a
+three-way choice. Sessions saved before this refresh will load LUCY at its
+defaults.
+
+## 8. CPU
 
 Two real FFTs per hop per channel: at 512/128 and 48 kHz that is ~750 FFT pairs
 per second per channel. The masking model is O(bins) per frame with a fixed
@@ -445,7 +548,7 @@ band count. Everything is allocated in `prepare()` — including the 1024-point
 plan, so toggling SLOW allocates nothing. `processSampleFrame` has no
 allocation, no locks and no unbounded loops.
 
-## 8. Testing strategy
+## 9. Testing strategy
 
 A dedicated `lucy` suite: construction and defaults; 44.1/48/88.2/96 kHz;
 silence, impulse, and sines from 50 Hz to 10 kHz; complex material (saw, square,

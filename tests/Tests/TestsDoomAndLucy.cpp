@@ -1543,7 +1543,7 @@ using doomtest::Result;
 
 enum class Source { silence, impulse, sine, saw, chord, pluck, noise };
 
-Result runLucy(const LucySettings& settings,
+Result runLucy(const px3::LucyUserParameters& settings,
                Source source,
                double seconds,
                double sampleRate = kSampleRate,
@@ -1624,9 +1624,9 @@ Result runLucy(const LucySettings& settings,
     return result;
 }
 
-LucySettings audible()
+px3::LucyUserParameters audible()
 {
-    LucySettings s;
+    px3::LucyUserParameters s;
     s.enabled = true;
     s.global = 1.0f;
     return s;
@@ -1655,16 +1655,283 @@ void testLucy()
 
     using namespace lucytest;
 
+    // ========================================================================
+    // THE CONTROL MODEL
+    //
+    // Tested directly, without an engine or any audio. The transfer curves
+    // used to live inline in four DSP stages, where the only way to ask "what
+    // does LOSS at 0.4 actually do" was to render and measure. These are pure
+    // functions now, so a mapping regression is caught here - in milliseconds,
+    // and naming the curve - rather than downstream as "the sound changed".
+    // ========================================================================
+    {
+        using namespace px3::lucy_control;
+
+        // ---- LOSS: five curves, each monotonic in its own right -----------
+        {
+            juce::StringArray broken;
+            const std::array<std::pair<const char*, float (*)(float)>, 5> curves { {
+                { "coverage", &mapLossToCoverage },
+                { "maskingDepth", &mapLossToMaskingDepth },
+                { "discard", &mapLossToDiscard },
+                { "quantisation", &mapLossToQuantisation },
+                { "packetProbability", &mapLossToPacketProbability },
+            } };
+
+            for (const auto& [name, fn] : curves)
+            {
+                auto previous = fn(0.0f);
+                for (int step = 1; step <= 100; ++step)
+                {
+                    const auto value = fn(static_cast<float>(step) / 100.0f);
+                    if (! std::isfinite(value) || value < previous - 1.0e-6f)
+                    {
+                        broken.add(juce::String(name) + " at " + fmt(step / 100.0, 2));
+                        break;
+                    }
+                    previous = value;
+                }
+            }
+
+            check("LucyControl_EveryLossCurveRisesMonotonically",
+                  broken.isEmpty(),
+                  broken.isEmpty() ? "coverage, masking, discard, quantisation and packets all rise with LOSS"
+                                   : "not monotonic: " + broken.joinIntoString(", "));
+        }
+
+        // ---- LOSS has a usable bottom half --------------------------------
+        //
+        // The failure this pins is the one the old inline curves had: with
+        // loss*loss for masking AND quantisation AND packets, half the knob
+        // did almost nothing. Measured as the fraction of each curve's total
+        // travel that has happened by the halfway point.
+        {
+            const auto travelAtHalf = [](float (*fn)(float))
+            {
+                const auto lo = fn(0.0f), mid = fn(0.5f), hi = fn(1.0f);
+                return (mid - lo) / juce::jmax(1.0e-9f, hi - lo);
+            };
+
+            const auto masking = travelAtHalf(&mapLossToMaskingDepth);
+            const auto coverage = travelAtHalf(&mapLossToCoverage);
+            const auto quantisation = travelAtHalf(&mapLossToQuantisation);
+            const auto packets = travelAtHalf(&mapLossToPacketProbability);
+
+            // Coverage and masking carry the character and must be well under
+            // way by halfway; quantisation and packets are the destructive
+            // pair and are deliberately held back, but not to nothing.
+            check("LucyControl_TheBottomHalfOfLossIsNotWasted",
+                  masking > 0.25f && coverage > 0.35f
+                      && quantisation > 0.10f && packets > 0.05f,
+                  "travel by half turn - masking " + fmt(masking, 2)
+                      + ", coverage " + fmt(coverage, 2)
+                      + ", quantisation " + fmt(quantisation, 2)
+                      + ", packets " + fmt(packets, 2));
+
+            // And the destructive stages really do arrive later than the
+            // tonal ones, which is what makes the knob usable throughout.
+            check("LucyControl_TheDestructiveStagesArriveLast",
+                  quantisation < masking && packets < masking,
+                  "quantisation " + fmt(quantisation, 2) + " and packets "
+                      + fmt(packets, 2) + " both behind masking " + fmt(masking, 2));
+        }
+
+        // ---- SPEED: one control, geometric --------------------------------
+        {
+            const auto slowest = mapSpeedToDecisionFrames(0.0f);
+            const auto middle = mapSpeedToDecisionFrames(0.5f);
+            const auto fastest = mapSpeedToDecisionFrames(1.0f);
+
+            // Geometric, not linear: halfway is the geometric mean of the
+            // endpoints (4 for 16..1), not the arithmetic one (8). A linear
+            // map spends most of its travel in a range that sounds the same.
+            check("LucyControl_SpeedIsGeometricRatherThanLinear",
+                  slowest == 16 && fastest == 1 && middle == 4,
+                  "decision frames: " + juce::String(slowest) + " / "
+                      + juce::String(middle) + " / " + juce::String(fastest));
+
+            juce::StringArray notFalling;
+            auto previousFrames = mapSpeedToDecisionFrames(0.0f);
+            auto previousPackets = mapSpeedToPacketStateFrames(0.0f);
+            auto previousSlush = mapSpeedToFreezeSlushRate(0.0f);
+            for (int step = 1; step <= 50; ++step)
+            {
+                const auto t = static_cast<float>(step) / 50.0f;
+                const auto frames = mapSpeedToDecisionFrames(t);
+                const auto packets = mapSpeedToPacketStateFrames(t);
+                const auto slush = mapSpeedToFreezeSlushRate(t);
+                if (frames > previousFrames) { notFalling.add("decisions"); break; }
+                if (packets > previousPackets) { notFalling.add("packet state"); break; }
+                if (slush < previousSlush - 1.0e-9f) { notFalling.add("slush rate"); break; }
+                previousFrames = frames;
+                previousPackets = packets;
+                previousSlush = slush;
+            }
+
+            // All three come from the ONE knob and move together. Three
+            // independently-chosen rates is the thing SPEED exists to prevent.
+            check("LucyControl_SpeedDrivesEveryTemporalStageTogether",
+                  notFalling.isEmpty(),
+                  notFalling.isEmpty() ? "decisions, packet state and freeze drift all follow SPEED"
+                                       : "moved the wrong way: " + notFalling.joinIntoString(", "));
+        }
+
+        // ---- GLOBAL is an intensity macro, not a wet/dry -------------------
+        {
+            // The crossfade exists only in the bottom few percent. Above that
+            // the dry term is gone entirely and GLOBAL works by scaling the
+            // effect's own parameters - which is the whole distinction.
+            const auto atZero = globalOutputBlend(0.0f);
+            const auto atGuard = globalOutputBlend(0.08f);
+            const auto atQuarter = globalOutputBlend(0.25f);
+            const auto atFull = globalOutputBlend(1.0f);
+
+            check("LucyControl_GlobalIsNotAWetDryCrossfade",
+                  atZero <= 1.0e-6f && atGuard >= 0.999f
+                      && atQuarter >= 0.999f && atFull >= 0.999f,
+                  "output blend at 0 / 0.08 / 0.25 / 1: " + fmt(atZero, 3) + ", "
+                      + fmt(atGuard, 3) + ", " + fmt(atQuarter, 3) + ", " + fmt(atFull, 3));
+
+            // What GLOBAL actually does: the same LOSS setting expresses more
+            // of itself as the macro rises.
+            px3::LucyUserParameters user;
+            user.loss = 0.6f;
+            juce::StringArray detail;
+            auto rising = true;
+            auto previous = -1.0f;
+            for (const auto global : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
+            {
+                user.global = global;
+                const auto derived = px3::deriveLucyParameters(user);
+                detail.add(fmt(global, 2) + "->" + fmt(derived.maskingDepth, 3));
+                if (derived.maskingDepth <= previous) { rising = false; }
+                previous = derived.maskingDepth;
+            }
+
+            check("LucyControl_GlobalScalesTheCharacterTheOtherControlsDescribe",
+                  rising,
+                  "masking depth at a fixed LOSS of 0.6, by GLOBAL: " + detail.joinIntoString(", "));
+        }
+
+        // ---- macro invariants ---------------------------------------------
+        //
+        // The separation is the point of the layer, and it is exactly what
+        // decays first: one convenient reach across from a macro into another
+        // macro's territory and the controls stop being independent.
+        {
+            juce::StringArray tangled;
+
+            const auto baseline = px3::deriveLucyParameters([]
+            {
+                px3::LucyUserParameters u;
+                u.global = 0.7f; u.loss = 0.5f; u.speed = 0.5f;
+                return u;
+            }());
+
+            // LOSS GAIN is a level. It must not touch the coder.
+            auto gain = px3::LucyUserParameters { };
+            gain.global = 0.7f; gain.loss = 0.5f; gain.speed = 0.5f; gain.lossGainDb = 18.0f;
+            const auto gained = px3::deriveLucyParameters(gain);
+            if (! juce::approximatelyEqual(gained.spectralCoverage, baseline.spectralCoverage)
+                    || ! juce::approximatelyEqual(gained.maskingDepth, baseline.maskingDepth)
+                    || ! juce::approximatelyEqual(gained.packetProbability, baseline.packetProbability))
+            {
+                tangled.add("LOSS GAIN changed the coder");
+            }
+
+            // FREQ moves the filter and nothing else.
+            auto freq = gain; freq.lossGainDb = 0.0f; freq.filterFreq = 0.9f;
+            const auto moved = px3::deriveLucyParameters(freq);
+            if (! juce::approximatelyEqual(moved.spectralCoverage, baseline.spectralCoverage)
+                    || ! juce::approximatelyEqual(moved.maskingDepth, baseline.maskingDepth))
+            {
+                tangled.add("FREQ changed the coverage");
+            }
+
+            // SPEED is temporal. It must not change how deep the degradation is.
+            auto fast = gain; fast.lossGainDb = 0.0f; fast.speed = 0.95f;
+            const auto quick = px3::deriveLucyParameters(fast);
+            if (! juce::approximatelyEqual(quick.maskingDepth, baseline.maskingDepth)
+                    || ! juce::approximatelyEqual(quick.spectralCoverage, baseline.spectralCoverage)
+                    || ! juce::approximatelyEqual(quick.quantisationAmount, baseline.quantisationAmount))
+            {
+                tangled.add("SPEED changed the degradation depth");
+            }
+            if (quick.decisionFrames >= baseline.decisionFrames)
+            {
+                tangled.add("SPEED did not change the decision rate");
+            }
+
+            // LOSS is depth. It must not change the rates.
+            auto deep = gain; deep.lossGainDb = 0.0f; deep.loss = 0.95f;
+            const auto deeper = px3::deriveLucyParameters(deep);
+            if (deeper.decisionFrames != baseline.decisionFrames
+                    || deeper.packetStateFrames != baseline.packetStateFrames
+                    || ! juce::approximatelyEqual(deeper.freezeSlushRate, baseline.freezeSlushRate))
+            {
+                tangled.add("LOSS changed the temporal rates");
+            }
+
+            check("LucyControl_TheMacrosStayOutOfEachOthersTerritory",
+                  tangled.isEmpty(),
+                  tangled.isEmpty() ? "LOSS owns depth, SPEED owns time, FREQ and LOSS GAIN own neither"
+                                    : tangled.joinIntoString("; "));
+        }
+
+        // ---- nothing produces a non-finite derived value ------------------
+        {
+            juce::StringArray bad;
+            for (const auto global : { 0.0f, 0.15f, 0.5f, 1.0f })
+            {
+                for (const auto loss : { 0.0f, 0.1f, 0.5f, 0.9f, 1.0f })
+                {
+                    for (const auto speed : { 0.0f, 0.5f, 1.0f })
+                    {
+                        px3::LucyUserParameters u;
+                        u.global = global; u.loss = loss; u.speed = speed;
+                        const auto d = px3::deriveLucyParameters(u);
+                        const std::array<float, 9> values { {
+                            d.spectralCoverage, d.maskingDepth, d.discardAmount,
+                            d.quantisationAmount, d.packetProbability, d.freezeSlushRate,
+                            d.jitterWalkStep, d.jitterDepth, d.outputBlend } };
+                        for (const auto v : values)
+                        {
+                            if (! std::isfinite(v) || v < 0.0f)
+                            {
+                                bad.add("g" + fmt(global, 2) + " l" + fmt(loss, 2)
+                                        + " s" + fmt(speed, 2));
+                                break;
+                            }
+                        }
+                        if (d.decisionFrames < 1 || d.packetStateFrames < 1)
+                        {
+                            bad.add("frame count below 1");
+                        }
+                    }
+                }
+            }
+
+            check("LucyControl_EveryCombinationDerivesValidParameters",
+                  bad.isEmpty(),
+                  bad.isEmpty() ? "60 GLOBAL x LOSS x SPEED combinations all finite and in range"
+                                : bad.joinIntoString(", "));
+        }
+    }
+
     // ---- construction and defaults -----------------------------------------
     {
-        const LucySettings defaults;
+        const px3::LucyUserParameters defaults;
         check("Lucy_DefaultsAreValid",
               defaults.enabled
                   && juce::approximatelyEqual(defaults.global, 0.0f)
-                  && juce::approximatelyEqual(defaults.filterWidth, 0.0f)
-                  && defaults.modeIndex == 0 && defaults.packetIndex == 0
-                  && ! defaults.freeze && ! defaults.gate && ! defaults.slow,
-              "global and filter width both zero, packets clean");
+                  && juce::approximatelyEqual(defaults.filter, 0.0f)
+                  && defaults.mode == px3::LucyLossMode::standard
+                  && defaults.packets == px3::LucyPacketMode::clean
+                  && defaults.weighting == px3::LucyWeighting::neutral
+                  && defaults.slope == px3::LucyFilterSlope::medium24dB
+                  && defaults.freeze == px3::LucyFreezeMode::off
+                  && ! defaults.gate && ! defaults.slow,
+              "global and filter width both zero, packets clean, weighting neutral, freeze off");
 
         px3::Lucy lucy;
         lucy.prepare(kSampleRate);
@@ -1698,7 +1965,7 @@ void testLucy()
         auto s = audible();
         s.loss = 0.8f;
         s.verb = 0.6f;
-        s.filterWidth = 0.5f;
+        s.filter = 0.5f;
 
         const auto quiet = runLucy(s, Source::silence, 2.0);
         check("Lucy_SilenceStaysSilent",
@@ -1806,14 +2073,14 @@ void testLucy()
         // threw away and is therefore brighter and thinner.
         auto standard = audible();
         standard.loss = 0.75f;
-        standard.modeIndex = 0;
+        standard.mode = px3::LucyLossMode::standard;
         standard.autoGain = 0.0f;
 
         auto inverse = standard;
-        inverse.modeIndex = 1;
+        inverse.mode = px3::LucyLossMode::inverse;
 
         auto jitter = standard;
-        jitter.modeIndex = 2;
+        jitter.mode = px3::LucyLossMode::jitter;
 
         const auto a = runLucy(standard, Source::saw, 2.0);
         const auto b = runLucy(inverse, Source::saw, 2.0);
@@ -1889,11 +2156,11 @@ void testLucy()
         // WEIGHTING chooses which end of the spectrum survives the coder.
         auto dark = audible();
         dark.loss = 0.8f;
-        dark.weighting = -1.0f;
+        dark.weighting = px3::LucyWeighting::dark;
         dark.autoGain = 0.0f;
 
         auto bright = dark;
-        bright.weighting = 1.0f;
+        bright.weighting = px3::LucyWeighting::bright;
 
         const auto a = runLucy(dark, Source::noise, 2.0);
         const auto b = runLucy(bright, Source::noise, 2.0);
@@ -1912,7 +2179,7 @@ void testLucy()
         auto slow = audible();
         slow.loss = 0.8f;
         slow.speed = 0.0f;
-        slow.packetIndex = 1;
+        slow.packets = px3::LucyPacketMode::loss;
 
         auto fast = slow;
         fast.speed = 1.0f;
@@ -1966,7 +2233,7 @@ void testLucy()
             auto s = audible();
             s.loss = 0.8f;
             s.speed = 0.5f;
-            s.packetIndex = mode;
+            s.packets = static_cast<px3::LucyPacketMode>(mode);
             byMode[static_cast<std::size_t>(mode)] = runLucy(s, Source::saw, 3.0);
             const auto& out = byMode[static_cast<std::size_t>(mode)];
             allStable = allStable && out.finite() && out.peak() < 4.0f;
@@ -2031,7 +2298,7 @@ void testLucy()
 
         auto s = audible();
         s.loss = 0.8f;
-        s.packetIndex = 1;
+        s.packets = px3::LucyPacketMode::loss;
         const auto a = runLucy(s, Source::saw, 1.5, kSampleRate, 220.0f, 111u);
         const auto b = runLucy(s, Source::saw, 1.5, kSampleRate, 220.0f, 111u);
         const auto c = runLucy(s, Source::saw, 1.5, kSampleRate, 220.0f, 222u);
@@ -2057,10 +2324,17 @@ void testLucy()
             lucy.prepare(kSampleRate);
             lucy.setSeed(31337u);
 
+            const auto frozenMode = slushy ? px3::LucyFreezeMode::slushy
+                                           : px3::LucyFreezeMode::solid;
+
             auto s = audible();
             s.loss = 0.5f;
-            s.freezeSlushy = slushy;
-            s.packetIndex = withPackets ? 2 : 0;
+            // OFF while the tone plays. Freezing before there is anything to
+            // freeze latches silence, and the tail this measures is then
+            // silence too - which is exactly what happened when the two
+            // booleans became one control and the mode was set too early.
+            s.freeze = px3::LucyFreezeMode::off;
+            s.packets = withPackets ? px3::LucyPacketMode::repeat : px3::LucyPacketMode::clean;
             s.verb = withVerb ? 0.6f : 0.0f;
             lucy.updateForBlock(s);
 
@@ -2075,7 +2349,7 @@ void testLucy()
                 lucy.processSampleFrame(in, in, l, r);
             }
 
-            s.freeze = true;
+            s.freeze = frozenMode;
             lucy.updateForBlock(s);
 
             Result out;
@@ -2112,7 +2386,7 @@ void testLucy()
                   + juce::String(withVerb.tailRms(), 5));
 
         auto live = audible();
-        live.freeze = true;
+        live.freeze = px3::LucyFreezeMode::solid;
         live.freezer = 0.0f;
         auto frozen = live;
         frozen.freezer = 1.0f;
@@ -2136,10 +2410,10 @@ void testLucy()
         auto none = audible();
         none.loss = 0.0f;
         none.autoGain = 0.0f;
-        none.filterWidth = 0.0f;
+        none.filter = 0.0f;
 
         auto narrow = none;
-        narrow.filterWidth = 1.0f;
+        narrow.filter = 1.0f;
 
         const auto open = runLucy(none, Source::noise, 1.5);
         const auto banded = runLucy(narrow, Source::noise, 1.5);
@@ -2157,9 +2431,9 @@ void testLucy()
             {
                 auto s = audible();
                 s.loss = 0.0f;
-                s.filterWidth = 0.9f;
+                s.filter = 0.9f;
                 s.filterFreq = freq;
-                s.slopeIndex = slope;
+                s.slope = static_cast<px3::LucyFilterSlope>(slope);
                 const auto out = runLucy(s, Source::noise, 1.0);
                 slopesFine = slopesFine && out.finite() && out.peak() < 4.0f;
             }
@@ -2171,7 +2445,7 @@ void testLucy()
         // than a second filter with a character of its own.
         auto pass = audible();
         pass.loss = 0.0f;
-        pass.filterWidth = 0.8f;
+        pass.filter = 0.8f;
         pass.autoGain = 0.0f;
         auto reject = pass;
         reject.filterInvert = true;
@@ -2198,7 +2472,7 @@ void testLucy()
         // reverb is actually heard. A lone impulse is the wrong stimulus for
         // this one: it quantises inside its own feedback loop by design, so a
         // single spike falls under that floor long before a note's tail does.
-        auto runTail = [](const LucySettings& s)
+        auto runTail = [](const px3::LucyUserParameters& s)
         {
             px3::Lucy lucy;
             lucy.prepare(kSampleRate);
@@ -2265,10 +2539,10 @@ void testLucy()
 
         auto hostileVerb = audible();
         hostileVerb.loss = 1.0f;
-        hostileVerb.packetIndex = 2;
+        hostileVerb.packets = px3::LucyPacketMode::repeat;
         hostileVerb.verb = 1.0f;
         hostileVerb.verbDecay = 1.0f;
-        hostileVerb.freeze = true;
+        hostileVerb.freeze = px3::LucyFreezeMode::solid;
         const auto held = runLucy(hostileVerb, Source::saw, 6.0);
         check("Lucy_VerbWithLossPacketsAndFreezeDoesNotRunAway",
               held.finite() && held.peak() < 4.0f,
@@ -2286,7 +2560,7 @@ void testLucy()
             auto s = audible();
             s.loss = 0.0f;
             s.gate = true;
-            s.gateCutoff = cutoff;
+            s.gateThreshold = cutoff;
             s.autoGain = 0.0f;
             const auto out = runLucy(s, Source::pluck, 2.5);
             allStable = allStable && out.finite() && out.peak() < 4.0f;
@@ -2306,7 +2580,7 @@ void testLucy()
         auto s = audible();
         s.loss = 0.0f;
         s.gate = true;
-        s.gateCutoff = 0.5f;
+        s.gateThreshold = 0.5f;
         s.autoGain = 0.0f;
         const auto out = runLucy(s, Source::sine, 2.0, kSampleRate, 220.0f);
 
@@ -2332,9 +2606,9 @@ void testLucy()
         s.loss = 1.0f;
         s.verb = 1.0f;
         s.verbDecay = 1.0f;
-        s.threshold = 0.2f;
+        s.limiterThreshold = 0.2f;
         s.autoGain = 1.0f;
-        s.gainDb = 0.0f;
+        s.lossGainDb = 0.0f;
 
         const auto out = runLucy(s, Source::noise, 3.0);
         check("Lucy_LimiterBoundsDeliberateOverload",
@@ -2343,7 +2617,7 @@ void testLucy()
                   + juce::String(out.peak(), 4));
 
         auto loose = s;
-        loose.threshold = 1.0f;
+        loose.limiterThreshold = 1.0f;
         const auto unlimited = runLucy(loose, Source::noise, 3.0);
         check("Lucy_LowerThresholdMeansMoreLimiting",
               out.peak() < unlimited.peak(),
@@ -2398,7 +2672,7 @@ void testLucy()
         // makes the stereo movement related rather than two independent effects.
         auto narrow = audible();
         narrow.loss = 0.8f;
-        narrow.packetIndex = 1;
+        narrow.packets = px3::LucyPacketMode::loss;
         narrow.spread = 0.0f;
 
         auto wide = narrow;
@@ -2421,37 +2695,37 @@ void testLucy()
 
     // ---- hostile combinations ---------------------------------------------
     {
-        struct Hostile { const char* name; LucySettings settings; };
+        struct Hostile { const char* name; px3::LucyUserParameters settings; };
 
         auto everything = audible();
         everything.loss = 1.0f;
         everything.speed = 1.0f;
-        everything.modeIndex = 2;
-        everything.packetIndex = 2;
-        everything.filterWidth = 1.0f;
+        everything.mode = px3::LucyLossMode::jitter;
+        everything.packets = px3::LucyPacketMode::repeat;
+        everything.filter = 1.0f;
         everything.filterFreq = 1.0f;
-        everything.slopeIndex = 2;
+        everything.slope = static_cast<px3::LucyFilterSlope>(2);
         everything.verb = 1.0f;
         everything.verbDecay = 1.0f;
-        everything.freeze = true;
-        everything.freezeSlushy = true;
+        everything.freeze = px3::LucyFreezeMode::solid;
+        everything.freeze = px3::LucyFreezeMode::slushy;
         everything.freezer = 1.0f;
         everything.gate = true;
-        everything.gateCutoff = 1.0f;
-        everything.threshold = 0.05f;
+        everything.gateThreshold = 1.0f;
+        everything.limiterThreshold = 0.05f;
         everything.autoGain = 1.0f;
-        everything.weighting = 1.0f;
-        everything.gainDb = 36.0f;
+        everything.weighting = px3::LucyWeighting::bright;
+        everything.lossGainDb = 36.0f;
         everything.spread = 1.0f;
         everything.slow = true;
 
         auto inverseExtreme = everything;
-        inverseExtreme.modeIndex = 1;
+        inverseExtreme.mode = px3::LucyLossMode::inverse;
         inverseExtreme.slow = false;
 
         auto standardExtreme = everything;
-        standardExtreme.modeIndex = 0;
-        standardExtreme.packetIndex = 1;
+        standardExtreme.mode = px3::LucyLossMode::standard;
+        standardExtreme.packets = px3::LucyPacketMode::loss;
         standardExtreme.gate = false;
 
         auto slowSpeed = everything;
@@ -2484,19 +2758,19 @@ void testLucy()
 
     // ---- automation --------------------------------------------------------
     {
-        struct Sweep { const char* name; float LucySettings::* member; };
+        struct Sweep { const char* name; float px3::LucyUserParameters::* member; };
         const std::array<Sweep, 11> sweeps { {
-            { "global", &LucySettings::global },
-            { "loss", &LucySettings::loss },
-            { "speed", &LucySettings::speed },
-            { "filterWidth", &LucySettings::filterWidth },
-            { "filterFreq", &LucySettings::filterFreq },
-            { "verb", &LucySettings::verb },
-            { "verbDecay", &LucySettings::verbDecay },
-            { "freezer", &LucySettings::freezer },
-            { "gateCutoff", &LucySettings::gateCutoff },
-            { "threshold", &LucySettings::threshold },
-            { "spread", &LucySettings::spread },
+            { "global", &px3::LucyUserParameters::global },
+            { "loss", &px3::LucyUserParameters::loss },
+            { "speed", &px3::LucyUserParameters::speed },
+            { "filter", &px3::LucyUserParameters::filter },
+            { "filterFreq", &px3::LucyUserParameters::filterFreq },
+            { "verb", &px3::LucyUserParameters::verb },
+            { "verbDecay", &px3::LucyUserParameters::verbDecay },
+            { "freezer", &px3::LucyUserParameters::freezer },
+            { "gateCutoff", &px3::LucyUserParameters::gateThreshold },
+            { "threshold", &px3::LucyUserParameters::limiterThreshold },
+            { "spread", &px3::LucyUserParameters::spread },
         } };
 
         juce::String detail;
@@ -2629,14 +2903,37 @@ void testLucy()
             return nullptr;
         };
 
-        const std::array<const char*, 24> ids { {
-            "lucyEnabled", "lucyFilterInvert", "lucyVerbPost", "lucyFreeze",
-            "lucyFreezeSlushy", "lucyGate", "lucySlow", "lucyGlobal", "lucyLoss",
-            "lucySpeed", "lucyFilter", "lucyFilterFreq", "lucyVerb", "lucyVerbDecay",
-            "lucyFreezer", "lucyGateCutoff", "lucyThreshold", "lucyAutoGain",
-            "lucyWeighting", "lucyGain", "lucySpread", "lucyMode", "lucyPackets",
-            "lucySlope",
+        // The authoritative parameter set. There are NO compatibility aliases:
+        // lucyFilterFreq, lucyGateCutoff, lucyThreshold, lucyGain and
+        // lucyFreezeSlushy were replaced rather than kept, so a session saved
+        // before the control refresh loads LUCY at its defaults.
+        const std::array<const char*, 23> ids { {
+            // the six primaries
+            "lucyGlobal", "lucyLoss", "lucySpeed", "lucyFilter", "lucyFreq", "lucyVerb",
+            // their alternates
+            "lucyGateThreshold", "lucyFreezer", "lucyDecay",
+            "lucyLimiterThreshold", "lucyAutoGain", "lucyLossGain",
+            // categories
+            "lucyMode", "lucyPackets", "lucySlope", "lucyWeighting", "lucyFreeze",
+            // toggles and the rest
+            "lucyEnabled", "lucyFilterInvert", "lucyVerbPost", "lucyGate",
+            "lucySlow", "lucySpread",
         } };
+
+        // Retired outright. Finding one of these means a shim crept back in.
+        const std::array<const char*, 5> retired { {
+            "lucyFreezeSlushy", "lucyFilterFreq", "lucyGateCutoff",
+            "lucyThreshold", "lucyGain",
+        } };
+        juce::StringArray survivors;
+        for (const auto* id : retired)
+        {
+            if (findParam(id) != nullptr) { survivors.add(id); }
+        }
+        check("Lucy_TheRetiredParametersAreGoneRatherThanAliased",
+              survivors.isEmpty(),
+              survivors.isEmpty() ? "no compatibility aliases for the old schema"
+                                  : "still registered: " + survivors.joinIntoString(", "));
 
         juce::StringArray missing;
         for (const auto* id : ids)

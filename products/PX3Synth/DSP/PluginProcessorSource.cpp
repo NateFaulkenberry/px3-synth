@@ -532,7 +532,7 @@ DoomSettings PX3SynthAudioProcessor::currentDoomSettings() const
     return settings;
 }
 
-LucySettings PX3SynthAudioProcessor::currentLucySettings() const
+px3::LucyUserParameters PX3SynthAudioProcessor::currentLucyUserParameters() const
 {
     auto modulated = [this](juce::AudioParameterFloat* param)
     {
@@ -541,35 +541,39 @@ LucySettings PX3SynthAudioProcessor::currentLucySettings() const
                                              static_cast<juce::RangedAudioParameter*>(param)->getValue()));
     };
 
-    LucySettings settings;
-    settings.enabled = lucyEnabledParam != nullptr && lucyEnabledParam->get();
-    settings.filterInvert = lucyFilterInvertParam != nullptr && lucyFilterInvertParam->get();
-    settings.verbPost = lucyVerbPostParam != nullptr && lucyVerbPostParam->get();
-    settings.freeze = lucyFreezeParam != nullptr && lucyFreezeParam->get();
-    settings.freezeSlushy = lucyFreezeSlushyParam != nullptr && lucyFreezeSlushyParam->get();
-    settings.gate = lucyGateParam != nullptr && lucyGateParam->get();
-    settings.slow = lucySlowParam != nullptr && lucySlowParam->get();
+    px3::LucyUserParameters user;
+    user.enabled = lucyEnabledParam != nullptr && lucyEnabledParam->get();
+    user.filterInvert = lucyFilterInvertParam != nullptr && lucyFilterInvertParam->get();
+    user.verbPost = lucyVerbPostParam != nullptr && lucyVerbPostParam->get();
+    user.gate = lucyGateParam != nullptr && lucyGateParam->get();
+    user.slow = lucySlowParam != nullptr && lucySlowParam->get();
 
-    settings.global = modulated(lucyGlobalParam);
-    settings.loss = modulated(lucyLossParam);
-    settings.speed = modulated(lucySpeedParam);
-    settings.filterWidth = modulated(lucyFilterParam);
-    settings.filterFreq = modulated(lucyFilterFreqParam);
-    settings.verb = modulated(lucyVerbParam);
-    settings.verbDecay = modulated(lucyVerbDecayParam);
-    settings.freezer = modulated(lucyFreezerParam);
-    settings.gateCutoff = modulated(lucyGateCutoffParam);
-    settings.threshold = modulated(lucyThresholdParam);
-    settings.autoGain = modulated(lucyAutoGainParam);
-    settings.weighting = modulated(lucyWeightingParam);
-    settings.gainDb = modulated(lucyGainParam);
-    settings.spread = modulated(lucySpreadParam);
+    // The six primary knobs.
+    user.global = modulated(lucyGlobalParam);
+    user.loss = modulated(lucyLossParam);
+    user.speed = modulated(lucySpeedParam);
+    user.filter = modulated(lucyFilterParam);
+    user.filterFreq = modulated(lucyFilterFreqParam);
+    user.verb = modulated(lucyVerbParam);
 
-    settings.modeIndex = lucyModeParam != nullptr ? lucyModeParam->getIndex() : 0;
-    settings.packetIndex = lucyPacketsParam != nullptr ? lucyPacketsParam->getIndex() : 0;
-    settings.slopeIndex = lucySlopeParam != nullptr ? lucySlopeParam->getIndex() : 1;
+    // Their alternate functions. Every one is a real parameter with its own
+    // modulation and automation; "alternate" is where it lives on the panel.
+    user.gateThreshold = modulated(lucyGateThresholdParam);
+    user.freezer = modulated(lucyFreezerParam);
+    user.verbDecay = modulated(lucyVerbDecayParam);
+    user.limiterThreshold = modulated(lucyLimiterThresholdParam);
+    user.autoGain = modulated(lucyAutoGainParam);
+    user.lossGainDb = modulated(lucyLossGainParam);
 
-    return settings;
+    user.spread = modulated(lucySpreadParam);
+
+    user.mode = static_cast<px3::LucyLossMode>(lucyModeParam != nullptr ? lucyModeParam->getIndex() : 0);
+    user.packets = static_cast<px3::LucyPacketMode>(lucyPacketsParam != nullptr ? lucyPacketsParam->getIndex() : 0);
+    user.slope = static_cast<px3::LucyFilterSlope>(lucySlopeParam != nullptr ? lucySlopeParam->getIndex() : 1);
+    user.weighting = static_cast<px3::LucyWeighting>(lucyWeightingParam != nullptr ? lucyWeightingParam->getIndex() : 1);
+    user.freeze = static_cast<px3::LucyFreezeMode>(lucyFreezeParam != nullptr ? lucyFreezeParam->getIndex() : 0);
+
+    return user;
 }
 
 ChorusSettings PX3SynthAudioProcessor::currentChorusSettings() const

@@ -113,11 +113,71 @@ void FxCardComponent::addKnobRow(std::vector<KnobSpec> specs)
         label->setTooltip(spec.tooltip);
         addAndMakeVisible(*label);
 
+        // The alternate, if this knob carries one: a second slider that will
+        // be given the SAME bounds, and a second caption under the first. Both
+        // are created here and attached by the editor exactly like a primary,
+        // so neither depends on which one the panel is showing.
+        std::unique_ptr<juce::Slider> altKnob;
+        std::unique_ptr<ChipLabel> altLabel;
+        if (spec.altId.isNotEmpty())
+        {
+            altKnob = std::make_unique<juce::Slider>();
+            altKnob->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            altKnob->setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+            altKnob->setTooltip(spec.altTooltip);
+            addAndMakeVisible(*altKnob);
+            altKnob->setVisible(false);
+
+            altLabel = std::make_unique<ChipLabel>();
+            altLabel->setText(spec.altLabel, juce::dontSendNotification);
+            altLabel->setJustificationType(juce::Justification::centred);
+            // Smaller than the primary. The pedal prints the alternate
+            // underneath in smaller type, and the point of the pairing is that
+            // one caption dominates rather than that there are two of them.
+            altLabel->setFont(juce::FontOptions(9.5f));
+            altLabel->setInterceptsMouseClicks(true, false);
+            altLabel->setTooltip(spec.altTooltip);
+            addAndMakeVisible(*altLabel);
+        }
+
         row.ids.push_back(spec.id);
-        knobs.push_back({ spec.id, std::move(knob), std::move(label) });
+        knobs.push_back({ spec.id, std::move(knob), std::move(label),
+                          spec.altId, std::move(altKnob), std::move(altLabel) });
     }
 
     rows.push_back(std::move(row));
+}
+
+bool FxCardComponent::hasAlternates() const noexcept
+{
+    return std::any_of(knobs.begin(), knobs.end(),
+                       [](const KnobEntry& e) { return e.altKnob != nullptr; });
+}
+
+void FxCardComponent::setAltMode(bool showAlternates)
+{
+    altMode = showAlternates;
+
+    for (auto& entry : knobs)
+    {
+        if (entry.altKnob == nullptr) { continue; }
+
+        // Visibility, not attachment. Both sliders keep their parameters, so
+        // an automated alternate keeps moving while the primary is on show.
+        entry.knob->setVisible(! altMode);
+        entry.altKnob->setVisible(altMode);
+
+        // Whichever function is live gets the full caption treatment; the
+        // other stays legible but recedes.
+        constexpr auto kRecededAlpha = 0.55f;
+        entry.label->setAlpha(altMode ? kRecededAlpha : 1.0f);
+        if (entry.altLabel != nullptr)
+        {
+            entry.altLabel->setAlpha(altMode ? 1.0f : kRecededAlpha);
+        }
+    }
+
+    repaint();
 }
 
 void FxCardComponent::addFeatureKnobRow(KnobSpec spec)
@@ -134,14 +194,26 @@ juce::Slider* FxCardComponent::knob(const juce::String& id) const
 {
     const auto it = std::find_if(knobs.begin(), knobs.end(),
                                  [&id](const KnobEntry& e) { return e.id == id; });
-    return it != knobs.end() ? it->knob.get() : nullptr;
+    if (it != knobs.end()) { return it->knob.get(); }
+
+    // An alternate answers to its own id, so attaching one is the same call as
+    // attaching a primary and no caller has to know about the pairing.
+    const auto alt = std::find_if(knobs.begin(), knobs.end(),
+                                  [&id](const KnobEntry& e)
+                                  { return e.altKnob != nullptr && e.altId == id; });
+    return alt != knobs.end() ? alt->altKnob.get() : nullptr;
 }
 
 juce::Label* FxCardComponent::knobLabel(const juce::String& id) const
 {
     const auto it = std::find_if(knobs.begin(), knobs.end(),
                                  [&id](const KnobEntry& e) { return e.id == id; });
-    return it != knobs.end() ? it->label.get() : nullptr;
+    if (it != knobs.end()) { return it->label.get(); }
+
+    const auto alt = std::find_if(knobs.begin(), knobs.end(),
+                                  [&id](const KnobEntry& e)
+                                  { return e.altLabel != nullptr && e.altId == id; });
+    return alt != knobs.end() ? alt->altLabel.get() : nullptr;
 }
 
 juce::ComboBox* FxCardComponent::choice(const juce::String& id) const
@@ -160,11 +232,15 @@ juce::ToggleButton* FxCardComponent::toggle(const juce::String& id) const
 
 std::vector<juce::Slider*> FxCardComponent::allKnobs() const
 {
+    // Alternates included. They are real controls with real parameters, and
+    // the styling and attachment passes that use this have to reach them or a
+    // knob nobody is currently looking at goes unstyled and unattached.
     std::vector<juce::Slider*> result;
     result.reserve(knobs.size());
     for (const auto& entry : knobs)
     {
         result.push_back(entry.knob.get());
+        if (entry.altKnob != nullptr) { result.push_back(entry.altKnob.get()); }
     }
     return result;
 }
@@ -176,6 +252,7 @@ std::vector<juce::Label*> FxCardComponent::allKnobLabels() const
     for (const auto& entry : knobs)
     {
         result.push_back(entry.label.get());
+        if (entry.altLabel != nullptr) { result.push_back(entry.altLabel.get()); }
     }
     return result;
 }
@@ -215,6 +292,15 @@ void FxCardComponent::setActive(bool enabled)
         // bypassed card dimmed its artwork and desaturated its knobs while its
         // captions kept the card's full colour scheme.
         if (entry.label != nullptr) { entry.label->setGreyedOut(! enabled); }
+
+        // And so does the alternate, which is a real control on the card
+        // whether or not the ALT switch is currently showing it.
+        if (entry.altKnob != nullptr)
+        {
+            entry.altKnob->setEnabled(enabled);
+            entry.altKnob->getProperties().set("psychedelicBypassGray", ! enabled);
+        }
+        if (entry.altLabel != nullptr) { entry.altLabel->setGreyedOut(! enabled); }
     }
     for (auto& entry : choices)
     {
@@ -445,11 +531,31 @@ void FxCardComponent::layoutKnobRow(int rowIndex, const Row& row, bool feature)
         {
             continue;
         }
+        // A paired knob needs a second caption line, so its cell gives the
+        // readout twice the height and the two chips split it. An unpaired
+        // knob is laid out exactly as it always was.
+        const auto paired = it->altLabel != nullptr;
+        const auto readout = paired ? readoutHeight * 2 : readoutHeight;
+
         // Square, so a knob stays a circle. Only dropdowns stretch.
         layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
                               { nullptr, it->knob.get(), it->label.get(),
-                                ControlShape::square, 0, readoutHeight, static_cast<int>(cellWidth) },
+                                ControlShape::square, 0, readout, static_cast<int>(cellWidth) },
                               inner.rowControl(rowIndex));
+
+        if (paired)
+        {
+            // The primary chip was given both lines; split it and hand the
+            // lower one to the alternate.
+            auto captions = it->label->getBounds();
+            const auto half = captions.getHeight() / 2;
+            it->label->setBounds(captions.removeFromTop(half));
+            it->altLabel->setBounds(captions);
+
+            // The two sliders occupy exactly the same circle. Only one is ever
+            // visible, so they cannot overlap on screen.
+            it->altKnob->setBounds(it->knob->getBounds());
+        }
     }
 }
 

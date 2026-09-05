@@ -1,5 +1,6 @@
 #pragma once
 
+#include "LucyControlModel.h"
 #include "LucyTypes.h"
 #include "StftEngine.h"
 
@@ -25,7 +26,9 @@ class Lucy
 public:
     void prepare(double sampleRate);
     void reset();
-    void updateForBlock(const LucySettings& settings);
+    // The user's controls go in; deriveLucyParameters turns them into the DSP
+    // quantities every stage below reads. The engine never sees a knob.
+    void updateForBlock(const LucyUserParameters& settings);
     void processSampleFrame(float inL, float inR, float& outL, float& outR);
 
     // The packet chain and the jitter walk are stochastic; tests drive them
@@ -47,7 +50,7 @@ private:
     static constexpr int kSlowFftOrder = 10;   // 1024
     static constexpr int kMaxBins = (1 << kSlowFftOrder) / 2 + 1;
     static constexpr int kCriticalBands = 24;
-    static constexpr int kFilterSections = 8;  // 96 dB
+    static constexpr int kFilterSections = 8;  // the most any slope asks for
     static constexpr int kVerbLines = 4;
     static constexpr int kLimiterLookahead = 64;
 
@@ -71,7 +74,8 @@ private:
     Frame applyGate(Frame in);
     Frame applyLimiter(Frame in);
 
-    LucySettings settings;
+    LucyUserParameters user;
+    LucyDerivedParameters derived;
     double sampleRateHz { 44100.0 };
 
     // Both plans are built in prepare(), so toggling SLOW allocates nothing.
@@ -147,17 +151,14 @@ private:
     bool idle { false };
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> enabledSmoothed;
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> globalSmoothed;
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> lossSmoothed;
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> speedSmoothed;
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> filterWidthSmoothed;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> outputBlendSmoothed;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> filterAmountSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> filterFreqSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> verbSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> verbDecaySmoothed;
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> freezerSmoothed;
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> gateCutoffSmoothed;
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> thresholdSmoothed;
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> gainSmoothed;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> gateThresholdSmoothed;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> limiterThresholdSmoothed;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> lossGainSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> spreadSmoothed;
 };
 

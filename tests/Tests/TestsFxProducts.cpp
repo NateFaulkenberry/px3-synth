@@ -568,17 +568,14 @@ void testFxProducts()
         PX3LucyAudioProcessor lucy;
 
         const auto& doomEq = doom.eq().getNormalisableRange();
-        const auto& weighting = lucy.weighting().getNormalisableRange();
-        const auto& gain = lucy.gain().getNormalisableRange();
+        const auto& gain = lucy.lossGain().getNormalisableRange();
 
         check("FxProduct_TheParametersThatAreNotUnitRangesKeptTheirRanges",
               std::abs(doomEq.start + 1.0f) < 1.0e-6f && std::abs(doomEq.end - 1.0f) < 1.0e-6f
-                  && std::abs(weighting.start + 1.0f) < 1.0e-6f
                   && std::abs(gain.start + 36.0f) < 1.0e-4f
                   && std::abs(gain.end - 36.0f) < 1.0e-4f,
               "Doom EQ " + fmt(doomEq.start, 1) + ".." + fmt(doomEq.end, 1)
-                  + ", Lucy weighting " + fmt(weighting.start, 1) + ".." + fmt(weighting.end, 1)
-                  + ", Lucy gain " + fmt(gain.start, 1) + ".." + fmt(gain.end, 1) + " dB");
+                  + ", Lucy loss gain " + fmt(gain.start, 1) + ".." + fmt(gain.end, 1) + " dB");
     }
 
     {
@@ -611,7 +608,7 @@ void testFxProducts()
         prepared(source);
         source.loss().setValueNotifyingHost(0.9f);
         // Through the whole -36..+36 dB range, which a 0..1 copy would mangle.
-        source.gain().setValueNotifyingHost(source.gain().convertTo0to1(-12.0f));
+        source.lossGain().setValueNotifyingHost(source.lossGain().convertTo0to1(-12.0f));
         source.mode().setValueNotifyingHost(source.mode().convertTo0to1(1.0f));
 
         juce::MemoryBlock state;
@@ -623,10 +620,10 @@ void testFxProducts()
 
         check("FxProduct_LucyStateSurvivesASaveAndReloadIncludingItsDecibelGain",
               std::abs(reopened.loss().get() - 0.9f) < 1.0e-3f
-                  && std::abs(reopened.gain().get() + 12.0f) < 0.1f
+                  && std::abs(reopened.lossGain().get() + 12.0f) < 0.1f
                   && reopened.mode().getIndex() == 1,
               "loss " + fmt(reopened.loss().get(), 3) + ", gain "
-                  + fmt(reopened.gain().get(), 2) + " dB, mode "
+                  + fmt(reopened.lossGain().get(), 2) + " dB, mode "
                   + juce::String(reopened.mode().getIndex()));
     }
 

@@ -227,11 +227,11 @@ void scanDoomLucyArtifacts()
         {
             for (int packets = 0; packets < 3; ++packets)
             {
-                LucySettings s;
+                px3::LucyUserParameters s;
                 s.enabled = true;
                 s.global = 1.0f;
-                s.modeIndex = mode;
-                s.packetIndex = packets;
+                s.mode = static_cast<px3::LucyLossMode>(mode);
+                s.packets = static_cast<px3::LucyPacketMode>(packets);
                 s.loss = 0.6f;
                 s.speed = 0.5f;
 
@@ -256,12 +256,12 @@ void scanDoomLucyArtifacts()
 
         for (const auto gate : { 0.2f, 0.5f, 0.8f })
         {
-            LucySettings s;
+            px3::LucyUserParameters s;
             s.enabled = true;
             s.global = 1.0f;
             s.loss = 0.4f;
             s.gate = true;
-            s.gateCutoff = gate;
+            s.gateThreshold = gate;
 
             px3::Lucy lucy;
             lucy.prepare(kSampleRate);
@@ -282,12 +282,11 @@ void scanDoomLucyArtifacts()
 
         for (const auto freezeSlushy : { false, true })
         {
-            LucySettings s;
+            px3::LucyUserParameters s;
             s.enabled = true;
             s.global = 1.0f;
             s.loss = 0.5f;
-            s.freeze = true;
-            s.freezeSlushy = freezeSlushy;
+            s.freeze = freezeSlushy ? px3::LucyFreezeMode::slushy : px3::LucyFreezeMode::solid;
 
             px3::Lucy lucy;
             lucy.prepare(kSampleRate);

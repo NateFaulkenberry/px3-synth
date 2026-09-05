@@ -35,6 +35,22 @@ public:
         juce::String id;
         juce::String label;
         juce::String tooltip;
+
+        // THE ALTERNATE FUNCTION this knob also carries, if any.
+        //
+        // Modelled on the pedal LUCY follows, where six knobs each have a
+        // second job printed underneath. Both parameters exist and are
+        // attached at all times - the card holds TWO sliders in the one place
+        // and shows whichever the ALT switch selects - so automating an
+        // alternate never depends on what the panel is currently displaying.
+        //
+        // Empty altId means an ordinary single-function knob, which is what
+        // every other card's knobs are.
+        // Default member initialisers, so the twenty-odd existing specs that
+        // brace-initialise three fields still compile without a warning.
+        juce::String altId {};
+        juce::String altLabel {};
+        juce::String altTooltip {};
     };
 
     struct ChoiceSpec
@@ -67,7 +83,15 @@ public:
 
     // Null for an id the card does not have, so a wiring mistake is a crash at
     // the call site rather than a silently unattached control.
+    // Answers for an alternate's id as well as a primary's, so attaching one
+    // is the same call either way.
     juce::Slider* knob(const juce::String& id) const;
+
+    // Which function the paired knobs are showing. Purely a display state: the
+    // alternate parameters stay attached and automatable either way.
+    void setAltMode(bool showAlternates);
+    bool isAltMode() const noexcept { return altMode; }
+    bool hasAlternates() const noexcept;
     juce::Label* knobLabel(const juce::String& id) const;
     juce::ComboBox* choice(const juce::String& id) const;
     juce::ToggleButton* toggle(const juce::String& id) const;
@@ -111,6 +135,12 @@ private:
         juce::String id;
         std::unique_ptr<juce::Slider> knob;
         std::unique_ptr<ChipLabel> label;
+
+        // Both null unless the spec named an alternate. The alternate slider
+        // shares the primary's bounds and only one of the two is visible.
+        juce::String altId;
+        std::unique_ptr<juce::Slider> altKnob;
+        std::unique_ptr<ChipLabel> altLabel;
     };
 
     struct ChoiceEntry
@@ -140,6 +170,8 @@ private:
     bool isActive { true };
 
     BypassButton bypass;
+
+    bool altMode { false };
 
     std::vector<Row> rows;
     std::vector<KnobEntry> knobs;

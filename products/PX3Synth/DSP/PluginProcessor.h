@@ -11,6 +11,7 @@
 #include "BusInsertChain.h"
 #include "Chorus.h"
 #include "Lucy.h"
+#include "LucyControlModel.h"
 #include "StereoSpread.h"
 #include "Mood.h"
 #include "PianoKeyboard.h"
@@ -546,8 +547,7 @@ public:
     juce::AudioParameterBool& getLucyEnabledParam() const;
     juce::AudioParameterBool& getLucyFilterInvertParam() const;
     juce::AudioParameterBool& getLucyVerbPostParam() const;
-    juce::AudioParameterBool& getLucyFreezeParam() const;
-    juce::AudioParameterBool& getLucyFreezeSlushyParam() const;
+    juce::AudioParameterChoice& getLucyFreezeParam() const;
     juce::AudioParameterBool& getLucyGateParam() const;
     juce::AudioParameterBool& getLucySlowParam() const;
     juce::AudioParameterFloat& getLucyGlobalParam() const;
@@ -558,15 +558,15 @@ public:
     juce::AudioParameterFloat& getLucyVerbParam() const;
     juce::AudioParameterFloat& getLucyVerbDecayParam() const;
     juce::AudioParameterFloat& getLucyFreezerParam() const;
-    juce::AudioParameterFloat& getLucyGateCutoffParam() const;
-    juce::AudioParameterFloat& getLucyThresholdParam() const;
+    juce::AudioParameterFloat& getLucyGateThresholdParam() const;
+    juce::AudioParameterFloat& getLucyLimiterThresholdParam() const;
     juce::AudioParameterFloat& getLucyAutoGainParam() const;
-    juce::AudioParameterFloat& getLucyWeightingParam() const;
-    juce::AudioParameterFloat& getLucyGainParam() const;
+    juce::AudioParameterFloat& getLucyLossGainParam() const;
     juce::AudioParameterFloat& getLucySpreadParam() const;
     juce::AudioParameterChoice& getLucyModeParam() const;
     juce::AudioParameterChoice& getLucyPacketsParam() const;
     juce::AudioParameterChoice& getLucySlopeParam() const;
+    juce::AudioParameterChoice& getLucyWeightingParam() const;
 
     juce::AudioParameterBool& getChorusEnabledParam() const;
     juce::AudioParameterFloat& getChorusAmountParam() const;
@@ -783,7 +783,7 @@ private:
     ReverbSettings currentReverbSettings() const;
     MoodSettings currentMoodSettings() const;
     DoomSettings currentDoomSettings() const;
-    LucySettings currentLucySettings() const;
+    px3::LucyUserParameters currentLucyUserParameters() const;
     ChorusSettings currentChorusSettings() const;
     StereoSpreadSettings currentStereoSpreadSettings() const;
 
@@ -937,8 +937,7 @@ private:
     juce::AudioParameterBool* lucyEnabledParam { nullptr };
     juce::AudioParameterBool* lucyFilterInvertParam { nullptr };
     juce::AudioParameterBool* lucyVerbPostParam { nullptr };
-    juce::AudioParameterBool* lucyFreezeParam { nullptr };
-    juce::AudioParameterBool* lucyFreezeSlushyParam { nullptr };
+    juce::AudioParameterChoice* lucyFreezeParam { nullptr };
     juce::AudioParameterBool* lucyGateParam { nullptr };
     juce::AudioParameterBool* lucySlowParam { nullptr };
     juce::AudioParameterFloat* lucyGlobalParam { nullptr };
@@ -949,11 +948,11 @@ private:
     juce::AudioParameterFloat* lucyVerbParam { nullptr };
     juce::AudioParameterFloat* lucyVerbDecayParam { nullptr };
     juce::AudioParameterFloat* lucyFreezerParam { nullptr };
-    juce::AudioParameterFloat* lucyGateCutoffParam { nullptr };
-    juce::AudioParameterFloat* lucyThresholdParam { nullptr };
+    juce::AudioParameterFloat* lucyGateThresholdParam { nullptr };
+    juce::AudioParameterFloat* lucyLimiterThresholdParam { nullptr };
     juce::AudioParameterFloat* lucyAutoGainParam { nullptr };
-    juce::AudioParameterFloat* lucyWeightingParam { nullptr };
-    juce::AudioParameterFloat* lucyGainParam { nullptr };
+    juce::AudioParameterChoice* lucyWeightingParam { nullptr };
+    juce::AudioParameterFloat* lucyLossGainParam { nullptr };
     juce::AudioParameterFloat* lucySpreadParam { nullptr };
     juce::AudioParameterChoice* lucyModeParam { nullptr };
     juce::AudioParameterChoice* lucyPacketsParam { nullptr };
