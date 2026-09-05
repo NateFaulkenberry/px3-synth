@@ -1,10 +1,9 @@
 # MOOD — DSP Design and Evaluation
 
 MOOD is the last of the three "two channels and a shared clock" effects in this
-project to get a design document. DOOM and LUCY have had one since they were
-written; MOOD has been shipping without one, which is why this document is as
-much an **evaluation** as a description. §8 is a list of findings, and one of
-them is a real defect.
+project to get a design document, and the last to get a control model. §9 keeps
+the evaluation that prompted that work, with each finding marked resolved or
+still open.
 
 MOOD reproduces the documented control philosophy of a two-channel
 micro-looper-plus-effects pedal using its own DSP. It does not reproduce, and
@@ -58,7 +57,58 @@ this is where MOOD differs from DOOM, which has an explicit BALANCE.
 
 ---
 
-## 2. The clock
+## 2. The control model
+
+Between the knobs and the engine there is one translation layer:
+`shared/DSP/Mood/MoodControlModel.{h,cpp}`.
+
+```
+    USER CONTROLS       MoodUserParameters      thirteen controls
+          │
+          ▼
+    deriveMoodParameters()                      one function, once a block
+          │
+          ▼
+    DSP PARAMETERS      MoodDerivedParameters   seconds, rates, thresholds
+          │
+          ▼
+    THE ENGINE          Mood
+```
+
+**Four of the controls mean different things in different modes**, and that is
+the control scheme rather than an inconsistency. Each meaning is a named
+function, so the engine is handed a duration or a playback rate rather than a
+knob position:
+
+| control | mode | derives |
+|---|---|---|
+| LOOP LENGTH | ENV | `mapLoopLengthToEnvSlice` — 0.03…0.40 s of captured slice |
+| LOOP LENGTH | TAPE | `mapLoopLengthToTapeLoop` — 0.05…2.2 s of loop |
+| LOOP LENGTH | STRETCH | `mapLoopLengthToStretchGrain` — 22…210 ms per grain |
+| LOOP MODIFY | ENV | `mapLoopModifyToEnvThreshold` — **inverted**: sensitivity, so the threshold falls as the knob rises |
+| LOOP MODIFY | TAPE | `mapLoopModifyToTapeRateIndex` — eight musical rates, ±4× through ±½× |
+| LOOP MODIFY | STRETCH | `mapLoopModifyToStretchWalk` — bipolar, frozen at noon |
+| WET TIME | REVERB | `mapWetTimeToReverbScale` |
+| WET TIME | DELAY | `mapWetTimeToDelaySeconds` — 0.03…1.6 s |
+| WET TIME | SLIP | `mapWetTimeToSlipWindow` — 0.05…0.55 s |
+| WET MODIFY | REVERB | `mapWetModifyToReverbDiffusion` — smear, which is what the allpass chain is actually being asked for |
+| WET MODIFY | DELAY | `mapWetModifyToDelayFeedback` — reaches a **true** unity |
+| WET MODIFY | SLIP | `mapWetModifyToSlipSemitones` — quantised, ±24 |
+| CLOCK | — | `mapClockToDivider` — three octaves, semitone-quantised |
+
+The curves are unchanged: this was a relocation, not a retune.
+
+### Ownership
+
+`MoodControl_EachControlOwnsOneThing` turns each of six controls in turn and
+asserts none of them moved another's derived values: no control reaches
+FEEDBACK, SPREAD or MIX; a looper control never reaches the wet channel or the
+reverse; and **DEGRADE never transposes the engine**, which is CLOCK's job and
+only CLOCK's.
+
+---
+
+## 3. The clock
 
 CLOCK is the engine's sample rate, and it is what ties the channels together:
 audio recorded at one rate and played back at another changes **speed and pitch
@@ -89,7 +139,7 @@ CLOCK's job and only CLOCK's.
 
 ---
 
-## 3. The micro-looper
+## 4. The micro-looper
 
 Always listening: a four-second circular history is written once per internal
 step, whether or not anything is playing it back. That single write carries the
@@ -139,7 +189,7 @@ SPREAD has been asked whether it wanted it changed.
 
 ---
 
-## 4. The wet channel
+## 5. The wet channel
 
 ### REVERB
 
@@ -178,7 +228,7 @@ meant routing the micro-loop into it did nothing at all.
 
 ---
 
-## 5. DEGRADE
+## 6. DEGRADE
 
 Three artifacts behind one control, applied in the feedback path so they
 compound over repeats:
@@ -195,7 +245,7 @@ compound over repeats:
 
 ---
 
-## 6. Parameters
+## 7. Parameters
 
 | Parameter | Range | Default | Purpose |
 |---|---|---|---|
@@ -204,11 +254,11 @@ compound over repeats:
 | `moodClock` | 0…1 | 1.0 | engine sample rate, semitone-quantised over three octaves |
 | `moodRouting` | DRY→WET / LOOP→WET / PARALLEL | DRY→WET | what the wet channel is fed |
 | `moodWetMode` | REVERB / DELAY / SLIP | REVERB | wet channel mode |
-| `moodWetTime` | 0…1 | 0.40 | mode dependent (§4) |
-| `moodWetModify` | 0…1 | 0.45 | mode dependent (§4) |
+| `moodWetTime` | 0…1 | 0.40 | mode dependent (§5) |
+| `moodWetModify` | 0…1 | 0.45 | mode dependent (§5) |
 | `moodLoopMode` | ENV / TAPE / STRETCH | ENV | micro-looper mode |
-| `moodLoopLength` | 0…1 | 0.28 | mode dependent (§3) |
-| `moodLoopModify` | 0…1 | 0.50 | mode dependent (§3) |
+| `moodLoopLength` | 0…1 | 0.28 | mode dependent (§5) |
+| `moodLoopModify` | 0…1 | 0.50 | mode dependent (§5) |
 | `moodFeedback` | 0…1 | 0.35 | how much of both channels is recycled into the loop |
 | `moodFreeze` | bool | false | stop writing the history |
 | `moodSpread` | 0…1 | 0.50 | per-mode stereo treatment |
@@ -216,7 +266,7 @@ compound over repeats:
 
 ---
 
-## 7. Real-time safety
+## 8. Real-time safety
 
 Every buffer is allocated in `prepare()` — history, wet, the ENV slice store and
 the four diffusion lines. Nothing in `processSampleFrame` or
@@ -228,12 +278,12 @@ the enable ramp).
 
 ---
 
-## 8. Evaluation
+## 9. Evaluation
 
 What follows is an assessment of the architecture as it stands, not a list of
 planned work.
 
-### 8.1 The architecture is sound
+### 9.1 The architecture is sound
 
 The two-channel-plus-shared-clock structure is the right one, and the clock is
 genuinely a clock — it changes length, pitch and bandwidth together, which is
@@ -248,7 +298,7 @@ reverse head), which is far better than a single width control bolted on the
 end, and `Mood_SpreadOffPreservesTheIncomingImage` pins the property that
 matters: SPREAD at zero must not destroy an image that arrived already stereo.
 
-### 8.2 There is no control-model layer — the same gap DOOM and LUCY had
+### 9.2 No control-model layer — RESOLVED
 
 MOOD maps its four macros inline, in each renderer, from the raw smoothed knob:
 `jmap(loopLength, 0.05f, 2.2f)` inside `renderLoopTape`,
@@ -261,11 +311,10 @@ same:
 - Nothing prevents a mapping from quietly reaching across into another
   control's territory.
 
-The fix is the one already applied twice: a `MoodControlModel` with
-`MoodUserParameters → deriveMoodParameters() → MoodDerivedParameters` and named
-mapping functions. MOOD is the natural third.
+**Done.** `MoodControlModel` now holds all thirteen mappings as named
+functions; see §2. No renderer reads a knob.
 
-### 8.3 ROUTING is a float, and that is a defect
+### 9.3 ROUTING was a float — RESOLVED
 
 `MoodSettings::routing` is a **float** carrying `index / 2`, compared against
 thresholds of 0.33 and 0.66:
@@ -281,13 +330,12 @@ the file. It is also demonstrably error-prone: a source comment records that the
 two branches were once **the wrong way round**, so LOOP→WET fed the wet channel
 the input as well as the loop and PARALLEL fed it the loop alone — each doing
 what the other's label said. A `MoodRouting` enum would have made that
-unrepresentable. `Mood_RoutingMatchesItsLabels` now guards the behaviour, but
-the guard exists because the type does not.
+unrepresentable. **Done.** `MoodRouting`, `MoodWetMode` and `MoodLoopMode` are enums, the
+engine switches on them explicitly, and routing is no longer smoothed per
+sample as though it were audio. `bpm` went at the same time — a field the
+engine never read.
 
-`wetModeIndex` and `loopModeIndex` are bare `int`s for the same reason and
-should become enums alongside it.
-
-### 8.4 MOOD cannot be seeded, and calls the system RNG from the audio thread
+### 9.4 No seed, and the system RNG on the audio thread — RESOLVED
 
 `Mood.cpp:385` and `Mood.cpp:601` call `juce::Random::getSystemRandom()` — in
 `applyDegradation`'s noise floor and in STRETCH's grain panning. Both are on the
@@ -301,10 +349,13 @@ audio path. Two consequences:
 - `getSystemRandom()` returns a **shared global**. Calling it from the audio
   thread is a shared-state access from a context that should not have one.
 
-The fix is small and matches the neighbours: a per-instance xorshift and a
-`setSeed`, as `Doom::nextRandom` and `Lucy::nextRandom` already provide.
+**Done.** A per-instance xorshift with `setSeed`, matching `Doom::nextRandom`
+and `Lucy::nextRandom`. `Mood_TheSameSeedProducesTheSameOutput` renders half a
+second twice and compares all 24,000 samples exactly;
+`Mood_TheRandomStateIsPerInstance` proves running one engine does not disturb
+another's sequence, which a global RNG would fail even with a seed.
 
-### 8.5 The feedback coefficients are unexplained
+### 9.5 The feedback coefficients are unexplained — STILL OPEN
 
 ```cpp
 const auto recycledL = loop.l * loopFeedback * 0.88f + wet.l * loopFeedback * 0.58f;
@@ -317,28 +368,30 @@ place a reader cannot reconstruct the intent. Either they are a tuned ratio and
 should say so, or that ratio wants to be a control (DOOM exposes exactly this as
 BALANCE).
 
-### 8.6 Test coverage is good on stability, thin on identity
+### 9.6 Thin on identity — RESOLVED
 
 Eighteen MOOD checks cover the things that break loudly: runaway feedback, DC,
 denormals, bypass tails, reset, silence-to-transient, every mode pair for spread,
-the clock's transposition of a captured loop, and the routing labels. What is
-missing is anything asserting *what a mode does* — there is no equivalent of
-LUCY's `Lucy_PacketRepeatFillsTheGapsRatherThanEmptyingThem`. §8.4 is the reason:
-without a seed, "the same input produces the same output" is not assertable.
+the clock's transposition of a captured loop, and the routing labels. **Done**, now that §9.4 makes it possible. Fifteen control-model tests assert
+what each macro means in each mode — that ENV's MODIFY is sensitivity and so
+inverts, that TAPE walks a table of eight musical rates, that SLIP and CLOCK
+quantise, that DELAY's feedback reaches a true unity — plus the ownership and
+determinism tests above.
 
-### 8.7 Summary
+### 9.7 Summary
 
-| | |
-|---|---|
-| Architecture | Sound. The right structure, and the clock is a real clock. |
-| Stereo design | A strength. Per-mode imaging, correctly preserved at SPREAD 0. |
-| Real-time safety | Clean. No allocation, locks or containers on the audio path. |
-| Control model | **Missing.** The inline-mapping arrangement DOOM and LUCY were refactored out of. |
-| Type safety | **Weak.** Routing is a float; both modes are bare ints. |
-| Determinism | **Absent.** No seed, and the system RNG is called from the audio thread. |
-| Documentation | This document is the first. |
+| | then | now |
+|---|---|---|
+| Architecture | Sound | Unchanged |
+| Stereo design | A strength | Unchanged |
+| Real-time safety | Clean | Clean, and the system RNG is gone |
+| Control model | **Missing** | `MoodControlModel`, thirteen named mappings |
+| Type safety | **Weak** | Three enums; no float routing, no bare ints |
+| Determinism | **Absent** | Per-instance PRNG with `setSeed` |
+| Documentation | None | This document |
 
-Ranked by cost to fix against value returned: §8.4 (seed) is small and unlocks
-the identity tests in §8.6; §8.3 (routing enum) is small and removes a class of
-bug that has already happened once; §8.2 (control model) is the largest and
-brings MOOD into line with its two siblings.
+One finding remains open: the `0.88` / `0.58` recycle weights in §9.5. They are
+a fixed internal balance between the two channels, and the honest options are to
+document the ratio or to expose it — which is what DOOM does, as BALANCE. That
+is a control-surface decision rather than a defect, so it is left as a decision
+to take rather than taken silently.

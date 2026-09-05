@@ -15,6 +15,7 @@
 #include "LucyControlModel.h"
 #include "StereoSpread.h"
 #include "Mood.h"
+#include "MoodControlModel.h"
 #include "PianoKeyboard.h"
 #include "Reverb.h"
 #include "SubOscTypes.h"
@@ -782,7 +783,7 @@ private:
     VibeSettings currentVibeSettings() const;
     DelaySettings currentDelaySettings() const;
     ReverbSettings currentReverbSettings() const;
-    MoodSettings currentMoodSettings() const;
+    px3::MoodUserParameters currentMoodUserParameters() const;
     px3::DoomUserParameters currentDoomUserParameters() const;
     px3::LucyUserParameters currentLucyUserParameters() const;
     ChorusSettings currentChorusSettings() const;

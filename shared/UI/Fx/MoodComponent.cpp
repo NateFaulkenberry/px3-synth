@@ -205,7 +205,7 @@ void MoodComponent::resized()
 
     inner.setStylePath("cards.mood.cardInner");
     inner.setConfig(uiConfig);
-    inner.setRowCount(3);
+    inner.setRowCount(5);
     inner.layout(card.contentBelowTitle());
 
     // The power toggle is pinned to cardInner's corner, outside the flex flow,
@@ -255,40 +255,37 @@ void MoodComponent::resized()
         flex.performLayout(row.toFloat());
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+        // LOOP, ROUTE, WET - in that order, so ROUTING sits between the two
+        // channels it connects rather than off to one side of both.
         px3::ui::layoutLabelledControl(cell(0),
-                                       { &wetModeLabel, &wetModeBox, nullptr,
-                                         ControlShape::stretch, 14, 0, 22 },
-                                       inner.rowControl(1));
-        px3::ui::layoutLabelledControl(cell(1),
                                        { &loopModeLabel, &loopModeBox, nullptr,
                                          ControlShape::stretch, 14, 0, 22 },
                                        inner.rowControl(1));
-        px3::ui::layoutLabelledControl(cell(2),
+        px3::ui::layoutLabelledControl(cell(1),
                                        { &routingLabel, &routingBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 22 },
+                                       inner.rowControl(1));
+        px3::ui::layoutLabelledControl(cell(2),
+                                       { &wetModeLabel, &wetModeBox, nullptr,
                                          ControlShape::stretch, 14, 0, 22 },
                                        inner.rowControl(1));
     }
 
-    // Row 3: all nine knobs in one wrapping row. This replaces a hand-built
-    // 3x3 grid; the row wraps into however many lines the width allows, which
-    // is what makes the arrangement follow the card rather than a fixed shape.
+    // Rows 3 and 4: the knobs, GROUPED BY WHAT THEY BELONG TO.
+    //
+    // They used to be one wrapping row of nine in an order that interleaved
+    // the two channels - wet, wet, loop, loop, then five globals - so nothing
+    // on the card said which knob served which channel. Row 3 is now the two
+    // channels' mode-dependent macros, the looper's pair then the wet
+    // channel's, in the same left-to-right order as the mode dropdowns above
+    // them. Row 4 is everything that belongs to the machine as a whole.
+    const auto layoutKnobRow = [this](int rowIndex,
+                                      const std::vector<std::pair<juce::Slider*, juce::Label*>>& knobs)
     {
-        auto flex = inner.rowFlex(2);
-        const auto gap = inner.rowGap(2);
-        const auto row = inner.rowContent(2);
+        auto flex = inner.rowFlex(rowIndex);
+        const auto gap = inner.rowGap(rowIndex);
+        const auto row = inner.rowContent(rowIndex);
         const auto rowWidth = static_cast<float>(juce::jmax(1, row.getWidth()));
-
-        const std::array<std::pair<juce::Slider*, juce::Label*>, 9> knobs { {
-            { &wetTimeKnob, &wetTimeLabel },
-            { &wetModifyKnob, &wetModifyLabel },
-            { &loopLengthKnob, &loopLengthLabel },
-            { &loopModifyKnob, &loopModifyLabel },
-            { &feedbackKnob, &feedbackLabel },
-            { &spreadKnob, &spreadLabel },
-            { &clockKnob, &clockLabel },
-            { &mixKnob, &mixLabel },
-            { &degradeKnob, &degradeLabel },
-        } };
 
         const std::vector<float> widths(knobs.size(), 64.0f);
         const auto gapWidth = gap.left + gap.right;
@@ -308,9 +305,27 @@ void MoodComponent::resized()
             px3::ui::layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
                                        { nullptr, knobs[i].first, knobs[i].second,
                                          ControlShape::square, 0, 16, 64 },
-                                       inner.rowControl(2));
+                                       inner.rowControl(rowIndex));
         }
-    }
+    };
+
+    // The two channels' macros, looper first, matching the dropdowns above.
+    layoutKnobRow(2, { { &loopLengthKnob, &loopLengthLabel },
+                       { &loopModifyKnob, &loopModifyLabel },
+                       { &wetTimeKnob, &wetTimeLabel },
+                       { &wetModifyKnob, &wetModifyLabel } });
+
+    // The machine as a whole.
+    layoutKnobRow(3, { { &mixKnob, &mixLabel },
+                       { &clockKnob, &clockLabel },
+                       { &spreadKnob, &spreadLabel } });
+
+    // FEEDBACK recycles BOTH channels into the history, so it belongs to
+    // neither; DEGRADE is a PX3 extension rather than one of the pedal's
+    // controls. Neither sits comfortably in the row above, and five knobs
+    // across is wider than the card.
+    layoutKnobRow(4, { { &feedbackKnob, &feedbackLabel },
+                       { &degradeKnob, &degradeLabel } });
 }
 
 void MoodComponent::mouseUp(const juce::MouseEvent& event)

@@ -1945,21 +1945,29 @@
             }
           },
           "row1": {
-            "height": "12%",
-            "gap": 4
+            "height": 32,
+            "gap": 0,
+            "justifyContent": "flex-start"
           },
           "row2": {
-            "height": "20%",
-            "wrap": "wrap",
-            "justifyContent": "space-between",
-            "gap": 6
+            "height": 66,
+            "gap": 8,
+            "paddingTop": 4
           },
           "row3": {
-            "height": "68%",
-            "wrap": "wrap",
+            "height": "30%",
             "gap": 6,
-            "justifyContent": "space-between",
-            "alignContent": "center"
+            "justifyContent": "center"
+          },
+          "row4": {
+            "height": "26%",
+            "gap": 6,
+            "justifyContent": "center"
+          },
+          "row5": {
+            "height": "26%",
+            "gap": 8,
+            "justifyContent": "center"
           }
         }
       }

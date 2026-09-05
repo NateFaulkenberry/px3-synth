@@ -177,7 +177,6 @@ void testDelay()
             s.feedbackControl = 0.4f;
             s.algorithmIndex = algo;
             s.syncDivisionIndex = 3;        // 1/4
-            s.bpm = 120.0;
             const auto ms = measureDelay(s).firstEchoMs;
             // Stereo runs its left line at two thirds, so it is checked against
             // that rather than against the raw division.
@@ -690,6 +689,395 @@ void testMood()
 {
     suite("MOOD");
 
+    // ========================================================================
+    // THE CONTROL MODEL
+    //
+    // MOOD's four macros mean different things depending on the mode beside
+    // them, and the curves that make that true used to be inline in each
+    // renderer. They are named functions now, tested here without an engine.
+    // ========================================================================
+    {
+        using namespace px3::mood_control;
+
+        // ---- CLOCK: three octaves, quantised to semitones -----------------
+        {
+            const auto atTop = mapClockToDivider(1.0f);
+            const auto atBottom = mapClockToDivider(0.0f);
+
+            // Full clock is no transposition; the knob runs downwards to three
+            // octaves and stops, because past that the zero-order hold on the
+            // way back up stops being character and starts being noise.
+            check("MoodControl_ClockSpansThreeOctavesAndStopsThere",
+                  std::abs(atTop - 1.0f) < 1.0e-5f
+                      && std::abs(atBottom - 8.0f) < 1.0e-4f
+                      && clockStepCount() == 36,
+                  "divider at full clock " + fmt(atTop, 4) + ", at zero " + fmt(atBottom, 4)
+                      + ", over " + juce::String(clockStepCount()) + " semitone steps");
+
+            // QUANTISED. Every value the mapping can produce has to be a whole
+            // number of semitones, or the transposition lands between
+            // intervals and the control stops being musical.
+            juce::StringArray offGrid;
+            auto monotonic = true;
+            auto previous = 9.0f;
+            for (int i = 0; i <= 200; ++i)
+            {
+                const auto clock = static_cast<float>(i) / 200.0f;
+                const auto semis = mapClockToSemitones(clock);
+                if (std::abs(semis - std::round(semis)) > 1.0e-4f)
+                {
+                    offGrid.add(fmt(clock, 3));
+                }
+                const auto divider = mapClockToDivider(clock);
+                if (divider > previous + 1.0e-5f) { monotonic = false; }
+                previous = divider;
+            }
+
+            check("MoodControl_ClockQuantisesToSemitonesAndFallsMonotonically",
+                  offGrid.isEmpty() && monotonic,
+                  offGrid.isEmpty() ? "201 positions all land on a semitone, divider never rises"
+                                    : "off the grid at " + offGrid.joinIntoString(", "));
+
+            // An octave down is exactly a doubling of the divider, which is
+            // the property that makes CLOCK usable as an instrument.
+            const auto oneOctave = mapClockToDivider(1.0f - 12.0f / 36.0f);
+            const auto twoOctaves = mapClockToDivider(1.0f - 24.0f / 36.0f);
+            check("MoodControl_ClockOctavesAreExact",
+                  std::abs(oneOctave - 2.0f) < 1.0e-4f && std::abs(twoOctaves - 4.0f) < 1.0e-4f,
+                  "one octave down -> " + fmt(oneOctave, 4)
+                      + ", two -> " + fmt(twoOctaves, 4));
+        }
+
+        // ---- one knob, three meanings -------------------------------------
+        {
+            // The three LENGTH ranges have nothing to do with each other: ENV
+            // captures a slice, TAPE holds a phrase, STRETCH sizes a grain.
+            check("MoodControl_LoopLengthMeansSomethingDifferentInEveryMode",
+                  std::abs(mapLoopLengthToEnvSlice(0.0f) - 0.03f) < 1.0e-5f
+                      && std::abs(mapLoopLengthToEnvSlice(1.0f) - 0.40f) < 1.0e-5f
+                      && std::abs(mapLoopLengthToTapeLoop(0.0f) - 0.05f) < 1.0e-5f
+                      && std::abs(mapLoopLengthToTapeLoop(1.0f) - 2.20f) < 1.0e-5f
+                      && mapLoopLengthToStretchGrain(0.0f) < mapLoopLengthToStretchGrain(1.0f),
+                  "ENV " + fmt(mapLoopLengthToEnvSlice(0.0f), 3) + ".."
+                      + fmt(mapLoopLengthToEnvSlice(1.0f), 3) + " s, TAPE "
+                      + fmt(mapLoopLengthToTapeLoop(0.0f), 3) + ".."
+                      + fmt(mapLoopLengthToTapeLoop(1.0f), 3) + " s, STRETCH "
+                      + fmt(mapLoopLengthToStretchGrain(0.0f) * 1000.0f, 1) + ".."
+                      + fmt(mapLoopLengthToStretchGrain(1.0f) * 1000.0f, 1) + " ms");
+
+            // ENV's MODIFY is SENSITIVITY, so the threshold has to FALL as the
+            // knob rises. Getting this backwards makes the mode do nothing at
+            // the setting where it should be most eager.
+            const auto leastSensitive = mapLoopModifyToEnvThreshold(0.0f);
+            const auto mostSensitive = mapLoopModifyToEnvThreshold(1.0f);
+            check("MoodControl_EnvModifyIsSensitivitySoTheThresholdFalls",
+                  mostSensitive < leastSensitive
+                      && leastSensitive < 0.2f && mostSensitive > 0.0f,
+                  "threshold " + fmt(leastSensitive, 4) + " at the bottom of the knob, "
+                      + fmt(mostSensitive, 4) + " at the top");
+
+            // TAPE's MODIFY walks a table of musical rates. A tape head at an
+            // arbitrary ratio is a detuning; at one of these it is an interval.
+            juce::StringArray rates;
+            std::array<float, 8> seen {};
+            for (int i = 0; i < 8; ++i)
+            {
+                const auto knob = (static_cast<float>(i) + 0.5f) / 8.0f;
+                const auto index = mapLoopModifyToTapeRateIndex(knob, tapeRateCount());
+                seen[static_cast<std::size_t>(i)] = tapeRateAt(index);
+                rates.add(fmt(seen[static_cast<std::size_t>(i)], 1) + "x");
+            }
+            check("MoodControl_TapeModifySelectsAMusicalRateTable",
+                  tapeRateCount() == 8
+                      && std::abs(seen.front() + 4.0f) < 1.0e-5f
+                      && std::abs(seen.back() - 4.0f) < 1.0e-5f
+                      && std::abs(tapeRateAt(mapLoopModifyToTapeRateIndex(0.7f, 8)) - 1.0f) < 1.0e-5f,
+                  "the eight positions: " + rates.joinIntoString(", "));
+
+            // STRETCH's MODIFY is bipolar around noon: backwards below,
+            // forwards above, frozen in the middle.
+            check("MoodControl_StretchModifyIsBipolarAroundFrozen",
+                  std::abs(mapLoopModifyToStretchWalk(0.5f)) < 1.0e-5f
+                      && mapLoopModifyToStretchWalk(0.0f) < -0.99f
+                      && mapLoopModifyToStretchWalk(1.0f) > 0.99f
+                      && mapLoopModifyToStretchPanHz(0.5f)
+                             < mapLoopModifyToStretchPanHz(1.0f),
+                  "walk " + fmt(mapLoopModifyToStretchWalk(0.0f), 2) + " / "
+                      + fmt(mapLoopModifyToStretchWalk(0.5f), 2) + " / "
+                      + fmt(mapLoopModifyToStretchWalk(1.0f), 2)
+                      + "; pan slowest at noon");
+
+            // The same for the wet channel's pair.
+            check("MoodControl_WetTimeMeansSomethingDifferentInEveryMode",
+                  mapWetTimeToReverbScale(0.0f) < mapWetTimeToReverbScale(1.0f)
+                      && std::abs(mapWetTimeToDelaySeconds(0.0f) - 0.03f) < 1.0e-5f
+                      && std::abs(mapWetTimeToDelaySeconds(1.0f) - 1.60f) < 1.0e-5f
+                      && std::abs(mapWetTimeToSlipWindow(0.0f) - 0.05f) < 1.0e-5f
+                      && std::abs(mapWetTimeToSlipWindow(1.0f) - 0.55f) < 1.0e-5f,
+                  "REVERB scale " + fmt(mapWetTimeToReverbScale(0.0f), 2) + ".."
+                      + fmt(mapWetTimeToReverbScale(1.0f), 2) + ", DELAY "
+                      + fmt(mapWetTimeToDelaySeconds(1.0f), 2) + " s, SLIP "
+                      + fmt(mapWetTimeToSlipWindow(1.0f), 2) + " s");
+
+            // DELAY's feedback must reach a TRUE unity - repeats that pile up
+            // like a looper, held there by the saturator rather than by a
+            // coefficient quietly below one.
+            check("MoodControl_DelayModifyReachesUnityFeedback",
+                  std::abs(mapWetModifyToDelayFeedback(1.0f) - 1.0f) < 1.0e-6f
+                      && mapWetModifyToDelayFeedback(0.0f) <= 0.0f,
+                  "feedback spans a true 0 to 1");
+
+            // SLIP is quantised, an octave either way, like TAPE's table and
+            // for the same reason.
+            juce::StringArray offGrid;
+            for (int i = 0; i <= 100; ++i)
+            {
+                const auto semis = mapWetModifyToSlipSemitones(static_cast<float>(i) / 100.0f);
+                if (std::abs(semis - std::round(semis)) > 1.0e-4f) { offGrid.add(juce::String(i)); }
+            }
+            check("MoodControl_SlipModifyQuantisesToSemitones",
+                  offGrid.isEmpty()
+                      && std::abs(mapWetModifyToSlipSemitones(0.0f) + 24.0f) < 1.0e-4f
+                      && std::abs(mapWetModifyToSlipSemitones(0.5f)) < 1.0e-4f
+                      && std::abs(mapWetModifyToSlipSemitones(1.0f) - 24.0f) < 1.0e-4f,
+                  offGrid.isEmpty() ? "-24 .. 0 .. +24 semitones, every position on the grid"
+                                    : "off the grid at " + offGrid.joinIntoString(", "));
+        }
+
+        // ---- one knob must not move another's derived values --------------
+        //
+        // This is the class of bug the inline-mapping arrangement made easy:
+        // a conversion sitting inside a renderer can reach anything in scope.
+        {
+            juce::StringArray tangled;
+
+            px3::MoodUserParameters base;
+            const auto baseline = px3::deriveMoodParameters(base);
+
+            struct Probe { const char* name; std::function<void(px3::MoodUserParameters&)> turn; };
+            const std::array<Probe, 6> probes { {
+                { "LOOP LENGTH", [](px3::MoodUserParameters& u) { u.loopLength = 0.9f; } },
+                { "LOOP MODIFY", [](px3::MoodUserParameters& u) { u.loopModify = 0.9f; } },
+                { "WET TIME",    [](px3::MoodUserParameters& u) { u.wetTime = 0.9f; } },
+                { "WET MODIFY",  [](px3::MoodUserParameters& u) { u.wetModify = 0.9f; } },
+                { "CLOCK",       [](px3::MoodUserParameters& u) { u.clock = 0.4f; } },
+                { "DEGRADE",     [](px3::MoodUserParameters& u) { u.degrade = 0.9f; } },
+            } };
+
+            for (const auto& probe : probes)
+            {
+                auto turned = base;
+                probe.turn(turned);
+                const auto d = px3::deriveMoodParameters(turned);
+
+                // Nothing any of these controls may touch: the interaction and
+                // output levels belong to FEEDBACK, SPREAD and MIX alone.
+                if (! juce::approximatelyEqual(d.loopFeedback, baseline.loopFeedback)
+                        || ! juce::approximatelyEqual(d.spread, baseline.spread)
+                        || ! juce::approximatelyEqual(d.mix, baseline.mix))
+                {
+                    tangled.add(juce::String(probe.name) + " moved feedback, spread or mix");
+                }
+
+                // And the two channels are separate: a looper control must not
+                // reach the wet channel, or the reverse.
+                if (juce::String(probe.name).startsWith("LOOP")
+                        && (! juce::approximatelyEqual(d.delaySeconds, baseline.delaySeconds)
+                            || ! juce::approximatelyEqual(d.reverbTimeScale, baseline.reverbTimeScale)
+                            || ! juce::approximatelyEqual(d.delayFeedback, baseline.delayFeedback)))
+                {
+                    tangled.add(juce::String(probe.name) + " reached the wet channel");
+                }
+                if (juce::String(probe.name).startsWith("WET")
+                        && (! juce::approximatelyEqual(d.tapeLoopSeconds, baseline.tapeLoopSeconds)
+                            || ! juce::approximatelyEqual(d.envThreshold, baseline.envThreshold)
+                            || d.tapeRateIndex != baseline.tapeRateIndex))
+                {
+                    tangled.add(juce::String(probe.name) + " reached the micro-looper");
+                }
+
+                // CLOCK is the engine's rate and nothing else. DEGRADE is
+                // artifacts and nothing else - above all it must NOT transpose,
+                // which is CLOCK's job and only CLOCK's.
+                if (juce::String(probe.name) == "CLOCK"
+                        && ! juce::approximatelyEqual(d.degradeBits, baseline.degradeBits))
+                {
+                    tangled.add("CLOCK moved DEGRADE");
+                }
+                if (juce::String(probe.name) == "DEGRADE"
+                        && (! juce::approximatelyEqual(d.clockDivider, baseline.clockDivider)
+                            || ! juce::approximatelyEqual(d.clockSemitones, baseline.clockSemitones)))
+                {
+                    tangled.add("DEGRADE transposed the engine");
+                }
+            }
+
+            check("MoodControl_EachControlOwnsOneThing",
+                  tangled.isEmpty(),
+                  tangled.isEmpty() ? "six controls turned, none reached another's territory"
+                                    : tangled.joinIntoString("; "));
+        }
+
+        // ---- nothing derives an invalid value ------------------------------
+        {
+            juce::StringArray bad;
+            for (const auto a : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
+            {
+                px3::MoodUserParameters u;
+                u.clock = a; u.loopLength = a; u.loopModify = a;
+                u.wetTime = a; u.wetModify = a; u.feedback = a;
+                u.spread = a; u.degrade = a; u.mix = a;
+                const auto d = px3::deriveMoodParameters(u);
+
+                // Durations, rates and thresholds: a zero here would be a
+                // division or a silent stage, so they must stay positive.
+                const std::array<float, 9> positive { {
+                    d.clockDivider, d.envSliceSeconds, d.envThreshold, d.tapeLoopSeconds,
+                    d.stretchGrainSeconds, d.reverbTimeScale, d.delaySeconds,
+                    d.slipWindowSeconds, d.degradeBits } };
+                for (const auto v : positive)
+                {
+                    if (! std::isfinite(v) || v <= 0.0f) { bad.add("non-positive at " + fmt(a, 2)); break; }
+                }
+
+                // Levels, which legitimately reach zero - that is what turning
+                // FEEDBACK, SPREAD or MIX down is for.
+                const std::array<float, 3> levels { { d.loopFeedback, d.spread, d.mix } };
+                for (const auto v : levels)
+                {
+                    if (! std::isfinite(v) || v < 0.0f || v > 1.0f)
+                    {
+                        bad.add("level out of range at " + fmt(a, 2));
+                        break;
+                    }
+                }
+                if (d.loopFeedback >= 1.0f) { bad.add("feedback reached unity"); }
+                if (d.tapeRateIndex < 0 || d.tapeRateIndex > 7) { bad.add("tape index out of range"); }
+                if (d.degradeBits < 3.0f || d.degradeBits > 16.0f) { bad.add("bit depth out of range"); }
+            }
+
+            check("MoodControl_EveryCombinationDerivesValidParameters",
+                  bad.isEmpty(),
+                  bad.isEmpty() ? "five positions across every control, all finite and in range"
+                                : bad.joinIntoString(", "));
+        }
+    }
+
+    // ---- the engine is deterministic now -----------------------------------
+    //
+    // MOOD called juce::Random::getSystemRandom() from the audio thread, in
+    // DEGRADE's noise floor and STRETCH's grain panning. That is a shared
+    // global, it cannot be pinned, and it is the reason nothing about MOOD's
+    // output could be asserted exactly - only its bounds.
+    {
+        auto render = [](uint32_t seed)
+        {
+            Mood mood;
+            mood.prepare(kSampleRate);
+            mood.reset();
+            mood.setSeed(seed);
+
+            px3::MoodUserParameters ms;
+            ms.enabled = true;
+            ms.mix = 1.0f;
+            ms.loopMode = px3::MoodLoopMode::stretch;   // the grain panner
+            ms.wetMode = px3::MoodWetMode::reverb;
+            ms.degrade = 0.8f;                          // and the noise floor
+            ms.spread = 1.0f;
+            mood.updateForBlock(ms);
+
+            std::vector<float> out;
+            const auto length = static_cast<int>(kSampleRate * 0.5);
+            out.reserve(static_cast<std::size_t>(length));
+            for (int i = 0; i < length; ++i)
+            {
+                const auto in = std::sin(juce::MathConstants<float>::twoPi * 220.0f
+                                         * static_cast<float>(i) / static_cast<float>(kSampleRate)) * 0.5f;
+                float l = 0.0f, r = 0.0f;
+                mood.processSampleFrame(in, in, l, r);
+                out.push_back(l);
+            }
+            return out;
+        };
+
+        const auto a = render(1234u);
+        const auto b = render(1234u);
+        const auto c = render(5678u);
+
+        auto identical = a.size() == b.size();
+        if (identical)
+        {
+            for (std::size_t i = 0; i < a.size(); ++i)
+            {
+                if (! juce::approximatelyEqual(a[i], b[i])) { identical = false; break; }
+            }
+        }
+
+        auto differs = false;
+        for (std::size_t i = 0; i < std::min(a.size(), c.size()); ++i)
+        {
+            if (std::abs(a[i] - c[i]) > 1.0e-9f) { differs = true; break; }
+        }
+
+        check("Mood_TheSameSeedProducesTheSameOutput",
+              identical,
+              identical ? "two engines at seed 1234 agree on every one of "
+                              + juce::String(static_cast<int>(a.size())) + " samples"
+                        : "the same seed produced different audio");
+
+        check("Mood_DifferentSeedsProduceDifferentOutput",
+              differs,
+              differs ? "seed 5678 diverges from seed 1234"
+                      : "the seed made no difference - is the RNG still global?");
+
+        // Per instance, not shared: rendering one engine must not move
+        // another's sequence. A global RNG would fail this even with a seed.
+        {
+            Mood first, second;
+            for (auto* engine : { &first, &second })
+            {
+                engine->prepare(kSampleRate);
+                engine->reset();
+                engine->setSeed(4242u);
+            }
+
+            px3::MoodUserParameters ms;
+            ms.enabled = true;
+            ms.mix = 1.0f;
+            ms.loopMode = px3::MoodLoopMode::stretch;
+            ms.degrade = 0.8f;
+            first.updateForBlock(ms);
+            second.updateForBlock(ms);
+
+            // Run the first on ahead, then compare the two from the start.
+            for (int i = 0; i < 5000; ++i)
+            {
+                float l = 0.0f, r = 0.0f;
+                first.processSampleFrame(0.3f, 0.3f, l, r);
+            }
+
+            Mood fresh;
+            fresh.prepare(kSampleRate);
+            fresh.reset();
+            fresh.setSeed(4242u);
+            fresh.updateForBlock(ms);
+
+            auto matches = true;
+            for (int i = 0; i < 2000; ++i)
+            {
+                float l1 = 0.0f, r1 = 0.0f, l2 = 0.0f, r2 = 0.0f;
+                second.processSampleFrame(0.3f, 0.3f, l1, r1);
+                fresh.processSampleFrame(0.3f, 0.3f, l2, r2);
+                if (! juce::approximatelyEqual(l1, l2)) { matches = false; break; }
+            }
+
+            check("Mood_TheRandomStateIsPerInstance",
+                  matches,
+                  matches ? "running one engine did not disturb another at the same seed"
+                          : "the engines share random state");
+        }
+    }
+
     // No read pointer may wrap without a crossfade. A looping playhead that
     // simply jumps from the end of its loop back to the start steps the signal,
     // and that step is a click once per loop, slice or window - which is what
@@ -706,12 +1094,12 @@ void testMood()
             Mood mood;
             mood.prepare(kSampleRate);
             mood.reset();
-            MoodSettings s;
+            px3::MoodUserParameters s;
             s.enabled = true;
             s.mix = 1.0f;
-            s.loopModeIndex = loopMode;
-            s.wetModeIndex = wetMode;
-            s.routing = routing;
+            s.loopMode = static_cast<px3::MoodLoopMode>(loopMode);
+            s.wetMode = static_cast<px3::MoodWetMode>(wetMode);
+            s.routing = static_cast<px3::MoodRouting>(routing);
             s.clock = 1.0f;      // full rate, so stepping here is not the clock
             s.degrade = 0.0f;    // and not the lo-fi control either
             s.spread = 0.5f;
@@ -777,14 +1165,14 @@ void testMood()
         {
             for (int wetMode = 0; wetMode < 3; ++wetMode)
             {
-                MoodSettings s;
+                px3::MoodUserParameters s;
                 s.mix = 1.0f;
-                s.loopModeIndex = loopMode;
-                s.wetModeIndex = wetMode;
+                s.loopMode = static_cast<px3::MoodLoopMode>(loopMode);
+                s.wetMode = static_cast<px3::MoodWetMode>(wetMode);
                 s.spread = 1.0f;
                 s.feedback = 1.0f;
                 s.degrade = 1.0f;
-                s.routing = 1.0f;
+                s.routing = px3::MoodRouting::parallel;
                 s.wetModify = 1.0f;
                 const auto m = measureMood(s);
                 worstPeak = juce::jmax(worstPeak, m.peak);
@@ -814,23 +1202,24 @@ void testMood()
     // the immediate response to a transient is much smaller than on the two
     // settings that pass the input through.
     {
-        auto immediacy = [](float routing)
+        auto immediacy = [](px3::MoodRouting routing)
         {
             Mood mood;
             mood.prepare(kSampleRate);
             mood.reset();
-            MoodSettings ms;
+            px3::MoodUserParameters ms;
             ms.enabled = true;
             ms.mix = 1.0f;
             ms.routing = routing;
-            ms.loopModeIndex = 1;      // TAPE
-            ms.wetModeIndex = 1;       // DELAY
+            ms.loopMode = px3::MoodLoopMode::tape;      // TAPE
+            ms.wetMode = px3::MoodWetMode::delay;       // DELAY
             ms.wetTime = 0.0f;         // 30 ms, so the input's own echo lands inside the window
             ms.wetModify = 0.0f;
             ms.loopLength = 0.9f;
             ms.feedback = 0.0f;
             ms.spread = 0.0f;
             ms.degrade = 0.0f;
+            mood.setSeed(20260905u);
             mood.updateForBlock(ms);
 
             // A short burst, measured over the window immediately after it, so
@@ -853,9 +1242,9 @@ void testMood()
             return std::sqrt(energy / window);
         };
 
-        const auto dryToWet = immediacy(0.0f);    // index 0
-        const auto loopToWet = immediacy(0.5f);   // index 1
-        const auto parallel = immediacy(1.0f);    // index 2
+        const auto dryToWet = immediacy(px3::MoodRouting::dryToWet);
+        const auto loopToWet = immediacy(px3::MoodRouting::loopToWet);
+        const auto parallel = immediacy(px3::MoodRouting::parallel);
         check("Mood_RoutingMatchesItsLabels",
               loopToWet < dryToWet * 0.5 && parallel > loopToWet,
               "prompt response: DRY->WET " + fmt(dryToWet, 6)
@@ -879,12 +1268,12 @@ void testMood()
             constexpr int renders = 4;
             for (int i = 0; i < renders; ++i)
             {
-                MoodSettings s;
+                px3::MoodUserParameters s;
                 s.mix = 1.0f;
-                s.loopModeIndex = loopMode;
-                s.wetModeIndex = wetMode;
+                s.loopMode = static_cast<px3::MoodLoopMode>(loopMode);
+                s.wetMode = static_cast<px3::MoodWetMode>(wetMode);
                 s.spread = spread;
-                s.routing = 1.0f;
+                s.routing = px3::MoodRouting::parallel;
                 s.feedback = 0.4f;
                 total += measureMood(s).sideToMidRatio;
             }
@@ -935,12 +1324,12 @@ void testMood()
         {
             for (int wetMode = 0; wetMode < 3; ++wetMode)
             {
-                MoodSettings s;
+                px3::MoodUserParameters s;
                 s.mix = 1.0f;
-                s.loopModeIndex = loopMode;
-                s.wetModeIndex = wetMode;
+                s.loopMode = static_cast<px3::MoodLoopMode>(loopMode);
+                s.wetMode = static_cast<px3::MoodWetMode>(wetMode);
                 s.spread = 0.0f;
-                s.routing = 1.0f;
+                s.routing = px3::MoodRouting::parallel;
                 const auto sep = measureMood(s, true).channelSeparationDb;
                 worstDb = juce::jmin(worstDb, sep);
                 if (sep < 20.0)
@@ -963,12 +1352,12 @@ void testMood()
     // copies of the same material running opposite ways are uncorrelated, so
     // this is checkable rather than merely describable.
     {
-        MoodSettings s;
+        px3::MoodUserParameters s;
         s.mix = 1.0f;
-        s.loopModeIndex = 1;      // TAPE
-        s.wetModeIndex = 1;
+        s.loopMode = px3::MoodLoopMode::tape;      // TAPE
+        s.wetMode = px3::MoodWetMode::delay;
         s.spread = 1.0f;
-        s.routing = 1.0f;
+        s.routing = px3::MoodRouting::parallel;
         s.feedback = 0.4f;
         const auto corr = measureMood(s).interChannelCorrelation;
         check("Mood_TapeSpreadPlaysTheLoopForwardAndReverse",
@@ -991,16 +1380,16 @@ void testMood()
             Mood mood;
             mood.prepare(kSampleRate);
             mood.reset();
-            MoodSettings ms;
+            px3::MoodUserParameters ms;
             ms.enabled = true;
             ms.mix = 1.0f;
-            ms.loopModeIndex = 1;
+            ms.loopMode = px3::MoodLoopMode::tape;
             ms.loopModify = 0.70f;
             ms.loopLength = 0.5f;
-            ms.wetModeIndex = 1;
+            ms.wetMode = px3::MoodWetMode::delay;
             ms.wetModify = 0.0f;
             ms.wetTime = 0.0f;
-            ms.routing = 1.0f;
+            ms.routing = px3::MoodRouting::parallel;
             ms.spread = 0.0f;
             ms.degrade = 0.0f;
             ms.feedback = 0.0f;
@@ -1058,15 +1447,15 @@ void testMood()
         {
             for (int wetMode = 0; wetMode < 3; ++wetMode)
             {
-                MoodSettings settings;
+                px3::MoodUserParameters settings;
                 settings.mix = 1.0f;
-                settings.loopModeIndex = loopMode;
-                settings.wetModeIndex = wetMode;
+                settings.loopMode = static_cast<px3::MoodLoopMode>(loopMode);
+                settings.wetMode = static_cast<px3::MoodWetMode>(wetMode);
                 settings.feedback = 0.8f;
-                settings.routing = 0.5f;
-                const auto tail = tailAfterBypassCycle<Mood, MoodSettings>(
+                settings.routing = px3::MoodRouting::loopToWet;
+                const auto tail = tailAfterBypassCycle<Mood, px3::MoodUserParameters>(
                     settings,
-                    [](Mood& m, const MoodSettings& s) { m.updateForBlock(s); });
+                    [](Mood& m, const px3::MoodUserParameters& s) { m.updateForBlock(s); });
                 if (tail > worst) { worst = tail; worstCombo = loopMode * 3 + wetMode; }
             }
         }
@@ -1077,7 +1466,7 @@ void testMood()
                   + ", wet " + juce::String(worstCombo % 3) + ")");
     }
 
-    auto runMood = [](const MoodSettings& settings, int inputSamples, int totalSamples)
+    auto runMood = [](const px3::MoodUserParameters& settings, int inputSamples, int totalSamples)
     {
         ::Mood mood;
         mood.prepare(kSampleRate);
@@ -1102,7 +1491,7 @@ void testMood()
         return capture;
     };
 
-    MoodSettings base;
+    px3::MoodUserParameters base;
     base.enabled = true;
     base.mix = 0.8f;
 
@@ -1189,7 +1578,7 @@ void testMood()
 
     // Every continuous parameter must measurably change the output.
     {
-        auto captureFor = [&runMood, base](const std::function<void(MoodSettings&)>& tweak)
+        auto captureFor = [&runMood, base](const std::function<void(px3::MoodUserParameters&)>& tweak)
         {
             auto settings = base;
             tweak(settings);
@@ -1211,16 +1600,16 @@ void testMood()
             return reference > 1.0e-18 ? std::sqrt(difference / reference) : 0.0;
         };
 
-        struct ParamCase { const char* name; std::function<void(MoodSettings&)> low, high; };
+        struct ParamCase { const char* name; std::function<void(px3::MoodUserParameters&)> low, high; };
         const ParamCase cases[] = {
-            { "Mix",        [](MoodSettings& s) { s.mix = 0.0f; },        [](MoodSettings& s) { s.mix = 1.0f; } },
-            { "Clock",      [](MoodSettings& s) { s.clock = 0.0f; },      [](MoodSettings& s) { s.clock = 1.0f; } },
-            { "WetTime",    [](MoodSettings& s) { s.wetTime = 0.0f; },    [](MoodSettings& s) { s.wetTime = 1.0f; } },
-            { "WetModify",  [](MoodSettings& s) { s.wetModify = 0.0f; },  [](MoodSettings& s) { s.wetModify = 1.0f; } },
-            { "LoopLength", [](MoodSettings& s) { s.loopLength = 0.0f; }, [](MoodSettings& s) { s.loopLength = 1.0f; } },
-            { "LoopModify", [](MoodSettings& s) { s.loopModify = 0.0f; }, [](MoodSettings& s) { s.loopModify = 1.0f; } },
-            { "Feedback",   [](MoodSettings& s) { s.feedback = 0.0f; },   [](MoodSettings& s) { s.feedback = 1.0f; } },
-            { "Degrade",    [](MoodSettings& s) { s.degrade = 0.0f; },    [](MoodSettings& s) { s.degrade = 1.0f; } },
+            { "Mix",        [](px3::MoodUserParameters& s) { s.mix = 0.0f; },        [](px3::MoodUserParameters& s) { s.mix = 1.0f; } },
+            { "Clock",      [](px3::MoodUserParameters& s) { s.clock = 0.0f; },      [](px3::MoodUserParameters& s) { s.clock = 1.0f; } },
+            { "WetTime",    [](px3::MoodUserParameters& s) { s.wetTime = 0.0f; },    [](px3::MoodUserParameters& s) { s.wetTime = 1.0f; } },
+            { "WetModify",  [](px3::MoodUserParameters& s) { s.wetModify = 0.0f; },  [](px3::MoodUserParameters& s) { s.wetModify = 1.0f; } },
+            { "LoopLength", [](px3::MoodUserParameters& s) { s.loopLength = 0.0f; }, [](px3::MoodUserParameters& s) { s.loopLength = 1.0f; } },
+            { "LoopModify", [](px3::MoodUserParameters& s) { s.loopModify = 0.0f; }, [](px3::MoodUserParameters& s) { s.loopModify = 1.0f; } },
+            { "Feedback",   [](px3::MoodUserParameters& s) { s.feedback = 0.0f; },   [](px3::MoodUserParameters& s) { s.feedback = 1.0f; } },
+            { "Degrade",    [](px3::MoodUserParameters& s) { s.degrade = 0.0f; },    [](px3::MoodUserParameters& s) { s.degrade = 1.0f; } },
         };
 
         for (const auto& parameter : cases)
@@ -1245,7 +1634,7 @@ void testMood()
             settings.spread = spread;
             // STRETCH is the loop mode that spawns grains continuously, and
             // grains are the only thing spread acts on.
-            settings.loopModeIndex = 2;
+            settings.loopMode = px3::MoodLoopMode::stretch;
             const auto capture = runMood(settings, 24000, 60000);
             double difference = 0.0, reference = 0.0;
             for (std::size_t i = 4800; i < 57600; ++i)
@@ -1282,7 +1671,7 @@ void testMood()
         for (int wetMode = 0; wetMode < 3; ++wetMode)
         {
             auto settings = base;
-            settings.wetModeIndex = wetMode;
+            settings.wetMode = static_cast<px3::MoodWetMode>(wetMode);
             const auto capture = runMood(settings, 24000, 60000);
             check((juce::String("Mood_WetMode") + juce::String(wetMode) + "_IsStable").toRawUTF8(),
                   capture.isFinite() && capture.peak() < 4.0,
@@ -1291,7 +1680,7 @@ void testMood()
         for (int loopMode = 0; loopMode < 3; ++loopMode)
         {
             auto settings = base;
-            settings.loopModeIndex = loopMode;
+            settings.loopMode = static_cast<px3::MoodLoopMode>(loopMode);
             const auto capture = runMood(settings, 24000, 60000);
             check((juce::String("Mood_LoopMode") + juce::String(loopMode) + "_IsStable").toRawUTF8(),
                   capture.isFinite() && capture.peak() < 4.0,

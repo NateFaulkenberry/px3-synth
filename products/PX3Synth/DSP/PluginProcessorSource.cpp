@@ -455,9 +455,9 @@ ReverbSettings PX3SynthAudioProcessor::currentReverbSettings() const
     return settings;
 }
 
-MoodSettings PX3SynthAudioProcessor::currentMoodSettings() const
+px3::MoodUserParameters PX3SynthAudioProcessor::currentMoodUserParameters() const
 {
-    MoodSettings settings;
+    px3::MoodUserParameters settings;
     settings.enabled = moodEnabledParam != nullptr && moodEnabledParam->get();
     settings.freeze = moodFreezeParam != nullptr && moodFreezeParam->get();
 
@@ -480,12 +480,15 @@ MoodSettings PX3SynthAudioProcessor::currentMoodSettings() const
     settings.degrade = moodDegradeParam->convertFrom0to1(applyModulationToNormalizedValue(moodDegradeParam,
                                                                                            static_cast<juce::RangedAudioParameter*>(moodDegradeParam)->getValue()));
 
-    settings.routing = moodRoutingParam != nullptr
-                           ? juce::jlimit(0.0f, 1.0f, static_cast<float>(moodRoutingParam->getIndex()) / 2.0f)
-                           : 0.0f;
-    settings.wetModeIndex = moodWetModeParam != nullptr ? moodWetModeParam->getIndex() : 0;
-    settings.loopModeIndex = moodLoopModeParam != nullptr ? moodLoopModeParam->getIndex() : 0;
-    settings.bpm = currentBpm;
+    // A choice reaching the engine as a choice. It used to be divided by two
+    // and recovered downstream by comparing against 0.33 and 0.66, which is how
+    // two of the three settings once ended up wired to each other's labels.
+    settings.routing = static_cast<px3::MoodRouting>(
+        moodRoutingParam != nullptr ? moodRoutingParam->getIndex() : 0);
+    settings.wetMode = static_cast<px3::MoodWetMode>(
+        moodWetModeParam != nullptr ? moodWetModeParam->getIndex() : 0);
+    settings.loopMode = static_cast<px3::MoodLoopMode>(
+        moodLoopModeParam != nullptr ? moodLoopModeParam->getIndex() : 0);
     return settings;
 }
 

@@ -814,7 +814,7 @@ struct MoodMetrics
     double sideToMidRatio { 0.0 };
 };
 
-inline MoodMetrics measureMood(const MoodSettings& settings,
+inline MoodMetrics measureMood(const px3::MoodUserParameters& settings,
                         bool panLeft = false,
                         double sampleRate = kSampleRate,
                         int totalSamples = 0)

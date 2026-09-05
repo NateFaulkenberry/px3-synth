@@ -1999,12 +1999,12 @@ int main(int argc, char* argv[])
             Mood mood;
             mood.prepare(kSampleRate);
             mood.reset();
-            MoodSettings s;
+            px3::MoodUserParameters s;
             s.enabled = true;
             s.mix = 1.0f;
-            s.loopModeIndex = (loopMode);
-            s.wetModeIndex = (wetMode);
-            s.routing = routing;
+            s.loopMode = static_cast<px3::MoodLoopMode>(loopMode);
+            s.wetMode = static_cast<px3::MoodWetMode>(wetMode);
+            s.routing = static_cast<px3::MoodRouting>(routing);
             s.clock = 1.0f;          // full rate: any stepping here is not the clock
             s.degrade = 0.0f;        // and not the lo-fi control either
             s.spread = 0.5f;
@@ -2093,12 +2093,12 @@ int main(int argc, char* argv[])
             {
                 for (const auto spread : { 0.0f, 1.0f })
                 {
-                    MoodSettings s;
+                    px3::MoodUserParameters s;
                     s.mix = 1.0f;
-                    s.loopModeIndex = (loopMode);
-                    s.wetModeIndex = (wetMode);
+                    s.loopMode = static_cast<px3::MoodLoopMode>(loopMode);
+                    s.wetMode = static_cast<px3::MoodWetMode>(wetMode);
                     s.spread = spread;
-                    s.routing = 1.0f;      // input + micro-looper
+                    s.routing = px3::MoodRouting::parallel;      // input + micro-looper
                     s.feedback = 0.4f;
                     const auto m = measureMood(s);
                     const auto sep = measureMood(s, true);
@@ -2117,12 +2117,12 @@ int main(int argc, char* argv[])
             std::printf("    loop %-8s", loopNames[loopMode]);
             for (const auto spread : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
             {
-                MoodSettings s;
+                px3::MoodUserParameters s;
                 s.mix = 1.0f;
-                s.loopModeIndex = (loopMode);
-                s.wetModeIndex = 0;
+                s.loopMode = static_cast<px3::MoodLoopMode>(loopMode);
+                s.wetMode = px3::MoodWetMode::reverb;
                 s.spread = spread;
-                s.routing = 0.5f;
+                s.routing = px3::MoodRouting::loopToWet;
                 std::printf("  %.4f", measureMood(s).sideToMidRatio);
             }
             std::printf("\n");
@@ -2143,17 +2143,17 @@ int main(int argc, char* argv[])
                 Mood mood;
                 mood.prepare(kSampleRate);
                 mood.reset();
-                MoodSettings ms;
+                px3::MoodUserParameters ms;
                 ms.enabled = true;
                 ms.mix = 1.0f;
-                ms.loopModeIndex = (loopMode);
+                ms.loopMode = static_cast<px3::MoodLoopMode>(loopMode);
                 ms.loopModify = loopMode == 1 ? 0.70f : 0.75f;   // unity-ish playback speed
                 ms.loopLength = 0.5f;
-                ms.wetModeIndex = 1;
+                ms.wetMode = px3::MoodWetMode::delay;
                 ms.wetModify = 0.0f;       // no wet feedback muddying the pitch
                 ms.wetTime = 0.0f;
                 ms.clock = clock;
-                ms.routing = 1.0f;         // micro-looper only
+                ms.routing = px3::MoodRouting::parallel;         // micro-looper only
                 ms.spread = 0.0f;
                 ms.degrade = 0.0f;
                 ms.feedback = 0.0f;
@@ -2196,11 +2196,11 @@ int main(int argc, char* argv[])
             std::printf("    wet %-9s", wetNames[wetMode]);
             for (const auto degrade : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
             {
-                MoodSettings s;
+                px3::MoodUserParameters s;
                 s.mix = 1.0f;
-                s.wetModeIndex = (wetMode);
+                s.wetMode = static_cast<px3::MoodWetMode>(wetMode);
                 s.degrade = degrade;
-                s.routing = 0.0f;
+                s.routing = px3::MoodRouting::dryToWet;
                 std::printf("  %.6f", measureMood(s).rms);
             }
             std::printf("\n");

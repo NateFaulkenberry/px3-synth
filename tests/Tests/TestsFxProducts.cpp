@@ -304,18 +304,27 @@ void testFxProducts()
         PX3MoodAudioProcessor mood;
         prepared(mood);
 
+        // The choice reaches the engine AS A CHOICE now. This test used to
+        // assert the index/2 conversion it replaces - the arrangement in which
+        // two of the three settings were once wired to each other's labels.
+        const std::array<std::pair<int, px3::MoodRouting>, 3> expected { {
+            { 0, px3::MoodRouting::dryToWet },
+            { 1, px3::MoodRouting::loopToWet },
+            { 2, px3::MoodRouting::parallel },
+        } };
+
         juce::StringArray seen;
         auto correct = true;
-        for (int index = 0; index < 3; ++index)
+        for (const auto& [index, wanted] : expected)
         {
             mood.routing().setValueNotifyingHost(mood.routing().convertTo0to1((float) index));
-            const auto routing = mood.debugSettingsForBlock().routing;
-            const auto expected = static_cast<float>(index) / 2.0f;
-            if (std::abs(routing - expected) > 1.0e-4f) { correct = false; }
-            seen.add(juce::String(index) + " -> " + fmt(routing, 2));
+            const auto routing = mood.debugUserParameters().routing;
+            if (routing != wanted) { correct = false; }
+            seen.add(mood.routing().choices[index] + " -> "
+                     + juce::String(static_cast<int>(routing)));
         }
 
-        check("FxProduct_MoodRoutingMapsTheWayTheSynthMapsIt",
+        check("FxProduct_MoodRoutingReachesTheEngineAsAChoice",
               correct, seen.joinIntoString(", "));
     }
 

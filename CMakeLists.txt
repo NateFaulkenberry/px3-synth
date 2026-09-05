@@ -98,6 +98,7 @@ set(PX3_SHARED_SOURCES
         shared/UI/Fx/VibeComponent.cpp
         shared/DSP/Delay/Delay.cpp
         shared/DSP/Mood/Mood.cpp
+        shared/DSP/Mood/MoodControlModel.cpp
         shared/DSP/Reverb/Reverb.cpp
         shared/DSP/Vibe/Vibe.cpp
         shared/DSP/Vibe/VibeEngine.cpp
