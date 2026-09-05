@@ -112,7 +112,6 @@ private:
     Frame processInternalStep(float inL, float inR);
 
     DoomUserParameters settings;
-    DoomDerivedParameters derived;
     double hostSampleRate { 44100.0 };
     double internalRate { 44100.0 };
 

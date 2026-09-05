@@ -92,6 +92,10 @@ public:
     void setAltMode(bool showAlternates);
     bool isAltMode() const noexcept { return altMode; }
     bool hasAlternates() const noexcept;
+
+    // Every paired knob as { primary id, alternate id }, so a test can walk
+    // the pairs without knowing which card it is looking at.
+    std::vector<std::pair<juce::String, juce::String>> debugPairedKnobIds() const;
     juce::Label* knobLabel(const juce::String& id) const;
     juce::ComboBox* choice(const juce::String& id) const;
     juce::ToggleButton* toggle(const juce::String& id) const;

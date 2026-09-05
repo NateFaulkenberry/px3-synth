@@ -282,12 +282,14 @@ void Doom::reset()
 
 void Doom::updateForBlock(const DoomUserParameters& next)
 {
-    // One translation a block. The per-sample stages below still map their own
-    // smoothed knob through the same named functions, so automating a macro
-    // glides rather than steps; this is the block-rate view of the same model,
-    // and what the control-model tests assert against.
-    derived = deriveDoomParameters(next, kMaxRelayTaps,
-                                   static_cast<int>(kHarmonies.size()), kRadioStations);
+    // NOTE: the engine deliberately does NOT hold a block-rate copy of the
+    // derived parameters. Its stages map their own smoothed knob through the
+    // control model's functions once per sample, so automating a macro glides
+    // rather than stepping at block boundaries - and a struct computed here
+    // and never read would be work done on the audio thread for nothing.
+    //
+    // deriveDoomParameters composes the same functions into one block-rate
+    // view; it is what the control-model tests assert against.
 
     settings = next;
 

@@ -1146,6 +1146,90 @@ void testFxProducts()
                                   : "these knobs are attached to nothing: " + inert.joinIntoString(", "));
         }
 
+        // THE PAIRED KNOBS SHOW EXACTLY ONE FUNCTION AT A TIME.
+        //
+        // DOOM and LUCY give six knobs a second function each, as the pedals
+        // they follow print them. Both halves are real parameters and stay
+        // attached whichever is displayed - ALT only chooses which one you can
+        // see - so the thing that can break silently is the DISPLAY: two
+        // captions at once, or none, or a knob whose caption names the other
+        // function.
+        {
+            juce::StringArray wrong;
+            juce::StringArray counted;
+
+            const auto captionsFollowTheAltSwitch = [&](const juce::String& name,
+                                                        juce::AudioProcessorEditor* editorIn)
+            {
+                std::unique_ptr<juce::AudioProcessorEditor> editor(editorIn);
+                auto* cardEditor = dynamic_cast<px3::fx::FxCardEditor*>(editor.get());
+                if (cardEditor == nullptr) { counted.add(name + " (no card editor)"); return; }
+
+                auto& card = cardEditor->debugCard();
+                if (! card.hasAlternates()) { wrong.add(name + " has no paired knobs"); return; }
+
+                // Both states, and the same expectation in each: of every pair
+                // exactly one knob and exactly one caption is on screen.
+                for (const auto alt : { false, true })
+                {
+                    card.setAltMode(alt);
+
+                    auto pairs = 0;
+                    for (const auto& id : card.debugPairedKnobIds())
+                    {
+                        ++pairs;
+                        auto* primary = card.knob(id.first);
+                        auto* alternate = card.knob(id.second);
+                        auto* primaryLabel = card.knobLabel(id.first);
+                        auto* alternateLabel = card.knobLabel(id.second);
+
+                        if (primary == nullptr || alternate == nullptr
+                                || primaryLabel == nullptr || alternateLabel == nullptr)
+                        {
+                            wrong.add(name + " " + id.first + ": a half of the pair is missing");
+                            continue;
+                        }
+
+                        if (primary->isVisible() == alternate->isVisible())
+                        {
+                            wrong.add(name + " " + id.first + ": both knobs or neither visible");
+                        }
+                        if (primaryLabel->isVisible() == alternateLabel->isVisible())
+                        {
+                            wrong.add(name + " " + id.first + ": both captions or neither visible");
+                        }
+                        // The visible caption must be the one naming the
+                        // visible knob, not the other way round.
+                        if (alternate->isVisible() != alt || alternateLabel->isVisible() != alt)
+                        {
+                            wrong.add(name + " " + id.first + ": ALT showed the wrong function");
+                        }
+                        // And they occupy the same place, so switching does
+                        // not move anything on the card.
+                        if (primary->getBounds() != alternate->getBounds()
+                                || primaryLabel->getBounds() != alternateLabel->getBounds())
+                        {
+                            wrong.add(name + " " + id.first + ": the pair is not in one place");
+                        }
+                    }
+                    if (! alt) { counted.add(name + " " + juce::String(pairs) + " pairs"); }
+                }
+
+                card.setAltMode(false);
+            };
+
+            PX3DoomAudioProcessor doomAlt;
+            captionsFollowTheAltSwitch("Doom", doomAlt.createEditor());
+            PX3LucyAudioProcessor lucyAlt;
+            captionsFollowTheAltSwitch("Lucy", lucyAlt.createEditor());
+
+            check("FxCards_APairedKnobShowsOneFunctionAtATime",
+                  wrong.isEmpty(),
+                  wrong.isEmpty() ? "one knob and one caption per pair, in one place: "
+                                        + counted.joinIntoString(", ")
+                                  : wrong.joinIntoString("; "));
+        }
+
         // A BYPASSED CARD GREYS OUT COMPLETELY.
         //
         // The card already dimmed its artwork and desaturated its knobs on

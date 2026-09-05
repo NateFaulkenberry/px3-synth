@@ -131,13 +131,16 @@ void FxCardComponent::addKnobRow(std::vector<KnobSpec> specs)
             altLabel = std::make_unique<ChipLabel>();
             altLabel->setText(spec.altLabel, juce::dontSendNotification);
             altLabel->setJustificationType(juce::Justification::centred);
-            // Smaller than the primary. The pedal prints the alternate
-            // underneath in smaller type, and the point of the pairing is that
-            // one caption dominates rather than that there are two of them.
-            altLabel->setFont(juce::FontOptions(9.5f));
+            // The SAME size and style as the primary, because only one of the
+            // two is ever on screen. They were drawn together at first, the
+            // alternate smaller and dimmed underneath; showing one at a time
+            // says which function the knob has now without asking the reader
+            // to work out which of two captions is the live one.
+            altLabel->setFont(juce::FontOptions(11.5f));
             altLabel->setInterceptsMouseClicks(true, false);
             altLabel->setTooltip(spec.altTooltip);
             addAndMakeVisible(*altLabel);
+            altLabel->setVisible(false);
         }
 
         row.ids.push_back(spec.id);
@@ -154,6 +157,16 @@ bool FxCardComponent::hasAlternates() const noexcept
                        [](const KnobEntry& e) { return e.altKnob != nullptr; });
 }
 
+std::vector<std::pair<juce::String, juce::String>> FxCardComponent::debugPairedKnobIds() const
+{
+    std::vector<std::pair<juce::String, juce::String>> pairs;
+    for (const auto& entry : knobs)
+    {
+        if (entry.altKnob != nullptr) { pairs.push_back({ entry.id, entry.altId }); }
+    }
+    return pairs;
+}
+
 void FxCardComponent::setAltMode(bool showAlternates)
 {
     altMode = showAlternates;
@@ -167,14 +180,9 @@ void FxCardComponent::setAltMode(bool showAlternates)
         entry.knob->setVisible(! altMode);
         entry.altKnob->setVisible(altMode);
 
-        // Whichever function is live gets the full caption treatment; the
-        // other stays legible but recedes.
-        constexpr auto kRecededAlpha = 0.55f;
-        entry.label->setAlpha(altMode ? kRecededAlpha : 1.0f);
-        if (entry.altLabel != nullptr)
-        {
-            entry.altLabel->setAlpha(altMode ? 1.0f : kRecededAlpha);
-        }
+        // And exactly ONE caption, naming the function the knob has right now.
+        entry.label->setVisible(! altMode);
+        if (entry.altLabel != nullptr) { entry.altLabel->setVisible(altMode); }
     }
 
     repaint();
@@ -531,30 +539,20 @@ void FxCardComponent::layoutKnobRow(int rowIndex, const Row& row, bool feature)
         {
             continue;
         }
-        // A paired knob needs a second caption line, so its cell gives the
-        // readout twice the height and the two chips split it. An unpaired
-        // knob is laid out exactly as it always was.
-        const auto paired = it->altLabel != nullptr;
-        const auto readout = paired ? readoutHeight * 2 : readoutHeight;
-
         // Square, so a knob stays a circle. Only dropdowns stretch.
         layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
                               { nullptr, it->knob.get(), it->label.get(),
-                                ControlShape::square, 0, readout, static_cast<int>(cellWidth) },
+                                ControlShape::square, 0, readoutHeight, static_cast<int>(cellWidth) },
                               inner.rowControl(rowIndex));
 
-        if (paired)
+        if (it->altKnob != nullptr)
         {
-            // The primary chip was given both lines; split it and hand the
-            // lower one to the alternate.
-            auto captions = it->label->getBounds();
-            const auto half = captions.getHeight() / 2;
-            it->label->setBounds(captions.removeFromTop(half));
-            it->altLabel->setBounds(captions);
-
-            // The two sliders occupy exactly the same circle. Only one is ever
-            // visible, so they cannot overlap on screen.
+            // A paired knob is TWO controls in one place, with one of each
+            // pair visible: the alternate takes exactly the primary's bounds,
+            // knob and caption alike. Nothing has to be reserved for it, so a
+            // paired cell lays out identically to an unpaired one.
             it->altKnob->setBounds(it->knob->getBounds());
+            if (it->altLabel != nullptr) { it->altLabel->setBounds(it->label->getBounds()); }
         }
     }
 }

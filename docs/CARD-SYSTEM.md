@@ -127,6 +127,25 @@ inside the gap the grid already leaves. Note that the ground behind a card is
 near-black, so a black shadow has little room to work in; a shadow that needs to
 read strongly is a sign the panel behind it should be lighter.
 
+**A knob can carry two functions.** `KnobSpec` takes an optional `altId`,
+`altLabel` and `altTooltip`. A knob that names one gets a SECOND slider at
+exactly the same bounds and a second caption chip beneath the first, drawn
+smaller and dimmed. `setAltMode(bool)` swaps which slider is visible and which
+caption is emphasised.
+
+It is visibility, not attachment: both sliders keep their parameters at all
+times, so automating an alternate never depends on which one the panel is
+showing, and the mode itself is not a parameter. `knob(id)` and `knobLabel(id)`
+answer for an alternate's id as well as a primary's, so attaching one is the
+same call either way, and `allKnobs()` / `allKnobLabels()` include them - which
+is what keeps the styling, bypass-greyscale and attachment passes reaching a
+control nobody is currently looking at.
+
+DOOM and LUCY use this for the six pairs their pedals print; see
+`shared/UI/Fx/DoomCardLayout.h` and `LucyCardLayout.h`, which are also the one
+place each card's rows are declared, shared by the Synth's card and the
+standalone.
+
 **Cards own their titles.** The title is drawn by the card, not by the parent
 panel. `OscPanel` used to paint titles into its children's bounds, which meant a
 title was not tied to the lifetime of the component it named — the same

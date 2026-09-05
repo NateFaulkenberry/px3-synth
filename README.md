@@ -1074,6 +1074,16 @@ what passes through it, RELAY is a delay whose repeats do not fade (you choose h
 many, and they all share one volume), FLIP builds harmonies and spreads them
 across time.
 
+**Six knobs, twelve functions.** Like the pedal, each knob carries a second
+function printed under the first, and a MAIN/ALT chip switches which the knobs
+drive: TIME/CROSS, wet MODIFY/EQ, LENGTH/FADE, loop MODIFY/BLEND, CLOCK/GLUE and
+MIX/BALANCE. Both halves of a pair are real parameters, attached and automatable
+whichever way the chip is set; ALT itself is panel state and is not saved.
+
+TIME, LENGTH and the two MODIFYs mean different things in different modes - TIME
+is a decay in SOUP, a delay in RELAY and a lag in FLIP. Those mappings live in
+`DoomControlModel`, not in the DSP; see `docs/DOOM_DSP_DESIGN.md` §3.
+
 **CLOCK** is the engine's sample rate, and it moves in musical steps. Lowering it
 lengthens the loop, drops its pitch, slows the wet channel and narrows the band -
 all at once, because they are all the same thing.
@@ -1098,6 +1108,17 @@ what a low-bitrate encoder throws away.
 **PACKETS** simulates a bad connection using a two-state burst model, so losses
 cluster the way they do on a real link. LOSS drops frames; REPEAT conceals them
 with the previous frame, smeared.
+
+**GLOBAL is an intensity macro, not a wet/dry.** It scales the coder's depth and
+reach, the packet rate, the filter and the freeze, so raising it expresses more
+of the character the other controls describe rather than fading in more of a
+fixed wet signal.
+
+**Six knobs, twelve functions**, as on the pedal: FILTER/GATE, VERB/DECAY,
+FREQ/THRESHOLD, SPEED/AUTO GAIN, LOSS/LOSS GAIN and GLOBAL/FREEZER, with a
+MAIN/ALT chip to switch. FREEZE is one OFF/SOLID/SLUSHY control and WEIGHT is
+DARK/NEUTRAL/BRIGHT. The mappings live in `LucyControlModel`; see
+`docs/LUCY_DSP_DESIGN.md` §3.
 
 **FREEZE** is a real spectral freeze - solid, or *slushy*, where it keeps
 updating from what you play. **SPEED** sets how fast the loss, the packets and
@@ -1145,6 +1166,11 @@ Mood is a two-channel micro-looper and spatial-effects module: an always-listeni
 looper and a suite of real-time spatial effects that can process the input, the
 loop, or both. It is inspired by the MOOD pedal by Chase Bliss Audio - behaviour
 only, no code; see `THIRD_PARTY_NOTICES.md`.
+
+Its two channels each have a MODE selector with a LENGTH/TIME and a MODIFY knob
+beside it, and **those four knobs mean different things depending on the mode** -
+MODIFY is a detector sensitivity in ENV, a playback speed in TAPE and a threshold
+in MASK. The mappings live in `MoodControlModel` rather than in the renderers.
 
 DSP design notes and an architecture evaluation: `docs/MOOD_DSP_DESIGN.md`.
 
