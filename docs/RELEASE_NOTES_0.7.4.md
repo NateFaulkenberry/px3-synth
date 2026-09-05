@@ -1,147 +1,155 @@
 # PX3 v0.7.4
 
-The seven effects became products in v0.7.0, but they left the Synth as bare
-controls on a flat background: no card, no palette, a bypass switch that did not
-bypass, and a window sized to nothing in particular. This release makes a
-standalone effect the same card the Synth draws — asserted, not assumed — gives
-every card its own artwork and colour scheme, and finishes the Reverb, whose
-Synth card had been showing two of its eleven controls.
+## A more polished FX experience
 
-It also closes three gaps that let a regression through: nothing checked that an
-effect was still connected to audio, that a knob was connected to a parameter,
-or that a card was on screen at all.
+PX3 v0.7.4 is a major visual and usability pass across the FX system.
+
+Effects now feel like a cohesive part of PX3 rather than separate tools bolted onto the Synth. Every effect card has its own artwork, color palette, shadows, and visual identity, while standalone effects now match the cards you see inside the Synth.
+
+This release also expands the Reverb controls, improves Macros and presets, fixes several FX visibility and audio-routing issues, and significantly reduces the size of standalone effect bundles.
 
 ---
 
-## The FX cards
+## 🎨 Redesigned FX Cards
 
-**Each card has a background image.** Eight of them, in `shared/UI/Artwork`,
-layered under the gloss and clipped to the card's rounded corners. Opacity, fit
-and alignment are per card in `UIConfig.json`:
+Every FX card now has its own visual identity.
 
-```json
-"artwork": { "image": "Lucy-artwork.png", "opacity": 0.7,
-             "fit": "stretch", "align": "topLeft" }
-```
+* **Custom artwork** — Each effect has its own background artwork, integrated into the card design.
+* **Unique color schemes** — Controls, labels, and buttons are styled to complement each effect rather than using the same generic appearance everywhere.
+* **Improved depth** — Cards now have subtle shadows that better separate them from the interface.
+* **Improved bypass state** — Bypassed effects are fully greyed out, including their artwork and controls, making it immediately clear when an effect is inactive.
+* **Cleaner controls** — The animated rainbow borders around FX knobs have been removed in favor of a cleaner design that works better with the new artwork.
 
-`fit` takes `cover` (fill and crop), `contain` (the whole picture, letterboxed)
-or `stretch` (the whole picture, filling the card); `align` decides which edges
-`cover` crops and which side `contain`'s bands fall on. All eight ship as
-`stretch` from `topLeft`.
+The result is a more cohesive and visually distinct FX section while keeping the overall PX3 design language intact.
 
-**Each card carries its own colour scheme.** Chip buttons and captions read
-their background, opacity, text colour, outline and font size from
-`cards.<key>.controls`, so Doom's chips are its red and Mood's are its green
-rather than every card wearing the same translucent white.
+---
 
-**Cards cast a shadow.** `cards.defaults.shadow` reaches every card style at
-once — colour, opacity, radius, offset — drawn from the card's own rounded
-rectangle so it follows the corner radius. The macro depth popover casts the
-same one, under `macroDepth.shadow`.
+## 🎛️ Standalone Effects
 
-**A bypassed card goes fully grey.** Its artwork desaturates and dims through
-the same `disabled.saturation` and `disabled.dim` numbers every other layer
-uses, and its captions grey with the knobs they name. Previously a switched-off
-card kept a row of coloured chips, which were then the brightest thing on it.
+Standalone FX now look and behave like the effects inside the Synth.
 
-**The rainbow ring is gone.** Every FX amount knob wore an animated rainbow
-border; with artwork behind them the two competed, so `psychedelicFx` and its
-drawing code are removed. Bypass greyscale is unaffected — despite sharing a
-prefix in the source it was always a different thing.
+* **The same cards** — Standalone effects use the same visual design, artwork, colors, and control layouts as their Synth counterparts.
+* **Working bypass** — Bypass now actually removes the effect from the audio path, while also clearly showing the bypassed state visually.
+* **Consistent sizing** — Standalone effects now open at the same size used by their cards inside the Synth.
+* **Mood & Delay controls restored** — Both standalone effects now display their full control interfaces instead of opening with empty panels.
 
-## The standalone effects
+---
 
-- **They are the Synth's cards now.** Card frame, artwork, palette, chip and
-  caption styling, all read from the same `UIConfig.json`, which ships inside
-  every bundle. `FxProducts_AStandaloneCardMatchesTheSynthsCardExactly`
-  compares the two as a text signature — every control's id and bounds, the
-  palette, the artwork and its fit — and fails if they diverge.
-- **Bypass bypasses.** The switch moved its parameter but nothing was wired to
-  the audio path, so a bypassed standalone kept processing. The card also greys
-  out when it is off, which it did not do at all before.
-- **They open at the size they are in the Synth**, 318 × 500 plus a margin,
-  instead of at a default window size.
-- **Mood and Delay were empty.** Their panels laid out correctly and had no
-  controls in them.
-- `scripts/build-product.sh fx-standalone [--run]` builds all seven in one tree
-  and opens them.
+## 🌊 Reverb Gets a Complete Control Set
 
-## Reverb
+Reverb receives one of the biggest functional improvements in this release.
 
-The Synth's Reverb card showed AMOUNT and MODE. The other nine parameters
-existed, were saved in presets and were reachable from a host — they simply had
-no control in the Synth. All eleven are on the card now, in the same layout the
-standalone uses: SIZE, DECAY, DAMPING, PRE, DEPTH, RATE, WIDTH, REGEN, SMEAR,
-plus MODE and AMOUNT.
+Previously, the Synth's Reverb card exposed only **Amount** and **Mode**, despite Reverb supporting a much larger set of parameters.
 
-The card was also relaid out — its second row of knobs ran past the edge of the
-inner card — and its knobs now use the PX3 rotary rather than stock JUCE ones.
+The Synth now exposes all **11 Reverb controls**:
 
-There is **no backwards-compatibility shim**: the parameters are unchanged, so
-existing presets load exactly as they did.
+**SIZE · DECAY · DAMPING · PRE · DEPTH · RATE · WIDTH · REGEN · SMEAR · MODE · AMOUNT**
 
-## Macros and presets
+The Reverb card has also been redesigned to fit the complete control set cleanly, with the same PX3 rotary controls used throughout the rest of the interface.
 
-- Macro captions moved above their knobs, and each knob has a **DEPTH** button
-  beneath it styled like the FX chips.
-- **Cmd-click is assignment again.** The depth panel had taken the gesture;
-  now that depth has its own button, the modifier went back to the thing with no
-  other affordance.
-- **Double-clicking a preset loads it.**
-- The preset overlay's `CLOSE` button now reads `CANCEL`.
+**Existing presets remain fully compatible.** Your existing Reverb settings will load exactly as before.
 
-## Fixed
+---
 
-- **Vibe, Delay and Mood vanished from the Synth's FX panel.** Removing the old
-  Reverb component took three neighbours' `addAndMakeVisible` calls with it.
-  Nothing caught this: `componentForSection` still answered, the signal-flow
-  strip still listed all eight stages, and the whole suite stayed green.
-  `FxPanel_EveryStageIsOnScreen` now checks each of the eight is in the grid and
-  visible.
-- **Replacing an artwork PNG did nothing.** A `POST_BUILD` copy only runs when
-  the target is built, and editing an image does not make a target out of date.
-  The images are `LINK_DEPENDS` now, so touching one relinks; the copy moved to
-  `PRE_LINK` so it lands before JUCE's own install step; and the runtime cache
-  keys on the file's modification time and size rather than on its path alone.
-- **Bundles are less than half the size.** Every bundle carried every card
-  background — PX3 Mood shipped Doom's and Lucy's, 27 MB of images to draw one
-  of them. Each product now ships only what it draws: about 432 MB down to
-  about 186 MB across the bundles.
+## 🎚️ Macros & Presets
 
-## Testing
+Macros receive a small but important usability upgrade.
 
-**1399 assertions pass**, up from 1366. Three of the new ones exist because
-this release found what was missing:
+* Macro labels now sit **above their knobs** for easier reading.
+* Every Macro now has a dedicated **DEPTH** button underneath it.
+* **Cmd-click assignment is back** — Cmd-clicking a Macro once again opens its assignment mode.
+* **Double-clicking a preset now loads it** immediately.
+* The preset browser's **CLOSE** button has been renamed **CANCEL** to better communicate its function.
 
-- `FxBus_<stage>IsAudibleInTheChain` — all eight stages are dispatched from one
-  switch in `processBlock` and nothing asserted a stage was still wired to
-  audio. Each is now rendered twice, once engaged and once with the chain off,
-  and must differ by more than 1% of the dry level. They measure 85% (Chorus) to
-  176% (Vibe), so the bar catches a stage that does nothing at all rather than
-  pinning how strong any effect is.
-- `FxCards_EveryKnobOnTheSynthsCardsIsAttached` and its standalone counterpart —
-  a knob whose attach call is missing or misspelt still lays out, still draws,
-  still turns, and does nothing. Neither the parity comparison nor the
-  look-and-feel check catches that. All 116 knobs move a parameter.
-- `FxPanel_EveryStageIsOnScreen` — see above.
+---
 
-Also new: the preset browser has a test harness; a bypassed card's captions are
-greyed and un-greyed; and each card's artwork fit is compared against what its
-config declares rather than against a written-down expectation, so retuning one
-stays a one-line edit.
+## 🐛 Fixes & Improvements
 
-## Known limitations
+This release also addresses several issues that could make their way through without being immediately obvious.
 
-- **An update install still has not been watched end to end.** Nothing in this
-  release touches the updater, so this carries forward unchanged from v0.7.3:
-  the refusal bug is fixed and verified against a local reproduction, but no
-  full prepare → quit DAW → relaunch cycle has been run.
-- **A second updater helper can still be started across sessions** if the
-  settings panel is opened in a fresh session while an update is already staged.
-  Within one session the state machine prevents it.
-- **The card artwork is large.** The eight PNGs are 27 MB together, and the
-  Synth needs all of them because it draws all eight cards. They are 1176 × 1904
-  for a card drawn at 318 × 500, which is generous but not the cause — the
-  weight is in the images themselves.
-- The preset browser keeps its `CANCEL` button alongside the corner glyph.
-- Windows is still unpackaged.
+### FX disappearing from the Synth
+
+**Vibe, Delay, and Mood could disappear from the FX panel** even though the effects themselves were still present elsewhere in the system.
+
+This has been fixed. All FX stages now reliably appear in the Synth's FX panel.
+
+### Artwork updates
+
+Replacing an effect's artwork now correctly updates the artwork used by the application.
+
+### Smaller standalone bundles
+
+Standalone effects no longer carry artwork and resources belonging to other effects.
+
+This dramatically reduces bundle sizes — from roughly **432 MB total to about 186 MB** across the standalone products.
+
+### Audio processing reliability
+
+Additional safeguards now verify that every FX stage is actually connected to the audio chain. This helps prevent an effect from appearing correctly in the interface while silently doing nothing to the audio.
+
+### Control reliability
+
+All FX controls are now verified to be properly connected to their underlying parameters, preventing a knob from appearing and responding visually without actually changing the effect.
+
+---
+
+## 🧪 Quality & Reliability
+
+PX3 now has **1,399 automated assertions**, up from 1,366.
+
+More importantly, the new testing focuses on things that directly affect the experience of using the plugin:
+
+* Every FX stage is verified to actually affect audio.
+* Every FX knob is verified to control a parameter.
+* Every FX card is verified to be visible.
+* Standalone effects are verified against their Synth counterparts.
+* Bypass states are verified visually.
+* Artwork configuration is verified automatically.
+* The preset browser now has automated coverage.
+
+These checks are designed to catch the kinds of regressions that can otherwise look fine during normal development while still leaving part of the plugin broken.
+
+---
+
+## ⚠️ Known Limitations
+
+A few items remain unchanged from previous releases:
+
+* The complete update-install process has not yet been tested end-to-end with a DAW restart.
+* A second updater helper can still be launched across separate sessions in a specific staged-update scenario.
+* The Synth's artwork assets are relatively large, contributing to the overall application size.
+* The preset browser still displays its **CANCEL** button alongside the corner close icon.
+* **Windows standalone packaging is not yet available.**
+
+---
+
+## What's New at a Glance
+
+**✨ New**
+
+* Custom artwork for every FX card
+* Individual FX color schemes
+* Card shadows and improved visual depth
+* Full Reverb control set
+* Macro DEPTH buttons
+* Restored Cmd-click Macro assignment
+
+**🔧 Improved**
+
+* Standalone FX now match Synth FX cards
+* Standalone effect sizing
+* Bypass visual feedback and audio behavior
+* Preset loading
+* FX control reliability
+* Standalone bundle sizes
+
+**🐛 Fixed**
+
+* Missing Vibe, Delay, and Mood cards
+* Reverb layout issues
+* Standalone bypass not actually bypassing
+* Standalone Mood and Delay appearing empty
+* Artwork changes not updating correctly
+* FX controls that could appear functional without being connected
+
+**PX3 v0.7.4 is a substantial polish pass across the FX system — making the effects more consistent, more expressive visually, and more reliable to use.**
