@@ -15,7 +15,22 @@ public:
     void updateForBlock(const DelaySettings& settings);
     void processSampleFrame(float inL, float inR, float& outL, float& outR);
 
+    // The granular spawner and the BBD noise floor are stochastic; tests drive
+    // them through this so a run is reproducible. DELAY used
+    // juce::Random::getSystemRandom() from the audio thread, which is a shared
+    // global that cannot be pinned - so nothing about its output could be
+    // asserted exactly, only its bounds.
+    void setSeed(uint32_t seed);
+
 private:
+    // xorshift, per instance, matching Doom::nextRandom, Lucy::nextRandom and
+    // Mood::nextRandom. No allocation, no lock, no global.
+    float nextRandom();
+    int nextRandomInt(int upperExclusive);
+
+    // Never zero: xorshift is stuck at zero forever.
+    uint32_t rngState { 0xC2B2AE35u };
+
     struct Grain
     {
         bool active { false };

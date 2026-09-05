@@ -10,6 +10,124 @@ void testDelay()
 {
     suite("DELAY");
 
+    // ---- the engine is deterministic ---------------------------------------
+    //
+    // DELAY called juce::Random::getSystemRandom() from the audio thread in
+    // twelve places - the granular spawner's pitch, panning, reverse and
+    // jitter decisions, and the BBD noise floor. That is a shared global, it
+    // cannot be pinned, and it is the reason nothing about DELAY's output
+    // could be asserted exactly. A comment further down this file still
+    // records having to average several renders because of it.
+    {
+        auto render = [](uint32_t seed, int algorithm)
+        {
+            Delay delay;
+            delay.prepare(kSampleRate);
+            delay.reset();
+            delay.setSeed(seed);
+
+            DelaySettings s;
+            s.enabled = true;
+            s.amount = 0.85f;          // well into the grain spawner
+            s.timeControl = 0.4f;
+            s.feedbackControl = 0.5f;
+            s.algorithmIndex = algorithm;
+            delay.updateForBlock(s);
+
+            std::vector<float> out;
+            const auto length = static_cast<int>(kSampleRate * 0.6);
+            out.reserve(static_cast<std::size_t>(length));
+            for (int i = 0; i < length; ++i)
+            {
+                const auto in = std::sin(juce::MathConstants<float>::twoPi * 220.0f
+                                         * static_cast<float>(i) / static_cast<float>(kSampleRate)) * 0.5f;
+                float l = 0.0f, r = 0.0f;
+                delay.processSampleFrame(in, in, l, r);
+                out.push_back(l);
+            }
+            return out;
+        };
+
+        // Granular is the one that draws most heavily; AnalogBBD exercises the
+        // noise floor, which is a different call site.
+        juce::StringArray broken;
+        for (const auto& algo : { std::pair<int, const char*> { 0, "Granular" },
+                                  std::pair<int, const char*> { 2, "AnalogBBD" } })
+        {
+            const auto a = render(1234u, algo.first);
+            const auto b = render(1234u, algo.first);
+            const auto c = render(5678u, algo.first);
+
+            auto identical = a.size() == b.size();
+            if (identical)
+            {
+                for (std::size_t i = 0; i < a.size(); ++i)
+                {
+                    if (! juce::approximatelyEqual(a[i], b[i])) { identical = false; break; }
+                }
+            }
+            if (! identical) { broken.add(juce::String(algo.second) + " differed at the same seed"); }
+
+            auto differs = false;
+            for (std::size_t i = 0; i < std::min(a.size(), c.size()); ++i)
+            {
+                if (std::abs(a[i] - c[i]) > 1.0e-9f) { differs = true; break; }
+            }
+            if (! differs) { broken.add(juce::String(algo.second) + " ignored the seed"); }
+        }
+
+        check("Delay_TheSameSeedProducesTheSameOutput",
+              broken.isEmpty(),
+              broken.isEmpty() ? "Granular and AnalogBBD both reproduce exactly at one seed "
+                                 "and diverge at another"
+                               : broken.joinIntoString("; "));
+
+        // Per instance, not shared. A global RNG passes the test above and
+        // fails this one, because running another engine moves the sequence.
+        {
+            Delay first, second;
+            for (auto* engine : { &first, &second })
+            {
+                engine->prepare(kSampleRate);
+                engine->reset();
+                engine->setSeed(4242u);
+            }
+
+            DelaySettings s;
+            s.enabled = true;
+            s.amount = 0.85f;
+            s.algorithmIndex = 0;
+            first.updateForBlock(s);
+            second.updateForBlock(s);
+
+            for (int i = 0; i < 5000; ++i)
+            {
+                float l = 0.0f, r = 0.0f;
+                first.processSampleFrame(0.3f, 0.3f, l, r);
+            }
+
+            Delay fresh;
+            fresh.prepare(kSampleRate);
+            fresh.reset();
+            fresh.setSeed(4242u);
+            fresh.updateForBlock(s);
+
+            auto matches = true;
+            for (int i = 0; i < 2000; ++i)
+            {
+                float l1 = 0.0f, r1 = 0.0f, l2 = 0.0f, r2 = 0.0f;
+                second.processSampleFrame(0.3f, 0.3f, l1, r1);
+                fresh.processSampleFrame(0.3f, 0.3f, l2, r2);
+                if (! juce::approximatelyEqual(l1, l2)) { matches = false; break; }
+            }
+
+            check("Delay_TheRandomStateIsPerInstance",
+                  matches,
+                  matches ? "running one engine did not disturb another at the same seed"
+                          : "the engines share random state");
+        }
+    }
+
     static const char* names[] = { "Granular", "Tape", "AnalogBBD", "PingPong",
                                    "Stereo", "Modulated", "Diffusion" };
 

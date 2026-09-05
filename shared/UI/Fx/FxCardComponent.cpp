@@ -361,6 +361,18 @@ void FxCardComponent::setUIConfig(std::shared_ptr<const UIConfig> config)
             entry.label->setColour(juce::Label::textColourId, labelColour);
             entry.label->setFont(juce::FontOptions(labelFont));
             entry.label->setChipStyle(chipStyle);
+
+            // The alternate caption is styled IDENTICALLY, because it is the
+            // same caption naming the same knob's other function - only one of
+            // the two is ever on screen. Missing this left every alternate
+            // with the plugin's default translucent-white chip on cards that
+            // had been given a scheme of their own.
+            if (entry.altLabel != nullptr)
+            {
+                entry.altLabel->setColour(juce::Label::textColourId, labelColour);
+                entry.altLabel->setFont(juce::FontOptions(labelFont));
+                entry.altLabel->setChipStyle(chipStyle);
+            }
         }
 
         for (auto& entry : toggles)
@@ -413,11 +425,19 @@ void FxCardComponent::layoutToggleRow(int rowIndex, const Row& row)
     }
 
     const std::vector<float> widths(row.ids.size(), cellWidth);
-    const auto gapWidth = gap.left + gap.right;
-    const auto lines = wrappedLineCount(widths, gapWidth, rowWidth);
-    const auto cellHeight = juce::jmax(1.0f,
-                                       static_cast<float>(content.getHeight()) / static_cast<float>(lines)
-                                           - (gap.top + gap.bottom));
+
+    // The cell is the CHIP's height, not the row divided by however many lines
+    // this is guessed to need.
+    //
+    // Dividing the row was wrong in both directions. The guess disagreed with
+    // where the row actually wraps - seven chips at three columns wrap to
+    // three lines and the count came out two - so each cell was half the row
+    // rather than a third, and the lines sat 34px apart in a 66px row with the
+    // third pushed out of it. And because a chip is capped at toggleHeight
+    // regardless, a taller row never made one bigger: it only ever added space
+    // between lines. Sizing the cell to the chip makes the lines pack at their
+    // own height, so a row holds exactly as many as it has room for.
+    const auto cellHeight = static_cast<float>(controlHeight);
 
     for (const auto width : widths)
     {
