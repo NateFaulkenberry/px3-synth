@@ -167,6 +167,9 @@ void MoodComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
                                         { &mixLabel, &clockLabel, &wetTimeLabel, &wetModifyLabel, &loopLengthLabel,
                                        &loopModifyLabel, &feedbackLabel, &spreadLabel,
                                        &degradeLabel, &routingLabel, &wetModeLabel, &loopModeLabel });
+
+    // And the freeze switch, which is a chip like any other on a card.
+    px3::ui::ToggleChipButton::applyFromConfig(uiConfig.get(), "mood", { &freezeButton });
     // cardInner parses its rows in resized(), so a live reload has to redo
     // the layout as well as the paint.
     resized();

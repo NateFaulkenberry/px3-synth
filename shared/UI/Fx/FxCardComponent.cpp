@@ -264,27 +264,10 @@ void FxCardComponent::setUIConfig(std::shared_ptr<const UIConfig> config)
             entry.label->setChipStyle(chipStyle);
         }
 
-        const auto toggleFont = uiConfig->getFloat(chipKey + "toggleFontSize", 11.5f);
-        const auto toggleOffTint = uiConfig->getFloat(chipKey + "toggleOffTint", 0.0f);
-
-        // Absent means "keep the shade derived from the card's accent", which is
-        // why these are read as optionals rather than as colours with defaults:
-        // a default would replace the derivation for every card to serve the one
-        // that wanted a scheme.
-        const auto optionalColour = [this](const juce::String& key) -> std::optional<juce::Colour>
-        {
-            if (uiConfig->getValue(key).isVoid()) { return std::nullopt; }
-            return uiConfig->getColour(key, juce::Colours::white);
-        };
-
         for (auto& entry : toggles)
         {
-            entry.button->setFontSize(toggleFont);
-            entry.button->setOffTint(toggleOffTint);
-            entry.button->setStateColours(optionalColour(chipKey + "toggleOnColor"),
-                                          optionalColour(chipKey + "toggleOffColor"));
-            entry.button->setTextColours(optionalColour(chipKey + "toggleOnTextColor"),
-                                         optionalColour(chipKey + "toggleOffTextColor"));
+            px3::ui::ToggleChipButton::applyFromConfig(uiConfig.get(), styleKey,
+                                                       { entry.button.get() });
         }
     }
 

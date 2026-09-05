@@ -50,6 +50,39 @@ void ToggleChipButton::setTextColours(std::optional<juce::Colour> on,
     repaint();
 }
 
+void ToggleChipButton::applyFromConfig(const UIConfig* config,
+                                      const juce::String& styleKey,
+                                      std::initializer_list<juce::Button*> buttons)
+{
+    if (config == nullptr) { return; }
+
+    const auto key = "cards." + styleKey + ".controls.";
+
+    // Absent means "keep the shade derived from the card's accent", so these are
+    // optionals rather than colours with defaults - a default would replace the
+    // derivation for every card to serve the one that wanted a scheme.
+    const auto optional = [config](const juce::String& name) -> std::optional<juce::Colour>
+    {
+        if (config->getValue(name).isVoid()) { return std::nullopt; }
+        return config->getColour(name, juce::Colours::white);
+    };
+
+    const auto font = config->getFloat(key + "toggleFontSize", 11.5f);
+    const auto offTint = config->getFloat(key + "toggleOffTint", 0.0f);
+
+    for (auto* button : buttons)
+    {
+        auto* chip = dynamic_cast<ToggleChipButton*>(button);
+        if (chip == nullptr) { continue; }
+
+        chip->setFontSize(font);
+        chip->setOffTint(offTint);
+        chip->setStateColours(optional(key + "toggleOnColor"), optional(key + "toggleOffColor"));
+        chip->setTextColours(optional(key + "toggleOnTextColor"),
+                             optional(key + "toggleOffTextColor"));
+    }
+}
+
 void ToggleChipButton::paintButton(juce::Graphics& g,
                                    bool shouldDrawButtonAsHighlighted,
                                    bool shouldDrawButtonAsDown)

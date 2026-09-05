@@ -1835,6 +1835,21 @@
       }
     },
     "mood": {
+        "controls": {
+          "toggleOnColor": "#1B2510",
+          "toggleOffColor": "#2D3D1B",
+          "toggleOnTextColor": "#E5F7D0",
+          "toggleOffTextColor": "#E5F7D0",
+          "labelBackground": "#2D3D1B",
+          "labelBackgroundOpacity": 0.85,
+          "labelOutline": "#C8ED9D",
+          "labelOutlineOpacity": 0.45,
+          "labelColour": "#E5F7D0"
+        },
+        "artwork": {
+          "image": "Mood-artwork.png",
+          "opacity": 0.7
+        },
       "border": {
         "color": "#97CC5A",
         "opacity": 0.71

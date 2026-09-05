@@ -2,6 +2,9 @@
 
 #include <JuceHeader.h>
 
+#include "UIConfig.h"
+
+#include <initializer_list>
 #include <optional>
 
 namespace px3::ui
@@ -47,6 +50,16 @@ public:
                          std::optional<juce::Colour> off);
     void setTextColours(std::optional<juce::Colour> on,
                         std::optional<juce::Colour> off);
+
+    // Everything a card declares for its chips, applied to buttons a component
+    // was handed rather than owns.
+    //
+    // Shared for the same reason ChipLabel's is: the cards are built two ways,
+    // and Mood's freeze switch would otherwise be the one chip in the plugin
+    // that its card's colours could not reach.
+    static void applyFromConfig(const UIConfig* config,
+                                const juce::String& styleKey,
+                                std::initializer_list<juce::Button*> buttons);
 
 private:
     void paintButton(juce::Graphics& g,
