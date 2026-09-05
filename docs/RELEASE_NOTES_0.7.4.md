@@ -77,12 +77,6 @@ This has been fixed. All FX stages now reliably appear in the Synth's FX panel.
 
 Replacing an effect's artwork now correctly updates the artwork used by the application.
 
-### Smaller standalone bundles
-
-Standalone effects no longer carry artwork and resources belonging to other effects.
-
-This dramatically reduces bundle sizes — from roughly **432 MB total to about 186 MB** across the standalone products.
-
 ---
 
 ## 🧪 Quality & Reliability
