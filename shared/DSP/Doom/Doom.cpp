@@ -1,4 +1,5 @@
 #include "Doom.h"
+#include "DoomControlModel.h"
 
 #include <algorithm>
 #include <cmath>
@@ -7,16 +8,6 @@ namespace px3
 {
 namespace
 {
-// The harmonised CLOCK steps. Simple integer ratios, so each step is a musical
-// interval on everything the engine holds: octaves (1/2, 1/4, 1/8, 1/16),
-// fifths (2/3, 1/3), fourths (3/4, 3/8, 3/16) and a twelfth (1/12).
-constexpr std::array<float, 11> kClockRatios {
-    { 1.0f / 16.0f, 1.0f / 12.0f, 1.0f / 8.0f, 3.0f / 16.0f, 1.0f / 4.0f, 1.0f / 3.0f,
-      3.0f / 8.0f, 1.0f / 2.0f, 2.0f / 3.0f, 3.0f / 4.0f, 1.0f }
-};
-
-constexpr float kMinClockRatio = 1.0f / 16.0f;
-
 // The longest micro-loop, in internal samples. At the lowest clock this is the
 // loop's real duration multiplied by sixteen, which is where the very long,
 // very low loops come from.
@@ -110,25 +101,17 @@ float Doom::nextBipolar()
     return nextRandom() * 2.0f - 1.0f;
 }
 
+// Both live in the control model now - the ratio table is a mapping from a
+// knob to a rate, not a property of the engine. These forward so the existing
+// callers and tests keep one place to ask.
 int Doom::clockStepCount()
 {
-    return static_cast<int>(kClockRatios.size());
+    return doom_control::clockStepCount();
 }
 
 float Doom::clockRatioFor(float clockNormalised, bool smooth)
 {
-    const auto c = juce::jlimit(0.0f, 1.0f, clockNormalised);
-
-    if (smooth)
-    {
-        // Exponential, so the knob's feel matches the stepped version: equal
-        // knob travel is equal pitch travel.
-        return kMinClockRatio * std::pow(1.0f / kMinClockRatio, c);
-    }
-
-    const auto count = static_cast<int>(kClockRatios.size());
-    const auto index = juce::jlimit(0, count - 1, static_cast<int>(c * static_cast<float>(count - 1) + 0.5f));
-    return kClockRatios[static_cast<std::size_t>(index)];
+    return doom_control::mapClockToRatio(clockNormalised, smooth);
 }
 
 // ============================================================================
@@ -297,8 +280,17 @@ void Doom::reset()
     }
 }
 
-void Doom::updateForBlock(const DoomSettings& next)
+void Doom::updateForBlock(const DoomUserParameters& next)
 {
+    // NOTE: the engine deliberately does NOT hold a block-rate copy of the
+    // derived parameters. Its stages map their own smoothed knob through the
+    // control model's functions once per sample, so automating a macro glides
+    // rather than stepping at block boundaries - and a struct computed here
+    // and never read would be work done on the audio thread for nothing.
+    //
+    // deriveDoomParameters composes the same functions into one block-rate
+    // view; it is what the control-model tests assert against.
+
     settings = next;
 
     enabledSmoothed.setTargetValue(settings.enabled ? 1.0f : 0.0f);
@@ -350,8 +342,11 @@ void Doom::updateForBlock(const DoomSettings& next)
 
 void Doom::updateClock()
 {
-    clockRatio = juce::jlimit(kMinClockRatio, 1.0f,
-                              clockRatioFor(clockSmoothed.getNextValue(), settings.clockSmooth));
+    // Smoothed per sample and mapped here, so sweeping CLOCK glides through
+    // the ratios rather than stepping between them at block boundaries.
+    clockRatio = juce::jlimit(doom_control::mapClockToRatio(0.0f, false), 1.0f,
+                              doom_control::mapClockToRatio(clockSmoothed.getNextValue(),
+                                                            settings.clockSmooth));
     internalRate = hostSampleRate * static_cast<double>(clockRatio);
 
     // Reconstruction filter at the internal Nyquist. The zero-order hold's
@@ -563,7 +558,7 @@ Doom::Frame Doom::renderBurst()
 
     // LENGTH sets the pace of the sequence, and therefore the size of each
     // step: fast steps take a short bite out of each slice.
-    const auto stepSeconds = juce::jmap(lengthNorm, 0.35f, 0.03f);
+    const auto stepSeconds = doom_control::mapLengthToBurstStep(lengthNorm);
     const auto stepSamples = juce::jmax(64.0f, static_cast<float>(internalRate) * stepSeconds);
 
     burstStepPhase += 1.0f;
@@ -575,7 +570,7 @@ Doom::Frame Doom::renderBurst()
 
         // Live input above the threshold scrambles the pattern - the "fills"
         // that appear when you play along. Seeded, so a test run repeats.
-        if (burstEnv > (1.0f - loopModifySmoothed.getNextValue()) * 0.5f + 0.02f)
+        if (burstEnv > doom_control::mapLoopModifyToBurstSensitivity(loopModifySmoothed.getNextValue()))
         {
             const auto a = static_cast<int>(nextRandom() * static_cast<float>(sliceCount)) % sliceCount;
             const auto b = static_cast<int>(nextRandom() * static_cast<float>(sliceCount)) % sliceCount;
@@ -844,10 +839,9 @@ Doom::Frame Doom::renderRadio()
     // MODIFY scans a station axis. Between two centres both stations are
     // audible and static rises; at a centre one station is alone and the static
     // falls to nothing - which is what "scan until the static parts" means.
-    const auto position = scan * static_cast<float>(kRadioStations - 1);
-    const auto lower = juce::jlimit(0, kRadioStations - 1, static_cast<int>(position));
-    const auto upper = juce::jlimit(0, kRadioStations - 1, lower + 1);
-    const auto blend = position - static_cast<float>(lower);
+    int lower = 0, upper = 0;
+    float blend = 0.0f;
+    doom_control::mapLoopModifyToStation(scan, kRadioStations, lower, upper, blend);
 
     const auto a = renderStation(lower, length);
     const auto b = lower == upper ? a : renderStation(upper, length);
@@ -1004,11 +998,12 @@ Doom::Frame Doom::renderLoop(float inL, float inR)
     const auto level = 0.5f * (std::abs(inL) + std::abs(inR));
     burstEnv += (level - burstEnv) * envCoeff;
 
-    switch (settings.loopModeIndex)
+    switch (settings.loopMode)
     {
-        case 0:  return renderBurst();
-        case 2:  return renderMask();
-        default: return renderRadio();
+        case DoomLoopMode::burst: return renderBurst();
+        case DoomLoopMode::mask:  return renderMask();
+        case DoomLoopMode::radio:
+        default:                  return renderRadio();
     }
 }
 
@@ -1029,7 +1024,7 @@ void Doom::soupFrame(int channel, float* real, float* imag, int numBins)
     // Decay per hop from a T60. This is reverberation by spectral magnitude
     // decay: the accumulator falls exponentially and is re-excited by the
     // input, which resynthesises the signal rather than reflecting it.
-    const auto t60Base = juce::jmap(time * time, 0.25f, 14.0f);
+    const auto t60Base = doom_control::mapWetTimeToSoupT60(time);
     const auto hopSeconds = static_cast<float>(soupStft.hopSize()) / static_cast<float>(internalRate);
 
     const auto frozen = settings.freeze;
@@ -1137,15 +1132,15 @@ Doom::Frame Doom::renderRelay(float inL, float inR)
     const auto modify = wetModifySmoothed.getNextValue();
     const auto spread = spreadSmoothed.getNextValue();
 
-    const auto delaySeconds = juce::jmap(time * time, 0.03f, 0.9f);
+    const auto delaySeconds = doom_control::mapWetTimeToRelayDelay(time);
     const auto delaySamples = juce::jlimit(4.0f,
                                            static_cast<float>(relaySize) / static_cast<float>(kMaxRelayTaps + 1),
                                            static_cast<float>(internalRate) * delaySeconds);
 
     // MODIFY selects how many repeats there are, not how loud they are. The
     // last position is the "pile up like a looper" one.
-    const auto taps = juce::jlimit(1, kMaxRelayTaps, 1 + static_cast<int>(modify * (kMaxRelayTaps - 0.01f)));
-    const auto infinite = modify > 0.97f;
+    const auto taps = doom_control::mapWetModifyToRelayTaps(modify, kMaxRelayTaps);
+    const auto infinite = doom_control::mapWetModifyToRelayInfinite(modify);
 
     // Parallel taps, not feedback. Feedback produces a geometric decay by
     // construction; equal-level countable repeats cannot come from a loop.
@@ -1251,8 +1246,7 @@ Doom::Frame Doom::renderFlip(float inL, float inR)
     }
 
     const auto set = kHarmonies[static_cast<std::size_t>(
-        juce::jlimit(0, static_cast<int>(kHarmonies.size()) - 1,
-                     static_cast<int>(modify * (static_cast<float>(kHarmonies.size()) - 0.01f))))];
+        doom_control::mapWetModifyToFlipHarmony(modify, static_cast<int>(kHarmonies.size())))];
 
     // Granular rather than phase-vocoder shifting: the artifacts of a short
     // window ARE this mode, per the source's own "laggy character of older
@@ -1342,11 +1336,12 @@ Doom::Frame Doom::renderFlip(float inL, float inR)
 
 Doom::Frame Doom::renderWet(float inL, float inR)
 {
-    switch (settings.wetModeIndex)
+    switch (settings.wetMode)
     {
-        case 1:  return renderRelay(inL, inR);
-        case 2:  return renderFlip(inL, inR);
-        default: return renderSoup(inL, inR);
+        case DoomWetMode::relay: return renderRelay(inL, inR);
+        case DoomWetMode::flip:  return renderFlip(inL, inR);
+        case DoomWetMode::soup:
+        default:                 return renderSoup(inL, inR);
     }
 }
 
@@ -1367,7 +1362,7 @@ void Doom::updateCross(float inL, float inR, const Frame& loop, const Frame& wet
     // The source is the music, which is what makes this organic rather than a
     // random-number generator wired to a knob: it squiggles where you play.
     auto source = 0.0f;
-    if (settings.crossSourceIndex == 0)
+    if (settings.crossSource == DoomCrossSource::input)
     {
         source = 0.5f * (std::abs(inL) + std::abs(inR));
     }
@@ -1505,7 +1500,7 @@ Doom::Frame Doom::applyGlue(Frame in)
 
 Doom::Frame Doom::processInternalStep(float inL, float inR)
 {
-    const auto routing = juce::jlimit(0, 2, settings.routingIndex);
+    const auto routing = settings.routing;
     const auto loopOn = loopActiveSmoothed.getNextValue();
     const auto wetOn = wetActiveSmoothed.getNextValue();
     const auto balance = balanceSmoothed.getNextValue();
@@ -1529,9 +1524,10 @@ Doom::Frame Doom::processInternalStep(float inL, float inR)
     {
         switch (routing)
         {
-            case 1:  wetIn = { inL + loopOut.l, inR + loopOut.r }; break;   // INPUT + LOOP
-            case 2:  wetIn = { loopOut.l, loopOut.r }; break;               // LOOP ONLY
-            default: break;                                                 // INPUT ONLY
+            case DoomRouting::inputPlusLoop: wetIn = { inL + loopOut.l, inR + loopOut.r }; break;
+            case DoomRouting::loop:          wetIn = { loopOut.l, loopOut.r }; break;
+            case DoomRouting::input:
+            default:                         break;
         }
     }
 
@@ -1541,7 +1537,7 @@ Doom::Frame Doom::processInternalStep(float inL, float inR)
     // A loop sent through the wet channel becomes fully wet by default; BLEND
     // puts some of the clean loop back.
     Frame loopContribution = loopOut;
-    if (settings.loopActive && settings.wetActive && routing == 2)
+    if (settings.loopActive && settings.wetActive && routing == DoomRouting::loop)
     {
         loopContribution = { loopOut.l * blend, loopOut.r * blend };
     }

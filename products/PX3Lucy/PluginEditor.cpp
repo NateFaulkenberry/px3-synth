@@ -1,72 +1,56 @@
 #include "PluginEditor.h"
 
+#include "LucyCardLayout.h"
+
 PX3LucyAudioProcessorEditor::PX3LucyAudioProcessorEditor(PX3LucyAudioProcessor& processorIn)
     : px3::fx::FxCardEditor(processorIn, "lucy", "LUCY")
 {
-    // The same rows, in the same order and wording, as buildLucyCard.
-    rows().addToggleRow({
-        { "freeze", "FROZEN", "FREEZE", "Freeze the spectrum" },
-        { "freezeSlushy", "SLUSHY", "SOLID", "How the frozen spectrum behaves" },
-        { "gate", "GATE ON", "GATE OFF", "Silence anything below the cutoff" },
-        { "verbPost", "V-POST", "V-PRE", "Reverb after or before the loss" },
-        { "filterInvert", "REJECT", "PASS", "Invert the filter" },
-        { "slow", "SLOW ON", "SLOW OFF", "Slow the update rate" } });
+    // The same rows, in the same order and wording, as buildLucyCard. The two
+    // are compared control-by-control by
+    // FxProducts_AStandaloneCardMatchesTheSynthsCardExactly, so a change here
+    // that is not also made there is a test failure rather than a drift.
+    px3::ui::lucyLayout::declareRows(rows(),
+                                     processorIn.mode().choices,
+                                     processorIn.slope().choices,
+                                     processorIn.packets().choices,
+                                     processorIn.weighting().choices,
+                                     processorIn.freeze().choices);
 
-    rows().addChoiceRow({
-        { "mode", "MODE", "Loss mode", processorIn.mode().choices },
-        { "slope", "SLOPE", "Filter slope", processorIn.slope().choices },
-        { "packets", "PACKETS", "Packet corruption mode", processorIn.packets().choices } });
+    // ---- the six primary knobs -------------------------------------------
+    attachKnob("filter", processorIn.filter());
+    attachKnob("global", processorIn.global());
+    attachKnob("verb", processorIn.verb());
+    attachKnob("freq", processorIn.filterFreq());
+    attachKnob("speed", processorIn.speed());
+    attachKnob("loss", processorIn.loss());
 
-    rows().addKnobRow({
-        { "loss", "LOSS", "Depth of the loss and packet effects, and which frequencies they reach" },
-        { "speed", "SPEED", "How fast the loss, packets and freeze update" },
-        { "filter", "FILTER", "Filter width; fully down is no filtering" },
-        { "filterFreq", "FREQ", "Filter centre frequency" },
-        { "verb", "VERB", "Reverb mix" },
-        { "verbDecay", "DECAY", "Reverb size and length" } });
+    // ---- and their alternates, attached exactly the same way --------------
+    //
+    // Every one is a real parameter with its own automation lane. Which of a
+    // pair the panel is showing is a display state and has no bearing on this.
+    attachKnob("gate", processorIn.gateThreshold());
+    attachKnob("freezer", processorIn.freezer());
+    attachKnob("decay", processorIn.verbDecay());
+    attachKnob("limiterThreshold", processorIn.limiterThreshold());
+    attachKnob("autoGain", processorIn.autoGain());
+    attachKnob("lossGain", processorIn.lossGain());
 
-    rows().addKnobRow({
-        { "freezer", "FREEZER", "Live against frozen" },
-        { "gateCutoff", "CUTOFF", "Gate threshold" },
-        { "threshold", "LIMIT", "Limiter threshold; lower means more limiting" },
-        { "autoGain", "AUTO GAIN", "Gain compensation for the loss modes" },
-        { "weighting", "WEIGHT", "Dark, psychoacoustic, or bright frequency weighting" },
-        { "gain", "GAIN", "Wet gain, plus or minus 36 dB" },
-        { "spread", "SPREAD", "Packet alternation and reverb width" } });
-
-    rows().addFeatureKnobRow({ "global", "GLOBAL", "Overall intensity" });
-
-    for (const auto& pair : { std::pair<const char*, juce::AudioParameterFloat*>
-                              { "global", &processorIn.global() },
-                              { "loss", &processorIn.loss() },
-                              { "speed", &processorIn.speed() },
-                              { "filter", &processorIn.filter() },
-                              { "filterFreq", &processorIn.filterFreq() },
-                              { "verb", &processorIn.verb() },
-                              { "verbDecay", &processorIn.verbDecay() },
-                              { "freezer", &processorIn.freezer() },
-                              { "gateCutoff", &processorIn.gateCutoff() },
-                              { "threshold", &processorIn.threshold() },
-                              { "autoGain", &processorIn.autoGain() },
-                              { "weighting", &processorIn.weighting() },
-                              { "gain", &processorIn.gain() },
-                              { "spread", &processorIn.spread() } })
-    {
-        attachKnob(pair.first, *pair.second);
-    }
+    attachKnob("spread", processorIn.spread());
 
     attachChoice("mode", processorIn.mode());
     attachChoice("slope", processorIn.slope());
     attachChoice("packets", processorIn.packets());
+    attachChoice("weighting", processorIn.weighting());
+    attachChoice("freeze", processorIn.freeze());
 
-    attachToggle("freeze", processorIn.freeze());
-    attachToggle("freezeSlushy", processorIn.freezeSlushy());
-    attachToggle("gate", processorIn.gate());
+    attachToggle("gateOn", processorIn.gate());
     attachToggle("verbPost", processorIn.verbPost());
     attachToggle("filterInvert", processorIn.filterInvert());
     attachToggle("slow", processorIn.slow());
 
     attachBypass(processorIn.enabled());
+
+    px3::ui::lucyLayout::wireAltSwitch(rows());
 
     finishSetup();
 }

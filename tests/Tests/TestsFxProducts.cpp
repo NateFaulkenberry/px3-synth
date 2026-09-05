@@ -304,18 +304,27 @@ void testFxProducts()
         PX3MoodAudioProcessor mood;
         prepared(mood);
 
+        // The choice reaches the engine AS A CHOICE now. This test used to
+        // assert the index/2 conversion it replaces - the arrangement in which
+        // two of the three settings were once wired to each other's labels.
+        const std::array<std::pair<int, px3::MoodRouting>, 3> expected { {
+            { 0, px3::MoodRouting::dryToWet },
+            { 1, px3::MoodRouting::loopToWet },
+            { 2, px3::MoodRouting::parallel },
+        } };
+
         juce::StringArray seen;
         auto correct = true;
-        for (int index = 0; index < 3; ++index)
+        for (const auto& [index, wanted] : expected)
         {
             mood.routing().setValueNotifyingHost(mood.routing().convertTo0to1((float) index));
-            const auto routing = mood.debugSettingsForBlock().routing;
-            const auto expected = static_cast<float>(index) / 2.0f;
-            if (std::abs(routing - expected) > 1.0e-4f) { correct = false; }
-            seen.add(juce::String(index) + " -> " + fmt(routing, 2));
+            const auto routing = mood.debugUserParameters().routing;
+            if (routing != wanted) { correct = false; }
+            seen.add(mood.routing().choices[index] + " -> "
+                     + juce::String(static_cast<int>(routing)));
         }
 
-        check("FxProduct_MoodRoutingMapsTheWayTheSynthMapsIt",
+        check("FxProduct_MoodRoutingReachesTheEngineAsAChoice",
               correct, seen.joinIntoString(", "));
     }
 
@@ -568,17 +577,14 @@ void testFxProducts()
         PX3LucyAudioProcessor lucy;
 
         const auto& doomEq = doom.eq().getNormalisableRange();
-        const auto& weighting = lucy.weighting().getNormalisableRange();
-        const auto& gain = lucy.gain().getNormalisableRange();
+        const auto& gain = lucy.lossGain().getNormalisableRange();
 
         check("FxProduct_TheParametersThatAreNotUnitRangesKeptTheirRanges",
               std::abs(doomEq.start + 1.0f) < 1.0e-6f && std::abs(doomEq.end - 1.0f) < 1.0e-6f
-                  && std::abs(weighting.start + 1.0f) < 1.0e-6f
                   && std::abs(gain.start + 36.0f) < 1.0e-4f
                   && std::abs(gain.end - 36.0f) < 1.0e-4f,
               "Doom EQ " + fmt(doomEq.start, 1) + ".." + fmt(doomEq.end, 1)
-                  + ", Lucy weighting " + fmt(weighting.start, 1) + ".." + fmt(weighting.end, 1)
-                  + ", Lucy gain " + fmt(gain.start, 1) + ".." + fmt(gain.end, 1) + " dB");
+                  + ", Lucy loss gain " + fmt(gain.start, 1) + ".." + fmt(gain.end, 1) + " dB");
     }
 
     {
@@ -611,7 +617,7 @@ void testFxProducts()
         prepared(source);
         source.loss().setValueNotifyingHost(0.9f);
         // Through the whole -36..+36 dB range, which a 0..1 copy would mangle.
-        source.gain().setValueNotifyingHost(source.gain().convertTo0to1(-12.0f));
+        source.lossGain().setValueNotifyingHost(source.lossGain().convertTo0to1(-12.0f));
         source.mode().setValueNotifyingHost(source.mode().convertTo0to1(1.0f));
 
         juce::MemoryBlock state;
@@ -623,10 +629,10 @@ void testFxProducts()
 
         check("FxProduct_LucyStateSurvivesASaveAndReloadIncludingItsDecibelGain",
               std::abs(reopened.loss().get() - 0.9f) < 1.0e-3f
-                  && std::abs(reopened.gain().get() + 12.0f) < 0.1f
+                  && std::abs(reopened.lossGain().get() + 12.0f) < 0.1f
                   && reopened.mode().getIndex() == 1,
               "loss " + fmt(reopened.loss().get(), 3) + ", gain "
-                  + fmt(reopened.gain().get(), 2) + " dB, mode "
+                  + fmt(reopened.lossGain().get(), 2) + " dB, mode "
                   + juce::String(reopened.mode().getIndex()));
     }
 
@@ -1138,6 +1144,90 @@ void testFxProducts()
                   inert.isEmpty(),
                   inert.isEmpty() ? "every knob moved a parameter: " + counted.joinIntoString(", ")
                                   : "these knobs are attached to nothing: " + inert.joinIntoString(", "));
+        }
+
+        // THE PAIRED KNOBS SHOW EXACTLY ONE FUNCTION AT A TIME.
+        //
+        // DOOM and LUCY give six knobs a second function each, as the pedals
+        // they follow print them. Both halves are real parameters and stay
+        // attached whichever is displayed - ALT only chooses which one you can
+        // see - so the thing that can break silently is the DISPLAY: two
+        // captions at once, or none, or a knob whose caption names the other
+        // function.
+        {
+            juce::StringArray wrong;
+            juce::StringArray counted;
+
+            const auto captionsFollowTheAltSwitch = [&](const juce::String& name,
+                                                        juce::AudioProcessorEditor* editorIn)
+            {
+                std::unique_ptr<juce::AudioProcessorEditor> editor(editorIn);
+                auto* cardEditor = dynamic_cast<px3::fx::FxCardEditor*>(editor.get());
+                if (cardEditor == nullptr) { counted.add(name + " (no card editor)"); return; }
+
+                auto& card = cardEditor->debugCard();
+                if (! card.hasAlternates()) { wrong.add(name + " has no paired knobs"); return; }
+
+                // Both states, and the same expectation in each: of every pair
+                // exactly one knob and exactly one caption is on screen.
+                for (const auto alt : { false, true })
+                {
+                    card.setAltMode(alt);
+
+                    auto pairs = 0;
+                    for (const auto& id : card.debugPairedKnobIds())
+                    {
+                        ++pairs;
+                        auto* primary = card.knob(id.first);
+                        auto* alternate = card.knob(id.second);
+                        auto* primaryLabel = card.knobLabel(id.first);
+                        auto* alternateLabel = card.knobLabel(id.second);
+
+                        if (primary == nullptr || alternate == nullptr
+                                || primaryLabel == nullptr || alternateLabel == nullptr)
+                        {
+                            wrong.add(name + " " + id.first + ": a half of the pair is missing");
+                            continue;
+                        }
+
+                        if (primary->isVisible() == alternate->isVisible())
+                        {
+                            wrong.add(name + " " + id.first + ": both knobs or neither visible");
+                        }
+                        if (primaryLabel->isVisible() == alternateLabel->isVisible())
+                        {
+                            wrong.add(name + " " + id.first + ": both captions or neither visible");
+                        }
+                        // The visible caption must be the one naming the
+                        // visible knob, not the other way round.
+                        if (alternate->isVisible() != alt || alternateLabel->isVisible() != alt)
+                        {
+                            wrong.add(name + " " + id.first + ": ALT showed the wrong function");
+                        }
+                        // And they occupy the same place, so switching does
+                        // not move anything on the card.
+                        if (primary->getBounds() != alternate->getBounds()
+                                || primaryLabel->getBounds() != alternateLabel->getBounds())
+                        {
+                            wrong.add(name + " " + id.first + ": the pair is not in one place");
+                        }
+                    }
+                    if (! alt) { counted.add(name + " " + juce::String(pairs) + " pairs"); }
+                }
+
+                card.setAltMode(false);
+            };
+
+            PX3DoomAudioProcessor doomAlt;
+            captionsFollowTheAltSwitch("Doom", doomAlt.createEditor());
+            PX3LucyAudioProcessor lucyAlt;
+            captionsFollowTheAltSwitch("Lucy", lucyAlt.createEditor());
+
+            check("FxCards_APairedKnobShowsOneFunctionAtATime",
+                  wrong.isEmpty(),
+                  wrong.isEmpty() ? "one knob and one caption per pair, in one place: "
+                                        + counted.joinIntoString(", ")
+                                  : wrong.joinIntoString("; "));
         }
 
         // A BYPASSED CARD GREYS OUT COMPLETELY.

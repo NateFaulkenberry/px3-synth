@@ -1,4 +1,5 @@
 #include "Mood.h"
+#include "MoodControlModel.h"
 
 #include <cmath>
 
@@ -14,20 +15,34 @@ constexpr float kWetSeconds = 3.0f;
 // The clock divider is quantised to semitone ratios so that moving CLOCK
 // transposes the loop and the wet channel in musical steps rather than sliding
 // through every microtone in between.
-constexpr int kClockMaxSteps = 36;   // three octaves
 
 // Allpass lengths for the reverb mode's diffusion, mutually incommensurate.
 constexpr std::array<int, 4> kDiffusionLengths { { 331, 457, 619, 797 } };
 
-// Playback speeds for TAPE, exactly the harmonised set the mode is specified
-// with: quarter, half, unity and double, in each direction.
-constexpr std::array<float, 8> kTapeSpeeds { { -4.0f, -2.0f, -1.0f, -0.5f,
-                                                0.5f, 1.0f, 2.0f, 4.0f } };
 }
 
 float Mood::clamp01(float v)
 {
     return juce::jlimit(0.0f, 1.0f, v);
+}
+
+void Mood::setSeed(uint32_t seed)
+{
+    // Never zero: xorshift is stuck at zero forever.
+    rngState = seed != 0u ? seed : 0x6D2B79F5u;
+}
+
+float Mood::nextRandom()
+{
+    rngState ^= rngState << 13;
+    rngState ^= rngState >> 17;
+    rngState ^= rngState << 5;
+    return static_cast<float>(rngState & 0x00FFFFFFu) / static_cast<float>(0x01000000u);
+}
+
+float Mood::nextBipolar()
+{
+    return nextRandom() * 2.0f - 1.0f;
 }
 
 float Mood::sanitizeAudioSample(float v)
@@ -79,7 +94,6 @@ void Mood::prepare(double sampleRate)
     enabledSmoothed.reset(sampleRateHz, 0.030);
     mixSmoothed.reset(sampleRateHz, smoothingSeconds);
     clockSmoothed.reset(sampleRateHz, smoothingSeconds);
-    routingSmoothed.reset(sampleRateHz, smoothingSeconds);
     wetTimeSmoothed.reset(sampleRateHz, smoothingSeconds);
     wetModifySmoothed.reset(sampleRateHz, smoothingSeconds);
     loopLengthSmoothed.reset(sampleRateHz, smoothingSeconds);
@@ -168,7 +182,6 @@ void Mood::reset()
     mixSmoothed.setCurrentAndTargetValue(currentSettings.mix);
     enabledSmoothed.setCurrentAndTargetValue(currentSettings.enabled ? 1.0f : 0.0f);
     clockSmoothed.setCurrentAndTargetValue(currentSettings.clock);
-    routingSmoothed.setCurrentAndTargetValue(currentSettings.routing);
     wetTimeSmoothed.setCurrentAndTargetValue(currentSettings.wetTime);
     wetModifySmoothed.setCurrentAndTargetValue(currentSettings.wetModify);
     loopLengthSmoothed.setCurrentAndTargetValue(currentSettings.loopLength);
@@ -178,7 +191,7 @@ void Mood::reset()
     degradeSmoothed.setCurrentAndTargetValue(currentSettings.degrade);
 }
 
-void Mood::updateForBlock(const MoodSettings& settings)
+void Mood::updateForBlock(const px3::MoodUserParameters& settings)
 {
     const auto nextEnabled = settings.enabled;
     if (wasEnabled && !nextEnabled)
@@ -188,11 +201,16 @@ void Mood::updateForBlock(const MoodSettings& settings)
     wasEnabled = nextEnabled;
 
     currentSettings = settings;
+
+    // ONE translation a block. Every renderer below reads `derived` and none
+    // reads a knob, which is what keeps the mode-dependent curves in one
+    // readable file instead of scattered across six render functions.
+    derived = px3::deriveMoodParameters(settings);
+
     enabledSmoothed.setTargetValue(nextEnabled ? 1.0f : 0.0f);
 
     mixSmoothed.setTargetValue(clamp01(settings.mix));
     clockSmoothed.setTargetValue(clamp01(settings.clock));
-    routingSmoothed.setTargetValue(clamp01(settings.routing));
     wetTimeSmoothed.setTargetValue(clamp01(settings.wetTime));
     wetModifySmoothed.setTargetValue(clamp01(settings.wetModify));
     loopLengthSmoothed.setTargetValue(clamp01(settings.loopLength));
@@ -201,8 +219,6 @@ void Mood::updateForBlock(const MoodSettings& settings)
     spreadSmoothed.setTargetValue(clamp01(settings.spread));
     degradeSmoothed.setTargetValue(clamp01(settings.degrade));
 
-    currentSettings.wetModeIndex = juce::jlimit(0, 2, settings.wetModeIndex);
-    currentSettings.loopModeIndex = juce::jlimit(0, 2, settings.loopModeIndex);
 }
 
 // Four-point Catmull-Rom. Every read pointer in here moves at a speed the user
@@ -352,7 +368,7 @@ float Mood::applyDegradation(float x, int channel)
     // fixed step regardless of level - is what makes a lo-fi effect sound like
     // a broken gate rather than an old sampler, so the step is scaled by a
     // nominal level, not by the sample itself.
-    const auto bits = juce::jmap(d, 16.0f, 3.0f);
+    const auto bits = px3::mood_control::mapDegradeToBits(d);
     const auto levels = std::pow(2.0f, bits);
     const auto step = 2.0f / levels;
     auto y = std::round(x / step) * step;
@@ -382,7 +398,7 @@ float Mood::applyDegradation(float x, int channel)
     degradeEnvelope[c] += 0.002f * (std::abs(x) - degradeEnvelope[c]);
     const auto gate = juce::jmin(1.0f, degradeEnvelope[c] * 12.0f);
     degradeNoiseState[c] = 0.88f * degradeNoiseState[c]
-                         + 0.12f * (juce::Random::getSystemRandom().nextFloat() * 2.0f - 1.0f);
+                         + 0.12f * nextBipolar();
     y += degradeNoiseState[c] * d * d * gate * 0.045f;
 
     // Asymmetric drive, so heavy settings distort as well as hiss.
@@ -401,16 +417,12 @@ float Mood::applyDegradation(float x, int channel)
 // own way of making a stereo image out of a mono loop.
 Mood::Frame Mood::renderLoopTape(float spread)
 {
-    const auto loopSeconds = juce::jmap(currentSettings.loopLength, 0.05f, 2.2f);
+    const auto loopSeconds = derived.tapeLoopSeconds;
     const auto loopSamples = juce::jlimit(64.0f,
                                           static_cast<float>(historySize - 4),
                                           loopSeconds * static_cast<float>(internalSampleRate));
 
-    const auto index = juce::jlimit(0,
-                                    static_cast<int>(kTapeSpeeds.size()) - 1,
-                                    static_cast<int>(currentSettings.loopModify
-                                                     * static_cast<float>(kTapeSpeeds.size())));
-    const auto rate = kTapeSpeeds[static_cast<std::size_t>(index)];
+    const auto rate = derived.tapePlaybackRate;
 
     const auto loopStart = static_cast<float>(historyWritePos) - loopSamples;
 
@@ -444,7 +456,7 @@ Mood::Frame Mood::renderLoopEnv(float inL, float inR, float spread)
     const auto envCoeff = onePoleCoeff(45.0f, static_cast<float>(internalSampleRate));
     envFollower += (envIn - envFollower) * envCoeff;
 
-    const auto loopSeconds = juce::jmap(currentSettings.loopLength, 0.03f, 0.40f);
+    const auto loopSeconds = derived.envSliceSeconds;
     const auto sliceSamples = juce::jlimit(32,
                                            historySize - 4,
                                            static_cast<int>(std::round(loopSeconds
@@ -459,7 +471,7 @@ Mood::Frame Mood::renderLoopEnv(float inL, float inR, float spread)
     // material. A threshold of 0.35 at the top of the knob - never mind 0.18 at
     // noon - means the detector simply never fires, and the mode does nothing
     // at any setting a player would use.
-    const auto threshold = juce::jmap(currentSettings.loopModify, 0.14f, 0.002f);
+    const auto threshold = derived.envThreshold;
     envGateOpen = envFollower > threshold;
 
     // A rolling copy of the most recent audio, written one sample per step and
@@ -581,15 +593,14 @@ void Mood::maybeSpawnStretchGrain(float spread)
 
         // LENGTH is slice size: longer slices carry recognisable phrases,
         // shorter ones blur into grain.
-        const auto baseLenMs = juce::jmap(currentSettings.loopLength, 22.0f, 210.0f);
-        grain.lengthSamples = juce::jmax(12, static_cast<int>(std::round((baseLenMs / 1000.0f) * internalSampleRate)));
+        grain.lengthSamples = juce::jmax(12, static_cast<int>(std::round(derived.stretchGrainSeconds
+                                                                         * internalSampleRate)));
 
         // MODIFY is direction and stretch amount, with a frozen point at noon:
         // below it the playhead walks backwards through the loop, above it
         // forwards, and at the top it keeps pace with the recording so nothing
         // is stretched at all.
-        const auto modify = currentSettings.loopModify;
-        const auto stretchWalk = (modify - 0.5f) * 2.0f;
+        const auto stretchWalk = derived.stretchWalk;
 
         grain.increment = 1.0f;
         const auto spanSamples = 0.35f * static_cast<float>(historySize);
@@ -598,7 +609,7 @@ void Mood::maybeSpawnStretchGrain(float spread)
 
         const auto panSpread = spread;
         grain.pan = juce::jlimit(0.0f, 1.0f,
-                                 0.5f + (juce::Random::getSystemRandom().nextFloat() - 0.5f) * panSpread * 1.0f);
+                                 0.5f + nextBipolar() * 0.5f * panSpread);
         grain.sourceBalance = clamp01(0.5f + (grain.pan - 0.5f) * 0.7f);
         grain.gain = 0.34f;
         grain.ageSamples = 0;
@@ -626,7 +637,7 @@ Mood::Frame Mood::renderLoopStretch(float spread)
 
     // Panning speed follows MODIFY, as the mode is specified: the further from
     // frozen, the faster the image moves.
-    const auto panHz = 0.05f + std::abs(currentSettings.loopModify - 0.5f) * 0.6f;
+    const auto panHz = derived.stretchPanHz;
     stretchPanPhase += juce::MathConstants<float>::twoPi * panHz
                      / static_cast<float>(juce::jmax(1.0, internalSampleRate));
     while (stretchPanPhase >= juce::MathConstants<float>::twoPi)
@@ -705,8 +716,8 @@ Mood::Frame Mood::renderWetReverb(float inL, float inR, float spread)
     static constexpr std::array<float, 8> tapsSecR { { 0.019f, 0.029f, 0.037f, 0.047f,
                                                        0.053f, 0.079f, 0.097f, 0.107f } };
 
-    const auto smear = clamp01(currentSettings.wetModify);
-    const auto tScale = juce::jmap(currentSettings.wetTime, 0.4f, 3.0f);
+    const auto smear = derived.reverbDiffusion;
+    const auto tScale = derived.reverbTimeScale;
     const auto limit = static_cast<float>(wetSize - 4);
 
     float sumL = 0.0f;
@@ -819,7 +830,7 @@ float Mood::readCrossfadedWetTap(int channel, CrossfadeTap& tap, float targetSam
 // input panned part-way to one side alternates the same distance to the other.
 Mood::Frame Mood::renderWetDelay(float inL, float inR, float spread)
 {
-    const auto baseSeconds = juce::jmap(currentSettings.wetTime, 0.03f, 1.6f);
+    const auto baseSeconds = derived.delaySeconds;
     const auto delaySamples = juce::jlimit(8.0f,
                                            static_cast<float>(wetSize - 4),
                                            baseSeconds * static_cast<float>(internalSampleRate));
@@ -830,7 +841,7 @@ Mood::Frame Mood::renderWetDelay(float inL, float inR, float spread)
     // "At max, repeats are stable and pile up like a looper" - so the top of
     // the control is unity, held there by the saturator rather than by a
     // coefficient below one.
-    const auto fb = juce::jlimit(0.0f, 1.0f, currentSettings.wetModify);
+    const auto fb = derived.delayFeedback;
 
     // At spread 0 each channel feeds itself and the incoming image is kept; at
     // spread 1 the paths cross fully and every repeat lands on the other side.
@@ -849,7 +860,7 @@ Mood::Frame Mood::renderWetDelay(float inL, float inR, float spread)
 // smoothly, at a rate set by the sampling window.
 Mood::Frame Mood::renderWetSlip(float inL, float inR, float spread)
 {
-    const auto windowSeconds = juce::jmap(currentSettings.wetTime, 0.05f, 0.55f);
+    const auto windowSeconds = derived.slipWindowSeconds;
     const auto windowSamples = juce::jlimit(64.0f,
                                             static_cast<float>(historySize - 4),
                                             windowSeconds * static_cast<float>(internalSampleRate));
@@ -918,14 +929,14 @@ Mood::Frame Mood::processInternalStep(float inL, float inR)
     // it used to be written twice, once with the input and once with the
     // feedback, which advanced the write pointer at double rate and left the
     // buffer holding input and feedback in alternating slots.
-    const auto loopFeedback = juce::jmap(clamp01(currentSettings.feedback), 0.0f, 0.98f);
+    const auto loopFeedback = px3::mood_control::mapFeedbackToRecycle(currentSettings.feedback);
 
     Frame loop;
-    switch (currentSettings.loopModeIndex)
+    switch (currentSettings.loopMode)
     {
-        case 0: loop = renderLoopEnv(inL, inR, spread); break;
-        case 1: loop = renderLoopTape(spread); break;
-        case 2: loop = renderLoopStretch(spread); break;
+        case px3::MoodLoopMode::env:     loop = renderLoopEnv(inL, inR, spread); break;
+        case px3::MoodLoopMode::tape:    loop = renderLoopTape(spread); break;
+        case px3::MoodLoopMode::stretch: loop = renderLoopStretch(spread); break;
         default: break;
     }
 
@@ -938,23 +949,29 @@ Mood::Frame Mood::processInternalStep(float inL, float inR)
     // alone - the opposite of what each setting says on the control.
     float wetInL = inL;
     float wetInR = inR;
-    if (currentSettings.routing > 0.66f)          // PARALLEL: input and loop
+    switch (currentSettings.routing)
     {
-        wetInL += loop.l;
-        wetInR += loop.r;
-    }
-    else if (currentSettings.routing > 0.33f)     // LOOP->WET: loop alone
-    {
-        wetInL = loop.l;
-        wetInR = loop.r;
+        case px3::MoodRouting::parallel:
+            wetInL += loop.l;
+            wetInR += loop.r;
+            break;
+
+        case px3::MoodRouting::loopToWet:
+            wetInL = loop.l;
+            wetInR = loop.r;
+            break;
+
+        case px3::MoodRouting::dryToWet:
+        default:
+            break;
     }
 
     Frame wet;
-    switch (currentSettings.wetModeIndex)
+    switch (currentSettings.wetMode)
     {
-        case 0: wet = renderWetReverb(wetInL, wetInR, spread); break;
-        case 1: wet = renderWetDelay(wetInL, wetInR, spread); break;
-        case 2: wet = renderWetSlip(wetInL, wetInR, spread); break;
+        case px3::MoodWetMode::reverb: wet = renderWetReverb(wetInL, wetInR, spread); break;
+        case px3::MoodWetMode::delay:  wet = renderWetDelay(wetInL, wetInR, spread); break;
+        case px3::MoodWetMode::slip:   wet = renderWetSlip(wetInL, wetInR, spread); break;
         default: break;
     }
 
@@ -996,7 +1013,6 @@ void Mood::processSampleFrame(float inL, float inR, float& outL, float& outR)
 
     currentSettings.mix = mixSmoothed.getNextValue();
     currentSettings.clock = clockSmoothed.getNextValue();
-    currentSettings.routing = routingSmoothed.getNextValue();
     currentSettings.wetTime = wetTimeSmoothed.getNextValue();
     currentSettings.wetModify = wetModifySmoothed.getNextValue();
     currentSettings.loopLength = loopLengthSmoothed.getNextValue();
@@ -1015,10 +1031,11 @@ void Mood::processSampleFrame(float inL, float inR, float& outL, float& outR)
     // just 1/rate, and used it as a sample-and-hold count that never exceeded
     // a couple of samples at usable settings. It was a decimator, not a clock,
     // and it changed neither the loop length nor the pitch.
+    // Smoothed per sample and mapped here, so sweeping CLOCK glides through
+    // the semitones rather than stepping between them at block boundaries.
     {
-        const auto steps = std::round((1.0f - clamp01(currentSettings.clock))
-                                      * static_cast<float>(kClockMaxSteps));
-        clockDivider = juce::jlimit(1.0f, 8.0f, semitoneRatio(steps));
+        px3::MoodUserParameters atThisSample = currentSettings;
+        clockDivider = px3::mood_control::mapClockToDivider(atThisSample.clock);
         clockIncrement = 1.0f / clockDivider;
         internalSampleRate = juce::jmax(1.0, sampleRateHz / static_cast<double>(clockDivider));
     }

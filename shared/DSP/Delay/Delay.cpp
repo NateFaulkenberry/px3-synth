@@ -85,6 +85,27 @@ float Delay::divisionBeatsForIndex(int index)
     return beatDivisions[static_cast<std::size_t>(clamped)];
 }
 
+void Delay::setSeed(uint32_t seed)
+{
+    // Never zero: xorshift is stuck at zero forever.
+    rngState = seed != 0u ? seed : 0xC2B2AE35u;
+}
+
+float Delay::nextRandom()
+{
+    rngState ^= rngState << 13;
+    rngState ^= rngState >> 17;
+    rngState ^= rngState << 5;
+    return static_cast<float>(rngState & 0x00FFFFFFu) / static_cast<float>(0x01000000u);
+}
+
+int Delay::nextRandomInt(int upperExclusive)
+{
+    if (upperExclusive <= 1) { return 0; }
+    const auto scaled = static_cast<int>(nextRandom() * static_cast<float>(upperExclusive));
+    return scaled >= upperExclusive ? upperExclusive - 1 : scaled;
+}
+
 void Delay::prepare(double sampleRate)
 {
     currentSampleRateHz = juce::jmax(1.0, sampleRate);
@@ -581,7 +602,6 @@ void Delay::spawnIsaacGrain(float amount,
             continue;
         }
 
-        auto& random = juce::Random::getSystemRandom();
         grain.active = true;
         grain.reverse = false;
 
@@ -602,17 +622,17 @@ void Delay::spawnIsaacGrain(float amount,
         if (mode == GranularMode::classic)
         {
             const std::array<int, 7> intervals { -12, -7, -5, 0, 5, 7, 12 };
-            const auto chooseWide = random.nextFloat() < (0.22f + 0.70f * macro);
-            const auto idx = chooseWide ? random.nextInt(static_cast<int>(intervals.size())) : 3;
+            const auto chooseWide = nextRandom() < (0.22f + 0.70f * macro);
+            const auto idx = chooseWide ? nextRandomInt(static_cast<int>(intervals.size())) : 3;
             semitone = static_cast<float>(intervals[static_cast<std::size_t>(idx)]);
-            pitchMicro = (random.nextFloat() - 0.5f) * (0.16f + 0.26f * macro);
+            pitchMicro = (nextRandom() - 0.5f) * (0.16f + 0.26f * macro);
             reverseChance = 0.0f;
         }
         else if (mode == GranularMode::cloud)
         {
             const std::array<int, 9> intervals { 0, 0, 0, 7, -7, 12, -12, 5, -5 };
-            semitone = static_cast<float>(intervals[static_cast<std::size_t>(random.nextInt(static_cast<int>(intervals.size())))]);
-            pitchMicro = (random.nextFloat() - 0.5f) * (0.10f + 0.20f * macro);
+            semitone = static_cast<float>(intervals[static_cast<std::size_t>(nextRandomInt(static_cast<int>(intervals.size())))]);
+            pitchMicro = (nextRandom() - 0.5f) * (0.10f + 0.20f * macro);
             grainMs = lerp(45.0f, 260.0f, sizeCtrl);
             panSpread = lerp(0.35f, 0.98f, a);
             reverseChance = 0.08f + 0.52f * feedbackCtrl;
@@ -627,7 +647,7 @@ void Delay::spawnIsaacGrain(float amount,
                                           static_cast<int>(shimmerIntervals.size()) - 1,
                                           static_cast<int>(std::round(sizeCtrl * static_cast<float>(shimmerIntervals.size() - 1))));
             semitone = static_cast<float>(shimmerIntervals[static_cast<std::size_t>(idx)]);
-            pitchMicro = (random.nextFloat() - 0.5f) * 0.10f;
+            pitchMicro = (nextRandom() - 0.5f) * 0.10f;
             grainMs = lerp(70.0f, 230.0f, sizeCtrl);
             panSpread = lerp(0.24f, 0.80f, a);
             reverseChance = 0.04f + 0.20f * feedbackCtrl;
@@ -656,7 +676,7 @@ void Delay::spawnIsaacGrain(float amount,
         grain.lengthSamples = juce::jmax(24,
                                          static_cast<int>(std::round(grainMs * 0.001f * static_cast<float>(currentSampleRateHz))));
         grain.ageSamples = 0;
-        grain.reverse = random.nextFloat() < reverseChance;
+        grain.reverse = nextRandom() < reverseChance;
 
         const auto ratio = std::pow(2.0f, (semitone + pitchMicro) / 12.0f);
         grain.increment = juce::jlimit(0.25f, 4.0f, std::abs(ratio));
@@ -678,7 +698,7 @@ void Delay::spawnIsaacGrain(float amount,
         }
 
         const auto baseDelaySamples = baseDelayBeats * secPerBeat * static_cast<float>(currentSampleRateHz);
-        const auto jitter = (random.nextFloat() - 0.5f) * jitterWidth * baseDelaySamples;
+        const auto jitter = (nextRandom() - 0.5f) * jitterWidth * baseDelaySamples;
         auto readPos = static_cast<float>(writePos) - (baseDelaySamples + jitter);
         while (readPos < 0.0f)
         {
@@ -774,9 +794,9 @@ void Delay::processIsaacGranularSample(float inL,
             const auto shouldTrigger = triggerPatterns[static_cast<std::size_t>(patternIndex)][static_cast<std::size_t>(step)] != 0;
             const auto densityChance = juce::jlimit(0.0f, 1.0f, lerp(0.15f, 0.98f, a));
 
-            if (shouldTrigger || juce::Random::getSystemRandom().nextFloat() < densityChance * 0.22f)
+            if (shouldTrigger || nextRandom() < densityChance * 0.22f)
             {
-                const auto layers = 1 + (juce::Random::getSystemRandom().nextFloat() < densityChance * 0.26f ? 1 : 0);
+                const auto layers = 1 + (nextRandom() < densityChance * 0.26f ? 1 : 0);
                 for (int i = 0; i < layers; ++i)
                 {
                     spawnIsaacGrain(amount,
@@ -842,7 +862,7 @@ void Delay::processIsaacGranularSample(float inL,
         {
             isaacSpawnCounter = 0;
             const auto layerCount = mode == GranularMode::cloud
-                                        ? 1 + (juce::Random::getSystemRandom().nextFloat() < a * 0.62f ? 1 : 0)
+                                        ? 1 + (nextRandom() < a * 0.62f ? 1 : 0)
                                         : 1;
             for (int i = 0; i < layerCount; ++i)
             {
@@ -1279,7 +1299,7 @@ void Delay::processDelayAlgorithmSample(float inL,
             wet *= expandGain;
 
             bbdNoiseState[c] = 0.86f * bbdNoiseState[c]
-                             + 0.14f * (juce::Random::getSystemRandom().nextFloat() * 2.0f - 1.0f);
+                             + 0.14f * (nextRandom() * 2.0f - 1.0f);
         }
 
         feedback = juce::jlimit(0.0f, 0.995f, decayCoefficient);

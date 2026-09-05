@@ -469,24 +469,29 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     lucyEnabledParam = new juce::AudioParameterBool("lucyEnabled", "Lucy Enabled", true);
     lucyFilterInvertParam = new juce::AudioParameterBool("lucyFilterInvert", "Lucy Filter Invert", false);
     lucyVerbPostParam = new juce::AudioParameterBool("lucyVerbPost", "Lucy Verb Post", false);
-    lucyFreezeParam = new juce::AudioParameterBool("lucyFreeze", "Lucy Freeze", false);
-    lucyFreezeSlushyParam = new juce::AudioParameterBool("lucyFreezeSlushy", "Lucy Freeze Slushy", false);
     lucyGateParam = new juce::AudioParameterBool("lucyGate", "Lucy Gate", false);
     lucySlowParam = new juce::AudioParameterBool("lucySlow", "Lucy Slow", false);
-    // Zero by default, like reverbAmount and doomMix.
+
+    // The six primary knobs. Zero GLOBAL by default, like reverbAmount and
+    // doomMix: adding an effect must not change an existing patch.
     lucyGlobalParam = new juce::AudioParameterFloat("lucyGlobal", "Lucy Global", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     lucyLossParam = new juce::AudioParameterFloat("lucyLoss", "Lucy Loss", juce::NormalisableRange<float>(0.0f, 1.0f), 0.55f);
     lucySpeedParam = new juce::AudioParameterFloat("lucySpeed", "Lucy Speed", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    // Zero is NO filtering at all, which is what makes this a width control.
     lucyFilterParam = new juce::AudioParameterFloat("lucyFilter", "Lucy Filter", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    lucyFilterFreqParam = new juce::AudioParameterFloat("lucyFilterFreq", "Lucy Filter Freq", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    lucyFilterFreqParam = new juce::AudioParameterFloat("lucyFreq", "Lucy Freq", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     lucyVerbParam = new juce::AudioParameterFloat("lucyVerb", "Lucy Verb", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    lucyVerbDecayParam = new juce::AudioParameterFloat("lucyVerbDecay", "Lucy Verb Decay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
+
+    // Their alternate functions, in the same order as the panel pairs them.
+    lucyGateThresholdParam = new juce::AudioParameterFloat("lucyGateThreshold", "Lucy Gate Threshold", juce::NormalisableRange<float>(0.0f, 1.0f), 0.25f);
     lucyFreezerParam = new juce::AudioParameterFloat("lucyFreezer", "Lucy Freezer", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
-    lucyGateCutoffParam = new juce::AudioParameterFloat("lucyGateCutoff", "Lucy Gate Cutoff", juce::NormalisableRange<float>(0.0f, 1.0f), 0.25f);
-    lucyThresholdParam = new juce::AudioParameterFloat("lucyThreshold", "Lucy Threshold", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f);
+    lucyVerbDecayParam = new juce::AudioParameterFloat("lucyDecay", "Lucy Decay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
+    // The LIMITER's threshold. Named in full because the loss coder has a
+    // masking threshold of its own; that one is derived and never a parameter.
+    lucyLimiterThresholdParam = new juce::AudioParameterFloat("lucyLimiterThreshold", "Lucy Limiter Threshold", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f);
     lucyAutoGainParam = new juce::AudioParameterFloat("lucyAutoGain", "Lucy Auto Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.75f);
-    lucyWeightingParam = new juce::AudioParameterFloat("lucyWeighting", "Lucy Weighting", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
-    lucyGainParam = new juce::AudioParameterFloat("lucyGain", "Lucy Gain", juce::NormalisableRange<float>(-36.0f, 36.0f), 0.0f);
+    lucyLossGainParam = new juce::AudioParameterFloat("lucyLossGain", "Lucy Loss Gain", juce::NormalisableRange<float>(-36.0f, 36.0f), 0.0f);
+
     lucySpreadParam = new juce::AudioParameterFloat("lucySpread", "Lucy Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     lucyModeParam = new juce::AudioParameterChoice("lucyMode",
                                                     "Lucy Mode",
@@ -500,6 +505,16 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                      "Lucy Slope",
                                                      juce::StringArray { "6 dB", "24 dB", "96 dB" },
                                                      1);
+    lucyWeightingParam = new juce::AudioParameterChoice("lucyWeighting",
+                                                         "Lucy Weighting",
+                                                         juce::StringArray { "DARK", "NEUTRAL", "BRIGHT" },
+                                                         1);
+    // OFF / SOLID / SLUSHY as one control rather than two booleans, which
+    // could express "slushy while not frozen" - a state that meant nothing.
+    lucyFreezeParam = new juce::AudioParameterChoice("lucyFreeze",
+                                                      "Lucy Freeze",
+                                                      juce::StringArray { "OFF", "SOLID", "SLUSHY" },
+                                                      0);
 
     // ---- CHORUS ----------------------------------------------------------
     // Dimension D-inspired. See docs/CHORUS_DSP_DESIGN.md.
@@ -747,7 +762,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(lucyFilterInvertParam);
     addParameter(lucyVerbPostParam);
     addParameter(lucyFreezeParam);
-    addParameter(lucyFreezeSlushyParam);
     addParameter(lucyGateParam);
     addParameter(lucySlowParam);
     addParameter(lucyGlobalParam);
@@ -758,11 +772,11 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(lucyVerbParam);
     addParameter(lucyVerbDecayParam);
     addParameter(lucyFreezerParam);
-    addParameter(lucyGateCutoffParam);
-    addParameter(lucyThresholdParam);
+    addParameter(lucyGateThresholdParam);
+    addParameter(lucyLimiterThresholdParam);
     addParameter(lucyAutoGainParam);
     addParameter(lucyWeightingParam);
-    addParameter(lucyGainParam);
+    addParameter(lucyLossGainParam);
     addParameter(lucySpreadParam);
     addParameter(lucyModeParam);
     addParameter(lucyPacketsParam);
@@ -2062,9 +2076,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     updateTransportState();
 
     delayComponent.updateForBlock(currentDelaySettings());
-    moodComponent.updateForBlock(currentMoodSettings());
-    doomComponent.updateForBlock(currentDoomSettings());
-    lucyComponent.updateForBlock(currentLucySettings());
+    moodComponent.updateForBlock(currentMoodUserParameters());
+    doomComponent.updateForBlock(currentDoomUserParameters());
+    lucyComponent.updateForBlock(currentLucyUserParameters());
     chorusComponent.updateForBlock(currentChorusSettings());
     stereoSpreadComponent.updateForBlock(currentStereoSpreadSettings());
 

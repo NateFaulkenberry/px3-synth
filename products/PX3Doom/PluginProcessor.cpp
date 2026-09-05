@@ -48,9 +48,9 @@ void PX3DoomAudioProcessor::prepareFx(double sampleRate, int)
     doom.prepare(sampleRate);
 }
 
-DoomSettings PX3DoomAudioProcessor::settingsForBlock() const
+px3::DoomUserParameters PX3DoomAudioProcessor::userParametersForBlock() const
 {
-    DoomSettings settings;
+    px3::DoomUserParameters settings;
     settings.enabled = enabledParam->get();
     settings.freeze = freezeParam->get();
     settings.loopActive = loopActiveParam->get();
@@ -71,16 +71,16 @@ DoomSettings PX3DoomAudioProcessor::settingsForBlock() const
     settings.balance = balanceParam->get();
     settings.blend = blendParam->get();
     settings.spread = spreadParam->get();
-    settings.routingIndex = routingParam->getIndex();
-    settings.loopModeIndex = loopModeParam->getIndex();
-    settings.wetModeIndex = wetModeParam->getIndex();
-    settings.crossSourceIndex = crossSourceParam->getIndex();
+    settings.routing = static_cast<px3::DoomRouting>(routingParam->getIndex());
+    settings.loopMode = static_cast<px3::DoomLoopMode>(loopModeParam->getIndex());
+    settings.wetMode = static_cast<px3::DoomWetMode>(wetModeParam->getIndex());
+    settings.crossSource = static_cast<px3::DoomCrossSource>(crossSourceParam->getIndex());
     return settings;
 }
 
 void PX3DoomAudioProcessor::processFxBlock(juce::AudioBuffer<float>& buffer)
 {
-    doom.updateForBlock(settingsForBlock());
+    doom.updateForBlock(userParametersForBlock());
 
     const auto numSamples = buffer.getNumSamples();
     const auto stereo = buffer.getNumChannels() > 1;

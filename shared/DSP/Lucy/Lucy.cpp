@@ -13,8 +13,6 @@ constexpr std::array<int, 4> kVerbBaseLengths { { 1153, 1621, 2129, 2833 } };
 
 // Slope in dB per octave -> how many 2-pole sections. The documented set is
 // gentle / balanced / intense, which is a section count and a resonance.
-constexpr std::array<int, 3> kSlopeSections { { 1, 2, 8 } };
-constexpr std::array<float, 3> kSlopeResonance { { 0.55f, 0.9f, 1.9f } };
 
 float hzToBark(float hz)
 {
@@ -127,10 +125,10 @@ void Lucy::prepare(double sampleRate)
     }
 
     const auto rampSeconds = 0.02;
-    for (auto* smoother : { &enabledSmoothed, &globalSmoothed, &lossSmoothed, &speedSmoothed,
-                            &filterWidthSmoothed, &filterFreqSmoothed, &verbSmoothed,
-                            &verbDecaySmoothed, &freezerSmoothed, &gateCutoffSmoothed,
-                            &thresholdSmoothed, &gainSmoothed, &spreadSmoothed })
+    for (auto* smoother : { &enabledSmoothed, &outputBlendSmoothed,
+                            &filterAmountSmoothed, &filterFreqSmoothed, &verbSmoothed,
+                            &verbDecaySmoothed, &gateThresholdSmoothed,
+                            &limiterThresholdSmoothed, &lossGainSmoothed, &spreadSmoothed })
     {
         smoother->reset(sampleRateHz, rampSeconds);
     }
@@ -196,53 +194,59 @@ void Lucy::reset()
     gateGain = 1.0f;
     gateOpen = false;
 
-    for (auto* smoother : { &enabledSmoothed, &globalSmoothed, &lossSmoothed, &speedSmoothed,
-                            &filterWidthSmoothed, &filterFreqSmoothed, &verbSmoothed,
-                            &verbDecaySmoothed, &freezerSmoothed, &gateCutoffSmoothed,
-                            &thresholdSmoothed, &gainSmoothed, &spreadSmoothed })
+    for (auto* smoother : { &enabledSmoothed, &outputBlendSmoothed,
+                            &filterAmountSmoothed, &filterFreqSmoothed, &verbSmoothed,
+                            &verbDecaySmoothed, &gateThresholdSmoothed,
+                            &limiterThresholdSmoothed, &lossGainSmoothed, &spreadSmoothed })
     {
         smoother->setCurrentAndTargetValue(smoother->getTargetValue());
     }
 }
 
-void Lucy::updateForBlock(const LucySettings& next)
+void Lucy::updateForBlock(const LucyUserParameters& next)
 {
-    settings = next;
+    user = next;
 
-    if (settings.slow != slowActive)
+    // ONE translation, once a block. Every stage below reads `derived` and no
+    // stage reads a knob, which is what keeps the transfer curves in one
+    // readable file instead of spread across four DSP functions.
+    derived = deriveLucyParameters(user);
+
+    if (user.slow != slowActive)
     {
-        slowActive = settings.slow;
+        slowActive = user.slow;
         // Switching plan leaves the other one's ring holding stale audio, so it
         // is cleared rather than allowed to reappear on the way back.
         (slowActive ? fastStft : slowStft).reset();
         buildCriticalBands(slowActive ? slowStft.numBins() : fastStft.numBins());
     }
 
-    enabledSmoothed.setTargetValue(settings.enabled ? 1.0f : 0.0f);
-    globalSmoothed.setTargetValue(juce::jlimit(0.0f, 1.0f, settings.global));
-    lossSmoothed.setTargetValue(juce::jlimit(0.0f, 1.0f, settings.loss));
-    speedSmoothed.setTargetValue(juce::jlimit(0.0f, 1.0f, settings.speed));
-    filterWidthSmoothed.setTargetValue(juce::jlimit(0.0f, 1.0f, settings.filterWidth));
-    filterFreqSmoothed.setTargetValue(juce::jlimit(0.0f, 1.0f, settings.filterFreq));
-    verbSmoothed.setTargetValue(juce::jlimit(0.0f, 1.0f, settings.verb));
-    verbDecaySmoothed.setTargetValue(juce::jlimit(0.0f, 1.0f, settings.verbDecay));
-    freezerSmoothed.setTargetValue(juce::jlimit(0.0f, 1.0f, settings.freezer));
-    gateCutoffSmoothed.setTargetValue(juce::jlimit(0.0f, 1.0f, settings.gateCutoff));
-    thresholdSmoothed.setTargetValue(juce::jlimit(0.0f, 1.0f, settings.threshold));
-    gainSmoothed.setTargetValue(juce::jlimit(-36.0f, 36.0f, settings.gainDb));
-    spreadSmoothed.setTargetValue(juce::jlimit(0.0f, 1.0f, settings.spread));
+    // The time-domain stages are smoothed per sample, because a step in a
+    // filter coefficient or an output gain IS a click. The spectral stages are
+    // not: they change once per STFT frame by construction, and overlap-add
+    // crossfades one frame into the next.
+    enabledSmoothed.setTargetValue(user.enabled ? 1.0f : 0.0f);
+    outputBlendSmoothed.setTargetValue(derived.outputBlend);
+    filterAmountSmoothed.setTargetValue(derived.filterAmount);
+    filterFreqSmoothed.setTargetValue(derived.filterFreq);
+    verbSmoothed.setTargetValue(derived.reverbAmount);
+    verbDecaySmoothed.setTargetValue(derived.reverbDecay);
+    gateThresholdSmoothed.setTargetValue(derived.gateThreshold);
+    limiterThresholdSmoothed.setTargetValue(derived.limiterThreshold);
+    lossGainSmoothed.setTargetValue(juce::jlimit(-36.0f, 36.0f, derived.lossGainDb));
+    spreadSmoothed.setTargetValue(juce::jlimit(0.0f, 1.0f, user.spread));
 
-    if (! settings.freeze)
+    if (user.freeze == LucyFreezeMode::off)
     {
         freezeLatched = { { false, false } };
     }
 
-    if (settings.enabled && ! wasEnabled)
+    if (user.enabled && ! wasEnabled)
     {
         fastStft.reset();
         slowStft.reset();
     }
-    wasEnabled = settings.enabled;
+    wasEnabled = user.enabled;
 }
 
 // ============================================================================
@@ -288,8 +292,7 @@ void Lucy::buildCriticalBands(int numBins)
 void Lucy::applyLoss(int channel, int numBins)
 {
     const auto ch = static_cast<std::size_t>(channel);
-    const auto loss = settings.loss;
-    const auto weighting = settings.weighting;
+    const auto weighting = derived.weightingTilt;
 
     auto& mag = magnitude[ch];
     auto& out = coded[ch];
@@ -336,8 +339,9 @@ void Lucy::applyLoss(int channel, int numBins)
 
     // ---- 3. threshold, weighted -----------------------------------------
     // LOSS raises the threshold, so more of the spectrum falls under it. That
-    // is the "strength" half of the control.
-    const auto depth = 0.02f + loss * loss * 1.6f;
+    // is the "strength" half of the control - and the curve that gets from the
+    // knob to this number lives in mapLossToMaskingDepth, not here.
+    const auto depth = derived.maskingDepth;
 
     for (int band = 0; band < kCriticalBands; ++band)
     {
@@ -368,21 +372,26 @@ void Lucy::applyLoss(int channel, int numBins)
     // ---- 4. coverage -----------------------------------------------------
     // LOSS also sets WHICH frequencies are affected: a narrow strip that widens
     // as it rises, which is the second half of the documented control.
-    const auto coverageCentre = 0.42f;
-    const auto coverageHalfWidth = 0.06f + loss * 0.95f;
+    constexpr auto kCoverageCentre = 0.42f;
+    const auto coverageHalfWidth = derived.spectralCoverage;
 
     // ---- 5. discard and quantise ----------------------------------------
     // The quantiser step widens with LOSS. Coarse steps on the partials that
     // survive is where the chiming comes from: the error lands on the strong
     // components rather than spread across the noise floor.
-    const auto quantiseStep = 0.05f + loss * loss * 2.4f;
+    const auto quantiseStep = derived.quantisationAmount;
+
+    // How far under the masking threshold a bin has to be before it is thrown
+    // away. Below 1 the coder only discards what is clearly inaudible, which
+    // is what makes the bottom of LOSS thin the spectrum rather than gouge it.
+    const auto discardRatio = derived.discardAmount;
 
     for (int k = 0; k < numBins; ++k)
     {
         const auto idx = static_cast<std::size_t>(k);
         const auto binNorm = static_cast<float>(k) / static_cast<float>(juce::jmax(1, numBins - 1));
 
-        const auto inside = std::abs(binNorm - coverageCentre) < coverageHalfWidth;
+        const auto inside = std::abs(binNorm - kCoverageCentre) < coverageHalfWidth;
         if (! inside)
         {
             out[idx] = mag[idx];
@@ -390,7 +399,7 @@ void Lucy::applyLoss(int channel, int numBins)
         }
 
         const auto m = mag[idx];
-        if (m <= threshold[idx])
+        if (m <= threshold[idx] * discardRatio)
         {
             // Below the masking threshold: discarded, exactly as a coder does.
             out[idx] = 0.0f;
@@ -413,33 +422,33 @@ void Lucy::applyLoss(int channel, int numBins)
 
 void Lucy::applyPackets(int channel, int numBins)
 {
-    if (settings.packetIndex == 0)
+    if (user.packets == LucyPacketMode::clean)
     {
         packetBadState[static_cast<std::size_t>(channel)] = false;
         return;
     }
 
     const auto ch = static_cast<std::size_t>(channel);
-    const auto loss = settings.loss;
-    const auto speed = settings.speed;
 
     // Two states with runs, not an independent draw per frame. An independent
     // draw is hiss; a real link loses a cluster, recovers, and loses another -
     // which is what "the skips and spaces of a bad connection" describes.
-    const auto minStateFrames = juce::jmax(1, static_cast<int>(juce::jmap(speed, 24.0f, 1.0f)));
-
-    if (++packetStateFrames[ch] >= minStateFrames)
+    //
+    // SPEED sets how long a state may persist and LOSS how likely a burst is;
+    // both arrive already mapped, from the same SPEED that spaces the coding
+    // decisions out.
+    if (++packetStateFrames[ch] >= derived.packetStateFrames)
     {
         packetStateFrames[ch] = 0;
 
-        // LOSS sets how likely a burst is; the exit probability is fixed, so
-        // bursts have a characteristic length rather than a length that changes
-        // with the same knob that sets their frequency.
-        const auto enterBad = loss * loss * 0.45f;
+        // The exit probability is FIXED, so bursts keep a characteristic
+        // length rather than having their length change with the same knob
+        // that sets how often they happen.
         constexpr auto leaveBad = 0.55f;
 
         const auto draw = nextRandom(channel);
-        packetBadState[ch] = packetBadState[ch] ? (draw > leaveBad) : (draw < enterBad);
+        packetBadState[ch] = packetBadState[ch] ? (draw > leaveBad)
+                                                : (draw < derived.packetProbability);
     }
 
     if (! packetBadState[ch])
@@ -455,7 +464,7 @@ void Lucy::applyPackets(int channel, int numBins)
         return;
     }
 
-    if (settings.packetIndex == 1)
+    if (user.packets == LucyPacketMode::loss)
     {
         // PACKET LOSS - the frame is gone. Overlap-add already crossfades the
         // frame boundaries, so a dropped frame is a gap rather than a click.
@@ -492,7 +501,7 @@ void Lucy::applyFreeze(int channel, int numBins)
 {
     const auto ch = static_cast<std::size_t>(channel);
 
-    if (! settings.freeze)
+    if (user.freeze == LucyFreezeMode::off)
     {
         return;
     }
@@ -510,12 +519,13 @@ void Lucy::applyFreeze(int channel, int numBins)
         }
         freezeLatched[ch] = true;
     }
-    else if (settings.freezeSlushy)
+    else if (user.freeze == LucyFreezeMode::slushy)
     {
         // The slushy state: the frozen spectrum drifts toward the live one, so
         // it becomes a shifting copy of what is being played and can be refilled
-        // by playing something new. SPEED sets how fast.
-        const auto rate = juce::jmap(settings.speed, 0.0015f, 0.08f);
+        // by playing something new. SPEED sets how fast - the same SPEED, and
+        // the same mapping file, as the coding decisions and the packet chain.
+        const auto rate = derived.freezeSlushRate;
         for (int k = 0; k < numBins; ++k)
         {
             const auto idx = static_cast<std::size_t>(k);
@@ -535,7 +545,7 @@ void Lucy::applyFreeze(int channel, int numBins)
     }
 
     // FREEZER balances live against frozen.
-    const auto frozenAmount = juce::jlimit(0.0f, 1.0f, settings.freezer);
+    const auto frozenAmount = juce::jlimit(0.0f, 1.0f, derived.freezeBlend);
     for (int k = 0; k < numBins; ++k)
     {
         const auto idx = static_cast<std::size_t>(k);
@@ -565,11 +575,10 @@ void Lucy::spectralFrame(int channel, float* real, float* imag, int numBins)
     // SPEED holds one decision across N frames. Slow means the same bins stay
     // discarded for a long time, which IS spectral smearing - and it is the
     // same counter that spaces the packets out.
-    const auto holdFrames = juce::jmax(1, static_cast<int>(juce::jmap(settings.speed, 16.0f, 1.0f)));
     decisionDue[ch] = (--decisionCounter[ch] <= 0);
     if (decisionDue[ch])
     {
-        decisionCounter[ch] = holdFrames;
+        decisionCounter[ch] = derived.decisionFrames;
     }
 
     applyLoss(channel, bins);
@@ -578,7 +587,7 @@ void Lucy::spectralFrame(int channel, float* real, float* imag, int numBins)
     // happened in. Everything STANDARD threw away - the sub-threshold bins and
     // the quantisation error - is what is left, and it is brighter and thinner
     // because that is what a coder discards.
-    if (settings.modeIndex == 1)
+    if (user.mode == LucyLossMode::inverse)
     {
         for (int k = 0; k < bins; ++k)
         {
@@ -586,12 +595,16 @@ void Lucy::spectralFrame(int channel, float* real, float* imag, int numBins)
             coded[ch][idx] = std::abs(magnitude[ch][idx] - coded[ch][idx]);
         }
     }
-    else if (settings.modeIndex == 2)
+    else if (user.mode == LucyLossMode::jitter)
     {
         // JITTER's phase half. A bounded random WALK rather than white noise:
         // an unstable clock drifts, it does not jump independently every frame.
-        const auto depth = settings.loss * juce::MathConstants<float>::pi * 0.9f;
-        const auto step = juce::jmap(settings.speed, 0.02f, 0.45f);
+        //
+        // DEPTH comes from LOSS - it is degradation depth - and STEP from
+        // SPEED. Splitting them that way is what keeps the two macros from
+        // reaching into each other's territory.
+        const auto depth = derived.jitterDepth;
+        const auto step = derived.jitterWalkStep;
 
         for (int k = 0; k < bins; ++k)
         {
@@ -607,7 +620,7 @@ void Lucy::spectralFrame(int channel, float* real, float* imag, int numBins)
     {
         applyPackets(channel, bins);
     }
-    else if (settings.packetIndex != 0 && packetBadState[ch])
+    else if (user.packets != LucyPacketMode::clean && packetBadState[ch])
     {
         // Held decision: a burst spans every frame until the next decision, so
         // it stays lost rather than flickering back at frame rate.
@@ -636,7 +649,7 @@ void Lucy::spectralFrame(int channel, float* real, float* imag, int numBins)
                             ? juce::jlimit(0.25f, 8.0f, std::sqrt(energyIn / energyOut))
                             : 1.0f;
     autoGainState[ch] += (wanted - autoGainState[ch]) * 0.08f;
-    const auto gain = 1.0f + (autoGainState[ch] - 1.0f) * juce::jlimit(0.0f, 1.0f, settings.autoGain);
+    const auto gain = 1.0f + (autoGainState[ch] - 1.0f) * derived.autoGain;
 
     for (int k = 0; k < bins; ++k)
     {
@@ -658,7 +671,7 @@ float Lucy::applyJitterTiming(int channel, float input)
 
     line[static_cast<std::size_t>(jitterWrite)] = sanitize(input);
 
-    if (settings.modeIndex != 2)
+    if (user.mode != LucyLossMode::jitter)
     {
         // Straight through at the nominal delay, so switching modes does not
         // step the signal.
@@ -678,14 +691,14 @@ float Lucy::applyJitterTiming(int channel, float input)
     // Clock error is correlated in time: the read position wanders toward a new
     // target rather than jumping to it, which is the difference between a
     // wobbling clock and added noise.
-    const auto rate = juce::jmap(settings.speed, 0.0006f, 0.02f);
+    const auto rate = derived.jitterTimingRate;
     if (nextRandom(channel) < rate)
     {
         jitterTarget[ch] = nextBipolar(channel);
     }
     jitterOffset[ch] += (jitterTarget[ch] - jitterOffset[ch]) * rate * 6.0f;
 
-    const auto depth = settings.loss * static_cast<float>(jitterSize) * 0.18f;
+    const auto depth = derived.jitterTimingDepth * static_cast<float>(jitterSize) * 0.18f;
     const auto nominal = static_cast<float>(jitterSize) * 0.5f;
     auto pos = static_cast<float>(jitterWrite) - nominal - jitterOffset[ch] * depth;
     while (pos < 0.0f)
@@ -720,7 +733,7 @@ float Lucy::applyJitterTiming(int channel, float input)
 
 Lucy::Frame Lucy::applyFilter(Frame in)
 {
-    const auto width = filterWidthSmoothed.getNextValue();
+    const auto width = filterAmountSmoothed.getNextValue();
     const auto freqNorm = filterFreqSmoothed.getNextValue();
 
     // At the minimum there is no filtering at all - documented, and it is what
@@ -730,9 +743,10 @@ Lucy::Frame Lucy::applyFilter(Frame in)
         return in;
     }
 
-    const auto slope = juce::jlimit(0, 2, settings.slopeIndex);
-    const auto sections = kSlopeSections[static_cast<std::size_t>(slope)];
-    const auto resonance = kSlopeResonance[static_cast<std::size_t>(slope)];
+    // 6 / 24 / 96 dB became a section count and a per-section Q in the control
+    // model. The filter is handed both; it does not know what the user chose.
+    const auto sections = juce::jlimit(1, kFilterSections, derived.filterSections);
+    const auto resonance = derived.filterResonance;
 
     // Exponential, so the sweep feels even across the band.
     const auto centre = 60.0f * std::pow(220.0f, freqNorm);
@@ -775,7 +789,7 @@ Lucy::Frame Lucy::applyFilter(Frame in)
 
         // INVERT: the band taken OUT of the input, which is the band-reject the
         // source documents rather than a separate filter.
-        values[static_cast<std::size_t>(ch)] = settings.filterInvert ? (dry - x) : x;
+        values[static_cast<std::size_t>(ch)] = user.filterInvert ? (dry - x) : x;
     }
 
     return { sanitize(values[0]), sanitize(values[1]) };
@@ -884,13 +898,13 @@ Lucy::Frame Lucy::applyVerb(Frame in, float mix)
 
 Lucy::Frame Lucy::applyGate(Frame in)
 {
-    if (! settings.gate)
+    if (! user.gate)
     {
         gateGain += (1.0f - gateGain) * 0.01f;
         return { in.l * gateGain, in.r * gateGain };
     }
 
-    const auto cutoff = gateCutoffSmoothed.getNextValue();
+    const auto cutoff = gateThresholdSmoothed.getNextValue();
 
     const auto attack = onePoleCoeff(220.0f, static_cast<float>(sampleRateHz));
     const auto release = onePoleCoeff(9.0f, static_cast<float>(sampleRateHz));
@@ -920,7 +934,7 @@ Lucy::Frame Lucy::applyGate(Frame in)
 
 Lucy::Frame Lucy::applyLimiter(Frame in)
 {
-    const auto threshold = juce::jlimit(0.05f, 1.0f, thresholdSmoothed.getNextValue());
+    const auto threshold = juce::jlimit(0.05f, 1.0f, limiterThresholdSmoothed.getNextValue());
 
     limiterDelay[0][static_cast<std::size_t>(limiterWrite)] = in.l;
     limiterDelay[1][static_cast<std::size_t>(limiterWrite)] = in.r;
@@ -959,12 +973,15 @@ Lucy::Frame Lucy::applyLimiter(Frame in)
 void Lucy::processSampleFrame(float inL, float inR, float& outL, float& outR)
 {
     const auto enabled = enabledSmoothed.getNextValue();
-    const auto global = globalSmoothed.getNextValue();
+    const auto blend = outputBlendSmoothed.getNextValue();
     const auto verbMix = verbSmoothed.getNextValue();
 
     // Two FFTs per hop per channel is the most expensive thing in the plugin;
     // running them to produce a signal nothing hears is the least defensible.
-    if (global * enabled <= 1.0e-6f && ! globalSmoothed.isSmoothing() && ! enabledSmoothed.isSmoothing())
+    // The blend reaches zero only when GLOBAL does, so this is still "the user
+    // turned it off" rather than "the user turned it down".
+    if (blend * enabled <= 1.0e-6f
+            && ! outputBlendSmoothed.isSmoothing() && ! enabledSmoothed.isSmoothing())
     {
         if (! idle)
         {
@@ -977,15 +994,11 @@ void Lucy::processSampleFrame(float inL, float inR, float& outL, float& outR)
     }
     idle = false;
 
-    lossSmoothed.getNextValue();
-    speedSmoothed.getNextValue();
-    freezerSmoothed.getNextValue();
-
     Frame stage { inL, inR };
 
     // The reverb comes at the FRONT by default, feeding the loss rather than
     // decorating it - which is what makes the degradation cohesive.
-    if (! settings.verbPost)
+    if (! user.verbPost)
     {
         stage = applyVerb(stage, verbMix);
     }
@@ -1007,7 +1020,7 @@ void Lucy::processSampleFrame(float inL, float inR, float& outL, float& outR)
     // The filter shapes and emphasises the artifacts, so it acts on them.
     stage = applyFilter(stage);
 
-    if (settings.verbPost)
+    if (user.verbPost)
     {
         stage = applyVerb(stage, verbMix);
     }
@@ -1015,12 +1028,21 @@ void Lucy::processSampleFrame(float inL, float inR, float& outL, float& outR)
     stage = applyGate(stage);
     stage = applyLimiter(stage);
 
-    const auto gain = juce::Decibels::decibelsToGain(gainSmoothed.getNextValue());
+    const auto gain = juce::Decibels::decibelsToGain(lossGainSmoothed.getNextValue());
     stage = { sanitize(stage.l * gain), sanitize(stage.r * gain) };
 
-    // GLOBAL is a macro over the amount of processing rather than a wet/dry,
-    // but it still has to reach zero cleanly, so it is the blend as well.
-    const auto amount = global * enabled;
+    // GLOBAL HAS ALREADY DONE ITS WORK, upstream, in deriveLucyParameters: it
+    // scaled the coder's depth and coverage, the packet probability, the
+    // filter's amount and the freeze blend. That is what makes it an intensity
+    // macro - the character the other controls describe stays recognisable and
+    // gets stronger, rather than a fixed wet signal being faded in.
+    //
+    // What is left here is the bottom few percent of its travel, where the
+    // blend ramps 0 -> 1 so the effect can reach genuinely clean and the idle
+    // path above has a continuous way in and out. Above that region this is 1
+    // and the dry term vanishes. Bypass rides the same blend so it too is a
+    // ramp rather than a step.
+    const auto amount = blend * enabled;
     outL = inL * (1.0f - amount) + stage.l * amount;
     outR = inR * (1.0f - amount) + stage.r * amount;
 }

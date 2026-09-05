@@ -1,4 +1,6 @@
 #include "MoodComponent.h"
+
+#include <algorithm>
 #include "ChipLabel.h"
 
 #include "BypassButton.h"
@@ -205,7 +207,7 @@ void MoodComponent::resized()
 
     inner.setStylePath("cards.mood.cardInner");
     inner.setConfig(uiConfig);
-    inner.setRowCount(3);
+    inner.setRowCount(5);
     inner.layout(card.contentBelowTitle());
 
     // The power toggle is pinned to cardInner's corner, outside the flex flow,
@@ -241,7 +243,11 @@ void MoodComponent::resized()
         const auto row = inner.rowContent(1);
         const auto rowWidth = static_cast<float>(juce::jmax(1, row.getWidth()));
 
-        const std::vector<float> widths { 96.0f, 96.0f, 96.0f };
+        // Narrow enough that three fit across the card's content once its
+        // side padding is taken off. Wider than this and the row wraps, which
+        // is now graceful rather than an overflow, but three across is the
+        // arrangement that puts ROUTE between the channels it connects.
+        const std::vector<float> widths { 76.0f, 76.0f, 76.0f };
         const auto gapWidth = gap.left + gap.right;
         const auto lines = px3::ui::wrappedLineCount(widths, gapWidth, rowWidth);
         const auto cellHeight = juce::jmax(1.0f,
@@ -255,42 +261,58 @@ void MoodComponent::resized()
         flex.performLayout(row.toFloat());
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+        // LOOP, ROUTE, WET - in that order, so ROUTING sits between the two
+        // channels it connects rather than off to one side of both.
         px3::ui::layoutLabelledControl(cell(0),
-                                       { &wetModeLabel, &wetModeBox, nullptr,
-                                         ControlShape::stretch, 14, 0, 22 },
+                                       { &loopModeLabel, &loopModeBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 30 },
                                        inner.rowControl(1));
         px3::ui::layoutLabelledControl(cell(1),
-                                       { &loopModeLabel, &loopModeBox, nullptr,
-                                         ControlShape::stretch, 14, 0, 22 },
+                                       { &routingLabel, &routingBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 30 },
                                        inner.rowControl(1));
         px3::ui::layoutLabelledControl(cell(2),
-                                       { &routingLabel, &routingBox, nullptr,
-                                         ControlShape::stretch, 14, 0, 22 },
+                                       { &wetModeLabel, &wetModeBox, nullptr,
+                                         ControlShape::stretch, 14, 0, 30 },
                                        inner.rowControl(1));
     }
 
-    // Row 3: all nine knobs in one wrapping row. This replaces a hand-built
-    // 3x3 grid; the row wraps into however many lines the width allows, which
-    // is what makes the arrangement follow the card rather than a fixed shape.
+    // Rows 3 and 4: the knobs, GROUPED BY WHAT THEY BELONG TO.
+    //
+    // They used to be one wrapping row of nine in an order that interleaved
+    // the two channels - wet, wet, loop, loop, then five globals - so nothing
+    // on the card said which knob served which channel. Row 3 is now the two
+    // channels' mode-dependent macros, the looper's pair then the wet
+    // channel's, in the same left-to-right order as the mode dropdowns above
+    // them. Row 4 is everything that belongs to the machine as a whole.
+    // maxCellWidth CAPS the cell; it does not set it. The width actually used
+    // is whatever divides the row evenly between however many knobs are in it,
+    // which is the fix for the thing that kept going wrong here: a hardcoded
+    // pixel width is either too small (knobs smaller than they need to be) or
+    // one pixel too large, at which point the row WRAPS and the cell height
+    // halves - so a row that overflows renders SMALLER knobs than one that
+    // fits. Dividing the row up cannot overflow, and uses all of it.
+    const auto layoutKnobRow = [this](int rowIndex,
+                                      float maxCellWidth,
+                                      const std::vector<std::pair<juce::Slider*, juce::Label*>>& knobs)
     {
-        auto flex = inner.rowFlex(2);
-        const auto gap = inner.rowGap(2);
-        const auto row = inner.rowContent(2);
+        auto flex = inner.rowFlex(rowIndex);
+        const auto gap = inner.rowGap(rowIndex);
+        const auto row = inner.rowContent(rowIndex);
         const auto rowWidth = static_cast<float>(juce::jmax(1, row.getWidth()));
 
-        const std::array<std::pair<juce::Slider*, juce::Label*>, 9> knobs { {
-            { &wetTimeKnob, &wetTimeLabel },
-            { &wetModifyKnob, &wetModifyLabel },
-            { &loopLengthKnob, &loopLengthLabel },
-            { &loopModifyKnob, &loopModifyLabel },
-            { &feedbackKnob, &feedbackLabel },
-            { &spreadKnob, &spreadLabel },
-            { &clockKnob, &clockLabel },
-            { &mixKnob, &mixLabel },
-            { &degradeKnob, &degradeLabel },
-        } };
+        const auto count = static_cast<float>(std::max<std::size_t>(1u, knobs.size()));
+        const auto perCellGap = gap.left + gap.right;
+        // A couple of pixels held back. Dividing the row EXACTLY leaves the
+        // running total equal to the row width, and both the wrap calculation
+        // and FlexBox itself compare with a strict greater-than - so rounding
+        // in the last cell is enough to tip a row that fits into one that
+        // wraps, which is how WET MOD and DEGRADE kept ending up alone.
+        constexpr auto kSlack = 3.0f;
+        const auto available = juce::jmax(1.0f, rowWidth - count * perCellGap - kSlack);
+        const auto cellWidth = juce::jmin(maxCellWidth, available / count);
 
-        const std::vector<float> widths(knobs.size(), 64.0f);
+        const std::vector<float> widths(knobs.size(), cellWidth);
         const auto gapWidth = gap.left + gap.right;
         const auto lines = px3::ui::wrappedLineCount(widths, gapWidth, rowWidth);
         const auto cellHeight = juce::jmax(1.0f,
@@ -307,10 +329,30 @@ void MoodComponent::resized()
         {
             px3::ui::layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
                                        { nullptr, knobs[i].first, knobs[i].second,
-                                         ControlShape::square, 0, 16, 64 },
-                                       inner.rowControl(2));
+                                         ControlShape::square, 0, 16,
+                                         static_cast<int>(cellWidth) },
+                                       inner.rowControl(rowIndex));
         }
-    }
+    };
+
+    // The two channels' macros, looper first, matching the dropdowns above.
+    layoutKnobRow(2, 96.0f, { { &loopLengthKnob, &loopLengthLabel },
+                              { &loopModifyKnob, &loopModifyLabel },
+                              { &wetTimeKnob, &wetTimeLabel },
+                              { &wetModifyKnob, &wetModifyLabel } });
+
+    // The machine as a whole. FEEDBACK is here rather than with either channel
+    // because it recycles BOTH of them into the history, and DEGRADE because
+    // it is a PX3 extension rather than one of the pedal's controls.
+    layoutKnobRow(3, 96.0f, { { &clockKnob, &clockLabel },
+                              { &spreadKnob, &spreadLabel },
+                              { &feedbackKnob, &feedbackLabel },
+                              { &degradeKnob, &degradeLabel } });
+
+    // MIX LAST, and alone. It is the only control that decides how much of any
+    // of this is heard at all, and every other PX3 FX card puts its macro at
+    // the bottom of the card - so this one does too.
+    layoutKnobRow(4, 78.0f, { { &mixKnob, &mixLabel } });
 }
 
 void MoodComponent::mouseUp(const juce::MouseEvent& event)

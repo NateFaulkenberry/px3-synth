@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MoodControlModel.h"
 #include "MoodTypes.h"
 
 #include <JuceHeader.h>
@@ -18,7 +19,17 @@ class Mood
 public:
     void prepare(double sampleRate);
     void reset();
-    void updateForBlock(const MoodSettings& settings);
+    // The user's controls go in; deriveMoodParameters turns the four
+    // mode-dependent macros into whichever DSP quantity the current mode
+    // needs. No renderer below sees a knob.
+    void updateForBlock(const px3::MoodUserParameters& settings);
+
+    // The grain panner and the degradation noise floor are stochastic;
+    // tests drive them through this so a run is reproducible. MOOD used
+    // juce::Random::getSystemRandom() from the audio thread, which is a
+    // shared global and cannot be pinned - so nothing about its output
+    // could be asserted exactly.
+    void setSeed(uint32_t seed);
     void processSampleFrame(float inL, float inR, float& outL, float& outR);
 
 private:
@@ -58,6 +69,10 @@ private:
     static constexpr int kDiffusionStages = 4;
 
     static float clamp01(float v);
+    // xorshift, per instance, matching Doom::nextRandom and
+    // Lucy::nextRandom. No allocation, no lock, no global.
+    float nextRandom();
+    float nextBipolar();
     static float sanitizeAudioSample(float v);
     static float semitoneRatio(float semitones);
     static float softSaturate(float x);
@@ -100,7 +115,8 @@ private:
     // noise and a rising noise floor, applied where they compound over repeats.
     float applyDegradation(float x, int channel);
 
-    MoodSettings currentSettings;
+    px3::MoodUserParameters currentSettings;
+    px3::MoodDerivedParameters derived;
 
     std::array<std::vector<float>, 2> historyBuffer;
     std::array<std::vector<float>, 2> wetBuffer;
@@ -156,13 +172,15 @@ private:
     std::array<int, 2> degradeHoldCounter { { 0, 0 } };
     std::array<float, 2> reverbFeedbackStore { { 0.0f, 0.0f } };
 
+    // Never zero: xorshift is stuck at zero forever.
+    uint32_t rngState { 0x6D2B79F5u };
+
     bool wasEnabled { false };
     bool pendingResetOnBypass { false };
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> enabledSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> mixSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> clockSmoothed;
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> routingSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> wetTimeSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> wetModifySmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> loopLengthSmoothed;

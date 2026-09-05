@@ -76,7 +76,9 @@ set(PX3_SHARED_SOURCES
         shared/DSP/Analog/AnalogEngine.cpp
         shared/DSP/Core/StftEngine.cpp
         shared/DSP/Doom/Doom.cpp
+        shared/DSP/Doom/DoomControlModel.cpp
         shared/DSP/Lucy/Lucy.cpp
+        shared/DSP/Lucy/LucyControlModel.cpp
         shared/DSP/Chorus/Chorus.cpp
         shared/DSP/Core/FetCompressor.cpp
         shared/DSP/StereoSpread/StereoSpread.cpp
@@ -96,6 +98,7 @@ set(PX3_SHARED_SOURCES
         shared/UI/Fx/VibeComponent.cpp
         shared/DSP/Delay/Delay.cpp
         shared/DSP/Mood/Mood.cpp
+        shared/DSP/Mood/MoodControlModel.cpp
         shared/DSP/Reverb/Reverb.cpp
         shared/DSP/Vibe/Vibe.cpp
         shared/DSP/Vibe/VibeEngine.cpp
