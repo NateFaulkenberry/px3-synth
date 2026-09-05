@@ -1955,23 +1955,24 @@
             "paddingTop": 4
           },
           "row3": {
-            "height": "26%",
-            "gap": 3,
+            "height": "31%",
+            "gap": 2,
             "justifyContent": "center"
           },
           "row4": {
-            "height": "26%",
-            "gap": 3,
+            "height": "31%",
+            "gap": 2,
             "justifyContent": "center"
           },
           "row5": {
-            "height": "30%",
-            "gap": 6,
+            "height": "24%",
+            "gap": 2,
+            "paddingTop": 14,
             "justifyContent": "center"
           }
         },
-        "paddingLeft": 12,
-        "paddingRight": 12
+        "paddingLeft": 6,
+        "paddingRight": 6
       }
     },
     "reverb": {

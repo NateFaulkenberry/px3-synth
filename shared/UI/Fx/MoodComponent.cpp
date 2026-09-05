@@ -309,13 +309,14 @@ void MoodComponent::resized()
         {
             px3::ui::layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
                                        { nullptr, knobs[i].first, knobs[i].second,
-                                         ControlShape::square, 0, 16, 64 },
+                                         ControlShape::square, 0, 16,
+                                         static_cast<int>(cellWidth) },
                                        inner.rowControl(rowIndex));
         }
     };
 
     // The two channels' macros, looper first, matching the dropdowns above.
-    layoutKnobRow(2, 62.0f, { { &loopLengthKnob, &loopLengthLabel },
+    layoutKnobRow(2, 66.0f, { { &loopLengthKnob, &loopLengthLabel },
                               { &loopModifyKnob, &loopModifyLabel },
                               { &wetTimeKnob, &wetTimeLabel },
                               { &wetModifyKnob, &wetModifyLabel } });
@@ -323,7 +324,7 @@ void MoodComponent::resized()
     // The machine as a whole. FEEDBACK is here rather than with either channel
     // because it recycles BOTH of them into the history, and DEGRADE because
     // it is a PX3 extension rather than one of the pedal's controls.
-    layoutKnobRow(3, 62.0f, { { &clockKnob, &clockLabel },
+    layoutKnobRow(3, 66.0f, { { &clockKnob, &clockLabel },
                               { &spreadKnob, &spreadLabel },
                               { &feedbackKnob, &feedbackLabel },
                               { &degradeKnob, &degradeLabel } });
@@ -331,7 +332,7 @@ void MoodComponent::resized()
     // MIX LAST, and alone. It is the only control that decides how much of any
     // of this is heard at all, and every other PX3 FX card puts its macro at
     // the bottom of the card - so this one does too.
-    layoutKnobRow(4, 96.0f, { { &mixKnob, &mixLabel } });
+    layoutKnobRow(4, 78.0f, { { &mixKnob, &mixLabel } });
 }
 
 void MoodComponent::mouseUp(const juce::MouseEvent& event)
