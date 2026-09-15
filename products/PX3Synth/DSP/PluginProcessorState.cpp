@@ -433,7 +433,8 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                 const auto migrated = migrateStoredNormalisedValue(*ranged, value, storedStateVersion);
                 ranged->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, migrated));
             }
-            else if (storedStateVersion < 12 && isIntroducedInStateVersion12(paramID))
+            else if ((storedStateVersion < 12 && isIntroducedInStateVersion12(paramID))
+                     || (storedStateVersion < 13 && paramID == "fxSeparateOutput"))
             {
                 ranged->setValueNotifyingHost(ranged->getDefaultValue());
             }

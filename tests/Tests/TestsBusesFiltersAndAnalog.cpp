@@ -4126,7 +4126,7 @@ void testMultiOutput()
                   + (refusedQuad ? "refused" : "ACCEPTED"));
     }
 
-    // ---- dry on 1/2, FX on 3/4 ---------------------------------------------
+    // ---- SEPARATE FX OUTPUT on: dry on 1/2, FX on 3/4 -----------------------
     //
     // With every send closed the FX bus has nothing in it, so the pair that
     // carries it has to be silent while the pair that carries dry is not. That
@@ -4135,6 +4135,8 @@ void testMultiOutput()
     {
         PX3SynthAudioProcessor processor;
         const auto accepted = enableFxBus(processor);
+        // The stems are opt-in: without SEPARATE FX OUTPUT, 1/2 carry the full mix.
+        processor.getFxSeparateOutputParam().setValueNotifyingHost(1.0f);
         processor.prepareToPlay(kRate, kBlock);
 
         for (int source = 0; source < 4; ++source)
@@ -4181,6 +4183,8 @@ void testMultiOutput()
     {
         PX3SynthAudioProcessor processor;
         enableFxBus(processor);
+        // The stems are opt-in: without SEPARATE FX OUTPUT, 1/2 carry the full mix.
+        processor.getFxSeparateOutputParam().setValueNotifyingHost(1.0f);
         processor.prepareToPlay(kRate, kBlock);
 
         for (int source = 0; source < 4; ++source)
@@ -4204,6 +4208,8 @@ void testMultiOutput()
     {
         PX3SynthAudioProcessor processor;
         const auto accepted = enableFxBus(processor);
+        // The stems are opt-in: without SEPARATE FX OUTPUT, 1/2 carry the full mix.
+        processor.getFxSeparateOutputParam().setValueNotifyingHost(1.0f);
         processor.prepareToPlay(kRate, kBlock);
 
         for (int source = 0; source < 4; ++source)
@@ -4232,6 +4238,8 @@ void testMultiOutput()
     {
         PX3SynthAudioProcessor processor;
         enableFxBus(processor);
+        // The stems are opt-in: without SEPARATE FX OUTPUT, 1/2 carry the full mix.
+        processor.getFxSeparateOutputParam().setValueNotifyingHost(1.0f);
         processor.prepareToPlay(kRate, kBlock);
 
         for (int source = 0; source < 4; ++source)
@@ -4256,6 +4264,122 @@ void testMultiOutput()
               ! identical && largestDifference > 1.0e-4f,
               "largest sample difference between 1/2 and 3/4 is "
                   + fmt(largestDifference, 6));
+    }
+
+    // ---- the regression: a host that enables every bus -----------------------
+    //
+    // JUCE's AU wrapper enables every bus on construction, so this is what every
+    // Logic instance looks like. With the split implicit, outputs 1/2 carried
+    // the dry mix only and every effect went to 3/4, which a stereo instrument
+    // track never hears: the FX panel showed the effects live and none of them
+    // could be heard. Every other test here renders a stereo layout, which is
+    // why none of them saw it.
+    {
+        const auto renderReverb = [&](bool reverbOn, float& fxPairRms)
+        {
+            PX3SynthAudioProcessor processor;
+            processor.enableAllBuses();
+            processor.prepareToPlay(kRate, kBlock);
+            for (int source = 0; source < 4; ++source)
+            {
+                processor.getMixerSendParam(source).setValueNotifyingHost(1.0f);
+            }
+            for (auto* effect : { &processor.getDelayEnabledParam(), &processor.getMoodEnabledParam(),
+                                  &processor.getDoomEnabledParam(), &processor.getLucyEnabledParam(),
+                                  &processor.getChorusEnabledParam(), &processor.getSpreadEnabledParam() })
+            {
+                effect->setValueNotifyingHost(0.0f);
+            }
+            processor.getReverbEnabledParam().setValueNotifyingHost(reverbOn ? 1.0f : 0.0f);
+            setParam(processor, "reverbAmount", 0.8f);
+
+            juce::AudioBuffer<float> buffer(processor.getTotalNumOutputChannels(), kBlock);
+            renderNote(processor, buffer, 40);
+            fxPairRms = buffer.getNumChannels() > 3 ? juce::jmax(rms(buffer, 2), rms(buffer, 3)) : -1.0f;
+            return juce::jmax(rms(buffer, 0), rms(buffer, 1));
+        };
+
+        auto fxPairOff = 0.0f, fxPairOn = 0.0f;
+        const auto mainOff = renderReverb(false, fxPairOff);
+        const auto mainOn = renderReverb(true, fxPairOn);
+        const auto changeDb = juce::Decibels::gainToDecibels(mainOn / juce::jmax(1.0e-9f, mainOff));
+
+        check("MultiOut_WithEveryBusEnabledTheMainPairStillCarriesTheFx", std::abs(changeDb) > 1.0f,
+              "turning reverb on moves outputs 1/2 by " + fmt(changeDb, 2) + " dB ("
+                  + fmt(mainOff, 5) + " -> " + fmt(mainOn, 5) + ")");
+        check("MultiOut_WithoutSeparateOutputTheFxPairIsSilent",
+              fxPairOff >= 0.0f && fxPairOff < 1.0e-9f && fxPairOn >= 0.0f && fxPairOn < 1.0e-9f,
+              "3/4 at rms " + fmt(fxPairOn, 8) + " with reverb on");
+    }
+
+    // ---- SEPARATE FX OUTPUT is opt-in, saved, and old sessions load it off -----
+    {
+        PX3SynthAudioProcessor fresh;
+        check("MultiOut_SeparateFxOutputIsOffByDefault", ! fresh.getFxSeparateOutputParam().get(),
+              juce::String("a fresh instance has it ") + (fresh.getFxSeparateOutputParam().get() ? "ON" : "off"));
+
+        PX3SynthAudioProcessor source;
+        source.getFxSeparateOutputParam().setValueNotifyingHost(1.0f);
+        juce::MemoryBlock saved;
+        source.getStateInformation(saved);
+        PX3SynthAudioProcessor restored;
+        restored.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+        check("MultiOut_SeparateFxOutputIsSavedWithTheSession", restored.getFxSeparateOutputParam().get(),
+              juce::String("saved on, restored ") + (restored.getFxSeparateOutputParam().get() ? "on" : "OFF"));
+
+        // Saved while the split was implicit. It has to come back OFF, whatever
+        // the instance was set to - that is what gives those sessions their FX.
+        auto tree = source.createParameterStateTree();
+        tree.setProperty("stateVersion", 12, nullptr);
+        tree.removeProperty("fxSeparateOutput", nullptr);
+        PX3SynthAudioProcessor older;
+        older.getFxSeparateOutputParam().setValueNotifyingHost(1.0f);
+        if (auto xml = tree.createXml())
+        {
+            juce::MemoryBlock block;
+            juce::AudioProcessor::copyXmlToBinary(*xml, block);
+            older.setStateInformation(block.getData(), static_cast<int>(block.getSize()));
+        }
+        check("MultiOut_ASessionFromBeforeTheSwitchLoadsItOff", ! older.getFxSeparateOutputParam().get(),
+              juce::String("a version-12 session loaded it ") + (older.getFxSeparateOutputParam().get() ? "ON" : "off"));
+    }
+
+    // ---- turning it on mid-note crossfades rather than jumping -------------------
+    {
+        PX3SynthAudioProcessor processor;
+        enableFxBus(processor);
+        processor.prepareToPlay(kRate, kBlock);
+
+        constexpr int switchBlock = 30;
+        juce::AudioBuffer<float> buffer(4, kBlock);
+        std::vector<float> trail;
+        for (int block = 0; block < 60; ++block)
+        {
+            buffer.clear();
+            juce::MidiBuffer midi;
+            if (block == 0) { midi.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0); }
+            if (block == switchBlock) { processor.getFxSeparateOutputParam().setValueNotifyingHost(1.0f); }
+            processor.processBlock(buffer, midi);
+            for (int i = 0; i < kBlock; ++i) { trail.push_back(buffer.getSample(0, i)); }
+        }
+
+        const auto largestStep = [&trail](int fromBlock, int toBlock)
+        {
+            auto worst = 0.0f;
+            for (int i = juce::jmax(1, fromBlock * kBlock); i < toBlock * kBlock; ++i)
+            {
+                worst = juce::jmax(worst, std::abs(trail[static_cast<std::size_t>(i)] - trail[static_cast<std::size_t>(i - 1)]));
+            }
+            return worst;
+        };
+        const auto before = largestStep(10, switchBlock);
+        const auto across = largestStep(switchBlock, switchBlock + 4);
+        const auto after = largestStep(switchBlock + 8, 60);
+
+        check("MultiOut_TurningSeparateOutputOnMidNoteDoesNotClick",
+              across <= juce::jmax(before, after) * 1.5f + 1.0e-6f,
+              "largest step on 1/2 before " + fmt(before, 5) + ", across the switch " + fmt(across, 5)
+                  + ", after " + fmt(after, 5));
     }
 
     // ---- switching configurations ------------------------------------------

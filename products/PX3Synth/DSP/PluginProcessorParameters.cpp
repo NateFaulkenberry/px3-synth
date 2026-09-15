@@ -488,6 +488,7 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getSpreadToneParam() const { 
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getSpreadModeParam() const { return *spreadModeParam; }
 
 juce::AudioParameterBool& PX3SynthAudioProcessor::getAnalogEnabledParam() const { return *analogEnabledParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getFxSeparateOutputParam() const { return *fxSeparateOutputParam; }
 bool PX3SynthAudioProcessor::isParameterModulated(const juce::String& parameterId) const
 {
     const auto pointsAt = [this, &parameterId](std::atomic<int> const& assignmentIndex)

@@ -615,6 +615,17 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     // It was off because nothing in the UI could turn it on, which made "off"
     // the only state a user could ever hear.
     analogEnabledParam = new juce::AudioParameterBool("analogEnabled", "Analog Enabled", true);
+    // Off: outputs 1/2 carry the whole mix, whatever the host has done with the
+    // second pair. On, with that pair enabled: dry on 1/2 and the FX return on
+    // 3/4, as stems.
+    //
+    // Opt-in because hosts enable the second pair without being asked - JUCE's
+    // AU wrapper enables every bus on construction. With the split implicit, a
+    // Logic instrument track heard the dry mix only and every effect went to
+    // outputs it never listens to.
+    fxSeparateOutputParam = new juce::AudioParameterBool(juce::ParameterID("fxSeparateOutput", 1),
+                                                         "Separate FX Output",
+                                                         false);
     analogProfileParam = new juce::AudioParameterChoice("analogProfile",
                                                          "Analog Profile",
                                                          px3::AnalogEngine::profileNames(),
@@ -909,6 +920,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(subOscPitchModParam);
     addParameter(filterRoutingParam);
     addParameter(filterParallelBalanceParam);
+    addParameter(fxSeparateOutputParam);
 
     buildLfoAssignableTargets();
 
@@ -1312,6 +1324,14 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     fxReturnPanSmoother.reset(sampleRate, 0.012);
     const auto initialFxPan = fxReturnPanParam != nullptr ? fxReturnPanParam->get() : 0.0f;
     fxReturnPanSmoother.setCurrentAndTargetValue(juce::jlimit(-1.0f, 1.0f, initialFxPan));
+
+    // Starts where it should be, so a session that opens split does not fade
+    // into the split over its first 20 ms.
+    outputSplitCoeff = static_cast<float>(1.0 - std::exp(-1.0 / (kOutputSplitSmoothingSeconds * sampleRate)));
+    outputSplitCurrent = (getBusCount(false) > 1 && getBus(false, 1) != nullptr && getBus(false, 1)->isEnabled()
+                          && fxSeparateOutputParam != nullptr && fxSeparateOutputParam->get())
+                             ? 1.0f
+                             : 0.0f;
 
     polyphonyGainSmoother.reset(sampleRate, 0.035);
     polyphonyGainSmoother.setCurrentAndTargetValue(1.0f);
@@ -2659,19 +2679,43 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     // WHAT LEAVES THE PLUGIN.
     //
-    // One stereo pair: the master mix, exactly as before.
+    // Outputs 1/2 carry the master mix - dry, FX return, the analog master
+    // stage and the output ceiling - unless SEPARATE FX OUTPUT is on.
     //
-    // Two: the mixer's own buses, dry on 1/2 and FX on 3/4, so the host can
-    // treat them as stems. They carry the fixed output boost, which is a
-    // level, but not the analog master stage or the output ceiling - those act
-    // on the SUM and are not divisible between two stems. Summing 1/2 and 3/4
-    // in the host is therefore close to the stereo output but not identical
-    // to it, which is what taking stems from before a master chain means.
+    // A host enabling the second pair is deliberately NOT enough to split the
+    // mix. It used to be, and JUCE's AU wrapper enables every bus on
+    // construction, so every Logic instance split: the track heard dry only and
+    // every effect went to outputs 3/4, which a stereo instrument track never
+    // hears. The FX panel showed the effects live and none of them could be
+    // heard. The tests render a stereo layout, so none of them saw it.
     //
-    // Nothing is processed twice for this: both buffers already exist, and
-    // this is the same copy the single-output path always did.
-    if (fxBusEnabled)
+    // With SEPARATE FX OUTPUT on and the second pair enabled: the mixer's own
+    // buses, dry on 1/2 and FX on 3/4, as stems. They carry the fixed output
+    // boost but not the analog master stage or the output ceiling - those act
+    // on the SUM and are not divisible between two stems.
+    //
+    // Switching crossfades rather than jumping. Once settled, each case is the
+    // same block copy it always was.
+    const auto splitTarget = (fxBusEnabled && fxSeparateOutputParam != nullptr && fxSeparateOutputParam->get())
+                                 ? 1.0f
+                                 : 0.0f;
+    const auto splitSettled = std::abs(outputSplitCurrent - splitTarget) < 1.0e-5f;
+
+    if (splitSettled && splitTarget < 0.5f)
     {
+        outputSplitCurrent = 0.0f;
+        for (int channel = 0; channel < outputChannels; ++channel)
+        {
+            mainOutput.copyFrom(channel, 0, masterBusBuffer, channel, 0, blockSamples);
+        }
+        for (int channel = 0; channel < fxOutput.getNumChannels(); ++channel)
+        {
+            fxOutput.clear(channel, 0, blockSamples);
+        }
+    }
+    else if (splitSettled)
+    {
+        outputSplitCurrent = 1.0f;
         for (int channel = 0; channel < outputChannels; ++channel)
         {
             mainOutput.copyFrom(channel, 0, dryBusBuffer.getReadPointer(channel),
@@ -2693,9 +2737,25 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     }
     else
     {
-        for (int channel = 0; channel < outputChannels; ++channel)
+        for (int sample = 0; sample < blockSamples; ++sample)
         {
-            mainOutput.copyFrom(channel, 0, masterBusBuffer, channel, 0, blockSamples);
+            outputSplitCurrent += (splitTarget - outputSplitCurrent) * outputSplitCoeff;
+            const auto split = outputSplitCurrent;
+
+            for (int channel = 0; channel < outputChannels; ++channel)
+            {
+                const auto master = masterBusBuffer.getSample(channel, sample);
+                const auto dry = dryBusBuffer.getSample(channel, sample) * outputBoostGain;
+                mainOutput.setSample(channel, sample, master + (dry - master) * split);
+            }
+
+            for (int channel = 0; channel < fxOutput.getNumChannels(); ++channel)
+            {
+                const auto wet = channel < fxBusBuffer.getNumChannels()
+                                     ? fxBusBuffer.getSample(channel, sample) * outputBoostGain
+                                     : 0.0f;
+                fxOutput.setSample(channel, sample, wet * split);
+            }
         }
     }
 

@@ -955,6 +955,32 @@ Unlike the animation setting, this **is** part of the sound: it is saved with
 your patch and travels with a preset, and it is automatable from your DAW like
 any other control.
 
+## Separate FX output
+
+Off by default. P(X3) has a second stereo output pair that a host can enable.
+
+| Separate FX output | Outputs 1/2 | Outputs 3/4 |
+| --- | --- | --- |
+| **Off** (default) | The full mix: dry and FX | Silent |
+| **On**, second pair enabled in the host | Dry only | The FX return |
+
+Turn it on when you want the dry and FX signals on separate tracks — in Logic,
+for example, create the instrument as **Multi-Output (2xStereo)** and add the
+extra channel strip. With it off, P(X3) sounds the same in every host however
+many outputs the host has enabled.
+
+The two outputs carry the fixed output boost but not the analog master stage or
+the output ceiling, which act on the sum. Summing 1/2 and 3/4 in your DAW is
+close to the stereo output but not identical to it.
+
+The setting is saved with your session. Switching it while notes sound
+crossfades rather than clicking.
+
+> **Changed after v0.7.5:** before this, any host that enabled the second pair got
+> the dry mix alone on 1/2 — and Logic enables it on every instance, so the
+> effects could not be heard there. Sessions saved earlier load with this
+> setting off.
+
 ---
 
 # Macros

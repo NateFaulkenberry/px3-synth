@@ -33,7 +33,9 @@ inline float channelFaderMaxGain()
 // 12: envelope times widened to 40 s and LFO waveforms gained two ramps.
 // Both change what a stored NORMALISED value means, so anything older is
 // migrated on load - see migrateStoredNormalisedValue.
-inline constexpr int kCurrentStateVersion = 12;
+// 13: SEPARATE FX OUTPUT. Older states load it OFF, which is what puts the
+// FX back on outputs 1/2 for every session saved while the split was implicit.
+inline constexpr int kCurrentStateVersion = 13;
 
 inline const juce::Identifier kStateTypeId("PX3_STATE");
 inline const juce::Identifier kStateVersionId("stateVersion");

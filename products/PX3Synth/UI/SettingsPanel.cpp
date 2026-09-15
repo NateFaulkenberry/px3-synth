@@ -85,6 +85,16 @@ SettingsPanel::SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour p
            "Console color applied to the whole output",
            analogProfileBox);
 
+    // ---- separate FX output --------------------------------------------------
+    separateFxOutputToggle.setButtonText({});
+    separateFxOutputToggle.setTooltip("Dry on outputs 1/2 and FX on 3/4, when the host enables a second output pair");
+    separateFxOutputAttachment = std::make_unique<juce::ButtonParameterAttachment>(
+        processor.getFxSeparateOutputParam(), separateFxOutputToggle, nullptr);
+    addAndMakeVisible(separateFxOutputToggle);
+    addRow("Separate FX Output",
+           "Dry on outputs 1/2 and FX on 3/4 when the host enables them. Off: the full mix on 1/2",
+           separateFxOutputToggle);
+
     // ---- updates -----------------------------------------------------------
     //
     // Its own block rather than a settings row: a row is a caption and one
@@ -205,6 +215,14 @@ void SettingsPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     animationsToggle.setColour(juce::ToggleButton::tickDisabledColourId,
                                colourFrom(uiConfig.get(), "settings.colors.tickOutline",
                                           juce::Colour::fromRGB(120, 126, 136)));
+
+    // The same checkbox, styled the same way.
+    for (const auto colourId : { juce::ToggleButton::tickColourId,
+                                 juce::ToggleButton::tickDisabledColourId,
+                                 juce::ToggleButton::textColourId })
+    {
+        separateFxOutputToggle.setColour(colourId, animationsToggle.findColour(colourId));
+    }
 
     resized();
     repaint();

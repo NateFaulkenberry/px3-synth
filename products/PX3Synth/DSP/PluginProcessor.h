@@ -603,6 +603,7 @@ public:
     // AnalogEngine exposes only its on/off and its archetype. Every tuning
     // constant is internal and reachable through the debug console alone.
     juce::AudioParameterBool& getAnalogEnabledParam() const;
+    juce::AudioParameterBool& getFxSeparateOutputParam() const;
     juce::AudioParameterChoice& getAnalogProfileParam() const;
     juce::AudioParameterBool& getLfoEnabledParam() const;
     juce::AudioParameterBool& getLfoEnabledParam(int lfoIndex) const;
@@ -1005,6 +1006,12 @@ private:
     juce::AudioParameterChoice* spreadModeParam { nullptr };
 
     juce::AudioParameterBool* analogEnabledParam { nullptr };
+    juce::AudioParameterBool* fxSeparateOutputParam { nullptr };
+    // 0 = the whole mix on 1/2; 1 = dry on 1/2 and FX on 3/4. Smoothed, so
+    // turning SEPARATE FX OUTPUT on or off crossfades instead of jumping.
+    static constexpr double kOutputSplitSmoothingSeconds = 0.020;
+    float outputSplitCurrent { 0.0f };
+    float outputSplitCoeff { 1.0f };
     juce::AudioParameterChoice* analogProfileParam { nullptr };
     juce::AudioParameterFloat* reverbSizeParam { nullptr };
     juce::AudioParameterFloat* reverbDecayParam { nullptr };
