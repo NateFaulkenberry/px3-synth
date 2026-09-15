@@ -257,6 +257,10 @@ private:
     double modEnvelopePreparedSampleRate { 0.0 };
     double filtersPreparedSampleRate { 0.0 };
     std::uint32_t startSequence { 0u };
+    // Notes this voice has started. Seeds its random streams: unlike the global
+    // start sequence it restarts with the processor, so rendering the same MIDI
+    // through a fresh instance produces the same audio.
+    std::uint32_t notesStarted { 0u };
 
     // The shape the processor last handed this voice, and whether it has one.
     //

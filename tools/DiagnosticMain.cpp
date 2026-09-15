@@ -1903,6 +1903,9 @@ int runRegressionSuite(bool legacyPruning)
 }
 }
 
+// tools/OscillatorQualityReport.cpp
+int runOscillatorQualityReport(const juce::String& outputDirectory);
+
 int main(int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -1924,6 +1927,11 @@ int main(int argc, char* argv[])
                 static_cast<double>(patch.sustain),
                 static_cast<double>(patch.release));
     std::printf("  vibe=%s fx=%s\n", patch.vibeEnabled ? "on" : "off", patch.fxEnabled ? "on" : "off");
+
+    if (arg == "oscquality")
+    {
+        return runOscillatorQualityReport(argc > 2 ? juce::String(argv[2]) : juce::String("oscquality"));
+    }
 
     if (arg == "primary")
     {

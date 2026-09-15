@@ -48,10 +48,18 @@ constexpr float kLevelAtRest = 0.85f;
 
 // Modes whose output still carries DC once its causes are removed, and so take
 // a 5 Hz blocker on their own output. Measured by PX3Diag oscdc.
+//
+// HARD SYNC: its slave restarts partway up a ramp at every reset, so the
+// waveform is not symmetric and its mean depends on the ratio - measured at 1.6%
+// of RMS, and 10% at ratios like 2.5. Real analog sync has the same offset.
+//
+// FORMANT: once its excitation's DC term is removed at the source, the soft
+// clip still makes 2-4% - tanh is odd, but a resonator's ringing is skewed, so
+// the clipped signal's mean is not zero.
 constexpr std::array<bool, px3::oscillatorModeCount> kModeUsesDcBlocker { {
     false, false, false, false, false,
     false, false, false, false, false,
-    false, false, false, false,
+    true,  false, true,  false,
     false, false, false, false, false
 } };
 
@@ -876,6 +884,10 @@ double OscillatorUnit::renderFormant(const RenderContext& context, const MainPha
     auto raw = std::abs(denominator) < 1.0e-7 ? static_cast<double>(harmonics)
                                               : std::sin(harmonics * half) / denominator;
     raw += topPair * 2.0 * std::cos((harmonics + 1) * half);
+    // The kernel is 1 + 2 * sum(cos k x): its DC term is exactly 1. The
+    // resonators pass a few percent of DC, which measured 12-18% of the mode's
+    // RMS, so it is taken out here, where it is exact, rather than filtered later.
+    raw -= 1.0;
 
     formantSourceState += (static_cast<float>(raw) - formantSourceState) * ramped(&DerivedCurves::formantSourceCoeff);
     const auto pulse = formantSourceState;

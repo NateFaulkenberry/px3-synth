@@ -1519,6 +1519,7 @@ void testLfo();
 void testModulationUpgrade();
 void testKeyboardNotes();
 void testOscillatorTuning();
+void testOscillatorQuality();
 void testVibe();
 void testReverb();
 void testComb();

@@ -96,8 +96,12 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     level = velocity;
     const auto sequence = gNoteStartSequence.fetch_add(1u, std::memory_order_relaxed);
     startSequence = sequence;
+    // The start phase is hashed from this voice's own note count, not the
+    // global sequence, which carries on across processor instances: the same
+    // MIDI into a fresh instance has to render the same audio.
+    const auto noteCount = ++notesStarted;
     auto hash = static_cast<uint32_t>(voiceIndex + 1) * 747796405u;
-    hash ^= sequence * 2891336453u;
+    hash ^= noteCount * 2891336453u;
     hash ^= static_cast<uint32_t>(midiNoteNumber + 1) * 277803737u;
     hash ^= (hash >> 16);
     hash *= 2246822519u;
@@ -238,9 +242,9 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     {
         oscillatorUnits[static_cast<std::size_t>(oscIndex)].resetForNote(
             phaseSeed,
-            px3::dsp::streamSeed(static_cast<std::uint32_t>(voiceIndex), sequence, static_cast<std::uint32_t>(oscIndex)));
+            px3::dsp::streamSeed(static_cast<std::uint32_t>(voiceIndex), noteCount, static_cast<std::uint32_t>(oscIndex)));
     }
-    vibeNoise.seed(px3::dsp::streamSeed(static_cast<std::uint32_t>(voiceIndex), sequence, 7u));
+    vibeNoise.seed(px3::dsp::streamSeed(static_cast<std::uint32_t>(voiceIndex), noteCount, 7u));
     for (auto& clip : sourceClips)
     {
         clip.reset();

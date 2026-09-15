@@ -2625,6 +2625,7 @@ int main(int argc, char* argv[])
     if (wants("modupgrade")) testModulationUpgrade();
     if (wants("keyboardnotes")) testKeyboardNotes();
     if (wants("tuning")) testOscillatorTuning();
+    if (wants("oscquality")) testOscillatorQuality();
     if (wants("vibe")) testVibe();
     if (wants("reverb")) testReverb();
     if (wants("comb")) testComb();

@@ -3247,6 +3247,11 @@ void testLucy()
     {
         // LUCY and DOOM in both orders. Position has to change the audio, or
         // the chain is not really a chain.
+        //
+        // Both are switched on explicitly. LUCY starts off in the Synth, so this
+        // used to compare two chains with LUCY bypassed - and passed only because
+        // two processors started their notes at different random phases, which
+        // made any two renders differ. Voices start deterministically now.
         auto renderWithOrder = [](const px3::FxOrder& order)
         {
             PX3SynthAudioProcessor processor;
@@ -3254,6 +3259,8 @@ void testLucy()
             {
                 if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
                 {
+                    if (ranged->paramID == "lucyEnabled")  ranged->setValueNotifyingHost(1.0f);
+                    if (ranged->paramID == "doomEnabled")  ranged->setValueNotifyingHost(1.0f);
                     if (ranged->paramID == "lucyGlobal")   ranged->setValueNotifyingHost(0.7f);
                     if (ranged->paramID == "lucyLoss")     ranged->setValueNotifyingHost(0.7f);
                     if (ranged->paramID == "doomMix")      ranged->setValueNotifyingHost(0.6f);

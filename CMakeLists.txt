@@ -419,7 +419,7 @@ if (PX3_BUILD_DIAGNOSTIC)
     juce_add_console_app(PX3Diag PRODUCT_NAME "PX3Diag")
     juce_generate_juce_header(PX3Diag)
 
-    target_sources(PX3Diag PRIVATE ${PX3_ALL_SOURCES} tools/DiagnosticMain.cpp)
+    target_sources(PX3Diag PRIVATE ${PX3_ALL_SOURCES} tools/DiagnosticMain.cpp tools/OscillatorQualityReport.cpp)
     target_include_directories(PX3Diag PRIVATE ${PX3_INCLUDE_DIRS})
 
     target_compile_definitions(PX3Diag
