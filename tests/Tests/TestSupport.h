@@ -1517,6 +1517,7 @@ void testOscillators();
 void testAmpEnvelope();
 void testModEnvelopes();
 void testLfo();
+void testModulationUpgrade();
 void testVibe();
 void testReverb();
 void testComb();

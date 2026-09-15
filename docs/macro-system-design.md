@@ -23,14 +23,20 @@ parameter, and returns `clamp01(base + totalDelta)`. The base is untouched.
 Each source's delta is
 
 ```
-delta = depth × headroom × (signal × amount)
-headroom = bipolar ? min(base, 1-base) : (amount >= 0 ? 1-base : base)
+delta = depth × swing × (signal × amount)
+swing = bipolar ? 0.5 : (amount >= 0 ? 1-base : base)
+value = fold(base + Σ deltas)      // reflect back into 0..1
 ```
 
-The headroom term exists because a source driving past the end of the range
-gets clamped, which turns a sine into a square with rounded shoulders — measured
-at 65.6% of every cycle pinned at an end. Scaling by the room the base actually
-leaves means full amount arrives exactly at the boundary and turns around there.
+> **Changed in v0.7.5.** A bipolar (LFO) source used to swing
+> `min(base, 1-base)` and the sum was clamped. That kept a sine from flattening
+> against an end, but it also left almost no swing whenever the base sat near an
+> end: filter cutoff defaults to 0.867 normalised, so a 100% LFO moved it 0.13 —
+> under an octave. An LFO now swings half the range each way (the whole range
+> peak to peak) and the sum is **folded** into range by reflection instead of
+> clamped, which is what still keeps a shape from stalling at an end. Unipolar
+> sources (envelopes, Macros) keep the whole side they point at, which already
+> reached the end from any base. See `docs/MODULATION_AND_FILTER_ROUTING.md`.
 
 **A Macro is a third source kind in that same loop.** Unipolar signal (0..1),
 signed per-destination depth — which is exactly the envelope case. Nothing
@@ -60,8 +66,8 @@ a property of the control.
 ## Design decisions (§40)
 
 **1. How is the final value calculated?**
-`clamp01(base + Σ deltas)` over LFOs, envelopes and Macros. One formula, one
-accumulation loop, order-independent.
+`fold(base + Σ deltas)` over LFOs, envelopes and Macros (clamped before
+v0.7.5). One formula, one accumulation loop, order-independent.
 
 **2. Is Macro influence additive?**
 Additive in normalised space, scaled by headroom. Not multiplicative: a
@@ -287,7 +293,7 @@ so are never eligible.
         +  Σ  LFO deltas
         +  Σ  ENV deltas
         +  Σ  MACRO deltas         ← depth × headroom × macroValue
-        =  clamp01(...)            → DSP, and the knob's moving ring
+        =  fold(...)               → DSP, and the knob's moving ring
 ```
 
 Macro routes are held as a fixed array of slots, each carrying an atomic

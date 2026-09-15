@@ -1400,6 +1400,8 @@ void testWavetable()
                 processor.prepareToPlay(kSampleRate, kBlockSize);
 
                 std::vector<float> trail;
+                auto rawLow = 10.0f, rawHigh = -10.0f;
+                auto* position = findParameter(processor, "osc1WtPos");
                 juce::AudioBuffer<float> buffer(2, kBlockSize);
                 juce::MidiBuffer midi;
                 midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
@@ -1409,6 +1411,9 @@ void testWavetable()
                     processor.processBlock(buffer, midi);
                     midi.clear();
                     trail.push_back(processor.getModulatedWavetablePosition(0));
+                    const auto raw = processor.getUnclampedModulatedNormalisedValue(*position);
+                    rawLow = juce::jmin(rawLow, raw);
+                    rawHigh = juce::jmax(rawHigh, raw);
                 }
 
                 int longestRun = 0, run = 0;
@@ -1436,17 +1441,20 @@ void testWavetable()
 
                 // Centred on the base, which is what a bipolar source means -
                 // an implementation that assumed modulation starts at frame 0
-                // would fail here and nowhere else.
-                if (std::abs((low + high) * 0.5f - base) > 0.01f)
+                // would fail here and nowhere else. Measured BEFORE the fold:
+                // a swing that passes an end is reflected back, so the folded
+                // range is not centred by design, but the swing itself is.
+                if (std::abs((rawLow + rawHigh) * 0.5f - base) > 0.01f)
                 {
                     offCentre.add("base " + fmt(base, 2) + " swings "
-                                  + fmt(low, 2) + ".." + fmt(high, 2));
+                                  + fmt(rawLow, 2) + ".." + fmt(rawHigh, 2) + " before the fold");
                 }
 
                 if (std::abs(amount - 1.0f) < 1.0e-6f)
                 {
                     detail << (detail.isEmpty() ? "" : ", ") << "base " << fmt(base, 2) << " -> "
-                           << fmt(low, 3) << ".." << fmt(high, 3);
+                           << fmt(rawLow, 3) << ".." << fmt(rawHigh, 3) << " (heard "
+                           << fmt(low, 3) << ".." << fmt(high, 3) << ")";
                 }
             }
         }
@@ -1464,13 +1472,22 @@ void testWavetable()
                   + " of the table");
     }
 
-    // ---- every waveform, every destination, never clamped -------------------
-    // The precise property is that the value BEFORE the range clamp stays in
-    // range. "Never stalls" would be the wrong test: a square LFO holds at its
-    // limit by definition, and a saw jumps. What must not happen is the
-    // modulation driving past the end and being cut off there, which flattens
-    // every shape into the same held edge.
+    // ---- every waveform, every destination, folded rather than clamped -------
+    // 100% swings the whole range, so from most bases the modulation goes PAST
+    // an end - that is now intended. What must not happen is the value being cut
+    // off there, which flattens every shape into the same held edge. The precise
+    // property: what is heard is the pre-fold value reflected back into range.
+    // "Never stalls" would be the wrong test for that: a square LFO holds at its
+    // limit by definition, and a saw jumps.
     {
+        // Written out independently of the processor's own fold.
+        const auto reflect = [](float v)
+        {
+            auto w = std::fmod(v, 2.0f);
+            if (w < 0.0f) { w += 2.0f; }
+            return w <= 1.0f ? w : 2.0f - w;
+        };
+
         struct Destination { const char* parameterId; const char* label; };
         const Destination destinations[] = {
             { "osc1WtPos", "wavetable scan" },
@@ -1483,6 +1500,7 @@ void testWavetable()
         juce::StringArray clampedAway;
         juce::String worstDetail;
         auto worstOvershoot = 0.0f;
+        auto worstFoldError = 0.0f;
         auto combinations = 0;
 
         for (const auto& destination : destinations)
@@ -1517,6 +1535,7 @@ void testWavetable()
                         midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
 
                         auto overshoot = 0.0f;
+                        auto foldError = 0.0f;
                         for (int block = 0; block < 120; ++block)
                         {
                             buffer.clear();
@@ -1524,10 +1543,14 @@ void testWavetable()
                             midi.clear();
 
                             const auto raw = processor.getUnclampedModulatedNormalisedValue(*target);
-                            if (raw < -0.5f) { continue; }   // not assigned
+                            if (raw < -0.75f) { continue; }   // not assigned (a single source never swings below -0.5)
+                            const auto heard = processor.getModulatedNormalisedValue(*target);
+                            if (heard < 0.0f) { continue; }
                             overshoot = juce::jmax(overshoot,
                                                    juce::jmax(-raw, raw - 1.0f));
+                            foldError = juce::jmax(foldError, std::abs(heard - reflect(raw)));
                         }
+                        worstFoldError = juce::jmax(worstFoldError, foldError);
 
                         ++combinations;
                         if (overshoot > worstOvershoot)
@@ -1539,7 +1562,7 @@ void testWavetable()
                                           + " / amount " + fmt(amount, 2);
                         }
 
-                        if (overshoot > 0.002f)
+                        if (foldError > 1.0e-4f)
                         {
                             clampedAway.addIfNotAlreadyThere(
                                 juce::String(destination.label) + " "
@@ -1550,12 +1573,17 @@ void testWavetable()
             }
         }
 
-        check("Modulation_NoWaveformIsEverClampedAtTheRange", clampedAway.isEmpty(),
+        check("Modulation_PastTheRangeFoldsBackInsteadOfClamping", clampedAway.isEmpty(),
               clampedAway.isEmpty()
                   ? juce::String(combinations)
-                        + " destination/waveform/base/amount combinations, worst overshoot past "
-                          "the range " + fmt(worstOvershoot, 6)
-                  : "driven past the range on: " + clampedAway.joinIntoString(", "));
+                        + " destination/waveform/base/amount combinations, heard value within "
+                        + fmt(worstFoldError, 6) + " of the reflected swing"
+                  : "not the reflected swing on: " + clampedAway.joinIntoString(", "));
+
+        // Proof the fold was actually exercised, not merely never reached.
+        check("Modulation_FullAmountDoesDrivePastTheRange", worstOvershoot > 0.2f,
+              "largest pre-fold excursion past an end " + fmt(worstOvershoot, 3)
+                  + " (" + worstDetail + ")");
 
         check("Modulation_CoveredEveryWaveformAndDestination", combinations >= 100,
               juce::String(combinations) + " combinations exercised across "
@@ -1584,6 +1612,7 @@ void testWavetable()
         midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
 
         auto low = 1.0f, high = 0.0f;
+        auto rawLow = 10.0f, rawHigh = -10.0f;
         for (int block = 0; block < 200; ++block)
         {
             buffer.clear();
@@ -1592,14 +1621,24 @@ void testWavetable()
             const auto value = processor.getModulatedNormalisedValue(*cutoff);
             low = juce::jmin(low, value);
             high = juce::jmax(high, value);
+            const auto raw = processor.getUnclampedModulatedNormalisedValue(*cutoff);
+            rawLow = juce::jmin(rawLow, raw);
+            rawHigh = juce::jmax(rawHigh, raw);
         }
 
         check("Modulation_ABipolarSourceStaysCentredOnTheBase",
-              std::abs((low + high) * 0.5f - 0.30f) < 0.02f,
-              "an LFO on a base of 0.30 swung " + fmt(low, 3) + ".." + fmt(high, 3)
-                  + ", centred on " + fmt((low + high) * 0.5f, 3));
+              std::abs((rawLow + rawHigh) * 0.5f - 0.30f) < 0.02f,
+              "an LFO on a base of 0.30 swung " + fmt(rawLow, 3) + ".." + fmt(rawHigh, 3)
+                  + " before the fold, centred on " + fmt((rawLow + rawHigh) * 0.5f, 3));
 
-        // The whole nearer side, so full amount arrives exactly at the end.
+        // THE regression. 100% is the whole range peak to peak, wherever the
+        // base sits - under the old nearer-side rule this base swung 0.60.
+        check("Modulation_FullAmountLfoSwingsTheWholeRange",
+              std::abs((rawHigh - rawLow) - 1.0f) < 0.05f,
+              "peak-to-peak " + fmt(rawHigh - rawLow, 3) + " of the range (heard "
+                  + fmt(low, 3) + ".." + fmt(high, 3) + ")");
+
+        // Folding passes through the end rather than stopping short of it.
         check("Modulation_FullAmountReachesTheEndOfTheRange",
               low < 0.02f,
               "the low end of the swing reached " + fmt(low, 4));
@@ -1614,7 +1653,8 @@ void testWavetable()
     // generalised off that one destination and off the sine.
     //
     // SQUARE is exempt and must be: it holds at its limit because that is the
-    // shape, not because anything clamped it.
+    // shape, not because anything clamped it. So are the ramps, which hold their
+    // end value once they arrive.
     {
         struct Destination { const char* parameterId; const char* label; };
         const Destination destinations[] = {
@@ -1633,6 +1673,8 @@ void testWavetable()
             for (int waveform = 0; waveform < px3::lfoWaveformChoices().size(); ++waveform)
             {
                 if (px3::lfoWaveformChoices()[waveform] == "SQUARE") { continue; }
+                // A ramp runs once and HOLDS its end value - that is the shape.
+                if (px3::isRampLfoWaveformIndex(waveform)) { continue; }
 
                 for (const auto base : { 0.15f, 0.50f, 0.85f })
                 {

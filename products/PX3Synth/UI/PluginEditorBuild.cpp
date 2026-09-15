@@ -183,10 +183,10 @@ void PX3SynthAudioProcessorEditor::buildParameterKnobs()
     configureKnob(knobBindings[6], "PARAM A", audioProcessor.getOscillatorMacroAParam(2));
     configureKnob(knobBindings[7], "PARAM B", audioProcessor.getOscillatorMacroBParam(2));
     configureKnob(knobBindings[8], "PARAM C", audioProcessor.getOscillatorMacroCParam(2));
-    configureKnob(knobBindings[9], "TUNE", audioProcessor.getOscillatorPitchParam(0));
-    configureKnob(knobBindings[10], "TUNE", audioProcessor.getOscillatorPitchParam(1));
-    configureKnob(knobBindings[11], "TUNE", audioProcessor.getOscillatorPitchParam(2));
-    configureKnob(knobBindings[12], "TUNE", audioProcessor.getSubOscPitchParam());
+    configureKnob(knobBindings[9], "FINE TUNE", audioProcessor.getOscillatorPitchParam(0));
+    configureKnob(knobBindings[10], "FINE TUNE", audioProcessor.getOscillatorPitchParam(1));
+    configureKnob(knobBindings[11], "FINE TUNE", audioProcessor.getOscillatorPitchParam(2));
+    configureKnob(knobBindings[12], "FINE TUNE", audioProcessor.getSubOscPitchParam());
     configureKnob(knobBindings[13], "CUTOFF", audioProcessor.getFilterCutoffParam(0));
     configureKnob(knobBindings[14], "RESONANCE", audioProcessor.getFilterResonanceParam(0));
     configureKnob(knobBindings[15], "CUTOFF", audioProcessor.getFilterCutoffParam(1));
@@ -886,6 +886,8 @@ void PX3SynthAudioProcessorEditor::buildPanels()
                                           std::array<juce::AudioParameterFloat*, kFilterInstanceCount> { { &audioProcessor.getFilterCombDecayParam(0), &audioProcessor.getFilterCombDecayParam(1) } },
                                           std::array<juce::AudioParameterFloat*, kFilterInstanceCount> { { &audioProcessor.getFilterCombDampingParam(0), &audioProcessor.getFilterCombDampingParam(1) } },
                                           kGroupAccents[1]);
+    fltPanel->attachRouting(audioProcessor.getFilterRoutingParam(),
+                            audioProcessor.getFilterParallelBalanceParam());
     fxPanel = std::make_unique<FxPanel>(robBypassButton,
                                         vibeAmountKnob,
                                         vibeAmountLabel,

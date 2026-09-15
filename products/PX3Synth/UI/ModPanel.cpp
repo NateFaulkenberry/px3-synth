@@ -37,6 +37,9 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
                                                   lfoWaveformBox,
                                                   lfoWaveformLabel,
                                                   lfoAccent);
+    lfoComponent->attachRampAndKeySync(processor.getLfoRampTimeParam(0),
+                                       processor.getLfoKeySyncParam(0),
+                                       lfoKnobLookAndFeel);
 
     // LFO 1's rate label is left exactly as configureKnob set it. This used to
     // blank the text to match the other LFO cards, which had no rate label at
@@ -185,6 +188,9 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
                                                       bundle.waveformLabel,
                                                       lfoHeaderAccent,
                                                       "mod.lfo" + juce::String(lfoIndex + 1));
+    bundle.component->attachRampAndKeySync(processor.getLfoRampTimeParam(lfoIndex),
+                                           processor.getLfoKeySyncParam(lfoIndex),
+                                           lfoKnobLookAndFeel);
 }
 
 void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)

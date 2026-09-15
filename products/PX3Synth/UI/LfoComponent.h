@@ -4,6 +4,7 @@
 
 #include "Card.h"
 #include "CardInner.h"
+#include "ToggleChipButton.h"
 
 #include <memory>
 
@@ -36,6 +37,14 @@ public:
     void refreshFromParameters(bool enabled, float rateHz, float amount, int waveformIndex);
     void advanceAnimation(float deltaPhase);
 
+    // RAMP TIME and KEY SYNC. Unlike the controls above these are owned here, so
+    // all three LFO cards gain them from one place. RAMP TIME takes the RATE
+    // knob's position while a ramp is selected - a ramp has a duration, not a
+    // rate, and showing both would leave one of them dead.
+    void attachRampAndKeySync(juce::RangedAudioParameter& rampTimeParameter,
+                              juce::RangedAudioParameter& keySyncParameter,
+                              juce::LookAndFeel* knobLookAndFeel);
+
     void resized() override;
     void mouseUp(const juce::MouseEvent& event) override;
     void mouseMove(const juce::MouseEvent& event) override;
@@ -43,6 +52,8 @@ public:
 
 private:
     static float waveformSample(float phaseNorm, int waveformIndex);
+    static float rampPreviewSample(float t, int waveformIndex);
+    static juce::String formatRampSeconds(double seconds);
 
     struct WaveformComboLookAndFeel final : public juce::LookAndFeel_V4
     {
@@ -73,6 +84,17 @@ private:
     juce::Colour baseRateValueTextColour;
     juce::Colour baseAmountValueTextColour;
     juce::String configPrefix;
+
+    juce::Slider rampTimeKnob;
+    px3::ui::ToggleChipButton keySyncButton;
+    // Empty, but visible: the layout only reserves a caption's height for a
+    // caption that is showing, and the chip has to sit level with the dropdowns.
+    juce::Label keySyncCaptionSpacer;
+    std::unique_ptr<juce::SliderParameterAttachment> rampTimeAttachment;
+    std::unique_ptr<juce::ButtonParameterAttachment> keySyncAttachment;
+    juce::String rateCaptionText;
+    bool rampControlsAttached { false };
+    bool laidOutForRamp { false };
     px3::ui::CardHost card;
     px3::ui::CardInner inner;
 };

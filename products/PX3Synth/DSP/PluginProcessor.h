@@ -159,6 +159,7 @@ public:
     juce::AudioParameterFloat& getOscillatorCoarseParam(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorFineParam(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorPitchParam(int oscIndex) const;
+    juce::AudioParameterFloat& getOscillatorPitchModParam(int oscIndex) const;
     juce::AudioParameterChoice& getOscillatorModeParam(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorMacroAParam(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorMacroBParam(int oscIndex) const;
@@ -359,10 +360,13 @@ public:
     juce::AudioParameterFloat& getOscillatorHarmonicParam(int oscIndex, int harmonicIndex) const;
     juce::AudioParameterBool& getSubOscEnabledParam() const;
     juce::AudioParameterFloat& getSubOscPitchParam() const;
+    juce::AudioParameterFloat& getSubOscPitchModParam() const;
     juce::AudioParameterChoice& getSubOscOctaveParam() const;
     juce::AudioParameterChoice& getSubOscWaveformParam() const;
     juce::AudioParameterBool& getFilterEnabledParam(int filterIndex) const;
     juce::AudioParameterFloat& getFilterCutoffParam(int filterIndex) const;
+    juce::AudioParameterChoice& getFilterRoutingParam() const;
+    juce::AudioParameterFloat& getFilterParallelBalanceParam() const;
     juce::AudioParameterFloat& getFilterResonanceParam(int filterIndex) const;
     juce::AudioParameterChoice& getFilterTypeParam(int filterIndex) const;
 
@@ -608,6 +612,8 @@ public:
     juce::AudioParameterFloat& getLfoAmountParam(int lfoIndex) const;
     juce::AudioParameterChoice& getLfoWaveformParam() const;
     juce::AudioParameterChoice& getLfoWaveformParam(int lfoIndex) const;
+    juce::AudioParameterFloat& getLfoRampTimeParam(int lfoIndex) const;
+    juce::AudioParameterBool& getLfoKeySyncParam(int lfoIndex) const;
     juce::AudioParameterFloat& getEnvelopeAmountParam() const;
     juce::AudioParameterFloat& getEnvelopeAmountParam(int envIndex) const;
     const juce::StringArray& getLfoAssignmentDisplayNames() const;
@@ -780,6 +786,8 @@ private:
 
     LfoSettings currentLfoSettings() const;
     LfoSettings currentLfoSettings(int lfoIndex) const;
+    bool currentFilterRoutingIsParallel() const;
+    float currentFilterParallelBalance() const;
     VibeSettings currentVibeSettings() const;
     DelaySettings currentDelaySettings() const;
     ReverbSettings currentReverbSettings() const;
@@ -826,6 +834,7 @@ private:
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscCoarseParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscFineParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscPitchParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscPitchModParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterChoice*, kOscillatorSourceCount> oscModeParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscMacroAParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscMacroBParams { { nullptr, nullptr, nullptr } };
@@ -842,10 +851,13 @@ private:
     std::array<std::array<juce::AudioParameterFloat*, 8>, kOscillatorSourceCount> oscHarmonicParams { { { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } }, { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } }, { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } } } };
     juce::AudioParameterBool* subOscEnabledParam { nullptr };
     juce::AudioParameterFloat* subOscPitchParam { nullptr };
+    juce::AudioParameterFloat* subOscPitchModParam { nullptr };
     juce::AudioParameterChoice* subOscOctaveParam { nullptr };
     juce::AudioParameterChoice* subOscWaveformParam { nullptr };
     std::array<juce::AudioParameterBool*, kFilterInstanceCount> filterEnabledParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCutoffParams { { nullptr, nullptr } };
+    juce::AudioParameterChoice* filterRoutingParam { nullptr };
+    juce::AudioParameterFloat* filterParallelBalanceParam { nullptr };
     std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterResonanceParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCombTuneParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCombDecayParams { { nullptr, nullptr } };
@@ -1008,6 +1020,8 @@ private:
     std::array<juce::AudioParameterFloat*, kLfoSourceCount> lfoFrequencyParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kLfoSourceCount> lfoAmountParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterChoice*, kLfoSourceCount> lfoWaveformParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kLfoSourceCount> lfoRampTimeParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterBool*, kLfoSourceCount> lfoKeySyncParams { { nullptr, nullptr, nullptr } };
     juce::AudioParameterBool* lfoEnabledParam { nullptr };
     juce::AudioParameterFloat* lfoFrequencyParam { nullptr };
     juce::AudioParameterFloat* lfoAmountParam { nullptr };
@@ -1267,6 +1281,10 @@ private:
 
     float vibratoPhaseRadians { 0.0f };
     std::array<LfoGenerator, kLfoSourceCount> lfoGenerators;
+    // Set while this block's MIDI is read and consumed when the LFOs advance a
+    // moment later in the same block. Audio thread only, so plain bools.
+    bool lfoNoteOnThisBlock { false };
+    bool lfoFirstNoteAfterSilenceThisBlock { false };
     std::array<std::atomic<float>, kLfoSourceCount> lfoPhaseForDebug { { 0.0f, 0.0f, 0.0f } };
     std::array<std::atomic<float>, kLfoSourceCount> lfoCurrentValues { { 0.0f, 0.0f, 0.0f } };
     std::array<std::atomic<float>, kEnvelopeSourceCount> modulationEnvelopeValues { { 0.0f, 0.0f, 0.0f } };

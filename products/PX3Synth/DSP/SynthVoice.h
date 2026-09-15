@@ -80,6 +80,9 @@ public:
                                 const std::array<bool, 3>& enabled);
     float getModEnvelopeValue(int envIndex) const;
     void setFilterSettings(const std::array<FilterSettings, kFilterInstanceCount>& settings);
+    // SERIES runs filter 1 into filter 2; PARALLEL feeds both the same input
+    // and crossfades their outputs by balance (0 = filter 1, 1 = filter 2).
+    void setFilterRouting(bool parallel, float balance);
     void setSubtractiveSettings(const SubtractiveSettings& settings);
     void setSubOscillatorSettings(const SubOscSettings& settings);
     void setOscillatorLayerSettings(const std::array<OscillatorLayerSettings, kOscillatorSourceCount>& settings);
@@ -133,6 +136,17 @@ private:
     // every block so render code can run branch-light in the inner loop.
     EnvelopeSettings envelopeSettings;
     std::array<FilterSettings, kFilterInstanceCount> filterSettings;
+
+    // The routing is BLENDED rather than switched, per sample. Moving filter 2's
+    // input from filter 1's output to the dry source in one step is a
+    // discontinuity in its state; ramping it is not. At a blend of exactly
+    // zero the maths reduces to the old serial chain bit for bit.
+    static constexpr double kFilterRoutingSmoothingSeconds = 0.015;
+    float filterParallelTarget { 0.0f };
+    float filterParallelCurrent { 0.0f };
+    float filterBalanceTarget { 0.5f };
+    float filterBalanceCurrent { 0.5f };
+    float filterRoutingCoeff { 1.0f };
     SubtractiveSettings subtractiveSettings;
     SubOscSettings subOscillatorSettings;
     std::array<OscillatorLayerSettings, kOscillatorSourceCount> oscillatorLayerSettings;

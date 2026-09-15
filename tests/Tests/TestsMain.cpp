@@ -2622,6 +2622,7 @@ int main(int argc, char* argv[])
     if (wants("ampenv")) testAmpEnvelope();
     if (wants("modenv")) testModEnvelopes();
     if (wants("lfo")) testLfo();
+    if (wants("modupgrade")) testModulationUpgrade();
     if (wants("vibe")) testVibe();
     if (wants("reverb")) testReverb();
     if (wants("comb")) testComb();

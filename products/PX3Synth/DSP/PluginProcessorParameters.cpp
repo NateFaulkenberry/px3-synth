@@ -12,6 +12,29 @@ using namespace px3::processor_internal;
 //==============================================================================
 // Parameter Access And Routing
 //==============================================================================
+namespace
+{
+// Reflects a value back into 0..1 instead of clamping it: past 1 it walks back
+// down, below 0 it walks back up, as many times as it has to. A clamped
+// modulation sits flat at the end of the range for as long as it is past it,
+// which turns a sine into a square with rounded shoulders; a folded one keeps
+// moving.
+float foldIntoUnitRange(float value)
+{
+    if (! std::isfinite(value))
+    {
+        return 0.0f;
+    }
+
+    auto wrapped = std::fmod(value, 2.0f);
+    if (wrapped < 0.0f)
+    {
+        wrapped += 2.0f;
+    }
+    return wrapped <= 1.0f ? wrapped : 2.0f - wrapped;
+}
+} // namespace
+
 float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudioParameter* parameter,
                                                                float baseNormalized,
                                                                float* outBaseNormalized,
@@ -59,48 +82,33 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
         const auto samePointer = (target.parameter == parameter);
         if (sameId || samePointer)
         {
-            // The room the base actually has, in the direction this source can
-            // travel. Scaling by it means full amount arrives exactly at the end
-            // of the range and turns around there, instead of driving past it
-            // and being clamped flat - which turns a sine into a square with
-            // rounded shoulders and holds every other shape at its limit.
+            // HOW FAR each kind of source may swing.
             //
-            // The two source kinds need different room. An LFO is bipolar and
-            // swings both ways, so it gets the NEARER side and stays centred on
-            // the base. An envelope only ever travels one way, decided by the
-            // sign of its amount, so it gets the whole of that side and can
-            // still reach the end of the range from anywhere.
-            // Scale the swing to the room the base value actually leaves,
-            // rather than letting the sum run past the range and be clamped.
+            // A BIPOLAR source - every LFO shape - swings half the range each way
+            // at full amount, so 100% spans the whole range peak to peak, and
+            // folds back at the ends rather than being clamped. It used to be
+            // limited to the headroom on the NEARER side, which kept it centred
+            // but left almost nothing whenever the base sat near an end: filter
+            // cutoff defaults to 12 kHz, which is 0.867 normalised, so a 100% LFO
+            // could move it by 0.13 - under an octave, and all of it above where
+            // a low-pass does anything audible.
             //
-            // Clamping is not wrong in itself, but it turns a sine into a
-            // square with rounded shoulders and holds every other shape at its
-            // limit: at base 0.5 and full amount the value spent 65.6% of every
-            // cycle pinned at an end, measured, in stalls of 661 ms. Scaling
-            // arrives at the boundary exactly and turns around there.
-            //
-            // The two source kinds need different room. An LFO is bipolar, so
-            // it needs the SAME headroom on both sides to stay centred on the
-            // base - the nearer side is what it gets. An envelope is unipolar
-            // and only ever travels one way, so it gets that whole side.
-            //
-            // This applies to every destination. It began scoped to the
-            // wavetable scan, where a clamped LFO is most visible because the
-            // stack stops moving, but the same flattening was happening on
-            // cutoff, pitch and the rest where it was only audible.
-            const auto headroom = bipolar
-                                    ? juce::jmin(base, 1.0f - base)
-                                    : (amount >= 0.0f ? 1.0f - base : base);
+            // A UNIPOLAR source - envelopes and macros - keeps the whole side its
+            // amount points at. That already reaches the end of the range from any
+            // base, so it was never subject to the problem above.
+            const auto swing = bipolar
+                                 ? 0.5f
+                                 : (amount >= 0.0f ? 1.0f - base : base);
 
-            totalDelta += target.normalizedDepth * headroom * (signal * amount);
+            totalDelta += target.normalizedDepth * swing * (signal * amount);
         }
     };
 
     for (int i = 0; i < kLfoSourceCount; ++i)
     {
         const auto index = static_cast<std::size_t>(i);
-        // Every LFO shape is bipolar - sine, triangle, saw and square all run
-        // -1..+1 - so they all centre on the base.
+        // Every LFO shape is bipolar - the four cyclic shapes and both ramps all
+        // run -1..+1 - so they all swing under the same rule.
         accumulateSourceDelta(lfoAssignmentAtomic(i),
                               lfoCurrentValues[index].load(std::memory_order_relaxed),
                               getLfoAmountParam(i).get(),
@@ -161,7 +169,9 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
     {
         *outUnclampedNormalized = base + totalDelta;
     }
-    effective = clamp01(base + totalDelta);
+    // Folded, not clamped. The pre-fold value is what outUnclampedNormalized
+    // reports, so a test can still see how far past the range the sum went.
+    effective = foldIntoUnitRange(base + totalDelta);
 
     if (outBaseNormalized != nullptr)
     {
@@ -766,6 +776,24 @@ juce::AudioParameterChoice& PX3SynthAudioProcessor::getLfoWaveformParam(int lfoI
     const auto idx = juce::jlimit(0, kLfoSourceCount - 1, lfoIndex);
     return *lfoWaveformParams[static_cast<std::size_t>(idx)];
 }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getLfoRampTimeParam(int lfoIndex) const
+{
+    const auto idx = juce::jlimit(0, kLfoSourceCount - 1, lfoIndex);
+    return *lfoRampTimeParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterBool& PX3SynthAudioProcessor::getLfoKeySyncParam(int lfoIndex) const
+{
+    const auto idx = juce::jlimit(0, kLfoSourceCount - 1, lfoIndex);
+    return *lfoKeySyncParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorPitchModParam(int oscIndex) const
+{
+    const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
+    return *oscPitchModParams[static_cast<std::size_t>(idx)];
+}
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSubOscPitchModParam() const { return *subOscPitchModParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getFilterRoutingParam() const { return *filterRoutingParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterParallelBalanceParam() const { return *filterParallelBalanceParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getEnvelopeAmountParam() const { return getEnvelopeAmountParam(0); }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getEnvelopeAmountParam(int envIndex) const
 {
@@ -1145,6 +1173,7 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
                          || id.equalsIgnoreCase("lfoAmount")
                          || id.equalsIgnoreCase("lfoEnabled")
                              || id.equalsIgnoreCase("lfoWaveform")
+                             || id.equalsIgnoreCase("lfoRampTime")
                              || id.containsIgnoreCase("lfo2")
                              || id.containsIgnoreCase("lfo3")
                              || id.equalsIgnoreCase("envAmount")

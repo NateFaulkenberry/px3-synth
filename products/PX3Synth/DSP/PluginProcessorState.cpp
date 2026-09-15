@@ -336,6 +336,61 @@ juce::ValueTree PX3SynthAudioProcessor::createPresetStateTree() const
     return state;
 }
 
+namespace
+{
+// Parameters are stored NORMALISED, so a change to a parameter's range changes
+// what every value saved under the old range means. Two did in state version 12:
+//
+//   envelope times   0..3 / 0..4 / 0..5 s (skew 0.45)  ->  0..40 s
+//   LFO waveform     4 choices                         ->  6 choices
+//
+// Left alone, a saved 1.1 s release would reload as roughly 6.8 s, and a saved
+// SQUARE would reload as RAMP DOWN. Each old value is decoded under the range it
+// was written with and re-encoded under the parameter's current one, so the
+// SECONDS and the SHAPE survive rather than the number.
+//
+// The ranges here are the ones every state before 12 used.
+float migrateStoredNormalisedValue(juce::RangedAudioParameter& parameter, float stored, int stateVersion)
+{
+    if (stateVersion >= 12)
+    {
+        return stored;
+    }
+
+    const auto id = parameter.getParameterID();
+    const auto isEnvelope = id.startsWith("amp") || (id.startsWith("env") && ! id.endsWith("Amount"));
+
+    auto oldMaxSeconds = 0.0f;
+    if (isEnvelope && id.endsWith("Attack"))  { oldMaxSeconds = 3.0f; }
+    if (isEnvelope && id.endsWith("Decay"))   { oldMaxSeconds = 4.0f; }
+    if (isEnvelope && id.endsWith("Release")) { oldMaxSeconds = 5.0f; }
+
+    if (oldMaxSeconds > 0.0f)
+    {
+        const juce::NormalisableRange<float> oldRange(0.0f, oldMaxSeconds, 0.001f, 0.45f);
+        const auto seconds = oldRange.convertFrom0to1(juce::jlimit(0.0f, 1.0f, stored));
+        return parameter.convertTo0to1(seconds);
+    }
+
+    if (id == "lfoWaveform" || id == "lfo2Waveform" || id == "lfo3Waveform")
+    {
+        const auto oldIndex = juce::roundToInt(juce::jlimit(0.0f, 1.0f, stored) * 3.0f);
+        return parameter.convertTo0to1(static_cast<float>(oldIndex));
+    }
+
+    return stored;
+}
+
+// Parameters that did not exist before state version 12. A state written before
+// then was made without them, so it means their DEFAULT - not whatever this
+// instance happens to be set to when the state is loaded into it.
+bool isIntroducedInStateVersion12(const juce::String& id)
+{
+    return id.endsWith("RampTime") || id.endsWith("KeySync") || id.endsWith("PitchMod")
+        || id == "filterRouting" || id == "filterParallelBalance";
+}
+} // namespace
+
 bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& state,
                                                      juce::String* error,
                                                      bool restoreUiSessionState)
@@ -348,6 +403,8 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         }
         return false;
     }
+
+    const auto storedStateVersion = static_cast<int>(state.getProperty(kStateVersionId, 0));
 
     // Restore all known parameter base values first. These are host-automatable
     // and remain the source of truth for both UI and DSP readers.
@@ -373,7 +430,12 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                     continue;
                 }
 
-                ranged->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, value));
+                const auto migrated = migrateStoredNormalisedValue(*ranged, value, storedStateVersion);
+                ranged->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, migrated));
+            }
+            else if (storedStateVersion < 12 && isIntroducedInStateVersion12(paramID))
+            {
+                ranged->setValueNotifyingHost(ranged->getDefaultValue());
             }
         }
     }

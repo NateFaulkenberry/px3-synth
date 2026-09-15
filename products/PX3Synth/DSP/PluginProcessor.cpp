@@ -91,8 +91,22 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                                                             0.0f);
         oscPitchParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(
             juce::ParameterID(idPrefix + "Pitch", 1),
-            labelPrefix + "Pitch",
+            // Named FINE TUNE, which is what +-0.24 st is. The ID keeps saying
+            // Pitch because sessions and automation are keyed on it.
+            labelPrefix + "Fine Tune",
             juce::NormalisableRange<float>(-0.24f, 0.24f, 0.01f),
+            0.0f,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
+            {
+                return juce::String(value >= 0.0f ? "+" : "") + juce::String(value, 2) + " st";
+            }));
+        // The pitch DESTINATION. Continuous, so an LFO on it is vibrato rather
+        // than the staircase COARSE would give, and wide enough that 100% is a
+        // two-octave swing. Zero leaves the oscillator exactly where it was.
+        oscPitchModParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(
+            juce::ParameterID(idPrefix + "PitchMod", 1),
+            labelPrefix + "Pitch Mod",
+            juce::NormalisableRange<float>(-24.0f, 24.0f, 0.01f),
             0.0f,
             juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
             {
@@ -159,8 +173,17 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     subOscEnabledParam = new juce::AudioParameterBool("subOscEnabled", "Sub Osc Enabled", false);
     subOscPitchParam = new juce::AudioParameterFloat(
         juce::ParameterID("subOscPitch", 1),
-        "Sub Osc Pitch",
+        "Sub Osc Fine Tune",
         juce::NormalisableRange<float>(-0.24f, 0.24f, 0.01f),
+        0.0f,
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
+        {
+            return juce::String(value >= 0.0f ? "+" : "") + juce::String(value, 2) + " st";
+        }));
+    subOscPitchModParam = new juce::AudioParameterFloat(
+        juce::ParameterID("subOscPitchMod", 1),
+        "Sub Osc Pitch Mod",
+        juce::NormalisableRange<float>(-24.0f, 24.0f, 0.01f),
         0.0f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
         {
@@ -247,10 +270,33 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             labelPrefix + "Comb Invert",
             false);
     }
+    // SERIES is what the two filters always were, so it is the default and
+    // what a state saved before the control existed loads as.
+    filterRoutingParam = new juce::AudioParameterChoice(juce::ParameterID("filterRouting", 1),
+                                                        "Filter Routing",
+                                                        juce::StringArray { "SERIES", "PARALLEL" },
+                                                        0);
+    // 0 is filter 1 alone, 1 is filter 2 alone. Only heard in PARALLEL.
+    filterParallelBalanceParam = new juce::AudioParameterFloat(juce::ParameterID("filterParallelBalance", 1),
+                                                               "Filter Parallel Balance",
+                                                               juce::NormalisableRange<float>(0.0f, 1.0f),
+                                                               0.5f);
+
+    // ---- envelope times -------------------------------------------------------
+    // 0 to 40 s, skewed so the middle of the knob is about 1 s, a quarter of the
+    // way is 25 ms and three quarters is about 8.6 s. The fast end keeps the
+    // resolution percussive attacks need; the top reaches evolving pads.
+    //
+    // Widening the range changed what a stored normalised value means, which
+    // is why state version 12 migrates older envelope times on load.
+    const juce::NormalisableRange<float> envelopeTimeRange(0.0f, 40.0f, 0.001f, 0.188f);
+
     attackParam = new juce::AudioParameterFloat("ampAttack",
                                                  "Amp Attack",
-                                                 juce::NormalisableRange<float>(0.0f, 3.0f, 0.001f, 0.45f),
-                                                 0.005f);
+                                                 envelopeTimeRange,
+                                                 // Fast enough to stay percussive,
+                                                 // slow enough not to click.
+                                                 0.015f);
     // Zero by default, so an envelope that has never been touched has exactly
     // the shape it had before the stage existed.
     // From ZERO, not from 5 ms. A decay handle dragged onto the attack is a
@@ -259,16 +305,18 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     // showing. Same for attack and release below.
     decayParam = new juce::AudioParameterFloat("ampDecay",
                                                 "Amp Decay",
-                                                juce::NormalisableRange<float>(0.0f, 4.0f, 0.001f, 0.45f),
-                                                0.050f);
+                                                envelopeTimeRange,
+                                                0.300f);
     sustainParam = new juce::AudioParameterFloat("ampSustain",
                                                   "Amp Sustain",
                                                   juce::NormalisableRange<float>(0.0f, 1.0f),
                                                   0.8f);
     releaseParam = new juce::AudioParameterFloat("ampRelease",
                                                   "Amp Release",
-                                                  juce::NormalisableRange<float>(0.0f, 5.0f, 0.001f, 0.45f),
-                                                  0.100f);
+                                                  envelopeTimeRange,
+                                                  // Long enough that a released note
+                                                  // tails off rather than stops.
+                                                  0.500f);
     ampEnvEnabledParam = new juce::AudioParameterBool("ampEnvEnabled", "Amp Enabled", true);
 
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
@@ -280,13 +328,14 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         attackParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
             idPrefix + "Attack",
             labelPrefix + "Attack",
-            juce::NormalisableRange<float>(0.0f, 3.0f, 0.001f, 0.45f),
-            0.020f);
+            envelopeTimeRange,
+            // Slower than the amp's: a modulation envelope is usually a sweep.
+            0.250f);
         decayParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
             idPrefix + "Decay",
             labelPrefix + "Decay",
-            juce::NormalisableRange<float>(0.0f, 4.0f, 0.001f, 0.45f),
-            0.120f);
+            envelopeTimeRange,
+            0.600f);
         sustainParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
             idPrefix + "Sustain",
             labelPrefix + "Sustain",
@@ -295,8 +344,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         releaseParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterFloat(
             idPrefix + "Release",
             labelPrefix + "Release",
-            juce::NormalisableRange<float>(0.0f, 5.0f, 0.001f, 0.45f),
-            0.220f);
+            envelopeTimeRange,
+            1.000f);
         envelopeEnabledParams[static_cast<std::size_t>(envIndex)] = new juce::AudioParameterBool(
             idPrefix + "Enabled",
             labelPrefix + "Enabled",
@@ -610,7 +659,16 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             labelPrefix + "Waveform",
             px3::lfoWaveformChoices(),
             0);
-
+        // Only RAMP UP and RAMP DOWN read it. Skewed so noon is about 4 s.
+        lfoRampTimeParams[static_cast<std::size_t>(lfoIndex)] = new juce::AudioParameterFloat(
+            juce::ParameterID(idPrefix + "RampTime", 1),
+            labelPrefix + "Ramp Time",
+            juce::NormalisableRange<float>(px3::lfoMinRampSeconds, px3::lfoMaxRampSeconds, 0.001f, 0.25f),
+            4.0f);
+        lfoKeySyncParams[static_cast<std::size_t>(lfoIndex)] = new juce::AudioParameterBool(
+            juce::ParameterID(idPrefix + "KeySync", 1),
+            labelPrefix + "Key Sync",
+            false);
     }
 
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
@@ -836,6 +894,22 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(envelopeAmountParams[static_cast<std::size_t>(envIndex)]);
     }
 
+    // Added in 0.7.5, at the END of the list. Some hosts address parameters by
+    // index, so inserting these beside their relatives would move every
+    // parameter after them and break existing automation.
+    for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
+    {
+        addParameter(lfoRampTimeParams[static_cast<std::size_t>(lfoIndex)]);
+        addParameter(lfoKeySyncParams[static_cast<std::size_t>(lfoIndex)]);
+    }
+    for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
+    {
+        addParameter(oscPitchModParams[static_cast<std::size_t>(oscIndex)]);
+    }
+    addParameter(subOscPitchModParam);
+    addParameter(filterRoutingParam);
+    addParameter(filterParallelBalanceParam);
+
     buildLfoAssignableTargets();
 
     const auto initialAmpEnvelope = currentAmpEnvelopeSettings();
@@ -847,6 +921,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         initialModEnvelopeEnabled[static_cast<std::size_t>(envIndex)] = getEnvelopeEnabledParam(envIndex).get();
     }
     const auto initialFilter = currentFilterSettings();
+    const auto initialFilterParallel = currentFilterRoutingIsParallel();
+    const auto initialFilterBalance = currentFilterParallelBalance();
     const auto initialSubtractive = currentSubtractiveSettings();
     const auto initialSubOsc = currentSubOscillatorSettings();
     const auto initialOscillatorLayers = currentOscillatorLayerSettings();
@@ -859,6 +935,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         synthVoice->setAmpEnvelopeEnabled(ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true);
         synthVoice->setModEnvelopeSettings(initialModEnvelopeSettings, initialModEnvelopeEnabled);
         synthVoice->setFilterSettings(initialFilter);
+        synthVoice->setFilterRouting(initialFilterParallel, initialFilterBalance);
         synthVoice->setSubtractiveSettings(initialSubtractive);
         synthVoice->setSubOscillatorSettings(initialSubOsc);
         synthVoice->setOscillatorLayerSettings(initialOscillatorLayers);
@@ -1250,6 +1327,8 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
         modEnvelopeEnabled[static_cast<std::size_t>(envIndex)] = getEnvelopeEnabledParam(envIndex).get();
     }
     const auto filter = currentFilterSettings();
+    const auto filterParallel = currentFilterRoutingIsParallel();
+    const auto filterBalance = currentFilterParallelBalance();
     const auto subtractive = currentSubtractiveSettings();
     const auto subOsc = currentSubOscillatorSettings();
     const auto oscillatorLayers = currentOscillatorLayerSettings();
@@ -1281,6 +1360,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
                 voice->setModEnvelopeShapes(shapedMod);
             }
             voice->setFilterSettings(filter);
+            voice->setFilterRouting(filterParallel, filterBalance);
             voice->setSubtractiveSettings(subtractive);
             voice->setSubOscillatorSettings(subOsc);
             voice->setOscillatorLayerSettings(oscillatorLayers);
@@ -1324,11 +1404,35 @@ void PX3SynthAudioProcessor::advanceLfosForBlock(int numSamples)
 {
     for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
     {
+        // Restarts land at the start of the block the note arrived in - within
+        // one block of the note, the same resolution the LFOs are read at.
+        //
+        //   KEY SYNC on    every new note restarts the LFO, cyclic or ramp. The
+        //                  LFOs are global, so this is a GLOBAL retrigger: the
+        //                  newest note restarts it for every sounding voice.
+        //   KEY SYNC off   a cyclic shape runs freely, as it always has. A ramp
+        //                  restarts on the first note after every key has been
+        //                  released, so a legato phrase rides one ramp.
+        if (lfoNoteOnThisBlock)
+        {
+            const auto idx = static_cast<std::size_t>(lfoIndex);
+            const auto keySync = lfoKeySyncParams[idx]->get();
+            const auto isRamp = px3::isRampLfoWaveformIndex(lfoWaveformParams[idx]->getIndex());
+
+            if (keySync || (isRamp && lfoFirstNoteAfterSilenceThisBlock))
+            {
+                lfoGenerators[idx].retrigger();
+            }
+        }
+
         // The RETURN is not what this is for. Advancing the generator and
         // publishing lfoCurrentValues is, and that is what the modulation
         // accumulator reads a moment later.
         currentLfoSignalForBlock(lfoIndex, numSamples);
     }
+
+    lfoNoteOnThisBlock = false;
+    lfoFirstNoteAfterSilenceThisBlock = false;
 }
 
 float PX3SynthAudioProcessor::currentLfoSignalForBlock(int numSamples)
@@ -1621,6 +1725,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         modEnvelopeEnabled[static_cast<std::size_t>(envIndex)] = getEnvelopeEnabledParam(envIndex).get();
     }
     const auto filter = currentFilterSettings();
+    const auto filterParallel = currentFilterRoutingIsParallel();
+    const auto filterBalance = currentFilterParallelBalance();
     const auto subtractive = currentSubtractiveSettings();
     const auto subOsc = currentSubOscillatorSettings();
     const auto oscillatorLayers = currentOscillatorLayerSettings();
@@ -1662,6 +1768,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                 voice->setModEnvelopeShapes(shapedMod);
             }
             voice->setFilterSettings(filter);
+            voice->setFilterRouting(filterParallel, filterBalance);
             voice->setSubtractiveSettings(subtractive);
             voice->setSubOscillatorSettings(subOsc);
             voice->setOscillatorLayerSettings(oscillatorLayers);

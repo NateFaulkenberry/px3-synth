@@ -37,5 +37,8 @@ struct OscillatorLayerSettings
     float pitchSemitones { 0.0f };
     float coarseSemitones { 0.0f };
     float fineCents { 0.0f };
+    // A continuous pitch offset that exists to be MODULATED: the fine tune
+    // above spans only +-0.24 st, which is inaudible as a pitch modulation.
+    float pitchModSemitones { 0.0f };
     OscillatorSettings oscillator;
 };

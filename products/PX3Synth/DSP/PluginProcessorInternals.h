@@ -30,7 +30,10 @@ inline float channelFaderMaxGain()
     return juce::Decibels::decibelsToGain(-kSourceHeadroomDb);
 }
 
-inline constexpr int kCurrentStateVersion = 11;
+// 12: envelope times widened to 40 s and LFO waveforms gained two ramps.
+// Both change what a stored NORMALISED value means, so anything older is
+// migrated on load - see migrateStoredNormalisedValue.
+inline constexpr int kCurrentStateVersion = 12;
 
 inline const juce::Identifier kStateTypeId("PX3_STATE");
 inline const juce::Identifier kStateVersionId("stateVersion");

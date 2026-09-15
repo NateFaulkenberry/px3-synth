@@ -41,7 +41,8 @@ design walkthroughs, troubleshooting and a glossary.
 - Three per-oscillator macro knobs whose meaning changes by oscillator mode, and
   five global Macros that reach any parameter in the synth.
 - Dedicated SUB + OSC1/OSC2/OSC3 source channels.
-- Filter, amp envelope, and master gain section.
+- Two filters per voice, in SERIES or in PARALLEL with a level-matched BALANCE;
+  amp envelope and master gain section. Envelope times run to 40 seconds.
 - Two envelope types on ENV 1-3, chosen from a TYPE menu: a four-stage ADSR, or
   a graphical breakpoint envelope of up to 16 points with a curve on every
   segment. AMP ENV is always an ADSR - a breakpoint envelope is a one-shot the
@@ -50,7 +51,10 @@ design walkthroughs, troubleshooting and a glossary.
   analog console's profile.
 - Bus inserts on the dry and FX buses: a four-band EQ with a playable graph, and
   an 1176-style FET compressor with a physically derived VU meter.
-- Three LFO modulation sources with assignable destinations.
+- Three LFO modulation sources with assignable destinations: four cyclic
+  shapes plus one-shot RAMP UP / RAMP DOWN of up to 60 s, and KEY SYNC. At 100%
+  an LFO covers its destination's whole range. Continuous per-oscillator Pitch
+  Mod destinations (±24 st) for vibrato and pitch sweeps.
 - Eight FX blocks with bypass, and a signal-flow strip for setting the processing order.
 - DOOM: a two-channel ambient processor - an always-listening micro-looper and a
   set of spatial effects, tied together by one musical clock.

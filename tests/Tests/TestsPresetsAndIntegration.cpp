@@ -69,6 +69,15 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     setParam(processor, "mix.dry.solo", 1.0f);
     setParam(processor, "mix.dry.phase", 1.0f);
 
+    // 0.7.5's controls: ramp times, key sync, pitch mod and filter routing.
+    setParam(processor, "lfoRampTime", 17.3f);
+    setParam(processor, "lfo3RampTime", 52.0f);
+    setParam(processor, "lfo2KeySync", 1.0f);
+    setParam(processor, "osc2PitchMod", -7.5f);
+    setParam(processor, "subOscPitchMod", 3.25f);
+    setChoice(processor, "filterRouting", 1);
+    setParam(processor, "filterParallelBalance", 0.27f);
+
     setChoice(processor, "filter1Type", 4);
     // Comb, so the mode itself is part of what the round trip has to restore.
     setChoice(processor, "filter2Type", static_cast<int>(px3::FilterMode::comb));

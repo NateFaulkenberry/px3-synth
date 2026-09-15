@@ -496,6 +496,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     {
         const auto& layer = oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)];
         const auto semitoneOffset = static_cast<double>(layer.pitchSemitones)
+                                    + static_cast<double>(layer.pitchModSemitones)
                                     + static_cast<double>(layer.coarseSemitones)
                                     + static_cast<double>(layer.fineCents) * 0.01;
         sourcePitchRatios[static_cast<std::size_t>(oscIndex)] = std::pow(2.0, semitoneOffset / 12.0);
@@ -1022,19 +1023,40 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         float diagPostEnvStageSum = 0.0f;
 #endif
 
+        // One-pole, so the blend approaches its target without the corner a
+        // linear ramp lands with.
+        filterParallelCurrent += (filterParallelTarget - filterParallelCurrent) * filterRoutingCoeff;
+        filterBalanceCurrent += (filterBalanceTarget - filterBalanceCurrent) * filterRoutingCoeff;
+        const auto parallelMix = filterParallelCurrent;
+        const auto parallelBalance = filterBalanceCurrent;
+
         std::array<float, kVoiceMixerSourceCount> voicedSourceSamples { { 0.0f, 0.0f, 0.0f, 0.0f } };
         float summedSample = 0.0f;
         for (int sourceIndex = 0; sourceIndex < kVoiceMixerSourceCount; ++sourceIndex)
         {
-            auto filteredSample = sourceSamples[static_cast<std::size_t>(sourceIndex)];
-            for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
-            {
-                // Bypass is the filter's own business, so every sample goes
-                // through every instance and enabling/disabling crossfades
-                // instead of switching.
-                filteredSample = sourceFilters[static_cast<std::size_t>(sourceIndex)][static_cast<std::size_t>(filterIndex)].processSample(filteredSample);
-                filteredSample = sanitizeAudioSample(filteredSample);
-            }
+            // Bypass is each filter's own business, so every sample goes through
+            // both instances and enabling or disabling crossfades inside them.
+            //
+            // One expression covers both routings:
+            //   filter 2 hears   y1 + (x - y1) * p     series at p=0, the dry input at p=1
+            //   the output is    y2 + (mix - y2) * p   filter 2 at p=0, the balance at p=1
+            // so SERIES (p=0) is exactly the old chain and PARALLEL (p=1) is exactly
+            // two filters on one input, with every value in between continuous.
+            //
+            // The parallel mix is LINEAR, not constant-power. Both filters are fed
+            // the same signal, so their outputs are correlated: with the two set
+            // alike a constant-power law would sum to +3 dB at the centre, where a
+            // linear one returns unity.
+            static_assert(kFilterInstanceCount == 2, "filter routing is written for two filters");
+            const auto dryInput = sourceSamples[static_cast<std::size_t>(sourceIndex)];
+            auto& firstFilter = sourceFilters[static_cast<std::size_t>(sourceIndex)][0];
+            auto& secondFilter = sourceFilters[static_cast<std::size_t>(sourceIndex)][1];
+
+            const auto firstOut = sanitizeAudioSample(firstFilter.processSample(dryInput));
+            const auto secondIn = firstOut + (dryInput - firstOut) * parallelMix;
+            const auto secondOut = sanitizeAudioSample(secondFilter.processSample(secondIn));
+            const auto parallelOut = firstOut + (secondOut - firstOut) * parallelBalance;
+            auto filteredSample = sanitizeAudioSample(secondOut + (parallelOut - secondOut) * parallelMix);
 
             auto voicedSample = filteredSample * voiceGain * smoothedNormalisation;
 #if PX3_DIAGNOSTICS
@@ -1268,6 +1290,23 @@ void SynthVoice::setFilterSettings(const std::array<FilterSettings, kFilterInsta
                     filterSettings[static_cast<std::size_t>(filterIndex)]);
             }
         }
+    }
+}
+
+void SynthVoice::setFilterRouting(bool parallel, float balance)
+{
+    filterParallelTarget = parallel ? 1.0f : 0.0f;
+    filterBalanceTarget = juce::jlimit(0.0f, 1.0f, balance);
+
+    const auto sampleRate = getSampleRate() > 0.0 ? getSampleRate() : 44100.0;
+    filterRoutingCoeff = static_cast<float>(1.0 - std::exp(-1.0 / (kFilterRoutingSmoothingSeconds * sampleRate)));
+
+    // A voice that is not sounding has nothing to click, so it takes the new
+    // routing at once rather than ramping into its next note from a stale one.
+    if (! ampEnvelope.isActive())
+    {
+        filterParallelCurrent = filterParallelTarget;
+        filterBalanceCurrent = filterBalanceTarget;
     }
 }
 

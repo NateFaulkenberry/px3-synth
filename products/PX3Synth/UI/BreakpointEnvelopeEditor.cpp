@@ -13,7 +13,9 @@ constexpr double kMinimumVisibleSeconds = 0.05;
 // The longest envelope the editor will let you drag to. The parameters can
 // describe more than this between them, so the model is not capped - an existing
 // session that is longer still draws correctly, the axis simply grows.
-constexpr double kMaxDraggableSeconds = 8.0;
+// 40 s, to match the envelope parameters' own ceiling: an editor that stops
+// short of what the knobs can set is a second, contradictory limit.
+constexpr double kMaxDraggableSeconds = 40.0;
 
 // A round interval for the time grid, chosen so the axis carries a readable
 // number of divisions at any length. Second-level ticks are the point, but a

@@ -260,14 +260,29 @@ that thickens the sound. Larger amounts sound deliberately out of tune.
 **Use it for:** Width and thickness. Try +7 cents on Oscillator 2 against
 Oscillator 1 left at zero.
 
-### PITCH
+### FINE TUNE
 
-**What it does:** A very fine offset, well under a quarter of a semitone,
-displayed in semitones.
+**What it does:** A very fine offset, well under a quarter of a semitone
+(±0.24 st), displayed in semitones.
 
-**How it differs from FINE:** FINE is the tuning control you reach for by hand.
-PITCH is a narrow, precise offset intended as a modulation destination — point an
-LFO at it for vibrato, or an envelope for a pitch blip at the start of a note.
+**How it differs from FINE:** FINE is the tuning control you reach for by hand,
+in cents. FINE TUNE is narrower still — for the last hair of tuning between two
+oscillators. It was labelled PITCH before v0.7.5; it is the same control, and
+sessions and automation that use it are unaffected.
+
+### Pitch Mod
+
+**What it does:** A pitch offset of up to two octaves either way that exists to
+be modulated. It has no knob: choose **Osc 1 Pitch Mod** (or Osc 2, Osc 3, Sub
+Osc) in an LFO's or envelope's ASSIGN menu.
+
+**Sound:** At 100% an LFO swings the oscillator a full two octaves each way, so
+musical vibrato lives at small amounts — about 2% is ±half a semitone. An
+envelope at +50% gives a one-octave blip at the start of a note.
+
+**Why a separate destination:** FINE TUNE is far too narrow to hear as
+modulation, and COARSE moves in whole semitones, which an LFO turns into a
+staircase. Pitch Mod is continuous and wide.
 
 > **Note:** Oscillator levels are not on this panel. Balance between sources is
 > set in [MIX](#mix--mixer), so every level in the instrument lives in one place.
@@ -280,7 +295,7 @@ A simple, solid voice beneath the others.
 | --- | --- |
 | **WAVEFORM** | SINE or SQUARE |
 | **OCTAVE** | 0, −1 or −2 octaves below the played note |
-| **PITCH** | Fine offset, as above |
+| **FINE TUNE** | Fine offset, as above. Sub Osc Pitch Mod is in the ASSIGN menus |
 
 **Use it for:** Weight under a thin lead, or the fundamental beneath a bass patch
 whose main oscillator is doing something more complicated. A sine sub two octaves
@@ -300,22 +315,28 @@ The MOD panel holds **three LFOs** and **three modulation envelopes**. Each is a
 
 1. Choose a **destination** from the source's ASSIGN menu.
 2. Set the **AMOUNT**, from −100% to +100%.
-3. For an LFO, set its rate and waveform. For an envelope, draw its shape.
+3. For an LFO, set its waveform and its rate (or, for a ramp, its time). For an
+   envelope, draw its shape.
 
 **AMOUNT** sets how far the source moves its destination, and its sign sets the
 direction. At −100% an LFO that would have opened the filter closes it instead.
+At ±100% an LFO covers the destination's whole range — see
+[What modulation does to a knob](#what-modulation-does-to-a-knob).
 
 > **Note:** Each source has one destination at a time. To move several parameters
 > together from a single control, use a [Macro](#macros).
 
 ## LFOs
 
-A low-frequency oscillator cycles continuously, whether or not a note is playing.
+A low-frequency oscillator cycles continuously, whether or not a note is playing —
+unless you ask it to start with each note.
 
 | Control | Function |
 | --- | --- |
-| **RATE** | 0.01 Hz to 20 Hz |
-| **WAVEFORM** | SINE, TRIANGLE, SAW, SQUARE |
+| **RATE** | 0.01 Hz to 20 Hz. Shown for the cyclic shapes |
+| **TIME** | 0.05 s to 60 s. Takes RATE's place for RAMP UP and RAMP DOWN |
+| **WAVEFORM** | SINE, TRIANGLE, SAW, SQUARE, RAMP UP, RAMP DOWN |
+| **KEY SYNC** | Restart the LFO on every new note |
 | **ASSIGN** | Destination |
 | **AMOUNT** | Depth and direction, −100% to +100% |
 
@@ -323,8 +344,33 @@ A low-frequency oscillator cycles continuously, whether or not a note is playing
 sweep on cutoff. A square jumps between two values, useful for trills and gated
 effects. A saw ramps and resets.
 
-**Use it for:** Vibrato — a sine at 5–6 Hz on PITCH, small amount. Slow evolution
-on a pad — a triangle at 0.1 Hz on cutoff. A wobble on a wavetable position.
+**Use it for:** Vibrato — a sine at 5–6 Hz on Osc 1 Pitch Mod, about 2%. Slow
+evolution on a pad — a triangle at 0.1 Hz on cutoff. A wobble on a wavetable
+position.
+
+### Ramps
+
+**RAMP UP** and **RAMP DOWN** are not cycles. A ramp travels once, from one end of
+its swing to the other, over the **TIME** you set — then holds there. Use one for
+a filter that opens over twenty seconds, or a wavetable that drifts from one
+end to the other across a long pad.
+
+The ramp's length is real time, so it is the same at every sample rate and
+buffer size.
+
+### KEY SYNC
+
+| KEY SYNC | Cyclic shapes | Ramps |
+| --- | --- | --- |
+| **Off** (default) | Run freely, never restarted — as every LFO did before v0.7.5 | Restart on the first note after every key has been released. Notes played legato ride the same ramp |
+| **On** | Restart from the beginning of the cycle on every new note | Restart on every new note |
+
+The LFOs are shared by every voice, so a restart is **global**: the newest note
+restarts the LFO for everything that is sounding. A note-off never restarts
+anything. The restart lands within one audio buffer of the note.
+
+> **Note:** The envelopes have no KEY SYNC switch because they do not need one —
+> every envelope already starts from the beginning with each note.
 
 ## Modulation envelopes
 
@@ -382,7 +428,7 @@ job. ENV 1–3 do nothing until you point them at something.
 
 **Use them for:** A filter that opens quickly and settles back — ENV 1 at Filter 1
 Cutoff with a fast attack and a medium decay. Or a short pitch blip — ENV 2 at
-Oscillator 1 Pitch with a very short decay and a small amount.
+Osc 1 Pitch Mod with a very short decay and a small amount.
 
 ## What modulation does to a knob
 
@@ -396,9 +442,18 @@ into your setting, and you would lose the value you dialled in.
 > **Tip:** If a knob's ring is moving but the knob is not, that is modulation
 > working correctly.
 
-Modulation is scaled to the room your setting leaves. A source at full amount
-arrives exactly at the end of the parameter's range and turns around there,
-rather than pushing past it and flattening out.
+**How far modulation goes.** An LFO at 100% swings its destination across the
+**whole range**, half of it each way from where your knob sits. Wherever the
+swing would pass an end of the range it **folds back** — it turns around there
+and keeps moving — rather than stopping flat against the limit. A filter cutoff
+at 12 kHz with a 100% LFO therefore sweeps roughly 1.1 kHz to 18 kHz.
+
+An envelope or a Macro at full amount reaches the end of the range in the
+direction its amount points, from wherever the knob is.
+
+> **Changed in v0.7.5:** LFOs used to be limited to the room on the *nearer*
+> side of the knob, so a control set near either end of its range barely moved
+> even at 100%. Patches with LFOs on off-centre controls now move further.
 
 ---
 
@@ -429,7 +484,8 @@ There are three handles for four stages, because two of the stages share a point
 
 ### ATTACK
 
-**What it does:** Sets how long the note takes to reach full level.
+**What it does:** Sets how long the note takes to reach full level, from
+instant to 40 seconds.
 
 **Sound:** Short values give a percussive, immediate start. Long values fade the
 note in.
@@ -452,7 +508,8 @@ the moment the fall ends and the hold begins.
 
 ### RELEASE
 
-**What it does:** Sets how long the note takes to fade after you let go.
+**What it does:** Sets how long the note takes to fade after you let go, up to
+40 seconds.
 
 **Sound:** Short values stop the note cleanly. Long values leave a tail that
 overlaps the next note.
@@ -469,6 +526,20 @@ graph moves the knobs, and turning a knob moves the graph. They cannot fall out
 of step, because neither is a copy of the other.
 
 Turning a knob does not straighten a curve you have drawn.
+
+The time knobs span 0 to 40 seconds and are weighted towards the short end:
+a quarter of the way round is about 25 ms, halfway is 1 second and three
+quarters is about 8.6 seconds, so percussive settings keep their precision.
+
+| Envelope | Attack | Decay | Sustain | Release |
+| --- | --- | --- | --- | --- |
+| AMP ENV default | 15 ms | 300 ms | 0.8 | 500 ms |
+| ENV 1–3 default | 250 ms | 600 ms | 0.7 | 1 s |
+
+The defaults are a starting point that sounds like an instrument: an attack fast
+enough to be immediate but not clicky, and a release that tails off rather than
+stops. The modulation envelopes default slower, because a modulation envelope
+is usually a sweep. Sessions and presets saved earlier keep their own times.
 
 ## Curves
 
@@ -498,8 +569,28 @@ The fill shows the most recently triggered note.
 
 # FLT — Filters
 
-Two filters per voice, in series — the second processes the output of the first.
-Each has its own power button.
+Two filters per voice. Each has its own power button.
+
+### SERIES / PARALLEL
+
+A switch above the two filters sets how they connect.
+
+| Routing | What it does |
+| --- | --- |
+| **SERIES** (default) | Filter 1 feeds Filter 2 — the second processes the output of the first. |
+| **PARALLEL** | Both filters receive the same signal, and their outputs are blended by **BALANCE**. |
+
+**BALANCE** works in PARALLEL only, and is greyed out in SERIES. Fully left is
+Filter 1 alone, fully right is Filter 2 alone, and the middle is an even blend.
+The blend is level-matched: two identical filters in parallel are exactly as loud
+as one. A filter that is switched off passes its input straight through, in
+either routing.
+
+Switching routing, or moving BALANCE, while notes sound is smooth — no click.
+
+> **Tip:** In PARALLEL, a low-pass and a high-pass with a gap between their
+> cutoffs keep the lows and the highs and remove the middle — a shape neither
+> filter can make alone, and one SERIES cannot make either.
 
 ### CUTOFF
 
@@ -531,7 +622,7 @@ moving cutoff it produces the classic sweep.
 | **HP24** | High pass, steep. |
 | **BandPass** | Keeps a band around the cutoff, removing above and below. |
 | **Notch** | Removes a band around the cutoff, keeping the rest. |
-| **AllPass** | Passes everything, altering phase. Useful in series with another filter. |
+| **AllPass** | Passes everything, altering phase. In PARALLEL against another filter it makes phase-cancellation notches. |
 
 **Use them for:** LP24 for basses and anything that should sit low in a mix. HP12
 to thin a pad so it leaves room for a bass. BandPass for a narrow, telephone-like

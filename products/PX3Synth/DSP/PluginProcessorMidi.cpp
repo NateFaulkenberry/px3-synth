@@ -101,6 +101,19 @@ void PX3SynthAudioProcessor::updateActiveNotesFromMidi(const juce::MidiBuffer& m
 
                 if (message.isNoteOn())
                 {
+                    // For the LFO retrigger, read before this note is counted:
+                    // is it the first key down after silence?
+                    if (! lfoFirstNoteAfterSilenceThisBlock)
+                    {
+                        auto anyKeyHeld = false;
+                        for (const auto& count : activeNoteCounts)
+                        {
+                            anyKeyHeld = anyKeyHeld || count.load(std::memory_order_relaxed) > 0;
+                        }
+                        lfoFirstNoteAfterSilenceThisBlock = ! anyKeyHeld;
+                    }
+                    lfoNoteOnThisBlock = true;
+
                     incrementNoteCount(index);
                     activeNoteVelocities[index].store(toMidiVelocity(message), std::memory_order_relaxed);
                 }

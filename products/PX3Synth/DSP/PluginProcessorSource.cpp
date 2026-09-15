@@ -23,9 +23,24 @@ SubOscSettings PX3SynthAudioProcessor::currentSubOscillatorSettings() const
     settings.level = px3::processor_internal::sourceHeadroomGain();
     settings.pitchSemitones = subOscPitchParam->convertFrom0to1(applyModulationToNormalizedValue(subOscPitchParam,
                                                                                                    static_cast<juce::RangedAudioParameter*>(subOscPitchParam)->getValue()));
+    settings.pitchModSemitones = subOscPitchModParam->convertFrom0to1(
+        applyModulationToNormalizedValue(subOscPitchModParam,
+                                         static_cast<juce::RangedAudioParameter*>(subOscPitchModParam)->getValue()));
     settings.octaveIndex = px3::clampSubOscOctaveIndex(subOscOctaveParam != nullptr ? subOscOctaveParam->getIndex() : 1);
     settings.waveformIndex = px3::clampSubOscWaveformIndex(subOscWaveformParam != nullptr ? subOscWaveformParam->getIndex() : 1);
     return settings;
+}
+
+bool PX3SynthAudioProcessor::currentFilterRoutingIsParallel() const
+{
+    return filterRoutingParam->getIndex() == 1;
+}
+
+float PX3SynthAudioProcessor::currentFilterParallelBalance() const
+{
+    // A 0..1 range, so the normalised value IS the balance.
+    return applyModulationToNormalizedValue(filterParallelBalanceParam,
+                                            static_cast<juce::RangedAudioParameter*>(filterParallelBalanceParam)->getValue());
 }
 
 std::array<FilterSettings, kFilterInstanceCount> PX3SynthAudioProcessor::currentFilterSettings() const
@@ -97,6 +112,9 @@ std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcess
         layer.pitchSemitones = getOscillatorPitchParam(oscIndex).convertFrom0to1(
             applyModulationToNormalizedValue(&getOscillatorPitchParam(oscIndex),
                                              static_cast<juce::RangedAudioParameter&>(getOscillatorPitchParam(oscIndex)).getValue()));
+        layer.pitchModSemitones = getOscillatorPitchModParam(oscIndex).convertFrom0to1(
+            applyModulationToNormalizedValue(&getOscillatorPitchModParam(oscIndex),
+                                             static_cast<juce::RangedAudioParameter&>(getOscillatorPitchModParam(oscIndex)).getValue()));
         layer.coarseSemitones = getOscillatorCoarseParam(oscIndex).convertFrom0to1(
             applyModulationToNormalizedValue(&getOscillatorCoarseParam(oscIndex),
                                              static_cast<juce::RangedAudioParameter&>(getOscillatorCoarseParam(oscIndex)).getValue()));
@@ -397,6 +415,8 @@ LfoSettings PX3SynthAudioProcessor::currentLfoSettings(int lfoIndex) const
     settings.enabled = getLfoEnabledParam(idx).get();
     settings.frequencyHz = juce::jlimit(0.01f, 20.0f, getLfoFrequencyParam(idx).get());
     settings.waveformIndex = getLfoWaveformParam(idx).getIndex();
+    settings.rampSeconds = getLfoRampTimeParam(idx).get();
+    settings.keySync = getLfoKeySyncParam(idx).get();
     return settings;
 }
 

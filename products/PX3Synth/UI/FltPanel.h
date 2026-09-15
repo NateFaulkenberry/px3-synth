@@ -4,6 +4,7 @@
 
 #include "FilterTypes.h"
 #include "FilterComponent.h"
+#include "ToggleChipButton.h"
 
 #include <array>
 #include <memory>
@@ -53,6 +54,11 @@ public:
     void refreshFromParameters();
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
+    // SERIES / PARALLEL and the parallel balance. Owned by the panel, because
+    // they belong to neither filter card: they say how the two are connected.
+    void attachRouting(juce::RangedAudioParameter& routingParameter,
+                       juce::RangedAudioParameter& balanceParameter);
+
 private:
     struct FilterComboLookAndFeel final : public juce::LookAndFeel_V4
     {
@@ -94,6 +100,13 @@ private:
     std::array<juce::Colour, kFilterInstanceCount> filterTypeBoxBaseOutlineColours;
 
     FilterComboLookAndFeel filterComboLookAndFeel;
+
+    px3::ui::ToggleChipButton routingButton;
+    juce::Label balanceLabel;
+    juce::Slider balanceSlider;
+    std::unique_ptr<juce::ButtonParameterAttachment> routingAttachment;
+    std::unique_ptr<juce::SliderParameterAttachment> balanceAttachment;
+    bool routingAttached { false };
 
     std::array<std::unique_ptr<FilterComponent>, kFilterInstanceCount> filterComponents;
 

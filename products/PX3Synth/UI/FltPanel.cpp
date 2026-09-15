@@ -2,6 +2,7 @@
 
 #include "BypassButton.h"
 #include "CardInner.h"
+#include "ParameterKnob.h"
 #include "ToggleChipButton.h"
 
 #include "FilterMode.h"
@@ -147,6 +148,41 @@ FltPanel::FltPanel(std::array<juce::ToggleButton*, kFilterInstanceCount> enabled
     refreshFromParameters();
 }
 
+void FltPanel::attachRouting(juce::RangedAudioParameter& routingParameter,
+                             juce::RangedAudioParameter& balanceParameter)
+{
+    routingButton.setClickingTogglesState(true);
+    routingButton.setStateLabels("PARALLEL", "SERIES");
+    routingButton.setAccentColour(accent);
+    routingButton.setTooltip("SERIES runs filter 1 into filter 2. "
+                             "PARALLEL feeds both the same signal and blends their outputs.");
+
+    balanceLabel.setText("F1   BALANCE   F2", juce::dontSendNotification);
+    balanceLabel.setJustificationType(juce::Justification::centred);
+    balanceLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+    balanceLabel.setFont(juce::FontOptions(11.0f));
+    balanceLabel.setInterceptsMouseClicks(false, false);
+
+    balanceSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    balanceSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    balanceSlider.setColour(juce::Slider::backgroundColourId, juce::Colour::fromRGBA(255, 255, 255, 40));
+    balanceSlider.setColour(juce::Slider::trackColourId, accent.withAlpha(0.85f));
+    balanceSlider.setColour(juce::Slider::thumbColourId, juce::Colour::fromRGB(232, 232, 232));
+    balanceSlider.setTooltip("PARALLEL only: fully left is filter 1 alone, fully right is filter 2 alone");
+
+    routingAttachment = std::make_unique<juce::ButtonParameterAttachment>(routingParameter, routingButton, nullptr);
+    balanceAttachment = px3::ui::makeParameterKnobAttachment(balanceParameter, balanceSlider);
+    balanceSlider.setDoubleClickReturnValue(true, balanceParameter.convertFrom0to1(balanceParameter.getDefaultValue()));
+
+    addAndMakeVisible(routingButton);
+    addAndMakeVisible(balanceLabel);
+    addAndMakeVisible(balanceSlider);
+    routingAttached = true;
+
+    resized();
+    refreshFromParameters();
+}
+
 FltPanel::~FltPanel()
 {
     for (auto* filterTypeBox : filterTypeBoxes)
@@ -181,6 +217,28 @@ void FltPanel::resized()
     const auto panelPadX = uiConfig != nullptr ? uiConfig->getInt("flt.panel.layout.padX", 12) : 12;
     const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("flt.panel.layout.padY", 10) : 10;
     auto panelArea = getLocalBounds().reduced(panelPadX, panelPadY);
+
+    // How the two filters connect, in a strip above both cards.
+    if (routingAttached)
+    {
+        constexpr int stripHeight = 24;
+        constexpr int stripGap = 6;
+        constexpr int chipWidth = 96;
+        constexpr int labelWidth = 116;
+        constexpr int sliderWidth = 180;
+        constexpr int spacing = 10;
+
+        const auto strip = panelArea.removeFromTop(stripHeight);
+        panelArea.removeFromTop(stripGap);
+
+        const auto groupWidth = juce::jmin(strip.getWidth(), chipWidth + spacing + labelWidth + spacing + sliderWidth);
+        auto group = juce::Rectangle<int>(groupWidth, stripHeight).withCentre(strip.getCentre());
+        routingButton.setBounds(group.removeFromLeft(chipWidth).reduced(0, 1));
+        group.removeFromLeft(spacing);
+        balanceLabel.setBounds(group.removeFromLeft(labelWidth));
+        group.removeFromLeft(spacing);
+        balanceSlider.setBounds(group);
+    }
 
     constexpr int gap = 8;
     const auto totalGap = gap * (kFilterInstanceCount - 1);
@@ -437,6 +495,17 @@ void FltPanel::refreshFromParameters()
         {
             filterComponent->refreshFromParameters();
         }
+    }
+
+    if (routingAttached)
+    {
+        // The balance only does anything in PARALLEL, so in SERIES it greys out
+        // rather than sitting there looking live.
+        const auto parallel = routingButton.getToggleState();
+        balanceSlider.setEnabled(parallel);
+        balanceLabel.setEnabled(parallel);
+        balanceSlider.setAlpha(parallel ? 1.0f : 0.45f);
+        balanceLabel.setAlpha(parallel ? 1.0f : 0.45f);
     }
 }
 

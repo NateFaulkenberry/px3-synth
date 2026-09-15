@@ -2,6 +2,7 @@
 
 #include "BypassButton.h"
 #include "CardInner.h"
+#include "ParameterKnob.h"
 
 #include "LfoMode.h"
 #include "UIConfig.h"
@@ -77,6 +78,53 @@ LfoComponent::~LfoComponent()
 {
     assignBox.setLookAndFeel(nullptr);
     waveformBox.setLookAndFeel(nullptr);
+    rampTimeKnob.setLookAndFeel(nullptr);
+}
+
+void LfoComponent::attachRampAndKeySync(juce::RangedAudioParameter& rampTimeParameter,
+                                        juce::RangedAudioParameter& keySyncParameter,
+                                        juce::LookAndFeel* knobLookAndFeel)
+{
+    rampTimeKnob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    rampTimeKnob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    if (knobLookAndFeel != nullptr)
+    {
+        rampTimeKnob.setLookAndFeel(knobLookAndFeel);
+    }
+    rampTimeKnob.setTooltip("How long RAMP UP and RAMP DOWN take to travel");
+    rampTimeKnob.onValueChange = [this]
+    {
+        if (laidOutForRamp)
+        {
+            rateValueLabel.setText(formatRampSeconds(rampTimeKnob.getValue()), juce::dontSendNotification);
+        }
+    };
+
+    // The same caption on and off: the chip's light is the state.
+    keySyncButton.setClickingTogglesState(true);
+    keySyncButton.setStateLabels("KEY SYNC", "KEY SYNC");
+    keySyncButton.setFontSize(10.5f);
+    keySyncButton.setTooltip("On: every new note restarts this LFO. "
+                             "Off: cyclic shapes run freely, and a ramp restarts on the first note after silence.");
+
+    rampTimeAttachment = px3::ui::makeParameterKnobAttachment(rampTimeParameter, rampTimeKnob);
+    keySyncAttachment = std::make_unique<juce::ButtonParameterAttachment>(keySyncParameter, keySyncButton, nullptr);
+
+    // The RATE knob's caption and readout are borrowed while a ramp is shown,
+    // so the two knobs are captioned identically apart from the words.
+    rateCaptionText = rateLabel.getText();
+
+    addChildComponent(rampTimeKnob);
+    addAndMakeVisible(keySyncButton);
+    keySyncCaptionSpacer.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(keySyncCaptionSpacer);
+    rampControlsAttached = true;
+    resized();
+}
+
+juce::String LfoComponent::formatRampSeconds(double seconds)
+{
+    return seconds < 10.0 ? juce::String(seconds, 2) + " s" : juce::String(seconds, 1) + " s";
 }
 
 void LfoComponent::setAccentColour(juce::Colour accentIn)
@@ -138,6 +186,31 @@ void LfoComponent::refreshFromParameters(bool enabled, float rateHz, float amoun
     if (waveformBox.getSelectedItemIndex() != clamped)
     {
         waveformBox.setSelectedItemIndex(clamped, juce::dontSendNotification);
+    }
+
+    if (rampControlsAttached)
+    {
+        rampTimeKnob.setEnabled(currentEnabled);
+        rampTimeKnob.setInterceptsMouseClicks(currentEnabled, currentEnabled);
+        rampTimeKnob.getProperties().set("knobBypassed", !currentEnabled);
+        keySyncButton.setEnabled(currentEnabled);
+
+        const auto isRamp = px3::isRampLfoWaveformIndex(clamped);
+        rateLabel.setText(isRamp ? juce::String("TIME") : rateCaptionText, juce::dontSendNotification);
+        if (isRamp)
+        {
+            rateValueLabel.setText(formatRampSeconds(rampTimeKnob.getValue()), juce::dontSendNotification);
+        }
+
+        // The knob in the rate position changes with the kind of shape, and that
+        // choice is made in resized() - which a waveform change does not
+        // otherwise trigger.
+        if (isRamp != laidOutForRamp)
+        {
+            laidOutForRamp = isRamp;
+            resized();
+            repaint();
+        }
     }
 
     if (enabledChanged)
@@ -209,6 +282,10 @@ void LfoComponent::resized()
 
         flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap));
         flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap));
+        if (rampControlsAttached)
+        {
+            flex.items.add(juce::FlexItem(66.0f, cellHeight).withMargin(gap));
+        }
         flex.performLayout(row.toFloat());
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
@@ -220,6 +297,16 @@ void LfoComponent::resized()
                                        { &waveformLabel, &waveformBox, nullptr,
                                          ControlShape::stretch, 14, 0, 24 },
                                        inner.rowControl(0));
+        if (rampControlsAttached)
+        {
+            // No caption of its own, but the same reserved caption height, so
+            // the chip lines up with the two dropdowns beside it.
+            px3::ui::layoutLabelledControl(cell(2),
+                                           { &keySyncCaptionSpacer, &keySyncButton, nullptr,
+                                             ControlShape::stretch, 14, 0, 24 },
+                                           inner.rowControl(0));
+            keySyncButton.setAccentColour(card.style().border.colour);
+        }
     }
 
     // Row 2: rate and amount, each name-knob-value. Both cells declare the same
@@ -243,8 +330,12 @@ void LfoComponent::resized()
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
         // Name above, knob, value below. The names used to be hidden, which left
         // two unlabelled knobs telling you only "0.54 Hz" and "+100%".
+        const auto showRampTime = rampControlsAttached && laidOutForRamp;
+        rateKnob.setVisible(! showRampTime);
+        rampTimeKnob.setVisible(showRampTime);
+        juce::Slider& timeKnob = showRampTime ? rampTimeKnob : rateKnob;
         px3::ui::layoutLabelledControl(cell(0),
-                                       { &rateLabel, &rateKnob, &rateValueLabel,
+                                       { &rateLabel, &timeKnob, &rateValueLabel,
                                          ControlShape::square, 16, 20, 84 },
                                        inner.rowControl(1));
         px3::ui::layoutLabelledControl(cell(1),
@@ -347,7 +438,10 @@ void LfoComponent::paint(juce::Graphics& g)
     {
         const auto t = static_cast<float>(s) / 72.0f;
         const auto phaseNorm = std::fmod(t + visualPhase / juce::MathConstants<float>::twoPi, 1.0f);
-        const auto y = waveformSample(phaseNorm, currentWaveformIndex);
+        // A ramp is drawn still, as the one-shot it is: travel, then hold.
+        const auto y = px3::isRampLfoWaveformIndex(currentWaveformIndex)
+                           ? rampPreviewSample(t, currentWaveformIndex)
+                           : waveformSample(phaseNorm, currentWaveformIndex);
         const auto xPos = left + t * width;
         const auto yPos = mid - juce::jlimit(-1.0f, 1.0f, y) * (height * 0.40f);
 
@@ -373,6 +467,13 @@ void LfoComponent::paint(juce::Graphics& g)
                  juce::PathStrokeType(1.2f,
                                       juce::PathStrokeType::curved,
                                       juce::PathStrokeType::rounded));
+}
+
+float LfoComponent::rampPreviewSample(float t, int waveformIndex)
+{
+    constexpr auto travel = 0.8f;
+    const auto rising = t < travel ? -1.0f + 2.0f * (t / travel) : 1.0f;
+    return waveformIndex == px3::lfoWaveformToIndex(px3::LfoWaveform::rampDown) ? -rising : rising;
 }
 
 float LfoComponent::waveformSample(float phaseNorm, int waveformIndex)
