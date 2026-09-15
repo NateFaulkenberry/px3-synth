@@ -1,10 +1,12 @@
 # PX3 v0.7.6
 
-## Hear Your Effects Again
+## Rebuilt Oscillators, and Your Effects Back
 
-PX3 v0.7.6 is a fix release.
+PX3 v0.7.6 rebuilds every oscillator and fixes the effects in Logic.
 
-The headline: **in Logic, and in any host that enables the Synth's second output pair, the effects could not be heard.** The FX panel showed every effect switched on and routed, and turning their knobs changed nothing you could hear. This release puts the effects back on your track.
+**The oscillators are rebuilt on band-limited, sample-rate-independent DSP.** Saws, squares, pulses, sync and FM are dramatically cleaner at the top of the keyboard. A dozen oscillator bugs are fixed — the mod wheel no longer turns every oscillator down, stacked oscillators start in phase, ORGAN's sub and fifth drawbars are real, and FORMANT's vowels glide. Tuning is now one COARSE and one FINE per oscillator. Most patches also use less CPU than before.
+
+**In Logic, and in any host that enables the Synth's second output pair, the effects could not be heard.** The FX panel showed every effect switched on and routed, and turning their knobs changed nothing you could hear. This release puts the effects back on your track.
 
 It also makes LUCY audible the moment you switch it on, stops keys from getting stuck lit and animating, and starts INIT with every effect off.
 
@@ -107,6 +109,17 @@ Every oscillator mode has been rebuilt on band-limited, sample-rate-independent 
 * **Several modes changed character with the sample rate:** noise colour, organ key click, DIGITAL's hold, and ROB's and PHYSICAL's envelopes. Pitch-bend and mod-wheel smoothing did too. All now behave the same at 44.1, 48, 88.2 and 96 kHz.
 * **Changing oscillator mode while a note plays** crossfades instead of clicking.
 
+### Lighter on CPU
+
+Despite the extra work band-limiting takes, the Synth uses less CPU than v0.7.5. Median time per 512-sample block at 48 kHz, v0.7.5 → v0.7.6:
+
+* **16 voices (typical):** 751 → 603 µs, 20% less.
+* **64 voices:** 2,091 → 1,606 µs, 23% less.
+* **16 voices, all four sources:** 1,270 → 964 µs, 24% less.
+* **64 voices with every effect and module on:** 10,587 → 9,064 µs, 14% less.
+* **ROB, ORGAN, ISAAC, ADDITIVE and PHYSICAL** are 29–47% lighter with all four sources playing. **PX3** is 4–14% lighter, and 64 voices of it with all four sources now fit in real time.
+* **SUPER SAW** is within 9% of before either way: its seven saws are now band-limited.
+
 ### Renamed knobs
 
 * FORMANT: COLOR is now **SHIFT**.
@@ -122,7 +135,7 @@ The switch chips on the DOOM and LUCY cards always showed the right caption, but
 
 ## 🧪 Quality & Reliability
 
-PX3 now has **1,536 automated assertions**, up from 1,481 in v0.7.5.
+PX3 now has **1,537 automated assertions**, up from 1,481 in v0.7.5.
 
 New coverage includes:
 
@@ -182,4 +195,4 @@ New coverage includes:
 
 ---
 
-**PX3 v0.7.6 puts the effects back where you can hear them.**
+**PX3 v0.7.6: cleaner oscillators, and the effects back where you can hear them.**

@@ -589,6 +589,12 @@ for comparison.
 **Benchmarks.** `PX3Bench osc` is the oscillator CPU matrix: every mode, 1 or
 3 oscillators with the sub, at 1, 16 and 64 voices. Run it with `PX3_BENCH_RATE`.
 
+**CPU, after a sound-neutral optimisation pass.** Hot sines use `px3::dsp::fastSine`: a 4,096-entry table with an exact-derivative cubic Hermite, 5e-14 from `std::sin` at half its cost. ADAA cells are stored in powers of t, increments multiply by 1/fs, and settled ramps read their targets.
+- **Neutrality:** `PX3Diag oscdump`, before against after, differs by at most −182 dB relative to RMS.
+- **Against v0.7.5, 48 kHz:** 16 voices 20% less CPU; 64 voices with everything on 14% less.
+- **By mode:** PX3 4–14% less; SUPER SAW within ±9%.
+- **Per unit:** PX3 155 → 83 ns/sample.
+
 **Measurement traps found while verifying:**
 - **FM's ratio is 2 ± 1e-6.** It comes from float macro maths, so over a 0.7 s
   frame its sidebands drift a fraction of a bin. In an unwindowed frame the
