@@ -197,7 +197,7 @@ modes these are the difference between a usable sound and an interesting one.
 | NOISE / PINK NOISE | COLOR | — | — |
 | SUPER SAW | SPREAD | — | — |
 | PWM | WIDTH | — | — |
-| WAVETABLE | POSITION | — | — |
+| WAVETABLE | — (POSITION has its own knob) | — | — |
 | ADDITIVE | TILT | ODD/EVEN | ROLL |
 | FORMANT | MORPH | SHIFT | — |
 | FM | RATIO | INDEX | — |

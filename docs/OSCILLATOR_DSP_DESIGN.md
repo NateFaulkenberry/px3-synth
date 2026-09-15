@@ -445,7 +445,7 @@ k(fs) = k₄₈·48000/fs, and counts scale with fs.
 | NOISE / PINK colour low-pass | coefficient 0.02–0.48 / 0.01–0.30 | same, as a time constant |
 | ORGAN key-click decay | 0.0006–0.0036 per sample | per second |
 | DIGITAL hold | 1–52 samples | the same time at 48 kHz |
-| PHYSICAL damping and strike | 0.9995–0.9957 per sample; 10-sample burst | T60 in seconds; strike in seconds |
+| PHYSICAL damping and strike | 0.9995–0.9957 per sample; 10-sample burst | a one-pole decay time constant in seconds per mode; deterministic strike |
 | ROB transient and onset | per-sample decay; 10–96 samples | seconds |
 | ADDITIVE shimmer, PX3 movement | `noteAge · 0.0007` | hertz |
 | Voice onset guard | 8–96 samples | the same time at 48 kHz |
@@ -470,7 +470,7 @@ blocker on their own output:
 - **FORMANT** (2–4%). tanh is odd, but a resonator's ringing is skewed, so the
   clipped mean is not zero.
 
-Every mode now measures under 0.32% of RMS at every macro extreme
+Every mode now measures under 0.35% of RMS at every macro extreme (the exact figure moves with the noise seed)
 (`OscQuality_NoModeCarriesDc`). VIBE's 12 Hz coupling capacitor is no longer
 relied on.
 

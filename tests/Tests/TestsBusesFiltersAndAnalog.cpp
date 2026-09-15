@@ -2970,7 +2970,7 @@ void testOscillatorModeRichness()
 
     static const char* names[] = {
         "SINE","SAW","SQUARE","TRIANGLE","NOISE","PINK","SUPERSAW","PWM","WAVETABLE",
-        "ADDITIVE","FORMANT","FM","HARDSYNC","KARPLUS","ORGAN","DIGITAL","PHYSICAL",
+        "ADDITIVE","FORMANT","FM","HARDSYNC","ORGAN","DIGITAL","PHYSICAL",
         "ROB","ISAAC","PX3" };
 
     // SINE is the reference. SAW is here as a sanity check on the measurement -
