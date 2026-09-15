@@ -12,6 +12,7 @@
 #include "../../shared/UI/Style/KnobLookAndFeel.h"
 #include "../../shared/UI/Components/ChipLabel.h"
 #include "../../shared/UI/Components/ToggleChipButton.h"
+#include "../../products/PX3Synth/Preset/PresetManager.h"
 #include "../../products/PX3Delay/PluginEditor.h"
 #include "../../products/PX3Mood/PluginEditor.h"
 #include "../../products/PX3Synth/UI/PluginEditor.h"
@@ -97,6 +98,32 @@ void testFxProducts()
         const auto on = returnLevel(true);
         check("Lucy_SwitchingItOnAtDefaultsIsHeard", off < 1.0e-5 && on > 1.0e-3,
               "FX return with LUCY at defaults: off " + fmt(off, 6) + ", switched on " + fmt(on, 6));
+    }
+
+    // ---- INIT starts with every effect off ----------------------------------
+    // INIT is built from the current state with its own values written over it,
+    // so an effect it does not name keeps whatever the previous patch had.
+    // Loaded here over a patch with all eight on.
+    {
+        PX3SynthAudioProcessor processor;
+        const std::vector<const char*> effects { "vibeEnabled", "delayEnabled", "reverbEnabled", "moodEnabled",
+                                                 "doomEnabled", "lucyEnabled", "chorusEnabled", "spreadEnabled" };
+        for (const auto* id : effects) { setParam(processor, id, 1.0f); }
+
+        PresetManager manager(processor);
+        juce::String error;
+        const auto loaded = manager.loadInitState(error);
+
+        juce::StringArray stillOn;
+        for (const auto* id : effects)
+        {
+            if (getParamValue(processor, id) > 0.5f) { stillOn.add(id); }
+        }
+
+        check("Init_EveryEffectIsOff", loaded && stillOn.isEmpty(),
+              loaded ? (stillOn.isEmpty() ? juce::String("all eight effects off after loading INIT over a patch with every effect on")
+                                          : "still on after INIT: " + stillOn.joinIntoString(", "))
+                     : "INIT failed to load: " + error);
     }
 
     constexpr double kRate = 48000.0;

@@ -571,17 +571,26 @@ juce::ValueTree PresetManager::initPresetTree(juce::String& error) const
     state.setProperty("ampRelease", 0.09388426691293716f, nullptr);
     state.setProperty("masterGain", 0.6000000238418579f, nullptr);
     state.setProperty("vibeAmount", 0.6022812128067017f, nullptr);
-    state.setProperty("vibeEnabled", 1.0f, nullptr);
+    state.setProperty("vibeEnabled", 0.0f, nullptr);
     state.setProperty("vibeType", 0.6000000238418579f, nullptr);
     state.setProperty("delayAmount", 0.3621250092983246f, nullptr);
     state.setProperty("granularSyncDivision", 0.0f, nullptr);
     state.setProperty("granularMode", 0.3333333432674408f, nullptr);
     state.setProperty("delayAlgorithm", 0.3333333432674408f, nullptr);
-    state.setProperty("delayEnabled", 1.0f, nullptr);
+    state.setProperty("delayEnabled", 0.0f, nullptr);
     state.setProperty("delayTime", 0.3499999940395355f, nullptr);
     state.setProperty("delayFeedback", 0.3799999952316284f, nullptr);
     state.setProperty("reverbAmount", 0.4072031378746033f, nullptr);
-    state.setProperty("reverbEnabled", 1.0f, nullptr);
+    state.setProperty("reverbEnabled", 0.0f, nullptr);
+
+    // Every effect OFF in INIT, written out for all eight. A state leaves any
+    // parameter it does not name where it was, so an effect left out of INIT
+    // stayed on if the patch before it had turned it on.
+    state.setProperty("moodEnabled", 0.0f, nullptr);
+    state.setProperty("doomEnabled", 0.0f, nullptr);
+    state.setProperty("lucyEnabled", 0.0f, nullptr);
+    state.setProperty("chorusEnabled", 0.0f, nullptr);
+    state.setProperty("spreadEnabled", 0.0f, nullptr);
     state.setProperty("reverbAlgorithm", 0.0f, nullptr);
     state.setProperty("reverbSize", 0.5199999809265137f, nullptr);
     state.setProperty("reverbDecay", 0.4799999892711639f, nullptr);
@@ -637,7 +646,9 @@ juce::ValueTree PresetManager::initPresetTree(juce::String& error) const
         state.removeChild(existingVibe, nullptr);
     }
     juce::ValueTree vibeState(vibeStateId);
-    vibeState.setProperty("bypass", false, nullptr);
+    // Bypassed, to agree with vibeEnabled above. This block is restored AFTER
+    // the parameters, so "bypass false" here switched VIBE back on.
+    vibeState.setProperty("bypass", true, nullptr);
     vibeState.setProperty("seed", 1337, nullptr);
     state.addChild(vibeState, -1, nullptr);
 
