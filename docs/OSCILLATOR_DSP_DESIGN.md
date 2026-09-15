@@ -30,7 +30,7 @@ Unless stated otherwise, figures are at 48 kHz.
 | Saw, square, pulse, triangle | 4-point PolyBLEP / PolyBLAMP (integrated cubic B-spline), with a 3-tap passband compensation | saw at C5: −65.7 dB of alias below 15 kHz, against −46.1 for 2-point and −19.2 naive |
 | Output latency | Every oscillator mode and the sub lag their phase by exactly **5 samples** | the longest intrinsic latency (the FM decimator) sets it; the rest are padded to match |
 | PWM | Same line, both edges corrected independently; DC removed analytically | the mean is exactly 2w − 1 at every width |
-| Super Saw | 7 band-limited saws, continuous drift, 1/√7 normalisation | — |
+| Super Saw | 7 band-limited saws, continuous drift, one fixed scale | — |
 | Hard sync | Reset at the exact fractional time, PolyBLEP4 on reset and slave wrap | C5, ratio 2.37: −52.3 dB below 15 kHz, against −6.6 sample-quantised |
 | FM | 2× oversampled, 23-tap halfband, index tapered by Carson bandwidth near Nyquist | C6, ratio 3.5, index 10: in-band alias +5.4 dB → −61.5 dB |
 | tanh stages | First-order ADAA with a tabulated antiderivative, at 1×; no oversampling | costs one tanh; the voice's two cascaded tanh become one ADAA curve: 15 dB cleaner for 40% of the CPU |
@@ -186,6 +186,14 @@ literature otherwise (marked †).
 
 At 96 kHz the chosen form reaches −96.9 dB at MIDI 72.
 
+**Overshoot, checked after implementation.** A spectrum does not show it, but the
+compensation FIR rings at every edge: on a raw step it overshoots by 2a. On the
+PolyBLEP edge, a = 0.25 peaks the saw at 1.13 and the square at 1.135. An ideal
+band-limited square peaks at 1.18 (the Gibbs overshoot), so both stay below what
+a correct band-limited waveform does. The uncompensated line peaks at 1.00 only
+because it is duller than band-limited. A test that expected a square's RMS/peak
+near 1.0 was written against the naive square, and was corrected.
+
 ### Square
 - **Technique, reference, problem:** As the saw, with a step of +2 at the wrap and
   −2 at the half cycle.
@@ -229,8 +237,9 @@ At 96 kHz the chosen form reaches −96.9 dB at MIDI 72.
   - Drift is a continuous, independent random walk per saw, in hertz, low-passed
     to a sub-hertz rate and scaled by SPREAD.
   - Seeded deterministically from the voice and note.
-  - The sum is normalised by 1/√7, the level of uncorrelated saws, so level no
-    longer depends on detune.
+  - Independent start phases and drift keep the saws uncorrelated at every
+    detune, so the sum's level is the same at any SPREAD and one fixed scale,
+    the shipped one, holds it.
 - **CPU:** 7 × (3.9 + 4.3) ns ≈ 58 ns/sample, against 7 × (2.4 + 4.4) ≈ 48 shipped.
 
 ### Hard Sync
@@ -450,9 +459,20 @@ Removed at the cause first:
 - ISAAC/ADDITIVE's half-frequency partial no longer jumps at the wrap.
 - PHYSICAL's leaky state no longer integrates a DC transient.
 
-Anything still measuring DC after that goes through a 5 Hz one-pole blocker on
-that mode's output, and only that mode's. The list is recorded by the `oscdc`
-diagnostic. VIBE's 12 Hz coupling capacitor is no longer relied on.
+- FORMANT's Dirichlet excitation is 1 + 2Σcos(kx), so its DC term is exactly
+  1. The resonators passed enough of it to measure 12–18% of RMS. It is now
+  subtracted at the source.
+
+Two modes still measure DC after that, and they alone take a 5 Hz one-pole
+blocker on their own output:
+- **HARD SYNC** (1.6% of RMS, 10% at ratio 2.5). The slave restarts partway up a
+  ramp, so the waveform is not symmetric. Analog sync has the same offset.
+- **FORMANT** (2–4%). tanh is odd, but a resonator's ringing is skewed, so the
+  clipped mean is not zero.
+
+Every mode now measures under 0.32% of RMS at every macro extreme
+(`OscQuality_NoModeCarriesDc`). VIBE's 12 Hz coupling capacitor is no longer
+relied on.
 
 ### Mode switching
 When the mode changes, the old and new modes both render for 5 ms. Their outputs
@@ -489,7 +509,10 @@ not band-limited. It is the sound of the mode.
 ## 6. Noise
 - **White:**
   - SplitMix32, one stream per oscillator per voice, seeded at note start from a
-    hash of voice index, note-start sequence and oscillator index.
+    hash of voice index, the voice's own note count and oscillator index. The
+    voice's start phase comes from the same count. The global note-start
+    sequence runs on across processor instances, so the same MIDI into a fresh
+    instance used to start at different phases.
   - Rendering stays reproducible: nothing reads `juce::Random::getSystemRandom()`,
     so sessions render identically.
   - Voices are independent; the shipped LCG gave every voice the same noise
@@ -544,3 +567,34 @@ No GPL code is used.
 - JUCE `dsp::Oversampling`. https://docs.juce.com/master/classjuce_1_1dsp_1_1Oversampling.html
 - W. Pirkle, *Designing Audio Effect Plugins in C++*, Routledge.
 - P. Kellet, pink noise filter, music-dsp archive. https://www.firstpr.com.au/dsp/pink-noise/
+
+---
+
+## Verification
+
+**Tests.** `PX3Tests oscquality`, 34 checks: a regression test for each confirmed
+bug, plus the quality envelope measured here with limits a few dB inside the
+measured values, so a regression fails and a design goal does not.
+
+**Report.** `PX3Diag oscquality [dir]` prints:
+- pitch error for MIDI 36–120 at 44.1, 48, 88.2 and 96 kHz
+- alias for every harmonic mode at the oscillator and after the voice source stage
+- DC per mode at the macro extremes
+- level and spectral centroid across sample rates
+- per-mode CPU
+
+It also writes pitch-sweep spectrograms, including the naive saw PX3 shipped,
+for comparison.
+
+**Benchmarks.** `PX3Bench osc` is the oscillator CPU matrix: every mode, 1 or
+3 oscillators with the sub, at 1, 16 and 64 voices. Run it with `PX3_BENCH_RATE`.
+
+**Measurement traps found while verifying:**
+- **FM's ratio is 2 ± 1e-6.** It comes from float macro maths, so over a 0.7 s
+  frame its sidebands drift a fraction of a bin. In an unwindowed frame the
+  leakage read as −55 dB of "aliasing". Blackman-Harris with a ±5-bin mask
+  measures the same FM at −92 dB.
+- **A test can pass on randomness.** `Lucy_PositionRelativeToDoomChangesTheAudio`
+  compared two renders with LUCY switched off. It passed only because
+  non-deterministic start phases made any two renders differ.
+

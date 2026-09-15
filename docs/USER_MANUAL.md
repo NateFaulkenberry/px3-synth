@@ -29,7 +29,7 @@ Three things shape the way you work with it.
 
 **Nineteen oscillator types, not nineteen waveforms.** Alongside the familiar
 sine, saw, square and triangle there are FM, hard sync, additive, formant,
-physical modelling, wavetable and several of our own. Each brings its own three
+a modal resonator, wavetable and several of our own. Each brings its own three
 controls, so the same three knobs mean something different in every mode.
 
 **Envelopes you draw.** The amplitude and modulation envelopes are curves you
@@ -199,14 +199,14 @@ modes these are the difference between a usable sound and an interesting one.
 | PWM | WIDTH | — | — |
 | WAVETABLE | POSITION | — | — |
 | ADDITIVE | TILT | ODD/EVEN | ROLL |
-| FORMANT | MORPH | COLOR | — |
+| FORMANT | MORPH | SHIFT | — |
 | FM | RATIO | INDEX | — |
 | HARD SYNC | SYNC | DRIVE | — |
 | ORGAN | TONE | CLICK | — |
 | DIGITAL | BITS | RATE | — |
 | PHYSICAL | DECAY | MATERIAL | — |
 | ROB | TRANS | BODY | CHAOS |
-| ISAAC | SPREAD | ODD/EVEN | ROLL |
+| ISAAC | TILT | ODD/EVEN | STRETCH |
 | PX3 | MORPH | CHAR | MOVE |
 
 Several are worth knowing in more detail.
@@ -220,8 +220,46 @@ harmonic density.
 drift. Low settings give one fat saw; high settings give the classic wide sound.
 
 **FORMANT** — a **VOWEL** menu appears, selecting the A/E/I/O/U profile. MORPH
-moves between vowel shapes and COLOR sets the spectral brightness. Modulate
-MORPH for a talking sound.
+glides onward from that vowel through the others in turn: each quarter of the
+knob is one more vowel along, and at the top you are one short of back where you
+started. SHIFT moves every formant together, from a large voice to a small one.
+Modulate MORPH for a talking sound.
+
+**ADDITIVE** — TILT sets how fast the harmonics fall away, ODD/EVEN leans the
+balance toward the odd or the even harmonics, and ROLL slides a window along the
+series. At the middle every harmonic plays; turn it down and the upper harmonics
+roll away, turn it up and the lower ones do, thinning the sound from underneath.
+The level stays the same all the way round.
+
+**ISAAC** — ADDITIVE's harmonics with a shimmer an octave below. TILT and
+ODD/EVEN work as in ADDITIVE; STRETCH pulls the upper partials sharp of the
+harmonic series, towards a bell, and deepens the shimmer.
+
+**HARD SYNC** — SYNC sets how far the synced oscillator runs ahead of the note
+before it is restarted; DRIVE saturates the result.
+
+**ORGAN** — nine drawbars, including the 16' an octave below and the 5 1/3' a
+fifth above. TONE moves from a mellow flute registration to full drawbars; CLICK
+adds the key click at the start of each note.
+
+**DIGITAL** — BITS sets the resolution and RATE how long each sample is held.
+The grit and the aliasing are the point of this mode, and they sound the same at
+every sample rate.
+
+**PHYSICAL** — a struck, ringing tone built from four inharmonic modes. DECAY is
+how long the strike rings before it settles to a held level; MATERIAL spreads the
+upper modes wider, from wooden to metallic. The note itself stays at the pitch
+you play.
+
+**ROB** — TRANS sets the attack transient, BODY the weight and shape of the tone,
+and CHAOS the instability. At zero CHAOS there is none at all.
+
+**PX3** — three engines in one. MORPH balances an FM tone against ISAAC-style
+partials, CHAR pushes the whole voice harder (a driven saw and more FM), and MOVE
+sets a slow movement of both.
+
+> **The mod wheel** adds vibrato to every mode, and in PWM it also moves the
+> pulse width. It does not change any oscillator's level.
 
 ## WAVETABLE mode
 
