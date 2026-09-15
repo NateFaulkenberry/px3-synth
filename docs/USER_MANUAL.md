@@ -27,8 +27,8 @@ an order you choose, and delivered to the output.
 
 Three things shape the way you work with it.
 
-**Twenty oscillator types, not twenty waveforms.** Alongside the familiar sine,
-saw, square and triangle there are FM, hard sync, additive, formant, Karplus,
+**Nineteen oscillator types, not nineteen waveforms.** Alongside the familiar
+sine, saw, square and triangle there are FM, hard sync, additive, formant,
 physical modelling, wavetable and several of our own. Each brings its own three
 controls, so the same three knobs mean something different in every mode.
 
@@ -180,8 +180,8 @@ it changes not only the waveform but what the three PARAM knobs do.
 | SINE | SAW | SQUARE | TRIANGLE |
 | NOISE | PINK NOISE | SUPER SAW | PWM |
 | WAVETABLE | ADDITIVE | FORMANT | FM |
-| HARD SYNC | KARPLUS | ORGAN | DIGITAL |
-| PHYSICAL | ROB | ISAAC | PX3 |
+| HARD SYNC | ORGAN | DIGITAL | PHYSICAL |
+| ROB | ISAAC | PX3 | |
 
 ## PARAM A, B and C
 
@@ -202,7 +202,6 @@ modes these are the difference between a usable sound and an interesting one.
 | FORMANT | MORPH | COLOR | — |
 | FM | RATIO | INDEX | — |
 | HARD SYNC | SYNC | DRIVE | — |
-| KARPLUS | DECAY | BRIGHT | — |
 | ORGAN | TONE | CLICK | — |
 | DIGITAL | BITS | RATE | — |
 | PHYSICAL | DECAY | MATERIAL | — |
@@ -224,9 +223,6 @@ drift. Low settings give one fat saw; high settings give the classic wide sound.
 moves between vowel shapes and COLOR sets the spectral brightness. Modulate
 MORPH for a talking sound.
 
-**KARPLUS** — a plucked-string model. DECAY sets how long the string rings,
-BRIGHT how much high end survives each pass.
-
 ## WAVETABLE mode
 
 Selecting WAVETABLE turns the card's display into a rotating three-dimensional
@@ -242,47 +238,45 @@ the eight factory tables in the same menu.
 
 ## Tuning
 
+Every oscillator, the sub included, has the same two tuning knobs side by side:
+COARSE and FINE. They are the only static tuning on the card. Anything that
+moves pitch while you play (pitch bend, vibrato, VIBE drift, an LFO or envelope
+on Pitch Mod) is added on top of them and never changes what they are set to.
+
 ### COARSE
 
-**What it does:** Transposes the oscillator in semitones, up to two octaves
-either way.
+**What it does:** Transposes the oscillator in whole octaves, from −2 to +2
+(shown as `-1 oct`, `+2 oct`).
 
-**Use it for:** Octaves and intervals — two oscillators a fifth apart, or one an
-octave down for weight.
+**Use it for:** Weight and register, such as one oscillator an octave down under
+two at pitch.
 
 ### FINE
 
-**What it does:** Detunes the oscillator in cents, up to a semitone either way.
+**What it does:** Detunes the oscillator in cents, from −24 to +24, one cent at
+a time (shown as `+7 ct`).
 
-**Sound:** Small amounts of detune between two oscillators produce a slow beating
-that thickens the sound. Larger amounts sound deliberately out of tune.
+**Sound:** A few cents between two oscillators gives a slow beating that
+thickens the sound. Nearer the ends of the range it sounds deliberately out of
+tune.
 
-**Use it for:** Width and thickness. Try +7 cents on Oscillator 2 against
+**Use it for:** Width and thickness. Try +7 ct on Oscillator 2 against
 Oscillator 1 left at zero.
-
-### FINE TUNE
-
-**What it does:** A very fine offset, well under a quarter of a semitone
-(±0.24 st), displayed in semitones.
-
-**How it differs from FINE:** FINE is the tuning control you reach for by hand,
-in cents. FINE TUNE is narrower still — for the last hair of tuning between two
-oscillators. It was labelled PITCH before v0.7.5; it is the same control, and
-sessions and automation that use it are unaffected.
 
 ### Pitch Mod
 
-**What it does:** A pitch offset of up to two octaves either way that exists to
-be modulated. It has no knob: choose **Osc 1 Pitch Mod** (or Osc 2, Osc 3, Sub
-Osc) in an LFO's or envelope's ASSIGN menu.
+**What it does:** A modulation destination worth up to two octaves either way.
+It has no knob and holds no setting of its own. Choose **Osc 1 Pitch Mod** (or
+Osc 2, Osc 3, Sub Osc) in an LFO's or envelope's ASSIGN menu, and only that
+modulation moves the pitch.
 
 **Sound:** At 100% an LFO swings the oscillator a full two octaves each way, so
-musical vibrato lives at small amounts — about 2% is ±half a semitone. An
+musical vibrato lives at small amounts. About 2% is ±half a semitone. An
 envelope at +50% gives a one-octave blip at the start of a note.
 
-**Why a separate destination:** FINE TUNE is far too narrow to hear as
-modulation, and COARSE moves in whole semitones, which an LFO turns into a
-staircase. Pitch Mod is continuous and wide.
+**Why a separate destination:** COARSE steps in octaves and FINE spans only a
+quarter of a semitone each way, so neither makes a useful pitch sweep. Pitch
+Mod is continuous and wide.
 
 > **Note:** Oscillator levels are not on this panel. Balance between sources is
 > set in [MIX](#mix--mixer), so every level in the instrument lives in one place.
@@ -294,8 +288,11 @@ A simple, solid voice beneath the others.
 | Control | Function |
 | --- | --- |
 | **WAVEFORM** | SINE or SQUARE |
-| **OCTAVE** | 0, −1 or −2 octaves below the played note |
-| **FINE TUNE** | Fine offset, as above. Sub Osc Pitch Mod is in the ASSIGN menus |
+| **COARSE** | −2 to +2 octaves; starts at −1 |
+| **FINE** | −24 to +24 cents |
+
+COARSE and FINE work exactly as they do on the oscillators above. Sub Osc Pitch
+Mod is in the ASSIGN menus.
 
 **Use it for:** Weight under a thin lead, or the fundamental beneath a bass patch
 whose main oscillator is doing something more complicated. A sine sub two octaves

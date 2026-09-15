@@ -213,7 +213,6 @@ void OscillatorComponent::resized()
         const auto gap = inner.rowGap(0);
         const auto row = inner.rowContent(0);
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
-        const auto showTable = wtTableBox != nullptr && wtTableBox->isVisible();
 
         // The mode selector is laid out the SAME WAY in every mode - one flex
         // cell, whatever else is in the row. It used to have a second layout
@@ -250,37 +249,6 @@ void OscillatorComponent::resized()
         {
             vowelLabel.setBounds(0, 0, 0, 0);
             vowelBox.setBounds(0, 0, 0, 0);
-        }
-
-        // The table selector goes UNDER the mode selector rather than beside it.
-        // Both are "which kind of sound is this", and stacking them reads as one
-        // decision refined, where side by side reads as two unrelated ones.
-        //
-        // Anchored to where the mode BOX actually landed rather than laid out
-        // from the top of the row, which is what keeps the control above it
-        // still: this can only ever add something below.
-        if (showTable)
-        {
-            constexpr int labelHeight = 14;
-            constexpr int controlHeight = 24;
-            constexpr int stackGap = 6;
-
-            // The band has to include the label-to-control gap as well as the
-            // two heights, or the control is given what is left after the gap
-            // and comes out shorter than the mode box above it - 20 px against
-            // 24, which reads as a mistake rather than as a hierarchy.
-            const auto bandHeight = labelHeight + controlHeight
-                                    + juce::roundToInt(inner.rowControl(0).gap);
-
-            const juce::Rectangle<int> band(modeBox.getX(),
-                                            modeBox.getBottom() + stackGap,
-                                            modeBox.getWidth(),
-                                            bandHeight);
-            px3::ui::layoutLabelledControl(band,
-                                           { wtTableLabel, wtTableBox, nullptr,
-                                             ControlShape::stretch,
-                                             labelHeight, 0, controlHeight },
-                                           inner.rowControl(0));
         }
     }
 
@@ -332,8 +300,14 @@ void OscillatorComponent::resized()
             }
         }
 
+        // In wavetable mode the table menu leads the row, beside the POSITION
+        // knob that scans it: which table, then where in it. It used to hang
+        // under the mode menu, where it ran into the tuning row below.
+        const auto showTable = wtTableBox != nullptr && wtTableBox->isVisible();
         const auto showPosition = wtPositionSlider != nullptr && wtPositionSlider->isVisible();
-        const std::vector<float> natural(visibleMacros.size() + (showPosition ? 1u : 0u), 60.0f);
+        const auto leading = (showTable ? 1 : 0) + (showPosition ? 1 : 0);
+        std::vector<float> natural(visibleMacros.size() + static_cast<std::size_t>(leading), 60.0f);
+        if (showTable) { natural.front() = 96.0f; }
 
         if (! natural.empty())
         {
@@ -347,9 +321,16 @@ void OscillatorComponent::resized()
 
             const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
 
-            if (showPosition)
+            if (showTable)
             {
                 px3::ui::layoutLabelledControl(cell(0),
+                                               { wtTableLabel, wtTableBox, nullptr,
+                                                 ControlShape::stretch, 14, 0, 24 },
+                                               inner.rowControl(2));
+            }
+            if (showPosition)
+            {
+                px3::ui::layoutLabelledControl(cell(showTable ? 1 : 0),
                                                { wtPositionLabel, wtPositionSlider, wtPositionValue,
                                                  ControlShape::square, 16, 16, 56 },
                                                inner.rowControl(2));
@@ -361,7 +342,7 @@ void OscillatorComponent::resized()
                 // Same label and readout heights as the tuning knobs above, so
                 // the rows line up and a single-macro mode does not draw its one
                 // knob larger than the tuning pair.
-                px3::ui::layoutLabelledControl(cell(static_cast<int>(i) + (showPosition ? 1 : 0)),
+                px3::ui::layoutLabelledControl(cell(static_cast<int>(i) + leading),
                                                { macroLabels[index], macroSliders[index], macroValues[index],
                                                  ControlShape::square, 16, 16, 56 },
                                                inner.rowControl(2));

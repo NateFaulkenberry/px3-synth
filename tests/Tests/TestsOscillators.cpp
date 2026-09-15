@@ -1235,7 +1235,7 @@ void testWavetable()
                     return count;
                 };
 
-                setChoice(processor, "osc1Mode", 0);   // SINE: pitch only
+                setChoice(processor, "osc1Mode", 0);   // SINE: coarse and fine only
                 card->refreshFromParameters(true, 0, 0);
                 const auto sineSliders = visibleSliders(*card);
                 const auto sineModeBounds = card->debugModeBoxBounds();
@@ -1244,24 +1244,37 @@ void testWavetable()
                 card->refreshFromParameters(true, 8, 0);
                 const auto wavetableSliders = visibleSliders(*card);
 
-                // Pitch plus exactly one position knob. Three would mean the old
-                // macro came back.
-                check("WavetableCard_ShowsPitchAndOneScanKnob",
+                // The tuning pair plus exactly one position knob. More would
+                // mean the old macro came back.
+                check("WavetableCard_ShowsTuningAndOneScanKnob",
                       wavetableSliders == sineSliders + 1,
                       "SINE shows " + juce::String(sineSliders) + " knobs, WAVETABLE shows "
                           + juce::String(wavetableSliders) + " - one more, not two");
 
-                // The table selector sits under the mode selector, not beside
-                // it: both answer "what kind of sound is this", and stacking
-                // reads as one decision refined rather than two unrelated ones.
+                // The table selector sits in the scan row, beside the POSITION
+                // knob, the same height as the mode box. It used to hang under
+                // the mode selector, which ran it into the tuning row once every
+                // card gained COARSE and FINE. Nothing it could cover may overlap it.
                 const auto modeBounds = card->debugModeBoxBounds();
                 const auto tableBounds = card->debugTableBoxBounds();
-                check("WavetableCard_TableSelectorSitsBelowTheModeSelector",
-                      tableBounds.getY() > modeBounds.getBottom()
-                          && std::abs(tableBounds.getX() - modeBounds.getX()) <= 1
-                          && std::abs(tableBounds.getWidth() - modeBounds.getWidth()) <= 1
+                juce::StringArray overlapped;
+                auto lowestSliderAboveTable = 0;
+                for (auto* child : card->getChildren())
+                {
+                    if (child == nullptr || ! child->isVisible() || child->getBounds().isEmpty()) { continue; }
+                    if (dynamic_cast<juce::Slider*>(child) == nullptr) { continue; }
+                    if (child->getBounds().intersects(tableBounds)) { overlapped.add(child->getBounds().toString()); }
+                    if (child->getBottom() <= tableBounds.getY()) { lowestSliderAboveTable = juce::jmax(lowestSliderAboveTable, child->getBottom()); }
+                }
+                check("WavetableCard_TableSelectorSitsInTheScanRowClearOfTheTuningKnobs",
+                      ! tableBounds.isEmpty()
+                          && tableBounds.getY() > modeBounds.getBottom()
+                          && lowestSliderAboveTable > 0
+                          && overlapped.isEmpty()
                           && std::abs(tableBounds.getHeight() - modeBounds.getHeight()) <= 1,
-                      "mode " + modeBounds.toString() + ", table " + tableBounds.toString());
+                      "mode " + modeBounds.toString() + ", table " + tableBounds.toString()
+                          + (overlapped.isEmpty() ? juce::String(", overlaps no knob")
+                                                  : ", overlaps knobs at " + overlapped.joinIntoString(" ")));
 
                 // The mode selector must not move or resize as a result of
                 // being used. It had a second layout path in wavetable mode

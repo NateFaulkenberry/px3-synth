@@ -810,9 +810,10 @@ void testCardInner()
         // plain waveforms, 1 for NOISE / PINK NOISE / SUPER SAW / PWM /
         // WAVETABLE, 2 or 3 for the rest. Whatever the count, every knob has to
         // be laid out BY the row - inside its bounds, not overlapping a
-        // neighbour, and never larger than the pitch knob it sits beside.
+        // neighbour, and never larger than the 72 px lead knob it sits beside.
         //
-        // This mirrors OscillatorComponent::resized()'s row 2 exactly.
+        // This is the sizing contract OscillatorComponent::resized() uses for
+        // its knob rows: a 72 px lead cell and 60 px macro cells, fitted to the row.
         const auto config = configFrom(R"({"cards":{"probe":{"cardInner":{
             "margin":0,"padding":4,"gap":2,
             "rows":{"row1":{"height":"22%"},"row2":{"height":"36%","gap":4},

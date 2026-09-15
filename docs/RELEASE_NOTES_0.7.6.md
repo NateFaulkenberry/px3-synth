@@ -61,6 +61,25 @@ Previously INIT switched three effects on and left the other five alone, so load
 
 ---
 
+## 🎚️ One Coarse and One Fine Tune per Oscillator
+
+Each oscillator used to carry three overlapping tuning controls: COARSE in semitones, FINE in cents up to a semitone, and a separate FINE TUNE of a quarter semitone. The sub had its own octave menu and yet another fine offset. That made it hard to tell which control had set an oscillator's pitch.
+
+* **Every oscillator, sub included, now has two tuning knobs side by side: COARSE and FINE.**
+* **COARSE** moves in whole octaves, −2 to +2.
+* **FINE** moves in cents, −24 to +24.
+* Both show their value in their own units, such as `-1 oct` and `+7 ct`.
+* The sub's OCTAVE menu is gone. Its COARSE knob starts at −1 octave.
+* **Pitch Mod** is still in every ASSIGN menu for LFOs and envelopes. It now moves pitch only through modulation, never from a value stored in a patch.
+
+---
+
+## ✂️ KARPLUS Removed
+
+The KARPLUS plucked-string mode has been removed from the Synth for now. The factory preset **Porcelain** now uses FM.
+
+---
+
 ## ♿ Accessibility
 
 The switch chips on the DOOM and LUCY cards always showed the right caption, but VoiceOver could read the opposite state — "WET OFF" on a switch that was on. What VoiceOver reads now always matches what the chip shows.
@@ -97,6 +116,8 @@ New coverage includes:
 * **Outputs 3/4 are silent unless Separate FX Output is on.** If you were recording dry and effects as separate stems, turn it on in SETTINGS.
 * **LUCY starts switched off in new Synth patches**, with GLOBAL halfway up.
 * **INIT has every effect off.**
+* **Tuning is now COARSE in octaves and FINE in cents** on every oscillator and the sub. Patches and sessions from earlier versions do not carry their tuning over.
+* **KARPLUS is no longer an oscillator mode.**
 * **The standalone PX3 Lucy starts with GLOBAL halfway up**, so it changes the sound as soon as it is inserted.
 
 ---
@@ -106,6 +127,7 @@ New coverage includes:
 ### ✨ New
 
 * Separate FX Output switch in SETTINGS
+* COARSE and FINE tuning knobs on every oscillator and the sub
 
 ### 🔧 Improved
 
