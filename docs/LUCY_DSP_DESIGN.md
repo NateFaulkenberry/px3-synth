@@ -507,8 +507,8 @@ parameters, attached and automatable whichever way it is set.
 
 | Parameter | Range | Default | Purpose |
 |---|---|---|---|
-| `lucyEnabled` | bool | true | bypass |
-| `lucyGlobal` | 0…1 | **0.0** | macro intensity, *not* a mix. Zero by default so adding LUCY changes no existing patch |
+| `lucyEnabled` | bool | true (standalone) / **false** (Synth) | bypass. Off in the Synth so a patch without LUCY stays without it |
+| `lucyGlobal` | 0…1 | **0.5** | macro intensity, *not* a mix. Part-way up by default so switching LUCY on is heard at once. In the Synth `lucyEnabled` defaults **off** instead, which is what keeps existing patches unchanged |
 | `lucyLoss` | 0…1 | 0.55 | degradation depth **and** which frequencies it reaches |
 | `lucySpeed` | 0…1 | 0.5 | the one decision rate: Loss, Packets, Freeze, Jitter |
 | `lucyFilter` | 0…1 | **0.0** | filter width; zero is genuinely no filtering |

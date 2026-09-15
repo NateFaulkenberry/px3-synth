@@ -11,6 +11,7 @@
 #include "../../shared/UI/Style/UIConfigManager.h"
 #include "../../shared/UI/Style/KnobLookAndFeel.h"
 #include "../../shared/UI/Components/ChipLabel.h"
+#include "../../shared/UI/Components/ToggleChipButton.h"
 #include "../../products/PX3Delay/PluginEditor.h"
 #include "../../products/PX3Mood/PluginEditor.h"
 #include "../../products/PX3Synth/UI/PluginEditor.h"
@@ -34,6 +35,69 @@ namespace px3tests
 void testFxProducts()
 {
     suite("FX PRODUCTS");
+
+    // ---- a chip's text is the caption it shows --------------------------------
+    // The drawn caption always followed the state, but the button's own text was
+    // set to the OFF caption once and never moved, so VoiceOver - and anything
+    // else reading the button - announced "WET OFF" on a switch that was on.
+    {
+        juce::AudioParameterBool parameter(juce::ParameterID("chipCaptionTest", 1), "Chip Caption Test", false);
+        px3::ui::ToggleChipButton chip;
+        chip.setStateLabels("WET ON", "WET OFF");
+        juce::ButtonParameterAttachment attachment(parameter, chip, nullptr);
+
+        const auto atStart = chip.getButtonText();
+        parameter.setValueNotifyingHost(1.0f);
+        const auto afterParameter = chip.getButtonText();
+        const auto drawnOn = chip.currentCaption();
+        chip.setToggleState(false, juce::sendNotificationSync);
+        const auto afterDirectChange = chip.getButtonText();
+
+        check("FxCard_AChipsTextMatchesTheStateItShows",
+              atStart == "WET OFF" && afterParameter == "WET ON" && drawnOn == "WET ON"
+                  && afterDirectChange == "WET OFF",
+              "off \"" + atStart + "\", parameter on \"" + afterParameter + "\" (drawn \"" + drawnOn
+                  + "\"), switched off \"" + afterDirectChange + "\"");
+    }
+
+    // ---- LUCY is heard as soon as it is switched on ----------------------------
+    // It used to default ON with GLOBAL at zero: an enabled card that did nothing
+    // until a second control was found. The Synth now starts it OFF with GLOBAL
+    // part-way up; the standalone starts processing, also part-way up.
+    {
+        PX3SynthAudioProcessor synth;
+        PX3LucyAudioProcessor standalone;
+        const auto synthEnabled = getParamValue(synth, "lucyEnabled");
+        const auto synthGlobal = getParamValue(synth, "lucyGlobal");
+        const auto standaloneGlobal = getParamValue(standalone, "lucyGlobal");
+        check("Lucy_DefaultsAreOffWithGlobalPartWayUp",
+              synthEnabled < 0.5f && std::abs(synthGlobal - 0.5f) < 1.0e-4f && std::abs(standaloneGlobal - 0.5f) < 1.0e-4f,
+              "synth lucyEnabled " + fmt(synthEnabled, 0) + ", lucyGlobal " + fmt(synthGlobal, 2)
+                  + "; standalone lucyGlobal " + fmt(standaloneGlobal, 2));
+
+        // The FX return on its own - every source fader down, every other effect
+        // off - so the only thing that can make a sound is LUCY.
+        const auto returnLevel = [](bool switchLucyOn)
+        {
+            PX3SynthAudioProcessor processor;
+            setParam(processor, "ampRelease", 0.05f);
+            for (const auto* id : { "vibeEnabled", "delayEnabled", "reverbEnabled", "moodEnabled",
+                                    "doomEnabled", "chorusEnabled", "spreadEnabled" })
+            {
+                setParam(processor, id, 0.0f);
+            }
+            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+            {
+                setParam(processor, juce::String("mix.") + id + ".level", 0.0f);
+            }
+            if (switchLucyOn) { setParam(processor, "lucyEnabled", 1.0f); }
+            return render(processor, 24000, { { 1000, true, 57, 0.9f } }).rmsOver(6000, 24000);
+        };
+        const auto off = returnLevel(false);
+        const auto on = returnLevel(true);
+        check("Lucy_SwitchingItOnAtDefaultsIsHeard", off < 1.0e-5 && on > 1.0e-3,
+              "FX return with LUCY at defaults: off " + fmt(off, 6) + ", switched on " + fmt(on, 6));
+    }
 
     constexpr double kRate = 48000.0;
     constexpr int kBlock = 256;
@@ -990,10 +1054,11 @@ void testFxProducts()
 
         // Turning the effect UP before measuring it.
         //
-        // Doom and Lucy ship fully dry - doomMix and lucyGlobal both default to
-        // zero - which is a deliberate default and not a fault, but it means
-        // measuring them at defaults compares silence with silence. Anything
-        // named here is set before the comparison so the control is a real one.
+        // Doom ships fully dry - doomMix defaults to zero - which is a deliberate
+        // default and not a fault, but it means measuring it at defaults compares
+        // silence with silence. Lucy's GLOBAL defaults part-way up; it is turned
+        // fully up here anyway so both effects are measured at full strength.
+        // Anything named here is set before the comparison.
         const auto turnUp = [](juce::AudioProcessor& processor,
                                const juce::String& parameterId, float value)
         {
@@ -1327,6 +1392,11 @@ void testFxProducts()
         PX3SynthAudioProcessor synth;
         synth.setPlayConfigDetails(0, 2, kRate, kBlock);
         synth.prepareToPlay(kRate, kBlock);
+
+        // Compared powered on. LUCY defaults OFF in the Synth and ON as a
+        // standalone, and a bypassed card greys its knobs - a difference in
+        // default state, not in what the two cards build.
+        synth.getLucyEnabledParam().setValueNotifyingHost(1.0f);
 
         std::unique_ptr<juce::AudioProcessorEditor> synthBase(synth.createEditor());
         auto* synthEditor = dynamic_cast<PX3SynthAudioProcessorEditor*>(synthBase.get());

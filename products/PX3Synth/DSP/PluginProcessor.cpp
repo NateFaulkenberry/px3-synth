@@ -515,7 +515,12 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
 
     // ---- LUCY ------------------------------------------------------------
     // A Lossy-inspired spectral degradation engine. See docs/LUCY_DSP_DESIGN.md.
-    lucyEnabledParam = new juce::AudioParameterBool("lucyEnabled", "Lucy Enabled", true);
+    // OFF by default, with GLOBAL part-way up, so switching LUCY on is heard
+    // straight away. It used to default ON with GLOBAL at zero - an enabled card
+    // that did nothing until a second control was found. Off keeps a fresh
+    // instance, INIT, and any session saved before LUCY existed sounding exactly
+    // as they did.
+    lucyEnabledParam = new juce::AudioParameterBool("lucyEnabled", "Lucy Enabled", false);
     lucyFilterInvertParam = new juce::AudioParameterBool("lucyFilterInvert", "Lucy Filter Invert", false);
     lucyVerbPostParam = new juce::AudioParameterBool("lucyVerbPost", "Lucy Verb Post", false);
     lucyGateParam = new juce::AudioParameterBool("lucyGate", "Lucy Gate", false);
@@ -523,7 +528,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
 
     // The six primary knobs. Zero GLOBAL by default, like reverbAmount and
     // doomMix: adding an effect must not change an existing patch.
-    lucyGlobalParam = new juce::AudioParameterFloat("lucyGlobal", "Lucy Global", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    lucyGlobalParam = new juce::AudioParameterFloat("lucyGlobal", "Lucy Global", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     lucyLossParam = new juce::AudioParameterFloat("lucyLoss", "Lucy Loss", juce::NormalisableRange<float>(0.0f, 1.0f), 0.55f);
     lucySpeedParam = new juce::AudioParameterFloat("lucySpeed", "Lucy Speed", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     // Zero is NO filtering at all, which is what makes this a width control.

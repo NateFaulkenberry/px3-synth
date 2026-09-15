@@ -824,6 +824,9 @@ dialled in is expressed — the coder's depth and reach, the packet rate, the
 filter, the freeze. Turn it up and the same setting gets *more* of itself,
 rather than more of a fixed wet signal being faded in.
 
+In a new patch LUCY starts switched off with GLOBAL halfway up, so switching it
+on is heard straight away. (The standalone LUCY starts on, also halfway up.)
+
 **Sound:** STANDARD is darker and full of chiming artefacts. INVERSE is brighter,
 thinner and feathery — it is playing the difference.
 

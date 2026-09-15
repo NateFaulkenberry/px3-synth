@@ -20,10 +20,12 @@ namespace px3::ui
 //
 // Off reads as a plain chip. On fills with the accent colour and brightens the
 // text, so the state is obvious without having to find a tick.
-class ToggleChipButton final : public juce::ToggleButton
+class ToggleChipButton final : public juce::ToggleButton,
+                               private juce::Value::Listener
 {
 public:
     ToggleChipButton();
+    ~ToggleChipButton() override;
 
     void setAccentColour(juce::Colour colour);
 
@@ -38,6 +40,10 @@ public:
     // Distinct text per state, so the chip says which state it is IN rather
     // than leaving the fill colour to carry that alone.
     void setStateLabels(juce::String onText, juce::String offText);
+
+    // The caption for the state the chip is in: what it draws, and what its
+    // button text is kept equal to.
+    juce::String currentCaption() const;
 
     // Explicit colours, for a card that wants a scheme of its own rather than
     // the shades derived from its accent.
@@ -65,6 +71,15 @@ private:
     void paintButton(juce::Graphics& g,
                      bool shouldDrawButtonAsHighlighted,
                      bool shouldDrawButtonAsDown) override;
+
+    // The button's own text follows the state, not just the drawn caption. It
+    // used to be set to the OFF caption once and never moved, so VoiceOver -
+    // and anything else reading the button - announced "WET OFF" on a switch
+    // that was on. Synced on every click and every parameter-driven change,
+    // and through the toggle-state value for a change made with no notification.
+    void clicked() override;
+    void valueChanged(juce::Value& value) override;
+    void syncCaptionToState();
 
     static constexpr float kCornerRadius = 7.0f;
 

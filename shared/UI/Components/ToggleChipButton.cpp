@@ -7,6 +7,39 @@ ToggleChipButton::ToggleChipButton()
 {
     setClickingTogglesState(true);
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    getToggleStateValue().addListener(this);
+}
+
+ToggleChipButton::~ToggleChipButton()
+{
+    getToggleStateValue().removeListener(this);
+}
+
+juce::String ToggleChipButton::currentCaption() const
+{
+    const auto& label = getToggleState() ? onLabel : offLabel;
+    return label.isNotEmpty() ? label : getButtonText();
+}
+
+void ToggleChipButton::syncCaptionToState()
+{
+    const auto& label = getToggleState() ? onLabel : offLabel;
+    if (label.isNotEmpty() && getButtonText() != label)
+    {
+        setButtonText(label);
+    }
+}
+
+void ToggleChipButton::clicked()
+{
+    juce::ToggleButton::clicked();
+    syncCaptionToState();
+}
+
+void ToggleChipButton::valueChanged(juce::Value& value)
+{
+    juce::ignoreUnused(value);
+    syncCaptionToState();
 }
 
 void ToggleChipButton::setOffTint(float amount)
@@ -31,6 +64,7 @@ void ToggleChipButton::setStateLabels(juce::String onText, juce::String offText)
 {
     onLabel = std::move(onText);
     offLabel = std::move(offText);
+    syncCaptionToState();
     repaint();
 }
 
@@ -145,8 +179,7 @@ void ToggleChipButton::paintButton(juce::Graphics& g,
 
     g.setColour(textColour);
     g.setFont(juce::FontOptions(fontSize));
-    const auto stateLabel = on ? onLabel : offLabel;
-    const auto text = stateLabel.isNotEmpty() ? stateLabel : getButtonText();
+    const auto text = currentCaption();
 
     // Fitted rather than plain drawText: these chips are packed six to a row on
     // the busier cards, and a caption that does not fit should shrink rather

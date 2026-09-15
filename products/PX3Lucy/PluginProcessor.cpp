@@ -16,7 +16,9 @@ PX3LucyAudioProcessor::PX3LucyAudioProcessor()
     // GLOBAL starts at zero: adding an effect must not change what an existing
     // patch sounds like. Every other default is the setting that makes the
     // control useful the moment GLOBAL is raised.
-    addParameter(globalParam = new juce::AudioParameterFloat("lucyGlobal", "Lucy Global", unit, 0.0f));
+    // Part-way up, so inserting LUCY does something before a knob is touched.
+    // At zero it passed audio untouched, which read as a broken plugin.
+    addParameter(globalParam = new juce::AudioParameterFloat("lucyGlobal", "Lucy Global", unit, 0.5f));
     addParameter(lossParam = new juce::AudioParameterFloat("lucyLoss", "Lucy Loss", unit, 0.55f));
     addParameter(speedParam = new juce::AudioParameterFloat("lucySpeed", "Lucy Speed", unit, 0.5f));
     // Zero is NO filtering at all, which is what makes this a width control.
