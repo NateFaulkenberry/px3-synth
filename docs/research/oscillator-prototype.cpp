@@ -1037,6 +1037,42 @@ int main()
         printReport("triangle int. square", analyse(triangleIntegratedSquare(t), 48000.0, t, triangleIdeal));
     }
 
+    // ---------------------------------------------------------- overshoot --
+    // The compensation FIR [-a, 1+2a, -a] rings at every edge: on a raw step it
+    // overshoots by 2a. Spectra do not show that, and a taller peak drives the
+    // voice's soft clip harder, so the peak is measured against the ideal
+    // band-limited waveform's own Gibbs peak.
+    std::printf("\nOVERSHOOT - peak of the band-limited waveform (ideal band-limited peak in brackets) and 10 kHz level, fs 48000\n");
+    for (const auto note : { 36, 48, 60, 72, 84, 96, 108 })
+    {
+        const auto t = toneNear(midiHz(note), 48000.0);
+        double idealSquare = 0.0, idealSaw = 0.0;
+        for (int m = 0; m < 4096; ++m)
+        {
+            const auto p = static_cast<double>(m) / 4096.0;
+            double sq = 0.0, sw = 0.0;
+            for (int k = 1; k * t.hz < 24000.0; ++k)
+            {
+                sw += -2.0 / (kPi * k) * std::sin(2.0 * kPi * k * p);
+                if (k % 2) { sq += 4.0 / (kPi * k) * std::sin(2.0 * kPi * k * p); }
+            }
+            idealSquare = std::max(idealSquare, std::abs(sq));
+            idealSaw = std::max(idealSaw, std::abs(sw));
+        }
+        std::printf("  MIDI %3d  saw [%.3f] square [%.3f]\n", note, idealSaw, idealSquare);
+        for (const auto a : { 0.0, 0.10, 0.15, 0.20, 0.25 })
+        {
+            const auto sawWave = compensate(saw(t, 4), a);
+            const auto squareWave = compensate(pulse(t, 0.5, 4), a);
+            double sawPeak = 0.0, squarePeak = 0.0;
+            for (const auto v : sawWave) { sawPeak = std::max(sawPeak, std::abs(v)); }
+            for (const auto v : squareWave) { squarePeak = std::max(squarePeak, std::abs(v)); }
+            const auto r = analyse(sawWave, 48000.0, t, sawIdeal);
+            std::printf("    a %.2f  saw peak %.3f  square peak %.3f  saw 10k %+5.2f dB  saw alias <15k %6.1f\n",
+                        a, sawPeak, squarePeak, r.droop10k, r.alias15k);
+        }
+    }
+
     // ----------------------------------------------------------------- PWM --
     std::printf("\nPWM - alias against TOTAL harmonic power (a narrow pulse has almost no fundamental), fs 48000\n");
     for (const auto note : { 48, 60, 84, 96, 108 })

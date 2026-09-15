@@ -194,6 +194,7 @@ private:
     float currentRamp { 1.0f };
 
     double sampleRate { 48000.0 };
+    double inverseSampleRate { 1.0 / 48000.0 };
     double whiteScale { 1.0 };
     double phase { 0.0 };
     px3::dsp::NoiseStream noise;

@@ -7,6 +7,8 @@
 
 namespace
 {
+using px3::dsp::fastSine;
+using px3::dsp::kInverseTwoPi;
 using px3::dsp::kPi;
 using px3::dsp::kTanhAdaa;
 using px3::dsp::kTwoPi;
@@ -102,6 +104,7 @@ float rollGain(int harmonic, float roll)
 void OscillatorUnit::prepare(double newSampleRate)
 {
     sampleRate = juce::jmax(1.0, newSampleRate);
+    inverseSampleRate = 1.0 / sampleRate;
     wtPositionCoeff = static_cast<float>(1.0 - std::exp(-1.0 / (kWtPositionSmoothingSeconds * sampleRate)));
     fadeLength = juce::jmax(1, static_cast<int>(std::lround(kModeCrossfadeSeconds * sampleRate)));
 
@@ -168,6 +171,10 @@ void OscillatorUnit::setSettings(const OscillatorSettings& settings, int rampSam
         rampLength = juce::jmax(1, rampSamples);
         rampPosition = rampSamples > 0 ? 0 : rampLength;
         currentRamp = rampSamples > 0 ? 0.0f : 1.0f;
+        if (rampSamples <= 0)
+        {
+            previous = target;
+        }
     }
 
     oscillatorSettings.modeIndex = clamped.modeIndex;
@@ -573,10 +580,18 @@ double OscillatorUnit::renderSample(const RenderContext& context)
     {
         ++rampPosition;
         currentRamp = static_cast<float>(rampPosition) / static_cast<float>(rampLength);
+        if (rampPosition == rampLength)
+        {
+            // Settled: from here every ramp reads its target exactly.
+            previous = target;
+            currentRamp = 1.0f;
+        }
     }
 
     MainPhase main;
-    main.increment = px3::dsp::phaseIncrement(context.frequencyHz, sampleRate);
+    // Multiplied by the inverse rather than divided: a division per sample per
+    // accumulator was a measurable share of the saw-heavy modes.
+    main.increment = juce::jlimit(0.0, 0.499, context.frequencyHz * inverseSampleRate);
     main.wrapped = px3::dsp::advancePhase(phase, main.increment);
     main.phase = phase;
     main.tau = main.wrapped && main.increment > 0.0 ? phase / main.increment : 0.0;
@@ -614,7 +629,7 @@ double OscillatorUnit::renderMode(int modeIndex, const RenderContext& context, c
     switch (static_cast<Mode>(idx))
     {
         case Mode::sine:
-            sample = plainDelays[idx].push(std::sin(kTwoPi * main.phase));
+            sample = plainDelays[idx].push(fastSine(main.phase));
             break;
 
         case Mode::saw:
@@ -685,8 +700,8 @@ double OscillatorUnit::renderMode(int modeIndex, const RenderContext& context, c
         {
             const auto partials = renderHarmonicSet(isaacPhases, previous.isaac, target.isaac, main.increment);
             isaacShimmerPhase = wrap(isaacShimmerPhase
-                                     + px3::dsp::phaseIncrement(0.5 * context.frequencyHz + kShimmerOffsetHz, sampleRate));
-            const auto shimmer = std::sin(kTwoPi * isaacShimmerPhase) * ramped(&DerivedCurves::isaacShimmer);
+                                     + juce::jlimit(0.0, 0.499, (0.5 * context.frequencyHz + kShimmerOffsetHz) * inverseSampleRate));
+            const auto shimmer = fastSine(isaacShimmerPhase) * ramped(&DerivedCurves::isaacShimmer);
             sample = plainDelays[idx].push(isaacClip.process(kTanhAdaa, partials + shimmer));
             break;
         }
@@ -816,7 +831,7 @@ double OscillatorUnit::renderSuperSaw(const RenderContext& context)
         const auto driftHz = drift * driftNorm * driftDepth;
 
         const auto ratio = previous.superSawRatios[i] + (target.superSawRatios[i] - previous.superSawRatios[i]) * t;
-        const auto increment = px3::dsp::phaseIncrement(juce::jmax(8.0, context.frequencyHz * ratio + driftHz), sampleRate);
+        const auto increment = juce::jlimit(0.0, 0.499, juce::jmax(8.0, context.frequencyHz * ratio + driftHz) * inverseSampleRate);
         auto& p = superSawPhases[i];
         if (px3::dsp::advancePhase(p, increment))
         {
@@ -837,26 +852,31 @@ double OscillatorUnit::renderHarmonicSet(std::array<double, kHarmonicCount>& pha
                                          double increment)
 {
     const auto t = currentRamp;
+    const auto settled = rampPosition >= rampLength;
     double sum = 0.0;
     for (std::size_t i = 0; i < phases.size(); ++i)
     {
-        const auto amp = from.amplitude[i] + (to.amplitude[i] - from.amplitude[i]) * t;
-        const auto ratio = static_cast<double>(from.ratio[i] + (to.ratio[i] - from.ratio[i]) * t);
+        const auto amp = settled ? to.amplitude[i] : from.amplitude[i] + (to.amplitude[i] - from.amplitude[i]) * t;
+        const auto ratio = static_cast<double>(settled ? to.ratio[i] : from.ratio[i] + (to.ratio[i] - from.ratio[i]) * t);
         // Its own accumulator at its own ratio: a fractional ratio read off a
         // wrapped master phase jumps a part-cycle at every wrap.
         const auto partialIncrement = increment * ratio;
         auto& p = phases[i];
-        p = wrap(p + partialIncrement);
+        p += partialIncrement;
+        if (p >= 1.0)
+        {
+            p = p < 2.0 ? p - 1.0 : wrap(p);
+        }
         if (amp != 0.0f)
         {
             const auto fade = px3::dsp::nyquistFade(partialIncrement);
             if (fade > 0.0f)
             {
-                sum += static_cast<double>(amp * fade) * std::sin(kTwoPi * p);
+                sum += static_cast<double>(amp * fade) * fastSine(p);
             }
         }
     }
-    const auto norm = from.norm + (to.norm - from.norm) * t;
+    const auto norm = settled ? to.norm : from.norm + (to.norm - from.norm) * t;
     return norm > 1.0e-4f ? sum / static_cast<double>(norm) : 0.0;
 }
 
@@ -924,9 +944,9 @@ double OscillatorUnit::renderFmCore(double& modulatorPhase,
     modulatorPhase = wrap(modulatorPhase + modulatorIncrement);
     const auto depth = px3::dsp::carsonLimitedIndex(index, main.increment, modulatorIncrement);
 
-    const auto first = std::sin(kTwoPi * main.phase + depth * std::sin(kTwoPi * modulatorPhase));
-    const auto second = std::sin(kTwoPi * (main.phase + 0.5 * main.increment)
-                                 + depth * std::sin(kTwoPi * (modulatorPhase + 0.5 * modulatorIncrement)));
+    const auto first = fastSine(main.phase + depth * kInverseTwoPi * fastSine(modulatorPhase));
+    const auto second = fastSine(main.phase + 0.5 * main.increment
+                                 + depth * kInverseTwoPi * fastSine(modulatorPhase + 0.5 * modulatorIncrement));
     return decimator.process(first, second);
 }
 
@@ -980,12 +1000,15 @@ double OscillatorUnit::renderOrgan(const RenderContext& context, const MainPhase
     auto keyClick = 0.0;
     if (click > 0.0)
     {
-        const auto seconds = static_cast<double>(context.noteAgeSamples) / sampleRate;
-        const auto envelope = std::exp(-seconds * static_cast<double>(ramped(&DerivedCurves::organClickDecayPerSecond)));
-        if (envelope > 1.0e-5)
+        const auto exponent = static_cast<double>(context.noteAgeSamples) * inverseSampleRate
+                              * static_cast<double>(ramped(&DerivedCurves::organClickDecayPerSecond));
+        // Once the click is below -100 dB it is left uncomputed: exp() every
+        // sample for the rest of the note was most of the cost of doing nothing.
+        if (exponent < 11.512925464970229)   // exp(-11.51) = 1e-5
         {
+            const auto envelope = std::exp(-exponent);
             keyClick = (static_cast<double>(noise.white()) * 0.08
-                        + std::sin(kTwoPi * organClickPhase) * px3::dsp::nyquistFade(clickIncrement) * 0.05)
+                        + fastSine(organClickPhase) * px3::dsp::nyquistFade(clickIncrement) * 0.05)
                        * envelope * click;
         }
     }
@@ -1013,8 +1036,8 @@ double OscillatorUnit::renderDigital(const MainPhase& main)
         const auto fold = static_cast<double>(ramped(&DerivedCurves::digitalFold));
         const auto lower = std::floor(fold);
         const auto blend = fold - lower;
-        const auto shaped = (1.0 - blend) * std::sin(kTwoPi * lower * quantised)
-                            + blend * std::sin(kTwoPi * (lower + 1.0) * quantised);
+        const auto shaped = (1.0 - blend) * fastSine(lower * quantised)
+                            + blend * fastSine((lower + 1.0) * quantised);
 
         const auto crush = static_cast<double>(target.digitalCrushSteps);
         digitalHeld = std::round(shaped * crush) / crush;
@@ -1044,7 +1067,7 @@ double OscillatorUnit::renderPhysical(const MainPhase& main)
         auto& envelope = physicalEnvelopes[i];
         envelope = kPhysicalSustain[i] + (envelope - kPhysicalSustain[i]) * coeff;
 
-        sum += envelope * kPhysicalWeights[i] * px3::dsp::nyquistFade(increment) * std::sin(kTwoPi * physicalPhases[i]);
+        sum += envelope * kPhysicalWeights[i] * px3::dsp::nyquistFade(increment) * fastSine(physicalPhases[i]);
     }
 
     return plainDelays[static_cast<std::size_t>(Mode::physical)].push(physicalClip.process(kTanhAdaa, sum * kPhysicalDrive));
@@ -1071,13 +1094,13 @@ double OscillatorUnit::renderRob(const RenderContext& context, const MainPhase& 
     const auto bodyIncrement = increment * (1.0 + chaos * 1.05 + body * 0.45);
     const auto wobbleIncrement = increment * (3.5 + chaos * 10.0);
     const auto wobbleDepth = chaos * 0.40;   // radians: nothing at all at CHAOS 0
-    const auto wobble = std::sin(kTwoPi * advance(1, wobbleIncrement)) * wobbleDepth;
+    const auto wobble = fastSine(advance(1, wobbleIncrement)) * wobbleDepth;
 
     const auto component = [&](std::size_t i, double multiple, double extraBandwidth = 0.0)
     {
         const auto p = advance(i, bodyIncrement * multiple);
         const auto top = bodyIncrement * multiple + (multiple * wobbleDepth + 1.0) * wobbleIncrement + extraBandwidth;
-        return std::sin(kTwoPi * p + multiple * wobble) * static_cast<double>(px3::dsp::nyquistFade(top));
+        return fastSine(p + multiple * wobble * kInverseTwoPi) * static_cast<double>(px3::dsp::nyquistFade(top));
     };
 
     const auto fundamental = component(0, 1.0);
@@ -1112,9 +1135,9 @@ double OscillatorUnit::renderRob(const RenderContext& context, const MainPhase& 
     auto chaosSignal = 0.0;
     if (chaos > 0.0)
     {
-        const auto warpInner = std::sin(kTwoPi * advance(8, increment * (11.0 + chaos * 27.0)));
+        const auto warpInner = fastSine(advance(8, increment * (11.0 + chaos * 27.0)));
         const auto warpMultiple = 3.0 + chaos * 9.0;
-        const auto warp = std::sin(kTwoPi * advance(7, bodyIncrement * warpMultiple) + warpMultiple * wobble + warpInner);
+        const auto warp = fastSine(advance(7, bodyIncrement * warpMultiple) + (warpMultiple * wobble + warpInner) * kInverseTwoPi);
         const auto warpDepth = 0.6 + chaos * 2.4;
         const auto rate = 6.0 + chaos * 32.0;
         const auto tone = component(9, rate, (warpDepth + 1.0) * bodyIncrement * warpMultiple);
@@ -1136,16 +1159,16 @@ double OscillatorUnit::renderPx3(const MainPhase& main)
     const auto character = static_cast<double>(ramped(&DerivedCurves::px3Character));
     const auto movement = static_cast<double>(ramped(&DerivedCurves::px3Movement));
 
-    px3MovePhase = wrap(px3MovePhase + (0.3 + 5.7 * movement) / sampleRate);
-    const auto lfo = std::sin(kTwoPi * px3MovePhase);
+    px3MovePhase = wrap(px3MovePhase + (0.3 + 5.7 * movement) * inverseSampleRate);
+    const auto lfo = fastSine(px3MovePhase);
     const auto morph = juce::jlimit(0.0, 1.0, static_cast<double>(ramped(&DerivedCurves::px3Morph)) + lfo * 0.25 * movement);
 
     // All three arrive at the common latency before they are mixed.
     const auto fmPart = renderFmCore(px3ModulatorPhase, px3Decimator, main, 2.0, 1.0 + 6.0 * character) * 0.70;
 
     const auto partials = renderHarmonicSet(px3IsaacPhases, previous.px3Isaac, target.px3Isaac, main.increment);
-    px3ShimmerPhase = wrap(px3ShimmerPhase + px3::dsp::phaseIncrement(0.5 * main.increment * sampleRate + kShimmerOffsetHz, sampleRate));
-    const auto shimmer = std::sin(kTwoPi * px3ShimmerPhase) * 0.15 * (0.18 + 0.42 * movement);
+    px3ShimmerPhase = wrap(px3ShimmerPhase + juce::jlimit(0.0, 0.499, 0.5 * main.increment + kShimmerOffsetHz * inverseSampleRate));
+    const auto shimmer = fastSine(px3ShimmerPhase) * 0.15 * (0.18 + 0.42 * movement);
     const auto isaacPart = px3IsaacDelay.push(px3IsaacClip.process(kTanhAdaa, partials + shimmer));
 
     if (main.wrapped)

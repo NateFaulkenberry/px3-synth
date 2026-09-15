@@ -1905,6 +1905,8 @@ int runRegressionSuite(bool legacyPruning)
 
 // tools/OscillatorQualityReport.cpp
 int runOscillatorQualityReport(const juce::String& outputDirectory);
+int runOscillatorBench(const juce::String& filter);
+int runOscillatorDump(const juce::String& path);
 
 int main(int argc, char* argv[])
 {
@@ -1927,6 +1929,16 @@ int main(int argc, char* argv[])
                 static_cast<double>(patch.sustain),
                 static_cast<double>(patch.release));
     std::printf("  vibe=%s fx=%s\n", patch.vibeEnabled ? "on" : "off", patch.fxEnabled ? "on" : "off");
+
+    if (arg == "oscbench")
+    {
+        return runOscillatorBench(argc > 2 ? juce::String(argv[2]) : juce::String());
+    }
+
+    if (arg == "oscdump")
+    {
+        return runOscillatorDump(argc > 2 ? juce::String(argv[2]) : juce::String("oscdump.bin"));
+    }
 
     if (arg == "oscquality")
     {

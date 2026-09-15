@@ -229,6 +229,19 @@ void testOscillatorQuality()
     suite("OSCILLATOR QUALITY");
     constexpr double fs = 48000.0;
 
+    // ---- the table sine the hot paths use is a sine -----------------------------------
+    {
+        auto worst = 0.0;
+        auto x = -3.7;
+        for (int i = 0; i < 200000; ++i)
+        {
+            x += 0.0003719;
+            worst = juce::jmax(worst, std::abs(px3::dsp::fastSine(x) - std::sin(px3::dsp::kTwoPi * x)));
+        }
+        check("OscQuality_FastSineMatchesTheLibrarySine", worst < 1.0e-9,
+              "worst difference from std::sin over 200,000 phases " + juce::String(worst, 14));
+    }
+
     // ---- the mod wheel is not a volume control ------------------------------------
     {
         juce::StringArray moved;

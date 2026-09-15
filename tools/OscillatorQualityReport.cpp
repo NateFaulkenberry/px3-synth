@@ -427,3 +427,104 @@ int runOscillatorQualityReport(const juce::String& outputDirectory)
     std::fflush(stdout);
     return 0;
 }
+
+// ---- focused tools for CPU work --------------------------------------------------------
+namespace
+{
+std::vector<Setup> pickSetups(const juce::String& filter)
+{
+    std::vector<Setup> chosen;
+    for (const auto& setup : setups())
+    {
+        if (filter.isEmpty() || juce::StringArray::fromTokens(filter, ",", "").contains(setup.name, true)
+            || juce::String(setup.name).startsWithIgnoreCase(filter))
+        {
+            chosen.push_back(setup);
+        }
+    }
+    return chosen;
+}
+} // namespace
+
+// PX3Diag oscbench [MODE,MODE...]: ns per sample for one OscillatorUnit per mode at
+// 48 kHz, best of five runs so scheduler noise does not set the figure.
+int runOscillatorBench(const juce::String& filter)
+{
+    for (const auto& setup : pickSetups(filter))
+    {
+        auto best = 1.0e30;
+        for (int run = 0; run < 5; ++run)
+        {
+            auto unit = std::make_unique<OscillatorUnit>();
+            unit->prepare(48000.0);
+            OscillatorSettings settings;
+            settings.modeIndex = setup.mode;
+            settings.macroA = setup.a;
+            settings.macroB = setup.b;
+            settings.macroC = setup.c;
+            unit->setSettings(settings);
+            unit->resetForNote(0.0, 1u);
+            OscillatorUnit::RenderContext context;
+            context.frequencyHz = 220.0;
+            constexpr int samples = 1 << 20;
+            volatile double sink = 0.0;
+            const auto start = std::chrono::steady_clock::now();
+            for (int i = 0; i < samples; ++i)
+            {
+                context.noteAgeSamples = i;
+                sink = unit->renderSample(context);
+            }
+            const auto end = std::chrono::steady_clock::now();
+            juce::ignoreUnused(sink);
+            best = std::min(best, std::chrono::duration<double, std::nano>(end - start).count() / samples);
+        }
+        std::printf("  %-16s %7.2f ns/sample\n", setup.name, best);
+    }
+    return 0;
+}
+
+// PX3Diag oscdump <file>: raw doubles from every mode, at two pitches, with a
+// macro change ramped in halfway - the evidence that an optimisation left the
+// sound alone.
+int runOscillatorDump(const juce::String& path)
+{
+    juce::File file(path);
+    file.deleteFile();
+    juce::FileOutputStream out(file);
+    std::size_t total = 0;
+    for (const auto& setup : setups())
+    {
+        for (const auto hz : { 220.0, 1500.0 })
+        {
+            auto unit = std::make_unique<OscillatorUnit>();
+            unit->prepare(48000.0);
+            OscillatorSettings settings;
+            settings.modeIndex = setup.mode;
+            settings.macroA = setup.a;
+            settings.macroB = setup.b;
+            settings.macroC = setup.c;
+            unit->setSettings(settings);
+            unit->resetForNote(0.0, 7u);
+            OscillatorUnit::RenderContext context;
+            context.frequencyHz = hz;
+            context.modWheelNorm = setup.wheel;
+            for (int i = 0; i < 48000; ++i)
+            {
+                if (i == 24000)
+                {
+                    settings.macroA = 1.0f - setup.a * 0.6f;
+                    settings.macroB = 0.2f + setup.b * 0.5f;
+                    settings.macroC = 0.9f - setup.c * 0.8f;
+                    unit->setSettings(settings, 512);
+                }
+                context.noteAgeSamples = i;
+                const auto v = unit->renderSample(context);
+                out.write(&v, sizeof(v));
+                ++total;
+            }
+        }
+    }
+    std::printf("  wrote %zu samples to %s\n", total, file.getFullPathName().toRawUTF8());
+    return 0;
+}
+
