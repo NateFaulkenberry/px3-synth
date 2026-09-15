@@ -1,59 +1,65 @@
 #pragma once
 
+#include "OscillatorDsp.h"
 #include "OscillatorMode.h"
 #include "OscillatorTypes.h"
 #include "WavetableReader.h"
 
 #include <array>
-#include <vector>
 #include <cstdint>
 
+// One oscillator of one voice: every mode PX3 offers, built on the primitives in
+// OscillatorDsp.h. docs/OSCILLATOR_DSP_DESIGN.md is the design and the evidence.
+//
+// What leaves renderSample is this oscillator's signal at its mode's level,
+// px3::dsp::kOscillatorLatencySamples after the phase that made it, and NOT yet
+// soft-clipped: the voice's source stage owns that curve, and anti-aliases it.
 class OscillatorUnit
 {
 public:
-    // How long the scan takes to reach a new position.
-    //
-    // Long enough that the once-per-block step in the modulation sum is gone -
-    // at 512 samples that step arrives at 93.75 Hz and is plainly audible as a
-    // zipper - and short enough that a fast envelope sweeping the scan still
-    // arrives when it should.
+    // How long the scan takes to reach a new position. Long enough that the
+    // once-per-block step in the modulation sum is gone, short enough that a
+    // fast envelope sweeping the scan still arrives when it should.
     static constexpr double kWtPositionSmoothingSeconds = 0.003;
 
-
-    // Allocates sample-rate dependent storage. Must be called off the audio
-    // thread before any note is rendered; SynthVoice does so from
-    // setCurrentPlaybackSampleRate, which JUCE drives from prepareToPlay.
-    void prepare(double sampleRate);
+    // Changing mode crossfades the old mode out and the new one in over this
+    // long. Both render meanwhile, each from its own state.
+    static constexpr double kModeCrossfadeSeconds = 0.005;
 
     struct RenderContext
     {
-        double currentAngle { 0.0 };
-        double currentFrequencyHz { 440.0 };
+        // This oscillator's frequency for this sample: the note with bend,
+        // vibrato and drift applied, times its tuning and Pitch Mod.
+        double frequencyHz { 440.0 };
         int noteAgeSamples { 0 };
-        float pitchRatio { 1.0f };
+        // The smoothed mod wheel. PWM's width is its only destination here.
         float modWheelNorm { 0.0f };
-        float pwmModWheelNorm { 0.0f };
     };
 
-    void setSettings(const OscillatorSettings& settings);
-    void resetForNote(double sampleRate, double currentFrequencyHz);
-    float nextDeterministicNoise();
-    float renderSample(double sampleRate, const RenderContext& context);
+    // Off the audio thread: sample-rate dependent coefficients.
+    void prepare(double sampleRate);
+
+    // Once per control block, before it renders. Continuous controls ramp from
+    // their previous values across `rampSamples`; a new mode crossfades in.
+    void setSettings(const OscillatorSettings& settings, int rampSamples = 0);
+
+    // `startPhase` in cycles; `seed` makes this oscillator's noise and random
+    // start state its own and reproducible.
+    void resetForNote(double startPhase, std::uint32_t seed);
+
+    double renderSample(const RenderContext& context);
+
+    double currentPhase() const noexcept { return phase; }
+    int currentMode() const noexcept { return activeMode; }
 
 private:
-    // Everything a mode derives from its macro controls, precomputed.
-    //
-    // The render functions used to call std::pow on the macros on every sample
-    // - up to sixteen times per sample in the additive modes - for values that
-    // only change when the user moves a control. Profiling PX3 mode attributed
-    // 30% of all CPU to powf alone. The macros are refreshed once per block, so
-    // these are recomputed in setSettings and only when the settings actually
-    // differ, which makes a held note cost nothing at all here.
     // Nine partials, not eight, because a Hammond has nine drawbars and two of
-    // them - the 16' sub at half the fundamental and the 5 1/3' quint at one
-    // and a half times it - are not whole harmonics at all. They are most of
-    // what makes the instrument sound like itself.
+    // them - the 16' sub at half the fundamental and the 5 1/3' quint at one and
+    // a half times it - are not whole harmonics at all.
     static constexpr int kHarmonicCount = 9;
+    static constexpr int kSuperSawVoices = 7;
+    static constexpr int kPhysicalModes = 4;
+    static constexpr int kRobPhases = 10;
 
     struct HarmonicSet
     {
@@ -62,38 +68,41 @@ private:
         float norm { 0.0f };
     };
 
+    // A formant is a resonance of the vocal tract, so it sits at a FIXED
+    // frequency in hertz and does not move with the note - which is what keeps
+    // a vowel the same vowel up the keyboard. Held as resonator coefficients.
+    struct FormantBank
+    {
+        std::array<float, 3> a { {} };   // input
+        std::array<float, 3> b { {} };   // y[n-1]
+        std::array<float, 3> c { {} };   // y[n-2]
+        std::array<float, 3> gain { {} };
+    };
+
+    // Everything a mode derives from its controls.
+    //
+    // Rebuilt once per control block, and only when the controls moved. Read
+    // per sample as a ramp from the previous block's values, so a macro swept
+    // by an LFO is a line rather than a staircase stepping at the block rate.
     struct DerivedCurves
     {
-        float superSawSpread { 0.0f };
         float superSawWidth { 0.0f };
         float superSawEdgeSoft { 1.0f };
-        // Kept as double: the original computed pow(2.0, ...) in double and
-        // multiplied the frequency by it in double. Narrowing to float here
-        // would change the rendered pitch in the last bits.
-        std::array<double, 7> superSawRatios { {} };
+        std::array<double, kSuperSawVoices> superSawRatios { {} };
 
         float pwmWidthCurve { 0.0f };
 
-        float additiveRolloff { 0.0f };
-        float additiveOddEven { 0.0f };
-        HarmonicSet additiveStatic;   // inharmonicity fixed at zero
-        HarmonicSet additiveDynamic;  // inharmonicity driven by macro C
-        // FORMANT is not a harmonic set. A formant is a resonance of the vocal
-        // tract, so it sits at a FIXED frequency in hertz and does not move
-        // with the note - that is exactly what makes a vowel stay the same
-        // vowel as you play up the keyboard. Held as resonator coefficients,
-        // rebuilt only when the vowel, the macros or the sample rate change.
-        struct FormantBank
-        {
-            std::array<float, 3> a { {} };   // input coefficient per resonator
-            std::array<float, 3> b { {} };   // y[n-1]
-            std::array<float, 3> c { {} };   // y[n-2]
-            std::array<float, 3> gain { {} };
-        };
+        HarmonicSet additive;
+        HarmonicSet isaac;
+        float isaacShimmer { 0.0f };
+
         FormantBank formant;
         float formantSourceCoeff { 0.02f };
         float formantTrim { 1.0f };
+
         HarmonicSet organ;
+        float organClick { 0.0f };
+        float organClickDecayPerSecond { 0.0f };
 
         float fmRatio { 1.0f };
         float fmIndex { 0.0f };
@@ -102,89 +111,171 @@ private:
         float hardSyncRatio { 1.0f };
         float hardSyncDrive { 1.0f };
 
-
-        float organClick { 0.0f };
-        float organClickDecay { 0.0f };
-
-        int digitalBitDepth { 2 };
-        int digitalHoldSamples { 1 };
-        double digitalAliasFold { 1.0 }; // double: the original folded in double
-        float digitalSteps { 4.0f };
+        float digitalHoldAt48k { 1.0f };   // samples at 48 kHz: a duration
+        float digitalFold { 1.0f };
+        float digitalSteps { 4.0f };       // structural: stepped by design
         float digitalCrushSteps { 2.0f };
 
-        float physicalDamping { 0.0f };
-        float physicalMaterial { 1.0f };
+        std::array<float, kPhysicalModes> physicalDecayCoeff { {} };
+        float physicalSpread { 1.0f };
 
         float robTrans { 0.0f };
         float robBody { 0.0f };
         float robChaos { 0.0f };
+        float robTransientCoeff { 1.0f };
 
         float px3Morph { 0.0f };
         float px3Character { 0.0f };
         float px3Movement { 0.0f };
+        HarmonicSet px3Isaac;
 
-        float wavetablePos { 0.0f };
+        float noiseColor { 0.5f };
+        float noiseCoeff { 0.1f };
+        float pinkCoeff { 0.1f };
 
-        // Per-mode output trim that renderSample applies after the mode switch.
-        float modeGainTrim { 1.0f };
+        // The level each mode leaves at: its trim, the macro-travel
+        // compensation and the fixed level at rest.
+        std::array<float, px3::oscillatorModeCount> modeGain { {} };
+    };
+
+    struct MainPhase
+    {
+        double phase { 0.0 };
+        double increment { 0.0 };
+        bool wrapped { false };
+        double tau { 0.0 };       // samples since the wrap, when wrapped
     };
 
     void updateDerivedCurves();
     static HarmonicSet buildHarmonicSet(const std::array<float, 8>& harmonics,
                                         float rolloffBias,
                                         float oddEvenBias,
-                                        float inharmonicity);
-    static float normaliseHarmonicSet(float energy);
-    static float readHarmonicSum(double currentAngle, const HarmonicSet& set);
-    float renderFormant(double sampleRate, const RenderContext& context);
+                                        float inharmonicity,
+                                        float roll);
 
-    float renderPinkNoise(float white);
-    float renderSuperSaw(double sampleRate, const RenderContext& context);
-    float renderPwm(const RenderContext& context) const;
-    float renderAdditive(const RenderContext& context, bool dynamic);
-    float renderWavetable(double sampleRate, const RenderContext& context);
-    float renderFm(double sampleRate, const RenderContext& context);
-    float renderHardSync(double sampleRate, const RenderContext& context);
-    float renderOrgan(const RenderContext& context);
-    float renderDigital(double sampleRate, const RenderContext& context);
-    float renderPhysical(double sampleRate, const RenderContext& context);
-    float renderRobOsc(double sampleRate, const RenderContext& context);
-    float renderPx3(double sampleRate, const RenderContext& context);
+    float rampValue() const noexcept { return currentRamp; }
+    float ramped(float DerivedCurves::* field) const noexcept
+    {
+        return previous.*field + (target.*field - previous.*field) * currentRamp;
+    }
+
+    void requestMode(int mode);
+    void beginModeChange(int mode);
+    void activateMode(int mode, bool strike);
+
+    double renderMode(int mode, const RenderContext& context, const MainPhase& main);
+
+    double renderPulse(px3::dsp::BlepLine& line, const MainPhase& main, double width);
+    double renderTriangle(const MainPhase& main);
+    double renderSuperSaw(const RenderContext& context);
+    double renderHarmonicSet(std::array<double, kHarmonicCount>& phases,
+                             const HarmonicSet& from,
+                             const HarmonicSet& to,
+                             double increment);
+    double renderFormant(const RenderContext& context, const MainPhase& main);
+    double renderFmCore(double& modulatorPhase,
+                        px3::dsp::HalfbandDecimator& decimator,
+                        const MainPhase& main,
+                        double ratio,
+                        double index);
+    double renderHardSync(const MainPhase& main);
+    double renderOrgan(const RenderContext& context, const MainPhase& main);
+    double renderDigital(const MainPhase& main);
+    double renderPhysical(const MainPhase& main);
+    double renderRob(const RenderContext& context, const MainPhase& main);
+    double renderPx3(const MainPhase& main);
 
     OscillatorSettings oscillatorSettings;
-    DerivedCurves derived;
+    DerivedCurves target;
+    DerivedCurves previous;
+    bool derivedValid { false };
+    int rampLength { 1 };
+    int rampPosition { 1 };
+    float currentRamp { 1.0f };
 
+    double sampleRate { 48000.0 };
+    double whiteScale { 1.0 };
+    double phase { 0.0 };
+    px3::dsp::NoiseStream noise;
+
+    int activeMode { 0 };
+    int fadingMode { -1 };
+    int pendingMode { -1 };
+    int fadeLength { 240 };
+    int fadeRemaining { 0 };
+
+    std::array<px3::dsp::LatencyDelay, px3::oscillatorModeCount> plainDelays;
+    std::array<px3::dsp::DcBlocker, px3::oscillatorModeCount> dcBlockers;
+
+    // SAW / SQUARE / TRIANGLE / PWM
+    px3::dsp::BlepLine sawLine, squareLine, triangleLine, pwmLine;
+
+    // NOISE / PINK NOISE
+    float noiseColorState { 0.0f };
+    float pinkColorState { 0.0f };
+    px3::dsp::PinkFilter pinkFilter;
+
+    // SUPER SAW
+    std::array<double, kSuperSawVoices> superSawPhases { {} };
+    std::array<double, kSuperSawVoices> superSawDrift { {} };
+    std::array<px3::dsp::BlepLine, kSuperSawVoices> superSawLines;
+    std::array<px3::dsp::Adaa, kSuperSawVoices> superSawClips;
+    double driftCoeff { 0.0 };
+    double driftNorm { 1.0 };
+
+    // WAVETABLE
     px3::WavetableReader wavetableReader;
     float smoothedWtPosition { 0.0f };
     float wtPositionCoeff { 1.0f };
-    bool derivedValid { false };
-    // The formant resonators are designed in hertz, so their coefficients need
-    // the sample rate at the point the curves are built rather than at render.
-    double preparedSampleRate { 44100.0 };
 
-    std::array<double, 7> superSawAngles { { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 } };
-    std::array<float, 7> superSawOffsets { { -0.22f, -0.14f, -0.07f, 0.0f, 0.07f, 0.14f, 0.22f } };
-    std::array<float, 7> superSawDrift { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
+    // ADDITIVE / ISAAC
+    std::array<double, kHarmonicCount> additivePhases { {} };
+    std::array<double, kHarmonicCount> isaacPhases { {} };
+    double isaacShimmerPhase { 0.0 };
+    px3::dsp::Adaa isaacClip;
 
-    std::array<float, 7> pinkState { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
-    uint32_t noiseSeed { 0x13579BDFu };
-    float noiseColorState { 0.0f };
-    float pinkColorState { 0.0f };
-
-    double fmModAngle { 0.0 };
-    double syncMasterAngle { 0.0 };
-    double syncSlaveAngle { 0.0 };
-
-
-    int digitalHoldCounter { 0 };
-    int digitalHoldSamples { 1 };
-    float digitalHeldSample { 0.0f };
-
-    std::array<double, 4> physicalPhase { { 0.0, 0.0, 0.0, 0.0 } };
-    std::array<float, 4> physicalState { { 0.0f, 0.0f, 0.0f, 0.0f } };
-
-    // Two-pole state per formant resonator.
+    // FORMANT
     float formantSourceState { 0.0f };
-    std::array<float, 3> formantY1 { { 0.0f, 0.0f, 0.0f } };
-    std::array<float, 3> formantY2 { { 0.0f, 0.0f, 0.0f } };
+    std::array<float, 3> formantY1 { {} };
+    std::array<float, 3> formantY2 { {} };
+    px3::dsp::Adaa formantClip;
+
+    // FM
+    double fmModulatorPhase { 0.0 };
+    px3::dsp::HalfbandDecimator fmDecimator;
+
+    // HARD SYNC
+    double syncSlavePhase { 0.0 };
+    px3::dsp::BlepLine syncLine;
+    px3::dsp::Adaa syncClip;
+
+    // ORGAN
+    std::array<double, kHarmonicCount> organPhases { {} };
+    double organClickPhase { 0.0 };
+    px3::dsp::Adaa organClip;
+
+    // DIGITAL
+    int digitalHoldCounter { 0 };
+    double digitalHeld { 0.0 };
+    px3::dsp::Adaa digitalClip;
+
+    // PHYSICAL
+    std::array<double, kPhysicalModes> physicalPhases { {} };
+    std::array<double, kPhysicalModes> physicalEnvelopes { {} };
+    px3::dsp::Adaa physicalClip;
+
+    // ROB
+    std::array<double, kRobPhases> robPhases { {} };
+    double robTransient { 0.0 };
+    px3::dsp::Adaa robBodyClip, robEdgeClip, robOutClip;
+
+    // PX3
+    double px3ModulatorPhase { 0.0 };
+    px3::dsp::HalfbandDecimator px3Decimator;
+    px3::dsp::BlepLine px3SawLine;
+    px3::dsp::Adaa px3SawClip, px3IsaacClip, px3OutClip;
+    std::array<double, kHarmonicCount> px3IsaacPhases { {} };
+    double px3ShimmerPhase { 0.0 };
+    double px3MovePhase { 0.0 };
+    px3::dsp::LatencyDelay px3IsaacDelay;
 };

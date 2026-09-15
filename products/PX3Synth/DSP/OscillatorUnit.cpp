@@ -7,18 +7,119 @@
 
 namespace
 {
+using px3::dsp::kPi;
+using px3::dsp::kTanhAdaa;
+using px3::dsp::kTwoPi;
+using Mode = px3::OscillatorMode;
+
 inline float clamp01(float v)
 {
     return juce::jlimit(0.0f, 1.0f, v);
 }
 
-inline float softClip(float x)
+inline double wrap(double phase) noexcept
 {
-    return std::tanh(x);
-}
+    return phase - std::floor(phase);
 }
 
-void OscillatorUnit::setSettings(const OscillatorSettings& settings)
+// Each mode's level before the voice's soft clip.
+constexpr std::array<float, px3::oscillatorModeCount> kModeTrim {
+    0.82f, 0.74f, 0.72f, 0.78f, 0.64f,
+    0.67f, 0.62f, 0.70f, 0.76f, 0.80f,
+    0.73f, 0.64f, 0.60f, 0.76f,
+    0.66f, 0.70f, 0.62f, 0.74f, 0.60f
+};
+
+// How much a mode's level follows its macros, so opening them does not make it
+// louder as well as brighter.
+constexpr std::array<float, px3::oscillatorModeCount> kModeTravelSlope {
+    0.00f, 0.08f, 0.10f, 0.06f, 0.16f,
+    0.14f, 0.42f, 0.18f, 0.20f, 0.14f,
+    0.20f, 0.38f, 0.46f, 0.14f,
+    0.34f, 0.24f, 0.34f, 0.20f, 0.40f
+};
+
+// Every mode used to be blended 15% toward a silent input that was never wired
+// up - more as the mod wheel rose - so the wheel was a hidden volume control and
+// every oscillator sat 15% down even at rest. The wheel no longer touches level;
+// the 15% it took at rest is kept here as a plain trim, so no patch changes
+// loudness with the wheel down.
+constexpr float kLevelAtRest = 0.85f;
+
+// Modes whose output still carries DC once its causes are removed, and so take
+// a 5 Hz blocker on their own output. Measured by PX3Diag oscdc.
+constexpr std::array<bool, px3::oscillatorModeCount> kModeUsesDcBlocker { {
+    false, false, false, false, false,
+    false, false, false, false, false,
+    false, false, false, false,
+    false, false, false, false, false
+} };
+
+constexpr std::array<float, 7> kSuperSawOffsets { { -0.22f, -0.14f, -0.07f, 0.0f, 0.07f, 0.14f, 0.22f } };
+
+// The nine Hammond drawbar footages as ratios to the note: 16', 5 1/3', 8', 4',
+// 2 2/3', 2', 1 3/5', 1 1/3', 1'.
+constexpr std::array<float, 9> kDrawbarRatios { { 0.5f, 1.5f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 8.0f } };
+
+// PHYSICAL's modes: a struck bar's partials, stretched by MATERIAL about the
+// fundamental - which stays at the played pitch.
+constexpr std::array<double, 4> kPhysicalRatios { { 1.0, 2.32, 3.91, 5.48 } };
+constexpr std::array<double, 4> kPhysicalWeights { { 0.72, 0.36, 0.24, 0.18 } };
+constexpr std::array<double, 4> kPhysicalSustain { { 0.30, 0.15, 0.10, 0.075 } };
+constexpr double kPhysicalDrive = 2.2;
+
+// ISAAC's shimmer partial: half the note, detuned by the 0.0007 rad/sample the
+// old code drifted it at 48 kHz - as hertz, so it beats at the same rate at any
+// sample rate.
+constexpr double kShimmerOffsetHz = 0.0007 * 48000.0 / (2.0 * 3.14159265358979323846);
+
+float rollGain(int harmonic, float roll)
+{
+    // ROLL slides a window along the series. At 0.5 every partial passes; below
+    // it the upper partials roll off from the top, above it the lower ones roll
+    // off from the bottom.
+    const auto h = static_cast<float>(harmonic);
+    if (roll <= 0.5f)
+    {
+        const auto corner = 1.0f + 14.0f * roll;
+        return h <= corner ? 1.0f : std::exp(-(h - corner) * 1.2f);
+    }
+    const auto floorHarmonic = 1.0f + 14.0f * (roll - 0.5f);
+    return h >= floorHarmonic ? 1.0f : std::exp(-(floorHarmonic - h) * 1.2f);
+}
+} // namespace
+
+// ---- controls -------------------------------------------------------------------
+
+void OscillatorUnit::prepare(double newSampleRate)
+{
+    sampleRate = juce::jmax(1.0, newSampleRate);
+    wtPositionCoeff = static_cast<float>(1.0 - std::exp(-1.0 / (kWtPositionSmoothingSeconds * sampleRate)));
+    fadeLength = juce::jmax(1, static_cast<int>(std::lround(kModeCrossfadeSeconds * sampleRate)));
+
+    // Super saw drift: white noise through a 0.5 Hz one-pole, scaled back to the
+    // spread of the fixed offsets it replaces.
+    driftCoeff = 1.0 - std::exp(-kTwoPi * 0.5 / sampleRate);
+    driftNorm = std::sqrt((2.0 - driftCoeff) / driftCoeff);
+
+    // White noise keeps its density per hertz: at a higher rate the same
+    // variance is spread over a wider band.
+    whiteScale = std::sqrt(sampleRate / px3::dsp::kReferenceSampleRate);
+
+    for (auto& blocker : dcBlockers)
+    {
+        blocker.prepare(sampleRate);
+    }
+
+    if (derivedValid)
+    {
+        // Resonators, decays and colour filters are designed in hertz.
+        updateDerivedCurves();
+        previous = target;
+    }
+}
+
+void OscillatorUnit::setSettings(const OscillatorSettings& settings, int rampSamples)
 {
     auto clamped = settings;
     clamped.modeIndex = px3::clampOscillatorModeIndex(clamped.modeIndex);
@@ -30,55 +131,226 @@ void OscillatorUnit::setSettings(const OscillatorSettings& settings)
     {
         h = clamp01(h);
     }
+    clamped.wtPosition = juce::jlimit(0.0f, 1.0f, clamped.wtPosition);
 
-    // The table and the scan position are assigned BEFORE the guard below.
-    // They are not derived state: the position moves under modulation on almost
-    // every block, so including it in the comparison would rebuild the derived
-    // curves constantly, and leaving it out of both would mean it never
-    // arrived at all.
+    const auto first = !derivedValid;
+    const auto controlsChanged = first
+                                 || clamped.macroA != oscillatorSettings.macroA
+                                 || clamped.macroB != oscillatorSettings.macroB
+                                 || clamped.macroC != oscillatorSettings.macroC
+                                 || clamped.vowelIndex != oscillatorSettings.vowelIndex
+                                 || clamped.harmonics != oscillatorSettings.harmonics;
+
+    // The table and the scan position are not derived state: the position
+    // moves on almost every block, and is smoothed per sample on its own.
     oscillatorSettings.table = clamped.table;
-    oscillatorSettings.wtPosition = juce::jlimit(0.0f, 1.0f, clamped.wtPosition);
+    oscillatorSettings.wtPosition = clamped.wtPosition;
 
-    // The processor pushes settings to every voice on every block, including
-    // the ones playing nothing, so this runs 192 times per block at full
-    // polyphony. Rebuilding the derived curves unconditionally would move the
-    // per-sample pow cost to a per-block cost rather than removing it; almost
-    // always the settings are simply unchanged.
-    if (derivedValid
-        && clamped.modeIndex == oscillatorSettings.modeIndex
-        && clamped.macroA == oscillatorSettings.macroA
-        && clamped.macroB == oscillatorSettings.macroB
-        && clamped.macroC == oscillatorSettings.macroC
-        && clamped.vowelIndex == oscillatorSettings.vowelIndex
-        && clamped.harmonics == oscillatorSettings.harmonics)
+    if (controlsChanged)
     {
-        return;
+        previous = target;
+        const auto mode = oscillatorSettings.modeIndex;
+        oscillatorSettings = clamped;
+        oscillatorSettings.modeIndex = mode;
+        updateDerivedCurves();
+        if (first)
+        {
+            previous = target;
+        }
+        rampLength = juce::jmax(1, rampSamples);
+        rampPosition = rampSamples > 0 ? 0 : rampLength;
+        currentRamp = rampSamples > 0 ? 0.0f : 1.0f;
     }
 
-    oscillatorSettings = clamped;
-    updateDerivedCurves();
-    derivedValid = true;
+    oscillatorSettings.modeIndex = clamped.modeIndex;
+
+    if (first)
+    {
+        derivedValid = true;
+        activeMode = clamped.modeIndex;
+        activateMode(activeMode, false);
+    }
+    else
+    {
+        requestMode(clamped.modeIndex);
+    }
 }
 
-// Reproduces the original per-sample expressions exactly, in the same order and
-// at the same precision, so the rendered signal is unchanged bit for bit.
-// Sines at different frequencies do not line up at their peaks, so the sum of
-// the magnitudes is a bound that never occurs. Normalising by it made a rich
-// registration quieter than a sparse one - the opposite of what adding partials
-// should do. Root-sum-square is the level the sum actually has, with a little
-// headroom left for the peaks that do coincide.
-float OscillatorUnit::normaliseHarmonicSet(float energy)
+void OscillatorUnit::resetForNote(double startPhase, std::uint32_t seed)
 {
-    return std::sqrt(juce::jmax(1.0e-8f, energy)) * 1.35f;
+    phase = wrap(startPhase);
+    noise.seed(seed);
+
+    previous = target;
+    rampPosition = rampLength;
+    currentRamp = 1.0f;
+
+    // A new note starts in the mode that was asked for, not partway through a
+    // crossfade left over from the last one.
+    if (pendingMode >= 0)
+    {
+        activeMode = pendingMode;
+    }
+    fadingMode = -1;
+    pendingMode = -1;
+    fadeRemaining = 0;
+
+    smoothedWtPosition = oscillatorSettings.wtPosition;
+    activateMode(activeMode, true);
+}
+
+void OscillatorUnit::requestMode(int mode)
+{
+    if (fadeRemaining > 0)
+    {
+        // Structural: a change that arrives mid-fade waits for the fade.
+        pendingMode = mode == activeMode ? -1 : mode;
+        return;
+    }
+    if (mode != activeMode)
+    {
+        beginModeChange(mode);
+    }
+}
+
+void OscillatorUnit::beginModeChange(int mode)
+{
+    fadingMode = activeMode;
+    activeMode = mode;
+    fadeRemaining = fadeLength;
+    activateMode(mode, false);
+}
+
+void OscillatorUnit::activateMode(int modeIndex, bool strike)
+{
+    const auto idx = static_cast<std::size_t>(px3::clampOscillatorModeIndex(modeIndex));
+    plainDelays[idx].reset();
+    dcBlockers[idx].reset();
+
+    switch (static_cast<Mode>(idx))
+    {
+        case Mode::saw:
+            sawLine.reset();
+            break;
+        case Mode::square:
+            squareLine.reset();
+            break;
+        case Mode::triangle:
+            triangleLine.reset();
+            break;
+        case Mode::pwm:
+            pwmLine.reset();
+            break;
+        case Mode::noise:
+            noiseColorState = 0.0f;
+            break;
+        case Mode::pinkNoise:
+            pinkFilter.reset();
+            pinkColorState = 0.0f;
+            break;
+        case Mode::superSaw:
+            // Random start phases are the super saw's sound; the randomness is
+            // this oscillator's own seeded stream, so a render repeats exactly.
+            for (std::size_t i = 0; i < superSawPhases.size(); ++i)
+            {
+                superSawPhases[i] = noise.unit();
+                superSawDrift[i] = 0.0;
+                superSawLines[i].reset();
+                superSawClips[i].reset();
+            }
+            break;
+        case Mode::wavetable:
+            smoothedWtPosition = oscillatorSettings.wtPosition;
+            wavetableReader.reset();
+            break;
+        case Mode::additive:
+            for (std::size_t i = 0; i < additivePhases.size(); ++i)
+            {
+                additivePhases[i] = wrap(phase * target.additive.ratio[i]);
+            }
+            break;
+        case Mode::isaac:
+            for (std::size_t i = 0; i < isaacPhases.size(); ++i)
+            {
+                isaacPhases[i] = wrap(phase * target.isaac.ratio[i]);
+            }
+            isaacShimmerPhase = wrap(0.5 * phase);
+            isaacClip.reset();
+            break;
+        case Mode::formant:
+            formantY1.fill(0.0f);
+            formantY2.fill(0.0f);
+            formantSourceState = 0.0f;
+            formantClip.reset();
+            break;
+        case Mode::fm:
+            fmModulatorPhase = wrap(phase * target.fmRatio);
+            fmDecimator.reset();
+            break;
+        case Mode::hardSync:
+            syncSlavePhase = wrap(phase * target.hardSyncRatio);
+            syncLine.reset();
+            syncClip.reset();
+            break;
+        case Mode::organ:
+            for (std::size_t i = 0; i < organPhases.size(); ++i)
+            {
+                organPhases[i] = wrap(phase * kDrawbarRatios[i]);
+            }
+            organClickPhase = wrap(9.0 * phase);
+            organClip.reset();
+            break;
+        case Mode::digital:
+            digitalHoldCounter = 0;
+            digitalHeld = 0.0;
+            digitalClip.reset();
+            break;
+        case Mode::physical:
+            for (std::size_t i = 0; i < physicalPhases.size(); ++i)
+            {
+                // Every mode starts from zero phase: the strike is the same on
+                // every note, and it starts at silence rather than mid-cycle.
+                physicalPhases[i] = 0.0;
+                physicalEnvelopes[i] = strike ? 1.0 : kPhysicalSustain[i];
+            }
+            physicalClip.reset();
+            break;
+        case Mode::rob:
+            robPhases.fill(0.0);
+            robPhases[0] = wrap(phase * (1.0 + target.robChaos * 1.05 + target.robBody * 0.45));
+            robTransient = strike ? 1.0 : 0.0;
+            robBodyClip.reset();
+            robEdgeClip.reset();
+            robOutClip.reset();
+            break;
+        case Mode::px3:
+            px3ModulatorPhase = wrap(2.0 * phase);
+            px3Decimator.reset();
+            px3SawLine.reset();
+            px3SawClip.reset();
+            px3IsaacClip.reset();
+            px3OutClip.reset();
+            for (std::size_t i = 0; i < px3IsaacPhases.size(); ++i)
+            {
+                px3IsaacPhases[i] = wrap(phase * target.px3Isaac.ratio[i]);
+            }
+            px3ShimmerPhase = wrap(0.5 * phase);
+            px3MovePhase = 0.0;
+            px3IsaacDelay.reset();
+            break;
+        case Mode::sine:
+        default:
+            break;
+    }
 }
 
 OscillatorUnit::HarmonicSet OscillatorUnit::buildHarmonicSet(const std::array<float, 8>& harmonics,
                                                             float rolloffBias,
                                                             float oddEvenBias,
-                                                            float inharmonicity)
+                                                            float inharmonicity,
+                                                            float roll)
 {
     HarmonicSet set;
-
     auto energy = 0.0f;
 
     for (int i = 0; i < 8; ++i)
@@ -90,33 +362,20 @@ OscillatorUnit::HarmonicSet OscillatorUnit::buildHarmonicSet(const std::array<fl
         const auto isOdd = (i % 2) == 0;
         const auto oddEven = isOdd ? (1.0f + oddEvenBias) : (1.0f - oddEvenBias * 0.82f);
         amp *= juce::jmax(0.0f, oddEven);
+        amp *= rollGain(i + 1, roll);
 
         set.amplitude[static_cast<std::size_t>(i)] = amp;
         set.ratio[static_cast<std::size_t>(i)] = h * (1.0f + inharmonicity * 0.03f * h);
         energy += amp * amp;
     }
+    set.amplitude[8] = 0.0f;
+    set.ratio[8] = 9.0f;
 
-    set.norm = normaliseHarmonicSet(energy);
+    // Root-sum-square: sines at different frequencies do not line up at their
+    // peaks, so this is the level the sum actually has, with a little headroom
+    // for the peaks that do coincide.
+    set.norm = std::sqrt(juce::jmax(1.0e-8f, energy)) * 1.35f;
     return set;
-}
-
-float OscillatorUnit::readHarmonicSum(double currentAngle, const HarmonicSet& set)
-{
-    float sum = 0.0f;
-
-    for (int i = 0; i < kHarmonicCount; ++i)
-    {
-        const auto v = std::sin(currentAngle * static_cast<double>(set.ratio[static_cast<std::size_t>(i)]));
-        sum += set.amplitude[static_cast<std::size_t>(i)] * static_cast<float>(v);
-    }
-
-    // `norm` is an RMS-style figure, not the sum of the magnitudes. Dividing by
-    // the sum was what made every harmonic mode collapse towards a sine: sines
-    // at unrelated phases do not add to their peaks, so the sum is a worst case
-    // that never happens, and the more partials a registration had the quieter
-    // and flatter it got. Measured, ORGAN and ADDITIVE both sat within 10 dB of
-    // a pure sine.
-    return set.norm > 0.0001f ? sum / set.norm : 0.0f;
 }
 
 void OscillatorUnit::updateDerivedCurves()
@@ -124,57 +383,39 @@ void OscillatorUnit::updateDerivedCurves()
     const auto a = oscillatorSettings.macroA;
     const auto b = oscillatorSettings.macroB;
     const auto c = oscillatorSettings.macroC;
+    auto& d = target;
 
-    // SPREAD is the whole supersaw control: it sets how far apart the stacked
-    // saws sit AND how much they drift. There used to be a separate DETUNE
-    // macro for the spacing, which is what "spread" already means. Both read
-    // macro A, because the UI shows a mode's macros in slot order and SPREAD is
-    // now supersaw's first and only one.
-    derived.superSawSpread = std::pow(a, 1.65f);
-    derived.superSawWidth = std::pow(a, 1.2f);
-    derived.superSawEdgeSoft = 0.58f + 0.42f * (1.0f - derived.superSawWidth);
-    for (std::size_t i = 0; i < superSawOffsets.size(); ++i)
+    // SUPER SAW: SPREAD sets both how far apart the saws sit and how far they drift.
     {
-        const auto spreadSemitones = superSawOffsets[i] * (0.04f + 16.0f * derived.superSawSpread);
-        derived.superSawRatios[i] = std::pow(2.0, static_cast<double>(spreadSemitones) / 12.0);
+        const auto spread = std::pow(a, 1.65f);
+        d.superSawWidth = std::pow(a, 1.2f);
+        d.superSawEdgeSoft = 0.58f + 0.42f * (1.0f - d.superSawWidth);
+        for (std::size_t i = 0; i < d.superSawRatios.size(); ++i)
+        {
+            const auto semitones = kSuperSawOffsets[i] * (0.04f + 16.0f * spread);
+            d.superSawRatios[i] = std::pow(2.0, static_cast<double>(semitones) / 12.0);
+        }
     }
 
-    derived.pwmWidthCurve = std::pow(a, 1.15f);
+    d.pwmWidthCurve = std::pow(a, 1.15f);
 
-    // The top of this range used to be 2.55, which puts the 8th harmonic 45 dB
-    // down: opening macro A all the way turned ADDITIVE - and ISAAC, which
-    // shares the curve - into a sine. Measured at -23.9 dB of overtones against
-    // a sine's -24.6. The knob still runs bright to mellow, it just no longer
-    // runs all the way to nothing.
-    derived.additiveRolloff = juce::jmap(std::pow(a, 1.15f), 0.25f, 1.15f);
-    derived.additiveOddEven = juce::jmap(std::pow(b, 1.1f), -0.65f, 0.65f);
-    const auto inharmonicity = juce::jmap(std::pow(c, 1.2f), 0.0f, 1.1f);
-    derived.additiveStatic = buildHarmonicSet(oscillatorSettings.harmonics,
-                                              derived.additiveRolloff,
-                                              derived.additiveOddEven,
-                                              0.0f);
-    derived.additiveDynamic = buildHarmonicSet(oscillatorSettings.harmonics,
-                                               derived.additiveRolloff,
-                                               derived.additiveOddEven,
-                                               inharmonicity);
-
+    // ADDITIVE and ISAAC share TILT (A) and ODD/EVEN (B). ADDITIVE's C is ROLL;
+    // ISAAC's is STRETCH, the inharmonic spread of its partials, and its shimmer.
     {
-        // Measured formant frequencies for the five cardinal vowels, in hertz,
-        // with the bandwidth of each resonance and its relative level. These are
-        // the standard values the speech-synthesis literature uses for an adult
-        // male tract (Peterson & Barney / Klatt); the bandwidths widen with
-        // frequency the way real ones do.
-        //
-        // The previous implementation stored fixed amplitudes for harmonics
-        // 1..8 instead. That cannot be a vowel: a formant is a resonance of the
-        // tract, so it stays at the same frequency whatever note is played,
-        // which is what makes an "ah" still an "ah" an octave up. Weighting
-        // harmonics instead pinned the spectral peak to the note, so it moved
-        // with pitch and read as a dull static timbre. It measured 2 to 3
-        // audible partials, within a few dB of a sine.
+        const auto rolloff = juce::jmap(std::pow(a, 1.15f), 0.25f, 1.15f);
+        const auto oddEven = juce::jmap(std::pow(b, 1.1f), -0.65f, 0.65f);
+        const auto inharmonicity = juce::jmap(std::pow(c, 1.2f), 0.0f, 1.1f);
+        d.additive = buildHarmonicSet(oscillatorSettings.harmonics, rolloff, oddEven, 0.0f, c);
+        d.isaac = buildHarmonicSet(oscillatorSettings.harmonics, rolloff, oddEven, inharmonicity, 0.5f);
+        d.isaacShimmer = 0.15f * (0.18f + c * 0.42f);
+    }
+
+    // FORMANT
+    {
+        // Formant frequencies, bandwidths and levels for the five cardinal
+        // vowels, adult male tract (Peterson & Barney / Klatt).
         struct Vowel { float f1, f2, f3, b1, b2, b3, a1, a2, a3; };
         static constexpr std::array<Vowel, 5> kVowels { {
-            //  F1     F2     F3     B1     B2     B3    A1    A2     A3
             {  730.f, 1090.f, 2440.f,  70.f, 110.f, 170.f, 1.0f, 0.50f, 0.28f },  // AH
             {  530.f, 1840.f, 2480.f,  60.f, 100.f, 160.f, 1.0f, 0.45f, 0.30f },  // EH
             {  270.f, 2290.f, 3010.f,  55.f, 100.f, 180.f, 1.0f, 0.35f, 0.25f },  // EE
@@ -182,684 +423,728 @@ void OscillatorUnit::updateDerivedCurves()
             {  300.f,  870.f, 2240.f,  55.f,  90.f, 160.f, 1.0f, 0.40f, 0.14f },  // OO
         } };
 
-        // Macro A glides between vowels. Interpolating the FREQUENCIES is what
-        // makes that a vowel glide rather than a crossfade of two timbres.
-        const auto morph = juce::jlimit(0.0f, 1.0f, a) * 4.0f;
-        const auto lower = juce::jlimit(0, 4, static_cast<int>(std::floor(morph)));
-        const auto upper = juce::jlimit(0, 4, lower + 1);
-        const auto frac = morph - static_cast<float>(lower);
-
-        const auto& v0 = kVowels[static_cast<std::size_t>(
-            juce::jlimit(0, 4, oscillatorSettings.vowelIndex))];
-        const auto& v1 = kVowels[static_cast<std::size_t>(upper)];
-        const auto& vLow = kVowels[static_cast<std::size_t>(lower)];
-        juce::ignoreUnused(vLow);
-
+        // MORPH glides onward FROM the selected vowel, through its neighbours in
+        // turn: at 0 it is the vowel on the menu, and each quarter of the knob
+        // is one more vowel along. It used to interpolate from the selected
+        // vowel to the vowel at MORPH's own position, which jumped at every
+        // quarter and could never reach the neighbours between.
+        const auto position = static_cast<float>(oscillatorSettings.vowelIndex) + a * 4.0f;
+        const auto lowerIndex = static_cast<int>(std::floor(position));
+        const auto frac = position - static_cast<float>(lowerIndex);
+        const auto& v0 = kVowels[static_cast<std::size_t>(lowerIndex % 5)];
+        const auto& v1 = kVowels[static_cast<std::size_t>((lowerIndex + 1) % 5)];
         const auto mix = [frac](float from, float to) { return from + (to - from) * frac; };
 
-        // Macro B is the tract LENGTH: shifting every formant together is what
-        // takes a voice from large to small, and it is the one control that
-        // stays musical across the whole range.
-        const auto shift = juce::jmap(juce::jlimit(0.0f, 1.0f, b), 0.72f, 1.55f);
+        // SHIFT (B) is the tract length: every formant moves together.
+        const auto shift = juce::jmap(b, 0.72f, 1.55f);
 
-        const std::array<float, 3> freq {
-            mix(v0.f1, v1.f1) * shift, mix(v0.f2, v1.f2) * shift, mix(v0.f3, v1.f3) * shift };
-        const std::array<float, 3> bw {
-            mix(v0.b1, v1.b1), mix(v0.b2, v1.b2), mix(v0.b3, v1.b3) };
-        const std::array<float, 3> amp {
-            mix(v0.a1, v1.a1), mix(v0.a2, v1.a2), mix(v0.a3, v1.a3) };
+        const std::array<float, 3> freq { mix(v0.f1, v1.f1) * shift, mix(v0.f2, v1.f2) * shift, mix(v0.f3, v1.f3) * shift };
+        const std::array<float, 3> bw { mix(v0.b1, v1.b1), mix(v0.b2, v1.b2), mix(v0.b3, v1.b3) };
+        const std::array<float, 3> amp { mix(v0.a1, v1.a1), mix(v0.a2, v1.a2), mix(v0.a3, v1.a3) };
 
-        const auto rate = static_cast<float>(juce::jmax(1000.0, preparedSampleRate));
-
-        // One-pole tilt on the excitation, fixed in hertz so it does not move
-        // with the note.
-        const auto tiltHz = 260.0f;
-        derived.formantSourceCoeff =
-            juce::jlimit(0.0005f, 0.9f, 1.0f - std::exp(-juce::MathConstants<float>::twoPi * tiltHz / rate));
-        derived.formantTrim = 2.2f;
+        const auto rate = static_cast<float>(juce::jmax(1000.0, sampleRate));
+        // The glottal tilt, fixed in hertz so it does not move with the note.
+        constexpr float tiltHz = 260.0f;
+        d.formantSourceCoeff = juce::jlimit(0.0005f, 0.9f, 1.0f - std::exp(-juce::MathConstants<float>::twoPi * tiltHz / rate));
+        d.formantTrim = 2.2f;
 
         for (int i = 0; i < 3; ++i)
         {
             const auto idx = static_cast<std::size_t>(i);
-            // The standard two-pole resonator: a pole pair at the formant
-            // frequency whose radius sets the bandwidth. One biquad per
-            // formant, run in parallel and summed.
             const auto f = juce::jlimit(20.0f, rate * 0.45f, freq[idx]);
             const auto r = std::exp(-juce::MathConstants<float>::pi * bw[idx] / rate);
             const auto cosw = std::cos(juce::MathConstants<float>::twoPi * f / rate);
-
-            derived.formant.b[idx] = 2.0f * r * cosw;
-            derived.formant.c[idx] = -r * r;
-            // Normalised so each resonator peaks at unity rather than at a gain
-            // that swings with its bandwidth - otherwise the vowel's balance
-            // changes as the tract is resized.
-            derived.formant.a[idx] = (1.0f - r) * std::sqrt(1.0f - 2.0f * r * cosw + r * r);
-            // Alternating sign, as parallel formant synthesisers have always
-            // done: in phase, the skirts of neighbouring resonators cancel in
-            // the valleys between them and hollow the vowel out.
-            derived.formant.gain[idx] = (i == 1 ? -amp[idx] : amp[idx]);
+            d.formant.b[idx] = 2.0f * r * cosw;
+            d.formant.c[idx] = -r * r;
+            // Each resonator peaks at unity, so the vowel's balance holds as the
+            // tract is resized.
+            d.formant.a[idx] = (1.0f - r) * std::sqrt(1.0f - 2.0f * r * cosw + r * r);
+            // Alternating sign, as parallel formant synthesisers do: in phase,
+            // neighbouring skirts cancel in the valleys and hollow the vowel.
+            d.formant.gain[idx] = (i == 1 ? -amp[idx] : amp[idx]);
         }
-
     }
 
+    // ORGAN: two registrations crossfaded by TONE, trimmed by the harmonic sliders.
     {
-        // The nine Hammond drawbar footages, as pitch ratios against the note:
-        // 16', 5 1/3', 8', 4', 2 2/3', 2', 1 3/5', 1 1/3', 1'. The sub at 0.5
-        // and the quint at 1.5 are not harmonics of the note, and they are a
-        // large part of why the instrument sounds like an organ and not like a
-        // stack of sines. The old table used 1..8 - plain integer harmonics -
-        // and then applied pow(1/h, up to 1.8) on top, which put the 8th
-        // partial 41 dB down and left the fundamental alone: measured, it was
-        // within 10 dB of a sine and got THINNER as the macro opened.
-        static constexpr std::array<float, kHarmonicCount> kDrawbarRatios {
-            0.5f, 1.5f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 8.0f };
+        static constexpr std::array<float, kHarmonicCount> kMellow { 0.85f, 0.30f, 1.00f, 0.55f, 0.16f, 0.10f, 0.05f, 0.04f, 0.03f };
+        static constexpr std::array<float, kHarmonicCount> kBright { 0.80f, 0.70f, 1.00f, 0.85f, 0.72f, 0.66f, 0.55f, 0.50f, 0.45f };
 
-        // Two registrations, crossfaded by macro A - which is what an organist
-        // actually changes. Mellow is the classic 88 8000 000 flutes; bright
-        // pulls the upper drawbars out for the full 88 8888 888.
-        static constexpr std::array<float, kHarmonicCount> kMellow {
-            0.85f, 0.30f, 1.00f, 0.55f, 0.16f, 0.10f, 0.05f, 0.04f, 0.03f };
-        static constexpr std::array<float, kHarmonicCount> kBright {
-            0.80f, 0.70f, 1.00f, 0.85f, 0.72f, 0.66f, 0.55f, 0.50f, 0.45f };
+        d.organClick = std::pow(b, 1.2f);
+        // 0.0006 to 0.0036 per sample at 48 kHz, as a rate per second.
+        d.organClickDecayPerSecond = (0.0006f + 0.003f * d.organClick) * 48000.0f;
 
-        const auto tone = juce::jlimit(0.0f, 1.0f, a);
-        derived.organClick = std::pow(b, 1.2f);
-        derived.organClickDecay = 0.0006f + 0.003f * derived.organClick;
-
-        derived.organ = HarmonicSet {};
+        d.organ = HarmonicSet {};
         auto energy = 0.0f;
         for (int i = 0; i < kHarmonicCount; ++i)
         {
             const auto idx = static_cast<std::size_t>(i);
-            const auto drawbar = kMellow[idx] + (kBright[idx] - kMellow[idx]) * tone;
-            // The per-oscillator harmonic sliders still trim the registration,
-            // but they can no longer silence it: a drawbar at rest is a real
-            // registration, not an empty one.
+            const auto drawbar = kMellow[idx] + (kBright[idx] - kMellow[idx]) * a;
             const auto trim = i < 8 ? (0.55f + oscillatorSettings.harmonics[idx] * 0.75f) : 1.0f;
-            const auto amp = drawbar * trim;
-            derived.organ.amplitude[idx] = amp;
-            derived.organ.ratio[idx] = kDrawbarRatios[idx];
-            energy += amp * amp;
+            const auto level = drawbar * trim;
+            d.organ.amplitude[idx] = level;
+            d.organ.ratio[idx] = kDrawbarRatios[idx];
+            energy += level * level;
         }
-        derived.organ.norm = normaliseHarmonicSet(energy);
+        d.organ.norm = std::sqrt(juce::jmax(1.0e-8f, energy)) * 1.35f;
     }
 
-    derived.fmRatio = std::pow(2.0f, juce::jmap(std::pow(a, 1.1f), -1.6f, 2.2f));
-    derived.fmIndex = juce::jmap(std::pow(b, 1.35f), 0.0f, 10.0f);
-    derived.fmOutputScale = 0.66f + 0.05f * (1.0f - b);
+    d.fmRatio = std::pow(2.0f, juce::jmap(std::pow(a, 1.1f), -1.6f, 2.2f));
+    d.fmIndex = juce::jmap(std::pow(b, 1.35f), 0.0f, 10.0f);
+    d.fmOutputScale = 0.66f + 0.05f * (1.0f - b);
 
-    derived.hardSyncRatio = juce::jmap(std::pow(a, 1.3f), 1.0f, 11.0f);
-    derived.hardSyncDrive = 1.0f + std::pow(b, 1.15f) * 2.3f;
+    d.hardSyncRatio = juce::jmap(std::pow(a, 1.3f), 1.0f, 11.0f);
+    d.hardSyncDrive = 1.0f + std::pow(b, 1.15f) * 2.3f;
 
+    // DIGITAL
     {
         const auto bitsCurve = std::pow(a, 1.25f);
         const auto rateCurve = std::pow(b, 1.15f);
-        derived.digitalBitDepth = juce::jlimit(2, 16, static_cast<int>(std::round(juce::jmap(bitsCurve, 2.0f, 16.0f))));
-        derived.digitalHoldSamples = juce::jlimit(1, 64, static_cast<int>(std::round(juce::jmap(rateCurve, 1.0f, 52.0f))));
-        derived.digitalAliasFold = 1.0 + static_cast<double>(juce::jmap(rateCurve, 0.4f, 6.8f));
-        derived.digitalSteps = static_cast<float>(1 << juce::jlimit(1, 20, derived.digitalBitDepth));
-        derived.digitalCrushSteps = static_cast<float>(1 << juce::jlimit(1, 14, derived.digitalBitDepth - 1));
+        const auto bitDepth = juce::jlimit(2, 16, static_cast<int>(std::round(juce::jmap(bitsCurve, 2.0f, 16.0f))));
+        // A duration: the number of samples it was at 48 kHz.
+        d.digitalHoldAt48k = std::round(juce::jmap(rateCurve, 1.0f, 52.0f));
+        d.digitalFold = 1.0f + juce::jmap(rateCurve, 0.4f, 6.8f);
+        d.digitalSteps = static_cast<float>(1 << bitDepth);
+        d.digitalCrushSteps = static_cast<float>(1 << juce::jmax(1, bitDepth - 1));
     }
 
-    derived.physicalDamping = juce::jmap(std::pow(a, 1.6f), 0.9995f, 0.9957f);
-    derived.physicalMaterial = juce::jmap(std::pow(b, 1.2f), 0.85f, 2.7f);
-
-    derived.robTrans = std::pow(a, 0.55f);
-    derived.robBody = std::pow(b, 0.72f);
-    derived.robChaos = std::pow(c, 0.80f);
-
-    derived.px3Morph = std::pow(a, 1.1f);
-    derived.px3Character = std::pow(b, 1.2f);
-    derived.px3Movement = std::pow(c, 1.1f);
-
-    derived.wavetablePos = std::pow(a, 1.1f);
-
-    // Per-mode output trim, previously recomputed after every rendered sample.
-    const auto mode = static_cast<px3::OscillatorMode>(oscillatorSettings.modeIndex);
-    derived.modeGainTrim = 1.0f;
-    if (mode == px3::OscillatorMode::superSaw)
+    // PHYSICAL: DECAY is the ring time, MATERIAL the spread of the upper modes.
     {
-        derived.modeGainTrim = juce::jmap(std::pow(a, 1.35f), 1.0f, 0.84f);
-    }
-    else if (mode == px3::OscillatorMode::fm)
-    {
-        derived.modeGainTrim = juce::jmap(std::pow(b, 1.2f), 1.0f, 0.82f);
-    }
-    else if (mode == px3::OscillatorMode::hardSync)
-    {
-        derived.modeGainTrim = juce::jmap(std::pow(b, 1.18f), 1.0f, 0.78f);
-    }
-    else if (mode == px3::OscillatorMode::digital)
-    {
-        derived.modeGainTrim = juce::jmap(std::pow(b, 1.1f), 1.0f, 0.86f);
-    }
-    else if (mode == px3::OscillatorMode::rob || mode == px3::OscillatorMode::px3)
-    {
-        derived.modeGainTrim = juce::jmap(std::pow(c, 1.12f), 1.0f, 0.84f);
-    }
-}
-
-void OscillatorUnit::prepare(double sampleRate)
-{
-    // One-pole toward the target. Expressed as a time so it means the same
-    // thing at every sample rate.
-    wtPositionCoeff = sampleRate > 0.0
-                        ? static_cast<float>(1.0 - std::exp(-1.0 / (kWtPositionSmoothingSeconds * sampleRate)))
-                        : 1.0f;
-
-    const auto safeRate = juce::jmax(1.0, sampleRate);
-    if (! juce::approximatelyEqual(preparedSampleRate, safeRate))
-    {
-        preparedSampleRate = safeRate;
-        derivedValid = false;   // the formant resonators are designed in hertz
-    }
-}
-
-void OscillatorUnit::resetForNote(double sampleRate, double currentFrequencyHz)
-{
-    // Start AT the position rather than gliding to it from wherever the last
-    // note left off, which would make the first few milliseconds of every note
-    // depend on the one before it.
-    smoothedWtPosition = oscillatorSettings.wtPosition;
-    wavetableReader.reset();
-
-    for (std::size_t i = 0; i < superSawAngles.size(); ++i)
-    {
-        const auto r = juce::Random::getSystemRandom().nextDouble();
-        superSawAngles[i] = r * juce::MathConstants<double>::twoPi;
-        superSawDrift[i] = juce::Random::getSystemRandom().nextFloat() * 2.0f - 1.0f;
-    }
-
-    fmModAngle = 0.0;
-    syncMasterAngle = 0.0;
-    syncSlaveAngle = 0.0;
-    digitalHoldCounter = 0;
-    digitalHeldSample = 0.0f;
-
-    for (auto& s : pinkState)
-    {
-        s = 0.0f;
-    }
-    noiseColorState = 0.0f;
-    pinkColorState = 0.0f;
-
-    juce::ignoreUnused(sampleRate, currentFrequencyHz);
-
-    for (std::size_t i = 0; i < physicalState.size(); ++i)
-    {
-        physicalState[i] = juce::Random::getSystemRandom().nextFloat() * 2.0f - 1.0f;
-        physicalPhase[i] = juce::Random::getSystemRandom().nextDouble() * juce::MathConstants<double>::twoPi;
-    }
-    // A resonator carrying the tail of the previous note would start the new
-    // one mid-vowel.
-    formantY1.fill(0.0f);
-    formantY2.fill(0.0f);
-    formantSourceState = 0.0f;
-}
-
-float OscillatorUnit::nextDeterministicNoise()
-{
-    noiseSeed = noiseSeed * 1664525u + 1013904223u;
-    const auto bits = static_cast<int32_t>((noiseSeed >> 9) & 0x007FFFFFu);
-    return (static_cast<float>(bits) / 4194303.5f) * 2.0f - 1.0f;
-}
-
-float OscillatorUnit::renderPinkNoise(float white)
-{
-    pinkState[0] = 0.99886f * pinkState[0] + white * 0.0555179f;
-    pinkState[1] = 0.99332f * pinkState[1] + white * 0.0750759f;
-    pinkState[2] = 0.96900f * pinkState[2] + white * 0.1538520f;
-    pinkState[3] = 0.86650f * pinkState[3] + white * 0.3104856f;
-    pinkState[4] = 0.55000f * pinkState[4] + white * 0.5329522f;
-    pinkState[5] = -0.7616f * pinkState[5] - white * 0.0168980f;
-    const auto pink = pinkState[0] + pinkState[1] + pinkState[2] + pinkState[3] + pinkState[4] + pinkState[5] + pinkState[6] + white * 0.5362f;
-    pinkState[6] = white * 0.115926f;
-    return pink * 0.11f;
-}
-
-float OscillatorUnit::renderSuperSaw(double sampleRate, const RenderContext& context)
-{
-    const auto width = derived.superSawWidth;
-    float sum = 0.0f;
-
-    for (std::size_t i = 0; i < superSawAngles.size(); ++i)
-    {
-        const auto driftHz = superSawDrift[i] * (0.03 + 0.95 * width);
-        const auto freq = juce::jmax(8.0, context.currentFrequencyHz * derived.superSawRatios[i] + driftHz);
-        const auto delta = juce::MathConstants<double>::twoPi * freq / sampleRate;
-
-        superSawAngles[i] += delta;
-        if (superSawAngles[i] >= juce::MathConstants<double>::twoPi)
+        const auto decaySeconds = 0.12 * std::pow(40.0, static_cast<double>(a));
+        for (std::size_t i = 0; i < d.physicalDecayCoeff.size(); ++i)
         {
-            superSawAngles[i] -= juce::MathConstants<double>::twoPi;
+            const auto seconds = decaySeconds / (1.0 + 0.8 * static_cast<double>(i));
+            d.physicalDecayCoeff[i] = static_cast<float>(std::exp(-1.0 / (seconds * sampleRate)));
+        }
+        d.physicalSpread = 0.7f + 0.8f * std::pow(b, 1.2f);
+    }
+
+    d.robTrans = std::pow(a, 0.55f);
+    d.robBody = std::pow(b, 0.72f);
+    d.robChaos = std::pow(c, 0.80f);
+    d.robTransientCoeff = static_cast<float>(std::exp(-px3::dsp::perSampleRate(juce::jmap(d.robTrans, 0.085f, 0.012f), sampleRate)));
+
+    d.px3Morph = std::pow(a, 1.1f);
+    d.px3Character = std::pow(b, 1.2f);
+    d.px3Movement = std::pow(c, 1.1f);
+    d.px3Isaac = buildHarmonicSet(oscillatorSettings.harmonics, 0.55f, 0.0f, 0.3f * d.px3Movement, 0.5f);
+
+    d.noiseColor = a;
+    d.noiseCoeff = static_cast<float>(px3::dsp::onePoleCoefficient(juce::jmap(a, 0.02f, 0.48f), sampleRate));
+    d.pinkCoeff = static_cast<float>(px3::dsp::onePoleCoefficient(juce::jmap(a, 0.01f, 0.30f), sampleRate));
+
+    // Level per mode. The macro average reads exactly the knobs the mode shows.
+    for (int mode = 0; mode < px3::oscillatorModeCount; ++mode)
+    {
+        const auto count = px3::oscillatorModeMacroCount(mode);
+        const auto energy = count == 0 ? 0.5f : count == 1 ? a : count == 2 ? 0.5f * (a + b) : (a + b + c) / 3.0f;
+
+        auto trim = 1.0f;
+        switch (static_cast<Mode>(mode))
+        {
+            case Mode::superSaw: trim = juce::jmap(std::pow(a, 1.35f), 1.0f, 0.84f); break;
+            case Mode::fm:       trim = juce::jmap(std::pow(b, 1.2f), 1.0f, 0.82f); break;
+            case Mode::hardSync: trim = juce::jmap(std::pow(b, 1.18f), 1.0f, 0.78f); break;
+            case Mode::digital:  trim = juce::jmap(std::pow(b, 1.1f), 1.0f, 0.86f); break;
+            case Mode::rob:
+            case Mode::px3:      trim = juce::jmap(std::pow(c, 1.12f), 1.0f, 0.84f); break;
+            default: break;
         }
 
-        const auto phase = static_cast<float>(superSawAngles[i] / juce::MathConstants<double>::twoPi);
-        const auto saw = phase * 2.0f - 1.0f;
-        sum += softClip(saw * derived.superSawEdgeSoft * 1.35f);
+        const auto idx = static_cast<std::size_t>(mode);
+        auto gain = kModeTrim[idx] * (1.0f - kModeTravelSlope[idx] * (energy - 0.5f)) * trim;
+        d.modeGain[idx] = juce::jlimit(0.45f, 1.08f, gain) * kLevelAtRest;
+    }
+}
+
+// ---- rendering --------------------------------------------------------------------
+
+double OscillatorUnit::renderSample(const RenderContext& context)
+{
+    if (rampPosition < rampLength)
+    {
+        ++rampPosition;
+        currentRamp = static_cast<float>(rampPosition) / static_cast<float>(rampLength);
     }
 
-    // Left as two multiplies in the original order: folding them into one
-    // cached scale changes the association and with it the last bit.
-    return sum * (1.0f / 7.0f) * (0.84f + 0.10f * width);
-}
+    MainPhase main;
+    main.increment = px3::dsp::phaseIncrement(context.frequencyHz, sampleRate);
+    main.wrapped = px3::dsp::advancePhase(phase, main.increment);
+    main.phase = phase;
+    main.tau = main.wrapped && main.increment > 0.0 ? phase / main.increment : 0.0;
 
-float OscillatorUnit::renderPwm(const RenderContext& context) const
-{
-    const auto widthCurve = derived.pwmWidthCurve;
-    const auto width = juce::jlimit(0.08f,
-                                    0.92f,
-                                    0.1f + widthCurve * 0.8f + (context.pwmModWheelNorm - 0.5f) * 0.14f);
-    const auto phase = static_cast<float>(context.currentAngle / juce::MathConstants<double>::twoPi);
-    return phase < width ? 1.0f : -1.0f;
-}
+    auto out = renderMode(activeMode, context, main);
 
-float OscillatorUnit::renderAdditive(const RenderContext& context, bool dynamic)
-{
-    const auto base = readHarmonicSum(context.currentAngle,
-                                      dynamic ? derived.additiveDynamic : derived.additiveStatic);
-
-    if (!dynamic)
+    if (fadeRemaining > 0)
     {
-        return base;
-    }
-
-    const auto shimmer = std::sin(context.currentAngle * 0.5 + static_cast<double>(context.noteAgeSamples) * 0.0007) * 0.15f;
-    return softClip(static_cast<float>(base + shimmer * (0.18f + oscillatorSettings.macroC * 0.42f)));
-}
-
-float OscillatorUnit::renderWavetable(double sampleRate, const RenderContext& context)
-{
-    const auto* table = oscillatorSettings.table;
-    if (table == nullptr || sampleRate <= 0.0)
-    {
-        // No table loaded yet. Silence rather than a fallback waveform: a mode
-        // that quietly plays something else is harder to diagnose than one that
-        // plays nothing.
-        return 0.0f;
-    }
-
-    smoothedWtPosition += (oscillatorSettings.wtPosition - smoothedWtPosition) * wtPositionCoeff;
-
-    // Phase comes from the voice, which already owns it and already wraps it.
-    // Deriving it here rather than keeping a second accumulator is what makes
-    // phase continuous through a scan for free - there is nothing to reset.
-    const auto phase = context.currentAngle / juce::MathConstants<double>::twoPi;
-    const auto increment = context.currentFrequencyHz / sampleRate;
-
-    return wavetableReader.read(*table, phase, smoothedWtPosition, increment);
-}
-
-float OscillatorUnit::renderFm(double sampleRate, const RenderContext& context)
-{
-    const auto ratio = derived.fmRatio;
-    const auto index = derived.fmIndex;
-
-    fmModAngle += juce::MathConstants<double>::twoPi * (context.currentFrequencyHz * static_cast<double>(ratio)) / sampleRate;
-    if (fmModAngle >= juce::MathConstants<double>::twoPi)
-    {
-        fmModAngle -= juce::MathConstants<double>::twoPi;
-    }
-
-    const auto mod = std::sin(fmModAngle) * index;
-    const auto sample = std::sin(context.currentAngle + mod);
-    return static_cast<float>(sample) * derived.fmOutputScale;
-}
-
-float OscillatorUnit::renderHardSync(double sampleRate, const RenderContext& context)
-{
-    const auto ratio = derived.hardSyncRatio;
-    syncMasterAngle += juce::MathConstants<double>::twoPi * context.currentFrequencyHz / sampleRate;
-
-    if (syncMasterAngle >= juce::MathConstants<double>::twoPi)
-    {
-        syncMasterAngle -= juce::MathConstants<double>::twoPi;
-        syncSlaveAngle = 0.0;
-    }
-
-    syncSlaveAngle += juce::MathConstants<double>::twoPi * context.currentFrequencyHz * ratio / sampleRate;
-    if (syncSlaveAngle >= juce::MathConstants<double>::twoPi)
-    {
-        syncSlaveAngle -= juce::MathConstants<double>::twoPi;
-    }
-
-    const auto slavePhase = static_cast<float>(syncSlaveAngle / juce::MathConstants<double>::twoPi);
-    const auto synced = slavePhase * 2.0f - 1.0f;
-    const auto drive = derived.hardSyncDrive;
-    return softClip(synced * drive) * 0.82f;
-}
-
-float OscillatorUnit::renderFormant(double sampleRate, const RenderContext& context)
-{
-    // The excitation is a band-limited impulse train: flat up to its highest
-    // harmonic and silent above it, so it can drive a 3 kHz formant without
-    // aliasing. A harmonic set could not - eight harmonics of a low note do not
-    // reach F2, let alone F3, so there was nothing at those frequencies for a
-    // resonance to find even in principle.
-    //
-    // Closed form rather than a summed series: sin(N*x/2) / (N*sin(x/2)) is the
-    // Dirichlet kernel, N equal-amplitude harmonics for the price of two sines.
-    const auto rate = juce::jmax(1000.0, sampleRate);
-    const auto f0 = juce::jmax(20.0, context.currentFrequencyHz);
-    auto harmonics = static_cast<int>(rate * 0.45 / f0);
-    harmonics = juce::jlimit(1, 400, harmonics);
-    // Odd, so the kernel is symmetric about the pulse and carries no DC step.
-    if ((harmonics % 2) == 0) --harmonics;
-    const auto n = static_cast<double>(juce::jmax(1, harmonics));
-
-    const auto half = context.currentAngle * 0.5;
-    const auto denominator = std::sin(half);
-    // Deliberately NOT divided by n. The kernel with the 1/n in it has each
-    // harmonic at about 2/n, so a low note - which needs the most harmonics to
-    // reach F3 without aliasing - excited the resonators with almost nothing
-    // and the mode rendered at an RMS of 0.003. Dropping the 1/n gives every
-    // harmonic unit amplitude whatever the pitch, which is also what keeps the
-    // vowel at a steady level across the keyboard.
-    const auto raw = std::abs(denominator) < 1.0e-7
-                         ? n
-                         : std::sin(n * half) / denominator;
-
-    // A real glottal source is not flat - it falls steeply with frequency, and
-    // a flat one makes F2 and F3 shout over F1. This is the -12 dB/octave tilt
-    // the speech literature models, applied as a one-pole on the excitation.
-    formantSourceState += (static_cast<float>(raw) - formantSourceState) * derived.formantSourceCoeff;
-    const auto pulse = formantSourceState;
-
-    auto out = 0.0f;
-    for (int i = 0; i < 3; ++i)
-    {
-        const auto idx = static_cast<std::size_t>(i);
-        const auto y = derived.formant.a[idx] * pulse
-                       + derived.formant.b[idx] * formantY1[idx]
-                       + derived.formant.c[idx] * formantY2[idx];
-        formantY2[idx] = formantY1[idx];
-        formantY1[idx] = std::isfinite(y) ? y : 0.0f;
-        out += derived.formant.gain[idx] * formantY1[idx];
-    }
-
-    // The resonators are individually normalised, so the sum needs a single
-    // trim rather than a per-vowel one.
-    return softClip(out * derived.formantTrim);
-}
-
-float OscillatorUnit::renderOrgan(const RenderContext& context)
-{
-    const auto click = derived.organClick;
-    const auto organ = readHarmonicSum(context.currentAngle, derived.organ);
-
-    const auto clickEnv = std::exp(-static_cast<float>(context.noteAgeSamples) * derived.organClickDecay);
-    const auto keyClick = (nextDeterministicNoise() * 0.08f + std::sin(context.currentAngle * 9.0) * 0.05f) * clickEnv * click;
-    return softClip(static_cast<float>((organ + keyClick) * (1.05f + 0.07f * (1.0f - click))));
-}
-
-float OscillatorUnit::renderDigital(double sampleRate, const RenderContext& context)
-{
-    digitalHoldSamples = derived.digitalHoldSamples;
-
-    if (++digitalHoldCounter >= digitalHoldSamples)
-    {
-        digitalHoldCounter = 0;
-        const auto phase = static_cast<float>(context.currentAngle / juce::MathConstants<double>::twoPi);
-        const auto steps = derived.digitalSteps;
-        const auto quantizedPhase = std::floor(phase * steps) / juce::jmax(2.0f, steps - 1.0f);
-        const auto aliasFold = derived.digitalAliasFold;
-        const auto aliased = std::sin(static_cast<double>(quantizedPhase) * juce::MathConstants<double>::twoPi * aliasFold);
-        const auto crushSteps = derived.digitalCrushSteps;
-        digitalHeldSample = std::floor(static_cast<float>(aliased) * crushSteps) / juce::jmax(2.0f, crushSteps);
-    }
-
-    juce::ignoreUnused(sampleRate);
-    return softClip(digitalHeldSample * 1.08f);
-}
-
-float OscillatorUnit::renderPhysical(double sampleRate, const RenderContext& context)
-{
-    const auto damping = derived.physicalDamping;
-    const auto material = derived.physicalMaterial;
-
-    const std::array<double, 4> ratios { 1.0, 2.32, 3.91, 5.48 };
-    float sum = 0.0f;
-
-    for (std::size_t i = 0; i < ratios.size(); ++i)
-    {
-        const auto freq = context.currentFrequencyHz * ratios[i] * material;
-        physicalPhase[i] += juce::MathConstants<double>::twoPi * freq / sampleRate;
-        if (physicalPhase[i] >= juce::MathConstants<double>::twoPi)
+        const auto outgoing = renderMode(fadingMode, context, main);
+        const auto weight = static_cast<double>(fadeRemaining) / static_cast<double>(fadeLength);
+        out += (outgoing - out) * weight;
+        if (--fadeRemaining == 0)
         {
-            physicalPhase[i] -= juce::MathConstants<double>::twoPi;
+            fadingMode = -1;
+            if (pendingMode >= 0)
+            {
+                const auto next = pendingMode;
+                pendingMode = -1;
+                if (next != activeMode)
+                {
+                    beginModeChange(next);
+                }
+            }
+        }
+    }
+
+    return out;
+}
+
+double OscillatorUnit::renderMode(int modeIndex, const RenderContext& context, const MainPhase& main)
+{
+    const auto idx = static_cast<std::size_t>(px3::clampOscillatorModeIndex(modeIndex));
+    double sample = 0.0;
+
+    switch (static_cast<Mode>(idx))
+    {
+        case Mode::sine:
+            sample = plainDelays[idx].push(std::sin(kTwoPi * main.phase));
+            break;
+
+        case Mode::saw:
+            if (main.wrapped)
+            {
+                sawLine.step(main.tau, -2.0);
+            }
+            sample = sawLine.push(2.0 * main.phase - 1.0);
+            break;
+
+        case Mode::square:
+            sample = renderPulse(squareLine, main, 0.5);
+            break;
+
+        case Mode::triangle:
+            sample = renderTriangle(main);
+            break;
+
+        case Mode::noise:
+        {
+            const auto color = ramped(&DerivedCurves::noiseColor);
+            const auto white = noise.white() * static_cast<float>(whiteScale);
+            noiseColorState += (white - noiseColorState) * ramped(&DerivedCurves::noiseCoeff);
+            sample = plainDelays[idx].push((noiseColorState * (1.0f - color) + white * color) * 0.78f);
+            break;
         }
 
-        const auto excite = context.noteAgeSamples < 10 ? nextDeterministicNoise() * 0.22f : 0.0f;
-        physicalState[i] = physicalState[i] * damping + static_cast<float>(std::sin(physicalPhase[i])) * 0.012f + excite * (0.02f / static_cast<float>(i + 1));
-        sum += physicalState[i] * (0.72f / static_cast<float>(i + 1));
-    }
-
-    return softClip(sum * 1.95f);
-}
-
-float OscillatorUnit::renderRobOsc(double sampleRate, const RenderContext& context)
-{
-    const auto transCurve = derived.robTrans;
-    const auto bodyCurve = derived.robBody;
-    const auto chaosCurve = derived.robChaos;
-    const auto transientDecay = juce::jmap(transCurve, 0.085f, 0.012f);
-    const auto transient = std::exp(-static_cast<float>(context.noteAgeSamples) * transientDecay);
-    const auto bodyPhase = context.currentAngle * (1.0 + chaosCurve * 1.05 + bodyCurve * 0.45)
-                           + std::sin(context.currentAngle * (3.5 + chaosCurve * 10.0)) * (0.02 + chaosCurve * 0.38);
-
-    const auto bodyFund = std::sin(bodyPhase);
-    const auto bodySub = std::sin(bodyPhase * 0.5) * (0.12f + bodyCurve * 0.42f);
-    const auto bodySecond = std::sin(bodyPhase * (1.34 + bodyCurve * 1.10)) * (0.08f + bodyCurve * 0.34f);
-    const auto bodyThird = std::sin(bodyPhase * (2.00 + bodyCurve * 2.05)) * (0.03f + bodyCurve * 0.22f);
-    auto body = bodyFund * (0.42f + bodyCurve * 0.52f) + bodySub + bodySecond + bodyThird;
-    body = std::tanh(body * (1.12f + bodyCurve * 2.40f));
-
-    const auto clickTone = std::sin(bodyPhase * (9.0f + transCurve * 46.0f));
-    const auto clickNoise = nextDeterministicNoise();
-    const auto clickMix = juce::jmap(transCurve, 0.25f, 0.80f);
-    const auto clickCore = clickTone * (1.0f - clickMix) + clickNoise * clickMix;
-    const auto transientGain = juce::jmap(transCurve, 0.04f, 2.30f);
-    const auto smack = clickCore * transient * transientGain;
-
-    const auto attackSamples = juce::jlimit(10,
-                                            96,
-                                            static_cast<int>(10 + transCurve * 86.0f));
-    float onsetEnv = 0.0f;
-    if (context.noteAgeSamples < attackSamples)
-    {
-        onsetEnv = 1.0f - static_cast<float>(context.noteAgeSamples) / static_cast<float>(attackSamples);
-        onsetEnv = onsetEnv * onsetEnv;
-    }
-    const auto onset = nextDeterministicNoise() * onsetEnv * juce::jmap(transCurve, 0.0f, 1.25f);
-
-    const auto edgeShaper = std::tanh(body * (1.0f + transCurve * 3.8f));
-    const auto edgeCarrier = std::sin(bodyPhase * (5.0f + transCurve * 22.0f + chaosCurve * 24.0f));
-    const auto edge = (edgeShaper - body) * (0.08f + transCurve * 0.60f)
-                      + edgeCarrier * (0.01f + transCurve * 0.22f);
-
-    const auto chaosRate = 6.0 + chaosCurve * 32.0;
-    const auto chaosWarp = std::sin(bodyPhase * (3.0 + chaosCurve * 9.0) + std::sin(context.currentAngle * (11.0 + chaosCurve * 27.0)));
-    const auto chaosNoise = nextDeterministicNoise() * (0.02f + chaosCurve * 0.22f);
-    const auto chaos = std::sin(bodyPhase * chaosRate + chaosWarp * (0.6f + chaosCurve * 2.4f)) * (0.05f + chaosCurve * 0.34f)
-                       + chaosNoise;
-
-    juce::ignoreUnused(sampleRate);
-    return softClip(static_cast<float>((body + smack + onset + edge + chaos) * 0.86f));
-}
-
-float OscillatorUnit::renderPx3(double sampleRate, const RenderContext& context)
-{
-    const auto morph = derived.px3Morph;
-    const auto character = derived.px3Character;
-    const auto movement = derived.px3Movement;
-
-    const auto fmPart = renderFm(sampleRate, context);
-    const auto additivePart = renderAdditive(context, true);
-    const auto foldedSaw = softClip(static_cast<float>((context.currentAngle / juce::MathConstants<double>::pi) - 1.0) * (1.0f + 4.8f * character));
-    const auto ext = 0.0f;
-
-    const auto blendA = fmPart * (1.0f - morph) + additivePart * morph;
-    const auto blendB = foldedSaw * (0.45f + 0.45f * character) + ext;
-    const auto movingPhase = std::sin(static_cast<double>(context.noteAgeSamples) * (0.0008 + movement * 0.0022));
-    const auto px3 = softClip((blendA * 0.74f + blendB * 0.66f) + static_cast<float>(movingPhase) * 0.25f * movement);
-    return px3 * 0.9f;
-}
-
-float OscillatorUnit::renderSample(double sampleRate, const RenderContext& context)
-{
-    const auto mode = static_cast<px3::OscillatorMode>(px3::clampOscillatorModeIndex(oscillatorSettings.modeIndex));
-    const auto modeIndex = px3::clampOscillatorModeIndex(oscillatorSettings.modeIndex);
-    const auto phase = static_cast<float>(context.currentAngle / juce::MathConstants<double>::twoPi);
-    const auto external = 0.0f;
-
-    float sample = 0.0f;
-
-    // The four basic waveforms are computed inside their own cases rather than
-    // up front. Hoisted out, every mode paid for the sine - a libm call per
-    // sample, per oscillator, per voice - including the sixteen modes that
-    // never read it.
-    switch (mode)
-    {
-        case px3::OscillatorMode::sine:
-            sample = static_cast<float>(std::sin(context.currentAngle));
-            break;
-        case px3::OscillatorMode::saw:
-            sample = phase * 2.0f - 1.0f;
-            break;
-        case px3::OscillatorMode::square:
-            sample = phase < 0.5f ? 1.0f : -1.0f;
-            break;
-        case px3::OscillatorMode::triangle:
-            sample = 1.0f - 4.0f * std::abs(phase - 0.5f);
-            break;
-        case px3::OscillatorMode::noise:
+        case Mode::pinkNoise:
         {
-            const auto white = nextDeterministicNoise();
-            const auto color = oscillatorSettings.macroA;
-            const auto lpCoeff = juce::jmap(color, 0.02f, 0.48f);
-            noiseColorState += (white - noiseColorState) * lpCoeff;
-            sample = (noiseColorState * (1.0f - color) + white * color) * 0.78f;
-            break;
-        }
-        case px3::OscillatorMode::pinkNoise:
-        {
-            const auto white = nextDeterministicNoise();
-            auto pink = renderPinkNoise(white);
-            const auto color = oscillatorSettings.macroA;
-            const auto lpCoeff = juce::jmap(color, 0.01f, 0.30f);
-            pinkColorState += (pink - pinkColorState) * lpCoeff;
+            const auto color = ramped(&DerivedCurves::noiseColor);
+            auto pink = pinkFilter.process(noise.white());
+            pinkColorState += (pink - pinkColorState) * ramped(&DerivedCurves::pinkCoeff);
             pink = pinkColorState * (1.0f - color) + pink * color;
-            sample = pink * 1.45f;
+            sample = plainDelays[idx].push(pink * 1.45f);
             break;
         }
-        case px3::OscillatorMode::superSaw:
-            sample = renderSuperSaw(sampleRate, context);
+
+        case Mode::superSaw:
+            sample = renderSuperSaw(context);
             break;
-        case px3::OscillatorMode::pwm:
-            sample = renderPwm(context);
+
+        case Mode::pwm:
+        {
+            // The mod wheel moves the width; it no longer moves anything else.
+            const auto width = juce::jlimit(0.08, 0.92,
+                                            0.1 + static_cast<double>(ramped(&DerivedCurves::pwmWidthCurve)) * 0.8
+                                                + (static_cast<double>(context.modWheelNorm) - 0.5) * 0.14);
+            sample = renderPulse(pwmLine, main, width);
             break;
-        case px3::OscillatorMode::wavetable:
-            sample = renderWavetable(sampleRate, context);
+        }
+
+        case Mode::wavetable:
+        {
+            smoothedWtPosition += (oscillatorSettings.wtPosition - smoothedWtPosition) * wtPositionCoeff;
+            const auto* table = oscillatorSettings.table;
+            // No table loaded yet: silence rather than a fallback waveform.
+            sample = plainDelays[idx].push(table != nullptr
+                                               ? wavetableReader.read(*table, main.phase, smoothedWtPosition, main.increment)
+                                               : 0.0f);
             break;
-        case px3::OscillatorMode::additive:
-            sample = renderAdditive(context, false);
+        }
+
+        case Mode::additive:
+            sample = plainDelays[idx].push(renderHarmonicSet(additivePhases, previous.additive, target.additive, main.increment));
             break;
-        case px3::OscillatorMode::formant:
-            sample = renderFormant(sampleRate, context);
+
+        case Mode::isaac:
+        {
+            const auto partials = renderHarmonicSet(isaacPhases, previous.isaac, target.isaac, main.increment);
+            isaacShimmerPhase = wrap(isaacShimmerPhase
+                                     + px3::dsp::phaseIncrement(0.5 * context.frequencyHz + kShimmerOffsetHz, sampleRate));
+            const auto shimmer = std::sin(kTwoPi * isaacShimmerPhase) * ramped(&DerivedCurves::isaacShimmer);
+            sample = plainDelays[idx].push(isaacClip.process(kTanhAdaa, partials + shimmer));
             break;
-        case px3::OscillatorMode::fm:
-            sample = renderFm(sampleRate, context);
+        }
+
+        case Mode::formant:
+            sample = renderFormant(context, main);
             break;
-        case px3::OscillatorMode::hardSync:
-            sample = renderHardSync(sampleRate, context);
+
+        case Mode::fm:
+            sample = renderFmCore(fmModulatorPhase, fmDecimator, main,
+                                  ramped(&DerivedCurves::fmRatio), ramped(&DerivedCurves::fmIndex))
+                     * ramped(&DerivedCurves::fmOutputScale);
             break;
-        case px3::OscillatorMode::organ:
-            sample = renderOrgan(context);
+
+        case Mode::hardSync:
+            sample = renderHardSync(main);
             break;
-        case px3::OscillatorMode::digital:
-            sample = renderDigital(sampleRate, context);
+
+        case Mode::organ:
+            sample = renderOrgan(context, main);
             break;
-        case px3::OscillatorMode::physical:
-            sample = renderPhysical(sampleRate, context);
+
+        case Mode::digital:
+            sample = renderDigital(main);
             break;
-        case px3::OscillatorMode::rob:
-            sample = renderRobOsc(sampleRate, context);
+
+        case Mode::physical:
+            sample = renderPhysical(main);
             break;
-        case px3::OscillatorMode::isaac:
-            sample = renderAdditive(context, true);
+
+        case Mode::rob:
+            sample = renderRob(context, main);
             break;
-        case px3::OscillatorMode::px3:
-            sample = renderPx3(sampleRate, context);
+
+        case Mode::px3:
+            sample = renderPx3(main);
             break;
+
         default:
             break;
     }
 
-    static constexpr std::array<float, px3::oscillatorModeCount> kModeTrim {
-        0.82f, 0.74f, 0.72f, 0.78f, 0.64f,
-        0.67f, 0.62f, 0.70f, 0.76f, 0.80f,
-        0.73f, 0.64f, 0.60f, 0.76f,
-        0.66f, 0.70f, 0.62f, 0.74f, 0.60f
-    };
-
-    auto modeGain = kModeTrim[static_cast<std::size_t>(modeIndex)];
-
-    const auto macroEnergy = [this, mode]()
+    if (kModeUsesDcBlocker[idx])
     {
-        const auto a = oscillatorSettings.macroA;
-        const auto b = oscillatorSettings.macroB;
-        const auto c = oscillatorSettings.macroC;
+        sample = dcBlockers[idx].process(sample);
+    }
 
-        switch (mode)
+    const auto gain = previous.modeGain[idx] + (target.modeGain[idx] - previous.modeGain[idx]) * currentRamp;
+    return sample * gain;
+}
+
+double OscillatorUnit::renderPulse(px3::dsp::BlepLine& line, const MainPhase& main, double width)
+{
+    // Rising edge at the wrap, falling edge where the phase crosses the width,
+    // each corrected at its own fractional time.
+    if (main.increment > 0.0)
+    {
+        if (main.wrapped)
         {
-            case px3::OscillatorMode::sine:
-            case px3::OscillatorMode::saw:
-            case px3::OscillatorMode::square:
-            case px3::OscillatorMode::triangle:
-                return 0.5f;
-            case px3::OscillatorMode::noise:
-            case px3::OscillatorMode::pinkNoise:
-            case px3::OscillatorMode::pwm:
-            case px3::OscillatorMode::wavetable:
-                return a;
-            case px3::OscillatorMode::superSaw:
-            case px3::OscillatorMode::organ:
-            case px3::OscillatorMode::digital:
-            case px3::OscillatorMode::physical:
-            case px3::OscillatorMode::fm:
-            case px3::OscillatorMode::hardSync:
-            case px3::OscillatorMode::formant:
-                return 0.5f * (a + b);
-            case px3::OscillatorMode::additive:
-            case px3::OscillatorMode::isaac:
-            case px3::OscillatorMode::rob:
-            case px3::OscillatorMode::px3:
-                return (a + b + c) * (1.0f / 3.0f);
-            default:
-                return 0.5f;
+            const auto before = main.phase + 1.0 - main.increment;
+            if (before < width)
+            {
+                line.step((main.phase + 1.0 - width) / main.increment, -2.0);
+            }
+            line.step(main.tau, 2.0);
+            if (main.phase >= width)
+            {
+                line.step((main.phase - width) / main.increment, -2.0);
+            }
         }
-    }();
+        else
+        {
+            const auto before = main.phase - main.increment;
+            if (before < width && main.phase >= width)
+            {
+                line.step((main.phase - width) / main.increment, -2.0);
+            }
+        }
+    }
 
-    static constexpr std::array<float, px3::oscillatorModeCount> kModeTravelSlope {
-        0.00f, 0.08f, 0.10f, 0.06f, 0.16f,
-        0.14f, 0.42f, 0.18f, 0.20f, 0.14f,
-        0.20f, 0.38f, 0.46f, 0.14f,
-        0.34f, 0.24f, 0.34f, 0.20f, 0.40f
+    // The pulse's mean is 2w - 1. Taken out, so the width knob is not also an
+    // offset knob: the pulse is zero-mean at every width.
+    const auto naive = (main.phase < width ? 1.0 : -1.0) - (2.0 * width - 1.0);
+    return line.push(naive);
+}
+
+double OscillatorUnit::renderTriangle(const MainPhase& main)
+{
+    if (main.increment > 0.0)
+    {
+        const auto slope = 8.0 * main.increment;
+        if (main.wrapped)
+        {
+            const auto before = main.phase + 1.0 - main.increment;
+            if (before < 0.5)
+            {
+                triangleLine.ramp((main.phase + 0.5) / main.increment, -slope);
+            }
+            triangleLine.ramp(main.tau, slope);
+            if (main.phase >= 0.5)
+            {
+                triangleLine.ramp((main.phase - 0.5) / main.increment, -slope);
+            }
+        }
+        else if (main.phase - main.increment < 0.5 && main.phase >= 0.5)
+        {
+            triangleLine.ramp((main.phase - 0.5) / main.increment, -slope);
+        }
+    }
+    return triangleLine.push(1.0 - 4.0 * std::abs(main.phase - 0.5));
+}
+
+double OscillatorUnit::renderSuperSaw(const RenderContext& context)
+{
+    const auto width = ramped(&DerivedCurves::superSawWidth);
+    const auto edge = static_cast<double>(ramped(&DerivedCurves::superSawEdgeSoft)) * 1.35;
+    const auto driftDepth = 0.03 + 0.95 * static_cast<double>(width);
+    const auto t = static_cast<double>(currentRamp);
+
+    double sum = 0.0;
+    for (std::size_t i = 0; i < superSawPhases.size(); ++i)
+    {
+        // Each saw wanders on its own slow random walk rather than sitting on a
+        // fixed offset picked at note-on.
+        auto& drift = superSawDrift[i];
+        drift += (static_cast<double>(noise.white()) - drift) * driftCoeff;
+        const auto driftHz = drift * driftNorm * driftDepth;
+
+        const auto ratio = previous.superSawRatios[i] + (target.superSawRatios[i] - previous.superSawRatios[i]) * t;
+        const auto increment = px3::dsp::phaseIncrement(juce::jmax(8.0, context.frequencyHz * ratio + driftHz), sampleRate);
+        auto& p = superSawPhases[i];
+        if (px3::dsp::advancePhase(p, increment))
+        {
+            superSawLines[i].step(p / increment, -2.0);
+        }
+        const auto band = superSawLines[i].push(2.0 * p - 1.0);
+        sum += superSawClips[i].process(kTanhAdaa, band * edge);
+    }
+
+    // Independent phases and drift keep the saws uncorrelated at any detune, so
+    // one fixed scale holds the level steady across SPREAD.
+    return sum * (1.0 / 7.0) * (0.84 + 0.10 * static_cast<double>(width));
+}
+
+double OscillatorUnit::renderHarmonicSet(std::array<double, kHarmonicCount>& phases,
+                                         const HarmonicSet& from,
+                                         const HarmonicSet& to,
+                                         double increment)
+{
+    const auto t = currentRamp;
+    double sum = 0.0;
+    for (std::size_t i = 0; i < phases.size(); ++i)
+    {
+        const auto amp = from.amplitude[i] + (to.amplitude[i] - from.amplitude[i]) * t;
+        const auto ratio = static_cast<double>(from.ratio[i] + (to.ratio[i] - from.ratio[i]) * t);
+        // Its own accumulator at its own ratio: a fractional ratio read off a
+        // wrapped master phase jumps a part-cycle at every wrap.
+        const auto partialIncrement = increment * ratio;
+        auto& p = phases[i];
+        p = wrap(p + partialIncrement);
+        if (amp != 0.0f)
+        {
+            const auto fade = px3::dsp::nyquistFade(partialIncrement);
+            if (fade > 0.0f)
+            {
+                sum += static_cast<double>(amp * fade) * std::sin(kTwoPi * p);
+            }
+        }
+    }
+    const auto norm = from.norm + (to.norm - from.norm) * t;
+    return norm > 1.0e-4f ? sum / static_cast<double>(norm) : 0.0;
+}
+
+double OscillatorUnit::renderFormant(const RenderContext& context, const MainPhase& main)
+{
+    // A band-limited impulse train excites the resonators: the Dirichlet kernel,
+    // sin(N x/2) / sin(x/2), N equal harmonics for the price of two sines.
+    // Deliberately not divided by N, so every harmonic has unit amplitude and
+    // the vowel holds its level across the keyboard.
+    //
+    // N follows the pitch, and used to change by two harmonics in a single
+    // sample as the pitch crossed a threshold - a pop. The top pair now fades
+    // in and out continuously: D(N+2) - D(N) is exactly 2 cos((N+1) x/2).
+    const auto f0 = juce::jmax(20.0, context.frequencyHz);
+    const auto limit = 0.45 * sampleRate / f0;
+    auto harmonics = juce::jlimit(1, 399, static_cast<int>(limit));
+    if ((harmonics % 2) == 0)
+    {
+        --harmonics;
+    }
+    const auto topPair = juce::jlimit(0.0, 1.0, (limit - harmonics) * 0.5);
+
+    const auto half = kPi * main.phase;
+    const auto denominator = std::sin(half);
+    auto raw = std::abs(denominator) < 1.0e-7 ? static_cast<double>(harmonics)
+                                              : std::sin(harmonics * half) / denominator;
+    raw += topPair * 2.0 * std::cos((harmonics + 1) * half);
+
+    formantSourceState += (static_cast<float>(raw) - formantSourceState) * ramped(&DerivedCurves::formantSourceCoeff);
+    const auto pulse = formantSourceState;
+    const auto t = currentRamp;
+
+    auto out = 0.0f;
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+        const auto a = previous.formant.a[i] + (target.formant.a[i] - previous.formant.a[i]) * t;
+        const auto b = previous.formant.b[i] + (target.formant.b[i] - previous.formant.b[i]) * t;
+        const auto c = previous.formant.c[i] + (target.formant.c[i] - previous.formant.c[i]) * t;
+        const auto gain = previous.formant.gain[i] + (target.formant.gain[i] - previous.formant.gain[i]) * t;
+        const auto y = a * pulse + b * formantY1[i] + c * formantY2[i];
+        formantY2[i] = formantY1[i];
+        formantY1[i] = std::isfinite(y) ? y : 0.0f;
+        out += gain * formantY1[i];
+    }
+
+    return plainDelays[static_cast<std::size_t>(Mode::formant)].push(
+        formantClip.process(kTanhAdaa, static_cast<double>(out * ramped(&DerivedCurves::formantTrim))));
+}
+
+double OscillatorUnit::renderFmCore(double& modulatorPhase,
+                                    px3::dsp::HalfbandDecimator& decimator,
+                                    const MainPhase& main,
+                                    double ratio,
+                                    double index)
+{
+    // Two points per sample, at t = n and n + 1/2, decimated: the sidebands that
+    // would fold at 1x land below the doubled Nyquist, where the decimator
+    // removes them. The index eases off only where even that would not be
+    // enough (docs/OSCILLATOR_DSP_DESIGN.md, FM).
+    const auto modulatorIncrement = main.increment * ratio;
+    modulatorPhase = wrap(modulatorPhase + modulatorIncrement);
+    const auto depth = px3::dsp::carsonLimitedIndex(index, main.increment, modulatorIncrement);
+
+    const auto first = std::sin(kTwoPi * main.phase + depth * std::sin(kTwoPi * modulatorPhase));
+    const auto second = std::sin(kTwoPi * (main.phase + 0.5 * main.increment)
+                                 + depth * std::sin(kTwoPi * (modulatorPhase + 0.5 * modulatorIncrement)));
+    return decimator.process(first, second);
+}
+
+double OscillatorUnit::renderHardSync(const MainPhase& main)
+{
+    const auto ratio = static_cast<double>(ramped(&DerivedCurves::hardSyncRatio));
+    const auto slaveIncrement = main.increment * ratio;
+    auto& slave = syncSlavePhase;
+
+    if (main.wrapped && slaveIncrement > 0.0)
+    {
+        // The slave runs on up to the instant the master wraps - wrapping itself
+        // if it gets there first - and restarts from zero AT that instant, not at
+        // the next sample.
+        auto atReset = slave + slaveIncrement * (1.0 - main.tau);
+        while (atReset >= 1.0)
+        {
+            atReset -= 1.0;
+            syncLine.step(main.tau + atReset / slaveIncrement, -2.0);
+        }
+        syncLine.step(main.tau, -2.0 * atReset);
+        slave = slaveIncrement * main.tau;
+        while (slave >= 1.0)
+        {
+            slave -= 1.0;
+            syncLine.step(slave / slaveIncrement, -2.0);
+        }
+    }
+    else
+    {
+        slave += slaveIncrement;
+        while (slave >= 1.0)
+        {
+            slave -= 1.0;
+            syncLine.step(slave / slaveIncrement, -2.0);
+        }
+    }
+
+    const auto band = syncLine.push(2.0 * slave - 1.0);
+    return syncClip.process(kTanhAdaa, band * static_cast<double>(ramped(&DerivedCurves::hardSyncDrive))) * 0.82;
+}
+
+double OscillatorUnit::renderOrgan(const RenderContext& context, const MainPhase& main)
+{
+    const auto drawbars = renderHarmonicSet(organPhases, previous.organ, target.organ, main.increment);
+
+    const auto clickIncrement = main.increment * 9.0;
+    organClickPhase = wrap(organClickPhase + clickIncrement);
+
+    const auto click = static_cast<double>(ramped(&DerivedCurves::organClick));
+    auto keyClick = 0.0;
+    if (click > 0.0)
+    {
+        const auto seconds = static_cast<double>(context.noteAgeSamples) / sampleRate;
+        const auto envelope = std::exp(-seconds * static_cast<double>(ramped(&DerivedCurves::organClickDecayPerSecond)));
+        if (envelope > 1.0e-5)
+        {
+            keyClick = (static_cast<double>(noise.white()) * 0.08
+                        + std::sin(kTwoPi * organClickPhase) * px3::dsp::nyquistFade(clickIncrement) * 0.05)
+                       * envelope * click;
+        }
+    }
+
+    return plainDelays[static_cast<std::size_t>(Mode::organ)].push(
+        organClip.process(kTanhAdaa, (drawbars + keyClick) * (1.05 + 0.07 * (1.0 - click))));
+}
+
+double OscillatorUnit::renderDigital(const MainPhase& main)
+{
+    // Intentional, and not band-limited: the hold, the phase quantisation, the
+    // bit crush and the aliasing they make ARE the mode. What is no longer part
+    // of it: a hold measured in samples (it changed character with the sample
+    // rate), a floor() quantiser (half a step of DC), and a fold that read a
+    // non-integer multiple of the wrapped phase (a jump every cycle).
+    const auto hold = px3::dsp::sampleCount(static_cast<double>(ramped(&DerivedCurves::digitalHoldAt48k)), sampleRate);
+    if (++digitalHoldCounter >= hold)
+    {
+        digitalHoldCounter = 0;
+        const auto steps = static_cast<double>(target.digitalSteps);
+        const auto quantised = std::round(main.phase * steps) / steps;
+
+        // FOLD between two whole multiples of the cycle, crossfaded, so it is
+        // continuous at the wrap for any fold amount.
+        const auto fold = static_cast<double>(ramped(&DerivedCurves::digitalFold));
+        const auto lower = std::floor(fold);
+        const auto blend = fold - lower;
+        const auto shaped = (1.0 - blend) * std::sin(kTwoPi * lower * quantised)
+                            + blend * std::sin(kTwoPi * (lower + 1.0) * quantised);
+
+        const auto crush = static_cast<double>(target.digitalCrushSteps);
+        digitalHeld = std::round(shaped * crush) / crush;
+    }
+
+    return plainDelays[static_cast<std::size_t>(Mode::digital)].push(digitalClip.process(kTanhAdaa, digitalHeld * 1.08));
+}
+
+double OscillatorUnit::renderPhysical(const MainPhase& main)
+{
+    // A synthetic modal resonator - not a physical model. Four sine modes at a
+    // struck bar's partial ratios, each with a strike that decays to a held
+    // level. The fundamental is always at the played pitch; MATERIAL spreads
+    // only the modes above it.
+    const auto spread = static_cast<double>(ramped(&DerivedCurves::physicalSpread));
+    const auto t = currentRamp;
+
+    double sum = 0.0;
+    for (std::size_t i = 0; i < physicalPhases.size(); ++i)
+    {
+        const auto ratio = 1.0 + (kPhysicalRatios[i] - 1.0) * spread;
+        const auto increment = main.increment * ratio;
+        physicalPhases[i] = wrap(physicalPhases[i] + increment);
+
+        const auto coeff = static_cast<double>(previous.physicalDecayCoeff[i]
+                                               + (target.physicalDecayCoeff[i] - previous.physicalDecayCoeff[i]) * t);
+        auto& envelope = physicalEnvelopes[i];
+        envelope = kPhysicalSustain[i] + (envelope - kPhysicalSustain[i]) * coeff;
+
+        sum += envelope * kPhysicalWeights[i] * px3::dsp::nyquistFade(increment) * std::sin(kTwoPi * physicalPhases[i]);
+    }
+
+    return plainDelays[static_cast<std::size_t>(Mode::physical)].push(physicalClip.process(kTanhAdaa, sum * kPhysicalDrive));
+}
+
+double OscillatorUnit::renderRob(const RenderContext& context, const MainPhase& main)
+{
+    const auto trans = static_cast<double>(ramped(&DerivedCurves::robTrans));
+    const auto body = static_cast<double>(ramped(&DerivedCurves::robBody));
+    const auto chaos = static_cast<double>(ramped(&DerivedCurves::robChaos));
+    const auto increment = main.increment;
+
+    const auto advance = [this](std::size_t i, double by)
+    {
+        auto& p = robPhases[i];
+        p = wrap(p + by);
+        return p;
     };
 
-    const auto slope = kModeTravelSlope[static_cast<std::size_t>(modeIndex)];
-    const auto centered = macroEnergy - 0.5f;
-    modeGain *= 1.0f - slope * centered;
+    // The body runs at a stretched multiple of the note, and a slow wobble
+    // phase-modulates everything built on it. Each multiple of the body is its
+    // own accumulator - they used to be multiples of a wrapped angle, which
+    // jumped once per cycle - and each fades out as its sidebands near Nyquist.
+    const auto bodyIncrement = increment * (1.0 + chaos * 1.05 + body * 0.45);
+    const auto wobbleIncrement = increment * (3.5 + chaos * 10.0);
+    const auto wobbleDepth = chaos * 0.40;   // radians: nothing at all at CHAOS 0
+    const auto wobble = std::sin(kTwoPi * advance(1, wobbleIncrement)) * wobbleDepth;
 
-    // Mode-dependent macro trim, precomputed. It is 1.0 for every mode that had
-    // no trim branch, so this multiply is the same value as before.
-    modeGain *= derived.modeGainTrim;
+    const auto component = [&](std::size_t i, double multiple, double extraBandwidth = 0.0)
+    {
+        const auto p = advance(i, bodyIncrement * multiple);
+        const auto top = bodyIncrement * multiple + (multiple * wobbleDepth + 1.0) * wobbleIncrement + extraBandwidth;
+        return std::sin(kTwoPi * p + multiple * wobble) * static_cast<double>(px3::dsp::nyquistFade(top));
+    };
 
-    modeGain = juce::jlimit(0.45f, 1.08f, modeGain);
-    sample *= modeGain;
+    const auto fundamental = component(0, 1.0);
+    const auto sub = component(2, 0.5) * (0.12 + body * 0.42);
+    const auto second = component(3, 1.34 + body * 1.10) * (0.08 + body * 0.34);
+    const auto third = component(4, 2.00 + body * 2.05) * (0.03 + body * 0.22);
+    auto bodySignal = fundamental * (0.42 + body * 0.52) + sub + second + third;
+    bodySignal = robBodyClip.process(kTanhAdaa, bodySignal * (1.12 + body * 2.40));
 
-    const auto wheelBlend = 0.15f + context.modWheelNorm * 0.22f;
-    sample = sample * (1.0f - wheelBlend) + external * wheelBlend;
-    juce::ignoreUnused(context.pitchRatio);
-    return softClip(sample);
+    // TRANS: the smack at the front of the note, decaying in seconds.
+    robTransient *= static_cast<double>(previous.robTransientCoeff
+                                        + (target.robTransientCoeff - previous.robTransientCoeff) * currentRamp);
+    const auto clickTone = component(5, 9.0 + trans * 46.0);
+    const auto clickMix = 0.25 + (0.80 - 0.25) * trans;
+    const auto clickCore = clickTone * (1.0 - clickMix) + static_cast<double>(noise.white()) * clickMix;
+    const auto smack = clickCore * robTransient * (0.04 + (2.30 - 0.04) * trans);
+
+    const auto attackSamples = px3::dsp::sampleCount(10.0 + trans * 86.0, sampleRate);
+    auto onset = 0.0;
+    if (context.noteAgeSamples < attackSamples)
+    {
+        auto envelope = 1.0 - static_cast<double>(context.noteAgeSamples) / static_cast<double>(attackSamples);
+        envelope *= envelope;
+        onset = static_cast<double>(noise.white()) * envelope * (1.25 * trans);
+    }
+
+    const auto edgeShaper = robEdgeClip.process(kTanhAdaa, bodySignal * (1.0 + trans * 3.8));
+    const auto edgeCarrier = component(6, 5.0 + trans * 22.0 + chaos * 24.0);
+    const auto edge = (edgeShaper - bodySignal) * (0.08 + trans * 0.60) + edgeCarrier * (0.01 + trans * 0.22);
+
+    // CHAOS: every part of it scales with the knob, so at zero there is none.
+    auto chaosSignal = 0.0;
+    if (chaos > 0.0)
+    {
+        const auto warpInner = std::sin(kTwoPi * advance(8, increment * (11.0 + chaos * 27.0)));
+        const auto warpMultiple = 3.0 + chaos * 9.0;
+        const auto warp = std::sin(kTwoPi * advance(7, bodyIncrement * warpMultiple) + warpMultiple * wobble + warpInner);
+        const auto warpDepth = 0.6 + chaos * 2.4;
+        const auto rate = 6.0 + chaos * 32.0;
+        const auto tone = component(9, rate, (warpDepth + 1.0) * bodyIncrement * warpMultiple);
+        const auto warped = std::sin(std::asin(juce::jlimit(-1.0, 1.0, tone)) + warp * warpDepth);
+        chaosSignal = warped * (0.39 * chaos) + static_cast<double>(noise.white()) * (0.24 * chaos);
+    }
+
+    return plainDelays[static_cast<std::size_t>(Mode::rob)].push(
+        robOutClip.process(kTanhAdaa, (bodySignal + smack + onset + edge + chaosSignal) * 0.86));
+}
+
+double OscillatorUnit::renderPx3(const MainPhase& main)
+{
+    // A hybrid of three engines, each with one job per knob:
+    //   MORPH (A)  the balance between the FM engine and the ISAAC partials
+    //   CHAR  (B)  how hard the whole voice is pushed: the saw's drive and the
+    //              FM index together
+    //   MOVE  (C)  a slow movement of both, at 0.3 to 6 Hz
+    const auto character = static_cast<double>(ramped(&DerivedCurves::px3Character));
+    const auto movement = static_cast<double>(ramped(&DerivedCurves::px3Movement));
+
+    px3MovePhase = wrap(px3MovePhase + (0.3 + 5.7 * movement) / sampleRate);
+    const auto lfo = std::sin(kTwoPi * px3MovePhase);
+    const auto morph = juce::jlimit(0.0, 1.0, static_cast<double>(ramped(&DerivedCurves::px3Morph)) + lfo * 0.25 * movement);
+
+    // All three arrive at the common latency before they are mixed.
+    const auto fmPart = renderFmCore(px3ModulatorPhase, px3Decimator, main, 2.0, 1.0 + 6.0 * character) * 0.70;
+
+    const auto partials = renderHarmonicSet(px3IsaacPhases, previous.px3Isaac, target.px3Isaac, main.increment);
+    px3ShimmerPhase = wrap(px3ShimmerPhase + px3::dsp::phaseIncrement(0.5 * main.increment * sampleRate + kShimmerOffsetHz, sampleRate));
+    const auto shimmer = std::sin(kTwoPi * px3ShimmerPhase) * 0.15 * (0.18 + 0.42 * movement);
+    const auto isaacPart = px3IsaacDelay.push(px3IsaacClip.process(kTanhAdaa, partials + shimmer));
+
+    if (main.wrapped)
+    {
+        px3SawLine.step(main.tau, -2.0);
+    }
+    const auto saw = px3SawLine.push(2.0 * main.phase - 1.0);
+    const auto drive = (1.0 + 4.8 * character) * (1.0 + 0.3 * movement * lfo);
+    const auto driven = px3SawClip.process(kTanhAdaa, saw * drive);
+
+    const auto blendA = fmPart * (1.0 - morph) + isaacPart * morph;
+    const auto blendB = driven * (0.45 + 0.45 * character);
+    return px3OutClip.process(kTanhAdaa, blendA * 0.74 + blendB * 0.66) * 0.9;
 }

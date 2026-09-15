@@ -1,5 +1,6 @@
 #include "SynthVoice.h"
 #include "OscillatorTuning.h"
+#include "OscillatorDsp.h"
 
 #include "PX3Diagnostics.h"
 #include "SynthSound.h"
@@ -10,11 +11,6 @@
 namespace
 {
 std::atomic<uint32_t> gNoteStartSequence { 1u };
-
-inline float softClip(float x)
-{
-    return std::tanh(x);
-}
 
 // Sine saturation, after the approach used in Airwindows' Console family
 // (Chris Johnson, MIT licence - see THIRD_PARTY_NOTICES.md). Below the quarter
@@ -109,6 +105,7 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     currentAngle = juce::MathConstants<double>::twoPi * phaseSeed;
     updateAngleDelta();
     const auto sampleRate = juce::jmax(1.0, getSampleRate());
+    updateRateDependentCoefficients(sampleRate);
     if (std::abs(sampleRate - ampEnvelopePreparedSampleRate) > 0.5)
     {
         ampEnvelope.prepare(sampleRate);
@@ -169,7 +166,9 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
                                  / static_cast<float>(juce::jmax(1.0, sampleRate)));
     subOscillator.prepare(sampleRate);
     subOscillator.setSettings(subOscillatorSettings);
-    subOscillator.resetForNote();
+    // Every source starts at the same phase. The oscillators used to start 120
+    // degrees apart and the sub always at zero, so no two were aligned.
+    subOscillator.resetForNote(phaseSeed);
 
     if (std::abs(sampleRate - masterGainPreparedSampleRate) > 0.5)
     {
@@ -232,22 +231,26 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     releaseAgeSamples = 0;
     fastReleaseTotalSamples = 0;
     fastReleaseSamplesRemaining = 0;
-    for (auto& oscillatorUnit : oscillatorUnits)
+    // Each oscillator gets its own reproducible random stream, derived from the
+    // voice, the note and the oscillator - never the shared system Random, and
+    // never one seed shared by every voice.
+    for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
     {
-        oscillatorUnit.resetForNote(sampleRate, currentFrequencyHz);
+        oscillatorUnits[static_cast<std::size_t>(oscIndex)].resetForNote(
+            phaseSeed,
+            px3::dsp::streamSeed(static_cast<std::uint32_t>(voiceIndex), sequence, static_cast<std::uint32_t>(oscIndex)));
     }
+    vibeNoise.seed(px3::dsp::streamSeed(static_cast<std::uint32_t>(voiceIndex), sequence, 7u));
+    for (auto& clip : sourceClips)
+    {
+        clip.reset();
+    }
+    sourceRatiosPrimed = false;
     for (auto& audible : oscillatorAudibleForCurrentNote)
     {
         audible = true;
     }
     subAudibleForCurrentNote = true;
-    for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
-    {
-        const auto spread = (juce::MathConstants<double>::twoPi / static_cast<double>(kOscillatorSourceCount))
-                            * static_cast<double>(oscIndex);
-        oscillatorAngles[static_cast<std::size_t>(oscIndex)] = std::fmod(currentAngle + spread,
-                                                                          juce::MathConstants<double>::twoPi);
-    }
     releaseSmoothingState.fill(0.0f);
 
 #if PX3_DIAGNOSTICS
@@ -327,6 +330,8 @@ void SynthVoice::setCurrentPlaybackSampleRate(double newRate)
     {
         oscillatorUnit.prepare(newRate);
     }
+    subOscillator.prepare(newRate);
+    updateRateDependentCoefficients(newRate);
 
     // The filters belong here for the same reason the oscillators do, and did
     // not: VoiceFilter::prepare reaches CombResonator::prepare, which sizes a
@@ -487,19 +492,33 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
     constexpr float kReleaseSilenceThreshold = 1.0e-4f;
 
-    // Each layer's detune is fixed for the block: pitch, coarse and fine come
-    // from oscillatorLayerSettings, which the processor refreshes once per
-    // block. Computed per sample this was three exp2 calls per sample per
-    // voice - 8% of CPU in a 64-voice profile - for three values that cannot
-    // change between samples.
-    std::array<double, kOscillatorSourceCount> sourcePitchRatios { { 1.0, 1.0, 1.0 } };
-    for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
+    // Tuning and Pitch Mod arrive once per control block. They ramp from the
+    // last block's ratio to this one's across the block, so a modulated Pitch
+    // Mod glides instead of stepping at the block rate. The ratio itself is
+    // still worked out once per block, not once per sample.
     {
-        const auto& layer = oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)];
-        // Static tuning and Pitch Mod, through the one tuning model the sub
-        // uses too. Bend, vibrato and drift are already in currentFrequencyHz.
-        sourcePitchRatios[static_cast<std::size_t>(oscIndex)] =
-            px3::tuning::pitchRatio(layer.coarseOctaves, layer.fineCents, layer.pitchModSemitones);
+        std::array<double, kOscillatorSourceCount> ratios { { 1.0, 1.0, 1.0 } };
+        auto changed = false;
+        for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
+        {
+            const auto& layer = oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)];
+            ratios[static_cast<std::size_t>(oscIndex)] =
+                px3::tuning::pitchRatio(layer.coarseOctaves, layer.fineCents, layer.pitchModSemitones);
+            changed = changed || ratios[static_cast<std::size_t>(oscIndex)] != sourceRatioTarget[static_cast<std::size_t>(oscIndex)];
+        }
+        if (!sourceRatiosPrimed)
+        {
+            sourceRatioStart = sourceRatioTarget = sourceRatioCurrent = ratios;
+            sourceRatioRampPosition = sourceRatioRampLength = 1;
+            sourceRatiosPrimed = true;
+        }
+        else if (changed)
+        {
+            sourceRatioStart = sourceRatioCurrent;
+            sourceRatioTarget = ratios;
+            sourceRatioRampLength = controlBlockLength;
+            sourceRatioRampPosition = 0;
+        }
     }
 
     for (int sample = 0; sample < numSamples; ++sample)
@@ -705,10 +724,10 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             // the noise gain, so neither the knob nor the profile could be
             // heard - Clean (noise 0.03) and LoFi (noise 0.84) measured the
             // same. The coefficient is set so full amount is unchanged.
-            const auto white = oscillatorUnits[0].nextDeterministicNoise();
-            vibePinkState[0] = 0.99765f * vibePinkState[0] + white * 0.0990460f;
-            vibePinkState[1] = 0.96300f * vibePinkState[1] + white * 0.2965164f;
-            vibePinkState[2] = 0.57000f * vibePinkState[2] + white * 1.0526913f;
+            const auto white = vibeNoise.white();
+            vibePinkState[0] = vibePinkPole[0] * vibePinkState[0] + white * vibePinkGain[0];
+            vibePinkState[1] = vibePinkPole[1] * vibePinkState[1] + white * vibePinkGain[1];
+            vibePinkState[2] = vibePinkPole[2] * vibePinkState[2] + white * vibePinkGain[2];
             const auto pink = (vibePinkState[0] + vibePinkState[1] + vibePinkState[2] + white * 0.1848f) * 0.22f;
 
             const auto noiseAmount = vibeTuning.noise * vibeDepth * (0.55f + 0.45f * std::abs(vibeShared.psu));
@@ -729,8 +748,8 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             return inSample + (coupled - inSample) * juce::jlimit(0.0f, 1.0f, detailMix);
         };
 
-        currentPitchBendNorm += (targetPitchBendNorm - currentPitchBendNorm) * 0.06f;
-        currentModWheelNorm += (targetModWheelNorm - currentModWheelNorm) * 0.045f;
+        currentPitchBendNorm += (targetPitchBendNorm - currentPitchBendNorm) * bendSmoothing;
+        currentModWheelNorm += (targetModWheelNorm - currentModWheelNorm) * wheelSmoothing;
 
         auto bendSemitones = static_cast<double>(currentPitchBendNorm * pitchBendRangeSemitones);
 
@@ -772,16 +791,17 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         currentFrequencyHz = baseFrequencyHz * pitchRatio;
         angleDelta = juce::MathConstants<double>::twoPi * currentFrequencyHz / sampleRate;
 
-        OscillatorUnit::RenderContext oscillatorContext;
-        oscillatorContext.currentAngle = currentAngle;
-        oscillatorContext.currentFrequencyHz = currentFrequencyHz;
-        oscillatorContext.noteAgeSamples = noteAgeSamples;
-        oscillatorContext.pitchRatio = static_cast<float>(pitchRatio);
-        oscillatorContext.modWheelNorm = currentModWheelNorm;
-        oscillatorContext.pwmModWheelNorm = targetModWheelNorm;
+        if (sourceRatioRampPosition < sourceRatioRampLength)
+        {
+            ++sourceRatioRampPosition;
+            const auto t = static_cast<double>(sourceRatioRampPosition) / static_cast<double>(sourceRatioRampLength);
+            for (std::size_t i = 0; i < sourceRatioCurrent.size(); ++i)
+            {
+                sourceRatioCurrent[i] = sourceRatioStart[i] + (sourceRatioTarget[i] - sourceRatioStart[i]) * t;
+            }
+        }
 
-        const auto baseOscillatorPitchRatio = static_cast<float>(pitchRatio);
-        const auto subSample = subOscillator.renderSample(currentFrequencyHz);
+        const auto subSample = static_cast<float>(subOscillator.renderSample(currentFrequencyHz));
 
         std::array<float, kVoiceMixerSourceCount> sourceSamples { { 0.0f, 0.0f, 0.0f, 0.0f } };
 
@@ -789,12 +809,6 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         {
             const auto& layer = oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)];
             auto& audibleForCurrentNote = oscillatorAudibleForCurrentNote[static_cast<std::size_t>(oscIndex)];
-            const auto sourcePitchRatio = sourcePitchRatios[static_cast<std::size_t>(oscIndex)];
-            const auto sourceFrequencyHz = currentFrequencyHz * sourcePitchRatio;
-            const auto sourceAngleDelta = juce::MathConstants<double>::twoPi * sourceFrequencyHz / sampleRate;
-
-            auto& sourceAngle = oscillatorAngles[static_cast<std::size_t>(oscIndex)];
-
             if (!layer.enabled)
             {
                 if (audibleForCurrentNote)
@@ -814,31 +828,24 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                     }
                 }
 
-                sourceAngle += sourceAngleDelta;
-                if (sourceAngle >= juce::MathConstants<double>::twoPi)
-                {
-                    sourceAngle -= juce::MathConstants<double>::twoPi;
-                }
                 continue;
             }
 
             if (!audibleForCurrentNote)
             {
-                sourceAngle += sourceAngleDelta;
-                if (sourceAngle >= juce::MathConstants<double>::twoPi)
-                {
-                    sourceAngle -= juce::MathConstants<double>::twoPi;
-                }
                 continue;
             }
 
-            OscillatorUnit::RenderContext sourceContext = oscillatorContext;
-            sourceContext.pitchRatio = baseOscillatorPitchRatio * static_cast<float>(sourcePitchRatio);
-            sourceContext.currentFrequencyHz = sourceFrequencyHz;
-            sourceContext.currentAngle = sourceAngle;
+            OscillatorUnit::RenderContext sourceContext;
+            sourceContext.frequencyHz = currentFrequencyHz * sourceRatioCurrent[static_cast<std::size_t>(oscIndex)];
+            sourceContext.noteAgeSamples = noteAgeSamples;
+            sourceContext.modWheelNorm = currentModWheelNorm;
 
-            const auto sourceSample = oscillatorUnits[static_cast<std::size_t>(oscIndex)].renderSample(sampleRate, sourceContext);
-            auto sourceStageSample = softClip(sanitizeAudioSample(sourceSample) * 0.92f);
+            const auto sourceSample = static_cast<float>(oscillatorUnits[static_cast<std::size_t>(oscIndex)].renderSample(sourceContext));
+            // The oscillator's soft clip and the voice's tanh(0.92 x), as the one
+            // curve they are in series, anti-aliased (docs/OSCILLATOR_DSP_DESIGN.md).
+            auto sourceStageSample = static_cast<float>(sourceClips[static_cast<std::size_t>(oscIndex + 1)].process(
+                px3::dsp::kSourceClipAdaa, static_cast<double>(sanitizeAudioSample(sourceSample))));
             sourceStageSample = applyVibeSourceStage(sourceStageSample, 1.0f, oscIndex + 1);
             // Source level is a trim on the oscillator's OUTPUT, applied after
             // its own soft clipper. Applied before the clipper it would also
@@ -847,11 +854,6 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             sourceStageSample = sanitizeAudioSample(sourceStageSample) * juce::jlimit(0.0f, 1.0f, layer.level);
             sourceSamples[static_cast<std::size_t>(oscIndex + 1)] = sourceStageSample;
 
-            sourceAngle += sourceAngleDelta;
-            if (sourceAngle >= juce::MathConstants<double>::twoPi)
-            {
-                sourceAngle -= juce::MathConstants<double>::twoPi;
-            }
         }
 
         auto subStageSample = 0.0f;
@@ -881,7 +883,8 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         }
         else if (subAudibleForCurrentNote)
         {
-            subStageSample = softClip(subSample * 0.92f);
+            subStageSample = static_cast<float>(sourceClips[kSubSourceIndex].process(
+                px3::dsp::kSourceClipAdaa, static_cast<double>(sanitizeAudioSample(subSample))));
             subStageSample = applyVibeSourceStage(subStageSample, 0.6f, kSubSourceIndex);
             // Trim after the clipper, for the same reason as the oscillators.
             subStageSample = sanitizeAudioSample(subStageSample) * subGain;
@@ -929,9 +932,8 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             if (attackSeconds < 0.02f)
             {
                 const auto fastAttackNorm = juce::jlimit(0.0f, 1.0f, (0.02f - attackSeconds) / 0.019f);
-                const auto onsetSamples = juce::jlimit(8,
-                                                       96,
-                                                       static_cast<int>(8.0f + 88.0f * fastAttackNorm));
+                // 8 to 96 samples at 48 kHz, as the same time at any rate.
+                const auto onsetSamples = px3::dsp::sampleCount(8.0 + 88.0 * static_cast<double>(fastAttackNorm), sampleRate);
                 const auto onsetPos = juce::jlimit(0.0f,
                                                    1.0f,
                                                    static_cast<float>(noteAgeSamples)
@@ -1086,7 +1088,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 #endif
             {
                 auto& tailState = releaseSmoothingState[static_cast<std::size_t>(sourceIndex)];
-                const auto tailSmooth = 0.02f + 0.18f * releaseTailShape;
+                const auto tailSmooth = tailSmoothingLow + (tailSmoothingHigh - tailSmoothingLow) * releaseTailShape;
                 tailState += (voicedSample - tailState) * tailSmooth;
                 voicedSample += (tailState - voicedSample) * releaseFilterBlend;
             }
@@ -1318,7 +1320,7 @@ void SynthVoice::setSubtractiveSettings(const SubtractiveSettings& settings)
 void SynthVoice::setSubOscillatorSettings(const SubOscSettings& settings)
 {
     subOscillatorSettings = settings;
-    subOscillator.setSettings(subOscillatorSettings);
+    subOscillator.setSettings(subOscillatorSettings, controlBlockLength);
 }
 
 void SynthVoice::setOscillatorLayerSettings(const std::array<OscillatorLayerSettings, kOscillatorSourceCount>& settings)
@@ -1327,7 +1329,7 @@ void SynthVoice::setOscillatorLayerSettings(const std::array<OscillatorLayerSett
     for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
     {
         oscillatorUnits[static_cast<std::size_t>(oscIndex)].setSettings(
-            oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)].oscillator);
+            oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)].oscillator, controlBlockLength);
     }
 }
 
@@ -1389,6 +1391,32 @@ void SynthVoice::setVibeState(float globalAmount,
     vibeShared = sharedState;
     vibeVariation = variation;
     vibeTuning = tuningState;
+}
+
+void SynthVoice::updateRateDependentCoefficients(double sampleRate)
+{
+    if (std::abs(sampleRate - coefficientsSampleRate) < 0.5)
+    {
+        return;
+    }
+    coefficientsSampleRate = sampleRate;
+
+    using px3::dsp::onePoleCoefficient;
+    bendSmoothing = static_cast<float>(onePoleCoefficient(0.06, sampleRate));
+    wheelSmoothing = static_cast<float>(onePoleCoefficient(0.045, sampleRate));
+    tailSmoothingLow = static_cast<float>(onePoleCoefficient(0.02, sampleRate));
+    tailSmoothingHigh = static_cast<float>(onePoleCoefficient(0.20, sampleRate));
+
+    // VIBE's pinking poles, kept at the frequencies they have at 48 kHz, each
+    // branch keeping its DC gain.
+    static constexpr std::array<double, 3> kPoles { { 0.99765, 0.96300, 0.57000 } };
+    static constexpr std::array<double, 3> kGains { { 0.0990460, 0.2965164, 1.0526913 } };
+    for (std::size_t i = 0; i < kPoles.size(); ++i)
+    {
+        const auto pole = std::pow(kPoles[i], px3::dsp::kReferenceSampleRate / sampleRate);
+        vibePinkPole[i] = static_cast<float>(pole);
+        vibePinkGain[i] = static_cast<float>(kGains[i] * (1.0 - pole) / (1.0 - kPoles[i]));
+    }
 }
 
 void SynthVoice::updateAngleDelta()

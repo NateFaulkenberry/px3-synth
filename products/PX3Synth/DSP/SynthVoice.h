@@ -9,6 +9,7 @@
 #include "EnvelopeTypes.h"
 #include "BreakpointEnvelope.h"
 #include "FilterTypes.h"
+#include "OscillatorDsp.h"
 #include "OscillatorTypes.h"
 #include "OscillatorUnit.h"
 #include "SubOscillator.h"
@@ -85,6 +86,9 @@ public:
     void setFilterRouting(bool parallel, float balance);
     void setSubtractiveSettings(const SubtractiveSettings& settings);
     void setSubOscillatorSettings(const SubOscSettings& settings);
+    // How many samples the processor's next control block spans. Settings
+    // pushed for that block ramp across exactly this many.
+    void setControlBlockLength(int samples) noexcept { controlBlockLength = juce::jmax(1, samples); }
     void setOscillatorLayerSettings(const std::array<OscillatorLayerSettings, kOscillatorSourceCount>& settings);
     void setPerformanceModulation(float pitchBendNormalized,
                                   float modWheelNormalized,
@@ -114,6 +118,9 @@ public:
 private:
     void updateAngleDelta();
     void retireVoice();
+    // Every per-sample smoothing constant in the voice, rederived from the
+    // value it had at 48 kHz for the rate actually running.
+    void updateRateDependentCoefficients(double sampleRate);
 
 #if PX3_DIAGNOSTICS
     // Temporary signal-path isolation support; compiled out of plugin builds.
@@ -175,7 +182,26 @@ private:
     int currentMidiNote { 60 };
 
     std::array<OscillatorUnit, kOscillatorSourceCount> oscillatorUnits;
-    std::array<double, kOscillatorSourceCount> oscillatorAngles { { 0.0, 0.0, 0.0 } };
+    // Tuning and Pitch Mod per oscillator, ramped across each control block.
+    std::array<double, kOscillatorSourceCount> sourceRatioStart { { 1.0, 1.0, 1.0 } };
+    std::array<double, kOscillatorSourceCount> sourceRatioTarget { { 1.0, 1.0, 1.0 } };
+    std::array<double, kOscillatorSourceCount> sourceRatioCurrent { { 1.0, 1.0, 1.0 } };
+    int sourceRatioRampPosition { 1 };
+    int sourceRatioRampLength { 1 };
+    bool sourceRatiosPrimed { false };
+    int controlBlockLength { 512 };
+    // The oscillator's soft clip and the voice's, as the one curve they are in
+    // series, anti-aliased - one stage per source.
+    std::array<px3::dsp::Adaa, kVoiceMixerSourceCount> sourceClips;
+    // VIBE's hiss, from this voice's own stream rather than oscillator 1's.
+    px3::dsp::NoiseStream vibeNoise;
+    float bendSmoothing { 0.06f };
+    float wheelSmoothing { 0.045f };
+    float tailSmoothingLow { 0.02f };
+    float tailSmoothingHigh { 0.20f };
+    std::array<float, 3> vibePinkPole { { 0.99765f, 0.96300f, 0.57000f } };
+    std::array<float, 3> vibePinkGain { { 0.0990460f, 0.2965164f, 1.0526913f } };
+    double coefficientsSampleRate { 0.0 };
     // Memo for the per-sample pitch-bend/vibrato ratio. The exponent is
     // constant for the whole block whenever bend, mod wheel and vibe drift are
     // settled, which is most of the time, so this turns an exp2 per sample per

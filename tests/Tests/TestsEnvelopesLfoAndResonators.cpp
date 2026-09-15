@@ -356,20 +356,14 @@ void testModEnvelopes()
             return render(processor, 48000, { { 2000, true, 45, 0.9f } });
         };
 
-        // Brightness proxy: mean absolute first difference relative to RMS. A
-        // higher cutoff passes more high-frequency energy, so consecutive
-        // samples differ more for the same overall level.
+        // Brightness: energy above the cutoff's range against energy around the
+        // fundamental, in dB. It used to be the mean first difference over the
+        // mean level, which mostly measured how much of a naive saw's aliased
+        // energy leaked past the filter - with a band-limited saw there is far
+        // less of that to leak, and the proxy stopped moving with the cutoff.
         auto brightness = [](const Capture& capture)
         {
-            double diff = 0.0, energy = 0.0;
-            const auto first = 20000, last = 44000;
-            for (int i = first + 1; i < last; ++i)
-            {
-                diff += std::abs(static_cast<double>(capture.left[static_cast<std::size_t>(i)])
-                                 - capture.left[static_cast<std::size_t>(i - 1)]);
-                energy += std::abs(static_cast<double>(capture.left[static_cast<std::size_t>(i)]));
-            }
-            return energy > 1.0e-9 ? diff / energy : 0.0;
+            return bandRmsDb(capture.left, 1500.0, 8000.0, 20000) - bandRmsDb(capture.left, 60.0, 400.0, 20000);
         };
 
         const auto neutral = brightness(renderWithEnvToCutoff(0.0f));
@@ -377,13 +371,13 @@ void testModEnvelopes()
         const auto negative = brightness(renderWithEnvToCutoff(-1.0f));
 
         check("Env1_PositiveAmountToCutoff_RaisesCutoff",
-              positive > neutral * 1.10,
-              "brightness neutral " + fmt(neutral, 5) + " -> positive " + fmt(positive, 5));
+              positive > neutral + 3.0,
+              "high/low band balance neutral " + fmt(neutral, 2) + " dB -> positive " + fmt(positive, 2) + " dB");
         check("Env1_NegativeAmountToCutoff_LowersCutoff",
-              negative < neutral * 0.90,
-              "brightness neutral " + fmt(neutral, 5) + " -> negative " + fmt(negative, 5));
+              negative < neutral - 3.0,
+              "high/low band balance neutral " + fmt(neutral, 2) + " dB -> negative " + fmt(negative, 2) + " dB");
         check("Env1_ZeroAmount_LeavesDestinationAlone",
-              neutral > 0.0, "brightness " + fmt(neutral, 5));
+              neutral > -120.0 && neutral < 0.0, "high/low band balance " + fmt(neutral, 2) + " dB");
     }
 
     // A level destination must change level, and in the right direction.

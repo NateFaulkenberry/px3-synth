@@ -632,14 +632,14 @@ void OscillatorComponent::applyModeUi()
         // squeezed the row until controls fell off the end of it.
         { "", "", "", 0, false },
         { "TILT", "ODD/EVEN", "ROLL", 3, false },
-        { "MORPH", "COLOR", "", 2, true },
+        { "MORPH", "SHIFT", "", 2, true },
         { "RATIO", "INDEX", "", 2, false },
         { "SYNC", "DRIVE", "", 2, false },
         { "TONE", "CLICK", "", 2, false },
         { "BITS", "RATE", "", 2, false },
         { "DECAY", "MATERIAL", "", 2, false },
         { "TRANS", "BODY", "CHAOS", 3, false },
-        { "SPREAD", "ODD/EVEN", "ROLL", 3, false },
+        { "TILT", "ODD/EVEN", "STRETCH", 3, false },
         { "MORPH", "CHAR", "MOVE", 3, false }
     } };
 
@@ -652,7 +652,7 @@ void OscillatorComponent::applyModeUi()
 
     for (int i = 0; i < 3; ++i)
     {
-        const auto show = i < ui.count;
+        const auto show = i < px3::oscillatorModeMacroCount(modeIndex);
         sliders[static_cast<std::size_t>(i)]->setVisible(show);
         labels[static_cast<std::size_t>(i)]->setVisible(show);
         values[static_cast<std::size_t>(i)]->setVisible(show);

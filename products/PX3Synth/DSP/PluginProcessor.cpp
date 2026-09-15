@@ -1401,6 +1401,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
             voice->setFilterSettings(filter);
             voice->setFilterRouting(filterParallel, filterBalance);
             voice->setSubtractiveSettings(subtractive);
+            voice->setControlBlockLength(samplesPerBlock);
             voice->setSubOscillatorSettings(subOsc);
             voice->setOscillatorLayerSettings(oscillatorLayers);
         }
@@ -1809,6 +1810,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             voice->setFilterSettings(filter);
             voice->setFilterRouting(filterParallel, filterBalance);
             voice->setSubtractiveSettings(subtractive);
+            voice->setControlBlockLength(buffer.getNumSamples());
             voice->setSubOscillatorSettings(subOsc);
             voice->setOscillatorLayerSettings(oscillatorLayers);
             voice->setPerformanceModulation(pitchBend,

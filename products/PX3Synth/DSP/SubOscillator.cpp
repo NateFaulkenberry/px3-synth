@@ -3,17 +3,13 @@
 
 #include <cmath>
 
-namespace
-{
-constexpr float kTwoPi = juce::MathConstants<float>::twoPi;
-}
-
 void SubOscillator::prepare(double newSampleRateHz)
 {
     sampleRateHz = juce::jmax(1.0, newSampleRateHz);
+    fadeLength = juce::jmax(1, static_cast<int>(std::lround(kWaveformCrossfadeSeconds * sampleRateHz)));
 }
 
-void SubOscillator::setSettings(const SubOscSettings& newSettings)
+void SubOscillator::setSettings(const SubOscSettings& newSettings, int rampSamples)
 {
     settings.enabled = newSettings.enabled;
     settings.level = juce::jlimit(0.0f, 1.0f, newSettings.level);
@@ -22,86 +18,105 @@ void SubOscillator::setSettings(const SubOscSettings& newSettings)
     settings.pitchModSemitones = juce::jlimit(-px3::tuning::kPitchModRangeSemitones, px3::tuning::kPitchModRangeSemitones,
                                               newSettings.pitchModSemitones);
     settings.waveformIndex = px3::clampSubOscWaveformIndex(newSettings.waveformIndex);
+
+    // The ratio is computed once per control block, not once per sample, and
+    // ramped across the block so a modulated Pitch Mod is a glide, not a stair.
+    const auto ratio = px3::tuning::pitchRatio(settings.coarseOctaves, settings.fineCents, settings.pitchModSemitones);
+    if (!configured || rampSamples <= 0)
+    {
+        ratioStart = ratioTarget = ratioCurrent = ratio;
+        rampPosition = rampLength = 1;
+    }
+    else if (ratio != ratioTarget)
+    {
+        ratioStart = ratioCurrent;
+        ratioTarget = ratio;
+        rampLength = rampSamples;
+        rampPosition = 0;
+    }
+
+    if (!configured)
+    {
+        activeWaveform = settings.waveformIndex;
+        configured = true;
+    }
+    else if (settings.waveformIndex != activeWaveform && fadeRemaining == 0)
+    {
+        fadingWaveform = activeWaveform;
+        activeWaveform = settings.waveformIndex;
+        fadeRemaining = fadeLength;
+        (activeWaveform == 1 ? squareLine.reset() : sineDelay.reset());
+    }
 }
 
-void SubOscillator::resetForNote(float newPhaseRadians)
+void SubOscillator::resetForNote(double startPhase)
 {
-    phaseNorm = wrapPhase01(newPhaseRadians / kTwoPi);
+    phase = startPhase - std::floor(startPhase);
+    ratioStart = ratioCurrent = ratioTarget;
+    rampPosition = rampLength;
+    activeWaveform = settings.waveformIndex;
+    fadingWaveform = -1;
+    fadeRemaining = 0;
+    squareLine.reset();
+    sineDelay.reset();
 }
 
-float SubOscillator::renderSample(double baseFrequencyHz)
+double SubOscillator::renderSample(double baseFrequencyHz)
 {
     if (!settings.enabled || settings.level <= 0.0001f)
     {
-        return 0.0f;
+        return 0.0;
     }
 
-    const auto ratio = px3::tuning::pitchRatio(settings.coarseOctaves, settings.fineCents, settings.pitchModSemitones);
-    const auto subFrequencyHz = juce::jmax(1.0, baseFrequencyHz * ratio);
-    const auto sampleRate = static_cast<float>(juce::jmax(1.0, sampleRateHz));
-    const auto phaseDelta = juce::jlimit(0.0f,
-                                         0.5f,
-                                         static_cast<float>(subFrequencyHz) / sampleRate);
-
-    const auto output = waveformSampleAtPhase(phaseNorm, phaseDelta, settings.waveformIndex)
-                        * settings.level;
-
-    phaseNorm = wrapPhase01(phaseNorm + phaseDelta);
-
-    return output;
-}
-
-float SubOscillator::waveformSampleAtPhase(float inPhaseNorm, float phaseDelta, int waveformIndex)
-{
-    const auto phaseNorm = wrapPhase01(inPhaseNorm);
-
-    switch (px3::clampSubOscWaveformIndex(waveformIndex))
+    if (rampPosition < rampLength)
     {
-        case 0:
-            return std::sin(phaseNorm * kTwoPi);
-        case 1:
+        ++rampPosition;
+        ratioCurrent = ratioStart + (ratioTarget - ratioStart) * static_cast<double>(rampPosition) / static_cast<double>(rampLength);
+    }
+
+    const auto increment = px3::dsp::phaseIncrement(baseFrequencyHz * ratioCurrent, sampleRateHz);
+    const auto wrapped = px3::dsp::advancePhase(phase, increment);
+    const auto tau = wrapped && increment > 0.0 ? phase / increment : 0.0;
+
+    auto out = renderWaveform(activeWaveform, increment, wrapped, tau);
+    if (fadeRemaining > 0)
+    {
+        const auto outgoing = renderWaveform(fadingWaveform, increment, wrapped, tau);
+        out += (outgoing - out) * static_cast<double>(fadeRemaining) / static_cast<double>(fadeLength);
+        if (--fadeRemaining == 0)
         {
-            // Bandlimited 50% pulse (square): two transitions per cycle.
-            auto square = phaseNorm < 0.5f ? 1.0f : -1.0f;
-            square += polyBlep(phaseNorm, phaseDelta);
-            square -= polyBlep(wrapPhase01(phaseNorm + 0.5f), phaseDelta);
-            return juce::jlimit(-1.2f, 1.2f, square);
+            fadingWaveform = -1;
         }
-        default:
-            break;
     }
 
-    return std::sin(phaseNorm * kTwoPi);
+    return out * kSourceTrim;
 }
 
-float SubOscillator::polyBlep(float t, float dt)
+double SubOscillator::renderWaveform(int waveform, double increment, bool wrapped, double tau)
 {
-    if (dt <= 0.0f || dt >= 1.0f)
+    if (px3::clampSubOscWaveformIndex(waveform) == static_cast<int>(px3::SubOscWaveform::square))
     {
-        return 0.0f;
+        if (increment > 0.0)
+        {
+            if (wrapped)
+            {
+                if (phase + 1.0 - increment < 0.5)
+                {
+                    squareLine.step((phase + 0.5) / increment, -2.0);
+                }
+                squareLine.step(tau, 2.0);
+                if (phase >= 0.5)
+                {
+                    squareLine.step((phase - 0.5) / increment, -2.0);
+                }
+            }
+            else if (phase - increment < 0.5 && phase >= 0.5)
+            {
+                squareLine.step((phase - 0.5) / increment, -2.0);
+            }
+        }
+        return squareLine.push(phase < 0.5 ? 1.0 : -1.0);
     }
 
-    if (t < dt)
-    {
-        const auto x = t / dt;
-        return x + x - x * x - 1.0f;
-    }
-
-    if (t > 1.0f - dt)
-    {
-        const auto x = (t - 1.0f) / dt;
-        return x * x + x + x + 1.0f;
-    }
-
-    return 0.0f;
-}
-
-float SubOscillator::wrapPhase01(float inPhaseNorm)
-{
-    auto wrapped = std::fmod(inPhaseNorm, 1.0f);
-    if (wrapped < 0.0f)
-    {
-        wrapped += 1.0f;
-    }
-    return wrapped;
+    return sineDelay.push(std::sin(px3::dsp::kTwoPi * phase));
 }

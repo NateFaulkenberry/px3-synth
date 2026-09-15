@@ -2298,7 +2298,7 @@ void testSubOscillator()
         constexpr double baseHz = 220.0;
         std::vector<float> signal;
         signal.reserve(48000);
-        for (int i = 0; i < 48000; ++i) signal.push_back(sub.renderSample(baseHz));
+        for (int i = 0; i < 48000; ++i) signal.push_back(static_cast<float>(sub.renderSample(baseHz)));
 
         const auto expected = baseHz * std::pow(2.0, static_cast<double>(octave.octaves));
         const auto measured = estimateFrequency(signal, 1000, 32000, 20.0, 2000.0);
@@ -2323,7 +2323,7 @@ void testSubOscillator()
 
         constexpr double baseHz = 440.0;
         std::vector<float> signal;
-        for (int i = 0; i < 96000; ++i) signal.push_back(sub.renderSample(baseHz));
+        for (int i = 0; i < 96000; ++i) signal.push_back(static_cast<float>(sub.renderSample(baseHz)));
 
         const auto expected = baseHz * std::pow(2.0, static_cast<double>(cents) / 1200.0);
         const auto measured = estimateFrequency(signal, 1000, 64000, 300.0, 600.0);
@@ -2368,38 +2368,40 @@ void testSubOscillator()
             if (waveform == 0) { sineRms = rms; sinePeak = peak; }
             else { squareRms = rms; squarePeak = peak; }
         }
-        // A square's RMS/peak ratio is near 1; a sine's is near 0.707.
+        // A sine's RMS/peak is 0.707. A NAIVE square's is 1.0, but a band-limited
+        // square carries its Gibbs overshoot - an ideal one peaks at 1.18, so
+        // its RMS/peak is about 0.85 - and this one is band-limited
+        // (docs/OSCILLATOR_DSP_DESIGN.md). 0.15 above the sine was a threshold
+        // only a square with aliasing edges could meet.
         check("SubOscillator_SquareHasHigherRmsToPeakThanSine",
-              (squareRms / squarePeak) > (sineRms / sinePeak) + 0.15,
+              (squareRms / squarePeak) > (sineRms / sinePeak) + 0.07,
               "sine " + fmt(sineRms / sinePeak, 3) + " vs square " + fmt(squareRms / squarePeak, 3));
     }
 
-    // Level is a linear gain on the sub's own output.
+    // The sub leaves its level to the voice, which applies it once, after the
+    // soft clip - like every oscillator. It used to apply it here as well, so
+    // the sub came out 4 dB below the other sources at the same fader.
     {
-        double rmsAtHalf = 0.0, rmsAtFull = 0.0;
-        for (const auto level : { 0.5f, 1.0f })
+        std::array<std::vector<double>, 2> outputs;
+        const std::array<float, 2> levels { { 0.5f, 1.0f } };
+        for (std::size_t i = 0; i < levels.size(); ++i)
         {
             SubOscillator sub;
             sub.prepare(kSampleRate);
             SubOscSettings settings;
             settings.enabled = true;
-            settings.level = level;
+            settings.level = levels[i];
             settings.coarseOctaves = 0.0f;
             settings.waveformIndex = 0;
             sub.setSettings(settings);
             sub.resetForNote();
-
-            double energy = 0.0;
-            for (int i = 0; i < 48000; ++i)
+            for (int s = 0; s < 4800; ++s)
             {
-                const auto v = static_cast<double>(sub.renderSample(220.0));
-                energy += v * v;
+                outputs[i].push_back(sub.renderSample(220.0));
             }
-            (level == 0.5f ? rmsAtHalf : rmsAtFull) = std::sqrt(energy / 48000.0);
         }
-        check("SubOscillator_LevelIsLinearGain",
-              nearly(rmsAtFull / juce::jmax(1.0e-9, rmsAtHalf), 2.0, 0.02),
-              "ratio " + fmt(rmsAtFull / rmsAtHalf, 4) + " (expected 2.0)");
+        check("SubOscillator_LevelIsLeftToTheVoice", outputs[0] == outputs[1],
+              "level 0.5 and level 1.0 render " + juce::String(outputs[0] == outputs[1] ? "identically" : "differently"));
     }
 
     // Reset must place the phase deterministically, so a repeated note starts
@@ -2443,8 +2445,8 @@ void testSubOscillator()
         std::vector<float> lowSignal, highSignal;
         for (int i = 0; i < 48000; ++i)
         {
-            lowSignal.push_back(low.renderSample(220.0));
-            highSignal.push_back(high.renderSample(330.0));
+            lowSignal.push_back(static_cast<float>(low.renderSample(220.0)));
+            highSignal.push_back(static_cast<float>(high.renderSample(330.0)));
         }
         const auto lowHz = estimateFrequency(lowSignal, 1000, 32000, 100.0, 500.0);
         const auto highHz = estimateFrequency(highSignal, 1000, 32000, 100.0, 500.0);

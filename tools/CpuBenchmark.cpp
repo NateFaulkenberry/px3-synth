@@ -10,12 +10,14 @@
 // numbers describe a sustained condition rather than an onset transient.
 
 #include "PluginProcessor.h"
+#include "OscillatorMode.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -239,7 +241,7 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     {
         processor.setLfoAssignmentByParameterId(0, "filter1Cutoff", false);
         processor.setLfoAssignmentByParameterId(1, "osc1Level", false);
-        processor.setLfoAssignmentByParameterId(2, "osc1Pitch", false);
+        processor.setLfoAssignmentByParameterId(2, "osc1PitchMod", false);
     }
 }
 
@@ -251,10 +253,14 @@ int pitchForVoice(int index)
     return 24 + (index % 72);
 }
 
-Timing measure(const Scenario& scenario)
+Timing measure(const Scenario& scenario,
+               const std::function<void(PX3SynthAudioProcessor&)>& extraSetup = {},
+               int measuredBlocks = kMeasuredBlocks,
+               int sweeps = kSweeps)
 {
     PX3SynthAudioProcessor processor;
     configure(processor, scenario);
+    if (extraSetup) { extraSetup(processor); }
     processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
     processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -278,12 +284,12 @@ Timing measure(const Scenario& scenario)
     }
 
     std::vector<double> samples;
-    samples.reserve(static_cast<std::size_t>(kMeasuredBlocks * kSweeps));
+    samples.reserve(static_cast<std::size_t>(measuredBlocks * sweeps));
 
     int rollingNote = 0;
-    for (int sweep = 0; sweep < kSweeps; ++sweep)
+    for (int sweep = 0; sweep < sweeps; ++sweep)
     {
-        for (int block = 0; block < kMeasuredBlocks; ++block)
+        for (int block = 0; block < measuredBlocks; ++block)
         {
             buffer.clear();
             juce::MidiBuffer midi;
@@ -640,6 +646,59 @@ int runFingerprints()
     std::printf("\n");
     return 0;
 }
+
+// The oscillator matrix: every mode, one oscillator or all four sources, at 1,
+// 16 and 64 voices. Driven only through parameters, so the same code measures
+// the engine before and after a DSP change. Run once per sample rate with
+// PX3_BENCH_RATE.
+int runOscillatorMatrix()
+{
+    const auto modes = px3::oscillatorModeChoices();
+    const auto budget = 1.0e6 * static_cast<double>(kBlockSize) / kSampleRate;
+    constexpr int blocks = 120;
+    constexpr int passes = 3;
+
+    std::printf("\nPX3 OSCILLATOR CPU MATRIX\n");
+    std::printf("  %.0f Hz, %d-sample blocks: median microseconds per block (%% of the real-time budget)\n\n",
+                kSampleRate, kBlockSize);
+    std::printf("  %-12s %18s %18s %18s %18s %18s\n", "mode", "1 osc x1", "1 osc x16", "1 osc x64",
+                "3 osc+sub x16", "3 osc+sub x64");
+
+    for (int mode = 0; mode < modes.size(); ++mode)
+    {
+        std::printf("  %-12s", modes[mode].toRawUTF8());
+        for (const auto& config : { std::pair<int, bool> { 1, false }, { 16, false }, { 64, false }, { 16, true }, { 64, true } })
+        {
+            Scenario scenario {};
+            scenario.name = "";
+            scenario.voices = config.first;
+            scenario.allSources = config.second;
+            scenario.oscMode = mode;
+            const auto timing = measure(scenario, {}, blocks, passes);
+            std::printf(" %9.1f (%5.2f%%)", timing.medianMicros, 100.0 * timing.medianMicros / budget);
+            std::fflush(stdout);
+        }
+        std::printf("\n");
+    }
+
+    std::printf("  %-12s", "SUB only");
+    for (const auto voices : { 1, 16, 64 })
+    {
+        Scenario scenario {};
+        scenario.name = "";
+        scenario.voices = voices;
+        scenario.oscMode = 0;
+        const auto timing = measure(scenario, [](PX3SynthAudioProcessor& processor)
+        {
+            setParameter(processor, "osc1Enabled", 0.0f);
+            setParameter(processor, "subOscEnabled", 1.0f);
+        }, blocks, passes);
+        std::printf(" %9.1f (%5.2f%%)", timing.medianMicros, 100.0 * timing.medianMicros / budget);
+        std::fflush(stdout);
+    }
+    std::printf("\n\n");
+    return 0;
+}
 }
 
 int main(int argc, char* argv[])
@@ -650,6 +709,11 @@ int main(int argc, char* argv[])
     if (argc > 1)
     {
         filter = argv[1];
+    }
+
+    if (filter == "osc")
+    {
+        return runOscillatorMatrix();
     }
 
     if (filter == "fingerprint")
@@ -730,7 +794,7 @@ int main(int argc, char* argv[])
         // the shared system Random, so this checks that seeding actually pins
         // the sequence rather than assuming it does.
         const Scenario superSaw { "", 4, false, true, false, false, false, false, false, false, false, false, false, false, false, 6 };
-        const Scenario physical { "", 4, false, true, false, false, false, false, false, false, false, false, false, false, false, 16 };
+        const Scenario physical { "", 4, false, true, false, false, false, false, false, false, false, false, false, false, false, 15 };
         for (int repeat = 0; repeat < 3; ++repeat)
         {
             const auto a = fingerprint(superSaw);
