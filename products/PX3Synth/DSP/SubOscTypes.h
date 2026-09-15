@@ -4,9 +4,9 @@ struct SubOscSettings
 {
     bool enabled { false };
     float level { 0.0f };
-    float pitchSemitones { 0.0f };
-    // Separate from the fine tune, which setSettings clamps to +-0.24 st.
+    // The same tuning model as the main oscillators - see OscillatorTuning.h.
+    float coarseOctaves { -1.0f };
+    float fineCents { 0.0f };
     float pitchModSemitones { 0.0f };
-    int octaveIndex { 1 };
     int waveformIndex { 1 };
 };

@@ -379,7 +379,7 @@ const Scenario kScenarios[] = {
     { "16 voices, SUPERSAW",           16, false , true  , true  , false , false , false , false , false , false , false , false , false , false , 6 },
     { "16 voices + new FX only",       16, false , true  , false , false , false , false , false , false , true  , true  , false , false , false , -1 },
     { "16 voices + analog only",       16, false , true  , false , false , false , false , false , false , false , true  , false , false , false , -1 },
-    { "16 voices, PX3",                16, false , true  , true  , false , false , false , false , false , false , false , false , false , false , 19 },
+    { "16 voices, PX3",                16, false , true  , true  , false , false , false , false , false , false , false , false , false , false , 18 },
     // WAVETABLE against the modes it has to live beside. SINE is the floor and
     // SUPERSAW the ceiling among the cheap modes, so the interesting number is
     // where the table lookup lands between them - and whether it scales with
@@ -451,9 +451,9 @@ void hashSample(juce::uint64& checksum, float value)
 // Everything else is bitwise deterministic and compared exactly.
 bool isRandomSeeded(const Scenario& scenario)
 {
-    // SUPERSAW / KARPLUS / PHYSICAL consume the shared Random in resetForNote;
+    // SUPERSAW / PHYSICAL consume the shared Random in resetForNote;
     // Delay and Mood consume it while processing.
-    return scenario.oscMode == 6 || scenario.oscMode == 13 || scenario.oscMode == 16
+    return scenario.oscMode == 6 || scenario.oscMode == 15
            || scenario.fx;
 }
 

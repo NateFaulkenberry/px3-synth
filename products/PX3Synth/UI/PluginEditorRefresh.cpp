@@ -502,7 +502,6 @@ void PX3SynthAudioProcessorEditor::refreshSubOscUI()
     if (oscPanel != nullptr)
     {
         oscPanel->refreshSubOscFromParameters(audioProcessor.getSubOscEnabledParam().get(),
-                                              audioProcessor.getSubOscOctaveParam().getIndex(),
                                               audioProcessor.getSubOscWaveformParam().getIndex());
     }
 }

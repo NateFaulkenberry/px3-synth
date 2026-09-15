@@ -7,16 +7,10 @@
 #include <cmath>
 
 OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
-                   juce::Slider& subPitchKnob,
-                   juce::Label& subPitchLabel,
-                   juce::Label& subPitchValueLabel,
-                   juce::ComboBox& subOctaveBox,
-                   juce::Label& subOctaveLabel,
+                   TuningControls& subTuning,
                    juce::ComboBox& subWaveformBox,
                    juce::Label& subWaveformLabel,
-                   juce::Slider& osc1PitchKnob,
-                   juce::Label& osc1PitchLabel,
-                   juce::Label& osc1PitchValueLabel,
+                   TuningControls& osc1Tuning,
                    juce::Slider& osc1MacroA,
                    juce::Slider& osc1MacroB,
                    juce::Slider& osc1MacroC,
@@ -31,9 +25,7 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                    juce::Label& osc1ModeLabel,
                    juce::ComboBox& osc1VowelBox,
                    juce::Label& osc1VowelLabel,
-                   juce::Slider& osc2PitchKnob,
-                   juce::Label& osc2PitchLabel,
-                   juce::Label& osc2PitchValueLabel,
+                   TuningControls& osc2Tuning,
                    juce::Slider& osc2MacroA,
                    juce::Slider& osc2MacroB,
                    juce::Slider& osc2MacroC,
@@ -48,9 +40,7 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                    juce::Label& osc2ModeLabel,
                    juce::ComboBox& osc2VowelBox,
                    juce::Label& osc2VowelLabel,
-                   juce::Slider& osc3PitchKnob,
-                   juce::Label& osc3PitchLabel,
-                   juce::Label& osc3PitchValueLabel,
+                   TuningControls& osc3Tuning,
                    juce::Slider& osc3MacroA,
                    juce::Slider& osc3MacroB,
                    juce::Slider& osc3MacroC,
@@ -72,20 +62,14 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                     oscHeaderAccent(oscAccent)
 {
     subOscComponent = std::make_unique<SubOscComponent>(subEnabledButton,
-                                                        subPitchKnob,
-                                                        subPitchLabel,
-                                                        subPitchValueLabel,
-                                                        subOctaveBox,
-                                                        subOctaveLabel,
+                                                        subTuning,
                                                         subWaveformBox,
                                                         subWaveformLabel,
                                                         subAccent);
     addAndMakeVisible(*subOscComponent);
 
     oscillatorComponents[0] = std::make_unique<OscillatorComponent>(osc1EnabledButton,
-                                                                     osc1PitchKnob,
-                                                                     osc1PitchLabel,
-                                                                     osc1PitchValueLabel,
+                                                                     osc1Tuning,
                                                                      osc1MacroA,
                                                                      osc1MacroB,
                                                                      osc1MacroC,
@@ -101,9 +85,7 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                                                                      osc1VowelLabel,
                                                                      oscAccent);
     oscillatorComponents[1] = std::make_unique<OscillatorComponent>(osc2EnabledButton,
-                                                                     osc2PitchKnob,
-                                                                     osc2PitchLabel,
-                                                                     osc2PitchValueLabel,
+                                                                     osc2Tuning,
                                                                      osc2MacroA,
                                                                      osc2MacroB,
                                                                      osc2MacroC,
@@ -119,9 +101,7 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
                                                                      osc2VowelLabel,
                                                                      oscAccent);
     oscillatorComponents[2] = std::make_unique<OscillatorComponent>(osc3EnabledButton,
-                                                                     osc3PitchKnob,
-                                                                     osc3PitchLabel,
-                                                                     osc3PitchValueLabel,
+                                                                     osc3Tuning,
                                                                      osc3MacroA,
                                                                      osc3MacroB,
                                                                      osc3MacroC,
@@ -268,11 +248,11 @@ WavetableGraph* OscPanel::getWavetableGraph(int oscIndex)
     return nullptr;
 }
 
-void OscPanel::refreshSubOscFromParameters(bool enabled, int octaveIndex, int waveformIndex)
+void OscPanel::refreshSubOscFromParameters(bool enabled, int waveformIndex)
 {
     if (subOscComponent != nullptr)
     {
-        subOscComponent->refreshFromParameters(enabled, octaveIndex, waveformIndex);
+        subOscComponent->refreshFromParameters(enabled, waveformIndex);
     }
 }
 

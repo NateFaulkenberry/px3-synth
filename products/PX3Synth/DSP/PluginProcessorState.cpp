@@ -295,8 +295,6 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
 
     juce::ValueTree subOscState(kSubOscStateId);
     subOscState.setProperty(kSubOscEnabledId, subOscEnabledParam->get(), nullptr);
-    subOscState.setProperty(kSubOscPitchId, subOscPitchParam->get(), nullptr);
-    subOscState.setProperty(kSubOscOctaveId, subOscOctaveParam->getIndex(), nullptr);
     subOscState.setProperty(kSubOscWaveformId, subOscWaveformParam->getIndex(), nullptr);
     state.addChild(subOscState, -1, nullptr);
 
@@ -585,26 +583,6 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         if (subOscState.hasProperty(kSubOscEnabledId) && subOscEnabledParam != nullptr)
         {
             subOscEnabledParam->setValueNotifyingHost(static_cast<bool>(subOscState[kSubOscEnabledId]) ? 1.0f : 0.0f);
-        }
-
-        if (subOscState.hasProperty(kSubOscPitchId) && subOscPitchParam != nullptr)
-        {
-            // Clamped to the parameter's own range rather than a literal. This
-            // was hardcoded to +/-0.12 while the parameter spans +/-0.24, so a
-            // saved sub-osc detune beyond half travel was silently pulled back
-            // to half on load - the preset restored a different patch than the
-            // one that was saved. Reading the range from the parameter means a
-            // future range change cannot reintroduce the mismatch.
-            const auto& range = subOscPitchParam->getNormalisableRange();
-            const auto pitch = juce::jlimit(range.start, range.end,
-                                            static_cast<float>(subOscState[kSubOscPitchId]));
-            subOscPitchParam->setValueNotifyingHost(subOscPitchParam->convertTo0to1(pitch));
-        }
-
-        if (subOscState.hasProperty(kSubOscOctaveId) && subOscOctaveParam != nullptr)
-        {
-            const auto octave = px3::clampSubOscOctaveIndex(static_cast<int>(subOscState[kSubOscOctaveId]));
-            subOscOctaveParam->setValueNotifyingHost(subOscOctaveParam->convertTo0to1(static_cast<float>(octave)));
         }
 
         if (subOscState.hasProperty(kSubOscWaveformId) && subOscWaveformParam != nullptr)

@@ -9,7 +9,7 @@ namespace
 enum OscMode
 {
     sine = 0, saw, square, triangle, noise, pinkNoise, superSaw, pwm, wavetable,
-    additive, formant, fm, hardSync, karplus, organ, digital, physical, rob, isaac, px3
+    additive, formant, fm, hardSync, organ, digital, physical, rob, isaac, px3
 };
 
 enum FilterType { lp12 = 0, lp24, hp12, hp24, bandPass, notch, allPass, comb };
@@ -33,7 +33,6 @@ enum LucySlope   { slope6 = 0, slope24, slope96 };
 enum LucyWeighting { weightDark = 0, weightNeutral, weightBright };
 enum LucyFreeze    { freezeOff = 0, freezeSolid, freezeSlushy };
 
-enum SubOctave   { oct0 = 0, octMinus1, octMinus2 };
 enum SubWave     { subSine = 0, subSquare };
 
 enum MoodWetMode  { moodReverb = 0, moodDelay, moodSlip };
@@ -56,7 +55,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "doomEnabled", 0 }, { "lucyEnabled", 0 }, { "chorusEnabled", 1 }, { "spreadEnabled", 1 },
         { "filter2Enabled", 0 }, { "analogEnabled", 1 }, { "analogProfile", 1 },
         { "osc2Enabled", 1 }, { "osc2Mode", saw }, { "osc2Fine", -13.0f }, { "osc2Coarse", 0.0f },
-        { "subOscEnabled", 1 }, { "subOscOctave", octMinus1 }, { "subOscWaveform", subSquare },
+        { "subOscEnabled", 1 }, { "subOscCoarse", -1.0f }, { "subOscWaveform", subSquare },
         { "mix.sub.level", 0.72f }, { "mix.osc1.level", 0.58f }, { "mix.osc2.level", 0.58f },
         { "filter1Enabled", 1 }, { "filter1Type", lp24 }, { "filter1Cutoff", 420.0f }, { "filter1Resonance", 0.85f },
         { "ampAttack", 0.004f }, { "ampDecay", 0.40f }, { "ampSustain", 0.88f }, { "ampRelease", 0.22f },
@@ -73,7 +72,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "vibeEnabled", 0 }, { "delayEnabled", 0 }, { "reverbEnabled", 0 }, { "moodEnabled", 0 },
         { "doomEnabled", 0 }, { "lucyEnabled", 1 }, { "chorusEnabled", 0 }, { "spreadEnabled", 0 },
         { "filter2Enabled", 0 },
-        { "subOscEnabled", 1 }, { "subOscOctave", octMinus1 }, { "subOscWaveform", subSine },
+        { "subOscEnabled", 1 }, { "subOscCoarse", -1.0f }, { "subOscWaveform", subSine },
         { "mix.sub.level", 0.55f },
         { "filter1Enabled", 1 }, { "filter1Type", lp24 }, { "filter1Cutoff", 900.0f }, { "filter1Resonance", 0.60f },
         { "ampAttack", 0.002f }, { "ampDecay", 0.26f }, { "ampSustain", 0.55f }, { "ampRelease", 0.14f },
@@ -90,7 +89,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "vibeEnabled", 0 }, { "delayEnabled", 0 }, { "reverbEnabled", 0 }, { "moodEnabled", 0 },
         { "doomEnabled", 1 }, { "lucyEnabled", 0 }, { "chorusEnabled", 0 }, { "spreadEnabled", 0 },
         { "filter2Enabled", 0 }, { "analogEnabled", 1 }, { "analogProfile", 3 },
-        { "subOscEnabled", 1 }, { "subOscOctave", octMinus1 }, { "subOscWaveform", subSquare },
+        { "subOscEnabled", 1 }, { "subOscCoarse", -1.0f }, { "subOscWaveform", subSquare },
         { "mix.sub.level", 0.78f }, { "mix.osc1.level", 0.62f },
         { "filter1Enabled", 1 }, { "filter1Type", lp12 }, { "filter1Cutoff", 640.0f }, { "filter1Resonance", 1.05f },
         { "ampAttack", 0.003f }, { "ampDecay", 0.30f }, { "ampSustain", 0.80f }, { "ampRelease", 0.18f },
@@ -108,7 +107,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "vibeEnabled", 0 }, { "delayEnabled", 0 }, { "reverbEnabled", 1 }, { "moodEnabled", 0 },
         { "doomEnabled", 0 }, { "lucyEnabled", 0 }, { "chorusEnabled", 0 }, { "spreadEnabled", 0 },
         { "filter2Enabled", 0 },
-        { "subOscEnabled", 1 }, { "subOscOctave", octMinus1 }, { "subOscWaveform", subSine },
+        { "subOscEnabled", 1 }, { "subOscCoarse", -1.0f }, { "subOscWaveform", subSine },
         { "mix.sub.level", 0.62f },
         { "filter1Enabled", 1 }, { "filter1Type", comb },
         { "filter1CombTune", 82.0f }, { "filter1CombDecay", 4.5f }, { "filter1CombDamping", 0.42f },
@@ -175,7 +174,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "vibeEnabled", 0 }, { "delayEnabled", 1 }, { "reverbEnabled", 0 }, { "moodEnabled", 0 },
         { "doomEnabled", 0 }, { "lucyEnabled", 0 }, { "chorusEnabled", 1 }, { "spreadEnabled", 0 },
         { "filter2Enabled", 0 },
-        { "osc2Enabled", 1 }, { "osc2Mode", saw }, { "osc2Coarse", -12.0f }, { "mix.osc2.level", 0.38f },
+        { "osc2Enabled", 1 }, { "osc2Mode", saw }, { "osc2Coarse", -1.0f }, { "mix.osc2.level", 0.38f },
         { "filter1Enabled", 1 }, { "filter1Type", bandPass }, { "filter1Cutoff", 1400.0f }, { "filter1Resonance", 0.95f },
         { "ampAttack", 0.030f }, { "ampDecay", 0.30f }, { "ampSustain", 0.82f }, { "ampRelease", 0.34f },
         { "chorusAmount", 0.48f }, { "chorusMode", ceWarm }, { "chorusCharacter", 0.72f }, { "chorusTone", -0.25f },
@@ -242,7 +241,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "vibeEnabled", 1 }, { "delayEnabled", 0 }, { "reverbEnabled", 0 }, { "moodEnabled", 1 },
         { "doomEnabled", 0 }, { "lucyEnabled", 0 }, { "chorusEnabled", 1 }, { "spreadEnabled", 0 },
         { "filter2Enabled", 0 },
-        { "osc2Enabled", 1 }, { "osc2Mode", sine }, { "osc2Coarse", 12.0f }, { "mix.osc2.level", 0.34f },
+        { "osc2Enabled", 1 }, { "osc2Mode", sine }, { "osc2Coarse", 1.0f }, { "mix.osc2.level", 0.34f },
         { "filter1Enabled", 1 }, { "filter1Type", lp12 }, { "filter1Cutoff", 4200.0f }, { "filter1Resonance", 0.30f },
         { "ampAttack", 0.12f }, { "ampDecay", 0.60f }, { "ampSustain", 0.92f }, { "ampRelease", 0.85f },
         { "chorusAmount", 0.62f }, { "chorusMode", ensemble }, { "chorusRate", 0.18f }, { "chorusDepth", 0.62f },
@@ -255,9 +254,9 @@ std::vector<FactoryPreset> factoryPresets()
     // =======================================================================
 
     { "Porcelain", "PLUCKS", "P(X3)",
-      "Karplus-Strong into the comb filter - a plucked string played through a second one. "
+      "An FM strike into the comb filter - a bell-like pluck ringing through a tuned resonator. "
       "The diffusion delay smears the tails without repeating them.",
-      { { "osc1Mode", karplus }, { "osc1MacroA", 0.55f }, { "osc1MacroB", 0.68f }, { "osc1MacroC", 0.40f },
+      { { "osc1Mode", fm }, { "osc1MacroA", 0.55f }, { "osc1MacroB", 0.68f }, { "osc1MacroC", 0.40f },
         { "vibeEnabled", 0 }, { "delayEnabled", 1 }, { "reverbEnabled", 1 }, { "moodEnabled", 0 },
         { "doomEnabled", 0 }, { "lucyEnabled", 0 }, { "chorusEnabled", 0 }, { "spreadEnabled", 0 },
         { "filter2Enabled", 0 },
@@ -380,7 +379,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "vibeEnabled", 0 }, { "delayEnabled", 0 }, { "reverbEnabled", 0 }, { "moodEnabled", 0 },
         { "doomEnabled", 0 }, { "lucyEnabled", 0 }, { "chorusEnabled", 1 }, { "spreadEnabled", 1 },
         { "filter2Enabled", 0 },
-        { "osc2Enabled", 1 }, { "osc2Mode", triangle }, { "osc2Coarse", 7.0f }, { "osc2Fine", 6.0f },
+        { "osc2Enabled", 1 }, { "osc2Mode", triangle }, { "osc2Coarse", 1.0f }, { "osc2Fine", 6.0f },
         { "mix.osc2.level", 0.42f },
         { "filter1Enabled", 1 }, { "filter1Type", lp24 }, { "filter1Cutoff", 6400.0f }, { "filter1Resonance", 0.36f },
         { "ampAttack", 0.28f }, { "ampDecay", 0.80f }, { "ampSustain", 0.85f }, { "ampRelease", 1.40f },

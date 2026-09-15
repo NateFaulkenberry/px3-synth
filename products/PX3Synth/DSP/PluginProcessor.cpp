@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "OscillatorTuning.h"
 #include "WavetableFactory.h"
 
 #include "CombResonator.h"
@@ -81,37 +82,42 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         oscEnabledParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterBool(idPrefix + "Enabled",
                                                                                               labelPrefix + "Enabled",
                                                                                               oscIndex == 0);
-        oscCoarseParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(idPrefix + "Coarse",
-                                                                                              labelPrefix + "Coarse",
-                                                                                              juce::NormalisableRange<float>(-24.0f, 24.0f, 1.0f),
-                                                                                              0.0f);
-        oscFineParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(idPrefix + "Fine",
-                                                                                            labelPrefix + "Fine",
-                                                                                            juce::NormalisableRange<float>(-100.0f, 100.0f, 1.0f),
-                                                                                            0.0f);
-        oscPitchParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(
-            juce::ParameterID(idPrefix + "Pitch", 1),
-            // Named FINE TUNE, which is what +-0.24 st is. The ID keeps saying
-            // Pitch because sessions and automation are keyed on it.
-            labelPrefix + "Fine Tune",
-            juce::NormalisableRange<float>(-0.24f, 0.24f, 0.01f),
+        // Static tuning: ONE coarse and ONE fine control, the same pair the sub
+        // oscillator has. How they combine with modulation is written down in
+        // OscillatorTuning.h and nowhere else.
+        oscCoarseParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(
+            juce::ParameterID(idPrefix + "Coarse", 1),
+            labelPrefix + "Coarse Tune",
+            juce::NormalisableRange<float>(px3::tuning::kCoarseMinOctaves, px3::tuning::kCoarseMaxOctaves, 1.0f),
             0.0f,
             juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
             {
-                return juce::String(value >= 0.0f ? "+" : "") + juce::String(value, 2) + " st";
+                return px3::tuning::formatCoarse(value);
             }));
-        // The pitch DESTINATION. Continuous, so an LFO on it is vibrato rather
-        // than the staircase COARSE would give, and wide enough that 100% is a
-        // two-octave swing. Zero leaves the oscillator exactly where it was.
+        oscFineParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(
+            juce::ParameterID(idPrefix + "Fine", 1),
+            labelPrefix + "Fine Tune",
+            juce::NormalisableRange<float>(px3::tuning::kFineMinCents, px3::tuning::kFineMaxCents, 1.0f),
+            0.0f,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
+            {
+                return px3::tuning::formatFine(value);
+            }));
+        // Pitch Mod is a modulation DESTINATION, not a third tuning control: the
+        // voice hears only what modulation adds to it, taken around its centre,
+        // and never its stored value. Not automatable, because a host lane on it
+        // would be exactly the hidden pitch offset this rules out.
         oscPitchModParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(
             juce::ParameterID(idPrefix + "PitchMod", 1),
             labelPrefix + "Pitch Mod",
-            juce::NormalisableRange<float>(-24.0f, 24.0f, 0.01f),
+            juce::NormalisableRange<float>(-px3::tuning::kPitchModRangeSemitones, px3::tuning::kPitchModRangeSemitones, 0.01f),
             0.0f,
-            juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
-            {
-                return juce::String(value >= 0.0f ? "+" : "") + juce::String(value, 2) + " st";
-            }));
+            juce::AudioParameterFloatAttributes()
+                .withAutomatable(false)
+                .withStringFromValueFunction([](float value, int)
+                {
+                    return juce::String(value >= 0.0f ? "+" : "") + juce::String(value, 2) + " st";
+                }));
         oscModeParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterChoice(idPrefix + "Mode",
                                                                                              labelPrefix + "Mode",
                                                                                              px3::oscillatorModeChoices(),
@@ -171,28 +177,37 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         } };
     }
     subOscEnabledParam = new juce::AudioParameterBool("subOscEnabled", "Sub Osc Enabled", false);
-    subOscPitchParam = new juce::AudioParameterFloat(
-        juce::ParameterID("subOscPitch", 1),
+    // The sub's tuning is the main oscillators' tuning: the same two controls,
+    // the same ranges, the same model. Its coarse defaults an octave down.
+    subOscCoarseParam = new juce::AudioParameterFloat(
+        juce::ParameterID("subOscCoarse", 1),
+        "Sub Osc Coarse Tune",
+        juce::NormalisableRange<float>(px3::tuning::kCoarseMinOctaves, px3::tuning::kCoarseMaxOctaves, 1.0f),
+        -1.0f,
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
+        {
+            return px3::tuning::formatCoarse(value);
+        }));
+    subOscFineParam = new juce::AudioParameterFloat(
+        juce::ParameterID("subOscFine", 1),
         "Sub Osc Fine Tune",
-        juce::NormalisableRange<float>(-0.24f, 0.24f, 0.01f),
+        juce::NormalisableRange<float>(px3::tuning::kFineMinCents, px3::tuning::kFineMaxCents, 1.0f),
         0.0f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
         {
-            return juce::String(value >= 0.0f ? "+" : "") + juce::String(value, 2) + " st";
+            return px3::tuning::formatFine(value);
         }));
     subOscPitchModParam = new juce::AudioParameterFloat(
         juce::ParameterID("subOscPitchMod", 1),
         "Sub Osc Pitch Mod",
-        juce::NormalisableRange<float>(-24.0f, 24.0f, 0.01f),
+        juce::NormalisableRange<float>(-px3::tuning::kPitchModRangeSemitones, px3::tuning::kPitchModRangeSemitones, 0.01f),
         0.0f,
-        juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
-        {
-            return juce::String(value >= 0.0f ? "+" : "") + juce::String(value, 2) + " st";
-        }));
-    subOscOctaveParam = new juce::AudioParameterChoice("subOscOctave",
-                                                        "Sub Osc Octave",
-                                                        px3::subOscOctaveChoices(),
-                                                        1);
+        juce::AudioParameterFloatAttributes()
+            .withAutomatable(false)
+            .withStringFromValueFunction([](float value, int)
+            {
+                return juce::String(value >= 0.0f ? "+" : "") + juce::String(value, 2) + " st";
+            }));
     subOscWaveformParam = new juce::AudioParameterChoice("subOscWaveform",
                                                           "Sub Osc Waveform",
                                                           px3::subOscWaveformChoices(),
@@ -709,7 +724,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(oscEnabledParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscCoarseParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscFineParams[static_cast<std::size_t>(oscIndex)]);
-        addParameter(oscPitchParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscModeParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscMacroAParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscMacroBParams[static_cast<std::size_t>(oscIndex)]);
@@ -724,8 +738,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         }
     }
     addParameter(subOscEnabledParam);
-    addParameter(subOscPitchParam);
-    addParameter(subOscOctaveParam);
+    addParameter(subOscCoarseParam);
+    addParameter(subOscFineParam);
     addParameter(subOscWaveformParam);
     for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
     {

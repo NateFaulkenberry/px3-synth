@@ -4,6 +4,7 @@
 
 #include "Card.h"
 #include "CardInner.h"
+#include "TuningControls.h"
 #include "WavetableGraph.h"
 
 #include <array>
@@ -17,9 +18,7 @@ class OscillatorComponent final : public juce::Component
 {
 public:
     OscillatorComponent(juce::ToggleButton& enabledButtonIn,
-                        juce::Slider& pitchIn,
-                        juce::Label& pitchLabelIn,
-                        juce::Label& pitchValueLabelIn,
+                        TuningControls& tuningIn,
                         juce::Slider& macroAIn,
                         juce::Slider& macroBIn,
                         juce::Slider& macroCIn,
@@ -87,9 +86,7 @@ private:
     void applyEnabledUi();
 
     juce::ToggleButton& enabledButton;
-    juce::Slider& pitch;
-    juce::Label& pitchLabel;
-    juce::Label& pitchValueLabel;
+    TuningControls& tuning;
     juce::Slider& macroA;
     juce::Slider& macroB;
     juce::Slider& macroC;

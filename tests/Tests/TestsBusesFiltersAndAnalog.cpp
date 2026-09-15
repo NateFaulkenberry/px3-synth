@@ -2995,7 +2995,7 @@ void testOscillatorModeRichness()
     juce::String detail;
     juce::StringArray thin;
 
-    for (int mode = 0; mode < 20; ++mode)
+    for (int mode = 0; mode < px3::oscillatorModeCount; ++mode)
     {
         if (mode == 0 || mode == 3 || mode == 4 || mode == 5) continue;
 

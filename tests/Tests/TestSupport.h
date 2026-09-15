@@ -548,7 +548,6 @@ inline void makePlainPatch(PX3SynthAudioProcessor& processor)
         setChoice(processor, juce::String("osc") + slot + "Mode", 0); // SINE
         setParam(processor, juce::String("osc") + slot + "Coarse", 0.0f);
         setParam(processor, juce::String("osc") + slot + "Fine", 0.0f);
-        setParam(processor, juce::String("osc") + slot + "Pitch", 0.0f);
     }
 
     setParam(processor, "filter1Enabled", 0.0f);
@@ -1519,6 +1518,7 @@ void testModEnvelopes();
 void testLfo();
 void testModulationUpgrade();
 void testKeyboardNotes();
+void testOscillatorTuning();
 void testVibe();
 void testReverb();
 void testComb();

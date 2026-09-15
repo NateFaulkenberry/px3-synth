@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FxChain.h"
+#include "TuningControls.h"
 #include "SheetCloseButton.h"
 #include "SpeechBubbleLabel.h"
 #include "MacroKnobLook.h"
@@ -804,12 +805,10 @@ private:
     juce::Slider gainKnob;
     juce::Slider lfoFrequencyKnob;
     PanKnob lfoAmountKnob;
-    PanKnob subOscPitchKnob;
-    PanKnob osc1PitchKnob;
-    PanKnob osc2PitchKnob;
-    PanKnob osc3PitchKnob;
+    // Coarse and fine tuning, one pair per oscillator and one for the sub.
+    std::array<TuningControls, 3> oscTuning;
+    TuningControls subTuning;
     juce::ComboBox lfoWaveformBox;
-    juce::ComboBox subOscOctaveBox;
     juce::ComboBox subOscWaveformBox;
     juce::ComboBox lfoAssignBox;
     juce::ComboBox envAssignBox;
@@ -845,12 +844,6 @@ private:
     KnobLabel lfoFrequencyLabel;
     KnobLabel lfoAmountLabel;
     KnobLabel lfoWaveformLabel;
-    KnobLabel subOscPitchLabel;
-    KnobLabel osc1PitchLabel;
-    KnobLabel osc2PitchLabel;
-    KnobLabel osc3PitchLabel;
-    juce::Label subOscPitchValueLabel;
-    juce::Label osc1PitchValueLabel;
     // One readout per macro knob. Every other knob in the plugin shows the
     // value it is setting; the oscillator macros were the only ones that did
     // not, in any mode.
@@ -863,9 +856,6 @@ private:
     juce::Label osc3MacroAValueLabel;
     juce::Label osc3MacroBValueLabel;
     juce::Label osc3MacroCValueLabel;
-    juce::Label osc2PitchValueLabel;
-    juce::Label osc3PitchValueLabel;
-    KnobLabel subOscOctaveLabel;
     KnobLabel subOscWaveformLabel;
     KnobLabel envAssignLabel;
     juce::Label lfoFrequencyValueLabel;
@@ -1063,7 +1053,7 @@ private:
     std::vector<std::unique_ptr<juce::ComboBoxParameterAttachment>> comboBoxAttachments;
     std::vector<std::unique_ptr<juce::ButtonParameterAttachment>> buttonAttachments;
 
-    std::array<KnobBinding, 24> knobBindings {};
+    std::array<KnobBinding, 28> knobBindings {};
     int lastGranularModeIndex { -1 };
     int lastLfoAssignmentIndex { -1 };
     int lastEnvelopeAssignmentIndex { -1 };

@@ -1,4 +1,5 @@
 #include "SynthVoice.h"
+#include "OscillatorTuning.h"
 
 #include "PX3Diagnostics.h"
 #include "SynthSound.h"
@@ -495,11 +496,10 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
     {
         const auto& layer = oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)];
-        const auto semitoneOffset = static_cast<double>(layer.pitchSemitones)
-                                    + static_cast<double>(layer.pitchModSemitones)
-                                    + static_cast<double>(layer.coarseSemitones)
-                                    + static_cast<double>(layer.fineCents) * 0.01;
-        sourcePitchRatios[static_cast<std::size_t>(oscIndex)] = std::pow(2.0, semitoneOffset / 12.0);
+        // Static tuning and Pitch Mod, through the one tuning model the sub
+        // uses too. Bend, vibrato and drift are already in currentFrequencyHz.
+        sourcePitchRatios[static_cast<std::size_t>(oscIndex)] =
+            px3::tuning::pitchRatio(layer.coarseOctaves, layer.fineCents, layer.pitchModSemitones);
     }
 
     for (int sample = 0; sample < numSamples; ++sample)

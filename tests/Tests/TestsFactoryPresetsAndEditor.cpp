@@ -404,10 +404,10 @@ void testFactoryPresets()
 
             const juce::String name(preset.name);
             if (! finite)                 { invalid.add(name); }
-            // Measured on PEAK, not RMS. Karplus-Strong excites from an
-            // unseeded generator, so a plucked preset's RMS swings run to run
-            // and an RMS threshold here would be intermittently flaky. Peak is
-            // stable across runs and answers the same question.
+            // Measured on PEAK, not RMS. Some modes seed from an unseeded
+            // generator, so a preset's RMS can swing run to run and an RMS
+            // threshold here would be intermittently flaky. Peak is stable
+            // across runs and answers the same question.
             if (peak < 0.02f)             { silent.add(name + " peak " + juce::String(peak, 5)); }
             if (peak > 0.999f)            { clipping.add(name + " peak " + juce::String(peak, 4)); }
             if (rms > 0.30)               { loud.add(name + " rms " + juce::String(rms, 4)); }
@@ -744,7 +744,7 @@ void testEditorLifecycle()
         // The mode visual scrolls by advancing a phase, and that phase used to
         // be wrapped with "phase -= 2pi". A wrap is only invisible when the
         // drawn shape is built from WHOLE multiples of the phase. SUPER SAW,
-        // WAVETABLE, FORMANT, FM, KARPLUS, DIGITAL and the rest are built from
+        // WAVETABLE, FORMANT, FM, DIGITAL and the rest are built from
         // fractional multipliers - sin(samplePhase * (1 + macro * 4)) and the
         // like - so subtracting 2pi moved each partial by a part-cycle and the
         // curve visibly jumped. At 0.09 rad per tick that was every ~70 frames,
@@ -753,11 +753,12 @@ void testEditorLifecycle()
         // The phase free-runs now, so the test is simply that it never goes
         // backwards: the shape is a continuous function of it.
         juce::ToggleButton bypass;
-        juce::Slider pitch, macroA, macroB, macroC;
+        TuningControls tuning;
+        juce::Slider macroA, macroB, macroC;
         juce::ComboBox modeBox, vowelBox;
-        juce::Label pitchLabel, pitchValue, laA, laB, laC, lvA, lvB, lvC,
+        juce::Label laA, laB, laC, lvA, lvB, lvC,
                     modeLabel, vowelLabel;
-        OscillatorComponent osc(bypass, pitch, pitchLabel, pitchValue,
+        OscillatorComponent osc(bypass, tuning,
                                 macroA, macroB, macroC,
                                 laA, laB, laC, lvA, lvB, lvC,
                                 modeBox, modeLabel, vowelBox, vowelLabel,

@@ -15,6 +15,7 @@
 // EditorOrder_* in TestsEditorLayout.cpp is what stops a future reshuffle.
 
 #include "PluginEditor.h"
+#include "OscillatorTuning.h"
 #include "UpdateService.h"
 #include "EditorSections.h"
 #include "MacroLook.h"
@@ -157,10 +158,10 @@ void PX3SynthAudioProcessorEditor::buildParameterKnobs()
         KnobBinding { &osc3MacroAKnob, &osc3MacroALabel, nullptr },
         KnobBinding { &osc3MacroBKnob, &osc3MacroBLabel, nullptr },
         KnobBinding { &osc3MacroCKnob, &osc3MacroCLabel, nullptr },
-        KnobBinding { &osc1PitchKnob, &osc1PitchLabel, nullptr },
-        KnobBinding { &osc2PitchKnob, &osc2PitchLabel, nullptr },
-        KnobBinding { &osc3PitchKnob, &osc3PitchLabel, nullptr },
-        KnobBinding { &subOscPitchKnob, &subOscPitchLabel, nullptr },
+        KnobBinding { &oscTuning[0].coarseKnob, &oscTuning[0].coarseLabel, nullptr },
+        KnobBinding { &oscTuning[1].coarseKnob, &oscTuning[1].coarseLabel, nullptr },
+        KnobBinding { &oscTuning[2].coarseKnob, &oscTuning[2].coarseLabel, nullptr },
+        KnobBinding { &subTuning.coarseKnob, &subTuning.coarseLabel, nullptr },
         KnobBinding { &cutoffKnob, &cutoffLabel, nullptr },
         KnobBinding { &resonanceKnob, &resonanceLabel, nullptr },
         KnobBinding { &cutoff2Knob, &cutoff2Label, nullptr },
@@ -171,7 +172,13 @@ void PX3SynthAudioProcessorEditor::buildParameterKnobs()
         KnobBinding { &releaseKnob, &releaseLabel, nullptr },
         KnobBinding { &lfoFrequencyKnob, &lfoFrequencyLabel, nullptr },
         KnobBinding { &lfoAmountKnob, &lfoAmountLabel, nullptr },
-        KnobBinding { &gainKnob, &gainLabel, nullptr }
+        KnobBinding { &gainKnob, &gainLabel, nullptr },
+        // Fine tuning, appended rather than inserted beside coarse: every call
+        // site indexes this array by hand.
+        KnobBinding { &oscTuning[0].fineKnob, &oscTuning[0].fineLabel, nullptr },
+        KnobBinding { &oscTuning[1].fineKnob, &oscTuning[1].fineLabel, nullptr },
+        KnobBinding { &oscTuning[2].fineKnob, &oscTuning[2].fineLabel, nullptr },
+        KnobBinding { &subTuning.fineKnob, &subTuning.fineLabel, nullptr }
     };
 
     configureKnob(knobBindings[0], "PARAM A", audioProcessor.getOscillatorMacroAParam(0));
@@ -183,10 +190,10 @@ void PX3SynthAudioProcessorEditor::buildParameterKnobs()
     configureKnob(knobBindings[6], "PARAM A", audioProcessor.getOscillatorMacroAParam(2));
     configureKnob(knobBindings[7], "PARAM B", audioProcessor.getOscillatorMacroBParam(2));
     configureKnob(knobBindings[8], "PARAM C", audioProcessor.getOscillatorMacroCParam(2));
-    configureKnob(knobBindings[9], "FINE TUNE", audioProcessor.getOscillatorPitchParam(0));
-    configureKnob(knobBindings[10], "FINE TUNE", audioProcessor.getOscillatorPitchParam(1));
-    configureKnob(knobBindings[11], "FINE TUNE", audioProcessor.getOscillatorPitchParam(2));
-    configureKnob(knobBindings[12], "FINE TUNE", audioProcessor.getSubOscPitchParam());
+    configureKnob(knobBindings[9], "COARSE", audioProcessor.getOscillatorCoarseParam(0));
+    configureKnob(knobBindings[10], "COARSE", audioProcessor.getOscillatorCoarseParam(1));
+    configureKnob(knobBindings[11], "COARSE", audioProcessor.getOscillatorCoarseParam(2));
+    configureKnob(knobBindings[12], "COARSE", audioProcessor.getSubOscCoarseParam());
     configureKnob(knobBindings[13], "CUTOFF", audioProcessor.getFilterCutoffParam(0));
     configureKnob(knobBindings[14], "RESONANCE", audioProcessor.getFilterResonanceParam(0));
     configureKnob(knobBindings[15], "CUTOFF", audioProcessor.getFilterCutoffParam(1));
@@ -253,45 +260,13 @@ void PX3SynthAudioProcessorEditor::buildParameterKnobs()
     }
 
     configureKnob(knobBindings[23], "MASTER", audioProcessor.getMasterGainParam());
+    configureKnob(knobBindings[24], "FINE", audioProcessor.getOscillatorFineParam(0));
+    configureKnob(knobBindings[25], "FINE", audioProcessor.getOscillatorFineParam(1));
+    configureKnob(knobBindings[26], "FINE", audioProcessor.getOscillatorFineParam(2));
+    configureKnob(knobBindings[27], "FINE", audioProcessor.getSubOscFineParam());
     // The caption is gone from the layout, so the name lives on the knob.
     gainKnob.setTooltip("Master gain");
     gainLabel.setVisible(false);
-
-    const auto formatPitchCents = [](double semitoneValue)
-    {
-        const auto cents = static_cast<int>(std::lround(semitoneValue * 100.0));
-        if (cents > 0)
-        {
-            return "+" + juce::String(cents) + " c";
-        }
-        return juce::String(cents) + " c";
-    };
-
-    const auto configurePitchReadout = [&](PanKnob& pitchKnob, juce::Label& valueLabel)
-    {
-        pitchKnob.getProperties().set("isMixerPanKnob", true);
-        pitchKnob.setRange(-0.24, 0.24, 0.01);
-
-        // The same detents the mixer pan knobs have, scaled to this knob's much
-        // narrower range: dead centre is the value people want most, and the
-        // two extremes are edges worth landing on exactly.
-        constexpr double pitchSpan = 0.48;
-        pitchKnob.setCentreDetent(pitchSpan * 0.07);
-        pitchKnob.setExtremeDetent(pitchSpan * 0.03);
-
-        valueLabel.setJustificationType(juce::Justification::centred);
-        valueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(214, 214, 224));
-        valueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
-        valueLabel.setFont(juce::FontOptions(11.0f));
-        valueLabel.setInterceptsMouseClicks(false, false);
-
-        pitchKnob.onValueChange = [&pitchKnob, &valueLabel, formatPitchCents]()
-        {
-            valueLabel.setText(formatPitchCents(pitchKnob.getValue()), juce::dontSendNotification);
-        };
-
-        valueLabel.setText(formatPitchCents(pitchKnob.getValue()), juce::dontSendNotification);
-    };
 
     // Macro readouts. The macros are 0..1 normalised, so they read as a
     // percentage - the same way the LFO and ENV amount knobs already do.
@@ -322,10 +297,33 @@ void PX3SynthAudioProcessorEditor::buildParameterKnobs()
     configureMacroReadout(osc3MacroBKnob, osc3MacroBValueLabel);
     configureMacroReadout(osc3MacroCKnob, osc3MacroCValueLabel);
 
-    configurePitchReadout(osc1PitchKnob, osc1PitchValueLabel);
-    configurePitchReadout(osc2PitchKnob, osc2PitchValueLabel);
-    configurePitchReadout(osc3PitchKnob, osc3PitchValueLabel);
-    configurePitchReadout(subOscPitchKnob, subOscPitchValueLabel);
+    // Tuning readouts, in the units each control works in: octaves and cents.
+    const auto configureTuningReadout = [](PanKnob& knob, juce::Label& valueLabel, bool octaves)
+    {
+        // Drawn from the centre, like the pan knobs: both are bipolar.
+        knob.getProperties().set("isMixerPanKnob", true);
+
+        valueLabel.setJustificationType(juce::Justification::centred);
+        valueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(214, 214, 224));
+        valueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+        valueLabel.setFont(juce::FontOptions(11.0f));
+        valueLabel.setInterceptsMouseClicks(false, false);
+
+        const auto refresh = [&knob, &valueLabel, octaves]()
+        {
+            valueLabel.setText(octaves ? px3::tuning::formatCoarse(knob.getValue())
+                                       : px3::tuning::formatFine(knob.getValue()),
+                               juce::dontSendNotification);
+        };
+        knob.onValueChange = refresh;
+        refresh();
+    };
+
+    for (auto* tuning : { &oscTuning[0], &oscTuning[1], &oscTuning[2], &subTuning })
+    {
+        configureTuningReadout(tuning->coarseKnob, tuning->coarseValue, true);
+        configureTuningReadout(tuning->fineKnob, tuning->fineValue, false);
+    }
 
 }
 
@@ -438,21 +436,6 @@ void PX3SynthAudioProcessorEditor::buildEnvelopeAndLfoControls()
         audioProcessor.setLfoAssignmentIndex(selected);
     };
 
-    auto& subOscOctaveParam = audioProcessor.getSubOscOctaveParam();
-    for (int i = 0; i < subOscOctaveParam.choices.size(); ++i)
-    {
-        subOscOctaveBox.addItem(subOscOctaveParam.choices[i], i + 1);
-    }
-    subOscOctaveBox.setSelectedItemIndex(subOscOctaveParam.getIndex(), juce::dontSendNotification);
-    subOscOctaveBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
-    subOscOctaveBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    subOscOctaveBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
-    subOscOctaveLabel.setText("OCT", juce::dontSendNotification);
-    subOscOctaveLabel.setJustificationType(juce::Justification::centredLeft);
-    subOscOctaveLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    subOscOctaveLabel.setFont(juce::FontOptions(11.5f));
-    enableLabelHoverOverlay(subOscOctaveLabel, "Octave");
-
     auto& subOscWaveformParam = audioProcessor.getSubOscWaveformParam();
     for (int i = 0; i < subOscWaveformParam.choices.size(); ++i)
     {
@@ -516,10 +499,11 @@ void PX3SynthAudioProcessorEditor::buildSelectors()
     osc3MacroALabel.setFont(juce::FontOptions(11.0f));
     osc3MacroBLabel.setFont(juce::FontOptions(11.0f));
     osc3MacroCLabel.setFont(juce::FontOptions(11.0f));
-    osc1PitchLabel.setFont(juce::FontOptions(11.0f));
-    osc2PitchLabel.setFont(juce::FontOptions(11.0f));
-    osc3PitchLabel.setFont(juce::FontOptions(11.0f));
-    subOscPitchLabel.setFont(juce::FontOptions(11.0f));
+    for (auto* tuning : { &oscTuning[0], &oscTuning[1], &oscTuning[2], &subTuning })
+    {
+        tuning->coarseLabel.setFont(juce::FontOptions(11.0f));
+        tuning->fineLabel.setFont(juce::FontOptions(11.0f));
+    }
 
     configureEffectKnob(vibeAmountKnob, vibeAmountLabel, "AMOUNT", audioProcessor.getVibeAmountParam());
     configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "AMOUNT", audioProcessor.getDelayAmountParam());
@@ -754,16 +738,10 @@ void PX3SynthAudioProcessorEditor::buildEffectControls()
 void PX3SynthAudioProcessorEditor::buildPanels()
 {
     oscPanel = std::make_unique<OscPanel>(subOscEnabledButton,
-                                          subOscPitchKnob,
-                                          subOscPitchLabel,
-                                          subOscPitchValueLabel,
-                                          subOscOctaveBox,
-                                          subOscOctaveLabel,
+                                          subTuning,
                                           subOscWaveformBox,
                                           subOscWaveformLabel,
-                                          osc1PitchKnob,
-                                          osc1PitchLabel,
-                                          osc1PitchValueLabel,
+                                          oscTuning[0],
                                           osc1MacroAKnob,
                                           osc1MacroBKnob,
                                           osc1MacroCKnob,
@@ -778,9 +756,7 @@ void PX3SynthAudioProcessorEditor::buildPanels()
                                           osc1ModeLabel,
                                           osc1VowelBox,
                                           osc1VowelLabel,
-                                          osc2PitchKnob,
-                                          osc2PitchLabel,
-                                          osc2PitchValueLabel,
+                                          oscTuning[1],
                                           osc2MacroAKnob,
                                           osc2MacroBKnob,
                                           osc2MacroCKnob,
@@ -795,9 +771,7 @@ void PX3SynthAudioProcessorEditor::buildPanels()
                                           osc2ModeLabel,
                                           osc2VowelBox,
                                           osc2VowelLabel,
-                                          osc3PitchKnob,
-                                          osc3PitchLabel,
-                                          osc3PitchValueLabel,
+                                          oscTuning[2],
                                           osc3MacroAKnob,
                                           osc3MacroBKnob,
                                           osc3MacroCKnob,
@@ -1017,7 +991,6 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
     attachComboBox(audioProcessor.getOscillatorModeParam(2), osc3ModeBox);
     attachComboBox(audioProcessor.getOscillatorVowelParam(2), osc3VowelBox);
     attachComboBox(audioProcessor.getLfoWaveformParam(), lfoWaveformBox);
-    attachComboBox(audioProcessor.getSubOscOctaveParam(), subOscOctaveBox);
     attachComboBox(audioProcessor.getSubOscWaveformParam(), subOscWaveformBox);
     attachComboBox(audioProcessor.getDelayAlgorithmParam(), delayAlgoBox);
     attachComboBox(audioProcessor.getGranularSyncDivisionParam(), granularSyncBox);

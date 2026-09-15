@@ -259,7 +259,7 @@ void testStateUpgrade()
         setChoice(source, "lfoWaveform", 5);
         setParam(source, "lfoRampTime", 45.0f);
         setParam(source, "lfoKeySync", 1.0f);
-        setParam(source, "osc2PitchMod", -7.5f);
+        setParam(source, "osc2Fine", -7.0f);
         setChoice(source, "filterRouting", 1);
         setParam(source, "filterParallelBalance", 0.27f);
 
@@ -273,7 +273,7 @@ void testStateUpgrade()
                      && upgradeChoiceIndex(target, "lfoWaveform") == 5
                      && std::abs(getParamValue(target, "lfoRampTime") - 45.0f) < 0.01f
                      && getParamValue(target, "lfoKeySync") > 0.5f
-                     && std::abs(getParamValue(target, "osc2PitchMod") + 7.5f) < 0.01f
+                     && std::abs(getParamValue(target, "osc2Fine") + 7.0f) < 0.01f
                      && upgradeChoiceIndex(target, "filterRouting") == 1
                      && std::abs(getParamValue(target, "filterParallelBalance") - 0.27f) < 0.002f;
 
@@ -714,58 +714,7 @@ void testModulationRuleUpgrade()
               "+100% " + fmt(up, 2) + " st, -100% " + fmt(down, 2) + " st");
     }
 
-    // And it is actually heard, in semitones, on the oscillators and the sub.
-    {
-        const auto measure = [](const char* id, float semitones, bool sub)
-        {
-            PX3SynthAudioProcessor processor;
-            makePlainPatch(processor);
-            if (sub)
-            {
-                setParam(processor, "osc1Enabled", 0.0f);
-                setParam(processor, "subOscEnabled", 1.0f);
-            }
-            setParam(processor, id, semitones);
-            const auto capture = render(processor, 24000, { { 0, true, 57, 0.9f } });
-            return estimateFrequency(capture.left, 6000, 16000);
-        };
 
-        const auto oscHome = measure("osc1PitchMod", 0.0f, false);
-        const auto oscUp = measure("osc1PitchMod", 12.0f, false);
-        const auto oscDown = measure("osc1PitchMod", -12.0f, false);
-        check("PitchMod_ZeroLeavesTheOscillatorWhereItWas", nearly(oscHome, 220.0, 2.0),
-              "A3 at pitch mod 0 measures " + fmt(oscHome, 2) + " Hz");
-        check("PitchMod_OscillatorFollowsInSemitones",
-              oscHome > 0.0 && nearly(oscUp / oscHome, 2.0, 0.03) && oscDown > 0.0 && nearly(oscHome / oscDown, 2.0, 0.03),
-              "-12 st " + fmt(oscDown, 2) + " Hz, 0 st " + fmt(oscHome, 2) + " Hz, +12 st " + fmt(oscUp, 2) + " Hz");
-
-        const auto subHome = measure("subOscPitchMod", 0.0f, true);
-        const auto subUp = measure("subOscPitchMod", 12.0f, true);
-        check("PitchMod_SubOscillatorFollowsInSemitones", subHome > 0.0 && nearly(subUp / subHome, 2.0, 0.03),
-              "sub at 0 st " + fmt(subHome, 2) + " Hz, +12 st " + fmt(subUp, 2) + " Hz");
-    }
-
-    // The +-0.24 st controls are named FINE TUNE now, and nothing else about
-    // them moved - sessions and automation are keyed on the ID.
-    {
-        PX3SynthAudioProcessor processor;
-        auto ok = true;
-        juce::StringArray names;
-        for (const auto* slot : { "1", "2", "3" })
-        {
-            auto* parameter = findParameter(processor, juce::String("osc") + slot + "Pitch");
-            ok = ok && parameter != nullptr
-                 && parameter->getName(64) == juce::String("Osc ") + slot + " Fine Tune"
-                 && std::abs(parameter->getNormalisableRange().start + 0.24f) < 1.0e-6f
-                 && std::abs(parameter->getNormalisableRange().end - 0.24f) < 1.0e-6f;
-            if (parameter != nullptr) { names.add(parameter->getName(64)); }
-        }
-        auto* sub = findParameter(processor, "subOscPitch");
-        ok = ok && sub != nullptr && sub->getName(64) == "Sub Osc Fine Tune";
-        if (sub != nullptr) { names.add(sub->getName(64)); }
-
-        check("FineTune_KeepsItsIdsAndRangeUnderItsNewName", ok, names.joinIntoString(", "));
-    }
 }
 
 //==============================================================================

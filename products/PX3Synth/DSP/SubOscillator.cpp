@@ -1,4 +1,5 @@
 #include "SubOscillator.h"
+#include "OscillatorTuning.h"
 
 #include <cmath>
 
@@ -16,9 +17,10 @@ void SubOscillator::setSettings(const SubOscSettings& newSettings)
 {
     settings.enabled = newSettings.enabled;
     settings.level = juce::jlimit(0.0f, 1.0f, newSettings.level);
-    settings.pitchSemitones = juce::jlimit(-0.24f, 0.24f, newSettings.pitchSemitones);
-    settings.pitchModSemitones = juce::jlimit(-24.0f, 24.0f, newSettings.pitchModSemitones);
-    settings.octaveIndex = px3::clampSubOscOctaveIndex(newSettings.octaveIndex);
+    settings.coarseOctaves = juce::jlimit(px3::tuning::kCoarseMinOctaves, px3::tuning::kCoarseMaxOctaves, newSettings.coarseOctaves);
+    settings.fineCents = juce::jlimit(px3::tuning::kFineMinCents, px3::tuning::kFineMaxCents, newSettings.fineCents);
+    settings.pitchModSemitones = juce::jlimit(-px3::tuning::kPitchModRangeSemitones, px3::tuning::kPitchModRangeSemitones,
+                                              newSettings.pitchModSemitones);
     settings.waveformIndex = px3::clampSubOscWaveformIndex(newSettings.waveformIndex);
 }
 
@@ -34,10 +36,7 @@ float SubOscillator::renderSample(double baseFrequencyHz)
         return 0.0f;
     }
 
-    const auto semitones = static_cast<double>(px3::subOscSemitoneOffsetForOctaveIndex(settings.octaveIndex))
-                           + static_cast<double>(settings.pitchSemitones)
-                           + static_cast<double>(settings.pitchModSemitones);
-    const auto ratio = std::pow(2.0, semitones / 12.0);
+    const auto ratio = px3::tuning::pitchRatio(settings.coarseOctaves, settings.fineCents, settings.pitchModSemitones);
     const auto subFrequencyHz = juce::jmax(1.0, baseFrequencyHz * ratio);
     const auto sampleRate = static_cast<float>(juce::jmax(1.0, sampleRateHz));
     const auto phaseDelta = juce::jlimit(0.0f,

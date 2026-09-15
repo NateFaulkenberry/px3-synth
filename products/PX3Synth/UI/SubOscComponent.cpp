@@ -9,20 +9,12 @@
 #include <cmath>
 
 SubOscComponent::SubOscComponent(juce::ToggleButton& enabledButtonIn,
-                                                                                             juce::Slider& pitchIn,
-                                                                                             juce::Label& pitchLabelIn,
-                                                                                             juce::Label& pitchValueLabelIn,
-                                               juce::ComboBox& octaveBoxIn,
-                                               juce::Label& octaveLabelIn,
+                                                                                             TuningControls& tuningIn,
                                                juce::ComboBox& waveformBoxIn,
                                                juce::Label& waveformLabelIn,
                                                juce::Colour accentIn)
     : enabledButton(enabledButtonIn),
-            pitch(pitchIn),
-            pitchLabel(pitchLabelIn),
-        pitchValueLabel(pitchValueLabelIn),
-      octaveBox(octaveBoxIn),
-      octaveLabel(octaveLabelIn),
+            tuning(tuningIn),
       waveformBox(waveformBoxIn),
       waveformLabel(waveformLabelIn),
       accent(accentIn)
@@ -32,11 +24,10 @@ SubOscComponent::SubOscComponent(juce::ToggleButton& enabledButtonIn,
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
 
     addAndMakeVisible(enabledButton);
-    addAndMakeVisible(pitch);
-    addAndMakeVisible(pitchLabel);
-    addAndMakeVisible(pitchValueLabel);
-    addAndMakeVisible(octaveBox);
-    addAndMakeVisible(octaveLabel);
+    for (auto* component : tuning.components())
+    {
+        addAndMakeVisible(*component);
+    }
     addAndMakeVisible(waveformBox);
     addAndMakeVisible(waveformLabel);
 }
@@ -55,7 +46,7 @@ void SubOscComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     repaint();
 }
 
-void SubOscComponent::refreshFromParameters(bool enabled, int octaveIndex, int waveformIndex)
+void SubOscComponent::refreshFromParameters(bool enabled, int waveformIndex)
 {
     const auto enabledChanged = (currentEnabled != enabled);
     const auto waveformChanged = (currentWaveformIndex != px3::clampSubOscWaveformIndex(waveformIndex));
@@ -64,22 +55,14 @@ void SubOscComponent::refreshFromParameters(bool enabled, int octaveIndex, int w
     currentWaveformIndex = px3::clampSubOscWaveformIndex(waveformIndex);
 
     enabledButton.setToggleState(enabled, juce::dontSendNotification);
-    if (octaveBox.getSelectedItemIndex() != px3::clampSubOscOctaveIndex(octaveIndex))
-    {
-        octaveBox.setSelectedItemIndex(px3::clampSubOscOctaveIndex(octaveIndex), juce::dontSendNotification);
-    }
     if (waveformBox.getSelectedItemIndex() != currentWaveformIndex)
     {
         waveformBox.setSelectedItemIndex(currentWaveformIndex, juce::dontSendNotification);
     }
 
-    octaveBox.setEnabled(currentEnabled);
-    octaveLabel.setEnabled(currentEnabled);
     waveformBox.setEnabled(currentEnabled);
     waveformLabel.setEnabled(currentEnabled);
-    pitch.setEnabled(currentEnabled);
-    pitchLabel.setEnabled(currentEnabled);
-    pitchValueLabel.setEnabled(currentEnabled);
+    tuning.setEnabled(currentEnabled);
 
     if (enabledChanged || waveformChanged)
     {
@@ -134,43 +117,49 @@ void SubOscComponent::resized()
     // so it stays put no matter what the first row contains.
     enabledButton.setBounds(inner.powerBounds());
 
-    // Row 1: bypass, octave and wave, each as a label-over-control pair. The
-    // row's flex settings decide where they sit; this only says how big each
-    // one wants to be, which is what keeps the controls looking as they did.
+    using px3::ui::ControlShape;
+
+    // Row 1: the waveform. Octave used to sit beside it as a menu; it is COARSE
+    // on the tuning row now, the same control the main oscillators have.
     {
         auto flex = inner.rowFlex(0);
         const auto gap = inner.rowGap(0);
         const auto row = inner.rowContent(0);
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-        flex.items.add(juce::FlexItem(76.0f, cellHeight).withMargin(gap));
-        flex.items.add(juce::FlexItem(76.0f, cellHeight).withMargin(gap));
+        flex.items.add(juce::FlexItem(96.0f, cellHeight).withMargin(gap));
         flex.performLayout(row.toFloat());
 
-        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
-        using px3::ui::ControlShape;
-        px3::ui::layoutLabelledControl(cell(0),
-                                       { &octaveLabel, &octaveBox, nullptr,
-                                         ControlShape::stretch, 14, 0, 24 },
-                                       inner.rowControl(0));
-        px3::ui::layoutLabelledControl(cell(1),
+        px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
                                        { &waveformLabel, &waveformBox, nullptr,
                                          ControlShape::stretch, 14, 0, 24 },
                                        inner.rowControl(0));
     }
 
-    // Row 2: the pitch knob, which keeps its existing label and value readout.
+    // Row 2: static tuning, COARSE and FINE side by side - the same pair the
+    // oscillator cards show.
     {
         auto flex = inner.rowFlex(1);
         const auto gap = inner.rowGap(1);
         const auto row = inner.rowContent(1);
+        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-        flex.items.add(juce::FlexItem(96.0f, static_cast<float>(juce::jmax(1, row.getHeight()))).withMargin(gap));
+        const auto widths = px3::ui::fitRowItemWidths({ 72.0f, 72.0f }, gap.left + gap.right,
+                                                      static_cast<float>(juce::jmax(1, row.getWidth())));
+        for (const auto width : widths)
+        {
+            flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gap));
+        }
         flex.performLayout(row.toFloat());
 
-        px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
-                                       { &pitchLabel, &pitch, &pitchValueLabel,
-                                         px3::ui::ControlShape::square, 16, 16, 56 },
+        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+        px3::ui::layoutLabelledControl(cell(0),
+                                       { &tuning.coarseLabel, &tuning.coarseKnob, &tuning.coarseValue,
+                                         ControlShape::square, 16, 16, 56 },
+                                       inner.rowControl(1));
+        px3::ui::layoutLabelledControl(cell(1),
+                                       { &tuning.fineLabel, &tuning.fineKnob, &tuning.fineValue,
+                                         ControlShape::square, 16, 16, 56 },
                                        inner.rowControl(1));
     }
 

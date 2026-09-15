@@ -336,17 +336,12 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     const auto envelopeAssignmentMatches = serializedEnvelopeAssignment.equalsIgnoreCase(getEnvelopeAssignmentParameterId());
 
     auto serializedSubOscEnabled = subOscEnabledParam->get();
-    auto serializedSubOscOctave = subOscOctaveParam->getIndex();
     auto serializedSubOscWaveform = subOscWaveformParam->getIndex();
     if (const auto subOscState = state.getChildWithName(kSubOscStateId); subOscState.isValid())
     {
         if (subOscState.hasProperty(kSubOscEnabledId))
         {
             serializedSubOscEnabled = static_cast<bool>(subOscState[kSubOscEnabledId]);
-        }
-        if (subOscState.hasProperty(kSubOscOctaveId))
-        {
-            serializedSubOscOctave = px3::clampSubOscOctaveIndex(static_cast<int>(subOscState[kSubOscOctaveId]));
         }
         if (subOscState.hasProperty(kSubOscWaveformId))
         {
@@ -355,7 +350,6 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     }
 
     const auto subOscEnabledMatches = serializedSubOscEnabled == subOscEnabledParam->get();
-    const auto subOscOctaveMatches = serializedSubOscOctave == subOscOctaveParam->getIndex();
     const auto subOscWaveformMatches = serializedSubOscWaveform == subOscWaveformParam->getIndex();
 
     auto serializedAttack = attackParam->get();
@@ -382,7 +376,6 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
                    && assignmentMatches
                    && envelopeAssignmentMatches
                    && subOscEnabledMatches
-                   && subOscOctaveMatches
                    && subOscWaveformMatches
                    && attackMatches
                    && decayMatches
@@ -404,8 +397,6 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
              "envAssignmentSerialized=" + serializedEnvelopeAssignment + "\n"
              "subOscEnabledCurrent=" + juce::String(subOscEnabledParam->get() ? 1 : 0) + "\n"
              "subOscEnabledSerialized=" + juce::String(serializedSubOscEnabled ? 1 : 0) + "\n"
-             "subOscOctaveCurrent=" + juce::String(subOscOctaveParam->getIndex()) + "\n"
-             "subOscOctaveSerialized=" + juce::String(serializedSubOscOctave) + "\n"
              "subOscWaveformCurrent=" + juce::String(subOscWaveformParam->getIndex()) + "\n"
              "subOscWaveformSerialized=" + juce::String(serializedSubOscWaveform) + "\n"
              "attackCurrent=" + juce::String(attackParam->get(), 6) + "\n"

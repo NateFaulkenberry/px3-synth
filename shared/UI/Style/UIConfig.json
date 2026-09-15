@@ -2322,7 +2322,7 @@
             }
           },
           "row1": {
-            "height": "22%",
+            "height": "20%",
             "gap": 6,
             "control": {
               "direction": "column",
@@ -2335,7 +2335,7 @@
             }
           },
           "row2": {
-            "height": "36%",
+            "height": "24%",
             "gap": 4,
             "control": {
               "direction": "column",
@@ -2348,7 +2348,20 @@
             }
           },
           "row3": {
-            "height": "42%",
+            "height": "22%",
+            "gap": 4,
+            "control": {
+              "direction": "column",
+              "justifyContent": "center",
+              "alignItems": "center",
+              "gap": 7,
+              "labelHeight": "auto",
+              "readoutHeight": "auto",
+              "size": "auto"
+            }
+          },
+          "row4": {
+            "height": "34%",
             "padding": 2
           }
         }

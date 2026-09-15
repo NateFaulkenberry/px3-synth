@@ -2104,10 +2104,10 @@ int main(int argc, char* argv[])
         // own to hide behind, so every mode is measured against its own noise.
         const char* modeNames[] = {
             "SINE", "SAW", "SQUARE", "TRIANGLE", "NOISE", "PINK NOISE", "SUPER SAW",
-            "PWM", "WAVETABLE", "ADDITIVE", "FORMANT", "FM", "HARD SYNC", "KARPLUS",
+            "PWM", "WAVETABLE", "ADDITIVE", "FORMANT", "FM", "HARD SYNC",
             "ORGAN", "DIGITAL", "PHYSICAL", "ROB", "ISAAC", "PX3"
         };
-        constexpr int modeCount = 20;
+        constexpr int modeCount = px3::oscillatorModeCount;
 
         struct Variant { const char* label; bool noTailFilter; bool noOnsetGuard; int guardCurve; };
         const Variant variants[] = {
@@ -2119,7 +2119,7 @@ int main(int argc, char* argv[])
 
         std::printf("\nOSCILLATOR WAVEFORM SWEEP — attack=1ms, release=10ms, single oscillator\n");
         std::printf("  each cell is  transientRatio/gainCurvature\n");
-        std::printf("  transientRatio: audio-domain, meaningless for waveforms with their own edges (SAW/SQUARE/PWM/KARPLUS)\n");
+        std::printf("  transientRatio: audio-domain, meaningless for waveforms with their own edges (SAW/SQUARE/PWM)\n");
         std::printf("  gainCurvature : second difference of the voice gain envelope - waveform independent, this is the defect\n\n");
         std::printf("  %-12s", "mode");
         for (const auto& v : variants)
@@ -2584,69 +2584,6 @@ int main(int argc, char* argv[])
         std::printf("\n  final RSS %.2f MB\n", residentMB());
         return 0;
     }
-    else if (arg == "karplus")
-    {
-        std::printf("\nKARPLUS PROBE\n\n");
-        for (const auto note : { 36, 48, 57, 69, 81 })
-        {
-            px3::diag::resetNoteStartSequence();
-            PX3SynthAudioProcessor processor;
-            setParameter(processor, "ampAttack", 0.002f);
-            setParameter(processor, "ampSustain", 1.0f);
-            setParameter(processor, "ampRelease", 0.2f);
-            setParameter(processor, "delayEnabled", 0.0f);
-            setParameter(processor, "reverbEnabled", 0.0f);
-            setParameter(processor, "moodEnabled", 0.0f);
-            setParameter(processor, "subOscEnabled", 0.0f);
-            setParameter(processor, "osc1Enabled", 1.0f);
-            setParameter(processor, "osc2Enabled", 0.0f);
-            setParameter(processor, "osc3Enabled", 0.0f);
-            if (auto* m = findParameter(processor, "osc1Mode"))
-                m->setValueNotifyingHost(13.0f / (float) juce::jmax(1, m->getNumSteps() - 1)); // KARPLUS
-            setParameter(processor, "filter1Enabled", 0.0f);
-            setParameter(processor, "filter2Enabled", 0.0f);
-
-            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
-            processor.prepareToPlay(kSampleRate, kBlockSize);
-
-            auto& diag = px3::diag::state();
-            diag.resetResults();
-            diag.resetModes();
-            diag.capturing = true;
-            diag.tracing = true;
-
-            juce::AudioBuffer<float> buffer(2, kBlockSize);
-            auto delivered = false;
-            const auto noteOn = static_cast<int>(0.02 * kSampleRate);
-            for (int position = 0; position < static_cast<int>(1.0 * kSampleRate); position += kBlockSize)
-            {
-                buffer.clear();
-                juce::MidiBuffer midi;
-                if (!delivered && position + kBlockSize > noteOn)
-                {
-                    midi.addEvent(juce::MidiMessage::noteOn(1, note, 0.9f), juce::jmax(0, noteOn - position));
-                    delivered = true;
-                }
-                processor.processBlock(buffer, midi);
-            }
-            diag.capturing = false;
-            diag.tracing = false;
-
-            const auto& m = diag.trace[px3::diag::stageMaster];
-            auto rmsOver = [&m](double a, double b)
-            {
-                double e = 0.0; long long n = 0;
-                for (auto i = (std::size_t)(a * kSampleRate); i < (std::size_t)(b * kSampleRate) && i < m.size(); ++i)
-                { e += (double) m[i] * m[i]; ++n; }
-                return n > 0 ? std::sqrt(e / (double) n) : 0.0;
-            };
-            const auto expectedDelay = (int) std::round(kSampleRate / juce::MidiMessage::getMidiNoteInHertz(note));
-            std::printf("  note %2d (%7.1f Hz, delay %5d samples) : peak=%.6f  early rms=%.6f  late rms=%.6f\n",
-                        note, juce::MidiMessage::getMidiNoteInHertz(note), expectedDelay,
-                        (double) diag.peak[px3::diag::stageMaster], rmsOver(0.05, 0.20), rmsOver(0.60, 0.95));
-        }
-        return 0;
-    }
     else if (arg == "memory")
     {
         std::printf("\nMEMORY FOOTPRINT MAP\n\n");
@@ -2675,24 +2612,7 @@ int main(int argc, char* argv[])
         const auto voice = sizeof(SynthVoice);
         std::printf("\n  SynthVoice total                   %10zu B  = %8.2f KB\n", voice, voice / 1024.0);
         std::printf("  x %d voices                         %10.2f MB\n\n", kVoices, voice * (double) kVoices / (1024.0 * 1024.0));
-
-        std::printf("  SAMPLE-RATE DEPENDENT HEAP (Karplus delay, per OscillatorUnit)\n");
-        for (const auto rate : { 44100.0, 48000.0, 96000.0, 192000.0 })
-        {
-            const auto samples = (std::size_t) std::ceil(rate / OscillatorUnit::kKarplusLowestFrequencyHz) + 4;
-            const auto bytes = samples * sizeof(float);
-            std::printf("    %7.0f Hz : %6zu samples = %8.2f KB each  x%4d = %7.2f MB total\n",
-                        rate, samples, static_cast<double>(bytes) / 1024.0, 3 * kVoices,
-                        static_cast<double>(bytes) * 3.0 * kVoices / (1024.0 * 1024.0));
-        }
-        {
-            const auto samples = (std::size_t) std::ceil(48000.0 / OscillatorUnit::kKarplusLowestFrequencyHz) + 4;
-            const auto heap = static_cast<double>(samples * sizeof(float)) * 3.0 * kVoices;
-            std::printf("\n  voice pool at 48 kHz: %.2f MB structs + %.2f MB heap = %.2f MB\n\n",
-                        voice * (double) kVoices / (1024.0 * 1024.0),
-                        heap / (1024.0 * 1024.0),
-                        (voice * (double) kVoices + heap) / (1024.0 * 1024.0));
-        }
+        std::printf("  voice pool: %.2f MB, no sample-rate dependent heap\n\n", voice * (double) kVoices / (1024.0 * 1024.0));
 
         std::printf("  PROCESSOR\n");
         std::printf("  %-34s %10zu B  = %8.2f KB\n", "PX3SynthAudioProcessor object",

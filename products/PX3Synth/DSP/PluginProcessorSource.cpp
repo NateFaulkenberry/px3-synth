@@ -13,6 +13,13 @@ SubtractiveSettings PX3SynthAudioProcessor::currentSubtractiveSettings() const
     return settings;
 }
 
+float PX3SynthAudioProcessor::modulationOnlyPitchSemitones(juce::AudioParameterFloat& parameter) const
+{
+    // Around the parameter's centre, whatever it happens to hold: modulation
+    // moves pitch, a stored value does not.
+    return parameter.convertFrom0to1(applyModulationToNormalizedValue(&parameter, static_cast<juce::RangedAudioParameter&>(parameter).getDefaultValue()));
+}
+
 SubOscSettings PX3SynthAudioProcessor::currentSubOscillatorSettings() const
 {
     SubOscSettings settings;
@@ -21,12 +28,11 @@ SubOscSettings PX3SynthAudioProcessor::currentSubOscillatorSettings() const
     // to push into. The mixer channel remains the single USER-facing gain stage
     // and its fader reads true gain; this is a fixed source trim, not a control.
     settings.level = px3::processor_internal::sourceHeadroomGain();
-    settings.pitchSemitones = subOscPitchParam->convertFrom0to1(applyModulationToNormalizedValue(subOscPitchParam,
-                                                                                                   static_cast<juce::RangedAudioParameter*>(subOscPitchParam)->getValue()));
-    settings.pitchModSemitones = subOscPitchModParam->convertFrom0to1(
-        applyModulationToNormalizedValue(subOscPitchModParam,
-                                         static_cast<juce::RangedAudioParameter*>(subOscPitchModParam)->getValue()));
-    settings.octaveIndex = px3::clampSubOscOctaveIndex(subOscOctaveParam != nullptr ? subOscOctaveParam->getIndex() : 1);
+    settings.coarseOctaves = subOscCoarseParam->convertFrom0to1(
+        applyModulationToNormalizedValue(subOscCoarseParam, static_cast<juce::RangedAudioParameter*>(subOscCoarseParam)->getValue()));
+    settings.fineCents = subOscFineParam->convertFrom0to1(
+        applyModulationToNormalizedValue(subOscFineParam, static_cast<juce::RangedAudioParameter*>(subOscFineParam)->getValue()));
+    settings.pitchModSemitones = modulationOnlyPitchSemitones(*subOscPitchModParam);
     settings.waveformIndex = px3::clampSubOscWaveformIndex(subOscWaveformParam != nullptr ? subOscWaveformParam->getIndex() : 1);
     return settings;
 }
@@ -109,13 +115,8 @@ std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcess
         // modulation. The mixer channel remains the single USER-facing gain
         // stage and its fader reads true gain.
         layer.level = px3::processor_internal::sourceHeadroomGain();
-        layer.pitchSemitones = getOscillatorPitchParam(oscIndex).convertFrom0to1(
-            applyModulationToNormalizedValue(&getOscillatorPitchParam(oscIndex),
-                                             static_cast<juce::RangedAudioParameter&>(getOscillatorPitchParam(oscIndex)).getValue()));
-        layer.pitchModSemitones = getOscillatorPitchModParam(oscIndex).convertFrom0to1(
-            applyModulationToNormalizedValue(&getOscillatorPitchModParam(oscIndex),
-                                             static_cast<juce::RangedAudioParameter&>(getOscillatorPitchModParam(oscIndex)).getValue()));
-        layer.coarseSemitones = getOscillatorCoarseParam(oscIndex).convertFrom0to1(
+        layer.pitchModSemitones = modulationOnlyPitchSemitones(getOscillatorPitchModParam(oscIndex));
+        layer.coarseOctaves = getOscillatorCoarseParam(oscIndex).convertFrom0to1(
             applyModulationToNormalizedValue(&getOscillatorCoarseParam(oscIndex),
                                              static_cast<juce::RangedAudioParameter&>(getOscillatorCoarseParam(oscIndex)).getValue()));
         layer.fineCents = getOscillatorFineParam(oscIndex).convertFrom0to1(

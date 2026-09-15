@@ -19,8 +19,6 @@ public:
     // arrives when it should.
     static constexpr double kWtPositionSmoothingSeconds = 0.003;
 
-    // Lowest note frequency the Karplus delay must represent.
-    static constexpr double kKarplusLowestFrequencyHz = 20.0;
 
     // Allocates sample-rate dependent storage. Must be called off the audio
     // thread before any note is rendered; SynthVoice does so from
@@ -104,8 +102,6 @@ private:
         float hardSyncRatio { 1.0f };
         float hardSyncDrive { 1.0f };
 
-        float karplusDecay { 0.0f };
-        float karplusBrightness { 0.0f };
 
         float organClick { 0.0f };
         float organClickDecay { 0.0f };
@@ -149,7 +145,6 @@ private:
     float renderWavetable(double sampleRate, const RenderContext& context);
     float renderFm(double sampleRate, const RenderContext& context);
     float renderHardSync(double sampleRate, const RenderContext& context);
-    float renderKarplus(const RenderContext& context);
     float renderOrgan(const RenderContext& context);
     float renderDigital(double sampleRate, const RenderContext& context);
     float renderPhysical(double sampleRate, const RenderContext& context);
@@ -180,15 +175,6 @@ private:
     double syncMasterAngle { 0.0 };
     double syncSlaveAngle { 0.0 };
 
-    // Sized from the sample rate rather than fixed: the Karplus delay length is
-    // sampleRate / lowest supported note, and resetForNote floors the note at
-    // kKarplusLowestFrequencyHz, so that product is an exact bound. A fixed
-    // 32768-float array cost 128 KB per oscillator - 24 MB across the voice pool
-    // - to serve a worst case of 2400 samples at 48 kHz.
-    std::vector<float> karplusBuffer;
-    int karplusWriteIndex { 0 };
-    int karplusDelaySamples { 220 };
-    float karplusLastSample { 0.0f };
 
     int digitalHoldCounter { 0 };
     int digitalHoldSamples { 1 };

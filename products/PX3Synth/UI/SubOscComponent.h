@@ -4,6 +4,7 @@
 
 #include "Card.h"
 #include "CardInner.h"
+#include "TuningControls.h"
 
 #include <memory>
 
@@ -13,11 +14,7 @@ class SubOscComponent final : public juce::Component
 {
 public:
     SubOscComponent(juce::ToggleButton& enabledButtonIn,
-                           juce::Slider& pitchIn,
-                           juce::Label& pitchLabelIn,
-                           juce::Label& pitchValueLabelIn,
-                           juce::ComboBox& octaveBoxIn,
-                           juce::Label& octaveLabelIn,
+                           TuningControls& tuningIn,
                            juce::ComboBox& waveformBoxIn,
                            juce::Label& waveformLabelIn,
                            juce::Colour accentIn);
@@ -27,7 +24,7 @@ public:
     // The panel's content box. Percentage card dimensions are resolved against
     // this and nothing else, so the component has to be told what it is.
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
-    void refreshFromParameters(bool enabled, int octaveIndex, int waveformIndex);
+    void refreshFromParameters(bool enabled, int waveformIndex);
     void advanceAnimation(float deltaPhase);
 
     void resized() override;
@@ -39,11 +36,7 @@ private:
     static float waveformSample(float phaseNorm, int waveformIndex);
 
     juce::ToggleButton& enabledButton;
-    juce::Slider& pitch;
-    juce::Label& pitchLabel;
-    juce::Label& pitchValueLabel;
-    juce::ComboBox& octaveBox;
-    juce::Label& octaveLabel;
+    TuningControls& tuning;
     juce::ComboBox& waveformBox;
     juce::Label& waveformLabel;
     juce::Colour accent;

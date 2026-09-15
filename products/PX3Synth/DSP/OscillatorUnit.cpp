@@ -291,9 +291,6 @@ void OscillatorUnit::updateDerivedCurves()
     derived.hardSyncRatio = juce::jmap(std::pow(a, 1.3f), 1.0f, 11.0f);
     derived.hardSyncDrive = 1.0f + std::pow(b, 1.15f) * 2.3f;
 
-    derived.karplusDecay = juce::jmap(std::pow(a, 1.85f), 0.90f, 0.99945f);
-    derived.karplusBrightness = juce::jmap(std::pow(b, 1.2f), 0.03f, 0.94f);
-
     {
         const auto bitsCurve = std::pow(a, 1.25f);
         const auto rateCurve = std::pow(b, 1.15f);
@@ -356,13 +353,6 @@ void OscillatorUnit::prepare(double sampleRate)
         preparedSampleRate = safeRate;
         derivedValid = false;   // the formant resonators are designed in hertz
     }
-    const auto required = static_cast<int>(std::ceil(safeRate / kKarplusLowestFrequencyHz)) + 4;
-    if (static_cast<int>(karplusBuffer.size()) != required)
-    {
-        karplusBuffer.assign(static_cast<std::size_t>(required), 0.0f);
-    }
-    karplusWriteIndex = 0;
-    karplusLastSample = 0.0f;
 }
 
 void OscillatorUnit::resetForNote(double sampleRate, double currentFrequencyHz)
@@ -393,41 +383,7 @@ void OscillatorUnit::resetForNote(double sampleRate, double currentFrequencyHz)
     noiseColorState = 0.0f;
     pinkColorState = 0.0f;
 
-    const auto safeRate = juce::jmax(1.0, sampleRate);
-    const auto frequency = juce::jmax(kKarplusLowestFrequencyHz, currentFrequencyHz);
-    const auto bufferSamples = static_cast<int>(karplusBuffer.size());
-    karplusDelaySamples = bufferSamples > 16
-                              ? juce::jlimit(8,
-                                             bufferSamples - 2,
-                                             static_cast<int>(std::round(safeRate / frequency)))
-                              : 8;
-    karplusLastSample = 0.0f;
-
-    // Clear the whole delay line before seeding the excitation. Without this a
-    // reused voice starts its pluck on top of the previous note's residue: the
-    // read tap wraps into never-rewritten samples during the first `delay`
-    // samples, so the attack depended on both the buffer length and whatever
-    // played on that voice before. Clearing makes each note deterministic.
-    std::fill(karplusBuffer.begin(), karplusBuffer.end(), 0.0f);
-
-    for (int i = 0; i < karplusDelaySamples && i < static_cast<int>(karplusBuffer.size()); ++i)
-    {
-        const auto n = juce::Random::getSystemRandom().nextFloat() * 2.0f - 1.0f;
-        karplusBuffer[static_cast<std::size_t>(i)] = n * 0.5f;
-    }
-
-    // Start writing one delay period in, so the read tap - which trails the
-    // write tap by exactly that much - begins on the excitation just seeded.
-    //
-    // Starting both taps at 0 meant the write tap marched across indices
-    // 0..delay-1 overwriting the burst during the very samples the read tap was
-    // still traversing the untouched far end of the buffer. By the time the
-    // read tap reached index 0 the burst was gone, and the only excitation left
-    // was the handful of note-age noise samples renderKarplus adds - roughly a
-    // twentieth of the intended amplitude, which is why KARPLUS was audible
-    // only as a faint click. The buffer is sized for the lowest supported note,
-    // so it is longer than the delay and there is room for both taps.
-    karplusWriteIndex = bufferSamples > 0 ? karplusDelaySamples % bufferSamples : 0;
+    juce::ignoreUnused(sampleRate, currentFrequencyHz);
 
     for (std::size_t i = 0; i < physicalState.size(); ++i)
     {
@@ -571,29 +527,6 @@ float OscillatorUnit::renderHardSync(double sampleRate, const RenderContext& con
     const auto synced = slavePhase * 2.0f - 1.0f;
     const auto drive = derived.hardSyncDrive;
     return softClip(synced * drive) * 0.82f;
-}
-
-float OscillatorUnit::renderKarplus(const RenderContext& context)
-{
-    const auto decay = derived.karplusDecay;
-    const auto brightness = derived.karplusBrightness;
-
-    const auto bufferSamples = static_cast<int>(karplusBuffer.size());
-    if (bufferSamples <= 16)
-    {
-        return 0.0f;
-    }
-    const auto readIndex = (karplusWriteIndex - karplusDelaySamples + bufferSamples) % bufferSamples;
-    const auto delayed = karplusBuffer[static_cast<std::size_t>(readIndex)];
-    const auto filtered = brightness * delayed + (1.0f - brightness) * karplusLastSample;
-    karplusLastSample = filtered;
-
-    const auto excite = context.noteAgeSamples < 8 ? nextDeterministicNoise() * 0.18f : 0.0f;
-    const auto writeSample = (filtered + excite) * decay;
-    karplusBuffer[static_cast<std::size_t>(karplusWriteIndex)] = writeSample;
-    karplusWriteIndex = (karplusWriteIndex + 1) % bufferSamples;
-
-    return delayed * (1.28f + 0.08f * brightness);
 }
 
 float OscillatorUnit::renderFormant(double sampleRate, const RenderContext& context)
@@ -840,9 +773,6 @@ float OscillatorUnit::renderSample(double sampleRate, const RenderContext& conte
         case px3::OscillatorMode::hardSync:
             sample = renderHardSync(sampleRate, context);
             break;
-        case px3::OscillatorMode::karplus:
-            sample = renderKarplus(context);
-            break;
         case px3::OscillatorMode::organ:
             sample = renderOrgan(context);
             break;
@@ -865,10 +795,10 @@ float OscillatorUnit::renderSample(double sampleRate, const RenderContext& conte
             break;
     }
 
-    static constexpr std::array<float, 20> kModeTrim {
+    static constexpr std::array<float, px3::oscillatorModeCount> kModeTrim {
         0.82f, 0.74f, 0.72f, 0.78f, 0.64f,
         0.67f, 0.62f, 0.70f, 0.76f, 0.80f,
-        0.73f, 0.64f, 0.60f, 0.78f, 0.76f,
+        0.73f, 0.64f, 0.60f, 0.76f,
         0.66f, 0.70f, 0.62f, 0.74f, 0.60f
     };
 
@@ -893,7 +823,6 @@ float OscillatorUnit::renderSample(double sampleRate, const RenderContext& conte
             case px3::OscillatorMode::wavetable:
                 return a;
             case px3::OscillatorMode::superSaw:
-            case px3::OscillatorMode::karplus:
             case px3::OscillatorMode::organ:
             case px3::OscillatorMode::digital:
             case px3::OscillatorMode::physical:
@@ -911,10 +840,10 @@ float OscillatorUnit::renderSample(double sampleRate, const RenderContext& conte
         }
     }();
 
-    static constexpr std::array<float, 20> kModeTravelSlope {
+    static constexpr std::array<float, px3::oscillatorModeCount> kModeTravelSlope {
         0.00f, 0.08f, 0.10f, 0.06f, 0.16f,
         0.14f, 0.42f, 0.18f, 0.20f, 0.14f,
-        0.20f, 0.38f, 0.46f, 0.16f, 0.14f,
+        0.20f, 0.38f, 0.46f, 0.14f,
         0.34f, 0.24f, 0.34f, 0.20f, 0.40f
     };
 

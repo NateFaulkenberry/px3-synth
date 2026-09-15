@@ -10,9 +10,7 @@
 #include <vector>
 
 OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
-                                                                                                             juce::Slider& pitchIn,
-                                                                                                             juce::Label& pitchLabelIn,
-                                                                                                             juce::Label& pitchValueLabelIn,
+                                         TuningControls& tuningIn,
                                                                                                              juce::Slider& macroAIn,
                                                                                                              juce::Slider& macroBIn,
                                                                                                              juce::Slider& macroCIn,
@@ -28,9 +26,7 @@ OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
                                                                                                              juce::Label& vowelLabelIn,
                                                                                                              juce::Colour accentIn)
         : enabledButton(enabledButtonIn),
-            pitch(pitchIn),
-            pitchLabel(pitchLabelIn),
-            pitchValueLabel(pitchValueLabelIn),
+      tuning(tuningIn),
             macroA(macroAIn),
       macroB(macroBIn),
       macroC(macroCIn),
@@ -56,9 +52,10 @@ OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
     // click does not reach through it.
     wavetableGraph.setVisible(false);
     addChildComponent(wavetableGraph);
-    addAndMakeVisible(pitch);
-    addAndMakeVisible(pitchLabel);
-    addAndMakeVisible(pitchValueLabel);
+    for (auto* component : tuning.components())
+    {
+        addAndMakeVisible(*component);
+    }
     addAndMakeVisible(macroA);
     addAndMakeVisible(macroB);
     addAndMakeVisible(macroC);
@@ -198,7 +195,7 @@ void OscillatorComponent::resized()
 
     inner.setStylePath("cards.osc.cardInner");
     inner.setConfig(uiConfig);
-    inner.setRowCount(3);
+    inner.setRowCount(4);
     inner.layout(card.contentBelowTitle());
 
     // The power toggle is pinned to cardInner's corner, outside the flex flow,
@@ -287,13 +284,39 @@ void OscillatorComponent::resized()
         }
     }
 
-    // Row 2: the pitch knob and whichever macro knobs the current mode uses.
-    // The macros share the space left over, which is what the hand-rolled
-    // even-split this component used to do by hand.
+    // Row 2: static tuning. COARSE and FINE side by side, the same pair in the
+    // same place on every mode - and on the sub card.
     {
         auto flex = inner.rowFlex(1);
         const auto gap = inner.rowGap(1);
         const auto row = inner.rowContent(1);
+        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
+
+        const auto widths = px3::ui::fitRowItemWidths({ 72.0f, 72.0f }, gap.left + gap.right,
+                                                      static_cast<float>(juce::jmax(1, row.getWidth())));
+        for (const auto width : widths)
+        {
+            flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gap));
+        }
+        flex.performLayout(row.toFloat());
+
+        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
+        px3::ui::layoutLabelledControl(cell(0),
+                                       { &tuning.coarseLabel, &tuning.coarseKnob, &tuning.coarseValue,
+                                         ControlShape::square, 16, 16, 56 },
+                                       inner.rowControl(1));
+        px3::ui::layoutLabelledControl(cell(1),
+                                       { &tuning.fineLabel, &tuning.fineKnob, &tuning.fineValue,
+                                         ControlShape::square, 16, 16, 56 },
+                                       inner.rowControl(1));
+    }
+
+    // Row 3: whichever macro knobs the current mode uses, and the scan position
+    // in wavetable mode. Scaled to fit: the widest modes show three.
+    {
+        auto flex = inner.rowFlex(2);
+        const auto gap = inner.rowGap(2);
+        const auto row = inner.rowContent(2);
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
         const std::array<juce::Slider*, 3> macroSliders { &macroA, &macroB, &macroC };
@@ -309,58 +332,47 @@ void OscillatorComponent::resized()
             }
         }
 
-        // Pitch, then one cell per visible macro. Scaled to fit: the widest
-        // modes show three macros, and pitch plus three natural cells is wider
-        // than the row - which FlexBox would have let overflow rather than
-        // shrink, because their sizes are set explicitly.
         const auto showPosition = wtPositionSlider != nullptr && wtPositionSlider->isVisible();
+        const std::vector<float> natural(visibleMacros.size() + (showPosition ? 1u : 0u), 60.0f);
 
-        std::vector<float> natural { 72.0f };
-        natural.insert(natural.end(), visibleMacros.size() + (showPosition ? 1u : 0u), 60.0f);
-        const auto widths = px3::ui::fitRowItemWidths(natural, gap.left + gap.right,
-                                                      static_cast<float>(juce::jmax(1, row.getWidth())));
-        for (const auto width : widths)
+        if (! natural.empty())
         {
-            flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gap));
-        }
+            const auto widths = px3::ui::fitRowItemWidths(natural, gap.left + gap.right,
+                                                          static_cast<float>(juce::jmax(1, row.getWidth())));
+            for (const auto width : widths)
+            {
+                flex.items.add(juce::FlexItem(width, cellHeight).withMargin(gap));
+            }
+            flex.performLayout(row.toFloat());
 
-        flex.performLayout(row.toFloat());
+            const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
 
-        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
-        px3::ui::layoutLabelledControl(cell(0),
-                                       { &pitchLabel, &pitch, &pitchValueLabel,
-                                         ControlShape::square, 16, 16, 56 },
-                                       inner.rowControl(1));
+            if (showPosition)
+            {
+                px3::ui::layoutLabelledControl(cell(0),
+                                               { wtPositionLabel, wtPositionSlider, wtPositionValue,
+                                                 ControlShape::square, 16, 16, 56 },
+                                               inner.rowControl(2));
+            }
 
-        if (showPosition)
-        {
-            px3::ui::layoutLabelledControl(cell(1),
-                                       { wtPositionLabel, wtPositionSlider, wtPositionValue,
-                                         ControlShape::square, 16, 16, 56 },
-                                       inner.rowControl(1));
-        }
-
-        for (std::size_t i = 0; i < visibleMacros.size(); ++i)
-        {
-            const auto index = static_cast<std::size_t>(visibleMacros[i]);
-            px3::ui::layoutLabelledControl(cell(static_cast<int>(i) + 1 + (showPosition ? 1 : 0)),
-                                       // Same cap as the pitch knob, so a mode with a
-                                       // single macro - NOISE and PINK NOISE both show
-                                       // only COLOR - does not render it larger than
-                                       // the pitch knob beside it.
-                                       // Same label and readout heights as the pitch
-                                       // knob, so the two line up: the pitch cell has a
-                                       // value readout and a macro cell does not.
-                                       { macroLabels[index], macroSliders[index], macroValues[index],
-                                         ControlShape::square, 16, 16, 56 },
-                                       inner.rowControl(1));
+            for (std::size_t i = 0; i < visibleMacros.size(); ++i)
+            {
+                const auto index = static_cast<std::size_t>(visibleMacros[i]);
+                // Same label and readout heights as the tuning knobs above, so
+                // the rows line up and a single-macro mode does not draw its one
+                // knob larger than the tuning pair.
+                px3::ui::layoutLabelledControl(cell(static_cast<int>(i) + (showPosition ? 1 : 0)),
+                                               { macroLabels[index], macroSliders[index], macroValues[index],
+                                                 ControlShape::square, 16, 16, 56 },
+                                               inner.rowControl(2));
+            }
         }
     }
 
-    // Row 3 is the wave graph, which paint() draws rather than a child
+    // Row 4 is the wave graph, which paint() draws rather than a child
     // component owning it - except in wavetable mode, where a child component
     // owns it because it also has to accept dropped files.
-    wavetableGraph.setBounds(inner.rowContent(2).reduced(0, 2));
+    wavetableGraph.setBounds(inner.rowContent(3).reduced(0, 2));
 }
 
 void OscillatorComponent::mouseUp(const juce::MouseEvent& event)
@@ -370,7 +382,7 @@ void OscillatorComponent::mouseUp(const juce::MouseEvent& event)
     // that explained itself on hover would be noise.
     // The wave graph is a display, not a switch: it shows no pointer and it
     // takes no click, so the two agree.
-    if (inner.rowContent(2).contains(event.getPosition()))
+    if (inner.rowContent(3).contains(event.getPosition()))
     {
         return;
     }
@@ -385,7 +397,7 @@ void OscillatorComponent::mouseMove(const juce::MouseEvent& event)
 {
     // The wave graph is a display, not a control, so it does not take the
     // pointer that marks the rest of the card as clickable.
-    setMouseCursor(inner.rowContent(2).contains(event.getPosition())
+    setMouseCursor(inner.rowContent(3).contains(event.getPosition())
                        ? juce::MouseCursor::NormalCursor
                        : juce::MouseCursor::PointingHandCursor);
 }
@@ -428,7 +440,7 @@ void OscillatorComponent::paint(juce::Graphics& g)
     // The graph is row 3. This used to re-derive the whole vertical stack that
     // resized() had just walked, including the vowel-box branch, which meant
     // two copies of one layout kept in step by hand.
-    const auto graph = inner.rowContent(2).toFloat().reduced(0.0f, 2.0f);
+    const auto graph = inner.rowContent(3).toFloat().reduced(0.0f, 2.0f);
 
     // In wavetable mode a child component owns row 3, and its panel is
     // translucent - so painting the animated preview here as well leaves the old
@@ -623,7 +635,7 @@ void OscillatorComponent::applyModeUi()
         }
 
 
-    static const std::array<ModeUi, 20> modeUi { {
+    static const std::array<ModeUi, px3::oscillatorModeCount> modeUi { {
         { "", "", "", 0, false },
         { "", "", "", 0, false },
         { "", "", "", 0, false },
@@ -642,7 +654,6 @@ void OscillatorComponent::applyModeUi()
         { "MORPH", "COLOR", "", 2, true },
         { "RATIO", "INDEX", "", 2, false },
         { "SYNC", "DRIVE", "", 2, false },
-        { "DECAY", "BRIGHT", "", 2, false },
         { "TONE", "CLICK", "", 2, false },
         { "BITS", "RATE", "", 2, false },
         { "DECAY", "MATERIAL", "", 2, false },
@@ -710,9 +721,7 @@ void OscillatorComponent::applyEnabledUi()
         wtPositionLabel->setEnabled(live);
         wtPositionValue->setEnabled(live);
     }
-    pitch.setEnabled(currentEnabled);
-    pitchLabel.setEnabled(currentEnabled);
-    pitchValueLabel.setEnabled(currentEnabled);
+    tuning.setEnabled(currentEnabled);
 
     const std::array<juce::Slider*, 3> sliders { &macroA, &macroB, &macroC };
     const std::array<juce::Label*, 3> labels { &macroALabel, &macroBLabel, &macroCLabel };

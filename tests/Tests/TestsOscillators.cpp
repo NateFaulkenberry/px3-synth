@@ -1492,7 +1492,7 @@ void testWavetable()
         const Destination destinations[] = {
             { "osc1WtPos", "wavetable scan" },
             { "osc1MacroA", "osc macro" },
-            { "osc1Pitch", "osc pitch" },
+            { "osc1Fine", "osc fine tune" },
             { "filter1Cutoff", "filter cutoff" },
             { "osc1Level", "osc level" },
         };
@@ -1660,7 +1660,7 @@ void testWavetable()
         const Destination destinations[] = {
             { "osc1WtPos", "wavetable scan" },
             { "osc1MacroA", "osc macro" },
-            { "osc1Pitch", "osc pitch" },
+            { "osc1Fine", "osc fine tune" },
             { "filter1Cutoff", "filter cutoff" },
         };
 
@@ -2264,10 +2264,11 @@ void testSubOscillator()
         check("SubOscillator_ZeroLevelProducesSilence", silent);
     }
 
-    // Pitch is verified mathematically: the octave selector is a semitone
-    // offset, so the rendered period must match base * 2^(semitones/12).
-    struct OctaveCase { int index; int semitones; const char* label; };
-    const OctaveCase octaves[] = { { 0, 0, "0 OCT" }, { 1, -12, "-1 OCT" }, { 2, -24, "-2 OCT" } };
+    // Pitch is verified against the shared tuning model: Coarse Tune in whole
+    // octaves, Fine Tune in cents, the same as the main oscillators.
+    struct OctaveCase { float octaves; const char* label; };
+    const OctaveCase octaves[] = { { -2.0f, "minus2" }, { -1.0f, "minus1" }, { 0.0f, "zero" },
+                                   { 1.0f, "plus1" }, { 2.0f, "plus2" } };
 
     for (const auto& octave : octaves)
     {
@@ -2276,34 +2277,33 @@ void testSubOscillator()
         SubOscSettings settings;
         settings.enabled = true;
         settings.level = 1.0f;
-        settings.octaveIndex = octave.index;
+        settings.coarseOctaves = octave.octaves;
         settings.waveformIndex = 0; // SINE
         sub.setSettings(settings);
         sub.resetForNote();
 
-        constexpr double baseHz = 440.0;
+        constexpr double baseHz = 220.0;
         std::vector<float> signal;
         signal.reserve(48000);
         for (int i = 0; i < 48000; ++i) signal.push_back(sub.renderSample(baseHz));
 
-        const auto expected = baseHz * std::pow(2.0, octave.semitones / 12.0);
+        const auto expected = baseHz * std::pow(2.0, static_cast<double>(octave.octaves));
         const auto measured = estimateFrequency(signal, 1000, 32000, 20.0, 2000.0);
-        check((juce::String("SubOscillator_Octave_") + octave.label + "_ProducesExpectedFrequency").toRawUTF8(),
+        check((juce::String("SubOscillator_Coarse_") + octave.label + "_ProducesExpectedFrequency").toRawUTF8(),
               nearly(measured, expected, expected * 0.02),
               "expected " + fmt(expected, 2) + " Hz, measured " + fmt(measured, 2) + " Hz");
     }
 
-    // Fine pitch: the established range is +/-0.24 semitones, a detune trim,
-    // not a transpose. Verified against that range, not against an assumed one.
-    for (const auto cents : { -0.24f, 0.0f, 0.24f })
+    // Fine tune: +-24 cents, the range the main oscillators have.
+    for (const auto cents : { -24.0f, 0.0f, 24.0f })
     {
         SubOscillator sub;
         sub.prepare(kSampleRate);
         SubOscSettings settings;
         settings.enabled = true;
         settings.level = 1.0f;
-        settings.octaveIndex = 0;
-        settings.pitchSemitones = cents;
+        settings.coarseOctaves = 0.0f;
+        settings.fineCents = cents;
         settings.waveformIndex = 0;
         sub.setSettings(settings);
         sub.resetForNote();
@@ -2312,9 +2312,9 @@ void testSubOscillator()
         std::vector<float> signal;
         for (int i = 0; i < 96000; ++i) signal.push_back(sub.renderSample(baseHz));
 
-        const auto expected = baseHz * std::pow(2.0, static_cast<double>(cents) / 12.0);
+        const auto expected = baseHz * std::pow(2.0, static_cast<double>(cents) / 1200.0);
         const auto measured = estimateFrequency(signal, 1000, 64000, 300.0, 600.0);
-        check((juce::String("SubOscillator_PitchTrim_") + juce::String(cents, 2) + "st_ShiftsFrequency").toRawUTF8(),
+        check((juce::String("SubOscillator_Fine_") + juce::String(static_cast<int>(cents)) + "ct_ShiftsFrequency").toRawUTF8(),
               nearly(measured, expected, expected * 0.01),
               "expected " + fmt(expected, 3) + " Hz, measured " + fmt(measured, 3) + " Hz");
     }
@@ -2330,7 +2330,7 @@ void testSubOscillator()
             SubOscSettings settings;
             settings.enabled = true;
             settings.level = 1.0f;
-            settings.octaveIndex = 0;
+            settings.coarseOctaves = 0.0f;
             settings.waveformIndex = waveform;
             sub.setSettings(settings);
             sub.resetForNote();
@@ -2371,7 +2371,7 @@ void testSubOscillator()
             SubOscSettings settings;
             settings.enabled = true;
             settings.level = level;
-            settings.octaveIndex = 0;
+            settings.coarseOctaves = 0.0f;
             settings.waveformIndex = 0;
             sub.setSettings(settings);
             sub.resetForNote();
@@ -2396,7 +2396,7 @@ void testSubOscillator()
         SubOscSettings settings;
         settings.enabled = true;
         settings.level = 1.0f;
-        settings.octaveIndex = 1;
+        settings.coarseOctaves = -1.0f;
         settings.waveformIndex = 1;
         a.prepare(kSampleRate); a.setSettings(settings);
         b.prepare(kSampleRate); b.setSettings(settings);
@@ -2422,7 +2422,7 @@ void testSubOscillator()
         SubOscSettings settings;
         settings.enabled = true;
         settings.level = 1.0f;
-        settings.octaveIndex = 0;
+        settings.coarseOctaves = 0.0f;
         settings.waveformIndex = 0;
         low.prepare(kSampleRate); low.setSettings(settings); low.resetForNote();
         high.prepare(kSampleRate); high.setSettings(settings); high.resetForNote();
@@ -2446,7 +2446,7 @@ void testSubOscillator()
         makePlainPatch(processor);
         setParam(processor, "osc1Enabled", 0.0f);
         setParam(processor, "subOscEnabled", 1.0f);
-        setChoice(processor, "subOscOctave", 0);
+        setParam(processor, "subOscCoarse", 0.0f);
         setChoice(processor, "subOscWaveform", 0);
         const auto capture = render(processor, 48000, { { 2000, true, 69, 0.9f } });
         // MIDI 69 is A440; the 0 OCT setting must reproduce it.
@@ -2475,11 +2475,12 @@ void testOscillators()
 {
     suite("OSCILLATORS");
 
-    // Coarse tune is the transpose control (+/-24 semitones). An octave up must
-    // double the frequency and an octave down must halve it.
-    struct CoarseCase { float semitones; double ratio; const char* label; };
+    // Coarse tune moves in whole octaves (-2..+2). An octave up must double the
+    // frequency and an octave down must halve it. The full ranges, and fine
+    // tune to the cent, are in testOscillatorTuning.
+    struct CoarseCase { float octaves; double ratio; const char* label; };
     const CoarseCase coarseCases[] = {
-        { -12.0f, 0.5, "minus12" }, { 0.0f, 1.0, "zero" }, { 12.0f, 2.0, "plus12" }
+        { -1.0f, 0.5, "minus1" }, { 0.0f, 1.0, "zero" }, { 1.0f, 2.0, "plus1" }
     };
 
     for (int oscIndex = 1; oscIndex <= 3; ++oscIndex)
@@ -2494,7 +2495,7 @@ void testOscillators()
                 setParam(processor, juce::String("osc") + other + "Enabled",
                          juce::String(other) == slot ? 1.0f : 0.0f);
             }
-            setParam(processor, "osc" + slot + "Coarse", coarse.semitones);
+            setParam(processor, "osc" + slot + "Coarse", coarse.octaves);
 
             const auto capture = render(processor, 48000, { { 2000, true, 69, 0.9f } });
             const auto expected = 440.0 * coarse.ratio;
@@ -2504,19 +2505,6 @@ void testOscillators()
                   nearly(hz, expected, expected * 0.03),
                   "expected " + fmt(expected, 2) + " Hz, measured " + fmt(hz, 2) + " Hz");
         }
-    }
-
-    // Fine tune is in cents; +100 cents is one semitone.
-    {
-        PX3SynthAudioProcessor processor;
-        makePlainPatch(processor);
-        setParam(processor, "osc1Fine", 100.0f);
-        const auto capture = render(processor, 96000, { { 2000, true, 69, 0.9f } });
-        const auto expected = 440.0 * std::pow(2.0, 1.0 / 12.0);
-        const auto hz = estimateFrequency(capture.left, 12000, 64000, 300.0, 700.0);
-        check("Osc1_FineTune100Cents_EqualsOneSemitone",
-              nearly(hz, expected, expected * 0.01),
-              "expected " + fmt(expected, 2) + " Hz, measured " + fmt(hz, 2) + " Hz");
     }
 
     // Enable/disable, per oscillator, independently.
@@ -2549,7 +2537,7 @@ void testOscillators()
     {
         std::vector<double> rmsByMode;
         std::vector<juce::uint64> hashByMode;
-        for (int mode = 0; mode < 20; ++mode)
+        for (int mode = 0; mode < px3::oscillatorModeCount; ++mode)
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
@@ -2576,59 +2564,6 @@ void testOscillators()
               unique.size() == hashByMode.size(),
               juce::String(static_cast<int>(unique.size())) + " distinct of "
                   + juce::String(static_cast<int>(hashByMode.size())));
-    }
-
-    // KARPLUS excitation. A plucked string is excited by a burst filling the
-    // whole delay line; if that burst does not reach the output the mode is
-    // audible only as a faint click. Compared against a plain sine at the same
-    // settings, because "produces some audio" is too weak to catch a 20x level
-    // deficit.
-    {
-        PX3SynthAudioProcessor sine, karplus;
-        makePlainPatch(sine);
-        makePlainPatch(karplus);
-        setChoice(karplus, "osc1Mode", 13);
-        setParam(karplus, "osc1MacroA", 1.0f); // longest decay: the string should ring
-        setParam(karplus, "osc1MacroB", 0.8f);
-
-        const auto sineCapture = render(sine, 48000, { { 2000, true, 57, 0.9f } });
-        const auto karplusCapture = render(karplus, 48000, { { 2000, true, 57, 0.9f } });
-        // Measured over the first 100 ms, where the pluck is loudest.
-        const auto sineOnset = sineCapture.rmsOver(2000, 6800);
-        const auto karplusOnset = karplusCapture.rmsOver(2000, 6800);
-        // A fifth, not a quarter. Karplus excites the string from the shared
-        // system random, which cannot be seeded, so this figure moves run to
-        // run: measured over twelve runs it spans 0.0285 to 0.0395 against a
-        // sine's 0.109, and a quarter threshold sits at 0.0272 - inside that
-        // spread, which made the assertion fail perhaps one run in ten. The
-        // claim being made is "the excitation reaches the output at all", and a
-        // fifth still says that with the whole measured range clear of it.
-        check("Karplus_ExcitationReachesOutput",
-              karplusOnset > sineOnset * 0.20,
-              "karplus onset rms " + fmt(karplusOnset, 5)
-                  + " vs sine " + fmt(sineOnset, 5)
-                  + " (a pluck must be at least a quarter of a sustained sine)");
-    }
-
-    {
-        // The excitation is a noise burst spanning one delay period, so a low
-        // note (long delay line) must carry at least as much onset energy as a
-        // high one. If the burst is being overwritten before it is read, only
-        // the few samples of note-age noise survive and pitch stops mattering.
-        PX3SynthAudioProcessor low, high;
-        makePlainPatch(low);
-        makePlainPatch(high);
-        for (auto* p : { &low, &high })
-        {
-            setChoice(*p, "osc1Mode", 13);
-            setParam(*p, "osc1MacroA", 1.0f);
-        }
-        const auto lowCapture = render(low, 48000, { { 2000, true, 33, 0.9f } });   // ~55 Hz
-        const auto highCapture = render(high, 48000, { { 2000, true, 81, 0.9f } }); // ~880 Hz
-        check("Karplus_LowNoteExcitationIsNotWeakerThanHighNote",
-              lowCapture.rmsOver(2000, 6800) > highCapture.rmsOver(2000, 6800) * 0.5,
-              "low " + fmt(lowCapture.rmsOver(2000, 6800), 5)
-                  + " vs high " + fmt(highCapture.rmsOver(2000, 6800), 5));
     }
 
     // Independence: changing one oscillator must not alter the others.
@@ -2678,20 +2613,20 @@ void testOscillators()
 
         independenceCheck("Osc1_UnaffectedByOsc2ParameterChanges", 1, [](PX3SynthAudioProcessor& p)
         {
-            setParam(p, "osc2Coarse", 7.0f);
+            setParam(p, "osc2Coarse", 1.0f);
             setChoice(p, "osc2Mode", 6);
-            setParam(p, "osc2Fine", 30.0f);
+            setParam(p, "osc2Fine", 20.0f);
         });
         independenceCheck("Osc2_UnaffectedByOsc1AndOsc3ParameterChanges", 2, [](PX3SynthAudioProcessor& p)
         {
-            setParam(p, "osc1Coarse", -5.0f);
-            setParam(p, "osc3Fine", 40.0f);
+            setParam(p, "osc1Coarse", -1.0f);
+            setParam(p, "osc3Fine", 20.0f);
             setChoice(p, "osc1Mode", 1);
         });
         independenceCheck("Osc3_UnaffectedBySubOscillatorParameterChanges", 3, [](PX3SynthAudioProcessor& p)
         {
-            setChoice(p, "subOscOctave", 2);
-            setParam(p, "subOscPitch", 0.2f);
+            setParam(p, "subOscCoarse", -2.0f);
+            setParam(p, "subOscFine", 20.0f);
         });
     }
 
@@ -2705,10 +2640,10 @@ void testOscillators()
         for (auto* p : { &two, &three })
         {
             setParam(*p, "osc2Enabled", 1.0f);
-            setParam(*p, "osc2Coarse", 7.0f);
+            setParam(*p, "osc2Coarse", 1.0f);
         }
         setParam(three, "osc3Enabled", 1.0f);
-        setParam(three, "osc3Coarse", 12.0f);
+        setParam(three, "osc3Coarse", 2.0f);
 
         const auto r1 = render(one, 32000, { { 2000, true, 57, 0.9f } }).rms();
         const auto r2 = render(two, 32000, { { 2000, true, 57, 0.9f } }).rms();

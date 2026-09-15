@@ -278,7 +278,6 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
         uiConfig->applyComboStyle(comboStyle, lfoWaveformBox);
         uiConfig->applyComboStyle(comboStyle, lfoAssignBox);
         uiConfig->applyComboStyle(comboStyle, envAssignBox);
-        uiConfig->applyComboStyle(comboStyle, subOscOctaveBox);
         uiConfig->applyComboStyle(comboStyle, subOscWaveformBox);
         uiConfig->applyComboStyle(comboStyle, vibeTypeBox);
         uiConfig->applyComboStyle(comboStyle, filterTypeBox);

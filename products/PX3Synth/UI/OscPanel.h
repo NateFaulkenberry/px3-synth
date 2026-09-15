@@ -14,16 +14,10 @@ class OscPanel final : public juce::Component
 {
 public:
     OscPanel(juce::ToggleButton& subEnabledButton,
-             juce::Slider& subPitchKnob,
-             juce::Label& subPitchLabel,
-             juce::Label& subPitchValueLabel,
-             juce::ComboBox& subOctaveBox,
-             juce::Label& subOctaveLabel,
+             TuningControls& subTuning,
              juce::ComboBox& subWaveformBox,
              juce::Label& subWaveformLabel,
-             juce::Slider& osc1PitchKnob,
-             juce::Label& osc1PitchLabel,
-             juce::Label& osc1PitchValueLabel,
+             TuningControls& osc1Tuning,
              juce::Slider& osc1MacroA,
              juce::Slider& osc1MacroB,
              juce::Slider& osc1MacroC,
@@ -38,9 +32,7 @@ public:
              juce::Label& osc1ModeLabel,
              juce::ComboBox& osc1VowelBox,
              juce::Label& osc1VowelLabel,
-             juce::Slider& osc2PitchKnob,
-             juce::Label& osc2PitchLabel,
-             juce::Label& osc2PitchValueLabel,
+             TuningControls& osc2Tuning,
              juce::Slider& osc2MacroA,
              juce::Slider& osc2MacroB,
              juce::Slider& osc2MacroC,
@@ -55,9 +47,7 @@ public:
              juce::Label& osc2ModeLabel,
              juce::ComboBox& osc2VowelBox,
              juce::Label& osc2VowelLabel,
-             juce::Slider& osc3PitchKnob,
-             juce::Label& osc3PitchLabel,
-             juce::Label& osc3PitchValueLabel,
+             TuningControls& osc3Tuning,
              juce::Slider& osc3MacroA,
              juce::Slider& osc3MacroB,
              juce::Slider& osc3MacroC,
@@ -90,7 +80,7 @@ public:
                               juce::Label& positionValue);
 
     WavetableGraph* getWavetableGraph(int oscIndex);
-    void refreshSubOscFromParameters(bool enabled, int octaveIndex, int waveformIndex);
+    void refreshSubOscFromParameters(bool enabled, int waveformIndex);
     void advanceAnimation(float oscDeltaPhase);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 

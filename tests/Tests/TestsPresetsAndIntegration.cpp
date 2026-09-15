@@ -26,13 +26,12 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     setParam(processor, "osc3Enabled", 0.0f);
     setChoice(processor, "osc1Mode", 13);
     setChoice(processor, "osc2Mode", 6);
-    setChoice(processor, "osc3Mode", 19);
-    setParam(processor, "osc1Coarse", -7.0f);
-    setParam(processor, "osc2Coarse", 5.0f);
-    setParam(processor, "osc3Coarse", 12.0f);
-    setParam(processor, "osc1Fine", -37.0f);
-    setParam(processor, "osc2Fine", 63.0f);
-    setParam(processor, "osc1Pitch", 0.17f);
+    setChoice(processor, "osc3Mode", 18);
+    setParam(processor, "osc1Coarse", -1.0f);
+    setParam(processor, "osc2Coarse", 1.0f);
+    setParam(processor, "osc3Coarse", 2.0f);
+    setParam(processor, "osc1Fine", -17.0f);
+    setParam(processor, "osc2Fine", 23.0f);
     setParam(processor, "osc2MacroA", 0.234f);
     setParam(processor, "osc2MacroB", 0.876f);
     setParam(processor, "osc3MacroC", 0.412f);
@@ -41,9 +40,9 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     setParam(processor, "osc2H7", 0.041f);
 
     setParam(processor, "subOscEnabled", 1.0f);
-    setChoice(processor, "subOscOctave", 2);
+    setParam(processor, "subOscCoarse", -2.0f);
     setChoice(processor, "subOscWaveform", 0);
-    setParam(processor, "subOscPitch", -0.19f);
+    setParam(processor, "subOscFine", -19.0f);
 
     for (const auto* slot : { "1", "2" })
     {
@@ -73,8 +72,6 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     setParam(processor, "lfoRampTime", 17.3f);
     setParam(processor, "lfo3RampTime", 52.0f);
     setParam(processor, "lfo2KeySync", 1.0f);
-    setParam(processor, "osc2PitchMod", -7.5f);
-    setParam(processor, "subOscPitchMod", 3.25f);
     setChoice(processor, "filterRouting", 1);
     setParam(processor, "filterParallelBalance", 0.27f);
 
@@ -111,7 +108,7 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     }
     processor.setLfoAssignmentByParameterId(0, "filter2Cutoff", false);
     processor.setLfoAssignmentByParameterId(1, "mix.osc2.pan", false);
-    processor.setLfoAssignmentByParameterId(2, "osc1Pitch", false);
+    processor.setLfoAssignmentByParameterId(2, "osc1Fine", false);
 
     setParam(processor, "vibeEnabled", 1.0f);
     setParam(processor, "vibeAmount", 0.67f);
@@ -1002,7 +999,7 @@ void testIntegration()
                       setParam(p, i == 0 ? juce::String("lfoFrequency") : prefix + "Frequency", 20.0f);
                   }
                   p.setLfoAssignmentByParameterId(0, "filter1Cutoff", false);
-                  p.setLfoAssignmentByParameterId(1, "osc1Pitch", false);
+                  p.setLfoAssignmentByParameterId(1, "osc1Fine", false);
                   p.setLfoAssignmentByParameterId(2, "mix.osc1.pan", false);
                   p.setEnvelopeAssignmentByParameterId(0, "filter1Resonance", false);
                   p.setEnvelopeAssignmentByParameterId(1, "osc1Level", false);
