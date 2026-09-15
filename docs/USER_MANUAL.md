@@ -979,7 +979,7 @@ close to the stereo output but not identical to it.
 The setting is saved with your session. Switching it while notes sound
 crossfades rather than clicking.
 
-> **Changed after v0.7.5:** before this, any host that enabled the second pair got
+> **Changed in v0.7.6:** before this, any host that enabled the second pair got
 > the dry mix alone on 1/2 — and Logic enables it on every instance, so the
 > effects could not be heard there. Sessions saved earlier load with this
 > setting off.
