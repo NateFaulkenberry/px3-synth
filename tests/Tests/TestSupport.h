@@ -1518,6 +1518,7 @@ void testAmpEnvelope();
 void testModEnvelopes();
 void testLfo();
 void testModulationUpgrade();
+void testKeyboardNotes();
 void testVibe();
 void testReverb();
 void testComb();

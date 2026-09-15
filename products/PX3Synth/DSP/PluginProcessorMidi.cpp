@@ -119,12 +119,14 @@ void PX3SynthAudioProcessor::updateActiveNotesFromMidi(const juce::MidiBuffer& m
                 }
                 else
                 {
-                    decrementNoteCount(index);
-
-                    if (activeNoteCounts[index].load(std::memory_order_relaxed) <= 0)
-                    {
-                        activeNoteVelocities[index].store(0, std::memory_order_relaxed);
-                    }
+                    // A note-off clears the key, however many note-ons it had.
+                    // The synth releases every voice on that note at the first
+                    // note-off, so a count left above zero - a second note-on
+                    // from MIDI thru, an overlapping recorded note, a hardware
+                    // key and a mouse click on one note - kept a key lit and
+                    // animating that was no longer sounding.
+                    activeNoteCounts[index].store(0, std::memory_order_relaxed);
+                    activeNoteVelocities[index].store(0, std::memory_order_relaxed);
                 }
 
                 lastMidiNote.store(midiNote, std::memory_order_relaxed);
@@ -175,10 +177,20 @@ void PX3SynthAudioProcessor::pushVirtualNote(VirtualNote event)
     // acquire sees the slot's contents, never just the index.
     const auto write = virtualNoteWrite.load(std::memory_order_relaxed);
     const auto next = (write + 1) % kVirtualNoteCapacity;
+    const auto read = virtualNoteRead.load(std::memory_order_acquire);
 
-    if (next == virtualNoteRead.load(std::memory_order_acquire))
+    // Drop rather than block, which is the whole point - but never a note-off.
+    // Note-ons stop short of the end of the ring, so the note-offs that release
+    // them always have room. A dropped note-off is a key that stays held: the
+    // ring fills whenever the host is not running audio and the keyboard is
+    // still being played.
+    constexpr int kSlotsKeptForNoteOffs = 32;
+    const auto used = (write - read + kVirtualNoteCapacity) % kVirtualNoteCapacity;
+    const auto freeSlots = kVirtualNoteCapacity - 1 - used;
+
+    if (next == read || (event.isNoteOn && freeSlots <= kSlotsKeptForNoteOffs))
     {
-        return;   // full - drop rather than block, which is the whole point
+        return;
     }
 
     virtualNotes[static_cast<std::size_t>(write)] = event;

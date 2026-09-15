@@ -320,10 +320,12 @@ void PianoKeyboard::setSilenced(bool shouldBeSilenced)
         // bypassed would otherwise stay lit under the grey, and its sparks
         // would keep animating over a keyboard that can no longer sound.
         sparks.clear();
+        // Released, not just forgotten: dropping the key here without its
+        // note-off left the note sounding and the key held for good.
+        releaseHeldNote();
         activeNotes.fill(false);
         previousActiveNotes.fill(false);
         noteVelocities.fill(0.0f);
-        heldMidiNote = -1;
 
         // The sparks are drawn on the overlay above, so clearing them here and
         // repainting THIS component leaves the last frame of them on screen
@@ -537,28 +539,37 @@ void PianoKeyboard::mouseDrag(const juce::MouseEvent& event)
     }
 }
 
+void PianoKeyboard::releaseHeldNote()
+{
+    const auto note = heldMidiNote;
+    heldMidiNote = -1;
+
+    if (note >= firstMidiNote && note <= lastMidiNote && onNoteOff)
+    {
+        onNoteOff(note);
+    }
+}
+
 void PianoKeyboard::mouseUp(const juce::MouseEvent&)
 {
-    if (heldMidiNote >= firstMidiNote && heldMidiNote <= lastMidiNote && onNoteOff)
-    {
-        onNoteOff(heldMidiNote);
-    }
-
-    heldMidiNote = -1;
+    releaseHeldNote();
 }
 
 void PianoKeyboard::mouseExit(const juce::MouseEvent&)
 {
-    if (heldMidiNote >= firstMidiNote && heldMidiNote <= lastMidiNote && onNoteOff)
-    {
-        onNoteOff(heldMidiNote);
-    }
-
-    heldMidiNote = -1;
+    releaseHeldNote();
 }
 
 void PianoKeyboard::timerCallback()
 {
+    // A mouse-up the host never delivered - the window losing focus mid-press,
+    // a host shortcut taking the click - left the key held and its note on. If
+    // no button is actually down any more, the press is over.
+    if (heldMidiNote >= 0 && ! juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown())
+    {
+        releaseHeldNote();
+    }
+
     if (silenced)
     {
         // Nothing to advance: no sparks, no held keys, no vibration. But if

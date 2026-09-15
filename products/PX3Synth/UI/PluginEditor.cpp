@@ -180,6 +180,10 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
 {
     stopTimer();
 
+    // A key held while the window closes gets no mouse-up. Release it now,
+    // while the processor it reports to is still ours to call.
+    pianoKeyboard.releaseHeldNote();
+
     // Off the global preference's list before anything else. The settings
     // service outlives every editor, so a listener left registered here is a
     // call into freed memory the next time any OTHER window changes the

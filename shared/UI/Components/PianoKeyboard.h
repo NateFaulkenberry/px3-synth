@@ -101,6 +101,11 @@ public:
     // to the mouse, and says why.
     void setSilenced(bool shouldBeSilenced);
 
+    // Sends the note-off for the key the mouse is holding, if any. Every path
+    // that stops tracking a held key goes through here, so none of them can
+    // forget the key without releasing it.
+    void releaseHeldNote();
+
     // A message in the same banner the silenced warning uses, over a keyboard
     // that is still playable. Select Mode needs to say something without
     // taking the keys away - the user may well want to play while assigning.
