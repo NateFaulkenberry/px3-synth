@@ -39,6 +39,10 @@
 #include "TopMenuBar.h"
 #include "DelayComponent.h"
 #include "UIConfigManager.h"
+#include "UILayout.h"
+#if PX3_UI_DESIGNER
+#include "UILayoutDesigner.h"
+#endif
 
 /**
  * Main JUCE editor for P(X3).
@@ -585,6 +589,30 @@ private:
     juce::File resolveUiConfigFile() const;
     void loadUiConfig(bool forceReload);
     void applyUiConfig();
+    juce::File resolveUILayoutFile() const;
+    void loadUILayout();
+    juce::Rectangle<int> layoutBoundsForRegion(const juce::String& id,
+                                               juce::Rectangle<int> fallback) const;
+    void applyInstrumentSceneStyles();
+    void applyUILayoutSectionOrder();
+    bool isPrimaryCoreComposite() const noexcept;
+#if PX3_UI_DESIGNER
+    void openUILayoutDesigner();
+    void closeUILayoutDesigner();
+    void selectLayoutRegion(const juce::String& id);
+    juce::String updateLayoutRegionBounds(const juce::String& id,
+                                          juce::Rectangle<float> bounds);
+    juce::String updateLayoutRegionOrder(const juce::String& id, int order);
+    juce::String updateLayoutRegionStyle(const juce::String& id, const juce::String& styleToken);
+    juce::String updateSceneLayoutMode(const juce::String& id,
+                                       px3::ui::InstrumentSceneLayoutMode mode);
+    juce::String updateSceneParent(const juce::String& id, const juce::String& parentId);
+    juce::String updateSceneFlow(const juce::String& id,
+                                 float flexGrow,
+                                 float spacing,
+                                 int gridColumns);
+    void refreshUILayoutSelection();
+#endif
 
     static juce::String fxModuleIdFromSection(int sectionId);
 
@@ -681,7 +709,6 @@ private:
     bool anyOscillatorEngaged { true };
     void refreshOscillatorEngagedState();
 
-    juce::Image backgroundImage;
     juce::Image logoFrame;
     juce::Image logoGlitchMaskR;
     juce::Image logoGlitchMaskG;
@@ -1154,5 +1181,12 @@ private:
 
     UIConfigManager uiConfigManager;
     std::shared_ptr<const UIConfig> uiConfig;
+    px3::ui::InstrumentSceneDocument uiLayout;
+    juce::File uiLayoutFile;
+#if PX3_UI_DESIGNER
+    std::unique_ptr<UILayoutDesignerWindow> uiDesignerWindow;
+    std::unique_ptr<UILayoutSelectionOverlay> uiSelectionOverlay;
+    juce::String selectedLayoutRegionId;
+#endif
     uint32_t uiConfigLastErrorLogMs { 0 };
 };

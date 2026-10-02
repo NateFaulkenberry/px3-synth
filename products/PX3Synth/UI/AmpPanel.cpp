@@ -29,6 +29,16 @@ void AmpPanel::setKnobLookAndFeel(juce::LookAndFeel* lookAndFeel)
 
 void AmpPanel::paint(juce::Graphics& g)
 {
+    if (hasSceneStyle)
+    {
+        const auto area = getLocalBounds().toFloat().reduced(2.0f);
+        g.setColour(sceneBackground);
+        g.fillRoundedRectangle(area, sceneCornerRadius);
+        g.setColour(accent);
+        g.drawRoundedRectangle(area, sceneCornerRadius, sceneBorderWidth);
+        return;
+    }
+
     const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("amp.panel.fillAlpha", 0.0f) : 0.0f;
     const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("amp.panel.strokeAlpha", 0.0f) : 0.0f;
     const auto panelRadius = uiConfig != nullptr ? uiConfig->getFloat("amp.panel.cornerRadius", 10.0f) : 10.0f;
@@ -38,6 +48,36 @@ void AmpPanel::paint(juce::Graphics& g)
 
     g.setColour(accent.withAlpha(strokeAlpha));
     g.drawRoundedRectangle(area, panelRadius, 1.0f);
+}
+
+void AmpPanel::setSceneStyle(juce::Colour background,
+                             juce::Colour foreground,
+                             juce::Colour accentIn,
+                             float cornerRadius,
+                             float borderWidth)
+{
+    sceneBackground = background;
+    accent = accentIn;
+    sceneCornerRadius = juce::jmax(0.0f, cornerRadius);
+    sceneBorderWidth = juce::jmax(0.0f, borderWidth);
+    hasSceneStyle = true;
+
+    if (ampEnvelopeComponent != nullptr)
+    {
+        const auto tint = [foreground](auto&& self, juce::Component& component) -> void
+        {
+            if (dynamic_cast<juce::Label*>(&component) != nullptr)
+            {
+                component.setColour(juce::Label::textColourId, foreground);
+            }
+            for (int i = 0; i < component.getNumChildComponents(); ++i)
+            {
+                self(self, *component.getChildComponent(i));
+            }
+        };
+        tint(tint, *ampEnvelopeComponent);
+    }
+    repaint();
 }
 
 void AmpPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)

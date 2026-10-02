@@ -319,11 +319,15 @@ void testEditorLayout()
             // panel it names? Checked by type rather than by pixels, so an
             // intentional visual change does not break it.
             {
-                const auto visiblePanelFor = [&](int section)
+                const auto visiblePanelsFor = [&](int section)
                 {
                     editor->debugSelectSection(section);
 
-                    juce::String found;
+                    juce::StringArray found;
+                    const auto addPanel = [&found](const juce::String& name)
+                    {
+                        if (! found.contains(name)) { found.add(name); }
+                    };
                     std::function<void(juce::Component&, bool)> walk =
                         [&](juce::Component& parent, bool parentShown)
                     {
@@ -334,13 +338,13 @@ void testEditorLayout()
 
                             if (shown)
                             {
-                                if (dynamic_cast<OscPanel*>(child))      { found = "OSC"; }
-                                else if (dynamic_cast<ModPanel*>(child)) { found = "MOD"; }
-                                else if (dynamic_cast<AmpPanel*>(child)) { found = "AMP"; }
-                                else if (dynamic_cast<FltPanel*>(child)) { found = "FLT"; }
-                                else if (dynamic_cast<FxPanel*>(child))  { found = "FX"; }
-                                else if (dynamic_cast<MixPanel*>(child)) { found = "MIX"; }
-                                else if (dynamic_cast<SettingsPanel*>(child)) { found = "SETTINGS"; }
+                                if (dynamic_cast<OscPanel*>(child))      { addPanel("OSC"); }
+                                else if (dynamic_cast<ModPanel*>(child)) { addPanel("MOD"); }
+                                else if (dynamic_cast<AmpPanel*>(child)) { addPanel("AMP"); }
+                                else if (dynamic_cast<FltPanel*>(child)) { addPanel("FLT"); }
+                                else if (dynamic_cast<FxPanel*>(child))  { addPanel("FX"); }
+                                else if (dynamic_cast<MixPanel*>(child)) { addPanel("MIX"); }
+                                else if (dynamic_cast<SettingsPanel*>(child)) { addPanel("SETTINGS"); }
                             }
 
                             walk(*child, shown);
@@ -350,17 +354,33 @@ void testEditorLayout()
                     return found;
                 };
 
-                const juce::StringArray expected { "OSC", "MOD", "AMP", "FLT", "FX", "MIX",
-                                                   "SETTINGS" };
+                const auto primary = visiblePanelsFor(0);
+                const juce::StringArray sections { "MOD", "AMP", "FLT", "FX", "MIX", "SETTINGS" };
                 juce::StringArray actual;
-                for (int section = 0; section <= 6; ++section)
+                for (int section = 1; section <= 6; ++section)
                 {
-                    actual.add(visiblePanelFor(section));
+                    actual.add(visiblePanelsFor(section).joinIntoString("+"));
                 }
 
-                check("EditorPaint_EachSectionShowsThePanelItNames",
-                      actual == expected,
-                      "the seven sections show " + actual.joinIntoString(", "));
+                check("EditorPaint_PrimarySurfaceShowsOscillatorFilterAndAmp",
+                      primary.contains("OSC") && primary.contains("FLT") && primary.contains("AMP"),
+                      primary.joinIntoString("+"));
+                check("EditorPaint_SecondarySectionsShowTheirOwnPanels",
+                      actual == sections,
+                        "the six secondary sections show " + actual.joinIntoString(", "));
+            }
+
+            if (auto* topMenu = editor->debugTopMenuBar(); topMenu != nullptr)
+            {
+                const std::array<int, 6> reversedOrder { 5, 4, 3, 2, 1, 0 };
+                topMenu->setSectionOrder(reversedOrder);
+                const auto reversedVisually = topMenu->getSectionButtonBounds(5).getX()
+                                           < topMenu->getSectionButtonBounds(0).getX();
+                topMenu->setSelectedSection(0);
+                check("EditorLayout_TabReorderKeepsStableSectionIdentity",
+                      reversedVisually && topMenu->getSectionButton(0).getToggleState()
+                          && ! topMenu->getSectionButton(5).getToggleState(),
+                      "reordered geometry preserves parameter/view section IDs");
             }
 
             check("EditorPaint_NoTwoPanelsDrawTheSamePicture",

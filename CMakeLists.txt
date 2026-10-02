@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 # Single source of truth for plugin/project SemVer.
-set(PX3_VERSION "0.7.6")
+set(PX3_VERSION "0.8.0")
 
 if (NOT PX3_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
     message(FATAL_ERROR "PX3_VERSION must use SemVer MAJOR.MINOR.PATCH (example: 0.1.0).")
@@ -26,6 +26,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(PX3_COPY_PLUGIN_AFTER_BUILD "Copy plugin formats into local plugin folders after building" ON)
 option(PX3_DEBUG_PANEL "Enable in-plugin debug panel UI" OFF)
+option(PX3_UI_DESIGNER "Enable the developer-only visual UI layout editor" OFF)
 # Temporary offline signal-path isolation harness. OFF for normal plugin builds.
 option(PX3_BUILD_DIAGNOSTIC "Build the offline PX3Diag signal-path harness" OFF)
 
@@ -122,6 +123,7 @@ set(PX3_SYNTH_SOURCES
         products/PX3Synth/UI/PluginEditorView.cpp
         products/PX3Synth/UI/PluginEditorConfig.cpp
         products/PX3Synth/UI/PluginEditorBuild.cpp
+        products/PX3Synth/UI/UILayout.cpp
         products/PX3Synth/UI/MacroStrip.cpp
         products/PX3Synth/UI/MacroDepthPanel.cpp
         products/PX3Synth/UI/SettingsPanel.cpp
@@ -170,6 +172,10 @@ set(PX3_SYNTH_SOURCES
         products/PX3Synth/Preset/PresetManager.cpp
         products/PX3Synth/Preset/FactoryPresets.cpp
 )
+
+if (PX3_UI_DESIGNER)
+    list(APPEND PX3_SYNTH_SOURCES products/PX3Synth/UI/UILayoutDesigner.cpp)
+endif()
 
 # Everything the Synth target compiles. Named so the tools and test targets,
 # which build the Synth in full, can ask for it by one name.
@@ -408,7 +414,6 @@ px3_add_product(
 
 juce_add_binary_data(PX3Assets
     SOURCES
-        products/PX3Synth/Assets/ppp.png
         products/PX3Synth/Assets/px3.gif
 )
 
@@ -457,6 +462,7 @@ if (PX3_BUILD_DIAGNOSTIC)
             JUCE_USE_CURL=0
             JUCE_STANDALONE_APPLICATION=1
             PX3_DEBUG_PANEL=0
+            PX3_UI_DESIGNER=0
             PX3_DIAGNOSTICS=0
             JucePlugin_Name="PX3 Synth"
     )
@@ -548,6 +554,7 @@ if (PX3_BUILD_DIAGNOSTIC)
             JUCE_USE_CURL=0
             JUCE_STANDALONE_APPLICATION=1
             PX3_DEBUG_PANEL=0
+            PX3_UI_DESIGNER=0
             PX3_DIAGNOSTICS=0
             # The GPU check needs to pump the message loop to let a GL context
             # come up. Only the test tool - the plugin must never run a modal

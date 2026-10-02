@@ -337,6 +337,9 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
         import,
         exportPreset,
         settings,
+    #if PX3_UI_DESIGNER
+        uiDesigner,
+    #endif
         debug,
         // Never dispatched: the item carrying it is disabled, so it is a label
         // in the menu rather than a command.
@@ -359,6 +362,9 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
     // are all about the preset in front of you, and this one is not.
     menu.addSeparator();
     menu.addItem(MenuItemId::settings, "Settings");
+#if PX3_UI_DESIGNER
+    menu.addItem(MenuItemId::uiDesigner, "UI Designer");
+#endif
 #if PX3_DEBUG_PANEL
     menu.addSeparator();
     menu.addItem(MenuItemId::debug, "Debug");
@@ -439,6 +445,11 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
                                    break;
                                case MenuItemId::debug:
                                    toggleDebugWindow();
+                                   break;
+#endif
+#if PX3_UI_DESIGNER
+                               case MenuItemId::uiDesigner:
+                                   openUILayoutDesigner();
                                    break;
 #endif
                                default:

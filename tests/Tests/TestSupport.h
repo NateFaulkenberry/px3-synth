@@ -1524,6 +1524,7 @@ void testVibe();
 void testReverb();
 void testComb();
 void testCardStyle();
+void testUILayout();
 void testCardInner();
 void testDelay();
 void testMood();

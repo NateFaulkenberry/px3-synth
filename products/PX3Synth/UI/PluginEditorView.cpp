@@ -309,41 +309,31 @@ void PX3SynthAudioProcessorEditor::resized()
         layoutMacroDepthPanel();
         macroAssignOverlay->toFront(false);
     }
-    // panels.osc: a declared height wins over the editor's allocation, and
-    // overflowY decides whether the panel scrolls when its content is taller
-    // than the space it has.
+    const auto coreComposite = isPrimaryCoreComposite();
+    auto oscArea = panelViewportArea;
+    auto filterArea = panelViewportArea;
+    auto ampArea = panelViewportArea;
+    if (coreComposite)
     {
-        const auto panelStyle = px3::ui::PanelStyle::fromConfig(uiConfig.get(), "panels.osc");
-        auto oscArea = panelViewportArea;
-        if (panelStyle.height > 0)
-        {
-            oscArea = oscArea.withHeight(juce::jmin(panelStyle.height, panelViewportArea.getHeight()));
-        }
-        oscPanelViewport.setBounds(oscArea);
-        oscPanelViewport.setScrollBarsShown(panelStyle.scrollVertically, false);
-
-        // The viewed component keeps its declared height even when that exceeds
-        // the viewport - that is what there is to scroll. Without scrolling it
-        // matches the viewport exactly, so nothing can be clipped away.
-        // A scrolling panel gets a tail of empty space past its last row, so
-        // the bottom card can be scrolled clear of the viewport edge instead of
-        // stopping flush against it.
-        const auto scrollTail = uiConfig != nullptr ? uiConfig->getInt("editor.layout.scrollTail", 30) : 30;
-        const auto contentHeight = panelStyle.scrollVertically && panelStyle.height > 0
-                                       ? juce::jmax(panelStyle.height, oscArea.getHeight()) + scrollTail
-                                       : oscPanelViewport.getMaximumVisibleHeight();
-        const auto oscGutter = oscPanelViewport.isVerticalScrollBarShown() ? kScrollBarGutter : 0;
-        oscPanel->setSize(juce::jmax(1, oscPanelViewport.getMaximumVisibleWidth() - oscGutter),
-                          contentHeight);
+        oscArea = layoutBoundsForRegion("primary.osc", panelViewportArea);
+        filterArea = layoutBoundsForRegion("primary.filter", panelViewportArea);
+        ampArea = layoutBoundsForRegion("primary.amp", panelViewportArea);
     }
-    modPanelViewport.setBounds(panelViewportArea);
-    ampPanel->setBounds(panelViewportArea);
-    fltPanel->setBounds(panelViewportArea);
-    fxPanel->setBounds(panelViewportArea);
-    mixPanel->setBounds(panelViewportArea);
+
+    oscPanelViewport.setBounds(layoutBoundsForRegion("primary.osc", oscArea));
+    oscPanelViewport.setScrollBarsShown(false, false);
+    oscPanel->setSize(juce::jmax(1, oscPanelViewport.getMaximumVisibleWidth()),
+                      juce::jmax(1, oscPanelViewport.getMaximumVisibleHeight()));
+    modPanelViewport.setBounds(layoutBoundsForRegion("view.mod", panelViewportArea));
+    ampPanel->setBounds(layoutBoundsForRegion(coreComposite ? "primary.amp" : "view.amp",
+                                              coreComposite ? ampArea : panelViewportArea));
+    fltPanel->setBounds(layoutBoundsForRegion(coreComposite ? "primary.filter" : "view.filter",
+                                              coreComposite ? filterArea : panelViewportArea));
+    fxPanel->setBounds(layoutBoundsForRegion("view.fx", panelViewportArea));
+    mixPanel->setBounds(layoutBoundsForRegion("view.mix", panelViewportArea));
     if (settingsPanel != nullptr)
     {
-        settingsPanel->setBounds(panelViewportArea);
+        settingsPanel->setBounds(layoutBoundsForRegion("view.settings", panelViewportArea));
     }
 
     layoutOscPanel();
@@ -352,6 +342,7 @@ void PX3SynthAudioProcessorEditor::resized()
     layoutFilterPanel();
     layoutFxPanel();
     layoutMixPanel();
+    updatePanelVisibility();
 
     const auto browserWidth = juce::jlimit(520, 760, getWidth() - 120);
     const auto browserHeight = juce::jlimit(360, 520, getHeight() - 120);
@@ -402,10 +393,59 @@ void PX3SynthAudioProcessorEditor::resized()
     footerRight.removeFromLeft(10);
     presetBrowserCloseButton.setBounds(footerRight.removeFromLeft(90));
 
+#if PX3_UI_DESIGNER
+    if (uiSelectionOverlay != nullptr)
+    {
+        uiSelectionOverlay->setBounds(getLocalBounds());
+        refreshUILayoutSelection();
+        uiSelectionOverlay->setVisible(uiDesignerWindow != nullptr && uiDesignerWindow->isVisible());
+        uiSelectionOverlay->toFront(false);
+    }
+#endif
 
 }
 bool PX3SynthAudioProcessorEditor::isPanelVisible(int sectionIndex) const
 {
+    auto nodeId = juce::String();
+    switch (sectionIndex)
+    {
+        case kSectionOsc: nodeId = "view.osc"; break;
+        case kSectionMod: nodeId = "view.mod"; break;
+        case kSectionAmp: nodeId = "view.amp"; break;
+        case kSectionFilter: nodeId = "view.filter"; break;
+        case kSectionFx: nodeId = "view.fx"; break;
+        case kSectionMix: nodeId = "view.mix"; break;
+        case kSectionSettings: nodeId = "view.settings"; break;
+        default: break;
+    }
+    if (const auto* node = uiLayout.findNode(nodeId); node != nullptr && ! node->visible)
+    {
+        return false;
+    }
+
+    if (isPrimaryCoreComposite())
+    {
+        auto primaryNodeId = juce::String();
+        switch (sectionIndex)
+        {
+            case kSectionOsc: primaryNodeId = "primary.osc"; break;
+            case kSectionFilter: primaryNodeId = "primary.filter"; break;
+            case kSectionAmp: primaryNodeId = "primary.amp"; break;
+            default: break;
+        }
+        if (primaryNodeId.isNotEmpty())
+        {
+            const auto* primaryNode = uiLayout.findNode(primaryNodeId);
+            if (primaryNode != nullptr && ! primaryNode->visible)
+            {
+                return false;
+            }
+        }
+        if (sectionIndex == kSectionAmp || sectionIndex == kSectionFilter)
+        {
+            return true;
+        }
+    }
     return selectedTopMenuSection == juce::jlimit(0, kSectionSettings, sectionIndex);
 }
 

@@ -12,6 +12,7 @@
 #include "WavetableFactory.h"
 #include "ModalBackdrop.h"
 #include "RoundedRect.h"
+#include "FetPanelStyle.h"
 #include "PluginProcessorInternals.h"
 #include "Card.h"
 #include "BinaryData.h"
@@ -29,34 +30,22 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
     const auto bg = uiConfig != nullptr
                         ? uiConfig->getColour("editor.background.baseColour", juce::Colour::fromRGB(0x1A, 0x1A, 0x1A))
                         : juce::Colour::fromRGB(0x1A, 0x1A, 0x1A);
-    const auto stripRadius = uiConfig != nullptr ? uiConfig->getFloat("editor.topStrip.cornerRadius", 12.0f) : 12.0f;
+    const auto stripRadius = uiConfig != nullptr ? uiConfig->getFloat("editor.topStrip.cornerRadius", 3.0f) : 3.0f;
     g.fillAll(bg);
 
-
-    if (backgroundImage.isValid())
+    const auto chassis = getLocalBounds().toFloat().reduced(3.0f);
+    g.setColour(juce::Colour::fromRGBA(225, 232, 230, 30));
+    g.drawRect(chassis, 1.0f);
+    constexpr float fastenerRadius = 3.5f;
+    for (const auto point : { chassis.getTopLeft(), chassis.getTopRight(),
+                              chassis.getBottomRight(), chassis.getBottomLeft() })
     {
-        g.drawImageWithin(backgroundImage,
-                          0,
-                          0,
-                          getWidth(),
-                          getHeight(),
-                          juce::RectanglePlacement::fillDestination,
-                          false);
-
-        const auto darkness = uiConfig != nullptr ? uiConfig->getInt("editor.background.imageDarkness", 150) : 150;
-        const auto alpha = static_cast<juce::uint8>(juce::jlimit(0, 255, darkness));
-        g.setColour(juce::Colour::fromRGBA(26, 26, 26, alpha));
-        g.fillAll();
+        px3::ui::panel::drawScrew(g, point + juce::Point<float>(fastenerRadius + 2.0f,
+                                                               fastenerRadius + 2.0f),
+                                  fastenerRadius);
     }
 
-    // The strip is filled AFTER the background image, not before it. Drawn
-    // first, the image simply covered it - which is why only the logo panel,
-    // the one piece painted after the image, had any background at all.
-    //
-    // One fill for the whole strip: there used to be an outline and four
-    // vertical dividers marking the boundaries between logo, sections, presets
-    // and menu, and with the sections butted together there is nothing left to
-    // mark.
+    // A single instrument strip, rather than a toolbar floating over artwork.
     g.setColour(uiConfig != nullptr
                     ? uiConfig->getColour("editor.topStrip.fillColour", juce::Colour::fromRGB(0x1A, 0x1A, 0x1A))
                     : juce::Colour::fromRGB(0x1A, 0x1A, 0x1A));

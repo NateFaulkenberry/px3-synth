@@ -179,6 +179,13 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
 PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
 {
     stopTimer();
+#if PX3_UI_DESIGNER
+    if (uiDesignerWindow != nullptr)
+    {
+        uiDesignerWindow->setVisible(false);
+        uiDesignerWindow.reset();
+    }
+#endif
 
     // A key held while the window closes gets no mouse-up. Release it now,
     // while the processor it reports to is still ours to call.
@@ -543,6 +550,7 @@ void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex
     // SETTINGS left the strip on screen and the panel at its narrower size
     // until something else happened to resize the window.
     resized();
+    applyInstrumentSceneStyles();
 
     // The six panels are stacked in the same rectangle and swapped by
     // visibility, and paint() draws the FX section cards into that rectangle

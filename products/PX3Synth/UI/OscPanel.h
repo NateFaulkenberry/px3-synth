@@ -83,6 +83,11 @@ public:
     void refreshSubOscFromParameters(bool enabled, int waveformIndex);
     void advanceAnimation(float oscDeltaPhase);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
+    void setSceneStyle(juce::Colour background,
+                       juce::Colour foreground,
+                       juce::Colour accentIn,
+                       float cornerRadius,
+                       float borderWidth);
 
 private:
     std::unique_ptr<SubOscComponent> subOscComponent;
@@ -91,5 +96,10 @@ private:
     juce::Colour accent;
     juce::Colour subHeaderAccent;
     juce::Colour oscHeaderAccent;
+    juce::Colour sceneBackground;
+    juce::Colour sceneForeground;
+    float sceneCornerRadius { 0.0f };
+    float sceneBorderWidth { 0.0f };
+    bool hasSceneStyle { false };
     std::shared_ptr<const UIConfig> uiConfig;
 };

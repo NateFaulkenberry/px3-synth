@@ -53,6 +53,11 @@ public:
 
     void refreshFromParameters();
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
+    void setSceneStyle(juce::Colour background,
+                       juce::Colour foreground,
+                       juce::Colour accentIn,
+                       float cornerRadius,
+                       float borderWidth);
 
     // SERIES / PARALLEL and the parallel balance. Owned by the panel, because
     // they belong to neither filter card: they say how the two are connected.
@@ -111,5 +116,9 @@ private:
     std::array<std::unique_ptr<FilterComponent>, kFilterInstanceCount> filterComponents;
 
     juce::Colour accent;
+    juce::Colour sceneBackground;
+    float sceneCornerRadius { 0.0f };
+    float sceneBorderWidth { 0.0f };
+    bool hasSceneStyle { false };
     std::shared_ptr<const UIConfig> uiConfig;
 };

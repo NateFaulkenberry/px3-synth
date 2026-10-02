@@ -22,6 +22,60 @@
 
 using namespace px3::ui;
 
+namespace
+{
+#if PX3_UI_DESIGNER
+int sectionForLayoutRegion(const juce::String& id)
+{
+    if (id == "primary.osc" || id == "primary.filter" || id == "primary.amp"
+        || id == "view.osc") { return kSectionOsc; }
+    if (id == "view.mod") { return kSectionMod; }
+    if (id == "view.amp") { return kSectionAmp; }
+    if (id == "view.filter") { return kSectionFilter; }
+    if (id == "view.fx") { return kSectionFx; }
+    if (id == "view.mix") { return kSectionMix; }
+    if (id == "view.settings") { return kSectionSettings; }
+    return -1;
+}
+#endif
+
+juce::String layoutRegionForSection(int section)
+{
+    switch (section)
+    {
+        case kSectionOsc: return "view.osc";
+        case kSectionMod: return "view.mod";
+        case kSectionAmp: return "view.amp";
+        case kSectionFilter: return "view.filter";
+        case kSectionFx: return "view.fx";
+        case kSectionMix: return "view.mix";
+        case kSectionSettings: return "view.settings";
+        default: return {};
+    }
+}
+
+juce::Colour sceneColour(const juce::String& value, juce::Colour fallback)
+{
+    const auto text = value.trim();
+    if (! text.startsWithChar('#')) { return fallback; }
+    const auto hex = text.substring(1).getHexValue32();
+    if (text.length() == 7)
+    {
+        return juce::Colour::fromRGB(static_cast<juce::uint8>((hex >> 16) & 0xff),
+                                     static_cast<juce::uint8>((hex >> 8) & 0xff),
+                                     static_cast<juce::uint8>(hex & 0xff));
+    }
+    if (text.length() == 9)
+    {
+        return juce::Colour::fromRGBA(static_cast<juce::uint8>((hex >> 24) & 0xff),
+                                      static_cast<juce::uint8>((hex >> 16) & 0xff),
+                                      static_cast<juce::uint8>((hex >> 8) & 0xff),
+                                      static_cast<juce::uint8>(hex & 0xff));
+    }
+    return fallback;
+}
+}
+
 juce::File PX3SynthAudioProcessorEditor::resolveUiConfigFile() const
 {
     const auto executableFile = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
@@ -153,12 +207,395 @@ void PX3SynthAudioProcessorEditor::loadUiConfig(bool forceReload)
     }
 }
 
+juce::File PX3SynthAudioProcessorEditor::resolveUILayoutFile() const
+{
+    const auto executableDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+                                  .getParentDirectory();
+
+#if JUCE_DEBUG || PX3_UI_DESIGNER
+    if (const auto envPath = juce::SystemStats::getEnvironmentVariable("PX3_INSTRUMENT_SCENE_PATH", {});
+        envPath.isNotEmpty())
+    {
+        const juce::File envFile(envPath);
+        return envFile;
+    }
+
+    const auto cwdCandidate = juce::File::getCurrentWorkingDirectory()
+                                  .getChildFile("shared/UI/Style/InstrumentScene.json");
+    if (cwdCandidate.existsAsFile())
+    {
+        return cwdCandidate;
+    }
+
+    for (auto probe = executableDir; probe.exists(); probe = probe.getParentDirectory())
+    {
+        const auto sourceCandidate = probe.getChildFile("shared/UI/Style/InstrumentScene.json");
+        if (sourceCandidate.existsAsFile())
+        {
+            return sourceCandidate;
+        }
+        if (probe.getParentDirectory() == probe) { break; }
+    }
+#endif
+
+    for (auto probe = executableDir; probe.exists(); probe = probe.getParentDirectory())
+    {
+        const auto bundled = probe.getChildFile("Resources/InstrumentScene.json");
+        if (bundled.existsAsFile())
+        {
+            return bundled;
+        }
+        if (probe.getParentDirectory() == probe) { break; }
+    }
+
+    return {};
+}
+
+void PX3SynthAudioProcessorEditor::loadUILayout()
+{
+    uiLayoutFile = resolveUILayoutFile();
+    if (! uiLayoutFile.existsAsFile())
+    {
+        return;
+    }
+
+    juce::String error;
+    if (! uiLayout.loadJson(uiLayoutFile.loadFileAsString(), error))
+    {
+        juce::Logger::writeToLog("[PX3 Scene] " + error);
+    }
+}
+
+juce::Rectangle<int> PX3SynthAudioProcessorEditor::layoutBoundsForRegion(
+    const juce::String& id,
+    juce::Rectangle<int> fallback) const
+{
+    if (uiLayout.findNode(id) == nullptr)
+    {
+        return fallback;
+    }
+
+    const auto resolved = uiLayout.resolveBounds(id, panelViewportArea.toFloat());
+    return resolved.isEmpty() ? fallback : resolved.toNearestInt();
+}
+
+bool PX3SynthAudioProcessorEditor::isPrimaryCoreComposite() const noexcept
+{
+    return selectedTopMenuSection == kSectionOsc
+        && panelViewportArea.getWidth() >= 900
+        && panelViewportArea.getHeight() >= 380;
+}
+
+void PX3SynthAudioProcessorEditor::applyUILayoutSectionOrder()
+{
+    if (topMenuBar == nullptr)
+    {
+        return;
+    }
+
+    std::array<int, 6> order { 0, 1, 2, 3, 4, 5 };
+    std::stable_sort(order.begin(), order.end(), [this](int a, int b)
+    {
+        const auto* first = uiLayout.findNode(layoutRegionForSection(a));
+        const auto* second = uiLayout.findNode(layoutRegionForSection(b));
+        const auto firstOrder = first != nullptr ? first->order : a;
+        const auto secondOrder = second != nullptr ? second->order : b;
+        return firstOrder != secondOrder ? firstOrder < secondOrder : a < b;
+    });
+    topMenuBar->setSectionOrder(order);
+}
+
+void PX3SynthAudioProcessorEditor::applyInstrumentSceneStyles()
+{
+    const auto apply = [this](const juce::String& nodeId, auto* panel)
+    {
+        if (panel == nullptr) { return; }
+        const auto* node = uiLayout.findNode(nodeId);
+        const auto* style = node != nullptr ? uiLayout.findStyleToken(node->styleToken) : nullptr;
+        if (style == nullptr) { return; }
+
+        panel->setSceneStyle(sceneColour(style->background, juce::Colour::fromRGB(24, 27, 29)),
+                             sceneColour(style->foreground, juce::Colour::fromRGB(230, 233, 231)),
+                             sceneColour(style->accent, juce::Colour::fromRGB(104, 169, 200)),
+                             style->borderRadius,
+                             style->borderWidth);
+    };
+
+    apply("primary.osc", oscPanel.get());
+    apply(isPrimaryCoreComposite() ? "primary.filter" : "view.filter", fltPanel.get());
+    apply(isPrimaryCoreComposite() ? "primary.amp" : "view.amp", ampPanel.get());
+}
+
+#if PX3_UI_DESIGNER
+void PX3SynthAudioProcessorEditor::openUILayoutDesigner()
+{
+    if (uiDesignerWindow == nullptr)
+    {
+        uiSelectionOverlay = std::make_unique<UILayoutSelectionOverlay>([this](juce::Rectangle<float> bounds)
+        {
+            if (const auto message = updateLayoutRegionBounds(selectedLayoutRegionId, bounds);
+                message.isNotEmpty() && uiDesignerWindow != nullptr)
+            {
+                uiDesignerWindow->setStatus(message);
+            }
+        });
+        uiSelectionOverlay->onEditBegin = [this]() { uiLayout.beginTransaction(); };
+        uiSelectionOverlay->onEditEnd = [this]()
+        {
+            uiLayout.commitTransaction();
+            if (uiDesignerWindow != nullptr)
+            {
+                uiDesignerWindow->setDocument(uiLayout);
+            }
+        };
+        addAndMakeVisible(*uiSelectionOverlay);
+
+        UILayoutDesignerWindow::Callbacks callbacks;
+        callbacks.selectionChanged = [this](const juce::String& id) { selectLayoutRegion(id); };
+        callbacks.boundsChanged = [this](const juce::String& id, juce::Rectangle<float> bounds)
+        {
+            return updateLayoutRegionBounds(id, bounds);
+        };
+        callbacks.orderChanged = [this](const juce::String& id, int order)
+        {
+            return updateLayoutRegionOrder(id, order);
+        };
+        callbacks.styleChanged = [this](const juce::String& id, const juce::String& token)
+        {
+            return updateLayoutRegionStyle(id, token);
+        };
+        callbacks.layoutChanged = [this](const juce::String& id,
+                                         px3::ui::InstrumentSceneLayoutMode mode)
+        {
+            return updateSceneLayoutMode(id, mode);
+        };
+        callbacks.parentChanged = [this](const juce::String& id, const juce::String& parentId)
+        {
+            return updateSceneParent(id, parentId);
+        };
+        callbacks.flowChanged = [this](const juce::String& id,
+                                       float flexGrow,
+                                       float spacing,
+                                       int gridColumns)
+        {
+            return updateSceneFlow(id, flexGrow, spacing, gridColumns);
+        };
+        callbacks.beginEdit = [this]() { uiLayout.beginTransaction(); };
+        callbacks.endEdit = [this]()
+        {
+            uiLayout.commitTransaction();
+            if (uiDesignerWindow != nullptr)
+            {
+                uiDesignerWindow->setDocument(uiLayout);
+            }
+        };
+        callbacks.save = [this]()
+        {
+            if (uiLayoutFile == juce::File())
+            {
+                uiDesignerWindow->setStatus("No writable layout file found");
+                return;
+            }
+            const auto parent = uiLayoutFile.getParentDirectory();
+            if (! parent.exists() && ! parent.createDirectory())
+            {
+                uiDesignerWindow->setStatus("Could not create layout directory");
+                return;
+            }
+            if (! uiLayoutFile.replaceWithText(uiLayout.toJson()))
+            {
+                uiDesignerWindow->setStatus("Could not save layout file");
+                return;
+            }
+            uiDesignerWindow->setStatus("Saved " + uiLayoutFile.getFileName());
+        };
+        callbacks.undo = [this]
+        {
+            const auto changed = uiLayout.undo();
+            if (changed)
+            {
+                resized();
+                if (uiDesignerWindow != nullptr) { uiDesignerWindow->setDocument(uiLayout); }
+            }
+            return changed;
+        };
+        callbacks.redo = [this]
+        {
+            const auto changed = uiLayout.redo();
+            if (changed)
+            {
+                resized();
+                if (uiDesignerWindow != nullptr) { uiDesignerWindow->setDocument(uiLayout); }
+            }
+            return changed;
+        };
+        callbacks.close = [this]() { closeUILayoutDesigner(); };
+
+        uiDesignerWindow = std::make_unique<UILayoutDesignerWindow>(uiLayout, std::move(callbacks));
+    }
+
+    if (selectedLayoutRegionId.isEmpty())
+    {
+        selectedLayoutRegionId = selectedTopMenuSection == kSectionOsc
+                                     ? "primary.osc"
+                                     : layoutRegionForSection(selectedTopMenuSection);
+    }
+    uiDesignerWindow->setDocument(uiLayout);
+    uiDesignerWindow->setSelectedRegion(selectedLayoutRegionId);
+    uiDesignerWindow->setVisible(true);
+    uiDesignerWindow->toFront(true);
+    uiSelectionOverlay->setVisible(true);
+    resized();
+}
+
+void PX3SynthAudioProcessorEditor::closeUILayoutDesigner()
+{
+    if (uiSelectionOverlay != nullptr)
+    {
+        uiSelectionOverlay->setVisible(false);
+    }
+    if (uiDesignerWindow != nullptr)
+    {
+        uiDesignerWindow->setVisible(false);
+    }
+}
+
+void PX3SynthAudioProcessorEditor::selectLayoutRegion(const juce::String& id)
+{
+    selectedLayoutRegionId = id;
+    const auto section = sectionForLayoutRegion(id);
+    if (section >= 0 && section != selectedTopMenuSection)
+    {
+        selectedTopMenuSection = section;
+        if (topMenuBar != nullptr)
+        {
+            topMenuBar->setSelectedSection(section);
+        }
+        updatePanelVisibility();
+        resized();
+    }
+    if (uiDesignerWindow != nullptr)
+    {
+        uiDesignerWindow->setSelectedRegion(id);
+    }
+    applyInstrumentSceneStyles();
+    refreshUILayoutSelection();
+}
+
+juce::String PX3SynthAudioProcessorEditor::updateLayoutRegionBounds(
+    const juce::String& id,
+    juce::Rectangle<float> bounds)
+{
+    juce::String error;
+    if (uiLayout.findNode(id) == nullptr)
+    {
+        return "Unknown scene node: " + id;
+    }
+    else if (! uiLayout.setBounds(id, bounds, error))
+    {
+        return error;
+    }
+
+    resized();
+    return "Previewing " + id;
+}
+
+juce::String PX3SynthAudioProcessorEditor::updateLayoutRegionOrder(const juce::String& id, int order)
+{
+    juce::String error;
+    if (uiLayout.findNode(id) == nullptr)
+    {
+        return "Unknown scene node: " + id;
+    }
+    else if (! uiLayout.setOrder(id, order, error))
+    {
+        return error;
+    }
+
+    applyUILayoutSectionOrder();
+    return "Updated order for " + id;
+}
+
+juce::String PX3SynthAudioProcessorEditor::updateLayoutRegionStyle(
+    const juce::String& id,
+    const juce::String& styleToken)
+{
+    juce::String error;
+    if (! uiLayout.setNodeStyleToken(id, styleToken, error))
+    {
+        return error;
+    }
+    applyInstrumentSceneStyles();
+    repaint();
+    return "Applied " + styleToken + " to " + id;
+}
+
+juce::String PX3SynthAudioProcessorEditor::updateSceneLayoutMode(
+    const juce::String& id,
+    px3::ui::InstrumentSceneLayoutMode mode)
+{
+    juce::String error;
+    if (! uiLayout.setLayoutMode(id, mode, error)) { return error; }
+    resized();
+    juce::ignoreUnused(mode);
+    return "Updated layout mode for " + id;
+}
+
+juce::String PX3SynthAudioProcessorEditor::updateSceneParent(
+    const juce::String& id,
+    const juce::String& parentId)
+{
+    juce::String error;
+    if (! uiLayout.setParentNode(id, parentId, error)) { return error; }
+    resized();
+    return "Reparented " + id;
+}
+
+juce::String PX3SynthAudioProcessorEditor::updateSceneFlow(const juce::String& id,
+                                                           float flexGrow,
+                                                           float spacing,
+                                                           int gridColumns)
+{
+    juce::String error;
+    if (! uiLayout.setFlowProperties(id, flexGrow, spacing, gridColumns, error)) { return error; }
+    resized();
+    return "Updated layout constraints for " + id;
+}
+
+void PX3SynthAudioProcessorEditor::refreshUILayoutSelection()
+{
+    if (uiSelectionOverlay == nullptr)
+    {
+        return;
+    }
+
+    const auto* region = uiLayout.findNode(selectedLayoutRegionId);
+    const auto designerVisible = uiDesignerWindow != nullptr && uiDesignerWindow->isVisible();
+    if (region == nullptr)
+    {
+        uiSelectionOverlay->setSelection(panelViewportArea, {}, false);
+        return;
+    }
+    const auto parentBounds = region->parentId.isEmpty()
+                                ? panelViewportArea.toFloat()
+                                : uiLayout.resolveBounds(region->parentId, panelViewportArea.toFloat());
+    if (parentBounds.isEmpty())
+    {
+        uiSelectionOverlay->setSelection(panelViewportArea, {}, false);
+        return;
+    }
+    uiSelectionOverlay->setSelection(parentBounds.toNearestInt(), region->bounds, designerVisible);
+}
+#endif
+
 void PX3SynthAudioProcessorEditor::applyUiConfig()
 {
     if (topMenuBar != nullptr)
     {
         topMenuBar->setUIConfig(uiConfig);
     }
+    applyUILayoutSectionOrder();
+    applyInstrumentSceneStyles();
     {
         // How far above the keys the sparks are allowed to travel. The keyboard
         // component is grown upward by this much and draws the keys at the

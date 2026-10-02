@@ -24,6 +24,11 @@ public:
 
     void refreshFromParameters();
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
+    void setSceneStyle(juce::Colour background,
+                       juce::Colour foreground,
+                       juce::Colour accentIn,
+                       float cornerRadius,
+                       float borderWidth);
     int getPreferredContentWidth() const;
     int getPreferredContentHeight() const;
 
@@ -32,5 +37,9 @@ private:
 
     std::unique_ptr<AmpEnvelopeComponent> ampEnvelopeComponent;
     juce::Colour accent;
+    juce::Colour sceneBackground;
+    float sceneCornerRadius { 0.0f };
+    float sceneBorderWidth { 0.0f };
+    bool hasSceneStyle { false };
     std::shared_ptr<const UIConfig> uiConfig;
 };

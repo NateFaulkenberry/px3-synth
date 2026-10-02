@@ -590,7 +590,8 @@ void TopMenuBar::resized()
 
         for (int i = 0; i < count; ++i)
         {
-            auto* button = topMenuSectionButtons[static_cast<std::size_t>(i)];
+            const auto section = sectionDisplayOrder[static_cast<std::size_t>(i)];
+            auto* button = topMenuSectionButtons[static_cast<std::size_t>(section)];
             button->setBounds(box.items.getReference(i).currentBounds.toNearestInt());
             button->setShowSeam(i < count - 1);
 
@@ -704,6 +705,27 @@ void TopMenuBar::setSelectedSection(int sectionIndex)
     }
 
     settingsButton.setToggleState(clamped == kSettingsSection, juce::dontSendNotification);
+}
+
+void TopMenuBar::setSectionOrder(const std::array<int, 6>& order)
+{
+    std::array<bool, 6> seen {};
+    for (const auto section : order)
+    {
+        if (! juce::isPositiveAndBelow(section, static_cast<int>(topMenuSectionButtons.size()))
+            || seen[static_cast<std::size_t>(section)])
+        {
+            return;
+        }
+        seen[static_cast<std::size_t>(section)] = true;
+    }
+
+    if (sectionDisplayOrder == order)
+    {
+        return;
+    }
+    sectionDisplayOrder = order;
+    resized();
 }
 
 void TopMenuBar::setPresetName(const juce::String& name)

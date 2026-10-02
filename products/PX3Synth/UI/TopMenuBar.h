@@ -199,6 +199,7 @@ public:
     // the gear and leaves every panel tab unlit.
     static constexpr int kSettingsSection = 6;
     void setSelectedSection(int sectionIndex);
+    void setSectionOrder(const std::array<int, 6>& order);
     void setPresetName(const juce::String& name);
     // Shown under the name, upper case and smaller: category on the left,
     // author on the right. Either may be empty.
@@ -251,6 +252,7 @@ private:
     std::array<TopMenuTabButton*, 6> topMenuSectionButtons {
         { &topMenuOscButton, &topMenuModButton, &topMenuAmpButton, &topMenuFltButton, &topMenuFxButton, &topMenuMixButton }
     };
+    std::array<int, 6> sectionDisplayOrder { 0, 1, 2, 3, 4, 5 };
 
     juce::Rectangle<int> topMenuSectionButtonsArea;
     juce::Rectangle<int> topMenuPresetClusterArea;

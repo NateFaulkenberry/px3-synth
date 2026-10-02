@@ -76,7 +76,8 @@ function(px3_add_product)
         PRIVATE
             JUCE_WEB_BROWSER=0
             JUCE_USE_CURL=0
-            PX3_DEBUG_PANEL=$<IF:$<BOOL:${PX3_DEBUG_PANEL}>,1,0>)
+            PX3_DEBUG_PANEL=$<IF:$<BOOL:${PX3_DEBUG_PANEL}>,1,0>
+            PX3_UI_DESIGNER=$<IF:$<BOOL:${PX3_UI_DESIGNER}>,1,0>)
 
     # The warning policy applies to the product and to each format target JUCE
     # generated for it. Doing this here rather than in a list of target names
@@ -129,11 +130,25 @@ function(px3_add_product)
                  "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/*.jpg")
         endif()
 
+        set(PX3_LAYOUT_DEPENDS "")
+        if (PX3P_IS_SYNTH)
+            set(PX3_LAYOUT_DEPENDS "${CMAKE_SOURCE_DIR}/shared/UI/Style/InstrumentScene.json")
+        endif()
+
         foreach(px3Format IN LISTS PX3P_FORMATS)
+            set(PX3_LAYOUT_COPY_COMMANDS "")
+            if (PX3P_IS_SYNTH)
+                set(PX3_LAYOUT_COPY_COMMANDS
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${CMAKE_SOURCE_DIR}/shared/UI/Style/InstrumentScene.json"
+                        "$<TARGET_FILE_DIR:${PX3P_TARGET}_${px3Format}>/../Resources/InstrumentScene.json")
+            endif()
+
             if (TARGET ${PX3P_TARGET}_${px3Format})
                 set_property(TARGET ${PX3P_TARGET}_${px3Format} APPEND PROPERTY
                     LINK_DEPENDS
                         "${CMAKE_SOURCE_DIR}/shared/UI/Style/UIConfig.json"
+                        ${PX3_LAYOUT_DEPENDS}
                         ${PX3_ARTWORK_FILES})
                 add_custom_command(TARGET ${PX3P_TARGET}_${px3Format} PRE_LINK
                     COMMAND ${CMAKE_COMMAND} -E make_directory
@@ -141,6 +156,7 @@ function(px3_add_product)
                     COMMAND ${CMAKE_COMMAND} -E copy_if_different
                         "${CMAKE_SOURCE_DIR}/shared/UI/Style/UIConfig.json"
                         "$<TARGET_FILE_DIR:${PX3P_TARGET}_${px3Format}>/../Resources/UIConfig.json"
+                    ${PX3_LAYOUT_COPY_COMMANDS}
                     # The image files, named rather than the whole directory: a
                     # directory copy also ships whatever Finder leaves lying in
                     # it, and a .DS_Store inside a signed bundle is nobody's

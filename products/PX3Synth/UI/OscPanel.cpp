@@ -128,6 +128,16 @@ OscPanel::OscPanel(juce::ToggleButton& subEnabledButton,
 
 void OscPanel::paint(juce::Graphics& g)
 {
+    if (hasSceneStyle)
+    {
+        const auto area = getLocalBounds().toFloat().reduced(2.0f);
+        g.setColour(sceneBackground);
+        g.fillRoundedRectangle(area, sceneCornerRadius);
+        g.setColour(accent);
+        g.drawRoundedRectangle(area, sceneCornerRadius, sceneBorderWidth);
+        return;
+    }
+
     const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.fillAlpha", 0.14f) : 0.14f;
     const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.strokeAlpha", 0.75f) : 0.75f;
     const auto panelRadius = uiConfig != nullptr ? uiConfig->getFloat("osc.panel.cornerRadius", 10.0f) : 10.0f;
@@ -142,6 +152,38 @@ void OscPanel::paint(juce::Graphics& g)
     // Card titles are drawn by the cards themselves - see px3::ui::drawCard.
     // Painting them here meant the panel wrote into its children's bounds,
     // which is how a title could survive the component it belonged to.
+}
+
+void OscPanel::setSceneStyle(juce::Colour background,
+                             juce::Colour foreground,
+                             juce::Colour accentIn,
+                             float cornerRadius,
+                             float borderWidth)
+{
+    sceneBackground = background;
+    sceneForeground = foreground;
+    accent = accentIn;
+    sceneCornerRadius = juce::jmax(0.0f, cornerRadius);
+    sceneBorderWidth = juce::jmax(0.0f, borderWidth);
+    hasSceneStyle = true;
+
+    const auto tint = [foreground](auto&& self, juce::Component& component) -> void
+    {
+        if (dynamic_cast<juce::Label*>(&component) != nullptr)
+        {
+            component.setColour(juce::Label::textColourId, foreground);
+        }
+        if (dynamic_cast<juce::ComboBox*>(&component) != nullptr)
+        {
+            component.setColour(juce::ComboBox::textColourId, foreground);
+        }
+        for (int i = 0; i < component.getNumChildComponents(); ++i)
+        {
+            self(self, *component.getChildComponent(i));
+        }
+    };
+    tint(tint, *this);
+    repaint();
 }
 
 void OscPanel::resized()

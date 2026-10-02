@@ -196,6 +196,16 @@ FltPanel::~FltPanel()
 
 void FltPanel::paint(juce::Graphics& g)
 {
+    if (hasSceneStyle)
+    {
+        const auto area = getLocalBounds().toFloat().reduced(2.0f);
+        g.setColour(sceneBackground);
+        g.fillRoundedRectangle(area, sceneCornerRadius);
+        g.setColour(accent);
+        g.drawRoundedRectangle(area, sceneCornerRadius, sceneBorderWidth);
+        return;
+    }
+
     const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.fillAlpha", 0.14f) : 0.14f;
     const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.strokeAlpha", 0.75f) : 0.75f;
     const auto panelRadius = uiConfig != nullptr ? uiConfig->getFloat("flt.panel.cornerRadius", 10.0f) : 10.0f;
@@ -210,6 +220,37 @@ void FltPanel::paint(juce::Graphics& g)
     // Card titles are drawn by the FilterComponents themselves - see
     // FilterComponent::paint. Drawing them here wrote into the children's
     // bounds, so a title was not tied to the component it named.
+}
+
+void FltPanel::setSceneStyle(juce::Colour background,
+                             juce::Colour foreground,
+                             juce::Colour accentIn,
+                             float cornerRadius,
+                             float borderWidth)
+{
+    sceneBackground = background;
+    accent = accentIn;
+    sceneCornerRadius = juce::jmax(0.0f, cornerRadius);
+    sceneBorderWidth = juce::jmax(0.0f, borderWidth);
+    hasSceneStyle = true;
+
+    const auto tint = [foreground](auto&& self, juce::Component& component) -> void
+    {
+        if (dynamic_cast<juce::Label*>(&component) != nullptr)
+        {
+            component.setColour(juce::Label::textColourId, foreground);
+        }
+        if (dynamic_cast<juce::ComboBox*>(&component) != nullptr)
+        {
+            component.setColour(juce::ComboBox::textColourId, foreground);
+        }
+        for (int i = 0; i < component.getNumChildComponents(); ++i)
+        {
+            self(self, *component.getChildComponent(i));
+        }
+    };
+    tint(tint, *this);
+    repaint();
 }
 
 void FltPanel::resized()

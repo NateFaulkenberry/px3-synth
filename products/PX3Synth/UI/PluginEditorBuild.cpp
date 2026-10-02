@@ -70,8 +70,8 @@ void PX3SynthAudioProcessorEditor::buildImagesAndMasks()
 {
     uiConfigManager.setConfigFile(resolveUiConfigFile());
     loadUiConfig(true);
+    loadUILayout();
 
-    backgroundImage = juce::ImageFileFormat::loadFrom(BinaryData::ppp_png, BinaryData::ppp_pngSize);
     logoFrame = juce::ImageFileFormat::loadFrom(BinaryData::px3_gif, BinaryData::px3_gifSize);
 
     if (logoFrame.isValid())
@@ -910,6 +910,8 @@ void PX3SynthAudioProcessorEditor::buildPanels()
     mixPanel = std::make_unique<MixPanel>(audioProcessor,
                                           &knobLookAndFeel,
                                           juce::Colour::fromRGB(212, 212, 212));
+
+    applyInstrumentSceneStyles();
 
 }
 

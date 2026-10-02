@@ -2630,6 +2630,7 @@ int main(int argc, char* argv[])
     if (wants("reverb")) testReverb();
     if (wants("comb")) testComb();
     if (wants("cardstyle")) testCardStyle();
+    if (wants("uilayout")) testUILayout();
     if (wants("cardinner")) testCardInner();
     if (wants("fxchain")) testFxChain();
     if (wants("doom")) testDoom();
