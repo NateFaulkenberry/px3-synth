@@ -191,5 +191,56 @@ void testUILayout()
 
     const auto cycleParentRejected = ! flowDocument.setParentNode("root", "second", error);
     check("InstrumentScene_RejectsReparentCycle", cycleParentRejected, error);
+
+    for (const auto layout : { px3::ui::InstrumentSceneLayoutMode::absolute,
+                               px3::ui::InstrumentSceneLayoutMode::overlay,
+                               px3::ui::InstrumentSceneLayoutMode::row,
+                               px3::ui::InstrumentSceneLayoutMode::column,
+                               px3::ui::InstrumentSceneLayoutMode::grid })
+    {
+        for (const auto& hiddenId : { "root", "container", "leaf" })
+        {
+            InstrumentSceneDocument visibilityDocument;
+            visibilityDocument.addStyleToken({ "surface" }, error);
+            auto visibilityRoot = makeSceneNode("root", {}, { 0, 0, 1, 1 }, 0, "surface");
+            visibilityRoot.layout = layout;
+            visibilityRoot.visible = juce::String(hiddenId) != "root";
+            auto container = makeSceneNode("container", "root", { 0, 0, 1, 1 }, 0, "surface");
+            container.layout = layout;
+            container.visible = juce::String(hiddenId) != "container";
+            auto leaf = makeSceneNode("leaf", "container", { 0, 0, 1, 1 }, 0, "surface");
+            leaf.visible = juce::String(hiddenId) != "leaf";
+            const auto loaded = visibilityDocument.addNode(visibilityRoot, error)
+                && visibilityDocument.addNode(container, error)
+                && visibilityDocument.addNode(leaf, error);
+            const auto testName = "InstrumentScene_HiddenAncestorOrLeaf_"
+                + juce::String(static_cast<int>(layout)) + "_" + hiddenId;
+            check(testName.toRawUTF8(),
+                  loaded && ! visibilityDocument.isNodeVisible("leaf")
+                      && visibilityDocument.resolveBounds("leaf", { 0, 0, 1000, 400 }).isEmpty(),
+                  error);
+        }
+    }
+    check("InstrumentScene_VisibleNodeAndMissingNode",
+          document.isNodeVisible("osc1.octave") && ! document.isNodeVisible("missing"));
+
+        document.beginTransaction();
+        const auto hidden = document.setVisible("surface.osc", false, error);
+        const auto visibilityCommitted = document.commitTransaction();
+        InstrumentSceneDocument hiddenRoundTrip;
+        const auto hiddenLoaded = hiddenRoundTrip.loadJson(document.toJson(), error);
+        check("InstrumentScene_VisibilityPersistsAndHidesDescendants",
+            hidden && visibilityCommitted && hiddenLoaded
+              && ! hiddenRoundTrip.isNodeVisible("osc1.octave"));
+        const auto visibilityUndone = document.undo();
+        const auto visibleRestored = document.isNodeVisible("osc1.octave");
+        const auto visibilityRedone = document.redo();
+        check("InstrumentScene_VisibilityIsUndoable",
+            visibilityUndone && visibleRestored && visibilityRedone
+              && ! document.isNodeVisible("osc1.octave"));
+        const auto unchanged = document.toJson();
+        check("InstrumentScene_UnknownVisibilityEditDoesNotMutate",
+            ! document.setVisible("missing", false, error) && document.toJson() == unchanged,
+            error);
 }
 }

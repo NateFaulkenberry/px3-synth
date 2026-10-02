@@ -20,6 +20,7 @@ public:
         std::function<juce::String(const juce::String&, px3::ui::InstrumentSceneLayoutMode)> layoutChanged;
         std::function<juce::String(const juce::String&, const juce::String&)> parentChanged;
         std::function<juce::String(const juce::String&, float, float, int)> flowChanged;
+        std::function<juce::String(const juce::String&, bool)> visibilityChanged;
         std::function<void()> beginEdit;
         std::function<void()> endEdit;
         std::function<void()> save;
@@ -57,6 +58,7 @@ private:
     juce::Label layoutLabel;
     juce::ComboBox styleSelector;
     juce::Label styleLabel;
+    juce::ToggleButton visibilityToggle { "Visible" };
     std::array<juce::Label, 8> propertyLabels;
     std::array<juce::Slider, 8> propertySliders;
     juce::TextButton undoButton { "Undo" };

@@ -541,6 +541,22 @@ bool InstrumentSceneDocument::setOrder(const juce::String& id, int order, juce::
     return false;
 }
 
+bool InstrumentSceneDocument::setVisible(const juce::String& id, bool visible, juce::String& error)
+{
+    const auto target = std::find_if(nodes.begin(), nodes.end(), [&id](const auto& node)
+    {
+        return node.id == id;
+    });
+    if (target == nodes.end())
+    {
+        error = "Unknown scene node: " + id;
+        return false;
+    }
+    target->visible = visible;
+    error.clear();
+    return true;
+}
+
 const InstrumentSceneNode* InstrumentSceneDocument::findNode(const juce::String& id) const noexcept
 {
     const auto index = std::find_if(nodes.begin(), nodes.end(), [&id](const auto& region)
@@ -548,6 +564,24 @@ const InstrumentSceneNode* InstrumentSceneDocument::findNode(const juce::String&
         return region.id == id;
     });
     return index == nodes.end() ? nullptr : &*index;
+}
+
+bool InstrumentSceneDocument::isNodeVisible(const juce::String& id) const noexcept
+{
+    const auto* node = findNode(id);
+    for (std::size_t depth = 0; node != nullptr && depth < nodes.size(); ++depth)
+    {
+        if (! node->visible)
+        {
+            return false;
+        }
+        if (node->parentId.isEmpty())
+        {
+            return true;
+        }
+        node = findNode(node->parentId);
+    }
+    return false;
 }
 
 const InstrumentSceneStyleToken* InstrumentSceneDocument::findStyleToken(const juce::String& id) const noexcept
@@ -573,7 +607,7 @@ juce::Rectangle<float> InstrumentSceneDocument::resolveBounds(
     resolve = [&](const juce::String& nodeId, int depth) -> juce::Rectangle<float>
     {
         const auto* node = findNode(nodeId);
-        if (node == nullptr || depth > 64)
+        if (node == nullptr || ! node->visible || depth > 64)
         {
             return {};
         }

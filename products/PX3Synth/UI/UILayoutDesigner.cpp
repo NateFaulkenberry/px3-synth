@@ -45,6 +45,18 @@ UILayoutDesignerWindow::UILayoutDesignerWindow(const px3::ui::InstrumentSceneDoc
     addAndMakeVisible(styleSelector);
     styleSelector.onChange = [this] { applyStyleFromInspector(); };
 
+    addAndMakeVisible(visibilityToggle);
+    visibilityToggle.onClick = [this]
+    {
+        if (suppressCallbacks || callbacks.visibilityChanged == nullptr || selectedRegionId.isEmpty())
+        {
+            return;
+        }
+        beginPropertyEdit();
+        setStatus(callbacks.visibilityChanged(selectedRegionId, visibilityToggle.getToggleState()));
+        endPropertyEdit();
+    };
+
     addAndMakeVisible(regionSelector);
     regionSelector.onChange = [this]
     {
@@ -287,6 +299,8 @@ void UILayoutDesignerWindow::resized()
     row = area.removeFromTop(30);
     styleLabel.setBounds(row.removeFromLeft(66));
     row.removeFromLeft(8);
+    visibilityToggle.setBounds(row.removeFromRight(88));
+    row.removeFromRight(8);
     styleSelector.setBounds(row);
     area.removeFromTop(12);
 
@@ -315,6 +329,8 @@ void UILayoutDesignerWindow::refreshInspector()
     const auto* region = document.findNode(selectedRegionId);
     const auto bounds = region != nullptr ? region->bounds : juce::Rectangle<float>(0.0f, 0.0f, 1.0f, 1.0f);
     suppressCallbacks = true;
+    visibilityToggle.setEnabled(region != nullptr);
+    visibilityToggle.setToggleState(region != nullptr && region->visible, juce::dontSendNotification);
     const auto styleIndex = region != nullptr ? styleIds.indexOf(region->styleToken) : -1;
     styleSelector.setSelectedId(styleIndex >= 0 ? styleIndex + 1 : 0, juce::dontSendNotification);
     const auto parentIndex = region != nullptr ? parentIds.indexOf(region->parentId) : -1;

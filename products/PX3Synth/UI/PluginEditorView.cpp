@@ -418,7 +418,7 @@ bool PX3SynthAudioProcessorEditor::isPanelVisible(int sectionIndex) const
         case kSectionSettings: nodeId = "view.settings"; break;
         default: break;
     }
-    if (const auto* node = uiLayout.findNode(nodeId); node != nullptr && ! node->visible)
+    if (uiLayout.findNode(nodeId) != nullptr && ! uiLayout.isNodeVisible(nodeId))
     {
         return false;
     }
@@ -435,8 +435,8 @@ bool PX3SynthAudioProcessorEditor::isPanelVisible(int sectionIndex) const
         }
         if (primaryNodeId.isNotEmpty())
         {
-            const auto* primaryNode = uiLayout.findNode(primaryNodeId);
-            if (primaryNode != nullptr && ! primaryNode->visible)
+            if (uiLayout.findNode(primaryNodeId) != nullptr
+                && ! uiLayout.isNodeVisible(primaryNodeId))
             {
                 return false;
             }

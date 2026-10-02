@@ -83,6 +83,7 @@ public:
                    juce::Rectangle<float> bounds,
                    juce::String& error);
     bool setOrder(const juce::String& id, int order, juce::String& error);
+    bool setVisible(const juce::String& id, bool visible, juce::String& error);
 
     void beginTransaction();
     bool commitTransaction();
@@ -91,6 +92,7 @@ public:
     bool redo();
 
     const InstrumentSceneNode* findNode(const juce::String& id) const noexcept;
+    bool isNodeVisible(const juce::String& id) const noexcept;
     const InstrumentSceneStyleToken* findStyleToken(const juce::String& id) const noexcept;
     const std::vector<InstrumentSceneNode>& getNodes() const noexcept { return nodes; }
     const std::vector<InstrumentSceneStyleToken>& getStyleTokens() const noexcept { return styleTokens; }

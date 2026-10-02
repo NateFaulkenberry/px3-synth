@@ -381,6 +381,13 @@ void PX3SynthAudioProcessorEditor::openUILayoutDesigner()
             return updateSceneFlow(id, flexGrow, spacing, gridColumns);
         };
         callbacks.beginEdit = [this]() { uiLayout.beginTransaction(); };
+        callbacks.visibilityChanged = [this](const juce::String& id, bool visible)
+        {
+            juce::String error;
+            if (! uiLayout.setVisible(id, visible, error)) { return error; }
+            resized();
+            return juce::String(visible ? "Showing " : "Hiding ") + id;
+        };
         callbacks.endEdit = [this]()
         {
             uiLayout.commitTransaction();
