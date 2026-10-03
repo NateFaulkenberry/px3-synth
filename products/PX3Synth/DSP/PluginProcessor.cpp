@@ -790,6 +790,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             idPrefix + "loop", labelPrefix + "Loop", false);
         envelopeKeyTrackParams[static_cast<std::size_t>(envIndex)] = parameterCatalog.createFloat(
             idPrefix + "keytrack", labelPrefix + "Key Track", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+        envelopeSyncParams[static_cast<std::size_t>(envIndex)] = parameterCatalog.createBool(
+            idPrefix + "sync", labelPrefix + "Tempo Sync", false);
     }
 
     lfoEnabledParam = lfoEnabledParams[0];
@@ -1024,6 +1026,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(envelopeAmountParams[static_cast<std::size_t>(envIndex)]);
         addParameter(envelopeLoopParams[static_cast<std::size_t>(envIndex)]);
         addParameter(envelopeKeyTrackParams[static_cast<std::size_t>(envIndex)]);
+        addParameter(envelopeSyncParams[static_cast<std::size_t>(envIndex)]);
     }
 
     // Supplemental modulation and output controls join their owning modules in
@@ -1576,8 +1579,58 @@ void PX3SynthAudioProcessor::updateHostClock()
             hostTransportPlaying = position->getIsPlaying();
         }
     }
+    // No host timing: follow an external MIDI clock if one is running.
+    if (! tempoAvailable && isFollowingMidiClock())
+    {
+        hostTempoBpm = midiClockBpm;
+        hostTransportPpq = midiClockPpq;
+        hostTransportPlaying = midiClockRunning;
+        tempoAvailable = true;
+        positionAvailable = true;
+    }
     hostTempoAvailable.store(tempoAvailable, std::memory_order_relaxed);
     hostPositionAvailable.store(positionAvailable && tempoAvailable, std::memory_order_relaxed);
+}
+
+bool PX3SynthAudioProcessor::isFollowingMidiClock() const noexcept
+{
+    // Clock is live while ticks keep arriving - a tick every 2.5 ms at 999 BPM,
+    // every 62 ms at 40 BPM - so half a second without one means it stopped.
+    return midiClockLastTick >= 0
+           && midiClockSampleCounter - midiClockLastTick < static_cast<juce::int64>(0.5 * getSampleRate());
+}
+
+void PX3SynthAudioProcessor::consumeMidiClock(const juce::MidiBuffer& midi, int numSamples)
+{
+    const auto sampleRate = juce::jmax(1.0, getSampleRate());
+    for (const auto metadata : midi)
+    {
+        const auto message = metadata.getMessage();
+        const auto at = midiClockSampleCounter + metadata.samplePosition;
+        if (message.isMidiClock())
+        {
+            if (midiClockLastTick >= 0 && at > midiClockLastTick)
+            {
+                const auto instant = 60.0 * sampleRate / (static_cast<double>(at - midiClockLastTick) * 24.0);
+                if (instant >= 20.0 && instant <= 999.0)
+                {
+                    // Smoothed: tick timing jitters by a buffer's worth in
+                    // most setups, and the LFO rate should not.
+                    midiClockBpm += (instant - midiClockBpm) * 0.08;
+                }
+            }
+            midiClockLastTick = at;
+            if (midiClockRunning) { midiClockPpq += 1.0 / 24.0; }
+        }
+        else if (message.isMidiStart()) { midiClockPpq = 0.0; midiClockRunning = true; }
+        else if (message.isMidiContinue()) { midiClockRunning = true; }
+        else if (message.isMidiStop()) { midiClockRunning = false; }
+        else if (message.isSongPositionPointer())
+        {
+            midiClockPpq = static_cast<double>(message.getSongPositionPointerMidiBeat()) / 4.0;
+        }
+    }
+    midiClockSampleCounter += numSamples;
 }
 
 void PX3SynthAudioProcessor::advanceLfosForBlock(int numSamples)
@@ -1832,6 +1885,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     constexpr float vibratoRateHz = 5.0f;
     constexpr float vibratoMaxDepthSemitones = 1.0f;
 
+    consumeMidiClock(midiMessages, buffer.getNumSamples());
     updateHostClock();
     advanceLfosForBlock(buffer.getNumSamples());
 

@@ -860,6 +860,19 @@ private:
     double hostBeatsPerBar { 4.0 };
     bool hostTransportPlaying { false };
     std::atomic<bool> hostTempoAvailable { false };
+    // External MIDI clock (24 ticks per quarter, start/stop/continue, song
+    // position). Used only when the host supplies no timing - in the
+    // standalone, or a host that does not report tempo.
+    void consumeMidiClock(const juce::MidiBuffer& midi, int numSamples);
+    juce::int64 midiClockSampleCounter { 0 };
+    juce::int64 midiClockLastTick { -1 };
+    double midiClockBpm { 120.0 };
+    double midiClockPpq { 0.0 };
+    bool midiClockRunning { false };
+public:
+    bool isFollowingMidiClock() const noexcept;
+    double getMidiClockBpm() const noexcept { return midiClockBpm; }
+private:
     std::atomic<bool> hostPositionAvailable { false };
     float currentLfoSignalForBlock(int lfoIndex, int numSamples);
     void collectModulationEnvelopeValuesFromVoices();
@@ -1089,6 +1102,7 @@ private:
     void initialiseVoiceModulationTargets();
     void buildVoiceModulationPlan(px3::synth::VoiceModulationPlan& plan) const;
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> envelopeKeyTrackParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterBool*, kEnvelopeSourceCount> envelopeSyncParams { { nullptr, nullptr, nullptr } };
 
     struct LfoAssignableTarget
     {

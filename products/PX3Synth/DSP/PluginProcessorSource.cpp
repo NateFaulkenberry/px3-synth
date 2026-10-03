@@ -423,6 +423,22 @@ EnvelopeSettings PX3SynthAudioProcessor::currentModEnvelopeSettings(int envIndex
     auto settings = envelopeParameterSettings(idx);
     if (auto* loop = envelopeLoopParams[static_cast<std::size_t>(idx)]) { settings.loop = loop->get(); }
     if (auto* keyTrack = envelopeKeyTrackParams[static_cast<std::size_t>(idx)]) { settings.keyTrack = keyTrack->get(); }
+    // SYNC: snap attack, decay and release to the nearest musical division at
+    // the current tempo (host or MIDI clock), 1/32 note to 4 bars. Without a
+    // tempo the times are left as set.
+    if (auto* sync = envelopeSyncParams[static_cast<std::size_t>(idx)];
+        sync != nullptr && sync->get() && hostTempoAvailable.load(std::memory_order_relaxed))
+    {
+        const auto snap = [bpm = hostTempoBpm](float seconds)
+        {
+            const auto beats = juce::jmax(1.0e-4, static_cast<double>(seconds) * bpm / 60.0);
+            const auto division = std::exp2(juce::jlimit(-3.0, 4.0, std::round(std::log2(beats))));
+            return static_cast<float>(division * 60.0 / bpm);
+        };
+        settings.attackSeconds = snap(settings.attackSeconds);
+        settings.decaySeconds = snap(settings.decaySeconds);
+        settings.releaseSeconds = snap(settings.releaseSeconds);
+    }
     return settings;
 }
 
