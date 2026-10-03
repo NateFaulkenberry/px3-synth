@@ -228,6 +228,9 @@ void Delay::updateForBlock(const DelaySettings& settings)
     currentSettings.algorithmIndex = juce::jlimit(0, 6, settings.algorithmIndex);
     currentSettings.granularModeIndex = juce::jlimit(0, 3, settings.granularModeIndex);
     currentSettings.enabled = settings.enabled;
+    currentSettings.wobble = clamp01(settings.wobble);
+    currentSettings.tapeQuality = clamp01(settings.tapeQuality);
+    currentSettings.modDepth = clamp01(settings.modDepth);
     currentBpm = juce::jmax(20.0, settings.bpm);
 
     if (!smoothingPrimed)
@@ -1152,7 +1155,9 @@ void Delay::processDelayAlgorithmSample(float inL,
         // return, and the amount control is a MIX. 0.55 is what the old
         // expression produced at the amount the factory presets ship with, so
         // they sound as they did.
-        constexpr auto depth = 0.55f;
+        // WOBBLE sets it: 0 is a perfect transport, the default 0.275 is the
+        // 0.55 this mode always had, 1 is a badly worn machine.
+        const auto depth = 2.0f * currentSettings.wobble;
         const auto wow = std::sin(tapeWowPhase) * 0.0035f
                        + std::sin(tapeWowPhase * 2.7f + 1.1f) * 0.0011f;
         const auto flutter = std::sin(tapeFlutterPhase) * 0.0009f
@@ -1213,7 +1218,9 @@ void Delay::processDelayAlgorithmSample(float inL,
             // head-bump resonance as the only thing still standing after a few
             // repeats. Gap loss is a property of the head, not of how much of
             // the machine you are listening to.
-            constexpr auto lossHz = 5650.0f;
+            // TAPE QUALITY: a worn head resolves less top end. 1.8 kHz worn to
+            // 9 kHz pristine; the default 0.71 is the 5650 Hz this always had.
+            const auto lossHz = 1800.0f * std::pow(5.0f, currentSettings.tapeQuality);
             const auto lossCoeff = onePoleCoeff(lossHz, sr);
             tapeGapLoss[c] += lossCoeff * (wet - tapeGapLoss[c]);
             wet = tapeGapLoss[c];
@@ -1226,7 +1233,9 @@ void Delay::processDelayAlgorithmSample(float inL,
             // 1/(1-0.16), i.e. +1.5 dB every pass, which on its own puts the
             // feedback loop over unity no matter what the knob says.
             constexpr float hysteresisBias = 0.16f;
-            const auto drive = 0.9f + 1.5f * a;
+            // Worn tape also saturates earlier; unchanged at the default quality.
+            const auto wear = juce::jmax(0.5f, 1.0f + 1.4f * (0.71f - currentSettings.tapeQuality));
+            const auto drive = (0.9f + 1.5f * a) * wear;
             const auto biased = (wet + tapeHysteresis[c] * hysteresisBias) * (1.0f - hysteresisBias);
             wet = softSaturate(biased * drive) / drive;
             tapeHysteresis[c] = wet;
@@ -1401,7 +1410,8 @@ void Delay::processDelayAlgorithmSample(float inL,
         // "0.0009 + 0.0042 * a", a 5.7x swing driven by the wet mix, so the
         // modulation got deepest exactly as it got loudest. 0.0018 is what the
         // old expression gave at the amount the presets ship with.
-        constexpr auto depthSeconds = 0.0018f;
+        // MOD DEPTH: 0 to 6 ms; the default 0.3 is the 1.8 ms this always had.
+        const auto depthSeconds = 0.006f * currentSettings.modDepth;
         const auto depthSamples = depthSeconds * sr;
         const auto modL = std::sin(delayModPhaseA)
                         + 0.6f * std::sin(delayModPhaseB * 1.31f + 1.2f)

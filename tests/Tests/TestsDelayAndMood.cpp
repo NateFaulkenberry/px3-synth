@@ -10,6 +10,81 @@ void testDelay()
 {
     suite("DELAY");
 
+    {
+        // The new surface controls each do what their name says.
+        // spread: energy within +/-3 Hz of the tone vs. around it; bright: wet
+        // energy at 5 kHz vs. 500 Hz.
+        auto measure = [](int algorithm, float wobble, float quality, float modDepth, double toneHz)
+        {
+            Delay delay;
+            delay.prepare(48000.0);
+            DelaySettings settings;
+            settings.enabled = true;
+            settings.amount = 1.0f;
+            settings.algorithmIndex = algorithm;
+            settings.feedbackControl = 0.2f;
+            settings.timeControl = 0.3f;
+            settings.wobble = wobble;
+            settings.tapeQuality = quality;
+            settings.modDepth = modDepth;
+            std::vector<float> out;
+            for (int n = 0; n < 48000 * 3; ++n)
+            {
+                if (n % 512 == 0) delay.updateForBlock(settings);
+                const auto x = 0.3f * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * toneHz * n / 48000.0));
+                float l = 0, r = 0;
+                delay.processSampleFrame(x, x, l, r);
+                if (n >= 48000) out.push_back(l - x);   // wet only
+            }
+            auto power = [&](double hz)
+            {
+                double c = 0, sn = 0;
+                for (std::size_t n = 0; n < out.size(); ++n)
+                {
+                    const auto hann = 0.5 - 0.5 * std::cos(juce::MathConstants<double>::twoPi * n / (out.size() - 1.0));
+                    const auto w = juce::MathConstants<double>::twoPi * hz * n / 48000.0;
+                    c += hann * out[n] * std::cos(w); sn += hann * out[n] * std::sin(w);
+                }
+                return c * c + sn * sn;
+            };
+            double side = 0.0;
+            for (const auto offset : { -12.0, -8.0, -6.0, 6.0, 8.0, 12.0 }) side += power(toneHz + offset);
+            return 10.0 * std::log10((side + 1e-30) / (power(toneHz) + 1e-30));
+        };
+        const auto steady = measure(1, 0.0f, 0.71f, 0.3f, 2000.0);
+        const auto wobbly = measure(1, 1.0f, 0.71f, 0.3f, 2000.0);
+        check("Delay_TapeWobbleAddsPitchMovement", wobbly > steady + 10.0,
+              "sideband/tone around 2 kHz: WOBBLE 0 " + juce::String(steady, 1) + " dB, WOBBLE 1 " + juce::String(wobbly, 1) + " dB");
+        const auto shallow = measure(5, 0.275f, 0.71f, 0.0f, 2000.0);
+        const auto deep = measure(5, 0.275f, 0.71f, 1.0f, 2000.0);
+        check("Delay_ModDepthDeepensTheModulatedTaps", deep > shallow + 10.0,
+              "sideband/tone: MOD DEPTH 0 " + juce::String(shallow, 1) + " dB, 1 " + juce::String(deep, 1) + " dB");
+
+        auto level = [](float quality, double hz)
+        {
+            Delay delay;
+            delay.prepare(48000.0);
+            DelaySettings settings;
+            settings.enabled = true; settings.amount = 1.0f; settings.algorithmIndex = 1;
+            settings.feedbackControl = 0.0f; settings.timeControl = 0.2f; settings.wobble = 0.0f; settings.tapeQuality = quality;
+            // A 100 ms burst, then only echoes: no dry left to subtract.
+            double e = 0.0;
+            for (int n = 0; n < 48000; ++n)
+            {
+                if (n % 512 == 0) delay.updateForBlock(settings);
+                const auto x = n < 4800 ? 0.2f * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * hz * n / 48000.0)) : 0.0f;
+                float l = 0, r = 0;
+                delay.processSampleFrame(x, x, l, r);
+                if (n > 6000) e += static_cast<double>(l) * l;
+            }
+            return 10.0 * std::log10(e + 1e-30);
+        };
+        const auto wornTilt = level(0.0f, 6000.0) - level(0.0f, 500.0);
+        const auto newTilt = level(1.0f, 6000.0) - level(1.0f, 500.0);
+        check("Delay_WornTapeIsDarker", wornTilt < newTilt - 6.0,
+              "6 kHz vs 500 Hz in the echo: worn " + juce::String(wornTilt, 1) + " dB, pristine " + juce::String(newTilt, 1) + " dB");
+    }
+
     // ---- the engine is deterministic ---------------------------------------
     //
     // DELAY called juce::Random::getSystemRandom() from the audio thread in

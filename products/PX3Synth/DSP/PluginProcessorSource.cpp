@@ -480,6 +480,9 @@ DelaySettings PX3SynthAudioProcessor::currentDelaySettings() const
     settings.feedbackControl = delayFeedbackParam->convertFrom0to1(applyModulationToNormalizedValue(delayFeedbackParam,
                                                                                                      static_cast<juce::RangedAudioParameter*>(delayFeedbackParam)->getValue()));
     settings.bpm = currentBpm;
+    settings.wobble = modulatedParameterValue(delayWobbleParam);
+    settings.tapeQuality = modulatedParameterValue(delayTapeQualityParam);
+    settings.modDepth = modulatedParameterValue(delayModDepthParam);
     return settings;
 }
 
