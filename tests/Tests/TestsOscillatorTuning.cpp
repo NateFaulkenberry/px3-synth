@@ -58,13 +58,13 @@ double measureCents(Source source,
         setParam(processor, "osc1Enabled", 0.0f);
         setParam(processor, "subOscEnabled", 1.0f);
         setChoice(processor, "subOscWaveform", 0);
-        setParam(processor, "subOscCoarse", coarseOctaves);
-        setParam(processor, "subOscFine", fineCents);
+        setParam(processor, "voice.sub.tuning.octave", coarseOctaves);
+        setParam(processor, "voice.sub.tuning.cents", fineCents);
     }
     else
     {
-        setParam(processor, "osc1Coarse", coarseOctaves);
-        setParam(processor, "osc1Fine", fineCents);
+        setParam(processor, "voice.osc1.tuning.octave", coarseOctaves);
+        setParam(processor, "voice.osc1.tuning.cents", fineCents);
     }
 
     if (extra) { extra(processor); }
@@ -109,11 +109,11 @@ void testOscillatorTuning()
 
         for (const auto* slot : { "1", "2", "3" })
         {
-            expect(juce::String("osc") + slot + "Coarse", -2.0f, 2.0f, 0.0f, juce::String("Osc ") + slot + " Coarse Tune");
-            expect(juce::String("osc") + slot + "Fine", -24.0f, 24.0f, 0.0f, juce::String("Osc ") + slot + " Fine Tune");
+            expect("voice.osc" + juce::String(slot) + ".tuning.octave", -2.0f, 2.0f, 0.0f, juce::String("Osc ") + slot + " Coarse Tune");
+            expect("voice.osc" + juce::String(slot) + ".tuning.cents", -24.0f, 24.0f, 0.0f, juce::String("Osc ") + slot + " Fine Tune");
         }
-        expect("subOscCoarse", -2.0f, 2.0f, -1.0f, "Sub Osc Coarse Tune");
-        expect("subOscFine", -24.0f, 24.0f, 0.0f, "Sub Osc Fine Tune");
+        expect("voice.sub.tuning.octave", -2.0f, 2.0f, -1.0f, "Sub Osc Coarse Tune");
+        expect("voice.sub.tuning.cents", -24.0f, 24.0f, 0.0f, "Sub Osc Fine Tune");
 
         for (const auto* retired : { "osc1Pitch", "osc2Pitch", "osc3Pitch", "subOscPitch", "subOscOctave" })
         {
@@ -228,8 +228,10 @@ void testOscillatorTuning()
     {
         PX3SynthAudioProcessor source;
         const std::array<std::pair<const char*, float>, 8> values { {
-            { "osc1Coarse", -2.0f }, { "osc1Fine", 17.0f }, { "osc2Coarse", 1.0f }, { "osc2Fine", -9.0f },
-            { "osc3Coarse", 2.0f }, { "osc3Fine", 24.0f }, { "subOscCoarse", -2.0f }, { "subOscFine", -24.0f } } };
+            { "voice.osc1.tuning.octave", -2.0f }, { "voice.osc1.tuning.cents", 17.0f },
+            { "voice.osc2.tuning.octave", 1.0f }, { "voice.osc2.tuning.cents", -9.0f },
+            { "voice.osc3.tuning.octave", 2.0f }, { "voice.osc3.tuning.cents", 24.0f },
+            { "voice.sub.tuning.octave", -2.0f }, { "voice.sub.tuning.cents", -24.0f } } };
         for (const auto& value : values) { setParam(source, value.first, value.second); }
 
         juce::MemoryBlock block;

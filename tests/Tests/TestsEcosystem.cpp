@@ -105,10 +105,10 @@ void testEcosystem()
     {
         PX3SynthAudioProcessor processor;
         const auto& catalog = processor.getParameterCatalog();
-        const auto* coarse = catalog.find("osc1Coarse");
+        const auto* coarse = catalog.find("voice.osc1.tuning.octave");
         const auto groups = processor.getParameterTree().getSubgroups(false);
         const auto parameterState = catalog.createStateTree();
-        const auto coarseState = catalog.findStateEntry(parameterState, "osc1Coarse");
+        const auto coarseState = catalog.findStateEntry(parameterState, "voice.osc1.tuning.octave");
         std::vector<px3::synth::ParameterCatalog::StateValue> stateValues;
         juce::String stateError;
         const auto stateValid = catalog.readStateValues(parameterState, stateValues, stateError);
@@ -152,11 +152,11 @@ void testEcosystem()
             return ! catalog.readStateValues(malformed, parsed, error) && parsed.empty();
         };
         check("ParameterCatalog_RejectsNaNAndInfinity",
-              rejectsMalformed("osc1Coarse", std::numeric_limits<double>::quiet_NaN())
-                  && rejectsMalformed("osc1Fine", std::numeric_limits<double>::infinity()));
+              rejectsMalformed("voice.osc1.tuning.octave", std::numeric_limits<double>::quiet_NaN())
+                  && rejectsMalformed("voice.osc1.tuning.cents", std::numeric_limits<double>::infinity()));
         check("ParameterCatalog_RejectsOutOfRangeAndWrongType",
-              rejectsMalformed("osc1Coarse", -0.1)
-                  && rejectsMalformed("osc1Fine", "not a number"));
+              rejectsMalformed("voice.osc1.tuning.octave", -0.1)
+                  && rejectsMalformed("voice.osc1.tuning.cents", "not a number"));
 
         auto unknownState = parameterState.createCopy();
         auto unknownGroup = juce::ValueTree("GROUP");

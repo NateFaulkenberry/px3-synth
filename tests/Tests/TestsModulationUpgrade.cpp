@@ -215,7 +215,7 @@ void testStateUpgrade()
         setChoice(source, "lfoWaveform", 5);
         setParam(source, "lfoRampTime", 45.0f);
         setParam(source, "lfoKeySync", 1.0f);
-        setParam(source, "osc2Fine", -7.0f);
+        setParam(source, "voice.osc2.tuning.cents", -7.0f);
         setChoice(source, "filterRouting", 1);
         setParam(source, "filterParallelBalance", 0.27f);
 
@@ -229,7 +229,7 @@ void testStateUpgrade()
                      && upgradeChoiceIndex(target, "lfoWaveform") == 5
                      && std::abs(getParamValue(target, "lfoRampTime") - 45.0f) < 0.01f
                      && getParamValue(target, "lfoKeySync") > 0.5f
-                     && std::abs(getParamValue(target, "osc2Fine") + 7.0f) < 0.01f
+                     && std::abs(getParamValue(target, "voice.osc2.tuning.cents") + 7.0f) < 0.01f
                      && upgradeChoiceIndex(target, "filterRouting") == 1
                      && std::abs(getParamValue(target, "filterParallelBalance") - 0.27f) < 0.002f;
 

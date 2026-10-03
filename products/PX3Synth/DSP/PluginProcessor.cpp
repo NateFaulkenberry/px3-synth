@@ -77,6 +77,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     {
         const auto slot = juce::String(oscIndex + 1);
         const auto idPrefix = "osc" + slot;
+        const auto tuningIdPrefix = "voice.osc" + slot + ".tuning.";
         const auto labelPrefix = "Osc " + slot + " ";
 
         oscEnabledParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterBool(idPrefix + "Enabled",
@@ -86,7 +87,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         // oscillator has. How they combine with modulation is written down in
         // OscillatorTuning.h and nowhere else.
         oscCoarseParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(
-            juce::ParameterID(idPrefix + "Coarse", 1),
+            juce::ParameterID(tuningIdPrefix + "octave", 1),
             labelPrefix + "Coarse Tune",
             juce::NormalisableRange<float>(px3::tuning::kCoarseMinOctaves, px3::tuning::kCoarseMaxOctaves, 1.0f),
             0.0f,
@@ -95,7 +96,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                 return px3::tuning::formatCoarse(value);
             }));
         oscFineParams[static_cast<std::size_t>(oscIndex)] = new juce::AudioParameterFloat(
-            juce::ParameterID(idPrefix + "Fine", 1),
+            juce::ParameterID(tuningIdPrefix + "cents", 1),
             labelPrefix + "Fine Tune",
             juce::NormalisableRange<float>(px3::tuning::kFineMinCents, px3::tuning::kFineMaxCents, 1.0f),
             0.0f,
@@ -180,7 +181,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     // The sub's tuning is the main oscillators' tuning: the same two controls,
     // the same ranges, the same model. Its coarse defaults an octave down.
     subOscCoarseParam = new juce::AudioParameterFloat(
-        juce::ParameterID("subOscCoarse", 1),
+        juce::ParameterID("voice.sub.tuning.octave", 1),
         "Sub Osc Coarse Tune",
         juce::NormalisableRange<float>(px3::tuning::kCoarseMinOctaves, px3::tuning::kCoarseMaxOctaves, 1.0f),
         -1.0f,
@@ -189,7 +190,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             return px3::tuning::formatCoarse(value);
         }));
     subOscFineParam = new juce::AudioParameterFloat(
-        juce::ParameterID("subOscFine", 1),
+        juce::ParameterID("voice.sub.tuning.cents", 1),
         "Sub Osc Fine Tune",
         juce::NormalisableRange<float>(px3::tuning::kFineMinCents, px3::tuning::kFineMaxCents, 1.0f),
         0.0f,

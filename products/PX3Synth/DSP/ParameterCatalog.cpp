@@ -17,12 +17,15 @@ std::vector<ParameterCatalog::GroupSegment> ParameterCatalog::groupPathForId(con
         return std::vector<GroupSegment> { { rootId, rootName }, { moduleId, moduleName } };
     };
 
-    if (key.startsWith("osc1") || key.startsWith("osc2") || key.startsWith("osc3"))
+    if (key.startsWith("voice.osc1.") || key.startsWith("voice.osc2.") || key.startsWith("voice.osc3.")
+        || key.startsWith("osc1") || key.startsWith("osc2") || key.startsWith("osc3"))
     {
-        const auto slot = key.substring(3, 4);
+        const auto slot = (key.startsWith("voice.osc3.") || key.startsWith("osc3")) ? juce::String("3")
+                          : (key.startsWith("voice.osc2.") || key.startsWith("osc2")) ? juce::String("2")
+                                                                                       : juce::String("1");
         return path("voice", "VOICE", "osc" + slot, "OSC " + slot);
     }
-    if (key.startsWith("subosc"))
+    if (key.startsWith("voice.sub.") || key.startsWith("subosc"))
     {
         return path("voice", "VOICE", "sub", "SUB OSC");
     }

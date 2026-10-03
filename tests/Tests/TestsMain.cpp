@@ -2578,9 +2578,9 @@ int main(int argc, char* argv[])
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setParam(processor, "osc2Enabled", count >= 2 ? 1.0f : 0.0f);
-            setParam(processor, "osc2Coarse", 1.0f);
+            setParam(processor, "voice.osc2.tuning.octave", 1.0f);
             setParam(processor, "osc3Enabled", count >= 3 ? 1.0f : 0.0f);
-            setParam(processor, "osc3Coarse", 2.0f);
+            setParam(processor, "voice.osc3.tuning.octave", 2.0f);
             const auto capture = render(processor, 48000, { { 2000, true, 57, 0.9f } });
             std::printf("  %-14d %12.6f %12.6f %12.6f\n",
                         count, capture.rms(),

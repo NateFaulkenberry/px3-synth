@@ -357,7 +357,7 @@ void testOscillatorQuality()
             }
             setParam(processor, "subOscEnabled", sub ? 1.0f : 0.0f);
             setChoice(processor, "subOscWaveform", 0);
-            setParam(processor, "subOscCoarse", 0.0f);
+            setParam(processor, "voice.sub.tuning.octave", 0.0f);
             return render(processor, 24000, { { 0, true, 57, 0.9f } }).rmsOver(8000, 22000);
         };
         const auto single = rmsOf({ "1" }, false);

@@ -546,8 +546,8 @@ inline void makePlainPatch(PX3SynthAudioProcessor& processor)
     for (const auto* slot : { "1", "2", "3" })
     {
         setChoice(processor, juce::String("osc") + slot + "Mode", 0); // SINE
-        setParam(processor, juce::String("osc") + slot + "Coarse", 0.0f);
-        setParam(processor, juce::String("osc") + slot + "Fine", 0.0f);
+        setParam(processor, "voice.osc" + juce::String(slot) + ".tuning.octave", 0.0f);
+        setParam(processor, "voice.osc" + juce::String(slot) + ".tuning.cents", 0.0f);
     }
 
     setParam(processor, "filter1Enabled", 0.0f);

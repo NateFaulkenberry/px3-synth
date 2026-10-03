@@ -27,11 +27,11 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     setChoice(processor, "osc1Mode", 13);
     setChoice(processor, "osc2Mode", 6);
     setChoice(processor, "osc3Mode", 18);
-    setParam(processor, "osc1Coarse", -1.0f);
-    setParam(processor, "osc2Coarse", 1.0f);
-    setParam(processor, "osc3Coarse", 2.0f);
-    setParam(processor, "osc1Fine", -17.0f);
-    setParam(processor, "osc2Fine", 23.0f);
+    setParam(processor, "voice.osc1.tuning.octave", -1.0f);
+    setParam(processor, "voice.osc2.tuning.octave", 1.0f);
+    setParam(processor, "voice.osc3.tuning.octave", 2.0f);
+    setParam(processor, "voice.osc1.tuning.cents", -17.0f);
+    setParam(processor, "voice.osc2.tuning.cents", 23.0f);
     setParam(processor, "osc2MacroA", 0.234f);
     setParam(processor, "osc2MacroB", 0.876f);
     setParam(processor, "osc3MacroC", 0.412f);
@@ -40,9 +40,9 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     setParam(processor, "osc2H7", 0.041f);
 
     setParam(processor, "subOscEnabled", 1.0f);
-    setParam(processor, "subOscCoarse", -2.0f);
+    setParam(processor, "voice.sub.tuning.octave", -2.0f);
     setChoice(processor, "subOscWaveform", 0);
-    setParam(processor, "subOscFine", -19.0f);
+    setParam(processor, "voice.sub.tuning.cents", -19.0f);
 
     for (const auto* slot : { "1", "2" })
     {
@@ -108,7 +108,7 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     }
     processor.setLfoAssignmentByParameterId(0, "filter2Cutoff", false);
     processor.setLfoAssignmentByParameterId(1, "mix.osc2.pan", false);
-    processor.setLfoAssignmentByParameterId(2, "osc1Fine", false);
+    processor.setLfoAssignmentByParameterId(2, "voice.osc1.tuning.cents", false);
 
     setParam(processor, "vibeEnabled", 1.0f);
     setParam(processor, "vibeAmount", 0.67f);
@@ -978,7 +978,7 @@ void testIntegration()
                       setParam(p, i == 0 ? juce::String("lfoFrequency") : prefix + "Frequency", 20.0f);
                   }
                   p.setLfoAssignmentByParameterId(0, "filter1Cutoff", false);
-                  p.setLfoAssignmentByParameterId(1, "osc1Fine", false);
+                  p.setLfoAssignmentByParameterId(1, "voice.osc1.tuning.cents", false);
                   p.setLfoAssignmentByParameterId(2, "mix.osc1.pan", false);
                   p.setEnvelopeAssignmentByParameterId(0, "filter1Resonance", false);
                   p.setEnvelopeAssignmentByParameterId(1, "osc1Level", false);

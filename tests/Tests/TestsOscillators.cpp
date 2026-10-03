@@ -1505,7 +1505,7 @@ void testWavetable()
         const Destination destinations[] = {
             { "osc1WtPos", "wavetable scan" },
             { "osc1MacroA", "osc macro" },
-            { "osc1Fine", "osc fine tune" },
+            { "voice.osc1.tuning.cents", "osc fine tune" },
             { "filter1Cutoff", "filter cutoff" },
             { "osc1Level", "osc level" },
         };
@@ -1673,7 +1673,7 @@ void testWavetable()
         const Destination destinations[] = {
             { "osc1WtPos", "wavetable scan" },
             { "osc1MacroA", "osc macro" },
-            { "osc1Fine", "osc fine tune" },
+            { "voice.osc1.tuning.cents", "osc fine tune" },
             { "filter1Cutoff", "filter cutoff" },
         };
 
@@ -2461,7 +2461,7 @@ void testSubOscillator()
         makePlainPatch(processor);
         setParam(processor, "osc1Enabled", 0.0f);
         setParam(processor, "subOscEnabled", 1.0f);
-        setParam(processor, "subOscCoarse", 0.0f);
+            setParam(processor, "voice.sub.tuning.octave", 0.0f);
         setChoice(processor, "subOscWaveform", 0);
         const auto capture = render(processor, 48000, { { 2000, true, 69, 0.9f } });
         // MIDI 69 is A440; the 0 OCT setting must reproduce it.
@@ -2510,7 +2510,7 @@ void testOscillators()
                 setParam(processor, juce::String("osc") + other + "Enabled",
                          juce::String(other) == slot ? 1.0f : 0.0f);
             }
-            setParam(processor, "osc" + slot + "Coarse", coarse.octaves);
+            setParam(processor, "voice.osc" + slot + ".tuning.octave", coarse.octaves);
 
             const auto capture = render(processor, 48000, { { 2000, true, 69, 0.9f } });
             const auto expected = 440.0 * coarse.ratio;
@@ -2628,20 +2628,20 @@ void testOscillators()
 
         independenceCheck("Osc1_UnaffectedByOsc2ParameterChanges", 1, [](PX3SynthAudioProcessor& p)
         {
-            setParam(p, "osc2Coarse", 1.0f);
+            setParam(p, "voice.osc2.tuning.octave", 1.0f);
             setChoice(p, "osc2Mode", 6);
-            setParam(p, "osc2Fine", 20.0f);
+            setParam(p, "voice.osc2.tuning.cents", 20.0f);
         });
         independenceCheck("Osc2_UnaffectedByOsc1AndOsc3ParameterChanges", 2, [](PX3SynthAudioProcessor& p)
         {
-            setParam(p, "osc1Coarse", -1.0f);
-            setParam(p, "osc3Fine", 20.0f);
+            setParam(p, "voice.osc1.tuning.octave", -1.0f);
+            setParam(p, "voice.osc3.tuning.cents", 20.0f);
             setChoice(p, "osc1Mode", 1);
         });
         independenceCheck("Osc3_UnaffectedBySubOscillatorParameterChanges", 3, [](PX3SynthAudioProcessor& p)
         {
-            setParam(p, "subOscCoarse", -2.0f);
-            setParam(p, "subOscFine", 20.0f);
+            setParam(p, "voice.sub.tuning.octave", -2.0f);
+            setParam(p, "voice.sub.tuning.cents", 20.0f);
         });
     }
 
@@ -2655,10 +2655,10 @@ void testOscillators()
         for (auto* p : { &two, &three })
         {
             setParam(*p, "osc2Enabled", 1.0f);
-            setParam(*p, "osc2Coarse", 1.0f);
+            setParam(*p, "voice.osc2.tuning.octave", 1.0f);
         }
         setParam(three, "osc3Enabled", 1.0f);
-        setParam(three, "osc3Coarse", 2.0f);
+        setParam(three, "voice.osc3.tuning.octave", 2.0f);
 
         const auto r1 = render(one, 32000, { { 2000, true, 57, 0.9f } }).rms();
         const auto r2 = render(two, 32000, { { 2000, true, 57, 0.9f } }).rms();
