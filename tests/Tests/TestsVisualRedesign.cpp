@@ -1,4 +1,5 @@
 #include "TestSupport.h"
+#include "BreakpointEnvelopeEditor.h"
 
 #include "../../shared/UI/Style/Theme.h"
 #include "../../shared/UI/Components/ChipLabel.h"
@@ -65,6 +66,43 @@ std::unique_ptr<juce::AudioProcessorEditor> makeEditor(PX3SynthAudioProcessor& p
 void testVisualRedesign()
 {
     suite("VISUAL REDESIGN");
+
+    {
+        // The AMP envelope's note playhead animates on VOICE: the 30 Hz refresh
+        // used to stop at OSC because the panels refreshed as an else-if chain.
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, 48000.0, 512);
+        processor.prepareToPlay(48000.0, 512);
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        editor->setSize(1518, 918);
+        juce::AudioBuffer<float> buffer(2, 512);
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
+        processor.processBlock(buffer, midi);
+        for (int block = 0; block < 4; ++block) { juce::MidiBuffer none; buffer.clear(); processor.processBlock(buffer, none); }
+        if (auto* synthEditor = dynamic_cast<PX3SynthAudioProcessorEditor*>(editor.get())) { synthEditor->debugTimerTick(); }
+        std::function<void(juce::Component&, std::vector<BreakpointEnvelopeEditor*>&)> collect =
+            [&](juce::Component& c, std::vector<BreakpointEnvelopeEditor*>& out)
+        {
+            for (auto* child : c.getChildren())
+            {
+                if (auto* e = dynamic_cast<BreakpointEnvelopeEditor*>(child); e != nullptr)
+                {
+                    // Visible all the way up: the editor is offscreen, so isShowing() is always false.
+                    auto visible = true;
+                    for (auto* p = static_cast<juce::Component*>(e); p != nullptr && p != editor.get() && visible; p = p->getParentComponent()) visible = p->isVisible();
+                    if (visible) out.push_back(e);
+                }
+                collect(*child, out);
+            }
+        };
+        std::vector<BreakpointEnvelopeEditor*> graphs;
+        collect(*editor, graphs);
+        auto playing = false;
+        for (auto* g : graphs) playing = playing || g->getProgress().active;
+        check("AmpEnvelope_PlayheadAnimatesWhileANoteSounds", ! graphs.empty() && playing,
+              juce::String(static_cast<int>(graphs.size())) + " envelope graph(s) on VOICE, playhead " + (playing ? "active" : "idle"));
+    }
 
     // ---- every visible knob is bound and reachable -------------------------
     {

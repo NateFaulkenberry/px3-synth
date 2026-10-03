@@ -653,23 +653,27 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         refreshLfoUI();
     }
 
+    // Each visible panel refreshes on its own. This was an else-if chain from
+    // when one section showed at a time; with OSC, FILTER and AMP side by side
+    // in VOICE the chain stopped at OSC, so the AMP envelope's note playhead
+    // and the filter graph never updated.
     if (isPanelVisible(kSectionOsc))
     {
         refreshOscillatorModeUI();
         refreshLfoAssignmentUI();
         refreshSubOscUI();
     }
-    else if (isPanelVisible(kSectionMod))
+    if (isPanelVisible(kSectionMod))
     {
         refreshLfoAssignmentUI();
         refreshEnvelopeAssignmentUI();
         refreshEnvelopeGraphUI();
     }
-    else if (isPanelVisible(kSectionAmp))
+    if (isPanelVisible(kSectionAmp))
     {
         refreshAmpEnvelopeUI();
     }
-    else if (isPanelVisible(kSectionFilter))
+    if (isPanelVisible(kSectionFilter))
     {
         refreshFilterUI();
     }
