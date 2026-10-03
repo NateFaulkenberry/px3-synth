@@ -67,6 +67,13 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    // 0 = sub, 1..3 = oscillators. Placed by the scene (osc.sub, osc.1..3).
+    juce::Component* getCard(int index) const noexcept;
+    SubOscComponent* getSubCard() const noexcept { return subOscComponent.get(); }
+    OscillatorComponent* getOscillatorCard(int index) const noexcept
+    {
+        return index >= 0 && index < 3 ? oscillatorComponents[static_cast<std::size_t>(index)].get() : nullptr;
+    }
 
     void refreshOscillatorFromParameters(int oscIndex, bool enabled, int modeIndex, int vowelIndex);
 

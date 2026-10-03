@@ -1,4 +1,5 @@
 #include "OscillatorComponent.h"
+#include "SceneBinding.h"
 #include "OscillatorMode.h"
 
 #include "BypassButton.h"
@@ -199,6 +200,12 @@ void OscillatorComponent::resized()
     // cannot drift apart.
     wavetableGraph.setAccentColour(card.style().border.colour);
 
+    if (sceneManaged)
+    {
+        px3::ui::requestSceneLayout(*this);
+        return;
+    }
+
     inner.setStylePath("cards.osc.cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(4);
@@ -373,7 +380,7 @@ void OscillatorComponent::mouseUp(const juce::MouseEvent& event)
     // that explained itself on hover would be noise.
     // The wave graph is a display, not a switch: it shows no pointer and it
     // takes no click, so the two agree.
-    if (inner.rowContent(3).contains(event.getPosition()))
+    if (graphRow().contains(event.getPosition()))
     {
         return;
     }
@@ -384,11 +391,16 @@ void OscillatorComponent::mouseUp(const juce::MouseEvent& event)
     }
 }
 
+juce::Rectangle<int> OscillatorComponent::graphRow() const
+{
+    return sceneManaged ? wavetableGraph.getBounds().expanded(0, 2) : inner.rowContent(3);
+}
+
 void OscillatorComponent::mouseMove(const juce::MouseEvent& event)
 {
     // The wave graph is a display, not a control, so it does not take the
     // pointer that marks the rest of the card as clickable.
-    setMouseCursor(inner.rowContent(3).contains(event.getPosition())
+    setMouseCursor(graphRow().contains(event.getPosition())
                        ? juce::MouseCursor::NormalCursor
                        : juce::MouseCursor::PointingHandCursor);
 }
@@ -431,7 +443,7 @@ void OscillatorComponent::paint(juce::Graphics& g)
     // The graph is row 3. This used to re-derive the whole vertical stack that
     // resized() had just walked, including the vowel-box branch, which meant
     // two copies of one layout kept in step by hand.
-    const auto graph = inner.rowContent(3).toFloat().reduced(0.0f, 2.0f);
+    const auto graph = graphRow().toFloat().reduced(0.0f, 2.0f);
 
     // In wavetable mode a child component owns row 3, and its panel is
     // translucent - so painting the animated preview here as well leaves the old

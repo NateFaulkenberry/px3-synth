@@ -72,11 +72,17 @@ public:
     double animationPhase() const noexcept { return phase; }
 
     void resized() override;
+    // In the editor the instrument scene places every child (osc.N.* nodes);
+    // standalone, the card lays itself out with CardInner.
+    void setSceneManaged(bool managed) { sceneManaged = managed; }
     void mouseUp(const juce::MouseEvent& event) override;
     void mouseMove(const juce::MouseEvent& event) override;
     void paint(juce::Graphics& g) override;
 
 private:
+    bool sceneManaged { false };
+    // Row 4: where the wave is drawn and clicks are ignored.
+    juce::Rectangle<int> graphRow() const;
     void applyModeUi();
     WavetableGraph wavetableGraph;
     juce::ComboBox* wtTableBox { nullptr };

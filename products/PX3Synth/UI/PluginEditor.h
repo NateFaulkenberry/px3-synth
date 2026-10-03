@@ -40,6 +40,7 @@
 #include "DelayComponent.h"
 #include "UIConfigManager.h"
 #include "UILayout.h"
+#include "SceneBinding.h"
 #if PX3_UI_DESIGNER
 #include "UILayoutDesigner.h"
 #endif
@@ -61,6 +62,7 @@
  * surface, but it queries/acts on processor-owned state.
  */
 class PX3SynthAudioProcessorEditor final : public juce::AudioProcessorEditor,
+                                              public px3::ui::SceneLayoutHost,
                                               private juce::Timer,
                                               private juce::ListBoxModel
 {
@@ -591,28 +593,25 @@ private:
     void applyUiConfig();
     juce::File resolveUILayoutFile() const;
     void loadUILayout();
-    juce::Rectangle<int> layoutBoundsForRegion(const juce::String& id,
-                                               juce::Rectangle<int> fallback) const;
     void applyInstrumentSceneStyles();
     void applyUILayoutSectionOrder();
     bool isPrimaryCoreComposite() const noexcept;
+    // Registers every scene-placed component against its node id.
+    void bindSceneComponents();
+    // Section/composite runtime state -> scene, resolve, setBounds, and the
+    // rects the editor paints from. The only layout pass for scene nodes.
+    void applySceneLayout();
+public:
+    void sceneLayoutRequested() override;
+    // Tests and the designer: the live scene and its bindings.
+    px3::ui::InstrumentSceneDocument& getSceneDocument() noexcept { return uiLayout; }
+    px3::ui::SceneBinding& getSceneBinding() noexcept { return sceneBinding; }
+    void relayoutScene() { applySceneLayout(); }
 #if PX3_UI_DESIGNER
     void openUILayoutDesigner();
     void closeUILayoutDesigner();
-    void selectLayoutRegion(const juce::String& id);
-    juce::String updateLayoutRegionBounds(const juce::String& id,
-                                          juce::Rectangle<float> bounds);
-    juce::String updateLayoutRegionOrder(const juce::String& id, int order);
-    juce::String updateLayoutRegionStyle(const juce::String& id, const juce::String& styleToken);
-    juce::String updateSceneLayoutMode(const juce::String& id,
-                                       px3::ui::InstrumentSceneLayoutMode mode);
-    juce::String updateSceneParent(const juce::String& id, const juce::String& parentId);
-    juce::String updateSceneFlow(const juce::String& id,
-                                 float flexGrow,
-                                 float spacing,
-                                 int gridColumns);
-    void refreshUILayoutSelection();
 #endif
+private:
 
     static juce::String fxModuleIdFromSection(int sectionId);
 
@@ -1184,11 +1183,11 @@ private:
     UIConfigManager uiConfigManager;
     std::shared_ptr<const UIConfig> uiConfig;
     px3::ui::InstrumentSceneDocument uiLayout;
+    px3::ui::SceneBinding sceneBinding;
     juce::File uiLayoutFile;
+    bool sceneLayoutInProgress { false };
 #if PX3_UI_DESIGNER
-    std::unique_ptr<UILayoutDesignerWindow> uiDesignerWindow;
-    std::unique_ptr<UILayoutSelectionOverlay> uiSelectionOverlay;
-    juce::String selectedLayoutRegionId;
+    std::unique_ptr<px3::ui::LayoutDesigner> layoutDesigner;
 #endif
     uint32_t uiConfigLastErrorLogMs { 0 };
 };

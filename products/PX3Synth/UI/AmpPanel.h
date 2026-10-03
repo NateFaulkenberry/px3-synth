@@ -21,6 +21,7 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    juce::Component* getEnvelopeCard() const noexcept { return ampEnvelopeComponent.get(); }
 
     void refreshFromParameters();
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);

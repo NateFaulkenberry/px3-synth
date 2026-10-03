@@ -1,139 +1,97 @@
 #pragma once
 
+// The live layout designer (PX3_UI_DESIGNER builds only; nothing here exists
+// in a release binary).
+//
+//  - An overlay on the live editor: hover highlights the node under the
+//    cursor, click selects the deepest node there, Alt/Cmd-click (or Esc)
+//    selects the containing node. Drag the body to move, drag one of the 8
+//    handles to resize. Every gesture edits the node's REAL layout properties
+//    (see UILayoutEditing.h) and the editor relays out immediately; the frame
+//    is always drawn from the resolved rect, i.e. where the component is.
+//  - An inspector in a separate dev window showing only the properties that
+//    apply to the selected node (container / flex child / grid child /
+//    absolute child / control), kept in sync with direct manipulation.
+//  - Undo/redo (Cmd-Z / Shift-Cmd-Z or buttons; a drag is one step), snap,
+//    reorder, visible, lock, save, load and reset to the shipped default.
+
 #include "UILayout.h"
+#include "SceneBinding.h"
+#include "UILayoutEditing.h"
 
 #if PX3_UI_DESIGNER
 
-#include <array>
-#include <functional>
-#include <vector>
+#include <JuceHeader.h>
 
-class UILayoutDesignerWindow final : public juce::DocumentWindow
+#include <functional>
+#include <memory>
+
+namespace px3::ui
+{
+class LayoutDesignerOverlay;
+class LayoutInspectorWindow;
+
+class LayoutDesigner final
 {
 public:
-    struct Callbacks
+    struct Host
     {
-        struct BindingOption
-        {
-            juce::String id;
-            juce::String label;
-        };
-
-        std::vector<BindingOption> bindingOptions;
-        std::function<juce::String(const juce::String&,
-                                   px3::ui::InstrumentSceneNodeKind,
-                                   const juce::String&,
-                                   const juce::String&)> presentationChanged;
-        std::function<void(const juce::String&)> selectionChanged;
-        std::function<juce::String(const juce::String&, juce::Rectangle<float>)> boundsChanged;
-        std::function<juce::String(const juce::String&, int)> orderChanged;
-        std::function<juce::String(const juce::String&, const juce::String&)> styleChanged;
-        std::function<juce::String(const px3::ui::InstrumentSceneStyleToken&, bool)> styleTokenChanged;
-        std::function<juce::String(const juce::String&, px3::ui::InstrumentSceneLayoutMode)> layoutChanged;
-        std::function<juce::String(const juce::String&, const juce::String&)> parentChanged;
-        std::function<juce::String(const juce::String&, float, float, int)> flowChanged;
-        std::function<juce::String(const juce::String&, juce::Point<float>, juce::Point<float>)> sizeConstraintsChanged;
-        std::function<juce::String(const juce::String&, bool)> visibilityChanged;
-        std::function<void()> beginEdit;
-        std::function<void()> endEdit;
-        std::function<void()> save;
-        std::function<bool()> undo;
-        std::function<bool()> redo;
-        std::function<void()> close;
+        // Re-applies the scene to the editor (resolve + setBounds).
+        std::function<void()> relayout;
+        // The source-tree InstrumentScene.json, if found ("Save default").
+        juce::File sourceFile;
+        // The compiled-in shipped default ("Reset").
+        juce::String defaultJson;
     };
 
-    UILayoutDesignerWindow(const px3::ui::InstrumentSceneDocument& document, Callbacks callbacks);
+    LayoutDesigner(juce::Component& editor, InstrumentSceneDocument& document, SceneBinding& binding, Host host);
+    ~LayoutDesigner();
 
-    void setDocument(const px3::ui::InstrumentSceneDocument& document);
-    void setSelectedRegion(const juce::String& id);
+    void setActive(bool shouldBeActive);
+    bool isActive() const noexcept { return active; }
+    // Called at the end of every editor resized(): keep the overlay on top.
+    void editorLaidOut();
+
+    // Where "Save" writes and "Load" starts: the user's layout, never a preset.
+    static juce::File userLayoutFile();
+
+    // ---- used by the overlay and the inspector ----
+    InstrumentSceneDocument& getDocument() noexcept { return document; }
+    SceneBinding& getBinding() noexcept { return binding; }
+    juce::Component& getEditor() noexcept { return editor; }
+    int getSelected() const noexcept { return selected; }
+    void select(int index);
+    void selectParent();
+    // After any edit: relayout the editor, repaint, resync the inspector.
+    void documentChanged();
+    void undo();
+    void redo();
+    void moveInOrder(int direction);
+    void toggleVisible();
+    void toggleLocked();
+    void save();
+    void saveAsDefault();
+    void load();
+    void reset();
     void setStatus(const juce::String& text);
-    void closeButtonPressed() override;
-    void resized() override;
+    bool isEligible(int index) const;
+
+    bool snapEnabled { true };
+    float snapSize { 4.0f };
+    bool editMode { true };
+    void setEditMode(bool shouldEdit);
 
 private:
-    void refreshInspector();
-    void applyBoundsFromInspector();
-    void applyOrderFromInspector();
-    void applyStyleFromInspector();
-    void showStyleTokenEditor(bool create);
-    void applyLayoutFromInspector();
-    void applyParentFromInspector();
-    void applyFlowFromInspector();
-    void applySizeConstraintsFromInspector();
-    void applyNodePresentationFromInspector();
-    void beginPropertyEdit();
-    void endPropertyEdit();
-
-    const px3::ui::InstrumentSceneDocument& document;
-    Callbacks callbacks;
-    juce::ComboBox regionSelector;
-    juce::Label regionLabel;
-    juce::ComboBox parentSelector;
-    juce::Label parentLabel;
-    juce::ComboBox layoutSelector;
-    juce::Label layoutLabel;
-    juce::ComboBox styleSelector;
-    juce::Label styleLabel;
-    juce::TextButton editStyleButton { "..." };
-    juce::TextButton newStyleButton { "+" };
-    std::unique_ptr<juce::AlertWindow> styleTokenEditor;
-    juce::ComboBox kindSelector;
-    juce::Label kindLabel;
-    juce::TextEditor labelEditor;
-    juce::Label labelEditorLabel;
-    juce::ComboBox bindingSelector;
-    juce::Label bindingLabel;
-    juce::ToggleButton visibilityToggle { "Visible" };
-    std::array<juce::Label, 12> propertyLabels;
-    std::array<juce::Slider, 12> propertySliders;
-    juce::TextButton undoButton { "Undo" };
-    juce::TextButton redoButton { "Redo" };
-    juce::TextButton saveButton { "Save Layout" };
-    juce::Label statusLabel;
-    juce::StringArray regionIds;
-    juce::StringArray parentIds;
-    juce::StringArray styleIds;
-    juce::StringArray bindingIds;
-    juce::String selectedRegionId;
-    bool suppressCallbacks { false };
-    bool propertyEditActive { false };
-};
-
-class UILayoutSelectionOverlay final : public juce::Component
-{
-public:
-    using BoundsChanged = std::function<void(juce::Rectangle<float>)>;
-
-    explicit UILayoutSelectionOverlay(BoundsChanged callback);
-
-    void setSelection(juce::Rectangle<int> parentBounds,
-                      juce::Rectangle<float> normalizedBounds,
-                      bool active);
-    bool hitTest(int x, int y) override;
-    void paint(juce::Graphics& graphics) override;
-    void mouseDown(const juce::MouseEvent& event) override;
-    void mouseDrag(const juce::MouseEvent& event) override;
-    void mouseUp(const juce::MouseEvent& event) override;
-
-    std::function<void()> onEditBegin;
-    std::function<void()> onEditEnd;
-
-private:
-    juce::Rectangle<float> normalizedFromPixels(juce::Rectangle<float> bounds) const;
-    void updateFrame();
-
-    BoundsChanged boundsChanged;
-    juce::Rectangle<int> parentBounds;
-    juce::Rectangle<float> normalizedBounds;
-    juce::Rectangle<float> frameBounds;
-    juce::Rectangle<float> dragStartBounds;
-    juce::Point<float> dragStartPoint;
+    juce::Component& editor;
+    InstrumentSceneDocument& document;
+    SceneBinding& binding;
+    Host host;
     bool active { false };
-    bool dragging { false };
-    bool resizeLeft { false };
-    bool resizeRight { false };
-    bool resizeTop { false };
-    bool resizeBottom { false };
+    int selected { -1 };
+    std::unique_ptr<LayoutDesignerOverlay> overlay;
+    std::unique_ptr<LayoutInspectorWindow> inspector;
+    std::unique_ptr<juce::FileChooser> chooser;
 };
+}
 
 #endif

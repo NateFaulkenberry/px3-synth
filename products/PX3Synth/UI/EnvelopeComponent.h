@@ -63,6 +63,7 @@ public:
     int debugAdsrKnobCount() const { return adsrKnobsBuilt ? 4 : 0; }
     const juce::Slider& debugAdsrKnob(int i) const
     { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].knob; }
+    bool debugHardwareFaceplate() const { return hardwareFaceplate; }
     juce::String debugAdsrKnobName(int i) const
     { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].label.getText(); }
     const juce::Label& debugAdsrKnobLabel(int i) const

@@ -24,20 +24,6 @@ using namespace px3::ui;
 
 namespace
 {
-#if PX3_UI_DESIGNER
-int sectionForLayoutRegion(const juce::String& id)
-{
-    if (id == "primary.osc" || id == "primary.filter" || id == "primary.amp"
-        || id == "view.osc") { return kSectionOsc; }
-    if (id == "view.mod") { return kSectionMod; }
-    if (id == "view.amp") { return kSectionAmp; }
-    if (id == "view.filter") { return kSectionFilter; }
-    if (id == "view.fx") { return kSectionFx; }
-    if (id == "view.mix") { return kSectionMix; }
-    if (id == "view.settings") { return kSectionSettings; }
-    return -1;
-}
-#endif
 
 juce::String layoutRegionForSection(int section)
 {
@@ -209,15 +195,14 @@ void PX3SynthAudioProcessorEditor::loadUiConfig(bool forceReload)
 
 juce::File PX3SynthAudioProcessorEditor::resolveUILayoutFile() const
 {
-    const auto executableDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
-                                  .getParentDirectory();
-
-#if JUCE_DEBUG || PX3_UI_DESIGNER
+    // Release builds never touch the disk for the layout: the shipped default
+    // is compiled in (BinaryData::InstrumentScene_json). Designer builds edit
+    // the source-tree file so a saved default is the one that gets committed.
+#if PX3_UI_DESIGNER
     if (const auto envPath = juce::SystemStats::getEnvironmentVariable("PX3_INSTRUMENT_SCENE_PATH", {});
         envPath.isNotEmpty())
     {
-        const juce::File envFile(envPath);
-        return envFile;
+        return juce::File(envPath);
     }
 
     const auto cwdCandidate = juce::File::getCurrentWorkingDirectory()
@@ -227,7 +212,8 @@ juce::File PX3SynthAudioProcessorEditor::resolveUILayoutFile() const
         return cwdCandidate;
     }
 
-    for (auto probe = executableDir; probe.exists(); probe = probe.getParentDirectory())
+    for (auto probe = juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory();
+         probe.exists(); probe = probe.getParentDirectory())
     {
         const auto sourceCandidate = probe.getChildFile("shared/UI/Style/InstrumentScene.json");
         if (sourceCandidate.existsAsFile())
@@ -237,46 +223,26 @@ juce::File PX3SynthAudioProcessorEditor::resolveUILayoutFile() const
         if (probe.getParentDirectory() == probe) { break; }
     }
 #endif
-
-    for (auto probe = executableDir; probe.exists(); probe = probe.getParentDirectory())
-    {
-        const auto bundled = probe.getChildFile("Resources/InstrumentScene.json");
-        if (bundled.existsAsFile())
-        {
-            return bundled;
-        }
-        if (probe.getParentDirectory() == probe) { break; }
-    }
-
     return {};
 }
 
 void PX3SynthAudioProcessorEditor::loadUILayout()
 {
-    uiLayoutFile = resolveUILayoutFile();
-    if (! uiLayoutFile.existsAsFile())
-    {
-        return;
-    }
-
     juce::String error;
-    if (! uiLayout.loadJson(uiLayoutFile.loadFileAsString(), error))
+    const auto shipped = juce::String::fromUTF8(BinaryData::InstrumentScene_json,
+                                                BinaryData::InstrumentScene_jsonSize);
+    if (! uiLayout.loadJson(shipped, error))
     {
-        juce::Logger::writeToLog("[PX3 Scene] " + error);
-    }
-}
-
-juce::Rectangle<int> PX3SynthAudioProcessorEditor::layoutBoundsForRegion(
-    const juce::String& id,
-    juce::Rectangle<int> fallback) const
-{
-    if (uiLayout.findNode(id) == nullptr)
-    {
-        return fallback;
+        // A broken shipped scene is a build defect; the unit tests load it.
+        jassertfalse;
+        juce::Logger::writeToLog("[PX3 Scene] shipped layout: " + error);
     }
 
-    const auto resolved = uiLayout.resolveBounds(id, panelViewportArea.toFloat());
-    return resolved.isEmpty() ? fallback : resolved.toNearestInt();
+    uiLayoutFile = resolveUILayoutFile();
+    if (uiLayoutFile.existsAsFile() && ! uiLayout.loadJson(uiLayoutFile.loadFileAsString(), error))
+    {
+        juce::Logger::writeToLog("[PX3 Scene] " + uiLayoutFile.getFullPathName() + ": " + error);
+    }
 }
 
 bool PX3SynthAudioProcessorEditor::isPrimaryCoreComposite() const noexcept
@@ -322,312 +288,235 @@ void PX3SynthAudioProcessorEditor::applyInstrumentSceneStyles()
     };
 
     apply("primary.osc", oscPanel.get());
-    apply(isPrimaryCoreComposite() ? "primary.filter" : "view.filter", fltPanel.get());
-    apply(isPrimaryCoreComposite() ? "primary.amp" : "view.amp", ampPanel.get());
+    apply("primary.filter", fltPanel.get());
+    apply("primary.amp", ampPanel.get());
+}
+
+void PX3SynthAudioProcessorEditor::bindSceneComponents()
+{
+    using V = px3::ui::SceneBinding::Visibility;
+    auto& b = sceneBinding;
+    b.clear();
+    if (topMenuBar != nullptr) { b.bind("header.menu", *topMenuBar); }
+    b.bind("header.gain.knob", gainKnob);
+    if (macroStrip != nullptr) { b.bind("macros", *macroStrip); }
+    b.bind("primary.osc", oscPanelViewport);
+    b.bind("view.mod", modPanelViewport);
+    if (fxPanel != nullptr) { b.bind("view.fx", *fxPanel); }
+    if (mixPanel != nullptr) { b.bind("view.mix", *mixPanel); }
+    if (settingsPanel != nullptr) { b.bind("view.settings", *settingsPanel); }
+    b.bind("keys.performance", performanceControls);
+    b.bind("keys.keyboard", pianoKeyboard);
+
+    if (oscPanel != nullptr)
+    {
+        const char* cards[] { "osc.sub", "osc.1", "osc.2", "osc.3" };
+        for (int i = 0; i < 4; ++i)
+        {
+            if (auto* card = oscPanel->getCard(i)) { b.bind(cards[i], *card); }
+        }
+
+        // Every control inside the oscillator cards. Mode-dependent controls
+        // follow their component's visibility, so a hidden knob's cell closes.
+        const auto knob = [&b](const juce::String& cell, juce::Component& label, juce::Component& control,
+                               juce::Component& value)
+        {
+            b.bind(cell + ".label", label, V::followsComponent);
+            b.bind(cell + ".knob", control, V::followsComponent);
+            b.bind(cell + ".value", value, V::followsComponent);
+        };
+        const auto stretch = [&b](const juce::String& cell, juce::Component& label, juce::Component& control)
+        {
+            b.bind(cell + ".label", label, V::followsComponent);
+            b.bind(cell + ".box", control, V::followsComponent);
+        };
+        const auto tuning = [&knob](const juce::String& card, TuningControls& t)
+        {
+            knob(card + ".coarse", t.coarseLabel, t.coarseKnob, t.coarseValue);
+            knob(card + ".semi", t.semitoneLabel, t.semitoneKnob, t.semitoneValue);
+            knob(card + ".fine", t.fineLabel, t.fineKnob, t.fineValue);
+        };
+
+        if (auto* sub = oscPanel->getSubCard())
+        {
+            sub->setSceneManaged(true);
+            b.bind("osc.sub.power", subOscEnabledButton);
+            stretch("osc.sub.wave", subOscWaveformLabel, subOscWaveformBox);
+            tuning("osc.sub", subTuning);
+            b.bind("osc.sub.graph", sub->getGraphSlot());
+        }
+
+        struct OscControls
+        {
+            juce::Component& power;
+            juce::Component& modeLabel;
+            juce::Component& mode;
+            juce::Component& vowelLabel;
+            juce::Component& vowel;
+            std::array<juce::Component*, 3> macroLabels, macros, macroValues;
+        };
+        const std::array<OscControls, 3> oscs { {
+            { osc1EnabledButton, osc1ModeLabel, osc1ModeBox, osc1VowelLabel, osc1VowelBox,
+              { &osc1MacroALabel, &osc1MacroBLabel, &osc1MacroCLabel },
+              { &osc1MacroAKnob, &osc1MacroBKnob, &osc1MacroCKnob },
+              { &osc1MacroAValueLabel, &osc1MacroBValueLabel, &osc1MacroCValueLabel } },
+            { osc2EnabledButton, osc2ModeLabel, osc2ModeBox, osc2VowelLabel, osc2VowelBox,
+              { &osc2MacroALabel, &osc2MacroBLabel, &osc2MacroCLabel },
+              { &osc2MacroAKnob, &osc2MacroBKnob, &osc2MacroCKnob },
+              { &osc2MacroAValueLabel, &osc2MacroBValueLabel, &osc2MacroCValueLabel } },
+            { osc3EnabledButton, osc3ModeLabel, osc3ModeBox, osc3VowelLabel, osc3VowelBox,
+              { &osc3MacroALabel, &osc3MacroBLabel, &osc3MacroCLabel },
+              { &osc3MacroAKnob, &osc3MacroBKnob, &osc3MacroCKnob },
+              { &osc3MacroAValueLabel, &osc3MacroBValueLabel, &osc3MacroCValueLabel } },
+        } };
+        for (int i = 0; i < 3; ++i)
+        {
+            auto* card = oscPanel->getOscillatorCard(i);
+            if (card == nullptr) { continue; }
+            const auto& o = oscs[static_cast<std::size_t>(i)];
+            const auto id = "osc." + juce::String(i + 1);
+            card->setSceneManaged(true);
+            b.bind(id + ".power", o.power);
+            stretch(id + ".mode", o.modeLabel, o.mode);
+            stretch(id + ".vowel", o.vowelLabel, o.vowel);
+            tuning(id, oscTuning[static_cast<std::size_t>(i)]);
+            stretch(id + ".table", oscWtTableLabels[static_cast<std::size_t>(i)], oscWtTableBoxes[static_cast<std::size_t>(i)]);
+            knob(id + ".position", oscWtPositionLabels[static_cast<std::size_t>(i)],
+                 oscWtPositionKnobs[static_cast<std::size_t>(i)], oscWtPositionValues[static_cast<std::size_t>(i)]);
+            const char* macroNames[] { ".macroA", ".macroB", ".macroC" };
+            for (int m = 0; m < 3; ++m)
+            {
+                knob(id + macroNames[m], *o.macroLabels[static_cast<std::size_t>(m)], *o.macros[static_cast<std::size_t>(m)],
+                     *o.macroValues[static_cast<std::size_t>(m)]);
+            }
+            b.bind(id + ".graph", card->getWavetableGraph());
+        }
+    }
+    if (fltPanel != nullptr)
+    {
+        b.bind("primary.filter", *fltPanel);
+        b.bind("filter.routing.mode", fltPanel->getRoutingButton(), V::followsComponent);
+        b.bind("filter.routing.label", fltPanel->getBalanceLabel(), V::followsComponent);
+        b.bind("filter.routing.balance", fltPanel->getBalanceSlider(), V::followsComponent);
+        for (int i = 0; i < 2; ++i)
+        {
+            if (auto* card = fltPanel->getFilterCard(i)) { b.bind("filter." + juce::String(i + 1), *card); }
+        }
+    }
+    if (ampPanel != nullptr)
+    {
+        b.bind("primary.amp", *ampPanel);
+        if (auto* card = ampPanel->getEnvelopeCard()) { b.bind("amp.envelope", *card); }
+    }
+}
+
+void PX3SynthAudioProcessorEditor::sceneLayoutRequested()
+{
+    // A scene-managed component changed what it shows (a mode hid a knob).
+    if (! sceneLayoutInProgress && oscPanel != nullptr && fltPanel != nullptr && ampPanel != nullptr)
+    {
+        applySceneLayout();
+    }
+}
+
+void PX3SynthAudioProcessorEditor::applySceneLayout()
+{
+    if (sceneLayoutInProgress || uiLayout.rootIndex() < 0)
+    {
+        return;
+    }
+    const juce::ScopedValueSetter<bool> guard(sceneLayoutInProgress, true);
+
+    // Runtime state the document cannot know: which section is selected.
+    //
+    // The section views overlap (views is an overlay) and stay laid out while
+    // hidden - the owner hides the component, the scene keeps its box - so a
+    // panel is already the right size when its tab is chosen.
+    const auto section = selectedTopMenuSection;
+    const auto voiceSection = section == kSectionOsc || section == kSectionFilter || section == kSectionAmp;
+    const auto showMacros = section != kSectionSettings;
+    uiLayout.setRuntimeHidden("macros", ! showMacros);
+    if (macroStrip != nullptr) { macroStrip->setVisible(showMacros); }
+
+    // OSC, FILTER and AMP share one row. On OSC at a size that fits, all three
+    // show (the composite); otherwise the selected one takes the row. Off the
+    // voice sections the OSC panel keeps the whole (hidden) row.
+    uiLayout.resolve(getLocalBounds().toFloat());
+    panelViewportArea = px3::ui::snapToPixels(uiLayout.rectOf("views"));
+    const auto voice = voiceSection ? section : kSectionOsc;
+    const auto composite = section == kSectionOsc && panelViewportArea.getWidth() >= 900
+                        && panelViewportArea.getHeight() >= 380;
+    uiLayout.setRuntimeHidden("primary.osc", voice != kSectionOsc);
+    uiLayout.setRuntimeHidden("primary.filter", ! (composite || voice == kSectionFilter));
+    uiLayout.setRuntimeHidden("primary.amp", ! (composite || voice == kSectionAmp));
+
+    sceneBinding.apply(uiLayout, *this);
+
+    // The rects the editor paints from.
+    const auto rect = [this](const char* id) { return px3::ui::snapToPixels(uiLayout.rectOf(id)); };
+    headerArea = rect("header");
+    topMenuStripArea = headerArea;
+    logoPanelArea = rect("header.logo");
+    const auto logoClickInset = uiConfig != nullptr ? uiConfig->getInt("editor.layout.logoClickInsetRight", 18) : 18;
+    logoClickArea = logoPanelArea.withTrimmedRight(juce::jlimit(0, logoPanelArea.getWidth() / 2, logoClickInset));
+    topMenuGainArea = rect("header.gain");
+    headerPlaceholderArea = rect("header.menu");
+    controlsArea = rect("controls");
+    macroStripArea = showMacros ? rect("macros") : juce::Rectangle<int>();
+    performanceControlsArea = rect("keys.performance");
+    gainLabel.setBounds({});
+
+    if (topMenuBar != nullptr)
+    {
+        const auto menuOrigin = topMenuBar->getPosition();
+        topMenuSectionButtonsArea = topMenuBar->getSectionButtonsArea().translated(menuOrigin.x, menuOrigin.y);
+        topMenuPresetClusterArea = topMenuBar->getPresetClusterArea().translated(menuOrigin.x, menuOrigin.y);
+        topMenuMenuButtonArea = topMenuBar->getPresetMenuButtonBounds().translated(menuOrigin.x, menuOrigin.y);
+        presetBarArea = topMenuPresetClusterArea;
+    }
+
+    // The OSC panel scrolls inside its viewport and is sized to it.
+    oscPanelViewport.setScrollBarsShown(false, false);
+    oscPanel->setSize(juce::jmax(1, oscPanelViewport.getMaximumVisibleWidth()),
+                      juce::jmax(1, oscPanelViewport.getMaximumVisibleHeight()));
+    // Still hand-laid inside the filter cards: see PX3_0.8.0_UI_FOUNDATION.md.
+    fltPanel->layoutCardControls();
+
+    // The spark overlay is a decoration over the keyboard row plus the room
+    // the particles need; it takes no clicks.
+    const auto keyboardRow = rect("keys");
+    const auto headroom = juce::jmin(keyboardSparkHeadroom, controlsArea.getHeight());
+    const auto spill = juce::jmax(0, performanceSparkSpill);
+    sparkOverlay.setBounds(keyboardRow.expanded(spill, 0)
+                               .withTop(keyboardRow.getY() - headroom)
+                               .withBottom(keyboardRow.getBottom() + spill)
+                               .getIntersection(getLocalBounds()));
+    pianoKeyboard.toFront(false);
+    performanceControls.toFront(false);
+    sparkOverlay.toFront(false);
 }
 
 #if PX3_UI_DESIGNER
 void PX3SynthAudioProcessorEditor::openUILayoutDesigner()
 {
-    if (uiDesignerWindow == nullptr)
+    if (layoutDesigner == nullptr)
     {
-        uiSelectionOverlay = std::make_unique<UILayoutSelectionOverlay>([this](juce::Rectangle<float> bounds)
-        {
-            if (const auto message = updateLayoutRegionBounds(selectedLayoutRegionId, bounds);
-                message.isNotEmpty() && uiDesignerWindow != nullptr)
-            {
-                uiDesignerWindow->setStatus(message);
-            }
-        });
-        uiSelectionOverlay->onEditBegin = [this]() { uiLayout.beginTransaction(); };
-        uiSelectionOverlay->onEditEnd = [this]()
-        {
-            uiLayout.commitTransaction();
-            if (uiDesignerWindow != nullptr)
-            {
-                uiDesignerWindow->setDocument(uiLayout);
-            }
-        };
-        addAndMakeVisible(*uiSelectionOverlay);
-
-        UILayoutDesignerWindow::Callbacks callbacks;
-        for (const auto& entry : audioProcessor.getParameterCatalog().entries())
-        {
-            callbacks.bindingOptions.push_back({ entry.id, entry.name });
-        }
-        callbacks.selectionChanged = [this](const juce::String& id) { selectLayoutRegion(id); };
-        callbacks.presentationChanged = [this](const juce::String& id,
-                                               px3::ui::InstrumentSceneNodeKind kind,
-                                               const juce::String& label,
-                                               const juce::String& bindingId)
-        {
-            if (kind == px3::ui::InstrumentSceneNodeKind::parameterControl
-                && audioProcessor.getParameterCatalog().find(bindingId) == nullptr)
-            {
-                return juce::String("Select a parameter from the catalog");
-            }
-            juce::String error;
-            if (! uiLayout.setNodePresentation(id, kind, label, bindingId, error)) { return error; }
-            resized();
-            return juce::String("Updated presentation for ") + id;
-        };
-        callbacks.boundsChanged = [this](const juce::String& id, juce::Rectangle<float> bounds)
-        {
-            return updateLayoutRegionBounds(id, bounds);
-        };
-        callbacks.orderChanged = [this](const juce::String& id, int order)
-        {
-            return updateLayoutRegionOrder(id, order);
-        };
-        callbacks.styleChanged = [this](const juce::String& id, const juce::String& token)
-        {
-            return updateLayoutRegionStyle(id, token);
-        };
-        callbacks.styleTokenChanged = [this](const px3::ui::InstrumentSceneStyleToken& token, bool create)
-        {
-            juce::String error;
-            const auto updated = create ? uiLayout.addStyleToken(token, error)
-                                        : uiLayout.updateStyleToken(token, error);
-            if (updated) { resized(); repaint(); }
-            return error;
-        };
-        callbacks.layoutChanged = [this](const juce::String& id,
-                                         px3::ui::InstrumentSceneLayoutMode mode)
-        {
-            return updateSceneLayoutMode(id, mode);
-        };
-        callbacks.parentChanged = [this](const juce::String& id, const juce::String& parentId)
-        {
-            return updateSceneParent(id, parentId);
-        };
-        callbacks.flowChanged = [this](const juce::String& id,
-                                       float flexGrow,
-                                       float spacing,
-                                       int gridColumns)
-        {
-            return updateSceneFlow(id, flexGrow, spacing, gridColumns);
-        };
-        callbacks.sizeConstraintsChanged = [this](const juce::String& id,
-                                                  juce::Point<float> minimumSize,
-                                                  juce::Point<float> maximumSize)
-        {
-            juce::String error;
-            if (! uiLayout.setSizeConstraints(id, minimumSize, maximumSize, error)) { return error; }
-            resized();
-            return "Updated size constraints for " + id;
-        };
-        callbacks.beginEdit = [this]() { uiLayout.beginTransaction(); };
-        callbacks.visibilityChanged = [this](const juce::String& id, bool visible)
-        {
-            juce::String error;
-            if (! uiLayout.setVisible(id, visible, error)) { return error; }
-            resized();
-            return juce::String(visible ? "Showing " : "Hiding ") + id;
-        };
-        callbacks.endEdit = [this]()
-        {
-            uiLayout.commitTransaction();
-            if (uiDesignerWindow != nullptr)
-            {
-                uiDesignerWindow->setDocument(uiLayout);
-            }
-        };
-        callbacks.save = [this]()
-        {
-            if (uiLayoutFile == juce::File())
-            {
-                uiDesignerWindow->setStatus("No writable layout file found");
-                return;
-            }
-            const auto parent = uiLayoutFile.getParentDirectory();
-            if (! parent.exists() && ! parent.createDirectory())
-            {
-                uiDesignerWindow->setStatus("Could not create layout directory");
-                return;
-            }
-            if (! uiLayoutFile.replaceWithText(uiLayout.toJson()))
-            {
-                uiDesignerWindow->setStatus("Could not save layout file");
-                return;
-            }
-            uiDesignerWindow->setStatus("Saved " + uiLayoutFile.getFileName());
-        };
-        callbacks.undo = [this]
-        {
-            const auto changed = uiLayout.undo();
-            if (changed)
-            {
-                resized();
-                if (uiDesignerWindow != nullptr) { uiDesignerWindow->setDocument(uiLayout); }
-            }
-            return changed;
-        };
-        callbacks.redo = [this]
-        {
-            const auto changed = uiLayout.redo();
-            if (changed)
-            {
-                resized();
-                if (uiDesignerWindow != nullptr) { uiDesignerWindow->setDocument(uiLayout); }
-            }
-            return changed;
-        };
-        callbacks.close = [this]() { closeUILayoutDesigner(); };
-
-        uiDesignerWindow = std::make_unique<UILayoutDesignerWindow>(uiLayout, std::move(callbacks));
+        px3::ui::LayoutDesigner::Host host;
+        host.relayout = [this] { applySceneLayout(); applyInstrumentSceneStyles(); repaint(); };
+        host.sourceFile = uiLayoutFile;
+        host.defaultJson = juce::String::fromUTF8(BinaryData::InstrumentScene_json,
+                                                  BinaryData::InstrumentScene_jsonSize);
+        layoutDesigner = std::make_unique<px3::ui::LayoutDesigner>(*this, uiLayout, sceneBinding, std::move(host));
     }
-
-    if (selectedLayoutRegionId.isEmpty())
-    {
-        selectedLayoutRegionId = selectedTopMenuSection == kSectionOsc
-                                     ? "primary.osc"
-                                     : layoutRegionForSection(selectedTopMenuSection);
-    }
-    uiDesignerWindow->setDocument(uiLayout);
-    uiDesignerWindow->setSelectedRegion(selectedLayoutRegionId);
-    uiDesignerWindow->setVisible(true);
-    uiDesignerWindow->toFront(true);
-    uiSelectionOverlay->setVisible(true);
-    resized();
+    layoutDesigner->setActive(true);
 }
 
 void PX3SynthAudioProcessorEditor::closeUILayoutDesigner()
 {
-    if (uiSelectionOverlay != nullptr)
+    if (layoutDesigner != nullptr)
     {
-        uiSelectionOverlay->setVisible(false);
+        layoutDesigner->setActive(false);
     }
-    if (uiDesignerWindow != nullptr)
-    {
-        uiDesignerWindow->setVisible(false);
-    }
-}
-
-void PX3SynthAudioProcessorEditor::selectLayoutRegion(const juce::String& id)
-{
-    selectedLayoutRegionId = id;
-    const auto section = sectionForLayoutRegion(id);
-    if (section >= 0 && section != selectedTopMenuSection)
-    {
-        selectedTopMenuSection = section;
-        if (topMenuBar != nullptr)
-        {
-            topMenuBar->setSelectedSection(section);
-        }
-        updatePanelVisibility();
-        resized();
-    }
-    if (uiDesignerWindow != nullptr)
-    {
-        uiDesignerWindow->setSelectedRegion(id);
-    }
-    applyInstrumentSceneStyles();
-    refreshUILayoutSelection();
-}
-
-juce::String PX3SynthAudioProcessorEditor::updateLayoutRegionBounds(
-    const juce::String& id,
-    juce::Rectangle<float> bounds)
-{
-    juce::String error;
-    if (uiLayout.findNode(id) == nullptr)
-    {
-        return "Unknown scene node: " + id;
-    }
-    else if (! uiLayout.setBounds(id, bounds, error))
-    {
-        return error;
-    }
-
-    resized();
-    return "Previewing " + id;
-}
-
-juce::String PX3SynthAudioProcessorEditor::updateLayoutRegionOrder(const juce::String& id, int order)
-{
-    juce::String error;
-    if (uiLayout.findNode(id) == nullptr)
-    {
-        return "Unknown scene node: " + id;
-    }
-    else if (! uiLayout.setOrder(id, order, error))
-    {
-        return error;
-    }
-
-    applyUILayoutSectionOrder();
-    return "Updated order for " + id;
-}
-
-juce::String PX3SynthAudioProcessorEditor::updateLayoutRegionStyle(
-    const juce::String& id,
-    const juce::String& styleToken)
-{
-    juce::String error;
-    if (! uiLayout.setNodeStyleToken(id, styleToken, error))
-    {
-        return error;
-    }
-    applyInstrumentSceneStyles();
-    repaint();
-    return "Applied " + styleToken + " to " + id;
-}
-
-juce::String PX3SynthAudioProcessorEditor::updateSceneLayoutMode(
-    const juce::String& id,
-    px3::ui::InstrumentSceneLayoutMode mode)
-{
-    juce::String error;
-    if (! uiLayout.setLayoutMode(id, mode, error)) { return error; }
-    resized();
-    juce::ignoreUnused(mode);
-    return "Updated layout mode for " + id;
-}
-
-juce::String PX3SynthAudioProcessorEditor::updateSceneParent(
-    const juce::String& id,
-    const juce::String& parentId)
-{
-    juce::String error;
-    if (! uiLayout.setParentNode(id, parentId, error)) { return error; }
-    resized();
-    return "Reparented " + id;
-}
-
-juce::String PX3SynthAudioProcessorEditor::updateSceneFlow(const juce::String& id,
-                                                           float flexGrow,
-                                                           float spacing,
-                                                           int gridColumns)
-{
-    juce::String error;
-    if (! uiLayout.setFlowProperties(id, flexGrow, spacing, gridColumns, error)) { return error; }
-    resized();
-    return "Updated layout constraints for " + id;
-}
-
-void PX3SynthAudioProcessorEditor::refreshUILayoutSelection()
-{
-    if (uiSelectionOverlay == nullptr)
-    {
-        return;
-    }
-
-    const auto* region = uiLayout.findNode(selectedLayoutRegionId);
-    const auto designerVisible = uiDesignerWindow != nullptr && uiDesignerWindow->isVisible();
-    if (region == nullptr)
-    {
-        uiSelectionOverlay->setSelection(panelViewportArea, {}, false);
-        return;
-    }
-    const auto parentBounds = region->parentId.isEmpty()
-                                ? panelViewportArea.toFloat()
-                                : uiLayout.resolveBounds(region->parentId, panelViewportArea.toFloat());
-    if (parentBounds.isEmpty())
-    {
-        uiSelectionOverlay->setSelection(panelViewportArea, {}, false);
-        return;
-    }
-    uiSelectionOverlay->setSelection(parentBounds.toNearestInt(), region->bounds, designerVisible);
 }
 #endif
 

@@ -29,11 +29,18 @@ public:
     void advanceAnimation(float deltaPhase);
 
     void resized() override;
+    // See OscillatorComponent::setSceneManaged. The wave table is painted, so
+    // the scene places an empty slot (osc.sub.graph) and paint() reads it.
+    void setSceneManaged(bool managed) { sceneManaged = managed; }
+    juce::Component& getGraphSlot() noexcept { return graphSlot; }
     void mouseUp(const juce::MouseEvent& event) override;
     void mouseMove(const juce::MouseEvent& event) override;
     void paint(juce::Graphics& g) override;
 
 private:
+    bool sceneManaged { false };
+    juce::Component graphSlot;
+    juce::Rectangle<int> graphRow() const;
     static float waveformSample(float phaseNorm, int waveformIndex);
 
     juce::ToggleButton& enabledButton;
