@@ -36,6 +36,7 @@ struct OscillatorLayerSettings
     float level { 1.0f };
     // Static tuning, from the Coarse Tune and Fine Tune parameters.
     float coarseOctaves { 0.0f };
+    float semitones { 0.0f };
     float fineCents { 0.0f };
     // Dynamic: what modulation adds through Pitch Mod, never a stored offset.
     // See OscillatorTuning.h for how the three combine.

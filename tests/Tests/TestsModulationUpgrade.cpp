@@ -860,6 +860,18 @@ void testModulationUpgrade()
         check("ModGraph_InvalidRouteEditLeavesEndpointsIntact",
               ! restored.setGraphRoute(0, { 6, "missing" }, error)
                   && restored.getGraphRoute(0).destination == "voice.filter1.cutoff");
+          check("ModGraph_SourceControlsAcceptAcyclicRoutes",
+              restored.setGraphRoute(2, { 6, "mod.lfo1.frequency" }, error)
+                && restored.setGraphRoute(3, { 0, "mod.env1.attack" }, error), error);
+          check("ModGraph_ProcessorRejectsSourceControlCyclesAtomically",
+              ! restored.setGraphRoute(4, { 3, "mod.lfo1.frequency" }, error)
+                && restored.getGraphRoute(4).source == -1);
+          auto& rateDepth = restored.getGraphRouteDepthParam(2);
+          rateDepth.setValueNotifyingHost(rateDepth.convertTo0to1(0.5f));
+          auto& rate = restored.getLfoFrequencyParam(0);
+          check("ModGraph_MacroCanModulateLfoRate",
+              restored.getUnclampedModulatedNormalisedValue(rate)
+                  > static_cast<juce::RangedAudioParameter&>(rate).getValue());
     }
     testEnvelopeTimesUpgrade();
     testStateUpgrade();

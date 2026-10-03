@@ -28,6 +28,8 @@ SubOscSettings PX3SynthAudioProcessor::currentSubOscillatorSettings() const
     // to push into. The mixer channel remains the single USER-facing gain stage
     // and its fader reads true gain; this is a fixed source trim, not a control.
     settings.level = px3::processor_internal::sourceHeadroomGain();
+    settings.semitones = subOscSemitoneParam->convertFrom0to1(applyModulationToNormalizedValue(
+        subOscSemitoneParam, static_cast<juce::RangedAudioParameter*>(subOscSemitoneParam)->getValue()));
     settings.coarseOctaves = subOscCoarseParam->convertFrom0to1(
         applyModulationToNormalizedValue(subOscCoarseParam, static_cast<juce::RangedAudioParameter*>(subOscCoarseParam)->getValue()));
     settings.fineCents = subOscFineParam->convertFrom0to1(
@@ -116,6 +118,9 @@ std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcess
         // stage and its fader reads true gain.
         layer.level = px3::processor_internal::sourceHeadroomGain();
         layer.pitchModSemitones = modulationOnlyPitchSemitones(getOscillatorPitchModParam(oscIndex));
+        auto& semitone = getOscillatorSemitoneParam(oscIndex);
+        layer.semitones = semitone.convertFrom0to1(applyModulationToNormalizedValue(
+            &semitone, static_cast<juce::RangedAudioParameter&>(semitone).getValue()));
         layer.coarseOctaves = getOscillatorCoarseParam(oscIndex).convertFrom0to1(
             applyModulationToNormalizedValue(&getOscillatorCoarseParam(oscIndex),
                                              static_cast<juce::RangedAudioParameter&>(getOscillatorCoarseParam(oscIndex)).getValue()));
@@ -414,9 +419,13 @@ LfoSettings PX3SynthAudioProcessor::currentLfoSettings(int lfoIndex) const
     const auto idx = juce::jlimit(0, kLfoSourceCount - 1, lfoIndex);
     LfoSettings settings;
     settings.enabled = getLfoEnabledParam(idx).get();
-    settings.frequencyHz = juce::jlimit(0.01f, 20.0f, getLfoFrequencyParam(idx).get());
+    auto& frequency = getLfoFrequencyParam(idx);
+    settings.frequencyHz = juce::jlimit(0.01f, 20.0f, frequency.convertFrom0to1(
+        applyModulationToNormalizedValue(&frequency, static_cast<juce::RangedAudioParameter&>(frequency).getValue())));
     settings.waveformIndex = getLfoWaveformParam(idx).getIndex();
-    settings.rampSeconds = getLfoRampTimeParam(idx).get();
+    auto& ramp = getLfoRampTimeParam(idx);
+    settings.rampSeconds = ramp.convertFrom0to1(applyModulationToNormalizedValue(
+        &ramp, static_cast<juce::RangedAudioParameter&>(ramp).getValue()));
     settings.keySync = getLfoKeySyncParam(idx).get();
     return settings;
 }

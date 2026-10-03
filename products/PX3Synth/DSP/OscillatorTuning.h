@@ -30,23 +30,25 @@ inline constexpr float kPitchModRangeSemitones = 24.0f;
 // Static tuning in semitones. Coarse is rounded to a whole octave even when
 // modulation has moved it between two, so modulating COARSE steps in octaves
 // rather than gliding - it is a stepped control however it is driven.
-inline double staticSemitones(float coarseOctaves, float fineCents)
+inline double staticSemitones(float coarseOctaves, float fineCents, float semitones = 0.0f)
 {
     const auto octaves = std::round(juce::jlimit(kCoarseMinOctaves, kCoarseMaxOctaves, coarseOctaves));
     const auto cents = juce::jlimit(kFineMinCents, kFineMaxCents, fineCents);
-    return 12.0 * static_cast<double>(octaves) + static_cast<double>(cents) / 100.0;
+        const auto wholeSemitones = std::round(juce::jlimit(-12.0f, 12.0f, semitones));
+        return 12.0 * static_cast<double>(octaves) + static_cast<double>(wholeSemitones)
+            + static_cast<double>(cents) / 100.0;
 }
 
 // Static tuning plus the oscillator's own dynamic modulation.
-inline double totalSemitones(float coarseOctaves, float fineCents, float pitchModSemitones)
+inline double totalSemitones(float coarseOctaves, float fineCents, float pitchModSemitones, float semitones = 0.0f)
 {
-    return staticSemitones(coarseOctaves, fineCents)
+    return staticSemitones(coarseOctaves, fineCents, semitones)
            + static_cast<double>(juce::jlimit(-kPitchModRangeSemitones, kPitchModRangeSemitones, pitchModSemitones));
 }
 
-inline double pitchRatio(float coarseOctaves, float fineCents, float pitchModSemitones)
+inline double pitchRatio(float coarseOctaves, float fineCents, float pitchModSemitones, float semitones = 0.0f)
 {
-    return std::pow(2.0, totalSemitones(coarseOctaves, fineCents, pitchModSemitones) / 12.0);
+    return std::pow(2.0, totalSemitones(coarseOctaves, fineCents, pitchModSemitones, semitones) / 12.0);
 }
 
 inline juce::String formatCoarse(double octaves)

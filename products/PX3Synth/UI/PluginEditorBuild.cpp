@@ -264,6 +264,11 @@ void PX3SynthAudioProcessorEditor::buildParameterKnobs()
     configureKnob(knobBindings[25], "FINE", audioProcessor.getOscillatorFineParam(1));
     configureKnob(knobBindings[26], "FINE", audioProcessor.getOscillatorFineParam(2));
     configureKnob(knobBindings[27], "FINE", audioProcessor.getSubOscFineParam());
+    for (int oscillator = 0; oscillator < kOscillatorSourceCount; ++oscillator)
+    {
+        oscTuning[static_cast<std::size_t>(oscillator)].bindSemitone(audioProcessor.getOscillatorSemitoneParam(oscillator));
+    }
+    subTuning.bindSemitone(audioProcessor.getSubOscSemitoneParam());
     // The caption is gone from the layout, so the name lives on the knob.
     gainKnob.setTooltip("Master gain");
     gainLabel.setVisible(false);

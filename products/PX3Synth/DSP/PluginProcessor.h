@@ -161,6 +161,7 @@ public:
     juce::AudioParameterBool& getOscillatorEnabledParam(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorCoarseParam(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorFineParam(int oscIndex) const;
+    juce::AudioParameterFloat& getOscillatorSemitoneParam(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorPitchModParam(int oscIndex) const;
     juce::AudioParameterChoice& getOscillatorModeParam(int oscIndex) const;
     juce::AudioParameterFloat& getOscillatorMacroAParam(int oscIndex) const;
@@ -377,6 +378,7 @@ public:
     juce::AudioParameterBool& getSubOscEnabledParam() const;
     juce::AudioParameterFloat& getSubOscCoarseParam() const;
     juce::AudioParameterFloat& getSubOscFineParam() const;
+    juce::AudioParameterFloat& getSubOscSemitoneParam() const;
     juce::AudioParameterFloat& getSubOscPitchModParam() const;
     juce::AudioParameterChoice& getSubOscWaveformParam() const;
     juce::AudioParameterBool& getFilterEnabledParam(int filterIndex) const;
@@ -855,6 +857,7 @@ private:
     std::array<juce::AudioParameterBool*, kOscillatorSourceCount> oscEnabledParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscCoarseParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscFineParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscSemitoneParams {};
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscPitchModParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterChoice*, kOscillatorSourceCount> oscModeParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscMacroAParams { { nullptr, nullptr, nullptr } };
@@ -873,6 +876,7 @@ private:
     juce::AudioParameterBool* subOscEnabledParam { nullptr };
     juce::AudioParameterFloat* subOscCoarseParam { nullptr };
     juce::AudioParameterFloat* subOscFineParam { nullptr };
+    juce::AudioParameterFloat* subOscSemitoneParam { nullptr };
     juce::AudioParameterFloat* subOscPitchModParam { nullptr };
     juce::AudioParameterChoice* subOscWaveformParam { nullptr };
     std::array<juce::AudioParameterBool*, kFilterInstanceCount> filterEnabledParams { { nullptr, nullptr } };

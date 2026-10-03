@@ -108,6 +108,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         // voice hears only what modulation adds to it, taken around its centre,
         // and never its stored value. Not automatable, because a host lane on it
         // would be exactly the hidden pitch offset this rules out.
+        oscSemitoneParams[static_cast<std::size_t>(oscIndex)] = parameterCatalog.createFloat(
+            idPrefix + ".tuning.semitone", labelPrefix + "Semitone",
+            juce::NormalisableRange<float>(-12.0f, 12.0f, 1.0f), 0.0f,
+            juce::AudioParameterFloatAttributes().withLabel("st"));
         oscPitchModParams[static_cast<std::size_t>(oscIndex)] = parameterCatalog.createFloat(
             juce::ParameterID(idPrefix + ".pitch.mod", 1),
             labelPrefix + "Pitch Mod",
@@ -198,6 +202,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         {
             return px3::tuning::formatFine(value);
         }));
+    subOscSemitoneParam = parameterCatalog.createFloat(
+        "voice.sub.tuning.semitone", "Sub Osc Semitone",
+        juce::NormalisableRange<float>(-12.0f, 12.0f, 1.0f), 0.0f,
+        juce::AudioParameterFloatAttributes().withLabel("st"));
     subOscPitchModParam = parameterCatalog.createFloat(
         juce::ParameterID("voice.sub.pitch.mod", 1),
         "Sub Osc Pitch Mod",
@@ -738,6 +746,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(oscEnabledParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscCoarseParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscFineParams[static_cast<std::size_t>(oscIndex)]);
+        addParameter(oscSemitoneParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscModeParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscMacroAParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscMacroBParams[static_cast<std::size_t>(oscIndex)]);
@@ -754,6 +763,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(subOscEnabledParam);
     addParameter(subOscCoarseParam);
     addParameter(subOscFineParam);
+    addParameter(subOscSemitoneParam);
     addParameter(subOscWaveformParam);
     for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
     {
@@ -1460,8 +1470,13 @@ bool PX3SynthAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) 
 
 void PX3SynthAudioProcessor::advanceLfosForBlock(int numSamples)
 {
-    for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
+    const std::array<int, kLfoSourceCount> defaultOrder { 0, 1, 2 };
+    auto graph = modulationGraph.read();
+    const auto compiledOrder = graph ? graph->evaluationOrder() : std::span<const int> {};
+    const auto order = compiledOrder.empty() ? std::span<const int>(defaultOrder) : compiledOrder;
+    for (const auto lfoIndex : order)
     {
+        if (! juce::isPositiveAndBelow(lfoIndex, kLfoSourceCount)) { continue; }
         // Restarts land at the start of the block the note arrived in - within
         // one block of the note, the same resolution the LFOs are read at.
         //

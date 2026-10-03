@@ -507,7 +507,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         {
             const auto& layer = oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)];
             ratios[static_cast<std::size_t>(oscIndex)] =
-                px3::tuning::pitchRatio(layer.coarseOctaves, layer.fineCents, layer.pitchModSemitones);
+                px3::tuning::pitchRatio(layer.coarseOctaves, layer.fineCents, layer.pitchModSemitones, layer.semitones);
             changed = changed || ratios[static_cast<std::size_t>(oscIndex)] != sourceRatioTarget[static_cast<std::size_t>(oscIndex)];
         }
         if (!sourceRatiosPrimed)

@@ -130,6 +130,16 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorCoarseParam(int 
     const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
     return *oscCoarseParams[static_cast<std::size_t>(idx)];
 }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorSemitoneParam(int oscIndex) const
+{
+    return *oscSemitoneParams[static_cast<std::size_t>(juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex))];
+}
+
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getSubOscSemitoneParam() const
+{
+    return *subOscSemitoneParam;
+}
+
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorFineParam(int oscIndex) const
 {
     const auto idx = juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex);
@@ -1345,6 +1355,13 @@ bool PX3SynthAudioProcessor::isGraphDestination(const juce::String& id) const
 {
     const auto* entry = parameterCatalog.find(id);
     const auto* target = entry != nullptr ? entry->parameter : nullptr;
+    if (target != nullptr && dynamic_cast<const juce::AudioParameterFloat*>(target) != nullptr
+        && ((id.startsWith("mod.lfo") && (id.endsWith(".frequency") || id.endsWith(".ramp.time")))
+            || (id.startsWith("mod.env") && (id.endsWith(".attack") || id.endsWith(".decay")
+                                          || id.endsWith(".sustain") || id.endsWith(".release")))))
+    {
+        return true;
+    }
     return target != nullptr && std::any_of(lfoAssignableTargets.begin(), lfoAssignableTargets.end(),
         [target](const auto& candidate) { return candidate.parameter == target; });
 }
@@ -1414,6 +1431,19 @@ bool PX3SynthAudioProcessor::compileModulationGraph(
     std::array<ModulationSourceDescriptor, kLfoSourceCount + kEnvelopeSourceCount + kMacroCount> sources {};
     for (int source = 0; source < kLfoSourceCount; ++source) { sources[static_cast<std::size_t>(source)].bipolar = true; }
     std::array<ModulationDestinationDescriptor, CompiledModulationGraph::destinationCapacity> destinations {};
+    for (int source = 0; source < kLfoSourceCount; ++source)
+    {
+        destinations[static_cast<std::size_t>(getLfoFrequencyParam(source).getParameterIndex())].controllingSource = source;
+        destinations[static_cast<std::size_t>(getLfoRampTimeParam(source).getParameterIndex())].controllingSource = source;
+    }
+    for (int source = 0; source < kEnvelopeSourceCount; ++source)
+    {
+        const auto index = static_cast<std::size_t>(source);
+        for (auto* parameter : { attackParams[index], decayParams[index], sustainParams[index], releaseParams[index] })
+        {
+            destinations[static_cast<std::size_t>(parameter->getParameterIndex())].controllingSource = kLfoSourceCount + source;
+        }
+    }
     std::vector<ModulationRoute> routes;
     const auto addAssignment = [&](int slot, int source, int assignment)
     {

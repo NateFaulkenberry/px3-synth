@@ -14,6 +14,7 @@ void SubOscillator::setSettings(const SubOscSettings& newSettings, int rampSampl
     settings.enabled = newSettings.enabled;
     settings.level = juce::jlimit(0.0f, 1.0f, newSettings.level);
     settings.coarseOctaves = juce::jlimit(px3::tuning::kCoarseMinOctaves, px3::tuning::kCoarseMaxOctaves, newSettings.coarseOctaves);
+    settings.semitones = juce::jlimit(-12.0f, 12.0f, newSettings.semitones);
     settings.fineCents = juce::jlimit(px3::tuning::kFineMinCents, px3::tuning::kFineMaxCents, newSettings.fineCents);
     settings.pitchModSemitones = juce::jlimit(-px3::tuning::kPitchModRangeSemitones, px3::tuning::kPitchModRangeSemitones,
                                               newSettings.pitchModSemitones);
@@ -21,7 +22,7 @@ void SubOscillator::setSettings(const SubOscSettings& newSettings, int rampSampl
 
     // The ratio is computed once per control block, not once per sample, and
     // ramped across the block so a modulated Pitch Mod is a glide, not a stair.
-    const auto ratio = px3::tuning::pitchRatio(settings.coarseOctaves, settings.fineCents, settings.pitchModSemitones);
+    const auto ratio = px3::tuning::pitchRatio(settings.coarseOctaves, settings.fineCents, settings.pitchModSemitones, settings.semitones);
     if (!configured || rampSamples <= 0)
     {
         ratioStart = ratioTarget = ratioCurrent = ratio;

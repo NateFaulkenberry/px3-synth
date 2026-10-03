@@ -80,6 +80,27 @@ const char* nameOf(Source source) { return source == Source::osc ? "Osc" : "Sub"
 void testOscillatorTuning()
 {
     suite("OSCILLATOR TUNING");
+    for (const auto source : { Source::osc, Source::sub })
+    {
+        const auto measured = measureCents(source, 0.0f, 0.0f, [source](PX3SynthAudioProcessor& processor)
+        {
+            setParam(processor, source == Source::osc ? "voice.osc1.tuning.semitone" : "voice.sub.tuning.semitone", 7.0f);
+        });
+        check(source == Source::osc ? "Tuning_OscSemitoneOffsetIsSevenHundredCents"
+                                   : "Tuning_SubSemitoneOffsetIsSevenHundredCents",
+              std::abs(measured - 700.0) < 0.2, fmt(measured, 3) + " cents");
+    }
+    {
+        PX3SynthAudioProcessor source;
+        juce::String error;
+        setParam(source, "voice.osc2.tuning.semitone", -5.0f);
+        setParam(source, "voice.sub.tuning.semitone", 7.0f);
+        PX3SynthAudioProcessor restored;
+        check("Tuning_SemitoneOffsetsSurviveGroupedStateRoundTrip",
+              restored.applyParameterStateTree(source.createParameterStateTree(), &error)
+                  && restored.getOscillatorSemitoneParam(1).get() == -5.0f
+                  && restored.getSubOscSemitoneParam().get() == 7.0f, error);
+    }
 
     // ---- exactly one coarse and one fine control per oscillator -----------------
     {

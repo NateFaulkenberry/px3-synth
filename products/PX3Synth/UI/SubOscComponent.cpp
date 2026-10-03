@@ -150,7 +150,7 @@ void SubOscComponent::resized()
         const auto row = inner.rowContent(1);
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-        const auto widths = px3::ui::fitRowItemWidths({ 72.0f, 72.0f }, gap.left + gap.right,
+        const auto widths = px3::ui::fitRowItemWidths({ 64.0f, 64.0f, 64.0f }, gap.left + gap.right,
                                                       static_cast<float>(juce::jmax(1, row.getWidth())));
         for (const auto width : widths)
         {
@@ -164,6 +164,10 @@ void SubOscComponent::resized()
                                          ControlShape::square, 16, 16, 56 },
                                        inner.rowControl(1));
         px3::ui::layoutLabelledControl(cell(1),
+                                                                             { &tuning.semitoneLabel, &tuning.semitoneKnob, &tuning.semitoneValue,
+                                                                                 ControlShape::square, 16, 16, 56 },
+                                                                             inner.rowControl(1));
+                px3::ui::layoutLabelledControl(cell(2),
                                        { &tuning.fineLabel, &tuning.fineKnob, &tuning.fineValue,
                                          ControlShape::square, 16, 16, 56 },
                                        inner.rowControl(1));
