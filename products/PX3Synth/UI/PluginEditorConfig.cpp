@@ -364,11 +364,11 @@ void PX3SynthAudioProcessorEditor::applySceneLayout()
 
     // OSC, FILTER and AMP share one row. On OSC at a size that fits, all three
     // show (the composite); otherwise the selected one takes the row. Off the
-    // voice sections the row is kept as the OSC section would show it.
+    // voice sections the OSC panel keeps the whole (hidden) row.
     uiLayout.resolve(getLocalBounds().toFloat());
     panelViewportArea = px3::ui::snapToPixels(uiLayout.rectOf("views"));
     const auto voice = voiceSection ? section : kSectionOsc;
-    const auto composite = voice == kSectionOsc && panelViewportArea.getWidth() >= 900
+    const auto composite = section == kSectionOsc && panelViewportArea.getWidth() >= 900
                         && panelViewportArea.getHeight() >= 380;
     uiLayout.setRuntimeHidden("primary.osc", voice != kSectionOsc);
     uiLayout.setRuntimeHidden("primary.filter", ! (composite || voice == kSectionFilter));

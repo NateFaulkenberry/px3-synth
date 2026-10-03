@@ -180,6 +180,13 @@ void PX3SynthAudioProcessorEditor::resized()
         layoutMacroDepthPanel();
         macroAssignOverlay->toFront(false);
     }
+    // Panels whose insides read UIConfig re-lay themselves out even when the
+    // scene left their bounds unchanged (a config reload changes their rows).
+    layoutOscPanel();
+    layoutAmpPanel();
+    layoutFilterPanel();
+    layoutFxPanel();
+    layoutMixPanel();
     layoutModPanel();
     updatePanelVisibility();
 

@@ -4881,9 +4881,19 @@ void testBreakpointEnvelope()
                 }
             }
 
+            // The AMP card wears the instrument scene's hardware faceplate
+            // (its style token), which captions the same four knobs in their
+            // short form. The suite only sees it since the scene is compiled
+            // in; the plugin has shown it since the scene shipped.
+            const juce::StringArray fullNames { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" };
+            const juce::StringArray faceplateNames { "ATK", "DEC", "SUS", "REL" };
+            const auto namesFor = [&](const EnvelopeComponent& card)
+            {
+                return card.debugHardwareFaceplate() ? faceplateNames : fullNames;
+            };
             check("EnvelopeKnobs_AmpEnvCarriesTheFour",
                   ampGraph != nullptr && ampGraph->debugAdsrKnobCount() == 4
-                      && names == juce::StringArray({ "ATTACK", "DECAY", "SUSTAIN", "RELEASE" }),
+                      && names == namesFor(*ampGraph),
                   ampGraph == nullptr ? "no AMP ENV card found"
                                       : "AMP ENV offers: " + names.joinIntoString(", "));
 
@@ -4897,7 +4907,7 @@ void testBreakpointEnvelope()
                 {
                     theirs.add(cards[i]->debugAdsrKnobName(k));
                 }
-                if (theirs != names)
+                if (theirs != namesFor(*cards[i]))
                 {
                     without.add("card " + juce::String(static_cast<int>(i)) + " offers "
                                 + (theirs.isEmpty() ? juce::String("nothing")
@@ -4951,10 +4961,14 @@ void testBreakpointEnvelope()
 
                     const auto sharedLook = &knob.getLookAndFeel() != &juce::LookAndFeel::getDefaultLookAndFeel();
                     const auto chip = dynamic_cast<const px3::ui::ChipLabel*>(&label) != nullptr;
+                    // A faceplate card takes its text colour from the scene's
+                    // style token, caption and readout alike.
+                    const auto faceplate = card->debugHardwareFaceplate();
+                    const auto faceplateText = juce::Colour::fromRGB(0xF2, 0xF3, 0xF1);
                     const auto captionColour = label.findColour(juce::Label::textColourId)
-                                               == juce::Colour::fromRGB(232, 232, 232);
+                                               == (faceplate ? faceplateText : juce::Colour::fromRGB(232, 232, 232));
                     const auto readoutColour = readout.findColour(juce::Label::textColourId)
-                                               == juce::Colour::fromRGB(218, 218, 228);
+                                               == (faceplate ? faceplateText : juce::Colour::fromRGB(218, 218, 228));
 
                     if (! sharedLook || ! chip || ! captionColour || ! readoutColour)
                     {
