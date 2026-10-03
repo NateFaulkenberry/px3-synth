@@ -21,7 +21,7 @@ PX3ReverbAudioProcessor::PX3ReverbAudioProcessor()
     addParameter(shimmerParam = new juce::AudioParameterFloat("fx.reverb.shimmer", "Reverb Shimmer", unit, 0.0f));
     addParameter(algorithmParam = new juce::AudioParameterChoice(
         "fx.reverb.algorithm", "Reverb Mode",
-        juce::StringArray { "ROOM", "PLATE", "HALL", "CLOUD" }, 0));
+        juce::StringArray { "ROOM", "PLATE", "HALL", "CLOUD", "IR" }, 0));
 }
 
 void PX3ReverbAudioProcessor::prepareFx(double sampleRate, int)

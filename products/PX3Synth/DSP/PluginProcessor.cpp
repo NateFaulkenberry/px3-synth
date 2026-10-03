@@ -518,7 +518,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     reverbEnabledParam = parameterCatalog.createBool("fx.reverb.enabled", "Reverb Enabled", true);
     reverbAlgorithmParam = parameterCatalog.createChoice("fx.reverb.algorithm",
                                                            "Reverb Mode",
-                                                           juce::StringArray { "ROOM", "PLATE", "HALL", "CLOUD" },
+                                                           juce::StringArray { "ROOM", "PLATE", "HALL", "CLOUD", "IR" },
                                                            0);
     moodEnabledParam = parameterCatalog.createBool("fx.mood.enabled", "Mood Enabled", true);
     moodFreezeParam = parameterCatalog.createBool("fx.mood.freeze", "Mood Freeze", false);

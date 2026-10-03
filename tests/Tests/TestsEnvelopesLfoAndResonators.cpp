@@ -1210,6 +1210,69 @@ void testReverb()
     suite("REVERB");
 
     {
+        // IR mode: a user impulse response loads off the audio thread and
+        // rings; a malformed file is refused with a reason; the path survives
+        // a host state round trip.
+        const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("px3-ir-test");
+        dir.createDirectory();
+        const auto irFile = dir.getChildFile("decay.wav");
+        {
+            juce::AudioBuffer<float> ir(2, 24000);
+            juce::Random random(5);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int n = 0; n < ir.getNumSamples(); ++n)
+                    ir.setSample(ch, n, (random.nextFloat() * 2.0f - 1.0f) * std::exp(-n / 4000.0f));
+            irFile.deleteFile();
+            juce::WavAudioFormat wav;
+            std::unique_ptr<juce::AudioFormatWriter> writer(wav.createWriterFor(new juce::FileOutputStream(irFile), 48000.0, 2, 24, {}, 0));
+            writer->writeFromAudioSampleBuffer(ir, 0, ir.getNumSamples());
+        }
+        const auto badFile = dir.getChildFile("not-audio.wav");
+        badFile.replaceWithText("this is not a wave file");
+
+        PX3SynthAudioProcessor processor;
+        const auto refused = processor.loadReverbImpulseResponse(badFile);
+        const auto error = processor.loadReverbImpulseResponse(irFile);
+        // Ringing is checked on the engine itself: prepared once, the IR loaded,
+        // and the background loader given real time to swap it in, as a host
+        // gives it between callbacks.
+        ::Reverb engine;
+        engine.prepare(48000.0);
+        const auto engineError = engine.loadImpulseResponse(irFile);
+        ReverbSettings settings;
+        settings.amount = 1.0f;
+        settings.algorithmIndex = 4;
+        for (int block = 0; block < 40; ++block)
+        {
+            engine.updateForBlock(settings, 512);
+            for (int n = 0; n < 512; ++n) { float l = 0, r = 0; engine.processSampleFrame(0.0f, 0.0f, l, r); }
+            juce::Thread::sleep(5);
+        }
+        double tail = 0.0;
+        auto finite = true;
+        for (int n = 0; n < 48000; ++n)
+        {
+            if (n % 512 == 0) engine.updateForBlock(settings, 512);
+            const auto x = n < 64 ? 0.5f : 0.0f;
+            float l = x, r = x;
+            engine.processSampleFrame(l, r, l, r);
+            finite = finite && std::isfinite(l);
+            if (n > 2000) tail += static_cast<double>(l) * l;
+        }
+        check("Reverb_IrRefusesAFileThatIsNotAudio", refused.isNotEmpty(), "refused: " + refused);
+        check("Reverb_IrLoadsAndRings", error.isEmpty() && engineError.isEmpty() && finite && tail > 1.0e-4,
+              "load '" + engineError + "', tail energy after the impulse " + juce::String(tail, 6));
+
+        juce::MemoryBlock state;
+        processor.getStateInformation(state);
+        PX3SynthAudioProcessor restored;
+        restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+        check("Reverb_IrPathSurvivesHostState", restored.getReverbImpulseResponseName() == "decay",
+              "restored IR '" + restored.getReverbImpulseResponseName() + "'");
+        dir.deleteRecursively();
+    }
+
+    {
         // CLOUD SHIMMER: the tail gains energy an octave and two up, and the
         // loop still decays and stays finite.
         auto run = [](float shimmer, double& upperRatioDb, double& earlyDb, double& lateDb, bool& finite)

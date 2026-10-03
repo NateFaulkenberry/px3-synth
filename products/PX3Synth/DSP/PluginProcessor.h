@@ -1412,6 +1412,14 @@ public:
 private:
     px3::AnalogEngine analogEngine;
     ::Reverb reverb;
+    juce::String reverbImpulseResponsePath;
+public:
+    // Reverb IR mode. Message thread: validates, then the convolution engine
+    // loads on its own thread. Empty string on success, else the reason.
+    juce::String loadReverbImpulseResponse(const juce::File& file);
+    void clearReverbImpulseResponse();
+    juce::String getReverbImpulseResponseName() const { return reverb.impulseResponseName(); }
+private:
 
     // Internal routing buses (prepared once, reused per block).
     juce::AudioBuffer<float> oscillatorBusBuffer;

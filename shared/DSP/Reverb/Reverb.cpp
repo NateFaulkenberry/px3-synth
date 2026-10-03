@@ -294,11 +294,44 @@ void ::Reverb::prepare(double sampleRate)
     const auto sr = static_cast<float>(sampleRateHz);
     amountSmoothingCoeff = 1.0f - std::exp(-1.0f / (sr * reverbAmountTauSec));
 
+    convolution.prepare({ sampleRateHz, static_cast<juce::uint32>(kIrBlock), 2 });
+    irBlock.setSize(2, kIrBlock);
+
     reset();
+}
+
+juce::String (::Reverb::loadImpulseResponse)(const juce::File& file)
+{
+    if (! file.existsAsFile()) { return "The file could not be found."; }
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
+    if (reader == nullptr) { return "That file is not an audio file this reverb can read (WAV, AIFF or FLAC)."; }
+    if (reader->lengthInSamples < 64) { return "The impulse response is too short to be a reverb."; }
+    if (reader->lengthInSamples > static_cast<juce::int64>(reader->sampleRate * 12.0))
+    {
+        return "Impulse responses are limited to 12 seconds.";
+    }
+    reader.reset();
+    convolution.loadImpulseResponse(file, juce::dsp::Convolution::Stereo::yes, juce::dsp::Convolution::Trim::yes, 0,
+                                    juce::dsp::Convolution::Normalise::yes);
+    irName = file.getFileNameWithoutExtension();
+    irLoaded.store(true);
+    return {};
+}
+
+void (::Reverb::clearImpulseResponse)()
+{
+    convolution.reset();
+    irLoaded.store(false);
+    irName.clear();
 }
 
 void ::Reverb::reset()
 {
+    irFill = 0;
+    irBlock.clear();
+    convolution.reset();
     outputCompGain = 1.0f;
     blockPreEnergy = 0.0;
     blockPostEnergy = 0.0;
@@ -411,7 +444,7 @@ void ::Reverb::updateForBlock(const ReverbSettings& settings, int numSamples)
     {
         bypassCleared = false;
     }
-    currentSettings.algorithmIndex = juce::jlimit(0, 3, settings.algorithmIndex);
+    currentSettings.algorithmIndex = juce::jlimit(0, 4, settings.algorithmIndex);
     currentSettings.size = clamp01(settings.size);
     currentSettings.decay = clamp01(settings.decay);
     currentSettings.damping = clamp01(settings.damping);
@@ -498,7 +531,7 @@ void ::Reverb::processCore(float inL,
                                   float& outL,
                                   float& outR)
 {
-    const auto mode = juce::jlimit(0, 3, algorithmIndex);
+    const auto mode = juce::jlimit(0, 4, algorithmIndex);
     const auto mix = smoothstep(amount);
 
     const auto hpCoeff = std::exp(-2.0f * juce::MathConstants<float>::pi * 28.0f
@@ -650,6 +683,28 @@ void ::Reverb::processCore(float inL,
         const auto early = diffused * 0.30f;
         wetL = lateL + early;
         wetR = lateR + early;
+    }
+    else if (mode == 4)
+    {
+        // IR. Convolution with a loaded impulse response, run in kIrBlock
+        // frames: the input is gathered, the block convolved, and its output
+        // played back while the next block fills - so this mode alone sits one
+        // block later, which reads as pre-delay. Silent until an IR is loaded.
+        if (irBlock.getNumSamples() >= kIrBlock)
+        {
+            const auto out0 = irBlock.getSample(0, irFill);
+            const auto out1 = irBlock.getSample(1, irFill);
+            irBlock.setSample(0, irFill, inPredelayedL);
+            irBlock.setSample(1, irFill, inPredelayedR);
+            wetL = irLoaded.load(std::memory_order_relaxed) ? out0 : 0.0f;
+            wetR = irLoaded.load(std::memory_order_relaxed) ? out1 : 0.0f;
+            if (++irFill >= kIrBlock)
+            {
+                irFill = 0;
+                juce::dsp::AudioBlock<float> block(irBlock);
+                convolution.process(juce::dsp::ProcessContextReplacing<float>(block));
+            }
+        }
     }
     else
     {
