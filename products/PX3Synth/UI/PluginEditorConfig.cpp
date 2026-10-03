@@ -248,8 +248,8 @@ void PX3SynthAudioProcessorEditor::loadUILayout()
 bool PX3SynthAudioProcessorEditor::isPrimaryCoreComposite() const noexcept
 {
     return selectedTopMenuSection == kSectionOsc
-        && panelViewportArea.getWidth() >= 900
-        && panelViewportArea.getHeight() >= 380;
+        || selectedTopMenuSection == kSectionFilter
+        || selectedTopMenuSection == kSectionAmp;
 }
 
 void PX3SynthAudioProcessorEditor::applyUILayoutSectionOrder()
@@ -466,12 +466,12 @@ void PX3SynthAudioProcessorEditor::applySceneLayout()
     // voice sections the OSC panel keeps the whole (hidden) row.
     uiLayout.resolve(getLocalBounds().toFloat());
     panelViewportArea = px3::ui::snapToPixels(uiLayout.rectOf("views"));
-    const auto voice = voiceSection ? section : kSectionOsc;
-    const auto composite = section == kSectionOsc && panelViewportArea.getWidth() >= 900
-                        && panelViewportArea.getHeight() >= 380;
-    uiLayout.setRuntimeHidden("primary.osc", voice != kSectionOsc);
-    uiLayout.setRuntimeHidden("primary.filter", ! (composite || voice == kSectionFilter));
-    uiLayout.setRuntimeHidden("primary.amp", ! (composite || voice == kSectionAmp));
+    // VOICE is one page: OSC, FILTER and AMP side by side at every supported
+    // size (the window's minimum is chosen so the strip fits). The AMP and
+    // FILTER sections are reached through it.
+    uiLayout.setRuntimeHidden("primary.osc", false);
+    uiLayout.setRuntimeHidden("primary.filter", false);
+    uiLayout.setRuntimeHidden("primary.amp", false);
 
     sceneBinding.apply(uiLayout, *this);
 

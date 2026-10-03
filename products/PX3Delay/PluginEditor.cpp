@@ -48,6 +48,10 @@ PX3DelayAudioProcessorEditor::PX3DelayAudioProcessorEditor(PX3DelayAudioProcesso
     label(algorithmLabel, "TYPE");
     label(syncLabel, "SYNC");
     label(modeLabel, "MODE");
+    label(qualityLabel, "QUALITY");
+    label(wobbleLabel, "WOBBLE");
+    label(slipLabel, "SLIP");
+    label(modDepthLabel, "MOD DEPTH");
 
     // ComboBoxParameterAttachment selects an item; it does not create them.
     const auto fillBox = [](juce::ComboBox& box, juce::AudioParameterChoice& parameter)
@@ -73,7 +77,36 @@ PX3DelayAudioProcessorEditor::PX3DelayAudioProcessorEditor(PX3DelayAudioProcesso
     attach(processor.debugGranularModeParam(), modeBox);
     attach(processor.debugEnabledParam(), enabledButton);
 
-    for (auto* knob : { &amountKnob, &timeKnob, &feedbackKnob })
+    // The algorithm-specific controls, found by parameter ID.
+    {
+        struct Extra { juce::Slider& knob; juce::Label& label; const char* id; const char* tip; };
+        const Extra extras[] = {
+            { qualityKnob, qualityLabel, "fx.delay.tape.quality",
+              "TAPE: condition of the tape. Low is worn (dull, noisy, unstable); high is pristine" },
+            { wobbleKnob, wobbleLabel, "fx.delay.wobble", "TAPE: wow and flutter - how much the echo's pitch wavers" },
+            { slipKnob, slipLabel, "fx.delay.tape.slip",
+              "How often the tape head slips backward, playing the echo in reverse for a moment." },
+            { modDepthKnob, modDepthLabel, "fx.delay.mod.depth",
+              "MODULATED: how far the delay time is swept (chorused, pitch-moving repeats)" },
+        };
+        for (const auto& extra : extras)
+        {
+            for (auto* parameter : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter);
+                    ranged != nullptr && ranged->getParameterID() == extra.id)
+                {
+                    attach(*ranged, extra.knob);
+                }
+            }
+            extra.knob.setTooltip(extra.tip);
+            extra.label.setTooltip(extra.tip);
+        }
+        panel.setAlgorithmControls({ &qualityKnob, &qualityLabel, &wobbleKnob, &wobbleLabel,
+                                     &slipKnob, &slipLabel, &modDepthKnob, &modDepthLabel });
+    }
+
+    for (auto* knob : { &amountKnob, &timeKnob, &feedbackKnob, &qualityKnob, &wobbleKnob, &slipKnob, &modDepthKnob })
     {
         knob->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
         knob->setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
@@ -94,6 +127,7 @@ PX3DelayAudioProcessorEditor::PX3DelayAudioProcessorEditor(PX3DelayAudioProcesso
     {
         panel.setActive(processor.debugEnabledParam().get(),
                         processor.debugAlgorithmParam().getIndex() == 0);
+        panel.setAlgorithm(processor.debugAlgorithmParam().getIndex());
     };
     enabledButton.onStateChange = refresh;
     algorithmBox.onChange = refresh;
@@ -115,7 +149,7 @@ PX3DelayAudioProcessorEditor::~PX3DelayAudioProcessorEditor()
     buttonAttachments.clear();
 
     // And the look before it goes, for the same reason.
-    for (auto* knob : { &amountKnob, &timeKnob, &feedbackKnob })
+    for (auto* knob : { &amountKnob, &timeKnob, &feedbackKnob, &qualityKnob, &wobbleKnob, &slipKnob, &modDepthKnob })
     {
         knob->setLookAndFeel(nullptr);
     }

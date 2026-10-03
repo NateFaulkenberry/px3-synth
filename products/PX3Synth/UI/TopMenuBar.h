@@ -198,6 +198,9 @@ public:
     // 0..5 select a panel tab; kSettingsSection selects SETTINGS, which lights
     // the gear and leaves every panel tab unlit.
     static constexpr int kSettingsSection = 6;
+    // AMP (2) and FILTER (3) live on the VOICE page beside OSC, so they have
+    // no tab of their own.
+    static constexpr bool isMergedIntoVoice(int section) noexcept { return section == 2 || section == 3; }
     void setSelectedSection(int sectionIndex);
     void setSectionOrder(const std::array<int, 6>& order);
     void setPresetName(const juce::String& name);

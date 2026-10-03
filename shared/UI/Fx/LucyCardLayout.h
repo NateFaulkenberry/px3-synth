@@ -60,7 +60,7 @@ inline void declareRows(FxCardComponent& card,
 
     card.addKnobRow({ { "speed", "SPEED", "How fast the loss, packets and freeze evolve",
                         "autoGain", "AUTO GAIN", "Gain compensation for the loss modes" },
-                      { "loss", "CODEC LOSS", "How degraded the codec is, and how much of the spectrum it reaches",
+                      { "loss", "LOSS", "How degraded the codec is, and how much of the spectrum it reaches",
                         "lossGain", "LOSS GAIN", "Wet gain, plus or minus 36 dB" },
                       { "spread", "WIDTH", "Stereo: packet alternation between sides and reverb width" } });
 
