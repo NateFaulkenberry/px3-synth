@@ -108,7 +108,7 @@ void drawModulePanel(juce::Graphics& g,
     g.setColour(stripe.withAlpha(active ? 0.95f : 0.6f));
     juce::Path bar;
     bar.addRoundedRectangle(bounds.getX() + 1.0f, bounds.getY() + 1.0f, bounds.getWidth() - 2.0f,
-                            space::accentBar, r - 1.0f, r - 1.0f, true, true, false, false);
+                            space::accentBar, juce::jmax(0.0f, r - 1.0f), juce::jmax(0.0f, r - 1.0f), true, true, false, false);
     g.fillPath(bar);
 
     if (title.isNotEmpty())

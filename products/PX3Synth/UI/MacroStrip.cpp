@@ -227,7 +227,7 @@ void MacroStrip::paint(juce::Graphics& g)
     const auto area = getLocalBounds().toFloat().reduced(1.0f);
 
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 10));
-    g.fillRoundedRectangle(area, 6.0f);
+    g.fillRoundedRectangle(area, 0.0f);
 
     // While assigning, the strip says which macro is being edited.
     //
@@ -244,8 +244,8 @@ void MacroStrip::paint(juce::Graphics& g)
 
         const auto accent = px3::ui::macroAccentColour(uiConfig.get());
         g.setColour(accent.withAlpha(0.18f));
-        g.fillRoundedRectangle(highlight, 7.0f);
+        g.fillRoundedRectangle(highlight, 0.0f);
         g.setColour(accent);
-        g.drawRoundedRectangle(highlight, 7.0f, 1.4f);
+        g.drawRoundedRectangle(highlight, 0.0f, 1.4f);
     }
 }

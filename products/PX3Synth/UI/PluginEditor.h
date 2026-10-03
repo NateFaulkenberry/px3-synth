@@ -297,6 +297,8 @@ public:
     px3::ui::modrouting::ModPatchBar* debugModPatchBar() { return modPatchBar.get(); }
     px3::ui::modrouting::ModRoutingPanel* debugModRoutingPanel() { return modRoutingPanel.get(); }
     ModPanel* debugModPanel() { return modPanel.get(); }
+    bool debugPerformanceSectionShown() const { return isPerformanceSectionShown(); }
+    void debugApplySceneLayout() { applySceneLayout(); }
     FltPanel* debugFltPanel() { return fltPanel.get(); }
     // The routing pass the timer runs, without the timer's section re-sync.
     void debugRefreshModRouting() { refreshModRouting(); refreshMidiMappingUI(); }
@@ -498,6 +500,9 @@ private:
     void refreshFilterUI();
     void updatePanelVisibility();
     bool isPanelVisible(int sectionIndex) const;
+    // The keyboard + wheels section. Its implementation is kept, but the
+    // release scene hides it (InstrumentScene.json, node "keys", visible:false).
+    bool isPerformanceSectionShown() const { return uiLayout.isNodeVisible("keys"); }
     void layoutOscPanel();
     void layoutAmpPanel();
     void layoutFilterPanel();

@@ -206,12 +206,12 @@ void FilterComponent::paint(juce::Graphics& g)
     }
 
     g.setColour(juce::Colour::fromRGBA(20, 20, 20, 140));
-    g.fillRoundedRectangle(graphRect, 4.0f);
+    g.fillRoundedRectangle(graphRect, 0.0f);
     // The frame takes the card's identity colour, like every other card's
     // graph. It was a fixed pale blue, which is what made a red filter card
     // sit inside a blue-edged graph.
     g.setColour(effectiveAccent.withAlpha(currentEnabled ? 0.34f : 0.26f));
-    g.drawRoundedRectangle(graphRect, 4.0f, 1.0f);
+    g.drawRoundedRectangle(graphRect, 0.0f, 1.0f);
 
     auto contentRect = graphRect;
 

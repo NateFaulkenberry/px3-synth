@@ -301,13 +301,24 @@ void PX3SynthAudioProcessorEditor::bindSceneComponents()
     b.bind("header.gain.knob", gainKnob);
     if (macroStrip != nullptr) { b.bind("macros", *macroStrip); }
     b.bind("primary.osc", oscPanelViewport);
-    b.bind("mod.cards", modPanelViewport);
+    if (modPanel != nullptr)
+    {
+        // VOICE's second row: the six modulators, each its own scene card.
+        b.bind("voice.mods", *modPanel);
+        const char* modCards[] { "lfo.1", "lfo.2", "lfo.3", "env.1", "env.2", "env.3" };
+        for (int i = 0; i < 6; ++i)
+        {
+            if (auto* card = modPanel->getCard(i)) { b.bind(modCards[i], *card); }
+        }
+    }
     if (modRoutingPanel != nullptr)
     {
+        // MOD page: the patch bay (sources | routes | destinations).
         b.bind("mod.routing", *modRoutingPanel);
         b.bind("mod.routing.title", modRoutingPanel->getTitle());
         b.bind("mod.routing.patch", modRoutingPanel->getPatchView());
         b.bind("mod.routing.list", modRoutingPanel->getList());
+        b.bind("mod.routing.dest", modRoutingPanel->getDestinations());
     }
     if (modPatchBar != nullptr)
     {
@@ -458,8 +469,16 @@ void PX3SynthAudioProcessorEditor::applySceneLayout()
     const auto showMacros = section != kSectionSettings;
     uiLayout.setRuntimeHidden("macros", ! showMacros);
     if (macroStrip != nullptr) { macroStrip->setVisible(showMacros); }
-    uiLayout.setRuntimeHidden("patchbar", ! showMacros);
-    if (modPatchBar != nullptr) { modPatchBar->setVisible(showMacros); }
+    // The patch bar and the performance section (keyboard + wheels) follow
+    // their scene nodes' "visible" flag. Both ship hidden: the components are
+    // still built and still work, they are just not on the release surface.
+    const auto patchBarShown = uiLayout.isNodeVisible("patchbar") && showMacros;
+    uiLayout.setRuntimeHidden("patchbar", ! patchBarShown);
+    if (modPatchBar != nullptr) { modPatchBar->setVisible(patchBarShown); }
+    const auto performanceShown = isPerformanceSectionShown();
+    pianoKeyboard.setVisible(performanceShown);
+    performanceControls.setVisible(performanceShown);
+    sparkOverlay.setVisible(performanceShown);
 
     // OSC, FILTER and AMP share one row. On OSC at a size that fits, all three
     // show (the composite); otherwise the selected one takes the row. Off the
@@ -486,7 +505,7 @@ void PX3SynthAudioProcessorEditor::applySceneLayout()
     headerPlaceholderArea = rect("header.menu");
     controlsArea = rect("controls");
     macroStripArea = showMacros ? rect("macros") : juce::Rectangle<int>();
-    performanceControlsArea = rect("keys.performance");
+    performanceControlsArea = performanceShown ? rect("keys.performance") : juce::Rectangle<int>();
     gainLabel.setBounds({});
 
     if (topMenuBar != nullptr)
@@ -504,6 +523,14 @@ void PX3SynthAudioProcessorEditor::applySceneLayout()
                       juce::jmax(1, oscPanelViewport.getMaximumVisibleHeight()));
     // Still hand-laid inside the filter cards: see PX3_0.8.0_UI_FOUNDATION.md.
     fltPanel->layoutCardControls();
+
+    if (modPanel != nullptr) { modPanel->layoutSockets(); }
+
+    if (! performanceShown)
+    {
+        sparkOverlay.setBounds({});
+        return;
+    }
 
     // The spark overlay is a decoration over the keyboard row plus the room
     // the particles need; it takes no clicks.

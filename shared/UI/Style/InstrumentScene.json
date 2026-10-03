@@ -189,7 +189,7 @@
     {"id": "osc.sub.row.graph", "parent": "osc.sub", "kind": "container", "label": "GRAPH ROW", "layout": "flex", "keepEmpty": true, "justify": "center", "height": "34%", "margin": 0, "order": 2, "padding": 2},
     {"id": "osc.sub.graph", "parent": "osc.sub.row.graph", "kind": "display", "label": "WAVE TABLE", "grow": 1, "order": 0},
     {"id": "primary.filter", "parent": "voice.top", "kind": "panel", "label": "FILTERS", "style": "filter.panel", "layout": "flex", "direction": "column", "gap": 1, "grow": 36, "basis": 0, "order": 1},
-    {"id": "filter.routing", "parent": "primary.filter", "kind": "panel", "label": "ROUTING", "layout": "flex", "height": 24, "shrink": 0, "gap": 8, "padding": [1, 6, 1, 6], "alignItems": "center", "justify": "center", "order": 1},
+    {"id": "filter.routing", "parent": "primary.filter", "kind": "panel", "label": "ROUTING", "layout": "flex", "height": 24, "shrink": 0, "gap": 8, "padding": [2, 6, 2, 6], "justify": "center", "order": 1},
     {"id": "filter.routing.mode", "parent": "filter.routing", "kind": "button", "label": "SERIES/PARALLEL", "width": 96, "margin": 0, "order": 0},
     {"id": "filter.routing.label", "parent": "filter.routing", "kind": "label", "label": "BALANCE LABEL", "width": 116, "order": 1},
     {"id": "filter.routing.balance", "parent": "filter.routing", "kind": "control", "label": "BALANCE", "binding": "voice.filter.balance", "width": 180, "order": 2},

@@ -469,9 +469,9 @@ void LfoComponent::paint(juce::Graphics& g)
     }
 
     g.setColour(juce::Colour::fromRGBA(14, 14, 18, 170));
-    g.fillRoundedRectangle(graph, 7.0f);
+    g.fillRoundedRectangle(graph, 0.0f);
     g.setColour(effectiveAccent.withAlpha(0.32f));
-    g.drawRoundedRectangle(graph, 7.0f, 1.0f);
+    g.drawRoundedRectangle(graph, 0.0f, 1.0f);
 
     const auto left = graph.getX() + 6.0f;
     const auto right = graph.getRight() - 6.0f;

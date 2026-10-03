@@ -1,6 +1,11 @@
 #include "ModRouting.h"
 
 #include "ParameterKnob.h"
+#include "Theme.h"
+
+#include <map>
+#include <optional>
+#include <set>
 
 #include <cmath>
 
@@ -233,7 +238,8 @@ ModSourceSocket::ModSourceSocket(ModDragController& controllerIn, int sourceIn, 
 juce::Rectangle<float> ModSourceSocket::jackBounds() const
 {
     const auto size = juce::jmin(static_cast<float>(getHeight()) - 2.0f, showLabel ? 20.0f : 18.0f);
-    return { 1.0f, (static_cast<float>(getHeight()) - size) * 0.5f, size, size };
+    const auto x = jackOnRight ? static_cast<float>(getWidth()) - size - 1.0f : 1.0f;
+    return { x, (static_cast<float>(getHeight()) - size) * 0.5f, size, size };
 }
 
 void ModSourceSocket::setRouteCount(int count)
@@ -262,13 +268,36 @@ void ModSourceSocket::paint(juce::Graphics& g)
         g.setColour(colour);
         g.fillEllipse(jack.reduced(jack.getWidth() * 0.38f));
     }
+    if (armed)
+    {
+        g.setColour(colour.withAlpha(0.9f));
+        g.drawEllipse(jack.expanded(1.5f), 1.2f);
+    }
     if (showLabel)
     {
-        g.setColour(hover ? kInk : kInk.withAlpha(0.82f));
+        g.setColour(hover || armed ? kInk : kInk.withAlpha(0.82f));
         g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-        g.drawFittedText(sourceShortName(source),
-                         getLocalBounds().withTrimmedLeft(juce::roundToInt(jack.getRight()) + 4),
-                         juce::Justification::centredLeft, 1);
+        const auto text = jackOnRight ? Processor::graphSourceName(source).toUpperCase() : sourceShortName(source);
+        auto area = jackOnRight ? getLocalBounds().withRight(juce::roundToInt(jack.getX()) - 6).withTrimmedLeft(4)
+                                : getLocalBounds().withTrimmedLeft(juce::roundToInt(jack.getRight()) + 4);
+        if (jackOnRight)
+        {
+            // Route count beside the jack: "3" reads faster than counting cables.
+            if (routeCount > 0)
+            {
+                g.setColour(colour.withAlpha(0.95f));
+                g.setFont(juce::FontOptions(10.0f));
+                g.drawText(juce::String(routeCount), area.removeFromRight(18), juce::Justification::centredRight, false);
+                g.setColour(hover || armed ? kInk : kInk.withAlpha(0.82f));
+                g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+            }
+            // Identity colour as a small swatch: a second cue, never the only one.
+            g.setColour(colour);
+            g.fillRect(area.removeFromLeft(3).withSizeKeepingCentre(3, 12));
+            area.removeFromLeft(6);
+            g.setColour(hover || armed ? kInk : kInk.withAlpha(0.82f));
+        }
+        g.drawFittedText(text, area, juce::Justification::centredLeft, 1, 0.8f);
     }
 }
 
@@ -284,7 +313,8 @@ void ModSourceSocket::mouseDrag(const juce::MouseEvent& e)
 
 void ModSourceSocket::mouseUp(const juce::MouseEvent& e)
 {
-    controller.end(e.getEventRelativeTo(&controller.getRoot()).position);
+    const auto created = controller.end(e.getEventRelativeTo(&controller.getRoot()).position);
+    if (created < 0 && ! e.mouseWasDraggedSinceMouseDown() && onClick) { onClick(source); }
     repaint();
 }
 
@@ -303,13 +333,13 @@ public:
     {
         if (! owner.isDragging()) { return; }
         const auto colour = sourceColour(owner.dragSource);
-        if (auto* target = owner.hoverTarget.getComponent())
+        if (owner.hoverTarget.getComponent() != nullptr && ! owner.hoverRect.isEmpty())
         {
-            const auto area = getLocalArea(target, target->getLocalBounds()).toFloat().expanded(3.0f);
+            const auto area = getLocalArea(&owner.root, owner.hoverRect).toFloat().expanded(2.0f);
             g.setColour(colour.withAlpha(0.18f));
-            g.fillRoundedRectangle(area, 6.0f);
+            g.fillRect(area);
             g.setColour(colour);
-            g.drawRoundedRectangle(area, 6.0f, 2.0f);
+            g.drawRect(area, 2.0f);
             const auto name = destinationName(owner.processor, owner.destinationAt(owner.current.roundToInt()));
             const auto label = Processor::graphSourceName(owner.dragSource) + "  >  " + name;
             g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
@@ -318,9 +348,9 @@ public:
                            .withCentre({ area.getCentreX(), area.getY() - 14.0f });
             tag = tag.constrainedWithin(getLocalBounds().toFloat());
             g.setColour(juce::Colour(0xee101314));
-            g.fillRoundedRectangle(tag, 4.0f);
+            g.fillRect(tag);
             g.setColour(colour);
-            g.drawRoundedRectangle(tag, 4.0f, 1.0f);
+            g.drawRect(tag, 1.0f);
             g.setColour(kInk);
             g.drawText(label, tag, juce::Justification::centred, false);
         }
@@ -376,7 +406,7 @@ void ModDragController::move(juce::Point<float> rootPosition)
     if (! isDragging()) { return; }
     current = rootPosition;
     juce::Component* target = nullptr;
-    destinationAt(rootPosition.roundToInt(), &target);
+    destinationAt(rootPosition.roundToInt(), &target, &hoverRect);
     hoverTarget = target;
     const auto tab = host.sectionTabAt ? host.sectionTabAt(rootPosition.roundToInt()) : -1;
     if (tab != hoverTab)
@@ -416,10 +446,12 @@ void ModDragController::cancel()
     overlay->setVisible(false);
 }
 
-juce::String ModDragController::destinationAt(juce::Point<int> rootPosition, juce::Component** target) const
+juce::String ModDragController::destinationAt(juce::Point<int> rootPosition, juce::Component** target,
+                                              juce::Rectangle<int>* targetRect) const
 {
     juce::String found;
     juce::Component* foundComponent = nullptr;
+    juce::Rectangle<int> foundRect;
     // Deepest visible hit wins, through every container and viewport, so a
     // knob anywhere in the editor is a target with no list to maintain.
     std::function<void(juce::Component&)> walk = [&](juce::Component& parent)
@@ -427,20 +459,32 @@ juce::String ModDragController::destinationAt(juce::Point<int> rootPosition, juc
         for (auto* child : parent.getChildren())
         {
             if (child == nullptr || ! child->isVisible() || child == overlay.get()) { continue; }
-            if (! child->getLocalBounds().contains(child->getLocalPoint(&root, rootPosition))) { continue; }
+            const auto local = child->getLocalPoint(&root, rootPosition);
+            if (! child->getLocalBounds().contains(local)) { continue; }
             juce::String id;
+            auto rect = child->getLocalBounds();
             if (auto* slider = dynamic_cast<juce::Slider*>(child)) { id = px3::ui::parameterIdOf(*slider); }
             if (id.isEmpty()) { id = child->getProperties()[destinationProperty].toString(); }
+            if (id.isEmpty())
+            {
+                if (auto* provider = dynamic_cast<DestinationProvider*>(child))
+                {
+                    id = provider->destinationAtPoint(local);
+                    rect = provider->destinationBounds(id);
+                }
+            }
             if (id.isNotEmpty() && processor.isGraphDestination(id))
             {
                 found = id;
                 foundComponent = child;
+                foundRect = root.getLocalArea(child, rect);
             }
             walk(*child);
         }
     };
     walk(root);
     if (target != nullptr) { *target = foundComponent; }
+    if (targetRect != nullptr) { *targetRect = foundRect; }
     return found;
 }
 
@@ -465,9 +509,9 @@ void ModPatchBar::paint(juce::Graphics& g)
 {
     const auto area = getLocalBounds().toFloat().reduced(0.5f);
     g.setColour(juce::Colour(0xff111415));
-    g.fillRoundedRectangle(area, 4.0f);
+    g.fillRect(area);
     g.setColour(juce::Colour(0xff2b3133));
-    g.drawRoundedRectangle(area, 4.0f, 1.0f);
+    g.drawRect(area, 1.0f);
 }
 
 void ModPatchBar::resized()
@@ -492,170 +536,343 @@ void ModPatchBar::refresh(const std::vector<RouteInfo>& routes)
 }
 
 //==============================================================================
-class ModRoutingPanel::PatchView final : public juce::Component
+// The MOD page: the modulation matrix as a patch bay.
+namespace
+{
+namespace th = px3::ui::theme;
+const juce::Colour kMatrixAccent { 0xff8f7cf0 };   // the modulation family's purple
+constexpr float kBand = 22.0f;                      // module title band (theme::space::headerHeight)
+
+juce::Path linkPath(juce::Point<float> a, juce::Point<float> b)
+{
+    // A short patch lead between two columns: leaves and lands horizontally.
+    const auto dx = juce::jmax(10.0f, std::abs(b.x - a.x) * 0.55f);
+    juce::Path path;
+    path.startNewSubPath(a);
+    path.cubicTo(a.x + dx, a.y, b.x - dx, b.y, b.x, b.y);
+    return path;
+}
+
+juce::String amountText(float depth, bool bipolar)
+{
+    const auto percent = depth * 100.0f;
+    const auto magnitude = std::abs(percent);
+    // Whole numbers read as "35"; a fine-tuned amount keeps its decimal ("3.5").
+    const auto number = std::abs(magnitude - std::round(magnitude)) < 0.05f
+                            ? juce::String(juce::roundToInt(magnitude))
+                            : juce::String(magnitude, 1);
+    if (bipolar)
+    {
+        // Bipolar sources swing both ways: +/- 35, or inverted -/+ 35.
+        return juce::String(juce::CharPointer_UTF8(percent < 0.0f ? "\xe2\x88\x93 " : "\xc2\xb1 ")) + number;
+    }
+    return (percent < 0.0f ? juce::String(juce::CharPointer_UTF8("\xe2\x88\x92")) : juce::String("+")) + number;
+}
+
+bool routeIsBipolar(const RouteInfo& route)
+{
+    using P = px3::synth::ModulationPolarity;
+    return route.polarity == P::bipolar || (route.polarity == P::native && sourceIsBipolar(route.source));
+}
+
+juce::String groupLabelFor(const px3::synth::ParameterCatalogEntry& entry)
+{
+    // The catalog's group path (e.g. Voice > Filter 1): the innermost two
+    // levels name the module well enough to scan.
+    juce::StringArray parts;
+    for (const auto& name : entry.groupNames) { parts.add(name); }
+    while (parts.size() > 2) { parts.remove(0); }
+    return parts.isEmpty() ? juce::String("Other") : parts.joinIntoString(" / ").toUpperCase();
+}
+} // namespace
+
+//------------------------------------------------------------------------------
+class ModRoutingPanel::Header final : public juce::Component
 {
 public:
-    PatchView(ModRoutingPanel& ownerIn, ModDragController& controller) : owner(ownerIn)
+    explicit Header(ModRoutingPanel& ownerIn) : owner(ownerIn)
+    {
+        setComponentID("mod.routing.title");
+        setInterceptsMouseClicks(false, false);
+    }
+    void paint(juce::Graphics& g) override
+    {
+        auto area = getLocalBounds().toFloat();
+        g.setColour(th::colour::rail);
+        g.fillRect(area);
+        g.setColour(kMatrixAccent);
+        g.fillRect(area.removeFromLeft(3.0f));
+        area.removeFromLeft(8.0f);
+        th::drawLabel(g, "MODULATION MATRIX", area.removeFromLeft(170.0f), th::Type::heading,
+                      th::colour::textPrimary, juce::Justification::centredLeft);
+        const auto graphRoutes = std::count_if(owner.routes.begin(), owner.routes.end(),
+                                               [](const RouteInfo& r) { return r.kind == RouteInfo::Kind::graph; });
+        const auto count = juce::String(static_cast<int>(graphRoutes)) + " / "
+                           + juce::String(Processor::kGraphRouteSlots) + " SLOTS";
+        th::drawLabel(g, count, area.removeFromRight(120.0f).withTrimmedRight(8.0f), th::Type::secondary,
+                      th::colour::textSecondary, juce::Justification::centredRight);
+        juce::String hint;
+        if (owner.armedSource >= 0)
+        {
+            hint = Processor::graphSourceName(owner.armedSource).toUpperCase()
+                   + " ARMED - click destinations to patch, click the jack again to disarm";
+        }
+        else
+        {
+            hint = "Drag a jack onto a destination or any knob  -  click a jack to arm it  -  "
+                   "Cmd/Alt-drag, wheel or arrows for fine amounts, double-click to type";
+        }
+        th::drawLabel(g, hint, area, th::Type::secondary,
+                      owner.armedSource >= 0 ? sourceColour(owner.armedSource) : th::colour::textDim,
+                      juce::Justification::centredLeft);
+    }
+
+private:
+    ModRoutingPanel& owner;
+};
+
+//------------------------------------------------------------------------------
+class ModRoutingPanel::SourceColumn final : public juce::Component
+{
+public:
+    SourceColumn(ModRoutingPanel& ownerIn, ModDragController& controller) : owner(ownerIn)
     {
         setComponentID("mod.routing.patch");
         for (int source = 0; source < kSourceCount; ++source)
         {
-            sockets.push_back(std::make_unique<ModSourceSocket>(controller, source));
-            addAndMakeVisible(*sockets.back());
+            auto socket = std::make_unique<ModSourceSocket>(controller, source, true);
+            socket->setJackOnRight(true);
+            socket->onClick = [this](int s) { owner.armSource(owner.armedSource == s ? -1 : s); };
+            socket->setTooltip("Drag " + Processor::graphSourceName(source)
+                               + " onto a destination or any knob. Click to arm it for click-to-patch.");
+            addAndMakeVisible(*socket);
+            sockets.push_back(std::move(socket));
         }
     }
 
-    void setRoutes(const std::vector<RouteInfo>& latest)
+    ModSourceSocket& socket(int source) { return *sockets[static_cast<std::size_t>(source)]; }
+
+    void setCounts(const std::vector<RouteInfo>& routes)
     {
-        juce::StringArray ids;
-        for (const auto& route : latest) { ids.addIfNotAlreadyThere(route.destination); }
-        if (ids != destinationIds)
+        std::array<int, kSourceCount> counts {};
+        for (const auto& route : routes)
         {
-            destinationIds = ids;
-            nodes.clear();
-            for (const auto& id : ids)
-            {
-                auto node = std::make_unique<juce::Label>();
-                node->setText(destinationName(owner.processor, id), juce::dontSendNotification);
-                node->setFont(juce::FontOptions(11.5f));
-                node->setColour(juce::Label::textColourId, kInk);
-                node->setColour(juce::Label::backgroundColourId, juce::Colour(0xff1d2224));
-                node->setColour(juce::Label::outlineColourId, juce::Colour(0xff394144));
-                node->setMinimumHorizontalScale(0.7f);
-                node->getProperties().set(destinationProperty, id);
-                node->setTooltip(id);
-                node->setInterceptsMouseClicks(false, false);
-                addAndMakeVisible(*node);
-                nodes.push_back(std::move(node));
-            }
-            resized();
+            if (juce::isPositiveAndBelow(route.source, kSourceCount)) { ++counts[static_cast<std::size_t>(route.source)]; }
         }
-        counts.fill(0);
-        for (const auto& route : latest) { ++counts[static_cast<std::size_t>(juce::jlimit(0, kSourceCount - 1, route.source))]; }
-        for (int s = 0; s < kSourceCount; ++s) { sockets[static_cast<std::size_t>(s)]->setRouteCount(counts[static_cast<std::size_t>(s)]); }
-        repaint();
+        for (int s = 0; s < kSourceCount; ++s)
+        {
+            sockets[static_cast<std::size_t>(s)]->setRouteCount(counts[static_cast<std::size_t>(s)]);
+            sockets[static_cast<std::size_t>(s)]->setArmed(owner.armedSource == s);
+        }
     }
 
     void resized() override
     {
-        auto area = getLocalBounds().reduced(8, 6);
-        auto sourceColumn = area.removeFromLeft(78);
-        const auto rowH = juce::jlimit(14, 26, sourceColumn.getHeight() / kSourceCount);
-        sourceColumn = sourceColumn.withSizeKeepingCentre(sourceColumn.getWidth(), rowH * kSourceCount);
-        for (auto& socket : sockets) { socket->setBounds(sourceColumn.removeFromTop(rowH)); }
-        auto destinationColumn = area.removeFromRight(juce::jmin(190, area.getWidth() / 2));
-        if (nodes.empty()) { return; }
-        const auto count = static_cast<int>(nodes.size());
-        const auto pitch = juce::jlimit(12, 30, destinationColumn.getHeight() / count);
-        auto column = destinationColumn.withSizeKeepingCentre(destinationColumn.getWidth(), pitch * count);
-        for (auto& node : nodes) { node->setBounds(column.removeFromTop(pitch).reduced(0, pitch > 18 ? 3 : 1)); }
+        // Three groups (LFO, ENV, MACRO), each under a printed sub-heading.
+        auto area = getLocalBounds().withTrimmedTop(static_cast<int>(kBand) + 2).reduced(6, 2);
+        constexpr int headings = 3;
+        const auto headingH = 14;
+        const auto rowH = juce::jlimit(18, 30, (area.getHeight() - headings * headingH) / kSourceCount);
+        headingRows.clear();
+        for (int source = 0; source < kSourceCount; ++source)
+        {
+            if (source == 0 || source == kLfos || source == kLfos + kEnvs)
+            {
+                headingRows.push_back(area.removeFromTop(headingH));
+            }
+            sockets[static_cast<std::size_t>(source)]->setBounds(area.removeFromTop(rowH));
+        }
     }
 
     void paint(juce::Graphics& g) override
     {
-        g.setColour(juce::Colour(0xff0e1112));
-        g.fillRoundedRectangle(getLocalBounds().toFloat(), 5.0f);
-        g.setColour(juce::Colour(0xff2b3133));
-        g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 5.0f, 1.0f);
-        if (owner.routes.empty())
+        th::drawModulePanel(g, getLocalBounds().toFloat(), "SOURCES", kMatrixAccent, true, kBand);
+        const char* names[] { "LFO", "ENVELOPE", "MACRO" };
+        for (std::size_t i = 0; i < headingRows.size() && i < 3; ++i)
         {
-            g.setColour(kDimInk);
-            g.setFont(juce::FontOptions(12.0f));
-            g.drawFittedText("Drag a source jack onto any knob to patch it.\nDwell on a tab while dragging to reach other pages.",
-                             getLocalBounds().withTrimmedLeft(96).reduced(8), juce::Justification::centred, 3);
+            const auto r = headingRows[i].toFloat();
+            th::drawLabel(g, names[i], r, th::Type::secondary, th::colour::textDim, juce::Justification::centredLeft);
+            g.setColour(th::colour::railEdge);
+            g.drawHorizontalLine(juce::roundToInt(r.getCentreY()), r.getX() + 64.0f, r.getRight());
         }
     }
 
-    void paintOverChildren(juce::Graphics& g) override
+private:
+    ModRoutingPanel& owner;
+    std::vector<std::unique_ptr<ModSourceSocket>> sockets;
+    std::vector<juce::Rectangle<int>> headingRows;
+};
+
+//------------------------------------------------------------------------------
+// A route's amount: a centre-zero bar in the source's colour with the value
+// printed as a musician reads it ("± 35", "+12", "± 3.5"). Drag for coarse,
+// Cmd/Alt-drag for fine, mouse wheel / arrow keys for 1 % steps (0.1 % with
+// Shift), the end arrows nudge, double-click types an exact number.
+class ModRoutingPanel::AmountControl final : public juce::Slider
+{
+public:
+    explicit AmountControl(juce::Colour colourIn, bool bipolarIn) : colour(colourIn), bipolar(bipolarIn)
     {
-        for (const auto& route : owner.routes)
+        setComponentID("mod.routing.depth");
+        setSliderStyle(juce::Slider::LinearHorizontal);
+        setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
+        setRange(-1.0, 1.0, 0.0);
+        setVelocityModeParameters(0.12, 1, 0.0, true,
+                                  static_cast<juce::ModifierKeys::Flags>(juce::ModifierKeys::commandModifier
+                                                                         | juce::ModifierKeys::altModifier));
+        setWantsKeyboardFocus(true);
+        setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
+        setTooltip("Amount: drag (Cmd/Alt = fine), wheel or arrow keys = 1 % (Shift = 0.1 %), "
+                   "end arrows nudge, double-click to type");
+    }
+
+    void setBipolar(bool shouldBeBipolar) { if (bipolar != shouldBeBipolar) { bipolar = shouldBeBipolar; repaint(); } }
+
+    void paint(juce::Graphics& g) override
+    {
+        const auto area = getLocalBounds().toFloat();
+        th::drawInset(g, area);
+        const auto track = area.reduced(kNudge, 3.0f);
+        const auto norm = static_cast<float>((getValue() - getMinimum()) / juce::jmax(1.0e-9, getMaximum() - getMinimum()));
+        const auto centre = track.getX() + track.getWidth() * 0.5f;
+        const auto x = track.getX() + track.getWidth() * norm;
+        g.setColour(colour.withAlpha(isEnabled() ? 0.42f : 0.18f));
+        g.fillRect(juce::Rectangle<float>(juce::jmin(centre, x), track.getY(), std::abs(x - centre), track.getHeight()));
+        g.setColour(colour);
+        g.fillRect(juce::Rectangle<float>(x - 1.0f, track.getY(), 2.0f, track.getHeight()));
+        g.setColour(th::colour::textDim.withAlpha(0.6f));
+        g.drawVerticalLine(juce::roundToInt(centre), track.getY(), track.getBottom());
+        // Nudge arrows at both ends.
+        g.setColour(th::colour::textSecondary);
+        g.setFont(th::font(th::Type::label));
+        g.drawText(juce::CharPointer_UTF8("\xe2\x80\xb9"), area.withWidth(kNudge), juce::Justification::centred, false);
+        g.drawText(juce::CharPointer_UTF8("\xe2\x80\xba"), area.withTrimmedLeft(area.getWidth() - kNudge),
+                   juce::Justification::centred, false);
+        g.setColour(hasKeyboardFocus(false) ? th::colour::textValue : th::colour::textPrimary);
+        g.setFont(th::font(th::Type::value));
+        g.drawText(amountText(static_cast<float>(getValue()), bipolar), track, juce::Justification::centred, false);
+        if (hasKeyboardFocus(false))
         {
-            const auto a = anchorOf(route.source);
-            const auto b = nodeAnchor(route.destination);
-            if (a.isOrigin() || b.isOrigin()) { continue; }
-            const auto selected = route.key() == owner.selectedKey;
-            const auto weight = 0.45f + 0.55f * std::abs(route.depth);
-            drawCable(g, a, b, sourceColour(route.source), selected ? 4.0f : 2.6f,
-                      selected ? 1.0f : 0.5f + 0.4f * weight);
-            drawPlug(g, b, sourceColour(route.source), 4.5f);
-            drawPlug(g, a, sourceColour(route.source), 4.0f);
+            g.setColour(th::colour::focus.withAlpha(0.6f));
+            g.drawRect(area, 1.0f);
         }
     }
 
     void mouseDown(const juce::MouseEvent& e) override
     {
-        // Click a cable to select its route (the topmost, i.e. last drawn).
-        juce::String hit;
-        for (const auto& route : owner.routes)
+        if (e.x < kNudge || e.x > getWidth() - kNudge)
         {
-            const auto a = anchorOf(route.source);
-            const auto b = nodeAnchor(route.destination);
-            if (a.isOrigin() || b.isOrigin()) { continue; }
-            juce::Path stroke;
-            juce::PathStrokeType(10.0f).createStrokedPath(stroke, cablePath(a, b));
-            if (stroke.contains(e.position)) { hit = route.key(); }
+            nudge(e.x < kNudge ? -1 : 1, e.mods.isShiftDown() || e.mods.isCommandDown() || e.mods.isAltDown());
+            grabKeyboardFocus();
+            return;
         }
-        owner.select(hit);
-        owner.grabKeyboardFocus();
+        juce::Slider::mouseDown(e);
+    }
+    void mouseDrag(const juce::MouseEvent& e) override
+    {
+        if (e.mouseDownPosition.x < kNudge || e.mouseDownPosition.x > getWidth() - kNudge) { return; }
+        juce::Slider::mouseDrag(e);
+    }
+    void mouseUp(const juce::MouseEvent& e) override
+    {
+        if (e.mouseDownPosition.x < kNudge || e.mouseDownPosition.x > getWidth() - kNudge) { return; }
+        juce::Slider::mouseUp(e);
+    }
+    void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override
+    {
+        const auto delta = std::abs(wheel.deltaY) > std::abs(wheel.deltaX) ? wheel.deltaY : -wheel.deltaX;
+        if (std::abs(delta) < 1.0e-4f) { return; }
+        nudge(delta > 0.0f ? 1 : -1, e.mods.isShiftDown());
+    }
+    bool keyPressed(const juce::KeyPress& key) override
+    {
+        const auto code = key.getKeyCode();
+        const auto fine = key.getModifiers().isShiftDown();
+        if (code == juce::KeyPress::upKey || code == juce::KeyPress::rightKey) { nudge(1, fine); return true; }
+        if (code == juce::KeyPress::downKey || code == juce::KeyPress::leftKey) { nudge(-1, fine); return true; }
+        if (code == juce::KeyPress::returnKey) { beginTextEntry(); return true; }
+        return false;
+    }
+    void mouseDoubleClick(const juce::MouseEvent&) override { beginTextEntry(); }
+    void focusGained(FocusChangeType) override { repaint(); }
+    void focusLost(FocusChangeType) override { repaint(); }
+
+    // Steps of 1 % (fine: 0.1 %), one host gesture per step.
+    void nudge(int direction, bool fine)
+    {
+        const auto step = fine ? 0.001 : 0.01;
+        const auto target = juce::jlimit(getMinimum(), getMaximum(),
+                                         std::round((getValue() + direction * step) / 0.001) * 0.001);
+        startedDragging();
+        setValue(target, juce::sendNotificationSync);
+        stoppedDragging();
+    }
+
+    void beginTextEntry()
+    {
+        editor = std::make_unique<juce::TextEditor>();
+        editor->setJustification(juce::Justification::centred);
+        editor->setFont(th::font(th::Type::value));
+        editor->setText(juce::String(getValue() * 100.0, 1), false);
+        editor->selectAll();
+        editor->setBounds(getLocalBounds());
+        editor->onReturnKey = [this] { commitText(); };
+        editor->onEscapeKey = [this] { closeText(); };
+        editor->onFocusLost = [this] { commitText(); };
+        addAndMakeVisible(*editor);
+        editor->grabKeyboardFocus();
     }
 
 private:
-    juce::Point<float> anchorOf(int source) const
+    void commitText()
     {
-        if (! juce::isPositiveAndBelow(source, kSourceCount)) { return {}; }
-        const auto& socket = *sockets[static_cast<std::size_t>(source)];
-        // From the right edge of the source column, so cables never cross the labels.
-        return { static_cast<float>(socket.getRight()) + 4.0f, getLocalArea(&socket, socket.jackBounds()).getCentreY() };
+        if (editor == nullptr) { return; }
+        const auto text = editor->getText().retainCharacters("0123456789.-+");
+        if (text.containsAnyOf("0123456789"))
+        {
+            startedDragging();
+            setValue(juce::jlimit(getMinimum(), getMaximum(), text.getDoubleValue() / 100.0), juce::sendNotificationSync);
+            stoppedDragging();
+        }
+        closeText();
     }
-    juce::Point<float> nodeAnchor(const juce::String& id) const
+    void closeText()
     {
-        const auto index = destinationIds.indexOf(id);
-        if (index < 0) { return {}; }
-        const auto bounds = nodes[static_cast<std::size_t>(index)]->getBounds().toFloat();
-        return { bounds.getX() - 5.0f, bounds.getCentreY() };
+        // Deleted after this callback returns: the editor is still on the stack.
+        juce::Component::SafePointer<AmountControl> self(this);
+        juce::MessageManager::callAsync([self] { if (self != nullptr) { self->editor.reset(); self->repaint(); } });
+        if (editor != nullptr) { editor->setVisible(false); }
     }
 
-    ModRoutingPanel& owner;
-    std::vector<std::unique_ptr<ModSourceSocket>> sockets;
-    std::vector<std::unique_ptr<juce::Label>> nodes;
-    juce::StringArray destinationIds;
-    std::array<int, kSourceCount> counts {};
+    static constexpr int kNudge = 12;
+    juce::Colour colour;
+    bool bipolar { false };
+    std::unique_ptr<juce::TextEditor> editor;
 };
 
-//==============================================================================
-class ModRoutingPanel::Row final : public juce::Component
+//------------------------------------------------------------------------------
+// One connection: [x] (plug) SOURCE ~ [ AMOUNT ] POLARITY CURVE ~~ DESTINATION (plug)
+class ModRoutingPanel::Row final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    Row(ModRoutingPanel& ownerIn, const RouteInfo& routeIn) : owner(ownerIn), route(routeIn)
+    Row(ModRoutingPanel& ownerIn, const RouteInfo& routeIn)
+        : owner(ownerIn), route(routeIn), depth(sourceColour(routeIn.source), routeIsBipolar(routeIn))
     {
         setComponentID("mod.routing.row." + route.key());
         auto& proc = owner.processor;
-        name.setText(Processor::graphSourceName(route.source) + "  >  " + destinationName(proc, route.destination),
-                     juce::dontSendNotification);
-        name.setFont(juce::FontOptions(12.0f, juce::Font::bold));
-        name.setColour(juce::Label::textColourId, kInk);
-        name.setMinimumHorizontalScale(0.6f);
-        name.setInterceptsMouseClicks(false, false);
-        addAndMakeVisible(name);
+        destinationText = destinationName(proc, route.destination);
+        if (const auto* entry = proc.getParameterCatalog().find(route.destination))
+        {
+            destinationGroup = groupLabelFor(*entry);
+        }
+        originText = route.kind == RouteInfo::Kind::card ? "CARD"
+                     : route.kind == RouteInfo::Kind::macro ? "MACRO" : "S" + juce::String(route.slot + 1);
+        setTooltip(Processor::graphSourceName(route.source) + " > " + destinationText + "  ("
+                   + (route.kind == RouteInfo::Kind::card ? juce::String("card ASSIGN")
+                      : route.kind == RouteInfo::Kind::macro ? juce::String("macro destination")
+                                                              : "matrix slot " + juce::String(route.slot + 1))
+                   + ")");
 
-        origin.setFont(juce::FontOptions(10.0f));
-        origin.setColour(juce::Label::textColourId, kDimInk);
-        origin.setJustificationType(juce::Justification::centredRight);
-        origin.setInterceptsMouseClicks(false, false);
-        origin.setText(route.kind == RouteInfo::Kind::card ? "CARD ASSIGN"
-                       : route.kind == RouteInfo::Kind::macro ? "MACRO" : "SLOT " + juce::String(route.slot + 1),
-                       juce::dontSendNotification);
-        addAndMakeVisible(origin);
-
-        depth.setComponentID("mod.routing.depth");
-        depth.setSliderStyle(juce::Slider::LinearBar);
-        depth.setTextBoxStyle(juce::Slider::TextBoxRight, false, 52, 18);
-        depth.setColour(juce::Slider::trackColourId, sourceColour(route.source).withAlpha(0.75f));
-        depth.setColour(juce::Slider::backgroundColourId, juce::Colour(0xff1d2224));
-        depth.setColour(juce::Slider::textBoxTextColourId, kInk);
-        depth.setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0xff394144));
-        depth.setTooltip("Route depth");
-        depth.setDoubleClickReturnValue(true, 0.0);
         if (route.kind == RouteInfo::Kind::graph)
         {
             attachment = std::make_unique<juce::SliderParameterAttachment>(proc.getGraphRouteDepthParam(route.slot), depth, nullptr);
@@ -675,9 +892,9 @@ public:
                 owner.processor.setMacroDestinationDepth(route.slot, route.destination, static_cast<float>(depth.getValue()));
             };
         }
-        depth.textFromValueFunction = [](double v) { return juce::String(juce::roundToInt(v * 100.0)) + "%"; };
+        depth.textFromValueFunction = [](double v) { return juce::String(v * 100.0, 1) + "%"; };
         depth.valueFromTextFunction = [](const juce::String& t) { return t.getDoubleValue() / 100.0; };
-        depth.updateText();
+        depth.onDragStart = [this] { owner.select(route.key()); };
         addAndMakeVisible(depth);
 
         polarity.setComponentID("mod.routing.polarity");
@@ -690,19 +907,14 @@ public:
         curve.setTooltip("Response curve");
         for (auto* box : { &polarity, &curve })
         {
-            box->setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff1d2224));
-            box->setColour(juce::ComboBox::textColourId, kInk);
-            box->setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff394144));
             box->setEnabled(route.kind == RouteInfo::Kind::graph);
             box->onChange = [this] { applyShape(); };
             addAndMakeVisible(*box);
         }
 
         remove.setComponentID("mod.routing.remove");
-        remove.setButtonText("X");
-        remove.setTooltip("Remove this route (or select it and press Delete)");
-        remove.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2a2f31));
-        remove.setColour(juce::TextButton::textColourOffId, kInk);
+        remove.setButtonText(juce::CharPointer_UTF8("\xc3\x97"));
+        remove.setTooltip("Unpatch (or select the route and press Delete)");
         remove.onClick = [this]
         {
             removeRoute(owner.processor, route);
@@ -715,6 +927,9 @@ public:
 
     const RouteInfo& getRoute() const { return route; }
     juce::Slider& getDepth() { return depth; }
+    // Where the cables attach, in this row's coordinates.
+    juce::Point<float> sourcePlug() const { return { 25.0f, getHeight() * 0.5f }; }
+    juce::Point<float> destinationPlug() const { return { getWidth() - 9.0f, getHeight() * 0.5f }; }
 
     void syncDepth(float value)
     {
@@ -728,30 +943,70 @@ public:
     void paint(juce::Graphics& g) override
     {
         const auto selected = owner.selectedKey == route.key();
-        const auto area = getLocalBounds().toFloat().reduced(1.0f, 2.0f);
-        g.setColour(selected ? juce::Colour(0xff253033) : juce::Colour(0xff1a1f20));
-        g.fillRoundedRectangle(area, 4.0f);
-        g.setColour(selected ? sourceColour(route.source) : juce::Colour(0xff2b3133));
-        g.drawRoundedRectangle(area, 4.0f, selected ? 1.6f : 1.0f);
-        g.setColour(sourceColour(route.source));
-        g.fillRoundedRectangle(area.withWidth(4.0f), 2.0f);
+        const auto colour = sourceColour(route.source);
+        auto area = getLocalBounds().toFloat();
+        g.setColour(selected ? th::colour::selection.withAlpha(0.55f) : (isMouseOver(true) ? th::colour::hover : juce::Colours::transparentBlack));
+        g.fillRect(area);
+        g.setColour(th::colour::panelEdge.withAlpha(0.8f));
+        g.drawHorizontalLine(getHeight() - 1, 0.0f, area.getRight());
+        g.setColour(colour);
+        g.fillRect(area.withWidth(selected ? 3.0f : 2.0f));
+
+        const auto mid = area.getCentreY();
+        // The lead runs the length of the strip, under the controls, so the
+        // row reads as one cable from source plug to destination plug.
+        g.setColour(colour.withAlpha(0.55f + 0.4f * juce::jlimit(0.0f, 1.0f, std::abs(route.depth))));
+        const auto leadFrom = sourceNameArea.getRight() + 2.0f;
+        g.fillRect(juce::Rectangle<float>(leadFrom, mid - 1.0f, depth.getX() - leadFrom, 2.0f));
+        const auto leadTo = destinationArea.getX() - 2.0f;
+        const auto afterShape = static_cast<float>(curve.getRight()) + 2.0f;
+        if (leadTo > afterShape) { g.fillRect(juce::Rectangle<float>(afterShape, mid - 1.0f, leadTo - afterShape, 2.0f)); }
+
+        drawPlug(g, sourcePlug(), colour, 5.0f);
+        drawPlug(g, destinationPlug(), colour, 5.0f);
+
+        th::drawLabel(g, sourceShortName(route.source), sourceNameArea, th::Type::label, th::colour::textPrimary,
+                      juce::Justification::centredLeft);
+        auto dest = destinationArea;
+        if (showOrigin)
+        {
+            th::drawLabel(g, originText, dest.removeFromLeft(42.0f), th::Type::secondary, th::colour::textDim,
+                          juce::Justification::centredLeft);
+        }
+        if (showGroup && destinationGroup.isNotEmpty())
+        {
+            auto group = dest.removeFromTop(dest.getHeight() * 0.42f);
+            th::drawLabel(g, destinationGroup, group, th::Type::secondary, th::colour::textSecondary,
+                          juce::Justification::bottomRight);
+            th::drawLabel(g, destinationText, dest, th::Type::label, th::colour::textPrimary, juce::Justification::topRight);
+        }
+        else
+        {
+            th::drawLabel(g, destinationText, dest, th::Type::label, th::colour::textPrimary, juce::Justification::centredRight);
+        }
     }
 
     void resized() override
     {
-        auto area = getLocalBounds().reduced(10, 5);
-        auto top = area.removeFromTop(18);
-        remove.setBounds(top.removeFromRight(22));
-        top.removeFromRight(6);
-        origin.setBounds(top.removeFromRight(72));
-        name.setBounds(top);
-        area.removeFromTop(4);
-        auto bottom = area.removeFromTop(20);
-        curve.setBounds(bottom.removeFromRight(82));
-        bottom.removeFromRight(4);
-        polarity.setBounds(bottom.removeFromRight(88));
-        bottom.removeFromRight(6);
-        depth.setBounds(bottom);
+        auto area = getLocalBounds().reduced(4, 0);
+        const auto h = getHeight();
+        const auto controlH = juce::jmin(20, h - 6);
+        const auto centred = [&](juce::Rectangle<int> r) { return r.withSizeKeepingCentre(r.getWidth(), controlH); };
+        const auto wide = getWidth() >= 640;
+        remove.setBounds(centred(area.removeFromLeft(16)));
+        area.removeFromLeft(14);   // the source plug
+        sourceNameArea = area.removeFromLeft(wide ? 50 : 42).toFloat();
+        area.removeFromLeft(wide ? 14 : 8);
+        depth.setBounds(centred(area.removeFromLeft(wide ? 132 : 112)));
+        area.removeFromLeft(4);
+        polarity.setBounds(centred(area.removeFromLeft(wide ? 86 : 74)));
+        area.removeFromLeft(2);
+        curve.setBounds(centred(area.removeFromLeft(wide ? 74 : 66)));
+        area.removeFromRight(16);   // the destination plug
+        area.removeFromLeft(wide ? 16 : 8);
+        destinationArea = area.toFloat();
+        showOrigin = destinationArea.getWidth() > 190.0f;
+        showGroup = h >= 28;
     }
 
     void mouseDown(const juce::MouseEvent&) override
@@ -759,6 +1014,8 @@ public:
         owner.select(route.key());
         owner.grabKeyboardFocus();
     }
+    void mouseEnter(const juce::MouseEvent&) override { repaint(); }
+    void mouseExit(const juce::MouseEvent&) override { repaint(); }
 
 private:
     void applyShape()
@@ -769,30 +1026,382 @@ private:
         configuration.curve = static_cast<px3::synth::ModulationCurve>(juce::jlimit(0, 2, curve.getSelectedId() - 1));
         juce::String error;
         owner.processor.setGraphRoute(route.slot, configuration, error);
+        route.polarity = configuration.polarity;
+        route.curve = configuration.curve;
+        depth.setBipolar(routeIsBipolar(route));
         owner.select(route.key());
     }
 
     ModRoutingPanel& owner;
     RouteInfo route;
-    juce::Label name, origin;
-    juce::Slider depth;
+    AmountControl depth;
     juce::ComboBox polarity, curve;
     juce::TextButton remove;
     std::unique_ptr<juce::SliderParameterAttachment> attachment;
+    juce::String destinationText, destinationGroup, originText;
+    juce::Rectangle<float> sourceNameArea, destinationArea;
+    bool showOrigin { true };
+    bool showGroup { true };
 };
 
+//------------------------------------------------------------------------------
 class ModRoutingPanel::ListContent final : public juce::Component
 {
 public:
     std::vector<std::unique_ptr<Row>> rows;
-    juce::String emptyText;
     void paint(juce::Graphics& g) override
     {
         if (! rows.empty()) { return; }
-        g.setColour(kDimInk);
-        g.setFont(juce::FontOptions(12.0f));
-        g.drawFittedText(emptyText, getLocalBounds().reduced(10), juce::Justification::centredTop, 3);
+        th::drawLabel(g, "NO CONNECTIONS", getLocalBounds().toFloat().withHeight(60.0f), th::Type::label,
+                      th::colour::textSecondary);
+        th::drawLabel(g, "Drag a source jack onto a destination (right) or onto any knob",
+                      getLocalBounds().toFloat().withTrimmedTop(44.0f).withHeight(20.0f), th::Type::secondary,
+                      th::colour::textDim);
     }
+};
+
+// The ROUTES module: column legend over a scrolling list of strips.
+class RoutesArea final : public juce::Component
+{
+public:
+    class Port final : public juce::Viewport
+    {
+    public:
+        std::function<void()> onScroll;
+        void visibleAreaChanged(const juce::Rectangle<int>&) override { if (onScroll) { onScroll(); } }
+    };
+
+    RoutesArea()
+    {
+        setComponentID("mod.routing.list");
+        viewport.setScrollBarsShown(true, false);
+        viewport.setScrollBarThickness(8);
+        addAndMakeVisible(viewport);
+    }
+    void resized() override
+    {
+        viewport.setBounds(getLocalBounds().withTrimmedTop(static_cast<int>(kBand) + kLegend));
+    }
+    void paint(juce::Graphics& g) override
+    {
+        th::drawModulePanel(g, getLocalBounds().toFloat(), "ROUTES", kMatrixAccent, true, kBand);
+        auto legend = getLocalBounds().withTrimmedTop(static_cast<int>(kBand)).withHeight(kLegend).reduced(4, 0).toFloat();
+        const auto wide = getWidth() >= 640;
+        legend.removeFromLeft(30.0f);
+        th::drawLabel(g, "SOURCE", legend.removeFromLeft(wide ? 64.0f : 50.0f), th::Type::secondary,
+                      th::colour::textDim, juce::Justification::centredLeft);
+        th::drawLabel(g, "AMOUNT", legend.removeFromLeft(wide ? 136.0f : 116.0f), th::Type::secondary,
+                      th::colour::textDim);
+        th::drawLabel(g, "POLARITY", legend.removeFromLeft(wide ? 88.0f : 76.0f), th::Type::secondary,
+                      th::colour::textDim);
+        th::drawLabel(g, "CURVE", legend.removeFromLeft(wide ? 76.0f : 68.0f), th::Type::secondary,
+                      th::colour::textDim);
+        th::drawLabel(g, "DESTINATION", legend.withTrimmedRight(18.0f), th::Type::secondary, th::colour::textDim,
+                      juce::Justification::centredRight);
+        g.setColour(th::colour::panelEdge.withAlpha(0.8f));
+        g.drawHorizontalLine(juce::roundToInt(kBand) + kLegend - 1, 1.0f, static_cast<float>(getWidth() - 1));
+    }
+    static constexpr int kLegend = 16;
+    Port viewport;
+};
+
+//------------------------------------------------------------------------------
+// Every modulatable parameter, from the processor's catalog (no hard-coded
+// list), grouped by module, collapsible and searchable. Custom-painted: a
+// few hundred destinations cost one component.
+class ModRoutingPanel::DestinationBrowser final : public juce::Component
+{
+public:
+    class List final : public juce::Component, public DestinationProvider, public juce::SettableTooltipClient
+    {
+    public:
+        explicit List(DestinationBrowser& ownerIn) : owner(ownerIn)
+        {
+            setComponentID("mod.routing.dest.list");
+            setTooltip("Drop a source here to patch it. Click a group to fold it.");
+        }
+
+        juce::String destinationAtPoint(juce::Point<int> local) const override
+        {
+            const auto index = local.y / kRow;
+            if (! juce::isPositiveAndBelow(index, static_cast<int>(owner.visibleItems.size()))) { return {}; }
+            const auto& item = owner.items[static_cast<std::size_t>(owner.visibleItems[static_cast<std::size_t>(index)])];
+            return item.header ? juce::String() : item.id;
+        }
+        juce::Rectangle<int> destinationBounds(const juce::String& id) const override
+        {
+            for (int row = 0; row < static_cast<int>(owner.visibleItems.size()); ++row)
+            {
+                const auto& item = owner.items[static_cast<std::size_t>(owner.visibleItems[static_cast<std::size_t>(row)])];
+                if (! item.header && item.id == id) { return { 0, row * kRow, getWidth(), kRow }; }
+            }
+            return {};
+        }
+
+        void paint(juce::Graphics& g) override
+        {
+            const auto clip = g.getClipBounds();
+            const auto first = juce::jmax(0, clip.getY() / kRow);
+            const auto last = juce::jmin(static_cast<int>(owner.visibleItems.size()), clip.getBottom() / kRow + 1);
+            for (int row = first; row < last; ++row)
+            {
+                const auto& item = owner.items[static_cast<std::size_t>(owner.visibleItems[static_cast<std::size_t>(row)])];
+                auto r = juce::Rectangle<int>(0, row * kRow, getWidth(), kRow).toFloat();
+                if (item.header)
+                {
+                    g.setColour(th::colour::rail);
+                    g.fillRect(r);
+                    const auto folded = owner.collapsed.count(item.group) != 0 && owner.filter.isEmpty();
+                    g.setColour(th::colour::textSecondary);
+                    g.setFont(th::font(th::Type::secondary));
+                    g.drawText(juce::CharPointer_UTF8(folded ? "\xe2\x96\xb8" : "\xe2\x96\xbe"),
+                               r.removeFromLeft(14.0f), juce::Justification::centred, false);
+                    th::drawLabel(g, item.group, r.withTrimmedRight(30.0f), th::Type::secondary, th::colour::textLabel,
+                                  juce::Justification::centredLeft);
+                    th::drawLabel(g, juce::String(item.count), r.removeFromRight(28.0f), th::Type::secondary,
+                                  th::colour::textDim, juce::Justification::centredRight);
+                    continue;
+                }
+                const auto selected = item.id == owner.highlightId;
+                const auto hovered = row == hoverRow;
+                if (selected || hovered)
+                {
+                    g.setColour(selected ? th::colour::selection.withAlpha(0.7f) : th::colour::hover);
+                    g.fillRect(r);
+                }
+                // Routed: one dot per source patched here, in the source's colour.
+                auto dots = r.removeFromRight(8.0f + 7.0f * static_cast<float>(item.sources.size()));
+                dots.removeFromRight(4.0f);
+                for (auto it = item.sources.rbegin(); it != item.sources.rend(); ++it)
+                {
+                    g.setColour(sourceColour(*it));
+                    g.fillEllipse(dots.removeFromRight(7.0f).withSizeKeepingCentre(5.0f, 5.0f));
+                }
+                r.removeFromLeft(14.0f);
+                // Input jack ring on the left edge where the cable lands.
+                g.setColour(item.sources.empty() ? th::colour::textDim.withAlpha(0.5f) : sourceColour(item.sources.front()));
+                g.drawEllipse(juce::Rectangle<float>(7.0f, 7.0f).withCentre({ 7.0f, r.getCentreY() }), 1.2f);
+                th::drawLabel(g, item.name, r, th::Type::value,
+                              item.sources.empty() ? th::colour::textLabel : th::colour::textValue,
+                              juce::Justification::centredLeft);
+            }
+        }
+
+        void mouseMove(const juce::MouseEvent& e) override { setHover(e.y / kRow); }
+        void mouseExit(const juce::MouseEvent&) override { setHover(-1); }
+        void mouseUp(const juce::MouseEvent& e) override
+        {
+            const auto row = e.y / kRow;
+            if (! juce::isPositiveAndBelow(row, static_cast<int>(owner.visibleItems.size()))) { return; }
+            const auto& item = owner.items[static_cast<std::size_t>(owner.visibleItems[static_cast<std::size_t>(row)])];
+            if (item.header)
+            {
+                owner.toggleGroup(item.group);
+                return;
+            }
+            owner.destinationClicked(item.id);
+        }
+
+        static constexpr int kRow = 18;
+
+    private:
+        void setHover(int row)
+        {
+            if (row == hoverRow) { return; }
+            if (hoverRow >= 0) { repaint(0, hoverRow * kRow, getWidth(), kRow); }
+            hoverRow = row;
+            if (hoverRow >= 0) { repaint(0, hoverRow * kRow, getWidth(), kRow); }
+        }
+        DestinationBrowser& owner;
+        int hoverRow { -1 };
+    };
+
+    struct Item
+    {
+        bool header { false };
+        juce::String group, id, name, searchText;
+        int count { 0 };
+        std::vector<int> sources;
+    };
+
+    DestinationBrowser(ModRoutingPanel& ownerIn) : owner(ownerIn), list(*this)
+    {
+        setComponentID("mod.routing.dest");
+        search.setComponentID("mod.routing.dest.search");
+        search.setTextToShowWhenEmpty("Search destinations", th::colour::textDim);
+        search.setFont(th::font(th::Type::value));
+        search.onTextChange = [this] { setFilter(search.getText()); };
+        search.onEscapeKey = [this] { search.clear(); setFilter({}); };
+        addAndMakeVisible(search);
+        viewport.setViewedComponent(&list, false);
+        viewport.setScrollBarsShown(true, false);
+        viewport.setScrollBarThickness(8);
+        addAndMakeVisible(viewport);
+        buildItems();
+        setFilter({});
+    }
+    ~DestinationBrowser() override { viewport.setViewedComponent(nullptr, false); }
+
+    void buildItems()
+    {
+        // In catalog order, so groups follow the instrument's own structure.
+        juce::StringArray groups;
+        std::map<juce::String, std::vector<Item>> byGroup;
+        for (const auto& entry : owner.processor.getParameterCatalog().entries())
+        {
+            if (! owner.processor.isGraphDestination(entry.id)) { continue; }
+            Item item;
+            item.group = groupLabelFor(entry);
+            item.id = entry.id;
+            item.name = entry.name;
+            item.searchText = (item.group + " " + entry.name + " " + entry.id).toLowerCase();
+            groups.addIfNotAlreadyThere(item.group);
+            byGroup[item.group].push_back(std::move(item));
+        }
+        items.clear();
+        destinationCount = 0;
+        for (const auto& group : groups)
+        {
+            Item header;
+            header.header = true;
+            header.group = group;
+            header.count = static_cast<int>(byGroup[group].size());
+            items.push_back(header);
+            for (auto& item : byGroup[group]) { items.push_back(std::move(item)); ++destinationCount; }
+        }
+    }
+
+    void setFilter(const juce::String& text)
+    {
+        filter = text.trim().toLowerCase();
+        if (search.getText().trim().toLowerCase() != filter) { search.setText(text, false); }
+        rebuildVisible();
+    }
+
+    void rebuildVisible()
+    {
+        visibleItems.clear();
+        juce::StringArray tokens;
+        tokens.addTokens(filter, " ", {});
+        tokens.removeEmptyStrings();
+        int headerIndex = -1;
+        bool headerAdded = false;
+        for (int i = 0; i < static_cast<int>(items.size()); ++i)
+        {
+            const auto& item = items[static_cast<std::size_t>(i)];
+            if (item.header) { headerIndex = i; headerAdded = false; continue; }
+            auto match = true;
+            for (const auto& token : tokens) { match = match && item.searchText.contains(token); }
+            if (! match) { continue; }
+            if (! headerAdded) { visibleItems.push_back(headerIndex); headerAdded = true; }
+            if (tokens.isEmpty() && collapsed.count(item.group) != 0) { continue; }
+            visibleItems.push_back(i);
+        }
+        list.setSize(juce::jmax(1, viewport.getMaximumVisibleWidth()),
+                     juce::jmax(1, static_cast<int>(visibleItems.size()) * List::kRow));
+        list.repaint();
+        owner.repaint();
+    }
+
+    void toggleGroup(const juce::String& group)
+    {
+        if (collapsed.count(group) != 0) { collapsed.erase(group); } else { collapsed.insert(group); }
+        rebuildVisible();
+    }
+
+    void destinationClicked(const juce::String& id)
+    {
+        if (owner.armedSource >= 0)
+        {
+            owner.patchArmedSourceTo(id);
+            return;
+        }
+        // Otherwise select the first route that lands here.
+        for (const auto& route : owner.routes)
+        {
+            if (route.destination == id) { owner.select(route.key()); return; }
+        }
+        setHighlight(id);
+    }
+
+    void setRoutes(const std::vector<RouteInfo>& routes)
+    {
+        for (auto& item : items) { item.sources.clear(); }
+        for (const auto& route : routes)
+        {
+            for (auto& item : items)
+            {
+                if (! item.header && item.id == route.destination
+                    && std::find(item.sources.begin(), item.sources.end(), route.source) == item.sources.end())
+                {
+                    item.sources.push_back(route.source);
+                }
+            }
+        }
+        list.repaint();
+    }
+
+    void setHighlight(const juce::String& id)
+    {
+        if (highlightId == id) { return; }
+        highlightId = id;
+        list.repaint();
+    }
+
+    // The row's rect in this component's coordinates, scrolling it into view.
+    juce::Rectangle<int> reveal(const juce::String& id)
+    {
+        if (id.isEmpty()) { return {}; }
+        for (const auto& item : items)
+        {
+            if (! item.header && item.id == id && collapsed.count(item.group) != 0) { toggleGroup(item.group); break; }
+        }
+        auto row = list.destinationBounds(id);
+        if (row.isEmpty()) { return {}; }
+        const auto view = viewport.getViewArea();
+        if (! view.contains(row))
+        {
+            viewport.setViewPosition(0, juce::jmax(0, row.getY() - viewport.getHeight() / 3));
+        }
+        return getLocalArea(&list, row);
+    }
+
+    // The row's left edge in this component's coordinates, if it is on screen.
+    std::optional<juce::Point<float>> visibleAnchor(const juce::String& id) const
+    {
+        const auto row = list.destinationBounds(id);
+        if (row.isEmpty() || ! viewport.getViewArea().contains(row.getCentre())) { return std::nullopt; }
+        const auto r = getLocalArea(&list, row).toFloat();
+        return juce::Point<float>(r.getX() + 7.0f, r.getCentreY());
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().withTrimmedTop(static_cast<int>(kBand) + 1);
+        search.setBounds(area.removeFromTop(22).reduced(4, 1));
+        area.removeFromTop(2);
+        viewport.setBounds(area);
+        list.setSize(juce::jmax(1, viewport.getMaximumVisibleWidth()), list.getHeight());
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        th::drawModulePanel(g, getLocalBounds().toFloat(), "DESTINATIONS", kMatrixAccent, true, kBand);
+        th::drawLabel(g, juce::String(destinationCount), getLocalBounds().toFloat().withHeight(kBand).withTrimmedTop(2.0f)
+                                                          .withTrimmedRight(8.0f).removeFromRight(40.0f),
+                      th::Type::secondary, th::colour::textDim, juce::Justification::centredRight);
+    }
+
+    ModRoutingPanel& owner;
+    List list;
+    RoutesArea::Port viewport;
+    juce::TextEditor search;
+    std::vector<Item> items;
+    std::vector<int> visibleItems;
+    std::set<juce::String> collapsed;
+    juce::String filter;
+    juce::String highlightId;
+    int destinationCount { 0 };
 };
 
 //==============================================================================
@@ -801,57 +1410,128 @@ ModRoutingPanel::ModRoutingPanel(ModDragController& controllerIn)
 {
     setComponentID("mod.routing");
     setWantsKeyboardFocus(true);
-    title.setText("ROUTING", juce::dontSendNotification);
-    title.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-    title.setColour(juce::Label::textColourId, kInk);
-    title.setJustificationType(juce::Justification::centredLeft);
-    title.setComponentID("mod.routing.title");
-    addAndMakeVisible(title);
-    patchView = std::make_unique<PatchView>(*this, controller);
-    addAndMakeVisible(*patchView);
+    header = std::make_unique<Header>(*this);
+    addAndMakeVisible(*header);
+    sourceColumn = std::make_unique<SourceColumn>(*this, controller);
+    addAndMakeVisible(*sourceColumn);
+    routesArea = std::make_unique<RoutesArea>();
     listContent = std::make_unique<ListContent>();
-    listContent->emptyText = "No routes yet. Drag a jack (here, on an LFO/ENV card or in the MOD strip "
-                             "under the panels) onto a knob.";
-    listViewport.setComponentID("mod.routing.list");
-    listViewport.setViewedComponent(listContent.get(), false);
-    listViewport.setScrollBarsShown(true, false);
-    listViewport.setScrollBarThickness(8);
-    addAndMakeVisible(listViewport);
+    routesArea->viewport.setViewedComponent(listContent.get(), false);
+    routesArea->viewport.onScroll = [this] { repaint(); };
+    addAndMakeVisible(*routesArea);
+    destinations = std::make_unique<DestinationBrowser>(*this);
+    destinations->viewport.onScroll = [this] { repaint(); };
+    addAndMakeVisible(*destinations);
     refresh();
 }
 
 ModRoutingPanel::~ModRoutingPanel()
 {
-    listViewport.setViewedComponent(nullptr, false);
+    routesArea->viewport.setViewedComponent(nullptr, false);
 }
 
-juce::Component& ModRoutingPanel::getTitle() { return title; }
-juce::Component& ModRoutingPanel::getPatchView() { return *patchView; }
-juce::Component& ModRoutingPanel::getList() { return listViewport; }
+juce::Component& ModRoutingPanel::getTitle() { return *header; }
+juce::Component& ModRoutingPanel::getPatchView() { return *sourceColumn; }
+juce::Component& ModRoutingPanel::getList() { return *routesArea; }
+juce::Component& ModRoutingPanel::getDestinations() { return *destinations; }
 int ModRoutingPanel::getRowCount() const { return static_cast<int>(listContent->rows.size()); }
 juce::Component* ModRoutingPanel::getRow(int index)
 {
     return juce::isPositiveAndBelow(index, getRowCount()) ? listContent->rows[static_cast<std::size_t>(index)].get() : nullptr;
 }
+int ModRoutingPanel::getDestinationCount() const { return destinations->destinationCount; }
+void ModRoutingPanel::setDestinationFilter(const juce::String& text) { destinations->setFilter(text); }
+juce::Rectangle<int> ModRoutingPanel::revealDestination(const juce::String& id) { return destinations->reveal(id); }
 
 void ModRoutingPanel::paint(juce::Graphics& g)
 {
-    const auto area = getLocalBounds().toFloat().reduced(2.0f);
-    g.setColour(kPanelFill);
-    g.fillRoundedRectangle(area, 8.0f);
-    g.setColour(juce::Colour(0xff2f3739));
-    g.drawRoundedRectangle(area, 8.0f, 1.0f);
+    // The seams between the three modules show the chassis.
+    g.fillAll(th::colour::chassis);
+}
+
+juce::Point<float> ModRoutingPanel::sourceAnchor(int source) const
+{
+    if (! juce::isPositiveAndBelow(source, kSourceCount)) { return {}; }
+    auto& socket = sourceColumn->socket(source);
+    return getLocalArea(&socket, socket.jackBounds()).getCentre();
+}
+
+void ModRoutingPanel::paintOverChildren(juce::Graphics& g)
+{
+    // Leads across the seams: source jack -> route strip -> destination row.
+    // Only strips on screen are drawn; nothing here runs unless the page is
+    // visible and something changed (routes, selection, scroll).
+    auto& viewport = routesArea->viewport;
+    const auto listArea = getLocalArea(&viewport, viewport.getLocalBounds());
+    const auto destArea = getLocalArea(destinations.get(), destinations->viewport.getBounds());
+    for (const auto& row : listContent->rows)
+    {
+        const auto inList = getLocalArea(listContent.get(), row->getBounds());
+        if (! listArea.intersects(inList)) { continue; }
+        const auto& route = row->getRoute();
+        const auto colour = sourceColour(route.source);
+        const auto selected = route.key() == selectedKey;
+        const auto alpha = selected ? 1.0f : 0.7f;
+        const auto width = selected ? 2.6f : 1.6f;
+        const auto plug = getLocalPoint(row.get(), row->sourcePlug());
+        if (listArea.contains(plug.roundToInt()))
+        {
+            const auto from = sourceAnchor(route.source);
+            g.setColour(colour.withAlpha(alpha));
+            g.saveState();
+            g.reduceClipRegion(getLocalBounds().withLeft(juce::roundToInt(from.x)));
+            g.strokePath(linkPath(from, plug), juce::PathStrokeType(width));
+            g.restoreState();
+        }
+        if (auto anchor = destinations->visibleAnchor(route.destination))
+        {
+            const auto to = getLocalPoint(destinations.get(), *anchor);
+            const auto out = getLocalPoint(row.get(), row->destinationPlug());
+            if (listArea.contains(out.roundToInt()) && destArea.contains(to.roundToInt()))
+            {
+                g.setColour(colour.withAlpha(alpha * 0.85f));
+                g.strokePath(linkPath(out, to), juce::PathStrokeType(width));
+            }
+        }
+    }
 }
 
 void ModRoutingPanel::resized()
 {
-    auto area = getLocalBounds().reduced(12, 10);
-    title.setBounds(area.removeFromTop(22));
-    area.removeFromTop(6);
-    patchView->setBounds(area.removeFromTop(area.getHeight() * 46 / 100));
-    area.removeFromTop(8);
-    listViewport.setBounds(area);
+    // Fallback when the scene does not place the parts.
+    auto area = getLocalBounds();
+    header->setBounds(area.removeFromTop(24));
+    area.removeFromTop(1);
+    sourceColumn->setBounds(area.removeFromLeft(196));
+    area.removeFromLeft(1);
+    destinations->setBounds(area.removeFromRight(juce::jlimit(250, 400, area.getWidth() * 30 / 100)));
+    area.removeFromRight(1);
+    routesArea->setBounds(area);
     rebuildRows();
+}
+
+void ModRoutingPanel::armSource(int source)
+{
+    armedSource = juce::isPositiveAndBelow(source, kSourceCount) ? source : -1;
+    sourceColumn->setCounts(routes);
+    header->repaint();
+}
+
+int ModRoutingPanel::patchArmedSourceTo(const juce::String& destination)
+{
+    if (armedSource < 0) { return -1; }
+    juce::String error;
+    const auto slot = createRoute(processor, armedSource, destination, error);
+    if (slot >= 0)
+    {
+        refresh();
+        RouteInfo key;
+        key.slot = slot;
+        key.source = armedSource;
+        key.destination = destination;
+        select(key.key());
+    }
+    return slot;
 }
 
 void ModRoutingPanel::refresh()
@@ -870,7 +1550,10 @@ void ModRoutingPanel::refresh()
         for (const auto& route : routes) { stillThere = stillThere || route.key() == selectedKey; }
         if (! stillThere) { selectedKey.clear(); }
         rebuildRows();
-        patchView->setRoutes(routes);
+        sourceColumn->setCounts(routes);
+        destinations->setRoutes(routes);
+        header->repaint();
+        repaint();
         return;
     }
     auto depthsMoved = false;
@@ -883,16 +1566,17 @@ void ModRoutingPanel::refresh()
     {
         listContent->rows[i]->syncDepth(routes[i].depth);
     }
-    if (depthsMoved) { patchView->repaint(); }
+    if (depthsMoved) { listContent->repaint(); }
 }
 
 void ModRoutingPanel::rebuildRows()
 {
     // Only the routes changed: the scroll position is kept.
-    const auto scroll = listViewport.getViewPosition();
+    auto& viewport = routesArea->viewport;
+    const auto scroll = viewport.getViewPosition();
     listContent->rows.clear();
-    const auto width = juce::jmax(1, listViewport.getWidth() - listViewport.getScrollBarThickness() - 2);
-    constexpr int rowHeight = 56;
+    const auto width = juce::jmax(1, viewport.getWidth() - viewport.getScrollBarThickness());
+    constexpr int rowHeight = 30;
     int y = 0;
     for (const auto& route : routes)
     {
@@ -902,8 +1586,8 @@ void ModRoutingPanel::rebuildRows()
         listContent->addAndMakeVisible(*row);
         listContent->rows.push_back(std::move(row));
     }
-    listContent->setSize(width, juce::jmax(y, listViewport.getHeight()));
-    listViewport.setViewPosition(scroll);
+    listContent->setSize(width, juce::jmax(y, viewport.getHeight()));
+    viewport.setViewPosition(scroll);
     listContent->repaint();
 }
 
@@ -911,16 +1595,25 @@ void ModRoutingPanel::select(const juce::String& routeKey)
 {
     if (selectedKey == routeKey) { return; }
     selectedKey = routeKey;
+    auto& viewport = routesArea->viewport;
+    juce::String destination;
     for (auto& row : listContent->rows)
     {
         row->repaint();
         if (row->getRoute().key() == selectedKey)
         {
-            listViewport.setViewPosition(0, juce::jlimit(0, juce::jmax(0, listContent->getHeight() - listViewport.getHeight()),
-                                                          row->getY() - listViewport.getHeight() / 2));
+            destination = row->getRoute().destination;
+            if (! viewport.getViewArea().contains(row->getBounds()))
+            {
+                viewport.setViewPosition(0, juce::jlimit(0, juce::jmax(0, listContent->getHeight() - viewport.getHeight()),
+                                                         row->getY() - viewport.getHeight() / 2));
+            }
         }
     }
-    patchView->repaint();
+    // The destination it lands on lights up in the browser.
+    destinations->setHighlight(destination);
+    destinations->reveal(destination);
+    repaint();
 }
 
 bool ModRoutingPanel::removeSelected()
@@ -940,6 +1633,11 @@ bool ModRoutingPanel::keyPressed(const juce::KeyPress& key)
     if (key.getKeyCode() == juce::KeyPress::deleteKey || key.getKeyCode() == juce::KeyPress::backspaceKey)
     {
         removeSelected();
+        return true;
+    }
+    if (key.getKeyCode() == juce::KeyPress::escapeKey && armedSource >= 0)
+    {
+        armSource(-1);
         return true;
     }
     return false;

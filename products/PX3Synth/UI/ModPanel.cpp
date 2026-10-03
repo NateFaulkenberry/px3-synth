@@ -2,6 +2,7 @@
 #include "ModPanel.h"
 
 #include "UIConfig.h"
+#include "Theme.h"
 
 #include <cmath>
 
@@ -401,8 +402,12 @@ void ModPanel::layoutSockets()
         auto* card = getCard(i);
         if (socket == nullptr || card == nullptr) { continue; }
         const auto cell = card->getBounds();
-        constexpr int side = 18;
-        socket->setBounds(cell.getRight() - side - 4, cell.getY() + 3, side, side);
+        // Mirrors the power button: same inset from the edge, same clearance
+        // from the band's top and bottom (theme::space::powerInset).
+        constexpr int side = 16;
+        const auto inset = static_cast<int>(px3::ui::theme::space::powerInset);
+        const auto band = static_cast<int>(px3::ui::theme::space::headerHeight);
+        socket->setBounds(cell.getRight() - side - inset, cell.getY() + (band - side) / 2, side, side);
         socket->toFront(false);
     }
 }

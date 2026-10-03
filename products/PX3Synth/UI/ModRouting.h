@@ -79,12 +79,20 @@ public:
     void mouseExit(const juce::MouseEvent&) override { repaint(); }
     juce::Rectangle<float> jackBounds() const;
     void setRouteCount(int count);
+    int getRouteCount() const noexcept { return routeCount; }
+    // A press and release without a drag (click-to-patch arming).
+    std::function<void(int source)> onClick;
+    // Jack on the right, name on the left (the matrix's source column).
+    void setJackOnRight(bool shouldBeOnRight) { jackOnRight = shouldBeOnRight; repaint(); }
+    void setArmed(bool shouldBeArmed) { if (armed != shouldBeArmed) { armed = shouldBeArmed; repaint(); } }
 
 private:
     ModDragController& controller;
     int source;
     bool showLabel;
     int routeCount { 0 };
+    bool jackOnRight { false };
+    bool armed { false };
 };
 
 class ModDragController final
@@ -111,7 +119,8 @@ public:
     int getDragSource() const noexcept { return dragSource; }
 
     // The destination under a point of the root, or empty.
-    juce::String destinationAt(juce::Point<int> rootPosition, juce::Component** target = nullptr) const;
+    juce::String destinationAt(juce::Point<int> rootPosition, juce::Component** target = nullptr,
+                               juce::Rectangle<int>* targetRect = nullptr) const;
     juce::Component& getRoot() noexcept { return root; }
     PX3SynthAudioProcessor& getProcessor() noexcept { return processor; }
     juce::String lastError;
@@ -125,6 +134,7 @@ private:
     int dragSource { -1 };
     juce::Point<float> start, current;
     juce::Component::SafePointer<juce::Component> hoverTarget;
+    juce::Rectangle<int> hoverRect;   // root coordinates of the hovered destination
     int hoverTab { -1 };
     double hoverTabSince { 0.0 };
 };
@@ -145,6 +155,30 @@ private:
     std::vector<std::unique_ptr<ModSourceSocket>> sockets;
 };
 
+class RoutesArea;
+
+// A component that holds many drop targets without one child per target (the
+// matrix's destination list). The drag controller asks it which destination
+// sits under a point, in its own coordinates.
+class DestinationProvider
+{
+public:
+    virtual ~DestinationProvider() = default;
+    virtual juce::String destinationAtPoint(juce::Point<int> local) const = 0;
+    virtual juce::Rectangle<int> destinationBounds(const juce::String& id) const = 0;
+};
+
+// The MOD page: the modulation matrix as a patch bay.
+//
+//   SOURCES (jacks, colour + name + route count)
+//     -> ROUTES (one strip per connection: source plug, cable, amount, shape,
+//        destination plug)
+//     -> DESTINATIONS (every modulatable parameter from the processor's
+//        catalog, grouped and searchable; each row is a drop target).
+//
+// Cables are drawn across the seams so source -> route -> destination reads
+// as one connection. Patching: drag a jack onto a destination row or onto any
+// knob in the editor; or click a jack to arm it and click destinations.
 class ModRoutingPanel final : public juce::Component
 {
 public:
@@ -152,6 +186,7 @@ public:
     ~ModRoutingPanel() override;
 
     void paint(juce::Graphics& g) override;
+    void paintOverChildren(juce::Graphics& g) override;
     void resized() override;   // fallback when not scene-managed
     bool keyPressed(const juce::KeyPress& key) override;
 
@@ -161,28 +196,46 @@ public:
     juce::String getSelectedKey() const { return selectedKey; }
     bool removeSelected();
 
+    // Click-to-patch: an armed source is patched to the next destination
+    // clicked in the list. -1 = none.
+    void armSource(int source);
+    int getArmedSource() const noexcept { return armedSource; }
+    // Creates the route as a drop would (used by click-to-patch and tests).
+    int patchArmedSourceTo(const juce::String& destination);
+
     juce::Component& getTitle();
-    juce::Component& getPatchView();
-    juce::Component& getList();
+    juce::Component& getPatchView();     // SOURCES column
+    juce::Component& getList();          // ROUTES (scrolls)
+    juce::Component& getDestinations();  // DESTINATIONS browser
     int getRowCount() const;
     juce::Component* getRow(int index);
     const std::vector<RouteInfo>& getRoutes() const { return routes; }
+    // Destination browser: how many destinations it offers, the search text,
+    // and the row rect (in the browser's coordinates, scrolled into view).
+    int getDestinationCount() const;
+    void setDestinationFilter(const juce::String& text);
+    juce::Rectangle<int> revealDestination(const juce::String& id);
 
 private:
-    class PatchView;
+    class Header;
+    class SourceColumn;
     class Row;
     class ListContent;
+    class AmountControl;
+    class DestinationBrowser;
     void rebuildRows();
+    juce::Point<float> sourceAnchor(int source) const;
 
     ModDragController& controller;
     PX3SynthAudioProcessor& processor;
     std::vector<RouteInfo> routes;
     juce::String signature;
     juce::String selectedKey;
-    juce::Label title;
-    juce::Label hint;
-    std::unique_ptr<PatchView> patchView;
-    juce::Viewport listViewport;
+    int armedSource { -1 };
+    std::unique_ptr<Header> header;
+    std::unique_ptr<SourceColumn> sourceColumn;
+    std::unique_ptr<RoutesArea> routesArea;
     std::unique_ptr<ListContent> listContent;
+    std::unique_ptr<DestinationBrowser> destinations;
 };
 } // namespace px3::ui::modrouting
