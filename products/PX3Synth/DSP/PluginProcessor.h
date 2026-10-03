@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ModulationGraph.h"
+
 #include "MidiMapping.h"
 #include "ParameterCatalog.h"
 #include <JuceHeader.h>
@@ -216,6 +218,20 @@ public:
     //==========================================================================
 
     static constexpr int kMacroCount = 5;
+    static constexpr int kGraphRouteSlots = 64;
+    struct GraphRouteConfiguration
+    {
+        int source { -1 };
+        juce::String destination;
+        px3::synth::ModulationPolarity polarity { px3::synth::ModulationPolarity::native };
+        px3::synth::ModulationCurve curve { px3::synth::ModulationCurve::linear };
+    };
+    bool setGraphRoute(int slot, const GraphRouteConfiguration& route, juce::String& error);
+    bool isGraphDestination(const juce::String& id) const;
+    GraphRouteConfiguration getGraphRoute(int slot) const;
+    juce::AudioParameterFloat& getGraphRouteDepthParam(int slot) const;
+    static juce::String graphSourceName(int source);
+    static juce::String graphSourceId(int source);
 
     juce::AudioParameterFloat& getMacroParam(int macroIndex) const;
     static juce::String macroParameterId(int macroIndex);
@@ -1204,6 +1220,12 @@ private:
     // Rebuilds the audio thread's table from the destination lists. Message
     // thread only, called whenever an assignment changes or state is restored.
     void rebuildMacroRoutes();
+    void rebuildModulationGraph();
+    bool compileModulationGraph(const std::array<GraphRouteConfiguration, kGraphRouteSlots>& configurations,
+                                px3::synth::CompiledModulationGraph& plan, juce::String& error) const;
+    std::array<GraphRouteConfiguration, kGraphRouteSlots> graphRouteConfigurations;
+    std::array<juce::AudioParameterFloat*, kGraphRouteSlots> graphRouteDepthParams {};
+    px3::synth::ModulationGraphPublication modulationGraph;
 
     std::vector<px3::MidiMapping> midiMappings;
     juce::StringArray midiLearnTargets;

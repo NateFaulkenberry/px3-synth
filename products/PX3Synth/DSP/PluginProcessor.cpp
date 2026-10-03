@@ -385,6 +385,15 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(macroParams[static_cast<std::size_t>(macro)]);
     }
 
+    for (int slot = 0; slot < kGraphRouteSlots; ++slot)
+    {
+        const auto suffix = juce::String(slot + 1).paddedLeft('0', 2);
+        graphRouteDepthParams[static_cast<std::size_t>(slot)] = parameterCatalog.createFloat(
+            "mod.routes.slot" + suffix + ".depth", "Route " + suffix + " Depth",
+            juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
+        addParameter(graphRouteDepthParams[static_cast<std::size_t>(slot)]);
+    }
+
     masterGainParam = parameterCatalog.createFloat("masterGain", "Master Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
 
     vibeAmountParam = parameterCatalog.createFloat("vibeAmount", "Vibe", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);

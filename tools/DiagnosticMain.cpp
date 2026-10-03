@@ -329,7 +329,7 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
     if (patch.oscillatorMode >= 0)
     {
         // Choice params are set by index over the 0..1 normalised range.
-        if (auto* mode = findParameter(processor, "osc1Mode"))
+        if (auto* mode = findParameter(processor, "voice.osc1.mode"))
         {
             const auto count = juce::jmax(1, mode->getNumSteps() - 1);
             mode->setValueNotifyingHost(static_cast<float>(patch.oscillatorMode)
@@ -340,10 +340,10 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
     {
         // Every source on, all mixer levels up: the level the plugin can
         // actually reach, not the one-oscillator default.
-        setParameter(processor, "osc1Enabled", 1.0f);
-        setParameter(processor, "osc2Enabled", 1.0f);
-        setParameter(processor, "osc3Enabled", 1.0f);
-        setParameter(processor, "subOscEnabled", 1.0f);
+        setParameter(processor, "voice.osc1.enabled", 1.0f);
+        setParameter(processor, "voice.osc2.enabled", 1.0f);
+        setParameter(processor, "voice.osc3.enabled", 1.0f);
+        setParameter(processor, "voice.sub.enabled", 1.0f);
     }
     if (patch.fadersAtUnity)
     {
@@ -369,8 +369,8 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
     }
     if (patch.modEnvelopes)
     {
-        processor.setEnvelopeAssignmentByParameterId(0, "filter1Cutoff", false);
-        processor.setEnvelopeAssignmentByParameterId(1, "osc1MacroA", false);
+        processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
+        processor.setEnvelopeAssignmentByParameterId(1, "voice.osc1.macro.a", false);
         processor.setEnvelopeAssignmentByParameterId(2, "osc1Level", false);
     }
 
@@ -387,7 +387,7 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
     }
     if (patch.lfoModulation)
     {
-        processor.setLfoAssignmentByParameterId(0, "filter1Cutoff", false);
+        processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
         processor.setLfoAssignmentByParameterId(1, "osc1Level", false);
     }
     if (patch.pitchModulation)
@@ -646,7 +646,7 @@ struct FilterSynthConfig
     float f1Q { 0.707f };
     float f2Q { 0.707f };
     int midiNote { 69 };            // A4 = 440 Hz
-    juce::String modDestination;    // e.g. "filter1Cutoff"
+    juce::String modDestination;    // e.g. "voice.filter1.cutoff"
     float modAmount { 0.0f };
     bool useEnvelopeSource { false };  // false = LFO1, true = ENV1
 };
@@ -665,23 +665,23 @@ double measureVoiceFilterPeak(const FilterSynthConfig& config)
     setParameter(processor, "delayEnabled", 0.0f);
     setParameter(processor, "reverbEnabled", 0.0f);
     setParameter(processor, "moodEnabled", 0.0f);
-    setParameter(processor, "subOscEnabled", 0.0f);
+    setParameter(processor, "voice.sub.enabled", 0.0f);
     for (int i = 0; i < 3; ++i)
     {
         const auto slot = juce::String(i + 1);
-        setParameter(processor, "osc" + slot + "Enabled", i == 0 ? 1.0f : 0.0f);
-        if (auto* m = findParameter(processor, "osc" + slot + "Mode")) m->setValueNotifyingHost(0.0f); // SINE
+        setParameter(processor, "voice.osc" + slot + ".enabled", i == 0 ? 1.0f : 0.0f);
+        if (auto* m = findParameter(processor, "voice.osc" + slot + ".mode")) m->setValueNotifyingHost(0.0f); // SINE
     }
 
-    setParameter(processor, "filter1Enabled", config.f1On ? 1.0f : 0.0f);
-    setParameter(processor, "filter2Enabled", config.f2On ? 1.0f : 0.0f);
-    setParameter(processor, "filter1Cutoff", config.f1Cutoff);
-    setParameter(processor, "filter2Cutoff", config.f2Cutoff);
-    setParameter(processor, "filter1Resonance", config.f1Q);
-    setParameter(processor, "filter2Resonance", config.f2Q);
-    if (auto* t1 = findParameter(processor, "filter1Type"))
+    setParameter(processor, "voice.filter1.enabled", config.f1On ? 1.0f : 0.0f);
+    setParameter(processor, "voice.filter2.enabled", config.f2On ? 1.0f : 0.0f);
+    setParameter(processor, "voice.filter1.cutoff", config.f1Cutoff);
+    setParameter(processor, "voice.filter2.cutoff", config.f2Cutoff);
+    setParameter(processor, "voice.filter1.resonance", config.f1Q);
+    setParameter(processor, "voice.filter2.resonance", config.f2Q);
+    if (auto* t1 = findParameter(processor, "voice.filter1.type"))
         t1->setValueNotifyingHost((float) config.f1Mode / (float) juce::jmax(1, t1->getNumSteps() - 1));
-    if (auto* t2 = findParameter(processor, "filter2Type"))
+    if (auto* t2 = findParameter(processor, "voice.filter2.type"))
         t2->setValueNotifyingHost((float) config.f2Mode / (float) juce::jmax(1, t2->getNumSteps() - 1));
 
     // Modulation: a static, fully-deflected source so the effective cutoff has a
@@ -766,19 +766,19 @@ std::vector<float> renderFilterNoteTrace(int midiNote, bool precedeWithOtherNote
     setParameter(processor, "delayEnabled", 0.0f);
     setParameter(processor, "reverbEnabled", 0.0f);
     setParameter(processor, "moodEnabled", 0.0f);
-    setParameter(processor, "subOscEnabled", 0.0f);
+    setParameter(processor, "voice.sub.enabled", 0.0f);
     setParameter(processor, "vibeAmount", 0.0f);
     for (int i = 0; i < 3; ++i)
     {
         const auto slot = juce::String(i + 1);
-        setParameter(processor, "osc" + slot + "Enabled", i == 0 ? 1.0f : 0.0f);
-        if (auto* m = findParameter(processor, "osc" + slot + "Mode")) m->setValueNotifyingHost(0.0f);
+        setParameter(processor, "voice.osc" + slot + ".enabled", i == 0 ? 1.0f : 0.0f);
+        if (auto* m = findParameter(processor, "voice.osc" + slot + ".mode")) m->setValueNotifyingHost(0.0f);
     }
     // A resonant low-pass: the most state-retentive configuration available.
-    setParameter(processor, "filter1Enabled", 1.0f);
-    setParameter(processor, "filter1Cutoff", 400.0f);
-    setParameter(processor, "filter1Resonance", 2.2f);
-    setParameter(processor, "filter2Enabled", 0.0f);
+    setParameter(processor, "voice.filter1.enabled", 1.0f);
+    setParameter(processor, "voice.filter1.cutoff", 400.0f);
+    setParameter(processor, "voice.filter1.resonance", 2.2f);
+    setParameter(processor, "voice.filter2.enabled", 0.0f);
 
     processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
     processor.prepareToPlay(kSampleRate, kBlockSize);
@@ -875,13 +875,13 @@ MixerMeasurement measureMixer(const MixerConfig& config)
     for (int i = 0; i < 3; ++i)
     {
         const auto slot = juce::String(i + 1);
-        setParameter(processor, "osc" + slot + "Enabled", config.sourceEnabled[i + 1] ? 1.0f : 0.0f);
-        if (auto* mode = findParameter(processor, "osc" + slot + "Mode"))
+        setParameter(processor, "voice.osc" + slot + ".enabled", config.sourceEnabled[i + 1] ? 1.0f : 0.0f);
+        if (auto* mode = findParameter(processor, "voice.osc" + slot + ".mode"))
         {
             mode->setValueNotifyingHost(0.0f); // SINE
         }
     }
-    setParameter(processor, "subOscEnabled", config.sourceEnabled[0] ? 1.0f : 0.0f);
+    setParameter(processor, "voice.sub.enabled", config.sourceEnabled[0] ? 1.0f : 0.0f);
 
     // Reverb only. Delay's granular engine and Mood both draw from
     // juce::Random::getSystemRandom() during processing, which makes the FX
@@ -989,10 +989,10 @@ MixerDynamicResult measureMixerDynamics(const juce::String& paramId,
     for (int i = 0; i < 3; ++i)
     {
         const auto slot = juce::String(i + 1);
-        setParameter(processor, "osc" + slot + "Enabled", i == 0 ? 1.0f : 0.0f);
-        if (auto* mode = findParameter(processor, "osc" + slot + "Mode")) mode->setValueNotifyingHost(0.0f);
+        setParameter(processor, "voice.osc" + slot + ".enabled", i == 0 ? 1.0f : 0.0f);
+        if (auto* mode = findParameter(processor, "voice.osc" + slot + ".mode")) mode->setValueNotifyingHost(0.0f);
     }
-    setParameter(processor, "subOscEnabled", 0.0f);
+    setParameter(processor, "voice.sub.enabled", 0.0f);
     for (int i = 0; i < 4; ++i)
     {
         setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".level", 1.0f);
@@ -1829,7 +1829,7 @@ int runRegressionSuite(bool legacyPruning)
         auto p = base;
         p.attack = 0.005f; p.decay = 0.1f; p.sustain = 1.0f; p.release = 0.4f;
         p.pattern = Pattern::sustained; p.oscillatorMode = 0;
-        p.automateParamId = "osc2Enabled"; p.automateFrom = 0.0f; p.automateTo = 1.0f;
+        p.automateParamId = "voice.osc2.enabled"; p.automateFrom = 0.0f; p.automateTo = 1.0f;
         check("T toggle osc2 during sustain", p);
     }
 
@@ -2313,6 +2313,18 @@ int main(int argc, char* argv[])
             setParameter(processor, "delayEnabled", fxOn ? 1.0f : 0.0f);
             setParameter(processor, "reverbEnabled", fxOn ? 1.0f : 0.0f);
             setParameter(processor, "moodEnabled", fxOn ? 1.0f : 0.0f);
+            for (const auto* id : { "doomEnabled", "lucyEnabled", "chorusEnabled", "spreadEnabled" })
+            {
+                setParameter(processor, id, fxOn ? 1.0f : 0.0f);
+            }
+            juce::String routeError;
+            for (int slot = 0; slot < 12; ++slot)
+            {
+                processor.setGraphRoute(slot, { 6, slot % 2 == 0 ? "voice.filter1.cutoff" : "mix.osc1.pan" }, routeError);
+                auto& depth = processor.getGraphRouteDepthParam(slot);
+                depth.setValueNotifyingHost(depth.convertTo0to1(0.025f));
+            }
+            processor.getMacroParam(0).setValueNotifyingHost(0.5f);
 
             // The newer engines take an early-out while inaudible, so leaving
             // them at their defaults would measure the bypass rather than the
@@ -2330,10 +2342,10 @@ int main(int argc, char* argv[])
             setParameter(processor, "analogProfile", fxOn ? 0.25f : 0.0f);
 
             setParameter(processor, "voice.amp.release", releaseVoices ? 3.0f : 0.2f);
-            setParameter(processor, "filter1Enabled", filtersOn ? 1.0f : 0.0f);
-            setParameter(processor, "filter2Enabled", filtersOn ? 1.0f : 0.0f);
-            setParameter(processor, "filter1Cutoff", 1200.0f);
-            setParameter(processor, "filter2Cutoff", 3000.0f);
+            setParameter(processor, "voice.filter1.enabled", filtersOn ? 1.0f : 0.0f);
+            setParameter(processor, "voice.filter2.enabled", filtersOn ? 1.0f : 0.0f);
+            setParameter(processor, "voice.filter1.cutoff", 1200.0f);
+            setParameter(processor, "voice.filter2.cutoff", 3000.0f);
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -2423,7 +2435,7 @@ int main(int argc, char* argv[])
                 if (sweepCutoff)
                 {
                     px3rt::counting.store(false, std::memory_order_relaxed);
-                    setParameter(processor, "filter1Cutoff", 400.0f + 3000.0f * (float) (i % 20) / 20.0f);
+                    setParameter(processor, "voice.filter1.cutoff", 400.0f + 3000.0f * (float) (i % 20) / 20.0f);
                     px3rt::counting.store(true, std::memory_order_relaxed);
                 }
             }
@@ -2566,8 +2578,8 @@ int main(int argc, char* argv[])
         phase("sustained: 20000 blocks at max polyphony", [&]{
             PX3SynthAudioProcessor p;
             setParameter(p, "voice.amp.release", 3.0f);
-            setParameter(p, "filter1Enabled", 1.0f);
-            setParameter(p, "filter2Enabled", 1.0f);
+            setParameter(p, "voice.filter1.enabled", 1.0f);
+            setParameter(p, "voice.filter2.enabled", 1.0f);
             p.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             p.prepareToPlay(kSampleRate, kBlockSize);
             juce::AudioBuffer<float> buffer(2, kBlockSize);
@@ -2585,8 +2597,8 @@ int main(int argc, char* argv[])
         phase("sustained again (same work, must not grow)", [&]{
             PX3SynthAudioProcessor p;
             setParameter(p, "voice.amp.release", 3.0f);
-            setParameter(p, "filter1Enabled", 1.0f);
-            setParameter(p, "filter2Enabled", 1.0f);
+            setParameter(p, "voice.filter1.enabled", 1.0f);
+            setParameter(p, "voice.filter2.enabled", 1.0f);
             p.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             p.prepareToPlay(kSampleRate, kBlockSize);
             juce::AudioBuffer<float> buffer(2, kBlockSize);
@@ -2666,13 +2678,13 @@ int main(int argc, char* argv[])
             setParameter(processor, "delayEnabled", 0.0f);
             setParameter(processor, "reverbEnabled", 0.0f);
             setParameter(processor, "moodEnabled", 0.0f);
-            setParameter(processor, "subOscEnabled", 1.0f);
-            setParameter(processor, "osc1Enabled", 0.0f);
-            setParameter(processor, "osc2Enabled", 0.0f);
-            setParameter(processor, "osc3Enabled", 0.0f);
-            setParameter(processor, "filter1Enabled", 1.0f);
-            setParameter(processor, "filter1Cutoff", 220.0f);
-            setParameter(processor, "filter1Resonance", 2.2f);
+            setParameter(processor, "voice.sub.enabled", 1.0f);
+            setParameter(processor, "voice.osc1.enabled", 0.0f);
+            setParameter(processor, "voice.osc2.enabled", 0.0f);
+            setParameter(processor, "voice.osc3.enabled", 0.0f);
+            setParameter(processor, "voice.filter1.enabled", 1.0f);
+            setParameter(processor, "voice.filter1.cutoff", 220.0f);
+            setParameter(processor, "voice.filter1.resonance", 2.2f);
             for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
                 setParameter(processor, juce::String("mix.") + id + ".level", 1.0f);
 
@@ -2695,9 +2707,9 @@ int main(int argc, char* argv[])
             for (int position = 0; position < total; position += kBlockSize)
             {
                 if (position >= bypassAt && position < bypassAt + kBlockSize)
-                    setParameter(processor, "subOscEnabled", 0.0f);
+                    setParameter(processor, "voice.sub.enabled", 0.0f);
                 if (position >= reEnableAt && position < reEnableAt + kBlockSize)
-                    setParameter(processor, "subOscEnabled", 1.0f);
+                    setParameter(processor, "voice.sub.enabled", 1.0f);
 
                 buffer.clear();
                 juce::MidiBuffer midi;
@@ -3064,7 +3076,7 @@ int main(int argc, char* argv[])
                 c.useEnvelopeSource = useEnv;
                 const auto noMod = measureVoiceFilterPeak(c);
 
-                c.modDestination = "filter1Cutoff"; c.modAmount = 0.0f;
+                c.modDestination = "voice.filter1.cutoff"; c.modAmount = 0.0f;
                 filterCheck((sourceName + " -> F1 cutoff with amount 0 changes nothing").toRawUTF8(),
                             std::abs(measureVoiceFilterPeak(c) - noMod) < 1.0e-9, "");
 
@@ -3078,7 +3090,7 @@ int main(int argc, char* argv[])
                                 + " -1=" + juce::String(modDown, 5));
 
                 // routed at F2 while F2 is bypassed -> must not touch F1
-                c.modDestination = "filter2Cutoff"; c.modAmount = 1.0f;
+                c.modDestination = "voice.filter2.cutoff"; c.modAmount = 1.0f;
                 filterCheck((sourceName + " -> F2 cutoff does NOT move F1").toRawUTF8(),
                             std::abs(measureVoiceFilterPeak(c) - noMod) < 1.0e-9,
                             juce::String("F1 peak ") + juce::String(noMod, 8) + " -> "
@@ -3089,13 +3101,13 @@ int main(int argc, char* argv[])
                 d.f1On = false; d.f2On = true; d.f2Mode = 0; d.f2Cutoff = 440.0f;
                 d.useEnvelopeSource = useEnv;
                 const auto noMod2 = measureVoiceFilterPeak(d);
-                d.modDestination = "filter2Cutoff"; d.modAmount = 1.0f;
+                d.modDestination = "voice.filter2.cutoff"; d.modAmount = 1.0f;
                 const auto mod2 = measureVoiceFilterPeak(d);
                 filterCheck((sourceName + " -> F2 cutoff moves F2").toRawUTF8(),
                             mod2 > noMod2 * 1.02,
                             juce::String("none=") + juce::String(noMod2, 5) + " +1=" + juce::String(mod2, 5));
 
-                d.modDestination = "filter1Cutoff";
+                d.modDestination = "voice.filter1.cutoff";
                 filterCheck((sourceName + " -> F1 cutoff does NOT move F2").toRawUTF8(),
                             std::abs(measureVoiceFilterPeak(d) - noMod2) < 1.0e-9, "");
             }
@@ -3182,12 +3194,12 @@ int main(int argc, char* argv[])
             setParameter(processor, "voice.amp.attack", 0.002f);
             setParameter(processor, "voice.amp.sustain", 1.0f);
             setParameter(processor, "voice.amp.release", 3.0f);
-            setParameter(processor, "filter1Enabled", 1.0f);
-            setParameter(processor, "filter1Cutoff", 300.0f);
-            setParameter(processor, "filter1Resonance", 2.2f);
-            setParameter(processor, "filter2Enabled", 1.0f);
-            setParameter(processor, "filter2Cutoff", 2000.0f);
-            setParameter(processor, "filter2Resonance", 2.2f);
+            setParameter(processor, "voice.filter1.enabled", 1.0f);
+            setParameter(processor, "voice.filter1.cutoff", 300.0f);
+            setParameter(processor, "voice.filter1.resonance", 2.2f);
+            setParameter(processor, "voice.filter2.enabled", 1.0f);
+            setParameter(processor, "voice.filter2.cutoff", 2000.0f);
+            setParameter(processor, "voice.filter2.resonance", 2.2f);
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -3228,14 +3240,14 @@ int main(int argc, char* argv[])
         {
             struct Auto { const char* label; const char* id; float from; float to; int toggles; };
             const Auto autos[] = {
-                { "filter1 cutoff swept",     "filter1Cutoff",    200.0f, 8000.0f, 0 },
-                { "filter2 cutoff swept",     "filter2Cutoff",    200.0f, 8000.0f, 0 },
-                { "filter1 resonance swept",  "filter1Resonance",  0.25f,   2.2f,  0 },
-                { "filter2 resonance swept",  "filter2Resonance",  0.25f,   2.2f,  0 },
-                { "filter1 bypass toggled",   "filter1Enabled",    0.0f,    1.0f, 12 },
-                { "filter2 bypass toggled",   "filter2Enabled",    0.0f,    1.0f, 12 },
-                { "filter1 type switched",    "filter1Type",       0.0f,    6.0f, 12 },
-                { "filter2 type switched",    "filter2Type",       0.0f,    6.0f, 12 },
+                { "filter1 cutoff swept",     "voice.filter1.cutoff",    200.0f, 8000.0f, 0 },
+                { "filter2 cutoff swept",     "voice.filter2.cutoff",    200.0f, 8000.0f, 0 },
+                { "filter1 resonance swept",  "voice.filter1.resonance",  0.25f,   2.2f,  0 },
+                { "filter2 resonance swept",  "voice.filter2.resonance",  0.25f,   2.2f,  0 },
+                { "filter1 bypass toggled",   "voice.filter1.enabled",    0.0f,    1.0f, 12 },
+                { "filter2 bypass toggled",   "voice.filter2.enabled",    0.0f,    1.0f, 12 },
+                { "filter1 type switched",    "voice.filter1.type",       0.0f,    6.0f, 12 },
+                { "filter2 type switched",    "voice.filter2.type",       0.0f,    6.0f, 12 },
             };
             for (const auto& a : autos)
             {
@@ -3693,12 +3705,12 @@ int main(int argc, char* argv[])
                 setParameter(processor, "moodEnabled", 0.0f);
                 setParameter(processor, "reverbEnabled", 0.0f);
                 setParameter(processor, "masterGain", 0.6f);
-                setParameter(processor, "subOscEnabled", 1.0f);
+                setParameter(processor, "voice.sub.enabled", 1.0f);
                 for (int i = 0; i < 3; ++i)
                 {
                     const auto slot = juce::String(i + 1);
-                    setParameter(processor, "osc" + slot + "Enabled", 1.0f);
-                    if (auto* m = findParameter(processor, "osc" + slot + "Mode")) m->setValueNotifyingHost(0.0f);
+                    setParameter(processor, "voice.osc" + slot + ".enabled", 1.0f);
+                    if (auto* m = findParameter(processor, "voice.osc" + slot + ".mode")) m->setValueNotifyingHost(0.0f);
                 }
                 for (int i = 0; i < 4; ++i)
                 {
@@ -3769,12 +3781,12 @@ int main(int argc, char* argv[])
                 setParameter(processor, "moodEnabled", 0.0f);
                 setParameter(processor, "reverbEnabled", 0.0f);
                 setParameter(processor, "masterGain", 0.6f);
-                setParameter(processor, "subOscEnabled", 0.0f);
+                setParameter(processor, "voice.sub.enabled", 0.0f);
                 for (int i = 0; i < 3; ++i)
                 {
                     const auto slot = juce::String(i + 1);
-                    setParameter(processor, "osc" + slot + "Enabled", i == 0 ? 1.0f : 0.0f);
-                    if (auto* m = findParameter(processor, "osc" + slot + "Mode")) m->setValueNotifyingHost(0.0f);
+                    setParameter(processor, "voice.osc" + slot + ".enabled", i == 0 ? 1.0f : 0.0f);
+                    if (auto* m = findParameter(processor, "voice.osc" + slot + ".mode")) m->setValueNotifyingHost(0.0f);
                 }
                 setParameter(processor, paramId, from);
                 processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);

@@ -172,6 +172,7 @@ void testUILayout()
           invalidPresentation && roundTripped.toJson() == presentationBeforeReject,
           error);
 
+    panel = roundTripped.findNode("surface.osc");
     const auto previous = panel != nullptr ? panel->bounds : juce::Rectangle<float>();
     const auto rejectedBounds
         = ! roundTripped.setBounds("surface.osc", { 0.8f, 0.2f, 0.6f, 0.5f }, error);

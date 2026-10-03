@@ -103,4 +103,6 @@ private:
     juce::Colour lfoHeaderAccent;
     juce::LookAndFeel* lfoKnobLookAndFeel { nullptr };
     std::shared_ptr<const UIConfig> uiConfig;
+    juce::TextButton routesButton { "ROUTES" };
+    std::unique_ptr<juce::DocumentWindow> routesWindow;
 };

@@ -61,109 +61,44 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
         return effective;
     }
 
-    float totalDelta = 0.0f;
-    const auto parameterId = parameter->getParameterID();
-
-    const auto accumulateSourceDelta = [&](std::atomic<int> const& assignmentIndex,
-                                           float signal,
-                                           float amount,
-                                           bool bipolar)
+    std::array<float, kLfoSourceCount + kEnvelopeSourceCount + kMacroCount> signals {};
+    std::array<bool, kLfoSourceCount + kEnvelopeSourceCount + kMacroCount> enabledSources {};
+    auto graph = modulationGraph.read();
+    if (! graph || ! graph->hasDestination(parameter->getParameterIndex()))
     {
-        const auto assignment = juce::jlimit(0,
-                                             juce::jmax(0, static_cast<int>(lfoAssignableTargets.size()) - 1),
-                                             assignmentIndex.load(std::memory_order_relaxed));
-        if (assignment <= 0 || assignment >= static_cast<int>(lfoAssignableTargets.size()))
-        {
-            return;
-        }
-
-        const auto& target = lfoAssignableTargets[static_cast<std::size_t>(assignment)];
-        const auto sameId = target.parameterId.equalsIgnoreCase(parameter->getParameterID());
-        const auto samePointer = (target.parameter == parameter);
-        if (sameId || samePointer)
-        {
-            // HOW FAR each kind of source may swing.
-            //
-            // A BIPOLAR source - every LFO shape - swings half the range each way
-            // at full amount, so 100% spans the whole range peak to peak, and
-            // folds back at the ends rather than being clamped. It used to be
-            // limited to the headroom on the NEARER side, which kept it centred
-            // but left almost nothing whenever the base sat near an end: filter
-            // cutoff defaults to 12 kHz, which is 0.867 normalised, so a 100% LFO
-            // could move it by 0.13 - under an octave, and all of it above where
-            // a low-pass does anything audible.
-            //
-            // A UNIPOLAR source - envelopes and macros - keeps the whole side its
-            // amount points at. That already reaches the end of the range from any
-            // base, so it was never subject to the problem above.
-            const auto swing = bipolar
-                                 ? 0.5f
-                                 : (amount >= 0.0f ? 1.0f - base : base);
-
-            totalDelta += target.normalizedDepth * swing * (signal * amount);
-        }
-    };
-
+        if (outUnclampedNormalized != nullptr) { *outUnclampedNormalized = base; }
+        if (outBaseNormalized != nullptr) { *outBaseNormalized = base; }
+        if (outEffectiveNormalized != nullptr) { *outEffectiveNormalized = base; }
+        return base;
+    }
+    auto depths = graph ? graph->depths()
+                        : std::array<float, px3::synth::CompiledModulationGraph::routeCapacity> {};
     for (int i = 0; i < kLfoSourceCount; ++i)
     {
         const auto index = static_cast<std::size_t>(i);
-        // Every LFO shape is bipolar - the four cyclic shapes and both ramps all
-        // run -1..+1 - so they all swing under the same rule.
-        accumulateSourceDelta(lfoAssignmentAtomic(i),
-                              lfoCurrentValues[index].load(std::memory_order_relaxed),
-                              getLfoAmountParam(i).get(),
-                              true);
+        signals[index] = lfoCurrentValues[index].load(std::memory_order_relaxed);
+        enabledSources[index] = getLfoEnabledParam(i).get();
+        depths[index] = getLfoAmountParam(i).get();
     }
     for (int i = 0; i < kEnvelopeSourceCount; ++i)
     {
         const auto index = static_cast<std::size_t>(i);
-        const auto envSignal = juce::jlimit(0.0f,
-                                            1.0f,
-                                            modulationEnvelopeValues[index].load(std::memory_order_relaxed));
-        const auto envAmount = juce::jlimit(-1.0f, 1.0f, getEnvelopeAmountParam(i).get());
-
-        accumulateSourceDelta(envelopeAssignmentAtomic(i), envSignal, envAmount, false);
+        signals[static_cast<std::size_t>(kLfoSourceCount + i)] = modulationEnvelopeValues[index].load(std::memory_order_relaxed);
+        enabledSources[static_cast<std::size_t>(kLfoSourceCount + i)] = getEnvelopeEnabledParam(i).get();
+        depths[static_cast<std::size_t>(kLfoSourceCount + i)] = getEnvelopeAmountParam(i).get();
     }
-
-    // Applied in normalized space, then clamped once. This preserves additive
-    // behaviour across multiple sources - and the pre-clamp value is reported
-    // so a test can tell "modulation stayed in range" from "modulation was cut
-    // off at the edge", which look identical afterwards.
-    // ---- macros -----------------------------------------------------------
-    //
-    // A third source kind in the same accumulation, on the same terms: a
-    // unipolar 0..1 signal with a signed per-destination depth, which is
-    // exactly the envelope case above. Summing rather than replacing is what
-    // lets two macros, an LFO and an envelope all reach one parameter and
-    // still produce a defined value.
-    //
-    // Pointer compares, not string compares. The table is resolved on the
-    // message thread whenever an assignment changes, so this loop allocates
-    // nothing, locks nothing and touches no strings.
+    for (int macro = 0; macro < kMacroCount; ++macro)
     {
-        const auto routes = juce::jlimit(0, kMacroRouteSlots,
-                                         macroRouteCount.load(std::memory_order_acquire));
-
-        for (int i = 0; i < routes; ++i)
-        {
-            const auto& route = macroRoutes[static_cast<std::size_t>(i)];
-            if (route.parameter.load(std::memory_order_relaxed) != parameter) { continue; }
-
-            const auto macroIndex = route.macroIndex.load(std::memory_order_relaxed);
-            if (! juce::isPositiveAndBelow(macroIndex, kMacroCount)) { continue; }
-
-            const auto depth = route.depth.load(std::memory_order_relaxed);
-            const auto signal = juce::jlimit(0.0f, 1.0f,
-                                             macroParams[static_cast<std::size_t>(macroIndex)]->get());
-
-            // Unipolar, so the whole of the side the depth points at - the
-            // same headroom rule the envelopes use, and for the same reason:
-            // a source driving past the end gets clamped flat instead of
-            // arriving at the boundary and stopping there.
-            const auto headroom = depth >= 0.0f ? 1.0f - base : base;
-            totalDelta += depth * headroom * signal;
-        }
+        signals[static_cast<std::size_t>(kLfoSourceCount + kEnvelopeSourceCount + macro)]
+            = macroParams[static_cast<std::size_t>(macro)]->get();
+        enabledSources[static_cast<std::size_t>(kLfoSourceCount + kEnvelopeSourceCount + macro)] = true;
     }
+    for (int slot = 0; slot < kGraphRouteSlots; ++slot)
+    {
+        depths[static_cast<std::size_t>(kLfoSourceCount + kEnvelopeSourceCount + kMacroRouteSlots + slot)]
+            = graphRouteDepthParams[static_cast<std::size_t>(slot)]->get();
+    }
+    const auto totalDelta = graph->deltaFor(parameter->getParameterIndex(), base, signals, depths, enabledSources);
 
     if (outUnclampedNormalized != nullptr)
     {
@@ -522,7 +457,10 @@ bool PX3SynthAudioProcessor::isParameterModulated(const juce::String& parameterI
             return true;
         }
     }
-    return false;
+    const auto* entry = parameterCatalog.find(parameterId);
+    auto graph = modulationGraph.read();
+    return graph && entry != nullptr && graph->hasDestination(entry->parameter->getParameterIndex(),
+                kLfoSourceCount + kEnvelopeSourceCount + kMacroRouteSlots);
 }
 
 float PX3SynthAudioProcessor::getModulatedNormalisedValue(juce::RangedAudioParameter& parameter) const
@@ -876,6 +814,7 @@ bool PX3SynthAudioProcessor::setAssignmentIndex(std::atomic<int>& sourceIndex,
                                       static_cast<int>(lfoAssignableTargets.size()) - 1,
                                       index);
     sourceIndex.store(clamped, std::memory_order_relaxed);
+    rebuildModulationGraph();
 
     if (notifyHost)
     {
@@ -1165,7 +1104,7 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
     {
         // Exclude controls that define modulation behavior itself, rather than
         // being destinations of modulation.
-                return id.equalsIgnoreCase("lfoFrequency")
+                return id.startsWith("mod.routes.") || id.equalsIgnoreCase("lfoFrequency")
                          || id.equalsIgnoreCase("lfoAmount")
                          || id.equalsIgnoreCase("lfoEnabled")
                              || id.equalsIgnoreCase("lfoWaveform")
@@ -1431,6 +1370,137 @@ int PX3SynthAudioProcessor::getMacroMaskForParameter(const juce::String& paramet
     return mask;
 }
 
+bool PX3SynthAudioProcessor::isGraphDestination(const juce::String& id) const
+{
+    const auto* entry = parameterCatalog.find(id);
+    const auto* target = entry != nullptr ? entry->parameter : nullptr;
+    return target != nullptr && std::any_of(lfoAssignableTargets.begin(), lfoAssignableTargets.end(),
+        [target](const auto& candidate) { return candidate.parameter == target; });
+}
+
+bool PX3SynthAudioProcessor::setGraphRoute(int slot, const GraphRouteConfiguration& route, juce::String& error)
+{
+    if (! juce::isPositiveAndBelow(slot, kGraphRouteSlots))
+    {
+        error = "Unknown modulation route slot.";
+        return false;
+    }
+    auto candidate = graphRouteConfigurations;
+    candidate[static_cast<std::size_t>(slot)] = route;
+    px3::synth::CompiledModulationGraph plan;
+    if (! compileModulationGraph(candidate, plan, error)) { return false; }
+    if (! modulationGraph.publish(plan))
+    {
+        error = "Modulation graph buffers are busy; retry the edit.";
+        return false;
+    }
+    graphRouteConfigurations = std::move(candidate);
+    updateHostDisplay(juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged(true));
+    return true;
+}
+
+PX3SynthAudioProcessor::GraphRouteConfiguration PX3SynthAudioProcessor::getGraphRoute(int slot) const
+{
+    return juce::isPositiveAndBelow(slot, kGraphRouteSlots)
+               ? graphRouteConfigurations[static_cast<std::size_t>(slot)] : GraphRouteConfiguration {};
+}
+
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getGraphRouteDepthParam(int slot) const
+{
+    return *graphRouteDepthParams[static_cast<std::size_t>(juce::jlimit(0, kGraphRouteSlots - 1, slot))];
+}
+
+juce::String PX3SynthAudioProcessor::graphSourceName(int source)
+{
+    if (juce::isPositiveAndBelow(source, kLfoSourceCount)) { return "LFO " + juce::String(source + 1); }
+    source -= kLfoSourceCount;
+    if (juce::isPositiveAndBelow(source, kEnvelopeSourceCount)) { return "ENV " + juce::String(source + 1); }
+    source -= kEnvelopeSourceCount;
+    return juce::isPositiveAndBelow(source, kMacroCount) ? macroDisplayName(source) : juce::String();
+}
+
+juce::String PX3SynthAudioProcessor::graphSourceId(int source)
+{
+    if (juce::isPositiveAndBelow(source, kLfoSourceCount)) { return "mod.lfo" + juce::String(source + 1); }
+    source -= kLfoSourceCount;
+    if (juce::isPositiveAndBelow(source, kEnvelopeSourceCount)) { return "mod.env" + juce::String(source + 1); }
+    source -= kEnvelopeSourceCount;
+    return juce::isPositiveAndBelow(source, kMacroCount) ? "mod.macro" + juce::String(source + 1) : juce::String();
+}
+
+void PX3SynthAudioProcessor::rebuildModulationGraph()
+{
+    px3::synth::CompiledModulationGraph plan;
+    juce::String error;
+    if (compileModulationGraph(graphRouteConfigurations, plan, error)) { modulationGraph.publish(plan); }
+}
+
+bool PX3SynthAudioProcessor::compileModulationGraph(
+    const std::array<GraphRouteConfiguration, kGraphRouteSlots>& configurations,
+    px3::synth::CompiledModulationGraph& plan, juce::String& graphError) const
+{
+    using namespace px3::synth;
+    std::array<ModulationSourceDescriptor, kLfoSourceCount + kEnvelopeSourceCount + kMacroCount> sources {};
+    for (int source = 0; source < kLfoSourceCount; ++source) { sources[static_cast<std::size_t>(source)].bipolar = true; }
+    std::array<ModulationDestinationDescriptor, CompiledModulationGraph::destinationCapacity> destinations {};
+    std::vector<ModulationRoute> routes;
+    const auto addAssignment = [&](int slot, int source, int assignment)
+    {
+        if (assignment <= 0 || assignment >= static_cast<int>(lfoAssignableTargets.size())) { return; }
+        auto* target = lfoAssignableTargets[static_cast<std::size_t>(assignment)].parameter;
+        if (target != nullptr) { routes.push_back({ slot, source, target->getParameterIndex(), 1.0f }); }
+    };
+    for (int source = 0; source < kLfoSourceCount; ++source)
+    {
+        addAssignment(source, source, getLfoAssignmentIndex(source));
+    }
+    for (int source = 0; source < kEnvelopeSourceCount; ++source)
+    {
+        addAssignment(kLfoSourceCount + source, kLfoSourceCount + source, getEnvelopeAssignmentIndex(source));
+    }
+    auto slot = kLfoSourceCount + kEnvelopeSourceCount;
+    for (int macro = 0; macro < kMacroCount; ++macro)
+    {
+        for (const auto& destination : macroDestinations[static_cast<std::size_t>(macro)])
+        {
+            auto* entry = parameterCatalog.find(destination.parameterId);
+            auto* target = entry != nullptr ? entry->parameter : nullptr;
+            if (target == nullptr)
+            {
+                for (const auto& candidate : lfoAssignableTargets)
+                {
+                    if (candidate.parameterId == destination.parameterId) { target = candidate.parameter; break; }
+                }
+            }
+            if (target != nullptr && slot < kLfoSourceCount + kEnvelopeSourceCount + kMacroRouteSlots)
+            {
+                routes.push_back({ slot++, kLfoSourceCount + kEnvelopeSourceCount + macro,
+                                   target->getParameterIndex(), destination.depth });
+            }
+        }
+    }
+    for (int index = 0; index < kGraphRouteSlots; ++index)
+    {
+        const auto& configuration = configurations[static_cast<std::size_t>(index)];
+        if (configuration.source == -1 && configuration.destination.isEmpty()) { continue; }
+        const auto* entry = parameterCatalog.find(configuration.destination);
+        auto* target = entry != nullptr ? dynamic_cast<juce::RangedAudioParameter*>(entry->parameter) : nullptr;
+        const auto eligible = isGraphDestination(configuration.destination);
+        if (! eligible)
+        {
+            graphError = "Modulation destination is unavailable: " + configuration.destination;
+            return false;
+        }
+        routes.push_back({ kLfoSourceCount + kEnvelopeSourceCount + kMacroRouteSlots + index,
+                           configuration.source, target->getParameterIndex(), 0.0f,
+                           configuration.polarity, configuration.curve });
+    }
+    std::string error;
+    const auto compiled = plan.compile(sources, { destinations.data(), static_cast<std::size_t>(getParameters().size()) }, routes, error);
+    graphError = error;
+    return compiled;
+}
+
 void PX3SynthAudioProcessor::rebuildMacroRoutes()
 {
     // Message thread. Resolves IDs to pointers ONCE, here, so the audio thread
@@ -1458,4 +1528,5 @@ void PX3SynthAudioProcessor::rebuildMacroRoutes()
     }
 
     macroRouteCount.store(slot, std::memory_order_release);
+    rebuildModulationGraph();
 }

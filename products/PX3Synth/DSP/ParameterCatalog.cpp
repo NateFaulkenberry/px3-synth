@@ -42,6 +42,10 @@ std::vector<ParameterCatalog::GroupSegment> ParameterCatalog::groupPathForId(con
     {
         return path("voice", "VOICE", "amp", "AMP ENVELOPE");
     }
+    if (key.startsWith("mod.routes."))
+    {
+        return path("modulation", "MODULATION", "routes", "ROUTES");
+    }
     if (key.startsWith("env"))
     {
         const auto slot = key.startsWith("env3") ? juce::String("3")

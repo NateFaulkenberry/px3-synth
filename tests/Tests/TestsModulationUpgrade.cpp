@@ -1,4 +1,5 @@
 #include "TestSupport.h"
+#include "ModulationGraph.h"
 
 // testModulationUpgrade - current 0.8 modulation/routing behavior and state schema.
 
@@ -781,6 +782,87 @@ void testFilterRoutingUpgrade()
 void testModulationUpgrade()
 {
     suite("MODULATION UPGRADE");
+    {
+        using namespace px3::synth;
+        CompiledModulationGraph graph;
+        std::string error;
+        const std::array<ModulationSourceDescriptor, 3> sources { {
+            { ModulationScope::global, true }, { ModulationScope::global, false },
+            { ModulationScope::voice, false } } };
+        const std::array<ModulationDestinationDescriptor, 3> destinations { {
+            { ModulationScope::global, -1 }, { ModulationScope::global, 1 },
+            { ModulationScope::voice, 2 } } };
+        const std::array<ModulationRoute, 3> routes { {
+            { 0, 0, 0, 0.8f }, { 1, 1, 0, -0.5f }, { 2, 0, 1, 0.2f } } };
+        const auto compiled = graph.compile(sources, destinations, routes, error);
+        const std::array<float, 3> signals { 1.0f, 0.5f, 0.0f };
+        check("ModGraph_CompilesFanOutAndAddsAllSourcesBeforeClamping",
+              compiled && graph.getRouteCount() == 3
+                  && std::abs(graph.deltaFor(0, 0.5f, signals) - 0.275f) < 1.0e-6f);
+        const std::array<ModulationRoute, 1> cycle { { { 0, 1, 1, 1.0f } } };
+        check("ModGraph_RejectsCyclesWithoutReplacingThePublishedPlan",
+              ! graph.compile(sources, destinations, cycle, error) && graph.getRouteCount() == 3);
+        const std::array<ModulationRoute, 1> incompatible { { { 0, 2, 0, 1.0f } } };
+        check("ModGraph_RejectsPerVoiceToGlobalScope",
+              ! graph.compile(sources, destinations, incompatible, error));
+        auto invalid = routes;
+        invalid[1].slot = 0;
+        check("ModGraph_RejectsDuplicateAutomationSlots", ! graph.compile(sources, destinations, invalid, error));
+        invalid = routes;
+        invalid[0].depth = std::numeric_limits<float>::quiet_NaN();
+        check("ModGraph_RejectsNonFiniteRouteDepths", ! graph.compile(sources, destinations, invalid, error));
+        const std::array<float, 3> depths { 0.0f, 0.0f, 0.0f };
+        check("ModGraph_UsesLiveAutomationDepthWithoutRecompiling",
+              graph.deltaFor(0, 0.5f, signals, depths) == 0.0f);
+          const std::array<bool, 3> disabledSources { false, false, false };
+          check("ModGraph_DisabledSourcesNeverContributeAfterPolarityConversion",
+              graph.deltaFor(0, 0.5f, signals, {}, disabledSources) == 0.0f);
+          ModulationGraphPublication publication;
+          CompiledModulationGraph empty;
+          const auto firstPublished = publication.publish(graph);
+          auto firstReader = publication.read();
+          const auto secondPublished = publication.publish(empty);
+          auto secondReader = publication.read();
+          const auto thirdPublished = publication.publish(graph);
+          const auto rejectedWhilePinned = ! publication.publish(empty);
+          check("ModGraph_PublicationNeverOverwritesPinnedReaders",
+              firstPublished && secondPublished && thirdPublished && rejectedWhilePinned
+                && firstReader && firstReader->getRouteCount() == 3
+                && secondReader && secondReader->getRouteCount() == 0);
+    }
+    {
+        PX3SynthAudioProcessor processor;
+        juce::String error;
+        const auto first = processor.setGraphRoute(0, { 6, "voice.filter1.cutoff" }, error);
+        const auto second = processor.setGraphRoute(1, { 6, "mix.osc1.pan" }, error);
+        processor.getMacroParam(0).setValueNotifyingHost(1.0f);
+        auto& firstDepth = processor.getGraphRouteDepthParam(0);
+        auto& secondDepth = processor.getGraphRouteDepthParam(1);
+        firstDepth.setValueNotifyingHost(firstDepth.convertTo0to1(0.5f));
+        secondDepth.setValueNotifyingHost(secondDepth.convertTo0to1(-0.5f));
+        auto* cutoff = dynamic_cast<juce::RangedAudioParameter*>(findParameter(processor, "voice.filter1.cutoff"));
+        auto* pan = dynamic_cast<juce::RangedAudioParameter*>(findParameter(processor, "mix.osc1.pan"));
+        check("ModGraph_ProcessorSupportsFanOutWithAutomatedDepthSlots",
+              first && second && cutoff != nullptr && pan != nullptr
+                  && processor.getUnclampedModulatedNormalisedValue(*cutoff) > cutoff->getValue()
+                  && processor.getUnclampedModulatedNormalisedValue(*pan) < pan->getValue(), error);
+        const auto state = processor.createParameterStateTree();
+        PX3SynthAudioProcessor restored;
+        const auto loaded = restored.applyParameterStateTree(state, &error);
+        check("ModGraph_EndpointsAndDepthsSurviveStateRoundTrip",
+              loaded && restored.getGraphRoute(0).source == 6
+                  && restored.getGraphRoute(1).destination == "mix.osc1.pan"
+                  && std::abs(restored.getGraphRouteDepthParam(0).get() - 0.5f) < 1.0e-5f, error);
+        auto malformed = state.createCopy();
+        malformed.getChildWithName("MODULATION_GRAPH").getChild(0).setProperty("source", "unknown", nullptr);
+        const auto before = restored.createParameterStateTree().toXmlString();
+        check("ModGraph_MalformedStateIsRejectedBeforeAnyMutation",
+              ! restored.applyParameterStateTree(malformed, &error)
+                  && restored.createParameterStateTree().toXmlString() == before);
+        check("ModGraph_InvalidRouteEditLeavesEndpointsIntact",
+              ! restored.setGraphRoute(0, { 6, "missing" }, error)
+                  && restored.getGraphRoute(0).destination == "voice.filter1.cutoff");
+    }
     testEnvelopeTimesUpgrade();
     testStateUpgrade();
     testRampsAndKeySyncUpgrade();

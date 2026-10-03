@@ -5,6 +5,139 @@
 
 #include <cmath>
 
+namespace
+{
+class GraphRouteEditor final : public juce::Component
+{
+public:
+    explicit GraphRouteEditor(PX3SynthAudioProcessor& processorIn) : processor(processorIn)
+    {
+        constexpr std::array<const char*, 6> names { "SLOT", "SOURCE", "DESTINATION", "POLARITY", "CURVE", "DEPTH" };
+        for (std::size_t index = 0; index < labels.size(); ++index)
+        {
+            labels[index].setText(names[index], juce::dontSendNotification);
+            addAndMakeVisible(labels[index]);
+        }
+        for (auto* menu : { &slot, &source, &destination, &polarity, &curve }) { addAndMakeVisible(*menu); }
+        for (int index = 0; index < PX3SynthAudioProcessor::kGraphRouteSlots; ++index)
+        {
+            slot.addItem(juce::String(index + 1).paddedLeft('0', 2), index + 1);
+        }
+        source.addItem("None", 1);
+        for (int index = 0; index < PX3SynthAudioProcessor::kLfoSourceCount
+                                  + PX3SynthAudioProcessor::kEnvelopeSourceCount
+                                  + PX3SynthAudioProcessor::kMacroCount; ++index)
+        {
+            source.addItem(PX3SynthAudioProcessor::graphSourceName(index), index + 2);
+        }
+        destination.addItem("None", 1);
+        destinationIds.add(juce::String());
+        for (const auto& entry : processor.getParameterCatalog().entries())
+        {
+            if (! processor.isGraphDestination(entry.id)) { continue; }
+            destinationIds.add(entry.id);
+            destination.addItem(entry.name + "  |  " + entry.id, destinationIds.size());
+        }
+        polarity.addItemList({ "Native", "Unipolar", "Bipolar" }, 1);
+        curve.addItemList({ "Linear", "Square", "Square Root" }, 1);
+        depth.setSliderStyle(juce::Slider::LinearHorizontal);
+        depth.setTextBoxStyle(juce::Slider::TextBoxRight, false, 72, 26);
+        addAndMakeVisible(depth);
+        addAndMakeVisible(clear);
+        addAndMakeVisible(status);
+        slot.onChange = [this] { loadSlot(); };
+        for (auto* menu : { &source, &destination, &polarity, &curve })
+        {
+            menu->onChange = [this] { apply(); };
+        }
+        clear.onClick = [this]
+        {
+            juce::String error;
+            if (processor.setGraphRoute(slot.getSelectedId() - 1, {}, error)) { loadSlot(); }
+            status.setText(error, juce::dontSendNotification);
+        };
+        slot.setSelectedId(1, juce::dontSendNotification);
+        loadSlot();
+        setSize(640, 330);
+    }
+
+    void paint(juce::Graphics& graphics) override { graphics.fillAll(juce::Colour(0xff1b1e20)); }
+    void resized() override
+    {
+        auto area = getLocalBounds().reduced(16);
+        std::array<juce::Component*, 6> controls { &slot, &source, &destination, &polarity, &curve, &depth };
+        for (std::size_t index = 0; index < controls.size(); ++index)
+        {
+            auto row = area.removeFromTop(32);
+            labels[index].setBounds(row.removeFromLeft(108));
+            controls[index]->setBounds(row);
+            area.removeFromTop(8);
+        }
+        clear.setBounds(area.removeFromTop(28).removeFromLeft(110));
+        status.setBounds(area.removeFromTop(30));
+    }
+
+private:
+    void loadSlot()
+    {
+        attachment.reset();
+        loading = true;
+        const auto index = slot.getSelectedId() - 1;
+        const auto route = processor.getGraphRoute(index);
+        source.setSelectedId(route.source + 2, juce::dontSendNotification);
+        destination.setSelectedId(destinationIds.indexOf(route.destination) + 1, juce::dontSendNotification);
+        polarity.setSelectedId(static_cast<int>(route.polarity) + 1, juce::dontSendNotification);
+        curve.setSelectedId(static_cast<int>(route.curve) + 1, juce::dontSendNotification);
+        attachment = std::make_unique<juce::SliderParameterAttachment>(processor.getGraphRouteDepthParam(index), depth, nullptr);
+        loading = false;
+    }
+    void apply()
+    {
+        if (loading) { return; }
+        if (source.getSelectedId() <= 1 || destination.getSelectedId() <= 1)
+        {
+            if (processor.getGraphRoute(slot.getSelectedId() - 1).source >= 0)
+            {
+                juce::String error;
+                if (processor.setGraphRoute(slot.getSelectedId() - 1, {}, error)) { loadSlot(); }
+                status.setText(error, juce::dontSendNotification);
+            }
+            return;
+        }
+        PX3SynthAudioProcessor::GraphRouteConfiguration route;
+        route.source = source.getSelectedId() - 2;
+        route.destination = destinationIds[destination.getSelectedId() - 1];
+        route.polarity = static_cast<px3::synth::ModulationPolarity>(polarity.getSelectedId() - 1);
+        route.curve = static_cast<px3::synth::ModulationCurve>(curve.getSelectedId() - 1);
+        juce::String error;
+        processor.setGraphRoute(slot.getSelectedId() - 1, route, error);
+        status.setText(error, juce::dontSendNotification);
+    }
+    PX3SynthAudioProcessor& processor;
+    std::array<juce::Label, 6> labels;
+    juce::ComboBox slot, source, destination, polarity, curve;
+    juce::StringArray destinationIds;
+    juce::Slider depth;
+    juce::TextButton clear { "CLEAR ROUTE" };
+    juce::Label status;
+    bool loading { false };
+    std::unique_ptr<juce::SliderParameterAttachment> attachment;
+};
+
+class GraphRouteWindow final : public juce::DocumentWindow
+{
+public:
+    explicit GraphRouteWindow(PX3SynthAudioProcessor& processor)
+        : juce::DocumentWindow("PX3 MODULATION ROUTES", juce::Colour(0xff1b1e20), juce::DocumentWindow::closeButton)
+    {
+        setUsingNativeTitleBar(true);
+        setContentOwned(new GraphRouteEditor(processor), true);
+        centreWithSize(640, 365);
+    }
+    void closeButtonPressed() override { setVisible(false); }
+};
+}
+
 ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
                    juce::ToggleButton& lfoEnabledButton,
                    juce::Label& lfoAssignLabel,
@@ -60,6 +193,14 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
         configureOwnedEnvBundle(envIndex, bundle);
         addAndMakeVisible(*bundle.component);
     }
+    routesButton.setComponentID("mod.routes.open");
+    routesButton.setTooltip("Open modulation routes");
+    addAndMakeVisible(routesButton);
+    routesButton.onClick = [this]
+    {
+        routesWindow = std::make_unique<GraphRouteWindow>(processor);
+        routesWindow->setVisible(true);
+    };
 }
 
 void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
@@ -374,6 +515,8 @@ void ModPanel::resized()
     const auto panelPadX = uiConfig != nullptr ? uiConfig->getInt("mod.panel.layout.padX", 12) : 12;
     const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("mod.panel.layout.padY", 10) : 10;
     auto panelArea = getLocalBounds().reduced(panelPadX, panelPadY);
+    routesButton.setBounds(panelArea.removeFromTop(28).removeFromRight(100));
+    panelArea.removeFromTop(8);
 
     const auto colGap = uiConfig != nullptr ? uiConfig->getInt("mod.grid.colGap", 8) : 8;
     const auto rowGap = uiConfig != nullptr ? uiConfig->getInt("mod.grid.rowGap", 10) : 10;
@@ -436,7 +579,7 @@ int ModPanel::getPreferredContentHeight() const
     const auto rowGap = uiConfig != nullptr ? uiConfig->getInt("mod.grid.rowGap", 10) : 10;
     const auto minLfoHeight = uiConfig != nullptr ? uiConfig->getInt("mod.grid.minLfoHeight", 300) : 300;
     const auto minEnvHeight = uiConfig != nullptr ? uiConfig->getInt("mod.grid.minEnvHeight", 280) : 280;
-    return panelPadY * 2 + rowGap + minLfoHeight + minEnvHeight;
+    return panelPadY * 2 + rowGap + minLfoHeight + minEnvHeight + 36;
 }
 
 void ModPanel::refreshFromParameters()

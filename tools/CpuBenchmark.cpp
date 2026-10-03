@@ -129,10 +129,10 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     setParameter(processor, "voice.amp.enabled", 1.0f);
     setParameter(processor, "masterGain", 0.6f);
 
-    setParameter(processor, "osc1Enabled", 1.0f);
-    setParameter(processor, "osc2Enabled", scenario.allSources ? 1.0f : 0.0f);
-    setParameter(processor, "osc3Enabled", scenario.allSources ? 1.0f : 0.0f);
-    setParameter(processor, "subOscEnabled", scenario.allSources ? 1.0f : 0.0f);
+    setParameter(processor, "voice.osc1.enabled", 1.0f);
+    setParameter(processor, "voice.osc2.enabled", scenario.allSources ? 1.0f : 0.0f);
+    setParameter(processor, "voice.osc3.enabled", scenario.allSources ? 1.0f : 0.0f);
+    setParameter(processor, "voice.sub.enabled", scenario.allSources ? 1.0f : 0.0f);
 
     // Bus inserts. Every band is given a non-identity setting so the EQ
     // measurement is the cost of four running biquads and not the cost of the
@@ -162,7 +162,7 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
 
     if (scenario.oscMode >= 0)
     {
-        for (const auto* id : { "osc1Mode", "osc2Mode", "osc3Mode" })
+        for (const auto* id : { "voice.osc1.mode", "voice.osc2.mode", "voice.osc3.mode" })
         {
             setChoiceIndex(processor, id, scenario.oscMode);
         }
@@ -170,10 +170,10 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
 
     for (const auto* slot : { "1", "2" })
     {
-        setParameter(processor, juce::String("filter") + slot + "Enabled", scenario.filters ? 1.0f : 0.0f);
+        setParameter(processor, juce::String("voice.filter") + slot + ".enabled", scenario.filters ? 1.0f : 0.0f);
     }
-    setParameter(processor, "filter1Cutoff", 1200.0f);
-    setParameter(processor, "filter2Cutoff", 3000.0f);
+    setParameter(processor, "voice.filter1.cutoff", 1200.0f);
+    setParameter(processor, "voice.filter2.cutoff", 3000.0f);
 
     setParameter(processor, "vibeEnabled", scenario.vibe ? 1.0f : 0.0f);
     setParameter(processor, "vibeAmount", scenario.vibe ? 0.85f : 0.0f);
@@ -221,8 +221,8 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     }
     if (scenario.modEnvelopes)
     {
-        processor.setEnvelopeAssignmentByParameterId(0, "filter1Cutoff", false);
-        processor.setEnvelopeAssignmentByParameterId(1, "osc1MacroA", false);
+        processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
+        processor.setEnvelopeAssignmentByParameterId(1, "voice.osc1.macro.a", false);
         processor.setEnvelopeAssignmentByParameterId(2, "osc1Level", false);
     }
 
@@ -239,9 +239,9 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     }
     if (scenario.lfos)
     {
-        processor.setLfoAssignmentByParameterId(0, "filter1Cutoff", false);
+        processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
         processor.setLfoAssignmentByParameterId(1, "osc1Level", false);
-        processor.setLfoAssignmentByParameterId(2, "osc1PitchMod", false);
+        processor.setLfoAssignmentByParameterId(2, "voice.osc1.pitch.mod", false);
     }
 }
 
@@ -314,9 +314,9 @@ Timing measure(const Scenario& scenario,
             // store would measure JUCE rather than the DSP.
             if (scenario.filterSweep)
             {
-                setParameter(processor, "filter1Cutoff",
+                setParameter(processor, "voice.filter1.cutoff",
                              400.0f + 6000.0f * static_cast<float>(block % 32) / 32.0f);
-                setParameter(processor, "filter2Cutoff",
+                setParameter(processor, "voice.filter2.cutoff",
                              800.0f + 9000.0f * static_cast<float>((block + 11) % 32) / 32.0f);
             }
             if (scenario.mixerAutomation)
@@ -516,7 +516,7 @@ Fingerprint fingerprint(const Scenario& scenario)
 
         if (scenario.filterSweep)
         {
-            setParameter(processor, "filter1Cutoff",
+            setParameter(processor, "voice.filter1.cutoff",
                          400.0f + 6000.0f * static_cast<float>(block % 32) / 32.0f);
         }
         if (scenario.mixerAutomation)
@@ -690,8 +690,8 @@ int runOscillatorMatrix()
         scenario.oscMode = 0;
         const auto timing = measure(scenario, [](PX3SynthAudioProcessor& processor)
         {
-            setParameter(processor, "osc1Enabled", 0.0f);
-            setParameter(processor, "subOscEnabled", 1.0f);
+            setParameter(processor, "voice.osc1.enabled", 0.0f);
+            setParameter(processor, "voice.sub.enabled", 1.0f);
         }, blocks, passes);
         std::printf(" %9.1f (%5.2f%%)", timing.medianMicros, 100.0 * timing.medianMicros / budget);
         std::fflush(stdout);

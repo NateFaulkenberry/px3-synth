@@ -91,6 +91,20 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
     juce::ValueTree state(kStateTypeId);
     state.setProperty(kStateVersionId, kCurrentStateVersion, nullptr);
     state.addChild(parameterCatalog.createStateTree(), -1, nullptr);
+    juce::ValueTree graphState("MODULATION_GRAPH");
+    for (int slot = 0; slot < kGraphRouteSlots; ++slot)
+    {
+        const auto& route = graphRouteConfigurations[static_cast<std::size_t>(slot)];
+        if (route.source < 0) { continue; }
+        juce::ValueTree node("ROUTE");
+        node.setProperty("slot", slot, nullptr);
+        node.setProperty("source", graphSourceId(route.source), nullptr);
+        node.setProperty("destination", route.destination, nullptr);
+        node.setProperty("polarity", static_cast<int>(route.polarity), nullptr);
+        node.setProperty("curve", static_cast<int>(route.curve), nullptr);
+        graphState.addChild(node, -1, nullptr);
+    }
+    state.addChild(graphState, -1, nullptr);
 
     // Module order is not represented by audio parameters; serialize it here as
     // explicit MODULE_ORDER entries so UI drag order and DSP chain stay stable.
@@ -358,6 +372,59 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         return false;
     }
 
+    std::array<GraphRouteConfiguration, kGraphRouteSlots> graphConfigurations;
+    std::array<bool, kGraphRouteSlots> usedGraphSlots {};
+    const auto graphState = state.getChildWithName("MODULATION_GRAPH");
+    const auto parseIndex = [](const juce::ValueTree& node, const char* property, int& output)
+    {
+        const auto text = node.getProperty(property).toString();
+        if (text.isEmpty() || text.length() > 3 || ! text.containsOnly("0123456789")) { return false; }
+        output = text.getIntValue();
+        return true;
+    };
+    for (int index = 0; index < graphState.getNumChildren(); ++index)
+    {
+        const auto node = graphState.getChild(index);
+        int slot = -1;
+        int polarity = -1;
+        int curve = -1;
+        if (node.getType() != juce::Identifier("ROUTE") || ! parseIndex(node, "slot", slot)
+            || ! juce::isPositiveAndBelow(slot, kGraphRouteSlots)
+            || usedGraphSlots[static_cast<std::size_t>(slot)]
+            || ! parseIndex(node, "polarity", polarity) || polarity > 2
+            || ! parseIndex(node, "curve", curve) || curve > 2)
+        {
+            if (error != nullptr) { *error = "Malformed modulation graph route."; }
+            return false;
+        }
+        auto& configuration = graphConfigurations[static_cast<std::size_t>(slot)];
+        for (int source = 0; source < kLfoSourceCount + kEnvelopeSourceCount + kMacroCount; ++source)
+        {
+            if (node.getProperty("source").toString() == graphSourceId(source))
+            {
+                configuration.source = source;
+                break;
+            }
+        }
+        configuration.destination = node.getProperty("destination").toString();
+        configuration.polarity = static_cast<px3::synth::ModulationPolarity>(polarity);
+        configuration.curve = static_cast<px3::synth::ModulationCurve>(curve);
+        if (configuration.source < 0 || configuration.destination.isEmpty())
+        {
+            if (error != nullptr) { *error = "Unknown modulation graph endpoint."; }
+            return false;
+        }
+        usedGraphSlots[static_cast<std::size_t>(slot)] = true;
+    }
+    px3::synth::CompiledModulationGraph graphPlan;
+    juce::String graphError;
+    if (! compileModulationGraph(graphConfigurations, graphPlan, graphError))
+    {
+        if (error != nullptr) { *error = graphError; }
+        return false;
+    }
+    graphRouteConfigurations = std::move(graphConfigurations);
+
     // Validate the complete parameter set before applying any value.
     for (const auto& value : parameterValues)
     {
@@ -492,6 +559,8 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
             }
         }
     }
+
+    rebuildModulationGraph();
 
     if (const auto vibeState = state.getChildWithName(kVibeStateId); vibeState.isValid())
     {
