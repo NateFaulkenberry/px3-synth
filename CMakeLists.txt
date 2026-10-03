@@ -598,7 +598,7 @@ endif()
 if (PX3_BUILD_DIAGNOSTIC)
     juce_add_console_app(PX3Bench PRODUCT_NAME "PX3Bench")
     juce_generate_juce_header(PX3Bench)
-    target_sources(PX3Bench PRIVATE ${PX3_ALL_SOURCES} tools/CpuBenchmark.cpp)
+    target_sources(PX3Bench PRIVATE ${PX3_ALL_SOURCES} tools/CpuBenchmark.cpp tools/NativeUiBenchmark.cpp)
     target_include_directories(PX3Bench PRIVATE ${PX3_INCLUDE_DIRS})
     target_compile_definitions(PX3Bench
         PRIVATE

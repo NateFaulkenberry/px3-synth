@@ -121,6 +121,7 @@ struct Timing
     double maxMicros { 0.0 };
     double meanPercent { 0.0 };
     double maxPercent { 0.0 };
+    int deadlineMisses { 0 };  // measured blocks that took longer than their audio
 };
 
 void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
@@ -357,6 +358,8 @@ Timing measure(const Scenario& scenario,
     const auto blockPeriodMicros = 1.0e6 * static_cast<double>(kBlockSize) / kSampleRate;
     timing.meanPercent = 100.0 * timing.meanMicros / blockPeriodMicros;
     timing.maxPercent = 100.0 * timing.maxMicros / blockPeriodMicros;
+    timing.deadlineMisses = static_cast<int>(samples.end()
+        - std::upper_bound(samples.begin(), samples.end(), blockPeriodMicros));
     return timing;
 }
 
@@ -704,6 +707,9 @@ int runOscillatorMatrix()
 }
 }
 
+// tools/NativeUiBenchmark.cpp
+int runNativeUiBenchmark();
+
 int main(int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -750,6 +756,13 @@ int main(int argc, char* argv[])
     if (filter == "fingerprint")
     {
         return runFingerprints();
+    }
+
+    if (filter == "uinative")
+    {
+        px3::update::installDefaultConfiguration();
+        px3::update::UpdateService::getInstance().setProvider(std::make_unique<px3::update::MockUpdateProvider>());
+        return runNativeUiBenchmark();
     }
 
     if (filter == "ui")
@@ -874,11 +887,11 @@ int main(int argc, char* argv[])
     std::printf("  %d blocks x %d sweeps per scenario, shipping build (PX3_DIAGNOSTICS=0)\n\n",
                 kMeasuredBlocks, kSweeps);
 
-    std::printf("  %-32s %9s %9s %9s %9s %8s %8s\n",
-                "scenario", "mean us", "med us", "p99 us", "max us", "mean %", "max %");
-    std::printf("  %-32s %9s %9s %9s %9s %8s %8s\n",
+    std::printf("  %-32s %9s %9s %9s %9s %8s %8s %6s\n",
+                "scenario", "mean us", "med us", "p99 us", "max us", "mean %", "max %", "miss");
+    std::printf("  %-32s %9s %9s %9s %9s %8s %8s %6s\n",
                 "--------------------------------", "---------", "---------",
-                "---------", "---------", "--------", "--------");
+                "---------", "---------", "--------", "--------", "------");
 
     for (const auto& scenario : kScenarios)
     {
@@ -888,14 +901,15 @@ int main(int argc, char* argv[])
         }
 
         const auto timing = measure(scenario);
-        std::printf("  %-32s %9.1f %9.1f %9.1f %9.1f %7.2f%% %7.2f%%\n",
+        std::printf("  %-32s %9.1f %9.1f %9.1f %9.1f %7.2f%% %7.2f%% %6d\n",
                     scenario.name,
                     timing.meanMicros,
                     timing.medianMicros,
                     timing.p99Micros,
                     timing.maxMicros,
                     timing.meanPercent,
-                    timing.maxPercent);
+                    timing.maxPercent,
+                    timing.deadlineMisses);
         std::fflush(stdout);
     }
 

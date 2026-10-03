@@ -28,6 +28,7 @@
 #include <cstdio>
 #include <mach/mach.h>
 #include <string>
+#include <thread>
 #include <vector>
 
 
@@ -44,6 +45,12 @@ namespace px3rt
 std::atomic<long long> allocationCount { 0 };
 std::atomic<bool> counting { false };
 
+// rtmatrix runs other threads alongside the audio thread on purpose. With this
+// set, only threads that mark themselves as the audio thread are counted, so a
+// worker's legitimate allocations are not reported as realtime violations.
+std::atomic<bool> audioThreadOnly { false };
+thread_local bool onAudioThread = false;
+
 // The first allocation seen while counting, captured as a backtrace. Counting
 // says an allocation happened; this says WHERE, which is the difference
 // between knowing there is a real-time violation and being able to fix it.
@@ -55,7 +62,8 @@ std::atomic<std::size_t> traceSize { 0 };
 
 void* operator new(std::size_t size)
 {
-    if (px3rt::counting.load(std::memory_order_relaxed))
+    if (px3rt::counting.load(std::memory_order_relaxed)
+        && (px3rt::onAudioThread || ! px3rt::audioThreadOnly.load(std::memory_order_relaxed)))
     {
         px3rt::allocationCount.fetch_add(1, std::memory_order_relaxed);
 
@@ -1903,6 +1911,340 @@ int runRegressionSuite(bool legacyPruning)
 }
 }
 
+// ---------------------------------------------------------------------------
+// rtmatrix: real-time safety across the host conditions one fixed 48 kHz / 512
+// run cannot see - sample rates, block sizes, hosts that deliver shorter blocks
+// than they prepared for, oscillator modes, filter backends, transport changes
+// under synced LFOs, graph depth automation, release tails, and a second thread
+// editing state while audio runs. Pass means no audio-thread allocation and no
+// non-finite or runaway output in any cell.
+// ---------------------------------------------------------------------------
+namespace
+{
+class MatrixPlayHead final : public juce::AudioPlayHead
+{
+public:
+    juce::Optional<PositionInfo> getPosition() const override { return info; }
+    PositionInfo info;
+};
+
+struct MatrixScenario
+{
+    const char* label;
+    px3::OscillatorMode oscMode;
+    px3::FilterMode filterMode;
+    int voices;
+    bool fx;
+    bool releaseTails;
+    bool graphAutomation;
+    bool transport;
+    bool concurrency;
+};
+
+struct MatrixResult
+{
+    long long allocations { 0 };
+    long long blocks { 0 };
+    long long nonFinite { 0 };
+    float peak { 0.0f };
+    long long workerOps { 0 };
+};
+
+MatrixResult runMatrixCell(const MatrixScenario& scenario, double sampleRate, int maxBlock)
+{
+    px3::diag::resetNoteStartSequence();
+    PX3SynthAudioProcessor processor;
+    MatrixPlayHead playHead;
+    auto bpm = 120.0;
+    auto ppq = 0.0;
+    playHead.info.setBpm(bpm);
+    playHead.info.setTimeSignature(juce::AudioPlayHead::TimeSignature {});
+    playHead.info.setIsPlaying(true);
+    playHead.info.setPpqPosition(ppq);
+    playHead.info.setTimeInSeconds(0.0);
+    processor.setPlayHead(&playHead);
+
+    setParameter(processor, "voice.amp.attack", 0.005f);
+    setParameter(processor, "voice.amp.sustain", 1.0f);
+    setParameter(processor, "voice.amp.release", scenario.releaseTails ? 3.0f : 0.2f);
+    for (const auto* id : { "voice.osc2.enabled", "voice.osc3.enabled", "voice.sub.enabled" })
+    {
+        setParameter(processor, id, 1.0f);
+    }
+    for (const auto* id : { "voice.osc1.mode", "voice.osc2.mode", "voice.osc3.mode" })
+    {
+        setParameter(processor, id, static_cast<float>(scenario.oscMode));
+    }
+    setParameter(processor, "voice.filter1.enabled", 1.0f);
+    setParameter(processor, "voice.filter2.enabled", 1.0f);
+    setParameter(processor, "voice.filter1.cutoff", 1200.0f);
+    setParameter(processor, "voice.filter2.cutoff", 3000.0f);
+    for (int filter = 0; filter < kFilterInstanceCount; ++filter)
+    {
+        auto& type = processor.getFilterTypeParam(filter);
+        type.setValueNotifyingHost(type.convertTo0to1(static_cast<float>(scenario.filterMode)));
+    }
+    for (const auto* id : { "fx.delay.enabled", "fx.reverb.enabled", "fx.mood.enabled", "fx.doom.enabled",
+                            "fx.lucy.enabled", "fx.chorus.enabled", "fx.spread.enabled", "global.character.enabled" })
+    {
+        setParameter(processor, id, scenario.fx ? 1.0f : 0.0f);
+    }
+    if (scenario.fx)
+    {
+        setParameter(processor, "fx.vibe.enabled", 1.0f);
+        setParameter(processor, "fx.vibe.amount", 0.85f);
+        setParameter(processor, "fx.delay.amount", 0.5f);
+        setParameter(processor, "fx.reverb.amount", 0.5f);
+        setParameter(processor, "fx.mood.mix", 0.4f);
+        setParameter(processor, "fx.doom.mix", 0.4f);
+        setParameter(processor, "fx.lucy.global", 0.5f);
+        setParameter(processor, "fx.chorus.amount", 0.6f);
+        setParameter(processor, "fx.spread.amount", 0.6f);
+        setParameter(processor, "global.character.profile", 0.25f);
+        setParameter(processor, "mix.send.fx.level", 0.8f);
+    }
+
+    // LFO 1 free, LFO 2 tempo, LFO 3 transport, all routed; macros fill the
+    // remaining slots so the graph carries a realistic number of routes.
+    juce::String routeError;
+    for (int lfo = 0; lfo < PX3SynthAudioProcessor::kLfoSourceCount; ++lfo)
+    {
+        const auto prefix = "mod.lfo" + juce::String(lfo + 1) + ".";
+        setParameter(processor, prefix + "enabled", 1.0f);
+        setParameter(processor, prefix + "amount", 0.6f);
+        setParameter(processor, prefix + "clock.mode", scenario.transport ? static_cast<float>(lfo) : 0.0f);
+        setParameter(processor, prefix + "clock.division", static_cast<float>(3 + lfo));
+        processor.setGraphRoute(lfo, { lfo, lfo == 0 ? "voice.filter1.cutoff" : "mix.osc1.pan" }, routeError);
+    }
+    for (int slot = PX3SynthAudioProcessor::kLfoSourceCount; slot < 12; ++slot)
+    {
+        processor.setGraphRoute(slot, { 6, slot % 2 == 0 ? "voice.filter2.cutoff" : "mix.osc2.pan" }, routeError);
+    }
+    for (int slot = 0; slot < 12; ++slot)
+    {
+        auto& depth = processor.getGraphRouteDepthParam(slot);
+        depth.setValueNotifyingHost(depth.convertTo0to1(0.05f));
+    }
+
+    processor.setPlayConfigDetails(0, 2, sampleRate, maxBlock);
+    processor.prepareToPlay(sampleRate, maxBlock);
+
+    juce::AudioBuffer<float> buffer(2, maxBlock);
+
+    // Hosts may deliver any length up to the prepared maximum. The cycle covers
+    // full, half, odd and single-sample blocks.
+    const int lengthCycle[] = { maxBlock, juce::jmax(1, maxBlock / 2), juce::jmax(1, maxBlock - 7), 1,
+                                juce::jmax(1, maxBlock / 3) };
+    constexpr int cycleLength = static_cast<int>(std::size(lengthCycle));
+
+    // Every MIDI buffer is built before counting: building one allocates, and
+    // that is the harness, not processBlock.
+    const auto measuredBlocks = juce::jmax(400, static_cast<int>(2.0 * sampleRate / maxBlock));
+    const auto warmupBlocks = juce::jmax(80, static_cast<int>(0.4 * sampleRate / maxBlock));
+    std::vector<juce::MidiBuffer> warmupMidi(static_cast<std::size_t>(warmupBlocks));
+    for (int voice = 0; voice < scenario.voices; ++voice)
+    {
+        warmupMidi[static_cast<std::size_t>((2 + voice) % warmupBlocks)].addEvent(
+            juce::MidiMessage::noteOn(1, 30 + voice * 2, 0.9f), 0);
+    }
+    if (scenario.releaseTails)
+    {
+        for (int voice = 0; voice < scenario.voices; voice += 2)
+        {
+            warmupMidi[static_cast<std::size_t>(warmupBlocks - 1)].addEvent(
+                juce::MidiMessage::noteOff(1, 30 + voice * 2), 0);
+        }
+    }
+    std::vector<juce::MidiBuffer> measuredMidi(static_cast<std::size_t>(measuredBlocks));
+    for (int block = 0; block < measuredBlocks; block += 16)
+    {
+        const auto pitch = 90 + (block / 16) % 12;
+        measuredMidi[static_cast<std::size_t>(block)].addEvent(juce::MidiMessage::noteOn(1, pitch, 0.8f), 0);
+        if (block + 9 < measuredBlocks)
+        {
+            measuredMidi[static_cast<std::size_t>(block + 9)].addEvent(juce::MidiMessage::noteOff(1, pitch), 0);
+        }
+    }
+
+    MatrixResult result;
+    auto render = [&](int index, juce::MidiBuffer& midi, bool counted)
+    {
+        const auto length = lengthCycle[index % cycleLength];
+        juce::AudioBuffer<float> view(buffer.getArrayOfWritePointers(), 2, length);
+        view.clear();
+
+        if (scenario.transport)
+        {
+            // Advance, then every so often stop, loop back, or change tempo.
+            const auto seconds = static_cast<double>(length) / sampleRate;
+            if (playHead.info.getIsPlaying()) { ppq += seconds * bpm / 60.0; }
+            if (index % 97 == 0) { playHead.info.setIsPlaying(! playHead.info.getIsPlaying()); }
+            if (index % 151 == 0) { ppq = 0.0; }
+            if (index % 211 == 0) { bpm = bpm > 110.0 ? 87.0 : 143.0; }
+            playHead.info.setBpm(bpm);
+            playHead.info.setPpqPosition(ppq);
+            playHead.info.setTimeInSeconds(ppq * 60.0 / bpm);
+        }
+
+        if (counted) { px3rt::counting.store(true, std::memory_order_relaxed); }
+        processor.processBlock(view, midi);
+        px3rt::counting.store(false, std::memory_order_relaxed);
+
+        for (int channel = 0; channel < 2; ++channel)
+        {
+            const auto* data = view.getReadPointer(channel);
+            for (int sample = 0; sample < length; ++sample)
+            {
+                if (! std::isfinite(data[sample])) { ++result.nonFinite; }
+                else { result.peak = juce::jmax(result.peak, std::abs(data[sample])); }
+            }
+        }
+
+        if (counted && scenario.graphAutomation)
+        {
+            // The host writes automation from its own thread; not part of processBlock.
+            auto& depth = processor.getGraphRouteDepthParam(index % 12);
+            depth.setValueNotifyingHost(static_cast<float>((index * 37) % 101) / 100.0f);
+        }
+    };
+
+    for (int block = 0; block < warmupBlocks; ++block)
+    {
+        render(block, warmupMidi[static_cast<std::size_t>(block)], false);
+    }
+
+    std::atomic<bool> stopWorker { false };
+    std::atomic<long long> workerOps { 0 };
+    std::thread worker;
+    if (scenario.concurrency)
+    {
+        juce::MemoryBlock initialState;
+        processor.getStateInformation(initialState);
+        worker = std::thread([&processor, &stopWorker, &workerOps, initialState]
+        {
+            juce::String error;
+            for (long long op = 0; ! stopWorker.load(std::memory_order_relaxed); ++op)
+            {
+                switch (op % 5)
+                {
+                    case 0: { juce::MemoryBlock state; processor.getStateInformation(state); break; }
+                    case 1: processor.setStateInformation(initialState.getData(), static_cast<int>(initialState.getSize())); break;
+                    case 2: processor.setGraphRoute(20 + static_cast<int>(op % 8),
+                                                    { static_cast<int>(op % 11), op % 2 == 0 ? "voice.filter1.cutoff" : "mix.osc3.level" },
+                                                    error); break;
+                    case 3: setParameter(processor, "voice.filter1.cutoff", 300.0f + static_cast<float>(op % 50) * 150.0f); break;
+                    default: setParameter(processor, "voice.osc2.mode", static_cast<float>(op % px3::oscillatorModeCount)); break;
+                }
+                workerOps.fetch_add(1, std::memory_order_relaxed);
+                std::this_thread::sleep_for(std::chrono::microseconds(500));
+            }
+        });
+    }
+
+    px3rt::allocationCount.store(0, std::memory_order_relaxed);
+    px3rt::traceDepth.store(0, std::memory_order_relaxed);
+    px3rt::captureTrace.store(true, std::memory_order_relaxed);
+    for (int block = 0; block < measuredBlocks; ++block)
+    {
+        render(block, measuredMidi[static_cast<std::size_t>(block)], true);
+        ++result.blocks;
+    }
+    px3rt::captureTrace.store(false, std::memory_order_relaxed);
+
+    stopWorker.store(true, std::memory_order_relaxed);
+    if (worker.joinable()) { worker.join(); }
+    result.workerOps = workerOps.load(std::memory_order_relaxed);
+    result.allocations = px3rt::allocationCount.load(std::memory_order_relaxed);
+
+    if (const auto depth = px3rt::traceDepth.load(std::memory_order_relaxed); depth > 0)
+    {
+        std::printf("    first allocation was %zu bytes, from:\n", px3rt::traceSize.load(std::memory_order_relaxed));
+        auto** symbols = backtrace_symbols(px3rt::traceFrames.data(), depth);
+        for (int f = 0; f < depth && f < 14; ++f) { std::printf("      %s\n", symbols != nullptr ? symbols[f] : "?"); }
+        std::free(symbols);
+        px3rt::traceDepth.store(0, std::memory_order_relaxed);
+    }
+
+    processor.setPlayHead(nullptr);
+    return result;
+}
+
+int runRealtimeMatrix()
+{
+    std::printf("\nREAL-TIME MATRIX - audio-thread allocations and output sanity\n");
+    std::printf("  blocks cycle full / half / max-7 / 1 / third of the prepared size;\n");
+    std::printf("  allocations counted on the audio thread only\n\n");
+
+    using OM = px3::OscillatorMode;
+    using FM = px3::FilterMode;
+    const MatrixScenario scenarios[] = {
+        { "saw, LP24, 16 voices",                       OM::saw,       FM::lp24,            16, false, false, false, false, false },
+        { "supersaw, TPT24, release tails",             OM::superSaw,  FM::stateVariable24, 16, false, true,  false, false, false },
+        { "wavetable, Ladder24, 32 voices, all FX",     OM::wavetable, FM::ladder24,        32, true,  true,  false, false, false },
+        { "PX3 osc, LP12, graph depth automation",      OM::px3,       FM::lp12,            16, false, false, true,  false, false },
+        { "FM, TPT12, synced LFOs + transport jumps",   OM::fm,        FM::stateVariable12, 16, false, true,  true,  true,  false },
+        { "physical, Ladder12, all FX + state churn",   OM::physical,  FM::ladder12,        16, true,  true,  true,  true,  true  },
+    };
+    const double rates[] = { 44100.0, 48000.0, 96000.0 };
+    const int blockSizes[] = { 32, 64, 128, 512, 1024 };
+
+    px3rt::audioThreadOnly.store(true, std::memory_order_relaxed);
+    px3rt::onAudioThread = true;
+
+    // A zero is only evidence if the counter can see a non-zero: one allocation
+    // here must count, and one on another thread must not.
+    {
+        // The thread is started before counting: creating one allocates on the
+        // creating thread, which would be the harness rather than the check.
+        std::atomic<int> stage { 0 };
+        std::thread other([&stage]
+        {
+            while (stage.load() == 0) { std::this_thread::yield(); }
+            delete new std::vector<int>(4);
+            stage.store(2);
+        });
+        px3rt::allocationCount.store(0, std::memory_order_relaxed);
+        px3rt::counting.store(true, std::memory_order_relaxed);
+        auto* own = new std::vector<int>(4);
+        stage.store(1);
+        while (stage.load() != 2) { std::this_thread::yield(); }
+        px3rt::counting.store(false, std::memory_order_relaxed);
+        other.join();
+        delete own;
+        const auto seen = px3rt::allocationCount.load(std::memory_order_relaxed);
+        std::printf("  instrument self-check: %lld audio-thread allocation(s) seen (expect 2: object + storage), "
+                    "other thread ignored  %s\n\n", seen, seen == 2 ? "ok" : "*** INSTRUMENT BROKEN ***");
+        if (seen != 2) { return 1; }
+    }
+
+    int failures = 0;
+    int cells = 0;
+    for (const auto& scenario : scenarios)
+    {
+        std::printf("  %s\n", scenario.label);
+        for (const auto rate : rates)
+        {
+            for (const auto block : blockSizes)
+            {
+                const auto r = runMatrixCell(scenario, rate, block);
+                const auto failed = r.allocations != 0 || r.nonFinite != 0 || r.peak > 16.0f;
+                failures += failed ? 1 : 0;
+                ++cells;
+                std::printf("    %6.0f Hz %5d  blocks %6lld  allocs %4lld  nonfinite %lld  peak %6.3f%s  %s\n",
+                            rate, block, r.blocks, r.allocations, r.nonFinite, static_cast<double>(r.peak),
+                            scenario.concurrency ? juce::String("  worker ops " + juce::String(r.workerOps)).toRawUTF8() : "",
+                            failed ? "*** FAIL ***" : "ok");
+                std::fflush(stdout);
+            }
+        }
+    }
+
+    px3rt::audioThreadOnly.store(false, std::memory_order_relaxed);
+    std::printf("\n  %d cell(s), %d failure(s)\n", cells, failures);
+    return failures;
+}
+}
+
 // tools/OscillatorQualityReport.cpp
 int runOscillatorQualityReport(const juce::String& outputDirectory);
 int runOscillatorBench(const juce::String& filter);
@@ -1929,6 +2271,11 @@ int main(int argc, char* argv[])
                 static_cast<double>(patch.sustain),
                 static_cast<double>(patch.release));
     std::printf("  vibe=%s fx=%s\n", patch.vibeEnabled ? "on" : "off", patch.fxEnabled ? "on" : "off");
+
+    if (arg == "rtmatrix")
+    {
+        return runRealtimeMatrix();
+    }
 
     if (arg == "oscbench")
     {
