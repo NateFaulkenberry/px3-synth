@@ -5,11 +5,21 @@
 #include "ReverbTypes.h"
 
 #include <array>
+#include <atomic>
 #include <vector>
 
 class Reverb
 {
 public:
+    // IR mode. Loading happens off the audio thread: the file is checked here
+    // (message thread) and juce::dsp::Convolution reads and swaps it on its own
+    // background thread. Returns an empty string, or why the file was refused.
+    juce::String loadImpulseResponse(const juce::File& file);
+    void clearImpulseResponse();
+    bool hasImpulseResponse() const noexcept { return irLoaded.load(); }
+    juce::String impulseResponseName() const { return irName; }
+    static constexpr int kIrBlock = 256;   // the IR path's block, and its extra latency
+
     void prepare(double sampleRate);
     void reset();
 
@@ -108,6 +118,12 @@ private:
     float shimmerLowpass { 0.0f };
     float shimmerDcX1 { 0.0f }, shimmerDcY1 { 0.0f };
     float processShimmer(float input) noexcept;
+
+    juce::dsp::Convolution convolution { juce::dsp::Convolution::NonUniform { 512 } };
+    juce::AudioBuffer<float> irBlock;   // kIrBlock frames, allocated in prepare
+    int irFill { 0 };
+    std::atomic<bool> irLoaded { false };
+    juce::String irName;
 
     std::array<float, 2> inputDcX1 { { 0.0f, 0.0f } };
     std::array<float, 2> inputDcY1 { { 0.0f, 0.0f } };

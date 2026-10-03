@@ -154,6 +154,13 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
         state.addChild(userWavetables, -1, nullptr);
     }
 
+    // The reverb's impulse response, by path. A missing file on another
+    // machine leaves the IR mode silent rather than failing the whole state.
+    if (reverbImpulseResponsePath.isNotEmpty())
+    {
+        state.setProperty("reverbImpulseResponse", reverbImpulseResponsePath, nullptr);
+    }
+
     // Envelope shapes, and only the ones the four ADSR parameters cannot
     // already describe.
     {
@@ -681,6 +688,15 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         missingWavetableNames[static_cast<std::size_t>(osc)].clear();
     }
 
+    if (const auto irPath = state.getProperty("reverbImpulseResponse").toString(); irPath.isNotEmpty())
+    {
+        if (loadReverbImpulseResponse(juce::File(irPath)).isNotEmpty()) { reverbImpulseResponsePath = irPath; }
+    }
+    else
+    {
+        clearReverbImpulseResponse();
+    }
+
     if (const auto userWavetables = state.getChildWithName(kUserWavetablesId); userWavetables.isValid())
     {
         for (const auto& entry : userWavetables)
@@ -848,4 +864,17 @@ void PX3SynthAudioProcessor::setLoadedPreset(const LoadedPreset& preset)
 {
     const std::scoped_lock<std::mutex> lock(loadedPresetMutex);
     loadedPreset = preset;
+}
+
+juce::String PX3SynthAudioProcessor::loadReverbImpulseResponse(const juce::File& file)
+{
+    const auto error = reverb.loadImpulseResponse(file);
+    if (error.isEmpty()) { reverbImpulseResponsePath = file.getFullPathName(); }
+    return error;
+}
+
+void PX3SynthAudioProcessor::clearReverbImpulseResponse()
+{
+    reverb.clearImpulseResponse();
+    reverbImpulseResponsePath.clear();
 }
