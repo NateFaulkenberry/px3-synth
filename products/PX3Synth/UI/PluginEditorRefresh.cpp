@@ -43,6 +43,8 @@ namespace
 // Factory tables take menu ids 1..N; user tables start here, so the two can
 // never be confused by an id that happens to collide after the library grows.
 constexpr int kUserWavetableMenuBase = 1000;
+constexpr int kImportWavetableMenuId = 900;
+constexpr int kRemoveWavetableMenuId = 901;
 } // namespace
 
 #if PX3_DEBUG_PANEL
@@ -108,6 +110,15 @@ void PX3SynthAudioProcessorEditor::rebuildWavetableMenu(int oscIndex)
         }
     }
 
+    // Import is in the menu, not only on drag and drop, so it can be found.
+    box.addSeparator();
+    box.addItem("Import WAV / AIFF / image...", kImportWavetableMenuId);
+    const auto loadedUserName = audioProcessor.getUserWavetableDisplayName(idx);
+    if (loadedUserName.isNotEmpty())
+    {
+        box.addItem("Remove imported table '" + loadedUserName + "'", kRemoveWavetableMenuId);
+    }
+
     // Whatever is actually loaded, which after a preset load is not
     // necessarily what was selected a moment ago.
     const auto userName = audioProcessor.getUserWavetableDisplayName(idx);
@@ -144,6 +155,24 @@ void PX3SynthAudioProcessorEditor::configureWavetableControls()
             const auto id = oscWtTableBoxes[static_cast<std::size_t>(osc)].getSelectedId();
             if (id <= 0)
             {
+                return;
+            }
+
+            if (id == kImportWavetableMenuId)
+            {
+                rebuildWavetableMenu(osc);   // put the selection back while the chooser is open
+                chooseWavetableFile(osc);
+                return;
+            }
+
+            if (id == kRemoveWavetableMenuId)
+            {
+                const auto name = audioProcessor.getUserWavetableDisplayName(osc);
+                audioProcessor.setUserWavetableName(osc, {});
+                px3::WavetableLibrary::remove(name);
+                audioProcessor.refreshWavetableSelections();
+                for (int other = 0; other < 3; ++other) { rebuildWavetableMenu(other); }
+                refreshWavetableDisplays();
                 return;
             }
 
@@ -293,6 +322,23 @@ void PX3SynthAudioProcessorEditor::refreshWavetableDisplays()
     }
 
     audioProcessor.collectRetiredWavetables();
+}
+
+void PX3SynthAudioProcessorEditor::chooseWavetableFile(int oscIndex)
+{
+    wavetableChooser = std::make_unique<juce::FileChooser>(
+        "Import a wavetable", juce::File::getSpecialLocation(juce::File::userMusicDirectory),
+        "*.wav;*.aif;*.aiff;*.flac;*.png;*.jpg;*.jpeg;*.gif");
+    juce::Component::SafePointer<PX3SynthAudioProcessorEditor> safe(this);
+    wavetableChooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                  [safe, oscIndex](const juce::FileChooser& chooser)
+                                  {
+                                      const auto file = chooser.getResult();
+                                      if (safe != nullptr && file.existsAsFile())
+                                      {
+                                          safe->importWavetableFile(oscIndex, file);
+                                      }
+                                  });
 }
 
 void PX3SynthAudioProcessorEditor::importWavetableFile(int oscIndex, const juce::File& file)

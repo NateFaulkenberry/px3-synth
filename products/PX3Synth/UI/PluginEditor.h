@@ -796,6 +796,8 @@ private:
     void refreshWavetableDisplays();
     void refreshModulationRings();
     void importWavetableFile(int oscIndex, const juce::File& file);
+    void chooseWavetableFile(int oscIndex);
+    std::unique_ptr<juce::FileChooser> wavetableChooser;
     void rebuildWavetableMenu(int oscIndex);
 
     KnobLabel osc1VowelLabel;
