@@ -132,7 +132,7 @@ void SubOscComponent::resized()
 
     // The power toggle is pinned to cardInner's corner, outside the flex flow,
     // so it stays put no matter what the first row contains.
-    enabledButton.setBounds(inner.powerBounds());
+    enabledButton.setBounds(card.powerBounds());
 
     using px3::ui::ControlShape;
 

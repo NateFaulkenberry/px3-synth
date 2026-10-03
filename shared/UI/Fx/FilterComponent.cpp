@@ -111,7 +111,7 @@ void FilterComponent::setCombParameters(juce::AudioParameterFloat& tune,
 
 juce::Rectangle<int> FilterComponent::powerBounds() const
 {
-    return inner.powerBounds();
+    return card.powerBounds();
 }
 
 juce::Colour FilterComponent::cardAccentColour() const

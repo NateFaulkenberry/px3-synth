@@ -9,6 +9,13 @@
 
 namespace px3::ui
 {
+
+static float titleBandHeightFor(const CardStyle& style, juce::Rectangle<float> cardBounds)
+{
+    const auto contentBox = style.contentBounds(cardBounds);
+    return juce::jlimit(16.0f, juce::jmax(16.0f, cardBounds.getHeight() * 0.5f),
+                        contentBox.getY() + style.title.y + style.title.height - cardBounds.getY());
+}
 namespace
 {
 
@@ -615,12 +622,24 @@ void drawCard(juce::Graphics& g,
     //    The old per-card layers - translucent tinted backgrounds, two-tone
     //    gloss and full-bleed artwork pictures - are no longer drawn: they were
     //    what made every card a different style. Their config keys still parse.
-    const auto contentBox = style.contentBounds(cardBounds);
-    const auto band = juce::jlimit(16.0f, juce::jmax(16.0f, cardBounds.getHeight() * 0.5f),
-                                   contentBox.getY() + style.title.y + style.title.height - cardBounds.getY());
+    const auto band = titleBandHeightFor(style, cardBounds);
     const auto accent = style.border.colour;
     theme::drawModulePanel(g, cardBounds, title, accent, ! style.inactive,
                            title.isNotEmpty() ? band : 0.0f);
+}
+
+float CardHost::titleBandHeight() const
+{
+    return titleBandHeightFor(cache.style(), cardBounds);
+}
+
+juce::Rectangle<int> CardHost::powerBounds() const
+{
+    const auto side = theme::space::powerButton;
+    const auto band = titleBandHeight();
+    return juce::Rectangle<float>(cardBounds.getX() + theme::space::powerInset,
+                                  cardBounds.getY() + juce::jmax(0.0f, (band - side) * 0.5f) + 1.0f,
+                                  side, side).toNearestInt();
 }
 
 } // namespace px3::ui

@@ -821,7 +821,7 @@ void FxCardComponent::resized()
 
     // Pinned to cardInner's corner, outside the flex flow, so it stays put no
     // matter what the first row contains.
-    bypass.setBounds(inner.powerBounds());
+    bypass.setBounds(card.powerBounds());
 
     for (std::size_t slot = 0; slot < laidOut.size(); ++slot)
     {

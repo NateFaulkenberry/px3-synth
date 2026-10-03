@@ -374,6 +374,12 @@ public:
     juce::Rectangle<float> content() const { return cache.style().contentBounds(cardBounds); }
     // content(), minus the space the title occupies.
     juce::Rectangle<int> contentBelowTitle() const;
+    // Height of the title band draw() paints, from the card's top edge.
+    float titleBandHeight() const;
+    // The power toggle's place: one size on every card, a fixed inset from
+    // the left, centred in the title band. Anchored to the band itself rather
+    // than to the content box, whose offset differs from card to card.
+    juce::Rectangle<int> powerBounds() const;
 
     void draw(juce::Graphics& g, const juce::String& title) const;
     // For a bypassed component: greyscale and dimmed. Bypass is runtime state,

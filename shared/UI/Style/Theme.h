@@ -83,6 +83,8 @@ inline constexpr float unit = 4.0f;          // the grid everything sits on
 inline constexpr float panelRadius = 4.0f;   // module faceplate corners
 inline constexpr float insetRadius = 3.0f;   // displays, wells, chips
 inline constexpr float headerHeight = 22.0f; // module title band
+inline constexpr float powerButton = 16.0f;  // every card's power toggle, one size
+inline constexpr float powerInset = 6.0f;    // from the card's left edge
 inline constexpr float accentBar = 2.0f;     // identity stripe on a module
 } // namespace space
 
