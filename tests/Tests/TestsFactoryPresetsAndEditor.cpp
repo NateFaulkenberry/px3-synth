@@ -663,24 +663,20 @@ void testEditorLifecycle()
             if (auto* t = dynamic_cast<TopMenuBar*>(&c)) header = t;
             for (auto* child : c.getChildren()) walk(*child);
         };
-        walk(*editor);
+            walk(*editor);
 
-        const auto defaultPanel = panel != nullptr ? panel->getHeight() : 0;
+            check("Editor_DefaultWindowIsFifteenPercentLarger",
+              editor->getWidth() == 1518 && editor->getHeight() == 918,
+              juce::String(editor->getWidth()) + "x" + juce::String(editor->getHeight()));
+            const auto defaultPanel = panel != nullptr ? panel->getHeight() : 0;
         const auto defaultKeys = keys != nullptr ? keys->getHeight() : 0;
         const auto defaultHeader = header != nullptr ? header->getHeight() : 0;
 
-        // A whole row would put the window at 838, which read as too tall, so
-        // 40px is trimmed back off on purpose and the last 40px of the first
-        // row sits under the fold. Asserted as a BUDGET rather than a fit:
-        // raising fx.grid.rowHeight without revisiting the window height grows
-        // the shortfall past 40 and fails here with both numbers.
-        constexpr auto deliberateTrim = 40;
-        check("Editor_DefaultSizeNearlyFitsAWholeRowOfFxCards",
-              panel != nullptr && required - defaultPanel <= deliberateTrim,
+            check("Editor_DefaultSizeFitsAWholeRowOfFxCards",
+              panel != nullptr && defaultPanel >= required,
               "panel " + juce::String(defaultPanel) + "px, a row needs " + juce::String(required)
                   + "px (strip " + juce::String(strip) + " + gap " + juce::String(stripGap)
-                  + " + rowHeight " + juce::String(rowHeight) + "), short by "
-                  + juce::String(required - defaultPanel) + " of " + juce::String(deliberateTrim));
+                  + " + rowHeight " + juce::String(rowHeight) + ")");
 
         // Resizing must spend every pixel on the panels. The keyboard used to be
         // a fraction of the window height, so it quietly took a share of any
@@ -695,7 +691,7 @@ void testEditorLifecycle()
             editor->setSize(1320, h);
             keyboardHeld = keyboardHeld && keys->getHeight() == defaultKeys
                            && header->getHeight() == defaultHeader;
-            panelTracks = panelTracks && panel->getHeight() - defaultPanel == h - 798;
+            panelTracks = panelTracks && panel->getHeight() - defaultPanel == h - 918;
             detail << h << ": panel " << panel->getHeight() << " keys " << keys->getHeight()
                    << " header " << header->getHeight() << "   ";
         }

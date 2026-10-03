@@ -1184,11 +1184,8 @@ void PX3SynthAudioProcessorEditor::finishConstruction()
 {
     // Seed visual slot layout with the processor order before the first setSize/resized pass.
     fxSectionOrder = audioProcessor.getFxProcessingOrder();
-    // A full first row of FX cards needs fx.signalFlow.height + gapBelow +
-    // fx.grid.rowHeight of panel, which lands the window at 838 - and that read
-    // as too tall. 40px is trimmed back off deliberately, so the bottom of the
-    // first row sits just under the fold and the grid scrolls to it.
-    setSize(1320, 798);
+    // The larger default accommodates a complete FX row without changing layout.
+    setSize(1518, 918);
 
     juce::String presetInitError;
     if (!presetManager.initialise(presetInitError))
