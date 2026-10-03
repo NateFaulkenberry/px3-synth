@@ -312,6 +312,7 @@ juce::String InstrumentSceneDocument::toJson() const
     return juce::JSON::toString(juce::var(root), true);
 }
 
+#if PX3_UI_DESIGNER || defined(PX3_UNIT_TESTS)
 bool InstrumentSceneDocument::addStyleToken(const InstrumentSceneStyleToken& token, juce::String& error)
 {
     if (token.id.trim().isEmpty() || ! validHexColour(token.background)
@@ -343,6 +344,24 @@ bool InstrumentSceneDocument::addStyleToken(const InstrumentSceneStyleToken& tok
     }
 
     styleTokens.pop_back();
+    return false;
+}
+
+bool InstrumentSceneDocument::updateStyleToken(const InstrumentSceneStyleToken& token, juce::String& error)
+{
+    auto existing = std::find_if(styleTokens.begin(), styleTokens.end(), [&token](const auto& candidate)
+    {
+        return candidate.id == token.id;
+    });
+    if (existing == styleTokens.end())
+    {
+        error = "Unknown scene style token: " + token.id;
+        return false;
+    }
+    const auto previous = *existing;
+    *existing = token;
+    if (validate(error)) { return true; }
+    *existing = previous;
     return false;
 }
 
@@ -619,6 +638,8 @@ bool InstrumentSceneDocument::setNodePresentation(const juce::String& id,
     return false;
 }
 
+#endif
+
 const InstrumentSceneNode* InstrumentSceneDocument::findNode(const juce::String& id) const noexcept
 {
     const auto index = std::find_if(nodes.begin(), nodes.end(), [&id](const auto& region)
@@ -798,6 +819,7 @@ juce::Rectangle<float> InstrumentSceneDocument::resolveBounds(
     return resolve(id, 0);
 }
 
+#if PX3_UI_DESIGNER || defined(PX3_UNIT_TESTS)
 void InstrumentSceneDocument::beginTransaction()
 {
     if (transactionSnapshot.isEmpty())
@@ -883,6 +905,8 @@ bool InstrumentSceneDocument::restoreSnapshot(const juce::String& snapshot)
     juce::String ignoredError;
     return loadJson(snapshot, ignoredError);
 }
+
+#endif
 
 bool InstrumentSceneDocument::validate(juce::String& error) const
 {

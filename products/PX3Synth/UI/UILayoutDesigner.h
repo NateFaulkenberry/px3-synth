@@ -28,6 +28,7 @@ public:
         std::function<juce::String(const juce::String&, juce::Rectangle<float>)> boundsChanged;
         std::function<juce::String(const juce::String&, int)> orderChanged;
         std::function<juce::String(const juce::String&, const juce::String&)> styleChanged;
+        std::function<juce::String(const px3::ui::InstrumentSceneStyleToken&, bool)> styleTokenChanged;
         std::function<juce::String(const juce::String&, px3::ui::InstrumentSceneLayoutMode)> layoutChanged;
         std::function<juce::String(const juce::String&, const juce::String&)> parentChanged;
         std::function<juce::String(const juce::String&, float, float, int)> flowChanged;
@@ -54,6 +55,7 @@ private:
     void applyBoundsFromInspector();
     void applyOrderFromInspector();
     void applyStyleFromInspector();
+    void showStyleTokenEditor(bool create);
     void applyLayoutFromInspector();
     void applyParentFromInspector();
     void applyFlowFromInspector();
@@ -72,6 +74,9 @@ private:
     juce::Label layoutLabel;
     juce::ComboBox styleSelector;
     juce::Label styleLabel;
+    juce::TextButton editStyleButton { "..." };
+    juce::TextButton newStyleButton { "+" };
+    std::unique_ptr<juce::AlertWindow> styleTokenEditor;
     juce::ComboBox kindSelector;
     juce::Label kindLabel;
     juce::TextEditor labelEditor;

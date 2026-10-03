@@ -383,6 +383,14 @@ void PX3SynthAudioProcessorEditor::openUILayoutDesigner()
         {
             return updateLayoutRegionStyle(id, token);
         };
+        callbacks.styleTokenChanged = [this](const px3::ui::InstrumentSceneStyleToken& token, bool create)
+        {
+            juce::String error;
+            const auto updated = create ? uiLayout.addStyleToken(token, error)
+                                        : uiLayout.updateStyleToken(token, error);
+            if (updated) { resized(); repaint(); }
+            return error;
+        };
         callbacks.layoutChanged = [this](const juce::String& id,
                                          px3::ui::InstrumentSceneLayoutMode mode)
         {

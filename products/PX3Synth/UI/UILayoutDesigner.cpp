@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 namespace
 {
@@ -44,6 +45,12 @@ UILayoutDesignerWindow::UILayoutDesignerWindow(const px3::ui::InstrumentSceneDoc
     addAndMakeVisible(styleLabel);
     addAndMakeVisible(styleSelector);
     styleSelector.onChange = [this] { applyStyleFromInspector(); };
+    editStyleButton.setTooltip("Edit style token");
+    newStyleButton.setTooltip("Create style token");
+    addAndMakeVisible(editStyleButton);
+    addAndMakeVisible(newStyleButton);
+    editStyleButton.onClick = [this] { showStyleTokenEditor(false); };
+    newStyleButton.onClick = [this] { showStyleTokenEditor(true); };
 
     addAndMakeVisible(visibilityToggle);
     visibilityToggle.onClick = [this]
@@ -360,6 +367,10 @@ void UILayoutDesignerWindow::resized()
     row.removeFromLeft(8);
     visibilityToggle.setBounds(row.removeFromRight(88));
     row.removeFromRight(8);
+    newStyleButton.setBounds(row.removeFromRight(28));
+    row.removeFromRight(4);
+    editStyleButton.setBounds(row.removeFromRight(28));
+    row.removeFromRight(4);
     styleSelector.setBounds(row);
     area.removeFromTop(8);
     row = area.removeFromTop(30);
@@ -433,6 +444,59 @@ void UILayoutDesignerWindow::refreshInspector()
     propertySliders[10].setValue(region != nullptr ? region->maximumSize.x : 0.0f, juce::dontSendNotification);
     propertySliders[11].setValue(region != nullptr ? region->maximumSize.y : 0.0f, juce::dontSendNotification);
     suppressCallbacks = false;
+}
+
+void UILayoutDesignerWindow::showStyleTokenEditor(bool create)
+{
+    if (callbacks.styleTokenChanged == nullptr) { return; }
+    const auto* node = document.findNode(selectedRegionId);
+    const auto* existing = node != nullptr ? document.findStyleToken(node->styleToken) : nullptr;
+    if (! create && existing == nullptr) { return; }
+    auto token = existing != nullptr ? *existing : px3::ui::InstrumentSceneStyleToken {};
+    if (create) { token.id.clear(); }
+    styleTokenEditor = std::make_unique<juce::AlertWindow>(
+        create ? "NEW STYLE TOKEN" : "EDIT STYLE TOKEN", juce::String(), juce::MessageBoxIconType::NoIcon);
+    auto& dialog = *styleTokenEditor;
+    dialog.addTextEditor("id", token.id, "ID");
+    dialog.getTextEditor("id")->setEnabled(create);
+    dialog.addTextEditor("background", token.background, "BACKGROUND");
+    dialog.addTextEditor("foreground", token.foreground, "FOREGROUND");
+    dialog.addTextEditor("accent", token.accent, "ACCENT");
+    dialog.addTextEditor("texture", token.texture, "TEXTURE");
+    dialog.addTextEditor("knob", juce::String(token.knobDiameter), "KNOB DIAMETER");
+    dialog.addTextEditor("label", juce::String(token.labelSize), "LABEL SIZE");
+    dialog.addTextEditor("radius", juce::String(token.borderRadius), "BORDER RADIUS");
+    dialog.addTextEditor("border", juce::String(token.borderWidth), "BORDER WIDTH");
+    dialog.addButton("Apply", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    dialog.addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    const juce::Component::SafePointer<UILayoutDesignerWindow> safeThis(this);
+    dialog.enterModalState(true, juce::ModalCallbackFunction::create([safeThis, token, create](int result) mutable
+    {
+        if (safeThis == nullptr || result != 1 || safeThis->styleTokenEditor == nullptr) { return; }
+        auto& editor = *safeThis->styleTokenEditor;
+        const auto readNumber = [&editor](const char* field, float& value)
+        {
+            const auto text = editor.getTextEditorContents(field).trim();
+            char* end = nullptr;
+            value = std::strtof(text.toRawUTF8(), &end);
+            return text.isNotEmpty() && end != text.toRawUTF8() && *end == '\0' && std::isfinite(value);
+        };
+        if (! readNumber("knob", token.knobDiameter) || ! readNumber("label", token.labelSize)
+            || ! readNumber("radius", token.borderRadius) || ! readNumber("border", token.borderWidth))
+        {
+            safeThis->setStatus("Style dimensions must be finite numbers");
+            return;
+        }
+        token.id = editor.getTextEditorContents("id").trim();
+        token.background = editor.getTextEditorContents("background").trim();
+        token.foreground = editor.getTextEditorContents("foreground").trim();
+        token.accent = editor.getTextEditorContents("accent").trim();
+        token.texture = editor.getTextEditorContents("texture").trim();
+        safeThis->beginPropertyEdit();
+        const auto error = safeThis->callbacks.styleTokenChanged(token, create);
+        safeThis->endPropertyEdit();
+        safeThis->setStatus(error.isEmpty() ? "Updated style token " + token.id : error);
+    }), false);
 }
 
 void UILayoutDesignerWindow::applyBoundsFromInspector()

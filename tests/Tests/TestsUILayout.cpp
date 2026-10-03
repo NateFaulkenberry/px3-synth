@@ -132,6 +132,26 @@ void testUILayout()
               && roundTripped.getStyleTokens().size() == 4,
           error);
 
+    {
+        auto token = *roundTripped.findStyleToken("panel.osc");
+        const auto original = roundTripped.toJson();
+        roundTripped.beginTransaction();
+        token.background = "#283034";
+        token.knobDiameter = 62.0f;
+        const auto edited = roundTripped.updateStyleToken(token, error);
+        const auto committed = roundTripped.commitTransaction();
+        InstrumentSceneDocument styleRoundTrip;
+        const auto loaded = styleRoundTrip.loadJson(roundTripped.toJson(), error);
+        const auto* restoredToken = styleRoundTrip.findStyleToken("panel.osc");
+        check("InstrumentScene_StyleTokenEditsRoundTripAndUndo",
+              edited && committed && loaded && restoredToken != nullptr
+                  && restoredToken->background == "#283034" && restoredToken->knobDiameter == 62.0f
+                  && roundTripped.undo() && roundTripped.toJson() == original, error);
+        token.background = "invalid";
+        check("InstrumentScene_InvalidStyleTokenEditsLeaveDocumentIntact",
+              ! roundTripped.updateStyleToken(token, error) && roundTripped.toJson() == original);
+    }
+
     roundTripped.beginTransaction();
     const auto presentationChanged = roundTripped.setNodePresentation(
         "osc1.octave", px3::ui::InstrumentSceneNodeKind::parameterControl,

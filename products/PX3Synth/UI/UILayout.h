@@ -63,7 +63,9 @@ public:
     bool loadJson(const juce::String& text, juce::String& error);
     juce::String toJson() const;
 
+#if PX3_UI_DESIGNER || defined(PX3_UNIT_TESTS)
     bool addStyleToken(const InstrumentSceneStyleToken& token, juce::String& error);
+    bool updateStyleToken(const InstrumentSceneStyleToken& token, juce::String& error);
     bool addNode(const InstrumentSceneNode& region, juce::String& error);
     bool setNodeStyleToken(const juce::String& id,
                            const juce::String& styleToken,
@@ -99,6 +101,7 @@ public:
     void cancelTransaction();
     bool undo();
     bool redo();
+#endif
 
     const InstrumentSceneNode* findNode(const juce::String& id) const noexcept;
     bool isNodeVisible(const juce::String& id) const noexcept;
@@ -110,12 +113,16 @@ public:
 
 private:
     bool validate(juce::String& error) const;
+#if PX3_UI_DESIGNER || defined(PX3_UNIT_TESTS)
     bool restoreSnapshot(const juce::String& snapshot);
+#endif
 
     std::vector<InstrumentSceneNode> nodes;
     std::vector<InstrumentSceneStyleToken> styleTokens;
+#if PX3_UI_DESIGNER || defined(PX3_UNIT_TESTS)
     juce::String transactionSnapshot;
     std::vector<juce::String> undoSnapshots;
     std::vector<juce::String> redoSnapshots;
+#endif
 };
 }
