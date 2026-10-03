@@ -185,6 +185,11 @@ verify_bundle() {
 
   arch_check "$bin_path" "$bundle_kind executable"
 
+  # Signed or ad-hoc, every bundle this script ships must carry an intact seal.
+  # A bundle edited after it was sealed fails here rather than in a user's host.
+  codesign --verify --deep --strict "$bundle_path" >/dev/null 2>&1 \
+    || die "${bundle_kind} bundle seal is invalid: $bundle_path"
+
   echo "  ${bundle_kind} OK"
   echo "    Bundle ID: ${bundle_id}"
   echo "    Version:   ${short_ver} (${bundle_ver})"
@@ -763,6 +768,11 @@ if [[ -n "${APP_BUNDLE}" ]]; then
   cp "${UPDATER_BINARY}" "${APP_BUNDLE}/Contents/MacOS/PX3 Updater" \
     || die "Could not place the updater helper inside the standalone"
   chmod +x "${APP_BUNDLE}/Contents/MacOS/PX3 Updater"
+  # Adding the helper invalidates the build's ad-hoc seal. Re-seal it so the
+  # bundle verifies below; --sign later replaces this with the real identity,
+  # and an unsigned build would otherwise ship a broken bundle.
+  codesign --force --deep --sign - --timestamp=none "${APP_BUNDLE}" >/dev/null \
+    || die "Could not re-seal the standalone after placing the updater"
   echo "  Updater helper placed inside the standalone"
 fi
 
@@ -1376,6 +1386,12 @@ if [[ "${BUILD_UNINSTALLER}" == true ]]; then
   fi
 
   UNINSTALLER_SIGN_STATE="unsigned"
+  if [[ "${SIGN_MODE}" != true ]]; then
+    # osacompile's seal no longer covers the edited plist and resources.
+    codesign --force --deep --sign - --timestamp=none "${UNINSTALLER_APP_PATH}" >/dev/null \
+      || die "Could not ad-hoc seal the uninstaller"
+    UNINSTALLER_SIGN_STATE="unsigned (ad-hoc sealed)"
+  fi
   if [[ "${SIGN_MODE}" == true && -n "${SIGN_IDENTITY}" ]]; then
     codesign --force --deep --options runtime --timestamp --sign "${SIGN_IDENTITY}" "${UNINSTALLER_APP_PATH}" \
       && UNINSTALLER_SIGN_STATE="signed"
@@ -1424,6 +1440,8 @@ if [[ "${BUILD_UNINSTALLER}" == true ]]; then
   for script in px3-uninstall.sh px3-list-products.sh; do
     sh -n "${UNINSTALLER_RES}/${script}" || die "Bundled ${script} is not valid sh"
   done
+  codesign --verify --deep --strict "${UNINSTALLER_APP_PATH}" >/dev/null 2>&1 \
+    || die "Uninstaller bundle seal is invalid"
 
   cp -R "${UNINSTALLER_APP_PATH}" "${DIST_DIR}/"
   echo "  Uninstaller:   ${UNINSTALLER_APP_PATH} (${UNINSTALLER_SIGN_STATE})"
