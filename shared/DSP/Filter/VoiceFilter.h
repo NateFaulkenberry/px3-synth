@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 
+#include "AnalogFilters.h"
 #include "CombResonator.h"
 #include "FilterMode.h"
 #include "FilterTypes.h"
@@ -52,12 +53,10 @@ public:
     }
 
 private:
-    class Ladder final : public juce::dsp::LadderFilter<float>
-    {
-    public:
-        float next(float input) noexcept { updateSmoothers(); return processSample(input, 0); }
-    };
-    Ladder ladder;
+    // Zero-delay-feedback analog models (AnalogFilters.h).
+    px3::analogfilter::Ladder ladder;
+    px3::analogfilter::Curtis curtis;
+    px3::analogfilter::Arp arp;
     float processSampleActive(float inputSample);
     void applyFilter(float cutoffHz, float resonanceQ, int modeIndex);
 

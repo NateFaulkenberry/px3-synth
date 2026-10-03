@@ -241,8 +241,23 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         filterResonanceParams[static_cast<std::size_t>(filterIndex)] = parameterCatalog.createFloat(
             idPrefix + ".resonance",
             labelPrefix + "Resonance",
-            juce::NormalisableRange<float>(0.25f, 2.2f),
+            // Q 0.25..20, skewed so the first half of the knob covers the
+            // classic range and the top reaches whistle and, in the analog
+            // models, self-oscillation.
+            juce::NormalisableRange<float>(0.25f, 20.0f, 0.0f, 0.32f),
             0.8f);
+        // KB tracking: -100% (closes as you play up) to +200%, around a
+        // reference key. 100% keeps the filter at the same harmonic everywhere.
+        filterKeyTrackParams[static_cast<std::size_t>(filterIndex)] = parameterCatalog.createFloat(
+            idPrefix + ".keytrack",
+            labelPrefix + "Key Track",
+            juce::NormalisableRange<float>(-1.0f, 2.0f),
+            0.0f);
+        filterKeyTrackKeyParams[static_cast<std::size_t>(filterIndex)] = parameterCatalog.createFloat(
+            idPrefix + ".keytrack.key",
+            labelPrefix + "Key Track Center",
+            juce::NormalisableRange<float>(24.0f, 96.0f, 1.0f),
+            60.0f);
         filterTypeParams[static_cast<std::size_t>(filterIndex)] = parameterCatalog.createChoice(
             idPrefix + ".type",
             labelPrefix + "Type",
@@ -778,6 +793,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(filterEnabledParams[static_cast<std::size_t>(filterIndex)]);
         addParameter(filterCutoffParams[static_cast<std::size_t>(filterIndex)]);
         addParameter(filterResonanceParams[static_cast<std::size_t>(filterIndex)]);
+        addParameter(filterKeyTrackParams[static_cast<std::size_t>(filterIndex)]);
+        addParameter(filterKeyTrackKeyParams[static_cast<std::size_t>(filterIndex)]);
         addParameter(filterTypeParams[static_cast<std::size_t>(filterIndex)]);
         // Registered like every other parameter, which is what puts them in the
         // DAW's automation list, the session state and preset files - all of

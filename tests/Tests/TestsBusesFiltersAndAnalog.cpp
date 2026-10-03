@@ -1,4 +1,6 @@
 #include "TestSupport.h"
+#include "FilterResponse.h"
+#include <functional>
 
 // testVuBallistics, testBusInserts, testFilters, testOscillatorModeRichness, testAnalogEngine
 
@@ -2693,6 +2695,117 @@ void testBusInserts()
 void testFilters()
 {
     suite("FILTERS");
+
+    // ---- resonance: whistle, self-oscillation, stability -----------------------
+    {
+        constexpr double fs = 48000.0;
+        auto runFilter = [&](px3::FilterMode mode, float q, float cutoff, const std::function<float(int)>& input,
+                             int samples, std::vector<float>& out)
+        {
+            VoiceFilter filter;
+            filter.prepare(fs);
+            FilterSettings settings;
+            settings.enabled = true;
+            settings.modeIndex = static_cast<int>(mode);
+            settings.cutoffHz = cutoff;
+            settings.resonanceQ = q;
+            filter.setCurrentSettingsImmediate(settings);
+            out.resize(static_cast<std::size_t>(samples));
+            for (int n = 0; n < samples; ++n) out[static_cast<std::size_t>(n)] = filter.processSample(input(n));
+        };
+
+        // Analog models at full resonance ring on by themselves after a kick,
+        // stay bounded, and never go non-finite.
+        juce::String report;
+        auto allOscillate = true;
+        for (const auto mode : { px3::FilterMode::ladder24, px3::FilterMode::curtis24, px3::FilterMode::arp12 })
+        {
+            std::vector<float> out;
+            runFilter(mode, px3::analogfilter::kMaxUserQ, 800.0f, [](int n) { return n < 32 ? 0.5f : 0.0f; }, 96000, out);
+            double late = 0.0, peak = 0.0;
+            auto finite = true;
+            for (std::size_t n = 0; n < out.size(); ++n)
+            {
+                finite = finite && std::isfinite(out[n]);
+                peak = juce::jmax(peak, static_cast<double>(std::abs(out[n])));
+                if (n >= 72000) late += static_cast<double>(out[n]) * out[n];
+            }
+            const auto lateRms = std::sqrt(late / 24000.0);
+            allOscillate = allOscillate && finite && lateRms > 0.05 && peak < 4.0;
+            report << px3::filterModeChoices()[static_cast<int>(mode)] << " late rms " << juce::String(lateRms, 3)
+                   << " peak " << juce::String(peak, 2) << "  ";
+        }
+        check("Filter_AnalogModelsSelfOscillateBoundedAtFullResonance", allOscillate, report);
+
+        // Biquad LP12 at the top of the range whistles.
+        const auto pair = px3::makeFilterCoefficients(static_cast<int>(px3::FilterMode::lp12), fs, 1000.0f, px3::analogfilter::kMaxUserQ);
+        const auto peakDb = px3::filterMagnitudeDb(pair, 1000.0, fs);
+        check("Filter_Lp12ReachesAWhistleAtFullResonance", peakDb > 20.0f, "peak " + juce::String(peakDb, 1) + " dB at cutoff");
+
+        // Extreme resonance under fast cutoff modulation on loud noise: finite and bounded.
+        auto stable = true;
+        juce::String worst;
+        for (int modeIndex = 0; modeIndex < px3::filterModeCount; ++modeIndex)
+        {
+            if (px3::isCombMode(modeIndex)) continue;
+            VoiceFilter filter;
+            filter.prepare(fs);
+            FilterSettings settings;
+            settings.modeIndex = modeIndex;
+            settings.resonanceQ = px3::analogfilter::kMaxUserQ;
+            filter.setCurrentSettingsImmediate(settings);
+            juce::Random random(11);
+            double peak = 0.0;
+            for (int n = 0; n < 96000; ++n)
+            {
+                if (n % 64 == 0)
+                {
+                    settings.cutoffHz = 40.0f * std::pow(400.0f, 0.5f + 0.5f * std::sin(static_cast<float>(n) * 0.0011f));
+                    filter.setTargetSettings(settings);
+                }
+                const auto y = filter.processSample(random.nextFloat() * 1.6f - 0.8f);
+                if (! std::isfinite(y)) { stable = false; break; }
+                peak = juce::jmax(peak, static_cast<double>(std::abs(y)));
+            }
+            if (peak > 60.0) { stable = false; }
+            worst << px3::filterModeChoices()[modeIndex] << " " << juce::String(peak, 1) << "  ";
+        }
+        check("Filter_ExtremeResonanceUnderFastSweepsStaysFiniteAndBounded", stable, "peaks: " + worst);
+    }
+
+    // ---- keyboard tracking -------------------------------------------------------
+    {
+        auto brightness = [](int note, float keyTrack)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "voice.osc1.mode", 1);
+            setParam(processor, "voice.amp.sustain", 1.0f);
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            setChoice(processor, "voice.filter1.type", static_cast<int>(px3::FilterMode::lp24));
+            setParam(processor, "voice.filter1.cutoff", 600.0f);
+            setParam(processor, "voice.filter1.keytrack", keyTrack);
+            setParam(processor, "voice.filter1.keytrack.key", 60.0f);
+            const auto capture = render(processor, 48000, { { 2000, true, note, 0.9f } });
+            // Energy of the derivative relative to the signal: a pitch-normalised
+            // brightness once divided by the fundamental's own slope.
+            double e = 0.0, d = 0.0;
+            for (std::size_t n = 12000; n + 1 < capture.left.size(); ++n)
+            {
+                e += static_cast<double>(capture.left[n]) * capture.left[n];
+                const auto diff = static_cast<double>(capture.left[n + 1] - capture.left[n]);
+                d += diff * diff;
+            }
+            const auto hz = 440.0 * std::pow(2.0, (note - 69) / 12.0);
+            const auto fundamentalSlope = std::pow(juce::MathConstants<double>::twoPi * hz / 48000.0, 2.0);
+            return 10.0 * std::log10((d / e) / fundamentalSlope);
+        };
+        const auto trackedSpread = std::abs(brightness(72, 1.0f) - brightness(48, 1.0f));
+        const auto untrackedSpread = std::abs(brightness(72, 0.0f) - brightness(48, 0.0f));
+        check("Filter_KeyTrackingKeepsTimbreAcrossTheKeyboard", trackedSpread < 1.5 && untrackedSpread > trackedSpread + 3.0,
+              "relative brightness C3 vs C5: tracked " + juce::String(trackedSpread, 1) + " dB, untracked "
+                  + juce::String(untrackedSpread, 1) + " dB");
+    }
     {
         const auto renderEq = [](bool macro)
         {

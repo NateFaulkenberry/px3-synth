@@ -71,6 +71,15 @@ std::array<FilterSettings, kFilterInstanceCount> PX3SynthAudioProcessor::current
             &resonanceParam,
             static_cast<juce::RangedAudioParameter&>(resonanceParam).getValue()));
         settings.modeIndex = modeParam.getIndex();
+        if (auto* keyTrack = filterKeyTrackParams[static_cast<std::size_t>(filterIndex)])
+        {
+            settings.keyTrack = keyTrack->convertFrom0to1(applyModulationToNormalizedValue(
+                keyTrack, static_cast<juce::RangedAudioParameter&>(*keyTrack).getValue()));
+        }
+        if (auto* key = filterKeyTrackKeyParams[static_cast<std::size_t>(filterIndex)])
+        {
+            settings.keyTrackReference = key->get();
+        }
 
         // Comb controls take the same modulation path as cutoff and resonance,
         // so they are modulation destinations for free rather than through a

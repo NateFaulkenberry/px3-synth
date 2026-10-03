@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 
+#include "AnalogFilters.h"
 #include "FilterMode.h"
 
 #include <array>
@@ -27,15 +28,12 @@ struct FilterBiquadPair
     std::array<float, 6> stageA { { 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f } };
     std::array<float, 6> stageB { { 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f } };
     bool usesStageB { false };
+    // Analog models: 0 none, 1 ladder, 2 curtis, 3 arp.
+    int analogModel { 0 };
     int ladderPoles { 0 };
     float ladderCutoff { 1000.0f };
-    float ladderResonance { 0.0f };
+    float analogAmount { 0.0f };
 };
-
-inline float ladderResonanceFromQ(float resonanceQ)
-{
-    return juce::jmap(juce::jlimit(0.2f, 2.2f, resonanceQ), 0.2f, 2.2f, 0.0f, 0.95f);
-}
 
 // A 4-pole filter is two biquads in series, and building both at the user's Q
 // multiplies their peaks - at Q 10 the 24 dB modes resonated at +40 dB where
@@ -49,7 +47,9 @@ inline constexpr float kButterworthQ = 0.7071f;
 
 inline float fourPoleResonantQ(float userQ)
 {
-    return kFourPoleResonantQ * juce::jmax(0.05f, userQ) / kButterworthQ;
+    // Capped: at the top of the widened range the resonant section alone
+    // would otherwise peak some 10 dB above the 12 dB modes.
+    return juce::jmin(24.0f, kFourPoleResonantQ * juce::jmax(0.05f, userQ) / kButterworthQ);
 }
 
 inline FilterBiquadPair makeFilterCoefficients(int modeIndex,
@@ -69,7 +69,7 @@ inline FilterBiquadPair makeFilterCoefficients(int modeIndex,
     // cutoff at a low sample rate would otherwise cross it.
     const auto maxCutoff = static_cast<float>(sampleRate * 0.5) * 0.98f;
     const auto cutoff = juce::jlimit(20.0f, juce::jmax(20.0f, maxCutoff), cutoffHz);
-    const auto q = juce::jlimit(0.20f, 10.0f, resonanceQ);
+    const auto q = juce::jlimit(0.20f, analogfilter::kMaxUserQ, resonanceQ);
 
     using Array = juce::dsp::IIR::ArrayCoefficients<float>;
 
@@ -104,9 +104,22 @@ inline FilterBiquadPair makeFilterCoefficients(int modeIndex,
             break;
         case FilterMode::ladder12:
         case FilterMode::ladder24:
+            pair.analogModel = 1;
             pair.ladderPoles = modeIndex == static_cast<int>(FilterMode::ladder12) ? 2 : 4;
             pair.ladderCutoff = cutoff;
-            pair.ladderResonance = ladderResonanceFromQ(q);
+            pair.analogAmount = analogfilter::resonanceAmountFromQ(q);
+            break;
+        case FilterMode::curtis24:
+            pair.analogModel = 2;
+            pair.ladderPoles = 4;
+            pair.ladderCutoff = cutoff;
+            pair.analogAmount = analogfilter::resonanceAmountFromQ(q);
+            break;
+        case FilterMode::arp12:
+            pair.analogModel = 3;
+            pair.ladderPoles = 2;
+            pair.ladderCutoff = cutoff;
+            pair.analogAmount = analogfilter::resonanceAmountFromQ(q);
             break;
         case FilterMode::comb:
         default:
@@ -126,19 +139,14 @@ inline float filterMagnitudeDb(const FilterBiquadPair& pair, double frequencyHz,
     }
 
     const auto hz = juce::jlimit(1.0, sampleRate * 0.5 - 1.0, frequencyHz);
-    if (pair.ladderPoles > 0)
+    // The analog models draw their exact small-signal response: a TPT
+    // integrator is the analog one at the prewarped frequency.
+    switch (pair.analogModel)
     {
-        const auto delayed = std::polar(1.0, -juce::MathConstants<double>::twoPi * hz / sampleRate);
-        const auto pole = std::exp(-juce::MathConstants<double>::twoPi * pair.ladderCutoff / sampleRate);
-        const auto gain = 1.0 - pole;
-        const auto section = gain * (0.76923076923 + 0.23076923076 * delayed) / (1.0 - pole * delayed);
-        const auto feedback = 4.0 * (0.1 + 0.9 * pair.ladderResonance);
-        const auto lookupStep = 5.0 / 127.0;
-        const auto smallSignalGain = 1.0006 * std::tanh(lookupStep) / lookupStep;
-        const auto closedLoop = 1.0 + feedback * smallSignalGain * std::pow(section, 4) * delayed;
-        const auto response = 1.2 * smallSignalGain * (1.0 + 0.5 * feedback)
-                            * std::pow(section, pair.ladderPoles) / closedLoop;
-        return juce::Decibels::gainToDecibels(static_cast<float>(std::abs(response)), -96.0f);
+        case 1: return analogfilter::Ladder::magnitudeDb(hz, pair.ladderCutoff, pair.analogAmount, sampleRate, pair.ladderPoles);
+        case 2: return analogfilter::Curtis::magnitudeDb(hz, pair.ladderCutoff, pair.analogAmount, sampleRate);
+        case 3: return analogfilter::Arp::magnitudeDb(hz, pair.ladderCutoff, pair.analogAmount, sampleRate);
+        default: break;
     }
 
     juce::dsp::IIR::Coefficients<float> a { pair.stageA[0], pair.stageA[1], pair.stageA[2],

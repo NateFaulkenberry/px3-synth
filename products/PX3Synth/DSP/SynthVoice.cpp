@@ -453,6 +453,12 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             auto targetCutoffHz = runtimeFilter.cutoffHz;
             auto targetResonanceQ = runtimeFilter.resonanceQ;
 
+            if (runtimeFilter.keyTrack != 0.0f && currentMidiNote >= 0)
+            {
+                targetCutoffHz *= std::exp2((static_cast<float>(currentMidiNote) - runtimeFilter.keyTrackReference)
+                                            / 12.0f * runtimeFilter.keyTrack);
+            }
+
             if (vibeActive)
             {
                 const auto temperatureCutoff = vibeShared.temperature * vibeTuning.temperatureDrift * 0.34f;
@@ -469,7 +475,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             }
 
             runtimeFilter.cutoffHz = juce::jlimit(20.0f, 20000.0f, targetCutoffHz);
-            runtimeFilter.resonanceQ = juce::jlimit(0.20f, 10.0f, targetResonanceQ);
+            runtimeFilter.resonanceQ = juce::jlimit(0.20f, px3::analogfilter::kMaxUserQ, targetResonanceQ);
             sourceFilters[static_cast<std::size_t>(sourceIndex)][static_cast<std::size_t>(filterIndex)].setTargetSettings(runtimeFilter);
         }
     }

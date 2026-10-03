@@ -894,6 +894,8 @@ private:
     juce::AudioParameterChoice* filterRoutingParam { nullptr };
     juce::AudioParameterFloat* filterParallelBalanceParam { nullptr };
     std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterResonanceParams { { nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterKeyTrackParams { { nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterKeyTrackKeyParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCombTuneParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCombDecayParams { { nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kFilterInstanceCount> filterCombDampingParams { { nullptr, nullptr } };
