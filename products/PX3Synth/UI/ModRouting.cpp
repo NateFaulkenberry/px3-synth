@@ -272,9 +272,12 @@ void ModSourceSocket::paint(juce::Graphics& g)
     }
 }
 
-void ModSourceSocket::mouseDown(const juce::MouseEvent& e)
+void ModSourceSocket::mouseDown(const juce::MouseEvent&)
 {
-    controller.begin(source, e.getEventRelativeTo(&controller.getRoot()).position);
+    // The cable is plugged into the jack, so it starts at the jack's centre -
+    // not wherever on the socket the click happened to land.
+    const auto centre = jackBounds().getCentre();
+    controller.begin(source, controller.getRoot().getLocalPoint(this, centre));
 }
 
 void ModSourceSocket::mouseDrag(const juce::MouseEvent& e)

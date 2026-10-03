@@ -115,6 +115,24 @@ void testEditorLayout()
                   cutoff != nullptr && routed.source == 0 && routed.destination == "voice.filter1.cutoff"
                       && std::abs(processor.getGraphRouteDepthParam(0).get() - 0.5f) < 1.0e-6f);
 
+            {
+                // Pressing anywhere on a socket plugs the cable into the jack's
+                // centre, never the click point.
+                auto& socket = bar->getSocket(1);
+                const auto offCentre = juce::Point<float>(static_cast<float>(socket.getWidth() - 2), 2.0f);
+                socket.mouseDown(juce::MouseEvent(desktop.getMainMouseSource(), offCentre,
+                                                  juce::ModifierKeys(juce::ModifierKeys::leftButtonModifier),
+                                                  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &socket, &socket, now, offCentre, now, 1, false));
+                auto* controller = editor->debugModDragController();
+                const auto expected = controller->getRoot().getLocalPoint(&socket, socket.jackBounds().getCentre());
+                const auto startedAt = controller->getDragStart();
+                controller->cancel();
+                check("ModRouteUi_CableStartsAtTheJackCentreWhereverItIsPressed",
+                      startedAt.getDistanceFrom(expected) < 0.5f,
+                      "pressed at the socket's corner, cable starts " + juce::String(startedAt.getDistanceFrom(expected), 2)
+                          + " px from the jack centre");
+            }
+
             editor->debugRefreshModRouting();
             const auto rings = cutoff != nullptr ? cutoff->getProperties()[px3::knob_properties::modRings] : juce::var();
             check("ModRouteUi_RoutedKnobCarriesARingInTheSourceColour",

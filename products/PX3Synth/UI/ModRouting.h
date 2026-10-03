@@ -109,6 +109,7 @@ public:
     void cancel();
     bool isDragging() const noexcept { return dragSource >= 0; }
     int getDragSource() const noexcept { return dragSource; }
+    juce::Point<float> getDragStart() const noexcept { return start; }
 
     // The destination under a point of the root, or empty.
     juce::String destinationAt(juce::Point<int> rootPosition, juce::Component** target = nullptr) const;
