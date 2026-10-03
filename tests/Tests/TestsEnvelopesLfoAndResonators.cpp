@@ -239,8 +239,8 @@ void testAmpEnvelope()
         PX3SynthAudioProcessor loud, quiet;
         makePlainPatch(loud);
         makePlainPatch(quiet);
-        setParam(quiet, "ampSustain", 0.2f);
-        setParam(loud, "ampSustain", 1.0f);
+        setParam(quiet, "voice.amp.sustain", 0.2f);
+        setParam(loud, "voice.amp.sustain", 1.0f);
         const auto quietRms = render(quiet, 40000, { { 2000, true, 57, 0.9f } }).rmsOver(20000, 38000);
         const auto loudRms = render(loud, 40000, { { 2000, true, 57, 0.9f } }).rmsOver(20000, 38000);
         check("AmpEnvelope_SustainControlsSignalAmplitude",
@@ -253,7 +253,7 @@ void testAmpEnvelope()
         makePlainPatch(processor);
         // The AMP ADSR controls are deliberately excluded from the assignable
         // destination list; they are a VCA contour, not a modulation lane.
-        const auto assigned = processor.setLfoAssignmentByParameterId(0, "ampAttack", false);
+        const auto assigned = processor.setLfoAssignmentByParameterId(0, "voice.amp.attack", false);
         check("AmpEnvelope_AdsrIsNotAModulationDestination", ! assigned,
               "assigning an LFO to ampAttack must be rejected");
     }
@@ -493,8 +493,8 @@ void testModEnvelopes()
 
         const auto withAmpChanged = renderEnv1ToCutoff([](PX3SynthAudioProcessor& p)
         {
-            setParam(p, "ampAttack", 0.001f);
-            setParam(p, "ampDecay", 0.005f);
+            setParam(p, "voice.amp.attack", 0.001f);
+            setParam(p, "voice.amp.decay", 0.005f);
         });
         check("Env1_UnaffectedByAmpEnvelopeAdsrChanges",
               std::abs(controlA.rms() - withAmpChanged.rms())
@@ -969,7 +969,7 @@ void testVibe()
         makePlainPatch(processor);
         setParam(processor, "vibeEnabled", 1.0f);
         setParam(processor, "vibeAmount", 1.0f);
-        setParam(processor, "ampRelease", 0.100f);
+        setParam(processor, "voice.amp.release", 0.100f);
         const auto capture = render(processor, 96000,
                                     { { 2000, true, 57, 0.9f }, { 20000, false, 57, 0.0f } });
         const auto afterRelease = capture.rmsOver(60000, 95000);
@@ -1917,7 +1917,7 @@ void testComb()
             setParam(processor, "reverbEnabled", 0.0f);
             setParam(processor, "delayEnabled", 0.0f);
             setParam(processor, "moodEnabled", 0.0f);
-            setParam(processor, "ampSustain", 1.0f);
+            setParam(processor, "voice.amp.sustain", 1.0f);
             // Noise in, so the comb's resonance is what shapes the output
             // rather than the oscillator's own harmonics.
             setChoice(processor, "voice.osc1.mode", 4);

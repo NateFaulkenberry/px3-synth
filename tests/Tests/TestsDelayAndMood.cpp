@@ -385,8 +385,8 @@ void testDelay()
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 0);
-            setParam(processor, "ampSustain", 1.0f);
-            setParam(processor, "ampRelease", 0.05f);
+            setParam(processor, "voice.amp.sustain", 1.0f);
+            setParam(processor, "voice.amp.release", 0.05f);
 
             // The delay is on the FX BUS and makePlainPatch zeroes every send.
             // Without this the measurement sees dry signal only - which it did
@@ -468,9 +468,9 @@ void testDelay()
             setChoice(processor, "voice.osc1.mode", 11);          // FM bell, no low end
             setParam(processor, "voice.osc1.macro.a", 0.52f);
             setParam(processor, "voice.osc1.macro.b", 0.22f);
-            setParam(processor, "ampDecay", 0.55f);
-            setParam(processor, "ampSustain", 0.05f);
-            setParam(processor, "ampRelease", 0.70f);
+            setParam(processor, "voice.amp.decay", 0.55f);
+            setParam(processor, "voice.amp.sustain", 0.05f);
+            setParam(processor, "voice.amp.release", 0.70f);
             for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
                 setParam(processor, juce::String("mix.") + id + ".fxSend", 1.0f);
             setParam(processor, "fxSendGain", 1.0f);
@@ -548,8 +548,8 @@ void testDelay()
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 11);
-            setParam(processor, "ampSustain", 0.35f);
-            setParam(processor, "ampRelease", 0.70f);
+            setParam(processor, "voice.amp.sustain", 0.35f);
+            setParam(processor, "voice.amp.release", 0.70f);
             for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
                 setParam(processor, juce::String("mix.") + id + ".fxSend", 1.0f);
             setParam(processor, "fxSendGain", 1.0f);
@@ -2041,7 +2041,7 @@ void testEffectIndependence()
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
         setChoice(processor, "voice.osc1.mode", 1);
-        setParam(processor, "ampRelease", 0.020f);
+        setParam(processor, "voice.amp.release", 0.020f);
         setParam(processor, "mix.osc1.fxSend", 1.0f);
         setParam(processor, "fxSendGain", 1.0f);
         setParam(processor, "fxReturnGain", 1.0f);
@@ -2104,7 +2104,7 @@ void testEffectIndependence()
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 1);
-            setParam(processor, "ampSustain", 1.0f);
+            setParam(processor, "voice.amp.sustain", 1.0f);
 
             for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
                 setParam(processor, juce::String("mix.") + id + ".fxSend", 1.0f);

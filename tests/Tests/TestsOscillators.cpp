@@ -2756,7 +2756,7 @@ void testOscillators()
             // Same reason as makePlainPatch: these numbers are the MIXER's gain
             // structure, measured with every colour stage out of the way.
             setParam(processor, "analogEnabled", 0.0f);
-            setParam(processor, "ampSustain", 1.0f);
+            setParam(processor, "voice.amp.sustain", 1.0f);
             setChoice(processor, "voice.osc1.mode", 0);
             if (faderAtMaximum)
             {
@@ -2783,7 +2783,7 @@ void testOscillators()
             setParam(processor, "moodEnabled", 0.0f);
             setParam(processor, "voice.filter1.enabled", 0.0f);
             setParam(processor, "voice.filter2.enabled", 0.0f);
-            setParam(processor, "ampSustain", 1.0f);
+            setParam(processor, "voice.amp.sustain", 1.0f);
             setChoice(processor, "voice.osc1.mode", 0);
             configure(processor);
             return render(processor, 48000, { { 2000, true, 57, 0.9f } }).rmsOver(24000, 46000);
@@ -2816,7 +2816,7 @@ void testOscillators()
             setParam(processor, "voice.osc2.enabled", 0.0f);
             setParam(processor, "voice.osc3.enabled", 0.0f);
             setParam(processor, "voice.sub.enabled", 0.0f);
-            setParam(processor, "ampSustain", 1.0f);
+            setParam(processor, "voice.amp.sustain", 1.0f);
             setChoice(processor, "voice.osc1.mode", 0);
             setParam(processor, "voice.filter1.enabled", 0.0f);
             setParam(processor, "voice.filter2.enabled", 0.0f);

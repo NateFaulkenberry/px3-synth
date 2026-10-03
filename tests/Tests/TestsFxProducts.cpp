@@ -81,7 +81,7 @@ void testFxProducts()
         const auto returnLevel = [](bool switchLucyOn)
         {
             PX3SynthAudioProcessor processor;
-            setParam(processor, "ampRelease", 0.05f);
+            setParam(processor, "voice.amp.release", 0.05f);
             for (const auto* id : { "vibeEnabled", "delayEnabled", "reverbEnabled", "moodEnabled",
                                     "doomEnabled", "chorusEnabled", "spreadEnabled" })
             {

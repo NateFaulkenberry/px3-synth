@@ -527,11 +527,11 @@ struct ScopedAnimationPreference
 
 inline void makePlainPatch(PX3SynthAudioProcessor& processor)
 {
-    setParam(processor, "ampAttack", 0.001f);
-    setParam(processor, "ampDecay", 0.005f);
-    setParam(processor, "ampSustain", 1.0f);
-    setParam(processor, "ampRelease", 0.050f);
-    setParam(processor, "ampEnvEnabled", 1.0f);
+    setParam(processor, "voice.amp.attack", 0.001f);
+    setParam(processor, "voice.amp.decay", 0.005f);
+    setParam(processor, "voice.amp.sustain", 1.0f);
+    setParam(processor, "voice.amp.release", 0.050f);
+    setParam(processor, "voice.amp.enabled", 1.0f);
     setParam(processor, "masterGain", 0.6f);
 
     // The analog console is a colour stage, and "plain" means no colour. It

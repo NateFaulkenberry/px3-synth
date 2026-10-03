@@ -122,11 +122,11 @@ struct Timing
 
 void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
 {
-    setParameter(processor, "ampAttack", 0.005f);
-    setParameter(processor, "ampDecay", 0.100f);
-    setParameter(processor, "ampSustain", 1.0f);
-    setParameter(processor, "ampRelease", scenario.longRelease ? 6.0f : 0.200f);
-    setParameter(processor, "ampEnvEnabled", 1.0f);
+    setParameter(processor, "voice.amp.attack", 0.005f);
+    setParameter(processor, "voice.amp.decay", 0.100f);
+    setParameter(processor, "voice.amp.sustain", 1.0f);
+    setParameter(processor, "voice.amp.release", scenario.longRelease ? 6.0f : 0.200f);
+    setParameter(processor, "voice.amp.enabled", 1.0f);
     setParameter(processor, "masterGain", 0.6f);
 
     setParameter(processor, "osc1Enabled", 1.0f);

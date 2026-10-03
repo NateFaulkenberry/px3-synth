@@ -308,11 +308,11 @@ struct PatchOptions
 
 void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
 {
-    setParameter(processor, "ampAttack", patch.attack);
-    setParameter(processor, "ampDecay", patch.decay);
-    setParameter(processor, "ampSustain", patch.sustain);
-    setParameter(processor, "ampRelease", patch.release);
-    setParameter(processor, "ampEnvEnabled", 1.0f);
+    setParameter(processor, "voice.amp.attack", patch.attack);
+    setParameter(processor, "voice.amp.decay", patch.decay);
+    setParameter(processor, "voice.amp.sustain", patch.sustain);
+    setParameter(processor, "voice.amp.release", patch.release);
+    setParameter(processor, "voice.amp.enabled", 1.0f);
     setParameter(processor, "vibeEnabled", patch.vibeEnabled ? 1.0f : 0.0f);
     setParameter(processor, "vibeAmount", patch.vibeAmount);
     setParameter(processor, "delayEnabled", patch.fxEnabled ? 1.0f : 0.0f);
@@ -656,11 +656,11 @@ double measureVoiceFilterPeak(const FilterSynthConfig& config)
     px3::diag::resetNoteStartSequence();
     PX3SynthAudioProcessor processor;
 
-    setParameter(processor, "ampAttack", 0.005f);
-    setParameter(processor, "ampDecay", 0.050f);
-    setParameter(processor, "ampSustain", 1.0f);
-    setParameter(processor, "ampRelease", 0.100f);
-    setParameter(processor, "ampEnvEnabled", 1.0f);
+    setParameter(processor, "voice.amp.attack", 0.005f);
+    setParameter(processor, "voice.amp.decay", 0.050f);
+    setParameter(processor, "voice.amp.sustain", 1.0f);
+    setParameter(processor, "voice.amp.release", 0.100f);
+    setParameter(processor, "voice.amp.enabled", 1.0f);
     setParameter(processor, "vibeAmount", 0.0f);
     setParameter(processor, "delayEnabled", 0.0f);
     setParameter(processor, "reverbEnabled", 0.0f);
@@ -759,10 +759,10 @@ std::vector<float> renderFilterNoteTrace(int midiNote, bool precedeWithOtherNote
 {
     px3::diag::resetNoteStartSequence();
     PX3SynthAudioProcessor processor;
-    setParameter(processor, "ampAttack", 0.005f);
-    setParameter(processor, "ampDecay", 0.050f);
-    setParameter(processor, "ampSustain", 1.0f);
-    setParameter(processor, "ampRelease", 0.050f);
+    setParameter(processor, "voice.amp.attack", 0.005f);
+    setParameter(processor, "voice.amp.decay", 0.050f);
+    setParameter(processor, "voice.amp.sustain", 1.0f);
+    setParameter(processor, "voice.amp.release", 0.050f);
     setParameter(processor, "delayEnabled", 0.0f);
     setParameter(processor, "reverbEnabled", 0.0f);
     setParameter(processor, "moodEnabled", 0.0f);
@@ -864,11 +864,11 @@ MixerMeasurement measureMixer(const MixerConfig& config)
     PX3SynthAudioProcessor processor;
 
     // Deterministic, unambiguous source material: a plain sine on every source.
-    setParameter(processor, "ampAttack", 0.005f);
-    setParameter(processor, "ampDecay", 0.100f);
-    setParameter(processor, "ampSustain", 1.0f);
-    setParameter(processor, "ampRelease", 0.200f);
-    setParameter(processor, "ampEnvEnabled", 1.0f);
+    setParameter(processor, "voice.amp.attack", 0.005f);
+    setParameter(processor, "voice.amp.decay", 0.100f);
+    setParameter(processor, "voice.amp.sustain", 1.0f);
+    setParameter(processor, "voice.amp.release", 0.200f);
+    setParameter(processor, "voice.amp.enabled", 1.0f);
     setParameter(processor, "vibeAmount", 0.0f);
     setParameter(processor, "masterGain", 0.6f);
 
@@ -975,11 +975,11 @@ MixerDynamicResult measureMixerDynamics(const juce::String& paramId,
     px3::diag::resetNoteStartSequence();
     PX3SynthAudioProcessor processor;
 
-    setParameter(processor, "ampAttack", 0.005f);
-    setParameter(processor, "ampDecay", 0.100f);
-    setParameter(processor, "ampSustain", 1.0f);
-    setParameter(processor, "ampRelease", 0.150f);
-    setParameter(processor, "ampEnvEnabled", 1.0f);
+    setParameter(processor, "voice.amp.attack", 0.005f);
+    setParameter(processor, "voice.amp.decay", 0.100f);
+    setParameter(processor, "voice.amp.sustain", 1.0f);
+    setParameter(processor, "voice.amp.release", 0.150f);
+    setParameter(processor, "voice.amp.enabled", 1.0f);
     setParameter(processor, "vibeAmount", 0.0f);
     setParameter(processor, "masterGain", 0.6f);
     setParameter(processor, "delayEnabled", 0.0f);
@@ -2307,9 +2307,9 @@ int main(int argc, char* argv[])
         {
             px3::diag::resetNoteStartSequence();
             PX3SynthAudioProcessor processor;
-            setParameter(processor, "ampAttack", 0.005f);
-            setParameter(processor, "ampSustain", 1.0f);
-            setParameter(processor, "ampRelease", 0.3f);
+            setParameter(processor, "voice.amp.attack", 0.005f);
+            setParameter(processor, "voice.amp.sustain", 1.0f);
+            setParameter(processor, "voice.amp.release", 0.3f);
             setParameter(processor, "delayEnabled", fxOn ? 1.0f : 0.0f);
             setParameter(processor, "reverbEnabled", fxOn ? 1.0f : 0.0f);
             setParameter(processor, "moodEnabled", fxOn ? 1.0f : 0.0f);
@@ -2329,7 +2329,7 @@ int main(int argc, char* argv[])
             setParameter(processor, "analogEnabled", fxOn ? 1.0f : 0.0f);
             setParameter(processor, "analogProfile", fxOn ? 0.25f : 0.0f);
 
-            setParameter(processor, "ampRelease", releaseVoices ? 3.0f : 0.2f);
+            setParameter(processor, "voice.amp.release", releaseVoices ? 3.0f : 0.2f);
             setParameter(processor, "filter1Enabled", filtersOn ? 1.0f : 0.0f);
             setParameter(processor, "filter2Enabled", filtersOn ? 1.0f : 0.0f);
             setParameter(processor, "filter1Cutoff", 1200.0f);
@@ -2565,7 +2565,7 @@ int main(int argc, char* argv[])
 
         phase("sustained: 20000 blocks at max polyphony", [&]{
             PX3SynthAudioProcessor p;
-            setParameter(p, "ampRelease", 3.0f);
+            setParameter(p, "voice.amp.release", 3.0f);
             setParameter(p, "filter1Enabled", 1.0f);
             setParameter(p, "filter2Enabled", 1.0f);
             p.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
@@ -2584,7 +2584,7 @@ int main(int argc, char* argv[])
 
         phase("sustained again (same work, must not grow)", [&]{
             PX3SynthAudioProcessor p;
-            setParameter(p, "ampRelease", 3.0f);
+            setParameter(p, "voice.amp.release", 3.0f);
             setParameter(p, "filter1Enabled", 1.0f);
             setParameter(p, "filter2Enabled", 1.0f);
             p.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
@@ -2660,9 +2660,9 @@ int main(int argc, char* argv[])
         {
             px3::diag::resetNoteStartSequence();
             PX3SynthAudioProcessor processor;
-            setParameter(processor, "ampAttack", 0.005f);
-            setParameter(processor, "ampSustain", 1.0f);
-            setParameter(processor, "ampRelease", 0.2f);
+            setParameter(processor, "voice.amp.attack", 0.005f);
+            setParameter(processor, "voice.amp.sustain", 1.0f);
+            setParameter(processor, "voice.amp.release", 0.2f);
             setParameter(processor, "delayEnabled", 0.0f);
             setParameter(processor, "reverbEnabled", 0.0f);
             setParameter(processor, "moodEnabled", 0.0f);
@@ -3179,9 +3179,9 @@ int main(int argc, char* argv[])
             // Voice stealing: hammer well past polyphony and require stability.
             px3::diag::resetNoteStartSequence();
             PX3SynthAudioProcessor processor;
-            setParameter(processor, "ampAttack", 0.002f);
-            setParameter(processor, "ampSustain", 1.0f);
-            setParameter(processor, "ampRelease", 3.0f);
+            setParameter(processor, "voice.amp.attack", 0.002f);
+            setParameter(processor, "voice.amp.sustain", 1.0f);
+            setParameter(processor, "voice.amp.release", 3.0f);
             setParameter(processor, "filter1Enabled", 1.0f);
             setParameter(processor, "filter1Cutoff", 300.0f);
             setParameter(processor, "filter1Resonance", 2.2f);
@@ -3686,9 +3686,9 @@ int main(int argc, char* argv[])
             {
                 px3::diag::resetNoteStartSequence();
                 PX3SynthAudioProcessor processor;
-                setParameter(processor, "ampAttack", 0.005f);
-                setParameter(processor, "ampSustain", 1.0f);
-                setParameter(processor, "ampRelease", 0.2f);
+                setParameter(processor, "voice.amp.attack", 0.005f);
+                setParameter(processor, "voice.amp.sustain", 1.0f);
+                setParameter(processor, "voice.amp.release", 0.2f);
                 setParameter(processor, "delayEnabled", 0.0f);
                 setParameter(processor, "moodEnabled", 0.0f);
                 setParameter(processor, "reverbEnabled", 0.0f);
@@ -3762,9 +3762,9 @@ int main(int argc, char* argv[])
             {
                 px3::diag::resetNoteStartSequence();
                 PX3SynthAudioProcessor processor;
-                setParameter(processor, "ampAttack", 0.005f);
-                setParameter(processor, "ampSustain", 0.8f);
-                setParameter(processor, "ampRelease", release);
+                setParameter(processor, "voice.amp.attack", 0.005f);
+                setParameter(processor, "voice.amp.sustain", 0.8f);
+                setParameter(processor, "voice.amp.release", release);
                 setParameter(processor, "delayEnabled", 0.0f);
                 setParameter(processor, "moodEnabled", 0.0f);
                 setParameter(processor, "reverbEnabled", 0.0f);

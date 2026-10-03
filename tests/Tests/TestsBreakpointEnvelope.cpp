@@ -1877,8 +1877,8 @@ void testBreakpointEnvelope()
         for (int slot = 1; slot < 4; ++slot)
         {
             const juce::String prefix = "env" + juce::String(slot);
-            const auto attackId = slot == 0 ? juce::String("ampAttack") : prefix + "Attack";
-            const auto sustainId = slot == 0 ? juce::String("ampSustain") : prefix + "Sustain";
+            const auto attackId = slot == 0 ? juce::String("voice.amp.attack") : prefix + "Attack";
+            const auto sustainId = slot == 0 ? juce::String("voice.amp.sustain") : prefix + "Sustain";
 
             const auto attackWanted = 0.080f + 0.020f * static_cast<float>(slot);
             const auto sustainWanted = 0.30f + 0.10f * static_cast<float>(slot);
@@ -1967,7 +1967,7 @@ void testBreakpointEnvelope()
 
         // AMP ENV has nothing to round-trip: asked repeatedly for Breakpoint,
         // it stays ADSR and keeps the shape it had.
-        setParam(processor, "ampAttack", 0.135f);
+        setParam(processor, "voice.amp.attack", 0.135f);
         {
             auto bent = processor.getShapedEnvelope(0);
             bent.setCurve(1, -0.55);
@@ -2888,10 +2888,10 @@ void testBreakpointEnvelope()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setParam(processor, "ampAttack", attack);
-            setParam(processor, "ampDecay", decay);
-            setParam(processor, "ampSustain", sustain);
-            setParam(processor, "ampRelease", release);
+            setParam(processor, "voice.amp.attack", attack);
+            setParam(processor, "voice.amp.decay", decay);
+            setParam(processor, "voice.amp.sustain", sustain);
+            setParam(processor, "voice.amp.release", release);
 
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
@@ -3237,10 +3237,10 @@ void testBreakpointEnvelope()
 
         // Deliberately all different, so any bleed shows up as a wrong number
         // rather than a coincidence.
-        setParam(processor, "ampAttack", 0.100f);
-        setParam(processor, "ampDecay", 0.110f);
-        setParam(processor, "ampSustain", 0.120f);
-        setParam(processor, "ampRelease", 0.130f);
+        setParam(processor, "voice.amp.attack", 0.100f);
+        setParam(processor, "voice.amp.decay", 0.110f);
+        setParam(processor, "voice.amp.sustain", 0.120f);
+        setParam(processor, "voice.amp.release", 0.130f);
 
         for (int env = 1; env <= 3; ++env)
         {
@@ -3603,8 +3603,8 @@ void testBreakpointEnvelope()
         constexpr int kBlock = 256;
 
         PX3SynthAudioProcessor processor;
-        setParam(processor, "ampAttack", 1.000f);
-        setParam(processor, "ampDecay", 1.000f);   // AMP sustains at 2.0 s
+        setParam(processor, "voice.amp.attack", 1.000f);
+        setParam(processor, "voice.amp.decay", 1.000f);   // AMP sustains at 2.0 s
 
         const float attacks[3] = { 0.200f, 0.400f, 0.800f };
         const float decays[3] = { 0.100f, 0.200f, 0.400f };
@@ -3621,8 +3621,8 @@ void testBreakpointEnvelope()
         juce::AudioBuffer<float> buffer(2, kBlock);
         juce::MidiBuffer empty;
 
-        setParam(processor, "ampSustain", 0.60f);
-        setParam(processor, "ampRelease", 0.100f);
+        setParam(processor, "voice.amp.sustain", 0.60f);
+        setParam(processor, "voice.amp.release", 0.100f);
 
         juce::MidiBuffer midi;
         midi.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
@@ -3989,8 +3989,8 @@ void testBreakpointEnvelope()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setParam(processor, "ampAttack", 0.010f);
-        setParam(processor, "ampSustain", 1.00f);
+        setParam(processor, "voice.amp.attack", 0.010f);
+        setParam(processor, "voice.amp.sustain", 1.00f);
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -4087,10 +4087,10 @@ void testBreakpointEnvelope()
         //
         // The defect was startNote rebuilding from the ADSR settings instead of
         // playing that shape, which starts a four second attack at full level.
-        setParam(processor, "ampAttack", 0.012f);
-        setParam(processor, "ampDecay", 0.100f);
-        setParam(processor, "ampSustain", 1.00f);
-        setParam(processor, "ampRelease", 0.500f);
+        setParam(processor, "voice.amp.attack", 0.012f);
+        setParam(processor, "voice.amp.decay", 0.100f);
+        setParam(processor, "voice.amp.sustain", 1.00f);
+        setParam(processor, "voice.amp.release", 0.500f);
 
         EnvelopeSettings slow;
         slow.attackSeconds = 4.000f;
@@ -4104,10 +4104,10 @@ void testBreakpointEnvelope()
         // still owns alone is its CURVES - so the long attack is asked for
         // through the parameters, and the bend is what a note-on must not
         // throw away.
-        setParam(processor, "ampAttack", 4.000f);
-        setParam(processor, "ampDecay", 0.100f);
-        setParam(processor, "ampSustain", 1.00f);
-        setParam(processor, "ampRelease", 0.500f);
+        setParam(processor, "voice.amp.attack", 4.000f);
+        setParam(processor, "voice.amp.decay", 0.100f);
+        setParam(processor, "voice.amp.sustain", 1.00f);
+        setParam(processor, "voice.amp.release", 0.500f);
         juce::ignoreUnused(slow);
 
         auto shaped = px3::BreakpointEnvelope::fromAdsr(slow);
@@ -4183,10 +4183,10 @@ void testBreakpointEnvelope()
         setParam(processor, "moodEnabled", 0.0f);
         setParam(processor, "vibeEnabled", 0.0f);
         setChoice(processor, "voice.osc1.mode", 0);
-        setParam(processor, "ampAttack", 4.000f);
-        setParam(processor, "ampDecay", 0.100f);
-        setParam(processor, "ampSustain", 1.00f);
-        setParam(processor, "ampRelease", 0.500f);
+        setParam(processor, "voice.amp.attack", 4.000f);
+        setParam(processor, "voice.amp.decay", 0.100f);
+        setParam(processor, "voice.amp.sustain", 1.00f);
+        setParam(processor, "voice.amp.release", 0.500f);
 
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);

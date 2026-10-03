@@ -13,11 +13,11 @@ namespace px3tests
 // mis-maps any of them is visible.
 void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
 {
-    setParam(processor, "ampAttack", 0.731f);
-    setParam(processor, "ampDecay", 1.234f);
-    setParam(processor, "ampSustain", 0.371f);
-    setParam(processor, "ampRelease", 2.510f);
-    setParam(processor, "ampEnvEnabled", 1.0f);
+    setParam(processor, "voice.amp.attack", 0.731f);
+    setParam(processor, "voice.amp.decay", 1.234f);
+    setParam(processor, "voice.amp.sustain", 0.371f);
+    setParam(processor, "voice.amp.release", 2.510f);
+    setParam(processor, "voice.amp.enabled", 1.0f);
     setParam(processor, "masterGain", 0.83f);
     setParam(processor, "pitchBendRange", 7.0f);
 
@@ -746,7 +746,7 @@ void testIntegration()
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
         setChoice(processor, "voice.osc1.mode", 0);
-        setParam(processor, "ampRelease", 0.020f);
+        setParam(processor, "voice.amp.release", 0.020f);
         const auto capture = render(processor, 96000,
                                     { { 2000, true, 57, 0.9f },
                                       { 20000, false, 57, 0.0f },
@@ -771,7 +771,7 @@ void testIntegration()
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 0);
-            setParam(processor, "ampRelease", 0.300f);
+            setParam(processor, "voice.amp.release", 0.300f);
             std::vector<NoteEvent> events { { 2000, true, 57, 0.9f } };
             if (withSecondVoice)
             {
@@ -810,7 +810,7 @@ void testIntegration()
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 0);
-            setParam(processor, "ampRelease", 0.300f);
+            setParam(processor, "voice.amp.release", 0.300f);
             std::vector<NoteEvent> events { { 2000, true, 57, 0.9f } };
             if (withSecondVoice)
             {
@@ -837,7 +837,7 @@ void testIntegration()
         setParam(processor, "voice.osc2.enabled", 1.0f);
         setParam(processor, "voice.osc3.enabled", 1.0f);
         setParam(processor, "voice.sub.enabled", 1.0f);
-        setParam(processor, "ampRelease", 3.0f);
+        setParam(processor, "voice.amp.release", 3.0f);
         std::vector<NoteEvent> events;
         for (int voice = 0; voice < 64; ++voice)
         {
@@ -920,7 +920,7 @@ void testIntegration()
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
         setChoice(processor, "voice.osc1.mode", 1);
-        setParam(processor, "ampRelease", 4.0f);
+        setParam(processor, "voice.amp.release", 4.0f);
         std::vector<NoteEvent> events;
         for (int note = 0; note < 200; ++note)
         {
@@ -944,17 +944,17 @@ void testIntegration()
               } },
             { "ShortestEnvelopes", [](PX3SynthAudioProcessor& p)
               {
-                  setParam(p, "ampAttack", 0.001f);
-                  setParam(p, "ampDecay", 0.005f);
-                  setParam(p, "ampSustain", 0.0f);
-                  setParam(p, "ampRelease", 0.010f);
+                  setParam(p, "voice.amp.attack", 0.001f);
+                  setParam(p, "voice.amp.decay", 0.005f);
+                  setParam(p, "voice.amp.sustain", 0.0f);
+                  setParam(p, "voice.amp.release", 0.010f);
               } },
             { "LongestEnvelopes", [](PX3SynthAudioProcessor& p)
               {
-                  setParam(p, "ampAttack", 3.0f);
-                  setParam(p, "ampDecay", 4.0f);
-                  setParam(p, "ampSustain", 1.0f);
-                  setParam(p, "ampRelease", 5.0f);
+                  setParam(p, "voice.amp.attack", 3.0f);
+                  setParam(p, "voice.amp.decay", 4.0f);
+                  setParam(p, "voice.amp.sustain", 1.0f);
+                  setParam(p, "voice.amp.release", 5.0f);
               } },
             { "MaximumResonanceBothFilters", [](PX3SynthAudioProcessor& p)
               {
@@ -1124,7 +1124,7 @@ void testIntegration()
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
         setChoice(processor, "voice.osc1.mode", 1);
-        setParam(processor, "ampRelease", 1.0f);
+        setParam(processor, "voice.amp.release", 1.0f);
         std::vector<NoteEvent> events;
         for (int note = 0; note < 24; ++note)
         {

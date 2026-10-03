@@ -357,11 +357,11 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     auto serializedSustain = sustainParam->get();
     auto serializedRelease = releaseParam->get();
     auto serializedAmpEnvEnabled = ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true;
-    if (state.hasProperty("ampAttack")) serializedAttack = static_cast<float>(state["ampAttack"]);
-    if (state.hasProperty("ampDecay")) serializedDecay = static_cast<float>(state["ampDecay"]);
-    if (state.hasProperty("ampSustain")) serializedSustain = static_cast<float>(state["ampSustain"]);
-    if (state.hasProperty("ampRelease")) serializedRelease = static_cast<float>(state["ampRelease"]);
-    if (state.hasProperty("ampEnvEnabled")) serializedAmpEnvEnabled = static_cast<bool>(state["ampEnvEnabled"]);
+    if (state.hasProperty("voice.amp.attack")) serializedAttack = static_cast<float>(state["voice.amp.attack"]);
+    if (state.hasProperty("voice.amp.decay")) serializedDecay = static_cast<float>(state["voice.amp.decay"]);
+    if (state.hasProperty("voice.amp.sustain")) serializedSustain = static_cast<float>(state["voice.amp.sustain"]);
+    if (state.hasProperty("voice.amp.release")) serializedRelease = static_cast<float>(state["voice.amp.release"]);
+    if (state.hasProperty("voice.amp.enabled")) serializedAmpEnvEnabled = static_cast<bool>(state["voice.amp.enabled"]);
 
     const auto attackMatches = std::abs(serializedAttack - attackParam->get()) <= 0.0005f;
     const auto decayMatches = std::abs(serializedDecay - decayParam->get()) <= 0.0005f;

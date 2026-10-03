@@ -133,6 +133,17 @@ void testEcosystem()
               juce::String(static_cast<int>(catalog.entries().size())) + " catalog entries / "
                   + juce::String(processor.getParameters().size()) + " host parameters");
 
+        const auto* ampAttack = catalog.find("voice.amp.attack");
+        const auto* filterCutoff = catalog.find("voice.filter1.cutoff");
+        const auto* filterRouting = catalog.find("voice.filters.routing.mode");
+        check("ParameterCatalog_AmpAndFiltersUseCanonicalIdsWithoutAliases",
+              ampAttack != nullptr && ampAttack->groupPath == "VOICE / AMP ENVELOPE"
+                  && catalog.find("voice.amp.enabled") != nullptr
+                  && filterCutoff != nullptr && filterCutoff->groupPath == "VOICE / FILTER 1"
+                  && filterRouting != nullptr && filterRouting->groupPath == "VOICE / FILTERS / ROUTING"
+                  && catalog.find("ampAttack") == nullptr && catalog.find("ampEnvEnabled") == nullptr
+                  && catalog.find("filter1Cutoff") == nullptr && catalog.find("filterRouting") == nullptr);
+
         check("ParameterCatalog_SerializesCompleteGroupedNormalizedState",
               stateValid && stateValues.size() == catalog.entries().size()
                   && coarseState.isValid() && coarseState.getParent().getProperty("id").toString() == "osc1"

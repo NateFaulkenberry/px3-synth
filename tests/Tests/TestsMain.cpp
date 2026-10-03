@@ -438,11 +438,11 @@ int main(int argc, char* argv[])
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setParam(processor, "ampAttack", attack);
+            setParam(processor, "voice.amp.attack", attack);
             juce::ignoreUnused(hold);   // AMP ENV has no hold stage
-            setParam(processor, "ampDecay", decay);
-            setParam(processor, "ampSustain", sustain);
-            setParam(processor, "ampRelease", release);
+            setParam(processor, "voice.amp.decay", decay);
+            setParam(processor, "voice.amp.sustain", sustain);
+            setParam(processor, "voice.amp.release", release);
 
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
@@ -591,10 +591,10 @@ int main(int argc, char* argv[])
             // makePlainPatch turns off most of the instrument - so a transient
             // that only the full signal path produces is invisible under it.
             if (plain) { makePlainPatch(processor); }
-            setParam(processor, "ampAttack", attack);
-            setParam(processor, "ampDecay", 0.100f);
-            setParam(processor, "ampSustain", 1.00f);
-            setParam(processor, "ampRelease", 0.100f);
+            setParam(processor, "voice.amp.attack", attack);
+            setParam(processor, "voice.amp.decay", 0.100f);
+            setParam(processor, "voice.amp.sustain", 1.00f);
+            setParam(processor, "voice.amp.release", 0.100f);
 
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
@@ -663,10 +663,10 @@ int main(int argc, char* argv[])
         for (const auto gapSeconds : { 0.05, 0.20, 0.60 })
         {
             PX3SynthAudioProcessor processor;
-            setParam(processor, "ampAttack", 1.000f);
-            setParam(processor, "ampDecay", 0.100f);
-            setParam(processor, "ampSustain", 1.00f);
-            setParam(processor, "ampRelease", 0.500f);
+            setParam(processor, "voice.amp.attack", 1.000f);
+            setParam(processor, "voice.amp.decay", 0.100f);
+            setParam(processor, "voice.amp.sustain", 1.00f);
+            setParam(processor, "voice.amp.release", 0.500f);
 
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
@@ -771,10 +771,10 @@ int main(int argc, char* argv[])
         for (const auto velocity : { 1.0f, 0.35f })
         {
             PX3SynthAudioProcessor processor;
-            setParam(processor, "ampAttack", 1.000f);
-            setParam(processor, "ampDecay", 0.100f);
-            setParam(processor, "ampSustain", 1.00f);
-            setParam(processor, "ampRelease", 0.100f);
+            setParam(processor, "voice.amp.attack", 1.000f);
+            setParam(processor, "voice.amp.decay", 0.100f);
+            setParam(processor, "voice.amp.sustain", 1.00f);
+            setParam(processor, "voice.amp.release", 0.100f);
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -835,10 +835,10 @@ int main(int argc, char* argv[])
         for (int mode = 0; mode < px3::oscillatorModeChoices().size(); ++mode)
         {
             PX3SynthAudioProcessor processor;
-            setParam(processor, "ampAttack", 1.000f);
-            setParam(processor, "ampDecay", 0.100f);
-            setParam(processor, "ampSustain", 1.00f);
-            setParam(processor, "ampRelease", 0.100f);
+            setParam(processor, "voice.amp.attack", 1.000f);
+            setParam(processor, "voice.amp.decay", 0.100f);
+            setParam(processor, "voice.amp.sustain", 1.00f);
+            setParam(processor, "voice.amp.release", 0.100f);
             setChoice(processor, "voice.osc1.mode", mode);
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
@@ -906,10 +906,10 @@ int main(int argc, char* argv[])
             }
 
             setChoice(processor, "voice.osc1.mode", 0);           // SINE
-            setParam(processor, "ampAttack", 4.000f);
-            setParam(processor, "ampDecay", 0.100f);
-            setParam(processor, "ampSustain", 1.00f);
-            setParam(processor, "ampRelease", 0.500f);
+            setParam(processor, "voice.amp.attack", 4.000f);
+            setParam(processor, "voice.amp.decay", 0.100f);
+            setParam(processor, "voice.amp.sustain", 1.00f);
+            setParam(processor, "voice.amp.release", 0.500f);
 
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
@@ -1033,10 +1033,10 @@ int main(int argc, char* argv[])
                 setParam(other, "moodEnabled", 0.0f);
                 setParam(other, "vibeEnabled", 0.0f);
                 setChoice(other, "voice.osc1.mode", 0);
-                setParam(other, "ampAttack", 4.000f);
-                setParam(other, "ampDecay", 0.100f);
-                setParam(other, "ampSustain", 1.00f);
-                setParam(other, "ampRelease", 0.500f);
+                setParam(other, "voice.amp.attack", 4.000f);
+                setParam(other, "voice.amp.decay", 0.100f);
+                setParam(other, "voice.amp.sustain", 1.00f);
+                setParam(other, "voice.amp.release", 0.500f);
 
                 other.setPlayConfigDetails(0, 2, kSampleRate, block);
                 other.prepareToPlay(kSampleRate, block);
@@ -1117,10 +1117,10 @@ int main(int argc, char* argv[])
             setParam(processor, "moodEnabled", 0.0f);
             setParam(processor, "vibeEnabled", 0.0f);
             setChoice(processor, "voice.osc1.mode", 0);
-            setParam(processor, "ampAttack", 4.000f);
-            setParam(processor, "ampDecay", 0.100f);
-            setParam(processor, "ampSustain", 1.00f);
-            setParam(processor, "ampRelease", 0.500f);
+            setParam(processor, "voice.amp.attack", 4.000f);
+            setParam(processor, "voice.amp.decay", 0.100f);
+            setParam(processor, "voice.amp.sustain", 1.00f);
+            setParam(processor, "voice.amp.release", 0.500f);
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -1166,10 +1166,10 @@ int main(int argc, char* argv[])
             setParam(processor, "moodEnabled", 0.0f);
             setParam(processor, "vibeEnabled", 0.0f);
             setChoice(processor, "voice.osc1.mode", 0);
-            setParam(processor, "ampAttack", 4.000f);
-            setParam(processor, "ampDecay", 0.100f);
-            setParam(processor, "ampSustain", 1.00f);
-            setParam(processor, "ampRelease", 0.500f);
+            setParam(processor, "voice.amp.attack", 4.000f);
+            setParam(processor, "voice.amp.decay", 0.100f);
+            setParam(processor, "voice.amp.sustain", 1.00f);
+            setParam(processor, "voice.amp.release", 0.500f);
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -1229,10 +1229,10 @@ int main(int argc, char* argv[])
             setParam(processor, "moodEnabled", 0.0f);
             setParam(processor, "vibeEnabled", 0.0f);
             setChoice(processor, "voice.osc1.mode", 0);
-            setParam(processor, "ampAttack", 4.000f);
-            setParam(processor, "ampDecay", 0.100f);
-            setParam(processor, "ampSustain", 1.00f);
-            setParam(processor, "ampRelease", 0.500f);
+            setParam(processor, "voice.amp.attack", 4.000f);
+            setParam(processor, "voice.amp.decay", 0.100f);
+            setParam(processor, "voice.amp.sustain", 1.00f);
+            setParam(processor, "voice.amp.release", 0.500f);
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -1304,10 +1304,10 @@ int main(int argc, char* argv[])
                 setParam(processor, "moodEnabled", 0.0f);
                 setParam(processor, "vibeEnabled", 0.0f);
                 setChoice(processor, "voice.osc1.mode", 0);
-                setParam(processor, "ampAttack", 4.000f);
-                setParam(processor, "ampDecay", 0.100f);
-                setParam(processor, "ampSustain", 1.00f);
-                setParam(processor, "ampRelease", 0.500f);
+                setParam(processor, "voice.amp.attack", 4.000f);
+                setParam(processor, "voice.amp.decay", 0.100f);
+                setParam(processor, "voice.amp.sustain", 1.00f);
+                setParam(processor, "voice.amp.release", 0.500f);
                 processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
                 processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -1356,9 +1356,9 @@ int main(int argc, char* argv[])
                 setParam(processor, "moodEnabled", 0.0f);
                 setParam(processor, "vibeEnabled", 0.0f);
                 setChoice(processor, "voice.osc1.mode", 0);
-                setParam(processor, "ampAttack", 4.000f);
-                setParam(processor, "ampSustain", 1.00f);
-                setParam(processor, "ampRelease", 0.500f);
+                setParam(processor, "voice.amp.attack", 4.000f);
+                setParam(processor, "voice.amp.sustain", 1.00f);
+                setParam(processor, "voice.amp.release", 0.500f);
                 processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
                 processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -2535,7 +2535,7 @@ int main(int argc, char* argv[])
             setParam(processor, "moodEnabled", 0.0f);
             setParam(processor, "voice.filter1.enabled", 0.0f);
             setParam(processor, "voice.filter2.enabled", 0.0f);
-            setParam(processor, "ampSustain", 1.0f);
+            setParam(processor, "voice.amp.sustain", 1.0f);
             setChoice(processor, "voice.osc1.mode", 0);
             if (juce::String(label) == "maximum")
             {

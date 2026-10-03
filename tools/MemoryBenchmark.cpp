@@ -227,7 +227,7 @@ void exerciseInstance(Instance& instance, Scenario scenario, double sampleRate, 
     // Nothing here reaches into the DSP - it only sets the parameters a user
     // would set, so the allocations are the ones the plugin really makes.
     for (const auto& id : { "vibeEnabled", "delayEnabled", "reverbEnabled",
-                            "moodEnabled", "subOscEnabled", "ampEnvEnabled" })
+                            "moodEnabled", "subOscEnabled", "voice.amp.enabled" })
     {
         setParameterById(processor, id, 1.0f);
     }

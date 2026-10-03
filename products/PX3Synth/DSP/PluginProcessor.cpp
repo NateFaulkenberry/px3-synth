@@ -307,7 +307,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     // is why state version 12 migrates older envelope times on load.
     const juce::NormalisableRange<float> envelopeTimeRange(0.0f, 40.0f, 0.001f, 0.188f);
 
-    attackParam = new juce::AudioParameterFloat("ampAttack",
+    attackParam = new juce::AudioParameterFloat("voice.amp.attack",
                                                  "Amp Attack",
                                                  envelopeTimeRange,
                                                  // Fast enough to stay percussive,
@@ -319,21 +319,21 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     // stage of no length - the envelope steps from the peak to the sustain -
     // and a floor here would quietly give it back a length the graph is not
     // showing. Same for attack and release below.
-    decayParam = new juce::AudioParameterFloat("ampDecay",
+    decayParam = new juce::AudioParameterFloat("voice.amp.decay",
                                                 "Amp Decay",
                                                 envelopeTimeRange,
                                                 0.300f);
-    sustainParam = new juce::AudioParameterFloat("ampSustain",
+    sustainParam = new juce::AudioParameterFloat("voice.amp.sustain",
                                                   "Amp Sustain",
                                                   juce::NormalisableRange<float>(0.0f, 1.0f),
                                                   0.8f);
-    releaseParam = new juce::AudioParameterFloat("ampRelease",
+    releaseParam = new juce::AudioParameterFloat("voice.amp.release",
                                                   "Amp Release",
                                                   envelopeTimeRange,
                                                   // Long enough that a released note
                                                   // tails off rather than stops.
                                                   0.500f);
-    ampEnvEnabledParam = new juce::AudioParameterBool("ampEnvEnabled", "Amp Enabled", true);
+    ampEnvEnabledParam = new juce::AudioParameterBool("voice.amp.enabled", "Amp Enabled", true);
 
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
     {

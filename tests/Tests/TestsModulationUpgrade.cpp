@@ -67,11 +67,13 @@ void testEnvelopeTimesUpgrade()
         juce::StringArray tooShort;
         auto shortest = 1.0e9f;
 
-        for (const auto* prefix : { "amp", "env1", "env2", "env3" })
+        for (const auto* prefix : { "voice.amp.", "env1", "env2", "env3" })
         {
             for (const auto* stage : { "Attack", "Decay", "Release" })
             {
-                const auto id = juce::String(prefix) + stage;
+                const auto id = juce::String(prefix) + (juce::String(prefix).startsWith("voice.")
+                                                           ? juce::String(stage).toLowerCase()
+                                                           : juce::String(stage));
                 auto* parameter = findParameter(processor, id);
                 if (parameter == nullptr)
                 {
@@ -106,10 +108,10 @@ void testEnvelopeTimesUpgrade()
             }
         };
 
-        expect("ampAttack", 0.015f);
-        expect("ampDecay", 0.300f);
-        expect("ampSustain", 0.8f);
-        expect("ampRelease", 0.500f);
+        expect("voice.amp.attack", 0.015f);
+        expect("voice.amp.decay", 0.300f);
+        expect("voice.amp.sustain", 0.8f);
+        expect("voice.amp.release", 0.500f);
         for (const auto* slot : { "1", "2", "3" })
         {
             expect(juce::String("env") + slot + "Attack", 0.250f);
@@ -127,7 +129,7 @@ void testEnvelopeTimesUpgrade()
     // the knob is still percussive territory.
     {
         PX3SynthAudioProcessor processor;
-        const auto& range = findParameter(processor, "ampAttack")->getNormalisableRange();
+        const auto& range = findParameter(processor, "voice.amp.attack")->getNormalisableRange();
         const auto quarter = range.convertFrom0to1(0.25f);
         const auto half = range.convertFrom0to1(0.5f);
         const auto threeQuarters = range.convertFrom0to1(0.75f);
@@ -196,12 +198,12 @@ void testStateUpgrade()
             auto tree = source.createParameterStateTree();
             tree.setProperty("stateVersion", version, nullptr);
             PX3SynthAudioProcessor target;
-            setParam(target, "ampAttack", 1.75f);
-            const auto before = getParamValue(target, "ampAttack");
+            setParam(target, "voice.amp.attack", 1.75f);
+            const auto before = getParamValue(target, "voice.amp.attack");
             juce::String error;
             const auto accepted = target.applyParameterStateTree(tree, &error);
             check(("StateSchema_RejectsUnsupportedVersion_" + juce::String(version)).toRawUTF8(),
-                  ! accepted && nearly(getParamValue(target, "ampAttack"), before, 1.0e-6)
+                  ! accepted && nearly(getParamValue(target, "voice.amp.attack"), before, 1.0e-6)
                       && error.containsIgnoreCase("Unsupported"),
                   error);
         }
@@ -210,7 +212,7 @@ void testStateUpgrade()
     // A current state is NOT migrated: a 25 s release stays 25 s.
     {
         PX3SynthAudioProcessor source;
-        setParam(source, "ampRelease", 25.0f);
+        setParam(source, "voice.amp.release", 25.0f);
         setParam(source, "env1Attack", 12.5f);
         setChoice(source, "lfoWaveform", 5);
         setParam(source, "lfoRampTime", 45.0f);
@@ -224,7 +226,7 @@ void testStateUpgrade()
         PX3SynthAudioProcessor target;
         target.setStateInformation(block.getData(), static_cast<int>(block.getSize()));
 
-        const auto ok = std::abs(getParamValue(target, "ampRelease") - 25.0f) < 0.01f
+        const auto ok = std::abs(getParamValue(target, "voice.amp.release") - 25.0f) < 0.01f
                      && std::abs(getParamValue(target, "env1Attack") - 12.5f) < 0.01f
                      && upgradeChoiceIndex(target, "lfoWaveform") == 5
                      && std::abs(getParamValue(target, "lfoRampTime") - 45.0f) < 0.01f
@@ -234,7 +236,7 @@ void testStateUpgrade()
                      && std::abs(getParamValue(target, "voice.filters.routing.balance") - 0.27f) < 0.002f;
 
         check("StateUpgrade_NewValuesSurviveARoundTripUnmigrated", ok,
-              "release " + fmt(getParamValue(target, "ampRelease"), 3) + " s, ramp "
+              "release " + fmt(getParamValue(target, "voice.amp.release"), 3) + " s, ramp "
                   + fmt(getParamValue(target, "lfoRampTime"), 2) + " s, waveform "
                   + juce::String(upgradeChoiceIndex(target, "lfoWaveform")) + ", routing "
                   + juce::String(upgradeChoiceIndex(target, "voice.filters.routing.mode")) + ", balance "

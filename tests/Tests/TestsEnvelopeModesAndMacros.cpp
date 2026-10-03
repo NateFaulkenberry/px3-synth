@@ -1952,10 +1952,10 @@ void testMacroSystem()
             prepared(processor);
             setParam(processor, "voice.osc1.enabled", 1.0f);
             setChoice(processor, "voice.osc1.mode", 0);
-            setParam(processor, "ampAttack", 0.005f);
-            setParam(processor, "ampDecay", 0.100f);
-            setParam(processor, "ampSustain", 1.00f);
-            setParam(processor, "ampRelease", 0.300f);
+            setParam(processor, "voice.amp.attack", 0.005f);
+            setParam(processor, "voice.amp.decay", 0.100f);
+            setParam(processor, "voice.amp.sustain", 1.00f);
+            setParam(processor, "voice.amp.release", 0.300f);
 
             processor.toggleMacroDestination(0, processor.getAttackParam().getParameterID());
             processor.getMacroParam(0).setValueNotifyingHost(macroValue);
@@ -2020,7 +2020,7 @@ void testMacroSystem()
             bent.setCurve(0, 0.6);
             processor.setShapedEnvelope(0, bent);
 
-            setParam(processor, "ampAttack", 2.500f);
+            setParam(processor, "voice.amp.attack", 2.500f);
             processor.toggleMacroDestination(0, processor.getAttackParam().getParameterID());
             processor.getMacroParam(0).setValueNotifyingHost(0.0f);
 
