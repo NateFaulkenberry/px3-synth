@@ -858,6 +858,25 @@ void testOscillatorQuality()
         }
         check("OscQuality_PhysicalMaterialKeepsTheFundamentalAtThePlayedPitch", worst < 0.02, peaks + "(played 220 Hz)");
 
+        // CLICK is audible: with it up, the first 30 ms of an organ note carries
+        // clearly more energy above 2 kHz than the same note with it down.
+        {
+            auto onsetBrightness = [&](float clickAmount)
+            {
+                UnitSetup organ;
+                organ.mode = static_cast<int>(Mode::organ);
+                organ.b = clickAmount;
+                const auto x = renderUnit(organ, 220.0, fs, 1440, 0);
+                double hi = 0.0, prev = 0.0;
+                for (const auto v : x) { const auto d = v - prev; prev = v; hi += d * d; }
+                return 10.0 * std::log10(juce::jmax(1.0e-30, hi));
+            };
+            const auto none = onsetBrightness(0.0f);
+            const auto full = onsetBrightness(1.0f);
+            check("OscQuality_OrganClickIsClearlyAudibleAtTheOnset", full > none + 9.0,
+                  "first 30 ms high-band energy: CLICK 0 " + fmt(none, 1) + " dB, CLICK 1 " + fmt(full, 1) + " dB");
+        }
+
         UnitSetup quiet;
         quiet.mode = static_cast<int>(Mode::rob);
         quiet.c = 0.0f;

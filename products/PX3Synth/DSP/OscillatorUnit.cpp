@@ -491,8 +491,10 @@ void OscillatorUnit::updateDerivedCurves()
         static constexpr std::array<float, kHarmonicCount> kBright { 0.80f, 0.70f, 1.00f, 0.85f, 0.72f, 0.66f, 0.55f, 0.50f, 0.45f };
 
         d.organClick = std::pow(b, 1.2f);
-        // 0.0006 to 0.0036 per sample at 48 kHz, as a rate per second.
-        d.organClickDecayPerSecond = (0.0006f + 0.003f * d.organClick) * 48000.0f;
+        // More CLICK is a longer and louder contact burst: a 6 ms tick at the
+        // bottom of the knob, a 40 ms chiff at the top. It used to run the
+        // other way - more click decayed faster - which is why it barely sounded.
+        d.organClickDecayPerSecond = 1.0f / (0.006f + 0.034f * d.organClick);
 
         d.organ = HarmonicSet {};
         auto energy = 0.0f;
@@ -514,7 +516,9 @@ void OscillatorUnit::updateDerivedCurves()
     d.fmOutputScale = 0.66f + 0.05f * (1.0f - b);
 
     d.hardSyncRatio = juce::jmap(std::pow(a, 1.3f), 1.0f, 11.0f);
-    d.hardSyncDrive = 1.0f + std::pow(b, 1.15f) * 2.3f;
+    // Up to 10x into the tanh: at the top the slave is close to a square-edged
+    // sync scream. The level trim below keeps it from simply getting louder.
+    d.hardSyncDrive = 1.0f + std::pow(b, 1.15f) * 9.0f;
 
     // DIGITAL
     {
@@ -564,7 +568,7 @@ void OscillatorUnit::updateDerivedCurves()
         {
             case Mode::superSaw: trim = juce::jmap(std::pow(a, 1.35f), 1.0f, 0.84f); break;
             case Mode::fm:       trim = juce::jmap(std::pow(b, 1.2f), 1.0f, 0.82f); break;
-            case Mode::hardSync: trim = juce::jmap(std::pow(b, 1.18f), 1.0f, 0.78f); break;
+            case Mode::hardSync: trim = juce::jmap(std::pow(b, 1.18f), 1.0f, 0.62f); break;
             case Mode::digital:  trim = juce::jmap(std::pow(b, 1.1f), 1.0f, 0.86f); break;
             case Mode::rob:
             case Mode::px3:      trim = juce::jmap(std::pow(c, 1.12f), 1.0f, 0.84f); break;
@@ -1012,9 +1016,13 @@ double OscillatorUnit::renderOrgan(const RenderContext& context, const MainPhase
         if (exponent < 11.512925464970229)   // exp(-11.51) = 1e-5
         {
             const auto envelope = std::exp(-exponent);
-            keyClick = (static_cast<double>(noise.white()) * 0.08
-                        + fastSine(organClickPhase) * px3::dsp::nyquistFade(clickIncrement) * 0.05)
-                       * envelope * click;
+            // The contact burst: differentiated noise for the crisp edge, plus
+            // the 9th-partial tonewheel that gives a real key click its pitch.
+            const auto white = static_cast<double>(noise.white());
+            const auto contact = (white - organClickNoisePrevious) * 0.5;
+            organClickNoisePrevious = white;
+            keyClick = (contact * 0.60 + fastSine(organClickPhase) * px3::dsp::nyquistFade(clickIncrement) * 0.40)
+                       * envelope * click * 0.80;
         }
     }
 

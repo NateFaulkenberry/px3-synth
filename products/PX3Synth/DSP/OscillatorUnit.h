@@ -268,6 +268,7 @@ private:
     // ROB
     std::array<double, kRobPhases> robPhases { {} };
     double robTransient { 0.0 };
+    double organClickNoisePrevious { 0.0 };
     int robHoldCountdown { 0 };
     std::array<double, 4> robHoldTarget { { 1.0, 1.0, 1.0, 1.0 } };
     std::array<double, 4> robHoldValue { { 1.0, 1.0, 1.0, 1.0 } };
