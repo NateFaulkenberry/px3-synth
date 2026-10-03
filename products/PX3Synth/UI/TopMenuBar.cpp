@@ -218,8 +218,13 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
     g.drawRoundedRectangle(area.reduced(0.5f), 3.0f, 1.0f);
     if (on && showLed)
     {
+        // The section's identity stripe across the full top edge, the same
+        // place the modules carry theirs.
+        const auto top = area.reduced(0.5f);
+        juce::Path stripe;
+        stripe.addRoundedRectangle(top.getX(), top.getY(), top.getWidth(), 2.0f, 3.0f, 3.0f, true, true, false, false);
         g.setColour(accent);
-        g.fillRoundedRectangle(area.reduced(6.0f, 0.0f).removeFromBottom(2.0f).translated(0.0f, -1.0f), 1.0f);
+        g.fillPath(stripe);
     }
 
     // ---- icon --------------------------------------------------------------
