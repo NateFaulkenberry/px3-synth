@@ -1606,6 +1606,7 @@ int PX3SynthAudioProcessor::soundingVoiceBudgetForRate(double sampleRate)
 
 void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
+    const px3::synth::ModulationGraphPublication::ScopedRead graphRead(modulationGraph);
     juce::ScopedNoDenormals noDenormals;
     const auto blockStartTicks = juce::Time::getHighResolutionTicks();
 

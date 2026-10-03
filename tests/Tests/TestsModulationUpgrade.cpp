@@ -1,5 +1,6 @@
 #include "TestSupport.h"
 #include "ModulationGraph.h"
+#include <thread>
 
 // testModulationUpgrade - current 0.8 modulation/routing behavior and state schema.
 
@@ -872,6 +873,104 @@ void testModulationUpgrade()
           check("ModGraph_MacroCanModulateLfoRate",
               restored.getUnclampedModulatedNormalisedValue(rate)
                   > static_cast<juce::RangedAudioParameter&>(rate).getValue());
+    }
+    {
+        using namespace px3::synth;
+        CompiledModulationGraph populated;
+        CompiledModulationGraph empty;
+        std::string error;
+        const std::array<ModulationSourceDescriptor, 1> sources {};
+        const std::array<ModulationDestinationDescriptor, 1> destinations {};
+        const std::array<ModulationRoute, 1> routes { { { 0, 0, 0, 1.0f } } };
+        populated.compile(sources, destinations, routes, error);
+        ModulationGraphPublication publication;
+        publication.publish(populated);
+        auto coherent = false;
+        {
+            const ModulationGraphPublication::ScopedRead frame(publication);
+            publication.publish(empty);
+            auto reader = publication.read();
+            coherent = reader && reader->getRouteCount() == 1;
+        }
+        auto nextFrame = publication.read();
+        check("ModGraph_CallbackReadsOnePlanUntilItsScopeEnds",
+              coherent && nextFrame && nextFrame->getRouteCount() == 0);
+    }
+    {
+        PX3SynthAudioProcessor source;
+        setParam(source, "mod.lfo1.frequency", 4.5f);
+        const auto state = source.createParameterStateTree();
+        const auto lfo = state.getChildWithName(px3::processor_internal::kLfoSourcesStateId).getChild(0);
+        PX3SynthAudioProcessor restored;
+        juce::String error;
+        check("ModGraph_CatalogIsTheOnlyLfoParameterStateAuthority",
+              ! lfo.hasProperty(px3::processor_internal::kLfoFrequencyId)
+                  && ! lfo.hasProperty(px3::processor_internal::kLfoEnabledId)
+                  && ! lfo.hasProperty(px3::processor_internal::kLfoWaveformId)
+                  && restored.applyParameterStateTree(state, &error)
+                  && std::abs(restored.getLfoFrequencyParam(0).get() - 4.5f) < 1.0e-4f, error);
+    }
+    {
+        PX3SynthAudioProcessor processor;
+        auto assigned = 0;
+        juce::String overflow;
+        for (const auto& entry : processor.getParameterCatalog().entries())
+        {
+            if (! entry.modulationDestination || entry.sourceControl) { continue; }
+            if (assigned < 64)
+            {
+                if (processor.toggleMacroDestination(0, entry.id)) { ++assigned; }
+            }
+            else { overflow = entry.id; break; }
+        }
+        const auto rejected = overflow.isNotEmpty() && ! processor.toggleMacroDestination(0, overflow);
+        check("ModGraph_MacroCapacityRejectsWithoutChangingAuthoringOrRuntime",
+              assigned == 64 && rejected && processor.getMacroDestinations(0).size() == 64
+                  && ! processor.isMacroDestination(0, overflow));
+        const auto first = processor.getMacroDestinations(0).front().parameterId;
+        const auto depth = processor.getMacroDestinationDepth(0, first);
+        check("ModGraph_NonFiniteMacroDepthDoesNotReplaceLiveDepth",
+              ! processor.setMacroDestinationDepth(0, first, std::numeric_limits<float>::quiet_NaN())
+                  && processor.getMacroDestinationDepth(0, first) == depth);
+    }
+    {
+        PX3SynthAudioProcessor processor;
+        makePlainPatch(processor);
+        prepareUpgrade(processor);
+        std::atomic<bool> done { false };
+        std::atomic<bool> writerOk { true };
+        std::thread writer([&]
+        {
+            for (int edit = 0; edit < 256; ++edit)
+            {
+                juce::String error;
+                const auto destination = edit % 2 == 0 ? "voice.filter1.cutoff" : "mix.osc1.pan";
+                if (! processor.setGraphRoute(0, { 6, destination }, error)) { writerOk.store(false); }
+                processor.createParameterStateTree();
+            }
+            done.store(true, std::memory_order_release);
+        });
+        auto finite = true;
+        auto audible = false;
+        auto firstBlock = true;
+        juce::AudioBuffer<float> buffer(2, kBlockSize);
+        while (! done.load(std::memory_order_acquire))
+        {
+            buffer.clear();
+            juce::MidiBuffer midi;
+            if (firstBlock) { midi.addEvent(juce::MidiMessage::noteOn(1, 69, 0.8f), 0); firstBlock = false; }
+            processor.processBlock(buffer, midi);
+            audible = audible || buffer.getMagnitude(0, buffer.getNumSamples()) > 0.001f;
+            for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+            {
+                for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+                {
+                    finite = finite && std::isfinite(buffer.getSample(channel, sample));
+                }
+            }
+        }
+        writer.join();
+        check("ModGraph_RoutePublicationAndStateSnapshotsCoexistWithRendering", writerOk.load() && finite && audible);
     }
     testEnvelopeTimesUpgrade();
     testStateUpgrade();

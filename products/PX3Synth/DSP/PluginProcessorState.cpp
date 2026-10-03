@@ -4,6 +4,7 @@
 #include "SubOscMode.h"
 
 #include <cmath>
+#include <cstdlib>
 
 // File role: plugin state serialization/restoration and ValueTree mapping.
 // Preserve IDs and schema compatibility here; avoid mixing runtime DSP updates
@@ -87,11 +88,22 @@ void PX3SynthAudioProcessor::setStateInformation(const void* data, int sizeInByt
 
 juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
 {
+    const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
     // This tree is the canonical 0.8 state used by DAW projects and presets.
     juce::ValueTree state(kStateTypeId);
     state.setProperty(kStateVersionId, kCurrentStateVersion, nullptr);
     state.addChild(parameterCatalog.createStateTree(), -1, nullptr);
     juce::ValueTree graphState("MODULATION_GRAPH");
+    for (std::size_t slot = 0; slot < primaryGraphRoutes.size(); ++slot)
+    {
+        const auto& route = primaryGraphRoutes[slot];
+        if (route.source < 0) { continue; }
+        juce::ValueTree node("PRIMARY_ROUTE");
+        node.setProperty("slot", static_cast<int>(slot), nullptr);
+        node.setProperty("source", graphSourceId(route.source), nullptr);
+        node.setProperty("destination", route.destination, nullptr);
+        graphState.addChild(node, -1, nullptr);
+    }
     for (int slot = 0; slot < kGraphRouteSlots; ++slot)
     {
         const auto& route = graphRouteConfigurations[static_cast<std::size_t>(slot)];
@@ -218,34 +230,16 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
         }
     }
 
-    // Keep modulation source states in dedicated nodes for backward-compatible evolution.
-    // Macro destinations. In the preset as well as the session, so a patch
-    // ships with its performance controls already wired.
+    for (int macro = 0; macro < kMacroCount; ++macro)
     {
-        juce::ValueTree routes(kMacroRoutesId);
-        auto any = false;
-
-        for (int macro = 0; macro < kMacroCount; ++macro)
+        for (const auto& destination : macroDestinations[static_cast<std::size_t>(macro)])
         {
-            const auto& list = macroDestinations[static_cast<std::size_t>(macro)];
-            if (list.empty()) { continue; }
-
-            juce::ValueTree node(kMacroEntryId);
-            node.setProperty(kMacroIndexId, macro, nullptr);
-
-            for (const auto& destination : list)
-            {
-                juce::ValueTree dest(kMacroDestId);
-                dest.setProperty(kMacroDestParamId, destination.parameterId, nullptr);
-                dest.setProperty(kMacroDestDepthId, destination.depth, nullptr);
-                node.appendChild(dest, nullptr);
-            }
-
-            routes.appendChild(node, nullptr);
-            any = true;
+            juce::ValueTree node("MACRO_ROUTE");
+            node.setProperty("source", graphSourceId(kLfoSourceCount + kEnvelopeSourceCount + macro), nullptr);
+            node.setProperty("destination", destination.parameterId, nullptr);
+            node.setProperty("depth", destination.depth, nullptr);
+            graphState.addChild(node, -1, nullptr);
         }
-
-        if (any) { state.appendChild(routes, nullptr); }
     }
 
     // MIDI mappings. Written here because this tree is what a DAW project
@@ -276,28 +270,6 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
         state.appendChild(mappings, nullptr);
     }
 
-    juce::ValueTree lfoSources(kLfoSourcesStateId);
-    for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
-    {
-        juce::ValueTree source(kSourceEntryId);
-        source.setProperty(kSourceIndexId, lfoIndex, nullptr);
-        source.setProperty(kLfoEnabledId, getLfoEnabledParam(lfoIndex).get(), nullptr);
-        source.setProperty(kLfoFrequencyId, getLfoFrequencyParam(lfoIndex).get(), nullptr);
-        source.setProperty(kLfoWaveformId, getLfoWaveformParam(lfoIndex).getIndex(), nullptr);
-        source.setProperty(kLfoAssignmentId, getLfoAssignmentParameterId(lfoIndex), nullptr);
-        lfoSources.addChild(source, -1, nullptr);
-    }
-    state.addChild(lfoSources, -1, nullptr);
-
-    juce::ValueTree envelopeSources(kEnvelopeSourcesStateId);
-    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
-    {
-        juce::ValueTree source(kSourceEntryId);
-        source.setProperty(kSourceIndexId, envIndex, nullptr);
-        source.setProperty(kEnvelopeAssignmentId, getEnvelopeAssignmentParameterId(envIndex), nullptr);
-        envelopeSources.addChild(source, -1, nullptr);
-    }
-    state.addChild(envelopeSources, -1, nullptr);
 
     juce::ValueTree subOscState(kSubOscStateId);
     subOscState.setProperty(kSubOscEnabledId, subOscEnabledParam->get(), nullptr);
@@ -344,6 +316,7 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                                                      juce::String* error,
                                                      bool restoreUiSessionState)
 {
+    const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
     if (!state.isValid() || state.getType() != kStateTypeId)
     {
         if (error != nullptr)
@@ -373,6 +346,10 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
     }
 
     std::array<GraphRouteConfiguration, kGraphRouteSlots> graphConfigurations;
+    std::array<GraphRouteConfiguration, kLfoSourceCount + kEnvelopeSourceCount> primaryConfigurations;
+    std::array<std::vector<MacroDestination>, kMacroCount> macroConfigurations;
+    auto macroRouteCount = 0;
+    std::array<bool, kLfoSourceCount + kEnvelopeSourceCount> usedPrimarySlots {};
     std::array<bool, kGraphRouteSlots> usedGraphSlots {};
     const auto graphState = state.getChildWithName("MODULATION_GRAPH");
     const auto parseIndex = [](const juce::ValueTree& node, const char* property, int& output)
@@ -385,6 +362,55 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
     for (int index = 0; index < graphState.getNumChildren(); ++index)
     {
         const auto node = graphState.getChild(index);
+        if (node.getType() == juce::Identifier("MACRO_ROUTE"))
+        {
+            auto macro = -1;
+            for (int candidate = 0; candidate < kMacroCount; ++candidate)
+            {
+                if (node.getProperty("source").toString()
+                    == graphSourceId(kLfoSourceCount + kEnvelopeSourceCount + candidate))
+                {
+                    macro = candidate;
+                    break;
+                }
+            }
+            const auto destination = node.getProperty("destination").toString();
+            const auto depthText = node.getProperty("depth").toString().trim();
+            const auto* start = depthText.toRawUTF8();
+            char* end = nullptr;
+            const auto depth = std::strtof(start, &end);
+            if (macro < 0 || destination.isEmpty() || depthText.isEmpty() || depthText.length() > 32
+                || end != start + depthText.getNumBytesAsUTF8() || ! std::isfinite(depth)
+                || depth < -1.0f || depth > 1.0f || ++macroRouteCount > kMacroRouteSlots)
+            {
+                if (error != nullptr) { *error = "Malformed macro modulation route."; }
+                return false;
+            }
+            auto& routes = macroConfigurations[static_cast<std::size_t>(macro)];
+            if (std::any_of(routes.begin(), routes.end(), [&destination](const auto& route) { return route.parameterId == destination; }))
+            {
+                if (error != nullptr) { *error = "Duplicate macro modulation route."; }
+                return false;
+            }
+            routes.push_back({ destination, depth });
+            continue;
+        }
+        if (node.getType() == juce::Identifier("PRIMARY_ROUTE"))
+        {
+            int primarySlot = -1;
+            if (! parseIndex(node, "slot", primarySlot)
+                || ! juce::isPositiveAndBelow(primarySlot, static_cast<int>(primaryConfigurations.size()))
+                || usedPrimarySlots[static_cast<std::size_t>(primarySlot)]
+                || node.getProperty("source").toString() != graphSourceId(primarySlot))
+            {
+                if (error != nullptr) { *error = "Malformed primary modulation route."; }
+                return false;
+            }
+            primaryConfigurations[static_cast<std::size_t>(primarySlot)]
+                = { primarySlot, node.getProperty("destination").toString() };
+            usedPrimarySlots[static_cast<std::size_t>(primarySlot)] = true;
+            continue;
+        }
         int slot = -1;
         int polarity = -1;
         int curve = -1;
@@ -418,12 +444,14 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
     }
     px3::synth::CompiledModulationGraph graphPlan;
     juce::String graphError;
-    if (! compileModulationGraph(graphConfigurations, graphPlan, graphError))
+    if (! compileModulationGraph(graphConfigurations, graphPlan, graphError, &primaryConfigurations, &macroConfigurations))
     {
         if (error != nullptr) { *error = graphError; }
         return false;
     }
     graphRouteConfigurations = std::move(graphConfigurations);
+    primaryGraphRoutes = std::move(primaryConfigurations);
+    macroDestinations = std::move(macroConfigurations);
 
     // Validate the complete parameter set before applying any value.
     for (const auto& value : parameterValues)
@@ -502,64 +530,6 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         fxOrderRevision.store(static_cast<uint32_t>(revision), std::memory_order_relaxed);
     }
 
-    if (const auto lfoSources = state.getChildWithName(kLfoSourcesStateId); lfoSources.isValid())
-    {
-        for (int i = 0; i < lfoSources.getNumChildren(); ++i)
-        {
-            const auto source = lfoSources.getChild(i);
-            if (!source.isValid() || source.getType() != kSourceEntryId)
-            {
-                continue;
-            }
-
-            const auto lfoIndex = juce::jlimit(0, kLfoSourceCount - 1, static_cast<int>(source.getProperty(kSourceIndexId, 0)));
-
-            if (source.hasProperty(kLfoEnabledId))
-            {
-                const auto enabled = static_cast<bool>(source[kLfoEnabledId]);
-                auto& enabledParam = getLfoEnabledParam(lfoIndex);
-                enabledParam.setValueNotifyingHost(enabledParam.convertTo0to1(enabled));
-            }
-
-            if (source.hasProperty(kLfoFrequencyId))
-            {
-                const auto frequency = juce::jlimit(0.01f, 20.0f, static_cast<float>(source[kLfoFrequencyId]));
-                auto& freqParam = getLfoFrequencyParam(lfoIndex);
-                freqParam.setValueNotifyingHost(freqParam.convertTo0to1(frequency));
-            }
-
-            if (source.hasProperty(kLfoWaveformId))
-            {
-                const auto waveform = px3::clampLfoWaveformIndex(static_cast<int>(source[kLfoWaveformId]));
-                auto& waveformParam = getLfoWaveformParam(lfoIndex);
-                waveformParam.setValueNotifyingHost(waveformParam.convertTo0to1(static_cast<float>(waveform)));
-            }
-
-            if (source.hasProperty(kLfoAssignmentId))
-            {
-                setLfoAssignmentByParameterId(lfoIndex, source[kLfoAssignmentId].toString(), false);
-            }
-        }
-    }
-
-    if (const auto envelopeSources = state.getChildWithName(kEnvelopeSourcesStateId); envelopeSources.isValid())
-    {
-        for (int i = 0; i < envelopeSources.getNumChildren(); ++i)
-        {
-            const auto source = envelopeSources.getChild(i);
-            if (!source.isValid() || source.getType() != kSourceEntryId)
-            {
-                continue;
-            }
-
-            const auto envIndex = juce::jlimit(0, kEnvelopeSourceCount - 1, static_cast<int>(source.getProperty(kSourceIndexId, 0)));
-            if (source.hasProperty(kEnvelopeAssignmentId))
-            {
-                setEnvelopeAssignmentByParameterId(envIndex, source[kEnvelopeAssignmentId].toString(), false);
-            }
-        }
-    }
-
     rebuildModulationGraph();
 
     if (const auto vibeState = state.getChildWithName(kVibeStateId); vibeState.isValid())
@@ -589,47 +559,6 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         }
     }
 
-    // Macro destinations, restored on both paths. A preset defines the
-    // performance controls its sound was built around, and a session is the
-    // whole truth for its instance - both replace what is there.
-    //
-    // State with no macroRoutes leaves all four macros empty, which is what a
-    // project or preset written before this existed means.
-    {
-        for (auto& list : macroDestinations) { list.clear(); }
-
-        if (const auto routes = state.getChildWithName(kMacroRoutesId); routes.isValid())
-        {
-            for (const auto& node : routes)
-            {
-                const auto macro = static_cast<int>(node.getProperty(kMacroIndexId, -1));
-                if (! juce::isPositiveAndBelow(macro, kMacroCount)) { continue; }
-
-                for (const auto& dest : node)
-                {
-                    const auto parameterId
-                        = dest.getProperty(kMacroDestParamId, juce::String()).toString();
-
-                    // A destination naming a parameter this build does not have
-                    // is dropped and the rest of the macro still loads.
-                    if (parameterId.isEmpty() || findParameterById(parameterId) == nullptr)
-                    {
-                        continue;
-                    }
-
-                    if (isMacroDestination(macro, parameterId)) { continue; }
-
-                    MacroDestination destination;
-                    destination.parameterId = parameterId;
-                    destination.depth = juce::jlimit(-1.0f, 1.0f,
-                                                     static_cast<float>(dest.getProperty(kMacroDestDepthId, 1.0f)));
-                    macroDestinations[static_cast<std::size_t>(macro)].push_back(destination);
-                }
-            }
-        }
-
-        rebuildMacroRoutes();
-    }
 
     // MIDI mappings. Restored on both paths, but they mean different things.
     //

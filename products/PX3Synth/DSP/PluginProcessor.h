@@ -823,14 +823,10 @@ private:
     void updateTransportState();
     void buildLfoAssignableTargets();
     float lfoDepthForParameterId(const juce::String& parameterId) const;
-    int getAssignmentIndex(std::atomic<int> const& sourceIndex) const;
-    juce::String getAssignmentParameterId(std::atomic<int> const& sourceIndex) const;
-    std::atomic<int>& lfoAssignmentAtomic(int lfoIndex);
-    std::atomic<int> const& lfoAssignmentAtomic(int lfoIndex) const;
-    std::atomic<int>& envelopeAssignmentAtomic(int envIndex);
-    std::atomic<int> const& envelopeAssignmentAtomic(int envIndex) const;
-    bool setAssignmentIndex(std::atomic<int>& sourceIndex, int index, bool notifyHost, const juce::String& sourceName);
-    bool setAssignmentByParameterId(std::atomic<int>& sourceIndex,
+    int getAssignmentIndex(int source) const;
+    juce::String getAssignmentParameterId(int source) const;
+    bool setAssignmentIndex(int source, int index, bool notifyHost, const juce::String& sourceName);
+    bool setAssignmentByParameterId(int source,
                                     const juce::String& parameterId,
                                     bool notifyHost,
                                     const juce::String& sourceName);
@@ -1114,8 +1110,7 @@ private:
 
     std::vector<LfoAssignableTarget> lfoAssignableTargets;
     juce::StringArray lfoAssignmentDisplayNames;
-    std::array<std::atomic<int>, kLfoSourceCount> lfoAssignmentIndices { { 0, 0, 0 } };
-    std::array<std::atomic<int>, kEnvelopeSourceCount> envelopeAssignmentIndices { { 0, 0, 0 } };
+    std::array<GraphRouteConfiguration, kLfoSourceCount + kEnvelopeSourceCount> primaryGraphRoutes;
 
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteCounts {};
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteVelocities {};
@@ -1209,24 +1204,17 @@ private:
     // size that never grows under the audio thread's feet.
     static constexpr int kMacroRouteSlots = 64;
 
-    struct MacroRoute
-    {
-        std::atomic<juce::RangedAudioParameter*> parameter { nullptr };
-        std::atomic<float> depth { 0.0f };
-        std::atomic<int> macroIndex { -1 };
-    };
-
-    std::array<MacroRoute, kMacroRouteSlots> macroRoutes;
-    std::atomic<int> macroRouteCount { 0 };
     std::array<std::vector<MacroDestination>, kMacroCount> macroDestinations;
     std::array<juce::AudioParameterFloat*, kMacroCount> macroParams {};
 
     // Rebuilds the audio thread's table from the destination lists. Message
     // thread only, called whenever an assignment changes or state is restored.
-    void rebuildMacroRoutes();
-    void rebuildModulationGraph();
+    bool rebuildModulationGraph();
+    mutable std::recursive_mutex graphAuthoringMutex;
     bool compileModulationGraph(const std::array<GraphRouteConfiguration, kGraphRouteSlots>& configurations,
-                                px3::synth::CompiledModulationGraph& plan, juce::String& error) const;
+                                px3::synth::CompiledModulationGraph& plan, juce::String& error,
+                                const std::array<GraphRouteConfiguration, kLfoSourceCount + kEnvelopeSourceCount>* primary = nullptr,
+                                const std::array<std::vector<MacroDestination>, kMacroCount>* macros = nullptr) const;
     std::array<GraphRouteConfiguration, kGraphRouteSlots> graphRouteConfigurations;
     std::array<juce::AudioParameterFloat*, kGraphRouteSlots> graphRouteDepthParams {};
     px3::synth::ModulationGraphPublication modulationGraph;

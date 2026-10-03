@@ -2601,7 +2601,7 @@ void testMacroSystem()
         loaded.applyParameterStateTree(preset, &error, false);
 
         check("Macro_APresetCarriesItsAssignmentsAndValues",
-              preset.getChildWithName(px3::processor_internal::kMacroRoutesId).isValid()
+              preset.getChildWithName("MODULATION_GRAPH").isValid()
                   && loaded.isMacroDestination(0, cutoffId)
                   && loaded.isMacroDestination(2, reverbId)
                   && std::abs(loaded.getMacroParam(0).get() - 0.72f) < 0.01f,
@@ -3028,19 +3028,14 @@ void testMacroSystem()
 
         if (xml != nullptr)
         {
-            if (auto* routes = xml->getChildByName(px3::processor_internal::kMacroRoutesId.toString()))
+            if (auto* routes = xml->getChildByName("MODULATION_GRAPH"))
             {
                 for (auto* node : routes->getChildIterator())
                 {
-                    for (auto* dest : node->getChildIterator())
+                    if (node->hasTagName("MACRO_ROUTE") && node->hasAttribute("depth"))
                     {
-                        const auto attribute
-                            = px3::processor_internal::kMacroDestDepthId.toString();
-                        if (dest->hasAttribute(attribute))
-                        {
-                            dest->removeAttribute(attribute);
-                            ++stripped;
-                        }
+                        node->removeAttribute("depth");
+                        ++stripped;
                     }
                 }
             }
@@ -3051,14 +3046,14 @@ void testMacroSystem()
 
         PX3SynthAudioProcessor reopened;
         preparedForDepth(reopened);
+        const auto beforeInvalid = reopened.createParameterStateTree().toXmlString();
         reopened.setStateInformation(stripped_block.getData(),
                                      static_cast<int>(stripped_block.getSize()));
 
-        check("MacroDepth_ARouteWithNoStoredDepthLoadsAtFull",
-              stripped == 1 && reopened.isMacroDestination(0, cutoffId)
-                  && std::abs(reopened.getMacroDestinationDepth(0, cutoffId) - 1.0f) < 1.0e-6f,
-              juce::String(stripped) + " depth property removed; the route reloaded at "
-                  + fmt(reopened.getMacroDestinationDepth(0, cutoffId), 3));
+        check("MacroDepth_MissingDepthIsRejectedWithoutStateMutation",
+              stripped == 1 && ! reopened.isMacroDestination(0, cutoffId)
+                  && reopened.createParameterStateTree().toXmlString() == beforeInvalid,
+              juce::String(stripped) + " depth property removed; malformed graph leaves state intact");
     }
 
     // ========================================================================

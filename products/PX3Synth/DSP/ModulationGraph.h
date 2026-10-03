@@ -179,6 +179,15 @@ public:
         return { sourceOrder.data(), static_cast<std::size_t>(sourceCount) };
     }
     int getRouteCount() const noexcept { return routeCount; }
+    ModulationRoute routeAtSlot(int slot) const noexcept
+    {
+        for (int index = 0; index < routeCount; ++index)
+        {
+            const auto& route = routes[static_cast<std::size_t>(index)];
+            if (route.slot == slot) { return route; }
+        }
+        return {};
+    }
     bool hasDestination(int destination, int minimumSlot = 0) const noexcept
     {
         for (int index = 0; index < routeCount; ++index)
@@ -208,6 +217,14 @@ private:
     int routeCount { 0 };
 };
 
+struct ModulationGraphReadContext
+{
+    const void* owner;
+    const CompiledModulationGraph* plan;
+};
+
+inline thread_local ModulationGraphReadContext modulationGraphReadContext { nullptr, nullptr };
+
 class ModulationGraphPublication final
 {
 public:
@@ -226,8 +243,25 @@ public:
         std::atomic<int>* pins;
     };
 
+    class ScopedRead final
+    {
+    public:
+        explicit ScopedRead(const ModulationGraphPublication& publication)
+            : pin(publication.read()), previous(modulationGraphReadContext)
+        {
+            modulationGraphReadContext = { &publication, pin ? pin.operator->() : nullptr };
+        }
+        ~ScopedRead() { modulationGraphReadContext = previous; }
+        ScopedRead(const ScopedRead&) = delete;
+        ScopedRead& operator=(const ScopedRead&) = delete;
+    private:
+        ReadHandle pin;
+        ModulationGraphReadContext previous;
+    };
+
     ReadHandle read() const noexcept
     {
+        if (modulationGraphReadContext.owner == this) { return { modulationGraphReadContext.plan, nullptr }; }
         for (int attempt = 0; attempt < 4; ++attempt)
         {
             const auto index = active.load(std::memory_order_acquire);

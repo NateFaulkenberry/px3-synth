@@ -431,11 +431,9 @@ juce::AudioParameterBool& PX3SynthAudioProcessor::getAnalogEnabledParam() const 
 juce::AudioParameterBool& PX3SynthAudioProcessor::getFxSeparateOutputParam() const { return *fxSeparateOutputParam; }
 bool PX3SynthAudioProcessor::isParameterModulated(const juce::String& parameterId) const
 {
-    const auto pointsAt = [this, &parameterId](std::atomic<int> const& assignmentIndex)
+    const auto pointsAt = [this, &parameterId](int source)
     {
-        const auto assignment = juce::jlimit(0,
-                                             juce::jmax(0, static_cast<int>(lfoAssignableTargets.size()) - 1),
-                                             assignmentIndex.load(std::memory_order_relaxed));
+        const auto assignment = getAssignmentIndex(source);
         if (assignment <= 0 || assignment >= static_cast<int>(lfoAssignableTargets.size()))
         {
             return false;
@@ -455,14 +453,14 @@ bool PX3SynthAudioProcessor::isParameterModulated(const juce::String& parameterI
 
     for (int i = 0; i < kLfoSourceCount; ++i)
     {
-        if (pointsAt(lfoAssignmentAtomic(i)) && getLfoEnabledParam(i).get())
+        if (pointsAt(i) && getLfoEnabledParam(i).get())
         {
             return true;
         }
     }
     for (int i = 0; i < kEnvelopeSourceCount; ++i)
     {
-        if (pointsAt(envelopeAssignmentAtomic(i)) && getEnvelopeEnabledParam(i).get())
+        if (pointsAt(kLfoSourceCount + i) && getEnvelopeEnabledParam(i).get())
         {
             return true;
         }
@@ -744,31 +742,6 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getEnvelopeAmountParam(int en
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     return *envelopeAmountParams[static_cast<std::size_t>(idx)];
 }
-std::atomic<int>& PX3SynthAudioProcessor::lfoAssignmentAtomic(int lfoIndex)
-{
-    const auto idx = juce::jlimit(0, kLfoSourceCount - 1, lfoIndex);
-    return lfoAssignmentIndices[static_cast<std::size_t>(idx)];
-}
-
-std::atomic<int> const& PX3SynthAudioProcessor::lfoAssignmentAtomic(int lfoIndex) const
-{
-    const auto idx = juce::jlimit(0, kLfoSourceCount - 1, lfoIndex);
-    return lfoAssignmentIndices[static_cast<std::size_t>(idx)];
-}
-
-std::atomic<int>& PX3SynthAudioProcessor::envelopeAssignmentAtomic(int envIndex)
-{
-    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
-    return envelopeAssignmentIndices[static_cast<std::size_t>(idx)];
-}
-
-std::atomic<int> const& PX3SynthAudioProcessor::envelopeAssignmentAtomic(int envIndex) const
-{
-    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
-    return envelopeAssignmentIndices[static_cast<std::size_t>(idx)];
-}
-
-
 int PX3SynthAudioProcessor::getTopMenuViewIndex() const
 {
     return juce::jlimit(0, kTopMenuViewCount - 1,
@@ -791,16 +764,21 @@ const juce::StringArray& PX3SynthAudioProcessor::getLfoAssignmentDisplayNames() 
     return lfoAssignmentDisplayNames;
 }
 
-int PX3SynthAudioProcessor::getAssignmentIndex(std::atomic<int> const& sourceIndex) const
+int PX3SynthAudioProcessor::getAssignmentIndex(int source) const
 {
-    return juce::jlimit(0,
-                        juce::jmax(0, static_cast<int>(lfoAssignableTargets.size()) - 1),
-                        sourceIndex.load(std::memory_order_relaxed));
+    auto graph = modulationGraph.read();
+    const auto destination = graph ? graph->routeAtSlot(source).destination : -1;
+    for (std::size_t index = 1; index < lfoAssignableTargets.size(); ++index)
+    {
+        const auto* parameter = lfoAssignableTargets[index].parameter;
+        if (parameter != nullptr && parameter->getParameterIndex() == destination) { return static_cast<int>(index); }
+    }
+    return 0;
 }
 
-juce::String PX3SynthAudioProcessor::getAssignmentParameterId(std::atomic<int> const& sourceIndex) const
+juce::String PX3SynthAudioProcessor::getAssignmentParameterId(int source) const
 {
-    const auto index = getAssignmentIndex(sourceIndex);
+    const auto index = getAssignmentIndex(source);
     if (index <= 0 || index >= static_cast<int>(lfoAssignableTargets.size()))
     {
         return "none";
@@ -809,22 +787,30 @@ juce::String PX3SynthAudioProcessor::getAssignmentParameterId(std::atomic<int> c
     return lfoAssignableTargets[static_cast<std::size_t>(index)].parameterId;
 }
 
-bool PX3SynthAudioProcessor::setAssignmentIndex(std::atomic<int>& sourceIndex,
+bool PX3SynthAudioProcessor::setAssignmentIndex(int source,
                                                 int index,
                                                 bool notifyHost,
                                                 const juce::String& sourceName)
 {
+    const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
     if (lfoAssignableTargets.empty())
     {
-        sourceIndex.store(0, std::memory_order_relaxed);
         return false;
     }
 
     const auto clamped = juce::jlimit(0,
                                       static_cast<int>(lfoAssignableTargets.size()) - 1,
                                       index);
-    sourceIndex.store(clamped, std::memory_order_relaxed);
-    rebuildModulationGraph();
+    const auto previous = primaryGraphRoutes[static_cast<std::size_t>(source)];
+    primaryGraphRoutes[static_cast<std::size_t>(source)] = clamped == 0 ? GraphRouteConfiguration {}
+        : GraphRouteConfiguration { source, lfoAssignableTargets[static_cast<std::size_t>(clamped)].parameterId };
+    px3::synth::CompiledModulationGraph plan;
+    juce::String error;
+    if (! compileModulationGraph(graphRouteConfigurations, plan, error) || ! modulationGraph.publish(plan))
+    {
+        primaryGraphRoutes[static_cast<std::size_t>(source)] = previous;
+        return false;
+    }
 
     if (notifyHost)
     {
@@ -835,7 +821,7 @@ bool PX3SynthAudioProcessor::setAssignmentIndex(std::atomic<int>& sourceIndex,
     debugLogEvent(sourceName,
                   "ASSIGNMENT_CHANGED",
                   "index=" + juce::String(clamped)
-                      + " id=" + getAssignmentParameterId(sourceIndex));
+                      + " id=" + getAssignmentParameterId(source));
     return true;
 }
 
@@ -967,21 +953,21 @@ bool PX3SynthAudioProcessor::fxReturnAudible(bool anySolo, bool anySourceSolo, b
     return fxSolo;
 }
 
-bool PX3SynthAudioProcessor::setAssignmentByParameterId(std::atomic<int>& sourceIndex,
+bool PX3SynthAudioProcessor::setAssignmentByParameterId(int source,
                                                         const juce::String& parameterId,
                                                         bool notifyHost,
                                                         const juce::String& sourceName)
 {
     if (parameterId.isEmpty() || parameterId.equalsIgnoreCase("none"))
     {
-        return setAssignmentIndex(sourceIndex, 0, notifyHost, sourceName);
+        return setAssignmentIndex(source, 0, notifyHost, sourceName);
     }
 
     for (int i = 0; i < static_cast<int>(lfoAssignableTargets.size()); ++i)
     {
         if (lfoAssignableTargets[static_cast<std::size_t>(i)].parameterId.equalsIgnoreCase(parameterId))
         {
-            return setAssignmentIndex(sourceIndex, i, notifyHost, sourceName);
+            return setAssignmentIndex(source, i, notifyHost, sourceName);
         }
     }
 
@@ -995,7 +981,7 @@ int PX3SynthAudioProcessor::getLfoAssignmentIndex() const
 
 int PX3SynthAudioProcessor::getLfoAssignmentIndex(int lfoIndex) const
 {
-    return getAssignmentIndex(lfoAssignmentAtomic(lfoIndex));
+    return getAssignmentIndex(juce::jlimit(0, kLfoSourceCount - 1, lfoIndex));
 }
 
 juce::String PX3SynthAudioProcessor::getLfoAssignmentParameterId() const
@@ -1005,7 +991,7 @@ juce::String PX3SynthAudioProcessor::getLfoAssignmentParameterId() const
 
 juce::String PX3SynthAudioProcessor::getLfoAssignmentParameterId(int lfoIndex) const
 {
-    return getAssignmentParameterId(lfoAssignmentAtomic(lfoIndex));
+    return getAssignmentParameterId(juce::jlimit(0, kLfoSourceCount - 1, lfoIndex));
 }
 
 bool PX3SynthAudioProcessor::setLfoAssignmentIndex(int index, bool notifyHost)
@@ -1016,7 +1002,7 @@ bool PX3SynthAudioProcessor::setLfoAssignmentIndex(int index, bool notifyHost)
 bool PX3SynthAudioProcessor::setLfoAssignmentIndex(int lfoIndex, int index, bool notifyHost)
 {
     const auto sourceName = "LFO" + juce::String(juce::jlimit(0, kLfoSourceCount - 1, lfoIndex) + 1);
-    return setAssignmentIndex(lfoAssignmentAtomic(lfoIndex), index, notifyHost, sourceName);
+    return setAssignmentIndex(juce::jlimit(0, kLfoSourceCount - 1, lfoIndex), index, notifyHost, sourceName);
 }
 
 bool PX3SynthAudioProcessor::setLfoAssignmentByParameterId(const juce::String& parameterId, bool notifyHost)
@@ -1029,7 +1015,7 @@ bool PX3SynthAudioProcessor::setLfoAssignmentByParameterId(int lfoIndex,
                                                            bool notifyHost)
 {
     const auto sourceName = "LFO" + juce::String(juce::jlimit(0, kLfoSourceCount - 1, lfoIndex) + 1);
-    return setAssignmentByParameterId(lfoAssignmentAtomic(lfoIndex), parameterId, notifyHost, sourceName);
+    return setAssignmentByParameterId(juce::jlimit(0, kLfoSourceCount - 1, lfoIndex), parameterId, notifyHost, sourceName);
 }
 
 const juce::StringArray& PX3SynthAudioProcessor::getEnvelopeAssignmentDisplayNames() const
@@ -1044,7 +1030,7 @@ int PX3SynthAudioProcessor::getEnvelopeAssignmentIndex() const
 
 int PX3SynthAudioProcessor::getEnvelopeAssignmentIndex(int envIndex) const
 {
-    return getAssignmentIndex(envelopeAssignmentAtomic(envIndex));
+    return getAssignmentIndex(kLfoSourceCount + juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex));
 }
 
 juce::String PX3SynthAudioProcessor::getEnvelopeAssignmentParameterId() const
@@ -1054,7 +1040,7 @@ juce::String PX3SynthAudioProcessor::getEnvelopeAssignmentParameterId() const
 
 juce::String PX3SynthAudioProcessor::getEnvelopeAssignmentParameterId(int envIndex) const
 {
-    return getAssignmentParameterId(envelopeAssignmentAtomic(envIndex));
+    return getAssignmentParameterId(kLfoSourceCount + juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex));
 }
 
 bool PX3SynthAudioProcessor::setEnvelopeAssignmentIndex(int index, bool notifyHost)
@@ -1065,7 +1051,7 @@ bool PX3SynthAudioProcessor::setEnvelopeAssignmentIndex(int index, bool notifyHo
 bool PX3SynthAudioProcessor::setEnvelopeAssignmentIndex(int envIndex, int index, bool notifyHost)
 {
     const auto sourceName = "ENV" + juce::String(juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex) + 1);
-    return setAssignmentIndex(envelopeAssignmentAtomic(envIndex), index, notifyHost, sourceName);
+    return setAssignmentIndex(kLfoSourceCount + juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex), index, notifyHost, sourceName);
 }
 
 bool PX3SynthAudioProcessor::setEnvelopeAssignmentByParameterId(const juce::String& parameterId, bool notifyHost)
@@ -1078,7 +1064,7 @@ bool PX3SynthAudioProcessor::setEnvelopeAssignmentByParameterId(int envIndex,
                                                                 bool notifyHost)
 {
     const auto sourceName = "ENV" + juce::String(juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex) + 1);
-    return setAssignmentByParameterId(envelopeAssignmentAtomic(envIndex), parameterId, notifyHost, sourceName);
+    return setAssignmentByParameterId(kLfoSourceCount + juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex), parameterId, notifyHost, sourceName);
 }
 
 void PX3SynthAudioProcessor::buildLfoAssignableTargets()
@@ -1114,14 +1100,7 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
         lfoAssignmentDisplayNames.add(floatParam->getName(64));
     }
 
-    for (auto& assignment : lfoAssignmentIndices)
-    {
-        assignment.store(0, std::memory_order_relaxed);
-    }
-    for (auto& assignment : envelopeAssignmentIndices)
-    {
-        assignment.store(0, std::memory_order_relaxed);
-    }
+    primaryGraphRoutes = {};
 }
 
 float PX3SynthAudioProcessor::lfoDepthForParameterId(const juce::String& parameterId) const
@@ -1217,7 +1196,8 @@ bool PX3SynthAudioProcessor::setMacroDestinationDepth(int macroIndex,
                                                       const juce::String& parameterId,
                                                       float depth)
 {
-    if (! juce::isPositiveAndBelow(macroIndex, kMacroCount)) { return false; }
+    const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
+    if (! juce::isPositiveAndBelow(macroIndex, kMacroCount) || ! std::isfinite(depth)) { return false; }
 
     auto& list = macroDestinations[static_cast<std::size_t>(macroIndex)];
     const auto entry = std::find_if(list.begin(), list.end(),
@@ -1226,19 +1206,21 @@ bool PX3SynthAudioProcessor::setMacroDestinationDepth(int macroIndex,
 
     if (entry == list.end()) { return false; }
 
+    const auto previous = entry->depth;
     entry->depth = juce::jlimit(-1.0f, 1.0f, depth);
 
     // The audio thread reads the resolved table, not this list, so the edit is
     // not audible until the table is rebuilt. Rebuilding here rather than
     // leaving it to the caller is what stops a depth that shows on screen and
     // is not in the sound.
-    rebuildMacroRoutes();
+    if (! rebuildModulationGraph()) { entry->depth = previous; return false; }
     return true;
 }
 
 float PX3SynthAudioProcessor::getMacroDestinationDepth(int macroIndex,
                                                        const juce::String& parameterId) const
 {
+    const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
     if (! juce::isPositiveAndBelow(macroIndex, kMacroCount)) { return 0.0f; }
 
     const auto& list = macroDestinations[static_cast<std::size_t>(macroIndex)];
@@ -1252,6 +1234,7 @@ float PX3SynthAudioProcessor::getMacroDestinationDepth(int macroIndex,
 bool PX3SynthAudioProcessor::isMacroDestination(int macroIndex,
                                                 const juce::String& parameterId) const
 {
+    const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
     if (! juce::isPositiveAndBelow(macroIndex, kMacroCount)) { return false; }
 
     const auto& list = macroDestinations[static_cast<std::size_t>(macroIndex)];
@@ -1263,6 +1246,7 @@ bool PX3SynthAudioProcessor::isMacroDestination(int macroIndex,
 bool PX3SynthAudioProcessor::toggleMacroDestination(int macroIndex,
                                                     const juce::String& parameterId)
 {
+    const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
     if (! juce::isPositiveAndBelow(macroIndex, kMacroCount) || parameterId.isEmpty())
     {
         return false;
@@ -1278,6 +1262,7 @@ bool PX3SynthAudioProcessor::toggleMacroDestination(int macroIndex,
     if (findParameterById(parameterId) == nullptr) { return false; }
 
     auto& list = macroDestinations[static_cast<std::size_t>(macroIndex)];
+    const auto previous = list;
     const auto existing = std::find_if(list.begin(), list.end(),
                                        [&parameterId](const MacroDestination& destination)
                                        { return destination.parameterId == parameterId; });
@@ -1296,27 +1281,32 @@ bool PX3SynthAudioProcessor::toggleMacroDestination(int macroIndex,
         assigned = true;
     }
 
-    rebuildMacroRoutes();
+    if (! rebuildModulationGraph()) { list = previous; return ! assigned; }
     return assigned;
 }
 
 std::vector<PX3SynthAudioProcessor::MacroDestination>
 PX3SynthAudioProcessor::getMacroDestinations(int macroIndex) const
 {
+    const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
     if (! juce::isPositiveAndBelow(macroIndex, kMacroCount)) { return {}; }
     return macroDestinations[static_cast<std::size_t>(macroIndex)];
 }
 
 void PX3SynthAudioProcessor::clearMacroDestinations(int macroIndex)
 {
+    const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
     if (! juce::isPositiveAndBelow(macroIndex, kMacroCount)) { return; }
 
-    macroDestinations[static_cast<std::size_t>(macroIndex)].clear();
-    rebuildMacroRoutes();
+    auto& routes = macroDestinations[static_cast<std::size_t>(macroIndex)];
+    const auto previous = routes;
+    routes.clear();
+    if (! rebuildModulationGraph()) { routes = previous; }
 }
 
 int PX3SynthAudioProcessor::getMacroMaskForParameter(const juce::String& parameterId) const
 {
+    const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
     auto mask = 0;
     for (int macro = 0; macro < kMacroCount; ++macro)
     {
@@ -1333,6 +1323,7 @@ bool PX3SynthAudioProcessor::isGraphDestination(const juce::String& id) const
 
 bool PX3SynthAudioProcessor::setGraphRoute(int slot, const GraphRouteConfiguration& route, juce::String& error)
 {
+    const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
     if (! juce::isPositiveAndBelow(slot, kGraphRouteSlots))
     {
         error = "Unknown modulation route slot.";
@@ -1354,6 +1345,7 @@ bool PX3SynthAudioProcessor::setGraphRoute(int slot, const GraphRouteConfigurati
 
 PX3SynthAudioProcessor::GraphRouteConfiguration PX3SynthAudioProcessor::getGraphRoute(int slot) const
 {
+    const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
     return juce::isPositiveAndBelow(slot, kGraphRouteSlots)
                ? graphRouteConfigurations[static_cast<std::size_t>(slot)] : GraphRouteConfiguration {};
 }
@@ -1381,17 +1373,20 @@ juce::String PX3SynthAudioProcessor::graphSourceId(int source)
     return juce::isPositiveAndBelow(source, kMacroCount) ? "mod.macro" + juce::String(source + 1) : juce::String();
 }
 
-void PX3SynthAudioProcessor::rebuildModulationGraph()
+bool PX3SynthAudioProcessor::rebuildModulationGraph()
 {
     px3::synth::CompiledModulationGraph plan;
     juce::String error;
-    if (compileModulationGraph(graphRouteConfigurations, plan, error)) { modulationGraph.publish(plan); }
+    return compileModulationGraph(graphRouteConfigurations, plan, error) && modulationGraph.publish(plan);
 }
 
 bool PX3SynthAudioProcessor::compileModulationGraph(
     const std::array<GraphRouteConfiguration, kGraphRouteSlots>& configurations,
-    px3::synth::CompiledModulationGraph& plan, juce::String& graphError) const
+    px3::synth::CompiledModulationGraph& plan, juce::String& graphError,
+    const std::array<GraphRouteConfiguration, kLfoSourceCount + kEnvelopeSourceCount>* primary,
+    const std::array<std::vector<MacroDestination>, kMacroCount>* macros) const
 {
+    const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
     using namespace px3::synth;
     std::array<ModulationSourceDescriptor, kLfoSourceCount + kEnvelopeSourceCount + kMacroCount> sources {};
     for (int source = 0; source < kLfoSourceCount; ++source) { sources[static_cast<std::size_t>(source)].bipolar = true; }
@@ -1410,24 +1405,33 @@ bool PX3SynthAudioProcessor::compileModulationGraph(
         }
     }
     std::vector<ModulationRoute> routes;
-    const auto addAssignment = [&](int slot, int source, int assignment)
+    const auto& primaryConfigurations = primary != nullptr ? *primary : primaryGraphRoutes;
+    const auto addAssignment = [&](int slot, const GraphRouteConfiguration& configuration)
     {
-        if (assignment <= 0 || assignment >= static_cast<int>(lfoAssignableTargets.size())) { return; }
-        auto* target = lfoAssignableTargets[static_cast<std::size_t>(assignment)].parameter;
-        if (target != nullptr) { routes.push_back({ slot, source, target->getParameterIndex(), 1.0f }); }
+        if (configuration.source < 0) { return true; }
+        const auto* entry = parameterCatalog.find(configuration.destination);
+        auto* target = entry != nullptr ? entry->parameter : nullptr;
+        if (target == nullptr || ! entry->modulationDestination)
+        {
+            graphError = "Primary modulation route has an unavailable destination.";
+            return false;
+        }
+        routes.push_back({ slot, configuration.source, target->getParameterIndex(), 1.0f });
+        return true;
     };
     for (int source = 0; source < kLfoSourceCount; ++source)
     {
-        addAssignment(source, source, getLfoAssignmentIndex(source));
+        if (! addAssignment(source, primaryConfigurations[static_cast<std::size_t>(source)])) { return false; }
     }
     for (int source = 0; source < kEnvelopeSourceCount; ++source)
     {
-        addAssignment(kLfoSourceCount + source, kLfoSourceCount + source, getEnvelopeAssignmentIndex(source));
+        if (! addAssignment(kLfoSourceCount + source, primaryConfigurations[static_cast<std::size_t>(kLfoSourceCount + source)])) { return false; }
     }
     auto slot = kLfoSourceCount + kEnvelopeSourceCount;
+    const auto& macroConfigurations = macros != nullptr ? *macros : macroDestinations;
     for (int macro = 0; macro < kMacroCount; ++macro)
     {
-        for (const auto& destination : macroDestinations[static_cast<std::size_t>(macro)])
+        for (const auto& destination : macroConfigurations[static_cast<std::size_t>(macro)])
         {
             auto* entry = parameterCatalog.find(destination.parameterId);
             auto* target = entry != nullptr ? entry->parameter : nullptr;
@@ -1438,11 +1442,13 @@ bool PX3SynthAudioProcessor::compileModulationGraph(
                     if (candidate.parameterId == destination.parameterId) { target = candidate.parameter; break; }
                 }
             }
-            if (target != nullptr && slot < kLfoSourceCount + kEnvelopeSourceCount + kMacroRouteSlots)
+            if (target == nullptr || slot >= kLfoSourceCount + kEnvelopeSourceCount + kMacroRouteSlots)
             {
-                routes.push_back({ slot++, kLfoSourceCount + kEnvelopeSourceCount + macro,
-                                   target->getParameterIndex(), destination.depth });
+                graphError = "Macro modulation route has an unavailable endpoint or exceeds capacity.";
+                return false;
             }
+            routes.push_back({ slot++, kLfoSourceCount + kEnvelopeSourceCount + macro,
+                               target->getParameterIndex(), destination.depth });
         }
     }
     for (int index = 0; index < kGraphRouteSlots; ++index)
@@ -1465,34 +1471,4 @@ bool PX3SynthAudioProcessor::compileModulationGraph(
     const auto compiled = plan.compile(sources, { destinations.data(), static_cast<std::size_t>(getParameters().size()) }, routes, error);
     graphError = error;
     return compiled;
-}
-
-void PX3SynthAudioProcessor::rebuildMacroRoutes()
-{
-    // Message thread. Resolves IDs to pointers ONCE, here, so the audio thread
-    // never touches a string. The count is published last with a release, so a
-    // slot the audio thread can see is a slot that has been filled in.
-    auto slot = 0;
-
-    for (int macro = 0; macro < kMacroCount && slot < kMacroRouteSlots; ++macro)
-    {
-        for (const auto& destination : macroDestinations[static_cast<std::size_t>(macro)])
-        {
-            if (slot >= kMacroRouteSlots) { break; }
-
-            auto* parameter = findParameterById(destination.parameterId);
-            if (parameter == nullptr) { continue; }
-
-            macroRoutes[static_cast<std::size_t>(slot)].parameter.store(parameter,
-                                                                        std::memory_order_relaxed);
-            macroRoutes[static_cast<std::size_t>(slot)].depth.store(destination.depth,
-                                                                    std::memory_order_relaxed);
-            macroRoutes[static_cast<std::size_t>(slot)].macroIndex.store(macro,
-                                                                         std::memory_order_relaxed);
-            ++slot;
-        }
-    }
-
-    macroRouteCount.store(slot, std::memory_order_release);
-    rebuildModulationGraph();
 }
