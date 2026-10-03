@@ -70,8 +70,8 @@ void testFactoryPresets()
 
         // And loading it restores the default state from memory.
         {
-            setParam(processor, "osc1MacroA", 0.9f);
-            const auto moved = getParamValue(processor, "osc1MacroA");
+            setParam(processor, "voice.osc1.macro.a", 0.9f);
+            const auto moved = getParamValue(processor, "voice.osc1.macro.a");
 
             PresetManager::PresetRecord init;
             init.isInit = true;
@@ -79,8 +79,8 @@ void testFactoryPresets()
             const auto loaded = manager.loadPreset(init, loadError);
 
             check("Preset_LoadingInitRestoresTheDefaultState",
-                  loaded && std::abs(getParamValue(processor, "osc1MacroA") - moved) > 0.1f,
-                  loaded ? "osc1MacroA " + fmt(moved, 3) + " -> " + fmt(getParamValue(processor, "osc1MacroA"), 3)
+                  loaded && std::abs(getParamValue(processor, "voice.osc1.macro.a") - moved) > 0.1f,
+                  loaded ? "osc1MacroA " + fmt(moved, 3) + " -> " + fmt(getParamValue(processor, "voice.osc1.macro.a"), 3)
                          : "load failed: " + loadError);
         }
     }
@@ -339,7 +339,7 @@ void testFactoryPresets()
             for (const auto& [id, value] : preset.params)
             {
                 const juce::String name(id);
-                if (name == "osc1Mode" || name == "osc2Mode" || name == "osc3Mode")
+                if (name == "voice.osc1.mode" || name == "voice.osc2.mode" || name == "voice.osc3.mode")
                 {
                     modesUsed.insert(static_cast<int>(value));
                 }
@@ -896,10 +896,10 @@ void testEditorLifecycle()
 
         auto silencedWith = [&](bool osc1, bool osc2, bool osc3, bool sub)
         {
-            setParam(processor, "osc1Enabled", osc1 ? 1.0f : 0.0f);
-            setParam(processor, "osc2Enabled", osc2 ? 1.0f : 0.0f);
-            setParam(processor, "osc3Enabled", osc3 ? 1.0f : 0.0f);
-            setParam(processor, "subOscEnabled", sub ? 1.0f : 0.0f);
+            setParam(processor, "voice.osc1.enabled", osc1 ? 1.0f : 0.0f);
+            setParam(processor, "voice.osc2.enabled", osc2 ? 1.0f : 0.0f);
+            setParam(processor, "voice.osc3.enabled", osc3 ? 1.0f : 0.0f);
+            setParam(processor, "voice.sub.enabled", sub ? 1.0f : 0.0f);
 
             std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
             editor->setSize(1320, 798);
@@ -922,7 +922,7 @@ void testEditorLifecycle()
             // now taller than the keyboard it draws, and the extra strip has to
             // be BOTH transparent to the mouse and outside the keyboard area -
             // otherwise it would eat clicks meant for the panel above it.
-            setParam(processor, "osc1Enabled", 1.0f);
+            setParam(processor, "voice.osc1.enabled", 1.0f);
             std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
             editor->setSize(1320, 798);
             editor->setVisible(true);

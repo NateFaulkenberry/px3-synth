@@ -384,7 +384,7 @@ void testDelay()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 0);
+            setChoice(processor, "voice.osc1.mode", 0);
             setParam(processor, "ampSustain", 1.0f);
             setParam(processor, "ampRelease", 0.05f);
 
@@ -465,9 +465,9 @@ void testDelay()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 11);          // FM bell, no low end
-            setParam(processor, "osc1MacroA", 0.52f);
-            setParam(processor, "osc1MacroB", 0.22f);
+            setChoice(processor, "voice.osc1.mode", 11);          // FM bell, no low end
+            setParam(processor, "voice.osc1.macro.a", 0.52f);
+            setParam(processor, "voice.osc1.macro.b", 0.22f);
             setParam(processor, "ampDecay", 0.55f);
             setParam(processor, "ampSustain", 0.05f);
             setParam(processor, "ampRelease", 0.70f);
@@ -547,7 +547,7 @@ void testDelay()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 11);
+            setChoice(processor, "voice.osc1.mode", 11);
             setParam(processor, "ampSustain", 0.35f);
             setParam(processor, "ampRelease", 0.70f);
             for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
@@ -1856,7 +1856,7 @@ void testEffectIndependence()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setChoice(processor, "osc1Mode", 1);
+        setChoice(processor, "voice.osc1.mode", 1);
         for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
         {
             setParam(processor, juce::String("mix.") + id + ".fxSend", 0.8f);
@@ -1932,7 +1932,7 @@ void testEffectIndependence()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 1);
+            setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "mix.osc1.pan", sourcePan);
             setParam(processor, "mix.osc1.level", wetOnly ? 0.0f : 0.8f);
             setParam(processor, "mix.osc1.fxSend", fxActive ? 1.0f : 0.0f);
@@ -2003,7 +2003,7 @@ void testEffectIndependence()
         for (auto* p : { &dryOnly, &wetOnly })
         {
             makePlainPatch(*p);
-            setChoice(*p, "osc1Mode", 1);
+            setChoice(*p, "voice.osc1.mode", 1);
             setParam(*p, "reverbEnabled", 1.0f);
             setParam(*p, "reverbAmount", 1.0f);
             setParam(*p, "fxSendGain", 1.0f);
@@ -2024,7 +2024,7 @@ void testEffectIndependence()
         // the established mixer contract and the reason wet-only uses the fader.
         PX3SynthAudioProcessor muted;
         makePlainPatch(muted);
-        setChoice(muted, "osc1Mode", 1);
+        setChoice(muted, "voice.osc1.mode", 1);
         setParam(muted, "reverbEnabled", 1.0f);
         setParam(muted, "reverbAmount", 1.0f);
         setParam(muted, "fxSendGain", 1.0f);
@@ -2040,7 +2040,7 @@ void testEffectIndependence()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setChoice(processor, "osc1Mode", 1);
+        setChoice(processor, "voice.osc1.mode", 1);
         setParam(processor, "ampRelease", 0.020f);
         setParam(processor, "mix.osc1.fxSend", 1.0f);
         setParam(processor, "fxSendGain", 1.0f);
@@ -2103,7 +2103,7 @@ void testEffectIndependence()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 1);
+            setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "ampSustain", 1.0f);
 
             for (const auto* id : { "sub", "osc1", "osc2", "osc3" })

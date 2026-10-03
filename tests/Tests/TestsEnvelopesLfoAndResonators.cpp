@@ -341,7 +341,7 @@ void testModEnvelopes()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 1);      // SAW: harmonics for the filter to remove
+            setChoice(processor, "voice.osc1.mode", 1);      // SAW: harmonics for the filter to remove
             setParam(processor, "filter1Enabled", 1.0f);
             setChoice(processor, "filter1Type", 0);   // LP12
             setParam(processor, "filter1Cutoff", 900.0f);
@@ -414,8 +414,8 @@ void testModEnvelopes()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setParam(processor, "osc1Enabled", 0.0f);
-            setParam(processor, "subOscEnabled", 1.0f);
+            setParam(processor, "voice.osc1.enabled", 0.0f);
+            setParam(processor, "voice.sub.enabled", 1.0f);
             setParam(processor, "mix.sub.level", 0.5f);
             setParam(processor, "env2Enabled", 1.0f);
             setParam(processor, "env2Attack", 0.005f);
@@ -463,7 +463,7 @@ void testModEnvelopes()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 1);
+            setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "filter1Enabled", 1.0f);
             setParam(processor, "filter1Cutoff", 900.0f);
             setParam(processor, "env1Enabled", 1.0f);
@@ -648,7 +648,7 @@ void testLfo()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 1);
+            setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "filter1Enabled", 1.0f);
             setParam(processor, "filter1Cutoff", 1200.0f);
             setParam(processor, "lfoEnabled", lfoEnabled ? 1.0f : 0.0f);
@@ -704,7 +704,7 @@ void testLfo()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 1);
+            setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "filter1Enabled", 1.0f);
             setParam(processor, "filter1Cutoff", 1200.0f);
             setParam(processor, "lfoEnabled", 1.0f);
@@ -744,8 +744,8 @@ void testLfo()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        for (int i = 1; i <= 3; ++i) setParam(processor, "osc" + juce::String(i) + "Enabled", 0.0f);
-        setParam(processor, "subOscEnabled", 0.0f);
+        for (int i = 1; i <= 3; ++i) setParam(processor, "voice.osc" + juce::String(i) + ".enabled", 0.0f);
+        setParam(processor, "voice.sub.enabled", 0.0f);
         setParam(processor, "lfoEnabled", 1.0f);
         setParam(processor, "lfoAmount", 1.0f);
         setParam(processor, "lfoFrequency", 8.0f);
@@ -775,7 +775,7 @@ void testVibe()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setChoice(processor, "osc1Mode", 1);
+        setChoice(processor, "voice.osc1.mode", 1);
         setParam(processor, "filter1Enabled", 1.0f);
         setParam(processor, "filter1Cutoff", 2500.0f);
         setParam(processor, "vibeEnabled", enabled ? 1.0f : 0.0f);
@@ -841,7 +841,7 @@ void testVibe()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setChoice(processor, "osc1Mode", 0);      // SINE
+        setChoice(processor, "voice.osc1.mode", 0);      // SINE
         setParam(processor, "vibeEnabled", 1.0f);
         setParam(processor, "vibeAmount", amount);
         const auto capture = render(processor, 96000, { { 2000, true, 45, 0.9f } });
@@ -869,7 +869,7 @@ void testVibe()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 0);          // SINE: no HF of its own
+            setChoice(processor, "voice.osc1.mode", 0);          // SINE: no HF of its own
             setParam(processor, "vibeEnabled", 1.0f);
             setParam(processor, "vibeAmount", amount);
             setChoice(processor, "vibeType", typeIndex);
@@ -1909,10 +1909,10 @@ void testComb()
         const auto renderWithMode = [](int modeIndex, float combTune)
         {
             PX3SynthAudioProcessor processor;
-            setParam(processor, "osc1Enabled", 1.0f);
-            setParam(processor, "osc2Enabled", 0.0f);
-            setParam(processor, "osc3Enabled", 0.0f);
-            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "voice.osc1.enabled", 1.0f);
+            setParam(processor, "voice.osc2.enabled", 0.0f);
+            setParam(processor, "voice.osc3.enabled", 0.0f);
+            setParam(processor, "voice.sub.enabled", 0.0f);
             setParam(processor, "vibeEnabled", 0.0f);
             setParam(processor, "reverbEnabled", 0.0f);
             setParam(processor, "delayEnabled", 0.0f);
@@ -1920,7 +1920,7 @@ void testComb()
             setParam(processor, "ampSustain", 1.0f);
             // Noise in, so the comb's resonance is what shapes the output
             // rather than the oscillator's own harmonics.
-            setChoice(processor, "osc1Mode", 4);
+            setChoice(processor, "voice.osc1.mode", 4);
 
             setParam(processor, "filter1Enabled", 1.0f);
             setParam(processor, "filter2Enabled", 0.0f);

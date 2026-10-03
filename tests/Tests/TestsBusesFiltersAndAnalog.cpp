@@ -195,10 +195,10 @@ double modeOvertonesDb(int mode, float macro)
 {
     PX3SynthAudioProcessor processor;
     makePlainPatch(processor);
-    setChoice(processor, "osc1Mode", mode);
-    setParam(processor, "osc1MacroA", macro);
-    setParam(processor, "osc1MacroB", macro);
-    setParam(processor, "osc1MacroC", macro);
+    setChoice(processor, "voice.osc1.mode", mode);
+    setParam(processor, "voice.osc1.macro.a", macro);
+    setParam(processor, "voice.osc1.macro.b", macro);
+    setParam(processor, "voice.osc1.macro.c", macro);
     const auto cap = render(processor, 96000, { { 2000, true, 45, 0.9f } });
 
     constexpr int order = 15;
@@ -3024,9 +3024,9 @@ void testOscillatorModeRichness()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 10);
-            setParam(processor, "osc1MacroA", 0.0f);
-            setParam(processor, "osc1MacroB", 0.5f);
+            setChoice(processor, "voice.osc1.mode", 10);
+            setParam(processor, "voice.osc1.macro.a", 0.0f);
+            setParam(processor, "voice.osc1.macro.b", 0.5f);
             const auto cap = render(processor, 96000, { { 2000, true, midiNote, 0.9f } });
 
             constexpr int order = 15;

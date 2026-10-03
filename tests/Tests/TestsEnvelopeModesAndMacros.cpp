@@ -1950,8 +1950,8 @@ void testMacroSystem()
         {
             PX3SynthAudioProcessor processor;
             prepared(processor);
-            setParam(processor, "osc1Enabled", 1.0f);
-            setChoice(processor, "osc1Mode", 0);
+            setParam(processor, "voice.osc1.enabled", 1.0f);
+            setChoice(processor, "voice.osc1.mode", 0);
             setParam(processor, "ampAttack", 0.005f);
             setParam(processor, "ampDecay", 0.100f);
             setParam(processor, "ampSustain", 1.00f);

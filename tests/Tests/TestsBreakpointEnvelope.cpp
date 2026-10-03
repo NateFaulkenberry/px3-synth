@@ -4064,15 +4064,15 @@ void testBreakpointEnvelope()
     // shape is still a plain ADSR.
     {
         PX3SynthAudioProcessor processor;
-        setParam(processor, "osc1Enabled", 1.0f);
-        setParam(processor, "osc2Enabled", 0.0f);
-        setParam(processor, "osc3Enabled", 0.0f);
-        setParam(processor, "subOscEnabled", 0.0f);
+        setParam(processor, "voice.osc1.enabled", 1.0f);
+        setParam(processor, "voice.osc2.enabled", 0.0f);
+        setParam(processor, "voice.osc3.enabled", 0.0f);
+        setParam(processor, "voice.sub.enabled", 0.0f);
         setParam(processor, "delayEnabled", 0.0f);
         setParam(processor, "reverbEnabled", 0.0f);
         setParam(processor, "moodEnabled", 0.0f);
         setParam(processor, "vibeEnabled", 0.0f);
-        setChoice(processor, "osc1Mode", 0);
+        setChoice(processor, "voice.osc1.mode", 0);
 
         // The parameters say a short attack, the stored shape says four seconds,
         // and the shape is FREE-FORM - a point has been added, so it is no
@@ -4174,15 +4174,15 @@ void testBreakpointEnvelope()
     // never does.
     {
         PX3SynthAudioProcessor processor;
-        setParam(processor, "osc1Enabled", 1.0f);
-        setParam(processor, "osc2Enabled", 0.0f);
-        setParam(processor, "osc3Enabled", 0.0f);
-        setParam(processor, "subOscEnabled", 0.0f);
+        setParam(processor, "voice.osc1.enabled", 1.0f);
+        setParam(processor, "voice.osc2.enabled", 0.0f);
+        setParam(processor, "voice.osc3.enabled", 0.0f);
+        setParam(processor, "voice.sub.enabled", 0.0f);
         setParam(processor, "delayEnabled", 0.0f);
         setParam(processor, "reverbEnabled", 0.0f);
         setParam(processor, "moodEnabled", 0.0f);
         setParam(processor, "vibeEnabled", 0.0f);
-        setChoice(processor, "osc1Mode", 0);
+        setChoice(processor, "voice.osc1.mode", 0);
         setParam(processor, "ampAttack", 4.000f);
         setParam(processor, "ampDecay", 0.100f);
         setParam(processor, "ampSustain", 1.00f);
