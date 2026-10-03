@@ -325,7 +325,7 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
         setParameter(processor, "fx.mood.mix", 0.3f);
     }
 
-    setParameter(processor, "masterGain", patch.masterGain);
+    setParameter(processor, "mix.master.level", patch.masterGain);
     if (patch.oscillatorMode >= 0)
     {
         // Choice params are set by index over the 0..1 normalised range.
@@ -353,7 +353,7 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
         {
             setParameter(processor, juce::String("mix.") + id + ".level", 1.0f);
         }
-        setParameter(processor, "fxReturnGain", 1.0f);
+        setParameter(processor, "mix.fx.level", 1.0f);
     }
 
     for (int envIndex = 0; envIndex < 3; ++envIndex)
@@ -870,7 +870,7 @@ MixerMeasurement measureMixer(const MixerConfig& config)
     setParameter(processor, "voice.amp.release", 0.200f);
     setParameter(processor, "voice.amp.enabled", 1.0f);
     setParameter(processor, "fx.vibe.amount", 0.0f);
-    setParameter(processor, "masterGain", 0.6f);
+    setParameter(processor, "mix.master.level", 0.6f);
 
     for (int i = 0; i < 3; ++i)
     {
@@ -897,15 +897,15 @@ MixerMeasurement measureMixer(const MixerConfig& config)
     {
         setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".level", config.level[i]);
         setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".pan", config.pan[i]);
-        setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".fxSend", config.send[i]);
+        setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".send.fx", config.send[i]);
         setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".mute", config.mute[i] ? 1.0f : 0.0f);
         setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".solo", config.solo[i] ? 1.0f : 0.0f);
     }
-    setParameter(processor, "fxReturnGain", config.fxReturnGain);
+    setParameter(processor, "mix.fx.level", config.fxReturnGain);
     setParameter(processor, "mix.fx.pan", config.fxReturnPan);
     setParameter(processor, "mix.fx.mute", config.fxMute ? 1.0f : 0.0f);
     setParameter(processor, "mix.fx.solo", config.fxSolo ? 1.0f : 0.0f);
-    setParameter(processor, "fxSendGain", config.fxSendGain);
+    setParameter(processor, "mix.send.fx.level", config.fxSendGain);
 
     processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
     processor.prepareToPlay(kSampleRate, kBlockSize);
@@ -981,7 +981,7 @@ MixerDynamicResult measureMixerDynamics(const juce::String& paramId,
     setParameter(processor, "voice.amp.release", 0.150f);
     setParameter(processor, "voice.amp.enabled", 1.0f);
     setParameter(processor, "fx.vibe.amount", 0.0f);
-    setParameter(processor, "masterGain", 0.6f);
+    setParameter(processor, "mix.master.level", 0.6f);
     setParameter(processor, "fx.delay.enabled", 0.0f);
     setParameter(processor, "fx.mood.enabled", 0.0f);
     setParameter(processor, "fx.reverb.enabled", 0.0f);
@@ -996,7 +996,7 @@ MixerDynamicResult measureMixerDynamics(const juce::String& paramId,
     for (int i = 0; i < 4; ++i)
     {
         setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".level", 1.0f);
-        setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".fxSend", 0.0f);
+        setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".send.fx", 0.0f);
     }
     setParameter(processor, paramId, fromValue);
 
@@ -1839,12 +1839,12 @@ int runRegressionSuite(bool legacyPruning)
     const MixSweep mixSweeps[] = {
         { "osc1 fader",     "mix.osc1.level",  0.0f,  1.0f },
         { "osc1 pan",       "mix.osc1.pan",   -1.0f,  1.0f },
-        { "osc1 fx send",   "mix.osc1.fxSend", 0.0f,  1.0f },
+        { "osc1 fx send",   "mix.osc1.send.fx", 0.0f,  1.0f },
         { "sub fader",      "mix.sub.level",   0.0f,  1.0f },
-        { "fx send gain",   "fxSendGain",      0.0f,  1.0f },
-        { "fx return gain", "fxReturnGain",    0.0f,  1.0f },
+        { "fx send gain",   "mix.send.fx.level",      0.0f,  1.0f },
+        { "fx return gain", "mix.fx.level",    0.0f,  1.0f },
         { "fx return pan",  "mix.fx.pan",     -1.0f,  1.0f },
-        { "master gain",    "masterGain",      0.0f,  1.0f },
+        { "master gain",    "mix.master.level",      0.0f,  1.0f },
     };
     for (const auto& sweep : mixSweeps)
     {
@@ -1861,7 +1861,7 @@ int runRegressionSuite(bool legacyPruning)
         auto p = base;
         p.attack = 0.005f; p.decay = 0.1f; p.sustain = 0.8f; p.release = 1.0f;
         p.pattern = Pattern::legatoRuns; p.fullPatch = true; p.masterGain = 1.0f;
-        p.automateParamId = "masterGain"; p.automateFrom = 0.2f; p.automateTo = 1.0f;
+        p.automateParamId = "mix.master.level"; p.automateFrom = 0.2f; p.automateTo = 1.0f;
         check("M sweep master, full patch + notes", p);
     }
 
@@ -2338,8 +2338,8 @@ int main(int argc, char* argv[])
 
             // AnalogEngine adds four channel stages and three bus stages inside
             // the per-sample loop, so it belongs in the allocation check.
-            setParameter(processor, "analogEnabled", fxOn ? 1.0f : 0.0f);
-            setParameter(processor, "analogProfile", fxOn ? 0.25f : 0.0f);
+            setParameter(processor, "global.character.enabled", fxOn ? 1.0f : 0.0f);
+            setParameter(processor, "global.character.profile", fxOn ? 0.25f : 0.0f);
 
             setParameter(processor, "voice.amp.release", releaseVoices ? 3.0f : 0.2f);
             setParameter(processor, "voice.filter1.enabled", filtersOn ? 1.0f : 0.0f);
@@ -3648,9 +3648,9 @@ int main(int argc, char* argv[])
             const Dyn dyn[] = {
                 { "osc1 fader swept",      "mix.osc1.level",  0.0f, 1.0f, 0,  false },
                 { "osc1 pan swept",        "mix.osc1.pan",   -1.0f, 1.0f, 0,  false },
-                { "osc1 send swept",       "mix.osc1.fxSend", 0.0f, 1.0f, 0,  false },
-                { "fx send gain swept",    "fxSendGain",      0.0f, 1.0f, 0,  false },
-                { "fx return gain swept",  "fxReturnGain",    0.0f, 1.0f, 0,  false },
+                { "osc1 send swept",       "mix.osc1.send.fx", 0.0f, 1.0f, 0,  false },
+                { "fx send gain swept",    "mix.send.fx.level",      0.0f, 1.0f, 0,  false },
+                { "fx return gain swept",  "mix.fx.level",    0.0f, 1.0f, 0,  false },
                 { "fx return pan swept",   "mix.fx.pan",     -1.0f, 1.0f, 0,  false },
                 { "osc1 mute toggled 20/s","mix.osc1.mute",   0.0f, 1.0f, 20, true },
                 { "osc1 solo toggled 20/s","mix.osc1.solo",   0.0f, 1.0f, 20, true },
@@ -3704,7 +3704,7 @@ int main(int argc, char* argv[])
                 setParameter(processor, "fx.delay.enabled", 0.0f);
                 setParameter(processor, "fx.mood.enabled", 0.0f);
                 setParameter(processor, "fx.reverb.enabled", 0.0f);
-                setParameter(processor, "masterGain", 0.6f);
+                setParameter(processor, "mix.master.level", 0.6f);
                 setParameter(processor, "voice.sub.enabled", 1.0f);
                 for (int i = 0; i < 3; ++i)
                 {
@@ -3715,7 +3715,7 @@ int main(int argc, char* argv[])
                 for (int i = 0; i < 4; ++i)
                 {
                     setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".level", level);
-                    setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".fxSend", 0.0f);
+                    setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".send.fx", 0.0f);
                     setParameter(processor, juce::String("mix.") + kMixerIds[i] + ".mute",
                                  (soloChannel >= 0 && i != soloChannel) ? 1.0f : 0.0f);
                 }
@@ -3780,7 +3780,7 @@ int main(int argc, char* argv[])
                 setParameter(processor, "fx.delay.enabled", 0.0f);
                 setParameter(processor, "fx.mood.enabled", 0.0f);
                 setParameter(processor, "fx.reverb.enabled", 0.0f);
-                setParameter(processor, "masterGain", 0.6f);
+                setParameter(processor, "mix.master.level", 0.6f);
                 setParameter(processor, "voice.sub.enabled", 0.0f);
                 for (int i = 0; i < 3; ++i)
                 {
@@ -3846,7 +3846,7 @@ int main(int argc, char* argv[])
                      juce::String("step=") + fmt(polyLevel.first) + " transient="
                          + juce::String(polyLevel.second, 1));
 
-            const auto polySend = stress("mix.osc1.fxSend", 0.0f, 1.0f, true, 2.5f);
+            const auto polySend = stress("mix.osc1.send.fx", 0.0f, 1.0f, true, 2.5f);
             mixCheck("send swept at maximum polyphony stays clean",
                      polySend.first < 0.001 && polySend.second < 12.0,
                      juce::String("step=") + fmt(polySend.first) + " transient="
@@ -4014,9 +4014,9 @@ int main(int argc, char* argv[])
         const Check checks[] = {
             { "mix.sub.level",   0.9123f }, { "mix.osc1.level",  0.1077f },
             { "mix.osc2.level",  0.5000f }, { "mix.osc3.level",  0.7700f },
-            { "mix.sub.pan",    -0.4200f }, { "mix.osc1.fxSend", 0.3300f },
-            { "fxReturnGain",    0.2500f }, { "mix.fx.pan",      0.6100f },
-            { "masterGain",      0.4200f },
+            { "mix.sub.pan",    -0.4200f }, { "mix.osc1.send.fx", 0.3300f },
+            { "mix.fx.level",    0.2500f }, { "mix.fx.pan",      0.6100f },
+            { "mix.master.level",      0.4200f },
         };
 
         auto failures = 0;
@@ -4030,7 +4030,7 @@ int main(int argc, char* argv[])
         {
             PX3SynthAudioProcessor fresh;
             for (const auto* id : { "mix.sub.level", "mix.osc1.level", "mix.osc2.level",
-                                    "mix.osc3.level", "fxReturnGain" })
+                                    "mix.osc3.level", "mix.fx.level" })
             {
                 auto* param = findParameter(fresh, id);
                 const auto value = param != nullptr ? param->convertFrom0to1(param->getValue()) : -1.0f;
@@ -4073,7 +4073,7 @@ int main(int argc, char* argv[])
             {
                 PX3SynthAudioProcessor source;
                 for (const auto* id : { "mix.sub.level", "mix.osc1.level", "mix.osc2.level",
-                                        "mix.osc3.level", "fxReturnGain" })
+                                        "mix.osc3.level", "mix.fx.level" })
                 {
                     setParameter(source, id, 1.0f);
                 }
@@ -4082,7 +4082,7 @@ int main(int argc, char* argv[])
             PX3SynthAudioProcessor restored;
             restored.setStateInformation(unityState.getData(), static_cast<int>(unityState.getSize()));
             for (const auto* id : { "mix.sub.level", "mix.osc1.level", "mix.osc2.level",
-                                    "mix.osc3.level", "fxReturnGain" })
+                                    "mix.osc3.level", "mix.fx.level" })
             {
                 auto* param = findParameter(restored, id);
                 const auto value = param != nullptr ? param->convertFrom0to1(param->getValue()) : -1.0f;
@@ -4168,15 +4168,15 @@ int main(int argc, char* argv[])
         const Control controls[] = {
             { "osc1 fader (level)",  "mix.osc1.level", 0.0f,  1.0f },
             { "osc1 pan",            "mix.osc1.pan",  -1.0f,  1.0f },
-            { "osc1 FX send",        "mix.osc1.fxSend", 0.0f, 1.0f },
-            { "FX send gain",        "fxSendGain",     0.0f,  1.0f },
-            { "FX return gain",      "fxReturnGain",   0.0f,  1.0f },
+            { "osc1 FX send",        "mix.osc1.send.fx", 0.0f, 1.0f },
+            { "FX send gain",        "mix.send.fx.level",     0.0f,  1.0f },
+            { "FX return gain",      "mix.fx.level",   0.0f,  1.0f },
             // The parameter is registered as "mix.fx.pan"; "fxReturnPan" is the
             // C++ member name, not the ID. Sweeping an id that does not exist
             // measured nothing and reported a flat 0.000000 delta, so this row
             // had been passing without testing anything.
             { "FX return pan",       "mix.fx.pan",    -1.0f,  1.0f },
-            { "master gain",         "masterGain",     0.0f,  1.0f },
+            { "master gain",         "mix.master.level",     0.0f,  1.0f },
         };
 
         std::printf("\nMIXER CONTROL SMOOTHNESS — fader swept while a note sustains\n");

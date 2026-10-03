@@ -198,7 +198,7 @@ void testOscillatorTuning()
         // two-semitone range.
         const auto withBend = measureCents(Source::osc, 1.0f, 12.0f, [](PX3SynthAudioProcessor& processor)
         {
-            setParam(processor, "pitchBendRange", 2.0f);
+            setParam(processor, "performance.pitch.bend.range", 2.0f);
             processor.setPitchBendNormalizedFromUI(1.0f);
         });
         check("Tuning_StaticTuningAndPitchBendAdd", std::abs(withBend - 1412.0) < 1.0,

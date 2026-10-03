@@ -141,6 +141,23 @@ void testEcosystem()
                             - ranged->getDefaultValue()) < 1.0e-5f;
         }
         check("ParameterCatalog_AllHostParametersComeFromTypedDefinitions", definitionsMatch);
+        juce::StringArray nonCanonicalIds;
+        for (const auto& entry : catalog.entries())
+        {
+            const auto rootId = entry.id.upToFirstOccurrenceOf(".", false, false);
+            if (entry.id != entry.id.toLowerCase() || ! entry.id.containsChar('.')
+                || (rootId != "voice" && rootId != "mod" && rootId != "fx" && rootId != "mix"
+                    && rootId != "performance" && rootId != "global"))
+            {
+                nonCanonicalIds.add(entry.id);
+            }
+        }
+        check("ParameterCatalog_AllHostIdsAreHierarchicalAndCanonical", nonCanonicalIds.isEmpty(),
+              nonCanonicalIds.joinIntoString(", "));
+          check("ParameterCatalog_MixerInsertsBelongToTheirOwningBuses",
+              catalog.find("mix.dry.insert.eq.frequency.1")->groupPath == "MIXER / DRY BUS / EQ"
+                && catalog.find("mix.fx.insert.comp.input")->groupPath == "MIXER / FX RETURN / COMPRESSOR"
+                && catalog.find("mix.master.level")->groupPath == "MIXER / MASTER");
 
         check("ParameterCatalog_IndexesEveryHostParameterAndBuildsModuleGroups",
               allRegistered && coarse != nullptr && coarse->parameter != nullptr

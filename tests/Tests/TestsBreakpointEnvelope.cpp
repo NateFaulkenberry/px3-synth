@@ -1062,7 +1062,7 @@ void testBreakpointEnvelope()
                       + processor.getAnalogProfileParam().getCurrentChoiceName());
 
             const ScopedAnimationPreference animationsOff(false);
-            setChoice(processor, "analogProfile", 3);
+            setChoice(processor, "global.character.profile", 3);
 
             juce::MemoryBlock session;
             processor.getStateInformation(session);
@@ -1462,7 +1462,7 @@ void testBreakpointEnvelope()
                     // And it follows the parameter back, so host automation or
                     // a preset load is reflected here rather than leaving the
                     // menu showing something the synth is not doing.
-                    setChoice(processor, "analogProfile", 4);
+                    setChoice(processor, "global.character.profile", 4);
                     panel->refreshFromParameters();
 
                     check("Settings_TheDropdownFollowsTheParameter",

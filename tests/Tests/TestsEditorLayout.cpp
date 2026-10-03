@@ -201,7 +201,7 @@ void testEditorLayout()
         // values would look right on a default patch and wrong on every other.
         setParam(processor, "voice.amp.attack", 1.750f);
         setParam(processor, "voice.filter1.cutoff", 640.0f);
-        setChoice(processor, "analogProfile", 3);
+        setChoice(processor, "global.character.profile", 3);
         processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
 
         std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());

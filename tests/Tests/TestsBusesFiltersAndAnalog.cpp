@@ -1189,11 +1189,11 @@ void testBusInserts()
         {
             for (const auto* bus : { "dry", "fx" })
             {
-                setParam(p, juce::String(bus) + "EqEnabled", 0.0f);
-                setParam(p, juce::String(bus) + "EqGain2", 18.0f);
-                setParam(p, juce::String(bus) + "EqFreq2", 900.0f);
-                setParam(p, juce::String(bus) + "CompEnabled", 0.0f);
-                setParam(p, juce::String(bus) + "CompInput", 36.0f);
+                setParam(p, ("mix." + juce::String(bus) + ".insert.") + "eq.enabled", 0.0f);
+                setParam(p, ("mix." + juce::String(bus) + ".insert.") + "eq.gain.2", 18.0f);
+                setParam(p, ("mix." + juce::String(bus) + ".insert.") + "eq.frequency.2", 900.0f);
+                setParam(p, ("mix." + juce::String(bus) + ".insert.") + "comp.enabled", 0.0f);
+                setParam(p, ("mix." + juce::String(bus) + ".insert.") + "comp.input", 36.0f);
             }
         });
 
@@ -1243,9 +1243,9 @@ void testBusInserts()
         const auto plain = renderWith([](PX3SynthAudioProcessor&) {});
         const auto cut = renderWith([](PX3SynthAudioProcessor& p)
         {
-            setParam(p, "dryEqEnabled", 1.0f);
-            setChoice(p, "dryEqType1", 1);          // high pass
-            setParam(p, "dryEqFreq1", 2000.0f);     // well above a 220 Hz note
+            setParam(p, "mix.dry.insert.eq.enabled", 1.0f);
+            setChoice(p, "mix.dry.insert.eq.type.1", 1);          // high pass
+            setParam(p, "mix.dry.insert.eq.frequency.1", 2000.0f);     // well above a 220 Hz note
         });
 
         const auto before = juce::Decibels::gainToDecibels(plain.rmsOver(4000, 40000), -200.0);
@@ -1262,11 +1262,11 @@ void testBusInserts()
         const auto plain = renderWith([](PX3SynthAudioProcessor&) {});
         const auto loaded = renderWith([](PX3SynthAudioProcessor& p)
         {
-            setParam(p, "fxEqEnabled", 1.0f);
-            setChoice(p, "fxEqType1", 1);
-            setParam(p, "fxEqFreq1", 12000.0f);
-            setParam(p, "fxCompEnabled", 1.0f);
-            setParam(p, "fxCompInput", 30.0f);
+            setParam(p, "mix.fx.insert.eq.enabled", 1.0f);
+            setChoice(p, "mix.fx.insert.eq.type.1", 1);
+            setParam(p, "mix.fx.insert.eq.frequency.1", 12000.0f);
+            setParam(p, "mix.fx.insert.comp.enabled", 1.0f);
+            setParam(p, "mix.fx.insert.comp.input", 30.0f);
         });
 
         const auto before = juce::Decibels::gainToDecibels(plain.rmsOver(4000, 50000), -200.0);
@@ -1282,17 +1282,17 @@ void testBusInserts()
         {
             setParam(p, "fx.delay.enabled", 1.0f);
             setParam(p, "fx.delay.amount", 0.7f);
-            setParam(p, "mix.osc1.fxSend", 0.9f);
-            setParam(p, "fxReturnGain", 0.8f);
+            setParam(p, "mix.osc1.send.fx", 0.9f);
+            setParam(p, "mix.fx.level", 0.8f);
         };
 
         const auto plain = renderWith(openSend);
         const auto cut = renderWith([&](PX3SynthAudioProcessor& p)
         {
             openSend(p);
-            setParam(p, "fxEqEnabled", 1.0f);
-            setChoice(p, "fxEqType1", 1);
-            setParam(p, "fxEqFreq1", 4000.0f);
+            setParam(p, "mix.fx.insert.eq.enabled", 1.0f);
+            setChoice(p, "mix.fx.insert.eq.type.1", 1);
+            setParam(p, "mix.fx.insert.eq.frequency.1", 4000.0f);
         });
 
         const auto before = juce::Decibels::gainToDecibels(plain.rmsOver(4000, 50000), -200.0);
@@ -1319,10 +1319,10 @@ void testBusInserts()
             quietLoud(processor, level);
             if (comp)
             {
-                setParam(processor, "dryCompEnabled", 1.0f);
-                setParam(processor, "dryCompInput", 24.0f);
-                setChoice(processor, "dryCompRatio", 3);     // 20:1
-                setParam(processor, "dryCompOutput", 0.0f);
+                setParam(processor, "mix.dry.insert.comp.enabled", 1.0f);
+                setParam(processor, "mix.dry.insert.comp.input", 24.0f);
+                setChoice(processor, "mix.dry.insert.comp.ratio", 3);     // 20:1
+                setParam(processor, "mix.dry.insert.comp.output", 0.0f);
             }
             const auto out = render(processor, 66000, oneNote);
             return juce::Decibels::gainToDecibels(out.rmsOver(20000, 50000), -200.0);
@@ -1346,20 +1346,20 @@ void testBusInserts()
         std::vector<juce::String> ids;
         for (const auto* bus : { "dry", "fx" })
         {
-            const auto b = juce::String(bus);
-            ids.push_back(b + "EqEnabled");
-            ids.push_back(b + "EqType1");
-            ids.push_back(b + "EqType4");
+            const auto b = "mix." + juce::String(bus) + ".insert.";
+            ids.push_back(b + "eq.enabled");
+            ids.push_back(b + "eq.type.1");
+            ids.push_back(b + "eq.type.4");
             for (int band = 1; band <= 4; ++band)
             {
                 const auto n = juce::String(band);
-                ids.push_back(b + "EqFreq" + n);
-                ids.push_back(b + "EqGain" + n);
-                ids.push_back(b + "EqQ" + n);
+                ids.push_back(b + "eq.frequency." + n);
+                ids.push_back(b + "eq.gain." + n);
+                ids.push_back(b + "eq.q." + n);
             }
-            for (const auto* suffix : { "CompEnabled", "CompInput", "CompOutput", "CompAttack",
-                                        "CompRelease", "CompRatio", "CompMix", "CompLink",
-                                        "CompMeterMode" })
+            for (const auto* suffix : { "comp.enabled", "comp.input", "comp.output", "comp.attack",
+                                        "comp.release", "comp.ratio", "comp.mix", "comp.link",
+                                        "comp.meter.mode" })
             {
                 ids.push_back(b + suffix);
             }
@@ -2023,9 +2023,9 @@ void testBusInserts()
         if (graph != nullptr && dry.bandFreq[1] != nullptr)
         {
             // ---- dragging band 2 moves its frequency and its gain ----------
-            setParam(processor, "dryEqEnabled", 1.0f);
-            setParam(processor, "dryEqFreq2", 300.0f);
-            setParam(processor, "dryEqGain2", 0.0f);
+            setParam(processor, "mix.dry.insert.eq.enabled", 1.0f);
+            setParam(processor, "mix.dry.insert.eq.frequency.2", 300.0f);
+            setParam(processor, "mix.dry.insert.eq.gain.2", 0.0f);
 
             // The graph starts non-editable because the EQ starts bypassed, and
             // the poll that would notice the enable runs on a timer that does
@@ -2097,9 +2097,9 @@ void testBusInserts()
         // edit that changes nothing audible.
         if (graph != nullptr && dry.eqEnabled != nullptr && dry.bandFreq[1] != nullptr)
         {
-            setParam(processor, "dryEqEnabled", 1.0f);
-            setParam(processor, "dryEqFreq2", 300.0f);
-            setParam(processor, "dryEqGain2", 0.0f);
+            setParam(processor, "mix.dry.insert.eq.enabled", 1.0f);
+            setParam(processor, "mix.dry.insert.eq.frequency.2", 300.0f);
+            setParam(processor, "mix.dry.insert.eq.gain.2", 0.0f);
 
             const auto plot = graph->plotBounds();
             const auto handleX = plot.getX() + plot.getWidth()
@@ -2141,9 +2141,9 @@ void testBusInserts()
         // ---- a pass filter has no gain to drag -----------------------------
         if (graph != nullptr && dry.bandType[0] != nullptr)
         {
-            setChoice(processor, "dryEqType1", 1);      // high pass
-            setParam(processor, "dryEqGain1", 0.0f);
-            setParam(processor, "dryEqFreq1", 100.0f);
+            setChoice(processor, "mix.dry.insert.eq.type.1", 1);      // high pass
+            setParam(processor, "mix.dry.insert.eq.gain.1", 0.0f);
+            setParam(processor, "mix.dry.insert.eq.frequency.1", 100.0f);
             graph->setEditable(true);
 
             const auto plot = graph->plotBounds();
@@ -3826,7 +3826,7 @@ void testAnalogEngine()
         };
 
         check("Analog_UserFacingParametersExist",
-              findParam("analogEnabled") != nullptr && findParam("analogProfile") != nullptr,
+              findParam("global.character.enabled") != nullptr && findParam("global.character.profile") != nullptr,
               "analogEnabled and analogProfile");
 
         // The requirement the brief is most explicit about: NO tuning constant
@@ -3876,11 +3876,11 @@ void testAnalogEngine()
                   + ", compiled " + juce::String(compiled.curveBlend, 4));
 
         // The profile choice, by contrast, IS user-facing and must persist.
-        if (auto* profileParam = findParam("analogProfile"))
+        if (auto* profileParam = findParam("global.character.profile"))
         {
             profileParam->setValueNotifyingHost(1.0f);
         }
-        if (auto* enabledParam = findParam("analogEnabled"))
+        if (auto* enabledParam = findParam("global.character.enabled"))
         {
             enabledParam->setValueNotifyingHost(1.0f);
         }
@@ -3906,11 +3906,11 @@ void testAnalogEngine()
             {
                 if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
                 {
-                    if (ranged->getParameterID() == "analogEnabled")
+                    if (ranged->getParameterID() == "global.character.enabled")
                     {
                         ranged->setValueNotifyingHost(analogOn ? 1.0f : 0.0f);
                     }
-                    if (ranged->getParameterID() == "analogProfile")
+                    if (ranged->getParameterID() == "global.character.profile")
                     {
                         ranged->setValueNotifyingHost(static_cast<float>(profileIndex) / 4.0f);
                     }
@@ -3978,8 +3978,8 @@ void testAnalogEngine()
                 {
                     const auto id = ranged->getParameterID();
                     if (id == "fx.vibe.amount")    { ranged->setValueNotifyingHost(vibeOn ? 0.6f : 0.0f); }
-                    if (id == "analogEnabled") { ranged->setValueNotifyingHost(analogOn ? 1.0f : 0.0f); }
-                    if (id == "analogProfile") { ranged->setValueNotifyingHost(0.25f); }
+                    if (id == "global.character.enabled") { ranged->setValueNotifyingHost(analogOn ? 1.0f : 0.0f); }
+                    if (id == "global.character.profile") { ranged->setValueNotifyingHost(0.25f); }
                 }
             }
             return render(processor, static_cast<int>(kSampleRate * 2.0),

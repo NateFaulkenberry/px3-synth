@@ -521,7 +521,7 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
 
     {
         auto control = std::make_unique<DebugParamControl>();
-        control->key = "fxSendGain";
+        control->key = "mix.send.fx.level";
         control->label.setText("FX Send Gain", juce::dontSendNotification);
         control->label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(230, 230, 230));
         control->label.setFont(juce::FontOptions(11.0f));
@@ -555,7 +555,7 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
 
     {
         auto control = std::make_unique<DebugParamControl>();
-        control->key = "fxReturnGain";
+        control->key = "mix.fx.level";
         control->label.setText("FX Return Gain", juce::dontSendNotification);
         control->label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(230, 230, 230));
         control->label.setFont(juce::FontOptions(11.0f));
@@ -1257,11 +1257,11 @@ void PX3SynthAudioProcessorEditor::refreshDebugParameterControls()
         {
             actualValue = static_cast<float>(audioProcessor.debugGetVibeSeed());
         }
-        else if (control->key == "fxSendGain")
+        else if (control->key == "mix.send.fx.level")
         {
             actualValue = audioProcessor.getFxSendGainParam().get();
         }
-        else if (control->key == "fxReturnGain")
+        else if (control->key == "mix.fx.level")
         {
             actualValue = audioProcessor.getFxReturnGainParam().get();
         }
@@ -1829,8 +1829,8 @@ void PX3SynthAudioProcessorEditor::debugWriteDeterministicTestValues()
         else if (control->key == "waveformAsymmetry") control->slider.setValue(0.44, juce::sendNotificationSync);
         else if (control->key == "temperatureDrift") control->slider.setValue(0.59, juce::sendNotificationSync);
         else if (control->key == "correlatedChaos") control->slider.setValue(0.72, juce::sendNotificationSync);
-        else if (control->key == "fxSendGain") control->slider.setValue(0.81, juce::sendNotificationSync);
-        else if (control->key == "fxReturnGain") control->slider.setValue(0.77, juce::sendNotificationSync);
+        else if (control->key == "mix.send.fx.level") control->slider.setValue(0.81, juce::sendNotificationSync);
+        else if (control->key == "mix.fx.level") control->slider.setValue(0.77, juce::sendNotificationSync);
     }
 
     audioProcessor.debugLogEvent("DEBUG_PANEL", "WRITE_TEST_VALUES", "deterministic values applied");
@@ -1880,8 +1880,8 @@ void PX3SynthAudioProcessorEditor::debugResetParameters()
         else if (control->key == "waveformAsymmetry") control->slider.setValue(0.32, juce::sendNotificationSync);
         else if (control->key == "temperatureDrift") control->slider.setValue(0.40, juce::sendNotificationSync);
         else if (control->key == "correlatedChaos") control->slider.setValue(0.50, juce::sendNotificationSync);
-        else if (control->key == "fxSendGain") control->slider.setValue(1.0, juce::sendNotificationSync);
-        else if (control->key == "fxReturnGain") control->slider.setValue(1.0, juce::sendNotificationSync);
+        else if (control->key == "mix.send.fx.level") control->slider.setValue(1.0, juce::sendNotificationSync);
+        else if (control->key == "mix.fx.level") control->slider.setValue(1.0, juce::sendNotificationSync);
     }
 
     audioProcessor.debugLogEvent("DEBUG_PANEL", "RESET_PARAMETERS", "all ranged parameters reset to defaults");

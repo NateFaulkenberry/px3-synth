@@ -532,12 +532,12 @@ inline void makePlainPatch(PX3SynthAudioProcessor& processor)
     setParam(processor, "voice.amp.sustain", 1.0f);
     setParam(processor, "voice.amp.release", 0.050f);
     setParam(processor, "voice.amp.enabled", 1.0f);
-    setParam(processor, "masterGain", 0.6f);
+    setParam(processor, "mix.master.level", 0.6f);
 
     // The analog console is a colour stage, and "plain" means no colour. It
     // ships ON now that SETTINGS can turn it off, so a plain patch has to say
     // so rather than relying on a default.
-    setParam(processor, "analogEnabled", 0.0f);
+    setParam(processor, "global.character.enabled", 0.0f);
 
     setParam(processor, "voice.osc1.enabled", 1.0f);
     setParam(processor, "voice.osc2.enabled", 0.0f);
@@ -575,7 +575,7 @@ inline void makePlainPatch(PX3SynthAudioProcessor& processor)
     {
         setParam(processor, juce::String("mix.") + id + ".level", 0.8f);
         setParam(processor, juce::String("mix.") + id + ".pan", 0.0f);
-        setParam(processor, juce::String("mix.") + id + ".fxSend", 0.0f);
+        setParam(processor, juce::String("mix.") + id + ".send.fx", 0.0f);
         setParam(processor, juce::String("mix.") + id + ".mute", 0.0f);
         setParam(processor, juce::String("mix.") + id + ".solo", 0.0f);
     }

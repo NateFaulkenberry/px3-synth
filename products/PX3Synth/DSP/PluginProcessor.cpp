@@ -402,7 +402,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(graphRouteDepthParams[static_cast<std::size_t>(slot)]);
     }
 
-    masterGainParam = parameterCatalog.createFloat("masterGain", "Master Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
+    masterGainParam = parameterCatalog.createFloat("mix.master.level", "Master Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
 
     vibeAmountParam = parameterCatalog.createFloat("fx.vibe.amount", "Vibe", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     vibeEnabledParam = parameterCatalog.createBool("fx.vibe.enabled", "Vibe Enabled", true);
@@ -426,8 +426,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     delayEnabledParam = parameterCatalog.createBool("fx.delay.enabled", "Delay Enabled", true);
     delayTimeParam = parameterCatalog.createFloat("fx.delay.time", "Delay Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
     delayFeedbackParam = parameterCatalog.createFloat("fx.delay.feedback", "Delay Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.38f);
-    fxSendGainParam = parameterCatalog.createFloat("fxSendGain", "FX Send", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
-    fxReturnGainParam = parameterCatalog.createFloat("fxReturnGain",
+    fxSendGainParam = parameterCatalog.createFloat("mix.send.fx.level", "FX Send", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    fxReturnGainParam = parameterCatalog.createFloat("mix.fx.level",
                                                        "FX Return",
                                                        juce::NormalisableRange<float>(0.0f, px3::processor_internal::channelFaderMaxGain()),
                                                        1.0f);
@@ -445,7 +445,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                 sourceName + " Level",
                                                 juce::NormalisableRange<float>(0.0f, px3::processor_internal::channelFaderMaxGain()),
                                                 1.0f);
-        mixerSendParams[static_cast<std::size_t>(i)] = parameterCatalog.createFloat("mix." + sourceId + ".fxSend",
+        mixerSendParams[static_cast<std::size_t>(i)] = parameterCatalog.createFloat("mix." + sourceId + ".send.fx",
                                                                                        sourceName + " FX Send",
                                                                                        juce::NormalisableRange<float>(0.0f, 1.0f),
                                                                                        1.0f);
@@ -656,7 +656,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     // On by default now that the console has a control of its own in SETTINGS.
     // It was off because nothing in the UI could turn it on, which made "off"
     // the only state a user could ever hear.
-    analogEnabledParam = parameterCatalog.createBool("analogEnabled", "Analog Enabled", true);
+    analogEnabledParam = parameterCatalog.createBool("global.character.enabled", "Analog Enabled", true);
     // Off: outputs 1/2 carry the whole mix, whatever the host has done with the
     // second pair. On, with that pair enabled: dry on 1/2 and the FX return on
     // 3/4, as stems.
@@ -665,10 +665,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     // AU wrapper enables every bus on construction. With the split implicit, a
     // Logic instrument track heard the dry mix only and every effect went to
     // outputs it never listens to.
-    fxSeparateOutputParam = parameterCatalog.createBool(juce::ParameterID("fxSeparateOutput", 1),
+    fxSeparateOutputParam = parameterCatalog.createBool(juce::ParameterID("global.outputs.fx.separate", 1),
                                                          "Separate FX Output",
                                                          false);
-    analogProfileParam = parameterCatalog.createChoice("analogProfile",
+    analogProfileParam = parameterCatalog.createChoice("global.character.profile",
                                                          "Analog Profile",
                                                          px3::AnalogEngine::profileNames(),
                                                          0);
@@ -682,7 +682,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     reverbWidthParam = parameterCatalog.createFloat("fx.reverb.width", "Reverb Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.86f);
     reverbCloudFeedbackParam = parameterCatalog.createFloat("fx.reverb.cloud.feedback", "Reverb Cloud Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.62f);
     reverbCloudDiffusionParam = parameterCatalog.createFloat("fx.reverb.cloud.diffusion", "Reverb Cloud Diffusion", juce::NormalisableRange<float>(0.0f, 1.0f), 0.54f);
-    pitchBendRangeParam = parameterCatalog.createInt("pitchBendRange",
+    pitchBendRangeParam = parameterCatalog.createInt("performance.pitch.bend.range",
                                                        "Pitch Bend Range",
                                                        1,
                                                        24,
@@ -910,8 +910,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(spreadEnabledParam);
 
     // Bus inserts. Dry first, FX second - the order the signal meets them.
-    createBusInsertParameters(0, "dry", "Dry Bus");
-    createBusInsertParameters(1, "fx", "FX Bus");
+    createBusInsertParameters(0, "mix.dry.insert.", "Dry Bus");
+    createBusInsertParameters(1, "mix.fx.insert.", "FX Bus");
     addParameter(spreadAmountParam);
     addParameter(spreadWidthParam);
     addParameter(spreadDepthParam);
@@ -1088,7 +1088,7 @@ void PX3SynthAudioProcessor::createBusInsertParameters(int bus,
         parameterCatalog.add(parameter);
     };
 
-    p.eqEnabled = parameterCatalog.createBool(idPrefix + "EqEnabled", label + " EQ Enabled", false);
+    p.eqEnabled = parameterCatalog.createBool(idPrefix + "eq.enabled", label + " EQ Enabled", false);
 
     // Band 1 is a low shelf or a high pass, band 4 a high shelf or a low pass;
     // the inner two are bells. The outer bands switch because the most useful
@@ -1113,64 +1113,64 @@ void PX3SynthAudioProcessor::createBusInsertParameters(int bus,
         if (band == 0 || band == 3)
         {
             p.bandType[b] = parameterCatalog.createChoice(
-                idPrefix + "EqType" + n, bandLabel + "Type",
+                idPrefix + "eq.type." + n, bandLabel + "Type",
                 band == 0 ? outerLowChoices : outerHighChoices, 0);
         }
 
         // Logarithmic: an EQ knob that spends half its travel above 10 kHz is
         // unusable, and frequency is perceived logarithmically.
         p.bandFreq[b] = parameterCatalog.createFloat(
-            idPrefix + "EqFreq" + n, bandLabel + "Frequency",
+            idPrefix + "eq.frequency." + n, bandLabel + "Frequency",
             juce::NormalisableRange<float>(px3::ParametricEQ::kMinFrequencyHz,
                                            px3::ParametricEQ::kMaxFrequencyHz, 0.0f, 0.25f),
             defaultFreq[b]);
 
         p.bandGain[b] = parameterCatalog.createFloat(
-            idPrefix + "EqGain" + n, bandLabel + "Gain",
+            idPrefix + "eq.gain." + n, bandLabel + "Gain",
             juce::NormalisableRange<float>(px3::ParametricEQ::kMinGainDb,
                                            px3::ParametricEQ::kMaxGainDb), 0.0f);
 
         p.bandQ[b] = parameterCatalog.createFloat(
-            idPrefix + "EqQ" + n, bandLabel + "Q",
+            idPrefix + "eq.q." + n, bandLabel + "Q",
             juce::NormalisableRange<float>(px3::ParametricEQ::kMinQ,
                                            px3::ParametricEQ::kMaxQ, 0.0f, 0.4f),
             defaultQ[b]);
     }
 
-    p.compEnabled = parameterCatalog.createBool(idPrefix + "CompEnabled", label + " Comp Enabled", false);
+    p.compEnabled = parameterCatalog.createBool(idPrefix + "comp.enabled", label + " Comp Enabled", false);
 
     // INPUT is the primary control: the 1176 has no threshold, and driving the
     // input into a fixed threshold is the actual workflow.
     p.compInput = parameterCatalog.createFloat(
-        idPrefix + "CompInput", label + " Comp Input",
+        idPrefix + "comp.input", label + " Comp Input",
         juce::NormalisableRange<float>(-12.0f, 36.0f), 0.0f);
     p.compOutput = parameterCatalog.createFloat(
-        idPrefix + "CompOutput", label + " Comp Output",
+        idPrefix + "comp.output", label + " Comp Output",
         juce::NormalisableRange<float>(-24.0f, 24.0f), 0.0f);
 
     // 0..1 where 1 is FASTEST, matching the hardware's reversed panel.
     p.compAttack = parameterCatalog.createFloat(
-        idPrefix + "CompAttack", label + " Comp Attack",
+        idPrefix + "comp.attack", label + " Comp Attack",
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
     p.compRelease = parameterCatalog.createFloat(
-        idPrefix + "CompRelease", label + " Comp Release",
+        idPrefix + "comp.release", label + " Comp Release",
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
 
     p.compRatio = parameterCatalog.createChoice(
-        idPrefix + "CompRatio", label + " Comp Ratio",
+        idPrefix + "comp.ratio", label + " Comp Ratio",
         juce::StringArray { "4:1", "8:1", "12:1", "20:1", "All Buttons" }, 0);
 
     p.compMix = parameterCatalog.createFloat(
-        idPrefix + "CompMix", label + " Comp Mix",
+        idPrefix + "comp.mix", label + " Comp Mix",
         juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
 
-    p.compLink = parameterCatalog.createBool(idPrefix + "CompLink", label + " Comp Stereo Link", true);
+    p.compLink = parameterCatalog.createBool(idPrefix + "comp.link", label + " Comp Stereo Link", true);
 
     // What the movement is wired to. A parameter rather than UI state so it
     // survives a session and travels with a preset - a meter that resets to a
     // different source every time the editor opens is worse than no switch.
     p.compMeterMode = parameterCatalog.createChoice(
-        idPrefix + "CompMeterMode", label + " Comp Meter",
+        idPrefix + "comp.meter.mode", label + " Comp Meter",
         juce::StringArray { "GR", "IN", "OUT" }, 0);
 
     addParameter(p.eqEnabled);

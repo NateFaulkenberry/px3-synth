@@ -127,7 +127,7 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     setParameter(processor, "voice.amp.sustain", 1.0f);
     setParameter(processor, "voice.amp.release", scenario.longRelease ? 6.0f : 0.200f);
     setParameter(processor, "voice.amp.enabled", 1.0f);
-    setParameter(processor, "masterGain", 0.6f);
+    setParameter(processor, "mix.master.level", 0.6f);
 
     setParameter(processor, "voice.osc1.enabled", 1.0f);
     setParameter(processor, "voice.osc2.enabled", scenario.allSources ? 1.0f : 0.0f);
@@ -140,18 +140,18 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     {
         auto loadInserts = [&](const char* bus, bool eq, bool comp)
         {
-            const auto b = juce::String(bus);
+            const auto b = "mix." + juce::String(bus) + ".insert.";
             const auto on = ! scenario.insertsBypassed;
-            setParameter(processor, b + "EqEnabled", (eq && on) ? 1.0f : 0.0f);
+            setParameter(processor, b + "eq.enabled", (eq && on) ? 1.0f : 0.0f);
             for (int band = 1; band <= 4; ++band)
             {
                 const auto n = juce::String(band);
-                setParameter(processor, b + "EqGain" + n, band % 2 == 0 ? 4.0f : -3.0f);
-                setParameter(processor, b + "EqQ" + n, 1.2f);
+                setParameter(processor, b + "eq.gain." + n, band % 2 == 0 ? 4.0f : -3.0f);
+                setParameter(processor, b + "eq.q." + n, 1.2f);
             }
-            setParameter(processor, b + "CompEnabled", (comp && on) ? 1.0f : 0.0f);
-            setParameter(processor, b + "CompInput", 18.0f);
-            setParameter(processor, b + "CompMix", 1.0f);
+            setParameter(processor, b + "comp.enabled", (comp && on) ? 1.0f : 0.0f);
+            setParameter(processor, b + "comp.input", 18.0f);
+            setParameter(processor, b + "comp.mix", 1.0f);
         };
 
         const auto anyDry = scenario.eqDry || scenario.compDry;
@@ -186,7 +186,7 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
         setParameter(processor, "fx.delay.amount", 0.5f);
         setParameter(processor, "fx.reverb.amount", 0.5f);
         setParameter(processor, "fx.mood.mix", 0.4f);
-        setParameter(processor, "fxSendGain", 0.8f);
+        setParameter(processor, "mix.send.fx.level", 0.8f);
     }
 
     // The newer effects, driven separately. They cost nothing while inaudible -
@@ -204,8 +204,8 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
 
     // AnalogEngine runs at four channel stages plus three bus stages, so it is
     // measured with the rest of the console rather than as an effect.
-    setParameter(processor, "analogEnabled", scenario.analog ? 1.0f : 0.0f);
-    setParameter(processor, "analogProfile", scenario.analog ? 0.25f : 0.0f);
+    setParameter(processor, "global.character.enabled", scenario.analog ? 1.0f : 0.0f);
+    setParameter(processor, "global.character.profile", scenario.analog ? 0.25f : 0.0f);
 
     for (int envIndex = 0; envIndex < 3; ++envIndex)
     {
@@ -326,7 +326,7 @@ Timing measure(const Scenario& scenario,
                 {
                     setParameter(processor, juce::String("mix.") + id + ".level", 0.35f + 0.45f * phase);
                     setParameter(processor, juce::String("mix.") + id + ".pan", -0.8f + 1.6f * phase);
-                    setParameter(processor, juce::String("mix.") + id + ".fxSend", 0.2f + 0.6f * phase);
+                    setParameter(processor, juce::String("mix.") + id + ".send.fx", 0.2f + 0.6f * phase);
                 }
             }
 
@@ -526,7 +526,7 @@ Fingerprint fingerprint(const Scenario& scenario)
             {
                 setParameter(processor, juce::String("mix.") + id + ".level", 0.35f + 0.45f * phase);
                 setParameter(processor, juce::String("mix.") + id + ".pan", -0.8f + 1.6f * phase);
-                setParameter(processor, juce::String("mix.") + id + ".fxSend", 0.2f + 0.6f * phase);
+                setParameter(processor, juce::String("mix.") + id + ".send.fx", 0.2f + 0.6f * phase);
             }
         }
 

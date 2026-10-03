@@ -22,15 +22,13 @@ std::vector<ParameterCatalog::GroupSegment> ParameterCatalog::groupPathForId(con
         const auto module = key.substring(3).upToFirstOccurrenceOf(".", false, false);
         return path("effects", "EFFECTS", module, module == "spread" ? juce::String("STEREO SPREAD") : module.toUpperCase());
     }
-    if (key.startsWith("voice.osc1.") || key.startsWith("voice.osc2.") || key.startsWith("voice.osc3.")
-        || key.startsWith("osc1") || key.startsWith("osc2") || key.startsWith("osc3"))
+    if (key.startsWith("voice.osc1.") || key.startsWith("voice.osc2.") || key.startsWith("voice.osc3."))
     {
-        const auto slot = (key.startsWith("voice.osc3.") || key.startsWith("osc3")) ? juce::String("3")
-                          : (key.startsWith("voice.osc2.") || key.startsWith("osc2")) ? juce::String("2")
-                                                                                       : juce::String("1");
+        const auto slot = key.startsWith("voice.osc3.") ? juce::String("3")
+                          : key.startsWith("voice.osc2.") ? juce::String("2") : juce::String("1");
         return path("voice", "VOICE", "osc" + slot, "OSC " + slot);
     }
-    if (key.startsWith("voice.sub.") || key.startsWith("subosc"))
+    if (key.startsWith("voice.sub."))
     {
         return path("voice", "VOICE", "sub", "SUB OSC");
     }
@@ -60,24 +58,27 @@ std::vector<ParameterCatalog::GroupSegment> ParameterCatalog::groupPathForId(con
     {
         return path("modulation", "MODULATION", "macros", "MACROS");
     }
-    if (key.startsWith("mix"))
+    if (key.startsWith("mix."))
     {
-        return path("mixer", "MIXER", "channels", "CHANNELS");
+        const auto module = key.substring(4).upToFirstOccurrenceOf(".", false, false);
+        const auto name = module == "dry" ? juce::String("DRY BUS")
+                          : module == "fx" ? juce::String("FX RETURN")
+                          : module == "send" ? juce::String("FX SEND")
+                          : module.startsWith("osc") ? "OSC " + module.substring(3) : module.toUpperCase();
+        auto result = path("mixer", "MIXER", module, name);
+        if (key.contains(".insert.eq.")) { result.push_back({ "eq", "EQ" }); }
+        if (key.contains(".insert.comp.")) { result.push_back({ "comp", "COMPRESSOR" }); }
+        return result;
     }
-    if (key.startsWith("dry") || key.startsWith("fxreturn") || key.startsWith("fxsend")
-        || key.startsWith("fxeq") || key.startsWith("fxcomp") || key.startsWith("mastergain"))
-    {
-        return path("mixer", "MIXER", "buses", "BUSES");
-    }
-    if (key.startsWith("analog"))
+    if (key.startsWith("global.character."))
     {
         return path("global", "GLOBAL", "character", "CHARACTER");
     }
-    if (key.startsWith("pitchbend"))
+    if (key.startsWith("performance.pitch."))
     {
         return path("performance", "PERFORMANCE", "pitch", "PITCH");
     }
-    if (key.startsWith("fxseparate"))
+    if (key.startsWith("global.outputs."))
     {
         return path("global", "GLOBAL", "outputs", "OUTPUTS");
     }
@@ -245,7 +246,7 @@ void ParameterCatalog::add(juce::AudioProcessorParameter* parameter)
                                           || key.endsWith(".sustain") || key.endsWith(".release")));
         entry.modulationDestination = entry.definition->kind == ParameterKind::continuous
             && (entry.sourceControl || (! key.startsWith("mod.") && ! key.startsWith("voice.amp.")
-                                       && key != "pitchBendRange"));
+                                       && key != "performance.pitch.bend.range"));
     }
     catalogEntries.push_back(std::move(entry));
 }

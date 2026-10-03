@@ -393,9 +393,9 @@ void testDelay()
             // at first, reporting an identical -46.4 dB for every algorithm at
             // every amount because the delay was never in the path.
             for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
-                setParam(processor, juce::String("mix.") + id + ".fxSend", 1.0f);
-            setParam(processor, "fxSendGain", 1.0f);
-            setParam(processor, "fxReturnGain", 1.0f);
+                setParam(processor, juce::String("mix.") + id + ".send.fx", 1.0f);
+            setParam(processor, "mix.send.fx.level", 1.0f);
+            setParam(processor, "mix.fx.level", 1.0f);
 
             setParam(processor, "fx.delay.enabled", 1.0f);
             setChoice(processor, "fx.delay.algorithm", algorithm);
@@ -472,9 +472,9 @@ void testDelay()
             setParam(processor, "voice.amp.sustain", 0.05f);
             setParam(processor, "voice.amp.release", 0.70f);
             for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
-                setParam(processor, juce::String("mix.") + id + ".fxSend", 1.0f);
-            setParam(processor, "fxSendGain", 1.0f);
-            setParam(processor, "fxReturnGain", 1.0f);
+                setParam(processor, juce::String("mix.") + id + ".send.fx", 1.0f);
+            setParam(processor, "mix.send.fx.level", 1.0f);
+            setParam(processor, "mix.fx.level", 1.0f);
             setParam(processor, "fx.delay.enabled", 1.0f);
             setChoice(processor, "fx.delay.algorithm", 1);     // TAPE
             setParam(processor, "fx.delay.time", 0.34f);
@@ -551,9 +551,9 @@ void testDelay()
             setParam(processor, "voice.amp.sustain", 0.35f);
             setParam(processor, "voice.amp.release", 0.70f);
             for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
-                setParam(processor, juce::String("mix.") + id + ".fxSend", 1.0f);
-            setParam(processor, "fxSendGain", 1.0f);
-            setParam(processor, "fxReturnGain", 1.0f);
+                setParam(processor, juce::String("mix.") + id + ".send.fx", 1.0f);
+            setParam(processor, "mix.send.fx.level", 1.0f);
+            setParam(processor, "mix.fx.level", 1.0f);
             setParam(processor, "fx.delay.enabled", 1.0f);
             setChoice(processor, "fx.delay.algorithm", algo);
             setParam(processor, "fx.delay.amount", 1.0f);
@@ -1859,10 +1859,10 @@ void testEffectIndependence()
         setChoice(processor, "voice.osc1.mode", 1);
         for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
         {
-            setParam(processor, juce::String("mix.") + id + ".fxSend", 0.8f);
+            setParam(processor, juce::String("mix.") + id + ".send.fx", 0.8f);
         }
-        setParam(processor, "fxSendGain", 1.0f);
-        setParam(processor, "fxReturnGain", 0.8f);
+        setParam(processor, "mix.send.fx.level", 1.0f);
+        setParam(processor, "mix.fx.level", 0.8f);
         configure(processor);
         return render(processor, 64000, { { 2000, true, 45, 0.9f }, { 30000, false, 45, 0.0f } });
     };
@@ -1935,10 +1935,10 @@ void testEffectIndependence()
             setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "mix.osc1.pan", sourcePan);
             setParam(processor, "mix.osc1.level", wetOnly ? 0.0f : 0.8f);
-            setParam(processor, "mix.osc1.fxSend", fxActive ? 1.0f : 0.0f);
+            setParam(processor, "mix.osc1.send.fx", fxActive ? 1.0f : 0.0f);
             setParam(processor, "mix.fx.pan", fxReturnPan);
-            setParam(processor, "fxSendGain", 1.0f);
-            setParam(processor, "fxReturnGain", fxActive ? 1.0f : 0.0f);
+            setParam(processor, "mix.send.fx.level", 1.0f);
+            setParam(processor, "mix.fx.level", fxActive ? 1.0f : 0.0f);
             setParam(processor, "fx.reverb.enabled", fxActive ? 1.0f : 0.0f);
             setParam(processor, "fx.reverb.amount", 1.0f);
             return render(processor, 48000, { { 2000, true, 45, 0.9f } });
@@ -2006,12 +2006,12 @@ void testEffectIndependence()
             setChoice(*p, "voice.osc1.mode", 1);
             setParam(*p, "fx.reverb.enabled", 1.0f);
             setParam(*p, "fx.reverb.amount", 1.0f);
-            setParam(*p, "fxSendGain", 1.0f);
+            setParam(*p, "mix.send.fx.level", 1.0f);
         }
-        setParam(dryOnly, "mix.osc1.fxSend", 0.0f);
-        setParam(dryOnly, "fxReturnGain", 0.0f);
-        setParam(wetOnly, "mix.osc1.fxSend", 1.0f);
-        setParam(wetOnly, "fxReturnGain", 1.0f);
+        setParam(dryOnly, "mix.osc1.send.fx", 0.0f);
+        setParam(dryOnly, "mix.fx.level", 0.0f);
+        setParam(wetOnly, "mix.osc1.send.fx", 1.0f);
+        setParam(wetOnly, "mix.fx.level", 1.0f);
         // Fader down, not muted: the send is pre-fader, so this is wet-only.
         setParam(wetOnly, "mix.osc1.level", 0.0f);
 
@@ -2027,9 +2027,9 @@ void testEffectIndependence()
         setChoice(muted, "voice.osc1.mode", 1);
         setParam(muted, "fx.reverb.enabled", 1.0f);
         setParam(muted, "fx.reverb.amount", 1.0f);
-        setParam(muted, "fxSendGain", 1.0f);
-        setParam(muted, "mix.osc1.fxSend", 1.0f);
-        setParam(muted, "fxReturnGain", 1.0f);
+        setParam(muted, "mix.send.fx.level", 1.0f);
+        setParam(muted, "mix.osc1.send.fx", 1.0f);
+        setParam(muted, "mix.fx.level", 1.0f);
         setParam(muted, "mix.osc1.mute", 1.0f);
         const auto mutedCapture = render(muted, 48000, { { 2000, true, 45, 0.9f } });
         check("MixerMute_KillsTheSendAsWellAsTheDryPath", mutedCapture.peak() < 1.0e-5,
@@ -2042,9 +2042,9 @@ void testEffectIndependence()
         makePlainPatch(processor);
         setChoice(processor, "voice.osc1.mode", 1);
         setParam(processor, "voice.amp.release", 0.020f);
-        setParam(processor, "mix.osc1.fxSend", 1.0f);
-        setParam(processor, "fxSendGain", 1.0f);
-        setParam(processor, "fxReturnGain", 1.0f);
+        setParam(processor, "mix.osc1.send.fx", 1.0f);
+        setParam(processor, "mix.send.fx.level", 1.0f);
+        setParam(processor, "mix.fx.level", 1.0f);
         setParam(processor, "fx.reverb.enabled", 1.0f);
         setParam(processor, "fx.reverb.amount", 1.0f);
         setParam(processor, "fx.reverb.decay", 0.9f);
@@ -2107,9 +2107,9 @@ void testEffectIndependence()
             setParam(processor, "voice.amp.sustain", 1.0f);
 
             for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
-                setParam(processor, juce::String("mix.") + id + ".fxSend", 1.0f);
-            setParam(processor, "fxSendGain", 1.0f);
-            setParam(processor, "fxReturnGain", 1.0f);
+                setParam(processor, juce::String("mix.") + id + ".send.fx", 1.0f);
+            setParam(processor, "mix.send.fx.level", 1.0f);
+            setParam(processor, "mix.fx.level", 1.0f);
 
             for (const auto* id : { "fx.vibe.enabled", "fx.delay.enabled", "fx.reverb.enabled",
                                     "fx.mood.enabled", "fx.doom.enabled", "fx.lucy.enabled",

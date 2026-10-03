@@ -598,7 +598,7 @@ void testWavetable()
             setChoice(processor, "voice.osc1.mode", 8);             // WAVETABLE
             setChoice(processor, "voice.osc1.wavetable.table", tableIndex);
             setParam(processor, "voice.osc1.wavetable.position", position);
-            setParam(processor, "analogEnabled", 0.0f);
+            setParam(processor, "global.character.enabled", 0.0f);
             return render(processor, static_cast<int>(kSampleRate * 1.0),
                           { { 1000, true, 57, 0.9f } });
         };
@@ -661,7 +661,7 @@ void testWavetable()
         setChoice(processor, "voice.osc1.mode", 8);
         setChoice(processor, "voice.osc1.wavetable.table", 0);
         setParam(processor, "voice.osc1.wavetable.position", 0.5f);
-        setParam(processor, "analogEnabled", 0.0f);
+        setParam(processor, "global.character.enabled", 0.0f);
         setParam(processor, "mod.lfo1.enabled", 1.0f);
         setParam(processor, "mod.lfo1.frequency", 9.0f);
         setParam(processor, "mod.lfo1.amount", 1.0f);
@@ -1815,7 +1815,7 @@ void testWavetable()
         setParam(processor, "mod.lfo1.frequency", 0.5f);
         setParam(processor, "mod.lfo1.amount", 1.0f);
         setChoice(processor, "mod.lfo1.waveform", 0);
-        setParam(processor, "analogEnabled", 0.0f);
+        setParam(processor, "global.character.enabled", 0.0f);
         processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position");
 
         const auto capture = render(processor, static_cast<int>(kSampleRate * 4.0),
@@ -2714,7 +2714,7 @@ void testOscillators()
     {
         PX3SynthAudioProcessor processor;
         auto* level = findParameter(processor, "mix.osc1.level");
-        auto* fxReturn = findParameter(processor, "fxReturnGain");
+        auto* fxReturn = findParameter(processor, "mix.fx.level");
         const auto headroom = px3::processor_internal::sourceHeadroomGain();
         const auto faderMax = px3::processor_internal::channelFaderMaxGain();
 
@@ -2755,7 +2755,7 @@ void testOscillators()
             setParam(processor, "voice.filter2.enabled", 0.0f);
             // Same reason as makePlainPatch: these numbers are the MIXER's gain
             // structure, measured with every colour stage out of the way.
-            setParam(processor, "analogEnabled", 0.0f);
+            setParam(processor, "global.character.enabled", 0.0f);
             setParam(processor, "voice.amp.sustain", 1.0f);
             setChoice(processor, "voice.osc1.mode", 0);
             if (faderAtMaximum)

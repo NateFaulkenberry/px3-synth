@@ -19,8 +19,8 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     setParam(processor, "voice.amp.sustain", 0.371f);
     setParam(processor, "voice.amp.release", 2.510f);
     setParam(processor, "voice.amp.enabled", 1.0f);
-    setParam(processor, "masterGain", 0.83f);
-    setParam(processor, "pitchBendRange", 7.0f);
+    setParam(processor, "mix.master.level", 0.83f);
+    setParam(processor, "performance.pitch.bend.range", 7.0f);
 
     setParam(processor, "voice.osc1.enabled", 1.0f);
     setParam(processor, "voice.osc2.enabled", 1.0f);
@@ -143,8 +143,8 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     setParam(processor, "fx.delay.time", 0.62f);
     setParam(processor, "fx.delay.feedback", 0.47f);
 
-    setParam(processor, "fxSendGain", 0.73f);
-    setParam(processor, "fxReturnGain", 0.58f);
+    setParam(processor, "mix.send.fx.level", 0.73f);
+    setParam(processor, "mix.fx.level", 0.58f);
     setParam(processor, "mix.fx.pan", -0.41f);
     setParam(processor, "mix.fx.mute", 0.0f);
 
@@ -156,7 +156,7 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     {
         setParam(processor, juce::String("mix.") + id + ".level", levels[index]);
         setParam(processor, juce::String("mix.") + id + ".pan", pans[index]);
-        setParam(processor, juce::String("mix.") + id + ".fxSend", sends[index]);
+        setParam(processor, juce::String("mix.") + id + ".send.fx", sends[index]);
         ++index;
     }
     setParam(processor, "mix.osc3.mute", 1.0f);
@@ -448,7 +448,7 @@ void testPresets()
         // A payload with most parameters simply missing.
         {
             juce::ValueTree sparse("PX3State");
-            sparse.setProperty("masterGain", 0.5, nullptr);
+            sparse.setProperty("mix.master.level", 0.5, nullptr);
             if (auto xml = sparse.createXml())
             {
                 juce::MemoryBlock block;
@@ -955,7 +955,7 @@ void testIntegration()
         makePlainPatch(processor);
         setParam(processor, "fx.vibe.enabled", 1.0f);
         setParam(processor, "fx.vibe.amount", 0.7f);
-        setParam(processor, "analogEnabled", 1.0f);
+        setParam(processor, "global.character.enabled", 1.0f);
         setParam(processor, "voice.filter1.enabled", 1.0f);
 
         std::vector<NoteEvent> chord;
@@ -1063,11 +1063,11 @@ void testIntegration()
                   setParam(p, "fx.delay.feedback", 1.0f);
                   setParam(p, "fx.vibe.enabled", 1.0f);
                   setParam(p, "fx.vibe.amount", 1.0f);
-                  setParam(p, "fxSendGain", 1.0f);
-                  setParam(p, "fxReturnGain", 1.0f);
+                  setParam(p, "mix.send.fx.level", 1.0f);
+                  setParam(p, "mix.fx.level", 1.0f);
                   for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
                   {
-                      setParam(p, juce::String("mix.") + id + ".fxSend", 1.0f);
+                      setParam(p, juce::String("mix.") + id + ".send.fx", 1.0f);
                   }
               } },
             { "EverythingAtMaximum", [](PX3SynthAudioProcessor& p)
@@ -1080,7 +1080,7 @@ void testIntegration()
                       setParam(p, "voice.osc" + juce::String(i) + ".macro.c", 1.0f);
                   }
                   setParam(p, "voice.sub.enabled", 1.0f);
-                  setParam(p, "masterGain", 1.0f);
+                  setParam(p, "mix.master.level", 1.0f);
                   for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
                   {
                       setParam(p, juce::String("mix.") + id + ".level", 1.0f);
@@ -1089,7 +1089,7 @@ void testIntegration()
                   setParam(p, "fx.vibe.amount", 1.0f);
                   setParam(p, "fx.reverb.enabled", 1.0f);
                   setParam(p, "fx.reverb.amount", 1.0f);
-                  setParam(p, "fxReturnGain", 1.0f);
+                  setParam(p, "mix.fx.level", 1.0f);
               } },
         };
 
@@ -1178,7 +1178,7 @@ void testIntegration()
                                         setParam(processor, "voice.filter1.resonance", high ? 2.2f : 0.25f);
                                         setParam(processor, "mix.osc1.level", high ? 1.0f : 0.0f);
                                         setParam(processor, "mix.osc1.pan", high ? 1.0f : -1.0f);
-                                        setParam(processor, "masterGain", high ? 1.0f : 0.0f);
+                                        setParam(processor, "mix.master.level", high ? 1.0f : 0.0f);
                                     });
         check("Artifact_RapidParameterJumpsStayFiniteAndWithinCeiling",
               capture.isFinite() && capture.peak() <= 1.0001,
